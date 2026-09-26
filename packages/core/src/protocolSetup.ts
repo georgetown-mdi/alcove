@@ -17,6 +17,7 @@ import {
 } from "./utils/partnerOriginText";
 import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
+import { ProtocolRefusalError } from "./errors";
 import {
   receiveParsed,
   parseOrProtocolError,
@@ -265,14 +266,19 @@ const PARTNER_ABORT_REASON_LABEL = "reason the partner gave: ";
 
 const partnerAbortError = (
   reasons: PartnerOriginTextList | undefined,
-): Error =>
-  reasons === undefined
-    ? new Error(PARTNER_ABORT_MESSAGE)
-    : errorWithPartnerCauseLinks(
-        PARTNER_ABORT_MESSAGE,
-        PARTNER_ABORT_REASON_LABEL,
-        reasons,
-      );
+): ProtocolRefusalError =>
+  new ProtocolRefusalError(
+    PARTNER_ABORT_MESSAGE,
+    reasons === undefined
+      ? undefined
+      : {
+          cause: errorWithPartnerCauseLinks(
+            PARTNER_ABORT_MESSAGE,
+            PARTNER_ABORT_REASON_LABEL,
+            reasons,
+          ).cause,
+        },
+  );
 
 // --- Terms exchange ----------------------------------------------------------
 
@@ -480,7 +486,7 @@ async function reconcileProtocolVersion(
 ): Promise<void> {
   if (partnerVersion === PROTOCOL_VERSION) return;
   await sendAbort(conn, [PROTOCOL_VERSION_MISMATCH_MESSAGE], localTerms);
-  throw new Error(PROTOCOL_VERSION_MISMATCH_MESSAGE);
+  throw new ProtocolRefusalError(PROTOCOL_VERSION_MISMATCH_MESSAGE);
 }
 
 /**
@@ -600,7 +606,9 @@ export async function exchangeTerms(
     // is a protocol failure, not something to default.
     if (msg.recordCount === undefined) {
       await sendAbort(conn, ["partner omitted record count"]);
-      throw new Error("partner omitted record count on terms exchange");
+      throw new ProtocolRefusalError(
+        "partner omitted record count on terms exchange",
+      );
     }
 
     let partnerTerms: LinkageTerms;
@@ -620,7 +628,7 @@ export async function exchangeTerms(
       // description with the other compatibility errors, and the sink's
       // fail-closed dangling rule past an unredacted planted marker would take
       // the errors behind it with it.
-      throw new Error(
+      throw new ProtocolRefusalError(
         "partner linkage terms failed to parse: " +
           redactPrivateKeyMaterial(rawDecodeErrorDescription(parseErr)),
       );
@@ -633,7 +641,9 @@ export async function exchangeTerms(
 
     if (errors.length > 0) {
       await sendAbort(conn, errors);
-      throw new Error(`linkage terms are incompatible: ${errors.join("; ")}`);
+      throw new ProtocolRefusalError(
+        `linkage terms are incompatible: ${errors.join("; ")}`,
+      );
     }
 
     await conn.send({ decision: "proceed" });
@@ -710,7 +720,9 @@ export async function exchangeTerms(
 
     if (errors.length > 0) {
       await sendAbort(conn, errors, localTerms);
-      throw new Error(`linkage terms are incompatible: ${errors.join("; ")}`);
+      throw new ProtocolRefusalError(
+        `linkage terms are incompatible: ${errors.join("; ")}`,
+      );
     }
 
     await conn.send({

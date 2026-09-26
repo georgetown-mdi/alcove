@@ -10,6 +10,7 @@ import {
   roundOriginalIndexListMessage,
 } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
+import { ProtocolRefusalError } from "../../src/errors";
 
 import {
   createMessagePipe,
@@ -229,6 +230,9 @@ test("processClientRequest rejects a request declaring more elements than the bo
   try {
     await expect(sender.processClientRequest(bytes)).rejects.toThrow(
       /inbound PSI request declares more than 4 encrypted element\(s\)/,
+    );
+    await expect(sender.processClientRequest(bytes)).rejects.toBeInstanceOf(
+      ProtocolRefusalError,
     );
     expect(deserialize).not.toHaveBeenCalled();
   } finally {

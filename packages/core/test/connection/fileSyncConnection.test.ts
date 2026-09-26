@@ -26,6 +26,7 @@ import {
   AuthenticationError,
   UsageError,
   BilateralModeMismatchError,
+  ProtocolRefusalError,
   ConnectionClosedError,
   FrameSizeExceededError,
   TransportOperationStalledError,
@@ -4232,7 +4233,7 @@ test("poll() terminal: an old-format JSON message shows a likely-incompatible-ve
   const { errors, pollerActiveBeforeDriverStop } = await driveUntilError(conn);
 
   expect(errors).toHaveLength(1);
-  expect(errors[0]).toBeInstanceOf(UsageError);
+  expect(errors[0]).toBeInstanceOf(ProtocolRefusalError);
   const message = (errors[0] as Error).message;
   expect(message).toContain("incompatible Alcove version");
   expect(message).toContain("both parties must run the same version");
@@ -4263,7 +4264,7 @@ test("poll() terminal: a foreign envelope version byte shows the same version hi
   const { errors } = await driveUntilError(conn);
 
   expect(errors).toHaveLength(1);
-  expect(errors[0]).toBeInstanceOf(UsageError);
+  expect(errors[0]).toBeInstanceOf(ProtocolRefusalError);
   const message = (errors[0] as Error).message;
   expect(message).toContain("incompatible Alcove version");
   expect(message).toContain("envelope version byte 2");

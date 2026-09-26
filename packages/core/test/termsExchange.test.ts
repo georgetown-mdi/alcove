@@ -9,6 +9,7 @@ import {
   TERMS_ENVELOPE_FIELDS,
 } from "../src/protocolSetup";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
+import { ProtocolRefusalError } from "../src/errors";
 import type { LinkageTerms, Output } from "../src/config/linkageTermsSchema";
 import type { PresentedHostKey } from "../src/connection/fileSyncConnection";
 import type { PsiRole } from "../src/types";
@@ -315,6 +316,7 @@ test("responder fails fast when message 1 advertises a different protocol versio
     abortReasons: [PROTOCOL_VERSION_MISMATCH_MESSAGE],
   });
   await expect(responder).rejects.toThrow(PROTOCOL_VERSION_MISMATCH_MESSAGE);
+  await expect(responder).rejects.toBeInstanceOf(ProtocolRefusalError);
 });
 
 test("initiator fails fast when message 2 advertises a different protocol version", async () => {
@@ -336,6 +338,7 @@ test("initiator fails fast when message 2 advertises a different protocol versio
     abortReasons: [PROTOCOL_VERSION_MISMATCH_MESSAGE],
   });
   await expect(initiator).rejects.toThrow(PROTOCOL_VERSION_MISMATCH_MESSAGE);
+  await expect(initiator).rejects.toBeInstanceOf(ProtocolRefusalError);
 });
 
 test("responder fails fast when message 1 advertises no protocol version", async () => {
@@ -812,6 +815,7 @@ test("initiator aborts when a proceed frame omits the record count", async () =>
   await expect(initiator).rejects.toThrow(
     "partner omitted record count on terms exchange",
   );
+  await expect(initiator).rejects.toBeInstanceOf(ProtocolRefusalError);
 });
 
 test("responder rejects a message 1 that omits the record count", async () => {
@@ -829,6 +833,7 @@ test("responder rejects a message 1 that omits the record count", async () => {
   const abort = await connA.receive();
   expect(abort).toMatchObject({ decision: "abort" });
   await expect(responder).rejects.toThrow("linkage terms are incompatible");
+  await expect(responder).rejects.toBeInstanceOf(ProtocolRefusalError);
 });
 
 // --- Incompatible terms ------------------------------------------------------
@@ -845,6 +850,12 @@ test("an incompatibility rejects both parties with a message identifying the cau
       (m) => m.includes("algorithm mismatch") || m.includes("abort"),
     ),
   ).toBe(true);
+  // One party refuses the terms and the other reads its abort: both are
+  // refusals the CLI exits EX_PROTOCOL on.
+  for (const result of results)
+    expect((result as PromiseRejectedResult).reason).toBeInstanceOf(
+      ProtocolRefusalError,
+    );
 });
 
 test("responder renders partner bytes in a linkage-terms parse error escaped once", async () => {

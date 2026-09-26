@@ -50,7 +50,11 @@ import {
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
-import { InternalConsistencyError, UsageError } from "../../src/errors";
+import {
+  InternalConsistencyError,
+  ProtocolRefusalError,
+  UsageError,
+} from "../../src/errors";
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
@@ -865,6 +869,7 @@ test("encodeInt32LE / decodeInt32LE round-trip, and a non-aligned frame is rejec
   // A length that is not a whole number of int32s is a clean error, not a silent
   // truncation -- the decode guard for the partner-supplied index table.
   expect(() => decodeInt32LE(new Uint8Array(3))).toThrow(/int32/);
+  expect(() => decodeInt32LE(new Uint8Array(3))).toThrow(ProtocolRefusalError);
 });
 
 test("encodeSinglePassReply / decodeSinglePassReply round-trip, and a truncated frame is rejected", () => {
@@ -882,6 +887,9 @@ test("encodeSinglePassReply / decodeSinglePassReply round-trip, and a truncated 
   // silent under-read.
   const full = encodeSinglePassReply(setup, response, 4, indices);
   expect(() => decodeSinglePassReply(full.subarray(0, 5))).toThrow(/truncated/);
+  expect(() => decodeSinglePassReply(full.subarray(0, 5))).toThrow(
+    ProtocolRefusalError,
+  );
 });
 
 // --- single-pass dataset ceiling: derived from exchanged counts ---------------

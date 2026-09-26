@@ -19,6 +19,7 @@ export {
   OperatorConfigError,
   OutboundDisclosureRefusalError,
   PeerAbortError,
+  ProtocolRefusalError,
   RoundSetLimitError,
   StandardizationTermsError,
   TransportOperationStalledError,
