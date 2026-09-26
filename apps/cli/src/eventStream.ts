@@ -107,11 +107,12 @@ export type WarningSource = (typeof WARNING_SOURCES)[number];
  *   {@link ConnectionError} from the authenticated key exchange (wrong secret,
  *   tamper, replay), from SFTP host-key verification (a pinned-fingerprint
  *   mismatch), or from the post-handshake AEAD layer. It must be identifiable from the terminal event
- *   alone, since the process exit code (64/69) cannot distinguish it from a
- *   plain usage or transport failure.
+ *   alone, since an integrity failure exits 69 like a plain transport
+ *   failure.
  * - `output`: the privacy-sensitive exchange already succeeded and only local
  *   result-file generation failed -- the operator must NOT re-run the exchange.
- * - `exchange`: every other failure (a retryable transport/usage fault).
+ * - `exchange`: every other failure (a transport or usage fault, or a refusal
+ *   by the partner or the agreed terms).
  */
 export type ExchangeErrorCategory =
   "exchange" | "output" | "security" | "config";
