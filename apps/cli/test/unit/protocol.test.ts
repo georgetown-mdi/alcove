@@ -330,6 +330,7 @@ import {
   authenticateConnection,
   generateSigningIdentity,
   OperatorConfigError,
+  ProtocolRefusalError,
   ReceiptVerificationError,
   isPeerWaitTimeout,
   sanitizeErrorForDisplay,
@@ -379,7 +380,12 @@ import {
 } from "../../src/eventStream";
 import { keysPathFor, type RecordOutput } from "../../src/recordFile";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
-import { exitCodeForError, runOrExit } from "../../src/util/exit";
+import {
+  exitCodeForError,
+  PARTNER_REFUSED_NEXT_STEP,
+  renderFailureForOperator,
+  runOrExit,
+} from "../../src/util/exit";
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";
 import { LocalFSClient } from "../../src/connection/localFSClient";
 
@@ -4117,6 +4123,76 @@ test.each([
       InternalConsistencyError,
     );
     expectNoGenericRecoveryAdvisory(mockState.errors);
+  },
+  20_000,
+);
+
+test.each([
+  {
+    failure: "a partner or terms refusal",
+    raise: () =>
+      new ProtocolRefusalError(
+        "the partner's linkage terms are incompatible with this party's",
+      ),
+    code: 76,
+    advisory: false,
+  },
+  {
+    failure: "a transport failure",
+    raise: () =>
+      new ConnectionError("the exchange server went away", "transport"),
+    code: 69,
+    advisory: true,
+  },
+])(
+  "runProtocol after rotation, for $failure, gives the step its exit code states",
+  async ({ raise, code, advisory }) => {
+    // Both fail after the token rotated, the window the generic "retry without
+    // re-inviting" advisory prints in. A refusal exits 76, whose step is to
+    // contact the partner, so the advisory is replaced by that fixed step; a
+    // transport failure exits 69 and keeps the advisory.
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+
+    async function waitForRotationThenThrow(): Promise<never> {
+      await waitForBothKeysRotated(keyFileA, keyFileB);
+      throw raise();
+    }
+    vi.mocked(runExchange)
+      .mockImplementationOnce(waitForRotationThenThrow)
+      .mockImplementationOnce(waitForRotationThenThrow);
+
+    const run = (keyFilePath: string, loggerName: string) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName,
+      });
+    const [resultA, resultB] = await Promise.allSettled([
+      run(keyFileA, "test-a"),
+      run(keyFileB, "test-b"),
+    ]);
+    expect(resultA.status).toBe("rejected");
+    expect(resultB.status).toBe("rejected");
+    const reason = (resultA as PromiseRejectedResult).reason;
+    expect(exitCodeForError(reason)).toBe(code);
+    expect(
+      mockState.errors.some((m) =>
+        m.includes("Retry the exchange without re-inviting"),
+      ),
+    ).toBe(advisory);
+    expect(
+      renderFailureForOperator(reason).endsWith(PARTNER_REFUSED_NEXT_STEP),
+    ).toBe(!advisory);
   },
   20_000,
 );

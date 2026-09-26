@@ -54,25 +54,59 @@ export const INTERNAL_FAULT_NEXT_STEP =
 export function internalFaultNextStep(err: unknown): string | undefined {
   if (!(firstLinkBehindTransportWraps(err) instanceof InternalConsistencyError))
     return undefined;
-  const tagged = causeChainSome(
+  return holdsRecoveryHintTag(err) ? undefined : INTERNAL_FAULT_NEXT_STEP;
+}
+
+/**
+ * The next step shown beneath a partner or terms refusal
+ * ({@link isPartnerRefusal}) whose message states none of its own: the same
+ * step for every such refusal, since a retry meets the same partner and the
+ * same terms.
+ */
+export const PARTNER_REFUSED_NEXT_STEP =
+  "Contact your partner before running again: the partner or the agreed " +
+  "terms refused this exchange, and retrying unchanged will fail the same way.";
+
+/**
+ * {@link PARTNER_REFUSED_NEXT_STEP} when `err` is a partner or terms refusal
+ * ({@link isPartnerRefusal}), bare or behind `transport`-kind wraps as
+ * {@link exitCodeForError} reads it, and nothing in its cause chain holds
+ * core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`, for the
+ * reason {@link internalFaultNextStep} gives.
+ */
+export function partnerRefusalNextStep(err: unknown): string | undefined {
+  if (!isPartnerRefusal(firstLinkBehindTransportWraps(err))) return undefined;
+  return holdsRecoveryHintTag(err) ? undefined : PARTNER_REFUSED_NEXT_STEP;
+}
+
+/**
+ * The fixed next step the CLI adds beneath `err`:
+ * {@link internalFaultNextStep} for an exit-70 fault,
+ * {@link partnerRefusalNextStep} for an exit-76 refusal, otherwise
+ * `undefined`.
+ */
+export function fixedNextStep(err: unknown): string | undefined {
+  return internalFaultNextStep(err) ?? partnerRefusalNextStep(err);
+}
+
+function holdsRecoveryHintTag(err: unknown): boolean {
+  return causeChainSome(
     err,
     (link) =>
       (link as { alcoveRecoveryHintEmitted?: unknown })
         .alcoveRecoveryHintEmitted === true,
   );
-  return tagged ? undefined : INTERNAL_FAULT_NEXT_STEP;
 }
 
 /**
  * The display-safe text a command boundary shows for a failure: the
- * sanitized error chain, followed on its own line by
- * {@link internalFaultNextStep} when that applies. The terminal event's
- * `message` is this same text, so stderr and the event stream state the same
- * step.
+ * sanitized error chain, followed on its own line by {@link fixedNextStep}
+ * when that applies. The terminal event's `message` is this same text, so
+ * stderr and the event stream state the same step.
  */
 export function renderFailureForOperator(err: unknown): string {
   const text = sanitizeErrorForDisplay(err);
-  const nextStep = internalFaultNextStep(err);
+  const nextStep = fixedNextStep(err);
   return nextStep === undefined ? text : `${text}\n${nextStep}`;
 }
 
@@ -197,7 +231,15 @@ function isUsageFault(err: unknown): boolean {
   );
 }
 
-function isPartnerRefusal(err: unknown): boolean {
+/**
+ * Whether `err` is a partner or terms refusal, the class
+ * {@link exitCodeForError} maps to {@link PARTNER_REFUSED_EXIT_CODE}: a
+ * {@link ProtocolRefusalError}, a {@link PeerAbortError}, a
+ * {@link ReceiptVerificationError}, or a `protocol`-kind
+ * {@link ConnectionError}. Reads `err` itself; a caller holding a possibly
+ * wrapped error passes {@link firstLinkBehindTransportWraps} of it.
+ */
+export function isPartnerRefusal(err: unknown): boolean {
   return (
     err instanceof ProtocolRefusalError ||
     err instanceof PeerAbortError ||
