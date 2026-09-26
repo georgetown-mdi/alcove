@@ -576,10 +576,11 @@ describe("managedStandingConditionTier", () => {
   });
 });
 
-describe("the too-large tier: a set over the bound one WebRTC message holds", () => {
-  // The refusal an unattended run meets when its input is too large to send
-  // over WebRTC. Reconnecting sends the same set, so it tiers apart from the
-  // retryable transport drop, and its copy names splitting the input.
+describe("the too-large tier: a set over a bound the exchange cannot send past", () => {
+  // The refusal an unattended run meets when its input is over a bound the
+  // exchange cannot send past (one WebRTC message, or the distinct values
+  // one round holds). Reconnecting sends the same set, so it tiers apart from
+  // the retryable transport drop, and its copy names splitting the input.
   const columns = ["ssn", "ssn4", "first_name", "last_name", "date_of_birth"];
   const rows: Array<CSVRow> = [
     {
