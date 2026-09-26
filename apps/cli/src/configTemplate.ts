@@ -8,17 +8,12 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  PLACEHOLDER_SFTP_HOST,
+  PLACEHOLDER_SSH_USERNAME,
   POLL_INTERVAL_LINES,
   snakeizeKeys,
 } from "@alcove/core";
 import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
-
-// Placeholder server fields the operator must replace before the first exchange.
-// Kept identical in spirit to the offline-invite placeholder connection
-// (bootstrap.ts) so a config written by `init` and one written by `invite` both
-// flag the same fields for editing.
-const PLACEHOLDER_HOST = "REPLACE_WITH_SFTP_HOST";
-const PLACEHOLDER_USERNAME = "REPLACE_WITH_SSH_USERNAME";
 
 /**
  * The exchange-data portion of a template, as produced by `buildDataSpec`: the
@@ -418,9 +413,9 @@ export function renderConfigTemplate(data: TemplateDataSpec): string {
     connection: {
       channel: "sftp",
       server: {
-        host: PLACEHOLDER_HOST,
+        host: PLACEHOLDER_SFTP_HOST,
         port: 22,
-        username: PLACEHOLDER_USERNAME,
+        username: PLACEHOLDER_SSH_USERNAME,
       },
       options: {
         serverConnectTimeoutMs: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
