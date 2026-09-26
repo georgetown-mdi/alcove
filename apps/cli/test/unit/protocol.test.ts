@@ -1693,14 +1693,15 @@ test("a result file that could not be written fails with the persistence-loss ex
   expect(terminal.category).toBe("output");
 }, 20_000);
 
-test("a partner-shaped output-phase fault exits 69, not the local write-loss code", async () => {
+test("a partner-shaped output-phase fault exits 76, not the local write-loss code", async () => {
   // The other half of the same boundary. buildOutputTable's integrity checks run
   // in the output phase but refuse PARTNER-controlled shapes -- here a payload
   // holding no row for a record the association table matched, thrown by the
   // real core function -- and 73's published meaning is that what failed is a
-  // local write on this machine. Such a fault stays 69; only the result file
-  // failing to reach disk is stamped. The terminal event's `output` category
-  // still covers it, since the exchange did complete and must not be re-run.
+  // local write on this machine. Such a fault is a partner refusal, 76; only the
+  // result file failing to reach disk is stamped. The terminal event's `output`
+  // category still covers it, since the exchange did complete and must not be
+  // re-run.
   const { buildOutputTable: coreBuildOutputTable } =
     await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
   const payloadMissingAMatchedRow: PartnerPayload = {
@@ -1762,7 +1763,7 @@ test("a partner-shaped output-phase fault exits 69, not the local write-loss cod
     "missing rows for association table indices",
   );
   expect(reason.exitCode).toBeUndefined();
-  expect(exitCodeForError(reason)).toBe(69);
+  expect(exitCodeForError(reason)).toBe(76);
 
   const lines = takeFd3Lines();
   const terminal = lines[lines.length - 1];
@@ -1821,7 +1822,7 @@ test("a partner-shaped output-phase fault reports the post-exchange persistence 
   }
 
   expect(outcome.status).toBe("rejected");
-  expect(exitCodeForError((outcome as PromiseRejectedResult).reason)).toBe(69);
+  expect(exitCodeForError((outcome as PromiseRejectedResult).reason)).toBe(76);
   expect(onOutputComplete).not.toHaveBeenCalled();
 
   const lines = takeFd3Lines();
@@ -1892,7 +1893,7 @@ test("a partner payload missing a matched row still leaves the record and the re
     expect(reason.message).toContain(
       "missing rows for association table indices",
     );
-    expect(exitCodeForError(reason)).toBe(69);
+    expect(exitCodeForError(reason)).toBe(76);
     expect(
       parseExchangeRecord(JSON.parse(fs.readFileSync(p.record, "utf8"))),
     ).toEqual(sampleRecord);

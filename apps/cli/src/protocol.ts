@@ -1888,8 +1888,8 @@ async function writeExchangeOutputs(params: {
     // integrity throws (duplicate partner row indices, rows missing for
     // association indices) are partner-shaped faults, and 73's
     // published meaning is that what failed is a local write on this
-    // machine. They stay 69, distinguished by the terminal event's
-    // `output` category, which covers the whole stage.
+    // machine. They are core's ProtocolRefusalError, exit 76, and the
+    // terminal event's `output` category covers the whole stage.
     // One delimiter for the escaping and the join: buildOutputTable quotes
     // each field against it and writeOutput joins the fields with it, so the
     // file reads back through the delimiter this party chose. A party that
@@ -2561,7 +2561,7 @@ export async function runProtocol(
     // catch's abort-marker gate excludes a failure in the purely-local
     // output stage below: a fault there must not write a cross-party
     // abort marker telling a peer whose exchange succeeded to fail fast --
-    // at worst an exit-69 PeerAbortError while its results sit readable on
+    // at worst an exit-76 PeerAbortError while its results sit readable on
     // disk. (sealAbort does not help here: it resolves the decision for
     // close(), but writeAbortMarker writes regardless, and the gate keys
     // on abortArmed, still true.)
@@ -2868,7 +2868,7 @@ export async function runProtocol(
     // The marker holds no cause, so signalling on a UsageError discloses
     // nothing the peer's own view of the teardown would not: the local
     // party sees its specific error and exits 64, while the peer sees the
-    // cause-free "peer aborted" and exits 69. The pre-arm/post-arm line is
+    // cause-free "peer aborted" and exits 76. The pre-arm/post-arm line is
     // principled: only post-arm does a session key (to authenticate the
     // marker) and a waiting post-handshake peer both exist.
     if (
@@ -2930,10 +2930,10 @@ export async function runProtocol(
     // gave it, and nothing is stamped here: only the result-file write
     // above is the local write loss 73 names, while the rest of the
     // output stage -- core's refusal of a partner payload that does not
-    // fit the association table -- is not. Those keep no code and land on
-    // the boundaries' 69. The `output` category on the terminal event
-    // stays the finer-grained discriminator for a supervisor that reads
-    // fd 3, covering the whole stage either way.
+    // fit the association table -- is not. Those keep no code, and the
+    // boundaries map their class to 76. The `output` category on the
+    // terminal event stays the finer-grained discriminator for a
+    // supervisor that reads fd 3, covering the whole stage either way.
     throw err;
   } finally {
     await doCleanup();
