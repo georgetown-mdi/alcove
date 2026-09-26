@@ -5,6 +5,7 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   getLogger,
   describeExchangeStages,
+  InternalConsistencyError,
   runExchange,
   SINGLE_PASS_STAGE_IDS,
   exchangeRecordFromFailure,
@@ -85,7 +86,10 @@ import {
   type TeardownOutcome,
 } from "./transportTeardown";
 import { writeOutput } from "./util/dataIo";
-import { AUTHENTICATION_FAILED_EXIT_CODE } from "./util/exit";
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  internalFaultNextStep,
+} from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
 import { logRuntimeEnv } from "./util/runtimeEnv";
@@ -849,7 +853,9 @@ async function openRunTransport(params: {
     // Resolved by the prepare block for exactly this channel; the check is
     // what licenses treating the dial as present.
     if (build.webRtcDial === undefined)
-      throw new Error("the webrtc rendezvous was not resolved");
+      throw new InternalConsistencyError(
+        "the webrtc rendezvous was not resolved",
+      );
     log.info(
       "rendezvousing through the signaling server at",
       // dialedBrokerAuthority (see its doc) is what the socket actually
@@ -935,7 +941,9 @@ async function openRunTransport(params: {
     // every file-sync channel; the check is what licenses the rest of the
     // block treating them as present.
     if (build.fileSync === undefined || build.transport === undefined)
-      throw new Error("the file-sync transport was not constructed");
+      throw new InternalConsistencyError(
+        "the file-sync transport was not constructed",
+      );
     const fileSyncConn = build.fileSync;
     await fileSyncConn.open(connection);
     run.opened = true;
@@ -983,7 +991,7 @@ async function openRunTransport(params: {
     // Invariant: synchronize() throws on all failure paths, so role is always
     // defined when synchronize() returns normally.
     if (rendezvousRole === undefined)
-      throw new Error(
+      throw new InternalConsistencyError(
         "connection did not establish a handshake role after synchronization",
       );
     role = rendezvousRole;
@@ -1621,7 +1629,7 @@ async function prepareTransport(
     // `never` binding holds the other half at build time: it compiles only
     // while the dispatch below covers every channel the type admits.
     const unsupported: never = connection;
-    throw new Error(
+    throw new InternalConsistencyError(
       `unsupported channel: ` +
         (unsupported as unknown as { channel: string }).channel,
     );
@@ -1634,7 +1642,7 @@ async function prepareTransport(
   // the authenticated channel with nothing reading it back. Reject the
   // combination rather than leave the mistake open to a future caller.
   if (auth && saveIntent !== undefined)
-    throw new Error(
+    throw new InternalConsistencyError(
       "saveIntent is only valid on an unauthenticated (zero-setup) exchange; " +
         "an authenticated exchange must not pass it",
     );
@@ -1644,7 +1652,7 @@ async function prepareTransport(
   // front, so a future caller wiring a hook to a zero-setup exchange gets
   // a clear error instead of a persistence step that never runs.
   if (!auth && onAuthenticated !== undefined)
-    throw new Error(
+    throw new InternalConsistencyError(
       "onAuthenticated is only valid on an authenticated exchange; an " +
         "unauthenticated (zero-setup) exchange has no acceptance step to hook",
     );
@@ -1654,7 +1662,7 @@ async function prepareTransport(
   // session key to derive the replay binder from, so a caller that wired
   // it would get a receipt-less exchange with no signal why.
   if (!auth && signing !== null)
-    throw new Error(
+    throw new InternalConsistencyError(
       "a signing identity is only valid on an authenticated exchange; an " +
         "unauthenticated (zero-setup) exchange has no session key to bind the " +
         "signed receipt to",
@@ -1878,10 +1886,10 @@ async function writeExchangeOutputs(params: {
   } else {
     // buildOutputTable is outside the stamp below on purpose: its
     // integrity throws (duplicate partner row indices, rows missing for
-    // association indices, a length mismatch) are partner-shaped
-    // faults, and 73's published meaning is that what failed is a local
-    // write on this machine. They stay 69, distinguished by the
-    // terminal event's `output` category, which covers the whole stage.
+    // association indices) are partner-shaped faults, and 73's
+    // published meaning is that what failed is a local write on this
+    // machine. They stay 69, distinguished by the terminal event's
+    // `output` category, which covers the whole stage.
     // One delimiter for the escaping and the join: buildOutputTable quotes
     // each field against it and writeOutput joins the fields with it, so the
     // file reads back through the delimiter this party chose. A party that
@@ -2483,7 +2491,9 @@ export async function runProtocol(
     // Set by the prepare block on the file-sync channels and by the rendezvous
     // above on webrtc; either way the exchange has a transport to run over.
     if (build.transport === undefined)
-      throw new Error("no transport was established for this exchange");
+      throw new InternalConsistencyError(
+        "no transport was established for this exchange",
+      );
     const mc = build.transport;
 
     if (auth) {
@@ -2658,11 +2668,12 @@ export async function runProtocol(
     // the generic advisory is skipped rather than printed beneath a step
     // it contradicts. Set wherever that holds: the saveKeyFile-failure
     // path below, authenticateConnection's own validation errors (token
-    // format, pre- and post-handshake expiry -- see auth.ts), core's
-    // terminal transport refusals, and the single-pass reply-cap internal
-    // fault. Key-exchange protocol failures from runKex are NOT tagged and
-    // do get the generic advisory, which adds useful "retry first; if it
-    // fails, re-invite" context.
+    // format, pre- and post-handshake expiry -- see auth.ts), and core's
+    // terminal transport refusals. An untagged internal fault is skipped
+    // too: the command boundary shows INTERNAL_FAULT_NEXT_STEP beneath it,
+    // and a retry is what that step rules out. Key-exchange protocol
+    // failures from runKex are NOT tagged and do get the generic advisory,
+    // which adds useful "retry first; if it fails, re-invite" context.
     //
     // The walk follows `cause` so a future wrap (e.g. `new Error('outer: '
     // + inner.message, { cause: inner })`) still suppresses the generic
@@ -2781,7 +2792,8 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
-    const hintAlreadyEmitted = isHintTagged(err);
+    const hintAlreadyEmitted =
+      isHintTagged(err) || internalFaultNextStep(err) !== undefined;
     if (!hintAlreadyEmitted) {
       if (run.tokenRotated && run.onAuthenticatedError === undefined) {
         log.error(

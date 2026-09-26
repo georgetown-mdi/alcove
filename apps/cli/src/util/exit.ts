@@ -7,6 +7,7 @@
 
 import {
   AuthenticationError,
+  causeChainSome,
   ConnectionError,
   getLogger,
   InternalConsistencyError,
@@ -19,8 +20,8 @@ import {
  * The process exit code for a failure in this implementation rather than in
  * anything the operator, the partner, or the transport supplied: `EX_SOFTWARE`
  * (70), the sysexits code for an internal software error. Held by core's
- * {@link InternalConsistencyError}, which core raises where it finds one of
- * its own invariants broken.
+ * {@link InternalConsistencyError}, which core and the CLI raise where a
+ * check on their own state fails.
  *
  * Distinct from both neighbours: 64 would name the operator's input as what to
  * fix when the run already found their declared sizes within budget, and 69
@@ -29,6 +30,48 @@ import {
  * documented response to a 70 is to report it (see docs/CLI.md, Exit codes).
  */
 export const INTERNAL_FAULT_EXIT_CODE = 70;
+
+/**
+ * The next step shown beneath an {@link InternalConsistencyError} whose message
+ * states none of its own: the same step for every internal fault, since no
+ * input the operator controls moves one and a retry reaches the same refusal.
+ */
+export const INTERNAL_FAULT_NEXT_STEP =
+  "This is a fault in Alcove itself: report it with this message; retrying " +
+  "will not help.";
+
+/**
+ * {@link INTERNAL_FAULT_NEXT_STEP} when `err` is an
+ * {@link InternalConsistencyError}, bare or behind `transport`-kind wraps as
+ * {@link exitCodeForError} reads it, and nothing in its cause chain holds
+ * core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`. A tagged
+ * fault's message already states its step, so adding this one would give the
+ * operator two.
+ */
+export function internalFaultNextStep(err: unknown): string | undefined {
+  if (!(firstLinkBehindTransportWraps(err) instanceof InternalConsistencyError))
+    return undefined;
+  const tagged = causeChainSome(
+    err,
+    (link) =>
+      (link as { alcoveRecoveryHintEmitted?: unknown })
+        .alcoveRecoveryHintEmitted === true,
+  );
+  return tagged ? undefined : INTERNAL_FAULT_NEXT_STEP;
+}
+
+/**
+ * The display-safe text a command boundary shows for a failure: the
+ * sanitized error chain, followed on its own line by
+ * {@link internalFaultNextStep} when that applies. The terminal event's
+ * `message` is this same text, so stderr and the event stream state the same
+ * step.
+ */
+export function renderFailureForOperator(err: unknown): string {
+  const text = sanitizeErrorForDisplay(err);
+  const nextStep = internalFaultNextStep(err);
+  return nextStep === undefined ? text : `${text}\n${nextStep}`;
+}
 
 /**
  * The process exit code for an authentication failure: `EX_NOPERM` (77). Held
@@ -90,9 +133,9 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
  * The process exit code a caught command error reports: EX_USAGE (64) for a
  * {@link UsageError} or a {@link ConnectionError} of kind `usage`, bare or
  * behind `transport`-kind wraps ({@link firstLinkBehindTransportWraps}),
- * {@link INTERNAL_FAULT_EXIT_CODE} (70) for an {@link InternalConsistencyError},
- * {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for an
- * {@link AuthenticationError}, bare or behind the same wraps, otherwise the
+ * {@link INTERNAL_FAULT_EXIT_CODE} (70) for an {@link InternalConsistencyError}
+ * and {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for an
+ * {@link AuthenticationError}, each bare or behind the same wraps, otherwise the
  * error's own numeric `exitCode`
  * when it has one, else EX_UNAVAILABLE (69). The classification a boundary
  * reads when its errors vary; a boundary whose errors are all usage faults
@@ -116,7 +159,8 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
 export function exitCodeForError(err: unknown): number {
   const unwrapped = firstLinkBehindTransportWraps(err);
   if (isUsageFault(unwrapped)) return 64;
-  if (err instanceof InternalConsistencyError) return INTERNAL_FAULT_EXIT_CODE;
+  if (unwrapped instanceof InternalConsistencyError)
+    return INTERNAL_FAULT_EXIT_CODE;
   if (unwrapped instanceof AuthenticationError)
     return AUTHENTICATION_FAILED_EXIT_CODE;
   const own = (err as { exitCode?: unknown } | null | undefined)?.exitCode;
@@ -135,12 +179,13 @@ function isUsageFault(err: unknown): boolean {
  * {@link ConnectionError}, walking at most {@link MAX_ERROR_CAUSE_DEPTH}
  * links; `err` itself when it is not one. The message bridge
  * (`fromEventConnection`) wraps every send and poll failure that way, so a
- * {@link UsageError} the file-sync transport raised, or an
- * {@link AuthenticationError}, reaches a command boundary behind it. Any other
+ * {@link UsageError} the file-sync transport raised, an
+ * {@link InternalConsistencyError}, or an {@link AuthenticationError}, reaches
+ * a command boundary behind it. Any other
  * kind ends the walk, so a `security` failure keeps its own code whatever it
  * wraps.
  */
-function firstLinkBehindTransportWraps(err: unknown): unknown {
+export function firstLinkBehindTransportWraps(err: unknown): unknown {
   let link: unknown = err;
   for (
     let depth = 0;
@@ -154,7 +199,7 @@ function firstLinkBehindTransportWraps(err: unknown): unknown {
 }
 
 /**
- * Log a caught error (sanitized) at error level and exit the process with
+ * Log a caught error ({@link renderFailureForOperator}) at error level and exit the process with
  * `code`. The single log-and-exit boundary the bootstrap-style command handlers
  * route a caught error through, so the error-level routing and the sanitized
  * formatting cannot drift between call sites. `code` is supplied by the caller
@@ -168,7 +213,7 @@ export function exitWithError(
   err: unknown,
   code: number,
 ): never {
-  log.error(sanitizeErrorForDisplay(err));
+  log.error(renderFailureForOperator(err));
   process.exit(code);
 }
 
@@ -192,7 +237,7 @@ export async function runOrExit(
   try {
     await body();
   } catch (err) {
-    getLogger(loggerName).error(sanitizeErrorForDisplay(err));
+    getLogger(loggerName).error(renderFailureForOperator(err));
     process.exit(exitCodeForError(err));
   }
 }

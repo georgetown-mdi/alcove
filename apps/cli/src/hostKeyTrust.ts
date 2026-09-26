@@ -1,5 +1,6 @@
 import {
   FileSyncConnection,
+  InternalConsistencyError,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
@@ -11,7 +12,7 @@ import type { ConnectionConfig, PresentedHostKey } from "@alcove/core";
 
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { persistHostKeyFingerprint } from "./config";
-import { exitCodeForError } from "./util/exit";
+import { exitCodeForError, firstLinkBehindTransportWraps } from "./util/exit";
 import { promptConfirm } from "./util/prompt";
 
 /**
@@ -222,6 +223,11 @@ export async function establishHostKeyTrust(
   try {
     presented = await deps.probe(probeConnection, verbosity);
   } catch (err) {
+    // An internal fault (bare or behind the transport's message-bridge wraps)
+    // is not the probe's own connect failure the refusal below narrates;
+    // rethrow it unchanged so it keeps exit 70 and its own next-step line.
+    if (firstLinkBehindTransportWraps(err) instanceof InternalConsistencyError)
+      throw err;
     throw probeFailureRefusal(err);
   }
 

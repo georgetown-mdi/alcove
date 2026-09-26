@@ -9,6 +9,8 @@
  * rationale behind it.
  */
 
+import { InternalConsistencyError } from "@alcove/core";
+
 /**
  * Warn cadence for the adapter's repeating operator conditions: the first
  * occurrence draws a line, then every `SFTP_REDIAL_WARN_INTERVAL`-th. An
@@ -139,7 +141,7 @@ export class SftpAdapterLedger {
    */
   dialSucceeded(): number {
     if (this.live !== undefined)
-      throw new Error(
+      throw new InternalConsistencyError(
         `an SFTP dial established session generation ${this.generations + 1} ` +
           `while generation ${this.live} was still live, so that generation ` +
           `ended with no recorded cause; every transition that ends a session ` +

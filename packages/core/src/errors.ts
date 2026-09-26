@@ -604,10 +604,15 @@ export class TransportOperationStalledError extends UsageError {
 }
 
 /**
- * Thrown when two derivations of the same quantity inside one party
- * disagree -- a fault in this implementation rather than in anything an
- * operator, a partner, or a transport supplied. Its raise site is the
- * single-pass send-time reply-cap check: the reply this party built
+ * Thrown when a check on this implementation's own state fails -- two
+ * derivations of the same quantity inside one party disagreeing, an
+ * exhaustiveness branch reached, or a precondition its own callers
+ * guarantee broken: a fault in this implementation rather than in anything
+ * an operator, a partner, or a transport supplied. Every such guard in
+ * core and the CLI throws this class rather than a plain `Error`, which
+ * `scripts/check-internal-fault-throws.mjs` holds for the two shapes it
+ * can read. The worked case below is the single-pass send-time reply-cap
+ * check: the reply this party built
  * outgrew the byte cap both parties derive from their declared sizes, on
  * an exchange whose declared sizes the over-ceiling gate has already
  * cleared, so no dataset either operator controls and no transport
@@ -621,8 +626,8 @@ export class TransportOperationStalledError extends UsageError {
  * there, because 69 is treated as a transport blip an unattended
  * supervisor retries, and a retry re-runs the whole exchange -- re-sending
  * this party's records -- only to rebuild the same reply and refuse it
- * again. The message's remedy is to report it, and 70 is the code that
- * shows that to a supervisor reading nothing else.
+ * again. The remedy is to report it, and 70 is the code that shows that
+ * to a supervisor reading nothing else.
  *
  * On the CLI's machine-readable event stream the terminal `error` event's
  * category is `exchange`, the default bucket, since that classification
@@ -632,25 +637,17 @@ export class TransportOperationStalledError extends UsageError {
  * `security` category, which is observable only in the category (see
  * docs/spec/CLI_EVENTS.md).
  *
- * `alcoveRecoveryHintEmitted` is a class field, the
- * {@link FrameSizeExceededError} shape rather than
- * {@link TransportPublishIndeterminateError}'s per-instance one: every
- * internal fault takes the same next step -- report it, never retry -- so
- * no raise site has a different one to choose, and each states that step
- * in its own message (the reply-cap check ends "report it with this
- * message", pinned in link.test.ts). The tag makes the CLI's
- * hint-walker suppress its generic "retry the exchange without
- * re-inviting" advisory, which would otherwise print beneath that
- * message: the check fires mid-data-exchange, after the handshake
- * rotated the secret, which is the window that advisory fires in, and it
- * prescribes exactly what the EX_SOFTWARE mapping above exists to stop --
- * a whole further exchange, this party's records re-sent, rebuilding the
- * same reply and refusing it again. The convention stays two-state, so a
- * raise site added here holds its own next step in its message.
+ * The class sets no `alcoveRecoveryHintEmitted` tag: most raise sites
+ * state only the condition that failed. The CLI supplies the next step
+ * centrally -- report the fault, do not retry -- beneath any untagged
+ * instance, and suppresses its generic "retry the exchange without
+ * re-inviting" advisory for every instance, since that advisory prescribes
+ * the retry the EX_SOFTWARE mapping exists to stop. A raise site whose
+ * message already states that step tags its instance, the per-instance
+ * shape {@link TransportPublishIndeterminateError} describes, so the step
+ * is not shown twice.
  */
 export class InternalConsistencyError extends Error {
-  readonly alcoveRecoveryHintEmitted = true;
-
   constructor(message: string) {
     super(message);
     this.name = "InternalConsistencyError";
