@@ -632,6 +632,14 @@ most 128 remote candidates are held per connection while that connection's
 remote description is not yet applied -- during a renewal overlap the
 replaced connection and its replacement each hold their own.
 
+The browser peer holds its own signaling intake to the same two bounds: a
+frame over 256 KiB of UTF-8 is refused unparsed, the peer reporting a
+`server-error` naming the limit and leaving the signaling server; and at most
+128 messages held for a connection not yet set up are kept, surplus dropped
+silently, counted across every pending connection id together where the
+CLI's candidate cap above is per connection. The two apps define both values
+separately.
+
 ## See also
 
 - [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation) - the
