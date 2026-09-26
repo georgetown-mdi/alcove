@@ -168,6 +168,9 @@ export {
   NestingDepthExceededError,
   NodeCountExceededError,
 } from "./utils/camelizeKeys";
+// The refusal of two keys of one object that fold to one name, raised on
+// every path that folds keys, a partner's linkage terms included.
+export { KeyFoldCollisionError } from "./utils/camelizeKeys";
 export {
   canonicalString,
   canonicalBytes,

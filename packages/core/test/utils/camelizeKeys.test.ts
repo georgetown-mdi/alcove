@@ -1,7 +1,9 @@
 import { expect, test } from "vitest";
 
 import {
+  camelizeKey,
   camelizeKeys,
+  KeyFoldCollisionError,
   OPAQUE_VALUE_KEYS,
   snakeizeKey,
   snakeizeKeys,
@@ -382,4 +384,57 @@ test("a width-bounded over-count value does not consume the node budget", () => 
   expect(() =>
     camelizeKeys({ params }, new Map([["params", 2]])),
   ).not.toThrow();
+});
+
+// --- Key-fold collisions -----------------------------------------------------
+// Two keys of one object that fold to one name would leave one of them out of
+// the camelized document, and which one decides the agreed-terms hash.
+
+test("two keys of one object that fold to one name are refused, naming both", () => {
+  let err: unknown;
+  try {
+    camelizeKeys({ outer_block: [{ my_param: 1, other: 2, myParam: 3 }] });
+  } catch (e) {
+    err = e;
+  }
+  expect(err).toBeInstanceOf(KeyFoldCollisionError);
+  const collision = err as KeyFoldCollisionError;
+  expect(collision.keys).toEqual(["my_param", "myParam"]);
+  expect(collision.foldedKey).toBe("myParam");
+  expect(collision.path).toEqual(["outerBlock", 0]);
+  expect(collision.message).toBe(
+    'outerBlock.0: keys "my_param" and "myParam" are read as the same key, ' +
+      '"myParam"',
+  );
+});
+
+test("a collision at the root names no path", () => {
+  expect(() => camelizeKeys({ a_b: 1, aB: 2 })).toThrow(
+    /^keys "a_b" and "aB" are read as the same key, "aB"$/,
+  );
+});
+
+test("keys that fold to different names are not a collision", () => {
+  expect(camelizeKeys({ input__format: 1, input_format: 2 })).toEqual({
+    input_Format: 1,
+    inputFormat: 2,
+  });
+});
+
+test("an opaque key written in both spellings is a collision", () => {
+  expect(() =>
+    camelizeKeys({ provider_options: {}, providerOptions: {} }),
+  ).toThrow(KeyFoldCollisionError);
+});
+
+test("the collision message fits a partner-chosen key to the display budget", () => {
+  const long = `k_${"x".repeat(10_000)}`;
+  let err: unknown;
+  try {
+    camelizeKeys({ [long]: 1, [camelizeKey(long)]: 2 });
+  } catch (e) {
+    err = e;
+  }
+  expect(err).toBeInstanceOf(KeyFoldCollisionError);
+  expect((err as Error).message.length).toBeLessThan(1000);
 });

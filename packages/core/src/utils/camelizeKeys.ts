@@ -1,4 +1,5 @@
 import { UsageError } from "../errors.js";
+import { fittedPathSegment } from "./describeDecodeError.js";
 import { exceedsOwnKeyCount } from "./objectKeyCount.js";
 
 /**
@@ -73,6 +74,47 @@ export class NodeCountExceededError extends UsageError {
 }
 
 /**
+ * Thrown by {@link camelizeKeys} when one object holds two keys that
+ * {@link camelizeKey} reads as the same name -- `my_param` beside `myParam`.
+ * Keeping either one would silently discard the other, and which one a reader
+ * kept would decide the agreed-terms hash, so the document is refused on every
+ * path that folds keys (docs/spec/CANONICAL_ENCODING.md, "Object member
+ * ordering"). A {@link UsageError} subclass, like the depth and width bounds.
+ *
+ * The message names both keys and the path of the object holding them, each
+ * fitted as a Zod issue path segment is ({@link fittedPathSegment}): on the
+ * partner path every one of them is partner-chosen. It is composed raw for the
+ * display sink to escape. `path`, `keys`, and `foldedKey` hold the same values
+ * unfitted, for a caller that restates the refusal in its own shape.
+ */
+export class KeyFoldCollisionError extends UsageError {
+  /** The path of the object holding both keys, each segment as folded. */
+  readonly path: ReadonlyArray<PropertyKey>;
+  /** The two keys as the document writes them, in document order. */
+  readonly keys: readonly [string, string];
+  /** The name both keys fold to. */
+  readonly foldedKey: string;
+
+  constructor(
+    path: ReadonlyArray<PropertyKey>,
+    keys: readonly [string, string],
+    foldedKey: string,
+  ) {
+    const at =
+      path.length > 0 ? `${path.map(fittedPathSegment).join(".")}: ` : "";
+    super(
+      `${at}keys "${fittedPathSegment(keys[0])}" and ` +
+        `"${fittedPathSegment(keys[1])}" are read as the same key, ` +
+        `"${fittedPathSegment(foldedKey)}"`,
+    );
+    this.name = "KeyFoldCollisionError";
+    this.path = [...path];
+    this.keys = keys;
+    this.foldedKey = foldedKey;
+  }
+}
+
+/**
  * Field names whose value is an opaque map passed verbatim to an external
  * library, whose keys must therefore NOT be case-transformed. Currently only
  * `connection.provider_options` / `providerOptions`, spread directly into
@@ -142,6 +184,19 @@ export function snakeizeKey(key: string): string {
 }
 
 /**
+ * The fixed inputs of one {@link transformKeysDeep} walk, and the two values it
+ * threads through the recursion: the node `budget`, and the `path` of the value
+ * being rewritten as rewritten keys and array indices.
+ */
+interface KeyWalk {
+  readonly transformKey: (key: string) => string;
+  readonly widthBoundedKeys: ReadonlyMap<string, number> | undefined;
+  readonly refuseCollisions: boolean;
+  readonly budget: { nodes: number };
+  readonly path: Array<PropertyKey>;
+}
+
+/**
  * Shared recurse-and-skip walker behind both {@link camelizeKeys} (read) and
  * {@link snakeizeKeys} (write). Recurses through arrays and objects
  * rewriting every object key with `transformKey`, except that an opaque
@@ -192,15 +247,18 @@ export function snakeizeKey(key: string): string {
  * value is opaque content no consumer treats as camelCase. The effect is
  * version-deterministic, so it cannot diverge a cross-party canonical
  * encoding within a version.
+ *
+ * With `refuseCollisions` set, two keys of one object that rewrite to the
+ * same key throw {@link KeyFoldCollisionError}. A skipped subtree's keys are
+ * not rewritten, so they cannot collide.
  */
 function transformKeysDeep(
   value: unknown,
-  transformKey: (key: string) => string,
   depth: number,
-  budget: { nodes: number },
-  widthBoundedKeys?: ReadonlyMap<string, number>,
+  walk: KeyWalk,
 ): unknown {
   if (depth >= MAX_NESTING_DEPTH) throw new NestingDepthExceededError();
+  const { budget, path } = walk;
   if (Array.isArray(value)) {
     // Length is O(1), so reject an over-budget array before `.map` allocates
     // and recurses (path b); a within-budget array commits its element count up
@@ -208,9 +266,12 @@ function transformKeysDeep(
     if (budget.nodes + value.length > MAX_NODE_COUNT)
       throw new NodeCountExceededError();
     budget.nodes += value.length;
-    return value.map((v) =>
-      transformKeysDeep(v, transformKey, depth + 1, budget, widthBoundedKeys),
-    );
+    return value.map((v, index) => {
+      path.push(index);
+      const rewritten = transformKeysDeep(v, depth + 1, walk);
+      path.pop();
+      return rewritten;
+    });
   }
   if (value !== null && typeof value === "object") {
     // Reject a single over-wide object before `Object.entries` MATERIALIZES
@@ -220,15 +281,25 @@ function transformKeysDeep(
     // rewritten then stripped.
     if (exceedsOwnKeyCount(value, MAX_NODE_COUNT - budget.nodes))
       throw new NodeCountExceededError();
+    const writtenAs = walk.refuseCollisions
+      ? new Map<string, string>()
+      : undefined;
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => {
         // The per-key check also catches the budget being exhausted by a
         // DESCENDANT of an earlier key in this same object, which the pre-pass
         // count above (this object's own width only) does not see.
         if (++budget.nodes > MAX_NODE_COUNT) throw new NodeCountExceededError();
+        const rewrittenKey = walk.transformKey(k);
+        if (writtenAs !== undefined) {
+          const earlier = writtenAs.get(rewrittenKey);
+          if (earlier !== undefined)
+            throw new KeyFoldCollisionError(path, [earlier, k], rewrittenKey);
+          writtenAs.set(rewrittenKey, k);
+        }
         const camel = camelizeKey(k);
-        if (OPAQUE_VALUE_KEYS.has(camel)) return [transformKey(k), v];
-        const widthBound = widthBoundedKeys?.get(camel);
+        if (OPAQUE_VALUE_KEYS.has(camel)) return [rewrittenKey, v];
+        const widthBound = walk.widthBoundedKeys?.get(camel);
         if (
           widthBound !== undefined &&
           v !== null &&
@@ -236,17 +307,11 @@ function transformKeysDeep(
           !Array.isArray(v) &&
           exceedsOwnKeyCount(v, widthBound)
         )
-          return [transformKey(k), v];
-        return [
-          transformKey(k),
-          transformKeysDeep(
-            v,
-            transformKey,
-            depth + 1,
-            budget,
-            widthBoundedKeys,
-          ),
-        ];
+          return [rewrittenKey, v];
+        path.push(rewrittenKey);
+        const rewritten = transformKeysDeep(v, depth + 1, walk);
+        path.pop();
+        return [rewrittenKey, rewritten];
       }),
     );
   }
@@ -260,11 +325,11 @@ function transformKeysDeep(
  * verbatim -- see {@link transformKeysDeep}.
  *
  * Runs ahead of the schema in the `parseX`/`safeParseX` config helpers, so
- * on a pathologically deep or wide input it throws before the schema. The
- * throwing `parseX` helpers propagate that throw; the `safeParseX` helpers
- * route through `safeParseCamelized`, which converts it into a
- * `{ success: false }` result. No real config or exchange message reaches
- * either bound.
+ * on a pathologically deep or wide input, or on two keys of one object that
+ * fold to one name, it throws before the schema. The throwing `parseX` helpers
+ * propagate that throw; the `safeParseX` helpers route through
+ * `safeParseCamelized`, which converts it into a `{ success: false }` result.
+ * No real config or exchange message reaches either size bound.
  *
  * `widthBoundedKeys` (see {@link transformKeysDeep}) lets a caller name keys
  * whose object value is left verbatim once it exceeds a given key count, so
@@ -277,18 +342,20 @@ function transformKeysDeep(
  *   {@link MAX_NESTING_DEPTH} levels.
  * @throws {NodeCountExceededError} if the input's total node count exceeds
  *   {@link MAX_NODE_COUNT}.
+ * @throws {KeyFoldCollisionError} if one object it rewrites holds two keys
+ *   that fold to the same name.
  */
 export function camelizeKeys(
   value: unknown,
   widthBoundedKeys?: ReadonlyMap<string, number>,
 ): unknown {
-  return transformKeysDeep(
-    value,
-    camelizeKey,
-    0,
-    { nodes: 0 },
+  return transformKeysDeep(value, 0, {
+    transformKey: camelizeKey,
     widthBoundedKeys,
-  );
+    refuseCollisions: true,
+    budget: { nodes: 0 },
+    path: [],
+  });
 }
 
 /**
@@ -313,5 +380,11 @@ export function camelizeKeys(
  * @internal
  */
 export function snakeizeKeys(value: unknown): unknown {
-  return transformKeysDeep(value, snakeizeKey, 0, { nodes: 0 });
+  return transformKeysDeep(value, 0, {
+    transformKey: snakeizeKey,
+    widthBoundedKeys: undefined,
+    refuseCollisions: false,
+    budget: { nodes: 0 },
+    path: [],
+  });
 }

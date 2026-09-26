@@ -1071,3 +1071,41 @@ test("a plain partner column name displays as its own text", async () => {
       'local receive columns ["email"] do not match partner send columns []',
   );
 });
+
+test("responder refuses partner terms holding two keys that fold to one name", async () => {
+  // Resolving the pair to one key would let the parties derive different
+  // agreed-terms hashes, so the terms are refused and the abort names both.
+  const [connA, connB] = makeConnections();
+  const responder = exchangeTerms(connB, "responder", termsB, 200);
+  await connA.send({
+    recordCount: 100,
+    effectiveKeyCount: 1,
+    protocolVersion: PROTOCOL_VERSION,
+    linkageTerms: {
+      ...termsA,
+      linkageKeys: [
+        {
+          name: "SSN",
+          elements: [
+            {
+              field: "ssn",
+              transform: [
+                {
+                  function: "substring",
+                  params: { start: 1, max_len: 9, length: 9, maxLen: 9 },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const abort = (await connA.receive()) as { abortReasons?: string[] };
+  expect(abort).toMatchObject({ decision: "abort" });
+  expect(abort.abortReasons?.[0]).toContain("failed to parse");
+  expect(abort.abortReasons?.[0]).toContain(
+    'keys "max_len" and "maxLen" are read as the same key, "maxLen"',
+  );
+  await expect(responder).rejects.toThrow(/"max_len" and "maxLen"/);
+});

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
-import { camelizeKeys } from "../utils/camelizeKeys.js";
+import { camelizeKeys, KeyFoldCollisionError } from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import {
   droppedSettingIssues,
+  keyFoldCollisionIssue,
   unrecognizedKeysAsWritten,
 } from "./unreadKeys.js";
 import {
@@ -217,16 +218,24 @@ export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
  * than stripped, wherever in the document it sits: a consumer writes the parse
  * result back out, so a dropped key is a setting the operator wrote and the next
  * file does not hold ({@link droppedSettingIssues}; docs/spec/EXCHANGE_FILE.md,
- * "What a consumer does with a setting it cannot honor"), which also refuses a
- * setting the case conversion above would drop instead of the schema -- one key
- * written in both spellings. Every refusal names its keys as the raw document
- * spells them ({@link unrecognizedKeysAsWritten}), the schema's own included.
+ * "What a consumer does with a setting it cannot honor"). One key written in
+ * both spellings is refused by the case conversion above
+ * ({@link keyFoldCollisionIssue}). Every refusal names its keys as the raw
+ * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
+ * included.
  *
  * @throws {ZodError} if validation fails, if the document holds a key the
  *   schema does not read, or if it writes one key in two spellings.
  */
 export function parseExchangeSpec(raw: unknown): ExchangeSpec {
-  const camelized = camelizeKeys(raw);
+  let camelized: unknown;
+  try {
+    camelized = camelizeKeys(raw);
+  } catch (err) {
+    if (err instanceof KeyFoldCollisionError)
+      throw new z.ZodError([keyFoldCollisionIssue(err)]);
+    throw err;
+  }
   const result = ExchangeSpecSchema.safeParse(camelized);
   if (!result.success)
     throw new z.ZodError(unrecognizedKeysAsWritten(raw, result.error.issues));
