@@ -2884,6 +2884,34 @@ test("runOnlineBootstrap's post-output hook reports the write that landed", asyn
   }
 });
 
+test("runOnlineBootstrap skips the second write for an observation holding a text-direction character", async () => {
+  // The acceptance write lands; the observe-then-persist write is skipped, so
+  // the file is byte-identical to what acceptance wrote and still reloads.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+  const configPath = path.join(dir, "alcove.yaml");
+  let afterAcceptance: string | undefined;
+  const reported = captureOutputCompleteResults(
+    ["dob", "zip\u202Eedoc"],
+    () => {
+      afterAcceptance = fs.readFileSync(configPath, "utf8");
+    },
+  );
+  try {
+    await runOnlineBootstrap({
+      ...onlineBootstrapParams(configPath),
+      persistObservedReceivedPayload: true,
+    });
+    expect(reported).toEqual([{ persisted: true }]);
+    const text = fs.readFileSync(configPath, "utf8");
+    expect(text).toBe(afterAcceptance);
+    const written = YAML.parse(text);
+    expect(written.expected_payload_columns).toBeUndefined();
+    expect(parseExchangeSpec(written).expectedPayloadColumns).toBeUndefined();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /** Write the pre-existing config every reuse-refresh test below starts from: a
  *  loadable exchange config (so a recurring run's parseExchangeSpec reload is what
  *  the assertions read), plus a hand-authored comment and the stale commitment a

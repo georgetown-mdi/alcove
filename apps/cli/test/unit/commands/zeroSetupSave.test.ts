@@ -158,6 +158,52 @@ test("buildSaveSpec leaves an observation holding a text-direction character laz
   expect(reloaded.expectedPayloadColumns).toBeUndefined();
 });
 
+test("a saved well-shaped observation reloads with expected_payload_columns intact", () => {
+  const { log } = capture();
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip"],
+  );
+  finalizeBootstrap({
+    save: true,
+    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
+    spec,
+    configFile,
+    keyFile,
+    log,
+  });
+  const reloaded = parseExchangeSpec(
+    YAML.parse(fs.readFileSync(configFile, "utf8")),
+  );
+  expect(reloaded.expectedPayloadColumns).toEqual(["dob", "zip"]);
+});
+
+test("a saved config holding a text-direction character in expected_payload_columns refuses to reload", () => {
+  // The on-disk shape the save path now declines to write: the same config
+  // as the round trip above, with the bad name written into the file directly.
+  const { log } = capture();
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip"],
+  );
+  finalizeBootstrap({
+    save: true,
+    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
+    spec,
+    configFile,
+    keyFile,
+    log,
+  });
+  const onDisk = YAML.parse(fs.readFileSync(configFile, "utf8"));
+  onDisk.expected_payload_columns = ["dob", "zip\u202Eedoc"];
+  fs.writeFileSync(configFile, YAML.stringify(onDisk));
+  expect(() =>
+    parseExchangeSpec(YAML.parse(fs.readFileSync(configFile, "utf8"))),
+  ).toThrow();
+});
+
 // --- both parties saved ------------------------------------------------------
 
 test("both-saved: writes config and key, and reports the shared secret", () => {
