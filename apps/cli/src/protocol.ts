@@ -1880,10 +1880,10 @@ async function writeExchangeOutputs(params: {
   } else {
     // buildOutputTable is outside the stamp below on purpose: its
     // integrity throws (duplicate partner row indices, rows missing for
-    // association indices, a length mismatch) are partner-shaped
-    // faults, and 73's published meaning is that what failed is a local
-    // write on this machine. They stay 69, distinguished by the
-    // terminal event's `output` category, which covers the whole stage.
+    // association indices) are partner-shaped faults, and 73's
+    // published meaning is that what failed is a local write on this
+    // machine. They stay 69, distinguished by the terminal event's
+    // `output` category, which covers the whole stage.
     // One delimiter for the escaping and the join: buildOutputTable quotes
     // each field against it and writeOutput joins the fields with it, so the
     // file reads back through the delimiter this party chose. A party that

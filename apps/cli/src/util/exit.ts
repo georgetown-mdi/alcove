@@ -185,7 +185,7 @@ function isUsageFault(err: unknown): boolean {
  * kind ends the walk, so a `security` failure keeps its own code whatever it
  * wraps.
  */
-function firstLinkBehindTransportWraps(err: unknown): unknown {
+export function firstLinkBehindTransportWraps(err: unknown): unknown {
   let link: unknown = err;
   for (
     let depth = 0;

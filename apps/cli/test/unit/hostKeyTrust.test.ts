@@ -9,6 +9,7 @@ import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   getDiagnosticSink,
+  InternalConsistencyError,
   keyTypeFromBlob,
   MAX_ERROR_CAUSE_DEPTH,
   sanitizeErrorForDisplay,
@@ -257,6 +258,31 @@ test("a probe failure keeps the exit status its cause maps to", async () => {
     );
     expect(exitCodeForError(error)).toBe(exitCode);
   }
+});
+
+test("a probe failure that is an internal fault is not re-wrapped", async () => {
+  // The SFTP adapter's own guards throw InternalConsistencyError; that fault
+  // is not the probe's own connect failure the retry-worded refusal
+  // narrates, so it surfaces unchanged and keeps exit 70.
+  const fault = new InternalConsistencyError("adapter state is inconsistent");
+  process.stdin.isTTY = true;
+  const error: unknown = await establishHostKeyTrust(
+    sftpConn(),
+    {
+      verbosity: -1,
+      loggerName: "exchange",
+      persistence: { mode: "ephemeral" },
+    },
+    {
+      probe: () => Promise.reject(fault),
+      confirm: () => Promise.resolve(true),
+    },
+  ).then(
+    () => new Error("establishHostKeyTrust resolved instead of refusing"),
+    (err: unknown) => err,
+  );
+  expect(error).toBe(fault);
+  expect(exitCodeForError(error)).toBe(70);
 });
 
 test("is a no-op when a list of host_key_fingerprints is already pinned", async () => {
