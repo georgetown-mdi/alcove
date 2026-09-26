@@ -17,6 +17,7 @@ import {
   LinkageStrategySchema,
   MAX_PAYLOAD_ENTRIES,
   messageWithOperatorText,
+  NAME_SHAPE_PATTERN,
   operatorSuppliedText,
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
@@ -750,6 +751,12 @@ export function prepareForOnlineExchange(
  * this cap: its disclosed-columns subset is already bounded at intake, unlike
  * this observe-on-save path's unbounded source.
  *
+ * An observation holding a name outside {@link NAME_SHAPE_PATTERN} -- a control
+ * or text-direction character -- is dropped (stays lazy) for the same reason:
+ * the wire admits such a name, but the persisted list holds the linkage-terms
+ * name shape on reload, so saving it would write a config this party can no
+ * longer load.
+ *
  * @internal exported for testing
  */
 export function observedReceivedColumnsForSave(
@@ -757,6 +764,8 @@ export function observedReceivedColumnsForSave(
 ): string[] | undefined {
   if (observed === undefined || observed.length === 0) return undefined;
   if (observed.length > MAX_PAYLOAD_ENTRIES) return undefined;
+  if (!observed.every((name) => NAME_SHAPE_PATTERN.test(name)))
+    return undefined;
   return observed;
 }
 

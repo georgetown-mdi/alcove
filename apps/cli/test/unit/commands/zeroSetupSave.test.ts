@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import YAML from "yaml";
-import { getDefaultLinkageTerms, UsageError } from "@alcove/core";
+import {
+  getDefaultLinkageTerms,
+  parseExchangeSpec,
+  UsageError,
+} from "@alcove/core";
 import type { ExchangeSpec, PreparedExchange } from "@alcove/core";
 import { minimalPreparedExchange } from "@alcove/core/testing";
 
@@ -123,6 +127,35 @@ test("both-saved persists the observed received set to disk as expected_payload_
   });
   const written = YAML.parse(fs.readFileSync(configFile, "utf8"));
   expect(written.expected_payload_columns).toEqual(["dob", "zip"]);
+});
+
+test("buildSaveSpec leaves an observation holding a text-direction character lazy, so the saved config reloads", () => {
+  // The payload wire admits a column name the reload's name shape refuses;
+  // saved, it would stop every later `alcove exchange` at load.
+  const { log } = capture();
+  const observed = ["dob", "zip\u202Eedoc"];
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    observed,
+  );
+  expect(spec.expectedPayloadColumns).toBeUndefined();
+  expect(() =>
+    parseExchangeSpec({ ...spec, expectedPayloadColumns: observed }),
+  ).toThrow();
+
+  finalizeBootstrap({
+    save: true,
+    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
+    spec,
+    configFile,
+    keyFile,
+    log,
+  });
+  const reloaded = parseExchangeSpec(
+    YAML.parse(fs.readFileSync(configFile, "utf8")),
+  );
+  expect(reloaded.expectedPayloadColumns).toBeUndefined();
 });
 
 // --- both parties saved ------------------------------------------------------

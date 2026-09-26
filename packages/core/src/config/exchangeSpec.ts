@@ -39,8 +39,7 @@ import { boundedArray } from "../utils/boundedArray.js";
  *
  * {@link boundedArray} bounds the count at {@link MAX_PAYLOAD_ENTRIES} ahead of
  * the collapse, so a padded list is refused for its authored count. Each name
- * holds the shape (`nameValue`) and per-name cap the lists these are written
- * from already hold.
+ * holds the shape (`nameValue`) and per-name cap of the linkage-terms names.
  */
 const payloadColumnNameList = (message: string): z.ZodType<string[]> =>
   boundedArray(
@@ -117,10 +116,11 @@ export const ExchangeSpecSchema = z
     // field reconciles lazily. An observe-on-save writer records only a
     // NON-EMPTY observation, since an observed-empty set is an ambiguous
     // zero-match run. `payloadColumnNameList` holds the count, the name shape,
-    // and the one-entry-per-name collapse. The invitation this list is written
-    // from already holds that shape, so a partner's control or text-direction
-    // character cannot arrive in the operator's configuration by a hand edit
-    // either; names are partner-controlled.
+    // and the one-entry-per-name collapse; names are partner-controlled. An
+    // acceptance writes the list from the invitation, which holds the same
+    // shape. The payload wire does not, so an observe-on-save writer leaves
+    // the field absent when an observed name fails the shape, as it does for
+    // an over-cap observation, rather than write a file that cannot reload.
     expectedPayloadColumns: payloadColumnNameList(
       `expectedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
     ).optional(),

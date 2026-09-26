@@ -2605,6 +2605,13 @@ describe("observedReceivedColumnsForSave", () => {
     expect(observedReceivedColumnsForSave(atCap)).toEqual(atCap);
     expect(observedReceivedColumnsForSave(overCap)).toBeUndefined();
   });
+
+  test("drops an observation holding a control or text-direction character", () => {
+    expect(
+      observedReceivedColumnsForSave(["dob", "zip\u202E"]),
+    ).toBeUndefined();
+    expect(observedReceivedColumnsForSave(["dob\u0007"])).toBeUndefined();
+  });
 });
 
 // --- runOnlineBootstrap: observe-then-persist received-payload commitment ----
