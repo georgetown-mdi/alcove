@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -25,10 +24,12 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
-const SCRIPT = resolve(here, "check-config-integrity.mjs");
 
 // Driving the real tsc and vitest costs seconds per case, well past vitest's
-// default per-test timeout.
+// default per-test timeout. The slowest case measured 3.0 s inside `npm run
+// check:all` on a shared 10-core container at load average 16 (2026-09-26), a
+// margin of about 40x. The full-tree run is `check:config-integrity` itself,
+// which `check:all` runs as its own step, so no case here repeats it.
 const TOOL_TIMEOUT = 120_000;
 
 const fixtureRoots = [];
@@ -400,15 +401,5 @@ describe("the guarded tables", () => {
     expect(rootGuard?.projects).toEqual(
       expect.arrayContaining(["harness", "scripts", "hooks", "repo-scripts"]),
     );
-  });
-});
-
-describe("the CLI entry against this repository", () => {
-  it("passes on the tree as committed", { timeout: TOOL_TIMEOUT }, () => {
-    const stdout = execFileSync(process.execPath, [SCRIPT], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-    expect(stdout).toMatch(/passed/);
   });
 });
