@@ -252,6 +252,72 @@ describe("failureFor", () => {
     );
   });
 
+  describe("a relayed exchange failure that states its own next step", () => {
+    // The internal fault's report-it step is the CLI's fixed line; the
+    // reply-cap fault states that step in its own message instead. Either way
+    // the relayed text is the account, and transport copy advising a retry
+    // would contradict it.
+    const internalFault =
+      "round resolution disagreed with the planned round count\n" +
+      "This is a fault in Alcove itself: report it with this message; " +
+      "retrying will not help.";
+    const replyCapFault =
+      "inviter: single-pass built a reply of 9000 byte(s), above the 8000 " +
+      "byte(s) both parties derive from their declared sizes. The exchange " +
+      "cannot proceed; report it with this message.";
+
+    test.each([
+      ["an internal fault", internalFault, "browser"],
+      ["an internal fault", internalFault, "filedrop"],
+      ["the reply-cap fault", replyCapFault, "sftp"],
+      ["the reply-cap fault", replyCapFault, "filedrop"],
+    ] as const)(
+      "%s over %s shows its report and no retry advice",
+      (_, text, channel) => {
+        const failure = failureFor(
+          "exchange",
+          new RelayedSelfExplainingError(text),
+          undefined,
+          channel,
+        );
+        expect(failure.category).toBe("exchange");
+        expect(failure.title).toBe("Exchange failed");
+        expect(failure.message).not.toMatch(/try again/i);
+        expect(failure.message).not.toContain("temporary");
+        expect(failure.message).toContain("what to do next");
+        expect(failure.reportedCause).toBe(sanitizeForDisplay(text));
+      },
+    );
+
+    test("its report reaches the block escaped", () => {
+      const hostile = "\u001b[2J\u202ereport it with this message";
+      const failure = failureFor(
+        "exchange",
+        new RelayedSelfExplainingError(hostile),
+      );
+      expect(failure.reportedCause).toBe(sanitizeForDisplay(hostile));
+      expect(failure.reportedCause).not.toContain("\u001b");
+      expect(failure.reportedCause).not.toContain("\u202e");
+    });
+
+    test("an empty report gets no block and no pointer to one", () => {
+      const failure = failureFor(
+        "exchange",
+        new RelayedSelfExplainingError(""),
+      );
+      expect(failure.reportedCause).toBeUndefined();
+      expect(failure.message).toBe("The exchange stopped.");
+    });
+
+    test("a relayed failure without the marker keeps the transport copy", () => {
+      const failure = failureFor(
+        "exchange",
+        new RelayedTerminalError(internalFault),
+      );
+      expect(failure.message).toContain("temporary connection problem");
+    });
+  });
+
   test.each(["inviter", "acceptor"] as const)(
     "a failed relay is reported on the %s seat's retryable alert",
     (seat) => {

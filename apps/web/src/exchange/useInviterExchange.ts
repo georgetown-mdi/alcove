@@ -445,6 +445,25 @@ export function failureFor(
         "invitation.",
     };
   }
+  // A relayed terminal whose own message states the cause and the next step
+  // (docs/spec/CLI_EVENTS.md, `recoveryHint`), such as an internal fault's
+  // "report it; retrying will not help". The transport copy below would
+  // contradict that step, so a sentence pointing at the report replaces it.
+  // The report stays in the labeled block: unlike the pin refusals above, a
+  // tagged transport refusal's chain can hold a partner- or server-chosen detail.
+  if (error instanceof RelayedSelfExplainingError) {
+    const relayed = sanitizedFailureMessage(error);
+    return {
+      category,
+      title: "Exchange failed",
+      message:
+        relayed.trim() === ""
+          ? "The exchange stopped."
+          : "The exchange stopped. Its report below states the cause and " +
+            "what to do next.",
+      ...reportedCauseFields(relayed),
+    };
+  }
   // Generic, retryable transport/exchange failure, a mid-run drop among them --
   // agreed payload columns may already have flowed to the authenticated partner,
   // so the copy must not claim the data stayed local. The error's own text can be
