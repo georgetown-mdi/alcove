@@ -66,6 +66,7 @@ test("the WebRTC check raises its own refusal, for this party's set", () => {
   );
   expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
   expect((refusal as WebRtcFrameLimitError).setOwner).toBe("local");
+  expect((refusal as WebRtcFrameLimitError).distinctValueLimit).toBe(4);
   expect((refusal as Error).message).toMatch(
     /more than 4 distinct values in one round.*Split the input/,
   );

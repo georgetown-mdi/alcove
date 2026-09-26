@@ -1446,7 +1446,9 @@ export function assertFirstRoundFitsWebRtcFrame(
         "local",
       ),
     tooManyDistinct: (refusal) =>
-      new WebRtcFrameLimitError(refusal.message, refusal.setOwner),
+      new WebRtcFrameLimitError(refusal.message, refusal.setOwner, {
+        distinctValueLimit: refusal.distinctValueLimit,
+      }),
     uncounted: (failure) =>
       new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, "local", {
         cause: failure,

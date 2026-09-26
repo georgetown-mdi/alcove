@@ -639,6 +639,7 @@ describe("the too-large tier: a set over the bound one WebRTC message holds", ()
         outcome: "failed",
         failureKind: "too-large",
         tooLargeSetOwner: "local",
+        tooLargeBound: "webrtc-message",
       });
       expect(
         deriveManagedFailureTier(record({ lastRun }), undefined, NOW),
@@ -671,6 +672,7 @@ describe("the too-large tier: a set over the bound one WebRTC message holds", ()
       "A linkage key gives this party more than 16777216 distinct values in " +
         "one round, the most one round can hold. Split the input into smaller " +
         "files and run one exchange for each.",
+      { distinctValueLimit: 16777216 },
     );
     const lastRun = rerunFailureLastRun(
       distinctRefusal,
@@ -683,6 +685,7 @@ describe("the too-large tier: a set over the bound one WebRTC message holds", ()
       outcome: "failed",
       failureKind: "too-large",
       tooLargeSetOwner: "local",
+      tooLargeBound: "round-distinct-values",
     });
     expect(
       remapLapsedRunFailure(
@@ -706,9 +709,35 @@ describe("the too-large tier: a set over the bound one WebRTC message holds", ()
     expect(managedRunRetryable(failure)).toBe(false);
   });
 
+  test("a first-round distinct-value refusal records the distinct-value bound", () => {
+    const firstRoundDistinct = new WebRtcFrameLimitError(
+      "A linkage key gives this party more than 16777216 distinct values in " +
+        "one round, the most one round can hold.",
+      "local",
+      { distinctValueLimit: 16777216 },
+    );
+    expect(
+      rerunFailureLastRun(firstRoundDistinct, Date.parse(RUN_AT), false, false)
+        ?.tooLargeBound,
+    ).toBe("round-distinct-values");
+  });
+
+  test("a message-file refusal names no bound", () => {
+    const lastRun = rerunFailureLastRun(
+      new RoundSetLimitError("over one message file"),
+      Date.parse(RUN_AT),
+      false,
+      true,
+    );
+    expect(lastRun?.failureKind).toBe("too-large");
+    expect(lastRun).not.toHaveProperty("tooLargeBound");
+  });
+
   test("the next visit states the bound and the remedy, and offers no retry", () => {
     const failure = managedRunFailureFromRecord(
-      record({ lastRun: failed("too-large") }),
+      record({
+        lastRun: { ...failed("too-large"), tooLargeBound: "webrtc-message" },
+      }),
       undefined,
       NOW,
     );
@@ -722,10 +751,50 @@ describe("the too-large tier: a set over the bound one WebRTC message holds", ()
     expect(managedRunRetryable(failure)).toBe(false);
   });
 
+  test("the next visit names the distinct-value bound and its count", () => {
+    const failure = managedRunFailureFromRecord(
+      record({
+        lastRun: {
+          ...failed("too-large"),
+          tooLargeSetOwner: "local",
+          tooLargeBound: "round-distinct-values",
+        },
+      }),
+      undefined,
+      NOW,
+    );
+    if (failure === undefined || failure.kind === "handed-off")
+      throw new Error("expected the too-large alert");
+    expect(failure.message).toContain(
+      "had more distinct values than the 16,777,216 one round of matching " +
+        "can hold",
+    );
+    expect(failure.message).not.toMatch(/WebRTC/);
+    expect(failure.recovery).toBe("split");
+  });
+
+  test("the next visit names no bound for a record that does not say which", () => {
+    const failure = managedRunFailureFromRecord(
+      record({ lastRun: failed("too-large") }),
+      undefined,
+      NOW,
+    );
+    if (failure === undefined || failure.kind === "handed-off")
+      throw new Error("expected the too-large alert");
+    expect(failure.message).toContain(
+      "a set of values it had to send was too large, so that set was not sent",
+    );
+    expect(failure.message).not.toMatch(/WebRTC|distinct/);
+  });
+
   test("the next visit names splitting your own input for your own set", () => {
     const failure = managedRunFailureFromRecord(
       record({
-        lastRun: { ...failed("too-large"), tooLargeSetOwner: "local" },
+        lastRun: {
+          ...failed("too-large"),
+          tooLargeSetOwner: "local",
+          tooLargeBound: "webrtc-message",
+        },
       }),
       undefined,
       NOW,
@@ -799,6 +868,7 @@ describe("the too-large tier: a set over the bound one WebRTC message holds", ()
       outcome: "failed",
       failureKind: "too-large",
       tooLargeSetOwner: "local",
+      tooLargeBound: "webrtc-message",
     });
     const failure = classifyManagedRunFailure(
       uncounted,

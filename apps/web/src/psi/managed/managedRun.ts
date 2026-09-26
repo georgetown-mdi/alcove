@@ -23,6 +23,7 @@ import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   OutboundDisclosureRefusalError,
+  WebRtcFrameLimitError,
   isSetTooLargeError,
 } from "@alcove/core";
 
@@ -47,10 +48,13 @@ import { RotationPersistError, failedRun, missedRun } from "./managedRunRotate";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { recordManagedExchangeLastRun } from "./managedExchangeStore";
 
+import type { RoundSetLimitError } from "@alcove/core";
+
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
+  TooLargeBound,
 } from "./managedExchangeRecord";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
@@ -285,6 +289,21 @@ export function remapLapsedRunFailure(
 }
 
 /**
+ * Which bound a set-too-large refusal found the set over: the distinct values
+ * one round holds wherever the refusal states that limit, else one WebRTC
+ * message's bytes for {@link WebRtcFrameLimitError}. A
+ * {@link RoundSetLimitError} without the limit refused a message file's
+ * bound and names none.
+ */
+export function tooLargeBoundOf(
+  error: WebRtcFrameLimitError | RoundSetLimitError,
+): TooLargeBound | undefined {
+  if (error.distinctValueLimit !== undefined) return "round-distinct-values";
+  if (error instanceof WebRtcFrameLimitError) return "webrtc-message";
+  return undefined;
+}
+
+/**
  * The `lastRun` bookkeeping for a failed run the runner (not the critical
  * section) classifies, or `undefined` for a failure whose bookkeeping is owned
  * elsewhere or absent by design:
@@ -309,10 +328,11 @@ export function remapLapsedRunFailure(
  * records `consent`; {@link PartnerNoShowError} before the data exchange began
  * records the benign `missed` outcome ({@link missedRun}). A set too large to
  * send ({@link isSetTooLargeError}) records `too-large`, with the refusal's
- * `setOwner`, on either side of the data exchange boundary: a round past the
- * first refuses after data has moved, and the same files refuse identically
- * at every window. `aborted` then records `cancelled`. A `security`-kind
- * {@link ConnectionError} before the data exchange began records `auth`.
+ * `setOwner` and the bound it names ({@link tooLargeBoundOf}), on either side
+ * of the data exchange boundary: a round past the first refuses after data has
+ * moved, and the same files refuse identically at every window. `aborted`
+ * then records `cancelled`. A `security`-kind {@link ConnectionError} before
+ * the data exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
  * records `transport`.
  *
@@ -344,11 +364,14 @@ export function rerunFailureLastRun(
     return failedRun(at, "failed", "consent");
   if (error instanceof PartnerNoShowError && !dataExchangeStarted)
     return missedRun(at);
-  if (isSetTooLargeError(error))
+  if (isSetTooLargeError(error)) {
+    const tooLargeBound = tooLargeBoundOf(error);
     return {
       ...failedRun(at, "failed", "too-large"),
       tooLargeSetOwner: error.setOwner,
+      ...(tooLargeBound === undefined ? {} : { tooLargeBound }),
     };
+  }
   if (aborted) return failedRun(at, "failed", "cancelled");
   if (
     error instanceof ConnectionError &&

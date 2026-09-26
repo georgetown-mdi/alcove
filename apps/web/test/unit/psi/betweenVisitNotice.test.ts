@@ -423,6 +423,60 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
     expect(local).not.toBe(tagFor(failed("too-large")));
   });
 
+  describe("a too-large notice names the bound the refusal recorded", () => {
+    const bodyFor = (lastRun: ManagedExchangeLastRun) =>
+      betweenVisitNotice({
+        record: record({ lastRun }),
+        local: undefined,
+        caughtUpMisses: 0,
+        disposition: "failed",
+        now: NOW,
+      })?.body;
+
+    test("the WebRTC message bound, with its size", () => {
+      expect(
+        bodyFor({
+          ...failed("too-large"),
+          tooLargeSetOwner: "local",
+          tooLargeBound: "webrtc-message",
+        }),
+      ).toBe(
+        "Riverbend quarterly stopped because the set of values built from your " +
+          "input file was over the 256 MiB one WebRTC message can hold, and " +
+          "every later window stops the same way. Split your input into " +
+          "smaller files and set up one exchange for each.",
+      );
+    });
+
+    test("one round's distinct-value bound, with its count", () => {
+      expect(
+        bodyFor({
+          ...failed("too-large"),
+          tooLargeSetOwner: "partner",
+          tooLargeBound: "round-distinct-values",
+        }),
+      ).toBe(
+        "Riverbend quarterly stopped because the set of values built from your " +
+          "partner's input file had more distinct values than the " +
+          "16,777,216 one round of matching can hold, and every later " +
+          "window stops the same way. Ask your partner to split their " +
+          "input into smaller files, and set up one exchange with them for " +
+          "each.",
+      );
+    });
+
+    test("no bound, for a record that does not say which", () => {
+      const body = bodyFor(failed("too-large"));
+      expect(body).toBe(
+        "Riverbend quarterly stopped because a set of values it had to send was " +
+          "too large, and every later window stops the same way. " +
+          "Split the input into smaller files and set up one exchange for " +
+          "each; if the set was your partner's, ask them to split theirs.",
+      );
+      expect(body).not.toMatch(/WebRTC|distinct/);
+    });
+  });
+
   test("a failure a restore explains stays as quiet as it is in the app", () => {
     expect(
       betweenVisitNotice({

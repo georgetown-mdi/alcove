@@ -19,10 +19,14 @@
  * advances or anticipates a write the runner has not made.
  */
 
-import { MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
+import {
+  MAX_ROUND_DISTINCT_VALUES,
+  MAX_WEBRTC_FRAME_BYTES,
+} from "@alcove/core";
 
 import type {
   ManagedExchangeSchedule,
+  TooLargeBound,
   TooLargeSetOwner,
 } from "./managedExchangeRecord";
 
@@ -93,6 +97,29 @@ export const WEBRTC_MESSAGE_BOUND_LABEL = `${(
   MAX_WEBRTC_FRAME_BYTES /
   (1024 * 1024)
 ).toString()} MiB`;
+
+/** The distinct values one linkage key round holds, as the too-large copy
+ * states it. */
+export const ROUND_DISTINCT_VALUES_BOUND_LABEL =
+  MAX_ROUND_DISTINCT_VALUES.toLocaleString("en-US");
+
+/** What a set over the bound was, by which bound refused it, completing a
+ * sentence whose subject is the set; a record that does not say which bound
+ * names none. Shared by the next-visit alert and the between-visit
+ * notification. */
+export function tooLargeSetOverBound(bound: TooLargeBound | undefined): string {
+  switch (bound) {
+    case "webrtc-message":
+      return `was over the ${WEBRTC_MESSAGE_BOUND_LABEL} one WebRTC message can hold`;
+    case "round-distinct-values":
+      return (
+        `had more distinct values than the ${ROUND_DISTINCT_VALUES_BOUND_LABEL} ` +
+        `one round of matching can hold`
+      );
+    case undefined:
+      return "was too large";
+  }
+}
 
 /** The too-large tier's remedy for a record that does not say whose set was
  * over the bound, in the words the next-visit alert and the between-visit

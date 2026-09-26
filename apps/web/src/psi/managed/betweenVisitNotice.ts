@@ -38,8 +38,8 @@ import {
   TOO_LARGE_REMEDY_BY_OWNER,
   TOO_LARGE_SET_SOURCE_BY_OWNER,
   UNEXPLAINED_FAILURE_TITLE,
-  WEBRTC_MESSAGE_BOUND_LABEL,
   repeatedMissCoordination,
+  tooLargeSetOverBound,
 } from "./managedFailureCopy";
 
 import type { ManagedExchangeRecord } from "./managedExchangeRecord";
@@ -223,7 +223,8 @@ function partialRotationNotice(
  * standing states with different remedies, so a shortfall that becomes a
  * one-column reading says so rather than being suppressed as the state already
  * reported. The too-large notice splits the same way on the stamp's own
- * `tooLargeSetOwner`, which names whose input to split. */
+ * `tooLargeSetOwner`, which names whose input to split, and names the bound
+ * the stamp's `tooLargeBound` records. */
 function failureNotice(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
@@ -278,8 +279,8 @@ function failureNotice(
   if (tier === "too-large") {
     const owner = record.lastRun?.tooLargeSetOwner;
     const overBound =
-      `was over the ${WEBRTC_MESSAGE_BOUND_LABEL} one WebRTC message can ` +
-      `hold, and every later window stops the same way.`;
+      `${tooLargeSetOverBound(record.lastRun?.tooLargeBound)}, and every ` +
+      `later window stops the same way.`;
     return {
       kind: "too-large",
       title:

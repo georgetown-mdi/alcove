@@ -80,7 +80,7 @@ A single-pass exchange is not checked at the start: its dataset ceiling keeps ev
 
 An SFTP or synced-folder party makes the same start-of-exchange count against the bounds that channel sets, one message file and one round's deduplication, and refuses before any file is written for the partner. At each round it checks the message file a built set frame takes against the receiver's bound the same way, sending the abort in its place ([FILE_SYNC.md, Round set size limits](FILE_SYNC.md#round-set-size-limits)).
 
-A first-round count that passes one round's distinct-value bound (2^24; [FILE_SYNC.md, Round set size limits](FILE_SYNC.md#round-set-size-limits)) raises the same refusal with that bound's message, since the round itself would refuse the set. A later round past it refuses with `RoundSetLimitError`, which the browser treats as this refusal.
+A first-round count that passes one round's distinct-value bound (2^24; [FILE_SYNC.md, Round set size limits](FILE_SYNC.md#round-set-size-limits)) raises the same refusal with that bound's message and its `distinctValueLimit`, since the round itself would refuse the set. A later round past it refuses with `RoundSetLimitError`, which the browser treats as this refusal.
 
 The refusal (`WebRtcFrameLimitError`, a usage error, CLI exit 64) states the size, the bound, and the remedy: split the input into smaller files and run one exchange for each, or run the exchange with the command-line application over SFTP or a synced folder, whose frame bound is larger. A refused response names the partner's input instead of this party's.
 

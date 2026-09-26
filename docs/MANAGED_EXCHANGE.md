@@ -587,10 +587,11 @@ already defines:
   offered as retryable (see [What the setup consent covers across
   runs](#what-the-setup-consent-covers-across-runs)).
 - **This needs you: a file is too large for a browser exchange.** A set of
-  values the run had to send was over the bound one WebRTC message holds, so
-  the run refused to send it; the same files build the same set at every
-  window, so it is never offered as retryable (see [An input too large for one
-  WebRTC message](#an-input-too-large-for-one-webrtc-message)).
+  values the run had to send was over the bound one WebRTC message holds, or
+  had more distinct values than one round holds, so the run refused to send
+  it; the same files build the same set at every window, so it is never
+  offered as retryable (see [An input too large to
+  send](#an-input-too-large-to-send)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
   ran and failed closed with no recorded benign cause (the Tier-2 case; see
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)) is the
@@ -778,15 +779,17 @@ exchange's **Local settings**: choosing a different one there re-reads the input
 file with it and says whether the file then covers every agreed key, before the
 change is saved.
 
-#### An input too large for one WebRTC message
+#### An input too large to send
 
 A set of values a run sends travels as one WebRTC message, and the party
 holding it refuses to send one over the bound the partner's side accepts (see
 [PROTOCOL.md](spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)): at
 run start from the input's own record count, before connecting, or at a round
-from the set it built, which tells the partner the run stopped. A later round
-can meet it after earlier rounds have run, so this state claims nothing about
-what the run sent.
+from the set it built, which tells the partner the run stopped. A round also
+refuses a set with more distinct values than one round holds (see
+[FILE_SYNC.md](spec/FILE_SYNC.md#round-set-size-limits)), whatever its size in
+bytes. A later round can meet either after earlier rounds have run, so this
+state claims nothing about what the run sent.
 
 It is a state of its own, held apart from a connection problem: reconnecting
 sends the same set, so no surface offers a retry. The remedy is to split the
@@ -796,9 +799,9 @@ was the partner's, for the partner to split theirs.
 - **On the run screen**, an attended run shows the refusal's own message: the
   set's size, the bound, whose input it was, and what to do.
 - **At the next visit and in the between-visit notification**, the bookkeeping
-  holds the state and whose set it was but no size (it holds no counts), so
-  they state the bound and the one remedy that applies: split your input, or
-  ask the partner to split theirs.
+  holds the state, whose set it was, and which bound refused it, but no size
+  (it holds no counts), so they state that bound and its figure and the one
+  remedy that applies: split your input, or ask the partner to split theirs.
 
 #### An input that has not changed since the last run
 
