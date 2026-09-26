@@ -12,9 +12,11 @@ import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
+  runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
   ManagedExchangeCustodyUnreadableError,
+  ManagedExchangeNotRunnableError,
   ManagedExchangeSpentError,
 } from "@psi/managed/managedExchangeRun";
 import {
@@ -29,6 +31,7 @@ import {
   managedInputFailureKind,
 } from "@psi/managed/managedInputGuard";
 import {
+  markManagedExchangeRotationInFlight,
   persistManagedExchangeRotation,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
@@ -40,15 +43,29 @@ import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 // The pure orchestration of a re-run, tested in Node for the parts that do NOT
-// touch the platform (the pre-connection expiry short-circuit, which never reaches
-// the lock, and the benign-outcome classification); the full launch-from-record path
+// touch the platform (the benign-outcome classification); the full launch-from-record path
 // is exercised against real Chromium in test/browser/managedRun.test.ts. Two claims
 // need the run driven end to end here, against stubbed Web Locks and store writes:
 // the phase boundary reported to the caller's failure classification, and the store
 // writes a run whose partner never arrives makes.
 
+// The record the run reads inside the lock. Unset, the read answers with a
+// fresh default record (its own generated shared secret), not the caller's
+// fixture.
+const storedRecord = vi.hoisted(
+  (): { value: ManagedExchangeRecord | undefined; deleted: boolean } => ({
+    value: undefined,
+    deleted: false,
+  }),
+);
 vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  getManagedExchange: vi.fn(() =>
+    Promise.resolve(
+      storedRecord.deleted ? undefined : (storedRecord.value ?? record()),
+    ),
+  ),
+  markManagedExchangeRotationInFlight: vi.fn(() => Promise.resolve()),
   persistManagedExchangeRotation: vi.fn(() => Promise.resolve()),
   recordManagedExchangeLastRun: vi.fn(() => Promise.resolve()),
 }));
@@ -91,9 +108,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.mocked(recordManagedExchangeLastRun).mockClear();
   vi.mocked(persistManagedExchangeRotation).mockClear();
+  vi.mocked(markManagedExchangeRotationInFlight).mockClear();
   handedOff.state = undefined;
   handedOff.unreadable = undefined;
+  storedRecord.value = undefined;
+  storedRecord.deleted = false;
 });
+
+/** A fixed secret per call site, so two records built from {@link record} differ
+ * only where a test says they do. */
+const HELD_SECRET = generateSharedSecret();
 
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
@@ -124,8 +148,8 @@ function unreadableSiblingEntry(): unknown {
   throw new Error("an invalid sibling entry must not parse");
 }
 
-/** Seams that fail loudly if reached: the expiry short-circuit must never touch
- * them (no connection is attempted, no lock is taken). */
+/** Seams that fail loudly if reached: a run refused before the input is read
+ * must never touch them. */
 const unreachableSeams = {
   acquireInput: () => {
     throw new Error("acquireInput must not run for a lapsed record");
@@ -138,43 +162,70 @@ const unreachableSeams = {
   },
 };
 
-describe("runManagedRerun: pre-connection expiry", () => {
-  test("a lapsed record rejects with the expiry error before any platform call runs", async () => {
-    const now = Date.parse("2026-07-14T12:00:00.000Z");
-    const lapsed = record({ expires: "2026-07-01T00:00:00.000Z" });
+describe("runManagedRerun: pre-connection expiry of the stored record", () => {
+  const NOW = Date.parse("2026-07-14T12:00:00.000Z");
+  const LAPSED = "2026-07-01T00:00:00.000Z";
+  const IN_FORCE = "2026-08-01T00:00:00.000Z";
 
-    await expect(
-      runManagedRerun(lapsed, unreachableSeams, { now: () => now }),
-    ).rejects.toBeInstanceOf(ManagedExchangeExpiredError);
-  });
+  test("a stored record that has lapsed refuses before the input, the rendezvous, or the marker", async () => {
+    // The caller's copy was read before the record was re-installed with an
+    // earlier bound: the bound the run enforces is the stored one.
+    stubGrantingWebLocks();
+    storedRecord.value = record({ expires: LAPSED });
 
-  test("the expiry error has the record's lapsed instant", async () => {
-    const now = Date.parse("2026-07-14T12:00:00.000Z");
-    const lapsed = record({ expires: "2026-07-01T00:00:00.000Z" });
-    const error = await runManagedRerun(lapsed, unreachableSeams, {
-      now: () => now,
-    }).then(
+    const error = await runManagedRerun(
+      record({ expires: IN_FORCE }),
+      unreachableSeams,
+      { now: () => NOW },
+    ).then(
       () => {
         throw new Error("the run should have rejected as expired");
       },
       (reason: unknown) => reason,
     );
-    expect((error as ManagedExchangeExpiredError).expires).toBe(
-      "2026-07-01T00:00:00.000Z",
+
+    expect(error).toBeInstanceOf(ManagedExchangeExpiredError);
+    expect((error as ManagedExchangeExpiredError).expires).toBe(LAPSED);
+    expect(benignRerunOutcome(error, false)).toBe("expired");
+    expect(markManagedExchangeRotationInFlight).not.toHaveBeenCalled();
+    expect(recordManagedExchangeLastRun).not.toHaveBeenCalled();
+  });
+
+  test("a caller's copy that has lapsed runs when the stored record has rotated past it", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ expires: IN_FORCE });
+    let handshakeRan = false;
+
+    const result = await runManagedRerun(
+      record({ expires: LAPSED }),
+      {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: () => {
+          handshakeRan = true;
+          return Promise.resolve({
+            rotatedSecret: generateSharedSecret(),
+            handshake: "carried",
+          });
+        },
+        dataExchange: () => Promise.resolve("exchanged"),
+      },
+      { now: () => NOW },
     );
+
+    expect(handshakeRan).toBe(true);
+    expect(result.exchange).toBe("exchanged");
   });
 
   test("a record with no bound is not short-circuited by the expiry check", async () => {
-    // With no `expires`, the expiry check is a no-op and the orchestration proceeds
-    // to runManagedExchange (whose platform lock/store is exercised in the browser
-    // suite). Here we only assert the expiry gate did not fire: the rejection is NOT
-    // the expiry error.
-    const live = record();
-    const error = await runManagedRerun(live, unreachableSeams).then(
+    stubGrantingWebLocks();
+    const error = await runManagedRerun(record(), unreachableSeams).then(
       () => undefined,
       (reason: unknown) => reason,
     );
     expect(error).not.toBeInstanceOf(ManagedExchangeExpiredError);
+    expect((error as Error).message).toBe(
+      "acquireInput must not run for a lapsed record",
+    );
   });
 });
 
@@ -409,6 +460,136 @@ describe("runManagedRerun: a copy an export handed off", () => {
     });
 
     expect(result.exchange).toBe("exchanged");
+  });
+});
+
+describe("runManagedRerun: the record a run uses", () => {
+  test("a later run on a copy read before a rotation authenticates with the rotated secret", async () => {
+    // Two runs launched from one copy of the record, as a window's attempts are
+    // when the copy was read before the first of them ran: the first rotates, and
+    // the second must authenticate with what the first stored.
+    stubGrantingWebLocks();
+    const heldCopy = record({ sharedSecret: HELD_SECRET });
+    storedRecord.value = heldCopy;
+    const rotatedSecret = generateSharedSecret();
+    vi.mocked(persistManagedExchangeRotation).mockImplementationOnce(
+      (_id, rotation) => {
+        const rotated = runnableManagedExchangeOrRefuse({
+          ...heldCopy,
+          sharedSecret: rotation.sharedSecret,
+        });
+        storedRecord.value = rotated;
+        return Promise.resolve(rotated);
+      },
+    );
+    const authenticatedWith: Array<string> = [];
+    const runFromHeldCopy = () =>
+      runManagedRerun(heldCopy, {
+        acquireInput: () => Promise.resolve("rows"),
+        handshake: (_input, _mark, current) => {
+          authenticatedWith.push(current.sharedSecret);
+          return Promise.resolve({ rotatedSecret, handshake: "carried" });
+        },
+        dataExchange: () => Promise.resolve("exchanged"),
+      });
+
+    await runFromHeldCopy();
+    await runFromHeldCopy();
+
+    expect(authenticatedWith).toEqual([HELD_SECRET, rotatedSecret]);
+  });
+
+  test("the input is checked against the terms and policy the store holds", async () => {
+    stubGrantingWebLocks();
+    const edited = record({ sharedSecret: HELD_SECRET, tokenMaxAgeDays: 30 });
+    storedRecord.value = edited;
+    let inputCheckedAgainst: ManagedExchangeRecord | undefined;
+
+    await runManagedRerun(record({ tokenMaxAgeDays: 90 }), {
+      acquireInput: (current) => {
+        inputCheckedAgainst = current;
+        return Promise.resolve("rows");
+      },
+      handshake: () =>
+        Promise.resolve({
+          rotatedSecret: generateSharedSecret(),
+          handshake: "carried",
+        }),
+      dataExchange: () => Promise.resolve("exchanged"),
+    });
+
+    expect(inputCheckedAgainst).toBe(edited);
+  });
+
+  test("a record deleted before the lock is granted refuses before the input is read", async () => {
+    stubGrantingWebLocks();
+    storedRecord.deleted = true;
+    let inputRead = false;
+
+    await expect(
+      runManagedRerun(record(), {
+        acquireInput: () => {
+          inputRead = true;
+          return Promise.resolve("rows");
+        },
+        handshake: () => {
+          throw new Error("the handshake must not run for a deleted record");
+        },
+        dataExchange: () => {
+          throw new Error(
+            "the data exchange must not run for a deleted record",
+          );
+        },
+      }),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof ManagedExchangeNotRunnableError &&
+        error.cause instanceof Error &&
+        error.cause.message === "no managed exchange with id record-under-test",
+    );
+
+    expect(inputRead).toBe(false);
+  });
+
+  test("a record holding a configuration only refuses before the input is read", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ sharedSecret: undefined, side: undefined });
+    let inputRead = false;
+
+    await expect(
+      runManagedRerun(record(), {
+        acquireInput: () => {
+          inputRead = true;
+          return Promise.resolve("rows");
+        },
+        handshake: () => {
+          throw new Error("the handshake must not run without a secret");
+        },
+        dataExchange: () => {
+          throw new Error("the data exchange must not run without a secret");
+        },
+      }),
+    ).rejects.toBeInstanceOf(ManagedExchangeNotRunnableError);
+
+    expect(inputRead).toBe(false);
+  });
+
+  test("a record holding a configuration only is recorded as a local refusal, not a transport failure", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({ sharedSecret: undefined, side: undefined });
+
+    const error = await runManagedRerun(record(), unreachableSeams).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+
+    expect(benignRerunOutcome(error, false)).toBe("custody-unreadable");
+    expect(recordManagedExchangeLastRun).toHaveBeenCalledTimes(1);
+    const [, lastRun] = vi.mocked(recordManagedExchangeLastRun).mock.calls[0];
+    expect(lastRun).toMatchObject({
+      outcome: "failed",
+      failureKind: "custody-unreadable",
+    });
   });
 });
 

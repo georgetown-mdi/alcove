@@ -12,9 +12,10 @@
  * docs/MANAGED_EXCHANGE.md. This module holds three constraints from it: the
  * record's local `side` dispatches the run, never `connection.role`; the input
  * is acquired per run through `acquireInput`, never read from the record; and
- * the pre-connection checks run in order -- expiry, hand-off refusal, input --
- * before any connection. Persist-before-success is {@link runManagedExchange}'s;
- * this module only supplies the phases it gates.
+ * the pre-connection checks run in order inside the run+rotate lock -- hand-off
+ * refusal, expiry of the record as stored, input -- before any connection.
+ * Persist-before-success is {@link runManagedExchange}'s; this module only
+ * supplies the phases it gates.
  */
 
 import {
@@ -30,6 +31,7 @@ import { hasRecoveryHint } from "../authenticateExchange";
 
 import {
   ManagedExchangeCustodyUnreadableError,
+  ManagedExchangeNotRunnableError,
   ManagedExchangeSpentError,
   runManagedExchange,
 } from "./managedExchangeRun";
@@ -48,6 +50,7 @@ import { recordManagedExchangeLastRun } from "./managedExchangeStore";
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
+  RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
@@ -72,14 +75,17 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
    * reject a missing file, a gone permission, or a column shape the standing terms
    * cannot satisfy as a benign {@link ManagedInputError}. Its contents are never
    * taken from the record. Its result feeds the handshake, so the connection is
-   * unreachable until this passes.
+   * unreachable until this passes. Receives the record as read inside the
+   * run+rotate lock, whose terms the input is validated against.
    */
-  acquireInput: () => Promise<TInput>;
+  acquireInput: (current: RunnableManagedExchangeRecord) => Promise<TInput>;
   /**
    * Open the side-dispatched rendezvous, authenticate the partner, and yield the
    * rotated secret plus the value the data exchange consumes. Receives the
-   * acquired input, and the rotation-in-flight marker write to await once the
-   * partner has connected and before the key exchange starts. The side
+   * acquired input, the rotation-in-flight marker write to await once the
+   * partner has connected and before the key exchange starts, and the record as
+   * read inside the run+rotate lock, whose secret it authenticates with and
+   * whose side it dispatches on. The side
    * dispatch and the fresh peer-id derivation live here (see
    * {@link ./managedRendezvous.ts}); this module only guarantees it runs after
    * the pre-connection checks and inside the run+rotate lock.
@@ -87,6 +93,7 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   handshake: (
     input: TInput,
     markRotationInFlight: () => Promise<void>,
+    current: RunnableManagedExchangeRecord,
   ) => Promise<ManagedRerunHandshake<THandshake>>;
   /** Run the data exchange -- reachable only after the durable persist resolves.
    * Receives the handshake's output value. */
@@ -128,19 +135,24 @@ export interface ManagedRerunOptions {
 }
 
 /**
- * Launch a managed exchange re-run from a stored record. The pre-connection
- * checks run first and in order:
+ * Launch a managed exchange re-run from a stored record.
+ * {@link runManagedExchange} takes the single-writer lock and makes the
+ * pre-connection checks inside it, in order:
  *
- * 1. **Expiry.** A lapsed `expires` (as of `now`) re-raises a
- *    {@link ManagedExchangeExpiredError} before any connection; no `lastRun` is
- *    written (no run happened, and the record already holds the lapse).
- * 2. **The hand-off refusal, the input, then the run.**
- *    {@link runManagedExchange} takes the single-writer lock, refuses a copy an
- *    export handed off ({@link ManagedExchangeSpentError}, the `"handed-off"`
- *    state), then acquires and validates the input before the handshake opens
- *    any connection (a {@link ManagedInputError} has the `"input"` or
- *    `"terms-shortfall"` tier), and holds the lock across the handshake, the
- *    durable rotation persist, the data exchange, and the success it records.
+ * 1. **The hand-off refusal.** A copy an export handed off is refused
+ *    ({@link ManagedExchangeSpentError}, the `"handed-off"` state).
+ * 2. **Expiry.** The record is read again under the lock, and a lapsed
+ *    `expires` on that copy (as of `now`) raises a
+ *    {@link ManagedExchangeExpiredError}; no `lastRun` is written (no run
+ *    happened, and the record already holds the lapse). The caller's `record`
+ *    supplies only the id: its own `expires` may predate a rotation or a
+ *    re-install.
+ * 3. **The input.** The input is acquired and validated before the handshake
+ *    opens any connection (a {@link ManagedInputError} has the `"input"` or
+ *    `"terms-shortfall"` tier).
+ *
+ * The lock is held across the handshake, the durable rotation persist, the
+ * data exchange, and the success it records.
  *
  * The lock's own unavailability ({@link ManagedExchangeLockUnavailableError}: a
  * run is already in progress in another tab) propagates for the caller to show
@@ -153,8 +165,11 @@ export interface ManagedRerunOptions {
  * check raises ({@link remapLapsedRunFailure}).
  *
  * @throws {ManagedExchangeExpiredError} if the stored secret has lapsed -- before
- *   any connection, or during the run (re-mapped from the handshake's own expiry
- *   failure).
+ *   any input read or connection, or during the run (re-mapped from the
+ *   handshake's own expiry failure).
+ * @throws {ManagedExchangeNotRunnableError} if the record read under the lock
+ *   is gone, does not validate, or holds a configuration only; no input was
+ *   read and no connection was attempted.
  * @throws {ManagedExchangeSpentError} if an export handed this device's copy off;
  *   no input was read and no connection was attempted.
  * @throws {ManagedExchangeCustodyUnreadableError} if the sibling entry holding
@@ -178,31 +193,30 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   // failure (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Recording a run outcome").
   const runStartedAtMs = now();
 
-  // Checked before any connection: a lapsed bound means no run happened, so no
-  // lastRun is written.
-  if (managedExchangeLapsed(record, now())) {
-    // record.expires is defined here: managedExchangeLapsed returns true only when
-    // it is set.
-    throw new ManagedExchangeExpiredError(record.expires as string);
-  }
-
   // Whether the data exchange began before the failure, captured at the phase
   // boundary runManagedExchange marks. Read by the classification below (see
   // rerunFailureLastRun) and passed to the caller via onDataExchangeStart.
   let dataExchangeStarted = false;
+  // The record the run used, once the lock is granted; the expiry re-map reads
+  // it, since the bound the handshake enforced is that record's.
+  let current: RunnableManagedExchangeRecord | undefined;
 
   // The input guard, the single-writer lock, the persist-before-success rotation,
   // and the data exchange are runManagedExchange's, wired to this record's seams.
   try {
     return await runManagedExchange<TInput, THandshake, TExchange>({
-      record: {
-        id: record.id,
-        ...(record.tokenMaxAgeDays !== undefined
-          ? { tokenMaxAgeDays: record.tokenMaxAgeDays }
-          : {}),
-      },
+      record: { id: record.id },
       runStartedAtMs,
-      acquireInput: seams.acquireInput,
+      acquireInput: (read) => {
+        current = read;
+        // Checked on the stored copy before the input is read or any connection
+        // opens: a lapsed bound means no run happened, so no lastRun is written.
+        if (managedExchangeLapsed(read, now()))
+          // expires is defined here: managedExchangeLapsed returns true only
+          // when it is set.
+          throw new ManagedExchangeExpiredError(read.expires as string);
+        return seams.acquireInput(read);
+      },
       handshake: seams.handshake,
       dataExchange: seams.dataExchange,
       onDataExchangeStart: () => {
@@ -215,7 +229,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
   } catch (error) {
     // A bound that lapsed mid-run remaps to the same benign expiry (see
     // remapLapsedRunFailure).
-    const lapsed = remapLapsedRunFailure(error, record, now());
+    const lapsed = remapLapsedRunFailure(error, current ?? record, now());
     if (lapsed !== undefined) throw lapsed;
     // Everything rerunFailureLastRun does not own (see its doc) is stamped here.
     const lastRun = rerunFailureLastRun(
@@ -285,6 +299,9 @@ export function remapLapsedRunFailure(
  * - {@link ManagedExchangeExpiredError} and
  *   {@link ManagedExchangeLockUnavailableError}: unrecorded -- no run began,
  *   and the record's own `expires` already holds the lapse.
+ * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
+ *   the stored copy the run would rotate could not be used, refused before
+ *   the input or any connection, and it refuses the same way at the next run.
  *
  * Everything else is this run's to stamp. Read before the `aborted` check,
  * since both are deterministic local states an abort cannot produce:
@@ -319,6 +336,8 @@ export function rerunFailureLastRun(
     error instanceof RotationPersistError
   )
     return undefined;
+  if (error instanceof ManagedExchangeNotRunnableError)
+    return failedRun(at, "failed", "custody-unreadable");
   if (error instanceof LinkageTermsUnsatisfiableError && !dataExchangeStarted)
     return failedRun(at, "failed", "terms-shortfall");
   if (error instanceof OutboundDisclosureRefusalError && !dataExchangeStarted)
@@ -385,8 +404,8 @@ type BenignRerunOutcome =
  * `"missed"` and `"terms-shortfall"` share the guard their bookkeeping
  * counterpart applies in {@link rerunFailureLastRun}, so the state a surface
  * shows and the outcome the record holds cannot disagree. `"handed-off"` and
- * `"custody-unreadable"` are guarded here alone, since the critical section
- * always writes their stamp before any connection. A failure delivered past the
+ * `"custody-unreadable"` are guarded here alone, since their stamp is always
+ * written for a refusal made before any connection. A failure delivered past the
  * boundary is not a benign outcome here and falls through to the caller's
  * generic transport path. `"too-large"` is ungated: its copy states no
  * non-disclosure, and the refusal's own message says what was sent.
@@ -404,7 +423,8 @@ export function benignRerunOutcome(
   if (error instanceof ManagedExchangeSpentError && !dataExchangeStarted)
     return "handed-off";
   if (
-    error instanceof ManagedExchangeCustodyUnreadableError &&
+    (error instanceof ManagedExchangeCustodyUnreadableError ||
+      error instanceof ManagedExchangeNotRunnableError) &&
     !dataExchangeStarted
   )
     return "custody-unreadable";
@@ -423,3 +443,4 @@ export function benignRerunOutcome(
 export { ManagedExchangeExpiredError, ManagedInputError };
 export { ManagedExchangeLockUnavailableError, RotationPersistError };
 export { ManagedExchangeCustodyUnreadableError, ManagedExchangeSpentError };
+export { ManagedExchangeNotRunnableError };
