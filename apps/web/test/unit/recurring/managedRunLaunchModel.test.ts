@@ -483,6 +483,69 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).not.toMatch(/note it keeps/);
   });
 
+  test("a live run whose stored record is gone names the record, not the note", () => {
+    const failure = classifyAgainstOneRecord(
+      new ManagedExchangeNotRunnableError(
+        "abc",
+        new Error("no managed exchange with id abc"),
+      ),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("custody-unreadable");
+    expect(managedRunRetryable(failure)).toBe(false);
+    expect(failure.title).toMatch(/stored copy can no longer be run/i);
+    expect(failure.message).toMatch(
+      /stored copy is no longer one this page can run/,
+    );
+    expect(failure.message).toMatch(
+      /reload the list and open the exchange again/i,
+    );
+    expect(failure.message).toMatch(/nothing left this device/i);
+    expect(failure.message).not.toMatch(/note it keeps/);
+  });
+
+  test("a live run whose stored record fails the record schema names the record, not the note", () => {
+    const failure = classifyAgainstOneRecord(
+      new ManagedExchangeNotRunnableError(
+        "abc",
+        new Error("invalid record: schemaVersion mismatch"),
+      ),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("custody-unreadable");
+    expect(managedRunRetryable(failure)).toBe(false);
+    expect(failure.title).toMatch(/stored copy can no longer be run/i);
+    expect(failure.message).toMatch(
+      /stored copy is no longer one this page can run/,
+    );
+    expect(failure.message).toMatch(
+      /reload the list and open the exchange again/i,
+    );
+    expect(failure.message).toMatch(/nothing left this device/i);
+    expect(failure.message).not.toMatch(/note it keeps/);
+  });
+
+  test("a live unreadable hand-off note shows a copy distinct from the not-runnable one", () => {
+    const failure = classifyAgainstOneRecord(
+      new ManagedExchangeCustodyUnreadableError("abc", new Error("invalid")),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("custody-unreadable");
+    expect(failure.message).toMatch(/note it keeps beside this exchange/);
+    expect(failure.message).not.toMatch(
+      /stored copy is no longer one this page can run/,
+    );
+  });
+
   test("a stamped unreadable-custody record read back later covers both causes", () => {
     const failure = managedRunFailureFromRecord(
       record({ lastRun: failed("custody-unreadable") }),
