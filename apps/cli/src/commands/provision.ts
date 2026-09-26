@@ -38,9 +38,8 @@ function resolveTargets(targets: ProvisionTargets): {
 /**
  * Which target paths the conflict gate checks for a pre-existing file. The
  * accept path checks only `"key"` (it reconciles a pre-existing config rather
- * than aborting); the online invite path checks only `"config"` (a pre-existing
- * key is a warning there, not a conflict). The same-path guard always runs,
- * regardless of which targets are checked.
+ * than aborting); the online invite path checks both. The same-path guard
+ * always runs, regardless of which targets are checked.
  */
 export type ConflictTarget = "config" | "key";
 
