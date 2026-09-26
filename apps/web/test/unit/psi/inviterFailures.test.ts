@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   ConnectionError,
+  InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
   generateSharedSecret,
@@ -267,13 +268,13 @@ describe("failureFor", () => {
       "cannot proceed; report it with this message.";
 
     test.each([
-      ["an internal fault", internalFault, "browser"],
-      ["an internal fault", internalFault, "filedrop"],
-      ["the reply-cap fault", replyCapFault, "sftp"],
-      ["the reply-cap fault", replyCapFault, "filedrop"],
+      ["an internal fault", "browser", internalFault],
+      ["an internal fault", "filedrop", internalFault],
+      ["the reply-cap fault", "sftp", replyCapFault],
+      ["the reply-cap fault", "filedrop", replyCapFault],
     ] as const)(
       "%s over %s shows its report and no retry advice",
-      (_, text, channel) => {
+      (_, channel, text) => {
         const failure = failureFor(
           "exchange",
           new RelayedSelfExplainingError(text),
@@ -288,6 +289,23 @@ describe("failureFor", () => {
         expect(failure.reportedCause).toBe(sanitizeForDisplay(text));
       },
     );
+
+    test("the reply-cap fault raised in this browser shows its report", () => {
+      const raised = Object.assign(
+        new InternalConsistencyError(replyCapFault),
+        {
+          alcoveRecoveryHintEmitted: true,
+        },
+      );
+      const failure = failureFor("exchange", raised, undefined, "browser");
+      expect(failure.title).toBe("Exchange failed");
+      expect(failure.message).not.toMatch(/try again/i);
+      expect(failure.message).not.toContain("temporary");
+      expect(failure.message).toContain("what to do next");
+      expect(failure.reportedCause).toContain(
+        sanitizeForDisplay(replyCapFault),
+      );
+    });
 
     test("its report reaches the block escaped", () => {
       const hostile = "\u001b[2J\u202ereport it with this message";
