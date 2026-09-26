@@ -352,7 +352,7 @@ sender's consented metadata transmits.
 A party holding a locked-in expected set verifies, after the payload exchange and
 before the result is returned or written, that the partner transmitted exactly
 that set. A mismatch aborts the exchange as a `ConnectionError` of kind
-`protocol` (CLI exit 69): the partner promised one disclosure and delivered
+`protocol` (CLI exit 76): the partner promised one disclosure and delivered
 another. The check runs where the exchange record is already owed, so an aborted
 run still writes a record, marked terminated (see
 [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#when-a-record-is-owed)). Because it
@@ -555,7 +555,7 @@ enforced at run time rather than merely recorded.
 `runExchange` holds the value the partner presents at the terms exchange to it
 (`assertPresentedDeduplicateMatchesInvitation`, `packages/core/src/exchange.ts`)
 and aborts on a contradiction as an `InvitationTermDivergenceError` -- a
-`ConnectionError` of kind `protocol`, CLI exit 69 -- before any key or payload
+`ConnectionError` of kind `protocol`, CLI exit 76 -- before any key or payload
 moves. The refusal is one-sided by construction: only the accepting party holds
 the declaration.
 
