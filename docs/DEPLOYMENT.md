@@ -614,7 +614,7 @@ volumes:
   - name: key-seed
     secret:
       secretName: alcove-key
-      defaultMode: 0440
+      defaultMode: 0400
   - name: secrets
     persistentVolumeClaim:
       claimName: alcove-key-state
