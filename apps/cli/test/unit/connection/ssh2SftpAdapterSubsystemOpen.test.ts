@@ -301,6 +301,10 @@ describe("the dial's subsystem-open bound", () => {
       expect(log.warn.mock.calls[0][0]).toContain(
         "the socket was already gone",
       );
+      expect(log.warn.mock.calls[0][0]).toContain(
+        "the run ends with the dial's own failure without dialing again",
+      );
+      expect(log.warn.mock.calls[0][0]).not.toMatch(/interrupt/i);
     } finally {
       vi.useRealTimers();
     }

@@ -73,7 +73,7 @@ Emitted when a protocol stage completes, stating how long it ran so a supervisor
 
 ### `warning`
 
-Emitted for each non-fatal warning. Every one of them states which notice raised it in `source`, the machine-readable discriminant of this event: a supervisor decides whether to alert on the line without parsing `message`, so the cross-party host-key divergence security signal and the notices an ordinary run raises are told apart by a field rather than by prose. The sources, each with its `source` value, are enumerated in [Warning sources](#warning-sources) below: the terms-exchange warnings mirroring `onWarning`, the cross-party host-key divergence notice, the first-contact partner-certificate pin notice, the resolved-cardinality and pair-table notices of the post-terms, pre-round boundary ([PROTOCOL.md](PROTOCOL.md#deriving-one-table-from-the-exchanged-association-maps), The advisory bound), the pre-exchange signing-without-a-record notice below, and the failed-record notice of a terminated run below. The divergence notice is a security signal a supervisor that discards stderr would otherwise never see. One warning is also emitted per **persistence loss**, the class defined below: an audit artifact the run was asked for and could not produce, a configuration or consent record an online `invite`/`accept` could not write, or the configuration and key a zero-setup `--save` could not write. A warning does not end the run, and the terminated-run notice is the one exception to that reading: it accompanies a run that is already failing, and it is the failure's own `error` event that ends it.
+Emitted for each non-fatal warning. Every one of them states which notice raised it in `source`, the machine-readable discriminant of this event: a supervisor decides whether to alert on the line without parsing `message`, so the cross-party host-key divergence security signal and the notices an ordinary run raises are told apart by a field rather than by prose. The sources, each with its `source` value, are enumerated in [Warning sources](#warning-sources) below: the terms-exchange warnings mirroring `onWarning`, the cross-party host-key divergence notice, the first-contact partner-certificate pin notice, the resolved-cardinality and pair-table notices of the post-terms, pre-round boundary ([PROTOCOL.md](PROTOCOL.md#deriving-one-table-from-the-exchanged-association-maps), The advisory bound), the pre-exchange signing-without-a-record notice below, the failed-record notice of a terminated run below, and the count of lines a `--log-file` could not take ([Log file loss](#log-file-loss)). The divergence notice is a security signal a supervisor that discards stderr would otherwise never see. One warning is also emitted per **persistence loss**, the class defined below: an audit artifact the run was asked for and could not produce, a configuration or consent record an online `invite`/`accept` could not write, or the configuration and key a zero-setup `--save` could not write. A warning does not end the run, and the terminated-run notice is the one exception to that reading: it accompanies a run that is already failing, and it is the failure's own `error` event that ends it.
 
 A run that configures a signing identity while record writing is off (`--no-record`) emits its warning before any credential, terms, or data are sent, so the operator can still change either choice: the receipt that run writes has no record to pair against and can never verify above `INCOMPLETE`, and the record cannot be reconstructed afterwards (see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#record-and-verification-keys-files)). The run itself is unaffected -- which artifacts to keep is the operator's call.
 
@@ -107,6 +107,7 @@ The closed set of `source` values. `WARNING_SOURCES` in `apps/cli/src/eventStrea
 | `signingWithoutRecord` | A signing identity configured while record writing is off, raised before any credential, terms, or data are sent. |
 | `terminatedRunRecord` | A terminated run's record of what it had already disclosed could not be written, or could not be built at all. |
 | `persistenceLoss` | A completed run's local write that did not reach disk ([Persistence loss](#persistence-loss)). The only value that stands beside a process exit code. |
+| `logFileLoss` | The `--log-file` stopped taking lines during the run. Raised at most once, immediately before the `metrics` event, and only when a line was lost; the event also holds `lostLines`, the count of lines the file is missing ([Log file loss](#log-file-loss)). |
 
 The console relay passes every value above through unchanged on its own job event stream, where the notices it composes itself take a disjoint set of values ([SERVER_JOB_API.md](SERVER_JOB_API.md#warning-sources-on-the-job-stream)).
 
@@ -127,6 +128,20 @@ A persistence-loss `warning` has no rendered error text: the cause of the failed
 Every other warning leaves the exit code alone, and no other `source` value accompanies that exit code. A persistence-loss warning is an ordinary `warning` event under the same schema version: `v` marks a change to an event's field layout or to the classification rules, and neither the occasions a warning is emitted for nor the process exit code is either of those, so a consumer written against `v: 1` reads every warning above.
 
 The terminal counterpart of the same loss is a result file that could not be written: there the run has no result to report, so it fails with the terminal `error` event and its `output` category (see [Error categories](#error-categories)) and exits 73 alongside the losses here.
+
+#### Log file loss
+
+A `--log-file` write that fails is not a persistence loss: the log is not an artifact the run owes, so it leaves the exit code alone, and a completed run exits 0. The loss is still reported where an unattended operator keeps it. The first failed write is stated on the operator's `stderr` as it happens and later ones are counted; before the terminal event, the run states the count on `stderr` once and emits one `warning` with `source: "logFileLoss"` and an extra field:
+
+| Field | Type | Meaning |
+| ----- | ---- | ------- |
+| `lostLines` | integer | How many diagnostic lines could not be written to the log file up to this event. Present only on a `logFileLoss` warning. |
+
+```json
+{"v":1,"type":"warning","source":"logFileLoss","message":"3 diagnostic lines could not be written to log file run.log, ...","lostLines":3}
+```
+
+A line lost after the terminal event, while the command finishes, is not on this stream ([Terminal-event guarantees](#terminal-event-guarantees)); the command states that remainder on `stderr` when it closes the file, which the exit of a failed run can skip. The field is additive under the same schema version: a consumer written against `v: 1` that does not know it reads the warning by its `source` and `message`.
 
 ### `metrics`
 
@@ -203,11 +218,11 @@ The `output` category covers the whole stage, so it is broader than the exit cod
 
 ### The security marker
 
-The `error` event's `category: "security"` marks every trust-boundary failure; the exit code marks two subsets of them, authentication failures and a partner receipt or certificate that does not verify.
+The `error` event's `category: "security"` marks every trust-boundary failure. The exit code sorts them by what a supervisor does next, the same rule as for every other failure ([What a supervisor does with each code](../CLI.md#what-a-supervisor-does-with-each-code)): an authentication failure is never retried, a partner receipt or certificate that does not verify goes to the partner, and a frame that fails its integrity check is retried within the cap.
 
 - **Authentication failures exit 77 (`EX_NOPERM`).** Core raises them as an `AuthenticationError`, a `security`-kind `ConnectionError` the CLI's error-to-exit boundary maps to 77. This covers the handshake cases (a failed key-exchange authentication: wrong secret, tampered or malformed handshake frames) and the host-identity case (an SFTP host-key mismatch against the pinned fingerprint) alike: a retry reaches the same refusal, so a wrong secret must not be retried as a transport blip, and a host presenting an unexpected key must not be silently reconnected to.
 - **A partner receipt or certificate that does not verify exits 76 (`EX_PROTOCOL`)**, the partner-refusal code (see [The partner-refusal code](#the-partner-refusal-code)). Core raises it as a `ReceiptVerificationError`, a `security`-kind `ConnectionError` the CLI's error-to-exit boundary maps by its class.
-- **The other `security` failures exit 69 (`EX_UNAVAILABLE`)**, the code a plain transport drop yields: a frame on the authenticated channel that fails its integrity or ordering check. For these the category is the only place the distinction is observable, so reading the terminal event is the supported way to detect them.
+- **The other `security` failures exit 69 (`EX_UNAVAILABLE`)**, the code a plain transport drop yields: a frame on the authenticated channel that fails its integrity or ordering check. The storage or network the frame crossed can corrupt it, and a retry clears that, so 69's action -- retry up to the cap, then alert -- is the right one; a failure that repeats on every attempt reaches the cap like any other 69. The category is what tells it apart from a transport drop, for a supervisor that also alerts on the first one.
 
 A rotated secret this party could not save also exits 77, under `category: "exchange"`: the failure is a local write rather than a trust-boundary check, but it leaves the next key exchange to fail the same way.
 

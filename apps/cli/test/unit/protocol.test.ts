@@ -390,6 +390,7 @@ import {
   type EventStreamEmitter,
 } from "../../src/eventStream";
 import { keysPathFor, type RecordOutput } from "../../src/recordFile";
+import { configureLogFile } from "../../src/util/logging";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
   exitCodeForError,
@@ -6426,6 +6427,7 @@ test("an emitter passed instead of the flag receives every event, and no second 
     stage: record("stage"),
     stageEnd: record("stageEnd"),
     warning: record("warning"),
+    logFileLoss: record("logFileLoss"),
     metrics: record("metrics"),
     result: record("result"),
     error: record("error"),
@@ -6475,6 +6477,121 @@ test("an emitter passed instead of the flag receives every event, and no second 
   // already-preflighted emitter was reused rather than re-opened.
   expect(fd3.preflightProbes).toBe(0);
   expect(takeFd3Lines()).toHaveLength(0);
+}, 20_000);
+
+test("a --log-file that stopped taking lines mid-run is counted on the stream once, before the metrics event", async () => {
+  // The unattended operator's record of a log file that lost lines: the
+  // count reaches the stream as one warning ahead of the terminal events,
+  // stderr holds the first failure and one summary, and the exit code is
+  // untouched. The sink is process-wide and both parties share this process,
+  // so whichever party ends first takes the report: party b records its
+  // events too, and the assertions hold across the two.
+  const partyB: Array<{ type: string; args: unknown[] }> = [];
+  const recordB =
+    (type: string) =>
+    (...args: unknown[]): void => {
+      partyB.push({ type, args });
+    };
+  const emitterB: EventStreamEmitter = {
+    stages: recordB("stages"),
+    stage: recordB("stage"),
+    stageEnd: recordB("stageEnd"),
+    warning: recordB("warning"),
+    logFileLoss: recordB("logFileLoss"),
+    metrics: recordB("metrics"),
+    result: recordB("result"),
+    error: recordB("error"),
+  };
+  const openSpy = vi.spyOn(fs, "openSync");
+  const sink = configureLogFile(path.join(tmpDir, "run.log"));
+  const logFd = openSpy.mock.results[0].value as number;
+  openSpy.mockRestore();
+  const passThrough = vi.mocked(fs.writeSync).getMockImplementation() as (
+    ...a: unknown[]
+  ) => number;
+  vi.mocked(fs.writeSync).mockImplementation(((
+    fd: number,
+    ...args: unknown[]
+  ) => {
+    if (fd === logFd)
+      throw Object.assign(new Error("ENOSPC: no space left on device"), {
+        code: "ENOSPC",
+      });
+    return passThrough(fd, ...args);
+  }) as typeof fs.writeSync);
+  const stderrWrites: string[] = [];
+  const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    stderrWrites.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write);
+
+  mockFd3Open();
+  try {
+    sink.writePlain("first lost line");
+    sink.writePlain("second lost line");
+    sink.writePlain("third lost line");
+    await Promise.all([
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-a",
+        fileSyncRuntime: { eventStream: true },
+      }),
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-b",
+        fileSyncRuntime: { eventStream: emitterB },
+      }),
+    ]);
+    sink.close();
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+    stderrSpy.mockRestore();
+  }
+
+  const lines = takeFd3Lines();
+  const typesA = lines.map((line) =>
+    line.type === "warning" ? `warning:${String(line.source)}` : line.type,
+  );
+  const typesB = partyB.map((e) => e.type);
+  const reportedByA = typesA.includes("warning:logFileLoss");
+  expect(reportedByA ? typesA : typesB).toEqual(
+    reportedByA
+      ? ["stages", "warning:logFileLoss", "metrics", "result"]
+      : ["stages", "logFileLoss", "metrics", "result"],
+  );
+  expect(reportedByA ? typesB : typesA).toEqual([
+    "stages",
+    "metrics",
+    "result",
+  ]);
+  const [message, lostLines] = reportedByA
+    ? [lines[1].message, lines[1].lostLines]
+    : partyB[1].args;
+  expect(lostLines).toBe(3);
+  expect(message).toContain("3 diagnostic lines could not be written");
+  expect(stderrWrites.filter((w) => w.includes("write error"))).toHaveLength(1);
+  expect(
+    stderrWrites.filter((w) => w.includes("could not be written to log file")),
+  ).toHaveLength(1);
+  expect(process.exitCode).toBe(exitCodeBeforeTest);
 }, 20_000);
 
 // --- The caller's pre-terminal hook ------------------------------------------

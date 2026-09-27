@@ -16,6 +16,7 @@ import type {
 } from "@alcove/core";
 
 import { fixedNextStep, renderFailureForOperator } from "./util/exit";
+import { takeLogFileLossReport } from "./util/logging";
 
 const log = getLogger("event-stream");
 
@@ -92,6 +93,7 @@ export const WARNING_SOURCES = [
   "signingWithoutRecord",
   "terminatedRunRecord",
   "persistenceLoss",
+  "logFileLoss",
 ] as const;
 
 /** One {@link WARNING_SOURCES} value; see that list. */
@@ -174,6 +176,11 @@ export interface WarningEvent extends EventBase {
   type: "warning";
   source: WarningSource;
   message: string;
+  /**
+   * How many diagnostic lines the `--log-file` could not take; present only
+   * under `source: "logFileLoss"` ({@link reportLogFileLoss}).
+   */
+  lostLines?: number;
 }
 
 /**
@@ -613,6 +620,7 @@ export interface EventStreamEmitter {
   stage(id: string, label: string): void;
   stageEnd(id: string, durationMs: number): void;
   warning(source: WarningSource, message: string): void;
+  logFileLoss(message: string, lostLines: number): void;
   metrics(
     recordsProcessed: number,
     transportRetries: number,
@@ -644,6 +652,8 @@ function createEventStreamEmitter(): EventStreamEmitter {
       writer.emit(buildStageEndEvent(id, durationMs)),
     warning: (source, message) =>
       writer.emit(buildWarningEvent(source, message)),
+    logFileLoss: (message, lostLines) =>
+      writer.emit({ ...buildWarningEvent("logFileLoss", message), lostLines }),
     metrics: (recordsProcessed, transportRetries, reconnects) =>
       writer.emit(
         buildMetricsEvent(recordsProcessed, transportRetries, reconnects),
@@ -717,4 +727,20 @@ export function reportPersistenceLoss(
 ): void {
   eventStream?.warning("persistenceLoss", notice);
   process.exitCode = PERSISTENCE_LOSS_EXIT_CODE;
+}
+
+/**
+ * Report the diagnostic lines the `--log-file` could not write: one summary
+ * line on stderr and, when the stream is open, one `warning` event under the
+ * `logFileLoss` source with the count in `lostLines`. A run calls it once,
+ * before its terminal event; nothing is reported when no line was lost. The
+ * exit code is left alone: the log is housekeeping, not an artifact the run
+ * owes.
+ */
+export function reportLogFileLoss(
+  eventStream: EventStreamEmitter | undefined,
+): void {
+  const report = takeLogFileLossReport();
+  if (report !== undefined)
+    eventStream?.logFileLoss(report.notice, report.lostLines);
 }

@@ -93,6 +93,7 @@ import { logRuntimeEnv } from "./util/runtimeEnv";
 import {
   PERSISTENCE_LOSS_EXIT_CODE,
   openEventStream,
+  reportLogFileLoss,
   reportPersistenceLoss,
   type ErrorPhase,
   type EventStreamEmitter,
@@ -2267,8 +2268,10 @@ export async function runProtocol(
   // terminal event so the terminal event stays last on the stream. recordsProcessed
   // is this party's own input row count; the retry/reconnect counts are read from
   // the transport client's existing loops -- all this party's own integers, never
-  // partner-controlled.
+  // partner-controlled. A `--log-file` that lost lines is reported beside it,
+  // for the same reason: the terminal event must stay last.
   const emitMetrics = (): void => {
+    reportLogFileLoss(eventStream);
     emit((e) =>
       e.metrics(
         prepared.rowCount,

@@ -231,6 +231,32 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
   },
 );
 
+test("an I/O error on the key file's directory is a usage error, not a transport failure", () => {
+  // A network-mounted key directory can fail a check with EIO. The run's
+  // documented answer is exit 64 (check the mount before the settings), so
+  // each directory check reports it as a UsageError rather than letting the
+  // raw errno fall to the command boundary's 69.
+  const { log } = makeLogger();
+  const eio = (): never => {
+    throw Object.assign(new Error("EIO: i/o error"), { code: "EIO" });
+  };
+  const keyFile = path.join(dir, "key.json");
+
+  const statSpy = vi.spyOn(fs, "statSync").mockImplementation(eio);
+  try {
+    expect(() => preflightKeyFilePath(keyFile, log)).toThrow(UsageError);
+  } finally {
+    statSpy.mockRestore();
+  }
+
+  const openSpy = vi.spyOn(fs, "openSync").mockImplementation(eio);
+  try {
+    expect(() => preflightKeyFilePath(keyFile, log)).toThrow(UsageError);
+  } finally {
+    openSpy.mockRestore();
+  }
+});
+
 test.skipIf(process.platform === "win32")(
   "falls through to friendly guidance when the key-path lstat fails with ELOOP",
   () => {
