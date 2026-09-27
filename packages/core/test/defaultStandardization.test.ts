@@ -452,6 +452,87 @@ describe("default name pipeline (first_name / last_name)", () => {
   test("first_name and last_name use the same pipeline", () => {
     expect(runFirst("O'Brien-Smith")).toBe(runLast("O'Brien-Smith"));
   });
+
+  describe("Unicode whitespace folds to one space between words", () => {
+    test.each([
+      ["a lone no-break space", "Mary\u00a0Jane"],
+      ["a lone narrow no-break space", "Mary\u202fJane"],
+      ["a lone ideographic space", "Mary\u3000Jane"],
+      ["a lone next-line control", "Mary\u0085Jane"],
+      ["a run of mixed Unicode spaces", "Mary\u2003\u00a0 \u2009\u205fJane"],
+      ["a tab", "Mary\tJane"],
+      ["a carriage return", "Mary\rJane"],
+      ["a line feed", "Mary\nJane"],
+      ["a CRLF with surrounding spaces", "Mary \r\n Jane"],
+      ["leading and trailing no-break spaces", "\u00a0Mary Jane\u00a0\t"],
+    ])("%s", (_label, input) => {
+      expect(runFirst(input)).toBe("MARY JANE");
+      expect(runLast(input)).toBe("MARY JANE");
+    });
+  });
+
+  describe("typographic apostrophes and dashes split words as ASCII ones do", () => {
+    test.each(["\u2018", "\u2019", "\u201b", "\u02bc", "\uff07"])(
+      "apostrophe %s",
+      (apostrophe) => {
+        expect(runLast(`O${apostrophe}Brien`)).toBe(runLast("O'Brien"));
+      },
+    );
+
+    test.each([
+      "\u2010",
+      "\u2011",
+      "\u2012",
+      "\u2013",
+      "\u2014",
+      "\u2015",
+      "\u2212",
+      "\ufe58",
+      "\ufe63",
+      "\uff0d",
+    ])("dash %s", (dash) => {
+      expect(runLast(`Smith${dash}Jones`)).toBe(runLast("Smith-Jones"));
+    });
+
+    test("pins the right single quote and the hyphen to their ASCII outputs", () => {
+      expect(runFirst("O\u2019Brien")).toBe("O BRIEN");
+      expect(runLast("Smith\u2010Jones")).toBe("SMITH JONES");
+    });
+  });
+
+  describe("letters with no decomposition map to an ASCII spelling", () => {
+    test.each([
+      ["\u00df", "ss"],
+      ["\u1e9e", "SS"],
+      ["\u00c6", "AE"],
+      ["\u00e6", "ae"],
+      ["\u0152", "OE"],
+      ["\u0153", "oe"],
+      ["\u00de", "TH"],
+      ["\u00fe", "th"],
+      ["\u0141", "L"],
+      ["\u0142", "l"],
+      ["\u00d8", "O"],
+      ["\u00f8", "o"],
+      ["\u0110", "D"],
+      ["\u0111", "d"],
+      ["\u00d0", "D"],
+      ["\u00f0", "d"],
+    ])("%s -> %s", (letter, ascii) => {
+      expect(runPipeline(`a${letter}b`, [{ function: "remove_accents" }])).toBe(
+        `a${ascii}b`,
+      );
+      const expected = `A${ascii.toUpperCase()}B`;
+      expect(runFirst(`a${letter}b`)).toBe(expected);
+      expect(runLast(`a${letter}b`)).toBe(expected);
+    });
+
+    test("names spelled with the letters match their ASCII spellings", () => {
+      expect(runLast("Gro\u00df")).toBe(runLast("Gross"));
+      expect(runLast("\u00d8stergaard")).toBe("OSTERGAARD");
+      expect(runFirst("\u0141ucja")).toBe("LUCJA");
+    });
+  });
 });
 
 // --- Date of birth pipeline --------------------------------------------------

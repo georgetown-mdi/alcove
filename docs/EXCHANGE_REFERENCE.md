@@ -1480,12 +1480,12 @@ Parameter names below are written in snake_case in YAML (e.g. `input_format`, `i
 | `remove_non_ascii` | Remove all characters outside of the ASCII set, including emojii and symbols | - |
 | `remove_punctuation` | Remove ASCII punctuation and symbols | - |
 | `remove_dashes` | Remove hyphens | - |
-| `replace_separators_with_spaces` | Replace hyphens, apostrophes, ampersands, slashes, and underscores with spaces | - |
-| `squash_spaces` | Replace instances of multiple space characters together with a single space | - |
+| `replace_separators_with_spaces` | Replace hyphens, apostrophes, ampersands, slashes, and underscores with spaces, including the typographic apostrophes and dashes in the [punctuation map](spec/DEFAULT_STANDARDIZATION.md#punctuation-map) | - |
+| `squash_spaces` | Replace every run of Unicode whitespace (tab, line break, non-breaking space, and the other Unicode spaces) with a single space | - |
 | `trim_whitespace` | Remove leading and trailing whitespace | - |
 | `to_upper_case` | Convert to uppercase | - |
 | `to_lower_case` | Convert to lowercase | - |
-| `remove_accents` | Remove accents and other diacritics, ASCII-ifying the text; re-normalizes to NFC after the diacritic strip | - |
+| `remove_accents` | Remove accents and other diacritics, ASCII-ifying the text, and spell out the Latin letters that have no accent to strip (the [letter table](spec/DEFAULT_STANDARDIZATION.md#letter-table)); re-normalizes to NFC after the diacritic strip | - |
 | `remove_affixes` | Remove name titles (Mr., Dr., ...) (and suffixes (Jr., III, ...) | - |
 | `substring` | Extract a substring | `start` (integer, 1-indexed, required; negative counts from end), `length` (positive integer, required) |
 | `parse_date` | Reformat a date string | `input_format` (default `MM/DD/YYYY`), `output_format` (default `YYYYMMDD`), each at most 256 characters; an empty `output_format` is refused, since it would render every date to the empty string; tokens: `YYYY`, `YY`, `MM`, `DD` |

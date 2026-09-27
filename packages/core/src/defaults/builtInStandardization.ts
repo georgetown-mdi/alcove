@@ -55,15 +55,16 @@ const SSN4_STEPS: StandardizationStep[] = [
 // `allowedCharacters: "A-Z "` constraint on the default linkage fields.
 const NAME_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
-  // Normalize diacritics before stripping non-ASCII so an accented letter folds
-  // to its base letter (e-acute -> e, n-tilde -> n) rather than being dropped.
+  // The three steps before remove_non_ascii turn non-ASCII characters into
+  // ASCII ones it would otherwise delete: Unicode whitespace becomes a space,
+  // an accented or stroked letter its base letter (e-acute -> e, L-stroke ->
+  // L, sharp s -> ss), and a typographic apostrophe or dash a word break, so
+  // O'Brien -> O BRIEN and Mary-Jane -> MARY JANE in either spelling.
+  { function: "squash_spaces" },
   { function: "remove_accents" },
+  { function: "replace_separators_with_spaces" },
   { function: "remove_non_ascii" },
   { function: "to_upper_case" },
-  // Convert hyphens, apostrophes, and similar word separators to spaces so
-  // O'Brien -> O BRIEN and Mary-Jane -> MARY JANE are treated as multi-token
-  // names.
-  { function: "replace_separators_with_spaces" },
   { function: "remove_affixes" },
   { function: "remove_punctuation" },
   { function: "squash_spaces" },

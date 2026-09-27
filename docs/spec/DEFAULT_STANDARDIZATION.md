@@ -205,10 +205,11 @@ dropped.
 ```yaml
 steps:
   - function: trim_whitespace
+  - function: squash_spaces
   - function: remove_accents
+  - function: replace_separators_with_spaces
   - function: remove_non_ascii
   - function: to_upper_case
-  - function: replace_separators_with_spaces
   - function: remove_affixes
   - function: remove_punctuation
   - function: squash_spaces
@@ -225,14 +226,21 @@ default name fields declare.
 
 Order determines the meaning here:
 
-- `remove_accents` runs **before** `remove_non_ascii` so an accented letter
-  folds to its base letter rather than being deleted -- e-acute becomes `E`,
-  not nothing. A letter with no ASCII base (a Greek or Cyrillic character) is
-  deleted by the following step.
+- The three steps between the leading `trim_whitespace` and `remove_non_ascii`
+  turn a non-ASCII character into the ASCII one it stands for, so the
+  following `remove_non_ascii` does not delete it: `squash_spaces` applies the
+  [whitespace fold](#whitespace-fold), `remove_accents` folds an accented
+  letter to its base letter -- e-acute becomes `E`, not nothing -- and applies
+  the [letter table](#letter-table), and `replace_separators_with_spaces`
+  applies the [punctuation map](#punctuation-map). A letter with neither an
+  accent to strip nor a table entry (a Greek or Cyrillic character) is deleted
+  by `remove_non_ascii`.
 - `replace_separators_with_spaces` runs **before** `remove_punctuation` so a
   hyphen, apostrophe, ampersand, slash, or underscore becomes a token boundary
   instead of vanishing: `"O'Brien"` becomes `"O BRIEN"`, not `"OBRIEN"`. Both
   parties must therefore tokenize identically for a hyphenated name to match.
+- The second `squash_spaces` collapses the runs of spaces that the separator,
+  affix, and punctuation steps leave behind.
 - The closing `filter_regex` drops a value containing no letter at all, which is
   what removes a cell that cleaned to empty or to punctuation alone.
 
@@ -244,19 +252,74 @@ it.
 | `"  Jose  "` | `"JOSE"` |
 | `"Dr. Mary-Jane"` | `"MARY JANE"` |
 | `"O'Brien"` | `"O BRIEN"` |
+| `"O\u2019Brien"` | `"O BRIEN"` |
+| `"Smith\u2010Jones"` | `"SMITH JONES"` |
+| `"Mary\u00a0Jane"` | `"MARY JANE"` |
+| `"Mary \u2003\u00a0 Jane"` | `"MARY JANE"` |
+| `"Mary\r\nJane"` | `"MARY JANE"` |
+| `"Mary\tJane"` | `"MARY JANE"` |
 | `"Ann_Marie"` | `"ANN MARIE"` |
+| `"\u0141ucja"` | `"LUCJA"` |
 | `"5"` | `null` |
 | `"   "` | `null` |
+
+#### Whitespace fold
+
+`squash_spaces` replaces every run of characters with the Unicode
+`White_Space` property by one ASCII space (U+0020). The property includes the
+ASCII tab, line feed, vertical tab, form feed, and carriage return, the next
+line control U+0085, the no-break space U+00A0, and the Unicode space
+separators (U+1680, U+2000-U+200A, U+2028, U+2029, U+202F, U+205F, U+3000). A
+lone character folds as well as a run, so `"Mary"`, a no-break space, and
+`"Jane"` standardize to `"MARY JANE"`, the value a partner who typed an
+ordinary space produces. The zero-width no-break space U+FEFF is not
+`White_Space` and is not folded; `remove_non_ascii` deletes it.
+
+#### Punctuation map
+
+`replace_separators_with_spaces` treats each typographic apostrophe and dash
+below exactly as it treats the ASCII character it stands for: it becomes a
+space, splitting the word there. O'Brien typed with U+2019 and Smith-Jones
+typed with U+2010 standardize to the same values as `"O'Brien"` and
+`"Smith-Jones"`.
+
+| Characters | ASCII equivalent |
+| ---------- | ---------------- |
+| U+2018, U+2019, U+201B, U+02BC, U+FF07 | apostrophe `'` |
+| U+2010-U+2015, U+2212, U+FE58, U+FE63, U+FF0D | hyphen `-` |
+
+Other typographic punctuation (curly double quotes, for instance) has no
+entry; `remove_non_ascii` deletes it without splitting the word.
+
+#### Letter table
+
+`remove_accents` spells out the Latin letters below, which have no canonical
+decomposition and so no accent for the diacritic strip to remove. Each maps to
+the ASCII spelling a writer without the letter conventionally uses; the
+lowercase letter maps to the same spelling in lowercase. After `to_upper_case`
+a name pipeline holds the uppercase spelling either way.
+
+| Uppercase | Lowercase | Maps to |
+| --------- | --------- | ------- |
+| U+1E9E (capital sharp s) | U+00DF (sharp s) | `SS` / `ss` |
+| U+00C6 (ash) | U+00E6 | `AE` / `ae` |
+| U+0152 (ethel) | U+0153 | `OE` / `oe` |
+| U+00DE (thorn) | U+00FE | `TH` / `th` |
+| U+0141 (L with stroke) | U+0142 | `L` / `l` |
+| U+00D8 (O with stroke) | U+00F8 | `O` / `o` |
+| U+0110 (D with stroke) | U+0111 | `D` / `d` |
+| U+00D0 (eth) | U+00F0 | `D` / `d` |
 
 ### `last_name`
 
 ```yaml
 steps:
   - function: trim_whitespace
+  - function: squash_spaces
   - function: remove_accents
+  - function: replace_separators_with_spaces
   - function: remove_non_ascii
   - function: to_upper_case
-  - function: replace_separators_with_spaces
   - function: remove_affixes
   - function: remove_punctuation
   - function: squash_spaces
@@ -276,6 +339,8 @@ defaults: a change to one is not automatically a change to the other.
 | `"van der Berg"` | `"VAN DER BERG"` |
 | `"Smith Jr."` | `"SMITH"` |
 | `"Alesund"` | `"ALESUND"` |
+| `"\u00d8stergaard"` | `"OSTERGAARD"` |
+| `"Gro\u00df"` | `"GROSS"` |
 | `"!!!"` | `null` |
 
 ### `date_of_birth`
