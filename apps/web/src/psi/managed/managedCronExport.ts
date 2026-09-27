@@ -58,6 +58,8 @@ import {
 } from "./managedCommandLineDocument";
 import { keyFileFieldsFromRecord } from "./managedExchangeArtifact";
 
+import { MANAGED_INPUT_FILE_NAME } from "./managedInputHandle";
+
 import type { ConnectionConfig, ExchangeSpec } from "@alcove/core";
 import type {
   ManagedExchangeKeyPair,
@@ -75,10 +77,11 @@ export const CRON_EXPORT_CONFIG_FILE_NAME = "alcove.yaml";
  * the exported files needs no `--key-file`. */
 export const CRON_EXPORT_KEY_FILE_NAME = ".alcove.key";
 
-/** The input CSV the emitted command links. Which of the operator's files to
- * link is the one value a record cannot supply, and it is a positional argument
- * of the command rather than a hole in the exported configuration. */
-export const CRON_EXPORT_INPUT_FILE_NAME = "input.csv";
+/** The input CSV the emitted command links: the name a browser run reads from
+ * the exchange's working folder, so the folder keeps one layout on either side.
+ * It is a positional argument of the command rather than a hole in the exported
+ * configuration. */
+export const CRON_EXPORT_INPUT_FILE_NAME = MANAGED_INPUT_FILE_NAME;
 
 /** The results file the emitted command writes. Passing an output path (rather
  * than defaulting to stdout) is what gets the matched-records CSV the owner-only

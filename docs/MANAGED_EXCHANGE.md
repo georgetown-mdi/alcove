@@ -88,9 +88,9 @@ What managed does **not** add:
   path -- it facilitates a single exchange (see
   [SECURITY_DESIGN.md](SECURITY_DESIGN.md#single-party-console-trust-boundary)).
 - **No second copy of the input data.** The record never holds the input file's
-  contents or any row value. Where the platform allows, it holds a file
-  **handle** -- a pointer to the operator's file, not a copy (see
-  [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)). A scheduled
+  contents or any row value. Where the platform allows, it holds a folder
+  **handle** -- a pointer to the folder the operator's file stands in, not a
+  copy (see [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)). A scheduled
   run's kept results are the one thing at rest that does hold row values, and
   they are the run's OUTPUT rather than a copy of the input.
 - **No server-side persistence.** There is one persistence target: the browser,
@@ -128,25 +128,26 @@ and launched at OS login (or otherwise kept running), and the exchange executes
 in the app's own window context: WebRTC is unavailable to service workers, and
 Periodic Background Sync's short opportunistic windows cannot support a live
 exchange, so an open app runtime -- not a service-worker wakeup -- is the
-mechanism. At the agreed window the runtime re-reads the input file through the
-record's persisted `FileSystemFileHandle` under its persistent read permission
-(a pointer, never a copy; see [The input file each
-run](#the-input-file-each-run)), and the run executes, rotates, and persists
-per the durability contract below, with nobody present.
+mechanism. At the agreed window the runtime reads the input file, `input.csv`,
+from the exchange's working folder -- the record's persisted
+`FileSystemDirectoryHandle`, under its persistent permission (a pointer, never
+a copy; see [The input file each run](#the-input-file-each-run)) -- and the run
+executes, rotates, and persists per the durability contract below, with nobody
+present.
 
 Degradations are named, not design floors:
 
 - **No installed PWA** (an ordinary Chromium tab): the run is
-  operator-initiated -- one action, through the persisted handle.
+  operator-initiated -- one action, reading from the working folder.
 - **No File System Access API** (Safari, Firefox): the run is attended and the
-  operator re-selects the input file.
+  operator chooses the input file for it.
 
 The surfaces say which of these the operator is looking at rather than
 describing the capability in general. A schedule shown in the installed app
 says the app meets its windows itself; the same schedule shown in an ordinary
 tab says the tab never runs it on its own and names installing as the way to
-get that. A record this browser holds no input-file pointer for says so in
-either runtime, since nothing can read the input with nobody present.
+get that. A record this browser holds no working folder for says so in either
+runtime, since nothing can read the input with nobody present.
 
 **An unattended run takes two parties.** A WebRTC exchange is live: both
 parties' runners must be awake in an overlapping window, so the run schedule is
@@ -172,11 +173,11 @@ it -- the other sites' windows included, not just this one.
 
 - **The cause is a browser defect**, not a limit of this application. An
   Incognito or Guest window holds browser storage in memory, and on those
-  versions reading a stored file pointer back out of memory-held storage
+  versions reading a stored file-system pointer back out of memory-held storage
   terminates the browser process
   ([crbug 562119515](https://issues.chromium.org/issues/562119515)). Opening a
-  saved exchange is exactly that read: the record keeps a pointer to the input
-  file rather than a copy (see [The input file each
+  saved exchange is that read: the record keeps a pointer to the exchange's
+  folder rather than a copy of the input (see [The input file each
   run](#the-input-file-each-run)). Chromium 156.0.8064.0 is the first fixed
   build.
 - **Ordinary windows and the installed app are unaffected**, on every version.
@@ -204,8 +205,8 @@ needs:
   own window, not in a service worker (WebRTC is unavailable there).
 - **Launch at sign-in**, where the browser offers it, so the runtime is present
   without the operator remembering to open it.
-- **A durable home for the input-file pointer**, where the browser preserves an
-  installed app's read permission across restarts rather than re-prompting.
+- **A durable home for the working-folder pointer**, where the browser preserves
+  an installed app's permission across restarts rather than re-prompting.
 
 ### Enabling launch at sign-in
 
@@ -402,7 +403,7 @@ persona this feature serves the two failure modes are not symmetric:
   series of them -- the window's width divided by the per-attempt wait for the
   peer, up to a cap (see [Occupying a due
   window](spec/MANAGED_EXCHANGE_RECORD.md#occupying-a-due-window)). Each attempt
-  re-reads and column-checks the input file through the persisted handle, since
+  re-reads and column-checks the input file from the working folder, since
   the input guard runs ahead of the rendezvous rather than after it (see [The
   second run](#the-second-run-end-to-end)), and registers a peer at the
   peer-coordination server under the rendezvous id derived from the record's
@@ -440,23 +441,24 @@ retries).
 ### Where a scheduled run's results go
 
 A scheduled run produces the same results file an attended run produces, with
-nobody there to download it. It has two places to put that file, and the operator
-chooses between them where they put the exchange on a schedule:
+nobody there to download it. It has two places to put that file:
 
-- **A folder they grant**, which the run writes the results into. This is the
-  path the app offers first, because the results land where the operator's own
-  filesystem protections apply rather than in browser storage.
-- **This browser**, which is what happens without such a folder and whenever the
-  granted folder cannot be written to. The exchange's own page then offers the
-  file at the operator's next visit.
+- **The exchange's working folder**, the one the run read its input from, which
+  it writes the results into beside the input. This is the path the app takes
+  first, because the results land where the operator's own filesystem
+  protections apply rather than in browser storage.
+- **This browser**, which is what happens whenever the folder cannot be written
+  to. The exchange's own page then offers the file at the operator's next
+  visit.
 
 Keeping the file one way or the other is on by default: an unattended run that
 delivered nothing would leave the operator with outcome bookkeeping and never the
 results the run existed to produce.
 
 **The folder is granted while the operator is there.** A browser hands a site a
-folder only under the operator's own gesture, so the grant is taken at schedule
-entry, and re-pointed the same way. At run time the app only checks whether the
+folder only under the operator's own gesture, so the grant is taken on the
+exchange's page -- where it is put on a schedule, or where it is run -- and
+re-pointed the same way. At run time the app only checks whether the
 grant still stands -- it never asks, because there is nobody to answer. A grant
 the browser will not honour with nobody present, one the operator revoked, and a
 write that fails all land the results in the browser instead, and the next visit
@@ -467,9 +469,11 @@ into it are what the visit names.
 
 **A folder used for nothing else** is the practice to follow: while the grant
 stands the site can read and write everything in that folder, not only the
-results it writes there (see
+input and the results it uses there (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)).
-Deleting the exchange drops the grant with the record.
+The app itself reads one name there and lists nothing (see [The input file each
+run](#the-input-file-each-run)). Deleting the exchange drops the grant with the
+record.
 
 What keeping the file in the browser means for the operator, stated where they
 put an exchange on a schedule and again where they collect the results:
@@ -498,7 +502,7 @@ put an exchange on a schedule and again where they collect the results:
   app will read: 200 MB, the same cap the intake dropzones apply. A result above
   it is kept whole or not at all -- nothing is kept and nothing is trimmed to fit
   -- and the next visit meets that state, the size the file weighed, and what to
-  do about the granted folder, which takes a result of any size: choose one where
+  do about the working folder, which takes a result of any size: choose one where
   none is granted, grant it again where the run could not use the grant with
   nobody present, or check the folder still exists and has room where the write
   failed. The run itself stands here too.
@@ -640,17 +644,17 @@ does that the one-shot flow cannot. On the primary path the second run is
 1. **The window arrives.** The installed app runtime, running since OS login,
    begins the run under the single-writer lock (see [Single-device
    ownership](#single-device-ownership)).
-2. **The input file is re-read** through the persisted handle, no prompt, and
-   rejected if its columns cannot satisfy the standing terms (see [The input
+2. **The input file is re-read** from the working folder by its one name, no
+   prompt, and rejected if its columns cannot satisfy the standing terms (see [The input
    file each run](#the-input-file-each-run)).
 3. **Rendezvous and handshake** with the partner's runner, awake in the same
    agreed window; a no-show partner is a recorded miss, retried next window.
 4. **Rotate-and-persist, then the data exchange** -- the durability contract
    below, unchanged by nobody watching.
 5. **The outcome lands in the run bookkeeping**, the disclosure is filed to this
-   exchange's accounting, and the **results are written to the folder the
-   operator granted**, or kept in the browser for them to collect at their next
-   visit where there is no such folder (see [Where a scheduled run's results
+   exchange's accounting, and the **results are written into the working
+   folder beside the input**, or kept in the browser for them to collect at
+   their next visit where the folder cannot take them (see [Where a scheduled run's results
    go](#where-a-scheduled-runs-results-go)). The next visit's surfaces hold the
    result of all that: the results themselves, the refreshed-backup prompt (the
    secret rotated), or the failure state. An OS-level notification from the
@@ -660,8 +664,8 @@ does that the one-shot flow cannot. On the primary path the second run is
 The **attended re-run** -- the degradations' path, available on any platform --
 is the same run with the operator present: open the app (the exchange shows
 quiet and green: last run succeeded, backed up as of its date), pick it, run;
-confirm the input file (one action through the persisted handle, or
-re-selection where no handle is held); the completion surface offers the
+confirm the input file (one action reading from the working folder, or choosing
+the file where the browser cannot grant a folder); the completion surface offers the
 results and one more action, "download updated backup" -- the export, refreshed
 because the secret just rotated, offered as the natural final step rather than
 a later nagging prompt. On that path, with a fresh backup taken, **no standing
@@ -687,68 +691,84 @@ nor attack](#a-missed-window-is-neither-desync-nor-attack)).
 
 ### The input file each run
 
-Where the File System Access API exists (Chromium), the record persists the
-input file's `FileSystemFileHandle`, with persistent read permission where the
-platform grants it (an installed app), so an unattended run reads the standing
-file with nobody present and an attended re-run is one action plus at most a
-permission re-prompt. The handle is a persisted **pointer** to the operator's
-file, never a copy of its contents -- the no-second-copy invariant is about
-content and holds unchanged -- and it lives in the same origin-isolated record
-as everything else the exchange persists (shape and caveats:
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)). Browsers
-without the API (Safari, Firefox) re-select the file each attended run.
+Where the File System Access API exists (Chromium), the operator grants each
+recurring exchange **one folder**, and every run reads its input from the file
+in it named **`input.csv`**. A run with nobody present writes its results into
+the same folder, beside the input (see [Where a scheduled run's results
+go](#where-a-scheduled-runs-results-go)). That is the layout the CLI works in
+too: the command the exchange's command-line export emits reads `input.csv`
+from the folder it runs in and writes its results there, so an exchange taken
+to the command line keeps the same folder (see [Exporting to the command
+line](#exporting-to-the-command-line)).
 
-The handle is a **live pointer to the path, not a snapshot**: each run reads
-the file through the handle at run start and receives whatever file exists at
-that path. Replacing the file at the agreed path with the current period's
-extract **is** the data-refresh workflow -- an export job or the operator puts
-the new file at the same name, and the next scheduled run picks it up with no
-interaction. The pointer follows the name rather than the file that stood
-there when it was picked, so every way a tool or a person writes the refresh
-reaches the run:
+- **The grant.** The folder is chosen on the exchange's page, under the
+  operator's gesture, with persistent permission where the platform grants it
+  (an installed app), so an unattended run reads the input with nobody present
+  and an attended re-run is one action plus at most a permission re-prompt. The
+  record persists a **pointer** to the folder, never a copy of its contents --
+  the no-second-copy invariant is about content and holds unchanged -- in the
+  same origin-isolated record as everything else the exchange persists (shape
+  and caveats: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)).
+- **What the app reads there.** Exactly one conventioned name: each run looks up
+  `input.csv` afresh and reads it. The app never enumerates the folder -- it
+  lists no entries and reads no other file -- and writes only the results files
+  it names.
+- **No folder yet.** An exchange holding no folder -- a fresh save, an import,
+  or one whose folder was dropped -- asks for it on its page, and no run happens
+  with nobody present until one is chosen.
+- **Browsers without the API** (Safari, Firefox) cannot grant a folder: the
+  operator chooses the input file for each attended run, and no run happens with
+  nobody present.
+
+The folder is **read by name, not snapshotted**: each run looks the name up at
+run start and receives whatever file stands under it. Putting the current
+period's extract in the folder as `input.csv` **is** the data-refresh workflow
+-- an export job or the operator puts the new file under that name, and the
+next scheduled run picks it up with no interaction. Every way a tool or a person
+writes the refresh reaches the run:
 
 - The file **overwritten in place**.
 - A **temporary file written beside it and renamed over the name** -- what an
   export job, an editor, or a sync client typically does.
-- The file **deleted and created again** at the same name.
+- The file **deleted and created again** under the same name.
 - The file **moved aside to an archive name**, with the new extract written in
   its place: the run reads the new extract, not the archived copy.
 
 The record also holds the field delimiter the operator chose at the file step, so an unattended run splits the refreshed file's fields the way the operator does and writes its result file the same way. It is local to this party: the partner's file is read by whatever that party chose.
 
 A refresh costs a run only when the run lands inside it rather than after it:
-between a delete and the new file's arrival there is nothing at the path, so
+between a delete and the new file's arrival there is nothing under the name, so
 that run fails its read as a missing file instead of running on last period's
 data. Overwriting the file or renaming over the name leaves no such moment.
 
 A `File` the platform hands back is the file as it stood at that instant:
 once the file underneath it changes, reading that `File` fails rather than
-returning either period's contents. The design therefore reads through the
-handle at each run start and retains no `File` across runs -- a run reads the
-current file or fails, never last period's data.
+returning either period's contents. The design therefore looks the name up at
+each run start and retains no `File` across runs -- a run reads the current file
+or fails, never last period's data.
 
-A missing entry -- the file deleted, moved, or renamed away -- fails the run's
-file read with a clean not-found before any connection is attempted: a third
-benign state alongside expiry and the missed window, never routed through the
-desync/attack framing. An unattended run records it in the run bookkeeping (a
-benign `input` failure; see
+A folder holding no `input.csv` -- the file deleted, moved, or renamed away --
+fails the run's read with a clean not-found before any connection is attempted:
+a third benign state alongside expiry and the missed window, never routed
+through the desync/attack framing. An attended run says so naming the file it
+looked for and the folder it looked in. An unattended run records it in the run
+bookkeeping (a benign `input` failure; see
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)) and reports it
-through the notification concept and the next visit's state; an attended visit
-offers re-selection to re-point the handle. Because that state is harmless,
-the same mechanics double as optional hygiene: an operator can remove the file
-after a run completes and drop the next extract before the next window, so the
-file -- and the persisted handle's read path to it -- has content only around
-the run window (see
+through the notification concept and the next visit's state. Because that state
+is harmless, the same mechanics double as optional hygiene: an operator can move
+the file out of the folder after a run completes and drop the next extract in
+before the next window, so the grant's read path to the input has content only
+around the run window (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)).
 
-On every path -- unattended, one-action, or re-selection -- the app rejects an
+On every path -- unattended, one-action, or a chosen file -- the app rejects an
 input file that cannot satisfy the standing terms: the record's document holds
 the agreed terms, and the guard holds the file to the same rule the run boundary
 does -- every declared linkage key satisfiable, none declaring cleaning that
 drops every record -- so a malformed or drifted refresh is rejected as a benign
 pre-run problem, never silently linked. It catches the wrong-dataset case, though
 not a same-shaped wrong file -- one state of which, last period's extract still
-standing at the path, the schedule section names on its own (see [An input that
+standing under the name, the schedule section names on its own (see [An input that
 has not changed since the last
 run](#an-input-that-has-not-changed-since-the-last-run)).
 
@@ -805,12 +825,12 @@ was the partner's, for the partner to split theirs.
 
 #### An input that has not changed since the last run
 
-An extract left standing at the agreed path is the one refresh failure nothing
-else reports: the file reads, satisfies every agreed key, and links last
-period's rows again. The exchange's schedule section names it. Where the
-pointed-at file's last-changed instant predates this exchange's last successful
-run, the section states both instants and the move that clears them -- put this
-period's extract at that file's name before the next window opens.
+An extract left standing in the folder is the one refresh failure nothing else
+reports: the file reads, satisfies every agreed key, and links last period's
+rows again. The exchange's schedule section names it. Where the input file's
+last-changed instant predates this exchange's last successful run, the section
+states both instants and the move that clears them -- put this period's extract
+at that file's name before the next window opens.
 
 Each way of replacing the file above moves that instant, so what the note reads
 is a refresh that did not happen rather than one this browser could not see.
@@ -821,8 +841,8 @@ last period's data on purpose is a decision this device cannot make for them.
 The note says only what is true of the file and what to do about it.
 
 Every reading that is not a readable instant raises nothing here, keeping the
-state it already has: a browser holding no pointer re-selects the file at each
-run, a file that is missing or unreadable fails the run as the benign input
+state it already has: a browser holding no working folder has the file chosen
+at each run, a file that is missing or unreadable fails the run as the benign input
 state above, and a read permission no longer standing is neither prompted for
 nor reported twice. An exchange with no successful run recorded has no instant
 to compare against and shows nothing, and an attended-only exchange, which has
@@ -1668,8 +1688,8 @@ different linkage columns, a different disclosed payload set, a different
 partner -- is exactly what a managed exchange cannot be edited into. Agreeing
 or changing a cadence is not in that class (a schedule is neither a term nor a
 credential), and neither are this party's own local acts: pausing, deleting,
-migrating the exchange to another device, dropping the next extract at the
-agreed path, or changing which of its own columns its result file holds, how its
+migrating the exchange to another device, dropping the next extract in the
+exchange's folder under the agreed name, or changing which of its own columns its result file holds, how its
 input file separates fields, or its retention note -- none of the three changes
 what is sent.
 
@@ -2044,26 +2064,24 @@ again from the device that wrote the file. A backup written in the app's
 previous artifact format is the one case with neither way out: it is refused as
 an older file, and the way on is a new exchange set up with the partner.
 
-**The import says which grants this browser does not hold.** An artifact holds the
-exchange, not the two pointers into this device that the record also keeps: the
-input file each run reads, and the folder a scheduled run writes its results to
-(see [The input file each run](#the-input-file-each-run) and [Where a scheduled
-run's results go](#where-a-scheduled-runs-results-go)). A restored exchange
-therefore has neither until the operator chooses them again here. Left unsaid,
-what would report it is a scheduled run -- which stops without an input file, and
-keeps its results in the browser without a folder -- a whole window after the
-import that lost them. The import states it instead, while the operator is still
-standing there, naming only the grants the source record actually had and
-offering the way to the exchange where both are chosen. A record revived in
-place on the profile that handed it off keeps the grants it already had, so what
-the import names is whatever that record does not hold: nothing when it still
-holds both, and the one grant it lost when it lost one.
+**The import says when this browser does not hold the folder.** An artifact holds
+the exchange, not the pointer into this device that the record also keeps: the
+working folder each run reads its input from and a scheduled run writes its
+results to (see [The input file each run](#the-input-file-each-run)). A restored
+exchange therefore has no folder until the operator chooses it again here. Left
+unsaid, what would report it is a scheduled run -- which cannot read its input
+without the folder -- a whole window after the import that lost it. The import
+states it instead, while the operator is still standing there, only where the
+source record actually held a folder, and offers the way to the exchange where
+it is chosen. A record revived in place on the profile that handed it off keeps
+the grant it already had, so the import names the folder only when that record
+no longer holds one.
 
 ## Deleting a managed exchange
 
 Removing a managed exchange is a fully supported, always-available action, and
 it removes **everything the browser holds for it in one step**: the record, the
-secret, the persisted input-file handle, the schedule, the run bookkeeping, its
+secret, the working-folder grant, the schedule, the run bookkeeping, its
 [accounting of disclosures](#the-accounting-of-disclosures), and any [results a
 scheduled run kept](#where-a-scheduled-runs-results-go) -- which is why the
 confirm says to download those results and export the accounting first if they

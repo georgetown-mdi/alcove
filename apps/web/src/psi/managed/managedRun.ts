@@ -74,8 +74,8 @@ interface ManagedRerunHandshake<THandshake> {
  * testable without a broker, a database, or WASM. */
 interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   /**
-   * Acquire and validate the input file BEFORE any connection: read it through
-   * the persisted handle (attended may prompt once) or the re-selected file, then
+   * Acquire and validate the input file BEFORE any connection: read it from the
+   * working folder (attended may prompt once) or take the re-selected file, then
    * reject a missing file, a gone permission, or a column shape the standing terms
    * cannot satisfy as a benign {@link ManagedInputError}. Its contents are never
    * taken from the record. Its result feeds the handshake, so the connection is

@@ -777,9 +777,9 @@ const KEY_FILE_CHOOSER_NOTE =
  * same way and for the same reason, naming the store rather than the file
  * ({@link custodyUnreadableImportReason}).
  *
- * An import that could not bring the source's input file or output folder stops here
+ * An import that could not bring the source's working folder stops here
  * with that notice and a button onward, rather than taking the operator straight to
- * the exchange ({@link managedImportGrantNotice}): the grants are what they have to
+ * the exchange ({@link managedImportGrantNotice}): the folder is what they have to
  * choose again, and the notice is only read where it is shown. A pair import stops
  * the same way to say the exchange now runs here ({@link PAIR_IMPORTED_NOTICE}). An
  * import with nothing to say goes straight through. */

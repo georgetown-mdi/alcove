@@ -43,11 +43,11 @@
  * `sharedSecret`, the correct
  * match, since a spent-and-unrun-since record's artifact holds exactly its secret
  * (compared in memory, never persisted) -- the import REVIVES that record in place: it
- * updates the record's fields from the artifact, keeps its `id` and any persisted
- * input handle, clears the spent state, and marks it imported-and-backed-up, so
+ * updates the record's fields from the artifact, keeps its `id` and any
+ * working-folder grant, clears the spent state, and marks it imported-and-backed-up, so
  * re-importing onto the device that handed the exchange off does not leave a permanent
  * duplicate row. Otherwise the import installs a fresh record with a new `id` and NO
- * input-file handle: the first run re-acquires one by selection.
+ * working-folder grant: the operator grants the folder again.
  *
  * A match spent under a HAND-OFF of its own is refused instead
  * ({@link ManagedImportHandedOffError}). The exchange runs from what that hand-off
@@ -65,13 +65,12 @@
  * from a migration-spent or a live one, and the refusal is the one answer that gives
  * nothing away. It names the exchange but no hand-off route, none having been read.
  *
- * Every import reports which of the source's device-local grants this browser does
- * not hold. The artifact has no field for a File System Access handle, only a marker
- * saying the source had one, so a fresh install holds neither the input file nor the
- * output folder and a scheduled run would otherwise be the first to say so -- a whole
- * window later. A revive keeps the grants the record it revives already had, so
- * what it reports is whatever that record does not hold: nothing when the record
- * still holds both, and the one grant it lost when it lost one.
+ * Every import reports whether this browser lacks the source's device-local
+ * working folder. The artifact has no field for a File System Access handle, only
+ * a marker saying the source had one, so a fresh install holds no folder and a
+ * scheduled run would otherwise be the first to say so -- a whole window later. A
+ * revive keeps the grant the record it revives already had, so it reports the
+ * folder only when that record no longer holds one.
  *
  * Either way the installed or revived record is marked imported and backed-up as of
  * the import instant: the file just imported from is itself a current backup of the
@@ -226,7 +225,7 @@ export class ManagedImportOtherExchangeError extends Error {
 export interface ManagedImportDeps {
   /** Reconcile the reconstructed artifact against the store
    * ({@link reviveSpentManagedExchange}): revive a migration-spent secret-match
-   * in place (keeping its id and input handle, clearing spent, marking imported
+   * in place (keeping its id and working folder, clearing spent, marking imported
    * and backed-up as of the same instant), or report the outcome that refuses,
    * asks, or installs fresh. */
   reviveSpent: (
@@ -299,8 +298,7 @@ function grantsMissingHere(
   record: ManagedExchangeRecord,
 ): Array<ManagedPlatformGrant> {
   const held: Record<ManagedPlatformGrant, boolean> = {
-    "input-file": record.inputFileHandle !== undefined,
-    "output-folder": record.outputDirectoryHandle !== undefined,
+    "working-folder": record.workingDirectoryHandle !== undefined,
   };
   return heldGrants.filter((grant) => !held[grant]);
 }

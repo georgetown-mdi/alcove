@@ -880,23 +880,23 @@ describe("atomic schedule advance", () => {
   });
 });
 
-describe("input-file handle persistence", () => {
-  test("a FileSystemFileHandle round-trips by structured clone", async () => {
+describe("working-folder handle persistence", () => {
+  test("a FileSystemDirectoryHandle round-trips by structured clone", async () => {
     // Acquire a real handle by round-tripping through the origin-private file
     // system, which exists in Chromium and needs no user gesture -- unlike the
     // File System Access picker. The handle is a platform object IndexedDB stores
     // by structured clone; the record persists the pointer, never file content.
     const root = await navigator.storage.getDirectory();
-    const handle = await root.getFileHandle("managed-input.csv", {
+    const handle = await root.getDirectoryHandle("managed-folder", {
       create: true,
     });
     const created = await createRunnableExchange(
-      newExchange({ inputFileHandle: handle }),
+      newExchange({ workingDirectoryHandle: handle }),
     );
     const read = await getManagedExchange(created.id);
-    expect(read?.inputFileHandle).toBeDefined();
-    expect(await read?.inputFileHandle?.isSameEntry(handle)).toBe(true);
-    await root.removeEntry("managed-input.csv");
+    expect(read?.workingDirectoryHandle).toBeDefined();
+    expect(await read?.workingDirectoryHandle?.isSameEntry(handle)).toBe(true);
+    await root.removeEntry("managed-folder");
   });
 });
 
@@ -1050,12 +1050,12 @@ describe("the unattended read is per entry", () => {
 describe("one-step delete leaves nothing behind", () => {
   test("delete removes the record, secret, handle, schedule, bookkeeping, and every local sibling marker", async () => {
     const root = await navigator.storage.getDirectory();
-    const handle = await root.getFileHandle("managed-input.csv", {
+    const handle = await root.getDirectoryHandle("managed-folder", {
       create: true,
     });
     const created = await createRunnableExchange(
       newExchange({
-        inputFileHandle: handle,
+        workingDirectoryHandle: handle,
         tokenMaxAgeDays: 90,
         expires: "2026-04-06T14:00:00.000Z",
         schedule,
@@ -1110,7 +1110,7 @@ describe("one-step delete leaves nothing behind", () => {
     });
     expect(await rawParkedStored(created.id)).toBeUndefined();
     expect(await readParkedResults(created.id)).toEqual({ kind: "none" });
-    await root.removeEntry("managed-input.csv");
+    await root.removeEntry("managed-folder");
   });
 
   test("delete of a missing id is idempotent", async () => {

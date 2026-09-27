@@ -69,11 +69,11 @@ function newExchange(
   };
 }
 
-/** A handle the run surface accepts as this exchange's input pointer, so the run
- * button is live without a picker gesture the runner cannot make. */
-async function inputHandle(): Promise<FileSystemFileHandle> {
+/** A folder the run surface accepts as this exchange's working folder, so the
+ * run button is live without a picker gesture the runner cannot make. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return await root.getFileHandle("managed-input.csv", { create: true });
+  return await root.getDirectoryHandle("managed-folder", { create: true });
 }
 
 /** Whether the page would ask the operator to confirm leaving: fire the event a
@@ -100,7 +100,7 @@ afterEach(async () => {
 describe("leaving the page during a managed re-run", () => {
   test("is confirmed while the run is live, and unguarded once it ends", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     const runButton = page.getByRole("button", { name: "Run exchange" });

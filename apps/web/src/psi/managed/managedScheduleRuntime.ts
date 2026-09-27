@@ -8,7 +8,7 @@
  * The run boundary is {@link runManagedExchangeInBrowser}, the same entry the
  * attended surface calls, so a scheduled run takes the identical single-writer
  * lock, input guard, and persist-before-success critical section. Two things
- * differ, and only these two: the input is read through the persisted handle
+ * differ, and only these two: the input is read from the working folder
  * UNATTENDED (queried, never prompted -- there is nobody to answer a prompt),
  * and the peer wait is the window's rather than the flow's default.
  *
@@ -59,9 +59,9 @@ import {
 import { runResultsFileName } from "../parkedResults";
 
 import {
-  storedOutputDirectoryUsable,
-  writeResultsToOutputDirectory,
-} from "./managedOutputDirectory";
+  storedWorkingDirectoryUsable,
+  writeResultsToWorkingDirectory,
+} from "./managedWorkingDirectory";
 
 import {
   betweenVisitNotificationsArmed,
@@ -488,12 +488,12 @@ type RunEntryDetails = Pick<
  * bound. */
 const TOO_LARGE_FOLDER_REMEDY: Record<ParkedResultsFallback | "none", string> =
   {
-    none: "granting an output folder is what takes a result this size",
+    none: "granting a working folder is what takes a result this size",
     ungranted:
-      "the granted output folder could not be used with nobody present, and " +
+      "the working folder could not be used with nobody present, and " +
       "granting it again is what takes a result this size",
     "write-failed":
-      "the write to the granted output folder failed; check that the folder " +
+      "the write to the working folder failed; check that the folder " +
       "still exists and has room",
   };
 
@@ -535,7 +535,7 @@ async function recordResultsTooLargeToPark(
 }
 
 /**
- * Write one run's results into the granted output folder, reporting what the
+ * Write one run's results into the working folder, reporting what the
  * caller owes the operator next: `undefined` where the results are in the folder
  * and nothing more is owed, `"none"` where no grant was held at all, and the
  * fallback reason where a grant was held and did not take them.
@@ -551,18 +551,18 @@ async function writeUnattendedResultsToFolder(
   runAt: string,
   details: RunEntryDetails,
 ): Promise<ParkedResultsFallback | "none" | undefined> {
-  const directory = record.outputDirectoryHandle;
-  if (directory === undefined || !storedOutputDirectoryUsable(directory))
+  const directory = record.workingDirectoryHandle;
+  if (directory === undefined || !storedWorkingDirectoryUsable(directory))
     return "none";
   const id = record.id;
-  const delivery = await writeResultsToOutputDirectory(
+  const delivery = await writeResultsToWorkingDirectory(
     directory,
     fileName,
     csv,
   );
   if (delivery.kind === "ungranted") {
     log.warn(
-      `scheduled managed exchange ${id}: the granted output folder reports ` +
+      `scheduled managed exchange ${id}: the working folder reports ` +
         `permission ${delivery.state} with nobody present, so the run's ` +
         `results were not written to it`,
     );
@@ -571,7 +571,7 @@ async function writeUnattendedResultsToFolder(
   if (delivery.kind === "write-failed") {
     log.warn(
       `scheduled managed exchange ${id}: the run's results could not be ` +
-        `written to the granted output folder:`,
+        `written to the working folder:`,
       delivery.error,
     );
     return "write-failed";
@@ -587,7 +587,7 @@ async function writeUnattendedResultsToFolder(
   } catch (error) {
     log.warn(
       `scheduled managed exchange ${id}: the run's results were written to the ` +
-        `granted output folder as ${delivery.fileName}, and this browser would ` +
+        `working folder as ${delivery.fileName}, and this browser would ` +
         `not store the note saying so:`,
       error,
     );

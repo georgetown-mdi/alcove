@@ -110,11 +110,11 @@ function newExchange(
   };
 }
 
-/** A handle the run surface accepts as this exchange's input pointer, so the run
- * button is live without a picker gesture the runner cannot make. */
-async function inputHandle(): Promise<FileSystemFileHandle> {
+/** A folder the run surface accepts as this exchange's working folder, so the
+ * run button is live without a picker gesture the runner cannot make. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return await root.getFileHandle("managed-input.csv", { create: true });
+  return await root.getDirectoryHandle("managed-folder", { create: true });
 }
 
 const app = createAppMount();
@@ -172,7 +172,7 @@ describe("the re-take on a spent copy's own surface", () => {
   // surface that runs.
   async function handedOffSurface() {
     const created = await createRunnableExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     expect(
       await spendManagedExchangeIfCurrent(
@@ -238,7 +238,7 @@ describe("a run pressed after the hand-off arrived", () => {
     // surface fixes on the state that refusal left rather than standing on
     // its run controls until something reloads it.
     const created = await createRunnableExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     const runButton = page.getByRole("button", { name: "Run exchange" });
@@ -295,7 +295,7 @@ describe("a run pressed after the hand-off arrived", () => {
     // the operator to import a backup file, which a command-line hand-off never
     // produced and no import here accepts.
     const created = await createRunnableExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     const runButton = page.getByRole("button", { name: "Run exchange" });

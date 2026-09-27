@@ -200,11 +200,11 @@ function newExchange(
   };
 }
 
-/** A handle the run surface accepts as this exchange's input pointer, so the run
- * button is live without a picker gesture the runner cannot make. */
-async function inputHandle(): Promise<FileSystemFileHandle> {
+/** A folder the run surface accepts as this exchange's working folder, so the
+ * run button is live without a picker gesture the runner cannot make. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return await root.getFileHandle("managed-input.csv", { create: true });
+  return await root.getDirectoryHandle("managed-folder", { create: true });
 }
 
 const app = createAppMount();
@@ -214,7 +214,7 @@ const app = createAppMount();
  * no-show and fail into the surface's classification. Returns the record's id. */
 async function runUntilItNoShows(): Promise<string> {
   const created = await createManagedExchange(
-    newExchange({ inputFileHandle: await inputHandle() }),
+    newExchange({ workingDirectoryHandle: await workingFolder() }),
   );
   await recordManagedExchangeLastRun(
     created.id,
@@ -283,7 +283,7 @@ describe("a live no-show is read against the evidence standing at launch", () =>
     // itself wrote -- which a surface weighing its mount-time record never sees.
     driver.persistFailsFirstRun = true;
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     app.render(createElement(ManagedRunSurface, { id: created.id }));
     const runButton = page.getByRole("button", { name: "Run exchange" });
@@ -331,7 +331,7 @@ describe("a standing condition at the next visit", () => {
     // records no failure kind at all -- so the condition beside it is the whole of
     // what asks the operator for the confirmation.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -380,7 +380,7 @@ describe("a cleared standing condition beside this visit's own failure", () => {
     // visit's run then does. The storage condition is raised by a run two stamps
     // back, and the no-show stamp over it is the state a page reads.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -439,7 +439,7 @@ describe("a compromise response the operator has reached", () => {
     // not hold a button that does exactly that.
     driver.lapsedAt = "2026-07-01T00:00:00.000Z";
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -492,7 +492,7 @@ describe("a compromise response the operator has reached", () => {
     // region from the live failure's place: the question the operator answered is
     // not put again, and nothing there can mint on the channel they flagged.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -554,7 +554,7 @@ describe("a compromise response the operator has reached", () => {
     // in the recovery region can mint on the channel the operator flagged.
     driver.handshakeFailsClosed = true;
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const secretBefore = (await getManagedExchange(created.id))?.sharedSecret;
 
@@ -619,7 +619,7 @@ describe("a compromise response the operator has reached", () => {
     // the failure on screen, which keeps its gate and no way around it.
     driver.handshakeFailsClosed = true;
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const secretBefore = (await getManagedExchange(created.id))?.sharedSecret;
 
@@ -686,7 +686,7 @@ describe("a compromise response the operator has reached", () => {
     // terms, so its control is withheld too, with the reason where the operator
     // reads it rather than a button that quietly does nothing.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -728,7 +728,7 @@ describe("a compromise response the operator has reached", () => {
       release = resolve;
     });
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -782,7 +782,7 @@ describe("a compromise response the operator has reached", () => {
     // section below holds the re-invite on its own, and this visit's run then lands
     // on the unexplained state whose gate the operator answers as a compromise.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -837,7 +837,7 @@ describe("a compromise response this device could not save", () => {
   async function answerAgainstARefusedWrite(): Promise<string> {
     compromiseWrite.fails = true;
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -938,7 +938,7 @@ describe("a clear-and-acknowledge write still in flight", () => {
       release = resolve;
     });
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -982,7 +982,7 @@ describe("a clear-and-acknowledge write still in flight", () => {
       release = resolve;
     });
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1016,7 +1016,7 @@ describe("a clear-and-acknowledge write that rejects", () => {
     // or the click reads as having settled something it did not.
     clearWrite.fails = true;
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1053,7 +1053,7 @@ describe("a standing condition beside a live failure of another tier", () => {
     // identical ones whose failed mint would alert twice.
     driver.lapsedAt = "2026-07-01T00:00:00.000Z";
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 60_000;
     await recordManagedExchangeLastRun(
@@ -1095,7 +1095,7 @@ describe("a compromise response the operator gave at an earlier visit", () => {
    * the store. Returns the record's id. */
   async function answerStandingGate(): Promise<string> {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1255,7 +1255,7 @@ describe("a compromise response written after this page read the record", () => 
     // refusal, decided on the record it holds, is the whole of what keeps a fresh
     // secret off the channel the operator flagged.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1310,7 +1310,7 @@ describe("a live gate answered where no condition stands", () => {
     // write, so the failure being answered raised nothing to answer. The answer
     // still needs a carrier, or the gate is put again at the next visit.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1378,7 +1378,7 @@ describe("a re-invite control while a run is in flight", () => {
       release = resolve;
     });
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1421,7 +1421,7 @@ describe("a re-invite control while a run is in flight", () => {
     // button is still enabled from the last reading. The handler's re-read at the
     // click catches that run and names it, ahead of the write's own refusal.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(
@@ -1478,7 +1478,7 @@ describe("a re-invite control while a run is in flight", () => {
     // fresh secret and the one the run is connecting on is the write's own refusal
     // rather than any reading the page took.
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const failedAt = Date.now() - 120_000;
     await recordManagedExchangeLastRun(

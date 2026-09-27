@@ -3,9 +3,9 @@
  * input guard: deciding whether a read input's columns can back the standing
  * terms, and classifying a rejection into the benign bookkeeping kind that names
  * its remedy -- so both decisions are unit-testable in Node without a file handle,
- * a permission prompt, or a database. The platform half (reading the file through
- * the persisted `FileSystemFileHandle`, the read/query permission layer, and the
- * handle persistence) is in {@link ./managedInputHandle.ts}.
+ * a permission prompt, or a database. The platform half (reading the file from the
+ * persisted working folder by its one name, and the read/query permission layer)
+ * is in {@link ./managedInputHandle.ts}.
  *
  * Both decisions run BEFORE any connection on every run path -- unattended,
  * one-action, and re-selection -- and each produces a benign pre-run failure,

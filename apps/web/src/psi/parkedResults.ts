@@ -3,10 +3,9 @@
  * IndexedDB-free half of {@link ./parkedResultsStore.ts}, so the shape, the
  * retention rule, and the append are unit-testable in Node with no database.
  *
- * A run with nobody present has no taker for its result file. Where the operator
- * granted an output folder the run writes the file there and leaves only a note
- * of where it went; otherwise, and whenever that grant or write does not hold, it
- * keeps the results CSV here, beside the record it ran from, until the operator
+ * A run with nobody present has no taker for its result file. The run writes the
+ * file into the exchange's working folder and leaves only a note of where it went;
+ * whenever that grant or write does not hold, it keeps the results CSV here, beside the record it ran from, until the operator
  * returns for it.
  *
  * What this holds at rest is NOT what the managed record and the accounting of
@@ -48,7 +47,7 @@ export const PARKED_RESULTS_RETENTION_DAYS = 30;
 
 const MS_PER_DAY = 86_400_000;
 
-/** Why a run that held an output-folder grant did not write its results there:
+/** Why a run that held a working-folder grant did not write its results there:
  * the grant was not one the run could use with nobody present (never taken, not
  * honoured unattended, or revoked), or the write itself did not land. Absent
  * where no grant was held at all, which is the plain case. */
@@ -80,7 +79,7 @@ export interface ParkedRunResults extends ParkedRunEntry {
   csv: Blob;
   /** How many rows the results table has, where the run reported it. */
   matchedRecordCount?: number;
-  /** Why the granted output folder did not take these results, where one was
+  /** Why the working folder did not take these results, where one was
    * held ({@link ParkedResultsFallback}). */
   fallback?: ParkedResultsFallback;
 }
@@ -120,7 +119,7 @@ export interface TooLargeRunResults extends ParkedRunEntry {
   resultBytes: number;
   /** How many rows the results table had, where the run reported it. */
   matchedRecordCount?: number;
-  /** Why the granted output folder did not take these results, where one was
+  /** Why the working folder did not take these results, where one was
    * held ({@link ParkedResultsFallback}); the remedy this state names is the
    * one for it. */
   fallback?: ParkedResultsFallback;
@@ -287,7 +286,7 @@ function resultsFileLabelSlug(label: string): string {
  * The name a scheduled run's results file takes: the exchange's own label and the
  * run's instant, made filesystem-safe the same way the record downloads are
  * stamped ({@link ./runOutputs.ts}). It names the file both ways the results can
- * reach the operator, so two runs collide neither in the granted output folder nor
+ * reach the operator, so two runs collide neither in the working folder nor
  * in the downloads folder a parked copy lands in, and an operator who granted one
  * folder to two exchanges reads whose results a file holds off its name.
  *

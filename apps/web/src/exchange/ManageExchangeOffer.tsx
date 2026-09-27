@@ -20,6 +20,9 @@ import {
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
 import { probeManagedStoreOpen } from "@psi/managed/managedExchangeStore";
 
+import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
+import { workingDirectoryGrantSupported } from "@psi/managed/managedWorkingDirectory";
+
 import styles from "@styles/app.module.css";
 
 import {
@@ -67,7 +70,6 @@ function useManagedStoreAvailability(): boolean | undefined {
 export function ManageExchangeOffer({
   status,
   refusal,
-  handleCaptured,
   onManage,
 }: {
   status: ManageOfferStatus;
@@ -76,12 +78,6 @@ export function ManageExchangeOffer({
    * column name the stored document cannot hold -- since a retry then fails
    * identically; undefined keeps the generic try-again copy. */
   refusal?: AlertContent;
-  /** Whether a File System Access input-file handle was captured from the
-   * operator's selection, so a scheduled re-run can re-read the file without
-   * re-selection. Absent capture is normal (a click-selected file, or a browser
-   * without the API); the panel names which case holds so the operator is not
-   * surprised by a re-selection prompt later. */
-  handleCaptured: boolean;
   onManage: (choices: ManageOfferChoices) => void;
 }) {
   const [label, setLabel] = useState("");
@@ -220,9 +216,9 @@ export function ManageExchangeOffer({
         mt="sm"
       />
       <p className={`${styles.small} ${styles.sub}`}>
-        {handleCaptured
-          ? "A scheduled run can re-read your input file from this browser without re-selecting it."
-          : "You will re-select your input file for each run; this browser did not capture a reusable pointer to it."}
+        {workingDirectoryGrantSupported()
+          ? `Each later run reads its input from ${MANAGED_INPUT_FILE_NAME} in a folder you choose on this exchange's page.`
+          : "You will choose your input file for each run; this browser cannot give a site a folder to read it from."}
       </p>
       {status === "error" && (
         <Alert

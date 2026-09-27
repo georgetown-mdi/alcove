@@ -44,6 +44,11 @@ import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchang
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 
+import {
+  MANAGED_INPUT_FILE_NAME,
+  ManagedInputFileMissingError,
+} from "@psi/managed/managedInputHandle";
+
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
@@ -175,6 +180,30 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.kind).toBe("input");
     expect(failure.recovery).toBe("retry");
     expect(failure.message).not.toMatch(/NotFound/);
+  });
+
+  test("a folder holding no input file names the file expected and the folder looked in", () => {
+    const failure = classifyAgainstOneRecord(
+      new ManagedInputError({
+        reason: "acquire",
+        cause: new ManagedInputFileMissingError(
+          MANAGED_INPUT_FILE_NAME,
+          "Riverbend exchange",
+        ),
+      }),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("input");
+    expect(failure.recovery).toBe("retry");
+    expect(failure.message).toContain('the folder "Riverbend exchange"');
+    expect(failure.message).toContain(
+      `no file named ${MANAGED_INPUT_FILE_NAME}`,
+    );
+    expect(failure.message).toContain("stopped before connecting");
+    expect(failure.message).toContain("nothing left this device");
   });
 
   test("a linkage shortfall is not offered as a retry, and names no agreed key", () => {

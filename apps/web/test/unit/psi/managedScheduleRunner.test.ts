@@ -84,10 +84,9 @@ function at(instant: string): number {
   return Date.parse(instant);
 }
 
-/** A handle stands in for the persisted `FileSystemFileHandle`: the record's
- * schema validates its presence, not its structure, and nothing under test reads
- * through it. */
-const inputFileHandle = {} as FileSystemFileHandle;
+/** A stand-in for the persisted working folder: the record's schema validates
+ * its presence, not its structure, and nothing under test reads from it. */
+const workingDirectoryHandle = {} as FileSystemDirectoryHandle;
 
 function recordWith(
   fields: Partial<ManagedExchangeRecord> & {
@@ -102,7 +101,7 @@ function recordWith(
     }),
     side: "inviter",
     sharedSecret: generateSharedSecret(),
-    inputFileHandle,
+    workingDirectoryHandle,
     schedule: weekly,
   });
   return runnableManagedExchangeOrRefuse(
@@ -295,7 +294,7 @@ function noShowScript(): AttemptScript {
 }
 
 describe("a due window in the open runtime", () => {
-  test("fires one unattended attempt through the persisted handle and advances the plan", async () => {
+  test("fires one unattended attempt reading from the working folder and advances the plan", async () => {
     const record = recordWith();
     const runner = harness({
       records: [record],
@@ -312,8 +311,8 @@ describe("a due window in the open runtime", () => {
       disposition: "succeeded",
     });
     expect(runner.attempts[0].source).toEqual({
-      kind: "handle",
-      handle: inputFileHandle,
+      kind: "folder",
+      directory: workingDirectoryHandle,
       attendance: "unattended",
     });
     // Nothing elapsed, so the only write is the window's own disposition.
@@ -1233,12 +1232,12 @@ describe("catch-up on wake", () => {
         consecutiveMisses: 1,
       },
     });
-    // An artifact holds no input handle (it is a device-local platform
+    // An artifact holds no folder handle (it is a device-local platform
     // object), so the restored record is given one: what is under test is that
     // the stale plan catches up before the attempt, not the re-selection path.
     const restored = parseManagedExchangeRecord({
       ...reconstructRecordFromArtifact(encodeManagedExchangeArtifact(source)),
-      inputFileHandle,
+      workingDirectoryHandle,
     });
     const runner = harness({
       records: [restored],
@@ -1329,14 +1328,14 @@ describe("records the tick leaves alone", () => {
     expect(runner.advances).toHaveLength(0);
   });
 
-  test("a record with no persisted input handle", async () => {
+  test("a record with no working folder", async () => {
     const { entry, runner } = await tickOne(
       parseManagedExchangeRecord({
         ...recordWith(),
-        inputFileHandle: undefined,
+        workingDirectoryHandle: undefined,
       }),
     );
-    expect(entry.skipped).toBe("no-input-handle");
+    expect(entry.skipped).toBe("no-working-folder");
     expect(attempted).toBe(0);
     // The window is left unaccounted, so the wake that finds it elapsed counts
     // it exactly as a window this runtime slept through.
@@ -1493,11 +1492,11 @@ describe("a record deleted mid-window", () => {
 
 describe("a record written mid-window", () => {
   test("runs each later attempt against the record the store holds", async () => {
-    // An attended Run rotates the secret and the operator re-points the input
+    // An attended Run rotates the secret and the operator re-points the folder
     // and shortens the max-age policy while the first attempt waits.
     const record = recordWith();
     const rotatedSecret = generateSharedSecret();
-    const repointed = {} as FileSystemFileHandle;
+    const repointed = {} as FileSystemDirectoryHandle;
     let writes = 0;
     const runner = harness({
       records: [record],
@@ -1512,7 +1511,7 @@ describe("a record written mid-window", () => {
         return parseManagedExchangeRecord({
           ...held,
           sharedSecret: rotatedSecret,
-          inputFileHandle: repointed,
+          workingDirectoryHandle: repointed,
           tokenMaxAgeDays: 30,
         });
       },
@@ -1525,7 +1524,7 @@ describe("a record written mid-window", () => {
     expect(runner.attempts[1].record.sharedSecret).toBe(rotatedSecret);
     expect(runner.attempts[1].record.tokenMaxAgeDays).toBe(30);
     const source = runner.attempts[1].source;
-    expect(source.kind === "handle" ? source.handle : undefined).toBe(
+    expect(source.kind === "folder" ? source.directory : undefined).toBe(
       repointed,
     );
   });
@@ -1569,21 +1568,21 @@ describe("a record written mid-window", () => {
     expect(runner.advances).toHaveLength(0);
   });
 
-  test("stops once the input handle is dropped", async () => {
+  test("stops once the working folder is dropped", async () => {
     const record = recordWith();
     const runner = harness({
       records: [record],
       startAt: "2026-01-06T14:00:00.000Z",
       script: noShowScript(),
       writeDuringAttempt: (held) => {
-        const { inputFileHandle: _dropped, ...rest } = held;
+        const { workingDirectoryHandle: _dropped, ...rest } = held;
         return parseManagedExchangeRecord(rest);
       },
     });
 
     const [entry] = await tickManagedSchedules(runner.seams);
 
-    expect(entry).toMatchObject({ attempts: 1, skipped: "no-input-handle" });
+    expect(entry).toMatchObject({ attempts: 1, skipped: "no-working-folder" });
     expect(runner.advances).toHaveLength(0);
   });
 

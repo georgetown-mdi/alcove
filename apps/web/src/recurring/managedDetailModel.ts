@@ -223,7 +223,7 @@ interface ScheduleView {
   /** The escalated coordination state, once the record's consecutive-miss count
    * has reached the threshold; absent below it. */
   coordination?: RepeatedMissCoordination;
-  /** Present when this browser holds no usable pointer to the input file, which
+  /** Present when this browser holds no usable working folder, which
    * is a standing bar to any run happening with nobody present. */
   inputReselectionNote?: string;
   /** Present when the input file has not been changed since the last successful
@@ -238,18 +238,18 @@ interface ScheduleView {
  * than an empty state.
  *
  * Every platform reading is the caller's, kept out of this model so the
- * derivation stays pure: `hasInputHandle` is a stored handle AND the File System
- * Access API to use it with; `installedRuntime` is whether this page is the
- * installed app the unattended runner starts in; `inputModifiedAtMs` is the
- * pointed-at file's last-modified instant, absent wherever this browser could not
- * read one (see {@link ../psi/managed/managedInputHandle.ts}).
+ * derivation stays pure: `hasWorkingFolder` is a stored folder AND the File
+ * System Access API to use it with; `installedRuntime` is whether this page is
+ * the installed app the unattended runner starts in; `inputModifiedAtMs` is the
+ * last-modified instant of the input file in that folder, absent wherever this
+ * browser could not read one (see {@link ../psi/managed/managedInputHandle.ts}).
  *
  * @throws {RangeError} if the schedule's lattice is unusable (see
  *   {@link scheduleDueness}).
  */
 export function scheduleView(
   record: Pick<ManagedExchangeRecord, "schedule" | "lastRun">,
-  hasInputHandle: boolean,
+  hasWorkingFolder: boolean,
   installedRuntime: boolean,
   now: number,
   inputModifiedAtMs?: number,
@@ -263,7 +263,7 @@ export function scheduleView(
     dueLine: scheduleDueLine(scheduleDueness(schedule, now)),
     attendanceNote: scheduleAttendanceNote(installedRuntime),
     ...(coordination !== undefined ? { coordination } : {}),
-    ...(hasInputHandle
+    ...(hasWorkingFolder
       ? {}
       : { inputReselectionNote: SCHEDULE_INPUT_RESELECTION_NOTE }),
     ...(unchangedInput !== undefined

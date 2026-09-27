@@ -85,7 +85,7 @@ describe("export/import round-trip", () => {
   test("restores a runnable record (fresh id, no handle, fields preserved)", () => {
     const record = runnableRecord(
       newExchange({
-        inputFileHandle: { name: "records.csv" } as FileSystemFileHandle,
+        workingDirectoryHandle: { name: "work" } as FileSystemDirectoryHandle,
         tokenMaxAgeDays: 90,
         expires: "2026-04-06T14:00:00.000Z",
         schedule,
@@ -278,41 +278,43 @@ describe("CLI separability", () => {
 });
 
 describe("the grants the source held", () => {
-  test("a source holding both handles marks both, and an import reports both", () => {
+  test("a source holding a working folder marks it, and an import reports it", () => {
     const record = runnableRecord(
       newExchange({
-        inputFileHandle: { name: "records.csv" } as FileSystemFileHandle,
-        outputDirectoryHandle: { name: "results" } as FileSystemDirectoryHandle,
+        workingDirectoryHandle: { name: "work" } as FileSystemDirectoryHandle,
       }),
     );
     const artifact = encodeManagedExchangeArtifact(record);
-    expect(artifact.local.heldInputFile).toBe(true);
     expect(artifact.local.heldOutputFolder).toBe(true);
-    // The handles themselves do not cross the bytes, so the markers are all an
+    expect(artifact.local).not.toHaveProperty("heldInputFile");
+    // The handle itself does not cross the bytes, so the marker is all an
     // import has to go on.
     const imported = importManagedExchangeArtifact(
       serializeManagedExchangeArtifact(artifact),
     );
-    expect(imported.heldGrants).toEqual(["input-file", "output-folder"]);
-    expect(imported.record).not.toHaveProperty("inputFileHandle");
-    expect(imported.record).not.toHaveProperty("outputDirectoryHandle");
+    expect(imported.heldGrants).toEqual(["working-folder"]);
+    expect(imported.record).not.toHaveProperty("workingDirectoryHandle");
   });
 
-  test("a source holding one handle marks only that one", () => {
-    const record = runnableRecord(
-      newExchange({
-        outputDirectoryHandle: { name: "results" } as FileSystemDirectoryHandle,
-      }),
+  test("an artifact marking the input file a separate pointer held reports the folder", () => {
+    // A backup written while the input was a pointer of its own: what the
+    // operator takes again here is the folder that pointer's file goes in.
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(runnableRecord(newExchange())),
+      ),
     );
-    const artifact = encodeManagedExchangeArtifact(record);
-    expect(artifact.local).not.toHaveProperty("heldInputFile");
+    artifact.local.heldInputFile = true;
     expect(
-      importManagedExchangeArtifact(serializeManagedExchangeArtifact(artifact))
-        .heldGrants,
-    ).toEqual(["output-folder"]);
+      importManagedExchangeArtifact(JSON.stringify(artifact)).heldGrants,
+    ).toEqual(["working-folder"]);
+    artifact.local.heldOutputFolder = true;
+    expect(
+      importManagedExchangeArtifact(JSON.stringify(artifact)).heldGrants,
+    ).toEqual(["working-folder"]);
   });
 
-  test("a source holding neither writes no marker and reports none", () => {
+  test("a source holding none writes no marker and reports none", () => {
     const artifact = encodeManagedExchangeArtifact(
       runnableRecord(newExchange()),
     );
@@ -332,13 +334,15 @@ describe("the grants the source held", () => {
         encodeManagedExchangeArtifact(
           runnableRecord(
             newExchange({
-              inputFileHandle: { name: "records.csv" } as FileSystemFileHandle,
+              workingDirectoryHandle: {
+                name: "work",
+              } as FileSystemDirectoryHandle,
             }),
           ),
         ),
       ),
     );
-    delete artifact.local.heldInputFile;
+    delete artifact.local.heldOutputFolder;
     expect(
       importManagedExchangeArtifact(JSON.stringify(artifact)).heldGrants,
     ).toEqual([]);

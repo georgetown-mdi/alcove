@@ -2,7 +2,7 @@
  * The pure model behind schedule entry: what the operator types for an agreed run
  * cadence, what is wrong with it, what it resolves to, the one cross-field
  * problem a stored max-token-age policy raises against it, and the copy for the
- * output-folder grant entry offers beside the cadence.
+ * working-folder grant.
  *
  * Entry is where the host time zone is READ. {@link resolveLocalCadenceAnchor}
  * turns the operator's wall-clock cadence into the stored UTC anchor once, here;
@@ -30,6 +30,8 @@ import {
   localCadenceFromAnchor,
   resolveLocalCadenceAnchor,
 } from "@psi/managed/managedSchedule";
+
+import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
 
 import { dateTimeLabel } from "@psi/formatting";
 
@@ -420,71 +422,64 @@ export function cadenceAgainstTokenBound(
 }
 
 /**
- * Where a scheduled run's results go, as the schedule-entry surface offers it: a
- * folder this operator granted, no grant yet, or a browser that cannot take one.
- * The grant is what entry presents FIRST and as the path to take; keeping the
- * results in the browser is what happens without it.
+ * The exchange's working folder, as the surfaces offer it: a folder this operator
+ * granted, no grant yet, or a browser that cannot take one. Each run reads its
+ * input from the folder, and a scheduled run writes its results into it.
  */
-export type OutputFolderGrant =
+export type WorkingFolderGrant =
   /** A folder is granted, named as the picker reported it. */
   | { kind: "granted"; name: string }
   /** No folder is granted, and this browser can take a grant. */
   | { kind: "none" }
-  /** This browser offers no folder grant, so every scheduled run's results stay
-   * in the browser. */
+  /** This browser offers no folder grant, so each run is attended and the
+   * operator chooses its input file. */
   | { kind: "unsupported" };
 
-/** The grant state the entry surface shows, from the record's stored handle and
+/** The grant state the surfaces show, from the record's stored handle and
  * whether this runtime can follow or take one. Both halves decide it here, so
- * the surface does not spell the conjunction out itself. */
-export function outputFolderGrant(
+ * a surface does not spell the conjunction out itself. */
+export function workingFolderGrant(
   handle: FileSystemDirectoryHandle | undefined,
   usable: boolean,
   supported: boolean,
-): OutputFolderGrant {
+): WorkingFolderGrant {
   if (handle !== undefined && usable)
     return { kind: "granted", name: handle.name };
   return supported ? { kind: "none" } : { kind: "unsupported" };
 }
 
 /** What the folder grant is for, stated above the button that takes it. It names
- * the gesture rule plainly, because the grant has to be taken here rather than
- * when the run happens. */
-export const OUTPUT_FOLDER_GRANT_NOTE =
-  "Choose a folder for this exchange's results. A run that happens with nobody " +
-  "present writes its results there, one file per run, named by this " +
-  "exchange's label and the run's date and time, so later runs do not " +
-  "overwrite earlier ones and another exchange's results are not mistaken for " +
-  "these. Your browser only lets you choose a folder while you are here, so " +
-  "choose it now; the run itself never asks.";
+ * the one input file name and the gesture rule plainly, because the grant has
+ * to be taken while the operator is here rather than when the run happens. */
+export const WORKING_FOLDER_GRANT_NOTE =
+  `Choose the folder this exchange works in. Each run reads its input from ` +
+  `the file named ${MANAGED_INPUT_FILE_NAME} in that folder, so put each ` +
+  `period's data there under that name. A run that happens with nobody ` +
+  `present writes its results beside it, one file per run, named by this ` +
+  `exchange's label and the run's date and time, so later runs do not ` +
+  `overwrite earlier ones. Your browser only lets you choose a folder while ` +
+  `you are here, so choose it now; the run itself never asks.`;
 
 /** What the operator is told where this browser cannot take a folder grant at
  * all, so the choice is not presented as one they declined to make. */
-export const OUTPUT_FOLDER_UNSUPPORTED_NOTE =
-  "This browser cannot give a site a folder to write to, so a scheduled run " +
-  "keeps its results in the browser for you to collect here.";
+export const WORKING_FOLDER_UNSUPPORTED_NOTE =
+  "This browser cannot give a site a folder, so you choose the input file " +
+  "each time you run this exchange, and no run can happen with nobody present.";
 
 /** What the operator is told about a folder they have granted: what it is used
  * for, and that it stands until they change it. */
-export function outputFolderGrantedNote(name: string): string {
+export function workingFolderGrantedNote(name: string): string {
   return (
-    `Scheduled runs write their results to ${name}. That folder stands until ` +
-    `you choose another or stop using one; deleting this exchange drops it too.`
+    `Runs read ${MANAGED_INPUT_FILE_NAME} from ${name}, and scheduled runs ` +
+    `write their results there. That folder stands until you choose another ` +
+    `or stop using it; deleting this exchange drops it too.`
   );
 }
-
-/** What the operator is told about a folder they granted while this exchange is
- * not on a schedule: the runs are what stopped, not the grant, and dropping the
- * grant is the control beside this line. */
-export const OUTPUT_FOLDER_UNSCHEDULED_NOTE =
-  "This exchange is not on a schedule, so no run writes to this folder until " +
-  "you put it on one. The grant stands either way, until you stop using the " +
-  "folder here or delete the exchange.";
 
 /** The guidance the grant carries on which folder to choose. A folder granted to
  * this site is readable and writable by it, so a folder of its own is the
  * practice worth stating where the choice is made. */
-export const OUTPUT_FOLDER_SCOPE_NOTE =
+export const WORKING_FOLDER_SCOPE_NOTE =
   "Choose a folder used for nothing else. While the grant stands, this site can " +
-  "read and write everything in the folder you choose, not only the results it " +
-  "writes there.";
+  "read and write everything in the folder you choose, not only the files this " +
+  "exchange uses.";

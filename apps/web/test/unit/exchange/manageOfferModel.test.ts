@@ -367,19 +367,17 @@ describe("buildManagedDeposit (inviter)", () => {
     expect(deposit.exchangeFile).not.toHaveProperty("expectedPayloadColumns");
   });
 
-  test("holds an input handle and no schedule: the offer has no schedule to make", () => {
+  test("holds no folder grant and no schedule: both are taken on the exchange's page", () => {
     // The unattended runner fires on a record holding BOTH a schedule and a
-    // persisted input handle. The deposit writes the handle and no schedule --
-    // the offer has none to make -- so this path cannot assemble that pair; the
-    // import path, which can hold a schedule and reconstructs no handle, is its
-    // converse (test/unit/psi/managedExchangeImport.test.ts). Neither is a claim a
-    // comment could hold.
-    const handle = {} as FileSystemFileHandle;
+    // working folder. The deposit writes neither -- the offer takes no folder
+    // and has no schedule to make -- so this path cannot assemble that pair;
+    // the import path, which can hold a schedule and reconstructs no handle, is
+    // its converse (test/unit/psi/managedExchangeImport.test.ts).
     const deposit = buildManagedDeposit(
-      depositInputs({ inputFileHandle: handle }),
+      depositInputs(),
       Date.UTC(2026, 6, 15, 12, 0, 0),
     );
-    expect(deposit.inputFileHandle).toBe(handle);
+    expect(deposit).not.toHaveProperty("workingDirectoryHandle");
     expect(deposit).not.toHaveProperty("schedule");
   });
 
@@ -402,18 +400,6 @@ describe("buildManagedDeposit (inviter)", () => {
     // The stamp is now + 30 days, from the max-age policy alone; the invitation's
     // setup lifetime never flows into the record's expires.
     expect(deposit.expires).toBe(new Date(now + 30 * 86_400_000).toISOString());
-  });
-
-  test("holds an input-file handle only when one is captured", () => {
-    const handle = { name: "records.csv" } as unknown as FileSystemFileHandle;
-    const withHandle = buildManagedDeposit(
-      depositInputs({ inputFileHandle: handle }),
-      Date.now(),
-    );
-    expect(withHandle.inputFileHandle).toBe(handle);
-
-    const without = buildManagedDeposit(depositInputs(), Date.now());
-    expect(without).not.toHaveProperty("inputFileHandle");
   });
 });
 

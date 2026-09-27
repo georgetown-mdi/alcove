@@ -42,9 +42,9 @@ that a recurring exchange with the same partner, over the same terms, can be run
 again. It is **not** a saved copy of the exchange's inputs or outputs:
 
 - **It never holds the input data, nor any row value derived from it.** The
-  record holds a **pointer** to the operator's file at most, never a copy of
-  its contents (`inputFileHandle` under [Persisted across
-  runs](#persisted-across-runs)). This mirrors the CLI, where `alcove.yaml`
+  record holds a **pointer** to the folder the operator's file stands in at
+  most, never a copy of its contents (`workingDirectoryHandle` under [Persisted
+  across runs](#persisted-across-runs)). This mirrors the CLI, where `alcove.yaml`
   references data by path and never embeds it, and the exchange-record artifact
   commits to data rather than embedding it (see
   [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)).
@@ -59,7 +59,7 @@ again. It is **not** a saved copy of the exchange's inputs or outputs:
 ## Record shape
 
 The record is a single object, persisted in the browser's IndexedDB under the
-app's origin -- JSON-serializable but for the optional input-file handle, a
+app's origin -- JSON-serializable but for the optional working-folder handle, a
 platform object IndexedDB stores by structured clone and the export artifact
 omits (see [Export artifact](#export-artifact)). Its core is this party's own
 **exchange-file document** -- the same shared config schema the web app mints
@@ -100,8 +100,7 @@ are the standing definition of the managed exchange.
 | `label` | string, at most 120 UTF-16 code units (enforced at write; a character outside the Basic Multilingual Plane counts as two) | An operator-supplied display name for the partnership. Local only; never sent -- but disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The length cap is enforced; the content guidance is not and cannot be: keeping agreement numbers, contact details, and other sensitive counterparty detail out of the label is **operator cooperation**, exactly as export-source invalidation is -- the field's only structural protections are the cap and its never-sent locality. |
 | `exchangeFile` | object | This party's exchange-file document, verbatim: the validated `ExchangeSpec` shape both applications share (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md), "The artifact is the CLI config schema") -- the linkage terms both parties validated (column **shape** and disclosed payload column **names**, never a row value), metadata, standardization, any payload-column commitments, the acceptor's own outbound-payload consent record (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#payload-disclosure-consent), "Payload-disclosure consent"), the acceptor's `expectedPartnerDeduplicate` -- the cardinality side the accepted invitation declared for the partner, which a re-run holds the partner to (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md#terms-binding-consent), "Terms-binding consent") -- this party's own `includeOwnColumns` output-composition choice, a closed two-value enum naming no column, this party's own `csvDelimiter` -- the field-delimiter choice its input file is read under and its result file written with, naming no column and holding no row value: one character, or the reserved word `detect` where the operator chose to have the delimiter taken from the file itself, a value distinct from the field being absent; an absent field is read and written with a comma, so every record stored without one keeps reading and no migration pass rewrites it -- and the connection block. A record stored before that rule holds no delimiter: it was read by detection and now reads as a comma, with no `schemaVersion` change, so a recurring exchange whose input is not comma-separated fails closed at its next window, with the single-column delimiter remedy stated at launch. It has **no `authentication` block** (the secret lives in `sharedSecret` below) and is composed exactly as the mint layer composes a downloadable file: assembled from a credential-free locator input, validated through the shared schema, with the **parse result** (never the raw input) persisted. The document's operator-authored free-text fields persist verbatim with it: each metadata column's optional `description` (no schema length bound), each standardization step's `params` (an open parameter map -- an authored cleaning step can embed a literal value, a pattern or a replacement string), and `retentionDisposition` (bounded at 1024 characters, the config schema's text bound), plus the terms' own 1024-bounded payload `description` and legal-agreement `purpose` strings. The record stores the document as minted, or as the operator last edited its local settings, so the content guidance for these fields is the same **operator cooperation** the `label` row describes, and no additional bound or strip pass runs at persist time: the document is kept verbatim, and a document the mint layer accepts must remain saveable as managed (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). The document's terms and connection are fixed for the partnership: a re-invite re-issues the document verbatim with only a fresh secret, and exchanging on different terms is a new exchange, not an edit or re-invite of this record. Its three per-party settings -- `includeOwnColumns`, `csvDelimiter`, and `retentionDisposition` -- are local fields the operator edits in place (see [Local settings of the document](#local-settings-of-the-document)). |
 | `side` | enum (`"inviter"` \| `"acceptor"`), or absent | This party's side of the partnership; dispatches a re-run to the matching rendezvous flow (see [Role: a local `side` field](#role-a-local-side-field-not-the-document)). Local-only by design -- not the document's `connection.role`, which no web path reads. Present exactly when the document's connection is `webrtc`, the one channel whose connection names a `role`: a [configuration-only record](#the-configuration-only-record) on `sftp` or `filedrop` holds none, and a reader refuses a record whose `side` and channel disagree. |
-| `inputFileHandle` | `FileSystemFileHandle` or absent | A persisted **pointer** to the operator's input file, held where the File System Access API exists (Chromium), with persistent read permission where the platform grants it (an installed app), so an unattended run reads the standing file with nobody present and an attended re-run is one action. It is a reference, never a copy: no input content or row value derived from it persists, which is where the no-second-copy invariant is enforced. It is also live, not a snapshot: each run calls `getFile()` at run start and reads whatever file exists at the path, the pointer following the name rather than the file that stood there when it was picked -- a `File` already obtained stops being readable once the file underneath it changes, so `File` objects are never retained across runs -- which is what makes putting the current period's extract at the same name the data-refresh workflow, by an overwrite in place, a rename over the name, or a delete and a create (see [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run)). A missing entry at run start fails the file read with a clean not-found, recorded as a benign `"input"` failure (see `lastRun`), never routed through desync/attack framing. What it does add to the store's disclosure is the input file's **name**, and the granted read permission extends an in-origin reader's reach to the file's current contents (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). Absent on browsers without the API (each attended run re-selects the file) and in any imported record: the handle is a device- and profile-local platform object stored by structured clone, with no file serialization, so the export artifact omits it and the first run after an import re-acquires one by selection. |
-| `outputDirectoryHandle` | `FileSystemDirectoryHandle` or absent | A persisted **pointer** to the folder the operator granted for a scheduled run's results, held where the File System Access API exists. A run with nobody present writes its results CSV into that folder, under a name holding the exchange's label and the run's own instant, so successive runs accumulate rather than overwrite and two exchanges granted one folder are told apart by name; a run whose grant is absent, not honoured unattended, or revoked, and one whose write fails, parks the results instead (see [The parked results of a scheduled run](#the-parked-results-of-a-scheduled-run)). The grant is taken at schedule entry and by re-pointing, never at run time: the directory picker requires a user gesture, and at run time the permission is **queried and never prompted**, the same unattended rule `inputFileHandle` takes. The mode is `readwrite`, a larger grant than the input side's single-file read -- an in-origin script can read and write everything in that folder while it stands (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). Absent on browsers without the API, and never in the export artifact, for the reason `inputFileHandle` is: it is a device- and profile-local platform object stored by structured clone, with no serialization. What an import then holds depends on which import it is: one that installs a fresh record has no handle and re-grants, while a [revive-in-place](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact) -- this profile's own spent record, updated rather than duplicated -- keeps the grant that record already held, since the folder was granted to this profile and the handle never left it. |
+| `workingDirectoryHandle` | `FileSystemDirectoryHandle` or absent | A persisted **pointer** to the exchange's working folder, held where the File System Access API exists (Chromium), in `readwrite` mode: the one grant a run reads its input through and a run with nobody present writes its results through, mirroring the single working directory the CLI runs in. **The app reads exactly one conventioned name from the folder and never enumerates it**: each run looks up `input.csv` (`MANAGED_INPUT_FILE_NAME`, the name the command-line export's emitted command also reads) afresh through `getFileHandle` and reads it with `getFile()` at run start; the results write looks up and creates only the results file it names, under the exchange's label and the run's own instant, and removes only an entry its own failed write created. No entry is listed, no subfolder is opened, and no other file is read -- `apps/web/test/unit/psi/unattendedRuntimeBoundaries.test.ts` fails on any other lookup and on any iteration of the folder. The pointer is a reference, never a copy: no input content or row value derived from it persists, which is where the no-second-copy invariant is enforced. It is live, not a snapshot: a `File` already obtained stops being readable once the file underneath it changes, so neither `File` objects nor file handles are kept across runs, which is what makes putting the current period's extract under that name the data-refresh workflow, by an overwrite in place, a rename over the name, or a delete and a create (see [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run)). A folder holding no file under that name at run start fails the read before any connection, naming the file expected and the folder looked in, recorded as a benign `"input"` failure (see `lastRun`), never routed through desync/attack framing. Successive results accumulate rather than overwrite, and a results name never equals the input's; a run whose grant is not honoured unattended or is revoked, and one whose write fails, parks the results instead (see [The parked results of a scheduled run](#the-parked-results-of-a-scheduled-run)). The grant is taken under an operator gesture -- where the exchange is put on a schedule, or on the run surface -- never at run time: the directory picker requires a user gesture, and at run time the permission is **queried and never prompted**. While it stands an in-origin script can read and write everything in that folder, and the folder's own name is disclosed to any reader of the store (see [Metadata at rest](../SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)). A record stored with the earlier separate `inputFileHandle` reads without it -- the reader drops the key -- so the exchange asks once for its folder and the old pointer is never followed. Absent on browsers without the API (each attended run re-selects the input file, and no run happens unattended) and never in the export artifact: it is a device- and profile-local platform object stored by structured clone, with no serialization. What an import then holds depends on which import it is: one that installs a fresh record has no handle and re-grants, while a [revive-in-place](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact) -- this profile's own spent record, updated rather than duplicated -- keeps the grant that record already held, since the folder was granted to this profile and the handle never left it. |
 | `sharedSecret` | string (base64url, 43 chars / 32 bytes), or absent | The **current** rotated shared secret, matching `SHARED_SECRET_REGEX` (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md)) -- the `.alcove.key` analog the exchange-file document never holds. This is the one at-rest secret in the record. Rotated after every successful run and re-persisted before the run is treated as succeeded (see [Persist-before-success ordering](#persist-before-success-ordering)). Absent in a [configuration-only record](#the-configuration-only-record), which runs nowhere here; its absence is what withholds the run, and no other field records that. Present only where the document's connection is `webrtc`, the one channel this app runs, and the document states no `signing` block, a part this app cannot run; a reader refuses a record holding one on any other channel or beside that block. |
 | `expires` | string (ISO 8601, UTC `Z`) or absent | The instant after which `sharedSecret` must not be used; the recovery when it lapses is re-invite. Absent means no bound is in force. The record inherits the CLI key file's **consumer** semantics for `expires` -- one field, one meaning to every consumer (see [Token age and rotation policy](../SECURITY_DESIGN.md#token-age-and-rotation-policy), a citation about meaning, not sourcing) -- while its **provenance** is single-source: only the max-age stamp writes it, the invitation's setup lifetime having been consumed at provisioning. Two write paths stamp it -- a successful run's rotation write-back and an operator's in-place edit of `tokenMaxAgeDays` -- both under the same never-move-later rule (see [Edit-time re-derivation of `expires`](#edit-time-re-derivation-of-expires)). |
 | `tokenMaxAgeDays` | integer or absent | The operator's max-token-age policy for this exchange, the browser analog of the CLI `authentication.token_max_age_days`, and like it **off by default**: absent means no bound is in force, and a record is created with it absent unless the operator sets one. When set, each successful run stamps `expires` this many days out onto the rotated secret. The reason to opt in is a dormant partnership: rotation caps exposure only for an exchange that actually runs, so an idle stored secret has no automatic exposure bound without it (see [The primary controls](../SECURITY_DESIGN.md#the-primary-controls)). It is a **local field** the operator may edit in place without a re-invite; what the edit does to `expires` is [Edit-time re-derivation of `expires`](#edit-time-re-derivation-of-expires). |
@@ -180,7 +179,7 @@ and no stored marker to disagree with the record.
 **It holds nothing a run or a secret produces.** The record schema refuses a
 configuration-only record that also holds `expires` (a bound on a secret it does
 not have), `schedule` or `lastRun` (nothing here runs to meet a window or record
-an outcome), or either platform handle (no run reads a file or writes a folder).
+an outcome), or the working-folder handle (no run reads a file or writes a folder).
 `label` and `tokenMaxAgeDays` are the record fields it does hold, and it edits
 them in place beside the document's [local settings](#local-settings-of-the-document);
 an edit of the policy stamps no `expires`.
@@ -483,14 +482,14 @@ configuration-only one alike, without a re-invite.
   it files. The command-line export and the export artifact hold the edited
   document.
 - **A changed delimiter re-reads the file.** Before a changed delimiter is saved,
-  the stored `inputFileHandle` is read with it and the columns it yields are
-  graded against the agreed terms, as the run-start input guard grades them; the
-  save waits for that read, and the editor states the result. The read queries
-  the handle's read grant and never prompts for it, and only the column names are
-  kept. A file it cannot read, or columns short of an agreed key, is stated as a
-  warning and does not block the save: the operator may be about to replace the
-  file. A record with no usable handle has nothing to re-read, and its next run
-  reads the file under the new delimiter.
+  the input file in the stored `workingDirectoryHandle` is read with it and the
+  columns it yields are graded against the agreed terms, as the run-start input
+  guard grades them; the save waits for that read, and the editor states the
+  result. The read queries the folder's read grant and never prompts for it, and
+  only the column names are kept. A file it cannot read, or columns short of an
+  agreed key, is stated as a warning and does not block the save: the operator
+  may be about to replace the file. A record with no usable folder has nothing to
+  re-read, and its next run reads the file under the new delimiter.
 
 At setup the offer to save an exchange as recurring authors `retentionDisposition`
 beside the label and the max-age policy; the other two come from the setup's own
@@ -1094,8 +1093,8 @@ with no disposition at all -- the wake that finds the window elapsed counts it
 exactly as one this runtime slept through:
 
 - One this device has handed off (its local `spent` state), by either export.
-- One with no persisted `inputFileHandle`, which has no unattended read of the
-  input at all.
+- One with no persisted `workingDirectoryHandle`, which has no unattended read
+  of the input at all.
 - One whose runtime stopped while the window was still open.
 
 The rules above are implemented in `apps/web/src/psi/managed/managedScheduleRunner.ts`;
@@ -1169,7 +1168,7 @@ the scheduled runtime, or by the operator on an attended run.
 
 | Input | Why it is not persisted |
 | ----- | ----------------------- |
-| The input file's contents | Never persisted -- the record holds a pointer at most (`inputFileHandle` above), never content. The file is read in the browser at each run and never uploaded, exactly as the one-shot flow reads it (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality)). See [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run). |
+| The input file's contents | Never persisted -- the record holds a pointer to the folder the file stands in at most (`workingDirectoryHandle` above), never content. The file is read in the browser at each run and never uploaded, exactly as the one-shot flow reads it (see [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#invitation-contents-and-confidentiality)). See [The input file each run](../MANAGED_EXCHANGE.md#the-input-file-each-run). |
 | Any connection credential | The persisted document's connection block is composed from a credential-free locator (see [The connection block](#the-connection-block-credential-free-by-composition)), so no credential is representable in the record. |
 | The live rendezvous / peer id | Derived fresh each run from `sharedSecret` under the label the local `side` field selects (see [Derived, never stored](#derived-never-stored)); storing it would duplicate a value that changes with every rotation. |
 | The session key and AEAD keys | Ephemeral per run; derived by the handshake and discarded after. Never persisted. |
@@ -1348,16 +1347,17 @@ The artifact's shape and custody model:
 - **Contents.** The persisted record fields above -- the exchange-file document
 plus `sharedSecret`, `expires`, the schedule, and the local bookkeeping, the
 browser analog of handing over `alcove.yaml` and `.alcove.key` together --
-**minus both platform handles**. A `FileSystemFileHandle` and a
-`FileSystemDirectoryHandle` are device- and profile-local platform objects with no
-file serialization, so the export omits them and the first run after an import
-re-acquires the input file by selection while the output folder is granted again.
-In each handle's place the export writes a **marker in `local` recording that the
-source record held it** -- `heldInputFile` and `heldOutputFolder`, written only
-when the handle was there, omitted rather than written `false`. They are what lets
-an import name the grants to take again on the importing browser (see [Eviction
-recovery is the import
-flow](../MANAGED_EXCHANGE.md#eviction-recovery-is-the-import-flow)), and an
+**minus the working-folder handle**. A `FileSystemDirectoryHandle` is a device-
+and profile-local platform object with no file serialization, so the export omits
+it and the folder is granted again after an import. In its place the export
+writes a **marker in `local` recording that the source record held it** --
+`heldOutputFolder`, written only when the handle was there, omitted rather than
+written `false`. It is what lets an import name the grant to take again on the
+importing browser (see [Eviction recovery is the import
+flow](../MANAGED_EXCHANGE.md#eviction-recovery-is-the-import-flow)). The reader
+also accepts `heldInputFile`, which an artifact written while the input was a
+separate file pointer holds, and reads either marker as a held working folder,
+since the folder is what the operator takes again; no writer sets it. An
 artifact holding neither marker -- a source that held no handle, or a file
 written before the markers existed -- names nothing rather than guessing. The
 record's `id` is likewise not included: it is a device-local record
@@ -1398,8 +1398,9 @@ either imports with the answer or is refused entire. The artifact's own
   because the CLI loads it as YAML through `camelizeKeys`.
 - **What an older reader does with an optional `local` key.** The
   `artifactVersion` literal does not move for any of the optional keys in
-  `local` -- `standingCondition` and the two held-grant markers, `heldInputFile`
-  and `heldOutputFolder`, each written only where there is something to write --
+  `local` -- `standingCondition` and the held-grant marker `heldOutputFolder`,
+  each written only where there is something to write, and the read-only
+  `heldInputFile` --
   so the format does not version for them. That does not make an artifact
   holding one readable everywhere. A build whose `local` schema does not know
   the key refuses the artifact whole, because the strict reader-rejects-unknown
@@ -1599,8 +1600,8 @@ record, in a separate origin-local store keyed by the record `id`, and are
   **Revive by import is the migration spend's recovery, and only its.** The
   migration export downloads the artifact that clears its own spend (a
   **revive-in-place**: an import whose secret matches the spent record's updates
-  that record's fields, keeps its `id` and its platform handles -- the input file
-  and the granted output folder -- clears the spent state,
+  that record's fields, keeps its `id` and its working-folder grant, clears the
+  spent state,
   and marks it imported and backed-up, rather than installing a duplicate). The
   command-line export downloads the CLI's `alcove.yaml` and `.alcove.key`, which
   the command line runs from and rewrites; the import refuses that pair against the
@@ -1928,7 +1929,7 @@ it is the only check there is beyond terms and side.
   recovery is the revive-in-place its own artifact performs, and a live record has
   nothing to take back; both are reported, and neither is written to.
 - **Nothing else about the record moves.** The agreed terms, the label, the
-  schedule, and the platform handles are untouched: the exchange that comes back is
+  schedule, and the working-folder grant are untouched: the exchange that comes back is
   the one that was handed off.
 
 ## The accounting of disclosures
@@ -2256,10 +2257,10 @@ cases the code admits and nothing reaches today:
 ## The parked results of a scheduled run
 
 A run with nobody present builds the same results file an attended run builds and
-has no one to hand it to. Where the operator granted an output folder
-(`outputDirectoryHandle` under [Persisted across runs](#persisted-across-runs))
-the run **writes** the file there; otherwise, and whenever that grant or write
-does not hold, it **parks** the file: a third local sibling, in its own
+has no one to hand it to. The run **writes** the file into the working folder it
+read its input from (`workingDirectoryHandle` under [Persisted across
+runs](#persisted-across-runs)); whenever that grant or write does not hold, it
+**parks** the file: a third local sibling, in its own
 origin-local store keyed by the record `id`, holding what each unattended run
 produced until the operator returns for it or the retention releases it.
 
@@ -2364,7 +2365,7 @@ there, and the accounting of disclosures is untouched.
 **A result above the bound is a recorded state too, and parks nothing.** The
 results are kept whole or not at all: nothing is parked, nothing is shortened,
 and the too-large shape above stands in their place under the same `runAt`,
-naming what the file weighed. Its remedy is the output-folder grant, which the
+naming what the file weighed. Its remedy is the working-folder grant, which the
 bound does not apply to -- and the entry's `fallback` decides which step that
 grant is, because a result this size reaches the bound from every folder outcome
 above but a landed write: choose a folder where no grant was held, grant the

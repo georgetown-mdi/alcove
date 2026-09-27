@@ -30,7 +30,7 @@ interface LocalFieldsSource {
   label: string;
   tokenMaxAgeDays?: number;
   exchangeFile: ExchangeSpec;
-  inputFileHandle?: FileSystemFileHandle;
+  workingDirectoryHandle?: FileSystemDirectoryHandle;
 }
 
 /** The label, max-age, and document-settings draft a surface edits, and what
@@ -140,7 +140,7 @@ export function useLocalFieldsDraft(
   const labelValid = labelWithinCap(label);
   const delimiterRecheck = useDelimiterRecheck(
     record.exchangeFile,
-    record.inputFileHandle,
+    record.workingDirectoryHandle,
     changedCsvDelimiter(record.exchangeFile, documentFields.delimiter),
   );
   const retentionError = retentionNoteError(documentFields.retentionNote);

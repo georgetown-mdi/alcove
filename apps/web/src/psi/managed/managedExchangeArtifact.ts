@@ -18,15 +18,14 @@
  *   force, `expires` -- so the secret half maps onto a valid key file;
  * - `local` holds the browser-only fields the two CLI artifacts do not
  *   (`label`, `side`, `schedule`, `lastRun`, `standingCondition`,
- *   `tokenMaxAgeDays`, and a marker per platform handle the source held), cleanly
- *   separable and ignorable by the CLI toolchain.
+ *   `tokenMaxAgeDays`, and a marker saying the source held a working folder),
+ *   cleanly separable and ignorable by the CLI toolchain.
  *
- * Both platform handles are absent by design (device- and profile-local platform
- * objects with no file serialization), so the input file is re-acquired by
- * selection at the first run after an import and the output folder is granted
- * again. What the artifact does hold is a marker per handle saying the source
- * record had one, which is all an import needs to tell the operator which grants
- * to take again here. No secret-derived value and no
+ * The working-folder handle is absent by design (a device- and profile-local
+ * platform object with no file serialization), so the folder is granted again
+ * after an import. What the artifact does hold is a marker saying the source
+ * record had one, which is all an import needs to tell the operator to take the
+ * grant again here. No secret-derived value and no
  * rotation epoch is written: the artifact snapshots the secret current at export
  * and holds no history (see the spec's "No anti-rollback").
  *
@@ -101,21 +100,22 @@ interface ManagedExchangeArtifactLocal {
   standingCondition?: ManagedStandingCondition;
   /** The max-token-age policy, when the operator opted in. */
   tokenMaxAgeDays?: number;
-  /** Whether the source record held a pointer to the operator's input file.
-   * Omitted rather than written `false`, matching the artifact's other optional
-   * fields; the handle itself cannot be written at all. */
+  /** Read and never written: an artifact from a build that held a separate
+   * input-file pointer sets it, and an import reads it as a held working folder,
+   * since the folder is what the operator takes again here. */
   heldInputFile?: boolean;
-  /** Whether the source record held a grant on a folder for a scheduled run's
-   * results. Omitted rather than written `false`, for the same reason. */
+  /** Whether the source record held a working-folder grant. Omitted rather than
+   * written `false`, matching the artifact's other optional fields; the handle
+   * itself cannot be written at all. */
   heldOutputFolder?: boolean;
 }
 
 /** A pointer to somewhere on this device that a record can hold and an artifact
- * cannot: the operator's input file, and the folder a scheduled run's results are
- * written to. Both are File System Access handles, taken by a picker under an
- * operator gesture and stored by structured clone, so a record restored on another
- * browser profile holds neither until the operator takes them again there. */
-export type ManagedPlatformGrant = "input-file" | "output-folder";
+ * cannot: the exchange's working folder, a File System Access handle taken by a
+ * picker under an operator gesture and stored by structured clone, so a record
+ * restored on another browser profile holds none until the operator takes it
+ * again there. */
+export type ManagedPlatformGrant = "working-folder";
 
 /**
  * The export artifact: a version tag, the embedded `alcove.yaml` document as
@@ -154,12 +154,11 @@ export function keyFileFieldsFromRecord(
 
 /**
  * Encode a stored record as the export artifact (see
- * {@link serializeExchangeDocument} for the embedded document). Both platform
- * handles are dropped -- neither the input file's nor the granted output
- * folder's serializes, so a record imported from this artifact re-acquires the
- * input file by selection and re-grants the folder -- and each leaves behind a
- * marker in `local` recording that the source held it, so an import can name the
- * grants to take again. The record's `id` is not included either, since an import
+ * {@link serializeExchangeDocument} for the embedded document). The
+ * working-folder handle is dropped -- it does not serialize, so a record imported
+ * from this artifact re-grants the folder -- and leaves behind a marker in
+ * `local` recording that the source held it, so an import can name the grant to
+ * take again. The record's `id` is not included either, since an import
  * mints a fresh local record rather than copying this one.
  */
 export function encodeManagedExchangeArtifact(
@@ -179,8 +178,7 @@ export function encodeManagedExchangeArtifact(
       ...(record.tokenMaxAgeDays !== undefined
         ? { tokenMaxAgeDays: record.tokenMaxAgeDays }
         : {}),
-      ...(record.inputFileHandle !== undefined ? { heldInputFile: true } : {}),
-      ...(record.outputDirectoryHandle !== undefined
+      ...(record.workingDirectoryHandle !== undefined
         ? { heldOutputFolder: true }
         : {}),
     },
@@ -288,7 +286,7 @@ export function parseManagedExchangeArtifact(
  * unchanged. Built through {@link buildManagedExchangeRecord} -- a fresh `id`, the v4
  * `schemaVersion`, re-validated through the record schema -- so a malformed
  * document or secret is rejected and nothing is installed. Holds no
- * input-file handle: the first run re-acquires one by selection.
+ * working-folder handle: the operator grants the folder again.
  *
  * @throws {UsageError} if the embedded document is not parseable YAML.
  * @throws {ZodError} if the embedded document or the reconstructed record is invalid.
@@ -327,17 +325,17 @@ export function reconstructRecordFromArtifact(
   });
 }
 
-/** Which platform grants the source record held when the artifact was written, in
- * the order an operator retakes them. Empty for a source that held neither, and for
- * an artifact written before the markers existed -- both read as "nothing to say"
- * rather than as a claim the source had nothing. */
+/** Which platform grants the source record held when the artifact was written.
+ * Empty for a source that held none, and for an artifact written before the
+ * markers existed -- both read as "nothing to say" rather than as a claim the
+ * source had nothing. */
 function heldPlatformGrants(
   artifact: ManagedExchangeArtifact,
 ): Array<ManagedPlatformGrant> {
   return [
-    ...(artifact.local.heldInputFile === true ? (["input-file"] as const) : []),
-    ...(artifact.local.heldOutputFolder === true
-      ? (["output-folder"] as const)
+    ...(artifact.local.heldOutputFolder === true ||
+    artifact.local.heldInputFile === true
+      ? (["working-folder"] as const)
       : []),
   ];
 }

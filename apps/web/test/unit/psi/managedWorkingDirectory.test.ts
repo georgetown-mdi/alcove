@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
-  chooseManagedOutputDirectory,
-  outputDirectoryGrantSupported,
-  storedOutputDirectoryUsable,
-  writeResultsToOutputDirectory,
-} from "@psi/managed/managedOutputDirectory";
+  chooseManagedWorkingDirectory,
+  storedWorkingDirectoryUsable,
+  workingDirectoryGrantSupported,
+  writeResultsToWorkingDirectory,
+} from "@psi/managed/managedWorkingDirectory";
 
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
 
 /**
- * The output-folder grant's platform layer: what the grant asks for, what the
+ * The working-folder grant's platform layer: what the grant asks for, what the
  * runtime reports about being able to take one, and how each way a write into the
  * granted folder can go classifies. A real directory handle needs a picker grant
  * no Node project can summon, so the handle here is built to the two platform
@@ -101,18 +101,18 @@ afterEach(() => {
 
 describe("whether this runtime can take a folder grant", () => {
   test("says no where there is no directory picker, and yes where there is", () => {
-    expect(outputDirectoryGrantSupported()).toBe(false);
+    expect(workingDirectoryGrantSupported()).toBe(false);
     vi.stubGlobal("showDirectoryPicker", () => Promise.resolve({}));
-    expect(outputDirectoryGrantSupported()).toBe(true);
+    expect(workingDirectoryGrantSupported()).toBe(true);
   });
 
   test("holds a stored grant unusable where this engine has no directory handles", () => {
     const { handle } = fakeFolder();
-    expect(storedOutputDirectoryUsable(handle)).toBe(false);
+    expect(storedWorkingDirectoryUsable(handle)).toBe(false);
     vi.stubGlobal("FileSystemDirectoryHandle", class {});
-    expect(storedOutputDirectoryUsable(handle)).toBe(true);
+    expect(storedWorkingDirectoryUsable(handle)).toBe(true);
     // Both halves are required, so no grant is no grant either way.
-    expect(storedOutputDirectoryUsable(undefined)).toBe(false);
+    expect(storedWorkingDirectoryUsable(undefined)).toBe(false);
   });
 });
 
@@ -123,7 +123,7 @@ describe("asking the operator for a folder", () => {
       asked.push(options);
       return Promise.resolve({ name: "Riverbend results" });
     });
-    expect(await chooseManagedOutputDirectory()).toMatchObject({
+    expect(await chooseManagedWorkingDirectory()).toMatchObject({
       name: "Riverbend results",
     });
     expect(asked[0].mode).toBe("readwrite");
@@ -133,14 +133,14 @@ describe("asking the operator for a folder", () => {
     const dismissed = new Error("the operator closed it");
     dismissed.name = "AbortError";
     vi.stubGlobal("showDirectoryPicker", () => Promise.reject(dismissed));
-    expect(await chooseManagedOutputDirectory()).toBeUndefined();
+    expect(await chooseManagedWorkingDirectory()).toBeUndefined();
   });
 
   test("raises any other refusal, which is not the operator declining", async () => {
     vi.stubGlobal("showDirectoryPicker", () =>
       Promise.reject(new Error("no transient activation")),
     );
-    await expect(chooseManagedOutputDirectory()).rejects.toThrow(
+    await expect(chooseManagedWorkingDirectory()).rejects.toThrow(
       "no transient activation",
     );
   });
@@ -150,7 +150,7 @@ describe("writing a run's results into the granted folder", () => {
   test("writes the file and names where it went", async () => {
     const folder = fakeFolder();
     const permission = fakePermission("granted");
-    const delivery = await writeResultsToOutputDirectory(
+    const delivery = await writeResultsToWorkingDirectory(
       folder.handle,
       "alcove-results-2026-03-01.csv",
       new Blob([RESULTS_CSV]),
@@ -177,7 +177,7 @@ describe("writing a run's results into the granted folder", () => {
     for (const state of ["prompt", "denied"] as const) {
       const folder = fakeFolder();
       const permission = fakePermission(state);
-      const delivery = await writeResultsToOutputDirectory(
+      const delivery = await writeResultsToWorkingDirectory(
         folder.handle,
         "alcove-results-2026-03-01.csv",
         new Blob([RESULTS_CSV]),
@@ -192,7 +192,7 @@ describe("writing a run's results into the granted folder", () => {
 
   test("reports a write that threw, and leaves no stream open behind it", async () => {
     const folder = fakeFolder(new Error("the disk is full"));
-    const delivery = await writeResultsToOutputDirectory(
+    const delivery = await writeResultsToWorkingDirectory(
       folder.handle,
       "alcove-results-2026-03-01.csv",
       new Blob([RESULTS_CSV]),
@@ -206,7 +206,7 @@ describe("writing a run's results into the granted folder", () => {
 
   test("removes the empty entry a failed write created", async () => {
     const folder = fakeFolder(new Error("the disk is full"));
-    await writeResultsToOutputDirectory(
+    await writeResultsToWorkingDirectory(
       folder.handle,
       "alcove-results-2026-03-01.csv",
       new Blob([RESULTS_CSV]),
@@ -228,7 +228,7 @@ describe("writing a run's results into the granted folder", () => {
           : folder.handle.removeEntry(fileName),
     } as unknown as FileSystemDirectoryHandle;
 
-    await writeResultsToOutputDirectory(
+    await writeResultsToWorkingDirectory(
       lockedOnce,
       "alcove-results-2026-03-01.csv",
       new Blob([RESULTS_CSV]),
@@ -252,7 +252,7 @@ describe("writing a run's results into the granted folder", () => {
     } as unknown as FileSystemDirectoryHandle;
 
     await expect(
-      writeResultsToOutputDirectory(
+      writeResultsToWorkingDirectory(
         lockedThroughout,
         "alcove-results-2026-03-01.csv",
         new Blob([RESULTS_CSV]),
@@ -268,7 +268,7 @@ describe("writing a run's results into the granted folder", () => {
       "alcove-results-2026-03-01.csv",
       "last-quarter.csv",
     ]);
-    await writeResultsToOutputDirectory(
+    await writeResultsToWorkingDirectory(
       folder.handle,
       "alcove-results-2026-03-01.csv",
       new Blob([RESULTS_CSV]),
@@ -290,7 +290,7 @@ describe("writing a run's results into the granted folder", () => {
     } as unknown as FileSystemDirectoryHandle;
 
     await expect(
-      writeResultsToOutputDirectory(
+      writeResultsToWorkingDirectory(
         refusingRemoval,
         "alcove-results-2026-03-01.csv",
         new Blob([RESULTS_CSV]),
@@ -306,7 +306,7 @@ describe("writing a run's results into the granted folder", () => {
     } as unknown as FileSystemDirectoryHandle;
 
     await expect(
-      writeResultsToOutputDirectory(
+      writeResultsToWorkingDirectory(
         refusing,
         "alcove-results-2026-03-01.csv",
         new Blob([RESULTS_CSV]),

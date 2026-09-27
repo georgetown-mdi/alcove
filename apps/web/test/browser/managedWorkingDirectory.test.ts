@@ -11,22 +11,22 @@ import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
-  persistManagedExchangeOutputDirectory,
+  persistManagedExchangeWorkingDirectory,
 } from "@psi/managed/managedExchangeStore";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { runResultsFileName } from "@psi/parkedResults";
-import { writeResultsToOutputDirectory } from "@psi/managed/managedOutputDirectory";
+import { writeResultsToWorkingDirectory } from "@psi/managed/managedWorkingDirectory";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 import type { WebRTCExchangeLocator } from "@alcove/core";
 
-// The platform half of the output-folder grant, exercised against real Chromium:
+// The platform half of the working-folder grant, exercised against real Chromium:
 // a directory handle held on the record across a fresh read of the store (which
 // is what a grant surviving a reload rests on), and a real write into a real
 // directory. Origin-private-file-system directories stand in for a picker grant:
 // they are structured-cloneable and take the same getFileHandle/createWritable
 // calls, differing only in the permission extension, which is the injected
-// suite's (test/unit/psi/managedOutputDirectory.test.ts).
+// suite's (test/unit/psi/managedWorkingDirectory.test.ts).
 
 const webrtcLocator: WebRTCExchangeLocator = {
   channel: "webrtc",
@@ -91,42 +91,44 @@ afterEach(async () => {
     await root.removeEntry(name, { recursive: true }).catch(() => undefined);
 });
 
-describe("the output-folder grant on the stored record", () => {
+describe("the working-folder grant on the stored record", () => {
   test("is held across a fresh read of the store, which is what survives a reload", async () => {
     const folder = await trackedOpfsDirectory("results-granted");
     const created = await createManagedExchange(
-      newExchange({ outputDirectoryHandle: folder }),
+      newExchange({ workingDirectoryHandle: folder }),
     );
 
     const stored = await getManagedExchange(created.id);
-    expect(await stored?.outputDirectoryHandle?.isSameEntry(folder)).toBe(true);
-    expect(stored?.outputDirectoryHandle?.name).toBe("results-granted");
+    expect(await stored?.workingDirectoryHandle?.isSameEntry(folder)).toBe(
+      true,
+    );
+    expect(stored?.workingDirectoryHandle?.name).toBe("results-granted");
   });
 
   test("re-points to another folder, and a null returns runs to keeping results here", async () => {
     const first = await trackedOpfsDirectory("results-first");
     const created = await createManagedExchange(newExchange());
-    expect(created.outputDirectoryHandle).toBeUndefined();
+    expect(created.workingDirectoryHandle).toBeUndefined();
 
-    const granted = await persistManagedExchangeOutputDirectory(
+    const granted = await persistManagedExchangeWorkingDirectory(
       created.id,
       first,
     );
-    expect(await granted.outputDirectoryHandle?.isSameEntry(first)).toBe(true);
+    expect(await granted.workingDirectoryHandle?.isSameEntry(first)).toBe(true);
     // The grant advanced only itself: the secret and the document stand.
     expect(granted.sharedSecret).toBe(created.sharedSecret);
     expect(granted.exchangeFile).toEqual(created.exchangeFile);
 
     const second = await trackedOpfsDirectory("results-second");
-    await persistManagedExchangeOutputDirectory(created.id, second);
+    await persistManagedExchangeWorkingDirectory(created.id, second);
     const repointed = await getManagedExchange(created.id);
-    expect(await repointed?.outputDirectoryHandle?.isSameEntry(second)).toBe(
+    expect(await repointed?.workingDirectoryHandle?.isSameEntry(second)).toBe(
       true,
     );
 
-    await persistManagedExchangeOutputDirectory(created.id, null);
+    await persistManagedExchangeWorkingDirectory(created.id, null);
     expect(
-      (await getManagedExchange(created.id))?.outputDirectoryHandle,
+      (await getManagedExchange(created.id))?.workingDirectoryHandle,
     ).toBeUndefined();
   });
 });
@@ -136,7 +138,7 @@ describe("writing a run's results into a real granted folder", () => {
     const folder = await trackedOpfsDirectory("results-written");
     const csv = "id,county\nA-19,Riverbend\n";
 
-    const delivery = await writeResultsToOutputDirectory(
+    const delivery = await writeResultsToWorkingDirectory(
       folder,
       runResultsFileName(LABEL, FIRST_RUN),
       new Blob([csv], { type: "text/csv" }),
@@ -155,7 +157,7 @@ describe("writing a run's results into a real granted folder", () => {
   test("leaves successive runs' results beside each other rather than overwriting", async () => {
     const folder = await trackedOpfsDirectory("results-accumulating");
     for (const runAt of [FIRST_RUN, SECOND_RUN])
-      await writeResultsToOutputDirectory(
+      await writeResultsToWorkingDirectory(
         folder,
         runResultsFileName(LABEL, runAt),
         new Blob([`id\n${runAt}\n`], { type: "text/csv" }),
@@ -215,7 +217,7 @@ describe("a write into a real granted folder that fails", () => {
       const tag = partial === undefined ? "before-any-byte" : "mid-stream";
       const folder = await trackedOpfsDirectory(`results-failed-${tag}`);
 
-      const delivery = await writeResultsToOutputDirectory(
+      const delivery = await writeResultsToWorkingDirectory(
         refusingWriteFolder(folder, partial),
         runResultsFileName(LABEL, FIRST_RUN),
         new Blob(["id,county\nA-19,Riverbend\n"], { type: "text/csv" }),
@@ -235,7 +237,7 @@ describe("a write into a real granted folder that fails", () => {
     await opening.write(new Blob([earlier]));
     await opening.close();
 
-    const delivery = await writeResultsToOutputDirectory(
+    const delivery = await writeResultsToWorkingDirectory(
       refusingWriteFolder(folder, new Blob(["id,county\n"])),
       fileName,
       new Blob(["id,county\nA-19,Riverbend\n"], { type: "text/csv" }),

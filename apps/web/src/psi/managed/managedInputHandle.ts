@@ -1,14 +1,18 @@
 /**
- * The input-file handle lifecycle for a managed (recurring) exchange: the platform
- * layer the save flow, the runner, and the future management surfaces call to
- * persist a live pointer to the operator's input file, read the input through it at
- * each run start, check and request read permission where the platform offers it,
- * detect platform support, and re-point (replace) the handle. It is the pointer
- * side of the no-second-copy invariant: the record holds a `FileSystemFileHandle`,
- * never file content, and every run reads through the handle with `getFile()` at
- * run start rather than retaining a `File` across runs (see
- * docs/MANAGED_EXCHANGE.md, "The input file each run", and
- * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `inputFileHandle` row).
+ * The input side of a managed (recurring) exchange's working folder: the
+ * platform layer the runner, the run surface, and the schedule surface call to
+ * read a run's input by its one conventioned name, {@link MANAGED_INPUT_FILE_NAME},
+ * from the folder the operator granted, check and request permission where the
+ * platform offers it, and read the file's last-modified instant for display.
+ *
+ * The record holds a `FileSystemDirectoryHandle`, never file content, and every
+ * run resolves the name afresh through `getFileHandle` and reads it with
+ * `getFile()` at run start rather than retaining a `File` or a file handle
+ * across runs (see docs/MANAGED_EXCHANGE.md, "The input file each run", and
+ * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `workingDirectoryHandle` row). The
+ * app reads exactly that one name from the folder and never enumerates it; the
+ * results write beside it is {@link ./managedWorkingDirectory.ts}, and
+ * `unattendedRuntimeBoundaries.test.ts` holds both to that.
  *
  * The pure standing-terms guard and the input-rejection classification are in
  * {@link ./managedInputGuard.ts}; this module composes them with the platform reads
@@ -21,12 +25,8 @@
  * handle) do not. Reached through {@link browserHandlePermission}, which
  * feature-detects the methods and treats their absence as an already-usable grant;
  * {@link HandlePermissionQuery} stays injectable for tests that cannot summon
- * a real picker grant.
- *
- * That layer is the whole app's, not the input side's: it takes any
- * {@link FileSystemHandle} in either mode, so the output-folder grant a scheduled
- * run writes through ({@link ./managedOutputDirectory.ts}) applies the same
- * unattended rule -- query, never prompt -- rather than restating it.
+ * a real picker grant. It takes any {@link FileSystemHandle} in either mode, so
+ * the results write applies the same unattended rule -- query, never prompt.
  */
 
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
@@ -42,55 +42,53 @@ import type { ExchangeSpec } from "@alcove/core";
 
 import type { CSVParseRows } from "../workers/csvParseController";
 
-/**
- * Whether the File System Access API's file handles exist in this runtime, so a
- * managed exchange can persist a live pointer to the operator's input file
- * (Chromium) rather than re-selecting it each attended run (Safari, Firefox). A
- * `false` here is what routes the save flow to persist no handle and the runner to
- * re-selection; it never throws, so it is safe under SSR and on older engines.
- */
-export function fileSystemAccessSupported(): boolean {
-  return typeof globalThis.FileSystemFileHandle !== "undefined";
+/** The one name a run reads its input by, inside the exchange's working folder.
+ * It is the name the command-line export's emitted command reads
+ * ({@link ./managedCronExport.ts}, `CRON_EXPORT_INPUT_FILE_NAME`), so an exchange
+ * taken to the command line keeps the same folder layout. */
+export const MANAGED_INPUT_FILE_NAME = "input.csv";
+
+/** Raised when the working folder holds no file under
+ * {@link MANAGED_INPUT_FILE_NAME} at run start. Set as the `cause` of the benign
+ * {@link ManagedInputError} `"acquire"` rejection, holding the file name looked
+ * for and the folder's own name so the run surface can name both. */
+export class ManagedInputFileMissingError extends Error {
+  /** The name the run looked for. */
+  readonly fileName: string;
+  /** The working folder's own name, the leaf its handle reports. */
+  readonly folderName: string;
+  constructor(fileName: string, folderName: string, options?: ErrorOptions) {
+    super(`no ${fileName} in the folder ${folderName}`, options);
+    this.name = "ManagedInputFileMissingError";
+    this.fileName = fileName;
+    this.folderName = folderName;
+  }
 }
 
 /**
- * Whether a record's stored input-file pointer can actually be followed in this
- * runtime: a handle is held AND {@link fileSystemAccessSupported} says there is
- * an API to open it with. Both halves are required, so the run path and the
- * schedule surface decide it identically rather than each spelling the
- * conjunction out.
+ * Resolve {@link MANAGED_INPUT_FILE_NAME} in `directory` afresh and return the
+ * file handle it names: the one lookup the app makes in the folder. A folder
+ * holding no file under that name, or a folder under it, throws
+ * {@link ManagedInputFileMissingError}; any other refusal is rethrown as the
+ * platform raised it.
  */
-export function storedInputHandleUsable(
-  handle: FileSystemFileHandle | undefined,
-): boolean {
-  return handle !== undefined && fileSystemAccessSupported();
-}
-
-/** A selected file that MAY hold a File System Access handle. The console's file
- * intake (Mantine's Dropzone over `file-selector`) attaches a `handle` to a
- * dropped file in a secure context on Chromium; every other selection path (a
- * click-to-open input, a browser without the API) yields a plain `File` and no
- * handle. Declared locally because the DOM `File` lib does not type the
- * `file-selector` extension. */
-interface FileWithOptionalHandle {
-  handle?: FileSystemFileHandle;
-}
-
-/**
- * Read the File System Access handle a drop attached to `file`, or `undefined`
- * when the selection path did not yield one. On Chromium in a secure context,
- * `file-selector` calls `DataTransferItem.getAsFileSystemHandle()` on a drop and
- * attaches the handle to the `File`; a click-to-open selection and a browser
- * without the API leave it absent. Also gated on
- * {@link fileSystemAccessSupported}, so a foreign object holding a `handle`
- * property on a runtime without the API is not mistaken for a real handle.
- */
-export function capturedInputHandle(
-  file: File,
-): FileSystemFileHandle | undefined {
-  if (!fileSystemAccessSupported()) return undefined;
-  const handle = (file as File & FileWithOptionalHandle).handle;
-  return handle instanceof FileSystemFileHandle ? handle : undefined;
+async function inputFileHandleIn(
+  directory: FileSystemDirectoryHandle,
+): Promise<FileSystemFileHandle> {
+  try {
+    return await directory.getFileHandle(MANAGED_INPUT_FILE_NAME);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "NotFoundError" || error.name === "TypeMismatchError")
+    )
+      throw new ManagedInputFileMissingError(
+        MANAGED_INPUT_FILE_NAME,
+        directory.name,
+        { cause: error },
+      );
+    throw error;
+  }
 }
 
 /**
@@ -104,7 +102,7 @@ export function capturedInputHandle(
 export type HandlePermissionState = "granted" | "denied" | "prompt";
 
 /** What a handle is being used for: reading the input file, or writing a results
- * file into a granted output folder. The mode the grant is queried and requested
+ * file into the working folder. The mode the grant is queried and requested
  * under, and a `"read"` grant does not admit a write. */
 export type HandlePermissionMode = "read" | "readwrite";
 
@@ -214,7 +212,7 @@ export async function ensureHandlePermission(
     throw new HandlePermissionError(afterPrompt, mode);
 }
 
-/** A read input for one run: the `File` read through the handle at run start
+/** A read input for one run: the `File` read at run start
  * (never retained across runs), its parsed CSV rows, and its column names -- what
  * the column-shape guard and the exchange consume. The rows ride the same parse
  * that produced the columns, so a run reads and parses the input exactly once;
@@ -222,7 +220,7 @@ export async function ensureHandlePermission(
  * across runs (the no-second-copy invariant is about the record, which never
  * holds them). */
 interface AcquiredManagedInput {
-  /** The `File` read through the handle at THIS run start (a point-in-time
+  /** The `File` read at THIS run start (a point-in-time
    * reference; never persisted or retained across runs). */
   file: File;
   /** The read file's parsed CSV rows, from the same parse as {@link columns}, so
@@ -234,21 +232,24 @@ interface AcquiredManagedInput {
   columns: Array<string>;
 }
 
-/** How a run supplies its input file, per platform and path. `handle` reads through
- * a persisted `FileSystemFileHandle` (the unattended and one-action paths, and a
- * re-point); `file` takes an operator-selected `File` directly (the re-selection
- * path on a browser without the API). Exactly one is set. */
+/** How a run supplies its input file, per platform and path. `folder` reads
+ * {@link MANAGED_INPUT_FILE_NAME} from the exchange's persisted working folder
+ * (the unattended and one-action paths); `file` takes an operator-selected `File`
+ * directly (the re-selection path on a browser that cannot grant a folder).
+ * Exactly one is set. */
 export type ManagedInputSource =
   | {
-      /** Read through a persisted handle at run start (`getFile()` per run). */
-      kind: "handle";
-      handle: FileSystemFileHandle;
+      /** Read the input by its conventioned name from the working folder, the
+       * name resolved and the file read at run start. */
+      kind: "folder";
+      directory: FileSystemDirectoryHandle;
       /** The run's attendance, gating whether a gone permission may be re-prompted
        * (attended) or must fail benignly (unattended). */
       attendance: ManagedRunAttendance;
     }
   | {
-      /** An operator-selected file on a browser without the API (re-selection). */
+      /** An operator-selected file on a browser that cannot grant a folder
+       * (re-selection). */
       kind: "file";
       file: File;
     };
@@ -256,10 +257,11 @@ export type ManagedInputSource =
 /**
  * Read a run's input through its source and parse its column names, throwing a
  * benign {@link ManagedInputError} `"acquire"` rejection on any failure BEFORE
- * the column guard or any connection: a missing entry, a gone or refused read
- * permission, a file over the intake cap (`MAX_CSV_FILE_BYTES`), or an
- * unreadable file. The `File` is read at THIS run start and
- * never retained across runs. On the handle path, permission is secured first.
+ * the column guard or any connection: no file under the conventioned name
+ * ({@link ManagedInputFileMissingError}), a gone or refused read permission, a
+ * file over the intake cap (`MAX_CSV_FILE_BYTES`), or an unreadable file. The
+ * `File` is read at THIS run start and never retained across runs. On the folder
+ * path, permission is secured first.
  *
  * `csvDelimiter` is the field-delimiter choice the record stored for this
  * input; omit it to read by a comma, which is what a record storing none is read
@@ -276,16 +278,14 @@ export async function acquireManagedInput(
 ): Promise<AcquiredManagedInput> {
   let file: File;
   try {
-    if (source.kind === "handle") {
+    if (source.kind === "folder") {
       await ensureHandlePermission(
-        source.handle,
+        source.directory,
         source.attendance,
         "read",
         permission,
       );
-      // getFile() rejects on a missing entry, which is the clean not-found this
-      // benign input state rests on.
-      file = await source.handle.getFile();
+      file = await (await inputFileHandleIn(source.directory)).getFile();
     } else {
       file = source.file;
     }
@@ -293,7 +293,7 @@ export async function acquireManagedInput(
     throw new ManagedInputError({ reason: "acquire", cause });
   }
   // The intake cap every attended file selection applies, held here for the
-  // file a persisted handle or a re-selection hands the run.
+  // file the working folder or a re-selection hands the run.
   if (file.size > MAX_CSV_FILE_BYTES) {
     const maxMb = MAX_CSV_FILE_BYTES / 1024 ** 2;
     throw new ManagedInputError({
@@ -319,10 +319,11 @@ export async function acquireManagedInput(
 }
 
 /**
- * The last-modified instant of the file a persisted pointer names, in epoch
- * milliseconds, or `undefined` where this browser cannot read one: no standing
- * read grant (queried, never prompted -- a page being read is not a run), a
- * missing or unreadable entry, or a platform reporting no usable value.
+ * The last-modified instant of the file under {@link MANAGED_INPUT_FILE_NAME} in
+ * the working folder, in epoch milliseconds, or `undefined` where this browser
+ * cannot read one: no standing read grant (queried, never prompted -- a page
+ * being read is not a run), a missing or unreadable entry, or a platform
+ * reporting no usable value.
  *
  * It resolves rather than rejects on each of those, because what it feeds is a
  * display note beside the schedule: a file a run cannot read is that run's own
@@ -333,12 +334,14 @@ export async function acquireManagedInput(
  * no-second-copy invariant is untouched: the caller receives one number.
  */
 export async function readInputFileModifiedAt(
-  handle: FileSystemFileHandle,
+  directory: FileSystemDirectoryHandle,
   permission: HandlePermissionQuery = browserHandlePermission,
 ): Promise<number | undefined> {
   try {
-    await ensureHandlePermission(handle, "unattended", "read", permission);
-    const { lastModified } = await handle.getFile();
+    await ensureHandlePermission(directory, "unattended", "read", permission);
+    const { lastModified } = await (
+      await inputFileHandleIn(directory)
+    ).getFile();
     return Number.isFinite(lastModified) ? lastModified : undefined;
   } catch {
     return undefined;

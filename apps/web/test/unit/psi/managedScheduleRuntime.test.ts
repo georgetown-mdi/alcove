@@ -36,7 +36,7 @@ const log = getLogger("managedScheduleRuntime");
  * The driver itself is mocked (its own suite is managedRunDriver's), so this
  * asserts only the wiring choices that make a scheduled run the SAME run an
  * attended one is: the same entry point, the same fail-fast single-writer lock,
- * and the unattended read of the persisted handle.
+ * and the unattended read of the working folder.
  */
 
 // The real module is kept for its notice constant (the sink's whole decision is
@@ -75,7 +75,7 @@ const RECORD = {
   label: "Riverbend quarterly",
 } as RunnableManagedExchangeRecord;
 
-/** The granted output folder, as the run reaches it: a permission state it
+/** The granted working folder, as the results write reaches it: a permission state it
  * reports without prompting, and a write that either takes the bytes or throws.
  * A real directory handle needs a picker grant no unit project can summon, so
  * the handle is built to the two platform calls the delivery makes. */
@@ -108,7 +108,7 @@ function grantedFolder({
     record: {
       id: RECORD.id,
       label: RECORD.label,
-      outputDirectoryHandle: handle as unknown as FileSystemDirectoryHandle,
+      workingDirectoryHandle: handle as unknown as FileSystemDirectoryHandle,
     } as RunnableManagedExchangeRecord,
   };
 }
@@ -119,8 +119,8 @@ function attemptFor(record: RunnableManagedExchangeRecord) {
 }
 
 const SOURCE = {
-  kind: "handle" as const,
-  handle: {} as FileSystemFileHandle,
+  kind: "folder" as const,
+  directory: {} as FileSystemDirectoryHandle,
   attendance: "unattended" as const,
 };
 
@@ -487,7 +487,7 @@ describe("a result larger than this browser keeps", () => {
     });
     expect(tooLarge.fallback).toBeUndefined();
     expect(warn.mock.calls.at(-1)?.[0]).toContain(
-      "granting an output folder is what takes a result this size",
+      "granting a working folder is what takes a result this size",
     );
     warn.mockRestore();
   });

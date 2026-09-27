@@ -152,7 +152,7 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
   runStartedAtMs: number;
   /**
    * Acquire and validate the input file before any connection: read it
-   * through the persisted handle (or re-selected file), then reject a
+   * from the working folder (or take the re-selected file), then reject a
    * missing file, a gone permission, or a column shape the standing terms
    * cannot satisfy as a benign pre-run failure (`acquireValidatedManagedInput`
    * in {@link ./managedInputHandle.ts} raises a {@link ManagedInputError}).

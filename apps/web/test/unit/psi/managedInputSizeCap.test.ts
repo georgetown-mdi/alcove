@@ -32,17 +32,21 @@ function fileOfSize(size: number): File {
   return { size, name: "cohort.csv" } as File;
 }
 
-function handleTo(file: File): FileSystemFileHandle {
-  return { getFile: () => Promise.resolve(file) } as FileSystemFileHandle;
+function folderHolding(file: File): FileSystemDirectoryHandle {
+  return {
+    name: "work",
+    getFileHandle: () =>
+      Promise.resolve({ getFile: () => Promise.resolve(file) }),
+  } as unknown as FileSystemDirectoryHandle;
 }
 
 describe("a managed run's input over the intake cap", () => {
-  test("is refused through a persisted handle before it is parsed", async () => {
+  test("is refused from the working folder before it is parsed", async () => {
     parse.mockClear();
     const read = acquireManagedInput(
       {
-        kind: "handle",
-        handle: handleTo(fileOfSize(MAX_CSV_FILE_BYTES + 1)),
+        kind: "folder",
+        directory: folderHolding(fileOfSize(MAX_CSV_FILE_BYTES + 1)),
         attendance: "unattended",
       },
       granted,

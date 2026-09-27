@@ -10,11 +10,18 @@ import {
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  MANAGED_INPUT_FILE_NAME,
+  acquireManagedInput,
+  readInputFileModifiedAt,
+} from "@psi/managed/managedInputHandle";
+import {
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
+import { runResultsFileName } from "@psi/parkedResults";
 import { startManagedScheduleRuntime } from "@psi/managed/managedScheduleRuntime";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
+import { writeResultsToWorkingDirectory } from "@psi/managed/managedWorkingDirectory";
 
 import {
   createServiceWorkerHarness,
@@ -23,20 +30,32 @@ import {
 
 import type { ShellContainer, ShellWorker } from "@utils/appShellUpdate";
 
+import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
+
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedLocalState } from "@psi/managed/managedLocalStateShape";
 import type { ManagedScheduleTickSeams } from "@psi/managed/managedScheduleRunner";
 
 /**
- * The three runtime boundaries the unattended runner rests on, as checks rather
+ * The four runtime boundaries the unattended runner rests on, as checks rather
  * than as prose: an exchange is executed by the app runtime and by nothing else,
- * a scheduled run never applies a waiting app-shell update, and the folder the
+ * a scheduled run never applies a waiting app-shell update, the folder the
  * operator granted is written by the unattended run alone -- an attended run
- * hands its results to the operator who is there.
+ * hands its results to the operator who is there -- and the app reads exactly
+ * one conventioned name from that folder and never enumerates it.
  *
- * All three are claims about what does NOT happen, which is exactly the kind a
+ * All four are claims about what does NOT happen, which is exactly the kind a
  * comment cannot keep true (CONTRIBUTING.md, Code Conventions).
  */
+
+vi.mock("@psi/workers/csvParseController", () => ({
+  loadCSVFileOffMainThread: () =>
+    Promise.resolve({
+      data: [],
+      errors: [],
+      meta: { fields: ["ssn"], sanitizedColumnPositions: [] },
+    }),
+}));
 
 // ---------------------------------------------------------------------------
 // No exchange runs in the service worker.
@@ -153,7 +172,7 @@ function dueRecord(): ManagedExchangeRecord {
     }),
     side: "inviter",
     sharedSecret: generateSharedSecret(),
-    inputFileHandle: {} as FileSystemFileHandle,
+    workingDirectoryHandle: {} as FileSystemDirectoryHandle,
     schedule: {
       anchor: "2026-01-06T14:00:00.000Z",
       intervalDays: 7,
@@ -248,7 +267,7 @@ describe("a scheduled run and a waiting app-shell update", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The granted output folder is written by the unattended run alone.
+// The granted working folder is written by the unattended run alone.
 
 /** The app source tree, walked for what reaches the folder write. */
 const WEB_SOURCE_ROOT = new URL("../../../src/", import.meta.url);
@@ -282,8 +301,8 @@ describe("writing a run's results into the granted folder", () => {
     // takes the download, so no attended path may write into the folder.
     expect(
       modulesReaching(
-        "writeResultsToOutputDirectory",
-        "psi/managed/managedOutputDirectory.ts",
+        "writeResultsToWorkingDirectory",
+        "psi/managed/managedWorkingDirectory.ts",
       ),
     ).toEqual(["psi/managed/managedScheduleRuntime.ts"]);
   });
@@ -293,9 +312,194 @@ describe("writing a run's results into the granted folder", () => {
     // modules that legitimately reach the picker and the support check.
     expect(
       modulesReaching(
-        "managedOutputDirectory",
-        "psi/managed/managedOutputDirectory.ts",
+        "managedWorkingDirectory",
+        "psi/managed/managedWorkingDirectory.ts",
       ).length,
     ).toBeGreaterThan(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The working folder is read by one name and never enumerated.
+
+/** What the app may do with a working-folder handle: read its own name, look a
+ * file up by name -- the input read, the results write, and the check whether
+ * the write's own name is already held -- and remove the entry a failed write
+ * created. Anything else, and every way of iterating a folder, is off it. */
+const FOLDER_OPERATIONS_ALLOWED = new Set<PropertyKey>([
+  "name",
+  "getFileHandle",
+  "removeEntry",
+]);
+
+/** A permission layer granting everything, so the recorder below sees the folder
+ * operations alone rather than the permission extension's. */
+const grantedPermission: HandlePermissionQuery = {
+  query: () => Promise.resolve("granted"),
+  request: () => Promise.resolve("granted"),
+};
+
+/** A working folder holding `input.csv`, recording every property read off it
+ * and every name looked up in it. An iteration method, read or called, is
+ * recorded like any other access, so the check below catches it whether or not
+ * the fake implements it. `failWrite` makes the results stream refuse the bytes. */
+function recordingFolder(options: { failWrite?: boolean } = {}) {
+  const accessed: Array<PropertyKey> = [];
+  const lookups: Array<{ name: string; create: boolean }> = [];
+  const removed: Array<string> = [];
+  const held = new Set([MANAGED_INPUT_FILE_NAME]);
+  const target = {
+    name: "Riverbend exchange",
+    getFileHandle: (name: string, lookup?: { create?: boolean }) => {
+      const create = lookup?.create === true;
+      lookups.push({ name, create });
+      if (!held.has(name) && !create)
+        return Promise.reject(
+          new DOMException(
+            "A requested file could not be found",
+            "NotFoundError",
+          ),
+        );
+      held.add(name);
+      return Promise.resolve({
+        getFile: () => Promise.resolve(new File(["ssn\n"], name)),
+        createWritable: () =>
+          Promise.resolve({
+            write: () =>
+              options.failWrite === true
+                ? Promise.reject(new Error("the disk is full"))
+                : Promise.resolve(),
+            close: () => Promise.resolve(),
+            abort: () => Promise.resolve(),
+          }),
+      });
+    },
+    removeEntry: (name: string) => {
+      removed.push(name);
+      held.delete(name);
+      return Promise.resolve();
+    },
+    entries: () => [][Symbol.iterator](),
+    keys: () => [][Symbol.iterator](),
+    values: () => [][Symbol.iterator](),
+    [Symbol.asyncIterator]: () => [][Symbol.iterator](),
+  };
+  const handle = new Proxy(target, {
+    get(folder, property, receiver) {
+      accessed.push(property);
+      return Reflect.get(folder, property, receiver) as unknown;
+    },
+  }) as unknown as FileSystemDirectoryHandle;
+  return { handle, accessed, lookups, removed };
+}
+
+/** The accesses the recorder saw that the allowed set does not admit. */
+function disallowedAccesses(accessed: Array<PropertyKey>): Array<string> {
+  return accessed
+    .filter((property) => !FOLDER_OPERATIONS_ALLOWED.has(property))
+    .map(String);
+}
+
+/** Every call site in the app source that reaches into a folder's entries, as
+ * `module: method(arguments)`. */
+function folderEntryCalls(): Array<string> {
+  return webSourceFiles().flatMap((file) =>
+    [
+      ...readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8").matchAll(
+        /\.(getFileHandle|getDirectoryHandle|removeEntry)\(([^,)]*)/g,
+      ),
+    ].map((call) => `${file}: ${call[1]}(${call[2].trim()})`),
+  );
+}
+
+describe("the working folder", () => {
+  test("gives a run's input read exactly one lookup, of the conventioned name", async () => {
+    const folder = recordingFolder();
+    await acquireManagedInput(
+      { kind: "folder", directory: folder.handle, attendance: "unattended" },
+      grantedPermission,
+    );
+    await acquireManagedInput(
+      { kind: "folder", directory: folder.handle, attendance: "attended" },
+      grantedPermission,
+    );
+    await readInputFileModifiedAt(folder.handle, grantedPermission);
+
+    expect(folder.lookups).toEqual([
+      { name: MANAGED_INPUT_FILE_NAME, create: false },
+      { name: MANAGED_INPUT_FILE_NAME, create: false },
+      { name: MANAGED_INPUT_FILE_NAME, create: false },
+    ]);
+    expect(disallowedAccesses(folder.accessed)).toEqual([]);
+  });
+
+  test("gives the results write the one name it writes, and nothing else", async () => {
+    const fileName = runResultsFileName(
+      "Riverbend quarterly",
+      "2026-01-06T14:00:00.000Z",
+    );
+    const written = recordingFolder();
+    await writeResultsToWorkingDirectory(
+      written.handle,
+      fileName,
+      new Blob(["ssn\n"]),
+      grantedPermission,
+    );
+    expect(written.lookups.map((lookup) => lookup.name)).toEqual([
+      fileName,
+      fileName,
+    ]);
+    expect(disallowedAccesses(written.accessed)).toEqual([]);
+
+    // A failed write removes the entry it created, and only that one.
+    const failed = recordingFolder({ failWrite: true });
+    await writeResultsToWorkingDirectory(
+      failed.handle,
+      fileName,
+      new Blob(["ssn\n"]),
+      grantedPermission,
+    );
+    expect(failed.removed).toEqual([fileName]);
+    expect(disallowedAccesses(failed.accessed)).toEqual([]);
+  });
+
+  test("never has its input file's name taken by a results write", () => {
+    // The write creates the name it is handed; every name a run hands it is a
+    // results name, which cannot be the input's, whatever the label says.
+    for (const label of ["", "input", MANAGED_INPUT_FILE_NAME, "Riverbend"])
+      expect(runResultsFileName(label, "2026-01-06T14:00:00.000Z")).not.toBe(
+        MANAGED_INPUT_FILE_NAME,
+      );
+  });
+
+  test("is reached into from the input read and the results write alone", () => {
+    // The input read names the one conventioned constant; the results write names
+    // its own file. No module gets a directory handle's child folders, and no
+    // other module looks a name up at all.
+    expect(folderEntryCalls()).toEqual([
+      "psi/managed/managedInputHandle.ts: getFileHandle(MANAGED_INPUT_FILE_NAME)",
+      "psi/managed/managedWorkingDirectory.ts: getFileHandle(fileName)",
+      "psi/managed/managedWorkingDirectory.ts: removeEntry(fileName)",
+      "psi/managed/managedWorkingDirectory.ts: getFileHandle(fileName)",
+    ]);
+  });
+
+  test("is guarded by a check that would catch an enumeration", async () => {
+    // A guard nothing can fail asserts nothing: a read that walks the folder's
+    // entries, by method or by async iteration, is what the recorder exists to
+    // see.
+    const listed = recordingFolder();
+    const walked = listed.handle as unknown as {
+      values: () => Iterable<unknown>;
+    };
+    for (const entry of walked.values()) void entry;
+    expect(disallowedAccesses(listed.accessed)).toEqual(["values"]);
+
+    const iterated = recordingFolder();
+    const iterable = iterated.handle as unknown as AsyncIterable<unknown>;
+    for await (const entry of iterable) void entry;
+    expect(disallowedAccesses(iterated.accessed)).toContain(
+      "Symbol(Symbol.asyncIterator)",
+    );
   });
 });

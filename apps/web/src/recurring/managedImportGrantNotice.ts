@@ -1,18 +1,17 @@
 /**
- * What an import tells the operator about the device-local grants it could not
- * bring: the input file the exchange reads and the folder a scheduled run writes
- * its results to (see docs/MANAGED_EXCHANGE.md, "Eviction recovery is the import
- * flow").
+ * What an import tells the operator about the device-local grant it could not
+ * bring: the working folder the exchange reads its input from and writes a
+ * scheduled run's results into (see docs/MANAGED_EXCHANGE.md, "Eviction recovery
+ * is the import flow").
  *
- * Neither grant is in the artifact -- a File System Access handle belongs to the
- * browser profile that took it -- so a restored exchange holds neither until the
- * operator takes them again. Left unsaid, what reports it is a scheduled run: the
- * input side stops with a benign input failure, and the output side keeps its
- * results in the browser, both a whole window after the import that lost them. It
+ * The grant is not in the artifact -- a File System Access handle belongs to the
+ * browser profile that took it -- so a restored exchange holds none until the
+ * operator takes it again. Left unsaid, what reports it is a scheduled run, which
+ * cannot read its input a whole window after the import that lost the folder. It
  * is stated at the import instead, where the operator is standing and a click away
- * from the pickers.
+ * from the picker.
  *
- * Only grants the source record actually held are named. A record that never had a
+ * Only a grant the source record actually held is named. A record that never had a
  * folder grant has nothing for the operator to take again, and an exchange that ran
  * on a browser with no File System Access API had no handle to lose.
  */
@@ -32,23 +31,19 @@ export interface ManagedImportGrantNotice {
 
 /** How each grant is named to the operator. */
 const GRANT_NAME: Record<ManagedPlatformGrant, string> = {
-  "input-file": "input file",
-  "output-folder": "results folder",
+  "working-folder": "folder",
 };
 
-/** What a run with nobody present does without each grant. Stated per grant rather
- * than once for the pair, so an import missing only one does not describe the other. */
+/** What a run with nobody present does without each grant. */
 const GRANT_CONSEQUENCE: Record<ManagedPlatformGrant, string> = {
-  "input-file":
-    "Without an input file, a run that happens with nobody present stops.",
-  "output-folder":
-    "Without a results folder, a run that happens with nobody present keeps its results in the browser.",
+  "working-folder":
+    "Without its folder, a run that happens with nobody present cannot read its input and stops.",
 };
 
 /**
  * The notice for the grants an import did not bring, or `undefined` when it brought
  * everything its source had -- a revive in place, which keeps the record's own
- * handles, and an import of an exchange that held neither.
+ * handles, and an import of an exchange that held none.
  */
 export function managedImportGrantNotice(
   missingGrants: ReadonlyArray<ManagedPlatformGrant>,

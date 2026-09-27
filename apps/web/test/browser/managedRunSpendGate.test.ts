@@ -112,11 +112,11 @@ function newExchange(
   };
 }
 
-/** A handle the run surface accepts as this exchange's input pointer, so the run
- * button is live without a picker gesture the runner cannot make. */
-async function inputHandle(): Promise<FileSystemFileHandle> {
+/** A folder the run surface accepts as this exchange's working folder, so the
+ * run button is live without a picker gesture the runner cannot make. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return await root.getFileHandle("managed-input.csv", { create: true });
+  return await root.getDirectoryHandle("managed-folder", { create: true });
 }
 
 const app = createAppMount();
@@ -217,7 +217,7 @@ afterEach(async () => {
 describe("a hand-off across a run of the same exchange", () => {
   test("the command-line hand-off waits for the run, then refuses what it superseded", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const downloads = captureDownloads();
     try {
@@ -262,7 +262,7 @@ describe("a hand-off across a run of the same exchange", () => {
 
   test("a command-line download taken after the run confirms and spends", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const downloads = captureDownloads();
     try {
@@ -379,7 +379,7 @@ describe("a hand-off whose record is gone", () => {
 
   test("the command-line hand-off refuses the same way", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const downloads = captureDownloads();
     try {
@@ -461,7 +461,7 @@ describe("a confirmation clicked between two readings of the run lock", () => {
 
   test("the command-line confirmation re-reads the lock at the click and holds back", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const downloads = captureDownloads();
     let restorePoll: (() => void) | undefined;
@@ -510,7 +510,7 @@ describe("a confirmation the run lock refuses at the write", () => {
 
   test("the command-line confirmation spends nothing while a run holds the lock", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     const downloads = captureDownloads();
     let readings: { reveal: () => void; restore: () => void } | undefined;

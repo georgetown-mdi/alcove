@@ -3,7 +3,7 @@
  * origin-isolated by IndexedDB's same-origin model. A thin platform layer over
  * the pure record schema in {@link ./managedExchangeRecord.ts}: every record
  * written or read here is built or re-validated there. The whole exchange --
- * record, secret, input handle, output-folder grant, schedule, and run
+ * record, secret, working-folder grant, schedule, and run
  * bookkeeping -- is one object under one key, so a delete removes it entirely;
  * there is no separate secret-only retirement (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md).
@@ -22,15 +22,14 @@ import {
 import {
   applyManagedExchangeCommandLinePair,
   applyManagedExchangeCompromiseResponse,
-  applyManagedExchangeInputHandle,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
-  applyManagedExchangeOutputDirectory,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
   applyManagedExchangeScheduleAdvance,
   applyManagedExchangeStandingConditionCleared,
+  applyManagedExchangeWorkingDirectory,
   buildManagedExchangeRecord,
   clearHandedOffLastRun,
   diagnoseManagedExchangeRecord,
@@ -391,7 +390,7 @@ export type ManagedExchangeDiagnosticEntry =
  *
  * SECURITY: entries hold display essentials only (label, side, dates, key) plus
  * the sibling custody, which has no secret material and no rotation epoch; the
- * `sharedSecret`, the document, the input handle, and the backup marker's timestamp
+ * `sharedSecret`, the document, the folder handle, and the backup marker's timestamp
  * never leave the diagnostic extraction. Keyed off the store's own keys rather than
  * the parsed records, so an unreadable entry still yields a key to delete by.
  *
@@ -1296,46 +1295,20 @@ export async function persistManagedExchangeScheduleAdvance(
 }
 
 /**
- * Persist an input-file handle onto the stored record, or drop it with `null`,
- * advancing only `inputFileHandle` and nothing else. The read, the field-scoped
- * application through {@link applyManagedExchangeInputHandle} (which re-validates),
- * and the write-back run inside one strict-durability readwrite transaction
- * ({@link readModifyWriteRecord}), so it applies to the freshest stored record and
- * cannot reintroduce a stale secret or document over a concurrent rotation write.
- * Used by the save flow at save-as-recurring or first run, and to re-point a
- * handle after a missing-file failure.
- *
- * @throws {Error} if no record with `id` exists.
- * @throws {ZodError} if the stored value is not a valid v4 record or the result is
- *   invalid; the transaction aborts and nothing is written.
- */
-export async function persistManagedExchangeInputHandle(
-  id: string,
-  handle: FileSystemFileHandle | null,
-): Promise<ManagedExchangeRecord> {
-  return readModifyWriteRecord(id, (stored) => {
-    if (stored === undefined)
-      throw new Error(`no managed exchange with id ${id}`);
-    const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeInputHandle(existing, handle);
-  });
-}
-
-/**
- * Persist an output-folder grant onto the stored record, or drop it with `null`,
- * advancing only `outputDirectoryHandle` and nothing else. The read, the
- * field-scoped application through {@link applyManagedExchangeOutputDirectory}
+ * Persist a working-folder grant onto the stored record, or drop it with `null`,
+ * advancing only `workingDirectoryHandle` and nothing else. The read, the
+ * field-scoped application through {@link applyManagedExchangeWorkingDirectory}
  * (which re-validates), and the write-back run inside one strict-durability
  * readwrite transaction ({@link readModifyWriteRecord}), so the grant the operator
  * just took cannot carry a stale secret or document back over a concurrent
- * rotation write. Used where the operator grants or re-points the folder a
- * scheduled run writes its results into.
+ * rotation write. Used where the operator grants or re-points the folder a run
+ * reads its input from and a scheduled run writes its results into.
  *
  * @throws {Error} if no record with `id` exists.
  * @throws {ZodError} if the stored value is not a valid v4 record or the result is
  *   invalid; the transaction aborts and nothing is written.
  */
-export async function persistManagedExchangeOutputDirectory(
+export async function persistManagedExchangeWorkingDirectory(
   id: string,
   handle: FileSystemDirectoryHandle | null,
 ): Promise<ManagedExchangeRecord> {
@@ -1343,7 +1316,7 @@ export async function persistManagedExchangeOutputDirectory(
     if (stored === undefined)
       throw new Error(`no managed exchange with id ${id}`);
     const existing = parseManagedExchangeRecord(stored);
-    return applyManagedExchangeOutputDirectory(existing, handle);
+    return applyManagedExchangeWorkingDirectory(existing, handle);
   });
 }
 
@@ -1429,7 +1402,7 @@ export interface ManagedReviveOptions {
  *    operator chose the record, and the secret match confirms it.
  * 6. A match spent by the DEVICE MIGRATION is revived in place: the record's
  *    fields are updated from the artifact (keeping its own `id` and any
- *    persisted input handle or output-folder grant), its spent state cleared,
+ *    working-folder grant), its spent state cleared,
  *    and the backup and import markers stamped as of `at`. The update is
  *    re-validated through the record schema, so a malformed revive aborts the
  *    transaction and leaves the store untouched. A scoped revive reports a
@@ -1729,11 +1702,8 @@ async function reconcileImportedSecret(
           const revived = parseManagedExchangeRecord({
             ...reconstructed,
             id: match.id,
-            ...(match.inputFileHandle !== undefined
-              ? { inputFileHandle: match.inputFileHandle }
-              : {}),
-            ...(match.outputDirectoryHandle !== undefined
-              ? { outputDirectoryHandle: match.outputDirectoryHandle }
+            ...(match.workingDirectoryHandle !== undefined
+              ? { workingDirectoryHandle: match.workingDirectoryHandle }
               : {}),
           });
           records.put(revived);
@@ -1790,8 +1760,7 @@ function storedSharedSecret(raw: unknown): string | undefined {
 
 /**
  * Delete a managed exchange in one step, removing everything the browser holds
- * for it -- the record, the secret, the input-file handle, the output-folder
- * grant, the schedule, the run bookkeeping, the local sibling state (the backup
+ * for it -- the record, the secret, the working-folder grant, the schedule, the run bookkeeping, the local sibling state (the backup
  * marker and any spent state), its accounting of disclosures and the note of any
  * run that could not be filed into it, AND the results a scheduled run parked
  * for the operator -- so nothing is left behind. All of it is removed in one
