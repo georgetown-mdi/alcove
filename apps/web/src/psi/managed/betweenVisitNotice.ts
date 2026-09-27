@@ -32,13 +32,12 @@ import {
   REPEATED_MISS_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_SHORTFALL_FAILURE_TITLE,
-  TOO_LARGE_FAILURE_TITLE,
-  TOO_LARGE_FAILURE_TITLE_BY_OWNER,
   TOO_LARGE_REMEDY,
   TOO_LARGE_REMEDY_BY_OWNER,
   TOO_LARGE_SET_SOURCE_BY_OWNER,
   UNEXPLAINED_FAILURE_TITLE,
   repeatedMissCoordination,
+  tooLargeFailureTitle,
   tooLargeSetOverBound,
 } from "./managedFailureCopy";
 
@@ -100,7 +99,7 @@ export interface BetweenVisitNoticeInput {
  * completed-run, missed-window and skipped-window titles are this surface's own,
  * the next visit having no alert for any of them. */
 const NOTICE_TITLES: Record<
-  Exclude<BetweenVisitNoticeKind, "repeated-misses">,
+  Exclude<BetweenVisitNoticeKind, "repeated-misses" | "too-large">,
   string
 > = {
   backup: "A scheduled run finished; back up this exchange",
@@ -110,7 +109,6 @@ const NOTICE_TITLES: Record<
   input: INPUT_FAILURE_TITLE,
   "terms-shortfall": TERMS_SHORTFALL_FAILURE_TITLE,
   consent: CONSENT_FAILURE_TITLE,
-  "too-large": TOO_LARGE_FAILURE_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
 };
 
@@ -283,10 +281,7 @@ function failureNotice(
       `later window stops the same way.`;
     return {
       kind: "too-large",
-      title:
-        owner === undefined
-          ? NOTICE_TITLES["too-large"]
-          : TOO_LARGE_FAILURE_TITLE_BY_OWNER[owner],
+      title: tooLargeFailureTitle(owner, record.lastRun?.tooLargeBound),
       body:
         owner === undefined
           ? `${name} stopped because a set of values it had to send ` +

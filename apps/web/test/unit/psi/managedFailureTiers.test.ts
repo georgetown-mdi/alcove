@@ -705,7 +705,9 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     if (failure.kind === "handed-off")
       throw new Error("expected the too-large alert");
     expect(failure.kind).toBe("too-large");
-    expect(failure.title).toBe("Your file is too large for a browser exchange");
+    expect(failure.title).toBe(
+      "Your file has too many distinct values for one round of matching",
+    );
     expect(failure.message).toBe(distinctRefusal.message);
     expect(managedRunRetryable(failure)).toBe(false);
   });
@@ -815,7 +817,11 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   test("the next visit names asking the partner for the partner's set", () => {
     const failure = managedRunFailureFromRecord(
       record({
-        lastRun: { ...failed("too-large"), tooLargeSetOwner: "partner" },
+        lastRun: {
+          ...failed("too-large"),
+          tooLargeSetOwner: "partner",
+          tooLargeBound: "round-distinct-values",
+        },
       }),
       undefined,
       NOW,
@@ -823,7 +829,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     if (failure === undefined || failure.kind === "handed-off")
       throw new Error("expected the too-large alert");
     expect(failure.title).toBe(
-      "Your partner's file is too large for a browser exchange",
+      "Your partner's file has too many distinct values for one round of matching",
     );
     expect(failure.message).toContain("built from your partner's input file");
     expect(failure.message).toContain(

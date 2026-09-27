@@ -586,7 +586,7 @@ already defines:
   to send -- likewise blocks every later window, and for the same reason is never
   offered as retryable (see [What the setup consent covers across
   runs](#what-the-setup-consent-covers-across-runs)).
-- **This needs you: a file is too large for a browser exchange.** A set of
+- **This needs you: a file is too large to send.** A set of
   values the run had to send was over the bound one WebRTC message holds, or
   had more distinct values than one round holds, so the run refused to send
   it; the same files build the same set at every window, so it is never

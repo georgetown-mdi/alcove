@@ -23,6 +23,7 @@ import {
 } from "@psi/managed/managedFailureTiers";
 import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
 import { managedExchangeLapsed } from "@psi/managed/managedExpiry";
+import { tooLargeFileProblem } from "@psi/managed/managedFailureCopy";
 
 import { dateLabel, dateTimeLabel } from "@psi/formatting";
 
@@ -41,6 +42,7 @@ import type {
   ManagedExchangeRecord,
   ManagedExchangeSchedule,
   ManagedExchangeSide,
+  TooLargeBound,
   TooLargeSetOwner,
 } from "@psi/managed/managedExchangeRecord";
 import type {
@@ -143,11 +145,13 @@ const TOO_LARGE_ROW_REMEDY_BY_OWNER: Record<TooLargeSetOwner, string> = {
  * per-exchange surface the row opens. A benign tier is never treated as attack framing
  * here; the unexplained tier displays as "needs you to check with your partner", the
  * plain lead without the checklist. `at` is the last run's phrased instant;
- * `tooLargeSetOwner` names whose set a too-large run's was, when recorded. */
+ * `tooLargeSetOwner` and `tooLargeBound` name whose set a too-large run's was
+ * and the bound that refused it, when recorded. */
 function tierStatus(
   tier: ManagedFailureTier,
   at: string,
   tooLargeSetOwner: TooLargeSetOwner | undefined,
+  tooLargeBound: TooLargeBound | undefined,
 ): string {
   switch (tier) {
     case "expired":
@@ -160,10 +164,10 @@ function tierStatus(
       return `Last run stopped before sending (${at}); settle what it sends`;
     case "too-large":
       if (tooLargeSetOwner === undefined)
-        return `Last run stopped: a file is too large for a browser exchange (${at}); split the input`;
+        return `Last run stopped: a file ${tooLargeFileProblem(tooLargeBound)} (${at}); split the input`;
       return (
         `Last run stopped: ${tooLargeSetOwner === "local" ? "your" : "your partner's"} ` +
-        `file is too large for a browser exchange (${at}); ` +
+        `file ${tooLargeFileProblem(tooLargeBound)} (${at}); ` +
         TOO_LARGE_ROW_REMEDY_BY_OWNER[tooLargeSetOwner]
       );
     case "handed-off":
@@ -253,7 +257,12 @@ function lastRunStatus(
     record.lastRun !== undefined
       ? dateTimeLabel(new Date(record.lastRun.at))
       : "";
-  return tierStatus(tier, at, record.lastRun?.tooLargeSetOwner);
+  return tierStatus(
+    tier,
+    at,
+    record.lastRun?.tooLargeSetOwner,
+    record.lastRun?.tooLargeBound,
+  );
 }
 
 /** The backup state phrased for a row, from the record's local backup marker. A
