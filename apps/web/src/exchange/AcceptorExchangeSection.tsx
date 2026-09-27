@@ -151,7 +151,7 @@ export function AcceptorExchangeSection({
   // has no deadline and stays retryable.
   const expires = invitation.token.expires;
   const retryable =
-    failure?.category === "exchange" &&
+    failure?.retry === "offered" &&
     (expires === undefined || invitationUsable(expires, new Date()));
 
   // The section-level focus throughline. On mount the h1 is focused (this is the
@@ -219,10 +219,11 @@ export function AcceptorExchangeSection({
           )}
           {/* The acceptor cannot mint a fresh invitation, so the fresh-start
               recovery is a link to the quick path, where a new invitation is
-              pasted. Offered for a security failure, an expired invitation, and
-              a lapsed (non-retryable) exchange failure -- everything except a
-              config fault (which the acceptor fixes in place) and an output
-              fault (whose exchange already succeeded). */}
+              pasted. Offered for a security failure and an exchange failure
+              that withholds its retry (an expired invitation, an internal
+              fault) -- everything except a config fault (which the acceptor
+              fixes in place) and an output fault (whose exchange already
+              succeeded). */}
           {!retryable &&
             (failure.category === "security" ||
               failure.category === "exchange") && (

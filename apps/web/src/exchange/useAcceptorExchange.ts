@@ -287,7 +287,7 @@ async function resolveJobInputSource(
  * operator-authored connection off the console, so no host, credential, or
  * fingerprint transits the browser either.
  *
- * Try again (the retryable "exchange" category only) re-dials the same
+ * Try again (only where the failure's `retry` is offered) re-dials the same
  * invitation while it is still usable, exactly like the inviter's re-listen.
  */
 export function useAcceptorExchange({
@@ -638,7 +638,7 @@ export function useAcceptorExchange({
   // re-dialing a lapsed credential cannot succeed (no peer can pass it). A token
   // without an `expires` has no deadline, so it stays retryable.
   function tryAgain() {
-    if (launch === undefined || failure?.category !== "exchange") return;
+    if (launch === undefined || failure?.retry !== "offered") return;
     const expires = launch.invitation.token.expires;
     if (expires !== undefined && !invitationUsable(expires, new Date())) return;
     const retryLaunch = launch;

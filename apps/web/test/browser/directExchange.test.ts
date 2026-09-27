@@ -42,6 +42,7 @@ import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import { UNDESCRIBABLE_RECORD_LEAD } from "@exchange/RecordDownload";
+import { useDirectExchange } from "@exchange/useDirectExchange";
 
 import { CONTROLS_ONLY_HEADER_PROFILE } from "../utils/unnamedColumnProfiles";
 
@@ -1741,4 +1742,138 @@ describe("the re-attachment announcement", () => {
       );
     expect(region.element()).toBe(mounted);
   });
+});
+
+// A relayed internal fault and a tagged transport stall are both `exchange`
+// terminals whose message states its own step; only the CLI's `internalFault`
+// field separates them, and it alone decides whether a retry is offered.
+const INTERNAL_FAULT_TERMINAL = {
+  v: 1,
+  type: "error",
+  category: "exchange",
+  message:
+    "runKex: psk must be 32 bytes\nThis is a fault in Alcove itself: " +
+    "report it with this message; retrying will not help.",
+  recoveryHint: true,
+  internalFault: true,
+};
+
+const TAGGED_STALL_TERMINAL = {
+  v: 1,
+  type: "error",
+  category: "exchange",
+  message:
+    "the partner did not answer within 10m; confirm they started their " +
+    "half and run the exchange again",
+  recoveryHint: true,
+};
+
+describe("direct exchange retry on a relayed internal fault", () => {
+  test.each([
+    {
+      failure: "a relayed internal fault",
+      terminal: INTERNAL_FAULT_TERMINAL,
+      offersRetry: false,
+    },
+    {
+      failure: "a tagged transport stall",
+      terminal: TAGGED_STALL_TERMINAL,
+      offersRetry: true,
+    },
+  ])(
+    "$failure offers Try again: $offersRetry",
+    async ({ terminal, offersRetry }) => {
+      const api = stubJobApi({ sftp: CONFIGURED_SFTP, jobStatus: "failed" });
+      app.render(createElement(DirectExchangeScreen));
+      await reachConfirm();
+      await trustAffirmation().click();
+      await page.getByRole("button", { name: "Run the exchange" }).click();
+      await vi.waitFor(() =>
+        expect(
+          api.captured.some((r) => r.url === "/api/jobs/job-7/events"),
+        ).toBe(true),
+      );
+      api.emitEvent(terminal);
+      api.closeEvents();
+
+      const recovery = offersRetry ? "Try again" : "Start over";
+      await expect
+        .element(page.getByRole("button", { name: recovery }))
+        .toBeInTheDocument();
+      expect(
+        page.getByRole("button", { name: "Try again" }).elements(),
+      ).toHaveLength(offersRetry ? 1 : 0);
+    },
+  );
+
+  /** Drives the hook alone, with a retry control rendered whatever the failure
+   * says, so the hook's own guard is what a press meets. */
+  function RetryHarness() {
+    const { failure, start, tryAgain } = useDirectExchange({
+      channel: "sftp",
+      inputSource: { kind: "workFile", name: "clients.csv" },
+    });
+    return createElement(
+      "div",
+      null,
+      createElement("button", { type: "button", onClick: start }, "Run"),
+      createElement(
+        "button",
+        { type: "button", onClick: tryAgain },
+        "Retry regardless",
+      ),
+      createElement("output", null, failure?.retry ?? "none"),
+    );
+  }
+
+  test.each([
+    {
+      failure: "a relayed internal fault",
+      terminal: INTERNAL_FAULT_TERMINAL,
+      retries: false,
+    },
+    {
+      failure: "a tagged transport stall",
+      terminal: TAGGED_STALL_TERMINAL,
+      retries: true,
+    },
+  ])(
+    "on $failure the hook's retry guard lets a retry run: $retries",
+    async ({ terminal, retries }) => {
+      const api = stubJobApi({ sftp: CONFIGURED_SFTP, jobStatus: "failed" });
+      app.render(createElement(RetryHarness));
+      await page.getByRole("button", { name: "Run" }).click();
+      await vi.waitFor(() =>
+        expect(
+          api.captured.some((r) => r.url === "/api/jobs/job-7/events"),
+        ).toBe(true),
+      );
+      api.emitEvent(terminal);
+      api.closeEvents();
+      await expect
+        .element(page.getByRole("status"))
+        .toHaveTextContent(retries ? "offered" : "withheld");
+
+      await page.getByRole("button", { name: "Retry regardless" }).click();
+      const posts = () =>
+        api.captured.filter((r) => r.url === "/api/jobs" && r.method === "POST")
+          .length;
+      const deletes = () =>
+        api.captured.filter(
+          (r) => r.url === "/api/jobs/job-7" && r.method === "DELETE",
+        ).length;
+      if (retries) {
+        await vi.waitFor(() => expect(posts()).toBe(2));
+        expect(deletes()).toBe(1);
+      } else {
+        await flushPendingUpdates();
+        await flushPendingUpdates();
+        expect(posts()).toBe(1);
+        expect(deletes()).toBe(0);
+        await expect
+          .element(page.getByRole("status"))
+          .toHaveTextContent("withheld");
+      }
+    },
+  );
 });

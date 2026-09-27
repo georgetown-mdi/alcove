@@ -15,7 +15,12 @@ import type {
   ResolvedMatching,
 } from "@alcove/core";
 
-import { fixedNextStep, renderFailureForOperator } from "./util/exit";
+import {
+  exitCodeForError,
+  fixedNextStep,
+  INTERNAL_FAULT_EXIT_CODE,
+  renderFailureForOperator,
+} from "./util/exit";
 import { takeLogFileLossReport } from "./util/logging";
 
 const log = getLogger("event-stream");
@@ -280,6 +285,14 @@ export interface ErrorEvent extends EventBase {
    * assurance and nothing else.
    */
   recoveryHint?: true;
+  /**
+   * Present and `true` exactly when the command boundary exits this failure
+   * with {@link INTERNAL_FAULT_EXIT_CODE} (70), read off the same
+   * {@link exitCodeForError} classification: a fault in Alcove itself, which
+   * a retry reaches again. A supervisor offering a retry for the `exchange`
+   * category withholds it here. Omitted rather than emitted `false`.
+   */
+  internalFault?: true;
 }
 
 export type StreamEvent =
@@ -519,6 +532,9 @@ export function buildErrorEvent(error: unknown, phase: ErrorPhase): ErrorEvent {
     message: renderFailureForOperator(error),
     ...(errorStatesItsOwnNextStep(error) || fixedNextStep(error) !== undefined
       ? { recoveryHint: true as const }
+      : {}),
+    ...(exitCodeForError(error) === INTERNAL_FAULT_EXIT_CODE
+      ? { internalFault: true as const }
       : {}),
   };
 }

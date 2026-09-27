@@ -42,8 +42,8 @@ import type { RunOutputs } from "@psi/runOutputs";
  * back); the keep-open callout says so, and the peer-window callout adds that
  * both consoles must run their halves in the same window while still awaiting
  * the partner. A failed run shows the failure alert for its category: Try again
- * for a retryable transport fault, Start over for a terms mismatch or any other
- * non-retryable, non-output failure.
+ * where the failure offers a retry, Start over for a terms mismatch or any
+ * other non-retryable, non-output failure.
  */
 export function DirectRunSection({
   run,
@@ -97,10 +97,10 @@ export function DirectRunSection({
   );
   const recordConfirm = untakenRecordConfirm(recordOffer);
   const awaiting = awaitingPartner(run);
-  // A retryable failure is a transport/exchange fault; the terms mismatch is a
-  // config failure, which -- like a security failure -- is not retried as-is but
-  // sends the operator back to start over.
-  const retryable = failure?.category === "exchange";
+  // A retryable failure is a transport/exchange fault other than an internal
+  // fault; the terms mismatch is a config failure, which -- like a security
+  // failure -- is not retried as-is but sends the operator back to start over.
+  const retryable = failure?.retry === "offered";
   const offersStartOver =
     !retryable && failure !== undefined && failure.category !== "output";
 

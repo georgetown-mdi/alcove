@@ -319,6 +319,43 @@ function stubJobApi(options: StubOptions = {}): {
 
 const app = createAppMount();
 
+// A relayed internal fault and a tagged transport stall are both `exchange`
+// terminals whose message states its own step; only the CLI's `internalFault`
+// field separates them, and it alone decides whether a retry is offered.
+const INTERNAL_FAULT_TERMINAL = {
+  v: 1,
+  type: "error",
+  category: "exchange",
+  message:
+    "runKex: psk must be 32 bytes\nThis is a fault in Alcove itself: " +
+    "report it with this message; retrying will not help.",
+  recoveryHint: true,
+  internalFault: true,
+};
+
+const TAGGED_STALL_TERMINAL = {
+  v: 1,
+  type: "error",
+  category: "exchange",
+  message:
+    "the partner did not answer within 10m; confirm they started their " +
+    "half and run the exchange again",
+  recoveryHint: true,
+};
+
+const RETRY_CASES = [
+  {
+    failure: "a relayed internal fault",
+    terminal: INTERNAL_FAULT_TERMINAL,
+    offersRetry: false,
+  },
+  {
+    failure: "a tagged transport stall",
+    terminal: TAGGED_STALL_TERMINAL,
+    offersRetry: true,
+  },
+];
+
 afterEach(async () => {
   // The picker and coverage boundaries are fetch-driven, so a resolution can
   // otherwise land exactly at unmount.
@@ -1129,6 +1166,30 @@ describe("console inviter run teardown and abandonment", () => {
       ).toBe(true),
     );
   });
+
+  test.each(RETRY_CASES)(
+    "$failure offers Try again: $offersRetry",
+    async ({ terminal, offersRetry }) => {
+      const api = stubJobApi({
+        sftp: { configured: true, host: "dr.example.gov", port: 2222 },
+      });
+      app.render(createElement(InviterScreen));
+      await reachRunningRun(api);
+      api.setJobStatus("failed");
+      api.emitEvent(terminal);
+      api.closeEvents();
+
+      const recovery = offersRetry
+        ? "Try again"
+        : "Start over with a fresh invitation";
+      await expect
+        .element(page.getByRole("button", { name: recovery }))
+        .toBeInTheDocument();
+      expect(
+        page.getByRole("button", { name: "Try again" }).elements(),
+      ).toHaveLength(offersRetry ? 1 : 0);
+    },
+  );
 
   test("try again DELETEs the failed job before re-creating so the recreate is not 409'd", async () => {
     const api = stubJobApi({

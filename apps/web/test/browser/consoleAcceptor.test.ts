@@ -131,6 +131,43 @@ const WEBRTC_ENDPOINT: ConnectionEndpoint = {
 
 const app = createAppMount();
 
+// A relayed internal fault and a tagged transport stall are both `exchange`
+// terminals whose message states its own step; only the CLI's `internalFault`
+// field separates them, and it alone decides whether a retry is offered.
+const INTERNAL_FAULT_TERMINAL = {
+  v: 1,
+  type: "error",
+  category: "exchange",
+  message:
+    "runKex: psk must be 32 bytes\nThis is a fault in Alcove itself: " +
+    "report it with this message; retrying will not help.",
+  recoveryHint: true,
+  internalFault: true,
+};
+
+const TAGGED_STALL_TERMINAL = {
+  v: 1,
+  type: "error",
+  category: "exchange",
+  message:
+    "the partner did not answer within 10m; confirm they started their " +
+    "half and run the exchange again",
+  recoveryHint: true,
+};
+
+const RETRY_CASES = [
+  {
+    failure: "a relayed internal fault",
+    terminal: INTERNAL_FAULT_TERMINAL,
+    offersRetry: false,
+  },
+  {
+    failure: "a tagged transport stall",
+    terminal: TAGGED_STALL_TERMINAL,
+    offersRetry: true,
+  },
+];
+
 afterEach(async () => {
   // The invitation decode is async, so its state update can land at unmount.
   await flushPendingUpdates();
@@ -1080,6 +1117,32 @@ describe("console acceptor recoveries against the run's exchange record", () => 
       .element(page.getByRole("button", { name: "Try again" }))
       .toBeInTheDocument();
   }
+
+  test.each(RETRY_CASES)(
+    "$failure offers Try again: $offersRetry",
+    async ({ terminal, offersRetry }) => {
+      const api = stubServerJobAccept({ jobStatus: "failed" });
+      window.location.hash = await encodeToken(FILEDROP_ENDPOINT);
+      app.render(createElement(AcceptorScreen));
+      await reachAcceptStart();
+      await vi.waitFor(() => expect(api.hasEventStream()).toBe(true));
+      api.emitEvent(terminal);
+      api.closeEvents();
+
+      await expect
+        .element(
+          offersRetry
+            ? page.getByRole("button", { name: "Try again" })
+            : page.getByRole("link", {
+                name: "Start over with a fresh invitation",
+              }),
+        )
+        .toBeInTheDocument();
+      expect(
+        page.getByRole("button", { name: "Try again" }).elements(),
+      ).toHaveLength(offersRetry ? 1 : 0);
+    },
+  );
 
   test("offers the record the console holds and confirms before destroying it", async () => {
     const api = stubServerJobAccept({
