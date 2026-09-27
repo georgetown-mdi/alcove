@@ -5789,3 +5789,102 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     }
   },
 );
+
+describe("online accept runs its own pre-flight checks", () => {
+  test("validateAccept: online warns on a polling frequency below the flood threshold", async () => {
+    const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-accept-poll-"));
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(input, CPP_CSV);
+    const log = getLogger("accept-low-polling-frequency-test");
+    log.setLevel("silent");
+    const warnSpy = vi.spyOn(log, "warn");
+    try {
+      await validateAccept({
+        resolved: {
+          mode: "online",
+          url: new URL("sftp://host/drop"),
+          invitation: await encodeInvitation(sampleToken(FUTURE())),
+          input,
+        },
+        options: testOptions({
+          configFile: path.join(dir, "alcove.yaml"),
+          keyFile: path.join(dir, ".alcove.key"),
+          pollingFrequencyMs: 100,
+        }),
+        log,
+      });
+      expect(
+        warnSpy.mock.calls.some(
+          (c) =>
+            typeof c[0] === "string" &&
+            c[0].startsWith("--polling-frequency 100ms is below"),
+        ),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("validateAccept: online refuses a CSV that satisfies no linkage key, writing nothing", async () => {
+    const options = testOptions();
+    const input = writeInputCSV(["first_name"]);
+    try {
+      const raised = await validateAccept({
+        resolved: {
+          mode: "online",
+          url: new URL("sftp://host/drop"),
+          invitation: await encodeInvitation(sampleToken(FUTURE())),
+          input,
+        },
+        options,
+        log: silentLog,
+      }).then(
+        () => {
+          throw new Error("the acceptance should have been refused");
+        },
+        (reason: unknown) => reason,
+      );
+      expect(raised).toBeInstanceOf(UsageError);
+      expect(sanitizeErrorForDisplay(raised)).toContain(
+        "cannot satisfy every linkage key the invitation declares",
+      );
+      expect(fs.existsSync(options.configFile)).toBe(false);
+      expect(fs.existsSync(options.keyFile)).toBe(false);
+    } finally {
+      fs.rmSync(input, { force: true });
+    }
+  });
+});
+
+describe("handler: a completed acceptance restores the diagnostic sink", () => {
+  test("handler: the sink in place before the run is the sink after it", async () => {
+    const { dir, input, configFile, keyFile } = offlineAcceptFixture();
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const previousSink = getDiagnosticSink();
+    const sinkBefore: Parameters<typeof setDiagnosticSink>[0] = () => {};
+    setDiagnosticSink(sinkBefore);
+    try {
+      await acceptHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency B",
+        args: [await encodeInvitation(sampleToken(FUTURE())), input],
+        "consent-to-terms": true,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments);
+      expect(exit).not.toHaveBeenCalled();
+      expect(fs.existsSync(configFile)).toBe(true);
+      expect(getDiagnosticSink()).toBe(sinkBefore);
+    } finally {
+      setDiagnosticSink(previousSink);
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
