@@ -25,7 +25,7 @@ export type EndpointSourceConnectionConfig = Extract<
  * Placeholder host written into an SFTP connection block when no locator
  * seeds it. Obvious in a diff and fails loudly (rather than silently
  * connecting somewhere) if run before editing -- not a valid hostname.
- * Shared by the CLI's `connectionFromEndpoint` and the web mint layer so
+ * Every producer of an SFTP connection block seeds this same value, so
  * the "fill this in" marker is identical wherever the config was minted.
  */
 export const PLACEHOLDER_SFTP_HOST = "REPLACE_WITH_SFTP_HOST";
@@ -34,8 +34,8 @@ export const PLACEHOLDER_SFTP_HOST = "REPLACE_WITH_SFTP_HOST";
  * Placeholder SSH username seeded onto an SFTP connection block. A
  * locator carries no credential (an endpoint has no credential field), so
  * an SFTP config minted from a locator marks the one identity field the
- * operator must supply with this placeholder. Shared by the CLI and the
- * web mint layer (see {@link PLACEHOLDER_SFTP_HOST}).
+ * operator must supply with this placeholder (see
+ * {@link PLACEHOLDER_SFTP_HOST}).
  */
 export const PLACEHOLDER_SSH_USERNAME = "REPLACE_WITH_SSH_USERNAME";
 

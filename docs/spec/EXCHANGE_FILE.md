@@ -110,8 +110,9 @@ obligation, not a property of the artifact.
   not a valid credential: `alcove exchange` refuses a configuration that still
   holds it as `connection.server.username` before it connects, naming the
   field, unless `--server-username` replaces it for the run. The same
-  constant is used by the CLI's `connectionFromEndpoint`, so the "fill this in"
-  marker is identical wherever a config was minted.
+  constant is used by the CLI's `connectionFromEndpoint` and by the template
+  `alcove init` writes, so the "fill this in" marker, and the refusal, are
+  identical wherever a config was minted.
 
 ## Writing a configuration back
 

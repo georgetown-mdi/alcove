@@ -49,6 +49,7 @@ import {
   EXPIRY_WARN_THRESHOLD_DIVISOR,
 } from "../../../src/commands/exchange";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
+import { renderConfigTemplate } from "../../../src/configTemplate";
 import { ttyStream, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
 import { ERROR_CLASS_EXIT_CODES } from "../../exitCodeCases";
@@ -340,6 +341,17 @@ test("loadConfig runs a placeholder username that --server-username replaces", (
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
   const result = loadConfig({ ...baseOptions(), serverUsername: "alice" });
   expect(result.connection.channel).toBe("sftp");
+});
+
+test("loadConfig refuses the SSH username placeholder an init template holds", () => {
+  fs.writeFileSync(
+    configFile,
+    renderConfigTemplate({ linkageTerms: getDefaultLinkageTerms("Org") }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  expect(() => loadConfig(baseOptions())).toThrow(
+    "still has the placeholder REPLACE_WITH_SSH_USERNAME as connection.server.username",
+  );
 });
 
 // --- happy path --------------------------------------------------------------
