@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { InternalConsistencyError } from "@alcove/core";
+
 import {
   RelayedSelfExplainingError,
   RelayedTerminalError,
@@ -203,5 +205,34 @@ describe("failureFor's retry disposition", () => {
     ["a failure raised in this browser", new Error("socket closed")],
   ])("offers the retry on %s", (_label, error) => {
     expect(failureFor("exchange", error).retry).toBe("offered");
+  });
+});
+
+describe("an internal fault raised in this browser withholds the retry", () => {
+  test.each<[string, Error]>([
+    [
+      "an untagged fault",
+      new InternalConsistencyError("partner indices disagree"),
+    ],
+    [
+      "the reply-cap fault, which states its own step",
+      Object.assign(
+        new InternalConsistencyError(
+          "reply exceeds the cap; report it with this message",
+        ),
+        { alcoveRecoveryHintEmitted: true },
+      ),
+    ],
+  ])("withholds the retry on %s", (_label, error) => {
+    expect(failureFor("exchange", error, undefined, "browser").retry).toBe(
+      "withheld",
+    );
+  });
+
+  test("offers the retry on a plain failure on the same channel", () => {
+    expect(
+      failureFor("exchange", new Error("socket closed"), undefined, "browser")
+        .retry,
+    ).toBe("offered");
   });
 });

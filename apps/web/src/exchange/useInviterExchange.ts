@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
+  InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   assertFirstRoundFitsWebRtcFrame,
   getLogger,
@@ -116,16 +117,18 @@ export type RetryDisposition = "offered" | "withheld";
 
 /**
  * Offered on the retryable `exchange` category only, and withheld there on an
- * internal fault the console relayed (docs/spec/CLI_EVENTS.md, "The
- * internal-fault code"): a fault in Alcove itself, which a retry re-runs the
- * whole exchange to reach again.
+ * internal fault (docs/spec/CLI_EVENTS.md, "The internal-fault code"), whether
+ * the console relayed it or core raised it in this tab on the browser channel:
+ * a fault in Alcove itself, which a retry re-runs the whole exchange to reach
+ * again.
  */
 function retryDispositionFor(
   category: ExchangeErrorCategory,
   error: unknown,
 ): RetryDisposition {
   const internalFault =
-    error instanceof RelayedTerminalError && error.internalFault;
+    error instanceof InternalConsistencyError ||
+    (error instanceof RelayedTerminalError && error.internalFault);
   return category === "exchange" && !internalFault ? "offered" : "withheld";
 }
 
