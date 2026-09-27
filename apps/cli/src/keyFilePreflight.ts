@@ -7,6 +7,7 @@ import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
+  UsageError,
 } from "@alcove/core";
 
 import { ownerOnlyTempPath } from "./fileUtils";
@@ -17,7 +18,7 @@ const FAILS_AFTER_KEY_EXCHANGE =
   "both parties would need to re-invite";
 
 /** Refuse a key path whose own name, or temp sibling `name`, is too long. */
-function nameTooLongError(keyFilePath: string, name: string): Error {
+function nameTooLongError(keyFilePath: string, name: string): UsageError {
   const which =
     name === keyFilePath
       ? messageWithOperatorText`its file name`
@@ -25,7 +26,7 @@ function nameTooLongError(keyFilePath: string, name: string): Error {
   const message = messageWithOperatorText`key file path ${operatorSuppliedText(
     keyFilePath,
   )} is too long: ${which} exceeds the filesystem's name limit (ENAMETOOLONG). Choose a shorter key file name before running the exchange; ${FAILS_AFTER_KEY_EXCHANGE}.`;
-  return keepOperatorSuppliedText(new Error(message.text), message);
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
 }
 
 /**
@@ -78,8 +79,8 @@ function keyFileIsMountPoint(keyFilePath: string): boolean {
  *
  * Returns the trimmed key-file path (leading/trailing whitespace removed,
  * without mutating the caller's value); the trimmed result is what the
- * caller must hand to {@link saveKeyFile}. Throws -- with the user-facing
- * error strings -- when:
+ * caller must hand to {@link saveKeyFile}. Throws a {@link UsageError} (exit
+ * 64) -- with the user-facing error strings -- when:
  *
  * - `keyFilePath` is missing or whitespace-only;
  * - the path already exists but is a directory or other non-regular node;
@@ -103,7 +104,7 @@ export function preflightKeyFilePath(
   // named " " in the current directory instead of failing clearly; trimming
   // matches what the caller must hand to saveKeyFile (see the JSDoc above).
   if (typeof keyFilePath !== "string" || keyFilePath.trim().length === 0)
-    throw new Error(
+    throw new UsageError(
       "the key file path is empty. Name the key file with --key-file " +
         `before running the exchange; ${FAILS_AFTER_KEY_EXCHANGE}.`,
     );
@@ -142,7 +143,7 @@ export function preflightKeyFilePath(
   // errno handling above and this "lstat returned a bad node" check as separate
   // concerns.
   if (targetStat && !targetStat.isFile() && !targetStat.isSymbolicLink())
-    throw new Error(
+    throw new UsageError(
       `key file path ${kfp} exists but is not a regular file (` +
         `${
           targetStat.isDirectory()
@@ -165,7 +166,7 @@ export function preflightKeyFilePath(
     // dangling symlink whose target cannot be created) is the real
     // misconfiguration and is reported with a clearer message.
     if ((err as NodeJS.ErrnoException).code !== "ENOENT")
-      throw new Error(
+      throw new UsageError(
         `key file parent directory ${parent} is not accessible: ` +
           (err instanceof Error ? err.message : String(err)) +
           ". Make the directory reachable, or choose a key file path " +
@@ -190,7 +191,7 @@ export function preflightKeyFilePath(
       } catch {
         /* lstat failure: parent truly absent; default message applies. */
       }
-      throw new Error(
+      throw new UsageError(
         `key file parent directory ${parent} cannot be created${hint}: ` +
           (createErr instanceof Error ? createErr.message : String(createErr)) +
           ". Create the directory, or choose a key file path in an existing " +
@@ -200,7 +201,7 @@ export function preflightKeyFilePath(
     }
   }
   if (!parentStat.isDirectory())
-    throw new Error(
+    throw new UsageError(
       `key file parent ${parent} exists but is not a directory. Choose a key ` +
         "file path inside a directory before running the exchange; " +
         `${FAILS_AFTER_KEY_EXCHANGE}.`,
@@ -259,7 +260,7 @@ export function preflightKeyFilePath(
       fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
     );
   } catch (err) {
-    throw new Error(
+    throw new UsageError(
       `key file parent directory ${parent} is not writable: ` +
         (err instanceof Error ? err.message : String(err)) +
         ". Restore write access -- the directory's owner as well as its " +
@@ -294,7 +295,7 @@ export function preflightKeyFilePath(
     try {
       parentReadFd = fs.openSync(parent, "r");
     } catch (err) {
-      throw new Error(
+      throw new UsageError(
         `key file parent directory ${parent} is not readable: ` +
           (err instanceof Error ? err.message : String(err)) +
           ". Restore read permission on the directory before running the " +
@@ -313,7 +314,7 @@ export function preflightKeyFilePath(
   // A bind mount of the key file alone passes every check above, but the
   // rename that saves the rotated key fails EBUSY on a mount point.
   if (targetStat !== undefined && keyFileIsMountPoint(kfp))
-    throw new Error(
+    throw new UsageError(
       `key file ${kfp} is a mount point of its own, and saving the rotated ` +
         "key renames a new file over it, which a mount point refuses. Mount " +
         "the directory that holds the key file instead, and name the file " +

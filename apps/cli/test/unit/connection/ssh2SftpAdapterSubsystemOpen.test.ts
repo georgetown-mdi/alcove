@@ -6,7 +6,7 @@
 import { EventEmitter } from "node:events";
 
 import { describe, expect, test, vi } from "vitest";
-import { TimeoutError } from "@alcove/core";
+import { TimeoutError, UsageError } from "@alcove/core";
 
 import { SSH2SFTPClientAdapter } from "../../../src/connection/ssh2SftpAdapter";
 import { SubsystemOpenTimeoutError } from "../../../src/connection/sftpSubsystemOpen";
@@ -137,8 +137,7 @@ describe("the dial's subsystem-open bound", () => {
       await assertion;
 
       // The operator hears it once, and at WARN: the socket this build could
-      // not close stays writable, and every later dial on this shared client
-      // waits behind it with no deadline of its own.
+      // not close is left to the operating system.
       expect(log.warn).toHaveBeenCalledTimes(1);
       expect(log.warn.mock.calls[0][0]).toContain(
         "not compatible with the installed SFTP library",
@@ -149,6 +148,51 @@ describe("the dial's subsystem-open bound", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("refuses the dial before dialing when this build cannot arm the bound", async () => {
+    const { client, connect } = stalledAtSubsystem();
+    (client.client as Record<string, unknown>).once = undefined;
+    const { adapter } = loggedAdapter();
+    installClient(adapter, client);
+
+    const error = await adapter
+      .connect({ ...dialOptions, maxReconnectAttempts: 3 })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(UsageError);
+    expect((error as Error).message).toContain(
+      "cannot put a deadline on the SFTP subsystem request",
+    );
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  test("refuses a connect when this build could not close a later abandoned dial", async () => {
+    const socket = { setKeepAlive: () => {} };
+    const rawClient = Object.assign(new EventEmitter(), {
+      setNoDelay: vi.fn(),
+      _sock: socket,
+    });
+    const connect = vi.fn().mockResolvedValue(undefined);
+    const { adapter, log } = loggedAdapter();
+    installClient(adapter, {
+      connect,
+      client: rawClient,
+      sftp: wrapperMethods(),
+    });
+
+    const error = await adapter
+      .connect({ ...dialOptions, maxReconnectAttempts: 3 })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(UsageError);
+    expect((error as Error).message).toContain(
+      "cannot close an SFTP connection from its own side",
+    );
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(
+      log.debug.mock.calls.map((call: unknown[]) => call[0]).join("\n"),
+    ).toContain("client._sock.destroy()");
   });
 
   test("retries a dial that fails with a timeout of another kind", async () => {

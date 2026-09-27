@@ -54,7 +54,11 @@ import { displayExchangeDisclosure } from "../exchangeDisclosure";
 import { confirmOutboundPayloadConsent } from "../outboundPayloadConsent";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import {
+  exitCodeForError,
+  exitWithError,
+  INTERNAL_FAULT_EXIT_CODE,
+} from "../util/exit";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging } from "../util/logging";
 import { loadInputRows } from "../onlineBootstrap";
@@ -1056,17 +1060,10 @@ export async function handler(argv: Arguments): Promise<void> {
     try {
       configResult = loadConfig(options);
     } catch (err) {
-      // A malformed or missing config/key file is a usage error (exit 64); the
-      // ENOENT arm keeps the missing-config case, which is tagged rather than a
-      // UsageError. Anything else (e.g. an unsupported channel) stays exit 69.
-      exitWithError(
-        log,
-        err,
-        err instanceof UsageError ||
-          (err as NodeJS.ErrnoException).code === "ENOENT"
-          ? 64
-          : 69,
-      );
+      // A missing, unreadable, or malformed config or key file is a usage
+      // error whatever it was raised as: nothing here touches a transport.
+      const code = exitCodeForError(err);
+      exitWithError(log, err, code === INTERNAL_FAULT_EXIT_CODE ? code : 64);
     }
     const { connection, authentication, ...exchangeDataSpec } = configResult;
 
@@ -1165,9 +1162,8 @@ export async function handler(argv: Arguments): Promise<void> {
         csvDelimiter,
       );
     } catch (err) {
-      // A usage error (exit 64) -- the `-`-at-an-interactive-terminal rejection
-      // openInputSource raises is a UsageError with no exitCode -- must map to
-      // 64, not collapse to 69; a missing input file has its own exitCode 69.
+      // A usage error -- the `-`-at-an-interactive-terminal rejection
+      // openInputSource raises -- exits 64, and a missing input file 66.
       exitWithError(log, err, exitCodeForError(err));
     }
 

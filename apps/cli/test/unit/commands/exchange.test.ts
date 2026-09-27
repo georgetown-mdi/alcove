@@ -4,7 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import yargs, { type Arguments } from "yargs";
 import YAML from "yaml";
-import { RoundSetLimitError, UsageError } from "@alcove/core";
+import {
+  InternalConsistencyError,
+  RoundSetLimitError,
+  UsageError,
+} from "@alcove/core";
 import {
   DEFAULT_LINKAGE_RULE_SET,
   assertFirstRoundFitsFileSyncFrame,
@@ -22,6 +26,7 @@ import type {
   LinkageTerms,
   PreparedExchange,
 } from "@alcove/core";
+import { configWithNamedRuleSetRules } from "../../../src/config";
 import {
   loadKeyFile,
   provisionKeyFileFromInvitation,
@@ -153,6 +158,17 @@ vi.mock("../../../src/outboundPayloadConsent", async (importActual) => {
   return {
     ...actual,
     confirmOutboundPayloadConsent: vi.fn(actual.confirmOutboundPayloadConsent),
+  };
+});
+
+// The named-rule-set expansion is the first call in loadConfig outside a catch
+// that rewraps it, so it is spy-WRAPPED to plant an error the configuration
+// boundary has to classify on its own.
+vi.mock("../../../src/config", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/config")>();
+  return {
+    ...actual,
+    configWithNamedRuleSetRules: vi.fn(actual.configWithNamedRuleSetRules),
   };
 });
 
@@ -1451,6 +1467,69 @@ test("handler: `-` input at an interactive terminal exits 64 (usage), not 69", a
     exitSpy.mockRestore();
   }
 });
+
+test("handler: an INPUT_FILE that does not exist exits 66, not 69", async () => {
+  // A scheduled run whose upstream extract has not landed yet: the command and
+  // its configuration are correct, so the code tells the supervisor to wait for
+  // the file rather than to fix the settings or to retry the transport.
+  fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const exitSpy = captureProcessExit();
+  try {
+    await expect(
+      handler({
+        _: [],
+        $0: "alcove",
+        input: path.join(dir, "not-yet-landed.csv"),
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:66");
+  } finally {
+    exitSpy.mockRestore();
+  }
+});
+
+test.each([
+  {
+    planted: "a plain Error",
+    code: 64,
+    plant: () => new Error("the configuration could not be expanded"),
+  },
+  {
+    planted: "an InternalConsistencyError",
+    code: 70,
+    plant: () => new InternalConsistencyError("two derivations disagreed"),
+  },
+])(
+  "handler: a configuration that cannot be loaded exits $code on $planted",
+  async ({ plant, code }) => {
+    // Loading the configuration touches no transport, so nothing it raises is
+    // a transport failure: only a fault in Alcove itself is not the operator's
+    // to fix.
+    fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+    saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+    vi.mocked(configWithNamedRuleSetRules).mockImplementationOnce(() => {
+      throw plant();
+    });
+    const exitSpy = captureProcessExit();
+    try {
+      await expect(
+        handler({
+          _: [],
+          $0: "alcove",
+          input: path.join(dir, "in.csv"),
+          "config-file": configFile,
+          "key-file": keyFile,
+          "log-level": "silent",
+        } as unknown as Arguments),
+      ).rejects.toThrow(`exit:${code}`);
+    } finally {
+      exitSpy.mockRestore();
+    }
+  },
+);
 
 // --- handler: token-expiry advisory emission (wiring) ------------------------
 // These drive the handler through to the post-exchange advisory block, with

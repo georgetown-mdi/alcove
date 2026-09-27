@@ -28,6 +28,7 @@ import {
   NAME_SHAPE_MESSAGE,
 } from "../../src/config/linkageTermsSchema";
 import { summarizeInvitation } from "../../src/consent/invitationSummary";
+import { UsageError } from "../../src/errors";
 import { NestingDepthExceededError } from "../../src/utils/camelizeKeys";
 import {
   describeDecodeError,
@@ -198,6 +199,17 @@ test("round-trips a token without expires", async () => {
   expect(decoded.expires).toBeUndefined();
   expect(decoded.linkageTerms.version).toBe("1.0.0");
   expect(decoded.linkageTerms.identity).toBe("Test Party");
+});
+
+test("refuses to encode a token whose expires has passed, as a usage error", async () => {
+  const token: InvitationToken = {
+    ...baseToken,
+    expires: "2020-01-01T00:00:00Z",
+  };
+  await expect(encodeInvitation(token)).rejects.toBeInstanceOf(UsageError);
+  await expect(encodeInvitation(token)).rejects.toThrow(
+    "invitation expires must be in the future",
+  );
 });
 
 test("round-trips a token with expires", async () => {
@@ -1927,7 +1939,7 @@ test.each([
   },
 );
 
-test("encodeInvitation rejects a token whose encoded output exceeds the maximum length", async () => {
+test("encodeInvitation rejects a token whose encoded output exceeds the maximum length, as a usage error naming the remedy", async () => {
   // Every field is within its per-field bound, but an unbounded exclude list
   // (bounded only by the encoded-length cap) inflates the token past the cap in
   // aggregate. encodeInvitation must refuse to produce a token it could not
@@ -1942,7 +1954,14 @@ test("encodeInvitation rejects a token whose encoded output exceeds the maximum 
       ],
     },
   };
-  await expect(encodeInvitation(token)).rejects.toThrow(/maximum length/);
+  const failure = encodeInvitation(token);
+  await expect(failure).rejects.toBeInstanceOf(UsageError);
+  await expect(failure).rejects.toThrow(
+    new RegExp(`over the maximum of ${MAX_ENCODED_INVITATION_LENGTH}`),
+  );
+  await expect(failure).rejects.toThrow(
+    /shorten the linkage terms, for example the exclude list/,
+  );
 });
 
 test("round-trips an endpoint host and path at exactly the maximum length", async () => {

@@ -2,7 +2,8 @@
 // that apply it: the classification a boundary reads when its errors vary,
 // plus five of the sysexits rungs docs/CLI.md's exit-code table lists -- 70
 // for an internal fault, 76 for a partner or terms refusal, 77 for an
-// authentication failure, and verify-receipt's 65 and 66 verdict codes. The
+// authentication failure, 66 for an input file that is not there, and
+// verify-receipt's 65 and 66 verdict codes. The
 // table's other rungs are declared where they are set.
 
 import {
@@ -169,6 +170,31 @@ export const RECEIPT_VERIFICATION_FAILED_EXIT_CODE = 65;
 export const RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE = 66;
 
 /**
+ * The process exit code for an input file the run reads that is not there:
+ * `EX_NOINPUT` (66). Held by {@link InputNotFoundError}.
+ *
+ * Not 64, because the command and its configuration are correct and the same
+ * run succeeds once the file lands, as a scheduled run whose upstream extract
+ * is late does; and not 69, because nothing about the transport is at fault
+ * and a retry before the file lands reaches the same refusal. The documented
+ * response is to retry once the file is in place, then alert (see
+ * docs/CLI.md, Exit codes).
+ */
+export const INPUT_NOT_FOUND_EXIT_CODE = 66;
+
+/**
+ * An input file named on the command line or in the configuration that does
+ * not exist. {@link exitCodeForError} maps it to
+ * {@link INPUT_NOT_FOUND_EXIT_CODE}.
+ */
+export class InputNotFoundError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "InputNotFoundError";
+  }
+}
+
+/**
  * The exit code for two verify-receipt verdicts one run reports: a failure
  * outranks an incomplete verdict, which outranks a verified one. Not a
  * numeric maximum, since the incomplete code is the larger number.
@@ -191,6 +217,7 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
  * {@link PARTNER_REFUSED_EXIT_CODE} (76) for a partner or terms refusal
  * ({@link isPartnerRefusal}), and {@link AUTHENTICATION_FAILED_EXIT_CODE} (77)
  * for an {@link AuthenticationError}, each bare or behind the same wraps,
+ * {@link INPUT_NOT_FOUND_EXIT_CODE} (66) for an {@link InputNotFoundError},
  * otherwise the error's own numeric `exitCode` when it has one, else
  * EX_UNAVAILABLE (69). The classification a boundary
  * reads when its errors vary; a boundary whose errors are all usage faults
@@ -204,13 +231,10 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
  * {@link AuthenticationError} and {@link ReceiptVerificationError}; every
  * other `security`-kind failure, and `transport` and `closed`, stay 69.
  *
- * The own-`exitCode` rung matters in both directions: `openInputSource`
- * throws a plain `Error` holding `exitCode`, so a missing input file keeps
- * its own code rather than collapsing to 69, and a run whose exchange
- * completed while its result file did not reach disk has
- * `PERSISTENCE_LOSS_EXIT_CODE` (73). The rung is typed rather than
- * `??`-defaulted so a non-numeric `exitCode` on some other object cannot reach
- * `process.exit`.
+ * The own-`exitCode` rung is what gives a run whose exchange completed while
+ * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The
+ * rung is typed rather than `??`-defaulted so a non-numeric `exitCode` on some
+ * other object cannot reach `process.exit`.
  */
 export function exitCodeForError(err: unknown): number {
   const unwrapped = firstLinkBehindTransportWraps(err);
@@ -220,6 +244,7 @@ export function exitCodeForError(err: unknown): number {
   if (isPartnerRefusal(unwrapped)) return PARTNER_REFUSED_EXIT_CODE;
   if (unwrapped instanceof AuthenticationError)
     return AUTHENTICATION_FAILED_EXIT_CODE;
+  if (unwrapped instanceof InputNotFoundError) return INPUT_NOT_FOUND_EXIT_CODE;
   const own = (err as { exitCode?: unknown } | null | undefined)?.exitCode;
   return typeof own === "number" ? own : 69;
 }
@@ -254,11 +279,12 @@ export function isPartnerRefusal(err: unknown): boolean {
  * links; `err` itself when it is not one. The message bridge
  * (`fromEventConnection`) wraps every send and poll failure that way, so a
  * {@link UsageError} the file-sync transport raised, an
- * {@link InternalConsistencyError}, a partner refusal, or an
- * {@link AuthenticationError}, reaches a command boundary behind it. Any
- * other kind ends the walk, so a `security` failure keeps its own code
- * whatever it wraps. A {@link PeerAbortError} is `transport`-kind but ends the
- * walk too: it is the failure itself, not a wrap.
+ * {@link InternalConsistencyError}, a partner refusal, an
+ * {@link AuthenticationError}, or an {@link InputNotFoundError} reaches a
+ * command boundary behind it. Any other kind ends the walk, so a `security`
+ * failure keeps its own code whatever it wraps. A {@link PeerAbortError} is
+ * `transport`-kind but ends the walk too: it is the failure itself, not a
+ * wrap.
  */
 export function firstLinkBehindTransportWraps(err: unknown): unknown {
   let link: unknown = err;

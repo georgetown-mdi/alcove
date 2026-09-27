@@ -16,6 +16,7 @@ import {
   PutOptions,
   PutSource,
   TransportOperationStalledError,
+  UsageError,
   getLogger,
   getLoggerForVerbosity,
   retryPromise,
@@ -103,7 +104,8 @@ import {
   sessionRecoveredEphemeralWarning,
   sessionRecoveredHeldWarning,
   transitionWaitExpiredError,
-  unboundedSubsystemOpenWarning,
+  unboundedSubsystemOpenError,
+  unclosableDialError,
   unreadableTransportLifecycleWarning,
 } from "./sftpAdapterWarnings";
 
@@ -394,10 +396,6 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // core logs at debug, and the connection that end() failed to close has already
   // been closed from this side by the time any caller can see it.
   private terminalClose: Promise<void> | undefined;
-  // Whether this adapter has already told the operator it cannot bound a dial's
-  // post-authentication phase. The condition is the installed SFTP library's, so
-  // one report per adapter says everything a second would.
-  private warnedUnboundedSubsystemOpen = false;
   // The tail of the session-transition queue. Every acquire chains onto it and
   // replaces it SYNCHRONOUSLY at the call, so transitions run in the order their
   // methods were called in and an inserted microtask cannot reorder them.
@@ -1069,7 +1067,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     if (this.session.keyboardInteractiveAttached) return;
     const client = (this.client as unknown as Ssh2SftpClientInternals).client;
     if (typeof client?.on !== "function")
-      throw new Error(
+      throw new UsageError(
         "keyboard-interactive authentication was requested " +
           "(connection.server.keyboard_interactive) but the underlying ssh2 " +
           "client does not expose on(); the installed ssh2 / ssh2-sftp-client " +
@@ -1617,6 +1615,9 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           // close, and a re-attempt mints a FRESH socket (measured: a re-dial 1 s
           // after the destroy, on a socket reading writable again).
           if (this.session.isClosing) return false;
+          // A usage fault, the installed library's or the configuration's, is
+          // decided before anything reaches the server.
+          if (err instanceof UsageError) return false;
           // A subsystem-open deadline is terminal: the server took the whole
           // per-attempt budget on a connection it had already authenticated, and
           // a re-attempt puts the same request to the same server for the rest
@@ -1727,7 +1728,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // the retry budget with no chance of self-resolving.
     const { sftp } = internals;
     if (!sftp)
-      throw new Error(
+      throw new UsageError(
         "ssh2-sftp-client 'sftp' session property is not available " +
           "after connect(); the installed version may no longer expose " +
           "it - check for breaking changes in the ssh2-sftp-client " +
@@ -1742,19 +1743,32 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // through to first use.
     for (const method of ["open", "close", "opendir", "readdir"] as const) {
       if (typeof sftp[method] !== "function")
-        throw new Error(
+        throw new UsageError(
           `ssh2-sftp-client internal SFTP session no longer exposes a ` +
             `callable '${method}()' after connect(); the installed version ` +
             `may have renamed or removed it - check for breaking changes in ` +
             `the ssh2-sftp-client changelog`,
         );
     }
+    // A later dial the server leaves unanswered at the subsystem request is
+    // bounded only if this side can close the connection beneath it; the socket
+    // those seams reach exists only once a dial has run, so they are read here.
+    const forcedClose = resolveForcedCloseSeams(internals);
+    if ("missing" in forcedClose) {
+      this.log.debug(
+        `closing an abandoned dial from this side drives ssh2's ` +
+          `${forcedClose.missing}, which is not available after connect(); ` +
+          `the installed ssh2 / ssh2-sftp-client version may have renamed, ` +
+          `relocated, or removed it`,
+      );
+      throw unclosableDialError();
+    }
     // The connection-per-poll idle release reaches past the public API for
     // internal properties of its own; verify them here on the same terms and for
     // the same reason, while the mode that drives them is the mode being
-    // connected. The default held-session mode reaches them only at teardown,
-    // where an unavailable property degrades to a warning, so it is not held to
-    // them at dial time.
+    // connected. The default held-session mode reaches the rest only at
+    // teardown, where an unavailable property degrades to a warning, so it is not
+    // held to them at dial time.
     if (this.ephemeralSessions) {
       const seams = resolveTransportCloseSeams(internals);
       if ("missing" in seams) {
@@ -1810,9 +1824,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       subsystemOpenTimeoutMs(connectOptions.readyTimeout),
     );
     if (watch === undefined) {
-      this.warnUnboundedSubsystemOpen();
-      await this.client.connect(connectOptions);
-      return;
+      this.log.debug(
+        `the phase after authentication is bounded by subscribing to ssh2's ` +
+          `'ready' through client.once() and client.removeListener(), which ` +
+          `are not both available on the installed ssh2 / ssh2-sftp-client ` +
+          `version`,
+      );
+      throw unboundedSubsystemOpenError();
     }
     try {
       await Promise.race([this.client.connect(connectOptions), watch.expired]);
@@ -1852,9 +1870,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       this.log.warn(
         `The SFTP server left this connection's SFTP subsystem request ` +
           `unanswered and this build could not close the connection from this ` +
-          `side, so it is left to the operating system: until that closes it, ` +
-          `a later dial on this connection waits behind it with no deadline. ` +
-          `Interrupt the command if it stops making progress. This build of ` +
+          `side, so it is left to the operating system. This build of ` +
           `Alcove is not compatible with the installed SFTP library; ` +
           `${REPORT_LIBRARY_INCOMPATIBILITY}.`,
       );
@@ -1892,19 +1908,6 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           `Interrupt the command if it stops making progress.`,
       );
     }
-  }
-
-  // Paced to once per adapter because the condition is the installed version's
-  // rather than any one dial's, exactly as the transport-lifecycle warning is.
-  private warnUnboundedSubsystemOpen(): void {
-    if (this.warnedUnboundedSubsystemOpen) return;
-    this.warnedUnboundedSubsystemOpen = true;
-    this.log.warn(unboundedSubsystemOpenWarning());
-    this.log.debug(
-      `the phase after authentication is bounded by subscribing to ssh2's ` +
-        `client.once('ready'), which is not available on the installed ssh2 / ` +
-        `ssh2-sftp-client version`,
-    );
   }
 
   // What the dial sequence hands its caller when the dial failed: the rejection
@@ -2089,11 +2092,9 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     outcome: { status: "failed"; error: unknown } | { status: "expired" },
   ): Promise<void> {
     const internals = this.client as unknown as Ssh2SftpClientInternals;
-    // Resolved HERE rather than at connect: the default held-session mode does not
-    // verify this property at dial time (see connect()), and failing a dial over a
-    // teardown-only mechanism would ground every default-mode exchange on an ssh2
-    // bump that costs it nothing. An unavailable property degrades to a warning
-    // and a bounded return instead.
+    // Resolved again here rather than trusted from connect(): a teardown must not
+    // throw, so a socket that no longer exposes the property degrades to a
+    // warning and a bounded return.
     const seam = resolveTerminalCloseSeam(internals);
     if ("missing" in seam) {
       this.log.warn(

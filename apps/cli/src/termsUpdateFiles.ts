@@ -80,8 +80,18 @@ export function readPartnershipConfig(configPath: string): ExchangeSpec {
       configPath,
       "." + ESTABLISHED_PARTNERSHIP_REMEDY,
     );
+  let source: string;
+  try {
+    source = fs.readFileSync(configPath, "utf8");
+  } catch (err) {
+    throw refusalAbout(
+      "config file ",
+      configPath,
+      ` could not be read: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   const parsed = parseSensitiveYaml(
-    fs.readFileSync(configPath, "utf8"),
+    source,
     messageWithOperatorText`config file ${operatorSuppliedText(configPath)}`,
   );
   try {

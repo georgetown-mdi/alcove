@@ -825,9 +825,12 @@ describe("ephemeral session mode (connection-per-poll)", () => {
       captureAdapterLog(adapter);
       installClient(adapter, client);
 
-      const dial = adapter.connect({ host: "h", maxReconnectAttempts: 2 });
-      await expect(dial).rejects.toThrow(
-        "which the installed SFTP library does not support",
+      const error = await adapter
+        .connect({ host: "h", maxReconnectAttempts: 2 })
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UsageError);
+      expect((error as Error).message).toContain(
+        "This build of Alcove is not compatible with",
       );
       // The call site itself is contributor-tier detail: logged at debug rather than
       // put on the operator's terminal.
@@ -838,12 +841,13 @@ describe("ephemeral session mode (connection-per-poll)", () => {
   );
 
   test("the default held-session mode is not held to the release's call sites", async () => {
-    // Nothing outside connection-per-poll mode drives any of them, so failing a
-    // held-session dial on a call site it never reaches would ground the whole SFTP
-    // channel on an upgrade that costs it nothing.
+    // Nothing outside connection-per-poll mode drives either of them, so failing
+    // a held-session dial on a call site it never reaches would ground the whole
+    // SFTP channel on an upgrade that costs it nothing. The socket's destroy() is
+    // not among them: every mode closes an abandoned dial through it.
     const { client, rawClient } = ephemeralClient(wrapperMethods());
     delete rawClient.end;
-    delete (rawClient._sock as Record<string, unknown>).destroy;
+    delete (rawClient._sock as Record<string, unknown>).writableEnded;
     const adapter = new SSH2SFTPClientAdapter();
     captureAdapterLog(adapter);
     installClient(adapter, client);

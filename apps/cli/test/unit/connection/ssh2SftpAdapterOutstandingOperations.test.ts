@@ -7,6 +7,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   TransportOperationStalledError,
   TransportPublishIndeterminateError,
+  UsageError,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
 
@@ -598,77 +599,35 @@ describe("an operation outstanding across a session transition", () => {
     expect(unreadableLifecycleWarnings(warn)).toHaveLength(1);
   });
 
-  test("a Client with no EventEmitter surface at all refuses the re-dial and leaves the operation its own loss", async () => {
-    // The whole surface gone, which is what relocating it actually looks like: the
-    // reading is unavailable AND so is the forced close the conservative branch
-    // falls through to. Both are reported, no dial is spent on a window nothing can
-    // see, and the operation fails with the session loss it already had rather than
-    // with a connect error of the recovery's making.
-    vi.useFakeTimers();
-    try {
-      const { client, connect, rawClient, socket, dropFromServer } =
-        tornOnEndClient(wrapperMethods());
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (rawClient as any).on = undefined;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (rawClient as any).once = undefined;
-      const warn = vi.fn();
-      const adapter = new SSH2SFTPClientAdapter();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).log = {
-        warn,
-        info: vi.fn(),
-        debug: vi.fn(),
-        trace: vi.fn(),
-        error: vi.fn(),
-      };
-      installClient(adapter, client);
+  test("a Client with no EventEmitter surface at all is refused at connect", async () => {
+    // The whole surface gone, which is what relocating it actually looks like:
+    // the subsystem-open bound cannot be armed, so the connect is refused before
+    // anything is dialed rather than run with nothing to end an unanswered
+    // subsystem request.
+    const { client, connect, rawClient } = tornOnEndClient(wrapperMethods());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rawClient as any).on = undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rawClient as any).once = undefined;
+    const adapter = new SSH2SFTPClientAdapter();
+    captureAdapterLog(adapter);
+    installClient(adapter, client);
 
-      await adapter.connect({ host: "h", maxReconnectAttempts: 1 });
-      const failing = adapter.exists("/r/x.json").catch((e: unknown) => e);
-      dropFromServer();
-      // Past the retirement's own bound and the whole dialing-retry budget, so
-      // what the recovery decided determines the outcome here, not a wait still
-      // outstanding.
-      await vi.advanceTimersByTimeAsync(10_000);
+    const error = await adapter
+      .connect({ host: "h", maxReconnectAttempts: 1 })
+      .catch((e: unknown) => e);
 
-      const error = await failing;
-      expect((error as { code?: unknown }).code).toBe("ERR_NOT_CONNECTED");
-      expect(connect).toHaveBeenCalledTimes(1);
-      expect(socket.destroy).not.toHaveBeenCalled();
-      // The re-dial was refused, and the session was lost regardless.
-      expect(adapter.midExchangeReconnectCount).toBe(1);
-      const messages = warn.mock.calls.map((call) => call[0] as string);
-      expect(unreadableLifecycleWarnings(warn)).toHaveLength(1);
-      expect(messages).toHaveLength(3);
-      // The same absent surface costs the dial its subsystem-open bound, which
-      // is reported where it is lost: at the connect, ahead of anything the
-      // recovery then reports.
-      expect(messages[0]).toContain(
-        "cannot put a deadline on the SFTP subsystem request",
-      );
-      expect(messages[2]).toContain("could not be re-opened");
-      // An unbounded phase and a lost reading each cost latency; only the
-      // refused re-dial costs the operation, so only it claims an incompatible
-      // library.
-      expect(messages[0]).toContain(
-        "does not fully support the installed SFTP library",
-      );
-      expect(messages[1]).toContain(
-        "does not fully support the installed SFTP library",
-      );
-      expect(messages[2]).toContain(
-        "not compatible with the installed SFTP library",
-      );
-      for (const message of messages) {
-        expect(message).toContain("'alcove --version'");
-        expect(message).toContain(
-          "https://github.com/georgetown-mdi/alcove/issues",
-        );
-      }
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(error).toBeInstanceOf(UsageError);
+    const message = (error as Error).message;
+    expect(message).toContain(
+      "cannot put a deadline on the SFTP subsystem request",
+    );
+    expect(message).toContain("not compatible with the installed SFTP library");
+    expect(message).toContain("'alcove --version'");
+    expect(message).toContain(
+      "https://github.com/georgetown-mdi/alcove/issues",
+    );
+    expect(connect).not.toHaveBeenCalled();
   });
 
   test("a drop that lands BEFORE the operation is issued still recovers on one re-dial", async () => {
