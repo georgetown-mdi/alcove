@@ -334,6 +334,39 @@ describe("failureFor", () => {
       );
       expect(failure.message).toContain("temporary connection problem");
     });
+
+    test("an untagged plain error keeps the fixed copy and the retry affordance", () => {
+      // Neither a relayed terminal nor a tagged recovery hint: this is the
+      // generic transport/exchange case, and the retry control in the
+      // sections is gated on its category, so both channels this browser
+      // runs must land here and not on the report-only arm above.
+      const untagged = new Error("the browser lost the socket");
+
+      const onDefault = failureFor("exchange", untagged);
+      expect(onDefault.category).toBe("exchange");
+      expect(onDefault.message).toBe(
+        "The exchange could not be completed - usually a temporary " +
+          "connection problem rather than an issue with your data.",
+      );
+      expect(onDefault.reportedCause).toBe(
+        sanitizeForDisplay("the browser lost the socket"),
+      );
+
+      const onFiledrop = failureFor(
+        "exchange",
+        untagged,
+        undefined,
+        "filedrop",
+      );
+      expect(onFiledrop.category).toBe("exchange");
+      expect(onFiledrop.message).toContain("shared folder");
+      expect(onFiledrop.message).toContain("syncing");
+      expect(onFiledrop.message).toContain("try again");
+      expect(onFiledrop.message).not.toContain("connection problem");
+      expect(onFiledrop.reportedCause).toBe(
+        sanitizeForDisplay("the browser lost the socket"),
+      );
+    });
   });
 
   test.each(["inviter", "acceptor"] as const)(
