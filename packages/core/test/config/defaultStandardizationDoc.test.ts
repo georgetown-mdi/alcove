@@ -7,7 +7,7 @@ import { parse as parseYaml } from "yaml";
 import { ALIAS_TYPE_META_MAP } from "../../src/config/metadata";
 import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
 import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
-import { runPipeline } from "../../src/standardization";
+import { runPipeline, suffixes, titles } from "../../src/standardization";
 import { SEMANTIC_TYPES } from "../../src/types";
 import { snakeizeKeys } from "../../src/utils/camelizeKeys";
 import {
@@ -92,7 +92,10 @@ function parseDocument() {
   const typeSections = new Map<string, TypeSection>();
   const aliasRows: string[][] = [];
   const parameterRows: string[][] = [];
+  const affixRows: string[][] = [];
+  const affixExamples: Array<{ input: string; result: string | null }> = [];
   let currentType: string | undefined;
+  let inAffixSection = false;
   let inFence = false;
   let fenceLanguage = "";
   let fenceBody: string[] = [];
@@ -124,12 +127,25 @@ function parseDocument() {
     if (typeHeading !== null) {
       currentType = typeHeading[1];
       typeSections.set(currentType, { stepsYaml: "", examples: [] });
+      inAffixSection = false;
       continue;
     }
     // Any other heading of the same or a higher level closes the type section.
     if (/^#{1,3} /.test(line)) currentType = undefined;
+    // The "Affix removal" subsection's own worked examples are their own
+    // bucket, not absorbed into whichever type section is still open: the
+    // rule it documents applies to first_name and last_name alike.
+    if (/^#+ /.test(line)) inAffixSection = /^#### Affix removal$/.test(line);
 
     if (/^\| Input \| Result \|/.test(line)) {
+      if (inAffixSection) {
+        for (const row of tableRows(i))
+          affixExamples.push({
+            input: jsonScalarCell(row[0]) ?? "",
+            result: jsonScalarCell(row[1]),
+          });
+        continue;
+      }
       const section = currentSection();
       if (section === undefined)
         throw new Error(
@@ -145,12 +161,23 @@ function parseDocument() {
     if (/^\| Semantic type \|/.test(line)) aliasRows.push(...tableRows(i));
     if (/^\| Parameter \| Value \|/.test(line))
       parameterRows.push(...tableRows(i));
+    if (/^\| List \| Words \|/.test(line)) affixRows.push(...tableRows(i));
   }
 
-  return { typeSections, aliasRows, parameterRows };
+  return { typeSections, aliasRows, parameterRows, affixRows, affixExamples };
 }
 
-const { typeSections, aliasRows, parameterRows } = parseDocument();
+const { typeSections, aliasRows, parameterRows, affixRows, affixExamples } =
+  parseDocument();
+
+// The Words cell is a plain comma-separated list (unlike the alias table's code
+// spans), in the order the doc lists them for reading.
+function affixWords(listName: string): string[] {
+  const row = affixRows.find((cells) => cells[0] === listName);
+  if (row === undefined)
+    throw new Error(`${DOC_RELATIVE_PATH}: no affix row for "${listName}"`);
+  return row[1].split(",").map((word) => word.trim());
+}
 
 // --- Registry side -----------------------------------------------------------
 
@@ -241,6 +268,32 @@ describe("DEFAULT_STANDARDIZATION.md inference table", () => {
           isPayload: unwrapCodeSpan(isPayload) === "true",
         });
     expect(Object.fromEntries(documented)).toEqual(ALIAS_TYPE_META_MAP);
+  });
+});
+
+describe("DEFAULT_STANDARDIZATION.md affix table", () => {
+  test("lists the titles removeAffixes strips", () => {
+    expect(affixWords("Titles")).toEqual(titles);
+  });
+
+  test("lists the suffixes removeAffixes strips", () => {
+    expect(affixWords("Suffixes")).toEqual(suffixes);
+  });
+
+  test("worked examples hold for both first_name and last_name", () => {
+    const firstNameSteps = defaultSteps.get("first_name")!;
+    const lastNameSteps = defaultSteps.get("last_name")!;
+    expect(affixExamples.length).toBeGreaterThan(0);
+    for (const { input, result } of affixExamples) {
+      expect(
+        runPipeline(input, firstNameSteps),
+        `first_name input ${JSON.stringify(input)}`,
+      ).toEqual(result);
+      expect(
+        runPipeline(input, lastNameSteps),
+        `last_name input ${JSON.stringify(input)}`,
+      ).toEqual(result);
+    }
   });
 });
 

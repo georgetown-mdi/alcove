@@ -1486,7 +1486,7 @@ Parameter names below are written in snake_case in YAML (e.g. `input_format`, `i
 | `to_upper_case` | Convert to uppercase | - |
 | `to_lower_case` | Convert to lowercase | - |
 | `remove_accents` | Remove accents and other diacritics, ASCII-ifying the text, and spell out the Latin letters that have no accent to strip (the [letter table](spec/DEFAULT_STANDARDIZATION.md#letter-table)); re-normalizes to NFC after the diacritic strip | - |
-| `remove_affixes` | Remove name titles (Mr., Dr., ...) (and suffixes (Jr., III, ...) | - |
+| `remove_affixes` | Remove name titles (Mr., Dr., ...) that lead the value and suffixes (Jr., III, ...) that end it, each only while another word remains; a title or suffix word elsewhere is kept, and runs of whitespace collapse to one space. The word lists: [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#affix-removal) | - |
 | `substring` | Extract a substring | `start` (integer, 1-indexed, required; negative counts from end), `length` (positive integer, required) |
 | `parse_date` | Reformat a date string | `input_format` (default `MM/DD/YYYY`), `output_format` (default `YYYYMMDD`), each at most 256 characters; an empty `output_format` is refused, since it would render every date to the empty string; tokens: `YYYY`, `YY`, `MM`, `DD` |
 | `pad_left` | Left-pad the value with a fill character up to a target length; pass-through if already at or above the length | `length` (positive integer, required; capped at 256 in a linkage key element's `transform`, uncapped in a `standardization` step), `char` (single character, default `"0"`) |

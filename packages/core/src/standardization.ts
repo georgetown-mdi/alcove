@@ -356,14 +356,24 @@ function removeAccents(s: string): string {
     .normalize("NFC");
 }
 
-const suffixes = [
+/**
+ * @internal exported so the doc-parity test can hold DEFAULT_STANDARDIZATION.md's
+ * Suffixes row to this exact list. Unescaped, for reading; {@link suffixWordPattern}
+ * escapes each entry's periods when building the regex.
+ */
+export const suffixes = [
   "esq",
   "esquire",
   "jr",
   "jnr",
+  "junior",
   "sr",
   "snr",
+  "senior",
   "2",
+  "2nd",
+  "3rd",
+  "4th",
   "ii",
   "iii",
   "iv",
@@ -376,46 +386,61 @@ const suffixes = [
   "d.c",
   "p.c",
   "ph.d",
-].map((x) => x.replace(/[.]/g, "\\."));
+];
 
-const suffixPattern = new RegExp(
-  `(?<=^|\\s)(${suffixes.join("|")})\\.?(?=$|\\s|[.,!])`,
-  "gi",
-);
-
-const titles = [
+/**
+ * @internal exported so the doc-parity test can hold DEFAULT_STANDARDIZATION.md's
+ * Titles row to this exact list.
+ */
+export const titles = [
   "dr",
   "miss",
   "mr",
   "mrs",
   "ms",
+  "mx",
   "prof",
+  "professor",
   "sir",
   "frau",
-  "herr",
   "hr",
   "monsieur",
-  "captain",
-  "doctor",
-  "judge",
-  "officer",
-  "professor",
   "ind",
   "misc",
-  "mx",
 ];
 
-const titlePattern = new RegExp(
-  `(?<=^|\\s)(${titles.join("|")})\\.?(?=$|\\s|[.,!])`,
-  "gi",
+const titleWordPattern = new RegExp(`^(?:${titles.join("|")})\\.?$`, "i");
+const titleGluedToWordPattern = new RegExp(
+  `^(?:${titles.join("|")})\\.(?=[\\p{L}\\p{N}])`,
+  "iu",
 );
+const suffixWordPattern = new RegExp(
+  `^(?:${suffixes.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\.?,?$`,
+  "i",
+);
+const wordCharacterPattern = /[\p{L}\p{N}]/u;
 
+// Titles strip only as leading words and suffixes only as trailing words,
+// each only while another word remains, so a field never empties (a lone
+// honorific is left for the pipeline's null_if step).
 function removeAffixes(s: string): string {
-  return s
-    .replaceAll(suffixPattern, "")
-    .replaceAll(titlePattern, "")
-    .replaceAll(/\s\s+/g, " ")
-    .trim();
+  const trimmed = s.trim();
+  if (trimmed === "") return trimmed;
+  const words = trimmed.split(/\s+/);
+  let wordCount = words.filter((w) => wordCharacterPattern.test(w)).length;
+  let start = 0;
+  let end = words.length;
+  while (wordCount >= 2 && titleWordPattern.test(words[start])) {
+    start += 1;
+    wordCount -= 1;
+  }
+  const glued = titleGluedToWordPattern.exec(words[start]);
+  if (glued !== null) words[start] = words[start].slice(glued[0].length);
+  while (wordCount >= 2 && suffixWordPattern.test(words[end - 1])) {
+    end -= 1;
+    wordCount -= 1;
+  }
+  return words.slice(start, end).join(" ");
 }
 
 /**
@@ -1148,7 +1173,8 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
   remove_affixes: {
     name: "remove_affixes",
     label: "Remove affixes",
-    blurb: "Remove name titles (Mr., Dr.) and suffixes (Jr., III).",
+    blurb:
+      "Remove name titles (Mr., Dr.) from the start and suffixes (Jr., III) from the end, keeping at least one word.",
     tier: "standard",
     params: noParams,
   },

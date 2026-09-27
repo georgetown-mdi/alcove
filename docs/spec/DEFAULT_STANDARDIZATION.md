@@ -217,10 +217,14 @@ steps:
   - function: filter_regex
     params:
       pattern: "[A-Z]"
+  - function: null_if
+    params:
+      values: ["MR", "MRS", "MS", "MX", "DR", "PROF"]
 ```
 
 Result: an uppercase ASCII value whose word separators are single spaces, with
-honorifics and generational suffixes removed, matching the
+leading honorifics and trailing generational and degree suffixes removed as
+[affix removal](#affix-removal) states, matching the
 `allowed_characters: "A-Z "` and `affixes_allowed: false` constraints the
 default name fields declare.
 
@@ -243,6 +247,9 @@ Order determines the meaning here:
   affix, and punctuation steps leave behind.
 - The closing `filter_regex` drops a value containing no letter at all, which is
   what removes a cell that cleaned to empty or to punctuation alone.
+- The trailing `null_if` drops a value that is only an honorific (`"Mr."`,
+  `"DR"`): `remove_affixes` never empties a field, so a cell holding a title
+  alone reaches this step intact.
 
 Digits are not punctuation and are not removed: a value containing one keeps
 it.
@@ -327,6 +334,9 @@ steps:
   - function: filter_regex
     params:
       pattern: "[A-Z]"
+  - function: null_if
+    params:
+      values: ["MR", "MRS", "MS", "MX", "DR", "PROF"]
 ```
 
 The `last_name` and `first_name` sequences are identical, step for step and
@@ -342,6 +352,49 @@ defaults: a change to one is not automatically a change to the other.
 | `"\u00d8stergaard"` | `"OSTERGAARD"` |
 | `"Gro\u00df"` | `"GROSS"` |
 | `"!!!"` | `null` |
+
+#### Affix removal
+
+`remove_affixes` strips a title or suffix only at an edge of the value, so a
+surname that is also an affix word is kept: `"Judge"` stays `"JUDGE"`,
+`"Van Der Herr"` stays `"VAN DER HERR"`, and `"Md Rahman"` stays
+`"MD RAHMAN"`. The rule, identical for both name fields:
+
+- The value is split into words at runs of whitespace, and the kept words are
+  rejoined with one space.
+- Titles are stripped only as one or more leading words, each followed by
+  another word. A title word may end in a period (`"Dr."`); a title joined to
+  the next word by a period (`"Dr.Smith"`) is stripped from that word.
+- Suffixes are stripped only as one or more trailing words, each preceded by
+  another word. A suffix word may end in a period, a comma, or both
+  (`"Jr.,"`); a comma ending the preceding word (`"Smith, Jr."`) is left to
+  `remove_punctuation`.
+- Titles are stripped before suffixes, and neither pass strips the last
+  remaining word, so affix removal never empties a field: `"Mr Iv"` becomes
+  `"IV"`. A value that is only an honorific is dropped by the pipeline's
+  trailing `null_if` instead.
+- Matching is case-insensitive.
+
+| List | Words |
+| ---- | ----- |
+| Titles | dr, miss, mr, mrs, ms, mx, prof, professor, sir, frau, hr, monsieur, ind, misc |
+| Suffixes | esq, esquire, jr, jnr, junior, sr, snr, senior, 2, 2nd, 3rd, 4th, ii, iii, iv, md, phd, j.d, ll.m, m.d, d.o, d.c, p.c, ph.d |
+
+Neither list holds a word common as a surname or given name on its own -- the
+occupational titles judge, doctor, officer, and captain, the title herr, the single-letter
+numerals i, v, and x, or the kinship and religious titles sister, brother, and
+father. A title or suffix word in the middle of the value is always kept.
+
+| Input | Result |
+| ----- | ------ |
+| `"Judge"` | `"JUDGE"` |
+| `"O'Judge"` | `"O JUDGE"` |
+| `"Judge-Smith"` | `"JUDGE SMITH"` |
+| `"Smith, Jr."` | `"SMITH"` |
+| `"Smith Jr III"` | `"SMITH"` |
+| `"Mr Smith Jr"` | `"SMITH"` |
+| `"Smith Ph.D."` | `"SMITH"` |
+| `"Mr"` | `null` |
 
 ### `date_of_birth`
 

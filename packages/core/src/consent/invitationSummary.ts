@@ -134,7 +134,7 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   remove_accents:
     "Strips accents and diacritics but keeps the base letter, and spells out letters such as sharp s and O-stroke in ASCII, before matching, so accented and unaccented spellings can match.",
   remove_affixes:
-    "Removes name titles and suffixes (Mr., Dr., Jr., III) before matching.",
+    "Removes name titles (Mr., Dr.) from the start and suffixes (Jr., III) from the end of the name before matching, always keeping at least one word.",
   substring:
     "Matches on only part of the value, not the whole value, so more values can match.",
   parse_date:
