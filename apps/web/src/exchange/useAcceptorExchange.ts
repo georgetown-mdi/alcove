@@ -453,6 +453,7 @@ export function useAcceptorExchange({
       });
       await assertFirstRoundFitsWebRtcFrame(prepared, {
         onProgress: onPsiProgress,
+        signal,
       });
       onStages(stagesFor(prepared, "acceptor"));
 

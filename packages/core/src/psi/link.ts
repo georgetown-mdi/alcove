@@ -259,6 +259,8 @@ export function removeDuplicatesAndUndefineds(
  *
  * Past `maxDistinctValues` distinct values it raises the round's own
  * {@link RoundSetLimitError}; tests lower the bound.
+ *
+ * @internal
  */
 export class RoundSetCounter {
   // Each value seen, against the one row holding it, or -1 once a second row

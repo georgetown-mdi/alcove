@@ -865,6 +865,7 @@ export function useInviterExchange({
       );
       await assertFirstRoundFitsWebRtcFrame(prepared, {
         onProgress: onPsiProgress,
+        signal,
       });
       onStages(stagesFor(prepared));
 

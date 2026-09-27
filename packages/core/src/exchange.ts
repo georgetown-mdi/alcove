@@ -1474,7 +1474,7 @@ export function prepareForExchange(
  * synced-folder counterpart.
  *
  * It counts the values the first cascade or count-only round sends under this
- * party's own within-round rule ({@link sentRoundSetSize}): every distinct
+ * party's own within-round rule ({@link RoundSetCounter}): every distinct
  * value when its terms set `deduplicate` on a cascade, else only the values
  * exactly one record holds. The count is taken in both PSI roles, since which
  * one this party plays is not yet known. It
@@ -1620,6 +1620,11 @@ export interface FirstRoundCheckOptions {
   maxFrameBytes?: number;
   /** The least time between two progress reports; lowered only by tests. */
   progressIntervalMs?: number;
+  /**
+   * Stops the count at its next yield to the event loop: the check rejects
+   * with `signal.reason` and reports nothing further, not even a settle.
+   */
+  signal?: AbortSignal;
 }
 
 // How often the count reads the clock, in records, and the least time between
@@ -1696,6 +1701,7 @@ async function assertFirstRoundFits(
     let size: number;
     try {
       await yieldToEventLoop();
+      options.signal?.throwIfAborted();
       let lastReportAt = performance.now();
       const counter = new RoundSetCounter(keepsDuplicates);
       const records = new StandardizedKeyIterable(
@@ -1729,10 +1735,13 @@ async function assertFirstRoundFits(
           // Dropped; the count continues and its settle report follows.
         }
         await yieldToEventLoop();
+        options.signal?.throwIfAborted();
         lastReportAt = performance.now();
       }
       size = counter.size;
     } catch (failure) {
+      if (options.signal?.aborted && failure === options.signal.reason)
+        throw failure;
       settled("failed", startedAt);
       if (failure instanceof UsageError) return failure;
       throw bound.uncounted(failure);

@@ -656,3 +656,28 @@ test("the first-round check refuses, with the failure as its cause, when the rec
   expect((refusal as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
   expect((refusal as Error).cause).toBe(failure);
 });
+
+test("an aborted first-round count rejects with the signal's reason and reports nothing further", async () => {
+  const rows = Array.from({ length: 5000 }, (_unused, i) => letters(i));
+  const controller = new AbortController();
+  const reports: Array<PsiProgress> = [];
+  const refusal = await refusalOf(
+    assertFirstRoundFitsWebRtcFrame(preparedWith(rows), {
+      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300)),
+      onProgress: (progress) => {
+        reports.push(progress);
+        if (progress.state === "progress") controller.abort();
+      },
+      progressIntervalMs: 0,
+      signal: controller.signal,
+    }),
+  );
+  expect(refusal).toBe(controller.signal.reason);
+  expect((refusal as Error).name).toBe("AbortError");
+  expect(reports.map(({ state, processed }) => ({ state, processed }))).toEqual(
+    [
+      { state: "started", processed: undefined },
+      { state: "progress", processed: 1024 },
+    ],
+  );
+});
