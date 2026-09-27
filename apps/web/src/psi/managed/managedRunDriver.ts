@@ -246,7 +246,7 @@ export function runManagedExchangeInBrowser(
           acquired.rows,
           acquired.columns,
         );
-        await assertFirstRoundFitsWebRtcFrame(prepared);
+        await assertFirstRoundFitsWebRtcFrame(prepared, { signal });
         return { prepared };
       },
       // Inside the lock: open the side-dispatched rendezvous, authenticate the
