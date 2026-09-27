@@ -40,196 +40,242 @@ import { fileURLToPath } from "node:url";
 /**
  * The checks `npm run check:all` runs, in order. `script` is a root
  * package.json script name; `description` states in one line what the check
- * holds.
+ * holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands before it
+ * is renewed or deleted, held by scripts/check-expiry-dates.mjs as on every
+ * entry in the two lists below.
  */
 export const CHECKS = [
   {
     script: "check:config-integrity",
+    expiresOn: "2026-12-31",
     description:
       "The configs the gates rest on still say what they are held to: every guarded tsconfig resolves with its strictness options over every source file in its workspace, and every vitest config declares the projects its suites run under.",
   },
   {
     script: "linkcheck",
+    expiresOn: "2026-12-31",
     description:
       "Every Markdown link target and heading anchor across the repository resolves.",
   },
   {
     script: "check:no-legacy-names",
+    expiresOn: "2026-12-31",
     description:
       "No tracked file or path holds the product's earlier name outside the reasoned allowlist; past its expiry date the check fails until it is deleted.",
   },
   {
     script: "check:contributing",
+    expiresOn: "2026-12-31",
     description:
       "CONTRIBUTING.md stays a quickstart: no heading outside its allowlist, no node_modules/ source path.",
   },
   {
     script: "check:claudemd-budget",
+    expiresOn: "2026-12-31",
     description:
       "CLAUDE.md stays under the byte budget every agent session pays to load it, so a new rule relocates its own weight.",
   },
   {
     script: "check:comment-narration",
+    expiresOn: "2026-12-31",
     description:
       "No comment line a change adds or modifies narrates how the repository changed rather than stating what the code does.",
   },
   {
     script: "check:command-inventory",
+    expiresOn: "2026-12-31",
     description:
       "Every CLI subcommand the parser registers is named in docs/DESIGN.md and docs/CLI.md.",
   },
   {
     script: "check:image-capabilities",
+    expiresOn: "2026-12-31",
     description:
       "Every Alcove argument vector the file-drop support scripts use has an image_smoke.yaml capability gate exercising it.",
   },
   {
     script: "check:enforcement-claims",
+    expiresOn: "2026-12-31",
     description:
       "Every enforcement claim in CLAUDE.md and the orchestration ruleset names a hook that exists, is registered, and matches the tool the rule is about, and every hook has a test.",
   },
   {
+    script: "check:expiry-dates",
+    expiresOn: "2027-06-30",
+    description:
+      "Every entry on these lists and every hook .claude/settings.json registers states an expiry date, and none has passed.",
+  },
+  {
     script: "check:rule-ledgers",
+    expiresOn: "2026-12-31",
     description:
       "CLAUDE.md and the orchestration ruleset share no enforcement claim and no heading, CLAUDE.md points at the ruleset once, and every front door loads it.",
   },
   {
     script: "check:egress-claims",
+    expiresOn: "2026-12-31",
     description:
       "No absolute URL literal in shipped source outside the reasoned allowlist, which is what PRIVACY.md's no-egress statement rests on.",
   },
   {
     script: "check:workflow-agent-models",
+    expiresOn: "2026-12-31",
     description:
       "Every agent() call in a committed Workflow script pins a literal model tier rather than inheriting the session model.",
   },
   {
     script: "check:workflow-args-resolve",
+    expiresOn: "2026-12-31",
     description:
       "Every committed Workflow script reads its arguments through resolveWorkflowArgs, which fails closed on a shape it cannot use.",
   },
   {
     script: "check:action-pin-drift",
+    expiresOn: "2026-12-31",
     description:
       "Every action pin in .github/actions is mirrored by one in .github/workflows, the path Dependabot is configured against.",
   },
   {
     script: "check:checkout-ref-override",
+    expiresOn: "2026-12-31",
     description:
       "No workflow triggered by a pull request hands actions/checkout a ref or sha, so a gate runs the head merged with the base tip.",
   },
   {
     script: "check:merge-gate-identities",
+    expiresOn: "2026-12-31",
     description:
       "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, and every workflow declaring a required job is on the list held filter-free. The branch-rule half needs a token and states a skip without one.",
   },
   {
     script: "check:dependabot-ignore-shape",
+    expiresOn: "2026-12-31",
     description:
       "Every github-actions pin under a within-major Dependabot ignore floats within its major, so the ignore does not freeze it.",
   },
   {
     script: "check:dependabot-pin-coverage",
+    expiresOn: "2026-12-31",
     description:
       "Every package with an upgrade checklist in docs/spec/DEPENDENCY_PINS.md is excluded from the batched npm Dependabot groups.",
   },
   {
     script: "check:brace-expansion-override",
+    expiresOn: "2026-12-31",
     description:
       "The root brace-expansion override still overrules a range the committed lockfile declares.",
   },
   {
     script: "check:crossws-sbom-block",
+    expiresOn: "2026-12-31",
     description:
       "The release SBOM's crossws workaround is still needed: the unflagged command docs/RELEASES.md documents still refuses.",
   },
   {
     script: "check:nested-root-package",
+    expiresOn: "2026-12-31",
     description:
       "No package the committed lockfile installs at the root is also installed under a workspace.",
   },
   {
     script: "check:routetree",
+    expiresOn: "2026-12-31",
     description:
       "The checked-in apps/web/src/routeTree.gen.ts matches what the pinned generator produces.",
   },
   {
     script: "check:web-config-native-load",
+    expiresOn: "2026-12-31",
     description:
       "apps/web/vite.config.ts and its import graph load under the strip-only type stripping Vite's native config loader and a plain node import use.",
   },
   {
     script: "check:web-config-image-load",
+    expiresOn: "2026-12-31",
     description:
       "apps/web/vite.config.ts loads from the file subset the Dockerfile builder stage copies, so the image build resolves no module the image does not have.",
   },
   {
     script: "check:nitro-websocket-unset",
+    expiresOn: "2026-12-31",
     description:
       "Nitro's experimental.websocket stays off, so nothing attaches a second upgrade listener beside the signaling route.",
   },
   {
     script: "check:core-barrel-wildcards",
+    expiresOn: "2026-12-31",
     description:
       "packages/core/src/main.ts publishes a named list, with no wildcard re-export putting a module's whole surface on the main entry.",
   },
   {
     script: "check:internal-fault-throws",
+    expiresOn: "2026-12-31",
     description:
       'No exhaustiveness branch or "internal error" guard in packages/core/src or apps/cli/src throws a plain Error, which the CLI would exit 69 rather than 70.',
   },
   {
     script: "check:warning-sources",
+    expiresOn: "2026-12-31",
     description:
       "The warning `source` values each stream emits are the set its spec publishes to a supervisor's author -- the CLI's in docs/spec/CLI_EVENTS.md, the console relay's synthesized notices in docs/spec/SERVER_JOB_API.md -- and no value is on both.",
   },
   {
     script: "check:vectors",
+    expiresOn: "2026-12-31",
     description:
       "Every known-answer vector under packages/core/test/vectors/ still reproduces from its generator.",
   },
   {
     script: "check:protocol-version-bump",
+    expiresOn: "2026-12-31",
     description:
       "A wire-format change from the first published release onward moves PROTOCOL_VERSION.",
   },
   {
     script: "check:exchange-record-version",
+    expiresOn: "2026-12-31",
     description:
       "EXCHANGE_RECORD_VERSION stands where the disclosure-accounting recovery was driven against it, and is the reset value at and above the release marker apps/cli/package.json states, not below.",
   },
   {
     script: "check:stun-default-claims",
+    expiresOn: "2026-12-31",
     description:
       "Every hand-written copy of the WebRTC library's built-in STUN default matches the one constant the CLI measures against the library.",
   },
   {
     script: "check:webrtc-provider-options-unread",
+    expiresOn: "2026-12-31",
     description:
       "No WebRTC transport or entry point on either side reads connection.provider_options, which the spec states is inert on that channel.",
   },
   {
     script: "check:run-failure-sink",
+    expiresOn: "2026-12-31",
     description:
       "Every render of a failed run's message or reported cause in apps/web/src goes through that piece's own sink, so no alert collapses a relayed cause chain onto one line.",
   },
   {
     script: "check:zero-setup-keys",
+    expiresOn: "2026-12-31",
     description:
       "Every built-in linkage key is built from the built-in field set, so a zero-setup exchange strands no party over a field its file lacks.",
   },
   {
     script: "check:built-in-set-versions",
+    expiresOn: "2026-12-31",
     description:
       "The built-in field set and key set match the pin recorded for the version each declares, cascade order included.",
   },
   {
     script: "check:release-signing",
+    expiresOn: "2026-12-31",
     description:
       "The cosign verify command docs/RELEASES.md publishes, the release workflow's self-verify step, and the publish sequence name one release identity.",
   },
   {
     script: "test:scripts",
+    expiresOn: "2026-12-31",
     description:
       "The vitest projects outside the workspaces: scripts/, .claude/scripts/, the hooks, and the harness.",
   },
@@ -242,26 +288,31 @@ export const CHECKS = [
 export const OUT_OF_CHECK_ALL = [
   {
     script: "check:pr-checklist",
+    expiresOn: "2026-12-31",
     reason:
       "Reads the pull request's body and head sha from the API, so it needs a token and a pull request. Run by pr_checklist.yaml.",
   },
   {
     script: "check:release-version",
+    expiresOn: "2026-12-31",
     reason:
       "Reads the version out of the pushed release tag the run was triggered by, which a plain checkout does not have. Run by release.yaml.",
   },
   {
     script: "check:prebuild-provenance",
+    expiresOn: "2026-12-31",
     reason:
       "Run by .github/actions/setup ahead of every install in every workflow, and reaches `gh attestation verify` and the network once arming is switched on.",
   },
   {
     script: "check:deploy-trigger-graph",
+    expiresOn: "2026-12-31",
     reason:
       "Reads the deployed import graph out of a full apps/web production build, minutes the merge path does not have. Run by eb_build_and_test.yaml, path-filtered to the changes that can move that graph.",
   },
   {
     script: "test:mutation",
+    expiresOn: "2026-12-31",
     reason:
       "A minutes-long corpus kept off the merge path by design: nightly_mutation.yaml runs it on a schedule and a manual dispatch, never on a push or a pull request.",
   },
@@ -276,6 +327,7 @@ export const OUT_OF_CHECK_ALL = [
 export const SEPARATE_WORKFLOW_STEPS = [
   {
     command: "npm run audit:production",
+    expiresOn: "2026-12-31",
     reason:
       "Reaches the npm registry's advisory endpoint, so it does not run from an offline checkout, and it runs last so an advisory standing open over the production tree does not mask the guards' results.",
   },

@@ -71,6 +71,9 @@ import { eventCwd, eventForTools } from "./lib/event.mjs";
 import { canonicalPath, nearestExistingDirectory } from "./lib/paths.mjs";
 import { owningWorktree, worktreeRecords } from "./lib/worktrees.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const GUARDED_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
 const PATH_KEYS = ["file_path", "notebook_path"];
 const OVERRIDE_SENTINEL = join(

@@ -59,6 +59,9 @@
 import { commandOf, eventForTools } from "./lib/event.mjs";
 import { tokenizeRaw } from "./lib/shell.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const MINIMUM_BLOCKED_SECONDS = 5;
 
 // The duration forms `sleep` itself accepts: a decimal number with an optional

@@ -77,6 +77,9 @@ import {
   worktreeRecords,
 } from "./lib/worktrees.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 // The directories a path is scratch for being under, in both spellings each has,
 // so a command naming the resolved form of a scratch root directly is read as
 // scratch too.

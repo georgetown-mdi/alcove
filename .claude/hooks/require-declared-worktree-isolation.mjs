@@ -26,6 +26,9 @@
 
 import { eventForTools } from "./lib/event.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 // Present-tense assertions that the agent's current working directory IS an
 // isolated worktree. Kept narrow: each targets a claim of STATE
 // ("you are in ...", "this/your worktree", "isolated worktree"), not an

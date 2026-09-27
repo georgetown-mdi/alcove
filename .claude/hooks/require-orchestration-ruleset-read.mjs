@@ -53,6 +53,9 @@ import {
   RULESET_PATH,
 } from "./lib/rulesetRead.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 // The ruleset beside this hook, so the refusal names a file that exists in the
 // checkout whose settings registered the hook rather than a path built from a
 // directory the payload may not carry.

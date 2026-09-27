@@ -39,6 +39,9 @@ import { join } from "node:path";
 
 import { eventForTools } from "./lib/event.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const TIERS = new Set(["opus", "sonnet", "haiku", "fable"]);
 
 // The subagent type whose model the platform discards; see the header's dated basis.

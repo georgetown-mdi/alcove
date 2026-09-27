@@ -35,6 +35,9 @@
 
 import { NOT_AN_EVENT, readEvent } from "./lib/event.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const OVERRIDE_MARKER = "[accept-model-drop]";
 const UNCONFIRMED =
   "could not confirm the message; TaskStop and make a fresh spawn instead";
