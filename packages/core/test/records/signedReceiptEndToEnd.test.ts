@@ -1996,10 +1996,18 @@ describe("partner terms holding a lone surrogate end the run before disclosure",
     );
     // The hostile party signs nothing: its own leg never reaches the swap, and
     // the identity it authored would not be one its certificate authorizes.
+    // Its terms are altered after prepare, which refuses them.
+    const hostilePrepared = prepared("Responder Co", both, serverRows);
     const hostile = runExchange(
       hostileSide.conn,
       "responder",
-      prepared(`Responder Co${LONE_SURROGATE}`, both, serverRows),
+      {
+        ...hostilePrepared,
+        linkageTerms: {
+          ...hostilePrepared.linkageTerms,
+          identity: `Responder Co${LONE_SURROGATE}`,
+        },
+      },
       { psiLibrary },
     ).catch((reason: unknown) => reason);
 

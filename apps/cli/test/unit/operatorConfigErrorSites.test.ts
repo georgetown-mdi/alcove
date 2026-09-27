@@ -184,6 +184,22 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "no value at all.",
   },
   {
+    file: "packages/core/src/exchange.ts",
+    anchor: "assertTermsPassPartnerParse",
+    raises: "OperatorConfigError",
+    interpolates: ["reason", "valueClause"],
+    provenance:
+      "`reason` is the first schema issue's path and message, and " +
+      "`valueClause` quotes the terms value at that path. This verdict rests " +
+      "on REACHABILITY: the refusal fires only on terms the linkage terms " +
+      "schema rejects, and terms adopted from a partner have already passed " +
+      "that schema -- an acceptor's derived terms at " +
+      "deriveAcceptedLinkageTerms (linkageTermsNegotiation.ts), a stored or " +
+      "loaded exchange file at ExchangeSpecSchema -- so what can fail here is " +
+      "a document this party built in code. A caller that passed " +
+      "partner-supplied terms here without that parse would defeat it.",
+  },
+  {
     file: "packages/core/src/linkageSatisfiability.ts",
     anchor: "assertStandardizationMatchesTerms",
     raises: "StandardizationTermsError",
