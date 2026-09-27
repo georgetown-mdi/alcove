@@ -1613,7 +1613,10 @@ export interface FirstRoundCheckOptions {
    * starts, as it goes, and as it settles, once for each role it counts in.
    * An input whose records cannot reach the bound is not counted, so it
    * reports nothing. Called as a {@link PsiProgressReporter} is: a raise on a
-   * `progress` report is dropped, and any other reaches the caller.
+   * `progress` report is dropped, and any other reaches the caller. The
+   * settle report's `elements` is the number of rows the count walked, not
+   * the dataset's row count, so it is short of the started report's
+   * `elements` when a deduplicating party's growing count stopped early.
    */
   onProgress?: PsiProgressReporter;
   /** The receiver's bound; lowered only by tests. */
@@ -1677,10 +1680,14 @@ async function assertFirstRoundFits(
   const report = options.onProgress;
   const progressIntervalMs =
     options.progressIntervalMs ?? FIRST_ROUND_COUNT_PROGRESS_MS;
-  const settled = (state: "finished" | "failed", startedAt: number): void =>
+  const settled = (
+    state: "finished" | "failed",
+    startedAt: number,
+    walked: number,
+  ): void =>
     report?.({
       operation: "countFirstRoundValues",
-      elements: rowCount,
+      elements: walked,
       state,
       durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
     });
@@ -1699,6 +1706,7 @@ async function assertFirstRoundFits(
     });
     const startedAt = performance.now();
     let size: number;
+    let row = 0;
     try {
       await yieldToEventLoop();
       options.signal?.throwIfAborted();
@@ -1712,7 +1720,6 @@ async function assertFirstRoundFits(
         0,
         false,
       );
-      let row = 0;
       for (const candidates of records) {
         counter.add(
           row,
@@ -1742,11 +1749,11 @@ async function assertFirstRoundFits(
     } catch (failure) {
       if (options.signal?.aborted && failure === options.signal.reason)
         throw failure;
-      settled("failed", startedAt);
+      settled("failed", startedAt, row);
       if (failure instanceof UsageError) return failure;
       throw bound.uncounted(failure);
     }
-    settled("finished", startedAt);
+    settled("finished", startedAt, row);
     return size;
   };
   const refusedInRole = (size: number | UsageError): boolean =>

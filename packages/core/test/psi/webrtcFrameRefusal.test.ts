@@ -350,6 +350,13 @@ test("a deduplicating party's count stops once its set is over the bound", async
     "started",
     "finished",
   ]);
+  // The settle reports carry the rows the count actually walked (1024, the
+  // first clock check past the bound), not the dataset's full row count.
+  expect(
+    reports
+      .filter((report) => report.state === "finished")
+      .map((report) => report.elements),
+  ).toEqual([1024, 1024]);
 });
 
 test("the first-round count reports its progress through both roles", async () => {

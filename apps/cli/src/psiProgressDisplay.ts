@@ -366,7 +366,7 @@ export async function withFirstRoundCountDisplay(
         params.log.info(
           "Counting the values the first linkage key sends from " +
             `${formatValues(progress.elements, RECORDS)}, to check they fit ` +
-            "one message.",
+            "the first round's bound.",
         );
       }
       display.report(progress);

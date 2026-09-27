@@ -154,7 +154,7 @@ test("the first-round count display logs one line as the count starts, and none 
   ).rejects.toBe(refusal);
   expect(lines).toEqual([
     "Counting the values the first linkage key sends from 2,000,000 " +
-      "records, to check they fit one message.",
+      "records, to check they fit the first round's bound.",
   ]);
 });
 
