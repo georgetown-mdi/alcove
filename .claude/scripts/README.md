@@ -22,6 +22,9 @@ push:
   survives a moved head; `verify-rebase-invariance.mjs`, which decides the same
   question for a head moved by a rebase; and `verify-additive-test-delta.mjs`,
   which decides it for a head that only added lines to test files.
+  `check-review-ledger-dispositions.mjs` checks, at merge-ready, that a
+  branch's review ledger names a fix commit the PR head contains for every
+  `fixed` finding and a home for every `deferred` one.
   `lib/gitFixture.mjs` holds the throwaway repositories the suites drive real git
   through
 - `measure-pr-checks.mjs`, which measures the wall clock a pull request pays for
