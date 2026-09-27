@@ -934,7 +934,8 @@ Each leg's configuration -- `packages/core/stryker.config.mjs`, and
 each file's committed floor in one table, `scoreFloors`: the keys are the
 files to mutate, the values their minimum mutation score in whole percent. The
 gate is per file rather than Stryker's whole-run `thresholds.break`, so a file
-whose tests were gutted cannot be offset by the others; the leg fails naming the file, its score, and its floor.
+whose tests were gutted cannot be offset by the others; the leg fails naming
+the file, its score, and its floor.
 
 - **Raising a floor.** When tests land that raise a file's score, raise its floor
   to the new score rounded down to a whole percent. The runner prints the value

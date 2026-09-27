@@ -183,11 +183,11 @@ export function survivorsWithoutTestsRun(mutants) {
  * runs (`vitestConfig`), both repository-root-relative, for the messages.
  * Returns the summary rows for the report (one per file the score could be
  * computed for, each already holding its display verdict and any raised-floor
- * suggestion) and the failure messages -- a file missing from the report, a file whose mutants
- * all fell outside the ratio, a file below its committed floor, and a file
- * with a survivor no test ran against all add to `failures`, so
- * `failures.length > 0` is the single signal the entry point below exits
- * non-zero on.
+ * suggestion) and the failure messages -- a file missing from the report, a
+ * file whose mutants all fell outside the ratio, a file below its committed
+ * floor, and a file with a survivor no test ran against all add to
+ * `failures`, so `failures.length > 0` is the single signal the entry
+ * point below exits non-zero on.
  */
 export function evaluateFloors(report, scoreFloors, sources) {
   const rows = [];
