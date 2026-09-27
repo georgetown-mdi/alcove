@@ -60,6 +60,8 @@ import {
   loadInputRows,
   observedReceivedColumnsForSave,
   parseLinkageStrategyFlag,
+  withheldPayloadColumnsWarning,
+  type WithheldPayloadColumnsReason,
   withDeduplicate,
   withLinkageStrategy,
 } from "../onlineBootstrap";
@@ -360,7 +362,8 @@ async function prepareDataset(
  * later recurring `alcove exchange` fails closed on a divergent payload. An
  * empty or absent observation records nothing (see
  * {@link observedReceivedColumnsForSave}), as does one a config cannot store,
- * which is told to `log` when given.
+ * whose reason is returned as `withheldPayloadColumns` for
+ * {@link finalizeBootstrap} to warn about once the config is written.
  *
  * `csvDelimiter` is the delimiter this run read and wrote by, recorded so the
  * recurring `alcove exchange` the saved config governs needs no flag of its
@@ -373,19 +376,30 @@ export function buildSaveSpec(
   prepared: PreparedExchange,
   observedReceivedColumns?: string[],
   csvDelimiter?: string,
-  log?: { warn: (message: string) => void },
-): ExchangeSpec {
-  const expectedPayloadColumns = observedReceivedColumnsForSave(
-    observedReceivedColumns,
-    log,
-  );
+): SaveSpec {
+  const { columns: expectedPayloadColumns, withheld } =
+    observedReceivedColumnsForSave(observedReceivedColumns);
   return {
-    connection,
-    linkageTerms: prepared.linkageTerms,
-    metadata: prepared.metadata,
-    ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
-    ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+    spec: {
+      connection,
+      linkageTerms: prepared.linkageTerms,
+      metadata: prepared.metadata,
+      ...(expectedPayloadColumns !== undefined
+        ? { expectedPayloadColumns }
+        : {}),
+      ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+    },
+    ...(withheld !== undefined ? { withheldPayloadColumns: withheld } : {}),
   };
+}
+
+/**
+ * What {@link buildSaveSpec} returns: the spec to persist, and the reason an
+ * observed received-payload set was left out of it, if one was.
+ */
+export interface SaveSpec {
+  spec: ExchangeSpec;
+  withheldPayloadColumns?: WithheldPayloadColumnsReason;
 }
 
 /**
@@ -408,11 +422,27 @@ export function finalizeBootstrap(params: {
   save: boolean;
   bootstrap: ExchangeBootstrapResult;
   spec: ExchangeSpec;
+  withheldPayloadColumns?: WithheldPayloadColumnsReason;
   configFile: string;
   keyFile: string;
-  log: { info: (message: string) => void };
+  log: {
+    info: (message: string) => void;
+    warn: (message: string) => void;
+  };
 }): void {
-  const { save, bootstrap, spec, configFile, keyFile, log } = params;
+  const {
+    save,
+    bootstrap,
+    spec,
+    withheldPayloadColumns,
+    configFile,
+    keyFile,
+    log,
+  } = params;
+  const warnIfPayloadColumnsWithheld = (): void => {
+    if (withheldPayloadColumns !== undefined)
+      log.warn(withheldPayloadColumnsWarning(withheldPayloadColumns));
+  };
 
   // Invariant guard: a shared secret is established only when both parties pass
   // --save, so a secret reaching here with save === false is an internal
@@ -449,6 +479,7 @@ export function finalizeBootstrap(params: {
           `private. Run 'alcove exchange' for future exchanges with this ` +
           `partner.`,
       );
+      warnIfPayloadColumnsWithheld();
       return;
     }
     // We saved but the partner did not: there is no secret, so persist the
@@ -476,6 +507,7 @@ export function finalizeBootstrap(params: {
         `a recurring exchange, run 'alcove invite' and share the invitation ` +
         `with your partner.`,
     );
+    warnIfPayloadColumnsWithheld();
     return;
   }
 
@@ -798,12 +830,11 @@ export async function handler(argv: Arguments): Promise<void> {
                 // on a divergent payload; buildSaveSpec drops the ambiguous empty
                 // observation and stays lazy. Only persisted when this party
                 // actually saves (finalizeBootstrap).
-                spec: buildSaveSpec(
+                ...buildSaveSpec(
                   connection,
                   prepared,
                   observedReceivedPayloadColumns,
                   csvDelimiter,
-                  options.save ? log : undefined,
                 ),
                 configFile: options.configFile,
                 keyFile: options.keyFile,

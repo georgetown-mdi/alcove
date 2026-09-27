@@ -14,6 +14,7 @@ import {
   assertFirstRoundFitsFileSyncFrame,
   CONSENT_FACTS,
   getLogger,
+  MAX_PAYLOAD_ENTRIES,
   prepareForExchange,
   RoundSetLimitError,
   sanitizeErrorForDisplay,
@@ -687,6 +688,99 @@ test("handler with --save persists the first-use pin into the written config", a
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- handler: the withheld-payload-columns warning --------------------------
+// An over-cap observed payload is left out of a --save config, and the operator
+// is told so -- but only once that config is on disk, and never on a run that
+// saved nothing.
+
+const WITHHELD_WARNING_PREFIX =
+  "the saved config does not record which payload columns your partner sent";
+
+/** Drive a zero-setup run whose partner sent more payload columns than a
+ * config can store, and report each time the withheld-columns warning reached
+ * stderr, with whether the config file existed at that moment. `beforeHook`
+ * runs inside the exchange, after the pre-flight conflict check. */
+async function withheldWarningsFromRun(options: {
+  save: boolean;
+  beforeHook?: (configFile: string) => void;
+}): Promise<{ configExistedAtWarning: boolean[] }> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowithheld-"));
+  const configFile = path.join(dir, "alcove.yaml");
+  const configExistedAtWarning: boolean[] = [];
+  const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    if (String(chunk).includes(WITHHELD_WARNING_PREFIX))
+      configExistedAtWarning.push(fs.existsSync(configFile));
+    return true;
+  }) as never);
+  const exitSpy = captureProcessExit();
+  const exitCodeBefore = process.exitCode;
+  try {
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(
+      input,
+      "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+    );
+    const overCap = Array.from(
+      { length: MAX_PAYLOAD_ENTRIES + 1 },
+      (_, i) => `c${i}`,
+    );
+    vi.mocked(runProtocol).mockImplementationOnce((async (
+      ...callArgs: unknown[]
+    ) => {
+      options.beforeHook?.(configFile);
+      return driveCompletedExchange(
+        callArgs,
+        { partnerSaveIntent: false },
+        overCap,
+      );
+    }) as never);
+
+    await handler({
+      _: ["sftp://userb@localhost:2222/drop", input],
+      $0: "alcove",
+      save: options.save,
+      "config-file": configFile,
+      "key-file": path.join(dir, ".alcove.key"),
+      identity: "Tester",
+      record: false,
+      "log-level": "warn",
+    } as unknown as Arguments);
+    return { configExistedAtWarning };
+  } finally {
+    process.exitCode = exitCodeBefore;
+    getLogger("alcove").setLevel("silent");
+    stderrSpy.mockRestore();
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("handler with --save warns once, after the config is written, that the partner's columns were withheld", async () => {
+  const { configExistedAtWarning } = await withheldWarningsFromRun({
+    save: true,
+  });
+  expect(configExistedAtWarning).toEqual([true]);
+});
+
+test("handler without --save does not warn that the partner's columns were withheld", async () => {
+  const { configExistedAtWarning } = await withheldWarningsFromRun({
+    save: false,
+  });
+  expect(configExistedAtWarning).toEqual([]);
+});
+
+test("handler with --save does not warn that the partner's columns were withheld when the config write fails", async () => {
+  // A config that appears after the pre-flight check makes the save refuse;
+  // nothing was saved, so there is no saved config to warn about.
+  const { configExistedAtWarning } = await withheldWarningsFromRun({
+    save: true,
+    beforeHook: (configFile) => fs.writeFileSync(configFile, "operator's\n"),
+  });
+  expect(configExistedAtWarning).toEqual([]);
 });
 
 // --- handler: the dataset preparation precedes host-key trust ----------------

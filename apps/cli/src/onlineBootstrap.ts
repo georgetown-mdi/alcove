@@ -757,42 +757,52 @@ export function prepareForOnlineExchange(
  * name shape on reload, so saving it would write a config this party can no
  * longer load.
  *
- * Either drop is told to `log` in one line that quotes no partner-supplied
- * name; a caller passes `log` only when it is writing the config.
+ * Either drop returns the reason as `withheld`, so a caller that writes the
+ * config can tell the operator, after the write succeeds, through
+ * {@link withheldPayloadColumnsWarning}.
  *
  * @internal exported for testing
  */
 export function observedReceivedColumnsForSave(
   observed: string[] | undefined,
-  log?: { warn: (message: string) => void },
-): string[] | undefined {
-  if (observed === undefined || observed.length === 0) return undefined;
-  if (observed.length > MAX_PAYLOAD_ENTRIES) {
-    log?.warn(
-      withheldPayloadLockInWarning(
-        `your partner sent more than ${MAX_PAYLOAD_ENTRIES} payload ` +
-          "columns, more than a config can store",
-      ),
-    );
-    return undefined;
-  }
-  if (!observed.every((name) => NAME_SHAPE_PATTERN.test(name))) {
-    log?.warn(
-      withheldPayloadLockInWarning(
-        "a payload column name your partner sent holds a control or " +
-          "text-direction character, which a config cannot store",
-      ),
-    );
-    return undefined;
-  }
-  return observed;
+): ObservedReceivedColumnsForSave {
+  if (observed === undefined || observed.length === 0) return {};
+  if (observed.length > MAX_PAYLOAD_ENTRIES) return { withheld: "over-cap" };
+  if (!observed.every((name) => NAME_SHAPE_PATTERN.test(name)))
+    return { withheld: "name-shape" };
+  return { columns: observed };
 }
 
-function withheldPayloadLockInWarning(reason: string): string {
+/** Why an observed received-payload set was left out of a saved config. */
+export type WithheldPayloadColumnsReason = "over-cap" | "name-shape";
+
+/**
+ * The outcome of {@link observedReceivedColumnsForSave}: the columns to record,
+ * or the reason a non-empty observation was withheld; both absent for an empty
+ * observation.
+ */
+export interface ObservedReceivedColumnsForSave {
+  columns?: string[];
+  withheld?: WithheldPayloadColumnsReason;
+}
+
+/**
+ * The one warning line for a saved config that does not record the partner's
+ * payload columns. Quotes no partner-supplied name. Emit it only after the
+ * config write has succeeded.
+ */
+export function withheldPayloadColumnsWarning(
+  reason: WithheldPayloadColumnsReason,
+): string {
+  const why =
+    reason === "over-cap"
+      ? `there were more than ${MAX_PAYLOAD_ENTRIES}, the most a config can store`
+      : "one name has a control or text-direction character, which a config " +
+        "cannot store";
   return (
     "the saved config does not record which payload columns your partner " +
-    `sent: ${reason}. Later 'alcove exchange' runs accept whichever payload ` +
-    "columns your partner sends instead of refusing a changed set"
+    `sent, because ${why}. Later 'alcove exchange' runs will accept whatever ` +
+    "columns arrive instead of refusing a changed set."
   );
 }
 
@@ -1260,10 +1270,14 @@ export async function runOnlineBootstrap(params: {
           // account for.
           if (!params.persistObservedReceivedPayload || !configWritten)
             return { persisted: true };
-          const observedLockIn = observedReceivedColumnsForSave(
-            observedReceivedPayloadColumns,
-            getLogger(params.loggerName),
-          );
+          const { columns: observedLockIn, withheld } =
+            observedReceivedColumnsForSave(observedReceivedPayloadColumns);
+          // The acceptance hook already wrote the config, so the warning
+          // follows a completed write.
+          if (withheld !== undefined)
+            getLogger(params.loggerName).warn(
+              withheldPayloadColumnsWarning(withheld),
+            );
           if (observedLockIn === undefined) return { persisted: true };
           try {
             saveConfig(params.configPath, {
