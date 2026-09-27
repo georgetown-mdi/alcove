@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   ConnectionError,
+  InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
   generateSharedSecret,
@@ -250,6 +251,122 @@ describe("failureFor", () => {
     expect(failure.reportedCause).toBe(
       "the partner closed the connection\ncaused by: read ECONNRESET",
     );
+  });
+
+  describe("a relayed exchange failure that states its own next step", () => {
+    // The internal fault's report-it step is the CLI's fixed line; the
+    // reply-cap fault states that step in its own message instead. Either way
+    // the relayed text is the account, and transport copy advising a retry
+    // would contradict it.
+    const internalFault =
+      "round resolution disagreed with the planned round count\n" +
+      "This is a fault in Alcove itself: report it with this message; " +
+      "retrying will not help.";
+    const replyCapFault =
+      "inviter: single-pass built a reply of 9000 byte(s), above the 8000 " +
+      "byte(s) both parties derive from their declared sizes. The exchange " +
+      "cannot proceed; report it with this message.";
+
+    test.each([
+      ["an internal fault", "browser", internalFault],
+      ["an internal fault", "filedrop", internalFault],
+      ["the reply-cap fault", "sftp", replyCapFault],
+      ["the reply-cap fault", "filedrop", replyCapFault],
+    ] as const)(
+      "%s over %s shows its report and no retry advice",
+      (_, channel, text) => {
+        const failure = failureFor(
+          "exchange",
+          new RelayedSelfExplainingError(text),
+          undefined,
+          channel,
+        );
+        expect(failure.category).toBe("exchange");
+        expect(failure.title).toBe("Exchange failed");
+        expect(failure.message).not.toMatch(/try again/i);
+        expect(failure.message).not.toContain("temporary");
+        expect(failure.message).toContain("what to do next");
+        expect(failure.reportedCause).toBe(sanitizeForDisplay(text));
+      },
+    );
+
+    test("the reply-cap fault raised in this browser shows its report", () => {
+      const raised = Object.assign(
+        new InternalConsistencyError(replyCapFault),
+        {
+          alcoveRecoveryHintEmitted: true,
+        },
+      );
+      const failure = failureFor("exchange", raised, undefined, "browser");
+      expect(failure.title).toBe("Exchange failed");
+      expect(failure.message).not.toMatch(/try again/i);
+      expect(failure.message).not.toContain("temporary");
+      expect(failure.message).toContain("what to do next");
+      expect(failure.reportedCause).toContain(
+        sanitizeForDisplay(replyCapFault),
+      );
+    });
+
+    test("its report reaches the block escaped", () => {
+      const hostile = "\u001b[2J\u202ereport it with this message";
+      const failure = failureFor(
+        "exchange",
+        new RelayedSelfExplainingError(hostile),
+      );
+      expect(failure.reportedCause).toBe(sanitizeForDisplay(hostile));
+      expect(failure.reportedCause).not.toContain("\u001b");
+      expect(failure.reportedCause).not.toContain("\u202e");
+    });
+
+    test("an empty report gets no block and no pointer to one", () => {
+      const failure = failureFor(
+        "exchange",
+        new RelayedSelfExplainingError(""),
+      );
+      expect(failure.reportedCause).toBeUndefined();
+      expect(failure.message).toBe("The exchange stopped.");
+    });
+
+    test("a relayed failure without the marker keeps the transport copy", () => {
+      const failure = failureFor(
+        "exchange",
+        new RelayedTerminalError(internalFault),
+      );
+      expect(failure.message).toContain("temporary connection problem");
+    });
+
+    test("an untagged plain error keeps the fixed copy and the retry affordance", () => {
+      // Neither a relayed terminal nor a tagged recovery hint: this is the
+      // generic transport/exchange case, and the retry control in the
+      // sections is gated on its category, so both channels this browser
+      // runs must land here and not on the report-only arm above.
+      const untagged = new Error("the browser lost the socket");
+
+      const onDefault = failureFor("exchange", untagged);
+      expect(onDefault.category).toBe("exchange");
+      expect(onDefault.message).toBe(
+        "The exchange could not be completed - usually a temporary " +
+          "connection problem rather than an issue with your data.",
+      );
+      expect(onDefault.reportedCause).toBe(
+        sanitizeForDisplay("the browser lost the socket"),
+      );
+
+      const onFiledrop = failureFor(
+        "exchange",
+        untagged,
+        undefined,
+        "filedrop",
+      );
+      expect(onFiledrop.category).toBe("exchange");
+      expect(onFiledrop.message).toContain("shared folder");
+      expect(onFiledrop.message).toContain("syncing");
+      expect(onFiledrop.message).toContain("try again");
+      expect(onFiledrop.message).not.toContain("connection problem");
+      expect(onFiledrop.reportedCause).toBe(
+        sanitizeForDisplay("the browser lost the socket"),
+      );
+    });
   });
 
   test.each(["inviter", "acceptor"] as const)(

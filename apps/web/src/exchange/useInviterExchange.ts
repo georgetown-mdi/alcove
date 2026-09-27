@@ -445,6 +445,26 @@ export function failureFor(
         "invitation.",
     };
   }
+  // A failure whose own message states the cause and the next step -- relayed
+  // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised tagged in this
+  // browser, such as core's reply-cap fault: "report it; retrying will not
+  // help". The transport copy below would contradict that step, so a sentence
+  // pointing at the report replaces it. The report stays in the labeled block:
+  // unlike the pin refusals above, its chain can hold a partner- or
+  // server-chosen detail.
+  if (hasRecoveryHint(error)) {
+    const reported = sanitizedFailureMessage(error);
+    return {
+      category,
+      title: "Exchange failed",
+      message:
+        reported.trim() === ""
+          ? "The exchange stopped."
+          : "The exchange stopped. Its report below states the cause and " +
+            "what to do next.",
+      ...reportedCauseFields(reported),
+    };
+  }
   // Generic, retryable transport/exchange failure, a mid-run drop among them --
   // agreed payload columns may already have flowed to the authenticated partner,
   // so the copy must not claim the data stayed local. The error's own text can be
