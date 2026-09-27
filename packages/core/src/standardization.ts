@@ -415,7 +415,7 @@ const titleGluedToWordPattern = new RegExp(
   "iu",
 );
 const suffixWordPattern = new RegExp(
-  `^(?:${suffixes.map((x) => x.replace(/[.]/g, "\\.")).join("|")})\\.?,?$`,
+  `^(?:${suffixes.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\.?,?$`,
   "i",
 );
 const wordCharacterPattern = /[\p{L}\p{N}]/u;
