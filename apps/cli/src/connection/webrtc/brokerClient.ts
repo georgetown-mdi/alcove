@@ -474,7 +474,11 @@ function registrationToken(): string {
   return randomBytes(16).toString("hex");
 }
 
-/** Read one inbound frame: byte-capped, structurally bounded, shape-checked. */
+/**
+ * Read one inbound frame: byte-capped, structurally bounded, shape-checked. A
+ * refusal is `transport`-kind: the signaling server sent the frame, not the
+ * partner, so it is a server fault (exit 69) rather than a partner refusal.
+ */
 function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
   const text = typeof raw === "string" ? raw : undefined;
   if (text === undefined) return undefined;
@@ -482,7 +486,7 @@ function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
     throw new ConnectionError(
       `the signaling server sent a frame larger than the ` +
         `${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
-      "protocol",
+      "transport",
     );
   }
   let parsed: unknown;
@@ -493,7 +497,7 @@ function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
     // peer-controlled; replace it rather than wrap it.
     throw new ConnectionError(
       "the signaling server sent a frame that is not valid JSON",
-      "protocol",
+      "transport",
     );
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))

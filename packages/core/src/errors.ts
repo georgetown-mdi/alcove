@@ -659,6 +659,30 @@ export class InternalConsistencyError extends Error {
 }
 
 /**
+ * Thrown where the partner or the agreed terms refused the run: the terms
+ * exchange found the two parties' terms incompatible or the partner's
+ * build on another protocol version, the partner aborted it, or the
+ * partner sent a frame or payload this party cannot read -- including a
+ * payload, received after the exchange completed, that does not fit the
+ * agreed result shape. A retry meets the same partner and the same terms,
+ * so it reaches the same refusal; the remedy is to contact the partner.
+ *
+ * The CLI's error->exit boundary maps this class to `EX_PROTOCOL` (76),
+ * the code it also gives a `protocol`-kind {@link ConnectionError}, a
+ * {@link PeerAbortError}, and a partner receipt or certificate refusal
+ * (see docs/CLI.md, Exit codes). A plain `Error` rather than a
+ * {@link ConnectionError} or a {@link UsageError}, so a consumer that
+ * classifies on those types -- the web's alerts and the event stream's
+ * category -- treats it as it treats a plain `Error`.
+ */
+export class ProtocolRefusalError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ProtocolRefusalError";
+  }
+}
+
+/**
  * Thrown by a transport whose publish of a file was torn by a session
  * drop and whose outcome the transport cannot settle: the operation is
  * rejected, and whether the peer received what was published is
@@ -793,10 +817,10 @@ export class ConnectionClosedError extends Error {
  * `ConnectionError("transport")` it survives both intact and arrives
  * top-level, so the catch's echo gate (which must not write a marker in
  * response to a `PeerAbortError`, or the waiting party would reflect one
- * back) recognizes it, and -- being neither a {@link UsageError} nor a
- * `ConnectionError` of kind `usage` -- the CLI's exit-code check yields
- * 69 (the exchange failed because the peer died), not the 64 both of
- * those reach.
+ * back) recognizes it. The CLI's exit-code check reads the class rather
+ * than the kind and yields 76 (EX_PROTOCOL): the partner ended the
+ * exchange, possibly on a fault on its own side such as a transport stall,
+ * and a retry alone does not help until the partner runs again.
  *
  * It holds no partner-controlled bytes: the marker token never decodes to
  * display text, the abort frame's reasons are not read, and the message

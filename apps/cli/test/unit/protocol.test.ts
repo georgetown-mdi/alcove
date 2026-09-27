@@ -122,11 +122,14 @@ async function waitForBothKeysRotated(
   }
 }
 
-// Assert neither of runProtocol's two generic recovery-advisory lines was
-// logged. A tagged (alcoveRecoveryHintEmitted) error must suppress both, since
-// each would contradict the error's own specific hint.
+// Assert none of runProtocol's generic recovery-advisory lines was logged. A
+// tagged (alcoveRecoveryHintEmitted) error must suppress each, since each would
+// contradict the error's own specific hint.
 function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
   expect(errors.every((m) => !m.includes("key exchange was in progress"))).toBe(
+    true,
+  );
+  expect(errors.every((m) => !m.includes("rotated token was not saved"))).toBe(
     true,
   );
   expect(errors.every((m) => !m.includes("already rotated and saved"))).toBe(
@@ -246,6 +249,7 @@ vi.mock("@alcove/core", async (importActual) => {
       trace: () => {},
     }),
     runExchange: vi.fn().mockImplementation(defaultRunExchange),
+    authenticateConnection: vi.fn(actual.authenticateConnection),
     // The record a terminated run hands back on its error, and the predicate for
     // the case where one was owed and its build threw. Core marks the error
     // inside runExchange, which is mocked here, so both accessors are mocked
@@ -337,6 +341,7 @@ import {
   authenticateConnection,
   generateSigningIdentity,
   OperatorConfigError,
+  ProtocolRefusalError,
   ReceiptVerificationError,
   isPeerWaitTimeout,
   sanitizeErrorForDisplay,
@@ -386,7 +391,14 @@ import {
 } from "../../src/eventStream";
 import { keysPathFor, type RecordOutput } from "../../src/recordFile";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
-import { exitCodeForError, runOrExit } from "../../src/util/exit";
+import {
+  exitCodeForError,
+  fixedNextStep,
+  INTERNAL_FAULT_NEXT_STEP,
+  PARTNER_REFUSED_NEXT_STEP,
+  renderFailureForOperator,
+  runOrExit,
+} from "../../src/util/exit";
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";
 import { LocalFSClient } from "../../src/connection/localFSClient";
 
@@ -520,6 +532,11 @@ afterEach(async () => {
   vi.mocked(exchangeRecordFromFailure).mockReturnValue(undefined);
   vi.mocked(exchangeRecordOwedButUnbuilt).mockReset();
   vi.mocked(exchangeRecordOwedButUnbuilt).mockReturnValue(false);
+  vi.mocked(authenticateConnection).mockReset();
+  vi.mocked(authenticateConnection).mockImplementation(
+    (await vi.importActual<typeof import("@alcove/core")>("@alcove/core"))
+      .authenticateConnection,
+  );
   mockState.dropDir = "";
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -1702,14 +1719,15 @@ test("a result file that could not be written fails with the persistence-loss ex
   expect(terminal.category).toBe("output");
 }, 20_000);
 
-test("a partner-shaped output-phase fault exits 69, not the local write-loss code", async () => {
+test("a partner-shaped output-phase fault exits 76, not the local write-loss code", async () => {
   // The other half of the same boundary. buildOutputTable's integrity checks run
   // in the output phase but refuse PARTNER-controlled shapes -- here a payload
   // holding no row for a record the association table matched, thrown by the
   // real core function -- and 73's published meaning is that what failed is a
-  // local write on this machine. Such a fault stays 69; only the result file
-  // failing to reach disk is stamped. The terminal event's `output` category
-  // still covers it, since the exchange did complete and must not be re-run.
+  // local write on this machine. Such a fault is a partner refusal, 76; only the
+  // result file failing to reach disk is stamped. The terminal event's `output`
+  // category still covers it, since the exchange did complete and must not be
+  // re-run.
   const { buildOutputTable: coreBuildOutputTable } =
     await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
   const payloadMissingAMatchedRow: PartnerPayload = {
@@ -1771,7 +1789,7 @@ test("a partner-shaped output-phase fault exits 69, not the local write-loss cod
     "missing rows for association table indices",
   );
   expect(reason.exitCode).toBeUndefined();
-  expect(exitCodeForError(reason)).toBe(69);
+  expect(exitCodeForError(reason)).toBe(76);
 
   const lines = takeFd3Lines();
   const terminal = lines[lines.length - 1];
@@ -1830,7 +1848,7 @@ test("a partner-shaped output-phase fault reports the post-exchange persistence 
   }
 
   expect(outcome.status).toBe("rejected");
-  expect(exitCodeForError((outcome as PromiseRejectedResult).reason)).toBe(69);
+  expect(exitCodeForError((outcome as PromiseRejectedResult).reason)).toBe(76);
   expect(onOutputComplete).not.toHaveBeenCalled();
 
   const lines = takeFd3Lines();
@@ -1901,7 +1919,7 @@ test("a partner payload missing a matched row still leaves the record and the re
     expect(reason.message).toContain(
       "missing rows for association table indices",
     );
-    expect(exitCodeForError(reason)).toBe(69);
+    expect(exitCodeForError(reason)).toBe(76);
     expect(
       parseExchangeRecord(JSON.parse(fs.readFileSync(p.record, "utf8"))),
     ).toEqual(sampleRecord);
@@ -4141,6 +4159,155 @@ test.each([
       InternalConsistencyError,
     );
     expectNoGenericRecoveryAdvisory(mockState.errors);
+  },
+  20_000,
+);
+
+test.each([
+  {
+    failure: "a partner or terms refusal",
+    raise: () =>
+      new ProtocolRefusalError(
+        "the partner's linkage terms are incompatible with this party's",
+      ),
+    code: 76,
+    advisory: false,
+  },
+  {
+    failure: "a transport failure",
+    raise: () =>
+      new ConnectionError("the exchange server went away", "transport"),
+    code: 69,
+    advisory: true,
+  },
+])(
+  "runProtocol after rotation, for $failure, gives the step its exit code states",
+  async ({ raise, code, advisory }) => {
+    // Both fail after the token rotated, the window the generic "retry without
+    // re-inviting" advisory prints in. A refusal exits 76, whose step is to
+    // contact the partner, so the advisory is replaced by that fixed step; a
+    // transport failure exits 69 and keeps the advisory.
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+
+    async function waitForRotationThenThrow(): Promise<never> {
+      await waitForBothKeysRotated(keyFileA, keyFileB);
+      throw raise();
+    }
+    vi.mocked(runExchange)
+      .mockImplementationOnce(waitForRotationThenThrow)
+      .mockImplementationOnce(waitForRotationThenThrow);
+
+    const run = (keyFilePath: string, loggerName: string) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName,
+      });
+    const [resultA, resultB] = await Promise.allSettled([
+      run(keyFileA, "test-a"),
+      run(keyFileB, "test-b"),
+    ]);
+    expect(resultA.status).toBe("rejected");
+    expect(resultB.status).toBe("rejected");
+    const reason = (resultA as PromiseRejectedResult).reason;
+    expect(exitCodeForError(reason)).toBe(code);
+    expect(
+      mockState.errors.some((m) =>
+        m.includes("Retry the exchange without re-inviting"),
+      ),
+    ).toBe(advisory);
+    expect(
+      renderFailureForOperator(reason).endsWith(PARTNER_REFUSED_NEXT_STEP),
+    ).toBe(!advisory);
+  },
+  20_000,
+);
+
+test.each([
+  {
+    failure: "a partner frame outside the message contract",
+    raise: () =>
+      new ConnectionError(
+        "the partner sent a frame above the inbound bound",
+        "protocol",
+      ),
+    code: 76,
+    nextStep: PARTNER_REFUSED_NEXT_STEP,
+    advisory: "Authentication started but the rotated token was not saved",
+    absent: "Retry the exchange with the existing key file",
+  },
+  {
+    failure: "an internal fault",
+    raise: () => new InternalConsistencyError("runKex: psk must be 32 bytes"),
+    code: 70,
+    nextStep: INTERNAL_FAULT_NEXT_STEP,
+    advisory: "Authentication started but the rotated token was not saved",
+    absent: "Retry the exchange with the existing key file",
+  },
+  {
+    failure: "a transport failure",
+    raise: () =>
+      new ConnectionError("the exchange directory went away", "transport"),
+    code: 69,
+    nextStep: undefined,
+    advisory: "Retry the exchange with the existing key file",
+    absent: "rotated token was not saved",
+  },
+])(
+  "runProtocol keeps the rotation-state advisory for $failure during the key exchange",
+  async ({ raise, code, nextStep, advisory, absent }) => {
+    // The failure lands after authentication started and before this side
+    // saved a rotated token, so the partner may hold one this side does not.
+    // A fixed step beneath the error rules out a retry, so the advisory states
+    // the token state without prescribing one; without a fixed step it
+    // prescribes the retry.
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    vi.mocked(authenticateConnection).mockImplementation(async () => {
+      throw raise();
+    });
+
+    const run = (keyFilePath: string, loggerName: string) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName,
+      });
+    const [resultA, resultB] = await Promise.allSettled([
+      run(keyFileA, "test-a"),
+      run(keyFileB, "test-b"),
+    ]);
+    expect(resultA.status).toBe("rejected");
+    expect(resultB.status).toBe("rejected");
+    const reason = (resultA as PromiseRejectedResult).reason;
+    expect(exitCodeForError(reason)).toBe(code);
+    expect(fixedNextStep(reason)).toBe(nextStep);
+    expect(mockState.errors.filter((m) => m.includes(advisory))).toHaveLength(
+      2,
+    );
+    expect(mockState.errors.some((m) => m.includes(absent))).toBe(false);
+    expect(
+      mockState.errors.some((m) => m.includes("already rotated and saved")),
+    ).toBe(false);
   },
   20_000,
 );

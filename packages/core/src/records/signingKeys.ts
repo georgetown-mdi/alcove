@@ -43,7 +43,7 @@ const ECDSA_P256_SHA256 = { name: "ECDSA", hash: "SHA-256" } as const;
  * mismatched partner fingerprint, or a receipt identity the certificate does not
  * authorize. Extends {@link UsageError}, so a local identity failure exits 64;
  * the signed-receipt step wraps a partner-trust failure in a security-kind
- * `ReceiptVerificationError` (exit 69) instead.
+ * `ReceiptVerificationError` (exit 76) instead.
  */
 // Exit-code mapping: docs/spec/PROTOCOL.md, Signing identity and certificate
 // pinning.

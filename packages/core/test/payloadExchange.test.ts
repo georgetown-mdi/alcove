@@ -15,6 +15,7 @@ import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
 import { disclosedColumnNames } from "../src/config/metadata";
 import {
   OutboundDisclosureRefusalError,
+  ProtocolRefusalError,
   TransportPublishIndeterminateError,
   UsageError,
 } from "../src/errors";
@@ -2165,6 +2166,17 @@ test("buildOutputTable: throws when partner payload rowIndices contains duplicat
       partnerPayload,
     ),
   ).toThrow("duplicate");
+  expect(() =>
+    buildOutputTable(
+      [
+        [0, 1],
+        [0, 0],
+      ],
+      rawRows,
+      metaWithId,
+      partnerPayload,
+    ),
+  ).toThrow(ProtocolRefusalError);
 });
 
 test("buildOutputTable: throws when a partner payload row is narrower than the declared columns", () => {
@@ -2176,6 +2188,9 @@ test("buildOutputTable: throws when a partner payload row is narrower than the d
   expect(() =>
     buildOutputTable([[0], [0]], rawRows, metaWithId, partnerPayload),
   ).toThrow("one cell per declared column");
+  expect(() =>
+    buildOutputTable([[0], [0]], rawRows, metaWithId, partnerPayload),
+  ).toThrow(ProtocolRefusalError);
 });
 
 test("buildOutputTable: throws when a partner payload row is wider than the declared columns", () => {

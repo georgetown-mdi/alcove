@@ -15,7 +15,7 @@ import type {
   ResolvedMatching,
 } from "@alcove/core";
 
-import { internalFaultNextStep, renderFailureForOperator } from "./util/exit";
+import { fixedNextStep, renderFailureForOperator } from "./util/exit";
 
 const log = getLogger("event-stream");
 
@@ -107,11 +107,12 @@ export type WarningSource = (typeof WARNING_SOURCES)[number];
  *   {@link ConnectionError} from the authenticated key exchange (wrong secret,
  *   tamper, replay), from SFTP host-key verification (a pinned-fingerprint
  *   mismatch), or from the post-handshake AEAD layer. It must be identifiable from the terminal event
- *   alone, since the process exit code (64/69) cannot distinguish it from a
- *   plain usage or transport failure.
+ *   alone, since an integrity failure exits 69 like a plain transport
+ *   failure.
  * - `output`: the privacy-sensitive exchange already succeeded and only local
  *   result-file generation failed -- the operator must NOT re-run the exchange.
- * - `exchange`: every other failure (a retryable transport/usage fault).
+ * - `exchange`: every other failure (a transport or usage fault, or a refusal
+ *   by the partner or the agreed terms).
  */
 export type ExchangeErrorCategory =
   "exchange" | "output" | "security" | "config";
@@ -265,10 +266,10 @@ export interface ErrorEvent extends EventBase {
   /**
    * Present and `true` when {@link message} holds its own next step: read off
    * core's `alcoveRecoveryHintEmitted` tag ({@link errorStatesItsOwnNextStep}),
-   * or set where the CLI appended {@link internalFaultNextStep}'s step to an
-   * internal fault's message. A supervisor showing fixed copy for this category shows the message
-   * instead, and adds no advisory of its own; absent, it has no such
-   * assurance. Omitted rather than emitted `false`, so the field is the
+   * or set where the CLI appended {@link fixedNextStep}'s step to an internal
+   * fault's or a partner refusal's message. A supervisor showing fixed copy
+   * for this category shows the message instead, and adds no advisory of its
+   * own; absent, it has no such assurance. Omitted rather than emitted `false`, so the field is the
    * assurance and nothing else.
    */
   recoveryHint?: true;
@@ -509,8 +510,7 @@ export function buildErrorEvent(error: unknown, phase: ErrorPhase): ErrorEvent {
     // cause chain, so route it through the display-boundary sanitizer that
     // stderr uses; the category and version fields are this party's own vocabulary.
     message: renderFailureForOperator(error),
-    ...(errorStatesItsOwnNextStep(error) ||
-    internalFaultNextStep(error) !== undefined
+    ...(errorStatesItsOwnNextStep(error) || fixedNextStep(error) !== undefined
       ? { recoveryHint: true as const }
       : {}),
   };

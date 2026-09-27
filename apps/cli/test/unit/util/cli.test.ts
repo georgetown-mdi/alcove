@@ -31,6 +31,7 @@ import {
   exitCodeForError,
   exitWithError,
   INTERNAL_FAULT_EXIT_CODE,
+  PARTNER_REFUSED_EXIT_CODE,
 } from "../../../src/util/exit";
 import {
   assertNoUnknownOptions,
@@ -481,7 +482,7 @@ test("exitCodeForError: a ConnectionError is classified by its kind", () => {
     transport: 69,
     security: 69,
     usage: 64,
-    protocol: 69,
+    protocol: 76,
     closed: 69,
   };
   for (const kind of Object.keys(expected) as ConnectionErrorKind[])
@@ -490,11 +491,14 @@ test("exitCodeForError: a ConnectionError is classified by its kind", () => {
     );
 });
 
-test("exitCodeForError: a ConnectionError subclass follows its own kind", () => {
-  // The kind is read off the instance, so a subclass holds whatever its
-  // constructor fixed. PeerAbortError fixes `transport` and its class doc rests on
-  // reaching 69: the peer died, which is not the operator's to fix.
-  expect(exitCodeForError(new PeerAbortError())).toBe(69);
+test("exitCodeForError: a PeerAbortError is EX_PROTOCOL, unlike its transport kind", () => {
+  // The class, not the kind, selects 76: the partner ended the exchange on
+  // purpose, so a retry meets the same refusal, while a plain transport-kind
+  // ConnectionError (a dropped link) stays 69 above.
+  const failure = new PeerAbortError();
+  expect(failure.kind).toBe("transport");
+  expect(exitCodeForError(failure)).toBe(PARTNER_REFUSED_EXIT_CODE);
+  expect(PARTNER_REFUSED_EXIT_CODE).toBe(76);
 });
 
 test("exitCodeForError: an AuthenticationError is EX_NOPERM, unlike its security kind", () => {

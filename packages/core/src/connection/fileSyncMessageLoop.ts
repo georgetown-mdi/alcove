@@ -34,6 +34,7 @@ import {
   chainDetailCauses,
   FrameSizeExceededError,
   PeerAbortError,
+  ProtocolRefusalError,
   TransportPublishIndeterminateError,
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
@@ -916,7 +917,9 @@ export class FileSyncMessageLoop {
           // fully synced: an envelope or JSON-parse failure here is genuine
           // corruption, not a partial write, and re-reading cannot fix it.
           // Classified as a terminal UsageError (the same rule
-          // readControlFileWithGate applies to control files), mode-agnostic:
+          // readControlFileWithGate applies to control files), or a
+          // ProtocolRefusalError for a partner on another wire format;
+          // either is terminal, mode-agnostic:
           // in retain mode the never-deleted file would otherwise be re-read
           // every poll cycle until the peer timeout.
           //
@@ -940,7 +943,7 @@ export class FileSyncMessageLoop {
               // envelope bump raises the byte), so name that real cause
               // instead of the raw "malformed envelope" text.
               if (parseErr instanceof IncompatibleEnvelopeVersionError)
-                throw new UsageError(
+                throw new ProtocolRefusalError(
                   `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
                     `from ${redactPrivateKeyMaterial(peerId)} has an ` +
                     `unrecognized wire ` +
@@ -1168,14 +1171,15 @@ export class FileSyncMessageLoop {
         // abort (ConnectionClosedError) is caught by the !pollerActive guard
         // above instead.
         this.consecutiveEnoentCount = 0;
-        // A UsageError reaching this catch is terminal -- re-reading the
-        // same bytes cannot help (a fully-synced message that fails to
-        // parse or validate, a body-seq/filename-NNN mismatch, or a
-        // duplicate NNN) -- so the poller stops before emitting rather than
-        // reschedule and re-read the same corrupt file. A transient
-        // non-UsageError -- a transport hiccup -- reschedules instead, so
-        // the never-deleted retain message is reprocessed (I8).
-        if (err instanceof UsageError) this.pollerActive = false;
+        // A UsageError or ProtocolRefusalError reaching this catch is
+        // terminal -- re-reading the same bytes cannot help (a fully-synced
+        // message that fails to parse or validate, a partner on another wire
+        // format, a body-seq/filename-NNN mismatch, or a duplicate NNN) -- so
+        // the poller stops before emitting rather than reschedule and re-read
+        // the same file. Any other error -- a transport hiccup -- reschedules
+        // instead, so the never-deleted retain message is reprocessed (I8).
+        if (err instanceof UsageError || err instanceof ProtocolRefusalError)
+          this.pollerActive = false;
         deps.emit(
           "error",
           err instanceof Error ? err : new Error(errorMessage(err)),

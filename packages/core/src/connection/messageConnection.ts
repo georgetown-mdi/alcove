@@ -14,9 +14,11 @@ import type { Connection } from "../types";
  *   after close, a path shared by another session). The caller must fix
  *   something before retrying. The CLI's error->exit boundary maps this kind
  *   to 64 (EX_USAGE) alongside `UsageError`, as it does a `transport` wrap
- *   whose cause is either; every other kind takes 69, apart from the
- *   `AuthenticationError` subclass above.
+ *   whose cause is either. `transport`, `closed`, and the other `security`
+ *   failures take 69.
  * - `protocol`: the peer violated the message protocol (e.g. sent out of turn).
+ *   A retry meets the same partner, so the CLI's error->exit boundary maps
+ *   this kind to 76 (EX_PROTOCOL).
  * - `closed`: a parked operation was cancelled by a local
  *   {@link MessageConnection.close} (e.g. a signal-driven shutdown). Nothing
  *   went wrong; it is distinct from `usage` (not a programming error) and from

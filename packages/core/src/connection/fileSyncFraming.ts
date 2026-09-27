@@ -128,9 +128,9 @@ export class IncompatibleEnvelopeVersionError extends Error {
 
 /**
  * Parse a message file's bytes back into its envelope fields, validating the
- * version marker, the type discriminator, and the minimum length. Throws a plain
- * Error (the caller wraps it as a terminal UsageError) on any structural
- * failure. Deliberately does NOT decode the payload, so a frame larger than
+ * version marker, the type discriminator, and the minimum length. Throws on any
+ * structural failure, which the caller wraps as a terminal error: an
+ * unrecognized version as a partner refusal. Deliberately does NOT decode the payload, so a frame larger than
  * Node's maximum string length is never converted to a string here.
  */
 export function deserializeFileSyncMessage(

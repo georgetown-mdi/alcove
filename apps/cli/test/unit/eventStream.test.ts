@@ -8,6 +8,9 @@ import {
   ConnectionError,
   InternalConsistencyError,
   OperatorConfigError,
+  PeerAbortError,
+  ProtocolRefusalError,
+  ReceiptVerificationError,
   SIGNING_CERTIFICATE_VERSION,
   StandardizationTermsError,
   UsageError,
@@ -37,6 +40,7 @@ import {
 } from "../../src/eventStream";
 import {
   INTERNAL_FAULT_NEXT_STEP,
+  PARTNER_REFUSED_NEXT_STEP,
   exitCodeForError,
   renderFailureForOperator,
 } from "../../src/util/exit";
@@ -514,6 +518,62 @@ test("an internal fault whose message states its step gets no second one", () =>
   expect(event.recoveryHint).toBe(true);
   expect(event.message).not.toContain(INTERNAL_FAULT_NEXT_STEP);
   expect(occurrences(event.message, "report it")).toBe(1);
+});
+
+test("a partner refusal with a bare message gets one next step, marked", () => {
+  const bare = new ProtocolRefusalError(
+    "the partner runs protocol version 3; this party runs 4",
+  );
+  const wrapped = new ConnectionError("receive failed", "transport", {
+    cause: bare,
+  });
+  for (const err of [bare, wrapped]) {
+    const event = buildErrorEvent(err, "run");
+    expect(exitCodeForError(err)).toBe(76);
+    expect(event.recoveryHint).toBe(true);
+    expect(occurrences(event.message, PARTNER_REFUSED_NEXT_STEP)).toBe(1);
+    expect(event.message.endsWith(PARTNER_REFUSED_NEXT_STEP)).toBe(true);
+    expect(event.message).not.toContain(INTERNAL_FAULT_NEXT_STEP);
+    expect(event.message).toBe(renderFailureForOperator(err));
+  }
+});
+
+test.each([
+  {
+    refusal: "a protocol-kind connection error",
+    err: new ConnectionError("the partner sent an oversized frame", "protocol"),
+  },
+  {
+    refusal: "a refused partner receipt",
+    err: new ReceiptVerificationError("the partner's receipt signature"),
+  },
+])("$refusal gets the partner-refusal step", ({ err }) => {
+  const event = buildErrorEvent(err, "run");
+  expect(exitCodeForError(err)).toBe(76);
+  expect(occurrences(event.message, PARTNER_REFUSED_NEXT_STEP)).toBe(1);
+  expect(event.message.endsWith(PARTNER_REFUSED_NEXT_STEP)).toBe(true);
+});
+
+test("a security-kind connection error gets no fixed step", () => {
+  const security = new ConnectionError("the peer failed to prove", "security");
+  const message = buildErrorEvent(security, "run").message;
+  expect(message).not.toContain(PARTNER_REFUSED_NEXT_STEP);
+  expect(message).not.toContain(INTERNAL_FAULT_NEXT_STEP);
+});
+
+test("a partner refusal whose message states its step gets no second one", () => {
+  const event = buildErrorEvent(new PeerAbortError(), "run");
+  expect(event.recoveryHint).toBe(true);
+  expect(event.message).not.toContain(PARTNER_REFUSED_NEXT_STEP);
+});
+
+test("a transport failure gets no fixed step", () => {
+  const transport = new ConnectionError("the server went away", "transport");
+  expect(exitCodeForError(transport)).toBe(69);
+  expect(buildErrorEvent(transport, "run").message).not.toContain(
+    PARTNER_REFUSED_NEXT_STEP,
+  );
+  expect(buildErrorEvent(transport, "run").recoveryHint).toBeUndefined();
 });
 
 test("a failure other than an internal fault gets no internal-fault step", () => {

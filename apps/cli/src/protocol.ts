@@ -86,10 +86,7 @@ import {
   type TeardownOutcome,
 } from "./transportTeardown";
 import { writeOutput } from "./util/dataIo";
-import {
-  AUTHENTICATION_FAILED_EXIT_CODE,
-  internalFaultNextStep,
-} from "./util/exit";
+import { AUTHENTICATION_FAILED_EXIT_CODE, fixedNextStep } from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
 import { logRuntimeEnv } from "./util/runtimeEnv";
@@ -1888,8 +1885,8 @@ async function writeExchangeOutputs(params: {
     // integrity throws (duplicate partner row indices, rows missing for
     // association indices) are partner-shaped faults, and 73's
     // published meaning is that what failed is a local write on this
-    // machine. They stay 69, distinguished by the terminal event's
-    // `output` category, which covers the whole stage.
+    // machine. They are core's ProtocolRefusalError, exit 76, and the
+    // terminal event's `output` category covers the whole stage.
     // One delimiter for the escaping and the join: buildOutputTable quotes
     // each field against it and writeOutput joins the fields with it, so the
     // file reads back through the delimiter this party chose. A party that
@@ -2561,7 +2558,7 @@ export async function runProtocol(
     // catch's abort-marker gate excludes a failure in the purely-local
     // output stage below: a fault there must not write a cross-party
     // abort marker telling a peer whose exchange succeeded to fail fast --
-    // at worst an exit-69 PeerAbortError while its results sit readable on
+    // at worst an exit-76 PeerAbortError while its results sit readable on
     // disk. (sealAbort does not help here: it resolves the decision for
     // close(), but writeAbortMarker writes regardless, and the gate keys
     // on abortArmed, still true.)
@@ -2669,11 +2666,13 @@ export async function runProtocol(
     // it contradicts. Set wherever that holds: the saveKeyFile-failure
     // path below, authenticateConnection's own validation errors (token
     // format, pre- and post-handshake expiry -- see auth.ts), and core's
-    // terminal transport refusals. An untagged internal fault is skipped
-    // too: the command boundary shows INTERNAL_FAULT_NEXT_STEP beneath it,
-    // and a retry is what that step rules out. Key-exchange protocol
-    // failures from runKex are NOT tagged and do get the generic advisory,
-    // which adds useful "retry first; if it fails, re-invite" context.
+    // terminal transport refusals. For an untagged internal fault or
+    // partner refusal the command boundary shows its fixed step
+    // (fixedNextStep), which rules out a retry, so that step replaces the
+    // post-rotation lines, both of which prescribe one. The authStarted
+    // line still prints for them, in a form that states the token state
+    // without prescribing a retry: a partner that may hold a rotated token
+    // is what the operator needs whatever the next step says.
     //
     // The walk follows `cause` so a future wrap (e.g. `new Error('outer: '
     // + inner.message, { cause: inner })`) still suppresses the generic
@@ -2792,16 +2791,19 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
-    const hintAlreadyEmitted =
-      isHintTagged(err) || internalFaultNextStep(err) !== undefined;
-    if (!hintAlreadyEmitted) {
-      if (run.tokenRotated && run.onAuthenticatedError === undefined) {
+    const hintAlreadyEmitted = isHintTagged(err);
+    const retryRuledOut =
+      hintAlreadyEmitted || fixedNextStep(err) !== undefined;
+    if (run.tokenRotated) {
+      if (retryRuledOut) {
+        // No post-rotation line: each prescribes the retry ruled out.
+      } else if (run.onAuthenticatedError === undefined) {
         log.error(
           "The shared secret was already rotated and saved before this error. " +
             "Retry the exchange without re-inviting; if authentication " +
             "fails on retry, both parties must re-invite.",
         );
-      } else if (run.tokenRotated) {
+      } else {
         // The rotated key is on disk, but the post-handshake persistence hook
         // failed (onAuthenticatedError is set), so whatever it would have
         // written -- e.g. the online invite/accept config -- is not on disk. A
@@ -2815,16 +2817,21 @@ export async function runProtocol(
             "persistence step failed earlier (logged above); resolve that " +
             "before retrying, as the retry may have nothing to run against.",
         );
-      } else if (run.authStarted) {
-        log.error(
-          "The key exchange was in progress when this error occurred. " +
-            "Depending on how far the handshake had progressed, the " +
-            "partner may have already completed it and saved the rotated " +
-            "token even though this side did not. Retry the exchange " +
-            "with the existing key file; if authentication fails on " +
-            "retry, both parties must re-invite.",
-        );
       }
+    } else if (run.authStarted && !hintAlreadyEmitted) {
+      log.error(
+        retryRuledOut
+          ? "Authentication started but the rotated token was not saved: " +
+              "your partner may already hold a rotated token, so the next " +
+              "run after the step above may need a fresh invitation from " +
+              "both sides."
+          : "The key exchange was in progress when this error occurred. " +
+              "Depending on how far the handshake had progressed, the " +
+              "partner may have already completed it and saved the rotated " +
+              "token even though this side did not. Retry the exchange " +
+              "with the existing key file; if authentication fails on " +
+              "retry, both parties must re-invite.",
+      );
     }
     // If a signal handler is mid-cleanup, it owns the exit code (130/143).
     // Swallowing the error here resolves runProtocol normally so the CLI
@@ -2868,7 +2875,7 @@ export async function runProtocol(
     // The marker holds no cause, so signalling on a UsageError discloses
     // nothing the peer's own view of the teardown would not: the local
     // party sees its specific error and exits 64, while the peer sees the
-    // cause-free "peer aborted" and exits 69. The pre-arm/post-arm line is
+    // cause-free "peer aborted" and exits 76. The pre-arm/post-arm line is
     // principled: only post-arm does a session key (to authenticate the
     // marker) and a waiting post-handshake peer both exist.
     if (
@@ -2930,10 +2937,10 @@ export async function runProtocol(
     // gave it, and nothing is stamped here: only the result-file write
     // above is the local write loss 73 names, while the rest of the
     // output stage -- core's refusal of a partner payload that does not
-    // fit the association table -- is not. Those keep no code and land on
-    // the boundaries' 69. The `output` category on the terminal event
-    // stays the finer-grained discriminator for a supervisor that reads
-    // fd 3, covering the whole stage either way.
+    // fit the association table -- is not. Those keep no code, and the
+    // boundaries map their class to 76. The `output` category on the
+    // terminal event stays the finer-grained discriminator for a
+    // supervisor that reads fd 3, covering the whole stage either way.
     throw err;
   } finally {
     await doCleanup();

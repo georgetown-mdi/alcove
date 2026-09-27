@@ -256,7 +256,7 @@ export function assertAlgorithmImplemented(algorithm: Algorithm): void {
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: this
  * party's own algorithm is its own config, so a divergence means the
  * partner proceeded past the terms-exchange compatibility abort -- a
- * protocol violation, not a local misconfiguration (CLI exit 69, not 64).
+ * protocol violation, not a local misconfiguration (CLI exit 76, not 64).
  * The message names only the fixed algorithm literals, never partner text.
  */
 export class AlgorithmDivergenceError extends ConnectionError {
@@ -305,7 +305,7 @@ export function resolveCountOnlyRun(
  * assertion is held against a pair of documents both parties agreed, so the
  * contradiction is a process disclosing against the terms it agreed under --
  * the classification {@link reconcileReceivedPayload} gives the same pair
- * when the column arrives (CLI exit 69, not 64). The constructor takes no
+ * when the column arrives (CLI exit 76, not 64). The constructor takes no
  * argument and holds the message itself, so no call site can compose a value
  * read off either agreed document into what the operator is shown.
  */
@@ -1025,7 +1025,7 @@ export async function resolvePartnerCertificateOrAbort(
  *
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}:
  * the contradiction is between two documents the partner authored (CLI
- * exit 69, not 64). Has `alcoveRecoveryHintEmitted` so the CLI's
+ * exit 76, not 64). Has `alcoveRecoveryHintEmitted` so the CLI's
  * hint-walker suppresses the generic "retry without re-inviting" advisory
  * -- this refusal is terminal against the held invitation and would
  * otherwise loop an unattended recurring exchange.

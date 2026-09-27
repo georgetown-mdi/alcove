@@ -1,9 +1,9 @@
 // Classifying a caught error into a process exit code, and the two boundaries
 // that apply it: the classification a boundary reads when its errors vary,
-// plus four of the sysexits rungs docs/CLI.md's exit-code table lists -- 70
-// for an internal fault, 77 for an authentication failure, and
-// verify-receipt's 65 and 66 verdict codes. The table's other rungs are
-// declared where they are set.
+// plus five of the sysexits rungs docs/CLI.md's exit-code table lists -- 70
+// for an internal fault, 76 for a partner or terms refusal, 77 for an
+// authentication failure, and verify-receipt's 65 and 66 verdict codes. The
+// table's other rungs are declared where they are set.
 
 import {
   AuthenticationError,
@@ -12,6 +12,9 @@ import {
   getLogger,
   InternalConsistencyError,
   MAX_ERROR_CAUSE_DEPTH,
+  PeerAbortError,
+  ProtocolRefusalError,
+  ReceiptVerificationError,
   sanitizeErrorForDisplay,
   UsageError,
 } from "@alcove/core";
@@ -51,27 +54,78 @@ export const INTERNAL_FAULT_NEXT_STEP =
 export function internalFaultNextStep(err: unknown): string | undefined {
   if (!(firstLinkBehindTransportWraps(err) instanceof InternalConsistencyError))
     return undefined;
-  const tagged = causeChainSome(
+  return holdsRecoveryHintTag(err) ? undefined : INTERNAL_FAULT_NEXT_STEP;
+}
+
+/**
+ * The next step shown beneath a partner or terms refusal
+ * ({@link isPartnerRefusal}) whose message states none of its own: the same
+ * step for every such refusal, since a retry meets the same partner and the
+ * same terms.
+ */
+export const PARTNER_REFUSED_NEXT_STEP =
+  "Contact your partner before running again: the partner or the agreed " +
+  "terms refused this exchange, and retrying unchanged will fail the same way.";
+
+/**
+ * {@link PARTNER_REFUSED_NEXT_STEP} when `err` is a partner or terms refusal
+ * ({@link isPartnerRefusal}), bare or behind `transport`-kind wraps as
+ * {@link exitCodeForError} reads it, and nothing in its cause chain holds
+ * core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`, for the
+ * reason {@link internalFaultNextStep} gives.
+ */
+export function partnerRefusalNextStep(err: unknown): string | undefined {
+  if (!isPartnerRefusal(firstLinkBehindTransportWraps(err))) return undefined;
+  return holdsRecoveryHintTag(err) ? undefined : PARTNER_REFUSED_NEXT_STEP;
+}
+
+/**
+ * The fixed next step the CLI adds beneath `err`:
+ * {@link internalFaultNextStep} for an exit-70 fault,
+ * {@link partnerRefusalNextStep} for an exit-76 refusal, otherwise
+ * `undefined`.
+ */
+export function fixedNextStep(err: unknown): string | undefined {
+  return internalFaultNextStep(err) ?? partnerRefusalNextStep(err);
+}
+
+function holdsRecoveryHintTag(err: unknown): boolean {
+  return causeChainSome(
     err,
     (link) =>
       (link as { alcoveRecoveryHintEmitted?: unknown })
         .alcoveRecoveryHintEmitted === true,
   );
-  return tagged ? undefined : INTERNAL_FAULT_NEXT_STEP;
 }
 
 /**
  * The display-safe text a command boundary shows for a failure: the
- * sanitized error chain, followed on its own line by
- * {@link internalFaultNextStep} when that applies. The terminal event's
- * `message` is this same text, so stderr and the event stream state the same
- * step.
+ * sanitized error chain, followed on its own line by {@link fixedNextStep}
+ * when that applies. The terminal event's `message` is this same text, so
+ * stderr and the event stream state the same step.
  */
 export function renderFailureForOperator(err: unknown): string {
   const text = sanitizeErrorForDisplay(err);
-  const nextStep = internalFaultNextStep(err);
+  const nextStep = fixedNextStep(err);
   return nextStep === undefined ? text : `${text}\n${nextStep}`;
 }
+
+/**
+ * The process exit code for a run the partner or the agreed terms refused:
+ * `EX_PROTOCOL` (76). Held by a `protocol`-kind {@link ConnectionError} (the
+ * partner sent a frame or payload outside the message contract or what was
+ * consented), a {@link PeerAbortError}, a {@link ReceiptVerificationError}
+ * (the partner's certificate or receipt signature refused), and core's
+ * {@link ProtocolRefusalError} (terms incompatible, a protocol version
+ * mismatch, a partner abort at the terms exchange, a malformed partner frame,
+ * or a completed exchange whose partner payload did not fit the result).
+ *
+ * Not 69: a retry meets the same partner and the same terms and reaches the
+ * same refusal, and after a completed exchange it conducts another one. The
+ * documented response is to contact the partner (see docs/CLI.md, Exit
+ * codes).
+ */
+export const PARTNER_REFUSED_EXIT_CODE = 76;
 
 /**
  * The process exit code for an authentication failure: `EX_NOPERM` (77). Held
@@ -133,20 +187,22 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
  * The process exit code a caught command error reports: EX_USAGE (64) for a
  * {@link UsageError} or a {@link ConnectionError} of kind `usage`, bare or
  * behind `transport`-kind wraps ({@link firstLinkBehindTransportWraps}),
- * {@link INTERNAL_FAULT_EXIT_CODE} (70) for an {@link InternalConsistencyError}
- * and {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for an
- * {@link AuthenticationError}, each bare or behind the same wraps, otherwise the
- * error's own numeric `exitCode`
- * when it has one, else EX_UNAVAILABLE (69). The classification a boundary
+ * {@link INTERNAL_FAULT_EXIT_CODE} (70) for an {@link InternalConsistencyError},
+ * {@link PARTNER_REFUSED_EXIT_CODE} (76) for a partner or terms refusal
+ * ({@link isPartnerRefusal}), and {@link AUTHENTICATION_FAILED_EXIT_CODE} (77)
+ * for an {@link AuthenticationError}, each bare or behind the same wraps,
+ * otherwise the error's own numeric `exitCode` when it has one, else
+ * EX_UNAVAILABLE (69). The classification a boundary
  * reads when its errors vary; a boundary whose errors are all usage faults
  * exits 64 outright.
  *
  * A {@link ConnectionError}'s taxonomy is a FIELD (`kind`) rather than a
  * subclass, so it is read here rather than left to the 69 default: a `usage`
  * kind names a caller, protocol, or terms correction that a re-run cannot
- * supply. The one subclass read here is {@link AuthenticationError}; every
- * other `security`-kind failure, and `transport`, `closed`, and `protocol`,
- * stay 69.
+ * supply, and a `protocol` kind names a partner that broke the message
+ * contract. The `security`-kind subclasses read here are
+ * {@link AuthenticationError} and {@link ReceiptVerificationError}; every
+ * other `security`-kind failure, and `transport` and `closed`, stay 69.
  *
  * The own-`exitCode` rung matters in both directions: `openInputSource`
  * throws a plain `Error` holding `exitCode`, so a missing input file keeps
@@ -161,6 +217,7 @@ export function exitCodeForError(err: unknown): number {
   if (isUsageFault(unwrapped)) return 64;
   if (unwrapped instanceof InternalConsistencyError)
     return INTERNAL_FAULT_EXIT_CODE;
+  if (isPartnerRefusal(unwrapped)) return PARTNER_REFUSED_EXIT_CODE;
   if (unwrapped instanceof AuthenticationError)
     return AUTHENTICATION_FAILED_EXIT_CODE;
   const own = (err as { exitCode?: unknown } | null | undefined)?.exitCode;
@@ -175,15 +232,33 @@ function isUsageFault(err: unknown): boolean {
 }
 
 /**
+ * Whether `err` is a partner or terms refusal, the class
+ * {@link exitCodeForError} maps to {@link PARTNER_REFUSED_EXIT_CODE}: a
+ * {@link ProtocolRefusalError}, a {@link PeerAbortError}, a
+ * {@link ReceiptVerificationError}, or a `protocol`-kind
+ * {@link ConnectionError}. Reads `err` itself; a caller holding a possibly
+ * wrapped error passes {@link firstLinkBehindTransportWraps} of it.
+ */
+export function isPartnerRefusal(err: unknown): boolean {
+  return (
+    err instanceof ProtocolRefusalError ||
+    err instanceof PeerAbortError ||
+    err instanceof ReceiptVerificationError ||
+    (err instanceof ConnectionError && err.kind === "protocol")
+  );
+}
+
+/**
  * The first link of `err`'s cause chain that is not a `transport`-kind
  * {@link ConnectionError}, walking at most {@link MAX_ERROR_CAUSE_DEPTH}
  * links; `err` itself when it is not one. The message bridge
  * (`fromEventConnection`) wraps every send and poll failure that way, so a
  * {@link UsageError} the file-sync transport raised, an
- * {@link InternalConsistencyError}, or an {@link AuthenticationError}, reaches
- * a command boundary behind it. Any other
- * kind ends the walk, so a `security` failure keeps its own code whatever it
- * wraps.
+ * {@link InternalConsistencyError}, a partner refusal, or an
+ * {@link AuthenticationError}, reaches a command boundary behind it. Any
+ * other kind ends the walk, so a `security` failure keeps its own code
+ * whatever it wraps. A {@link PeerAbortError} is `transport`-kind but ends the
+ * walk too: it is the failure itself, not a wrap.
  */
 export function firstLinkBehindTransportWraps(err: unknown): unknown {
   let link: unknown = err;
@@ -191,7 +266,8 @@ export function firstLinkBehindTransportWraps(err: unknown): unknown {
     let depth = 0;
     depth < MAX_ERROR_CAUSE_DEPTH &&
     link instanceof ConnectionError &&
-    link.kind === "transport";
+    link.kind === "transport" &&
+    !(link instanceof PeerAbortError);
     depth++
   )
     link = link.cause;

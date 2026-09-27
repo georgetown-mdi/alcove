@@ -32,7 +32,11 @@ import {
   fileSyncMaxRoundSetValues,
   fileSyncMessageFileBytes,
 } from "../connection/fileSyncOutboundBound";
-import { RoundSetLimitError, WebRtcFrameLimitError } from "../errors";
+import {
+  ProtocolRefusalError,
+  RoundSetLimitError,
+  WebRtcFrameLimitError,
+} from "../errors";
 import { sendAbort } from "../protocolSetup";
 import { decodePsiBinaryFrame, receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
@@ -373,12 +377,12 @@ export class PSIParticipant {
     try {
       declared = countDeclaredPsiElements(bytes, kind, ceiling);
     } catch {
-      throw new Error(
+      throw new ProtocolRefusalError(
         `${this.id} protocol error: malformed inbound PSI ${kind} frame`,
       );
     }
     if (declared > ceiling)
-      throw new Error(
+      throw new ProtocolRefusalError(
         `${this.id} protocol error: inbound PSI ${kind} declares more than ` +
           `${ceiling} encrypted element(s)`,
       );

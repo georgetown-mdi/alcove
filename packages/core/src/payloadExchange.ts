@@ -31,6 +31,7 @@ import { loneSurrogateIndex } from "./utils/wellFormedString.js";
 import {
   InternalConsistencyError,
   OutboundDisclosureRefusalError,
+  ProtocolRefusalError,
   UsageError,
   isTransportPublishIndeterminate,
 } from "./errors.js";
@@ -521,7 +522,7 @@ export function assertDisclosedNamesCarriable(
  *   configuration error (exit 64) -- self-attributed, and raised before any
  *   credential, terms, or data are sent -- distinct from
  *   {@link reconcileReceivedPayload}'s partner-attributed protocol abort
- *   (exit 69), and a caller that bookkeeps failures tells this refusal from a
+ *   (exit 76), and a caller that bookkeeps failures tells this refusal from a
  *   transport fault.
  */
 export function assertDisclosureMatchesCommitment(
@@ -1116,7 +1117,7 @@ export function buildOutputTable(
     ["rows", partnerPayload.rows],
   ] as const) {
     if (!Array.isArray(collection)) {
-      throw new Error(
+      throw new ProtocolRefusalError(
         `partner payload ${field} is not an array: ` +
           "refusing to read entries from a value that holds none",
       );
@@ -1124,14 +1125,14 @@ export function buildOutputTable(
   }
 
   if (!partnerPayload.columns.every((column) => typeof column === "string")) {
-    throw new Error(
+    throw new ProtocolRefusalError(
       "a partner payload column name is not a string: " +
         "refusing to write a header of another shape into the result",
     );
   }
 
   if (partnerPayload.rowIndices.length !== partnerPayload.rows.length) {
-    throw new Error(
+    throw new ProtocolRefusalError(
       "partner payload rowIndices and rows have different lengths: " +
         `${partnerPayload.rowIndices.length} vs ${partnerPayload.rows.length}`,
     );
@@ -1145,13 +1146,13 @@ export function buildOutputTable(
   // framing. isPayloadCell is the wire schema's own cell predicate.
   for (const row of partnerPayload.rows) {
     if (!Array.isArray(row)) {
-      throw new Error(
+      throw new ProtocolRefusalError(
         "a partner payload row is not an array of cells: " +
           "refusing to read cell values from a non-row value",
       );
     }
     if (!row.every(isPayloadCell)) {
-      throw new Error(
+      throw new ProtocolRefusalError(
         "a partner payload cell is neither a string nor null: " +
           "refusing to write a value of another shape into the result",
       );
@@ -1160,7 +1161,7 @@ export function buildOutputTable(
 
   const columnCount = partnerPayload.columns.length;
   if (!hasOneCellPerColumn(columnCount, partnerPayload.rows)) {
-    throw new Error(
+    throw new ProtocolRefusalError(
       "partner payload rows do not have one cell per declared column: " +
         `expected ${columnCount} cell${columnCount === 1 ? "" : "s"} per row`,
     );
@@ -1213,7 +1214,9 @@ export function buildOutputTable(
   // invariant keeps a check of its own rather than resting on that call
   // path.
   if (theirIdxToPayloadPos.size !== partnerPayload.rowIndices.length) {
-    throw new Error("partner payload rowIndices contains duplicate indices");
+    throw new ProtocolRefusalError(
+      "partner payload rowIndices contains duplicate indices",
+    );
   }
 
   if (hasPartnerCols) {
@@ -1225,7 +1228,7 @@ export function buildOutputTable(
       ),
     ];
     if (missing.length > 0) {
-      throw new Error(
+      throw new ProtocolRefusalError(
         "partner payload is missing rows for association table indices: " +
           missing.join(", "),
       );

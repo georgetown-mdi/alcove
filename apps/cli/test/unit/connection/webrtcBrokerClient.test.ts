@@ -549,7 +549,7 @@ test("a non-JSON frame ends the connection without echoing the body", async () =
   const { socket, closes } = await register();
   socket.deliver("}{ NOT-JSON-MARKER");
   expect(closes).toHaveLength(1);
-  expect(closes[0]?.kind).toBe("protocol");
+  expect(closes[0]?.kind).toBe("transport");
   expect(closes[0]?.message).not.toContain("NOT-JSON-MARKER");
   expect(socket.closed).toBe(true);
 });
@@ -557,7 +557,7 @@ test("a non-JSON frame ends the connection without echoing the body", async () =
 test("an oversized frame is refused before it is parsed", async () => {
   const { socket, closes } = await register();
   socket.deliver(`"${"x".repeat(256 * 1024 + 1)}"`);
-  expect(closes[0]?.kind).toBe("protocol");
+  expect(closes[0]?.kind).toBe("transport");
   expect(closes[0]?.message).toContain("limit");
 });
 
@@ -567,7 +567,7 @@ test("the frame cap counts UTF-8 bytes, not string length", async () => {
   const body = `"${"é".repeat(128 * 1024)}"`;
   expect(body.length).toBeLessThan(256 * 1024);
   socket.deliver(body);
-  expect(closes[0]?.kind).toBe("protocol");
+  expect(closes[0]?.kind).toBe("transport");
   expect(closes[0]?.message).toContain("limit");
 });
 

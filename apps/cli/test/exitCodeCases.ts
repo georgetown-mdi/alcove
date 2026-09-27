@@ -2,6 +2,9 @@ import {
   AuthenticationError,
   ConnectionError,
   InternalConsistencyError,
+  PeerAbortError,
+  ProtocolRefusalError,
+  ReceiptVerificationError,
   UsageError,
 } from "@alcove/core";
 
@@ -94,6 +97,50 @@ export const ERROR_CLASS_EXIT_CODES: ReadonlyArray<{
       new ConnectionError("the message send failed", "transport", {
         cause: new InternalConsistencyError("a send ran before synchronize"),
       }),
+  },
+  {
+    planted: "a ProtocolRefusalError",
+    code: 76,
+    plant: () => new ProtocolRefusalError("linkage terms are incompatible"),
+  },
+  {
+    planted:
+      'a ProtocolRefusalError behind a ConnectionError of kind "transport"',
+    code: 76,
+    plant: () =>
+      new ConnectionError("the message poll failed", "transport", {
+        cause: new ProtocolRefusalError("the partner runs another wire format"),
+      }),
+  },
+  {
+    planted: 'a ConnectionError of kind "protocol"',
+    code: 76,
+    plant: () =>
+      new ConnectionError("the partner sent a malformed frame", "protocol"),
+  },
+  {
+    planted: "a PeerAbortError",
+    code: 76,
+    plant: () => new PeerAbortError(),
+  },
+  {
+    planted: 'a PeerAbortError behind a ConnectionError of kind "transport"',
+    code: 76,
+    plant: () =>
+      new ConnectionError("the message poll failed", "transport", {
+        cause: new PeerAbortError(),
+      }),
+  },
+  {
+    planted: "a ReceiptVerificationError",
+    code: 76,
+    plant: () =>
+      new ReceiptVerificationError("partner certificate is not trusted"),
+  },
+  {
+    planted: 'a ConnectionError of kind "closed"',
+    code: 69,
+    plant: () => new ConnectionError("the wait was cancelled", "closed"),
   },
   {
     planted: "an Error with its own exitCode",
