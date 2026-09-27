@@ -38,6 +38,7 @@ import {
   sanitizeErrorForDisplay,
 } from "./utils/sanitizeErrorForDisplay.js";
 import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
+import { snakeizeKey } from "./utils/camelizeKeys.js";
 import type { CSVRow } from "./file.js";
 import { PSIParticipant } from "./psi/participant.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
@@ -563,8 +564,16 @@ function quotedTermsValue(
 function assertTermsPassPartnerParse(linkageTerms: LinkageTerms): void {
   const parsed = safeParseLinkageTerms(linkageTerms);
   if (parsed.success) return;
-  const reason = rawDecodeErrorDescription(parsed.error);
-  const value = quotedTermsValue(linkageTerms, parsed.error.issues[0].path);
+  const [first, ...rest] = parsed.error.issues;
+  const pathAsWritten = first.path.map((segment) =>
+    typeof segment === "string" ? snakeizeKey(segment) : segment,
+  );
+  const reason = redactPrivateKeyMaterial(
+    rawDecodeErrorDescription({
+      issues: [{ ...first, path: pathAsWritten }, ...rest],
+    }),
+  );
+  const value = quotedTermsValue(linkageTerms, first.path);
   const valueClause = value === undefined ? "" : ` (the value is ${value})`;
   throw new OperatorConfigError(
     "these linkage terms would be refused by the partner on receipt: " +

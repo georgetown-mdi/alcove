@@ -37,7 +37,7 @@ test("terms holding a field type the partner's parser lacks are refused at prepa
   expect(err).toBeInstanceOf(OperatorConfigError);
   const message = (err as Error).message;
   expect(message).toContain("refused by the partner on receipt");
-  expect(message).toContain("linkageFields.0.type");
+  expect(message).toContain("linkage_fields.0.type");
   expect(message).toContain('(the value is "identifier")');
 });
 
