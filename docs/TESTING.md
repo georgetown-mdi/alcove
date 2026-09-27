@@ -878,9 +878,11 @@ on, each of them reading as covered while nothing pins it.
 npm run test:mutation
 ```
 
-The run takes a couple of minutes against an installed tree (`npm ci` plus the
-core build). Stryker is not a repository dependency by design -- it drags in
-a second copy of Vitest and its own TypeScript -- so
+It runs against an installed tree (`npm ci` plus the core build). On the
+nightly's `ubuntu-latest` runner, at the 4 test runners Stryker picks there, the
+three files' 366 mutants take 2.5 to 6.5 minutes, about 2.5 of them the initial
+run of the whole core unit tier. Stryker is not a repository dependency by
+design -- it drags in a second copy of Vitest and its own TypeScript -- so
 `scripts/stryker-security.mjs` installs it into a private prefix under the work
 directory: `$RUNNER_TEMP` in CI, the system temp directory locally, and
 `ALCOVE_STRYKER_WORK_DIR` overrides both. The HTML and JSON reports are written
@@ -899,6 +901,42 @@ level. The leg fails, naming the file and the mutated lines, when a mutant
 survives with no tests completed against it: Stryker had tests selected for
 that mutant, so zero completed means the runner executed none, whatever the
 file's score reads.
+
+### The CLI's accept command
+
+`apps/cli/stryker.config.mjs` mutates `apps/cli/src/commands/accept.ts` against
+the CLI unit tier, through `apps/cli/vitest.stryker.config.mts`. That tier runs
+without the integration suites' SFTP server or broker, so accept behavior only
+they exercise counts as surviving. Stryker's vitest runner forces the threads
+pool, where `process.chdir` and `process.umask` throw and a worker's
+`os.homedir()` ignores a changed `process.env.HOME`, so the config leaves out
+the unit files that call either function or, in `atSignRefs.test.ts`'s case,
+point `HOME` at a temp dir for tilde expansion; none of them imports
+`accept.ts`. `scripts/stryker-security.mjs` reads only the core configuration,
+so this one runs by hand, from the repository root, through a derived
+configuration that makes the vitest path absolute and keeps the sandbox and
+reports out of the tree:
+
+```sh
+W=$(mktemp -d)
+npm install --prefix "$W/toolchain" --no-audit --no-fund --ignore-scripts \
+  @stryker-mutator/core@10.0.0 @stryker-mutator/vitest-runner@10.0.0 \
+  "typescript@$(node -p "require('typescript/package.json').version")"
+W="$W" node --input-type=module -e '
+const w = process.env.W, c = (await import(`${process.cwd()}/apps/cli/stryker.config.mjs`)).default;
+(await import("node:fs")).writeFileSync(`${w}/stryker.json`, JSON.stringify({
+  ...c, vitest: { ...c.vitest, configFile: `${process.cwd()}/${c.vitest.configFile}` },
+  tempDirName: `${w}/tmp`, htmlReporter: { fileName: `${w}/reports/mutation.html` },
+  jsonReporter: { fileName: `${w}/reports/mutation.json` } }));'
+node "$W/toolchain/node_modules/@stryker-mutator/core/bin/stryker.js" run \
+  "$W/stryker.json" --concurrency 3
+```
+
+Its 473 mutants take 14 minutes at concurrency 3 on a 10-core machine under a
+load average of about 7.5, 2.5 of them the initial run of the unit tier. The
+file scores 75%: most survivors are help and message text, and the rest include
+removed calls to the linkage-satisfiability and count-only column checks, which
+no unit test refuses on.
 
 ### The floors
 
