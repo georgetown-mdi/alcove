@@ -8,6 +8,8 @@ import {
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
 
+import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
+
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   MAX_LABEL_LENGTH,
@@ -291,6 +293,19 @@ describe("no-input-content invariant", () => {
     expect(record).not.toHaveProperty("inputFileHandle");
     expect(record).not.toHaveProperty("workingDirectoryHandle");
     expect(record.schedule).toEqual(schedule);
+  });
+
+  test("a stored record holding a separate results-folder pointer reads without it", () => {
+    const stored = {
+      ...buildManagedExchangeRecord(newExchange({ schedule })),
+      outputDirectoryHandle: { name: "results" },
+    };
+    const record = parseManagedExchangeRecord(stored);
+    expect(record).not.toHaveProperty("outputDirectoryHandle");
+    expect(record).not.toHaveProperty("workingDirectoryHandle");
+    expect(storedWorkingDirectoryUsable(record.workingDirectoryHandle)).toBe(
+      false,
+    );
   });
 });
 

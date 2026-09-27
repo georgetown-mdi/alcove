@@ -503,3 +503,64 @@ describe("the working folder", () => {
     );
   });
 });
+
+/** Whether an iterated expression names a directory handle, by the words its
+ * identifiers use. */
+const NAMES_A_FOLDER = /handle|director|folder/i;
+
+/** Every site in `source` that iterates an expression naming a handle, a
+ * directory, or a folder: a `for await` loop over one, or a `.values(`,
+ * `.keys(`, or `.entries(` call on one. */
+function directoryIterationSites(source: string): Array<string> {
+  const loops = [...source.matchAll(/for\s+await\s*\([^\n]*?\bof\s+([^\n{]*)/g)]
+    .map((loop) => loop[1].trim())
+    .filter((iterated) => NAMES_A_FOLDER.test(iterated))
+    .map((iterated) => `for await of ${iterated}`);
+  const listings = [
+    ...source.matchAll(/([\w$.?[\]]+)\.(values|keys|entries)\(/g),
+  ]
+    .filter((call) => NAMES_A_FOLDER.test(call[1]))
+    .map((call) => `${call[1]}.${call[2]}()`);
+  return [...loops, ...listings];
+}
+
+/** Every directory-iteration site in the app source, as `module: site`. */
+function directoryIterationCalls(): Array<string> {
+  return webSourceFiles().flatMap((file) =>
+    directoryIterationSites(
+      readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8"),
+    ).map((site) => `${file}: ${site}`),
+  );
+}
+
+describe("the working folder's source scan for iteration", () => {
+  test("finds no module iterating an expression that names a handle, a directory, or a folder (a for await loop, or a .values(, .keys(, or .entries( call)", () => {
+    expect(directoryIterationCalls()).toEqual([]);
+  });
+
+  test("catches a folder listing in any module and passes other iteration", () => {
+    expect(
+      directoryIterationSites(
+        "for await (const e of record.workingDirectoryHandle.values()) {",
+      ),
+    ).toEqual([
+      "for await of record.workingDirectoryHandle.values())",
+      "record.workingDirectoryHandle.values()",
+    ]);
+    expect(directoryIterationSites("for await (const e of folder) {")).toEqual([
+      "for await of folder)",
+    ]);
+    expect(directoryIterationSites("const names = directory.keys();")).toEqual([
+      "directory.keys()",
+    ]);
+    expect(
+      directoryIterationSites(
+        [
+          "for await (const frame of readEventStreamFrames(response)) {",
+          "for (const [key, value] of Object.entries(settings)) {",
+          "const ids = records.map((record) => record.id).values();",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+});
