@@ -172,23 +172,25 @@ one of those windows stops the browser itself, closing every window open in
 it -- the other sites' windows included, not just this one.
 
 - **The cause is a browser defect**, not a limit of this application. An
-  Incognito or Guest window holds browser storage in memory, and on those
-  versions reading a stored file-system pointer back out of memory-held storage
-  terminates the browser process
+  Incognito or Guest window holds browser storage in memory, and on the
+  affected versions reading a stored file-system pointer back out of
+  memory-held storage terminates the browser process
   ([crbug 562119515](https://issues.chromium.org/issues/562119515)). Opening a
   saved exchange is that read: the record keeps a pointer to the exchange's
   folder rather than a copy of the input (see [The input file each
-  run](#the-input-file-each-run)). Chromium 156.0.8064.0 is the first fixed
-  build.
-- **Ordinary windows and the installed app are unaffected**, on every version.
-  Their storage is on disk, and an installed app does not run in an Incognito
-  or Guest profile.
+  run](#the-input-file-each-run)).
+- **Measured crashing**: 153.0.8010.52, 154.0.8037.9, and 155.0.8059.2.
+  **Measured fixed**: 155.0.8059.12 and 156.0.8064.0. No Chrome 154 build
+  later than 154.0.8037.9 has been measured.
+- **Ordinary windows and the installed app are unaffected**, on every version
+  measured. Their storage is on disk, and an installed app does not run in an
+  Incognito or Guest profile.
 - **The application cannot warn you before it happens.** No browser interface
   reports that a window is Incognito or Guest, and a page cannot catch the
   browser stopping underneath it.
 
-This limit is removed once Chromium 156, or a 154 build holding the fix, is the
-stable channel.
+This limit is removed once the stable channel reaches Chromium 155.0.8059.12
+or later.
 
 ## Installing the app
 
