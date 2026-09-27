@@ -91,7 +91,7 @@ import {
 } from "../../../src/partyIdentity";
 import { saveConfig } from "../../../src/config";
 import { webRtcDialFrom } from "../../../src/protocol";
-import { exitCodeForError } from "../../../src/util/exit";
+import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import { promptConfirm, promptFreeText } from "../../../src/util/prompt";
 import { captureProcessExit } from "../../exitCapture";
 import {
@@ -602,7 +602,7 @@ describe("validateAccept (the no-commit phase, before the prompt)", () => {
     expect(ready.token.linkageTerms.deduplicate).toBe(true);
   });
 
-  test("validateAccept: online rejects a missing input file before the prompt, preserving its exit code", async () => {
+  test("validateAccept: online rejects a missing input file before the prompt, as not found", async () => {
     const encoded = await encodeInvitation(
       sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
     );
@@ -617,7 +617,7 @@ describe("validateAccept (the no-commit phase, before the prompt)", () => {
         options: testOptions(),
         log: silentLog,
       }),
-    ).rejects.toMatchObject({ exitCode: 69 });
+    ).rejects.toBeInstanceOf(InputNotFoundError);
   });
 
   test("validateAccept: online `-` input is rejected as a usage error before the prompt, not silently declined", async () => {

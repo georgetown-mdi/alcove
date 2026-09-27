@@ -22,6 +22,7 @@ import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
 import { fromBase64Url } from "../utils/crypto.js";
 import { boundedArray } from "../utils/boundedArray.js";
+import { UsageError } from "../errors.js";
 
 // --- Connection endpoint -----------------------------------------------------
 
@@ -882,9 +883,10 @@ export const MAX_RAW_INVITATION_LENGTH = 2 * MAX_ENCODED_INVITATION_LENGTH;
  * Uses `btoa`/`atob` and `globalThis.crypto.subtle.digest`
  * (Node.js 19+ / all modern browsers).
  *
- * @throws {Error} if `expires` is set to a time that is not in the future, or if
- *   the encoded token exceeds {@link MAX_ENCODED_INVITATION_LENGTH} (a token that
- *   could not be decoded; fires only on a programming error, not a real config).
+ * @throws {UsageError} if `expires` is set to a time that is not in the
+ *   future, or if the encoded token exceeds
+ *   {@link MAX_ENCODED_INVITATION_LENGTH} (a token that could not be decoded;
+ *   fires only on a programming error, not a real config).
  * @throws {ZodError} if the token fails {@link MintedInvitationTokenSchema}.
  * @throws {NestingDepthExceededError|NodeCountExceededError} if the token's
  *   `transform.params` is too deeply nested or too wide for the bounded camelCase
@@ -909,7 +911,7 @@ export async function encodeInvitation(
     validated.expires !== undefined &&
     new Date(validated.expires) <= new Date()
   ) {
-    throw new Error("invitation expires must be in the future");
+    throw new UsageError("invitation expires must be in the future");
   }
   const bytes = new TextEncoder().encode(JSON.stringify(validated));
   const body = toBase64Url(bytes);
@@ -924,7 +926,7 @@ export async function encodeInvitation(
   // decode. In practice this fires only on a programming error, never a real
   // config.
   if (encoded.length > MAX_ENCODED_INVITATION_LENGTH) {
-    throw new Error(
+    throw new UsageError(
       "encoded invitation exceeds the maximum length of " +
         `${MAX_ENCODED_INVITATION_LENGTH} characters`,
     );

@@ -3,7 +3,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { getLogger } from "@alcove/core";
+import { UsageError, type getLogger } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "../../src/fileUtils";
 import { preflightKeyFilePath } from "../../src/keyFilePreflight";
@@ -51,6 +51,34 @@ test("rejects a whitespace-only keyFilePath", () => {
   expect(() => preflightKeyFilePath("   ", log)).toThrow(
     "key file path is empty",
   );
+});
+
+// --- exit classification -----------------------------------------------------
+
+test.each([
+  ["an empty path", () => ""],
+  [
+    "a key path that is a directory",
+    () => {
+      const keyAsDir = path.join(dir, "key-as-directory");
+      fs.mkdirSync(keyAsDir);
+      return keyAsDir;
+    },
+  ],
+  [
+    "a parent that is a file",
+    () => {
+      const fileParent = path.join(dir, "parent-file");
+      fs.writeFileSync(fileParent, "");
+      return path.join(fileParent, "key.json");
+    },
+  ],
+])("refuses %s as a usage error (exit 64)", (_case, keyFilePath) => {
+  // The remedy is a settings or directory change, so a retry of the same run
+  // cannot succeed: a scheduled run reports it as a usage fault, not as a
+  // transport failure.
+  const { log } = makeLogger();
+  expect(() => preflightKeyFilePath(keyFilePath(), log)).toThrow(UsageError);
 });
 
 // --- trimming ----------------------------------------------------------------

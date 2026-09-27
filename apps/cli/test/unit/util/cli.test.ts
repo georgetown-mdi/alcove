@@ -29,6 +29,8 @@ import {
 import {
   AUTHENTICATION_FAILED_EXIT_CODE,
   exitCodeForError,
+  INPUT_NOT_FOUND_EXIT_CODE,
+  InputNotFoundError,
   exitWithError,
   INTERNAL_FAULT_EXIT_CODE,
   PARTNER_REFUSED_EXIT_CODE,
@@ -582,15 +584,17 @@ test("openInputSource: a file path opens a readable stream of its contents", asy
   }
 });
 
-test("openInputSource: a missing file throws exit 69 (not a stdin error)", () => {
+test("openInputSource: a missing file is not found, exit 66 (not a stdin error)", () => {
   let caught: unknown;
   try {
     openInputSource("/nonexistent/alcove-input.csv");
   } catch (err) {
     caught = err;
   }
+  expect(caught).toBeInstanceOf(InputNotFoundError);
   expect((caught as Error).message).toMatch("does not exist");
-  expect((caught as { exitCode?: number }).exitCode).toBe(69);
+  expect(exitCodeForError(caught)).toBe(INPUT_NOT_FOUND_EXIT_CODE);
+  expect(INPUT_NOT_FOUND_EXIT_CODE).toBe(66);
 });
 
 test("openInputSource: `-` returns process.stdin when stdin is allowed (non-interactive)", async () => {

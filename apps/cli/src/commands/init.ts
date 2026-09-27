@@ -276,9 +276,9 @@ export async function buildTemplateData(
   } catch (err) {
     // openInputSource's stdin-specific rejections (`-` disallowed, `-` at a bare
     // TTY) are already UsageErrors with actionable wording -- keep them. A missing
-    // or unreadable file throws a plain Error (exitCode 69, the network commands'
-    // default); init has no transport, so reclassify it as a usage error (exit
-    // 64) naming the file.
+    // or unreadable file is reclassified as a usage error (exit 64) naming the
+    // file: init authors a configuration from the file the operator named, so
+    // there is no scheduled run to wait for it.
     if (err instanceof UsageError) throw err;
     const message = messageWithOperatorText`could not read input file ${operatorSuppliedText(
       input,

@@ -9,6 +9,7 @@ import {
 } from "@alcove/core";
 
 import { PERSISTENCE_LOSS_EXIT_CODE } from "../src/eventStream";
+import { InputNotFoundError } from "../src/util/exit";
 
 /**
  * One error per class `exitCodeForError` (src/util/exit.ts) distinguishes, with
@@ -141,6 +142,20 @@ export const ERROR_CLASS_EXIT_CODES: ReadonlyArray<{
     planted: 'a ConnectionError of kind "closed"',
     code: 69,
     plant: () => new ConnectionError("the wait was cancelled", "closed"),
+  },
+  {
+    planted: "an InputNotFoundError",
+    code: 66,
+    plant: () => new InputNotFoundError("in.csv does not exist"),
+  },
+  {
+    planted:
+      'an InputNotFoundError behind a ConnectionError of kind "transport"',
+    code: 66,
+    plant: () =>
+      new ConnectionError("the message send failed", "transport", {
+        cause: new InputNotFoundError("in.csv does not exist"),
+      }),
   },
   {
     planted: "an Error with its own exitCode",

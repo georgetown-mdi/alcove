@@ -28,6 +28,7 @@ import {
   NAME_SHAPE_MESSAGE,
 } from "../../src/config/linkageTermsSchema";
 import { summarizeInvitation } from "../../src/consent/invitationSummary";
+import { UsageError } from "../../src/errors";
 import { NestingDepthExceededError } from "../../src/utils/camelizeKeys";
 import {
   describeDecodeError,
@@ -198,6 +199,17 @@ test("round-trips a token without expires", async () => {
   expect(decoded.expires).toBeUndefined();
   expect(decoded.linkageTerms.version).toBe("1.0.0");
   expect(decoded.linkageTerms.identity).toBe("Test Party");
+});
+
+test("refuses to encode a token whose expires has passed, as a usage error", async () => {
+  const token: InvitationToken = {
+    ...baseToken,
+    expires: "2020-01-01T00:00:00Z",
+  };
+  await expect(encodeInvitation(token)).rejects.toBeInstanceOf(UsageError);
+  await expect(encodeInvitation(token)).rejects.toThrow(
+    "invitation expires must be in the future",
+  );
 });
 
 test("round-trips a token with expires", async () => {

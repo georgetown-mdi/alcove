@@ -14,6 +14,7 @@ import {
 
 import { createOwnerOnlyWriteStream } from "../fileUtils";
 import { settleWithinCeiling, type CeilingOutcome } from "./ceiling";
+import { InputNotFoundError } from "./exit";
 
 /**
  * Resolve a CSV input positional to the readable stream core's `loadCSVFile`
@@ -25,8 +26,7 @@ import { settleWithinCeiling, type CeilingOutcome } from "./ceiling";
  * came from argv or from the operator's configuration. A partner- or
  * server-delivered string passed here would reach the display unescaped.
  *
- * Thrown errors hold an `exitCode` for the caller to forward to
- * `process.exit`: a missing file throws with `exitCode: 69`.
+ * A missing file throws an {@link InputNotFoundError} (exit 66).
  *
  * `allowStdin` gates the `-` case. Every input command supports stdin;
  * `accept` supports it only with `--consent-to-terms`, since otherwise it
@@ -66,9 +66,9 @@ export function openInputSource(
   }
   if (!fs.existsSync(input)) {
     const message = messageWithOperatorText`${operatorSuppliedText(input)} does not exist`;
-    throw Object.assign(
-      keepOperatorSuppliedText(new Error(message.text), message),
-      { exitCode: 69 },
+    throw keepOperatorSuppliedText(
+      new InputNotFoundError(message.text),
+      message,
     );
   }
   return fs.createReadStream(input);

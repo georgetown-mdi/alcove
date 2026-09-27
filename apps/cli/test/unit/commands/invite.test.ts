@@ -93,6 +93,7 @@ import {
   PLACEHOLDER_IDENTITY,
 } from "../../../src/partyIdentity";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
+import { InputNotFoundError } from "../../../src/util/exit";
 
 const silentLog = getLogger("invite-test");
 silentLog.setLevel("silent");
@@ -189,7 +190,7 @@ test("validateInvite: an unusable URL is rejected with no side effect", async ()
     ).rejects.toBeInstanceOf(UsageError);
 });
 
-test("validateInvite: offline rejects a missing input file, preserving its exit code", async () => {
+test("validateInvite: offline rejects a missing input file as not found", async () => {
   await expect(
     validateInvite({
       resolved: { mode: "offline", input: "/nonexistent/alcove-input.csv" },
@@ -197,7 +198,7 @@ test("validateInvite: offline rejects a missing input file, preserving its exit 
       acceptTimeout: 900,
       log: silentLog,
     }),
-  ).rejects.toMatchObject({ exitCode: 69 });
+  ).rejects.toBeInstanceOf(InputNotFoundError);
 });
 
 test("validateInvite: offline requires an input file", async () => {
