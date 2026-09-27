@@ -39,9 +39,21 @@ function preparedFrom(
   return minimalPreparedExchange({ linkageTerms, metadata });
 }
 
-function capture(): { log: { info: (m: string) => void }; messages: string[] } {
+function capture(): {
+  log: { info: (m: string) => void; warn: (m: string) => void };
+  messages: string[];
+  warnings: string[];
+} {
   const messages: string[] = [];
-  return { messages, log: { info: (m: string) => messages.push(m) } };
+  const warnings: string[] = [];
+  return {
+    messages,
+    warnings,
+    log: {
+      info: (m: string) => messages.push(m),
+      warn: (m: string) => warnings.push(m),
+    },
+  };
 }
 
 let dir: string;
@@ -68,7 +80,7 @@ test("buildSaveSpec includes the connection, terms and metadata, omitting standa
   ] satisfies PreparedExchange["metadata"];
   const prepared = preparedFrom(linkageTerms, metadata);
 
-  const spec = buildSaveSpec(connection, prepared);
+  const { spec } = buildSaveSpec(connection, prepared);
 
   expect(spec.connection).toBe(connection);
   expect(spec.linkageTerms).toBe(linkageTerms);
@@ -83,7 +95,7 @@ test("buildSaveSpec records a non-empty observed received set as the commitment"
   // first exchange so a later `alcove exchange` fails closed on a divergence.
   const prepared = preparedFrom(getDefaultLinkageTerms("Test Party"), []);
 
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     prepared,
     ["dob", "zip"],
@@ -99,7 +111,7 @@ test("buildSaveSpec leaves an empty observation lazy, not a strict receive-nothi
   // observation therefore records no commitment (absent field, reconciled lazily).
   const prepared = preparedFrom(getDefaultLinkageTerms("Test Party"), []);
 
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     prepared,
     [],
@@ -112,7 +124,7 @@ test("both-saved persists the observed received set to disk as expected_payload_
   // End-to-end: the observed set flows through buildSaveSpec -> finalizeBootstrap
   // -> saveConfig, and is serialized snake_case so a later load reconciles on it.
   const { log } = capture();
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     preparedFrom(getDefaultLinkageTerms("Test Party"), []),
     ["dob", "zip"],
@@ -134,7 +146,7 @@ test("buildSaveSpec leaves an observation holding a text-direction character laz
   // saved, it would stop every later `alcove exchange` at load.
   const { log } = capture();
   const observed = ["dob", "zip\u202Eedoc"];
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     preparedFrom(getDefaultLinkageTerms("Test Party"), []),
     observed,
@@ -160,7 +172,7 @@ test("buildSaveSpec leaves an observation holding a text-direction character laz
 
 test("a saved well-shaped observation reloads with expected_payload_columns intact", () => {
   const { log } = capture();
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     preparedFrom(getDefaultLinkageTerms("Test Party"), []),
     ["dob", "zip"],
@@ -183,7 +195,7 @@ test("a saved config holding a text-direction character in expected_payload_colu
   // The on-disk shape the save path now declines to write: the same config
   // as the round trip above, with the bad name written into the file directly.
   const { log } = capture();
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     preparedFrom(getDefaultLinkageTerms("Test Party"), []),
     ["dob", "zip"],
@@ -205,6 +217,29 @@ test("a saved config holding a text-direction character in expected_payload_colu
 });
 
 // --- both parties saved ------------------------------------------------------
+
+test("both-saved: warns once, after the write, that a withheld observation is not recorded", () => {
+  const configExistedAtWarning: boolean[] = [];
+  const { spec, withheldPayloadColumns } = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip\u202E"],
+  );
+  expect(withheldPayloadColumns).toBe("name-shape");
+  finalizeBootstrap({
+    save: true,
+    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
+    spec,
+    withheldPayloadColumns,
+    configFile,
+    keyFile,
+    log: {
+      info: () => undefined,
+      warn: () => configExistedAtWarning.push(fs.existsSync(configFile)),
+    },
+  });
+  expect(configExistedAtWarning).toEqual([true]);
+});
 
 test("both-saved: writes config and key, and reports the shared secret", () => {
   const { log, messages } = capture();
@@ -232,7 +267,7 @@ test("save persists an @path credential as the reference, never the secret conte
   const { log } = capture();
   const pwFile = path.join(dir, "pw");
   fs.writeFileSync(pwFile, "s3cret\n");
-  const spec = buildSaveSpec(
+  const { spec } = buildSaveSpec(
     {
       channel: "sftp",
       server: { host: "h", username: "u", password: `@${pwFile}` },

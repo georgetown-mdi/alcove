@@ -68,6 +68,7 @@ import {
   runOnlineBootstrap,
   singlePassDisclosureNotice,
   warnSanitizedColumns,
+  withheldPayloadColumnsWarning,
 } from "../../src/onlineBootstrap";
 import { redactUrlCredentials } from "../../src/util/connectionUrl";
 import { openInputSource } from "../../src/util/dataIo";
@@ -2576,17 +2577,16 @@ describe("runOnlineBootstrap", () => {
 
 describe("observedReceivedColumnsForSave", () => {
   test("keeps a non-empty observation", () => {
-    expect(observedReceivedColumnsForSave(["dob", "zip"])).toEqual([
-      "dob",
-      "zip",
-    ]);
+    expect(observedReceivedColumnsForSave(["dob", "zip"])).toEqual({
+      columns: ["dob", "zip"],
+    });
   });
 
   test("drops an empty or absent observation", () => {
     // An empty observed set is the ambiguous zero-match / discloses-nothing case, so
     // it is left absent (lazy) rather than persisted as a strict "receive nothing".
-    expect(observedReceivedColumnsForSave([])).toBeUndefined();
-    expect(observedReceivedColumnsForSave(undefined)).toBeUndefined();
+    expect(observedReceivedColumnsForSave([])).toEqual({});
+    expect(observedReceivedColumnsForSave(undefined)).toEqual({});
   });
 
   test("drops an over-cap observation (stays loadable)", () => {
@@ -2602,15 +2602,60 @@ describe("observedReceivedColumnsForSave", () => {
       { length: MAX_PAYLOAD_ENTRIES + 1 },
       (_, i) => `c${i}`,
     );
-    expect(observedReceivedColumnsForSave(atCap)).toEqual(atCap);
-    expect(observedReceivedColumnsForSave(overCap)).toBeUndefined();
+    expect(observedReceivedColumnsForSave(atCap)).toEqual({ columns: atCap });
+    expect(observedReceivedColumnsForSave(overCap)).toEqual({
+      withheld: "over-cap",
+    });
   });
 
   test("drops an observation holding a control or text-direction character", () => {
+    expect(observedReceivedColumnsForSave(["dob", "zip\u202E"])).toEqual({
+      withheld: "name-shape",
+    });
+    expect(observedReceivedColumnsForSave(["dob\u0007"])).toEqual({
+      withheld: "name-shape",
+    });
+  });
+
+  const partnerName = "partnerOnlyColumnXq7";
+
+  test("an over-cap observation warns in one sentence pair quoting no partner name", () => {
+    const overCap = Array.from(
+      { length: MAX_PAYLOAD_ENTRIES + 1 },
+      (_, i) => `${partnerName}${i}`,
+    );
+    expect(observedReceivedColumnsForSave(overCap).withheld).toBe("over-cap");
+    const warning = withheldPayloadColumnsWarning("over-cap");
+    expect(warning).toBe(
+      "the saved config does not record which payload columns your partner " +
+        `sent, because there were more than ${MAX_PAYLOAD_ENTRIES}, the most a ` +
+        "config can store. Later 'alcove exchange' runs will accept whatever " +
+        "columns arrive instead of refusing a changed set.",
+    );
+    expect(warning).not.toContain(partnerName);
+  });
+
+  test("a name a config cannot store warns in one sentence pair quoting no partner name", () => {
     expect(
-      observedReceivedColumnsForSave(["dob", "zip\u202E"]),
+      observedReceivedColumnsForSave([partnerName, `${partnerName}\u202E`])
+        .withheld,
+    ).toBe("name-shape");
+    const warning = withheldPayloadColumnsWarning("name-shape");
+    expect(warning).toBe(
+      "the saved config does not record which payload columns your partner " +
+        "sent, because one name has a control or text-direction character, " +
+        "which a config cannot store. Later 'alcove exchange' runs will " +
+        "accept whatever columns arrive instead of refusing a changed set.",
+    );
+    expect(warning).not.toContain(partnerName);
+  });
+
+  test("a storable or empty observation withholds nothing", () => {
+    expect(
+      observedReceivedColumnsForSave([partnerName, "zip"]).withheld,
     ).toBeUndefined();
-    expect(observedReceivedColumnsForSave(["dob\u0007"])).toBeUndefined();
+    expect(observedReceivedColumnsForSave([]).withheld).toBeUndefined();
+    expect(observedReceivedColumnsForSave(undefined).withheld).toBeUndefined();
   });
 });
 
