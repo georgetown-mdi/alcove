@@ -196,18 +196,22 @@ export class OperatorConfigError extends UsageError {
  * Holds `alcoveRecoveryHintEmitted`: a retry refuses identically, so the CLI's
  * generic retry advisory is suppressed. The start-of-exchange check raises it
  * too, with `setOwner` `"local"` and the failure as its `cause`, when it cannot
- * count this party's first-round set at all.
+ * count this party's first-round set at all. `distinctValueLimit` is set when
+ * the first-round set passed one round's distinct-value bound rather than the
+ * message bound.
  */
 export class WebRtcFrameLimitError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
+  readonly distinctValueLimit: number | undefined;
 
   constructor(
     message: string,
     readonly setOwner: "local" | "partner",
-    options?: ErrorOptions,
+    options?: ErrorOptions & { distinctValueLimit?: number },
   ) {
     super(message, options);
     this.name = "WebRtcFrameLimitError";
+    this.distinctValueLimit = options?.distinctValueLimit;
   }
 }
 

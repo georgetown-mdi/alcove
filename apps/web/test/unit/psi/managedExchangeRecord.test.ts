@@ -410,6 +410,36 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     }
   });
 
+  test("reads back which bound a too-large refusal found the set over", () => {
+    for (const tooLargeBound of [
+      "webrtc-message",
+      "round-distinct-values",
+    ] as const) {
+      const lastRun: ManagedExchangeLastRun = {
+        at: "2026-07-14T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "too-large",
+        tooLargeSetOwner: "local",
+        tooLargeBound,
+      };
+      const record = buildManagedExchangeRecord(newExchange({ lastRun }));
+      expect(parseManagedExchangeRecord(record).lastRun).toEqual(lastRun);
+    }
+  });
+
+  test("rejects a bound it does not recognize", () => {
+    const future = {
+      ...buildManagedExchangeRecord(newExchange()),
+      lastRun: {
+        at: "2026-07-14T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "too-large",
+        tooLargeBound: "message-file",
+      },
+    };
+    expect(safeParseManagedExchangeRecord(future).success).toBe(false);
+  });
+
   test("rejects a set owner it does not recognize", () => {
     const future = {
       ...buildManagedExchangeRecord(newExchange()),

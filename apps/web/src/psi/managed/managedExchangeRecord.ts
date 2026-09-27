@@ -226,8 +226,9 @@ export type ManagedExchangeRunOutcome =
  * was handed off did not read, so the run does not rotate on custody it could
  * not establish) -- are detected before any connection and never routed through
  * desync/attack framing. A `"too-large"` refusal (a set this run had to send
- * was over the bound one WebRTC message holds) is benign the same way, but a
- * round past the first can meet it after data has moved. */
+ * was over the bound one WebRTC message holds, or had more distinct values
+ * than one round holds) is benign the same way, but a round past the first
+ * can meet it after data has moved. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -243,6 +244,11 @@ export type ManagedExchangeFailureKind =
 /** Whose set a `"too-large"` refusal found over the bound: `"local"` for this
  * party's own, `"partner"` for the partner's set a run had to send back. */
 export type TooLargeSetOwner = "local" | "partner";
+
+/** Which bound a `"too-large"` refusal found a set over: `"webrtc-message"`
+ * for the bytes one WebRTC message holds, `"round-distinct-values"` for the
+ * distinct values one linkage key round holds. */
+export type TooLargeBound = "webrtc-message" | "round-distinct-values";
 
 /** Run bookkeeping the backup state and the desync UX read. Every field is a
  * timestamp, a closed enum, or a marker present only as `true` -- no free-text
@@ -265,6 +271,10 @@ export interface ManagedExchangeLastRun {
    * The next visit's summary and the between-visit notice name the one remedy
    * that side takes, and both remedies where it is absent. */
   tooLargeSetOwner?: TooLargeSetOwner;
+  /** Present only on a `"too-large"` failure: which bound the set was over.
+   * The next visit's summary and the between-visit notice name that bound and
+   * its figure, and name no bound where it is absent. */
+  tooLargeBound?: TooLargeBound;
 }
 
 /** The failure kinds that raise a standing condition: a rotation this device
@@ -472,6 +482,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
     .optional(),
   singleColumnInput: z.literal(true).optional(),
   tooLargeSetOwner: z.enum(["local", "partner"]).optional(),
+  tooLargeBound: z.enum(["webrtc-message", "round-distinct-values"]).optional(),
 });
 
 /** The canonical validator for the operator's answer. Strict, so a member a

@@ -24,13 +24,14 @@ import {
   TOO_LARGE_REMEDY_BY_OWNER,
   TOO_LARGE_SET_SOURCE_BY_OWNER,
   UNEXPLAINED_FAILURE_TITLE,
-  WEBRTC_MESSAGE_BOUND_LABEL,
+  tooLargeSetOverBound,
 } from "@psi/managed/managedFailureCopy";
 import {
   ManagedExchangeExpiredError,
   ManagedExchangeNotRunnableError,
   ManagedInputError,
   benignRerunOutcome,
+  tooLargeBoundOf,
 } from "@psi/managed/managedRun";
 import {
   deriveManagedFailureTier,
@@ -43,6 +44,7 @@ import { dateTimeLabel } from "@psi/formatting";
 
 import type {
   ManagedExchangeRecord,
+  TooLargeBound,
   TooLargeSetOwner,
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedFailureTier } from "@psi/managed/managedFailureTiers";
@@ -76,8 +78,9 @@ export {
  *   input replaced: the file cannot supply every agreed linkage key, and the
  *   same file refuses identically every time. Not `"retry"`.
  * - `"split"` -- the input must be split into smaller exchanges: a set this
- *   exchange sends is over the bound one WebRTC message holds, and the same
- *   files refuse identically every time. Not `"retry"`.
+ *   exchange sends is over a bound (one WebRTC message, or the distinct
+ *   values one round holds), and the same files refuse identically every
+ *   time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
   | "reinvite"
@@ -373,9 +376,9 @@ const TOO_LARGE_RETRY_NOTE =
   "connection problem.";
 
 /** The benign too-large state read back from a record: a set the last run had
- * to send was over the bound one WebRTC message holds, so the run refused to
- * send it. The record holds no count, so this copy states the bound and not
- * the set's size; a live launch shows the refusal's own message instead
+ * to send was over the bound the record's `tooLargeBound` names, so the run
+ * refused to send it. The record holds no count, so this copy states the bound
+ * and not the set's size; a live launch shows the refusal's own message instead
  * ({@link tooLargeFailure}). Not the retry state -- the same files refuse
  * identically -- and it claims nothing about earlier rounds, since a round
  * past the first refuses after data has moved. The record's
@@ -383,15 +386,16 @@ const TOO_LARGE_RETRY_NOTE =
  * without it states both. */
 function recordedTooLargeFailure(
   owner: TooLargeSetOwner | undefined,
+  bound: TooLargeBound | undefined,
 ): ManagedRunFailureAlert {
-  const bound = `the ${WEBRTC_MESSAGE_BOUND_LABEL} one WebRTC message can hold`;
+  const overBound = tooLargeSetOverBound(bound);
   if (owner === undefined)
     return {
       kind: "too-large",
       title: TOO_LARGE_FAILURE_TITLE,
       message:
-        `The last run stopped because a set of values it had to send was ` +
-        `over ${bound}, so that set was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
+        `The last run stopped because a set of values it had to send ` +
+        `${overBound}, so that set was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
         TOO_LARGE_REMEDY,
       recovery: "split",
     };
@@ -400,7 +404,7 @@ function recordedTooLargeFailure(
     title: TOO_LARGE_FAILURE_TITLE_BY_OWNER[owner],
     message:
       `The last run stopped because ${TOO_LARGE_SET_SOURCE_BY_OWNER[owner]} ` +
-      `was over ${bound}, so it was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
+      `${overBound}, so it was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
       TOO_LARGE_REMEDY_BY_OWNER[owner],
     recovery: "split",
   };
@@ -411,9 +415,10 @@ function recordedTooLargeFailure(
  * first-round count could not be taken and why, so it is the state's whole
  * message. The titles are the one-shot seats' own for the same refusal. */
 function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
-  if (!isSetTooLargeError(error)) return recordedTooLargeFailure(undefined);
+  if (!isSetTooLargeError(error))
+    return recordedTooLargeFailure(undefined, undefined);
   return {
-    ...recordedTooLargeFailure(error.setOwner),
+    ...recordedTooLargeFailure(error.setOwner, tooLargeBoundOf(error)),
     message: sanitizeErrorForDisplay(error),
   };
 }
@@ -541,7 +546,10 @@ export function managedRunTierFailure(
     case "consent":
       return CONSENT_FAILURE;
     case "too-large":
-      return recordedTooLargeFailure(record.lastRun?.tooLargeSetOwner);
+      return recordedTooLargeFailure(
+        record.lastRun?.tooLargeSetOwner,
+        record.lastRun?.tooLargeBound,
+      );
     case "handed-off":
       return HANDED_OFF_FAILURE;
     case "custody-unreadable":
