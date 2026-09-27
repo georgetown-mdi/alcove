@@ -105,6 +105,28 @@ export interface RunFailure {
    * report, where this browser raised the failure itself and {@link message}
    * holds that account, and on the categories whose copy IS the report. */
   reportedCause?: string;
+  /** Whether the alert offers "Try again" and the seat's retry runs
+   * ({@link retryDispositionFor}). Every retry control reads this rather than
+   * {@link category}. */
+  retry: RetryDisposition;
+}
+
+/** Whether a failed run may be retried as it stands. */
+export type RetryDisposition = "offered" | "withheld";
+
+/**
+ * Offered on the retryable `exchange` category only, and withheld there on an
+ * internal fault the console relayed (docs/spec/CLI_EVENTS.md, "The
+ * internal-fault code"): a fault in Alcove itself, which a retry re-runs the
+ * whole exchange to reach again.
+ */
+function retryDispositionFor(
+  category: ExchangeErrorCategory,
+  error: unknown,
+): RetryDisposition {
+  const internalFault =
+    error instanceof RelayedTerminalError && error.internalFault;
+  return category === "exchange" && !internalFault ? "offered" : "withheld";
 }
 
 /**
@@ -139,6 +161,16 @@ function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
 
 /** @internal */
 export function failureFor(
+  ...args: Parameters<typeof failureContentFor>
+): RunFailure {
+  const content = failureContentFor(...args);
+  return {
+    ...content,
+    retry: retryDispositionFor(content.category, args[1]),
+  };
+}
+
+function failureContentFor(
   category: ExchangeErrorCategory,
   error: unknown,
   inputSource?: JobInputSource,
@@ -146,7 +178,7 @@ export function failureFor(
   seat: ExchangeSeat = "inviter",
   identityLocationPicked = false,
   singleColumnInput = false,
-): RunFailure {
+): Omit<RunFailure, "retry"> {
   // The console already holds an exchange (its single slot is occupied), so the
   // create was rejected 409 -- the driver categorizes it retryable `exchange`. The
   // copy is accurate about the one-slot model: the run is not lost, it is
@@ -1003,7 +1035,7 @@ export function useInviterExchange({
   function tryAgain() {
     if (
       invitation === undefined ||
-      failure?.category !== "exchange" ||
+      failure?.retry !== "offered" ||
       !invitationUsable(invitation.expires, new Date())
     )
       return;

@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 
 import {
+  AuthenticationError,
   ConnectionError,
   InternalConsistencyError,
   OperatorConfigError,
@@ -518,6 +519,53 @@ test("an internal fault whose message states its step gets no second one", () =>
   expect(event.recoveryHint).toBe(true);
   expect(event.message).not.toContain(INTERNAL_FAULT_NEXT_STEP);
   expect(occurrences(event.message, "report it")).toBe(1);
+});
+
+test.each([
+  {
+    failure: "a bare internal fault",
+    err: new InternalConsistencyError("runKex: psk must be 32 bytes"),
+  },
+  {
+    failure: "an internal fault behind a transport wrap",
+    err: new ConnectionError("send failed", "transport", {
+      cause: new InternalConsistencyError("runKex: psk must be 32 bytes"),
+    }),
+  },
+  {
+    failure: "an internal fault that states its own step",
+    err: Object.assign(
+      new InternalConsistencyError("the reply outgrew the cap; report it."),
+      { alcoveRecoveryHintEmitted: true },
+    ),
+  },
+])("$failure exits 70 and is marked an internal fault", ({ err }) => {
+  expect(exitCodeForError(err)).toBe(70);
+  expect(buildErrorEvent(err, "run").internalFault).toBe(true);
+});
+
+test.each([
+  {
+    failure: "a transport failure",
+    err: new ConnectionError("the server went away", "transport"),
+    code: 69,
+  },
+  { failure: "a partner abort", err: new PeerAbortError(), code: 76 },
+  {
+    failure: "a terms refusal",
+    err: new ProtocolRefusalError("the partner runs protocol version 3"),
+    code: 76,
+  },
+  {
+    failure: "an authentication failure",
+    err: new AuthenticationError("the peer failed to prove"),
+    code: 77,
+  },
+  { failure: "a usage fault", err: new UsageError("bad flag"), code: 64 },
+  { failure: "a plain error", err: new Error("boom"), code: 69 },
+])("$failure is not marked an internal fault", ({ err, code }) => {
+  expect(exitCodeForError(err)).toBe(code);
+  expect("internalFault" in buildErrorEvent(err, "run")).toBe(false);
 });
 
 test("a partner refusal with a bare message gets one next step, marked", () => {

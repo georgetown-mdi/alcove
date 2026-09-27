@@ -313,9 +313,14 @@ export class JobIntentColumnNameError extends Error {
  * rejoined by the renderer's own framing, or the escaped flat field when the
  * relay derived no chain (see {@link errorMessageOf}). Anything else renders
  * through the escaping renderer instead (`sanitizedFailureMessage` in
- * `@exchange/useInviterExchange`). */
+ * `@exchange/useInviterExchange`). {@link internalFault} is the event's
+ * `internalFault` marker (docs/spec/CLI_EVENTS.md, "The internal-fault code"):
+ * a fault in Alcove itself, which a retry reaches again. */
 export class RelayedTerminalError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly internalFault = false,
+  ) {
     super(message);
     this.name = "RelayedTerminalError";
   }
@@ -335,8 +340,8 @@ export class RelayedTerminalError extends Error {
 export class RelayedSelfExplainingError extends RelayedTerminalError {
   readonly alcoveRecoveryHintEmitted = true;
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, internalFault = false) {
+    super(message, internalFault);
     this.name = "RelayedSelfExplainingError";
   }
 }
@@ -1132,15 +1137,17 @@ function errorMessageOf(event: RelayEvent): string {
 
 /**
  * Build the failure a relayed terminal `error` event raises, reading the
- * event's `recoveryHint` to decide which of the two classes it is. The field is
- * read strictly -- only the literal `true` the CLI emits counts -- so anything
- * else takes the class that shows fixed copy.
+ * event's `recoveryHint` to decide which of the two classes it is, and its
+ * `internalFault` for the flag both hold. Each field is read strictly -- only
+ * the literal `true` the CLI emits counts -- so anything else takes the class
+ * that shows fixed copy, and a failure that keeps its retry.
  */
 function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
   const message = errorMessageOf(event);
+  const internalFault = event.internalFault === true;
   return event.recoveryHint === true
-    ? new RelayedSelfExplainingError(message)
-    : new RelayedTerminalError(message);
+    ? new RelayedSelfExplainingError(message, internalFault)
+    : new RelayedTerminalError(message, internalFault);
 }
 
 /** Build the {@link JobExchangeIntent} a run POSTs from the driver config: the

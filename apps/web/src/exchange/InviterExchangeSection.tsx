@@ -166,7 +166,7 @@ export function InviterExchangeSection({
   // re-listening on a lapsed credential cannot succeed, so an expired
   // exchange failure routes to start-over and stops advertising the link.
   const retryable =
-    failure?.category === "exchange" &&
+    failure?.retry === "offered" &&
     (continuesOpenedExchange ||
       invitationUsable(invitation.expires, new Date()));
 

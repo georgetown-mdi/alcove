@@ -184,6 +184,7 @@ The failure **terminal event**. Emitted exactly once, for an organic (non-signal
 | `category` | string | One of `exchange`, `output`, `security`, `config` (see [Error categories](#error-categories)). |
 | `message` | string | Display-safe error text, the same rendering stderr receives (see [Sanitization](#sanitization)). |
 | `recoveryHint` | optional boolean | Present as `true` only, absent otherwise (see [The self-explaining marker](#the-self-explaining-marker)). |
+| `internalFault` | optional boolean | Present as `true` only, on exactly the failures the CLI exits 70; absent otherwise (see [The internal-fault code](#the-internal-fault-code)). |
 
 ```json
 {"v":1,"type":"error","category":"security","message":"key exchange authentication failed"}
@@ -240,7 +241,9 @@ The mirror of the security marker: here the exit code states the distinction and
 
 The reasoning below is stated for the single-pass sender's send-time reply-cap safety check, where the reply this party built exceeds the byte cap both parties derive from their declared sizes, on an exchange whose declared sizes the single-pass ceiling gate has already cleared.
 
-The terminal `error` event states `category: "exchange"`. The four categories are the web's vocabulary and have no internal-fault member, and the classification rules key on the phase and on `OperatorConfigError` / `ConnectionError` membership, neither of which this class joins -- so it falls to the default bucket, alongside the retryable transport faults it is not one of. A supervisor separates it by the exit code.
+The terminal `error` event states `category: "exchange"`. The four categories are the web's vocabulary and have no internal-fault member, and the classification rules key on the phase and on `OperatorConfigError` / `ConnectionError` membership, neither of which this class joins -- so it falls to the default bucket, alongside the retryable transport faults it is not one of. A supervisor separates it by the exit code, or, reading fd 3 before the process exits, by the event's `internalFault` field.
+
+`internalFault: true` is set from the same classification the exit boundary applies (`exitCodeForError`, `apps/cli/src/util/exit.ts`), so it is present exactly when the process exits 70 and absent on every other code, 69 and 76 included. A consumer that offers a retry for the `exchange` category MUST NOT offer it on an event holding the field. Its absence makes no claim that a retry will help; the exit code remains the full account.
 
 Why 70 rather than a code already in the vocabulary:
 

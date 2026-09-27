@@ -220,7 +220,7 @@ export function useDirectExchange({
   // DELETE the failed (already-terminal) job before recreating, or reject-until-
   // DELETE 409s the create while the prior run still occupies the single slot.
   function tryAgain() {
-    if (failure?.category !== "exchange") return;
+    if (failure?.retry !== "offered") return;
     abortRef.current?.abort();
     abortRef.current = undefined;
     const failedJobId = currentJobIdRef.current;
