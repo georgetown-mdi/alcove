@@ -22,7 +22,7 @@ import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
 import { fromBase64Url } from "../utils/crypto.js";
 import { boundedArray } from "../utils/boundedArray.js";
-import { UsageError } from "../errors.js";
+import { InternalConsistencyError, UsageError } from "../errors.js";
 
 // --- Connection endpoint -----------------------------------------------------
 
@@ -884,7 +884,8 @@ export const MAX_RAW_INVITATION_LENGTH = 2 * MAX_ENCODED_INVITATION_LENGTH;
  * (Node.js 19+ / all modern browsers).
  *
  * @throws {UsageError} if `expires` is set to a time that is not in the
- *   future, or if the encoded token exceeds
+ *   future.
+ * @throws {InternalConsistencyError} if the encoded token exceeds
  *   {@link MAX_ENCODED_INVITATION_LENGTH} (a token that could not be decoded;
  *   fires only on a programming error, not a real config).
  * @throws {ZodError} if the token fails {@link MintedInvitationTokenSchema}.
@@ -926,7 +927,7 @@ export async function encodeInvitation(
   // decode. In practice this fires only on a programming error, never a real
   // config.
   if (encoded.length > MAX_ENCODED_INVITATION_LENGTH) {
-    throw new UsageError(
+    throw new InternalConsistencyError(
       "encoded invitation exceeds the maximum length of " +
         `${MAX_ENCODED_INVITATION_LENGTH} characters`,
     );

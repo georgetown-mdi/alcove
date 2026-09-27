@@ -232,9 +232,9 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
  * other `security`-kind failure, and `transport` and `closed`, stay 69.
  *
  * The own-`exitCode` rung is what gives a run whose exchange completed while
- * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The rung is typed rather than
- * `??`-defaulted so a non-numeric `exitCode` on some other object cannot reach
- * `process.exit`.
+ * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The
+ * rung is typed rather than `??`-defaulted so a non-numeric `exitCode` on some
+ * other object cannot reach `process.exit`.
  */
 export function exitCodeForError(err: unknown): number {
   const unwrapped = firstLinkBehindTransportWraps(err);
@@ -279,11 +279,12 @@ export function isPartnerRefusal(err: unknown): boolean {
  * links; `err` itself when it is not one. The message bridge
  * (`fromEventConnection`) wraps every send and poll failure that way, so a
  * {@link UsageError} the file-sync transport raised, an
- * {@link InternalConsistencyError}, a partner refusal, or an
- * {@link AuthenticationError}, reaches a command boundary behind it. Any
- * other kind ends the walk, so a `security` failure keeps its own code
- * whatever it wraps. A {@link PeerAbortError} is `transport`-kind but ends the
- * walk too: it is the failure itself, not a wrap.
+ * {@link InternalConsistencyError}, a partner refusal, an
+ * {@link AuthenticationError}, or an {@link InputNotFoundError} reaches a
+ * command boundary behind it. Any other kind ends the walk, so a `security`
+ * failure keeps its own code whatever it wraps. A {@link PeerAbortError} is
+ * `transport`-kind but ends the walk too: it is the failure itself, not a
+ * wrap.
  */
 export function firstLinkBehindTransportWraps(err: unknown): unknown {
   let link: unknown = err;
