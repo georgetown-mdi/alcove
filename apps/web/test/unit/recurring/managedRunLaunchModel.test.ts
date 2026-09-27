@@ -5,6 +5,7 @@ import {
   getDefaultLinkageTerms,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
+import { z } from "zod";
 
 import {
   classifyManagedRunFailure,
@@ -529,6 +530,54 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     );
     expect(failure.message).toMatch(/nothing left this device/i);
     expect(failure.message).not.toMatch(/note it keeps/);
+  });
+
+  test("a not-runnable copy shows neither the record id nor the schema issues", () => {
+    const RECORD_ID = "rec-7f3a9c2e";
+    const parsed = z
+      .object({ schemaVersion: z.literal(3) })
+      .safeParse({ schemaVersion: 2 });
+    if (parsed.success) throw new Error("expected the schema to refuse");
+    const issueText = parsed.error.message;
+    const failures = [
+      new Error(`no managed exchange with id ${RECORD_ID}`),
+      parsed.error,
+    ].map((cause) =>
+      classifyAgainstOneRecord(
+        new ManagedExchangeNotRunnableError(RECORD_ID, cause),
+        record(),
+        undefined,
+        NOW,
+        false,
+      ),
+    );
+    for (const failure of failures) {
+      expect(failure).toEqual(failures[0]);
+      expect(failure.reportedCause).toBeUndefined();
+      const shown = `${failure.title} ${failure.message}`;
+      expect(shown).not.toContain(RECORD_ID);
+      expect(shown).not.toContain(issueText);
+      expect(shown).not.toContain("schemaVersion");
+      expect(shown).not.toMatch(/What went wrong here/);
+    }
+  });
+
+  test("an unreadable hand-off note keeps its read error as the diagnostic", () => {
+    const failure = classifyAgainstOneRecord(
+      new ManagedExchangeCustodyUnreadableError(
+        "abc",
+        new Error("the note store refused the read"),
+      ),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.reportedCause).toBeUndefined();
+    expect(failure.message).toMatch(
+      /What went wrong here: .*the note store refused the read$/,
+    );
+    expect(failure.message).not.toContain("abc");
   });
 
   test("a live unreadable hand-off note shows a copy distinct from the not-runnable one", () => {

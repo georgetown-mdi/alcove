@@ -215,8 +215,11 @@ const CUSTODY_UNREADABLE_FAILURE: ManagedRunFailureAlert = {
 /** The unreadable-custody state as a live launch reads it off a
  * {@link ManagedExchangeNotRunnableError}: the stored record the run read
  * inside the lock was gone, invalid, or held a configuration only, so the
- * copy names the record rather than the hand-off note. Same kind, recovery and
- * placement as {@link CUSTODY_UNREADABLE_FAILURE}. */
+ * copy names the record rather than the hand-off note. Same kind and recovery
+ * as {@link CUSTODY_UNREADABLE_FAILURE}, but it shows none of the launch error:
+ * the wrapped cause is a record id or a schema issue list, internal names the
+ * operator cannot act on, so the error stays with the developer console
+ * ({@link classifyManagedRunFailure}). */
 const NOT_RUNNABLE_FAILURE: ManagedRunFailureAlert = {
   kind: "custody-unreadable",
   title: "This exchange's stored copy can no longer be run",
@@ -737,10 +740,10 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
 };
 
 /**
- * Where a classified state shows the launch error, if it shows it at all. The
- * one site that is decided at: what the operator reads follows from
- * {@link MANAGED_RUN_CAUSE_PLACEMENT} alone, on the live launch path and on any
- * other a state reaches a seat by.
+ * Where a classified state of this kind shows the launch error, if it shows
+ * it at all: a lookup in {@link MANAGED_RUN_CAUSE_PLACEMENT}. A state that
+ * shows no error whatever its kind ({@link NOT_RUNNABLE_FAILURE}) is set
+ * aside by identity in {@link classifyManagedRunFailure} before this lookup.
  *
  * @internal exported for the unit test.
  */
@@ -815,7 +818,8 @@ export function withShownCause(
  * ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}).
  *
  * Whatever state it lands on, the launch error reaches the operator only
- * through {@link managedRunCausePlacement}.
+ * through {@link managedRunCausePlacement}, and never on the not-runnable
+ * copy ({@link NOT_RUNNABLE_FAILURE}).
  */
 export function classifyManagedRunFailure(
   error: unknown,
@@ -831,7 +835,7 @@ export function classifyManagedRunFailure(
     now,
     dataExchangeStarted,
   );
-  return state.kind === "handed-off"
+  return state.kind === "handed-off" || state === NOT_RUNNABLE_FAILURE
     ? state
     : withShownCause(state, error, managedRunCausePlacement(state.kind));
 }
