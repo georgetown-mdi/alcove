@@ -881,8 +881,8 @@ npm run test:mutation
 It runs against an installed tree (`npm ci` plus the core build). On the
 nightly's `ubuntu-latest` runner, at the 4 test runners Stryker picks there, the
 three files' 366 mutants take 2.5 to 6.5 minutes, about 2.5 of them the initial
-run of the whole core unit tier. Stryker is not a repository dependency by design -- it drags in
-a second copy of Vitest and its own TypeScript -- so
+run of the whole core unit tier. Stryker is not a repository dependency by
+design -- it drags in a second copy of Vitest and its own TypeScript -- so
 `scripts/stryker-security.mjs` installs it into a private prefix under the work
 directory: `$RUNNER_TEMP` in CI, the system temp directory locally, and
 `ALCOVE_STRYKER_WORK_DIR` overrides both. The HTML and JSON reports are written
@@ -908,11 +908,14 @@ file's score reads.
 the CLI unit tier, through `apps/cli/vitest.stryker.config.mts`. That tier runs
 without the integration suites' SFTP server or broker, so accept behavior only
 they exercise counts as surviving. Stryker's vitest runner forces the threads
-pool, where `process.chdir` and `process.umask` throw, so the config leaves out
-the unit files that call them; none of them imports `accept.ts`.
-`scripts/stryker-security.mjs` reads only the core configuration, so this one runs
-by hand, from the repository root, through a derived configuration that makes
-the vitest path absolute and keeps the sandbox and reports out of the tree:
+pool, where `process.chdir` and `process.umask` throw and a worker's
+`os.homedir()` ignores a changed `process.env.HOME`, so the config leaves out
+the unit files that call either function or, in `atSignRefs.test.ts`'s case,
+point `HOME` at a temp dir for tilde expansion; none of them imports
+`accept.ts`. `scripts/stryker-security.mjs` reads only the core configuration,
+so this one runs by hand, from the repository root, through a derived
+configuration that makes the vitest path absolute and keeps the sandbox and
+reports out of the tree:
 
 ```sh
 W=$(mktemp -d)
