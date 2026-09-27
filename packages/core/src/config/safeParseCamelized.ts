@@ -2,10 +2,15 @@ import { z } from "zod";
 
 import {
   camelizeKeys,
+  KeyFoldCollisionError,
   NestingDepthExceededError,
   NodeCountExceededError,
+  type WidthBounds,
 } from "../utils/camelizeKeys.js";
-import { unrecognizedKeysAsWritten } from "./unreadKeys.js";
+import {
+  keyFoldCollisionIssue,
+  unrecognizedKeysAsWritten,
+} from "./unreadKeys.js";
 
 /**
  * Shared camelize-then-`safeParse` behind every `safeParseX` config helper.
@@ -14,9 +19,12 @@ import { unrecognizedKeysAsWritten } from "./unreadKeys.js";
  * {@link NodeCountExceededError}); this converts either into a synthesized
  * `{ success: false }` result carrying one `custom` {@link z.ZodError} issue
  * with the bound's fixed text at the root path, so every `safeParseX` caller
- * gets a non-throwing result. Any other throw propagates unchanged. The
- * throwing `parseX` siblings call `camelizeKeys` directly instead; their
- * partner-wire call sites (`protocolSetup.ts`) catch the bound error there.
+ * gets a non-throwing result. It also throws {@link KeyFoldCollisionError} on
+ * two keys of one object that fold to one name, converted the same way into
+ * the issue {@link keyFoldCollisionIssue} states. Any other throw propagates
+ * unchanged. The throwing `parseX` siblings call `camelizeKeys` directly
+ * instead; their partner-wire call sites (`protocolSetup.ts`) catch the bound
+ * error there.
  * `afterParse` is a rule a schema cannot state about itself, read on a
  * successful parse and against the camelized input the schema saw: the
  * exchange file's unread-key rule (`unreadKeys.ts`) is the one caller. Any
@@ -34,13 +42,18 @@ import { unrecognizedKeysAsWritten } from "./unreadKeys.js";
 export function safeParseCamelized<T>(
   schema: z.ZodType<T>,
   raw: unknown,
-  widthBoundedKeys?: ReadonlyMap<string, number>,
+  widthBoundedKeys?: WidthBounds,
   afterParse?: (camelized: unknown, parsed: T) => Array<z.core.$ZodIssue>,
 ): z.ZodSafeParseResult<T> {
   let camelized: unknown;
   try {
     camelized = camelizeKeys(raw, widthBoundedKeys);
   } catch (err) {
+    if (err instanceof KeyFoldCollisionError)
+      return {
+        success: false,
+        error: new z.ZodError([keyFoldCollisionIssue(err)]) as z.ZodError<T>,
+      };
     if (
       err instanceof NestingDepthExceededError ||
       err instanceof NodeCountExceededError

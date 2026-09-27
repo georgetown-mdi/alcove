@@ -11,7 +11,8 @@ import {
 import type { Displayable } from "./sanitizeForDisplay";
 
 /**
- * One Zod issue-path segment, fitted to what a single value may render to.
+ * One Zod issue-path segment, or any other object key a message names, fitted
+ * to what a single value may render to.
  *
  * A segment can be an object key the inviting party wrote -- Zod's
  * `invalid_key` puts a rejected record key in the path verbatim -- and the path
@@ -24,8 +25,10 @@ import type { Displayable } from "./sanitizeForDisplay";
  * the segment is a partner-chosen `transform.params` key bounded only by the
  * transport's frame cap, and the fit measures the whole escaped form of what it
  * is handed ({@link boundRawFragmentForFit}).
+ *
+ * @internal not a stable public API.
  */
-const fittedPathSegment = (segment: PropertyKey): string =>
+export const fittedPathSegment = (segment: PropertyKey): string =>
   clipToRenderedCost(
     redactPrivateKeyMaterial(
       boundRawFragmentForFit(String(segment), DEFAULT_MAX_DISPLAY_LENGTH),

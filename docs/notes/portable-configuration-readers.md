@@ -64,13 +64,15 @@ than against the result as a whole.
 ### Two spellings of one key
 
 The comparison runs between the camelized document and the parse result, so a key
-the camelize pre-pass itself drops is missing from neither side. A document writing
-one setting as both `expected_payload_columns` and `expectedPayloadColumns` states
-two keys that are read as one name, and the pre-pass keeps one of the two. A second
-walk therefore reads the document AS WRITTEN and refuses two sibling keys that
-camelize to one name, naming both as the file writes them (`collidingKeyIssues`).
-It reaches furthest on the three fail-closed records, where the spelling that
-survives decides what a receive-side enforcement holds the partner to.
+the camelize pre-pass itself dropped would be missing from neither side. A document
+writing one setting as both `expected_payload_columns` and `expectedPayloadColumns`
+states two keys that are read as one name, so the pre-pass refuses them itself,
+naming both as the file writes them (`KeyFoldCollisionError`, stated as a schema
+issue by `keyFoldCollisionIssue`). The same refusal holds on every path that folds
+keys, a partner's terms included (docs/spec/CANONICAL_ENCODING.md, Object member
+ordering). It matters most on the three fail-closed records, where whichever
+spelling a reader kept would decide what a receive-side enforcement holds the
+partner to.
 
 ## The three readers
 

@@ -11,27 +11,30 @@
  * member are strict and refuse an unrecognized key themselves; every other block
  * of the spec strips one, and this is what finds it.
  *
- * Two comparisons, run over one document:
+ * The comparison runs the camelized document against the parse result
+ * ({@link unreadKeyIssues}), and reports a key no block read and an array entry
+ * a normalizing schema dropped. Two sibling keys the camelize pre-pass reads as
+ * one name never reach it: the pre-pass refuses them itself
+ * (`KeyFoldCollisionError`), and {@link keyFoldCollisionIssue} states that
+ * refusal as an issue.
  *
- * - the camelized document against the parse result ({@link unreadKeyIssues}),
- *   which reports a key no block read and an array entry a normalizing schema
- *   dropped;
- * - the RAW document against itself ({@link collidingKeyIssues}), which reports
- *   two sibling keys the camelize pre-pass reads as one name, where the pre-pass
- *   keeps one of the two and the comparison above cannot see the other.
- *
- * Both report Zod issues, the shape a schema's own refusal takes, so a reader
+ * Each reports Zod issues, the shape a schema's own refusal takes, so a reader
  * that already words a refusal from those issues words these with no code of its
  * own.
  *
- * A third pass ({@link unrecognizedKeysAsWritten}) names the keys of every such
- * issue -- the two above and the ones the strict blocks raise themselves -- as
- * the raw document spells them, the one place that naming is decided.
+ * A further pass ({@link unrecognizedKeysAsWritten}) names the keys of every
+ * such issue -- the ones above and the ones the strict blocks raise themselves --
+ * as the raw document spells them, the one place that naming is decided.
  */
 
 import { z } from "zod";
 
-import { camelizeKey, OPAQUE_VALUE_KEYS } from "../utils/camelizeKeys.js";
+import {
+  camelizeKey,
+  OPAQUE_VALUE_KEYS,
+  type KeyFoldCollisionError,
+} from "../utils/camelizeKeys.js";
+import { fittedPathSegment } from "../utils/describeDecodeError.js";
 
 /** An object with keys to compare: an array is walked by element instead. */
 function isKeyedObject(value: unknown): value is Record<string, unknown> {
@@ -98,26 +101,27 @@ function collapsedEntryIssue(
 }
 
 /**
- * The issue two spellings of one key raise: the block's own path, both keys
- * exactly as the document writes them on `keys`, and a message naming them.
+ * The issue two spellings of one key raise, from the camelize pre-pass's
+ * refusal of them: the block's own path, both keys exactly as the document
+ * writes them on `keys`, and a message naming them.
  *
- * Reported as the same `unrecognized_keys` issue an unread key is -- one of the
- * two spellings is not read, and which one is not the operator's to predict --
- * so a reader that names the keys of such an issue names both lines to fix with
- * no code of its own.
+ * Reported as the same `unrecognized_keys` issue an unread key is, so a reader
+ * that names the keys of such an issue names both lines to fix with no code of
+ * its own. The message fits each key as the refusal's own message does: a
+ * partner's terms reach this through `safeParseLinkageTerms`.
+ *
+ * @internal not a stable public API.
  */
-function collidingKeysIssue(
-  path: ReadonlyArray<PropertyKey>,
-  keys: ReadonlyArray<string>,
+export function keyFoldCollisionIssue(
+  collision: KeyFoldCollisionError,
 ): z.core.$ZodIssue {
-  const quoted = keys.map((key) => `"${key}"`);
-  const named = `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+  const [first, second] = collision.keys.map(fittedPathSegment);
   return {
     code: "unrecognized_keys",
-    keys: [...keys],
-    path: [...path],
+    keys: [...collision.keys],
+    path: [...collision.path],
     message:
-      `Keys ${named} are read as one setting, so only one of them is kept. ` +
+      `Keys "${first}" and "${second}" are read as one setting. ` +
       `Write the setting once.`,
   };
 }
@@ -299,32 +303,6 @@ function collectUnreadKeys(
   if (unread.length > 0) issues.push(unreadKeysIssue(path, unread));
 }
 
-/** Walk one node of the raw document for sibling keys that read as one name. */
-function collectCollidingKeys(
-  document: unknown,
-  path: ReadonlyArray<PropertyKey>,
-  issues: Array<z.core.$ZodIssue>,
-): void {
-  if (Array.isArray(document)) {
-    document.forEach((element, index) =>
-      collectCollidingKeys(element, [...path, index], issues),
-    );
-    return;
-  }
-  if (!isKeyedObject(document)) return;
-  const spellings = new Map<string, Array<string>>();
-  for (const [key, value] of Object.entries(document)) {
-    const name = camelizeKey(key);
-    const written = spellings.get(name);
-    if (written === undefined) spellings.set(name, [key]);
-    else written.push(key);
-    if (OPAQUE_VALUE_KEYS.has(name)) continue;
-    collectCollidingKeys(value, [...path, name], issues);
-  }
-  for (const written of spellings.values())
-    if (written.length > 1) issues.push(collidingKeysIssue(path, written));
-}
-
 /**
  * Every key of a camelized document that its parse result does not hold, as
  * Zod `unrecognized_keys` issues, and every document entry the one-entry-per-
@@ -345,31 +323,6 @@ export function unreadKeyIssues(
 ): Array<z.core.$ZodIssue> {
   const issues: Array<z.core.$ZodIssue> = [];
   collectUnreadKeys(camelizedDocument, [parsed], [], issues);
-  return issues;
-}
-
-/**
- * Every place the RAW document writes one setting under two sibling keys that
- * `camelizeKeys` reads as one name -- `expected_payload_columns` beside
- * `expectedPayloadColumns` -- as Zod issues naming both keys as written, under
- * the path of the block holding them.
- *
- * The pre-pass keeps one of the two and the parse result holds that one, so the
- * document-against-result comparison sees nothing missing: this is the reading
- * of the rule for the step that runs BEFORE the schema. Every caller reaches it
- * with a value `camelizeKeys` has already walked, so the depth and width bounds
- * hold over this walk too.
- *
- * An opaque subtree is not entered, as the pre-pass does not enter it: its keys
- * are kept verbatim, so two spellings there are two keys.
- *
- * @internal not a stable public API.
- */
-export function collidingKeyIssues(
-  rawDocument: unknown,
-): Array<z.core.$ZodIssue> {
-  const issues: Array<z.core.$ZodIssue> = [];
-  collectCollidingKeys(rawDocument, [], issues);
   return issues;
 }
 
@@ -440,8 +393,8 @@ function messageNamingWrittenKeys(
  *
  * An issue whose keys the document already writes that way is returned
  * untouched: there is nothing to rename, which is the state the collision issue
- * below is always in ({@link collidingKeysIssue} names two spellings the
- * document holds side by side).
+ * is always in ({@link keyFoldCollisionIssue} names two spellings the document
+ * holds side by side).
  *
  * @internal not a stable public API.
  */
@@ -464,9 +417,9 @@ export function unrecognizedKeysAsWritten(
 
 /**
  * Every setting a document states that its parse result does not hold, as Zod
- * issues naming each key as the document wrote it: a key no block read, an
- * entry the one-entry-per-column collapse dropped, and a setting written under
- * two spellings of one key.
+ * issues naming each key as the document wrote it: a key no block read, and an
+ * entry the one-entry-per-column collapse dropped. A setting written under two
+ * spellings of one key is refused before the parse, by the camelize pre-pass.
  *
  * The whole of the unread-key rule for a caller holding a successful parse,
  * applied to a whole exchange file (`parseExchangeSpec`) or to one block of it
@@ -482,8 +435,8 @@ export function droppedSettingIssues(
   camelizedDocument: unknown,
   parsed: unknown,
 ): Array<z.core.$ZodIssue> {
-  return unrecognizedKeysAsWritten(rawDocument, [
-    ...collidingKeyIssues(rawDocument),
-    ...unreadKeyIssues(camelizedDocument, parsed),
-  ]);
+  return unrecognizedKeysAsWritten(
+    rawDocument,
+    unreadKeyIssues(camelizedDocument, parsed),
+  );
 }

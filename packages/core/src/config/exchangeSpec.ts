@@ -1,15 +1,21 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
-import { camelizeKeys } from "../utils/camelizeKeys.js";
+import {
+  camelizeKeys,
+  KeyFoldCollisionError,
+  type WidthBounds,
+} from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import {
   droppedSettingIssues,
+  keyFoldCollisionIssue,
   unrecognizedKeysAsWritten,
 } from "./unreadKeys.js";
 import {
   columnsNamedOnce,
   LinkageTermsSchema,
   MAX_NAME_LENGTH,
+  MAX_PARAMS_ENTRIES,
   MAX_PAYLOAD_ENTRIES,
   MAX_TEXT_LENGTH,
   nameValue,
@@ -209,6 +215,18 @@ export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
 // --- Parse -------------------------------------------------------------------
 
 /**
+ * The width bounds the camelize pre-pass applies to an exchange file: the
+ * linkage terms at the root `linkage_terms` are folded exactly as
+ * `parseLinkageTerms` folds them, an over-{@link MAX_PARAMS_ENTRIES} `params`
+ * object left verbatim for the schema's count refusal, while a `params` object
+ * elsewhere in the file (a standardization step's, or one under a
+ * `linkage_terms` key nested inside it) is folded as any other object.
+ */
+const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
+  ["linkageTerms", new Map([["params", MAX_PARAMS_ENTRIES]])],
+]);
+
+/**
  * Parse and validate a raw value as an {@link ExchangeSpec}.
  * Snake_case keys are converted to camelCase before validation, so JSON/YAML
  * from disk can be passed directly.
@@ -217,16 +235,24 @@ export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
  * than stripped, wherever in the document it sits: a consumer writes the parse
  * result back out, so a dropped key is a setting the operator wrote and the next
  * file does not hold ({@link droppedSettingIssues}; docs/spec/EXCHANGE_FILE.md,
- * "What a consumer does with a setting it cannot honor"), which also refuses a
- * setting the case conversion above would drop instead of the schema -- one key
- * written in both spellings. Every refusal names its keys as the raw document
- * spells them ({@link unrecognizedKeysAsWritten}), the schema's own included.
+ * "What a consumer does with a setting it cannot honor"). One key written in
+ * both spellings is refused by the case conversion above
+ * ({@link keyFoldCollisionIssue}). Every refusal names its keys as the raw
+ * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
+ * included.
  *
  * @throws {ZodError} if validation fails, if the document holds a key the
  *   schema does not read, or if it writes one key in two spellings.
  */
 export function parseExchangeSpec(raw: unknown): ExchangeSpec {
-  const camelized = camelizeKeys(raw);
+  let camelized: unknown;
+  try {
+    camelized = camelizeKeys(raw, EXCHANGE_FILE_WIDTH_BOUNDS);
+  } catch (err) {
+    if (err instanceof KeyFoldCollisionError)
+      throw new z.ZodError([keyFoldCollisionIssue(err)]);
+    throw err;
+  }
   const result = ExchangeSpecSchema.safeParse(camelized);
   if (!result.success)
     throw new z.ZodError(unrecognizedKeysAsWritten(raw, result.error.issues));
@@ -245,7 +271,7 @@ export function safeParseExchangeSpec(raw: unknown) {
   return safeParseCamelized(
     ExchangeSpecSchema,
     raw,
-    undefined,
+    EXCHANGE_FILE_WIDTH_BOUNDS,
     (camelized, parsed) => droppedSettingIssues(raw, camelized, parsed),
   );
 }

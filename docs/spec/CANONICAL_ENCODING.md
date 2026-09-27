@@ -135,10 +135,10 @@ viewed as the sequence of 16-bit code units of its UTF-16 encoding, and keys are
 ordered by the first position at which they differ, by numeric code-unit value.
 This is the ordering produced by ECMAScript `Array.prototype.sort` with no
 comparator, and is the ordering RFC 8785 specifies. The encoder's input holds
-each key once. Two keys of a parsed document can still become one before
-encoding, when the key fold below maps both to the same name (`my_param` and
-`myParam`): a parse of the operator's own linkage terms refuses such a
-document, while a parse of a partner's terms keeps the member written later.
+each key once. Two keys of a parsed document would become one before encoding
+when the key fold below maps both to the same name (`my_param` and `myParam`),
+so every parse of linkage terms -- the operator's own and a partner's alike --
+refuses such a document (see the key-fold collision rule below).
 
 Array element order is **significant** and is preserved as given.
 
@@ -172,10 +172,34 @@ lowercase letter is left intact, so `input_format` -> `inputFormat` but
 (digit), and `input__format` -> `input_Format` (only the second underscore folds);
 a leading underscore before a lowercase letter still folds and is dropped, so
 `_format` -> `Format`; an already-camelCase key has no underscore-plus-lowercase
-and is unchanged. Alcove
+and is unchanged. The fold applies everywhere except inside the two unfolded
+subtrees below. Alcove
 emits only camelCase keys, so a token it produced is already in this normal form --
 the fold is observable only for a hand-authored or third-party token containing
 `snake_case` keys.
+
+A reproducer MUST leave two subtrees of the terms unfolded, encoding every key
+inside them exactly as written, at every depth. The key that names the subtree
+is itself folded; only the value under it is left as written.
+
+- **A provider-options subtree.** The value of any key that folds to
+  `providerOptions`, at any depth and of any type. The key is matched by its
+  folded name, not by its path, so `provider_options` names one too, including
+  inside `transform.params`: `{"provider_options": {"input_format": "x"}}`
+  encodes as `{"providerOptions": {"input_format": "x"}}`.
+- **An over-wide params object.** The value of any key that folds to `params`,
+  at any depth, when that value is an object (not an array or `null`) holding
+  more than 256 own keys (`MAX_PARAMS_ENTRIES`). A `params` object of 256 keys
+  or fewer is folded, and an array under `params` is walked and folded as
+  anywhere else. A `transform.params` holding more than 256 entries is refused
+  by the schema; this exception decides what is folded, not what is accepted.
+
+A parse of linkage terms MUST refuse a document in which one object holds two
+keys that the fold maps to the same name -- `my_param` beside `myParam`, or
+`provider_options` beside `providerOptions` -- rather than keep either member,
+and the refusal names both keys. Keeping one would make the agreed-terms hash
+depend on which member a reader kept. Keys inside an unfolded subtree are not
+folded, so two of them never collide.
 
 A second parse-layer rewrite is byte-significant in the same way. A
 `payload.send` or `payload.receive` list naming a column more than once parses
