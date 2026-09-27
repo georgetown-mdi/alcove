@@ -433,6 +433,46 @@ describe("default name pipeline (first_name / last_name)", () => {
     expect(runFirst("Dr. Jane Smith Jr.")).toBe("JANE SMITH");
   });
 
+  describe("affixes are stripped only at the edges of the field", () => {
+    test.each([
+      ["Judge", "JUDGE"],
+      ["Herr", "HERR"],
+      ["Md", "MD"],
+      ["Iv", "IV"],
+      ["Van Der Herr", "VAN DER HERR"],
+      ["O'Judge", "O JUDGE"],
+      ["Judge-Smith", "JUDGE SMITH"],
+      ["Md Rahman", "MD RAHMAN"],
+      ["Smith Jr.", "SMITH"],
+      ["Smith, Jr.", "SMITH"],
+      ["Smith Jr III", "SMITH"],
+      ["Mr Smith Jr", "SMITH"],
+      ["Dr. Smith", "SMITH"],
+      ["Smith Ph.D.", "SMITH"],
+      ["Smith Junior", "SMITH"],
+      ["Smith 3rd", "SMITH"],
+      ["Mary Mr Smith", "MARY MR SMITH"],
+      ["Dr.Smith", "SMITH"],
+      ["Mr Iv", "IV"],
+    ])("%s -> %s in both name pipelines", (input, expected) => {
+      expect(runFirst(input)).toBe(expected);
+      expect(runLast(input)).toBe(expected);
+    });
+
+    test.each(["Mr", "Mr.", "MRS", "ms", "Mx", "Dr", "Prof.", "Mr Dr"])(
+      "%s, a field that is only an honorific, becomes null",
+      (input) => {
+        expect(runFirst(input)).toBeNull();
+        expect(runLast(input)).toBeNull();
+      },
+    );
+
+    test("a title or suffix standing alone that is not an honorific is kept", () => {
+      expect(runLast("Sir")).toBe("SIR");
+      expect(runLast("Jr")).toBe("JR");
+    });
+  });
+
   test("converts hyphen to space in hyphenated name", () => {
     expect(runLast("Smith-Jones")).toBe("SMITH JONES");
   });

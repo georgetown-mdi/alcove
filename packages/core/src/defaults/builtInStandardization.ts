@@ -71,6 +71,12 @@ const NAME_STEPS: StandardizationStep[] = [
   { function: "trim_whitespace" },
   // Null out values that are empty after cleaning.
   { function: "filter_regex", params: { pattern: "[A-Z]" } },
+  // remove_affixes keeps a value that is only a title, so drop the honorifics
+  // that are no name, as the SSN pipelines drop their placeholders.
+  {
+    function: "null_if",
+    params: { values: ["MR", "MRS", "MS", "MX", "DR", "PROF"] },
+  },
 ];
 
 /** The `date_of_birth` input format used when none is supplied or inferred. */

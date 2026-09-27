@@ -198,10 +198,28 @@ describe("runPipeline — string functions", () => {
     );
   });
 
-  test("remove_affixes collapses the space left by a stripped interior title", () => {
+  test("remove_affixes keeps an interior title or suffix", () => {
     expect(runPipeline("JOHN MR SMITH", [{ function: "remove_affixes" }])).toBe(
-      "JOHN SMITH",
+      "JOHN MR SMITH",
     );
+    expect(runPipeline("MD RAHMAN", [{ function: "remove_affixes" }])).toBe(
+      "MD RAHMAN",
+    );
+  });
+
+  test("remove_affixes strips a run of leading titles and trailing suffixes", () => {
+    expect(
+      runPipeline("Mr. Dr. John  Smith, Jr., III", [
+        { function: "remove_affixes" },
+      ]),
+    ).toBe("John Smith,");
+  });
+
+  test("remove_affixes never empties a value", () => {
+    expect(runPipeline("Mr.", [{ function: "remove_affixes" }])).toBe("Mr.");
+    expect(runPipeline("Mr Jr", [{ function: "remove_affixes" }])).toBe("Jr");
+    expect(runPipeline("Jr III", [{ function: "remove_affixes" }])).toBe("Jr");
+    expect(runPipeline("Mr -", [{ function: "remove_affixes" }])).toBe("Mr -");
   });
 
   test("substring extracts the requested slice", () => {

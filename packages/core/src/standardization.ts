@@ -361,9 +361,14 @@ const suffixes = [
   "esquire",
   "jr",
   "jnr",
+  "junior",
   "sr",
   "snr",
+  "senior",
   "2",
+  "2nd",
+  "3rd",
+  "4th",
   "ii",
   "iii",
   "iv",
@@ -378,44 +383,53 @@ const suffixes = [
   "ph.d",
 ].map((x) => x.replace(/[.]/g, "\\."));
 
-const suffixPattern = new RegExp(
-  `(?<=^|\\s)(${suffixes.join("|")})\\.?(?=$|\\s|[.,!])`,
-  "gi",
-);
-
 const titles = [
   "dr",
   "miss",
   "mr",
   "mrs",
   "ms",
+  "mx",
   "prof",
+  "professor",
   "sir",
   "frau",
-  "herr",
   "hr",
   "monsieur",
-  "captain",
-  "doctor",
-  "judge",
-  "officer",
-  "professor",
   "ind",
   "misc",
-  "mx",
 ];
 
-const titlePattern = new RegExp(
-  `(?<=^|\\s)(${titles.join("|")})\\.?(?=$|\\s|[.,!])`,
-  "gi",
+const titleWordPattern = new RegExp(`^(?:${titles.join("|")})\\.?$`, "i");
+const titleGluedToWordPattern = new RegExp(
+  `^(?:${titles.join("|")})\\.(?=[\\p{L}\\p{N}])`,
+  "iu",
 );
+const suffixWordPattern = new RegExp(`^(?:${suffixes.join("|")})\\.?,?$`, "i");
+const wordCharacterPattern = /[\p{L}\p{N}]/u;
 
+// Titles are stripped only as leading words and suffixes only as trailing
+// words, and each only while another word remains, so a surname that is also
+// an affix word (Judge, Md Rahman) survives. Whitespace runs collapse to one
+// space.
 function removeAffixes(s: string): string {
-  return s
-    .replaceAll(suffixPattern, "")
-    .replaceAll(titlePattern, "")
-    .replaceAll(/\s\s+/g, " ")
-    .trim();
+  const trimmed = s.trim();
+  if (trimmed === "") return trimmed;
+  const words = trimmed.split(/\s+/);
+  let wordCount = words.filter((w) => wordCharacterPattern.test(w)).length;
+  let start = 0;
+  let end = words.length;
+  while (wordCount >= 2 && titleWordPattern.test(words[start])) {
+    start += 1;
+    wordCount -= 1;
+  }
+  const glued = titleGluedToWordPattern.exec(words[start]);
+  if (glued !== null) words[start] = words[start].slice(glued[0].length);
+  while (wordCount >= 2 && suffixWordPattern.test(words[end - 1])) {
+    end -= 1;
+    wordCount -= 1;
+  }
+  return words.slice(start, end).join(" ");
 }
 
 /**
@@ -1148,7 +1162,8 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
   remove_affixes: {
     name: "remove_affixes",
     label: "Remove affixes",
-    blurb: "Remove name titles (Mr., Dr.) and suffixes (Jr., III).",
+    blurb:
+      "Remove name titles (Mr., Dr.) from the start and suffixes (Jr., III) from the end, keeping at least one word.",
     tier: "standard",
     params: noParams,
   },
