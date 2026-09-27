@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +13,10 @@ import {
   UsageError,
 } from "@alcove/core";
 
-import { configureLogFile } from "../../../src/util/logging";
+import {
+  configureLogFile,
+  takeLogFileLossReport,
+} from "../../../src/util/logging";
 import { parseCommonBootstrapArgs } from "../../../src/optionDefinitions";
 import {
   argv,
@@ -201,6 +204,56 @@ test("configureLogFile: after close(), logging detaches from the file onto stder
   expect(stdoutWrites.join("")).toBe("");
   // The file did not grow: the post-close line went to stderr, not the fd.
   expect(fs.readFileSync(logPath, "utf8")).toBe(afterCloseContents);
+});
+
+test("configureLogFile: lines lost after the run-end report are summarized once at close", () => {
+  // A line that fails after takeLogFileLossReport ran -- the teardown after
+  // the terminal event, or a command that ran no exchange -- is still counted,
+  // and close() states the count on stderr once. A second close adds nothing.
+  const openSpy = vi.spyOn(fs, "openSync");
+  const sink = configureLogFile(path.join(tmpDir, "lost.log"));
+  const logFd = openSpy.mock.results[0].value as number;
+  openSpy.mockRestore();
+  const realWriteSync = fs.writeSync;
+  const writeSpy = vi.spyOn(fs, "writeSync").mockImplementation(((
+    fd: number,
+    ...args: never[]
+  ) => {
+    if (fd === logFd) throw new Error("EIO: i/o error, write");
+    return (realWriteSync as (...a: unknown[]) => number)(fd, ...args);
+  }) as typeof fs.writeSync);
+  const { stderrWrites, restore } = captureStdio();
+  try {
+    sink.writePlain("lost before the report");
+    expect(takeLogFileLossReport()?.lostLines).toBe(1);
+    expect(takeLogFileLossReport()).toBeUndefined();
+    sink.writePlain("lost after the report");
+    sink.writePlain("also lost after the report");
+    sink.close();
+    sink.close();
+  } finally {
+    restore();
+    writeSpy.mockRestore();
+  }
+  expect(stderrWrites.filter((w) => w.includes("write error"))).toHaveLength(1);
+  expect(stderrWrites.filter((w) => w.includes("log file"))).toEqual([
+    expect.stringContaining("write error: EIO"),
+    expect.stringMatching(/^1 diagnostic line could not be written/),
+    expect.stringMatching(/^2 diagnostic lines could not be written/),
+  ]);
+});
+
+test("configureLogFile: a sink that lost nothing reports nothing", () => {
+  const sink = configureLogFile(path.join(tmpDir, "whole.log"));
+  const { stderrWrites, restore } = captureStdio();
+  try {
+    sink.writePlain("written");
+    expect(takeLogFileLossReport()).toBeUndefined();
+    sink.close();
+  } finally {
+    restore();
+  }
+  expect(stderrWrites).toEqual([]);
 });
 
 test("configureLogFile: diagnostics go to the file, never stdout", () => {

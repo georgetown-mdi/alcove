@@ -252,6 +252,8 @@ export function configureLogFile(logFilePath: string): LogSink {
     });
   }
 
+  const loss: LogFileLoss = { path: normalized, lost: 0, reported: 0 };
+  activeLogFileLoss = loss;
   return installLogSink(
     (line) => {
       try {
@@ -259,24 +261,25 @@ export function configureLogFile(logFilePath: string): LogSink {
       } catch (err) {
         // loglevel is redirected into this descriptor, so a mid-run write failure
         // (e.g. the disk filling) cannot be reported through the logger, and must
-        // not throw out of a log call into the exchange; report it on the
-        // original stderr and continue. The stderr write is itself guarded: if it
-        // too fails (a wedged stderr), give up silently rather than let that throw
-        // back into the log call this catch exists to protect.
-        try {
-          process.stderr.write(
+        // not throw out of a log call into the exchange. The first failure is
+        // reported on stderr as it happens; later ones are counted for the
+        // summary takeLogFileLossReport gives.
+        loss.lost++;
+        if (loss.lost === 1)
+          writeStderrLine(
             `log file ${normalized} write error: ` +
               sanitizeErrorForDisplay(err) +
-              "\n",
+              ". Lines that cannot be written to it are counted, and the " +
+              "count is reported before the command ends.\n",
           );
-        } catch {
-          // Nothing left to report to; drop it.
-        }
       }
     },
     () => {
-      // installLogSink has already restored the prior sink; release the fd last.
+      // installLogSink has already restored the prior sink, so the summary of
+      // lines lost since the last report goes to stderr; release the fd last.
       // A double close throws EBADF, which is swallowed.
+      summarizeLogFileLoss(loss);
+      if (activeLogFileLoss === loss) activeLogFileLoss = undefined;
       try {
         fs.closeSync(fd);
       } catch {
@@ -284,6 +287,44 @@ export function configureLogFile(logFilePath: string): LogSink {
       }
     },
   );
+}
+
+interface LogFileLoss {
+  path: string;
+  lost: number;
+  reported: number;
+}
+
+let activeLogFileLoss: LogFileLoss | undefined;
+
+/**
+ * The lines the installed `--log-file` sink could not write since the last
+ * report, summarized once on stderr by this call; `undefined`, writing
+ * nothing, when there is no file sink or it lost nothing new. A run calls it
+ * before its terminal event so the count also reaches the event stream
+ * (`reportLogFileLoss` in ../eventStream), and the sink's close calls it for
+ * whatever was lost after that.
+ */
+export function takeLogFileLossReport():
+  { notice: string; lostLines: number } | undefined {
+  return activeLogFileLoss === undefined
+    ? undefined
+    : summarizeLogFileLoss(activeLogFileLoss);
+}
+
+function summarizeLogFileLoss(
+  loss: LogFileLoss,
+): { notice: string; lostLines: number } | undefined {
+  if (loss.lost === loss.reported) return undefined;
+  const lostLines = loss.lost - loss.reported;
+  loss.reported = loss.lost;
+  const notice =
+    `${lostLines} diagnostic ${lostLines === 1 ? "line" : "lines"} could not ` +
+    `be written to log file ${loss.path}, and the file is missing them; the ` +
+    "exit code does not reflect this. Check the disk or mount holding the " +
+    "file before the next run.";
+  writeStderrLine(`${notice}\n`);
+  return { notice, lostLines };
 }
 
 /**

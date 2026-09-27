@@ -1903,9 +1903,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       this.log.warn(
         `Closing the connection beneath a dial the SFTP server left at the ` +
           `subsystem request failed: ${sanitizeErrorForDisplay(error)}. The ` +
-          `connection is left to the operating system: until that closes it, ` +
-          `a later dial on this connection waits behind it with no deadline. ` +
-          `Interrupt the command if it stops making progress.`,
+          `connection is left to the operating system to close, and the run ` +
+          `ends with the dial's own failure without dialing again.`,
       );
     }
   }
