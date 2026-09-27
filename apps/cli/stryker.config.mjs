@@ -1,11 +1,19 @@
 // Stryker configuration for mutation testing the CLI's accept command against
-// the CLI unit tier. scripts/stryker-security.mjs reads only
-// packages/core/stryker.config.mjs, so this one is run through a derived
-// configuration that makes the vitest path absolute and moves the sandbox and
-// reports out of the tree; the recipe is in docs/TESTING.md, Mutation testing.
+// the CLI unit tier: `npm run test:mutation:cli`, and nightly through
+// .github/workflows/nightly_mutation.yaml. scripts/stryker-security.mjs reads
+// both exports, as it does packages/core/stryker.config.mjs: `scoreFloors` is
+// the corpus and each file's committed floor, the default export the Stryker
+// configuration itself. The floor rules: docs/TESTING.md, The floors.
 //
 // Every path here is repository-root-relative: Stryker runs from the repository
 // root so its vitest runner resolves vitest through the root package.json.
+
+// Per-file mutation-score floors, in whole percent, measured on the commit that
+// set them and rounded down; raised when tests raise the score, never lowered.
+export const scoreFloors = {
+  "apps/cli/src/commands/accept.ts": 75,
+};
+
 export default {
   packageManager: "npm",
   testRunner: "vitest",
@@ -15,7 +23,7 @@ export default {
     // sandbox copy, so the whole tier runs, narrowed per mutant by perTest.
     related: false,
   },
-  mutate: ["apps/cli/src/commands/accept.ts"],
+  mutate: Object.keys(scoreFloors),
   coverageAnalysis: "perTest",
   timeoutMS: 120000,
   timeoutFactor: 3,
