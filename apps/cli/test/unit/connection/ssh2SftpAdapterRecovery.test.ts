@@ -1453,11 +1453,8 @@ describe("mid-exchange drop against a partner that withholds its close", () => {
   // transport ended, the session property untouched, and no 'close' -- so nothing
   // clears the session until this side destroys the socket, which is what the
   // library's global 'close' listener answers. `clearsOnDestroy: false` models an
-  // ssh2 that no longer emits that 'close'; omitting `destroy` from the socket
-  // models one that no longer exposes destroy() at all.
-  function withholdingPartner(
-    options: { clearsOnDestroy?: boolean; withDestroy?: boolean } = {},
-  ) {
+  // ssh2 that no longer emits that 'close'.
+  function withholdingPartner(options: { clearsOnDestroy?: boolean } = {}) {
     const state = { live: true };
     const session = {
       open: vi.fn(),
@@ -1480,7 +1477,7 @@ describe("mid-exchange drop against a partner that withholds its close", () => {
       state.live = false;
       rawClient.emit("close");
     });
-    if (options.withDestroy !== false) socket.destroy = destroy;
+    socket.destroy = destroy;
     Object.assign(rawClient, {
       setNoDelay: vi.fn(),
       _sock: socket,
@@ -1689,18 +1686,18 @@ describe("mid-exchange drop against a partner that withholds its close", () => {
   });
 
   test("warns and leaves the operation terminal when the socket destroy() call site has moved", async () => {
-    // The mechanism is checked, not assumed: with the call site gone the recovery
-    // cannot clear the session, so it says so -- naming the call site and the upgrade
-    // checklist -- and degrades to the terminal outcome the operation already had,
-    // in the same error class the poll loop stops on.
-    const { client, connect, dropWithholdingClose } = withholdingPartner({
-      withDestroy: false,
-    });
+    // The mechanism is checked where it is driven, not only at connect: with the
+    // call site gone after the connect the recovery cannot clear the session, so
+    // it says so -- naming the call site and the upgrade checklist -- and degrades
+    // to the terminal outcome the operation already had, in the same error class
+    // the poll loop stops on.
+    const { client, connect, dropWithholdingClose } = withholdingPartner();
     const del = stallingThenSucceedingDelete(client);
     const { adapter, log } = loggedAdapter();
     installClient(adapter, client);
 
     await adapter.connect({ host: "h", maxReconnectAttempts: 2 });
+    delete (client.client._sock as Record<string, unknown>).destroy;
     dropWithholdingClose();
 
     await expect(adapter.delete("/remote/x.json")).rejects.toBeInstanceOf(

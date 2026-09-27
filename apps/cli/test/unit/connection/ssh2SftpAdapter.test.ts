@@ -36,11 +36,15 @@ import {
 // connect() calls setNoDelay(true) on it to disable Nagle and setKeepAlive(true,
 // delay) on its underlying net.Socket (`_sock`) to enable kernel TCP keepalive; a
 // mock that omits either makes connect() warn that the setting is unavailable on
-// every successful connect. Provide no-ops so the faithful mock matches the real
-// client and neither warning fires.
+// every successful connect. once()/removeListener() and the socket's destroy()
+// are what the subsystem-open bound and the close beneath an abandoned dial
+// drive, and a connect missing them is refused. Provide no-ops so the faithful
+// mock matches the real client and neither warning fires.
 const noDelayClient = () => ({
   setNoDelay: () => {},
-  _sock: { setKeepAlive: () => {} },
+  once: () => {},
+  removeListener: () => {},
+  _sock: { setKeepAlive: () => {}, destroy: () => {} },
 });
 
 // --- connect retry -----------------------------------------------------------
@@ -132,6 +136,7 @@ describe("connect retry", () => {
         calls++;
         throw new Error("connection refused");
       }),
+      client: noDelayClient(),
     };
 
     try {
@@ -171,6 +176,7 @@ describe("connect retry", () => {
         // Stack" checklist in docs/spec/DEPENDENCY_PINS.md.
         throw new Error("Host denied (verification failed)");
       }),
+      client: noDelayClient(),
     };
 
     try {
@@ -253,9 +259,7 @@ describe("keyboard-interactive", () => {
   // keyboard-interactive handler the adapter attaches. setNoDelay/_sock are the
   // no-ops connect() also calls (see noDelayClient).
   function keyboardClient(): {
-    client: {
-      setNoDelay: () => void;
-      _sock: { setKeepAlive: () => void };
+    client: ReturnType<typeof noDelayClient> & {
       on: ReturnType<typeof vi.fn>;
     };
     listeners: Record<string, ((...args: unknown[]) => void)[]>;
@@ -267,7 +271,7 @@ describe("keyboard-interactive", () => {
       },
     );
     return {
-      client: { setNoDelay: () => {}, _sock: { setKeepAlive: () => {} }, on },
+      client: { ...noDelayClient(), on },
       listeners,
     };
   }
@@ -2422,7 +2426,7 @@ describe("session heartbeat and TCP keepalive", () => {
     const client = {
       sftp: wrapper,
       connect: vi.fn().mockResolvedValue(undefined),
-      client: { setNoDelay: vi.fn(), _sock: { setKeepAlive } },
+      client: { ...noDelayClient(), _sock: { setKeepAlive, destroy: vi.fn() } },
       realPath,
       end,
     };
@@ -2447,9 +2451,10 @@ describe("session heartbeat and TCP keepalive", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (adapter as any).log = { warn, trace: vi.fn(), debug: vi.fn() };
     const { client } = connectMock();
-    // Model an ssh2 upgrade that relocated the socket: no _sock. connect must
-    // still succeed (keepalive is transport hygiene, not a correctness need).
-    delete (client.client as { _sock?: unknown })._sock;
+    // Model an ssh2 upgrade that dropped the socket's setKeepAlive. connect
+    // must still succeed (keepalive is transport hygiene, not a correctness
+    // need).
+    delete (client.client._sock as { setKeepAlive?: unknown }).setKeepAlive;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (adapter as any).client = client;
     await expect(

@@ -57,8 +57,9 @@ const NEGOTIATION_FAILURE =
   "getConnection: Handshake failed: no matching key exchange algorithm";
 
 // Counts the dials the adapter issues for one connect(), rejecting each with
-// `message`. Only connect() is stubbed: every case here fails the dial, so the
-// post-connect surface is never reached.
+// `message`. Only connect() and the ssh2 Client's EventEmitter surface the
+// subsystem-open bound subscribes through are stubbed: every case here fails
+// the dial, so the post-connect surface is never reached.
 function countingDialer(message: string): {
   adapter: Adapter;
   dials: () => number;
@@ -71,6 +72,7 @@ function countingDialer(message: string): {
       dials++;
       throw new Error(message);
     }),
+    client: new EventEmitter(),
   };
   return { adapter, dials: () => dials };
 }

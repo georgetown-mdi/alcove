@@ -271,19 +271,37 @@ export function subsystemOpenTimeoutMessage(
 }
 
 /**
- * The warning a dial reports when this build cannot arm the bound above,
- * because it cannot subscribe to the ssh2 client at all. The dial still runs;
- * what it loses is the deadline on everything after authentication, so the
- * warning states the wait the operator may be left in and how to end it.
+ * The refusal a dial raises, before it dials, when this build cannot arm the
+ * bound above because it cannot subscribe to the ssh2 client at all. Without the
+ * bound, a server that accepts the credentials and never opens the SFTP
+ * subsystem leaves an unattended run waiting with nothing to end it, so the
+ * connect is refused (exit 64) rather than run unbounded.
  */
-export function unboundedSubsystemOpenWarning(): string {
-  return (
-    `This build of Alcove cannot put a deadline on the SFTP subsystem ` +
-    `request that follows authentication, so a server that accepts this ` +
-    `connection's credentials and then never opens the SFTP subsystem leaves ` +
-    `the command waiting with nothing to end it; interrupt the command if it ` +
-    `stops making progress. This build of Alcove does not fully support the ` +
-    `installed SFTP library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`
+export function unboundedSubsystemOpenError(): UsageError {
+  return new UsageError(
+    `this build of Alcove cannot put a deadline on the SFTP subsystem ` +
+      `request that follows authentication, so a server that accepts this ` +
+      `connection's credentials and then never opens the SFTP subsystem would ` +
+      `leave the command waiting with nothing to end it; nothing was dialed. ` +
+      `This build of Alcove is not compatible with the installed SFTP ` +
+      `library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
+  );
+}
+
+/**
+ * The refusal the first successful dial raises when this build cannot close an
+ * SFTP connection from its own side. The subsystem-open bound ends a dial the
+ * server left unanswered by closing the connection beneath it; without that
+ * close, the next dial on the shared client waits behind the abandoned one with
+ * no deadline, so the connect is refused (exit 64) rather than run unbounded.
+ */
+export function unclosableDialError(): UsageError {
+  return new UsageError(
+    `this build of Alcove cannot close an SFTP connection from its own ` +
+      `side, so a later dial the server left unanswered would leave the ` +
+      `command waiting with nothing to end it, and the exchange cannot run. ` +
+      `This build of Alcove is not compatible with the installed SFTP ` +
+      `library; ${REPORT_LIBRARY_INCOMPATIBILITY}.`,
   );
 }
 

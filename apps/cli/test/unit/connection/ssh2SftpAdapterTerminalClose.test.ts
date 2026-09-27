@@ -269,18 +269,15 @@ describe("terminal close against a partner that withholds its close", () => {
   );
 
   test("a teardown whose forced close has no mechanism takes its safe branch", async () => {
-    // The call sites are verified at connect only in connection-per-poll mode, so the
-    // default mode meets an ssh2 upgrade that relocated one here, at teardown.
-    // Failing a dial over a teardown-only mechanism would ground every
-    // default-mode exchange on an upgrade that costs it nothing, so the branch
-    // warns and returns bounded instead.
+    // connect() verifies the call site, but a teardown must not throw, so one
+    // gone by teardown takes the branch that warns and returns bounded.
     vi.useFakeTimers();
     try {
       const { client, socket } = partnerThatNeverCloses();
-      delete socket.destroy;
       const { adapter, log } = loggedAdapter();
       installClient(adapter, client);
       await adapter.connect({ host: "h", maxReconnectAttempts: 0 });
+      delete socket.destroy;
 
       let settled = false;
       const closing = adapter.end().then(() => {

@@ -6,6 +6,8 @@
 // own contract. Re-verify the assumptions on any ssh2 / ssh2-sftp-client
 // bump per docs/spec/DEPENDENCY_PINS.md ("Upgrading the SFTP Stack").
 
+import { UsageError } from "@alcove/core";
+
 import { REPORT_LIBRARY_INCOMPATIBILITY } from "./libraryIncompatibility";
 
 /**
@@ -297,15 +299,16 @@ export function resolveTransportCloseSeams(
 /**
  * Reported as an unavailable seam rather than a thrown error so each caller
  * decides its own severity from the same reading: the connect-time check and the
- * idle release raise it (a boundary that silently stopped meaning anything is
- * worse than a failed dial), while the terminal close warns and returns.
+ * idle release raise it as a usage fault, exit 64 (a boundary that silently
+ * stopped meaning anything is worse than a failed dial), while the terminal
+ * close warns and returns.
  *
  * The message names no ssh2 internal: the caller logs the missing seam at debug,
  * and the assumptions are re-verified per the "Upgrading the SFTP Stack" checklist
  * in docs/spec/DEPENDENCY_PINS.md.
  */
-export function transportCloseSeamError(): Error {
-  return new Error(
+export function transportCloseSeamError(): UsageError {
+  return new UsageError(
     `this exchange closes the SFTP connection from this side at every poll ` +
       `boundary, which the installed SFTP library does not support, so the ` +
       `exchange cannot run. This build of Alcove is not compatible with ` +
