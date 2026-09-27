@@ -7,7 +7,7 @@ import { parse as parseYaml } from "yaml";
 import { ALIAS_TYPE_META_MAP } from "../../src/config/metadata";
 import { safeParseLinkageTerms } from "../../src/config/linkageTermsSchema";
 import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
-import { runPipeline } from "../../src/standardization";
+import { runPipeline, suffixes, titles } from "../../src/standardization";
 import { SEMANTIC_TYPES } from "../../src/types";
 import { snakeizeKeys } from "../../src/utils/camelizeKeys";
 import {
@@ -92,6 +92,7 @@ function parseDocument() {
   const typeSections = new Map<string, TypeSection>();
   const aliasRows: string[][] = [];
   const parameterRows: string[][] = [];
+  const affixRows: string[][] = [];
   let currentType: string | undefined;
   let inFence = false;
   let fenceLanguage = "";
@@ -145,12 +146,22 @@ function parseDocument() {
     if (/^\| Semantic type \|/.test(line)) aliasRows.push(...tableRows(i));
     if (/^\| Parameter \| Value \|/.test(line))
       parameterRows.push(...tableRows(i));
+    if (/^\| List \| Words \|/.test(line)) affixRows.push(...tableRows(i));
   }
 
-  return { typeSections, aliasRows, parameterRows };
+  return { typeSections, aliasRows, parameterRows, affixRows };
 }
 
-const { typeSections, aliasRows, parameterRows } = parseDocument();
+const { typeSections, aliasRows, parameterRows, affixRows } = parseDocument();
+
+// The Words cell is a plain comma-separated list (unlike the alias table's code
+// spans), in the order the doc lists them for reading.
+function affixWords(listName: string): string[] {
+  const row = affixRows.find((cells) => cells[0] === listName);
+  if (row === undefined)
+    throw new Error(`${DOC_RELATIVE_PATH}: no affix row for "${listName}"`);
+  return row[1].split(",").map((word) => word.trim());
+}
 
 // --- Registry side -----------------------------------------------------------
 
@@ -241,6 +252,16 @@ describe("DEFAULT_STANDARDIZATION.md inference table", () => {
           isPayload: unwrapCodeSpan(isPayload) === "true",
         });
     expect(Object.fromEntries(documented)).toEqual(ALIAS_TYPE_META_MAP);
+  });
+});
+
+describe("DEFAULT_STANDARDIZATION.md affix table", () => {
+  test("lists the titles removeAffixes strips", () => {
+    expect(affixWords("Titles")).toEqual(titles);
+  });
+
+  test("lists the suffixes removeAffixes strips", () => {
+    expect(affixWords("Suffixes")).toEqual(suffixes);
   });
 });
 

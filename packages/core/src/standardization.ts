@@ -356,7 +356,12 @@ function removeAccents(s: string): string {
     .normalize("NFC");
 }
 
-const suffixes = [
+/**
+ * @internal exported so the doc-parity test can hold DEFAULT_STANDARDIZATION.md's
+ * Suffixes row to this exact list. Unescaped, for reading; {@link suffixWordPattern}
+ * escapes each entry's periods when building the regex.
+ */
+export const suffixes = [
   "esq",
   "esquire",
   "jr",
@@ -381,9 +386,13 @@ const suffixes = [
   "d.c",
   "p.c",
   "ph.d",
-].map((x) => x.replace(/[.]/g, "\\."));
+];
 
-const titles = [
+/**
+ * @internal exported so the doc-parity test can hold DEFAULT_STANDARDIZATION.md's
+ * Titles row to this exact list.
+ */
+export const titles = [
   "dr",
   "miss",
   "mr",
@@ -405,7 +414,10 @@ const titleGluedToWordPattern = new RegExp(
   `^(?:${titles.join("|")})\\.(?=[\\p{L}\\p{N}])`,
   "iu",
 );
-const suffixWordPattern = new RegExp(`^(?:${suffixes.join("|")})\\.?,?$`, "i");
+const suffixWordPattern = new RegExp(
+  `^(?:${suffixes.map((x) => x.replace(/[.]/g, "\\.")).join("|")})\\.?,?$`,
+  "i",
+);
 const wordCharacterPattern = /[\p{L}\p{N}]/u;
 
 // Titles are stripped only as leading words and suffixes only as trailing
