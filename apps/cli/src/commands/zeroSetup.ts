@@ -359,7 +359,8 @@ async function prepareDataset(
  * exchange; when non-empty it is recorded as `expectedPayloadColumns` so a
  * later recurring `alcove exchange` fails closed on a divergent payload. An
  * empty or absent observation records nothing (see
- * {@link observedReceivedColumnsForSave}).
+ * {@link observedReceivedColumnsForSave}), as does one a config cannot store,
+ * which is told to `log` when given.
  *
  * `csvDelimiter` is the delimiter this run read and wrote by, recorded so the
  * recurring `alcove exchange` the saved config governs needs no flag of its
@@ -372,9 +373,11 @@ export function buildSaveSpec(
   prepared: PreparedExchange,
   observedReceivedColumns?: string[],
   csvDelimiter?: string,
+  log?: { warn: (message: string) => void },
 ): ExchangeSpec {
   const expectedPayloadColumns = observedReceivedColumnsForSave(
     observedReceivedColumns,
+    log,
   );
   return {
     connection,
@@ -800,6 +803,7 @@ export async function handler(argv: Arguments): Promise<void> {
                   prepared,
                   observedReceivedPayloadColumns,
                   csvDelimiter,
+                  options.save ? log : undefined,
                 ),
                 configFile: options.configFile,
                 keyFile: options.keyFile,

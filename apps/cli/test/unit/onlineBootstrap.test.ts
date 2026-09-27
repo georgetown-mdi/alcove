@@ -2612,6 +2612,41 @@ describe("observedReceivedColumnsForSave", () => {
     ).toBeUndefined();
     expect(observedReceivedColumnsForSave(["dob\u0007"])).toBeUndefined();
   });
+
+  const partnerName = "partnerOnlyColumnXq7";
+
+  test("warns once, quoting no partner name, on an over-cap observation", () => {
+    const warnings: string[] = [];
+    const overCap = Array.from(
+      { length: MAX_PAYLOAD_ENTRIES + 1 },
+      (_, i) => `${partnerName}${i}`,
+    );
+    observedReceivedColumnsForSave(overCap, { warn: (m) => warnings.push(m) });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(`more than ${MAX_PAYLOAD_ENTRIES}`);
+    expect(warnings[0]).toContain("does not record");
+    expect(warnings[0]).not.toContain(partnerName);
+  });
+
+  test("warns once, quoting no partner name, on a name a config cannot store", () => {
+    const warnings: string[] = [];
+    observedReceivedColumnsForSave([partnerName, `${partnerName}\u202E`], {
+      warn: (m) => warnings.push(m),
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("control or text-direction character");
+    expect(warnings[0]).toContain("does not record");
+    expect(warnings[0]).not.toContain(partnerName);
+  });
+
+  test("warns nothing on a storable or empty observation", () => {
+    const warnings: string[] = [];
+    const log = { warn: (m: string) => warnings.push(m) };
+    observedReceivedColumnsForSave([partnerName, "zip"], log);
+    observedReceivedColumnsForSave([], log);
+    observedReceivedColumnsForSave(undefined, log);
+    expect(warnings).toEqual([]);
+  });
 });
 
 // --- runOnlineBootstrap: observe-then-persist received-payload commitment ----

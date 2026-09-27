@@ -757,16 +757,43 @@ export function prepareForOnlineExchange(
  * name shape on reload, so saving it would write a config this party can no
  * longer load.
  *
+ * Either drop is told to `log` in one line that quotes no partner-supplied
+ * name; a caller passes `log` only when it is writing the config.
+ *
  * @internal exported for testing
  */
 export function observedReceivedColumnsForSave(
   observed: string[] | undefined,
+  log?: { warn: (message: string) => void },
 ): string[] | undefined {
   if (observed === undefined || observed.length === 0) return undefined;
-  if (observed.length > MAX_PAYLOAD_ENTRIES) return undefined;
-  if (!observed.every((name) => NAME_SHAPE_PATTERN.test(name)))
+  if (observed.length > MAX_PAYLOAD_ENTRIES) {
+    log?.warn(
+      withheldPayloadLockInWarning(
+        `your partner sent more than ${MAX_PAYLOAD_ENTRIES} payload ` +
+          "columns, more than a config can store",
+      ),
+    );
     return undefined;
+  }
+  if (!observed.every((name) => NAME_SHAPE_PATTERN.test(name))) {
+    log?.warn(
+      withheldPayloadLockInWarning(
+        "a payload column name your partner sent holds a control or " +
+          "text-direction character, which a config cannot store",
+      ),
+    );
+    return undefined;
+  }
   return observed;
+}
+
+function withheldPayloadLockInWarning(reason: string): string {
+  return (
+    "the saved config does not record which payload columns your partner " +
+    `sent: ${reason}. Later 'alcove exchange' runs accept whichever payload ` +
+    "columns your partner sends instead of refusing a changed set"
+  );
 }
 
 // --- Online exchange ---------------------------------------------------------
@@ -1235,6 +1262,7 @@ export async function runOnlineBootstrap(params: {
             return { persisted: true };
           const observedLockIn = observedReceivedColumnsForSave(
             observedReceivedPayloadColumns,
+            getLogger(params.loggerName),
           );
           if (observedLockIn === undefined) return { persisted: true };
           try {
