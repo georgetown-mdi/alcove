@@ -11,7 +11,7 @@
  * one-action, and re-selection -- and each produces a benign pre-run failure,
  * never the desync/attack framing (see docs/MANAGED_EXCHANGE.md, "The
  * input file each run", and docs/spec/MANAGED_EXCHANGE_RECORD.md, the
- * `inputFileHandle` and `lastRun` rows). The column check reuses core's
+ * `workingDirectoryHandle` and `lastRun` rows). The column check reuses core's
  * {@link decideLinkageTermsVerdict} rather than re-deriving the verdict, and holds
  * it to core's own rule rather than a threshold of this guard's (see
  * {@link assessManagedInputColumns}).
