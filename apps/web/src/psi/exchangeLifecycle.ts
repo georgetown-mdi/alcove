@@ -165,6 +165,9 @@ interface AcquireContext {
   signal: AbortSignal;
   /** Activate a stage (e.g. "waiting for peer" immediately before a wait). */
   onStage: (stageId: string) => void;
+  /** Take a report on the first-round count the check before sending takes
+   * (`countFirstRoundValues`), as the run's other PSI progress is taken. */
+  onPsiProgress: (progress: PsiProgress) => void;
   /** Emit the full per-exchange stage tree, once, after load/prepare. */
   onStages: (stages: Array<StageDefinition>) => void;
 }
@@ -449,6 +452,7 @@ export async function runExchangeLifecycle<
       signal,
       onStage: emitStage,
       onStages: emitStages,
+      onPsiProgress: emitPsiProgress,
     });
   } catch (error) {
     // acquire is atomic: it has already torn down anything it built, so there is

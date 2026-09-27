@@ -53,7 +53,7 @@ import {
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import {
   MAX_ROUND_DISTINCT_VALUES,
-  sentRoundSetSize,
+  RoundSetCounter,
   requireSingleCandidate,
   linkViaCountOnlyPSI,
   linkViaPSI,
@@ -1474,7 +1474,7 @@ export function prepareForExchange(
  * synced-folder counterpart.
  *
  * It counts the values the first cascade or count-only round sends under this
- * party's own within-round rule ({@link sentRoundSetSize}): every distinct
+ * party's own within-round rule ({@link RoundSetCounter}): every distinct
  * value when its terms set `deduplicate` on a cascade, else only the values
  * exactly one record holds. The count is taken in both PSI roles, since which
  * one this party plays is not yet known. It
@@ -1491,13 +1491,16 @@ export function prepareForExchange(
  * sends under the bound (docs/spec/PROTOCOL.md, "The single-pass dataset
  * ceiling").
  *
- * @param maxFrameBytes - The receiver's bound; lowered only by tests.
+ * The count reports its progress through `options.onProgress`
+ * ({@link FirstRoundCheckOptions}) and yields to the event loop as it goes,
+ * so a display stays live through it.
  */
-export function assertFirstRoundFitsWebRtcFrame(
+export async function assertFirstRoundFitsWebRtcFrame(
   prepared: PreparedExchange,
-  maxFrameBytes: number = MAX_WEBRTC_FRAME_BYTES,
-): void {
-  assertFirstRoundFits(prepared, {
+  options: FirstRoundCheckOptions = {},
+): Promise<void> {
+  const maxFrameBytes = options.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
+  await assertFirstRoundFits(prepared, options, {
     exceeds: (elementCount) =>
       webrtcFrameExceedsBound(
         minimumPsiSetFrameBytes(elementCount),
@@ -1567,15 +1570,16 @@ export function fileSyncRoundOneTooManyDistinctMessage(limit: number): string {
  * itself raises. A later round's set is known only once the earlier rounds
  * have matched, so it is checked on the frame the round builds
  * (`PSIParticipant`; docs/spec/FILE_SYNC.md, "Round set size limits").
- *
- * @param maxFrameBytes - The receiver's bound; lowered only by tests.
+ * Progress is reported as {@link assertFirstRoundFitsWebRtcFrame} reports it.
  */
-export function assertFirstRoundFitsFileSyncFrame(
+export async function assertFirstRoundFitsFileSyncFrame(
   prepared: PreparedExchange,
-  maxFrameBytes: number = MAX_FRAME_SIZE_BYTES,
-): void {
-  const maxValues = fileSyncMaxRoundSetValues(maxFrameBytes);
-  assertFirstRoundFits(prepared, {
+  options: FirstRoundCheckOptions = {},
+): Promise<void> {
+  const maxValues = fileSyncMaxRoundSetValues(
+    options.maxFrameBytes ?? MAX_FRAME_SIZE_BYTES,
+  );
+  await assertFirstRoundFits(prepared, options, {
     exceeds: (elementCount) => elementCount > maxValues,
     tooLarge: (fewest) =>
       new RoundSetLimitError(
@@ -1598,20 +1602,59 @@ export function assertFirstRoundFitsFileSyncFrame(
   });
 }
 
+/**
+ * What a first-round check ({@link assertFirstRoundFitsWebRtcFrame},
+ * {@link assertFirstRoundFitsFileSyncFrame}) takes beyond the prepared
+ * exchange.
+ */
+export interface FirstRoundCheckOptions {
+  /**
+   * Takes `countFirstRoundValues` reports (`PsiProgress`) as the count
+   * starts, as it goes, and as it settles, once for each role it counts in.
+   * An input whose records cannot reach the bound is not counted, so it
+   * reports nothing. Called as a {@link PsiProgressReporter} is: a raise on a
+   * `progress` report is dropped, and any other reaches the caller. The
+   * settle report's `elements` is the number of rows the count walked, not
+   * the dataset's row count, so it is short of the started report's
+   * `elements` when a deduplicating party's growing count stopped early.
+   */
+  onProgress?: PsiProgressReporter;
+  /** The receiver's bound; lowered only by tests. */
+  maxFrameBytes?: number;
+  /** The least time between two progress reports; lowered only by tests. */
+  progressIntervalMs?: number;
+  /**
+   * Stops the count at its next yield to the event loop: the check rejects
+   * with `signal.reason` and reports nothing further, not even a settle.
+   */
+  signal?: AbortSignal;
+}
+
+// How often the count reads the clock, in records, and the least time between
+// two of its progress reports, each of which yields to the event loop so a
+// display on the same thread can draw it.
+const FIRST_ROUND_COUNT_CLOCK_RECORDS = 1024;
+const FIRST_ROUND_COUNT_PROGRESS_MS = 250;
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 // The first-round count both channel checks above share. `exceeds` is the
 // channel's bound on a set of that many values, `tooLarge` its refusal on the
 // fewest values the round sends in either role, `tooManyDistinct` its refusal
 // when the count passes the round's distinct-value bound, which the round
 // itself would refuse, `uncounted` its refusal when the count fails otherwise.
-function assertFirstRoundFits(
+async function assertFirstRoundFits(
   prepared: PreparedExchange,
+  options: FirstRoundCheckOptions,
   bound: {
     exceeds: (elementCount: number) => boolean;
     tooLarge: (fewest: number) => Error;
     tooManyDistinct: (refusal: RoundSetLimitError) => Error;
     uncounted: (failure: unknown) => Error;
   },
-): void {
+): Promise<void> {
   const { linkageTerms, dataset, rowCount } = prepared;
   if (linkageTerms.linkageStrategy === "single-pass") return;
   const key = linkageTerms.linkageKeys[0];
@@ -1634,35 +1677,90 @@ function assertFirstRoundFits(
   // records hold; a count-only round never does.
   const keepsDuplicates =
     linkageTerms.deduplicate && linkageTerms.algorithm !== "psi-c";
+  const report = options.onProgress;
+  const progressIntervalMs =
+    options.progressIntervalMs ?? FIRST_ROUND_COUNT_PROGRESS_MS;
+  const settled = (
+    state: "finished" | "failed",
+    startedAt: number,
+    walked: number,
+  ): void =>
+    report?.({
+      operation: "countFirstRoundValues",
+      elements: walked,
+      state,
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+    });
   // A refusal the round would raise is a refusal in that role, left to the
   // round when the other role fits, since this party may not play it. Any
   // other failure to count, a resource limit among them, refuses at once.
-  const roundSetSize = (isReceiver: boolean): number | UsageError => {
+  // Where the size only grows, the count stops once it is over the bound, and
+  // the refusal names that size as the least the round sends.
+  const roundSetSize = async (
+    isReceiver: boolean,
+  ): Promise<number | UsageError> => {
+    report?.({
+      operation: "countFirstRoundValues",
+      elements: rowCount,
+      state: "started",
+    });
+    const startedAt = performance.now();
+    let size: number;
+    let row = 0;
     try {
-      const values = Array.from(
-        new StandardizedKeyIterable(
-          key,
-          dataset,
-          rowCount,
-          isReceiver,
-          0,
-          false,
-        ),
+      await yieldToEventLoop();
+      options.signal?.throwIfAborted();
+      let lastReportAt = performance.now();
+      const counter = new RoundSetCounter(keepsDuplicates);
+      const records = new StandardizedKeyIterable(
+        key,
+        dataset,
+        rowCount,
+        isReceiver,
+        0,
+        false,
       );
-      return sentRoundSetSize(
-        readsSingleCandidate ? values.map(requireSingleCandidate) : values,
-        keepsDuplicates,
-      );
+      for (const candidates of records) {
+        counter.add(
+          row,
+          readsSingleCandidate
+            ? requireSingleCandidate(candidates)
+            : candidates,
+        );
+        ++row;
+        if (row % FIRST_ROUND_COUNT_CLOCK_RECORDS !== 0) continue;
+        if (counter.sizeOnlyGrows && bound.exceeds(counter.size)) break;
+        if (performance.now() - lastReportAt < progressIntervalMs) continue;
+        try {
+          report?.({
+            operation: "countFirstRoundValues",
+            elements: rowCount,
+            state: "progress",
+            processed: row,
+          });
+        } catch {
+          // Dropped; the count continues and its settle report follows.
+        }
+        await yieldToEventLoop();
+        options.signal?.throwIfAborted();
+        lastReportAt = performance.now();
+      }
+      size = counter.size;
     } catch (failure) {
+      if (options.signal?.aborted && failure === options.signal.reason)
+        throw failure;
+      settled("failed", startedAt, row);
       if (failure instanceof UsageError) return failure;
       throw bound.uncounted(failure);
     }
+    settled("finished", startedAt, row);
+    return size;
   };
   const refusedInRole = (size: number | UsageError): boolean =>
     typeof size !== "number" || bound.exceeds(size);
-  const asSender = roundSetSize(false);
+  const asSender = await roundSetSize(false);
   if (!refusedInRole(asSender)) return;
-  const asReceiver = roundSetSize(true);
+  const asReceiver = await roundSetSize(true);
   if (!refusedInRole(asReceiver)) return;
   const refusal = (roundRefusal: UsageError): Error =>
     roundRefusal instanceof RoundSetLimitError

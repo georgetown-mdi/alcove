@@ -1,5 +1,9 @@
 import { assertFirstRoundFitsFileSyncFrame } from "@alcove/core";
-import type { ConnectionConfig, PreparedExchange } from "@alcove/core";
+import type {
+  ConnectionConfig,
+  PreparedExchange,
+  PsiProgressReporter,
+} from "@alcove/core";
 
 const passedFileSyncFirstRoundCheck = new WeakSet<PreparedExchange>();
 
@@ -10,14 +14,15 @@ const passedFileSyncFirstRoundCheck = new WeakSet<PreparedExchange>();
  * from local input, so a command runs this before the host-key step, whose
  * first-use probe contacts the server. `runProtocol` runs it again for a
  * caller that did not, and a prepared exchange that already passed is not
- * counted a second time.
+ * counted a second time. `onProgress` takes the count's progress reports.
  */
-export function assertFileSyncFirstRoundFits(
+export async function assertFileSyncFirstRoundFits(
   connection: Pick<ConnectionConfig, "channel">,
   prepared: PreparedExchange,
-): void {
+  onProgress?: PsiProgressReporter,
+): Promise<void> {
   if (connection.channel === "webrtc") return;
   if (passedFileSyncFirstRoundCheck.has(prepared)) return;
-  assertFirstRoundFitsFileSyncFrame(prepared);
+  await assertFirstRoundFitsFileSyncFrame(prepared, { onProgress });
   passedFileSyncFirstRoundCheck.add(prepared);
 }

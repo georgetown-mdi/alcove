@@ -626,7 +626,9 @@ test("a first round too large for one WebRTC message is refused before anything 
   );
   const check = vi.mocked(assertFirstRoundFitsWebRtcFrame);
   const actual = check.getMockImplementation()!;
-  check.mockImplementationOnce((checked) => actual(checked, 300 * 35 + 3));
+  check.mockImplementationOnce((checked) =>
+    actual(checked, { maxFrameBytes: 300 * 35 + 3 }),
+  );
   const keyFilePath = path.join(tmpDir, "inviter.key");
   saveKeyFile(keyFilePath, { sharedSecret: SECRET });
   const error = await runProtocol({
@@ -640,7 +642,7 @@ test("a first round too large for one WebRTC message is refused before anything 
     () => undefined,
     (err: unknown) => err,
   );
-  expect(check).toHaveBeenCalledWith(prepared);
+  expect(check).toHaveBeenCalledWith(prepared, expect.anything());
   expect(error).toBeInstanceOf(WebRtcFrameLimitError);
   expect((error as Error).message).toMatch(/at least 301 values to send/);
   expect(exitCodeForError(error)).toBe(64);

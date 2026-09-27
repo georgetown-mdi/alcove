@@ -832,7 +832,12 @@ export function useInviterExchange({
     // The inviter is the PSI responder: it must attach its inbound listener
     // before the WASM library resolves, so `psi` stays a pending promise here
     // and the lifecycle awaits it late (after the message connection opens).
-    const acquire: Acquire = async ({ signal, onStage, onStages }) => {
+    const acquire: Acquire = async ({
+      signal,
+      onStage,
+      onStages,
+      onPsiProgress,
+    }) => {
       const psi = loadPsiBackend(
         { loadWasm: () => PSI() as Promise<PSILibrary> },
         { isNode: false },
@@ -858,7 +863,10 @@ export function useInviterExchange({
         minted.rawRows,
         minted.columns,
       );
-      assertFirstRoundFitsWebRtcFrame(prepared);
+      await assertFirstRoundFitsWebRtcFrame(prepared, {
+        onProgress: onPsiProgress,
+        signal,
+      });
       onStages(stagesFor(prepared));
 
       onStage(WAITING_STAGE_ID);

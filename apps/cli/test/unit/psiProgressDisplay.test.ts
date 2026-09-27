@@ -10,6 +10,7 @@ import {
   psiMilestoneText,
   psiStatusText,
   terminalPsiStatusLine,
+  withFirstRoundCountDisplay,
   type PsiStatusLine,
 } from "../../src/psiProgressDisplay";
 
@@ -106,6 +107,55 @@ test("a processed count past the operation's own total holds the line at 100%", 
   expect(psiStatusText("createServerSetup", 0, 1000, 0)).toBe(
     "encrypting my data: 0 of 0 values (100%), 1s elapsed",
   );
+});
+
+test("the first-round count's lines count records", () => {
+  expect(
+    psiStatusText("countFirstRoundValues", 16_131_937, 3000, 1_024_000),
+  ).toBe(
+    "counting the values to send: 1,024,000 of 16,131,937 records (6%), " +
+      "3s elapsed",
+  );
+  expect(
+    psiMilestoneText({
+      operation: "countFirstRoundValues",
+      elements: 120_000,
+      state: "finished",
+      durationMs: 60_000,
+    }),
+  ).toBe(
+    "counting the values to send: 120,000 records in 1m 0s (2,000 records/s)",
+  );
+});
+
+test("the first-round count display logs one line as the count starts, and none for a check that does not count", async () => {
+  const lines: Array<string> = [];
+  const params = {
+    verbosity: 0,
+    logFile: undefined,
+    log: { info: (line: string) => lines.push(line) },
+  };
+  await withFirstRoundCountDisplay(params, () => Promise.resolve());
+  expect(lines).toEqual([]);
+
+  const counting = (state: PsiProgress["state"]): PsiProgress => ({
+    operation: "countFirstRoundValues",
+    elements: 2_000_000,
+    state,
+  });
+  const refusal = new Error("too large");
+  await expect(
+    withFirstRoundCountDisplay(params, (report) => {
+      for (const state of ["started", "finished", "started"] as const)
+        report(counting(state));
+      report({ ...counting("failed"), durationMs: 10 });
+      return Promise.reject(refusal);
+    }),
+  ).rejects.toBe(refusal);
+  expect(lines).toEqual([
+    "Counting the values the first linkage key sends from 2,000,000 " +
+      "records, to check they fit the first round's bound.",
+  ]);
 });
 
 test("a completion line states the measured rate", () => {

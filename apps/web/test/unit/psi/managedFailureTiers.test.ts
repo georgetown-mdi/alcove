@@ -600,14 +600,14 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   ];
 
   /** The first-round check's real refusal, at a bound two values cross. */
-  function firstRoundRefusal(): unknown {
+  async function firstRoundRefusal(): Promise<unknown> {
     const prepared = prepareManagedRerunExchange(
       record().exchangeFile,
       rows,
       columns,
     );
     try {
-      assertFirstRoundFitsWebRtcFrame(prepared, 1);
+      await assertFirstRoundFitsWebRtcFrame(prepared, { maxFrameBytes: 1 });
     } catch (error) {
       return error;
     }
@@ -621,8 +621,8 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     "local",
   );
 
-  test("the first-round refusal and a round's refusal both record too-large", () => {
-    const beforeConnecting = firstRoundRefusal();
+  test("the first-round refusal and a round's refusal both record too-large", async () => {
+    const beforeConnecting = await firstRoundRefusal();
     expect(beforeConnecting).toBeInstanceOf(WebRtcFrameLimitError);
     const at = Date.parse(RUN_AT);
     for (const [error, dataExchangeStarted] of [
@@ -839,9 +839,9 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     expect(managedRunRetryable(failure)).toBe(false);
   });
 
-  test("a live launch shows the refusal's own message, on either side of the boundary", () => {
+  test("a live launch shows the refusal's own message, on either side of the boundary", async () => {
     for (const [error, dataExchangeStarted] of [
-      [firstRoundRefusal(), false],
+      [await firstRoundRefusal(), false],
       [roundRefusal, true],
     ] as const) {
       const stamped = record({ lastRun: failed("too-large") });

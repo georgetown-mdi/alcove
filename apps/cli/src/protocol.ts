@@ -74,6 +74,7 @@ import { loadCliPsiBackend } from "./psiBackend";
 import {
   createPsiProgressDisplay,
   terminalPsiStatusLine,
+  withFirstRoundCountDisplay,
   type PsiProgressDisplay,
 } from "./psiProgressDisplay";
 import { createPsiEngine } from "./psiWorkerHost";
@@ -1600,6 +1601,7 @@ async function prepareTransport(
     signing: SigningPersist | null;
     recordOutput: RecordOutput | undefined;
     verbosity: number;
+    logFile: string | undefined;
     fileSyncRuntime: FileSyncRuntimeOptions;
     log: ReturnType<typeof getLogger>;
     emit: (fn: (e: EventStreamEmitter) => void) => void;
@@ -1614,6 +1616,7 @@ async function prepareTransport(
     signing,
     recordOutput,
     verbosity,
+    logFile,
     fileSyncRuntime,
     log,
     emit,
@@ -1700,7 +1703,9 @@ async function prepareTransport(
   if (connection.channel === "webrtc") {
     // A first round too large for one WebRTC message is refused here, before
     // the rendezvous is resolved and before anything is sent.
-    assertFirstRoundFitsWebRtcFrame(prepared);
+    await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
+      assertFirstRoundFitsWebRtcFrame(prepared, { onProgress: report }),
+    );
     // Resolve the rendezvous -- broker location, ICE servers, role, and the
     // secret both ids derive from -- here rather than at the dial, so a
     // misconfigured connection fails with no socket opened and no id
@@ -1721,7 +1726,9 @@ async function prepareTransport(
   } else {
     // A first round too large for one message file is refused before the
     // transport is built and before any file is written for the partner.
-    assertFileSyncFirstRoundFits(connection, prepared);
+    await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
+      assertFileSyncFirstRoundFits(connection, prepared, report),
+    );
     const client =
       connection.channel === "filedrop"
         ? new LocalFSClient()
@@ -2296,6 +2303,7 @@ export async function runProtocol(
       signing,
       recordOutput,
       verbosity,
+      logFile,
       fileSyncRuntime,
       log,
       emit,

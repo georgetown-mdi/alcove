@@ -190,13 +190,23 @@ export enum ProcessState {
  * {@link PSIParticipant} method that runs it. These are the operations that mask
  * or match every element of a set, so they are the ones a long round spends its
  * minutes inside.
+ *
+ * One more, `countFirstRoundValues`, is no crypto operation: it is the count
+ * the first-round size check (`assertFirstRoundFitsWebRtcFrame`,
+ * `assertFirstRoundFitsFileSyncFrame`) takes over this party's records before
+ * anything is sent. Its `elements` and `processed` count records, not values.
+ * Its `started` and `progress` reports give the dataset's full row count as
+ * `elements`; its `finished` and `failed` reports give the count of rows the
+ * check actually walked, which is short of the row count when a
+ * deduplicating party's growing count let it stop before the last row.
  */
 export type PsiOperation =
   | "createServerSetup"
   | "processClientRequest"
   | "createClientRequest"
   | "computeAssociationTable"
-  | "computeIntersectionCardinality";
+  | "computeIntersectionCardinality"
+  | "countFirstRoundValues";
 
 /**
  * Where one crypto operation stands: `started` when the participant dispatched

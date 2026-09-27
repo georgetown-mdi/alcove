@@ -182,6 +182,27 @@ describe("buildRunEvents", () => {
     expect(psiProgressLabel(state.run, new Date())).toBeUndefined();
   });
 
+  test("the first-round count's line counts records", () => {
+    const { state, events } = seat();
+
+    events.onPsiProgress?.({
+      operation: "countFirstRoundValues",
+      elements: 16_131_937,
+      state: "started",
+    });
+    events.onPsiProgress?.({
+      operation: "countFirstRoundValues",
+      elements: 16_131_937,
+      state: "progress",
+      processed: 1_024_000,
+    });
+    const openedAt = state.run.psiOperation?.startedAt.getTime() ?? 0;
+    expect(psiProgressLabel(state.run, new Date(openedAt + 3000))).toBe(
+      "Counting the values to send: 1,024,000 of 16,131,937 records (6%), " +
+        "3s elapsed",
+    );
+  });
+
   test("a result sets the outputs and finishes the run", () => {
     const { state, events } = seat();
     const outputs: RunOutputs = { kind: "withheld" };

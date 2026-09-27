@@ -427,7 +427,12 @@ export function useAcceptorExchange({
     // The acceptor is the PSI initiator: it awaits the WASM library EARLY, to
     // fail before dialing, then dials the inviter's derived id. The inverse of
     // the inviter's late await.
-    const acquire: Acquire = async ({ signal, onStage, onStages }) => {
+    const acquire: Acquire = async ({
+      signal,
+      onStage,
+      onStages,
+      onPsiProgress,
+    }) => {
       const psi = loadPsiBackend(
         { loadWasm: () => PSI() as Promise<PSILibrary> },
         { isNode: false },
@@ -446,7 +451,10 @@ export function useAcceptorExchange({
         disclosedPayloadColumns: token.disclosedPayloadColumns,
         deduplicate,
       });
-      assertFirstRoundFitsWebRtcFrame(prepared);
+      await assertFirstRoundFitsWebRtcFrame(prepared, {
+        onProgress: onPsiProgress,
+        signal,
+      });
       onStages(stagesFor(prepared, "acceptor"));
 
       // Fail fast: await the WASM library before dialing, so a WASM-load failure
