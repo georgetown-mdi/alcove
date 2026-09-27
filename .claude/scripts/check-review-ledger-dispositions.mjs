@@ -47,6 +47,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { isAncestor } from "./verify-rebase-invariance.mjs";
 
 /** Rows dated on or after this day are never treated as legacy. */
 export const LEGACY_CUTOFF_DATE = "2026-10-01";
@@ -100,20 +101,6 @@ export function legacyRows(rows) {
     if (!fieldsSeen && datedBeforeCutoff) legacy.add(row);
   }
   return legacy;
-}
-
-/**
- * Whether `ancestor` is an ancestor of `descendant`. Only the documented "not
- * an ancestor" exit reads as false; any other git failure throws.
- */
-function isAncestor({ ancestor, descendant, git }) {
-  try {
-    git(["merge-base", "--is-ancestor", ancestor, descendant]);
-    return true;
-  } catch (error) {
-    if (error.status === 1) return false;
-    throw error;
-  }
 }
 
 /**
@@ -220,7 +207,7 @@ function commitsByAuthorship({ base, head, git }) {
   ]);
   const fields = log.split("\0");
   for (let i = 0; i + 2 < fields.length; i += 3) {
-    const sha = fields[i].replace(/^\n/, "");
+    const sha = fields[i];
     const key = `${fields[i + 1]}\n${fields[i + 2].trimEnd()}`;
     byKey.set(key, byKey.has(key) ? null : sha);
   }
