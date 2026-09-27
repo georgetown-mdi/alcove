@@ -35,8 +35,7 @@
 //     as a range is REFUSED by name rather than passed.
 //   - An optional dependency or an optional peer the lockfile does not install
 //     is skipped; a required edge with no installed copy fails.
-//   - Range matching is node-semver's `satisfies` with its default options,
-//     imported from the copy the development tree hoists.
+//   - Range matching is node-semver's `satisfies` with its default options.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
