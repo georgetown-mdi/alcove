@@ -239,6 +239,7 @@ vi.mock("@alcove/core", async (importActual) => {
       trace: () => {},
     }),
     runExchange: vi.fn().mockImplementation(defaultRunExchange),
+    authenticateConnection: vi.fn(actual.authenticateConnection),
     // The record a terminated run hands back on its error, and the predicate for
     // the case where one was owed and its build threw. Core marks the error
     // inside runExchange, which is mocked here, so both accessors are mocked
@@ -382,6 +383,7 @@ import { keysPathFor, type RecordOutput } from "../../src/recordFile";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
   exitCodeForError,
+  INTERNAL_FAULT_NEXT_STEP,
   PARTNER_REFUSED_NEXT_STEP,
   renderFailureForOperator,
   runOrExit,
@@ -517,6 +519,11 @@ afterEach(async () => {
   vi.mocked(exchangeRecordFromFailure).mockReturnValue(undefined);
   vi.mocked(exchangeRecordOwedButUnbuilt).mockReset();
   vi.mocked(exchangeRecordOwedButUnbuilt).mockReturnValue(false);
+  vi.mocked(authenticateConnection).mockReset();
+  vi.mocked(authenticateConnection).mockImplementation(
+    (await vi.importActual<typeof import("@alcove/core")>("@alcove/core"))
+      .authenticateConnection,
+  );
   mockState.dropDir = "";
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -4193,6 +4200,71 @@ test.each([
     expect(
       renderFailureForOperator(reason).endsWith(PARTNER_REFUSED_NEXT_STEP),
     ).toBe(!advisory);
+  },
+  20_000,
+);
+
+test.each([
+  {
+    failure: "a partner frame outside the message contract",
+    raise: () =>
+      new ConnectionError(
+        "the partner sent a frame above the inbound bound",
+        "protocol",
+      ),
+    code: 76,
+    nextStep: PARTNER_REFUSED_NEXT_STEP,
+  },
+  {
+    failure: "an internal fault",
+    raise: () => new InternalConsistencyError("runKex: psk must be 32 bytes"),
+    code: 70,
+    nextStep: INTERNAL_FAULT_NEXT_STEP,
+  },
+])(
+  "runProtocol keeps the rotation-state advisory for $failure during the key exchange",
+  async ({ raise, code, nextStep }) => {
+    // The failure lands after authentication started and before this side
+    // saved a rotated token, so the partner may hold one this side does not.
+    // The fixed step beneath the error does not state that; the advisory does.
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    vi.mocked(authenticateConnection).mockImplementation(async () => {
+      throw raise();
+    });
+
+    const run = (keyFilePath: string, loggerName: string) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName,
+      });
+    const [resultA, resultB] = await Promise.allSettled([
+      run(keyFileA, "test-a"),
+      run(keyFileB, "test-b"),
+    ]);
+    expect(resultA.status).toBe("rejected");
+    expect(resultB.status).toBe("rejected");
+    const reason = (resultA as PromiseRejectedResult).reason;
+    expect(exitCodeForError(reason)).toBe(code);
+    expect(renderFailureForOperator(reason).endsWith(nextStep)).toBe(true);
+    expect(
+      mockState.errors.filter((m) =>
+        m.includes("key exchange was in progress"),
+      ),
+    ).toHaveLength(2);
+    expect(
+      mockState.errors.some((m) => m.includes("already rotated and saved")),
+    ).toBe(false);
   },
   20_000,
 );

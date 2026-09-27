@@ -2666,12 +2666,12 @@ export async function runProtocol(
     // it contradicts. Set wherever that holds: the saveKeyFile-failure
     // path below, authenticateConnection's own validation errors (token
     // format, pre- and post-handshake expiry -- see auth.ts), and core's
-    // terminal transport refusals. An untagged internal fault or partner
-    // refusal is skipped too: the command boundary shows its fixed step
-    // (fixedNextStep) beneath it, and a retry is what that step rules out.
-    // Key-exchange protocol failures from runKex are NOT tagged and do get
-    // the generic advisory, which adds useful "retry first; if it fails,
-    // re-invite" context.
+    // terminal transport refusals. For an untagged internal fault or
+    // partner refusal the command boundary shows its fixed step
+    // (fixedNextStep), which rules out a retry, so that step replaces the
+    // post-rotation lines, both of which prescribe one. The authStarted
+    // line still prints for them: a partner that may hold a rotated token
+    // is what the operator needs whatever the next step says.
     //
     // The walk follows `cause` so a future wrap (e.g. `new Error('outer: '
     // + inner.message, { cause: inner })`) still suppresses the generic
@@ -2790,16 +2790,19 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
-    const hintAlreadyEmitted =
-      isHintTagged(err) || fixedNextStep(err) !== undefined;
-    if (!hintAlreadyEmitted) {
-      if (run.tokenRotated && run.onAuthenticatedError === undefined) {
+    const hintAlreadyEmitted = isHintTagged(err);
+    const retryRuledOut =
+      hintAlreadyEmitted || fixedNextStep(err) !== undefined;
+    if (run.tokenRotated) {
+      if (retryRuledOut) {
+        // No post-rotation line: each prescribes the retry ruled out.
+      } else if (run.onAuthenticatedError === undefined) {
         log.error(
           "The shared secret was already rotated and saved before this error. " +
             "Retry the exchange without re-inviting; if authentication " +
             "fails on retry, both parties must re-invite.",
         );
-      } else if (run.tokenRotated) {
+      } else {
         // The rotated key is on disk, but the post-handshake persistence hook
         // failed (onAuthenticatedError is set), so whatever it would have
         // written -- e.g. the online invite/accept config -- is not on disk. A
@@ -2813,16 +2816,16 @@ export async function runProtocol(
             "persistence step failed earlier (logged above); resolve that " +
             "before retrying, as the retry may have nothing to run against.",
         );
-      } else if (run.authStarted) {
-        log.error(
-          "The key exchange was in progress when this error occurred. " +
-            "Depending on how far the handshake had progressed, the " +
-            "partner may have already completed it and saved the rotated " +
-            "token even though this side did not. Retry the exchange " +
-            "with the existing key file; if authentication fails on " +
-            "retry, both parties must re-invite.",
-        );
       }
+    } else if (run.authStarted && !hintAlreadyEmitted) {
+      log.error(
+        "The key exchange was in progress when this error occurred. " +
+          "Depending on how far the handshake had progressed, the " +
+          "partner may have already completed it and saved the rotated " +
+          "token even though this side did not. Retry the exchange " +
+          "with the existing key file; if authentication fails on " +
+          "retry, both parties must re-invite.",
+      );
     }
     // If a signal handler is mid-cleanup, it owns the exit code (130/143).
     // Swallowing the error here resolves runProtocol normally so the CLI

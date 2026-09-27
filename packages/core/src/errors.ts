@@ -815,8 +815,8 @@ export class ConnectionClosedError extends Error {
  * response to a `PeerAbortError`, or the waiting party would reflect one
  * back) recognizes it. The CLI's exit-code check reads the class rather
  * than the kind and yields 76 (EX_PROTOCOL): the partner ended the
- * exchange on purpose, so a retry meets the same refusal until the two
- * parties talk.
+ * exchange, possibly on a fault on its own side such as a transport stall,
+ * and a retry alone does not help until the partner runs again.
  *
  * It holds no partner-controlled bytes: the marker token never decodes to
  * display text, the abort frame's reasons are not read, and the message
