@@ -274,12 +274,23 @@ function removeNonAscii(s: string): string {
   return s.replace(/[^\x00-\x7F]/g, "");
 }
 
+// The ASCII separators plus their typographic forms: the curly and modifier
+// apostrophes (U+2018, U+2019, U+201B, U+02BC, U+FF07) and the Unicode
+// hyphens, dashes, and minus signs (U+2010-U+2015, U+2212, U+FE58, U+FE63,
+// U+FF0D), so a name typed with either spelling splits into the same words.
+const SEPARATOR_PATTERN =
+  /[-'&\/\\_\u2018\u2019\u201b\u02bc\uff07\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g;
+
 function replaceSeparatorsWithSpaces(s: string): string {
-  return s.replace(/[-'&\/\\_]/g, " ");
+  return s.replace(SEPARATOR_PATTERN, " ");
 }
 
+// The Unicode White_Space property rather than JavaScript's \s: the property
+// includes U+0085 and excludes the zero-width U+FEFF, which is no word break.
+const WHITESPACE_RUN_PATTERN = /\p{White_Space}+/gu;
+
 function squashSpaces(s: string): string {
-  return s.replace(/\s\s+/g, " ");
+  return s.replace(WHITESPACE_RUN_PATTERN, " ");
 }
 
 function removePunctuation(s: string): string {
@@ -302,6 +313,33 @@ function toLowerCase(s: string): string {
   return s.toLowerCase();
 }
 
+// Latin letters with no canonical decomposition: the NFD strip leaves them
+// whole, so a later remove_non_ascii would delete them. Each maps to the
+// ASCII spelling a writer without the letter conventionally uses.
+const LETTER_TRANSLITERATIONS: ReadonlyMap<string, string> = new Map([
+  ["\u00df", "ss"], // sharp s
+  ["\u1e9e", "SS"], // capital sharp s
+  ["\u00c6", "AE"],
+  ["\u00e6", "ae"],
+  ["\u0152", "OE"],
+  ["\u0153", "oe"],
+  ["\u00de", "TH"], // thorn
+  ["\u00fe", "th"],
+  ["\u0141", "L"], // L with stroke
+  ["\u0142", "l"],
+  ["\u00d8", "O"], // O with stroke
+  ["\u00f8", "o"],
+  ["\u0110", "D"], // D with stroke
+  ["\u0111", "d"],
+  ["\u00d0", "D"], // eth
+  ["\u00f0", "d"],
+]);
+
+const TRANSLITERATED_LETTER_PATTERN = new RegExp(
+  `[${[...LETTER_TRANSLITERATIONS.keys()].join("")}]`,
+  "g",
+);
+
 function removeAccents(s: string): string {
   // Re-normalize to NFC after the NFD strip: a combining mark outside the
   // stripped U+0300-U+036F range (e.g. the Arabic maddah U+0653) survives, so
@@ -311,6 +349,10 @@ function removeAccents(s: string): string {
   return s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(
+      TRANSLITERATED_LETTER_PATTERN,
+      (letter) => LETTER_TRANSLITERATIONS.get(letter) ?? letter,
+    )
     .normalize("NFC");
 }
 
@@ -1045,14 +1087,15 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
     name: "replace_separators_with_spaces",
     label: "Replace separators with spaces",
     blurb:
-      "Turn hyphens, apostrophes, ampersands, slashes, and underscores into spaces.",
+      "Turn hyphens, dashes, apostrophes (straight or curly), ampersands, slashes, and underscores into spaces.",
     tier: "standard",
     params: noParams,
   },
   squash_spaces: {
     name: "squash_spaces",
     label: "Squash spaces",
-    blurb: "Collapse runs of whitespace into a single space.",
+    blurb:
+      "Turn every run of whitespace, including tabs, line breaks, and non-breaking spaces, into a single space.",
     tier: "standard",
     params: noParams,
   },
@@ -1097,7 +1140,8 @@ export const STANDARDIZATION_FUNCTION_DESCRIPTORS: Readonly<
   remove_accents: {
     name: "remove_accents",
     label: "Remove accents",
-    blurb: "Strip accents and diacritics, keeping the base letters.",
+    blurb:
+      "Strip accents and diacritics, keeping the base letters, and spell out letters with no accent form in ASCII (sharp s as ss, O-stroke as O).",
     tier: "standard",
     params: noParams,
   },

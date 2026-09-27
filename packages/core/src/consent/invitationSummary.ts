@@ -121,9 +121,9 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   remove_non_ascii:
     "Deletes every character outside the ASCII set before matching -- an accented letter, emoji, or symbol is dropped entirely, not simplified.",
   replace_separators_with_spaces:
-    "Turns hyphens, apostrophes, ampersands, slashes, and underscores into spaces before matching.",
+    "Turns hyphens, dashes, apostrophes (straight or curly), ampersands, slashes, and underscores into spaces before matching.",
   squash_spaces:
-    "Collapses runs of spaces into a single space before matching.",
+    "Turns every run of whitespace, including tabs, line breaks, and non-breaking spaces, into a single space before matching.",
   remove_punctuation: "Removes punctuation and symbols before matching.",
   remove_dashes: "Removes hyphens before matching.",
   trim_whitespace: "Removes leading and trailing spaces before matching.",
@@ -132,7 +132,7 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   to_lower_case:
     "Lower-cases the value before matching, so values differing only in letter case can match.",
   remove_accents:
-    "Strips accents and diacritics but keeps the base letter before matching, so accented and unaccented spellings can match.",
+    "Strips accents and diacritics but keeps the base letter, and spells out letters such as sharp s and O-stroke in ASCII, before matching, so accented and unaccented spellings can match.",
   remove_affixes:
     "Removes name titles and suffixes (Mr., Dr., Jr., III) before matching.",
   substring:

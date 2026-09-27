@@ -140,6 +140,28 @@ describe("runPipeline — string functions", () => {
     );
   });
 
+  test("squash_spaces folds every Unicode whitespace run, even a lone one, to a space", () => {
+    expect(
+      runPipeline("A\u00a0B\tC\r\nD\u2003\u00a0 E\u0085F", [
+        { function: "squash_spaces" },
+      ]),
+    ).toBe("A B C D E F");
+  });
+
+  test("squash_spaces keeps the zero-width no-break space, which is not White_Space", () => {
+    expect(runPipeline("A\ufeffB", [{ function: "squash_spaces" }])).toBe(
+      "A\ufeffB",
+    );
+  });
+
+  test("replace_separators_with_spaces treats typographic apostrophes and dashes as separators", () => {
+    expect(
+      runPipeline("O\u2019Brien\u2010Smith\u2014Jones", [
+        { function: "replace_separators_with_spaces" },
+      ]),
+    ).toBe("O Brien Smith Jones");
+  });
+
   test("squash_spaces leaves single spaces unchanged", () => {
     expect(runPipeline("SMITH JONES", [{ function: "squash_spaces" }])).toBe(
       "SMITH JONES",
