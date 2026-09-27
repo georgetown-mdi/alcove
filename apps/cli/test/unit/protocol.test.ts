@@ -34,6 +34,11 @@ const mockState = vi.hoisted(() => ({
   // The key-file path whose rotation-in-flight marker write must fail, for the
   // case that drives the run stopping before its key exchange.
   unmarkableKeyFilePath: undefined as string | undefined,
+  // Called with each key-file path whose rotation-in-flight marker was written.
+  onRotationMarked: undefined as ((keyFilePath: string) => void) | undefined,
+  // Awaited before every transport close, for the case whose partner must
+  // keep its rendezvous files on disk until this side reaches its key exchange.
+  teardownGate: undefined as Promise<void> | undefined,
   // What each key file held just before its rotated-token save replaced it, so
   // a case can read the marker the save cleared.
   keyFileBeforeRotation: {} as Record<string, unknown>,
@@ -191,6 +196,7 @@ vi.mock("../../src/keyFile", async (importActual) => {
       if (args[0] === mockState.unmarkableKeyFilePath)
         throw new Error("EROFS: read-only file system");
       actual.markRotationInFlight(...args);
+      mockState.onRotationMarked?.(args[0]);
     },
   };
 });
@@ -209,6 +215,7 @@ vi.mock("../../src/transportTeardown", async (importActual) => {
       ceilingMs: number,
       close: () => Promise<void>,
     ) => {
+      if (mockState.teardownGate) await mockState.teardownGate;
       if (!mockState.expireTeardown)
         return actual.closeWithinCeiling(ceilingMs, close);
       await close();
@@ -473,6 +480,8 @@ beforeEach(() => {
   mockState.lastSftpAdapterOptions = undefined;
   mockState.unwritableKeyFilePath = undefined;
   mockState.unmarkableKeyFilePath = undefined;
+  mockState.onRotationMarked = undefined;
+  mockState.teardownGate = undefined;
   mockState.keyFileBeforeRotation = {};
   mockState.expireTeardown = false;
   fs.mkdirSync(dropDir);
@@ -2933,6 +2942,21 @@ test("a key exchange the partner never answers leaves the marker set", async () 
   // The partner stops before its key exchange, so this side's marked key
   // exchange ends on the transport, not on a failed-closed handshake.
   mockState.unmarkableKeyFilePath = keyFileB;
+  // The partner's close sweeps its hello; a partner that joined and closed
+  // before this side next listed the directory would strand this side in the
+  // rendezvous, short of its marker. Hold every close until this side's marker
+  // is written, or until twice the budget, past which its rendezvous has ended.
+  let backstop: ReturnType<typeof setTimeout> | undefined;
+  mockState.teardownGate = Promise.race([
+    new Promise<void>((resolve) => {
+      mockState.onRotationMarked = (keyFilePath) => {
+        if (keyFilePath === keyFileA) resolve();
+      };
+    }),
+    new Promise<void>((resolve) => {
+      backstop = setTimeout(resolve, 2 * LONE_PARTY_PEER_BUDGET_MS);
+    }),
+  ]);
 
   const [resultA] = await Promise.allSettled(
     [keyFileA, keyFileB].map((keyFilePath, index) =>
@@ -2953,6 +2977,7 @@ test("a key exchange the partner never answers leaves the marker set", async () 
       }),
     ),
   );
+  clearTimeout(backstop);
   expect(resultA.status).toBe("rejected");
   const left = loadKeyFile(keyFileA);
   expect(left?.sharedSecret).toBe(TOKEN_A);
