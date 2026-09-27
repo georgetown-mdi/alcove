@@ -420,10 +420,9 @@ const suffixWordPattern = new RegExp(
 );
 const wordCharacterPattern = /[\p{L}\p{N}]/u;
 
-// Titles are stripped only as leading words and suffixes only as trailing
-// words, and each only while another word remains, so a surname that is also
-// an affix word (Judge, Md Rahman) survives. Whitespace runs collapse to one
-// space.
+// Titles strip only as leading words and suffixes only as trailing words,
+// each only while another word remains, so a field never empties (a lone
+// honorific is left for the pipeline's null_if step).
 function removeAffixes(s: string): string {
   const trimmed = s.trim();
   if (trimmed === "") return trimmed;
