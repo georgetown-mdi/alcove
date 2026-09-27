@@ -215,7 +215,10 @@ Common to both:
    claim text, or the finding name. You write every one as `"open"` and triage none of
    them; assess-review rewrites them in place to `fixed`, `contested`, `narrowed`,
    `limit`, or `deferred` as it disposes of each, and a row still holding `open` after
-   triage is a finding nobody decided.
+   triage is a finding nobody decided. Triage adds fields as it disposes: a `fixed`
+   entry gains `"commit": "<sha>"`, and a `deferred` entry gains `"board":
+   "<board>/<itemId>"` or `"limitsLine": "docs/spec/<path>#<anchor or phrase>"`, which
+   `.claude/scripts/check-review-ledger-dispositions.mjs` checks at merge-ready.
 
 ### Lens mode -- the Workflow returned `{reviewerCount, simplerShapeVotes, clusters}`
 

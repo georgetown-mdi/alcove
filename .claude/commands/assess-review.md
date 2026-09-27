@@ -229,12 +229,23 @@ Then record what you decided. The round's row in
 `PRIMARY/scratch/review-rounds/<key>.jsonl` contains a `dispositions` entry per
 confirmed cluster, gating claim, and out-of-claim finding, each written `open`
 by the round that raised it. Rewrite each in place to the disposition you took:
-`fixed`, `contested` (the disputed behavior was measured first-hand and did not
-hold), `narrowed` (the limits line is on the branch), `limit` (accepted as it
-stands, no board item), or `deferred` (it has a row in Step 4's table). A `limit`
+`fixed` (with `"commit": "<sha>"`, the full sha of the commit on the branch
+that holds the fix), `contested` (the disputed behavior was measured first-hand
+and did not hold), `narrowed` (the limits line is on the branch), `limit`
+(accepted as it stands, no board item), or `deferred` (it has a row in Step 4's
+table, and a named home). A `limit`
 entry has a `note` beside it -- one phrase saying what the branch is living
 with -- because the entry is the whole record of that finding and an unannotated
-one is treated as an entry nobody wrote down. An entry left `open` says nobody decided
+one is treated as an entry nobody wrote down.
+
+A `deferred` entry names where the finding went: an owner-approved board item,
+as `"board": "<board>/<itemId>"`, or a spec limits line on the branch, as
+`"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`. A finding
+with neither is recorded as `limit` with its `note`, not `deferred`. A
+follow-on line in the pull request description alone does not satisfy this:
+it is invisible to every later session once the PR merges. Nothing here files a
+board item to give a deferral a home -- the no-automated-filings rule above
+still holds, and a board item exists only on the owner's word. An entry left `open` says nobody decided
 that finding, so leave none behind -- and a round whose entries are all still
 `open` is a round that was read and not triaged.
 
@@ -255,6 +266,16 @@ churning), no unaddressed finding touches a security-relevant surface (one
 narrowed, or recorded as a stated limit, stops gating readiness once the owner
 ratifies that disposition), brittle areas are shored up or independently
 assessed, and typecheck/lint/tests are green. When it is ready, say so.
+
+**Merge-ready dispositions check.** Before reporting the branch ready to merge,
+run `node .claude/scripts/check-review-ledger-dispositions.mjs
+PRIMARY/scratch/review-rounds/<key>.jsonl <PR head sha>` against the PR head.
+It refuses a `fixed` entry whose commit is not contained in the head -- as an
+ancestor, or as a commit with the same patch after a rebase -- and a `deferred`
+entry that names neither a board item nor a limits line the head holds; its
+header states which older rows it skips. A refusal gates readiness: a fix that
+never reached the head goes back into a fix pass, and a deferral with no home is
+given one or rewritten as `limit` with a note.
 
 **Re-attestation.** A fix committed here moves the head, so a Security review
 line already attesting an earlier sha goes stale. The mechanical paths below are
@@ -350,6 +371,13 @@ verifier refuses the move, and it is then the standing-contract round described
 below, run at the rebased head. Record the verification in the branch's ledger:
 add to its last row, in place like the dispositions, a `reattested` array entry
 `{"route": "rebase-invariance", "from": "<pre-rebase head sha>", "to": "<post-rebase head sha>", "date": "<date -I>"}`.
+Then re-record the fix commits the rebase re-authored: `node
+.claude/scripts/check-review-ledger-dispositions.mjs --remap
+PRIMARY/scratch/review-rounds/<key>.jsonl` followed by the same four shas the
+verifier took. It rewrites each `fixed` entry's `commit` in place to the commit
+the rebase made from it, paired by author, author date, and message, so a fix
+whose hunk a conflict resolution edited -- and whose patch therefore no longer
+matches -- still passes the merge-ready check.
 It is not a round and counts against no budget. Nothing enforces this route: it
 is held here, by the session, and the ledger entry is its record.
 
