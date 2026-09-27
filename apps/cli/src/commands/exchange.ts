@@ -35,6 +35,7 @@ import {
 } from "../config";
 import { expandTilde } from "../fileUtils";
 import { assertFileSyncFirstRoundFits } from "../fileSyncFirstRound";
+import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
 import { establishHostKeyTrust } from "../hostKeyTrust";
 import {
   loadKeyFile,
@@ -1184,7 +1185,9 @@ export async function handler(argv: Arguments): Promise<void> {
         termsIdentity,
         options.configFile,
       );
-      assertFileSyncFirstRoundFits(connection, prepared);
+      await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
+        assertFileSyncFirstRoundFits(connection, prepared, report),
+      );
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
     }

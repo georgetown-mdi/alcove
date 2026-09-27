@@ -608,7 +608,7 @@ test("a first round too large for one message file is refused before any file is
   const check = vi.mocked(assertFirstRoundFitsFileSyncFrame);
   const actual = check.getMockImplementation()!;
   check.mockImplementationOnce((checked) =>
-    actual(checked, MESSAGE_HEADER_BYTES + 300 * 35),
+    actual(checked, { maxFrameBytes: MESSAGE_HEADER_BYTES + 300 * 35 }),
   );
   const error = await runProtocol({
     connection: { channel: "filedrop", path: dropDir },
@@ -621,7 +621,7 @@ test("a first round too large for one message file is refused before any file is
     () => undefined,
     (err: unknown) => err,
   );
-  expect(check).toHaveBeenCalledWith(prepared);
+  expect(check).toHaveBeenCalledWith(prepared, expect.anything());
   expect(error).toBeInstanceOf(RoundSetLimitError);
   expect((error as Error).message).toMatch(
     /at least 301 values to send, over the \d+ one message file holds/,

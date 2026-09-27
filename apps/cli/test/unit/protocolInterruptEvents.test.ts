@@ -54,6 +54,10 @@ vi.mock("../../src/psiProgressDisplay", () => ({
     close: () => runEvents.ordered.push("progress display closed"),
   }),
   terminalPsiStatusLine: () => undefined,
+  withFirstRoundCountDisplay: (
+    _params: unknown,
+    check: (onProgress: () => void) => Promise<void>,
+  ) => check(() => {}),
 }));
 
 import { runExchange } from "@alcove/core";

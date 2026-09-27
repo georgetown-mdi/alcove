@@ -21,7 +21,10 @@ import {
   SINGLE_PASS_STAGE_IDS,
   type PsiOperation,
   type PsiProgress,
+  type PsiProgressReporter,
 } from "@alcove/core";
+
+import { runBeforeEachLogLine } from "./util/logging";
 
 // How the operator is told which operation is running: the exchange's own stage
 // ids, except for the count-only round, whose stage lines are numbered rather
@@ -32,7 +35,21 @@ const OPERATION_LABELS: Record<PsiOperation, string> = {
   processClientRequest: SINGLE_PASS_STAGE_IDS.encryptingPartnerData,
   computeAssociationTable: SINGLE_PASS_STAGE_IDS.identifyingSharedValues,
   computeIntersectionCardinality: "counting shared values",
+  countFirstRoundValues: "counting the values to send",
 };
+
+// What an operation's figures count: values, except for the first-round count,
+// which walks this party's records.
+function unitOf(operation: PsiOperation): Unit {
+  return operation === "countFirstRoundValues" ? RECORDS : VALUES;
+}
+
+interface Unit {
+  one: string;
+  many: string;
+}
+const VALUES: Unit = { one: "value", many: "values" };
+const RECORDS: Unit = { one: "record", many: "records" };
 
 // How often the live line is redrawn, and the first moment it appears: an
 // operation that settles faster than this draws nothing, so a small dataset's
@@ -107,17 +124,21 @@ export function formatDuration(durationMs: number): string {
 }
 
 /** `count` with the unit the operator reads it in, singular where it is one. */
-export function formatValues(count: number): string {
-  return `${formatCount(count)} ${count === 1 ? "value" : "values"}`;
+export function formatValues(count: number, unit: Unit = VALUES): string {
+  return `${formatCount(count)} ${count === 1 ? unit.one : unit.many}`;
 }
 
 // The measured throughput, or undefined where the figures do not support one:
 // too short an operation to divide by, or a rate that rounds to nothing.
-function formatRate(elements: number, durationMs: number): string | undefined {
+function formatRate(
+  elements: number,
+  durationMs: number,
+  unit: Unit,
+): string | undefined {
   if (durationMs <= 0) return undefined;
   const perSecond = Math.round(elements / (durationMs / 1000));
   if (perSecond < 1) return undefined;
-  return `${formatCount(perSecond)} values/s`;
+  return `${formatCount(perSecond)} ${unit.many}/s`;
 }
 
 /**
@@ -129,13 +150,14 @@ function formatRate(elements: number, durationMs: number): string | undefined {
 function formatProcessed(
   elements: number,
   processed: number | undefined,
+  unit: Unit,
 ): string {
-  if (processed === undefined) return formatValues(elements);
+  if (processed === undefined) return formatValues(elements, unit);
   const share =
     elements <= 0
       ? 100
       : Math.min(100, Math.floor((processed / elements) * 100));
-  return `${formatCount(processed)} of ${formatValues(elements)} (${share}%)`;
+  return `${formatCount(processed)} of ${formatValues(elements, unit)} (${share}%)`;
 }
 
 /**
@@ -149,7 +171,8 @@ export function psiStatusText(
   processed?: number,
 ): string {
   return (
-    `${OPERATION_LABELS[operation]}: ${formatProcessed(elements, processed)}, ` +
+    `${OPERATION_LABELS[operation]}: ` +
+    `${formatProcessed(elements, processed, unitOf(operation))}, ` +
     `${formatDuration(elapsedMs)} elapsed`
   );
 }
@@ -164,9 +187,10 @@ export function psiMilestoneText(progress: PsiProgress): string | undefined {
   if (state !== "finished") return undefined;
   if (durationMs === undefined || durationMs < MILESTONE_MIN_MS)
     return undefined;
-  const rate = formatRate(elements, durationMs);
+  const unit = unitOf(operation);
+  const rate = formatRate(elements, durationMs, unit);
   return (
-    `${OPERATION_LABELS[operation]}: ${formatValues(elements)} in ` +
+    `${OPERATION_LABELS[operation]}: ${formatValues(elements, unit)} in ` +
     `${formatDuration(durationMs)}${rate === undefined ? "" : ` (${rate})`}`
   );
 }
@@ -311,4 +335,43 @@ export function terminalPsiStatusLine(params: {
     draw: (text: string) => writeStatus(`\r${fitToTerminalWidth(text)}\x1b[K`),
     clear: () => writeStatus("\r\x1b[K"),
   };
+}
+
+/**
+ * Run a first-round check (`assertFirstRoundFitsWebRtcFrame`,
+ * `assertFirstRoundFitsFileSyncFrame`) with a display of its own for the count
+ * it takes: a line logged as the count starts, so a run with no live line
+ * still shows the count is under way, then the live line and completion line
+ * {@link createPsiProgressDisplay} draws. A check that does not count logs
+ * nothing.
+ */
+export async function withFirstRoundCountDisplay(
+  params: {
+    verbosity: number;
+    logFile: string | undefined;
+    log: { info: (line: string) => void };
+  },
+  check: (onProgress: PsiProgressReporter) => Promise<void>,
+): Promise<void> {
+  const display = createPsiProgressDisplay({
+    statusLine: terminalPsiStatusLine(params),
+    clearBeforeLogLine: runBeforeEachLogLine,
+    milestone: (line) => params.log.info(line),
+  });
+  let announced = false;
+  try {
+    await check((progress) => {
+      if (progress.state === "started" && !announced) {
+        announced = true;
+        params.log.info(
+          "Counting the values the first linkage key sends from " +
+            `${formatValues(progress.elements, RECORDS)}, to check they fit ` +
+            "one message.",
+        );
+      }
+      display.report(progress);
+    });
+  } finally {
+    display.close();
+  }
 }

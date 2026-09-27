@@ -14,7 +14,7 @@ import {
 // The first-round checks count through the round's own deduplication, which
 // refuses the distinct value past its bound; the round itself would refuse
 // that set, so each check raises its own channel's refusal for it.
-// The count is replaced here: reaching the real bound takes several GB.
+// The count's bound is lowered here: reaching the real one takes several GB.
 
 const LOWERED_LIMIT = 4;
 
@@ -22,8 +22,10 @@ vi.mock("../../src/psi/link", async (importOriginal) => {
   const link = await importOriginal<typeof import("../../src/psi/link")>();
   return {
     ...link,
-    sentRoundSetSize: () => {
-      throw link.roundDistinctValueLimitRefusal(LOWERED_LIMIT);
+    RoundSetCounter: class extends link.RoundSetCounter {
+      constructor(keepsDuplicates: boolean) {
+        super(keepsDuplicates, LOWERED_LIMIT);
+      }
     },
   };
 });
@@ -51,18 +53,18 @@ function prepared() {
   );
 }
 
-function refusalOf(check: () => void): unknown {
+async function refusalOf(check: Promise<void>): Promise<unknown> {
   try {
-    check();
+    await check;
   } catch (err) {
     return err;
   }
   return undefined;
 }
 
-test("the WebRTC check raises its own refusal, for this party's set", () => {
-  const refusal = refusalOf(() =>
-    assertFirstRoundFitsWebRtcFrame(prepared(), 1),
+test("the WebRTC check raises its own refusal, for this party's set", async () => {
+  const refusal = await refusalOf(
+    assertFirstRoundFitsWebRtcFrame(prepared(), { maxFrameBytes: 1 }),
   );
   expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
   expect((refusal as WebRtcFrameLimitError).setOwner).toBe("local");
@@ -72,9 +74,9 @@ test("the WebRTC check raises its own refusal, for this party's set", () => {
   );
 });
 
-test("the file-sync check names the bound the count stopped at", () => {
-  const refusal = refusalOf(() =>
-    assertFirstRoundFitsFileSyncFrame(prepared(), 1),
+test("the file-sync check names the bound the count stopped at", async () => {
+  const refusal = await refusalOf(
+    assertFirstRoundFitsFileSyncFrame(prepared(), { maxFrameBytes: 1 }),
   );
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as RoundSetLimitError).setOwner).toBe("local");

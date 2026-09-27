@@ -46,6 +46,7 @@ import type {
 import { applyConnectionOverrides, saveConfig } from "./config";
 import { detectFileConflicts, FileExistsError } from "./fileUtils";
 import { assertFileSyncFirstRoundFits } from "./fileSyncFirstRound";
+import { withFirstRoundCountDisplay } from "./psiProgressDisplay";
 import { openEventStream, reportPersistenceLoss } from "./eventStream";
 import { writeAcceptanceRecordReportingLoss } from "./acceptedTermsRecords";
 import {
@@ -1018,7 +1019,15 @@ export async function runOnlineBootstrap(params: {
   // server.
   const credentials = readConnectionCredentials(params.connection);
   // Decided from the input alone, so settled before the host-key step too.
-  assertFileSyncFirstRoundFits(params.connection, params.prepared);
+  await withFirstRoundCountDisplay(
+    {
+      verbosity: params.verbosity,
+      logFile: params.logFile,
+      log: getLogger(params.loggerName),
+    },
+    (report) =>
+      assertFileSyncFirstRoundFits(params.connection, params.prepared, report),
+  );
 
   // Establish first-use SSH host-key trust before connecting, on the ORIGINAL
   // params.connection so the pin reaches both the live connect (via the clone

@@ -130,7 +130,20 @@ test("a first-round file at the ceiling fits the frame bound the check applies",
   }
 });
 
-test("the check refuses one value over the bound and admits one under and at it", () => {
+/** What the check under `maxFrameBytes` rejects with, or undefined. */
+async function refusalOf(
+  prepared: Parameters<typeof assertFirstRoundFitsFileSyncFrame>[0],
+  maxFrameBytes: number,
+): Promise<unknown> {
+  try {
+    await assertFirstRoundFitsFileSyncFrame(prepared, { maxFrameBytes });
+  } catch (err) {
+    return err;
+  }
+  return undefined;
+}
+
+test("the check refuses one value over the bound and admits one under and at it", async () => {
   // 300 values held by one record each, beside 40 records sharing 20 values:
   // the round drops a shared value, so 300 is the count the check weighs.
   const unique = Array.from({ length: 301 }, (_unused, i) => letters(i));
@@ -142,18 +155,9 @@ test("the check refuses one value over the bound and admits one under and at it"
   ];
   const bound = boundFor(300);
 
-  expect(() =>
-    assertFirstRoundFitsFileSyncFrame(preparedWith(rows(299)), bound),
-  ).not.toThrow();
-  expect(() =>
-    assertFirstRoundFitsFileSyncFrame(preparedWith(rows(300)), bound),
-  ).not.toThrow();
-  let refusal: unknown;
-  try {
-    assertFirstRoundFitsFileSyncFrame(preparedWith(rows(301)), bound);
-  } catch (err) {
-    refusal = err;
-  }
+  expect(await refusalOf(preparedWith(rows(299)), bound)).toBeUndefined();
+  expect(await refusalOf(preparedWith(rows(300)), bound)).toBeUndefined();
+  const refusal = await refusalOf(preparedWith(rows(301)), bound);
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as RoundSetLimitError).alcoveRecoveryHintEmitted).toBe(true);
   expect((refusal as Error).message).toMatch(
@@ -161,43 +165,29 @@ test("the check refuses one value over the bound and admits one under and at it"
   );
 });
 
-test("the file-sync first-round check counts every distinct value a deduplicating party sends", () => {
+test("the file-sync first-round check counts every distinct value a deduplicating party sends", async () => {
   // 400 values each held by two records: a party that drops a shared value
   // sends none of them, one whose terms set deduplicate sends all 400.
   const values = Array.from({ length: 400 }, (_unused, i) => letters(i));
   const rows = [...values, ...values];
   const bound = boundFor(300);
 
-  expect(() =>
-    assertFirstRoundFitsFileSyncFrame(
-      preparedWith(rows, "cascade", false),
-      bound,
-    ),
-  ).not.toThrow();
-  let refusal: unknown;
-  try {
-    assertFirstRoundFitsFileSyncFrame(
-      preparedWith(rows, "cascade", true),
-      bound,
-    );
-  } catch (err) {
-    refusal = err;
-  }
+  expect(
+    await refusalOf(preparedWith(rows, "cascade", false), bound),
+  ).toBeUndefined();
+  const refusal = await refusalOf(preparedWith(rows, "cascade", true), bound);
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as Error).message).toMatch(/at least 400 values to send/);
 });
 
-test("the check leaves a single-pass exchange to its dataset ceiling", () => {
+test("the check leaves a single-pass exchange to its dataset ceiling", async () => {
   const rows = Array.from({ length: 50 }, (_unused, i) => letters(i));
-  expect(() =>
-    assertFirstRoundFitsFileSyncFrame(
-      preparedWith(rows, "single-pass"),
-      boundFor(10),
-    ),
-  ).not.toThrow();
-  expect(() =>
-    assertFirstRoundFitsFileSyncFrame(preparedWith(rows), boundFor(10)),
-  ).toThrow(RoundSetLimitError);
+  expect(
+    await refusalOf(preparedWith(rows, "single-pass"), boundFor(10)),
+  ).toBeUndefined();
+  expect(await refusalOf(preparedWith(rows), boundFor(10))).toBeInstanceOf(
+    RoundSetLimitError,
+  );
 });
 
 /**
@@ -227,21 +217,16 @@ function withThrowingRows(
   };
 }
 
-test("the check refuses, with the failure as its cause, when the count throws", () => {
+test("the check refuses, with the failure as its cause, when the count throws", async () => {
   const rowCount = 50;
   const prepared = preparedWith(
     Array.from({ length: rowCount }, (_unused, i) => letters(i)),
   );
   const failure = new RangeError("out of memory");
-  let refusal: unknown;
-  try {
-    assertFirstRoundFitsFileSyncFrame(
-      withThrowingRows(prepared, rowCount, failure),
-      boundFor(10),
-    );
-  } catch (err) {
-    refusal = err;
-  }
+  const refusal = await refusalOf(
+    withThrowingRows(prepared, rowCount, failure),
+    boundFor(10),
+  );
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as Error).message).toMatch(
     /could not count .* one message file\. Nothing was sent\./,
@@ -249,18 +234,18 @@ test("the check refuses, with the failure as its cause, when the count throws", 
   expect((refusal as Error).cause).toBe(failure);
 });
 
-test("the check raises a refusal the count throws in both roles as it is", () => {
+test("the check raises a refusal the count throws in both roles as it is", async () => {
   const rowCount = 50;
   const prepared = preparedWith(
     Array.from({ length: rowCount }, (_unused, i) => letters(i)),
   );
   const refusal = new UsageError("a refusal the round would raise");
-  expect(() =>
-    assertFirstRoundFitsFileSyncFrame(
+  expect(
+    await refusalOf(
       withThrowingRows(prepared, rowCount, refusal),
       boundFor(10),
     ),
-  ).toThrow(refusal);
+  ).toBe(refusal);
 });
 
 test("each refusal survives the display boundary whole at the real bound", () => {

@@ -201,6 +201,7 @@ const PSI_OPERATION_LABELS: Record<PsiOperation, string> = {
   processClientRequest: ENCRYPTING_PARTNER_DATA_LABEL,
   computeAssociationTable: FINDING_MATCHES_LABEL,
   computeIntersectionCardinality: COUNTING_SHARED_VALUES_LABEL,
+  countFirstRoundValues: "Counting the values to send",
 };
 
 /** The label a stage event shows in the status panel and the run history: the
@@ -401,10 +402,15 @@ export function currentStageLabel(run: ExchangeRun): string {
 }
 
 /** `count` with the unit the operator reads it in, grouped in threes so a
- * millions figure stays readable. */
-function valueCountLabel(count: number): string {
+ * millions figure stays readable. The first-round count walks this party's
+ * records, so its figures count records rather than values. */
+function valueCountLabel(count: number, operation: PsiOperation): string {
   const grouped = new Intl.NumberFormat("en-US").format(Math.trunc(count));
-  return `${grouped} ${count === 1 ? "value" : "values"}`;
+  const [one, many] =
+    operation === "countFirstRoundValues"
+      ? ["record", "records"]
+      : ["value", "values"];
+  return `${grouped} ${count === 1 ? one : many}`;
 }
 
 /** `elapsedMs` as the largest two units that hold it -- `42s`, `1m 12s`,
@@ -426,14 +432,14 @@ function elapsedLabel(elapsedMs: number): string {
  * down and held at 100, so a count that overshoots its total by a rounding
  * step cannot put the line past that total. */
 function processedLabel(running: RunningPsiOperation): string {
-  const { elements, processed } = running;
-  if (processed === undefined) return valueCountLabel(elements);
+  const { operation, elements, processed } = running;
+  if (processed === undefined) return valueCountLabel(elements, operation);
   const share =
     elements <= 0
       ? 100
       : Math.min(100, Math.floor((processed / elements) * 100));
   const grouped = new Intl.NumberFormat("en-US").format(Math.trunc(processed));
-  return `${grouped} of ${valueCountLabel(elements)} (${share}%)`;
+  return `${grouped} of ${valueCountLabel(elements, operation)} (${share}%)`;
 }
 
 /** The status panel's live PSI line as of `now`: how far the running operation

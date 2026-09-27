@@ -655,6 +655,7 @@ export type {
   ExchangeDataSpec,
   ExchangeResult,
   ExchangeStageDefinition,
+  FirstRoundCheckOptions,
   PartnerCertificateRefusalKind,
   PreparedExchange,
   RunExchangeOptions,

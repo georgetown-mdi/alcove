@@ -28,6 +28,7 @@ import {
 import { openEventStream, reportPersistenceLoss } from "../eventStream";
 import { displayZeroSetupDisclosure } from "../exchangeDisclosure";
 import { assertFileSyncFirstRoundFits } from "../fileSyncFirstRound";
+import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
 import {
   detectFileConflicts,
   expandTilde,
@@ -734,7 +735,9 @@ export async function handler(argv: Arguments): Promise<void> {
       // after the host-key step below has contacted the server.
       const credentials = readConnectionCredentials(connection);
       // Decided from the input alone, so settled before the host-key step too.
-      assertFileSyncFirstRoundFits(connection, prepared);
+      await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
+        assertFileSyncFirstRoundFits(connection, prepared, report),
+      );
       // Show what this run discloses and matches on, all of it inferred from
       // the input file above, before the host-key step below can contact the
       // server. Placed after every check that reads this party's own files, so

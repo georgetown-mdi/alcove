@@ -248,22 +248,67 @@ export function removeDuplicatesAndUndefineds(
 }
 
 /**
- * How many values a round over `keyData` sends under this party's own
- * within-round rule: every distinct value when it keeps a value several of
- * its records hold (`keepsDuplicates`, its `deduplicate` term), the set
- * {@link groupDuplicatesAndRemoveUndefineds} builds, and otherwise only the
- * values exactly one record holds, the set
+ * How many values a round sends under this party's own within-round rule,
+ * counted one row at a time: every distinct value when it keeps a value
+ * several of its records hold (`keepsDuplicates`, its `deduplicate` term), the
+ * set {@link groupDuplicatesAndRemoveUndefineds} builds, and otherwise only
+ * the values exactly one record holds, the set
  * {@link removeDuplicatesAndUndefineds} builds. A record holding a candidate
- * set contributes each candidate, as the round's own set does.
+ * set contributes each candidate, as the round's own set does. Rows are added
+ * in ascending order, one call each.
+ *
+ * Past `maxDistinctValues` distinct values it raises the round's own
+ * {@link RoundSetLimitError}; tests lower the bound.
  */
-export function sentRoundSetSize(
-  keyData: Iterable<KeyCandidates>,
-  keepsDuplicates: boolean,
-): number {
-  const candidates = Array.from(keyData);
-  return keepsDuplicates
-    ? groupDuplicatesAndRemoveUndefineds(candidates)[0].length
-    : removeDuplicatesAndUndefineds(candidates)[0].length;
+export class RoundSetCounter {
+  // Each value seen, against the one row holding it, or -1 once a second row
+  // holds it too.
+  private readonly rowOf = new Map<string, number>();
+  private heldByOneRow = 0;
+  private readonly keepsDuplicates: boolean;
+  private readonly maxDistinctValues: number;
+
+  constructor(
+    keepsDuplicates: boolean,
+    maxDistinctValues: number = MAX_ROUND_DISTINCT_VALUES,
+  ) {
+    this.keepsDuplicates = keepsDuplicates;
+    this.maxDistinctValues = maxDistinctValues;
+  }
+
+  /** Count the candidates of row `row`. */
+  add(row: number, candidates: KeyCandidates): void {
+    if (candidates === undefined) return;
+    if (typeof candidates === "string") this.addValue(row, candidates);
+    else for (const value of candidates) this.addValue(row, value);
+  }
+
+  private addValue(row: number, value: string): void {
+    const holder = this.rowOf.get(value);
+    if (holder === undefined) {
+      if (this.rowOf.size === this.maxDistinctValues)
+        throw roundDistinctValueLimitRefusal(this.maxDistinctValues);
+      this.rowOf.set(value, row);
+      ++this.heldByOneRow;
+    } else if (holder !== row && holder !== -1) {
+      this.rowOf.set(value, -1);
+      --this.heldByOneRow;
+    }
+  }
+
+  /** The round's set size over the rows added so far. */
+  get size(): number {
+    return this.keepsDuplicates ? this.rowOf.size : this.heldByOneRow;
+  }
+
+  /**
+   * Whether {@link size} can only grow as rows are added, so a size over a
+   * bound stays over it: true where duplicates are kept. Where they are
+   * dropped, a later row can take a value back out of the set.
+   */
+  get sizeOnlyGrows(): boolean {
+    return this.keepsDuplicates;
+  }
 }
 
 /**
