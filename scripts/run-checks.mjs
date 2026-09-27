@@ -178,6 +178,12 @@ export const CHECKS = [
       "No package the committed lockfile installs at the root is also installed under a workspace.",
   },
   {
+    script: "check:locked-dep-ranges",
+    expiresOn: "2026-12-31",
+    description:
+      "Every dependency the committed lockfile locks lies inside the range its dependent declared, outside the reasoned allowlist.",
+  },
+  {
     script: "check:routetree",
     expiresOn: "2026-12-31",
     description:

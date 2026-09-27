@@ -5,9 +5,9 @@
 // The root package.json holds an override on `brace-expansion` so that every
 // requirer of it resolves to a line the advisory it answers has a patch for.
 // docs/spec/DEPENDENCY_PINS.md records why it is there and what it costs: a
-// dev-scoped `invalid` edge that refuses a dev-inclusive `npm sbom`, and a
 // latent API-incompatible major under every requirer whose declared range the
-// override overrules. Both costs are paid for as long as the override stands,
+// override overrules, each an edge scripts/check-locked-dep-ranges.mjs holds
+// on its allowlist. That cost is paid for as long as the override stands,
 // and its exit condition -- no requirer left that caps below the overridden
 // line -- is reached by an upstream release rather than by anything in this
 // repo. Left to prose it would be reached and not noticed.
@@ -28,8 +28,8 @@
 //     running `npm audit --package-lock-only` against the regenerated tree.
 //   - It reads declared ranges and does not model npm's resolver. It does not
 //     work out which installed copy any one edge resolves to, so it names the
-//     ranges that cap below the installed version rather than the edges npm
-//     would report `invalid`.
+//     ranges that cap below the installed version rather than the edges
+//     scripts/check-locked-dep-ranges.mjs finds out of range.
 //   - It reads a narrow semver subset -- comparator sets over `^`, `~`, `=`,
 //     `<`, `<=`, `>`, `>=`, a bare version and the `x`/`*` wildcards, joined by
 //     `||`. Every other spelling, a hyphen range and anything holding a

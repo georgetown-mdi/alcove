@@ -474,23 +474,23 @@ freeze](CONTAINER_IMAGES.md#the-docker-images-dependency-freeze)). That
 bounds the urgency rather than the fix, which clears the advisory at the cost
 recorded next.
 
-**What the override costs: a dev-scoped invalid edge.** npm 11.17 marks an
-overridden edge `overridden` only where the override and the edge hang on the
-same project. Reached through a workspace it resolves the edge but reports it
-`invalid`, so a full-depth dev-inclusive walk fails: `npm ls --all` exits 1 with
-`ELSPROBLEMS`, and an unscoped `npm sbom` refuses with `ESBOMPROBLEMS` naming
-`brace-expansion@5.0.8, ^2.0.2 required by minimatch@9.0.9` and
-`^2.0.1 required by minimatch@5.1.9`. That is the override itself and not this
-tree's shape: a minimal workspaces repro with nothing but the same override
-reports the same two, and a single-project repro of the same dependency chain
-reports neither and produces an SBOM. The release path is out of its reach,
-measured on npm 11.17 against the committed lockfile -- `npm ls --omit=dev`
-exits 0, `npm ls --all --omit=dev` names only the
-[crossws peer](#the-crossws-peer-conflict-blocks-the-release-sbom), and the
+**What the override costs: two dependents held outside their declared range.**
+The override resolves both minimatch edges onto the 5.x line their `^2` ranges
+exclude, and npm does not reliably report that. npm 11.17 marked such an edge
+`invalid` where the edge was reached through a workspace: `npm ls --all`
+exited 1 with `ELSPROBLEMS`, and an unscoped `npm sbom` refused with
+`ESBOMPROBLEMS` naming `^2.0.2 required by minimatch@9.0.9` and
+`^2.0.1 required by minimatch@5.1.9`. npm 11.19.1, measured 2026-09-27
+against the committed lockfile, marks neither: `npm ls --all` and the
+unscoped `npm sbom` name only the
+[crossws peer](#the-crossws-peer-conflict-blocks-the-release-sbom), and print
+`brace-expansion@5.0.9 deduped` under both minimatch copies with no marking.
+So npm's `invalid` marking is not a signal for this edge class. The release
+path is out of its reach either way -- `npm ls --omit=dev` exits 0, and the
 release-scoped `npm sbom --omit=dev -w packages/core -w apps/cli -w apps/web`
 (step 9 in [RELEASES.md](../RELEASES.md)) names only that same peer.
 
-**What that invalid edge is underneath: an API-incompatible major.** The npm
+**What the out-of-range edge is underneath: an API-incompatible major.** The npm
 reporting artifact is not the whole cost. `brace-expansion@5.0.9` exports a
 named `expand` and no callable default:
 `Object.keys(require("brace-expansion"))` is
@@ -509,18 +509,28 @@ path: archiver arrives through nitropack's azure preset, which this repo does
 not build. Every `brace-expansion` copy is development-only besides, so none of
 it is in the shipped image. What is left is a forward risk -- a dependent
 arriving on `brace-expansion@^1` or `^2` is forced onto the 5.x line by the
-same override and hits the same `TypeError`. Nothing at install time reports
-that: npm resolves and installs the tree either way, and
-`npm audit --package-lock-only` answers `found 0 vulnerabilities` with the two
-invalid edges already in the tree. It shows when that dependent's brace path
-runs, or as one more `invalid` edge in the dev-inclusive walks above.
+same override and hits the same `TypeError`. npm resolves and installs the
+tree either way, and `npm audit --package-lock-only` answers
+`found 0 vulnerabilities` with the two out-of-range edges already in the tree.
+
+**What catches the next one.** `scripts/check-locked-dep-ranges.mjs`
+(`npm run check:locked-dep-ranges`, run by `npm run check:all`) is the guard.
+It reads the committed lockfile and fails on any edge whose locked version lies
+outside the range its dependent declared, naming the dependent, the declared
+range and the locked version, for every dependent the lockfile records: the
+root project, each workspace, and each installed package. The two minimatch
+edges above, and the crossws optional peer, are recorded with their reasons in
+the check's `OUT_OF_RANGE_BY_DESIGN` list; a new dependent forced onto the
+overridden line is a new edge and fails until it is recorded, and a recorded
+edge that comes back into range fails until its entry is deleted. It compares
+declared ranges with locked versions only, and does not model npm's resolution
+or which override forced an edge.
 
 **Revisit when** `nitropack` or `archiver` moves off `archiver@^7` to a line
 whose `minimatch` accepts `brace-expansion@^5`, or `minimatch` widens the `^2`
 range on its 5.x or 9.x lines. Either one makes the override redundant, and
-dropping it restores a valid dev-scoped tree along with the dev-inclusive
-`npm sbom`. `scripts/check-brace-expansion-override.mjs`
-(`npm run check:brace-expansion-override`, a CI static check in
+dropping it puts both minimatch edges back inside their declared ranges.
+`scripts/check-brace-expansion-override.mjs` (`npm run check:brace-expansion-override`, a CI static check in
 `static_checks.yaml`) is what watches for that, rather than the trigger resting
 on someone remembering it: it fails once the committed lockfile declares no
 `brace-expansion` range excluding the version it installs, which is the state
