@@ -22,7 +22,7 @@ import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
 import { fromBase64Url } from "../utils/crypto.js";
 import { boundedArray } from "../utils/boundedArray.js";
-import { InternalConsistencyError, UsageError } from "../errors.js";
+import { UsageError } from "../errors.js";
 
 // --- Connection endpoint -----------------------------------------------------
 
@@ -884,10 +884,9 @@ export const MAX_RAW_INVITATION_LENGTH = 2 * MAX_ENCODED_INVITATION_LENGTH;
  * (Node.js 19+ / all modern browsers).
  *
  * @throws {UsageError} if `expires` is set to a time that is not in the
- *   future.
- * @throws {InternalConsistencyError} if the encoded token exceeds
- *   {@link MAX_ENCODED_INVITATION_LENGTH} (a token that could not be decoded;
- *   fires only on a programming error, not a real config).
+ *   future, or if the encoded token exceeds
+ *   {@link MAX_ENCODED_INVITATION_LENGTH}, which linkage terms with every field
+ *   in bounds can still reach, for example through a long exclude list.
  * @throws {ZodError} if the token fails {@link MintedInvitationTokenSchema}.
  * @throws {NestingDepthExceededError|NodeCountExceededError} if the token's
  *   `transform.params` is too deeply nested or too wide for the bounded camelCase
@@ -924,12 +923,13 @@ export async function encodeInvitation(
   // MAX_ENCODED_INVITATION_LENGTH, and the far end would then reject the token
   // at its decode boundary. Refuse to produce it here so the failure appears on
   // the inviter's own side with a clear cause rather than at the partner's
-  // decode. In practice this fires only on a programming error, never a real
-  // config.
+  // decode.
   if (encoded.length > MAX_ENCODED_INVITATION_LENGTH) {
-    throw new InternalConsistencyError(
-      "encoded invitation exceeds the maximum length of " +
-        `${MAX_ENCODED_INVITATION_LENGTH} characters`,
+    throw new UsageError(
+      `the invitation is ${encoded.length} characters encoded, over the ` +
+        `maximum of ${MAX_ENCODED_INVITATION_LENGTH}, so the partner could ` +
+        "not read it; shorten the linkage terms, for example the exclude " +
+        "list of a linkage field, and create the invitation again",
     );
   }
   return encoded;

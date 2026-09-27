@@ -597,6 +597,84 @@ test("openInputSource: a missing file is not found, exit 66 (not a stdin error)"
   expect(INPUT_NOT_FOUND_EXIT_CODE).toBe(66);
 });
 
+function openInputFailure(input: string): unknown {
+  try {
+    openInputSource(input);
+  } catch (err) {
+    return err;
+  }
+  throw new Error("openInputSource did not throw");
+}
+
+test("openInputSource: a missing file under an existing directory is not found, exit 66", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-cli-input-"));
+  try {
+    const caught = openInputFailure(path.join(dir, "absent.csv"));
+    expect(caught).toBeInstanceOf(InputNotFoundError);
+    expect(exitCodeForError(caught)).toBe(66);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("openInputSource: a path through a regular file (ENOTDIR) is not found, exit 66", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-cli-input-"));
+  try {
+    const file = path.join(dir, "in.csv");
+    fs.writeFileSync(file, "a\n1\n");
+    const caught = openInputFailure(path.join(file, "nested.csv"));
+    expect(caught).toBeInstanceOf(InputNotFoundError);
+    expect(exitCodeForError(caught)).toBe(66);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A dangling link is treated as a file that has not landed yet: a scheduled
+// run may point a fixed link at a dated file an upstream job writes later.
+test.skipIf(process.platform === "win32")(
+  "openInputSource: a symbolic link whose target is missing is not found, exit 66, and says it is a link",
+  () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-cli-input-"));
+    try {
+      const link = path.join(dir, "latest.csv");
+      fs.symlinkSync(path.join(dir, "not-yet.csv"), link);
+      const caught = openInputFailure(link);
+      expect(caught).toBeInstanceOf(InputNotFoundError);
+      expect((caught as Error).message).toBe(
+        `${link} is a symbolic link to a file that does not exist`,
+      );
+      expect(exitCodeForError(caught)).toBe(66);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+// Root bypasses directory permissions, so mode 000 refuses nothing there.
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "openInputSource: a file under an unsearchable directory is not reported missing; it exits 69 naming the OS error",
+  () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-cli-input-"));
+    const locked = path.join(dir, "locked");
+    try {
+      fs.mkdirSync(locked);
+      const file = path.join(locked, "in.csv");
+      fs.writeFileSync(file, "a\n1\n");
+      fs.chmodSync(locked, 0o000);
+      const caught = openInputFailure(file);
+      expect(caught).not.toBeInstanceOf(InputNotFoundError);
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe(`${file} cannot be read (EACCES)`);
+      expect((caught as { exitCode?: number }).exitCode).toBe(69);
+      expect(exitCodeForError(caught)).toBe(69);
+    } finally {
+      fs.chmodSync(locked, 0o700);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
 test("openInputSource: `-` returns process.stdin when stdin is allowed (non-interactive)", async () => {
   // streamOf leaves isTTY undefined, modelling a pipe/redirect -- the TTY guard
   // must not fire, so the piped stdin is returned for the loader to consume.

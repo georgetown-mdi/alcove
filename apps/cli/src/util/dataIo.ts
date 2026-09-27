@@ -26,7 +26,12 @@ import { InputNotFoundError } from "./exit";
  * came from argv or from the operator's configuration. A partner- or
  * server-delivered string passed here would reach the display unescaped.
  *
- * A missing file throws an {@link InputNotFoundError} (exit 66).
+ * A path that does not resolve to anything -- a missing file or directory
+ * component, or a symbolic link whose target is missing -- throws an
+ * {@link InputNotFoundError} (exit 66), since a scheduled run can wait for it
+ * to land. Any other stat failure, such as a parent directory the process
+ * cannot search, throws an `Error` holding `exitCode: 69` and naming the OS
+ * error code, since waiting will not fix it.
  *
  * `allowStdin` gates the `-` case. Every input command supports stdin;
  * `accept` supports it only with `--consent-to-terms`, since otherwise it
@@ -64,14 +69,38 @@ export function openInputSource(
       );
     return process.stdin;
   }
-  if (!fs.existsSync(input)) {
-    const message = messageWithOperatorText`${operatorSuppliedText(input)} does not exist`;
-    throw keepOperatorSuppliedText(
+  try {
+    fs.statSync(input);
+  } catch (err) {
+    throw inputStatError(input, err);
+  }
+  return fs.createReadStream(input);
+}
+
+function inputStatError(input: string, err: unknown): Error {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "ENOENT" || code === "ENOTDIR") {
+    const message = isSymbolicLink(input)
+      ? messageWithOperatorText`${operatorSuppliedText(input)} is a symbolic link to a file that does not exist`
+      : messageWithOperatorText`${operatorSuppliedText(input)} does not exist`;
+    return keepOperatorSuppliedText(
       new InputNotFoundError(message.text),
       message,
     );
   }
-  return fs.createReadStream(input);
+  const message = messageWithOperatorText`${operatorSuppliedText(input)} cannot be read (${code ?? "unknown error"})`;
+  return Object.assign(
+    keepOperatorSuppliedText(new Error(message.text, { cause: err }), message),
+    { exitCode: 69 },
+  );
+}
+
+function isSymbolicLink(input: string): boolean {
+  try {
+    return fs.lstatSync(input).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 /**

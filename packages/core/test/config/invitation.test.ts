@@ -28,7 +28,7 @@ import {
   NAME_SHAPE_MESSAGE,
 } from "../../src/config/linkageTermsSchema";
 import { summarizeInvitation } from "../../src/consent/invitationSummary";
-import { InternalConsistencyError, UsageError } from "../../src/errors";
+import { UsageError } from "../../src/errors";
 import { NestingDepthExceededError } from "../../src/utils/camelizeKeys";
 import {
   describeDecodeError,
@@ -1939,7 +1939,7 @@ test.each([
   },
 );
 
-test("encodeInvitation rejects a token whose encoded output exceeds the maximum length, as an internal fault", async () => {
+test("encodeInvitation rejects a token whose encoded output exceeds the maximum length, as a usage error naming the remedy", async () => {
   // Every field is within its per-field bound, but an unbounded exclude list
   // (bounded only by the encoded-length cap) inflates the token past the cap in
   // aggregate. encodeInvitation must refuse to produce a token it could not
@@ -1955,8 +1955,13 @@ test("encodeInvitation rejects a token whose encoded output exceeds the maximum 
     },
   };
   const failure = encodeInvitation(token);
-  await expect(failure).rejects.toBeInstanceOf(InternalConsistencyError);
-  await expect(failure).rejects.toThrow(/maximum length/);
+  await expect(failure).rejects.toBeInstanceOf(UsageError);
+  await expect(failure).rejects.toThrow(
+    new RegExp(`over the maximum of ${MAX_ENCODED_INVITATION_LENGTH}`),
+  );
+  await expect(failure).rejects.toThrow(
+    /shorten the linkage terms, for example the exclude list/,
+  );
 });
 
 test("round-trips an endpoint host and path at exactly the maximum length", async () => {
