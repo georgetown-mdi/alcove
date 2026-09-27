@@ -34,8 +34,10 @@ import {
 import { columnValues, inferDateFormatWithCounts } from "./utils/date.js";
 import {
   redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
 } from "./utils/sanitizeErrorForDisplay.js";
+import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
 import type { CSVRow } from "./file.js";
 import { PSIParticipant } from "./psi/participant.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
@@ -110,7 +112,10 @@ import {
   webrtcFrameExceedsBound,
 } from "./connection/webrtcOutboundBound.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
-import { reasonTermsCannotStateIdentity } from "./config/linkageTermsSchema.js";
+import {
+  reasonTermsCannotStateIdentity,
+  safeParseLinkageTerms,
+} from "./config/linkageTermsSchema.js";
 import type { LinkageTerms } from "./config/linkageTermsSchema.js";
 import type { StandardizedDataset } from "./standardization.js";
 import type {
@@ -521,6 +526,51 @@ function assertDeclaredWidthMatchesStrategy(
       "record. Remove the expanding step, the fuzzy comparison or the swapped " +
       "key order from the key's elements, or agree terms whose " +
       "linkage_strategy matches a candidate set.",
+  );
+}
+
+const MAX_QUOTED_TERMS_VALUE_LENGTH = 40;
+
+function quotedTermsValue(
+  terms: unknown,
+  path: ReadonlyArray<PropertyKey>,
+): string | undefined {
+  let value: unknown = terms;
+  for (const segment of path) {
+    if (value === null || typeof value !== "object") return undefined;
+    value = (value as Record<PropertyKey, unknown>)[segment];
+  }
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (typeof value !== "string") return undefined;
+  const codePoints = Array.from(redactPrivateKeyMaterial(value));
+  return codePoints.length > MAX_QUOTED_TERMS_VALUE_LENGTH
+    ? `"${codePoints.slice(0, MAX_QUOTED_TERMS_VALUE_LENGTH).join("")}..."`
+    : `"${codePoints.join("")}"`;
+}
+
+/**
+ * Refuse linkage terms the partner's parser would reject on receipt, before
+ * any connection is opened: the partner reads them with `parseLinkageTerms`
+ * (protocolSetup.ts), and this applies the same schema through its
+ * non-throwing form. Terms built in code rather than read from a file reach
+ * this function without having met that schema anywhere else.
+ *
+ * An {@link OperatorConfigError}: the refusal quotes a value from the terms,
+ * and an acceptor's adopted terms already passed this schema when derived
+ * from the invitation, so only a document this party wrote can fail here.
+ */
+function assertTermsPassPartnerParse(linkageTerms: LinkageTerms): void {
+  const parsed = safeParseLinkageTerms(linkageTerms);
+  if (parsed.success) return;
+  const reason = rawDecodeErrorDescription(parsed.error);
+  const value = quotedTermsValue(linkageTerms, parsed.error.issues[0].path);
+  const valueClause = value === undefined ? "" : ` (the value is ${value})`;
+  throw new OperatorConfigError(
+    "these linkage terms would be refused by the partner on receipt: " +
+      reason +
+      valueClause +
+      ". Correct that setting in the linkage terms and run again.",
   );
 }
 
@@ -1314,6 +1364,10 @@ export function prepareForExchange(
   // both authoring paths are covered; the terms half is refused again at the
   // run boundary. See assertFanOutImplemented.
   assertFanOutImplemented(linkageTerms, standardization);
+
+  // Behind every refusal above, whose guidance is specific to its own fault;
+  // this one names whatever else the partner's parse would reject.
+  assertTermsPassPartnerParse(linkageTerms);
 
   // Pre-flight the single-pass dataset ceiling: a coarse, ONE-PARTY lower
   // bound. It sees only this party's own row count, never the partner's or
