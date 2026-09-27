@@ -10,6 +10,10 @@ name: Nightly Mutation Tests
 # ran against; scripts/stryker-security.mjs is the runner, and `npm run
 # test:mutation` is the same run locally.
 #
+# A second job does the same over the CLI's accept command,
+# apps/cli/src/commands/accept.ts, against apps/cli's unit tier, with its floor
+# committed in apps/cli/stryker.config.mjs; `npm run test:mutation:cli` locally.
+#
 # Nightly rather than per-PR: each mutant costs a suite run, so the corpus takes
 # minutes even at three files, and the merge-time path stays fast. Runs only on
 # `schedule` and manual `workflow_dispatch` -- never on push or pull_request --
@@ -76,3 +80,25 @@ jobs:
         with:
           name: core-security-mutation-report
           path: ${{ runner.temp }}/alcove-stryker/reports/
+
+  mutation-cli:
+    name: CLI accept command mutation score
+    runs-on: ubuntu-latest
+    # Upper bound on a hung run. The accept command's 473 mutants measured
+    # fourteen minutes at three test runners locally, plus install and the core
+    # build here; a mutant that reaches two minutes fails as a timeout.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # As in the core job: the floor is committed against `staging`.
+          ref: staging
+      - uses: ./.github/actions/setup
+      - name: Mutation score against the committed floor
+        run: npm run test:mutation:cli
+      - name: Upload the mutation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-accept-mutation-report
+          path: ${{ runner.temp }}/alcove-stryker/cli/reports/

@@ -912,39 +912,29 @@ pool, where `process.chdir` and `process.umask` throw and a worker's
 `os.homedir()` ignores a changed `process.env.HOME`, so the config leaves out
 the unit files that call either function or, in `atSignRefs.test.ts`'s case,
 point `HOME` at a temp dir for tilde expansion; none of them imports
-`accept.ts`. `scripts/stryker-security.mjs` reads only the core configuration,
-so this one runs by hand, from the repository root, through a derived
-configuration that makes the vitest path absolute and keeps the sandbox and
-reports out of the tree:
+`accept.ts`. The same runner drives it, as a second job in the nightly
+workflow and locally as:
 
 ```sh
-W=$(mktemp -d)
-npm install --prefix "$W/toolchain" --no-audit --no-fund --ignore-scripts \
-  @stryker-mutator/core@10.0.0 @stryker-mutator/vitest-runner@10.0.0 \
-  "typescript@$(node -p "require('typescript/package.json').version")"
-W="$W" node --input-type=module -e '
-const w = process.env.W, c = (await import(`${process.cwd()}/apps/cli/stryker.config.mjs`)).default;
-(await import("node:fs")).writeFileSync(`${w}/stryker.json`, JSON.stringify({
-  ...c, vitest: { ...c.vitest, configFile: `${process.cwd()}/${c.vitest.configFile}` },
-  tempDirName: `${w}/tmp`, htmlReporter: { fileName: `${w}/reports/mutation.html` },
-  jsonReporter: { fileName: `${w}/reports/mutation.json` } }));'
-node "$W/toolchain/node_modules/@stryker-mutator/core/bin/stryker.js" run \
-  "$W/stryker.json" --concurrency 3
+npm run test:mutation:cli
 ```
 
-Its 473 mutants take 14 minutes at concurrency 3 on a 10-core machine under a
-load average of about 7.5, 2.5 of them the initial run of the unit tier. The
-file scores 75%: most survivors are help and message text, and the rest include
-removed calls to the linkage-satisfiability and count-only column checks, which
-no unit test refuses on.
+It keeps its sandbox and reports under `cli/` in the same work directory, so
+the two legs' reports do not overwrite each other. Its 473 mutants take 14
+minutes at concurrency 3 on a 10-core machine under a load average of about
+7.5, 2.5 of them the initial run of the unit tier. The file scores 75%, its
+committed floor: most survivors are help and message text, and the rest include
+a removed call to the count-only column check on the online path, which
+`prepareForOnlineExchange` repeats with the same refusal.
 
 ### The floors
 
-`packages/core/stryker.config.mjs` holds the corpus and each file's committed
-floor in one table: the keys are the files to mutate, the values their minimum
-mutation score in whole percent. The gate is per file rather than Stryker's
-whole-run `thresholds.break`, so a file whose tests were gutted cannot be
-offset by the others; the leg fails naming the file, its score, and its floor.
+Each leg's configuration -- `packages/core/stryker.config.mjs`, and
+`apps/cli/stryker.config.mjs` for the accept command -- holds its corpus and
+each file's committed floor in one table, `scoreFloors`: the keys are the
+files to mutate, the values their minimum mutation score in whole percent. The
+gate is per file rather than Stryker's whole-run `thresholds.break`, so a file
+whose tests were gutted cannot be offset by the others; the leg fails naming the file, its score, and its floor.
 
 - **Raising a floor.** When tests land that raise a file's score, raise its floor
   to the new score rounded down to a whole percent. The runner prints the value
@@ -952,7 +942,7 @@ offset by the others; the leg fails naming the file, its score, and its floor.
 - **Never lowering one.** A floor is not lowered to make a red leg green: a drop
   means a test stops distinguishing the mutated behavior, which is the finding
   the leg exists to report.
-- **Widening the corpus.** Adding a fourth file is one line in the table, with
+- **Widening the corpus.** Adding a file to a leg is one line in its table, with
   the floor that file measures when it is added.
 
 Do not chase the score itself. The survivors these floors sit above are error

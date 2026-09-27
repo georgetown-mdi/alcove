@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-// Mutation-testing leg over the core security-bearing files: `npm run
-// test:mutation`, and nightly through .github/workflows/nightly_mutation.yaml.
+// Mutation-testing legs, run nightly through
+// .github/workflows/nightly_mutation.yaml: `npm run test:mutation` over the
+// core security-bearing files in packages/core/stryker.config.mjs, and `npm
+// run test:mutation:cli` over the CLI accept command in
+// apps/cli/stryker.config.mjs. The leg's name is the one argument (`core` when
+// omitted); LEGS below maps it to its configuration.
 //
-// It runs Stryker over the files listed in packages/core/stryker.config.mjs,
-// then fails when any one of them scores below the floor committed beside it
-// there. A per-file gate rather than Stryker's own `thresholds.break`, which is
+// It runs Stryker over the files listed in the leg's configuration, then fails
+// when any one of them scores below the floor committed beside it there. A
+// per-file gate rather than Stryker's own `thresholds.break`, which is
 // whole-run: a file whose tests were gutted can be offset by the others, and
-// the score this leg exists to defend is each security-bearing file's own.
+// the score this leg exists to defend is each file's own.
 //
 // Mutation score, per file, is the mutation-testing report definition:
 // (killed + timeout) / (killed + timeout + survived + no coverage). Mutants
@@ -30,11 +34,11 @@
 //     configuration step needs it at runtime, no checker plugin involved.
 //
 // What it cannot see:
-//   - A mutant is only killed by a test that reaches the mutated source. These
-//     files are exercised through packages/core's unit tier alone (the vitest
-//     configuration at packages/core/vitest.stryker.config.ts): coverage that
-//     lives in apps/cli's suites does not count here, and a file whose only
-//     tests are there scores as uncovered.
+//   - A mutant is only killed by a test that reaches the mutated source. Each
+//     leg's files are exercised through its own workspace's unit tier alone
+//     (the vitest configuration its Stryker configuration names): coverage
+//     that lives in another workspace's suites or an integration tier does not
+//     count here, and a file whose only tests are there scores as uncovered.
 //   - The score answers whether a test distinguishes the mutated behavior, not
 //     whether the behavior is correct. A survivor whose only observable effect
 //     is message text is a real survivor; it is not necessarily worth a test.
@@ -55,7 +59,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const STRYKER_VERSION = "10.0.0";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const configPath = join(repoRoot, "packages", "core", "stryker.config.mjs");
+
+/**
+ * The mutation legs by name. `configPath` is the repository-root-relative
+ * Stryker configuration exporting `scoreFloors`; `workSubdir` is where under
+ * the work directory the leg keeps its sandboxes, derived configuration, and
+ * reports, so one leg's reports never overwrite another's.
+ */
+export const LEGS = {
+  core: { configPath: "packages/core/stryker.config.mjs", workSubdir: "" },
+  cli: { configPath: "apps/cli/stryker.config.mjs", workSubdir: "cli" },
+};
 
 // Everything the run writes lives outside the repository: the toolchain, the
 // Stryker sandboxes and temp files, the derived configuration, and the reports.
@@ -65,10 +79,6 @@ const workDir =
   process.env.ALCOVE_STRYKER_WORK_DIR ??
   join(process.env.RUNNER_TEMP ?? tmpdir(), "alcove-stryker");
 const toolchainDir = join(workDir, "toolchain");
-const reportDir = join(workDir, "reports");
-const jsonReportPath = join(reportDir, "mutation.json");
-const htmlReportPath = join(reportDir, "mutation.html");
-const derivedConfigPath = join(workDir, "stryker.derived.json");
 
 function fail(message) {
   console.error(`stryker-security: ${message}`);
@@ -168,23 +178,25 @@ export function survivorsWithoutTestsRun(mutants) {
 
 /**
  * The whole per-file gate: every file in `scoreFloors` checked against the
- * Stryker JSON report, with no I/O of its own. Returns the summary rows for
- * the report (one per file the score could be computed for, each already
- * holding its display verdict and any raised-floor suggestion) and the
- * failure messages -- a file missing from the report, a file whose mutants
+ * Stryker JSON report, with no I/O of its own. `sources` names the leg's
+ * Stryker configuration (`strykerConfig`) and the vitest configuration it
+ * runs (`vitestConfig`), both repository-root-relative, for the messages.
+ * Returns the summary rows for the report (one per file the score could be
+ * computed for, each already holding its display verdict and any raised-floor
+ * suggestion) and the failure messages -- a file missing from the report, a file whose mutants
  * all fell outside the ratio, a file below its committed floor, and a file
  * with a survivor no test ran against all add to `failures`, so
  * `failures.length > 0` is the single signal the entry point below exits
  * non-zero on.
  */
-export function evaluateFloors(report, scoreFloors) {
+export function evaluateFloors(report, scoreFloors, sources) {
   const rows = [];
   const failures = [];
   for (const [file, floor] of Object.entries(scoreFloors)) {
     const mutants = report.files?.[file]?.mutants;
     if (mutants === undefined) {
       failures.push(
-        `${file}: the report carries no mutants for this file. It is listed in packages/core/stryker.config.mjs, so either it was renamed or moved without the configuration following, or Stryker could not mutate it.`,
+        `${file}: the report carries no mutants for this file. It is listed in ${sources.strykerConfig}, so either it was renamed or moved without the configuration following, or Stryker could not mutate it.`,
       );
       continue;
     }
@@ -222,17 +234,32 @@ export function evaluateFloors(report, scoreFloors) {
           ? ` (${distinctLines.length === 1 ? "line" : "lines"} ${distinctLines.join(", ")})`
           : "";
       failures.push(
-        `${file}: ${unexercised.length} surviving ${unexercised.length === 1 ? "mutant" : "mutants"} ran zero tests${where}. Tests cover them, so the runner's per-mutant test selection executed nothing; check packages/core/vitest.stryker.config.ts and the Stryker vitest runner before reading this file's score.`,
+        `${file}: ${unexercised.length} surviving ${unexercised.length === 1 ? "mutant" : "mutants"} ran zero tests${where}. Tests cover them, so the runner's per-mutant test selection executed nothing; check ${sources.vitestConfig} and the Stryker vitest runner before reading this file's score.`,
       );
     }
   }
   return { rows, failures };
 }
 
-async function runCheck() {
+async function runCheck(legName) {
+  const leg = Object.hasOwn(LEGS, legName) ? LEGS[legName] : undefined;
+  if (leg === undefined) {
+    fail(
+      `unknown leg "${legName}"; the legs are ${Object.keys(LEGS).join(", ")}`,
+    );
+  }
+  const legWorkDir = join(workDir, leg.workSubdir);
+  const reportDir = join(legWorkDir, "reports");
+  const jsonReportPath = join(reportDir, "mutation.json");
+  const htmlReportPath = join(reportDir, "mutation.html");
+  const derivedConfigPath = join(legWorkDir, "stryker.derived.json");
+
   const { default: strykerConfig, scoreFloors } = await import(
-    pathToFileURL(configPath).href
+    pathToFileURL(join(repoRoot, leg.configPath)).href
   );
+  if (scoreFloors === undefined) {
+    fail(`${leg.configPath} exports no scoreFloors`);
+  }
 
   const typescriptVersion = readPackageVersion(
     join(repoRoot, "node_modules", "typescript"),
@@ -257,7 +284,7 @@ async function runCheck() {
           ...strykerConfig.vitest,
           configFile: join(repoRoot, strykerConfig.vitest.configFile),
         },
-        tempDirName: join(workDir, "tmp"),
+        tempDirName: join(legWorkDir, "tmp"),
         htmlReporter: { fileName: htmlReportPath },
         jsonReporter: { fileName: jsonReportPath },
       },
@@ -299,7 +326,10 @@ async function runCheck() {
     );
   }
 
-  const { rows, failures } = evaluateFloors(report, scoreFloors);
+  const { rows, failures } = evaluateFloors(report, scoreFloors, {
+    strykerConfig: leg.configPath,
+    vitestConfig: strykerConfig.vitest.configFile,
+  });
 
   console.log("\nMutation score against the committed floors:");
   for (const row of rows) {
@@ -308,7 +338,7 @@ async function runCheck() {
     );
     if (row.raisedFloorSuggestion !== undefined) {
       console.log(
-        `    the floor for this file can be raised to ${row.raisedFloorSuggestion}% in packages/core/stryker.config.mjs`,
+        `    the floor for this file can be raised to ${row.raisedFloorSuggestion}% in ${leg.configPath}`,
       );
     }
   }
@@ -331,5 +361,5 @@ async function runCheck() {
 // Only when invoked directly, so the test imports the pure gating functions
 // without installing the toolchain, running Stryker, or touching the network.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  await runCheck();
+  await runCheck(process.argv[2] ?? "core");
 }

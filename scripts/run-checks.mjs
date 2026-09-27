@@ -316,6 +316,12 @@ export const OUT_OF_CHECK_ALL = [
     reason:
       "A minutes-long corpus kept off the merge path by design: nightly_mutation.yaml runs it on a schedule and a manual dispatch, never on a push or a pull request.",
   },
+  {
+    script: "test:mutation:cli",
+    expiresOn: "2026-12-31",
+    reason:
+      "The CLI accept command's mutation run, about fourteen minutes: nightly_mutation.yaml runs it beside test:mutation, never on a push or a pull request.",
+  },
 ];
 
 /**

@@ -9,12 +9,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import {
   evaluateFloors,
+  LEGS,
   scoreOf,
   survivorsWithoutTestsRun,
 } from "./stryker-security.mjs";
@@ -64,6 +65,11 @@ describe("scoreOf", () => {
   });
 });
 
+const CORE_SOURCES = {
+  strykerConfig: "packages/core/stryker.config.mjs",
+  vitestConfig: "packages/core/vitest.stryker.config.ts",
+};
+
 describe("evaluateFloors", () => {
   const FILE = "packages/core/src/example.ts";
 
@@ -75,7 +81,11 @@ describe("evaluateFloors", () => {
         },
       },
     };
-    const { rows, failures } = evaluateFloors(report, { [FILE]: 50 });
+    const { rows, failures } = evaluateFloors(
+      report,
+      { [FILE]: 50 },
+      CORE_SOURCES,
+    );
     expect(failures).toEqual([]);
     expect(rows).toEqual([
       {
@@ -101,7 +111,11 @@ describe("evaluateFloors", () => {
         },
       },
     };
-    const { rows, failures } = evaluateFloors(report, { [FILE]: 50 });
+    const { rows, failures } = evaluateFloors(
+      report,
+      { [FILE]: 50 },
+      CORE_SOURCES,
+    );
     expect(rows).toEqual([
       {
         file: FILE,
@@ -120,7 +134,11 @@ describe("evaluateFloors", () => {
 
   it("fails a file missing from the report", () => {
     const report = { files: {} };
-    const { rows, failures } = evaluateFloors(report, { [FILE]: 50 });
+    const { rows, failures } = evaluateFloors(
+      report,
+      { [FILE]: 50 },
+      CORE_SOURCES,
+    );
     expect(rows).toEqual([]);
     expect(failures).toEqual([
       `${FILE}: the report carries no mutants for this file. It is listed in packages/core/stryker.config.mjs, so either it was renamed or moved without the configuration following, or Stryker could not mutate it.`,
@@ -129,7 +147,11 @@ describe("evaluateFloors", () => {
 
   it("fails a file with zero mutants in the ratio", () => {
     const report = { files: { [FILE]: { mutants: [] } } };
-    const { rows, failures } = evaluateFloors(report, { [FILE]: 50 });
+    const { rows, failures } = evaluateFloors(
+      report,
+      { [FILE]: 50 },
+      CORE_SOURCES,
+    );
     expect(rows).toEqual([]);
     expect(failures).toEqual([
       `${FILE}: every mutant was excluded from the score (compile error, runtime error, or ignored), so the floor cannot be checked.`,
@@ -140,7 +162,11 @@ describe("evaluateFloors", () => {
     const report = {
       files: { [FILE]: { mutants: mutants(["CompileError", "Ignored"]) } },
     };
-    const { rows, failures } = evaluateFloors(report, { [FILE]: 50 });
+    const { rows, failures } = evaluateFloors(
+      report,
+      { [FILE]: 50 },
+      CORE_SOURCES,
+    );
     expect(rows).toEqual([]);
     expect(failures).toEqual([
       `${FILE}: every mutant was excluded from the score (compile error, runtime error, or ignored), so the floor cannot be checked.`,
@@ -158,6 +184,7 @@ describe("evaluateFloors", () => {
     const above = evaluateFloors(
       { files: { [FILE]: { mutants: scoring(55, 100) } } },
       { [FILE]: 40 },
+      CORE_SOURCES,
     );
     expect(above.rows[0].raisedFloorSuggestion).toBe(55);
 
@@ -165,6 +192,7 @@ describe("evaluateFloors", () => {
     const atFloor = evaluateFloors(
       { files: { [FILE]: { mutants: scoring(409, 1000) } } },
       { [FILE]: 40 },
+      CORE_SOURCES,
     );
     expect(atFloor.rows[0].score).toBeCloseTo(40.9);
     expect(atFloor.rows[0].raisedFloorSuggestion).toBeUndefined();
@@ -186,7 +214,11 @@ describe("evaluateFloors", () => {
         },
       },
     };
-    const { rows, failures } = evaluateFloors(report, { [FILE]: 50 });
+    const { rows, failures } = evaluateFloors(
+      report,
+      { [FILE]: 50 },
+      CORE_SOURCES,
+    );
     expect(rows[0].verdict).toBe("ok");
     expect(failures).toEqual([
       `${FILE}: 1 surviving mutant ran zero tests (line 42). Tests cover them, so the runner's per-mutant test selection executed nothing; check packages/core/vitest.stryker.config.ts and the Stryker vitest runner before reading this file's score.`,
@@ -202,7 +234,7 @@ describe("evaluateFloors", () => {
     const report = {
       files: { [FILE]: { mutants: [50, 42, 42].map(survivorAt) } },
     };
-    const { failures } = evaluateFloors(report, { [FILE]: 0 });
+    const { failures } = evaluateFloors(report, { [FILE]: 0 }, CORE_SOURCES);
     expect(failures).toHaveLength(1);
     expect(failures[0]).toContain(
       "3 surviving mutants ran zero tests (lines 42, 50).",
@@ -221,7 +253,9 @@ describe("evaluateFloors", () => {
         },
       },
     };
-    expect(evaluateFloors(report, { [FILE]: 0 }).failures).toEqual([]);
+    expect(
+      evaluateFloors(report, { [FILE]: 0 }, CORE_SOURCES).failures,
+    ).toEqual([]);
   });
 
   it("counts a survivor with no testsCompleted field as having run zero tests", () => {
@@ -247,14 +281,70 @@ describe("evaluateFloors", () => {
         [other]: { mutants: mutants(["Killed", "Killed"]) },
       },
     };
-    const { rows, failures } = evaluateFloors(report, {
-      [FILE]: 90,
-      [other]: 90,
-    });
+    const { rows, failures } = evaluateFloors(
+      report,
+      {
+        [FILE]: 90,
+        [other]: 90,
+      },
+      CORE_SOURCES,
+    );
     expect(failures).toEqual([
       `${FILE}: mutation score 50.00% is below its committed floor of 90% (1 of 2 mutants killed).`,
     ]);
     expect(rows.map((row) => row.file)).toEqual([FILE, other]);
+  });
+});
+
+describe("the mutation legs", () => {
+  const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+
+  it.each(Object.entries(LEGS))(
+    "the %s leg's configuration mutates exactly its floored files, all present",
+    async (_name, leg) => {
+      const { default: strykerConfig, scoreFloors } = await import(
+        pathToFileURL(join(repoRoot, leg.configPath)).href
+      );
+      const files = Object.keys(scoreFloors);
+      expect(files.length).toBeGreaterThan(0);
+      expect(strykerConfig.mutate).toEqual(files);
+      for (const file of files) {
+        expect(existsSync(join(repoRoot, file)), file).toBe(true);
+        expect(Number.isInteger(scoreFloors[file]), file).toBe(true);
+      }
+      expect(existsSync(join(repoRoot, strykerConfig.vitest.configFile))).toBe(
+        true,
+      );
+    },
+  );
+
+  it("keeps each leg's work files apart", () => {
+    const subdirs = Object.values(LEGS).map((leg) => leg.workSubdir);
+    expect(new Set(subdirs).size).toBe(subdirs.length);
+  });
+
+  it("names the leg's own configuration files in its failures", () => {
+    const file = "apps/cli/src/commands/example.ts";
+    const sources = {
+      strykerConfig: "apps/cli/stryker.config.mjs",
+      vitestConfig: "apps/cli/vitest.stryker.config.mts",
+    };
+    const missing = evaluateFloors({ files: {} }, { [file]: 75 }, sources);
+    expect(missing.failures[0]).toContain(
+      "It is listed in apps/cli/stryker.config.mjs,",
+    );
+    const unexercised = evaluateFloors(
+      {
+        files: {
+          [file]: { mutants: [{ status: "Survived", testsCompleted: 0 }] },
+        },
+      },
+      { [file]: 0 },
+      sources,
+    );
+    expect(unexercised.failures[0]).toContain(
+      "check apps/cli/vitest.stryker.config.mts and the Stryker vitest runner",
+    );
   });
 });
 
