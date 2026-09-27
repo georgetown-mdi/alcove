@@ -14,7 +14,11 @@ import {
 import {
   fromEventConnection,
   ConnectionError,
+  type MessageConnection,
 } from "../../src/connection/messageConnection";
+import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
+import { exchangeTerms, PROTOCOL_VERSION } from "../../src/protocolSetup";
+import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { toBase64Url } from "../../src/utils/crypto";
 
 // Short marker-write / decision-grace budget mirrored from the production
@@ -423,6 +427,46 @@ test("a valid peer abort marker raises a terminal PeerAbortError, never delivere
   // Additive grammar: the marker is a control file (non-numeric terminal), so it
   // is never routed as a message.
   expect(data).toHaveLength(0);
+});
+
+test("a partner's abort frame waiting beside its marker fails the run with the frame's cause", async () => {
+  const { client, files } = makeAbortTestClient();
+  const conn = await makeArmedConn(client, { peerId: PEER_ID });
+  plantPeerMarker(files, TOKEN_PEER);
+  const frame = Buffer.from(
+    JSON.stringify({
+      linkageTerms: { identity: "Party B" },
+      decision: "abort",
+      abortReasons: ["partner record count out of range"],
+      protocolVersion: PROTOCOL_VERSION,
+    }),
+  );
+  const body = serializeFileSyncMessage(MESSAGE_TYPE_OBJECT, 0, frame);
+  files.set(`${TEST_DIR}/${PEER_ID}-${body.length}.json`, body);
+
+  // This party's own terms send is not under test: a delete-mode send waits
+  // for the partner to consume the file, and no partner runs here. The
+  // poller starts at that send, as it would once the terms are written.
+  const bridged = fromEventConnection(conn);
+  const mc: MessageConnection = {
+    send: async () => {
+      conn.start();
+    },
+    receive: (timeoutMs) => bridged.receive(timeoutMs),
+    close: () => bridged.close(),
+  };
+  const terms = { identity: "Party A" } as unknown as LinkageTerms;
+  const err = await exchangeTerms(mc, "initiator", terms, 1).catch(
+    (e: unknown) => e,
+  );
+  conn.sealAbort();
+  await mc.close();
+
+  expect(err).not.toBeInstanceOf(PeerAbortError);
+  const rendered = sanitizeErrorForDisplay(err);
+  expect(rendered).toContain("partner aborted linkage terms exchange");
+  expect(rendered).toContain("partner record count out of range");
+  expect(rendered).not.toContain(new PeerAbortError().message);
 });
 
 test("an absent marker leaves the poll loop unchanged (no error)", async () => {

@@ -798,13 +798,22 @@ export class FileSyncMessageLoop {
       // PeerAbortError the top-level error the orchestrator's catch sees. An
       // absent or unverified marker falls through and keeps polling.
       //
+      // A single fully synced peer message is read first and the marker is
+      // left for the next cycle: a partner that fails after sending an abort
+      // frame writes its marker too, and the frame states the cause the
+      // marker does not.
+      //
       // Re-read every cycle; a first-cycle non-match is not cached. A
       // present-but-unverified marker is either a torn/delayed atomic write
       // (which a later cycle reads complete) or a planted forgery (which the
       // peer's genuine marker may later overwrite); caching the non-match
       // would blind the loop to both. The redundant read is bounded to
       // ABORT_MARKER_MAX_BYTES (1 KiB), so the repeat I/O is negligible.
+      const peerMessageReady =
+        messages.length === 1 &&
+        messages[0].file.size >= messages[0].declaredSize;
       if (
+        !peerMessageReady &&
         deps.abortArmed() &&
         (await deps.verifyPeerAbortMarker(allFiles, path, peerId))
       ) {

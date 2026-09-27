@@ -908,6 +908,49 @@ describe("FileSyncMessageLoop poller lifecycle", () => {
     expect(f.state.verifyCalls).toBe(1);
   });
 
+  for (const retainFiles of [false, true]) {
+    test(`${retainFiles ? "retain" : "delete"}: a fully synced peer message is delivered before a verified peer marker is acted on`, async () => {
+      const f = makeLoop(
+        retainFiles
+          ? { retainFiles, locklessRendezvous: true, timestampInFilename: true }
+          : {},
+      );
+      f.state.abortArmed = true;
+      f.state.verify = async () => true;
+      const frame = { decision: "abort", abortReasons: ["partner cause"] };
+      if (retainFiles) plantRetainMessage(f.files, frame);
+      else plantDeleteMessage(f.files, frame);
+
+      await f.pollOnce();
+
+      expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+      expect(f.emitted[0].arg).toEqual(frame);
+      expect(f.state.verifyCalls).toBe(0);
+      f.loop.stop();
+
+      await f.pollOnce();
+
+      expect(f.emitted.map((e) => e.event)).toEqual(["data", "error"]);
+      expect(f.emitted[1].arg).toBeInstanceOf(PeerAbortError);
+      expect(internals(f.loop).pollerActive).toBe(false);
+    });
+  }
+
+  test("a verified peer marker is acted on while the peer message is still syncing", async () => {
+    const f = makeLoop();
+    f.state.abortArmed = true;
+    f.state.verify = async () => true;
+    const body = objectMessage({ decision: "abort" }, 0);
+    f.files.set(`${DIR}/${PEER}-${body.length + 1}.json`, body);
+
+    await f.pollOnce();
+
+    expect(f.emitted).toHaveLength(1);
+    expect(f.emitted[0].event).toBe("error");
+    expect(f.emitted[0].arg).toBeInstanceOf(PeerAbortError);
+    expect(f.state.verifyCalls).toBe(1);
+  });
+
   test("the peer-marker is read only when abortArmed()", async () => {
     const armed = makeLoop();
     armed.state.abortArmed = true;
