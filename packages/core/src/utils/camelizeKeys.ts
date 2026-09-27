@@ -202,19 +202,23 @@ export function snakeizeKey(key: string): string {
 /**
  * The width bounds a {@link camelizeKeys} caller names, keyed by canonical
  * camelCase key name. A number is the most keys that key's object value may
- * hold before it is left verbatim; a nested map scopes its own bounds to that
- * key's value, which is walked under them in place of the enclosing ones.
+ * hold before it is left verbatim, and applies to that name at any depth. A
+ * nested map is a scope: it applies only to a member of the object the
+ * enclosing map applies to (the root, for the map a caller passes), and walks
+ * that member's value under its own bounds in place of the enclosing ones.
  */
 export type WidthBounds = ReadonlyMap<string, number | WidthBounds>;
 
 /**
- * The fixed inputs of one {@link transformKeysDeep} walk, and the two values it
- * threads through the recursion: the node `budget`, and the `path` of the value
- * being rewritten as rewritten keys and array indices.
+ * The fixed inputs of one {@link transformKeysDeep} walk, and the values it
+ * threads through the recursion: the bounds in force and whether the value
+ * being rewritten is the one they apply to, the node `budget`, and the `path` of
+ * the value being rewritten as rewritten keys and array indices.
  */
 interface KeyWalk {
   readonly transformKey: (key: string) => string;
   readonly widthBoundedKeys: WidthBounds | undefined;
+  readonly atBoundsRoot: boolean;
   readonly refuseCollisions: boolean;
   readonly budget: { nodes: number };
   readonly path: Array<PropertyKey>;
@@ -273,10 +277,12 @@ interface KeyWalk {
  * encoding within a version.
  *
  * A `widthBoundedKeys` entry whose value is itself a map is a scope, not a
- * count: the matching key's value is walked with that map as its bounds, so a
- * document embedding linkage terms (the exchange file's `linkage_terms`) folds
- * them exactly as a parse of the terms alone does, without bounding a
- * same-named key elsewhere in the document.
+ * count, and is a path match, not a name match: it applies only to a member
+ * of the object its enclosing map applies to, whose value is walked with that
+ * map as its bounds. So a document embedding linkage terms at its root (the
+ * exchange file's `linkage_terms`) folds them exactly as a parse of the terms
+ * alone does, while a key of the same name elsewhere in the document -- inside
+ * a standardization step's `params`, say -- is folded as any other key.
  *
  * With `refuseCollisions` set, two keys of one object that rewrite to the
  * same key throw {@link KeyFoldCollisionError}. A skipped subtree's keys are
@@ -296,9 +302,10 @@ function transformKeysDeep(
     if (budget.nodes + value.length > MAX_NODE_COUNT)
       throw new NodeCountExceededError();
     budget.nodes += value.length;
+    const elementWalk = { ...walk, atBoundsRoot: false };
     return value.map((v, index) => {
       path.push(index);
-      const rewritten = transformKeysDeep(v, depth + 1, walk);
+      const rewritten = transformKeysDeep(v, depth + 1, elementWalk);
       path.pop();
       return rewritten;
     });
@@ -314,6 +321,7 @@ function transformKeysDeep(
     const writtenAs = walk.refuseCollisions
       ? new Map<string, string>()
       : undefined;
+    const memberWalk = { ...walk, atBoundsRoot: false };
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => {
         // The per-key check also catches the budget being exhausted by a
@@ -330,11 +338,12 @@ function transformKeysDeep(
         const camel = camelizeKey(k);
         if (OPAQUE_VALUE_KEYS.has(camel)) return [rewrittenKey, v];
         const widthBound = walk.widthBoundedKeys?.get(camel);
-        if (typeof widthBound === "object") {
+        if (typeof widthBound === "object" && walk.atBoundsRoot) {
           path.push(rewrittenKey);
           const rewritten = transformKeysDeep(v, depth + 1, {
             ...walk,
             widthBoundedKeys: widthBound,
+            atBoundsRoot: true,
           });
           path.pop();
           return [rewrittenKey, rewritten];
@@ -348,7 +357,7 @@ function transformKeysDeep(
         )
           return [rewrittenKey, v];
         path.push(rewrittenKey);
-        const rewritten = transformKeysDeep(v, depth + 1, walk);
+        const rewritten = transformKeysDeep(v, depth + 1, memberWalk);
         path.pop();
         return [rewrittenKey, rewritten];
       }),
@@ -376,8 +385,8 @@ function transformKeysDeep(
  * the schema's own count bound rejects it. Callers parsing
  * partner-controlled input with a bounded record (`parseLinkageTerms`, for
  * `transform.params`) pass it, and a document embedding such input scopes the
- * same bounds to it (`parseExchangeSpec`, for `linkage_terms`); the rest omit
- * it.
+ * same bounds to it at its own path (`parseExchangeSpec`, for the root
+ * `linkage_terms`); the rest omit it.
  *
  * @throws {NestingDepthExceededError} if input nesting reaches
  *   {@link MAX_NESTING_DEPTH} levels.
@@ -393,6 +402,7 @@ export function camelizeKeys(
   return transformKeysDeep(value, 0, {
     transformKey: camelizeKey,
     widthBoundedKeys,
+    atBoundsRoot: true,
     refuseCollisions: true,
     budget: { nodes: 0 },
     path: [],
@@ -424,6 +434,7 @@ export function snakeizeKeys(value: unknown): unknown {
   return transformKeysDeep(value, 0, {
     transformKey: snakeizeKey,
     widthBoundedKeys: undefined,
+    atBoundsRoot: true,
     refuseCollisions: false,
     budget: { nodes: 0 },
     path: [],

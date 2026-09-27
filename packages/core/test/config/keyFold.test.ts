@@ -213,3 +213,28 @@ test("the exchange file's width bound reaches no params object outside its linka
     }),
   ]);
 });
+
+test("the exchange file's width bound reaches no linkage_terms key below its root", () => {
+  const nestedPath = [
+    "standardization",
+    "steps",
+    0,
+    "params",
+    "linkageTerms",
+    "params",
+  ];
+  const inFile = {
+    linkage_terms: dateTerms("Party A", dateParams),
+    standardization: {
+      steps: [{ params: { linkage_terms: { params: wideCollidingParams() } } }],
+    },
+  };
+  const safe = safeParseExchangeSpec(inFile);
+  expect(safe.success).toBe(false);
+  const thrown = thrownBy(() => parseExchangeSpec(inFile));
+  expect(thrown).toBeInstanceOf(ZodError);
+  for (const issues of [safe.error?.issues, (thrown as ZodError).issues])
+    expect(issues).toEqual([
+      expect.objectContaining({ path: nestedPath, keys: ["a_b", "aB"] }),
+    ]);
+});

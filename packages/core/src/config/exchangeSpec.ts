@@ -216,10 +216,11 @@ export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
 
 /**
  * The width bounds the camelize pre-pass applies to an exchange file: the
- * embedded linkage terms are folded exactly as `parseLinkageTerms` folds
- * them, an over-{@link MAX_PARAMS_ENTRIES} `params` object left verbatim for the
- * schema's count refusal, while a `params` object elsewhere in the file (a
- * standardization step's) is folded as any other object.
+ * linkage terms at the root `linkage_terms` are folded exactly as
+ * `parseLinkageTerms` folds them, an over-{@link MAX_PARAMS_ENTRIES} `params`
+ * object left verbatim for the schema's count refusal, while a `params` object
+ * elsewhere in the file (a standardization step's, or one under a
+ * `linkage_terms` key nested inside it) is folded as any other object.
  */
 const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
   ["linkageTerms", new Map([["params", MAX_PARAMS_ENTRIES]])],
