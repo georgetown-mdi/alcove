@@ -2670,7 +2670,8 @@ export async function runProtocol(
     // partner refusal the command boundary shows its fixed step
     // (fixedNextStep), which rules out a retry, so that step replaces the
     // post-rotation lines, both of which prescribe one. The authStarted
-    // line still prints for them: a partner that may hold a rotated token
+    // line still prints for them, in a form that states the token state
+    // without prescribing a retry: a partner that may hold a rotated token
     // is what the operator needs whatever the next step says.
     //
     // The walk follows `cause` so a future wrap (e.g. `new Error('outer: '
@@ -2819,12 +2820,17 @@ export async function runProtocol(
       }
     } else if (run.authStarted && !hintAlreadyEmitted) {
       log.error(
-        "The key exchange was in progress when this error occurred. " +
-          "Depending on how far the handshake had progressed, the " +
-          "partner may have already completed it and saved the rotated " +
-          "token even though this side did not. Retry the exchange " +
-          "with the existing key file; if authentication fails on " +
-          "retry, both parties must re-invite.",
+        retryRuledOut
+          ? "Authentication started but the rotated token was not saved: " +
+              "your partner may already hold a rotated token, so the next " +
+              "run after the step above may need a fresh invitation from " +
+              "both sides."
+          : "The key exchange was in progress when this error occurred. " +
+              "Depending on how far the handshake had progressed, the " +
+              "partner may have already completed it and saved the rotated " +
+              "token even though this side did not. Retry the exchange " +
+              "with the existing key file; if authentication fails on " +
+              "retry, both parties must re-invite.",
       );
     }
     // If a signal handler is mid-cleanup, it owns the exit code (130/143).

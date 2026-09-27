@@ -117,11 +117,14 @@ async function waitForBothKeysRotated(
   }
 }
 
-// Assert neither of runProtocol's two generic recovery-advisory lines was
-// logged. A tagged (alcoveRecoveryHintEmitted) error must suppress both, since
-// each would contradict the error's own specific hint.
+// Assert none of runProtocol's generic recovery-advisory lines was logged. A
+// tagged (alcoveRecoveryHintEmitted) error must suppress each, since each would
+// contradict the error's own specific hint.
 function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
   expect(errors.every((m) => !m.includes("key exchange was in progress"))).toBe(
+    true,
+  );
+  expect(errors.every((m) => !m.includes("rotated token was not saved"))).toBe(
     true,
   );
   expect(errors.every((m) => !m.includes("already rotated and saved"))).toBe(
@@ -383,6 +386,7 @@ import { keysPathFor, type RecordOutput } from "../../src/recordFile";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
   exitCodeForError,
+  fixedNextStep,
   INTERNAL_FAULT_NEXT_STEP,
   PARTNER_REFUSED_NEXT_STEP,
   renderFailureForOperator,
@@ -4214,19 +4218,34 @@ test.each([
       ),
     code: 76,
     nextStep: PARTNER_REFUSED_NEXT_STEP,
+    advisory: "Authentication started but the rotated token was not saved",
+    absent: "Retry the exchange with the existing key file",
   },
   {
     failure: "an internal fault",
     raise: () => new InternalConsistencyError("runKex: psk must be 32 bytes"),
     code: 70,
     nextStep: INTERNAL_FAULT_NEXT_STEP,
+    advisory: "Authentication started but the rotated token was not saved",
+    absent: "Retry the exchange with the existing key file",
+  },
+  {
+    failure: "a transport failure",
+    raise: () =>
+      new ConnectionError("the exchange directory went away", "transport"),
+    code: 69,
+    nextStep: undefined,
+    advisory: "Retry the exchange with the existing key file",
+    absent: "rotated token was not saved",
   },
 ])(
   "runProtocol keeps the rotation-state advisory for $failure during the key exchange",
-  async ({ raise, code, nextStep }) => {
+  async ({ raise, code, nextStep, advisory, absent }) => {
     // The failure lands after authentication started and before this side
     // saved a rotated token, so the partner may hold one this side does not.
-    // The fixed step beneath the error does not state that; the advisory does.
+    // A fixed step beneath the error rules out a retry, so the advisory states
+    // the token state without prescribing one; without a fixed step it
+    // prescribes the retry.
     const keyFileA = path.join(tmpDir, "a.key");
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -4256,12 +4275,11 @@ test.each([
     expect(resultB.status).toBe("rejected");
     const reason = (resultA as PromiseRejectedResult).reason;
     expect(exitCodeForError(reason)).toBe(code);
-    expect(renderFailureForOperator(reason).endsWith(nextStep)).toBe(true);
-    expect(
-      mockState.errors.filter((m) =>
-        m.includes("key exchange was in progress"),
-      ),
-    ).toHaveLength(2);
+    expect(fixedNextStep(reason)).toBe(nextStep);
+    expect(mockState.errors.filter((m) => m.includes(advisory))).toHaveLength(
+      2,
+    );
+    expect(mockState.errors.some((m) => m.includes(absent))).toBe(false);
     expect(
       mockState.errors.some((m) => m.includes("already rotated and saved")),
     ).toBe(false);
