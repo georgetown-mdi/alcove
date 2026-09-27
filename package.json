@@ -40,6 +40,7 @@
     "check:brace-expansion-override": "node scripts/check-brace-expansion-override.mjs",
     "check:crossws-sbom-block": "node scripts/check-crossws-sbom-block.mjs",
     "check:nested-root-package": "node scripts/check-nested-root-package.mjs",
+    "check:locked-dep-ranges": "node scripts/check-locked-dep-ranges.mjs",
     "check:deploy-trigger-graph": "node scripts/check-deploy-trigger-graph.mjs",
     "check:routetree": "node scripts/check-routetree-fresh.mjs",
     "check:web-config-native-load": "node scripts/check-web-config-native-load.mjs",
@@ -78,6 +79,7 @@
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^10.10.0",
     "prettier": "^3.9.8",
+    "semver": "^7.8.5",
     "typescript": "^6.0.3",
     "vitest": "^5.0.0",
     "yaml": "^2.9.1"
