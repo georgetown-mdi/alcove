@@ -740,11 +740,10 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
 };
 
 /**
- * Where a classified state shows the launch error, if it shows it at all. The
- * one site that is decided at per kind: what the operator reads follows from
- * {@link MANAGED_RUN_CAUSE_PLACEMENT}, on the live launch path and on any
- * other a state reaches a seat by, less the not-runnable copy that shows no
- * error ({@link NOT_RUNNABLE_FAILURE}).
+ * Where a classified state of this kind shows the launch error, if it shows
+ * it at all: a lookup in {@link MANAGED_RUN_CAUSE_PLACEMENT}. A state that
+ * shows no error whatever its kind ({@link NOT_RUNNABLE_FAILURE}) is set
+ * aside by identity in {@link classifyManagedRunFailure} before this lookup.
  *
  * @internal exported for the unit test.
  */
