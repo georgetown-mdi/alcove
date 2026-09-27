@@ -31,7 +31,6 @@ import {
   savedExchangeColumnRefusalAlert,
   unnameableColumnsAlert,
 } from "@psi/columnNames";
-import { capturedInputHandle } from "@psi/managed/managedInputHandle";
 import { columnSamplesFromRows } from "@psi/columnSamples";
 import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
@@ -250,7 +249,6 @@ export function AcceptorScreen() {
     runDiagnostics,
     sanitizedColumnPositions,
     sftpInfo,
-    sourceHandle,
     step,
   } = screenState;
 
@@ -666,7 +664,6 @@ export function AcceptorScreen() {
         deduplicate,
         positions: stripped,
         file,
-        handle: capturedInputHandle(file),
         acquired: {
           fileName: file.name,
           sizeBytes: file.size,
@@ -1133,9 +1130,6 @@ export function AcceptorScreen() {
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
             sharedSecret: invitationToken.sharedSecret,
-            ...(sourceHandle !== undefined
-              ? { inputFileHandle: sourceHandle }
-              : {}),
             choices,
           },
           Date.now(),
@@ -1677,7 +1671,6 @@ export function AcceptorScreen() {
                 <ManageExchangeOffer
                   status={manageOffer.status}
                   refusal={manageOffer.refusal}
-                  handleCaptured={sourceHandle !== undefined}
                   onManage={(choices) => void manageExchange(choices)}
                 />
               )}

@@ -13,31 +13,36 @@ import {
   getManagedExchange,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
-import { acquireManagedInput } from "@psi/managed/managedInputHandle";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
+
+import {
+  MANAGED_INPUT_FILE_NAME,
+  ManagedInputFileMissingError,
+  acquireManagedInput,
+} from "@psi/managed/managedInputHandle";
 
 import type { CSVParseRows } from "@psi/workers/csvParseController";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 import type { WebRTCExchangeLocator } from "@alcove/core";
 
-// What a run reads through a persisted input-file handle after the file at the
-// agreed path is replaced, exercised against real Chromium: the three ways an
-// export job, an editor, or a sync client refreshes a file -- overwrite in
-// place, write a temporary file and rename it over the name, delete the file
-// and create a new one -- plus the archive-then-drop variant that moves the
-// current file away first.
+// What a run reads from a persisted working folder after the input file in it
+// is replaced, exercised against real Chromium: the three ways an export job,
+// an editor, or a sync client refreshes a file -- overwrite in place, write a
+// temporary file and rename it over the name, delete the file and create a new
+// one -- plus the archive-then-drop variant that moves the current file away
+// first.
 //
-// Constraint: the handle source measured is the origin private file system,
-// whose handles are structured-cloneable and take the same
-// getFile/createWritable calls as a picked one. It stands in for the production
-// case -- a handle the operator picked from the local filesystem -- which no
-// headless run can obtain, since the file picker needs a person. The permission
-// extension an OPFS handle does not implement is the injected suite's
-// (managedInputHandle.test.ts, "permission layer").
+// Constraint: the folder measured is in the origin private file system, whose
+// handles are structured-cloneable and take the same getFileHandle/getFile
+// calls as a picked one. It stands in for the production case -- a folder the
+// operator picked from the local filesystem -- which no headless run can
+// obtain, since the picker needs a person. The permission extension an OPFS
+// handle does not implement is the injected suite's (managedInputHandle.test.ts,
+// "permission layer").
 
-const INPUT_NAME = "replace-methods-input.csv";
-const STAGED_NAME = "replace-methods-input.csv.part";
-const ARCHIVED_NAME = "replace-methods-input-prior-period.csv";
+const FOLDER_NAME = "replace-methods-folder";
+const STAGED_NAME = `${MANAGED_INPUT_FILE_NAME}.part`;
+const ARCHIVED_NAME = "input-prior-period.csv";
 
 const HEADER = "ssn,first_name,last_name,date_of_birth\n";
 const FIRST_PERIOD = HEADER + "111111111,ADA,LOVELACE,01/01/1990\n";
@@ -109,66 +114,64 @@ function movable(handle: FileSystemFileHandle): MovableFileHandle {
   return candidate;
 }
 
-const OPFS_NAMES = new Set<string>();
-
-/** Register a name for the teardown sweep, whether this case writes the file
- * there or renames one over it. */
-function trackOpfsName(name: string): string {
-  OPFS_NAMES.add(name);
-  return name;
+/** The working folder every case refreshes its input in. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle(FOLDER_NAME, { create: true });
 }
 
-async function writeOpfsFile(
+async function writeInFolder(
+  folder: FileSystemDirectoryHandle,
   name: string,
   content: string,
 ): Promise<FileSystemFileHandle> {
-  const root = await navigator.storage.getDirectory();
-  const handle = await root.getFileHandle(trackOpfsName(name), {
-    create: true,
-  });
+  const handle = await folder.getFileHandle(name, { create: true });
   const writable = await handle.createWritable();
   await writable.write(content);
   await writable.close();
   return handle;
 }
 
-/** The handle a run actually follows: written onto a managed record and read
+/** The folder a run actually follows: written onto a managed record and read
  * back out of the store, so every case below measures a handle that has been
- * through the record's structured-clone round trip rather than the one the
- * deposit held in memory. */
-async function persistedInputHandle(
-  handle: FileSystemFileHandle,
-): Promise<FileSystemFileHandle> {
+ * through the record's structured-clone round trip rather than the one held in
+ * memory. */
+async function persistedFolder(
+  folder: FileSystemDirectoryHandle,
+): Promise<FileSystemDirectoryHandle> {
   const created = await createManagedExchange(
-    newExchange({ inputFileHandle: handle }),
+    newExchange({ workingDirectoryHandle: folder }),
   );
   const stored = await getManagedExchange(created.id);
-  const persisted = stored?.inputFileHandle;
-  if (persisted === undefined) throw new Error("no handle was persisted");
+  const persisted = stored?.workingDirectoryHandle;
+  if (persisted === undefined) throw new Error("no folder was persisted");
   return persisted;
 }
 
-/** One run's read through the persisted pointer: the bytes that run received
- * and the rows it parsed out of them. */
+/** One run's read from the persisted folder: the bytes that run received and
+ * the rows it parsed out of them. */
 async function runTimeRead(
-  handle: FileSystemFileHandle,
+  directory: FileSystemDirectoryHandle,
 ): Promise<{ text: string; rows: CSVParseRows }> {
   const acquired = await acquireManagedInput({
-    kind: "handle",
-    handle,
+    kind: "folder",
+    directory,
     attendance: "unattended",
   });
   return { text: await acquired.file.text(), rows: acquired.rows };
 }
 
-async function firstPeriodRun(): Promise<FileSystemFileHandle> {
-  const handle = await persistedInputHandle(
-    await writeOpfsFile(INPUT_NAME, FIRST_PERIOD),
-  );
-  const first = await runTimeRead(handle);
+async function firstPeriodRun(): Promise<{
+  folder: FileSystemDirectoryHandle;
+  persisted: FileSystemDirectoryHandle;
+}> {
+  const folder = await workingFolder();
+  await writeInFolder(folder, MANAGED_INPUT_FILE_NAME, FIRST_PERIOD);
+  const persisted = await persistedFolder(folder);
+  const first = await runTimeRead(persisted);
   expect(first.text).toBe(FIRST_PERIOD);
   expect(first.rows).toEqual(FIRST_PERIOD_ROWS);
-  return handle;
+  return { folder, persisted };
 }
 
 beforeEach(async () => {
@@ -178,48 +181,36 @@ beforeEach(async () => {
 afterEach(async () => {
   await clearManagedExchanges();
   const root = await navigator.storage.getDirectory();
-  for (const name of OPFS_NAMES) {
-    try {
-      await root.removeEntry(name);
-    } catch {
-      // Already gone: a case that moved or removed the entry itself.
-    }
+  try {
+    await root.removeEntry(FOLDER_NAME, { recursive: true });
+  } catch {
+    // Already gone.
   }
-  OPFS_NAMES.clear();
 });
 
 describe("overwrite in place", () => {
   test("the next run reads the new period", async () => {
-    const persisted = await firstPeriodRun();
+    const { folder, persisted } = await firstPeriodRun();
 
-    const root = await navigator.storage.getDirectory();
-    const atPath = await root.getFileHandle(INPUT_NAME);
-    const writable = await atPath.createWritable();
-    await writable.write(SECOND_PERIOD);
-    await writable.close();
+    await writeInFolder(folder, MANAGED_INPUT_FILE_NAME, SECOND_PERIOD);
 
     const second = await runTimeRead(persisted);
     expect(second.text).toBe(SECOND_PERIOD);
     expect(second.rows).toEqual(SECOND_PERIOD_ROWS);
-    expect(await persisted.isSameEntry(atPath)).toBe(true);
   });
 });
 
 describe("write a temporary file and rename it over the name", () => {
   test("the next run reads the new period", async () => {
-    const persisted = await firstPeriodRun();
+    const { folder, persisted } = await firstPeriodRun();
 
-    const root = await navigator.storage.getDirectory();
-    const staged = await writeOpfsFile(STAGED_NAME, SECOND_PERIOD);
-    await movable(staged).move(root, INPUT_NAME);
+    const staged = await writeInFolder(folder, STAGED_NAME, SECOND_PERIOD);
+    await movable(staged).move(folder, MANAGED_INPUT_FILE_NAME);
 
     const second = await runTimeRead(persisted);
     expect(second.text).toBe(SECOND_PERIOD);
     expect(second.rows).toEqual(SECOND_PERIOD_ROWS);
-    expect(
-      await persisted.isSameEntry(await root.getFileHandle(INPUT_NAME)),
-    ).toBe(true);
-    await expect(root.getFileHandle(STAGED_NAME)).rejects.toMatchObject({
+    await expect(folder.getFileHandle(STAGED_NAME)).rejects.toMatchObject({
       name: "NotFoundError",
     });
   });
@@ -227,26 +218,24 @@ describe("write a temporary file and rename it over the name", () => {
 
 describe("delete the file and create a new one", () => {
   test("the next run reads the new period", async () => {
-    const persisted = await firstPeriodRun();
+    const { folder, persisted } = await firstPeriodRun();
 
-    const root = await navigator.storage.getDirectory();
-    await root.removeEntry(INPUT_NAME);
-    await writeOpfsFile(INPUT_NAME, SECOND_PERIOD);
+    await folder.removeEntry(MANAGED_INPUT_FILE_NAME);
+    await writeInFolder(folder, MANAGED_INPUT_FILE_NAME, SECOND_PERIOD);
 
     const second = await runTimeRead(persisted);
     expect(second.text).toBe(SECOND_PERIOD);
     expect(second.rows).toEqual(SECOND_PERIOD_ROWS);
   });
 
-  test("a run between the delete and the create fails the read", async () => {
-    const persisted = await firstPeriodRun();
+  test("a run between the delete and the create fails the read, naming the file and the folder", async () => {
+    const { folder, persisted } = await firstPeriodRun();
 
-    const root = await navigator.storage.getDirectory();
-    await root.removeEntry(INPUT_NAME);
+    await folder.removeEntry(MANAGED_INPUT_FILE_NAME);
 
     const error: unknown = await acquireManagedInput({
-      kind: "handle",
-      handle: persisted,
+      kind: "folder",
+      directory: persisted,
       attendance: "unattended",
     }).then(
       () => {
@@ -256,42 +245,40 @@ describe("delete the file and create a new one", () => {
     );
     expect(error).toBeInstanceOf(ManagedInputError);
     expect((error as ManagedInputError).rejection.reason).toBe("acquire");
-    expect((error as ManagedInputError).cause).toBeInstanceOf(DOMException);
-    expect((error as ManagedInputError).cause).toMatchObject({
-      name: "NotFoundError",
+    const cause = (error as ManagedInputError).cause;
+    expect(cause).toBeInstanceOf(ManagedInputFileMissingError);
+    expect(cause).toMatchObject({
+      fileName: MANAGED_INPUT_FILE_NAME,
+      folderName: FOLDER_NAME,
     });
+    expect((cause as Error).cause).toMatchObject({ name: "NotFoundError" });
   });
 });
 
 describe("move the current file away, then write the new period", () => {
   test("the next run reads the new period", async () => {
-    const persisted = await firstPeriodRun();
+    const { folder, persisted } = await firstPeriodRun();
 
-    const root = await navigator.storage.getDirectory();
-    const atPath = await root.getFileHandle(INPUT_NAME);
-    await movable(atPath).move(root, trackOpfsName(ARCHIVED_NAME));
-    await writeOpfsFile(INPUT_NAME, SECOND_PERIOD);
+    const atPath = await folder.getFileHandle(MANAGED_INPUT_FILE_NAME);
+    await movable(atPath).move(folder, ARCHIVED_NAME);
+    await writeInFolder(folder, MANAGED_INPUT_FILE_NAME, SECOND_PERIOD);
 
     const second = await runTimeRead(persisted);
     expect(second.text).toBe(SECOND_PERIOD);
     expect(second.rows).toEqual(SECOND_PERIOD_ROWS);
-    const archived = await root.getFileHandle(ARCHIVED_NAME);
+    const archived = await folder.getFileHandle(ARCHIVED_NAME);
     expect(await (await archived.getFile()).text()).toBe(FIRST_PERIOD);
-    expect(await persisted.isSameEntry(archived)).toBe(false);
   });
 });
 
 describe("a File kept from the previous run", () => {
   test("does not read the new period", async () => {
-    const persisted = await firstPeriodRun();
-    const retained = await persisted.getFile();
+    const { folder, persisted } = await firstPeriodRun();
+    const retained = await (
+      await persisted.getFileHandle(MANAGED_INPUT_FILE_NAME)
+    ).getFile();
 
-    const root = await navigator.storage.getDirectory();
-    const writable = await (
-      await root.getFileHandle(INPUT_NAME)
-    ).createWritable();
-    await writable.write(SECOND_PERIOD);
-    await writable.close();
+    await writeInFolder(folder, MANAGED_INPUT_FILE_NAME, SECOND_PERIOD);
 
     await expect(retained.text()).rejects.toMatchObject({
       name: "NotReadableError",

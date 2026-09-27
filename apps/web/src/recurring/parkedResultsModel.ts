@@ -64,9 +64,9 @@ const RETENTION_PHRASE = `${String(PARKED_RESULTS_RETENTION_DAYS)} days`;
  * decision that starts producing them.
  */
 export const PARKED_RESULTS_SCHEDULE_NOTE =
-  `Without a folder to write to, a scheduled run keeps its results in this ` +
-  `browser and this exchange's page offers them at your next visit. That also ` +
-  `happens whenever the folder you granted cannot be written to. Those results ` +
+  `Whenever the folder you granted cannot be written to, a scheduled run keeps ` +
+  `its results in this browser and this exchange's page offers them at your ` +
+  `next visit. Those results ` +
   `are the matched rows themselves -- the identifiers that matched and the ` +
   `values your partner disclosed -- kept unencrypted in browser storage, where ` +
   `any script running on this site and anyone who can read this machine's disk ` +

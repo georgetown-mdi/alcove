@@ -5,10 +5,11 @@ import { readInputFileModifiedAt } from "@psi/managed/managedInputHandle";
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
 
 /**
- * The display read behind the schedule's unchanged-input note: when the file a
- * persisted pointer names was last changed. A real picker handle is not summonable
- * in Node, so the handle here is built to the one platform call the read makes and
- * the permission layer is injected for the states an ordinary handle cannot report.
+ * The display read behind the schedule's unchanged-input note: when the input
+ * file in the working folder was last changed. A real picker handle is not
+ * summonable in Node, so the folder here is built to the platform calls the read
+ * makes and the permission layer is injected for the states an ordinary handle
+ * cannot report.
  *
  * Every state that is not a readable file resolves to no instant rather than
  * rejecting: the note is a display reading beside a page running nothing, and the
@@ -29,21 +30,23 @@ function fakePermission(state: "granted" | "denied" | "prompt") {
   return layer as typeof layer & HandlePermissionQuery;
 }
 
-/** A handle built to the one call the read makes. `lastModified` is what its file
- * reports; an `Error` makes the read of the entry fail, as a deleted or moved file
- * does. */
+/** A folder built to the calls the read makes: the one-name lookup and the file
+ * read. `lastModified` is what its input file reports; an `Error` makes the
+ * lookup fail, as a deleted or moved file does. */
 function fakeHandle(lastModified: number | Error) {
   return {
-    name: "riverbend-2026-Q3.csv",
-    getFile: () =>
+    name: "riverbend",
+    getFileHandle: () =>
       lastModified instanceof Error
         ? Promise.reject(lastModified)
-        : Promise.resolve({ lastModified }),
-  } as unknown as FileSystemFileHandle;
+        : Promise.resolve({
+            getFile: () => Promise.resolve({ lastModified }),
+          }),
+  } as unknown as FileSystemDirectoryHandle;
 }
 
 describe("reading the input file's last-changed instant", () => {
-  test("a granted handle reports the file's own instant", async () => {
+  test("a granted folder reports its input file's own instant", async () => {
     const modifiedAt = Date.parse("2026-07-10T09:15:00.000Z");
     await expect(
       readInputFileModifiedAt(
@@ -56,7 +59,12 @@ describe("reading the input file's last-changed instant", () => {
   test("an entry that cannot be read reports no instant", async () => {
     await expect(
       readInputFileModifiedAt(
-        fakeHandle(new Error("A requested file could not be found")),
+        fakeHandle(
+          new DOMException(
+            "A requested file could not be found",
+            "NotFoundError",
+          ),
+        ),
         fakePermission("granted"),
       ),
     ).resolves.toBeUndefined();

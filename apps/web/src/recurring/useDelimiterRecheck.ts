@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 
-import {
-  acquireManagedInput,
-  storedInputHandleUsable,
-} from "@psi/managed/managedInputHandle";
+import { acquireManagedInput } from "@psi/managed/managedInputHandle";
+import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
 
 import { delimiterRecheckFrom } from "./localDocumentFieldsModel";
 
@@ -15,8 +13,8 @@ import type { ExchangeSpec } from "@alcove/core";
  * and grade the columns it reads into against the agreed terms, so the editor
  * states whether the file reads under the new delimiter before the save stores
  * it. `undefined` where there is nothing to re-read: no changed delimiter, or
- * no usable pointer to the file (a configuration-only record, or a browser
- * without file handles).
+ * no usable working folder to read it from (a configuration-only record, or a
+ * browser without folder handles).
  *
  * The read queries the file's read grant and never asks for it, as a page
  * showing a file's last change does, so choosing a delimiter raises no
@@ -25,7 +23,7 @@ import type { ExchangeSpec } from "@alcove/core";
  */
 export function useDelimiterRecheck(
   exchangeFile: ExchangeSpec,
-  handle: FileSystemFileHandle | undefined,
+  directory: FileSystemDirectoryHandle | undefined,
   changedDelimiter: string | undefined,
 ): DelimiterRecheck | undefined {
   const [settled, setSettled] = useState<{
@@ -34,8 +32,8 @@ export function useDelimiterRecheck(
   }>();
   const rereads =
     changedDelimiter !== undefined &&
-    handle !== undefined &&
-    storedInputHandleUsable(handle);
+    directory !== undefined &&
+    storedWorkingDirectoryUsable(directory);
 
   useEffect(() => {
     if (!rereads) return;
@@ -45,7 +43,7 @@ export function useDelimiterRecheck(
       if (live) setSettled({ delimiter, recheck });
     }
     acquireManagedInput(
-      { kind: "handle", handle, attendance: "unattended" },
+      { kind: "folder", directory, attendance: "unattended" },
       undefined,
       delimiter,
     ).then(
@@ -55,7 +53,7 @@ export function useDelimiterRecheck(
     return () => {
       live = false;
     };
-  }, [rereads, exchangeFile, handle, changedDelimiter]);
+  }, [rereads, exchangeFile, directory, changedDelimiter]);
 
   if (!rereads) return undefined;
   // A result settled for an earlier choice is not this choice's.

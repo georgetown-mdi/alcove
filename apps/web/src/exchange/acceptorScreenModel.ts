@@ -137,11 +137,6 @@ export interface AcceptorScreenState {
    * so the server-job path submits the exact bytes the browser path parsed (no
    * re-serialization of rawRows). Fixed alongside `acquired` and the committed name. */
   acceptedFile: File | undefined;
-  /** The File System Access handle the committed file's selection yielded, where
-   * the platform gave one (a drop on Chromium in a secure context); captured so a
-   * managed deposit can persist a reusable pointer to the input without a second
-   * picker dialog. Absent for a click-selected file and a browser without the API. */
-  sourceHandle: FileSystemFileHandle | undefined;
   /** The console profile behind the acquired shape: the console reads the file, so
    * the browser holds only the profile (name, size, mtime, columns, samples, date
    * format), committed via the picker's "Use this file" before consent. It backs the
@@ -213,7 +208,6 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   committedDeduplicate: false,
   file: undefined,
   acceptedFile: undefined,
-  sourceHandle: undefined,
   consoleSource: undefined,
   acquired: undefined,
   columnsState: undefined,
@@ -302,7 +296,6 @@ export type AcceptorScreenAction =
       deduplicate: boolean;
       positions: Array<number>;
       file: File;
-      handle?: FileSystemFileHandle;
       acquired: AcceptorAcquiredCsv;
     }
   /** The parse failed, and settled either way. A failure keeps every input: the
@@ -457,7 +450,6 @@ export function acceptorScreenReducer(
         committedName: action.name,
         committedDeduplicate: action.deduplicate,
         acceptedFile: action.file,
-        sourceHandle: action.handle,
         acquired: action.acquired,
         columnsState: acceptorInitialColumnsState(action.acquired.columns),
       };

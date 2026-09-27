@@ -183,13 +183,13 @@ export function scheduleAttendanceNote(installedRuntime: boolean): string {
 }
 
 /**
- * The standing consequence of holding no pointer to the operator's input file: a
- * run cannot read it without them, so no window can be met with nobody present.
- * It points at the attended path -- choosing the file at the run itself -- which
- * is the run surface's own affordance.
+ * The standing consequence of holding no working folder: a run cannot read the
+ * input without the operator, so no window can be met with nobody present. It
+ * points at the remedy -- choosing the folder while the operator is here -- which
+ * the run surface and the local settings both offer.
  */
 export const SCHEDULE_INPUT_RESELECTION_NOTE =
-  "This browser holds no pointer to your input file, so no run of this exchange can happen with nobody present: reading it needs you to choose the file. Choose it here when you run this exchange, while a window is open.";
+  "This browser holds no folder for this exchange, so no run of it can happen with nobody present: reading the input needs you here. Choose the folder on this page where your browser offers it, or run this exchange yourself while a window is open.";
 
 /** The title over the unchanged-input note. It states the file's condition, not a
  * verdict on the data: whether last period's extract is the right one to link

@@ -39,6 +39,11 @@ import {
 } from "@psi/managed/managedFailureTiers";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 
+import {
+  MANAGED_INPUT_FILE_NAME,
+  ManagedInputFileMissingError,
+} from "@psi/managed/managedInputHandle";
+
 import { dateTimeLabel } from "@psi/formatting";
 
 import type {
@@ -293,9 +298,33 @@ const INPUT_FAILURE: ManagedRunFailureAlert = {
   message:
     "The input file for this run is missing, could not be read, or does not " +
     "have the columns this exchange needs. Check that the file is in place " +
-    "and matches the agreed terms, then try again.",
+    `-- where this exchange has a folder, as ${MANAGED_INPUT_FILE_NAME} in ` +
+    "it -- and matches the agreed terms, then try again.",
   recovery: "retry",
 };
+
+/** Which input state a launch error lands on: the one naming the file the run
+ * looked for and the folder it looked in, where the working folder held no file
+ * under the conventioned name, and the fixed input copy otherwise. Both names
+ * are the operator's own -- the one fixed name and the folder they chose -- so
+ * naming them echoes nothing a partner wrote. */
+function inputFailure(error: unknown): ManagedRunFailureAlert {
+  if (
+    !(error instanceof ManagedInputError) ||
+    error.rejection.reason !== "acquire" ||
+    !(error.rejection.cause instanceof ManagedInputFileMissingError)
+  )
+    return INPUT_FAILURE;
+  const { fileName, folderName } = error.rejection.cause;
+  return {
+    ...INPUT_FAILURE,
+    message:
+      `The run stopped before connecting because the folder "${folderName}" ` +
+      `has no file named ${fileName}, and nothing left this device. Put this ` +
+      `run's input in that folder as ${fileName}, or choose a different ` +
+      `folder for this exchange, then try again.`,
+  };
+}
 
 /** The benign linkage-shortfall state: the file was read and cannot supply
  * every linkage key the standing terms declare, so the run stopped before
@@ -857,7 +886,7 @@ function classifyLaunchState(
     return error instanceof ManagedExchangeNotRunnableError
       ? NOT_RUNNABLE_FAILURE
       : CUSTODY_UNREADABLE_FAILURE;
-  if (benign === "input") return INPUT_FAILURE;
+  if (benign === "input") return inputFailure(error);
   if (benign === "terms-shortfall") return shortfallFailure(error);
   if (benign === "missed") return missedFailure(records.atLaunch, local, now);
   if (benign === "too-large") return tooLargeFailure(error);

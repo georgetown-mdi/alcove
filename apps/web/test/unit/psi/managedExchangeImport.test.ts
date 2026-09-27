@@ -75,11 +75,9 @@ function goodBytes(): string {
   );
 }
 
-/** A record holding whichever device-local grants the case needs: the input-file
- * pointer, the folder its scheduled runs write results to, or both. */
+/** A record holding the device-local working-folder grant, or none. */
 function recordHolding(grants: {
-  inputFile?: boolean;
-  outputFolder?: boolean;
+  workingFolder?: boolean;
 }): RunnableManagedExchangeRecord {
   return runnableRecord({
     label: "Riverbend quarterly",
@@ -89,29 +87,24 @@ function recordHolding(grants: {
     }),
     side: "inviter",
     sharedSecret: generateSharedSecret(),
-    ...(grants.inputFile === true
-      ? { inputFileHandle: { name: "records.csv" } as FileSystemFileHandle }
-      : {}),
-    ...(grants.outputFolder === true
+    ...(grants.workingFolder === true
       ? {
-          outputDirectoryHandle: {
-            name: "results",
+          workingDirectoryHandle: {
+            name: "work",
           } as FileSystemDirectoryHandle,
         }
       : {}),
   });
 }
 
-/** A backup of a record that held both device-local grants. */
+/** A backup of a record that held the device-local working folder. */
 function grantedBytes(): string {
   return serializeManagedExchangeArtifact(
-    encodeManagedExchangeArtifact(
-      recordHolding({ inputFile: true, outputFolder: true }),
-    ),
+    encodeManagedExchangeArtifact(recordHolding({ workingFolder: true })),
   );
 }
 
-/** A backup of a record that WAS scheduled and did hold an input pointer: the
+/** A backup of a record that WAS scheduled and did hold a working folder: the
  * artifact holds the schedule, and the handle is a device-local platform
  * object no artifact can hold. */
 function scheduledBytes(): string {
@@ -123,7 +116,7 @@ function scheduledBytes(): string {
     }),
     side: "inviter",
     sharedSecret: generateSharedSecret(),
-    inputFileHandle: {} as FileSystemFileHandle,
+    workingDirectoryHandle: {} as FileSystemDirectoryHandle,
     schedule: {
       anchor: "2026-01-06T14:00:00.000Z",
       intervalDays: 7,
@@ -249,18 +242,18 @@ describe("importManagedExchange", () => {
     expect(installed).toBe(deps.installed[0]);
   });
 
-  test("the installed record has no input-file handle", async () => {
+  test("the installed record has no working-folder handle", async () => {
     const deps = recordingDeps();
     const { record: installed } = await importManagedExchange(
-      goodBytes(),
+      grantedBytes(),
       deps,
     );
-    expect(installed).not.toHaveProperty("inputFileHandle");
+    expect(installed).not.toHaveProperty("workingDirectoryHandle");
   });
 
   test("has a backed-up schedule but still no handle, so no import can run unattended", async () => {
     // The converse of the deposit path (test/unit/exchange/manageOfferModel.test.ts,
-    // which writes a handle and no schedule): an import can have a schedule and
+    // which writes no schedule): an import can have a schedule and
     // reconstructs no handle, so neither path on its own assembles the pair the
     // unattended runner fires on. The source record here HELD a handle, so what
     // is asserted is that the round trip drops it rather than that there was
@@ -274,15 +267,15 @@ describe("importManagedExchange", () => {
       nextWindow: "2026-01-06T14:00:00.000Z",
       intervalDays: 7,
     });
-    expect(installed).not.toHaveProperty("inputFileHandle");
+    expect(installed).not.toHaveProperty("workingDirectoryHandle");
   });
 
   test("a fresh install reports the grants the source held and it does not", async () => {
     const deps = recordingDeps();
     const { missingGrants } = await importManagedExchange(grantedBytes(), deps);
-    // Neither handle serializes, so a fresh install holds neither: the operator is
-    // told at the import rather than by a scheduled run a window later.
-    expect(missingGrants).toEqual(["input-file", "output-folder"]);
+    // The handle does not serialize, so a fresh install holds none: the operator
+    // is told at the import rather than by a scheduled run a window later.
+    expect(missingGrants).toEqual(["working-folder"]);
   });
 
   test("an import of a source that held neither grant reports none", async () => {
@@ -292,24 +285,24 @@ describe("importManagedExchange", () => {
   });
 
   test("a revive in place reports nothing missing: it keeps its own grants", async () => {
-    // The profile's own spent record still holds the handles it took, so the revive
-    // has nothing for the operator to choose again.
-    const existing = recordHolding({ inputFile: true, outputFolder: true });
+    // The profile's own spent record still holds the folder it took, so the
+    // revive has nothing for the operator to choose again.
+    const existing = recordHolding({ workingFolder: true });
     const deps = recordingDeps({ kind: "revived", record: existing });
     const result = await importManagedExchange(grantedBytes(), deps);
     expect(result.record).toBe(existing);
     expect(result.missingGrants).toEqual([]);
   });
 
-  test("a revive onto a record that lost a grant reports that one", async () => {
+  test("a revive onto a record that lost its grant reports it", async () => {
     // A revive keeps what the record has, not what the artifact's source had: a
     // folder grant the operator dropped here is still one to choose again.
     const deps = recordingDeps({
       kind: "revived",
-      record: recordHolding({ inputFile: true }),
+      record: recordHolding({}),
     });
     const result = await importManagedExchange(grantedBytes(), deps);
-    expect(result.missingGrants).toEqual(["output-folder"]);
+    expect(result.missingGrants).toEqual(["working-folder"]);
   });
 
   test("a malformed file installs nothing (store left untouched)", async () => {

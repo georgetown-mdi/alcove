@@ -218,7 +218,6 @@ describe("whether the mint may proceed", () => {
     expect(state.acquired).toBeUndefined();
     expect(state.consoleSource).toBeUndefined();
     expect(state.sourceFile).toBeUndefined();
-    expect(state.sourceHandle).toBeUndefined();
     expect(state.editor).toBeUndefined();
     expect(state.demoActive).toBe(false);
     expect(state.intakeAlert).toBe(ALERT);

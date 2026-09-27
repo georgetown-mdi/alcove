@@ -260,8 +260,7 @@ export interface ManageOfferChoices {
 
 /** Everything a completion surface supplies to turn the offer into a deposit: the
  * parts of this party's document and the locator to compose it from, the
- * invitation's secret, an optional input-file handle where the platform yielded
- * one, and the operator's choices. */
+ * invitation's secret, and the operator's choices. */
 export interface ManagedDepositInputs {
   /** This party's document parts, holding the deposit's one statement of its
    * `side` (see {@link ManagedExchangeDocumentParts}). */
@@ -273,9 +272,6 @@ export interface ManagedDepositInputs {
    * acceptor's `token.sharedSecret`. The one-shot run discards its rotation, so
    * this stays the record's live secret until a managed re-run rotates it. */
   sharedSecret: string;
-  /** An input-file handle pointer, where the File System Access API yielded one;
-   * absent otherwise (the record field is optional). */
-  inputFileHandle?: FileSystemFileHandle;
   /** The operator's label, opt-in max-age policy, and retention note. */
   choices: ManageOfferChoices;
 }
@@ -325,9 +321,6 @@ export function buildManagedDeposit(
     ),
     side: inputs.documentParts.side,
     sharedSecret: inputs.sharedSecret,
-    ...(inputs.inputFileHandle !== undefined
-      ? { inputFileHandle: inputs.inputFileHandle }
-      : {}),
     ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
     ...(stamp.expires !== null ? { expires: stamp.expires } : {}),
   };

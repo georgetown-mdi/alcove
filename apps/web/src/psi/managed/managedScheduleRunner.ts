@@ -135,7 +135,7 @@ export interface ManagedScheduleAttempt {
   /** The record as the store held it just before this attempt. The run path
    * reads it again inside the run+rotate lock and runs that copy. */
   record: RunnableManagedExchangeRecord;
-  /** This run's input, always the persisted handle read UNATTENDED: a scheduled
+  /** This run's input, always the working folder read UNATTENDED: a scheduled
    * run has no operator to answer a permission prompt, so a non-granted
    * permission must fail benignly rather than block on one (see
    * {@link ./managedInputHandle.ts}, `ensureHandlePermission`). */
@@ -201,7 +201,7 @@ type ManagedScheduleSkipReason =
   | "spent"
   | "in-flight"
   | "not-due"
-  | "no-input-handle"
+  | "no-working-folder"
   | "plan-moved"
   | "window-closed"
   | "deleted"
@@ -402,11 +402,12 @@ async function occupyDueWindow(
   if (!runnableManagedExchange(claimed))
     return { ...entry, skipped: "configuration-only" };
 
-  const handle = claimed.inputFileHandle;
-  // Without a persisted handle there is no unattended read of the input at all
+  const directory = claimed.workingDirectoryHandle;
+  // Without a working folder there is no unattended read of the input at all
   // (the re-selection path needs an operator), so the window is left
   // unaccounted: it counts as missed at the wake that finds it elapsed.
-  if (handle === undefined) return { ...entry, skipped: "no-input-handle" };
+  if (directory === undefined)
+    return { ...entry, skipped: "no-working-folder" };
 
   const occupancy = await occupyWindow(claimed.id, planned, due, seams);
   entry.attempts = occupancy.attempts;
@@ -456,14 +457,14 @@ interface WindowOccupancy {
    * longer run unattended. The caller writes no bookkeeping for the window: a
    * deleted record has nothing to write onto, and a moved plan would drop the
    * conditioned write anyway. */
-  ended?: "deleted" | "plan-moved" | "configuration-only" | "no-input-handle";
+  ended?: "deleted" | "plan-moved" | "configuration-only" | "no-working-folder";
 }
 
 /**
  * Occupy one open window with bounded re-attempts.
  *
  * Each attempt re-reads the stored record before it connects and runs THAT
- * record -- its secret, input handle, document, and max-age policy -- so an
+ * record -- its secret, working folder, document, and max-age policy -- so an
  * edit or an attended rotation landing mid-window reaches the attempts after
  * it. The same read ends the occupancy:
  *
@@ -471,7 +472,7 @@ interface WindowOccupancy {
  *   window, which is how catch-up reads the same record;
  * - as `"skipped"` where the operator's compromise response stands;
  * - with no disposition where the record is gone, its plan no longer holds
- *   this window, or it has lost its secret or its input handle.
+ *   this window, or it has lost its secret or its working folder.
  *
  * Each attempt waits for the partner up to {@link ATTEMPT_PEER_WAIT_MS},
  * clamped to what is left of the window; a retryable failure starts another
@@ -526,14 +527,15 @@ async function occupyWindow(
       return { attempts, disposition: "skipped" };
     if (!runnableManagedExchange(stored))
       return { attempts, ended: "configuration-only" };
-    const handle = stored.inputFileHandle;
-    if (handle === undefined) return { attempts, ended: "no-input-handle" };
+    const directory = stored.workingDirectoryHandle;
+    if (directory === undefined)
+      return { attempts, ended: "no-working-folder" };
     attempts += 1;
     let dataExchangeStarted = false;
     try {
       await seams.runAttempt({
         record: stored,
-        source: { kind: "handle", handle, attendance: "unattended" },
+        source: { kind: "folder", directory, attendance: "unattended" },
         peerWaitTimeoutMs: Math.min(ATTEMPT_PEER_WAIT_MS, remainingMs),
         onDataExchangeStart: () => {
           dataExchangeStarted = true;

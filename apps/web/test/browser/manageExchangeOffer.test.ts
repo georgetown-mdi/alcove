@@ -55,7 +55,6 @@ describe("manage-exchange offer refusal", () => {
       createElement(ManageExchangeOffer, {
         status: "error",
         refusal,
-        handleCaptured: false,
         onManage: () => undefined,
       }),
     );
@@ -75,7 +74,6 @@ describe("manage-exchange offer refusal", () => {
     app.render(
       createElement(ManageExchangeOffer, {
         status: "error",
-        handleCaptured: false,
         onManage: () => undefined,
       }),
     );
@@ -99,7 +97,6 @@ describe("manage-exchange offer store gate", () => {
     app.render(
       createElement(ManageExchangeOffer, {
         status: "idle",
-        handleCaptured: false,
         onManage: () => undefined,
       }),
     );
@@ -127,7 +124,6 @@ describe("manage-exchange offer store gate", () => {
     app.render(
       createElement(ManageExchangeOffer, {
         status: "idle",
-        handleCaptured: false,
         onManage,
       }),
     );
@@ -150,7 +146,6 @@ describe("manage-exchange offer store gate", () => {
     app.render(
       createElement(ManageExchangeOffer, {
         status: "idle",
-        handleCaptured: false,
         onManage: () => undefined,
       }),
     );

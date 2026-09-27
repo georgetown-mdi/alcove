@@ -47,7 +47,6 @@ import {
   UNREADABLE_PARKED_RESULTS_NOTE,
 } from "@recurring/parkedResultsModel";
 import { PARKED_RESULTS_VERSION, runResultsFileName } from "@psi/parkedResults";
-import { OUTPUT_FOLDER_UNSCHEDULED_NOTE } from "@recurring/scheduleEntryModel";
 import { UNCHANGED_INPUT_TITLE } from "@recurring/scheduleSurfacingModel";
 
 import {
@@ -131,8 +130,8 @@ describe("managed exchange detail configuration", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -185,8 +184,8 @@ describe("managed exchange detail configuration", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: false,
@@ -252,8 +251,8 @@ describe("managed exchange detail configuration", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -300,8 +299,8 @@ describe("managed exchange detail configuration", () => {
           onRetryAccountingRead: () => undefined,
           onRetryParkedResultsRead: () => undefined,
           onClearParkedResults: () => Promise.resolve(),
-          onGrantOutputFolder: () => Promise.resolve(),
-          onStopUsingOutputFolder: () => Promise.resolve(),
+          onGrantWorkingFolder: () => Promise.resolve(),
+          onStopUsingWorkingFolder: () => Promise.resolve(),
           onSaveLocalFields: () => Promise.resolve(),
           onReinviteToChangeTerms: () => {
             reinviting = true;
@@ -369,8 +368,8 @@ describe("managed exchange detail local fields", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: (edits) => {
           saved.push(edits);
           return Promise.resolve();
@@ -416,8 +415,8 @@ describe("managed exchange detail local fields", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -450,8 +449,8 @@ describe("managed exchange detail local fields", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -479,7 +478,7 @@ describe("managed exchange detail local fields", () => {
 
 describe("managed exchange detail schedule entry", () => {
   /** Render the detail sections over `stored`, collecting the edits each save
-   * holds, and the calls the output-folder grant makes. */
+   * holds, and the calls the working-folder grant makes. */
   function renderEntry(
     stored?: ManagedExchangeSchedule,
     folder?: FileSystemDirectoryHandle,
@@ -494,7 +493,7 @@ describe("managed exchange detail schedule entry", () => {
       createElement(ManagedExchangeDetail, {
         record: record("inviter", {
           ...(stored !== undefined ? { schedule: stored } : {}),
-          ...(folder !== undefined ? { outputDirectoryHandle: folder } : {}),
+          ...(folder !== undefined ? { workingDirectoryHandle: folder } : {}),
         }),
         parkedResultsRead: { kind: "none" },
         accountingRead: { kind: "none" },
@@ -502,11 +501,11 @@ describe("managed exchange detail schedule entry", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => {
+        onGrantWorkingFolder: () => {
           granted.push("chose");
           return Promise.resolve();
         },
-        onStopUsingOutputFolder: () => {
+        onStopUsingWorkingFolder: () => {
           granted.push("stopped");
           return stopUsingRejects === true
             ? Promise.reject(new Error("store failed"))
@@ -548,17 +547,18 @@ describe("managed exchange detail schedule entry", () => {
     });
   }
 
-  test("offers the results folder first, with keeping results here as what happens without one", async () => {
+  test("offers the folder first, with keeping results here as what happens when it cannot take them", async () => {
     renderEntry();
     await scheduleCheckbox().click();
 
     // The grant is the path offered, and the browser-storage statement is
-    // titled as the case without a folder rather than as the only outcome.
-    const grant = page
-      .getByRole("heading", { name: "Results folder" })
-      .element();
+    // titled as the case the folder does not cover rather than as the only
+    // outcome.
+    const grant = page.getByRole("heading", { name: "Folder" }).element();
     const fallback = page
-      .getByText("Where a scheduled run's results go without a folder")
+      .getByText(
+        "Where a scheduled run's results go when the folder cannot take them",
+      )
       .element();
     expect(
       grant.compareDocumentPosition(fallback) &
@@ -589,18 +589,14 @@ describe("managed exchange detail schedule entry", () => {
     await page
       .getByRole("button", { name: "Choose a different folder" })
       .click();
-    await page
-      .getByRole("button", { name: "Stop writing to this folder" })
-      .click();
+    await page.getByRole("button", { name: "Stop using this folder" }).click();
     expect(granted).toEqual(["chose", "stopped"]);
   });
 
-  test("a failed stop says the folder is still being written to, not that a choice did not take", async () => {
+  test("a failed stop says the folder is still in use, not that a choice did not take", async () => {
     renderEntry(undefined, await opfsDirectory("results-kept"), true);
     await scheduleCheckbox().click();
-    await page
-      .getByRole("button", { name: "Stop writing to this folder" })
-      .click();
+    await page.getByRole("button", { name: "Stop using this folder" }).click();
 
     await expect
       .element(page.getByText("That folder was not removed"))
@@ -634,28 +630,27 @@ describe("managed exchange detail schedule entry", () => {
     await expect
       .element(page.getByText("results-unscheduled", { exact: false }))
       .toBeInTheDocument();
-    await expect
-      .element(page.getByText(OUTPUT_FOLDER_UNSCHEDULED_NOTE))
-      .toBeInTheDocument();
-    await page
-      .getByRole("button", { name: "Stop writing to this folder" })
-      .click();
+    await page.getByRole("button", { name: "Stop using this folder" }).click();
     expect(granted).toEqual(["stopped"]);
   });
 
-  test("shows nothing of the results folder with scheduling off and no folder granted", async () => {
+  test("offers the folder with scheduling off, since every run reads its input from it", async () => {
     renderEntry();
 
     await expect.element(scheduleCheckbox()).not.toBeChecked();
-    expect(page.getByRole("heading", { name: "Results folder" }).query()).toBe(
-      null,
-    );
-    expect(page.getByRole("button", { name: "Choose folder" }).query()).toBe(
-      null,
-    );
+    await expect
+      .element(page.getByRole("heading", { name: "Folder" }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Choose folder" }))
+      .toBeInTheDocument();
+    // What a scheduled run does with results the folder cannot take is said
+    // only where there is a schedule to run.
     expect(
       page
-        .getByText("Where a scheduled run's results go without a folder")
+        .getByText(
+          "Where a scheduled run's results go when the folder cannot take them",
+        )
         .query(),
     ).toBe(null);
   });
@@ -973,8 +968,8 @@ describe("managed exchange detail local fields against the real store", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: savingTo(stored.id),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1036,8 +1031,8 @@ describe("managed exchange detail local fields against the real store", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: savingTo(stored.id),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1111,8 +1106,8 @@ describe("managed exchange detail run schedule", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1188,9 +1183,9 @@ describe("managed exchange detail run schedule", () => {
       .toBeInTheDocument();
   });
 
-  test("a record holding no input handle says nothing can run with nobody present", async () => {
-    // A scheduled record and a persisted input handle are independent: this one
-    // has a cadence and no File System Access handle, which is the state of
+  test("a record holding no working folder says nothing can run with nobody present", async () => {
+    // A scheduled record and a working folder are independent: this one has a
+    // cadence and no File System Access handle, which is the state of
     // every record on a browser without the API and of every imported one. The
     // note is what the runner's own silent skip of such a record owes the
     // operator.
@@ -1198,12 +1193,9 @@ describe("managed exchange detail run schedule", () => {
 
     await expect
       .element(
-        page.getByText(
-          "no run of this exchange can happen with nobody present",
-          {
-            exact: false,
-          },
-        ),
+        page.getByText("no run of it can happen with nobody present", {
+          exact: false,
+        }),
       )
       .toBeInTheDocument();
   });
@@ -1242,27 +1234,33 @@ describe("managed exchange detail run schedule", () => {
       .toBeInTheDocument();
   });
 
-  /** A stub input-file pointer that counts the platform reads made through it and
-   * hands back a file stamped at `lastModifiedMs`. A picker handle, the only real
-   * one with the permission extension, cannot be summoned from a test, and an
-   * origin-private file is stamped at the moment the suite writes it. */
+  /** A stub working folder that counts the platform reads made through it and
+   * hands back an input file stamped at `lastModifiedMs`. A picker handle, the
+   * only real one with the permission extension, cannot be summoned from a
+   * test, and an origin-private file is stamped at the moment the suite writes
+   * it. */
   function inputHandleStub(lastModifiedMs: number) {
     const reads: Array<string> = [];
     const handle = {
-      kind: "file",
-      name: "input.csv",
+      kind: "directory",
+      name: "Riverbend exchange",
       queryPermission: () => {
         reads.push("queryPermission");
         return Promise.resolve("granted");
       },
-      getFile: () => {
-        reads.push("getFile");
-        return Promise.resolve(
-          new File(["id\n1\n"], "input.csv", { lastModified: lastModifiedMs }),
-        );
+      getFileHandle: (name: string) => {
+        reads.push(`getFileHandle ${name}`);
+        return Promise.resolve({
+          getFile: () => {
+            reads.push("getFile");
+            return Promise.resolve(
+              new File(["id\n1\n"], name, { lastModified: lastModifiedMs }),
+            );
+          },
+        });
       },
     };
-    return { handle: handle as unknown as FileSystemFileHandle, reads };
+    return { handle: handle as unknown as FileSystemDirectoryHandle, reads };
   }
 
   const succeededAt = "2026-07-14T12:00:00.000Z";
@@ -1270,7 +1268,7 @@ describe("managed exchange detail run schedule", () => {
   test("an input file last changed before the last successful run raises the note", async () => {
     const input = inputHandleStub(Date.parse("2026-07-10T09:15:00.000Z"));
     renderWithSchedule(schedule(-60 * 60 * 1000), {
-      inputFileHandle: input.handle,
+      workingDirectoryHandle: input.handle,
       lastRun: { at: succeededAt, outcome: "succeeded" },
     });
 
@@ -1294,7 +1292,7 @@ describe("managed exchange detail run schedule", () => {
   test("an input file refreshed since that run raises nothing", async () => {
     const input = inputHandleStub(Date.parse("2026-07-15T06:00:00.000Z"));
     renderWithSchedule(schedule(-60 * 60 * 1000), {
-      inputFileHandle: input.handle,
+      workingDirectoryHandle: input.handle,
       lastRun: { at: succeededAt, outcome: "succeeded" },
     });
 
@@ -1314,7 +1312,7 @@ describe("managed exchange detail run schedule", () => {
     // untouched rather than read for a reading nothing renders.
     const input = inputHandleStub(Date.parse("2026-07-10T09:15:00.000Z"));
     renderWithSchedule(undefined, {
-      inputFileHandle: input.handle,
+      workingDirectoryHandle: input.handle,
       lastRun: { at: succeededAt, outcome: "succeeded" },
     });
 
@@ -1329,25 +1327,28 @@ describe("managed exchange detail run schedule", () => {
 describe("managed exchange detail document settings", () => {
   const INPUT_COLUMNS = ["client_id", "first_name", "last_name", "dob"];
 
-  /** A stub input-file pointer over a semicolon-separated file holding
+  /** A stub working folder whose input file is semicolon-separated, holding
    * {@link INPUT_COLUMNS}, counting the reads made through it. */
   function semicolonInputStub() {
     const reads: Array<string> = [];
     const handle = {
-      kind: "file",
-      name: "input.csv",
+      kind: "directory",
+      name: "Riverbend exchange",
       queryPermission: () => Promise.resolve("granted"),
-      getFile: () => {
-        reads.push("getFile");
-        return Promise.resolve(
-          new File(
-            [`${INPUT_COLUMNS.join(";")}\n17;Ada;Lovelace;12/10/1815\n`],
-            "input.csv",
-          ),
-        );
-      },
+      getFileHandle: (name: string) =>
+        Promise.resolve({
+          getFile: () => {
+            reads.push("getFile");
+            return Promise.resolve(
+              new File(
+                [`${INPUT_COLUMNS.join(";")}\n17;Ada;Lovelace;12/10/1815\n`],
+                name,
+              ),
+            );
+          },
+        }),
     };
-    return { handle: handle as unknown as FileSystemFileHandle, reads };
+    return { handle: handle as unknown as FileSystemDirectoryHandle, reads };
   }
 
   function renderDetail(
@@ -1363,8 +1364,8 @@ describe("managed exchange detail document settings", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields,
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1386,7 +1387,7 @@ describe("managed exchange detail document settings", () => {
     const saved: Array<ManagedExchangeLocalEdits> = [];
     const metadata = inferMetadata(INPUT_COLUMNS, []);
     const stored = record("inviter", {
-      inputFileHandle: input.handle,
+      workingDirectoryHandle: input.handle,
       exchangeFile: composeManagedExchangeFile({
         connection: webrtcLocator,
         linkageTerms: getDefaultLinkageTerms("County Health Dept", metadata),
@@ -1443,8 +1444,8 @@ describe("managed exchange detail run history", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1485,8 +1486,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1531,8 +1532,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1604,8 +1605,8 @@ describe("managed exchange detail accounting of disclosures", () => {
           onRetryAccountingRead: () => undefined,
           onRetryParkedResultsRead: () => undefined,
           onClearParkedResults: () => Promise.resolve(),
-          onGrantOutputFolder: () => Promise.resolve(),
-          onStopUsingOutputFolder: () => Promise.resolve(),
+          onGrantWorkingFolder: () => Promise.resolve(),
+          onStopUsingWorkingFolder: () => Promise.resolve(),
           onSaveLocalFields: () => Promise.resolve(),
           onReinviteToChangeTerms: () => undefined,
           canReinvite: true,
@@ -1677,8 +1678,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1758,8 +1759,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1819,8 +1820,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1883,8 +1884,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -1953,8 +1954,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2001,8 +2002,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2063,8 +2064,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2118,8 +2119,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2161,8 +2162,8 @@ describe("managed exchange detail accounting of disclosures", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2254,8 +2255,8 @@ describe("recovering an accounting this version cannot read", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2318,8 +2319,8 @@ describe("recovering an accounting this version cannot read", () => {
           onRetryAccountingRead: () => undefined,
           onRetryParkedResultsRead: () => undefined,
           onClearParkedResults: () => Promise.resolve(),
-          onGrantOutputFolder: () => Promise.resolve(),
-          onStopUsingOutputFolder: () => Promise.resolve(),
+          onGrantWorkingFolder: () => Promise.resolve(),
+          onStopUsingWorkingFolder: () => Promise.resolve(),
           onSaveLocalFields: () => Promise.resolve(),
           onReinviteToChangeTerms: () => undefined,
           canReinvite: true,
@@ -2375,8 +2376,8 @@ describe("recovering an accounting this version cannot read", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2436,8 +2437,8 @@ describe("recovering an accounting this version cannot read", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2500,8 +2501,8 @@ describe("recovering an accounting this version cannot read", () => {
           onRetryAccountingRead: () => undefined,
           onRetryParkedResultsRead: () => undefined,
           onClearParkedResults: () => Promise.resolve(),
-          onGrantOutputFolder: () => Promise.resolve(),
-          onStopUsingOutputFolder: () => Promise.resolve(),
+          onGrantWorkingFolder: () => Promise.resolve(),
+          onStopUsingWorkingFolder: () => Promise.resolve(),
           onSaveLocalFields: () => Promise.resolve(),
           onReinviteToChangeTerms: () => undefined,
           canReinvite: true,
@@ -2560,8 +2561,8 @@ describe("recovering an accounting this version cannot read", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2602,8 +2603,8 @@ describe("recovering an accounting this version cannot read", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2650,8 +2651,8 @@ describe("recovering an accounting this version cannot read", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -2711,8 +2712,8 @@ describe("an accounting a newer version of the app filed", () => {
       onRetryAccountingRead: () => undefined,
       onRetryParkedResultsRead: () => undefined,
       onClearParkedResults: () => Promise.resolve(),
-      onGrantOutputFolder: () => Promise.resolve(),
-      onStopUsingOutputFolder: () => Promise.resolve(),
+      onGrantWorkingFolder: () => Promise.resolve(),
+      onStopUsingWorkingFolder: () => Promise.resolve(),
       onSaveLocalFields: () => Promise.resolve(),
       onReinviteToChangeTerms: () => undefined,
       canReinvite: true,
@@ -2831,8 +2832,8 @@ describe("an accounting that could not be read at all", () => {
       onRetryAccountingRead,
       onRetryParkedResultsRead: () => undefined,
       onClearParkedResults: () => Promise.resolve(),
-      onGrantOutputFolder: () => Promise.resolve(),
-      onStopUsingOutputFolder: () => Promise.resolve(),
+      onGrantWorkingFolder: () => Promise.resolve(),
+      onStopUsingWorkingFolder: () => Promise.resolve(),
       onSaveLocalFields: () => Promise.resolve(),
       onReinviteToChangeTerms: () => undefined,
       canReinvite: true,
@@ -2922,8 +2923,8 @@ describe("an accounting read still in flight", () => {
       onRetryAccountingRead: () => undefined,
       onRetryParkedResultsRead: () => undefined,
       onClearParkedResults: () => Promise.resolve(),
-      onGrantOutputFolder: () => Promise.resolve(),
-      onStopUsingOutputFolder: () => Promise.resolve(),
+      onGrantWorkingFolder: () => Promise.resolve(),
+      onStopUsingWorkingFolder: () => Promise.resolve(),
       onSaveLocalFields: () => Promise.resolve(),
       onReinviteToChangeTerms: () => undefined,
       canReinvite: true,
@@ -3042,8 +3043,8 @@ describe("the results a scheduled run left for this visit", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead,
         onClearParkedResults,
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,
@@ -3410,8 +3411,8 @@ describe("a run whose record never reached the accounting", () => {
         onRetryAccountingRead: () => undefined,
         onRetryParkedResultsRead: () => undefined,
         onClearParkedResults: () => Promise.resolve(),
-        onGrantOutputFolder: () => Promise.resolve(),
-        onStopUsingOutputFolder: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
         onSaveLocalFields: () => Promise.resolve(),
         onReinviteToChangeTerms: () => undefined,
         canReinvite: true,

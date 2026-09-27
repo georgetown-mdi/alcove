@@ -33,7 +33,6 @@ import {
   savedExchangeColumnRefusalAlert,
   unnameableColumnsAlert,
 } from "@psi/columnNames";
-import { capturedInputHandle } from "@psi/managed/managedInputHandle";
 import { columnSamplesFromRows } from "@psi/columnSamples";
 import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
@@ -379,7 +378,6 @@ export function InviterScreen() {
     sftpInfo,
     sftpSaveFilePreferred,
     sourceFile,
-    sourceHandle,
   } = screenState;
 
   const delimiterResolution = resolveCsvDelimiter(delimiterChoice);
@@ -752,9 +750,6 @@ export function InviterScreen() {
             },
             connection,
             sharedSecret: invitation.sharedSecret,
-            ...(sourceHandle !== undefined
-              ? { inputFileHandle: sourceHandle }
-              : {}),
             choices,
           },
           Date.now(),
@@ -945,7 +940,6 @@ export function InviterScreen() {
         type: "file-acquired",
         acquired: csv,
         file,
-        handle: capturedInputHandle(file),
         editor: seeded,
         notice,
         alert:
@@ -1825,7 +1819,6 @@ export function InviterScreen() {
                 <ManageExchangeOffer
                   status={manageOffer.status}
                   refusal={manageOffer.refusal}
-                  handleCaptured={sourceHandle !== undefined}
                   onManage={(choices) => void manageExchange(choices)}
                 />
               )}

@@ -138,11 +138,15 @@ vi.mock(
     waitForIncomingConnection: vi.fn(),
   }),
 );
-vi.mock("../../../src/psi/managed/managedInputHandle.js", () => ({
-  acquireValidatedManagedInput: vi.fn(() =>
-    Promise.resolve({ rows: [], columns: [] }),
-  ),
-}));
+vi.mock(
+  "../../../src/psi/managed/managedInputHandle.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    acquireValidatedManagedInput: vi.fn(() =>
+      Promise.resolve({ rows: [], columns: [] }),
+    ),
+  }),
+);
 vi.mock("../../../src/psi/disclosureAccountingStore.js", () => ({
   appendDisclosureRecordToStore: vi.fn(() => Promise.resolve()),
 }));

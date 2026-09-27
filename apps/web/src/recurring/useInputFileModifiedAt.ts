@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 
-import {
-  readInputFileModifiedAt,
-  storedInputHandleUsable,
-} from "@psi/managed/managedInputHandle";
+import { readInputFileModifiedAt } from "@psi/managed/managedInputHandle";
+import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
 
 /**
- * When the file this exchange's persisted pointer names was last changed, in epoch
- * milliseconds, or `undefined` while the read is outstanding and wherever it found
- * nothing to report (no usable pointer, no standing read grant, a missing or
- * unreadable entry). The schedule section reads it to say whether the input has
+ * When the input file in this exchange's working folder was last changed, in
+ * epoch milliseconds, or `undefined` while the read is outstanding and wherever
+ * it found nothing to report (no usable folder, no standing read grant, a missing
+ * or unreadable entry). The schedule section reads it to say whether the input has
  * been refreshed since the last successful run.
  *
  * The read happens once per mounted handle rather than on a poll: what it feeds is
@@ -19,7 +17,7 @@ import {
  * raises no permission dialog.
  */
 export function useInputFileModifiedAt(
-  handle: FileSystemFileHandle | undefined,
+  directory: FileSystemDirectoryHandle | undefined,
 ): number | undefined {
   const [modifiedAtMs, setModifiedAtMs] = useState<number | undefined>(
     undefined,
@@ -27,15 +25,15 @@ export function useInputFileModifiedAt(
 
   useEffect(() => {
     let live = true;
-    if (handle !== undefined && storedInputHandleUsable(handle))
-      void readInputFileModifiedAt(handle).then((at) => {
+    if (directory !== undefined && storedWorkingDirectoryUsable(directory))
+      void readInputFileModifiedAt(directory).then((at) => {
         if (live) setModifiedAtMs(at);
       });
     else setModifiedAtMs(undefined);
     return () => {
       live = false;
     };
-  }, [handle]);
+  }, [directory]);
 
   return modifiedAtMs;
 }

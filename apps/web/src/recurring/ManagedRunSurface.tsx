@@ -36,7 +36,7 @@ import {
   ManagedReinviteWithheldError,
   clearManagedExchangeStandingCondition,
   getManagedExchange,
-  persistManagedExchangeOutputDirectory,
+  persistManagedExchangeWorkingDirectory,
   readRecordAndMarkBackedUp,
   recordManagedExchangeCompromiseResponse,
   spendManagedExchangeIfCurrent,
@@ -71,13 +71,18 @@ import {
 import { MANAGED_EXCHANGE_ARTIFACT_MIME } from "@psi/managed/managedExchangeArtifact";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
-import { chooseManagedOutputDirectory } from "@psi/managed/managedOutputDirectory";
+
+import {
+  chooseManagedWorkingDirectory,
+  storedWorkingDirectoryUsable,
+  workingDirectoryGrantSupported,
+} from "@psi/managed/managedWorkingDirectory";
+
 import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 import { managedRerunCompletion } from "@psi/managed/managedCompletionSurface";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { runManagedExchangeInBrowser } from "@psi/managed/managedRunDriver";
-import { storedInputHandleUsable } from "@psi/managed/managedInputHandle";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import { dateLabel, dateTimeLabel } from "@psi/formatting";
@@ -135,6 +140,11 @@ import { REINVITE_RUN_IN_FLIGHT_REASON } from "./managedReinviteGate";
 import { managedImportFileChoice } from "./managedImportFiles";
 import { useManagedRunInFlight } from "./useManagedRunInFlight";
 
+import {
+  WORKING_FOLDER_GRANT_NOTE,
+  WORKING_FOLDER_SCOPE_NOTE,
+} from "./scheduleEntryModel";
+
 import type { Ref } from "react";
 import type { ResolvedMatching } from "@alcove/core";
 
@@ -178,8 +188,8 @@ interface LiveManagedRunFailure {
  * and run -- reconnecting to the partner without a new invitation and completing
  * through the durable rotate-and-persist path. The pure run orchestration is
  * {@link runManagedExchangeInBrowser}; this thin host owns the record load, the
- * per-run input (the persisted handle, or a re-selection where none is held), and
- * folds the outcome into the completion surface.
+ * per-run input (the working folder, or a chosen file where none can be
+ * granted), and folds the outcome into the completion surface.
  *
  * It is the run affordance only, not the management surface -- deleting,
  * editing, and per-exchange detail are separate items.
@@ -526,19 +536,20 @@ export function ManagedRunSurface({ id }: { id: string }) {
       });
   }, [reinvite, reinviteSource]);
 
-  // With a usable pointer the run reads through it (attended, so a gone permission
-  // may be re-prompted once); otherwise the operator re-selects the file each run.
-  const hasHandle = storedInputHandleUsable(record?.inputFileHandle);
+  // With a usable working folder the run reads its input from it (attended, so a
+  // gone permission may be re-prompted once). A browser that can grant a folder
+  // runs from one and asks for it until it is chosen; one that cannot has the
+  // operator choose the file each run.
+  const folder = record?.workingDirectoryHandle;
+  const hasFolder = storedWorkingDirectoryUsable(folder);
+  const folderGrantable = workingDirectoryGrantSupported();
 
   function inputSource(): ManagedInputSource | undefined {
     if (record === undefined) return undefined;
-    if (hasHandle)
-      return {
-        kind: "handle",
-        handle: record.inputFileHandle as FileSystemFileHandle,
-        attendance: "attended",
-      };
-    if (reselected !== undefined) return { kind: "file", file: reselected };
+    if (hasFolder && folder !== undefined)
+      return { kind: "folder", directory: folder, attendance: "attended" };
+    if (!folderGrantable && reselected !== undefined)
+      return { kind: "file", file: reselected };
     return undefined;
   }
 
@@ -955,20 +966,20 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // The picker is reached with no awaited work in front of it: a browser hands a
   // site a folder only under the operator's own gesture, and an await before the
   // call spends it. A dismissed picker yields no handle and changes nothing.
-  function grantOutputFolder(): Promise<void> {
+  function grantWorkingFolder(): Promise<void> {
     const held = record;
     if (held === undefined) return Promise.resolve();
-    return chooseManagedOutputDirectory().then(async (directory) => {
+    return chooseManagedWorkingDirectory().then(async (directory) => {
       if (directory === undefined) return;
       adoptRecord(
-        await persistManagedExchangeOutputDirectory(held.id, directory),
+        await persistManagedExchangeWorkingDirectory(held.id, directory),
       );
     });
   }
 
-  async function stopUsingOutputFolder(): Promise<void> {
+  async function stopUsingWorkingFolder(): Promise<void> {
     if (record === undefined) return;
-    adoptRecord(await persistManagedExchangeOutputDirectory(record.id, null));
+    adoptRecord(await persistManagedExchangeWorkingDirectory(record.id, null));
   }
 
   // Queue a fresh read of the accounting, dropping the standing verdict as it
@@ -1296,11 +1307,14 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 onResolve={resolveStanding}
               />
             )}
-            {!hasHandle && (
+            {!hasFolder && folderGrantable && (
+              <WorkingFolderPrompt onGrant={grantWorkingFolder} />
+            )}
+            {!hasFolder && !folderGrantable && (
               <div className={styles.callout}>
                 <p className={styles.calloutLead}>Choose your input file.</p>
                 <p className={styles.small}>
-                  This browser did not keep a pointer to your file, so choose it
+                  This browser cannot give a site a folder, so choose your file
                   for this run. Its contents are read in your browser and never
                   stored.
                 </p>
@@ -1368,8 +1382,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
               onRetryParkedResultsRead={retryParkedResultsRead}
               onClearParkedResults={clearParked}
               onSaveLocalFields={saveLocalFields}
-              onGrantOutputFolder={grantOutputFolder}
-              onStopUsingOutputFolder={stopUsingOutputFolder}
+              onGrantWorkingFolder={grantWorkingFolder}
+              onStopUsingWorkingFolder={stopUsingWorkingFolder}
               onReinviteToChangeTerms={() => reinviteNow("detail")}
               canReinvite={canReinviteFromRecord(record)}
               compromiseResponse={compromiseResponse}
@@ -2176,6 +2190,42 @@ function SavedExchangesFoot() {
     <div className={styles.workFoot}>
       <Button component={Link} to="/saved" variant="default">
         Back to recurring exchanges
+      </Button>
+    </div>
+  );
+}
+
+/** Where a browser that can grant a folder holds none for this exchange: the one
+ * prompt standing in for the run's input, since each run reads its input from
+ * that folder. The click reaches the picker with no awaited work in front of it,
+ * since a browser hands a site a folder only under the operator's gesture. */
+function WorkingFolderPrompt({ onGrant }: { onGrant: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  function choose() {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    void onGrant()
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className={styles.callout}>
+      <p className={styles.calloutLead}>Choose this exchange&apos;s folder.</p>
+      <p className={styles.small}>{WORKING_FOLDER_GRANT_NOTE}</p>
+      <p className={`${styles.small} ${styles.sub}`}>
+        {WORKING_FOLDER_SCOPE_NOTE}
+      </p>
+      {failed && (
+        <Alert color="yellow" title="That folder was not set" mt="sm" mb="sm">
+          Nothing changed. Try choosing the folder again.
+        </Alert>
+      )}
+      <Button mt="sm" variant="default" loading={busy} onClick={choose}>
+        Choose folder
       </Button>
     </div>
   );

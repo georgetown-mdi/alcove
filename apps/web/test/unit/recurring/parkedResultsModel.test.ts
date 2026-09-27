@@ -317,12 +317,11 @@ describe("the warning a projected result size raises", () => {
 describe("what the operator is told about keeping results here", () => {
   const days = `${String(PARKED_RESULTS_RETENTION_DAYS)} days`;
 
-  test("the schedule-entry statement states keeping results here as what happens without a folder", () => {
-    // The grant is the path the surface offers first; this statement is what
-    // happens without one, and whenever the granted folder cannot be written to.
-    expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain("Without a folder");
+  test("the schedule-entry statement states keeping results here as what happens when the folder cannot take them", () => {
+    // The folder is where a scheduled run writes; this statement is what
+    // happens whenever the granted folder cannot be written to.
     expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain(
-      "the folder you granted cannot be written to",
+      "Whenever the folder you granted cannot be written to",
     );
   });
 

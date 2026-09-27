@@ -58,12 +58,12 @@ function newExchange(
   };
 }
 
-/** A handle the run surface accepts as this exchange's input pointer. An OPFS
- * handle is a real FileSystemFileHandle and survives the structured clone the
- * record is stored through. */
-async function inputHandle(): Promise<FileSystemFileHandle> {
+/** A folder the run surface accepts as this exchange's working folder. An OPFS
+ * handle is a real FileSystemDirectoryHandle and survives the structured clone
+ * the record is stored through. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return await root.getFileHandle("managed-input.csv", { create: true });
+  return await root.getDirectoryHandle("managed-folder", { create: true });
 }
 
 const app = createAppMount();
@@ -160,7 +160,7 @@ describe("the recurring-exchange list with no network", () => {
 describe("the run action with no network", () => {
   test("is held back and says why, and comes back with the connection", async () => {
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: await inputHandle() }),
+      newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
     setConnectivity(false);
 

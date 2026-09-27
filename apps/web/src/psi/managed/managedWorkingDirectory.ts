@@ -1,14 +1,18 @@
 /**
- * The output-folder grant a scheduled run delivers its results into: the platform
- * layer that asks the operator for a folder, reports whether this runtime can
- * offer that at all, and writes one run's results CSV into a granted folder with
- * nobody present.
+ * The working-folder grant of a managed exchange: the platform layer that asks
+ * the operator for the one folder a run reads its input from and a scheduled run
+ * writes its results into, reports whether this runtime can offer that at all,
+ * and writes one run's results CSV into the folder with nobody present. The input
+ * read, by its one conventioned name, is {@link ./managedInputHandle.ts}.
  *
- * The grant is taken at SCHEDULE ENTRY and re-taken by re-pointing, never at run
- * time: `showDirectoryPicker` needs a user gesture, and a scheduled run has
- * nobody to make one. At run time the permission is queried and never prompted,
- * through the same {@link ./managedInputHandle.ts} permission layer the input
- * handle uses, in `readwrite` mode.
+ * The grant is taken under an operator gesture -- where the exchange is put on
+ * a schedule, or on the run surface -- never at run time: `showDirectoryPicker`
+ * needs a user gesture, and a scheduled run has nobody to make one. At run time
+ * the permission is queried and never prompted, through the permission layer in
+ * {@link ./managedInputHandle.ts}, in `readwrite` mode for the results write.
+ *
+ * The folder is never enumerated: the results write looks up and creates only
+ * the one name it writes, and removes only an entry that write created.
  *
  * Delivery is total: every outcome classifies rather than throwing
  * ({@link ResultsDelivery}), because the run it belongs to has already rotated
@@ -32,7 +36,7 @@ import type {
 
 /** The directory picker the File System Access API offers, which the DOM lib does
  * not type. Declared locally, and reached only behind
- * {@link outputDirectoryGrantSupported}'s runtime feature check. */
+ * {@link workingDirectoryGrantSupported}'s runtime feature check. */
 interface DirectoryPicker {
   showDirectoryPicker?: (options: {
     mode: "read" | "readwrite";
@@ -43,28 +47,28 @@ interface DirectoryPicker {
 
 /** The picker's `id`, so the browser reopens this app's folder grant where the
  * operator last took it rather than at an unrelated default. */
-const OUTPUT_DIRECTORY_PICKER_ID = "alcove-results";
+const WORKING_DIRECTORY_PICKER_ID = "alcove-exchange-folder";
 
 /**
- * Whether this runtime can take an output-folder grant at all: the directory
- * picker exists. A `false` is what routes the schedule-entry surface to state
- * that this browser offers no folder grant, so every scheduled run's results are
- * kept in the browser instead. Never throws, so it is safe under SSR and on older
- * engines.
+ * Whether this runtime can take a working-folder grant at all: the directory
+ * picker exists. A `false` is what routes the surfaces to state that this
+ * browser offers no folder grant, so each run is attended and the operator
+ * chooses the input file for it. Never throws, so it is safe under SSR and on
+ * older engines.
  */
-export function outputDirectoryGrantSupported(): boolean {
+export function workingDirectoryGrantSupported(): boolean {
   return (
     typeof (globalThis as DirectoryPicker).showDirectoryPicker === "function"
   );
 }
 
 /**
- * Whether a record's stored output-folder grant can be followed in this runtime:
+ * Whether a record's stored working-folder grant can be followed in this runtime:
  * a handle is held AND this engine has directory handles to follow it with. Both
  * halves are required, so the run path and the schedule surface decide it
  * identically.
  */
-export function storedOutputDirectoryUsable(
+export function storedWorkingDirectoryUsable(
   handle: FileSystemDirectoryHandle | undefined,
 ): boolean {
   return (
@@ -74,17 +78,18 @@ export function storedOutputDirectoryUsable(
 }
 
 /**
- * Ask the operator for the folder a scheduled run writes its results into, in
- * `readwrite` mode so the grant covers the write the run will make. Resolves
+ * Ask the operator for the exchange's working folder, in `readwrite` mode so the
+ * one grant covers both the input read and the results write. Resolves
  * `undefined` where the operator dismissed the picker, which is not a failure.
  *
  * MUST be called from a user gesture: the picker refuses otherwise, which is the
- * whole reason the grant is taken at schedule entry rather than at run time.
+ * whole reason the grant is taken while the operator is present rather than at
+ * run time.
  *
  * @throws if this runtime has no directory picker, or the picker refused for any
  *   reason other than the operator dismissing it.
  */
-export async function chooseManagedOutputDirectory(): Promise<
+export async function chooseManagedWorkingDirectory(): Promise<
   FileSystemDirectoryHandle | undefined
 > {
   const picker = (globalThis as DirectoryPicker).showDirectoryPicker;
@@ -93,7 +98,7 @@ export async function chooseManagedOutputDirectory(): Promise<
   try {
     return await picker({
       mode: "readwrite",
-      id: OUTPUT_DIRECTORY_PICKER_ID,
+      id: WORKING_DIRECTORY_PICKER_ID,
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") return undefined;
@@ -176,7 +181,7 @@ async function dropCreatedEntry(
  * entry before any byte reaches it, so the empty file is removed rather than left
  * standing for results the caller then keeps in the browser.
  */
-export async function writeResultsToOutputDirectory(
+export async function writeResultsToWorkingDirectory(
   directory: FileSystemDirectoryHandle,
   fileName: string,
   csv: Blob,

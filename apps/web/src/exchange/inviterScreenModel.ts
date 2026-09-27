@@ -122,11 +122,6 @@ export interface InviterScreenState {
   consoleSourceDelimiter: string | undefined;
   /** The retained browser File the mint re-parses at its fail-closed parse boundary. */
   sourceFile: File | undefined;
-  /** The File System Access handle a drop attached to the selected file, where the
-   * platform yielded one; captured so a managed deposit can persist a reusable
-   * pointer to the input without a second picker dialog. Absent for a
-   * click-selected file, a browser without the API, and the in-memory sample. */
-  sourceHandle: FileSystemFileHandle | undefined;
   /** The draft terms seeded from the file and edited by every step-2 and step-3
    * control; sealed once an invitation is minted from them. */
   editor: InviterEditor | undefined;
@@ -267,7 +262,6 @@ export const INVITER_SCREEN_INITIAL: InviterScreenState = {
   consoleSource: undefined,
   consoleSourceDelimiter: undefined,
   sourceFile: undefined,
-  sourceHandle: undefined,
   editor: undefined,
   intakeAlert: undefined,
   sanitizedNotice: undefined,
@@ -320,7 +314,6 @@ export type InviterScreenAction =
       type: "file-acquired";
       acquired: AcquiredCsv;
       file: File;
-      handle?: FileSystemFileHandle;
       editor: InviterEditor;
       notice?: AlertContent;
       alert?: AlertContent;
@@ -459,7 +452,6 @@ const NO_FILE = {
   consoleSource: undefined,
   consoleSourceDelimiter: undefined,
   sourceFile: undefined,
-  sourceHandle: undefined,
   editor: undefined,
   demoActive: false,
 } as const;
@@ -579,7 +571,6 @@ function applyAction(
         sanitizedNotice: action.notice,
         acquired: action.acquired,
         sourceFile: action.file,
-        sourceHandle: action.handle,
         editor: action.editor,
         savedExchange: undefined,
         intakeAlert: action.alert,

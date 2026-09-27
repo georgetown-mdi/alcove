@@ -216,8 +216,8 @@ export type ManagedExchangeRunOutcome =
   "succeeded" | "failed" | "desynced" | "missed" | "skipped";
 
 /** For a non-succeeded outcome, the kind of failure. Closed enum: the five benign
- * pre-run problems -- an `"input"` problem (the file missing, unreadable, or gone
- * from under its handle), a `"terms-shortfall"` refusal (the file cannot satisfy
+ * pre-run problems -- an `"input"` problem (the file missing from the working
+ * folder, or unreadable), a `"terms-shortfall"` refusal (the file cannot satisfy
  * every linkage key the standing terms declare), a `"consent"` refusal (this
  * run's outbound disclosure is not the set this exchange recorded agreeing to
  * send), a `"handed-off"` refusal (an export gave this device's copy away, so
@@ -368,23 +368,17 @@ export interface ManagedExchangeRecord {
    * them has no side to record. */
   side?: ManagedExchangeSide;
   /**
-   * A persisted pointer to the operator's input file, held where the File System
-   * Access API exists. A reference, never a copy: no input content or row value
-   * persists. Absent on browsers without the API and in any imported record (the
-   * handle is a device- and profile-local platform object stored by structured
-   * clone, with no file serialization).
+   * A persisted pointer to the exchange's working folder, held where the File
+   * System Access API exists. A run reads its input from the one file there named
+   * `input.csv` (`MANAGED_INPUT_FILE_NAME`, ./managedInputHandle.ts), resolved
+   * afresh each run, and a run with nobody present writes its results CSV beside
+   * it; the folder is never enumerated. A reference, never a copy: no input
+   * content or row value persists. Taken under an operator gesture, never at run
+   * time (the picker needs one). Absent on browsers without the API and in any
+   * imported record (the handle is a device- and profile-local platform object
+   * stored by structured clone, with no serialization).
    */
-  inputFileHandle?: FileSystemFileHandle;
-  /**
-   * A persisted pointer to the folder the operator granted for a scheduled run's
-   * results, held where the File System Access API exists. A run with nobody
-   * present writes its results CSV there; an absent, unhonoured, or revoked grant
-   * parks the results in the browser instead. Taken at schedule entry and by
-   * re-pointing, never at run time (the picker needs a gesture). Absent on
-   * browsers without the API and in any imported record, for the same reason
-   * {@link inputFileHandle} is.
-   */
-  outputDirectoryHandle?: FileSystemDirectoryHandle;
+  workingDirectoryHandle?: FileSystemDirectoryHandle;
   /** The current rotated shared secret (base64url, 43 chars / 32 bytes), matching
    * {@link SHARED_SECRET_REGEX}. The one at-rest secret in the record.
    *
@@ -589,10 +583,10 @@ export const keyFileFieldsSchema: ZodType<ManagedExchangeKeyFields> = z
 /**
  * The record validator. The interface is defined first and the schema derived as
  * a `z.ZodType<ManagedExchangeRecord>`, per the repo's validation convention. The
- * two handles are validated only for their presence, not their structure: a
- * `FileSystemFileHandle` and a `FileSystemDirectoryHandle` are opaque platform
- * objects IndexedDB stores by structured clone, so there is no serializable shape
- * to assert -- the schema treats each as an optional unknown, and the
+ * folder handle is validated only for its presence, not its structure: a
+ * `FileSystemDirectoryHandle` is an opaque platform object IndexedDB stores by
+ * structured clone, so there is no serializable shape to assert -- the schema
+ * treats it as an optional unknown, and the
  * no-input-content invariant is a property of the type (a handle is a pointer),
  * not a runtime check.
  *
@@ -618,8 +612,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     label: z.string().check(maxCodeUnits(MAX_LABEL_LENGTH)),
     exchangeFile: persistedExchangeFileSchema,
     side: z.enum(["inviter", "acceptor"]).optional(),
-    inputFileHandle: z.custom<FileSystemFileHandle>().optional(),
-    outputDirectoryHandle: z.custom<FileSystemDirectoryHandle>().optional(),
+    workingDirectoryHandle: z.custom<FileSystemDirectoryHandle>().optional(),
     sharedSecret: z.string().regex(SHARED_SECRET_REGEX).optional(),
     expires: z.iso.datetime().optional(),
     tokenMaxAgeDays: tokenMaxAgeDaysSchema.optional(),
@@ -635,8 +628,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.schedule === undefined &&
         record.lastRun === undefined &&
         record.rotationInFlightSince === undefined &&
-        record.inputFileHandle === undefined &&
-        record.outputDirectoryHandle === undefined),
+        record.workingDirectoryHandle === undefined),
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
@@ -822,7 +814,7 @@ export interface ManagedExchangeDiagnosticEssentials {
  * run, and the last-run instant, and nothing else. Structurally incapable of
  * returning secret material: it reads named scalar fields off the validated
  * record into a {@link ManagedExchangeDiagnosticEssentials}, so the
- * `sharedSecret`, the document, and the input handle never leave this
+ * `sharedSecret`, the document, and the folder handle never leave this
  * function. Full record validation runs first, so a value that would fail
  * {@link parseManagedExchangeRecord} throws here exactly as it would on the
  * strict read; the caller catches that to mark the entry unreadable.
@@ -925,10 +917,8 @@ export interface NewManagedExchange {
    * record, which holds settings to edit and export and runs nothing here (see
    * {@link ManagedExchangeRecord.sharedSecret}). */
   sharedSecret?: string;
-  /** An input-file handle pointer, when the platform provides one. */
-  inputFileHandle?: FileSystemFileHandle;
-  /** An output-folder grant, when the operator has already taken one. */
-  outputDirectoryHandle?: FileSystemDirectoryHandle;
+  /** A working-folder grant, when the operator has already taken one. */
+  workingDirectoryHandle?: FileSystemDirectoryHandle;
   /** The max-token-age policy, when the operator opts in. */
   tokenMaxAgeDays?: number;
   /** The `expires` stamp, when a policy is already in force. */
@@ -969,11 +959,8 @@ export function buildManagedExchangeRecord(
     ...(fields.sharedSecret !== undefined
       ? { sharedSecret: fields.sharedSecret }
       : {}),
-    ...(fields.inputFileHandle !== undefined
-      ? { inputFileHandle: fields.inputFileHandle }
-      : {}),
-    ...(fields.outputDirectoryHandle !== undefined
-      ? { outputDirectoryHandle: fields.outputDirectoryHandle }
+    ...(fields.workingDirectoryHandle !== undefined
+      ? { workingDirectoryHandle: fields.workingDirectoryHandle }
       : {}),
     ...(fields.tokenMaxAgeDays !== undefined
       ? { tokenMaxAgeDays: fields.tokenMaxAgeDays }
@@ -1430,45 +1417,23 @@ export function applyManagedExchangeScheduleAdvance(
 }
 
 /**
- * Apply an input-file handle to a record, producing a validated new record with
- * only `inputFileHandle` changed -- the document, the secret, and the bookkeeping
- * remain untouched. A `FileSystemFileHandle` sets (or re-points) the
- * handle; `null` drops it. This is the field-scoped write the save flow uses to
- * persist a handle and the surfaces use to re-point one after a missing-file
- * failure; separate from a rotation or a local edit so persisting a handle cannot
- * hold a stale secret or a stale document back over a concurrent write. The input
- * record is not mutated.
+ * Apply a working-folder grant to a record, producing a validated new record with
+ * only `workingDirectoryHandle` changed. A `FileSystemDirectoryHandle` sets (or
+ * re-points) the grant; `null` drops it, which leaves no run of this exchange
+ * able to read its input with nobody present. Field-scoped, separate from a
+ * rotation or a local edit, so taking a folder grant cannot hold a stale secret
+ * or a stale document back over a concurrent write. The input record is not
+ * mutated.
  *
  * @throws {ZodError} if the resulting record is invalid.
  */
-export function applyManagedExchangeInputHandle(
-  record: ManagedExchangeRecord,
-  handle: FileSystemFileHandle | null,
-): ManagedExchangeRecord {
-  const next: ManagedExchangeRecord = { ...record };
-  if (handle === null) delete next.inputFileHandle;
-  else next.inputFileHandle = handle;
-  return parseManagedExchangeRecord(next);
-}
-
-/**
- * Apply an output-folder grant to a record, producing a validated new record with
- * only `outputDirectoryHandle` changed. A `FileSystemDirectoryHandle` sets (or
- * re-points) the grant; `null` drops it, which returns this exchange's scheduled
- * runs to keeping their results in the browser. The field-scoped counterpart of
- * {@link applyManagedExchangeInputHandle}, and field-scoped for the same reason:
- * taking a folder grant must not hold a stale secret or a stale document back
- * over a concurrent write. The input record is not mutated.
- *
- * @throws {ZodError} if the resulting record is invalid.
- */
-export function applyManagedExchangeOutputDirectory(
+export function applyManagedExchangeWorkingDirectory(
   record: ManagedExchangeRecord,
   handle: FileSystemDirectoryHandle | null,
 ): ManagedExchangeRecord {
   const next: ManagedExchangeRecord = { ...record };
-  if (handle === null) delete next.outputDirectoryHandle;
-  else next.outputDirectoryHandle = handle;
+  if (handle === null) delete next.workingDirectoryHandle;
+  else next.workingDirectoryHandle = handle;
   return parseManagedExchangeRecord(next);
 }
 

@@ -510,14 +510,14 @@ describe("scheduleView", () => {
     expect(view?.attendanceNote).toMatch(/nobody present/i);
   });
 
-  test("holding a usable input handle raises no re-selection note", () => {
+  test("holding a usable working folder raises no re-selection note", () => {
     expect(
       scheduleView(record("inviter", { schedule: daily }), true, false, NOW)
         ?.inputReselectionNote,
     ).toBeUndefined();
   });
 
-  test("holding no input handle states that nothing can run with nobody present", () => {
+  test("holding no working folder states that nothing can run with nobody present", () => {
     const view = scheduleView(
       record("inviter", { schedule: daily }),
       false,
@@ -525,12 +525,13 @@ describe("scheduleView", () => {
       NOW,
     );
     expect(view?.inputReselectionNote).toMatch(/nobody present/i);
-    // It points at the attended path -- choosing the file at the run itself --
-    // rather than at a re-pointing control this surface does not have.
-    expect(view?.inputReselectionNote).toMatch(/choose it here when you run/i);
+    // It points at both ways forward: choosing the folder, and running the
+    // exchange with the operator there.
+    expect(view?.inputReselectionNote).toMatch(/choose the folder/i);
+    expect(view?.inputReselectionNote).toMatch(/run this exchange yourself/i);
   });
 
-  test("an installed runtime holding no input handle still states the standing bar", () => {
+  test("an installed runtime holding no working folder still states the standing bar", () => {
     // The two readings compose rather than replacing each other: an installed app
     // meets the windows, and a record it cannot read the input for is one it
     // cannot meet them for.

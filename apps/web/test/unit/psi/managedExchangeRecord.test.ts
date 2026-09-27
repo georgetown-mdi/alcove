@@ -8,21 +8,22 @@ import {
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
 
+import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
+
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   MAX_LABEL_LENGTH,
   MAX_SCHEDULE_INTERVAL_DAYS,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
-  applyManagedExchangeInputHandle,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
-  applyManagedExchangeOutputDirectory,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
   applyManagedExchangeScheduleAdvance,
   applyManagedExchangeStandingConditionCleared,
+  applyManagedExchangeWorkingDirectory,
   buildManagedExchangeRecord,
   channelThisAppDoesNotRun,
   composeManagedExchangeFile,
@@ -213,7 +214,7 @@ describe("buildManagedExchangeRecord", () => {
   test("round-trips through parse unchanged", () => {
     const record = buildManagedExchangeRecord(
       newExchange({
-        inputFileHandle: { name: "records.csv" } as FileSystemFileHandle,
+        workingDirectoryHandle: { name: "work" } as FileSystemDirectoryHandle,
         tokenMaxAgeDays: 90,
         expires: "2026-04-06T14:00:00.000Z",
         schedule,
@@ -227,7 +228,7 @@ describe("buildManagedExchangeRecord", () => {
     expect(record).not.toHaveProperty("tokenMaxAgeDays");
     expect(record).not.toHaveProperty("expires");
     expect(record).not.toHaveProperty("schedule");
-    expect(record).not.toHaveProperty("inputFileHandle");
+    expect(record).not.toHaveProperty("workingDirectoryHandle");
     expect(record).not.toHaveProperty("lastRun");
   });
 
@@ -260,24 +261,51 @@ describe("buildManagedExchangeRecord", () => {
 });
 
 describe("no-input-content invariant", () => {
-  test("the record holds only a handle pointer, never file contents", () => {
-    const handle = { name: "records.csv" } as FileSystemFileHandle;
+  test("the record holds only a folder pointer, never file contents", () => {
+    const folder = { name: "work" } as FileSystemDirectoryHandle;
     const record = buildManagedExchangeRecord(
-      newExchange({ inputFileHandle: handle }),
+      newExchange({ workingDirectoryHandle: folder }),
     );
-    expect(record.inputFileHandle).toBe(handle);
+    expect(record.workingDirectoryHandle).toBe(folder);
     // The record's own fields hold no row value or file content: only the
     // pointer, the terms' column shape, the connection, and the secret.
     expect(Object.keys(record).sort()).toEqual([
       "exchangeFile",
       "id",
-      "inputFileHandle",
       "label",
       "schemaVersion",
       "sharedSecret",
       "side",
       "standingCondition",
+      "workingDirectoryHandle",
     ]);
+  });
+
+  test("a stored record holding a separate input-file pointer reads without it", () => {
+    // A record saved while the input was a pointer of its own reads as one
+    // holding no folder, so its surfaces ask for the folder once and the old
+    // pointer is never followed.
+    const stored = {
+      ...buildManagedExchangeRecord(newExchange({ schedule })),
+      inputFileHandle: { name: "records.csv" },
+    };
+    const record = parseManagedExchangeRecord(stored);
+    expect(record).not.toHaveProperty("inputFileHandle");
+    expect(record).not.toHaveProperty("workingDirectoryHandle");
+    expect(record.schedule).toEqual(schedule);
+  });
+
+  test("a stored record holding a separate results-folder pointer reads without it", () => {
+    const stored = {
+      ...buildManagedExchangeRecord(newExchange({ schedule })),
+      outputDirectoryHandle: { name: "results" },
+    };
+    const record = parseManagedExchangeRecord(stored);
+    expect(record).not.toHaveProperty("outputDirectoryHandle");
+    expect(record).not.toHaveProperty("workingDirectoryHandle");
+    expect(storedWorkingDirectoryUsable(record.workingDirectoryHandle)).toBe(
+      false,
+    );
   });
 });
 
@@ -699,87 +727,43 @@ describe("applyManagedExchangeReinviteRotation", () => {
   });
 });
 
-describe("applyManagedExchangeInputHandle", () => {
-  // A FileSystemFileHandle is an opaque platform object the schema holds as an
-  // optional unknown (no runtime shape assertion; see the schema note), so a
-  // stand-in object exercises the set path in Node -- the real handle's structured-
-  // clone round-trip is the browser suite's.
-  const fakeHandle = { kind: "file", name: "input.csv" } as unknown as never;
-
-  test("sets the handle, touching nothing else", () => {
-    const record = buildManagedExchangeRecord(
-      newExchange({ tokenMaxAgeDays: 90, schedule }),
-    );
-    const pointed = applyManagedExchangeInputHandle(record, fakeHandle);
-    expect(pointed.inputFileHandle).toBe(fakeHandle);
-    expect(pointed.sharedSecret).toBe(record.sharedSecret);
-    expect(pointed.exchangeFile).toEqual(record.exchangeFile);
-    expect(pointed.label).toBe(record.label);
-    expect(pointed.schedule).toEqual(schedule);
-  });
-
-  test("re-points to a replacement handle", () => {
-    const record = applyManagedExchangeInputHandle(
-      buildManagedExchangeRecord(newExchange()),
-      fakeHandle,
-    );
-    const other = { kind: "file", name: "other.csv" } as unknown as never;
-    expect(applyManagedExchangeInputHandle(record, other).inputFileHandle).toBe(
-      other,
-    );
-  });
-
-  test("a null drops the handle, deleting the key", () => {
-    const record = applyManagedExchangeInputHandle(
-      buildManagedExchangeRecord(newExchange()),
-      fakeHandle,
-    );
-    const dropped = applyManagedExchangeInputHandle(record, null);
-    expect(dropped).not.toHaveProperty("inputFileHandle");
-  });
-
-  test("does not mutate the input record", () => {
-    const record = buildManagedExchangeRecord(newExchange());
-    applyManagedExchangeInputHandle(record, fakeHandle);
-    expect(record.inputFileHandle).toBeUndefined();
-  });
-});
-
-describe("applyManagedExchangeOutputDirectory", () => {
-  // Opaque to the schema for the same reason the input handle is; the real
-  // handle's structured-clone round-trip is the browser suite's.
+describe("applyManagedExchangeWorkingDirectory", () => {
+  // A FileSystemDirectoryHandle is an opaque platform object the schema holds as
+  // an optional unknown (no runtime shape assertion; see the schema note), so a
+  // stand-in object exercises the set path in Node -- the real handle's
+  // structured-clone round-trip is the browser suite's.
   const folder = { kind: "directory", name: "Results" } as unknown as never;
 
   test("sets the grant, touching nothing else", () => {
     const record = buildManagedExchangeRecord(
       newExchange({ tokenMaxAgeDays: 90, schedule }),
     );
-    const granted = applyManagedExchangeOutputDirectory(record, folder);
-    expect(granted.outputDirectoryHandle).toBe(folder);
+    const granted = applyManagedExchangeWorkingDirectory(record, folder);
+    expect(granted.workingDirectoryHandle).toBe(folder);
     expect(granted.sharedSecret).toBe(record.sharedSecret);
     expect(granted.exchangeFile).toEqual(record.exchangeFile);
     expect(granted.schedule).toEqual(schedule);
-    expect(granted.inputFileHandle).toBeUndefined();
   });
 
   test("re-points to a replacement folder, and a null drops the grant", () => {
-    const record = applyManagedExchangeOutputDirectory(
+    const record = applyManagedExchangeWorkingDirectory(
       buildManagedExchangeRecord(newExchange()),
       folder,
     );
     const other = { kind: "directory", name: "Other" } as unknown as never;
     expect(
-      applyManagedExchangeOutputDirectory(record, other).outputDirectoryHandle,
+      applyManagedExchangeWorkingDirectory(record, other)
+        .workingDirectoryHandle,
     ).toBe(other);
     expect(
-      applyManagedExchangeOutputDirectory(record, null),
-    ).not.toHaveProperty("outputDirectoryHandle");
+      applyManagedExchangeWorkingDirectory(record, null),
+    ).not.toHaveProperty("workingDirectoryHandle");
   });
 
   test("does not mutate the input record", () => {
     const record = buildManagedExchangeRecord(newExchange());
-    applyManagedExchangeOutputDirectory(record, folder);
-    expect(record.outputDirectoryHandle).toBeUndefined();
+    applyManagedExchangeWorkingDirectory(record, folder);
+    expect(record.workingDirectoryHandle).toBeUndefined();
   });
 });
 
@@ -1828,7 +1812,7 @@ describe("the configuration-only record", () => {
       { expires: "2026-04-06T14:00:00.000Z" },
       { schedule },
       { lastRun: { at: "2026-03-07T14:00:00.000Z", outcome: "succeeded" } },
-      { inputFileHandle: { name: "records.csv" } as FileSystemFileHandle },
+      { workingDirectoryHandle: { name: "work" } as FileSystemDirectoryHandle },
     ])
       expect(() =>
         parseManagedExchangeRecord({

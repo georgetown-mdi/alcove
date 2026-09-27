@@ -100,7 +100,7 @@ interface ManagedRerunCarried {
 }
 
 /** How a re-run reads its input this run, and how it is attended. `source` is the
- * per-run input (a persisted handle or a re-selected file); the wiring reads and
+ * per-run input (the working folder or a re-selected file); the wiring reads and
  * validates it through {@link acquireValidatedManagedInput} before any
  * connection. */
 export interface ManagedRunDriverConfig {
@@ -111,7 +111,7 @@ export interface ManagedRunDriverConfig {
    * webrtc dispatchability check -- the signaling location is the app's own; see
    * {@link beginManagedRendezvous}). */
   record: RunnableManagedExchangeRecord;
-  /** The per-run input source: read through the persisted handle (attended may
+  /** The per-run input source: read from the working folder (attended may
    * prompt once for a gone permission), or an operator-re-selected file. Its
    * contents are never taken from the record. */
   source: ManagedInputSource;

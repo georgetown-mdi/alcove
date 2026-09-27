@@ -134,7 +134,7 @@ describe("export/import round-trip against the real store", () => {
     expect(installed.id).not.toBe(source.id);
     expect(installed.sharedSecret).toBe(source.sharedSecret);
     expect(installed.exchangeFile).toEqual(source.exchangeFile);
-    expect(installed).not.toHaveProperty("inputFileHandle");
+    expect(installed).not.toHaveProperty("workingDirectoryHandle");
     // It is the one owner in the store.
     const all = await listManagedExchanges();
     expect(all.map((r) => r.id)).toEqual([installed.id]);
@@ -1144,21 +1144,15 @@ describe("a record this build cannot parse is skipped, not fatal to the import",
 
   test("a parseable migration-spent record is revived beside an invalid one", async () => {
     // The recovery the skip is for: the artifact's own migration-spent record parses,
-    // so it is revived in place -- same id, and the input handle and output-folder
-    // grant it already held -- while the invalid record beside it is skipped and left
-    // for the operator to discard.
+    // so it is revived in place -- same id, and the working-folder grant it
+    // already held -- while the invalid record beside it is skipped and left for
+    // the operator to discard.
     const root = await navigator.storage.getDirectory();
-    const inputFile = await root.getFileHandle("revived-input.csv", {
-      create: true,
-    });
-    const outputFolder = await root.getDirectoryHandle("revived-results", {
+    const workingFolder = await root.getDirectoryHandle("revived-folder", {
       create: true,
     });
     const source = await createRunnableExchange(
-      newExchange({
-        inputFileHandle: inputFile,
-        outputDirectoryHandle: outputFolder,
-      }),
+      newExchange({ workingDirectoryHandle: workingFolder }),
     );
     const bytes = serializeManagedExchangeArtifact(
       encodeManagedExchangeArtifact(source),
@@ -1183,17 +1177,15 @@ describe("a record this build cannot parse is skipped, not fatal to the import",
 
     expect(revived.id).toBe(source.id);
     expect(revived.sharedSecret).toBe(source.sharedSecret);
-    expect(await revived.inputFileHandle?.isSameEntry(inputFile)).toBe(true);
-    expect(await revived.outputDirectoryHandle?.isSameEntry(outputFolder)).toBe(
-      true,
-    );
-    // The artifact states its source held both grants, so the empty report below is
-    // the revive keeping them rather than the markers being absent.
+    expect(
+      await revived.workingDirectoryHandle?.isSameEntry(workingFolder),
+    ).toBe(true);
+    // The artifact states its source held the folder, so the empty report below is
+    // the revive keeping it rather than the marker being absent.
     expect(importManagedExchangeArtifact(bytes).heldGrants).toEqual([
-      "input-file",
-      "output-folder",
+      "working-folder",
     ]);
-    // Both grants are still here, so the import asks for neither of them again.
+    // The grant is still here, so the import does not ask for it again.
     expect(missingGrants).toEqual([]);
     // The spend is cleared and the revive stamped its import evidence.
     const local = await getManagedLocalState(source.id);
@@ -1207,8 +1199,7 @@ describe("a record this build cannot parse is skipped, not fatal to the import",
     // The invalid record is left in place and still reported.
     expect(await unreadableIds()).toEqual(["zzz-bad-record"]);
 
-    await root.removeEntry("revived-input.csv");
-    await root.removeEntry("revived-results", { recursive: true });
+    await root.removeEntry("revived-folder", { recursive: true });
   });
 });
 

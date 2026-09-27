@@ -50,11 +50,11 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
-/** A handle the runner accepts as the record's input pointer. Nothing under test
- * reads through it: every run's phases are supplied by this file. */
-async function inputHandle(): Promise<FileSystemFileHandle> {
+/** A folder the runner accepts as the record's working folder. Nothing under
+ * test reads from it: every run's phases are supplied by this file. */
+async function workingFolder(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return await root.getFileHandle("exclusion-input.csv", { create: true });
+  return await root.getDirectoryHandle("exclusion-folder", { create: true });
 }
 
 /** A record whose schedule window is open now, so one tick occupies it. */
@@ -68,7 +68,7 @@ async function recordWithOpenWindow(): Promise<ManagedExchangeRecord> {
     }),
     side: "inviter",
     sharedSecret: generateSharedSecret(),
-    inputFileHandle: await inputHandle(),
+    workingDirectoryHandle: await workingFolder(),
     schedule: {
       anchor: openedAt,
       intervalDays: 7,

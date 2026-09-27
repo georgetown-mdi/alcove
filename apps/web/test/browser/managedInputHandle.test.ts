@@ -12,22 +12,22 @@ import {
 
 import {
   HandlePermissionError,
+  MANAGED_INPUT_FILE_NAME,
+  ManagedInputFileMissingError,
   acquireManagedInput,
   acquireValidatedManagedInput,
-  capturedInputHandle,
   ensureHandlePermission,
-  fileSystemAccessSupported,
-  storedInputHandleUsable,
 } from "@psi/managed/managedInputHandle";
 import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
-  persistManagedExchangeInputHandle,
+  persistManagedExchangeWorkingDirectory,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { runManagedExchange } from "@psi/managed/managedExchangeRun";
+import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";
 
 import type { ExchangeSpec, WebRTCExchangeLocator } from "@alcove/core";
 import type {
@@ -36,12 +36,13 @@ import type {
 } from "@psi/managed/managedInputHandle";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
-// The platform half of the input-file handle lifecycle, exercised against real
-// Chromium: reading a File through a FileSystemFileHandle at run start, the
-// read-through-not-snapshot property, the benign missing-file and column-shape
-// failures, and the run-seam composition (the input guard gating the handshake).
-// The permission layer below is injected since an OPFS handle has no real
-// queryPermission or requestPermission to exercise the non-granted and prompt cases.
+// The platform half of the working folder's input read, exercised against real
+// Chromium: reading the one conventioned name from a FileSystemDirectoryHandle
+// at run start, the read-through-not-snapshot property, the benign missing-file
+// and column-shape failures, and the run-seam composition (the input guard
+// gating the handshake). The permission layer below is injected since an OPFS
+// handle has no real queryPermission or requestPermission to exercise the
+// non-granted and prompt cases.
 
 const webrtcLocator: WebRTCExchangeLocator = {
   channel: "webrtc",
@@ -87,19 +88,32 @@ const CONFORMING_HEADER = "ssn,first_name,last_name,date_of_birth\n";
 const CONFORMING_ROW = "123456789,ADA,LOVELACE,01/01/1990\n";
 const DRIFTED_CSV = "unrelated_a,unrelated_b\n1,2\n";
 
-/** Write `content` to an origin-private-file-system file and return its handle.
- * OPFS handles are structured-cloneable and support getFile(), so they stand in
- * for a picker handle for everything except the permission extension. */
-async function writeOpfsFile(
+/** Make an origin-private-file-system folder named `name`, holding `input` as
+ * its input file where given, and return its handle. OPFS handles are
+ * structured-cloneable and support the lookups a run makes, so they stand in for
+ * a picker handle for everything except the permission extension. */
+async function opfsFolder(
   name: string,
-  content: string,
-): Promise<FileSystemFileHandle> {
+  input?: string,
+): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  const handle = await root.getFileHandle(name, { create: true });
+  const folder = await root.getDirectoryHandle(name, { create: true });
+  if (input !== undefined) await writeInput(folder, input);
+  return folder;
+}
+
+/** Put `content` in `folder` under the conventioned input name, replacing what
+ * stood there -- the operator's refresh between runs. */
+async function writeInput(
+  folder: FileSystemDirectoryHandle,
+  content: string,
+): Promise<void> {
+  const handle = await folder.getFileHandle(MANAGED_INPUT_FILE_NAME, {
+    create: true,
+  });
   const writable = await handle.createWritable();
   await writable.write(content);
   await writable.close();
-  return handle;
 }
 
 /** A permission seam that reports a fixed state and records whether it prompted,
@@ -121,12 +135,12 @@ function fakePermission(
 }
 
 const OPFS_NAMES: Array<string> = [];
-async function trackedOpfsFile(
+async function trackedFolder(
   name: string,
-  content: string,
-): Promise<FileSystemFileHandle> {
+  input?: string,
+): Promise<FileSystemDirectoryHandle> {
   OPFS_NAMES.push(name);
-  return writeOpfsFile(name, content);
+  return opfsFolder(name, input);
 }
 
 beforeEach(async () => {
@@ -138,42 +152,33 @@ afterEach(async () => {
   const root = await navigator.storage.getDirectory();
   for (const name of OPFS_NAMES.splice(0)) {
     try {
-      await root.removeEntry(name);
+      await root.removeEntry(name, { recursive: true });
     } catch {
       // Already gone (a test that removed the entry itself).
     }
   }
 });
 
-describe("fileSystemAccessSupported", () => {
-  test("is true in Chromium, which has FileSystemFileHandle", () => {
-    expect(fileSystemAccessSupported()).toBe(true);
+describe("storedWorkingDirectoryUsable", () => {
+  test("a held folder is usable where the API exists", async () => {
+    const folder = await trackedFolder("usable-folder");
+    expect(storedWorkingDirectoryUsable(folder)).toBe(true);
+  });
+
+  test("no folder held is no usable folder", () => {
+    expect(storedWorkingDirectoryUsable(undefined)).toBe(false);
   });
 });
 
-describe("storedInputHandleUsable", () => {
-  test("a held handle is a usable pointer where the API exists", async () => {
-    const handle = await trackedOpfsFile(
-      "usable-pointer.csv",
-      CONFORMING_HEADER + CONFORMING_ROW,
-    );
-    expect(storedInputHandleUsable(handle)).toBe(true);
-  });
-
-  test("no handle held is no usable pointer", () => {
-    expect(storedInputHandleUsable(undefined)).toBe(false);
-  });
-});
-
-describe("read through the handle at run start", () => {
-  test("getFile picks up replaced contents at the same path", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
+describe("read from the working folder at run start", () => {
+  test("each run reads whatever file stands under the conventioned name", async () => {
+    const folder = await trackedFolder(
+      "managed-folder",
       CONFORMING_HEADER + CONFORMING_ROW,
     );
     const first = await acquireManagedInput({
-      kind: "handle",
-      handle,
+      kind: "folder",
+      directory: folder,
       attendance: "unattended",
     });
     expect(first.columns).toEqual([
@@ -193,15 +198,13 @@ describe("read through the handle at run start", () => {
       },
     ]);
 
-    // Drop the next period's extract over the same name -- the data-refresh
-    // workflow -- and the same handle reads the new contents, no re-selection.
-    const writable = await handle.createWritable();
-    await writable.write("email_address\nada@example.org\n");
-    await writable.close();
+    // Put the next period's extract under the same name -- the data-refresh
+    // workflow -- and the same folder yields the new contents, no re-selection.
+    await writeInput(folder, "email_address\nada@example.org\n");
 
     const second = await acquireManagedInput({
-      kind: "handle",
-      handle,
+      kind: "folder",
+      directory: folder,
       attendance: "unattended",
     });
     expect(second.columns).toEqual(["email_address"]);
@@ -216,13 +219,13 @@ describe("read through the handle at run start", () => {
     // bytes, so the source is readable.
     const RLO = "\u202e";
     const PDI = "\u2069";
-    const handle = await trackedOpfsFile(
-      "managed-input-bidi.csv",
+    const folder = await trackedFolder(
+      "managed-folder-bidi",
       `ssn,first_name,la${RLO}st_name${PDI},date_of_birth\n` + CONFORMING_ROW,
     );
     const acquired = await acquireManagedInput({
-      kind: "handle",
-      handle,
+      kind: "folder",
+      directory: folder,
       attendance: "unattended",
     });
     expect(acquired.columns).toEqual([
@@ -241,19 +244,18 @@ describe("read through the handle at run start", () => {
     ]);
   });
 
-  test("a missing file fails as a benign acquire rejection", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
+  test("a folder without the input file fails as a benign acquire rejection naming both", async () => {
+    const folder = await trackedFolder(
+      "managed-folder-emptied",
       CONFORMING_HEADER + CONFORMING_ROW,
     );
-    // Remove the entry the handle points at: getFile now rejects with a not-found,
-    // the clean missing-input state -- never a desync or attack.
-    const root = await navigator.storage.getDirectory();
-    await root.removeEntry("managed-input.csv");
+    // Remove the input from the folder: the lookup now rejects with a
+    // not-found, the clean missing-input state -- never a desync or attack.
+    await folder.removeEntry(MANAGED_INPUT_FILE_NAME);
 
     const error: unknown = await acquireManagedInput({
-      kind: "handle",
-      handle,
+      kind: "folder",
+      directory: folder,
       attendance: "unattended",
     }).then(
       () => {
@@ -263,20 +265,47 @@ describe("read through the handle at run start", () => {
     );
     expect(error).toBeInstanceOf(ManagedInputError);
     expect((error as ManagedInputError).rejection.reason).toBe("acquire");
+    expect((error as ManagedInputError).cause).toBeInstanceOf(
+      ManagedInputFileMissingError,
+    );
+    expect((error as ManagedInputError).cause).toMatchObject({
+      fileName: MANAGED_INPUT_FILE_NAME,
+      folderName: "managed-folder-emptied",
+    });
+  });
+
+  test("a folder under the input name is refused as a missing file", async () => {
+    // What Chromium raises for a lookup naming a folder is the platform's own,
+    // so it is driven here rather than assumed.
+    const folder = await trackedFolder("managed-folder-mismatch");
+    await folder.getDirectoryHandle(MANAGED_INPUT_FILE_NAME, { create: true });
+    const error: unknown = await acquireManagedInput({
+      kind: "folder",
+      directory: folder,
+      attendance: "unattended",
+    }).then(
+      () => {
+        throw new Error("the acquire should have rejected");
+      },
+      (reason: unknown) => reason,
+    );
+    expect((error as ManagedInputError).cause).toBeInstanceOf(
+      ManagedInputFileMissingError,
+    );
   });
 });
 
 describe("acquireValidatedManagedInput: column-shape guard on each path", () => {
-  test("accepts a conforming file read through a handle", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
+  test("accepts a conforming file read from the folder", async () => {
+    const folder = await trackedFolder(
+      "managed-folder-conforming",
       CONFORMING_HEADER + CONFORMING_ROW,
     );
     const acquired = await acquireValidatedManagedInput(
       standingExchangeFile(),
       {
-        kind: "handle",
-        handle,
+        kind: "folder",
+        directory: folder,
         attendance: "unattended",
       },
     );
@@ -287,14 +316,14 @@ describe("acquireValidatedManagedInput: column-shape guard on each path", () => 
     // The delimiter is a caret, outside the set the parse detects from, so the
     // columns satisfy the standing terms only because the stored value reached
     // the read -- what an unattended run depends on, with nobody to choose.
-    const handle = await trackedOpfsFile(
-      "managed-input-caret.csv",
+    const folder = await trackedFolder(
+      "managed-folder-caret",
       "ssn^first_name^last_name^date_of_birth\n" +
         "123456789^ADA^LOVELACE^01/01/1990\n",
     );
     const acquired = await acquireValidatedManagedInput(
       standingExchangeFile("^"),
-      { kind: "handle", handle, attendance: "unattended" },
+      { kind: "folder", directory: folder, attendance: "unattended" },
     );
     expect(acquired.columns).toEqual([
       "ssn",
@@ -312,11 +341,11 @@ describe("acquireValidatedManagedInput: column-shape guard on each path", () => 
     ]);
   });
 
-  test("rejects a drifted file read through a handle (columns rejection)", async () => {
-    const handle = await trackedOpfsFile("drifted.csv", DRIFTED_CSV);
+  test("rejects a drifted file read from the folder (columns rejection)", async () => {
+    const folder = await trackedFolder("drifted-folder", DRIFTED_CSV);
     const error: unknown = await acquireValidatedManagedInput(
       standingExchangeFile(),
-      { kind: "handle", handle, attendance: "unattended" },
+      { kind: "folder", directory: folder, attendance: "unattended" },
     ).then(
       () => {
         throw new Error("the validated acquire should have rejected");
@@ -328,7 +357,7 @@ describe("acquireValidatedManagedInput: column-shape guard on each path", () => 
   });
 
   test("rejects a drifted re-selected file (the no-API path)", async () => {
-    // The re-selection path supplies a File directly rather than a handle; the
+    // The re-selection path supplies a File directly rather than a folder; the
     // same column guard applies.
     const file = new File([DRIFTED_CSV], "drifted.csv", { type: "text/csv" });
     const error: unknown = await acquireValidatedManagedInput(
@@ -361,20 +390,14 @@ describe("acquireValidatedManagedInput: column-shape guard on each path", () => 
 
 describe("permission layer (injected)", () => {
   test("the unattended path proceeds on an existing grant, never prompting", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
-      CONFORMING_HEADER,
-    );
+    const handle = await trackedFolder("permission-folder", CONFORMING_HEADER);
     const permission = fakePermission("granted");
     await ensureHandlePermission(handle, "unattended", "read", permission);
     expect(permission.requested).toBe(false);
   });
 
   test("the unattended path fails on a non-granted state without prompting", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
-      CONFORMING_HEADER,
-    );
+    const handle = await trackedFolder("permission-folder", CONFORMING_HEADER);
     const permission = fakePermission("prompt");
     await expect(
       ensureHandlePermission(handle, "unattended", "read", permission),
@@ -384,20 +407,14 @@ describe("permission layer (injected)", () => {
   });
 
   test("the attended path prompts when the state is prompt and proceeds on grant", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
-      CONFORMING_HEADER,
-    );
+    const handle = await trackedFolder("permission-folder", CONFORMING_HEADER);
     const permission = fakePermission("prompt", "granted");
     await ensureHandlePermission(handle, "attended", "read", permission);
     expect(permission.requested).toBe(true);
   });
 
   test("the attended path fails when the operator denies the prompt", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
-      CONFORMING_HEADER,
-    );
+    const handle = await trackedFolder("permission-folder", CONFORMING_HEADER);
     const permission = fakePermission("prompt", "denied");
     await expect(
       ensureHandlePermission(handle, "attended", "read", permission),
@@ -406,13 +423,10 @@ describe("permission layer (injected)", () => {
   });
 
   test("a denied state fails the unattended acquire as a benign acquire rejection", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
-      CONFORMING_HEADER,
-    );
+    const handle = await trackedFolder("permission-folder", CONFORMING_HEADER);
     const permission = fakePermission("denied");
     const error: unknown = await acquireManagedInput(
-      { kind: "handle", handle, attendance: "unattended" },
+      { kind: "folder", directory: handle, attendance: "unattended" },
       permission,
     ).then(
       () => {
@@ -428,75 +442,79 @@ describe("permission layer (injected)", () => {
   });
 });
 
-describe("handle persistence and re-point", () => {
-  test("no handle is persisted where none is supplied (the unsupported-platform shape)", async () => {
-    // On a browser without the API the save flow supplies no handle; the record
-    // has none, and the first run re-selects the file.
+describe("folder persistence and re-point", () => {
+  test("no folder is persisted where none is supplied (the save-flow shape)", async () => {
+    // The save flow takes no folder; the record has none until the operator
+    // chooses one on the exchange's page.
     const created = await createManagedExchange(newExchange());
-    expect(created.inputFileHandle).toBeUndefined();
+    expect(created.workingDirectoryHandle).toBeUndefined();
     expect(
-      (await getManagedExchange(created.id))?.inputFileHandle,
+      (await getManagedExchange(created.id))?.workingDirectoryHandle,
     ).toBeUndefined();
   });
 
-  test("an imported record re-acquires a handle by re-point (the post-import path)", async () => {
-    // An imported record has no handle (the export omits it); the first run
-    // after import re-acquires one by selection, persisted through the re-point
-    // write.
+  test("a granted folder persists, and a run reads its input through the stored copy", async () => {
     const created = await createManagedExchange(newExchange());
-    expect(created.inputFileHandle).toBeUndefined();
-
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
-      CONFORMING_HEADER,
+    const folder = await trackedFolder(
+      "persisted-folder",
+      CONFORMING_HEADER + CONFORMING_ROW,
     );
-    const repointed = await persistManagedExchangeInputHandle(
-      created.id,
-      handle,
-    );
-    expect(repointed.inputFileHandle).toBeDefined();
+    await persistManagedExchangeWorkingDirectory(created.id, folder);
     const stored = await getManagedExchange(created.id);
-    expect(await stored?.inputFileHandle?.isSameEntry(handle)).toBe(true);
-    // The re-point advanced only the handle; the secret and document are intact.
+    const directory = stored?.workingDirectoryHandle;
+    expect(await directory?.isSameEntry(folder)).toBe(true);
+    // The grant advanced only the folder; the secret and document are intact.
     expect(stored?.sharedSecret).toBe(created.sharedSecret);
     expect(stored?.exchangeFile).toEqual(created.exchangeFile);
+
+    // The structured-clone copy the store hands back resolves the name itself.
+    if (directory === undefined) throw new Error("no folder was stored");
+    const acquired = await acquireManagedInput({
+      kind: "folder",
+      directory,
+      attendance: "unattended",
+    });
+    expect(acquired.columns[0]).toBe("ssn");
   });
 
-  test("re-pointing to a new handle replaces the old one, and null drops it", async () => {
-    const first = await trackedOpfsFile("first.csv", CONFORMING_HEADER);
+  test("re-pointing to a new folder replaces the old one, and null drops it", async () => {
+    const first = await trackedFolder("first-folder");
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: first }),
+      newExchange({ workingDirectoryHandle: first }),
     );
     expect(
       await (
         await getManagedExchange(created.id)
-      )?.inputFileHandle?.isSameEntry(first),
+      )?.workingDirectoryHandle?.isSameEntry(first),
     ).toBe(true);
 
-    const second = await trackedOpfsFile("second.csv", CONFORMING_HEADER);
-    await persistManagedExchangeInputHandle(created.id, second);
+    const second = await trackedFolder("second-folder");
+    await persistManagedExchangeWorkingDirectory(created.id, second);
     const afterRepoint = await getManagedExchange(created.id);
-    expect(await afterRepoint?.inputFileHandle?.isSameEntry(second)).toBe(true);
-    expect(await afterRepoint?.inputFileHandle?.isSameEntry(first)).toBe(false);
-
-    await persistManagedExchangeInputHandle(created.id, null);
     expect(
-      (await getManagedExchange(created.id))?.inputFileHandle,
+      await afterRepoint?.workingDirectoryHandle?.isSameEntry(second),
+    ).toBe(true);
+    expect(await afterRepoint?.workingDirectoryHandle?.isSameEntry(first)).toBe(
+      false,
+    );
+
+    await persistManagedExchangeWorkingDirectory(created.id, null);
+    expect(
+      (await getManagedExchange(created.id))?.workingDirectoryHandle,
     ).toBeUndefined();
   });
 });
 
 describe("run seam composition: the input guard gates the handshake", () => {
   test("a missing file records a benign input failure and never handshakes", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
+    const folder = await trackedFolder(
+      "run-folder-missing",
       CONFORMING_HEADER + CONFORMING_ROW,
     );
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: handle }),
+      newExchange({ workingDirectoryHandle: folder }),
     );
-    const root = await navigator.storage.getDirectory();
-    await root.removeEntry("managed-input.csv");
+    await folder.removeEntry(MANAGED_INPUT_FILE_NAME);
 
     let handshakeRan = false;
     const error: unknown = await runManagedExchange({
@@ -504,8 +522,8 @@ describe("run seam composition: the input guard gates the handshake", () => {
       runStartedAtMs: Date.now(),
       acquireInput: () =>
         acquireValidatedManagedInput(created.exchangeFile, {
-          kind: "handle",
-          handle,
+          kind: "folder",
+          directory: folder,
           attendance: "unattended",
         }),
       handshake: () => {
@@ -535,9 +553,9 @@ describe("run seam composition: the input guard gates the handshake", () => {
   });
 
   test("a column-shape rejection records the terms-shortfall failure and never handshakes", async () => {
-    const handle = await trackedOpfsFile("drifted.csv", DRIFTED_CSV);
+    const folder = await trackedFolder("run-folder-drifted", DRIFTED_CSV);
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: handle }),
+      newExchange({ workingDirectoryHandle: folder }),
     );
 
     let handshakeRan = false;
@@ -546,8 +564,8 @@ describe("run seam composition: the input guard gates the handshake", () => {
       runStartedAtMs: Date.now(),
       acquireInput: () =>
         acquireValidatedManagedInput(created.exchangeFile, {
-          kind: "handle",
-          handle,
+          kind: "folder",
+          directory: folder,
           attendance: "unattended",
         }),
       handshake: () => {
@@ -576,12 +594,12 @@ describe("run seam composition: the input guard gates the handshake", () => {
   });
 
   test("a conforming file passes the guard and reaches the handshake", async () => {
-    const handle = await trackedOpfsFile(
-      "managed-input.csv",
+    const folder = await trackedFolder(
+      "run-folder-conforming",
       CONFORMING_HEADER + CONFORMING_ROW,
     );
     const created = await createManagedExchange(
-      newExchange({ inputFileHandle: handle }),
+      newExchange({ workingDirectoryHandle: folder }),
     );
     const rotatedSecret = generateSharedSecret();
 
@@ -592,8 +610,8 @@ describe("run seam composition: the input guard gates the handshake", () => {
       runStartedAtMs: Date.now(),
       acquireInput: () =>
         acquireValidatedManagedInput(created.exchangeFile, {
-          kind: "handle",
-          handle,
+          kind: "folder",
+          directory: folder,
           attendance: "unattended",
         }),
       handshake: (input) => {
@@ -608,31 +626,5 @@ describe("run seam composition: the input guard gates the handshake", () => {
     const stored = await getManagedExchange(created.id);
     expect(stored?.lastRun?.outcome).toBe("succeeded");
     expect(stored?.sharedSecret).toBe(rotatedSecret);
-  });
-});
-
-describe("capturedInputHandle", () => {
-  // The screen's Dropzone (over file-selector) attaches a `handle` to a dropped
-  // File in a secure context on Chromium; capturedInputHandle reads it back so a
-  // deposit persists a reusable pointer without a second picker dialog. Here the
-  // handle is a real OPFS FileSystemFileHandle attached the same way file-selector
-  // attaches a picker handle.
-  test("returns a handle attached to the selected file where the API exists", async () => {
-    expect(fileSystemAccessSupported()).toBe(true);
-    const handle = await writeOpfsFile("captured.csv", CONFORMING_HEADER);
-    const file = await handle.getFile();
-    (file as File & { handle?: FileSystemFileHandle }).handle = handle;
-    expect(capturedInputHandle(file)).toBe(handle);
-  });
-
-  test("returns undefined for a plain File with no attached handle", () => {
-    const plain = new File(["a,b\n1,2\n"], "plain.csv", { type: "text/csv" });
-    expect(capturedInputHandle(plain)).toBeUndefined();
-  });
-
-  test("ignores a non-handle value on the handle property", () => {
-    const file = new File(["a,b\n1,2\n"], "spoofed.csv", { type: "text/csv" });
-    (file as File & { handle?: unknown }).handle = { name: "not-a-handle.csv" };
-    expect(capturedInputHandle(file)).toBeUndefined();
   });
 });

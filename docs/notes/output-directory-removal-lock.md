@@ -5,12 +5,12 @@ title: "The Output-Directory Removal's Write-Lock Wait"
 # Waiting out the write lock on a failed write's removal
 
 _Status: measurement backing `REMOVAL_LOCK_BUDGET_MS` in
-[`managedOutputDirectory.ts`](../../apps/web/src/psi/managed/managedOutputDirectory.ts).
+[`managedWorkingDirectory.ts`](../../apps/web/src/psi/managed/managedWorkingDirectory.ts).
 See [docs/notes/README.md](README.md)._
 
 ## The symptom
 
-A failed write into a granted output folder creates the entry before any byte
+A failed write into a granted working folder creates the entry before any byte
 reaches it. Removing that entry was refused with `NoModificationAllowedError`,
 and the refusal was swallowed rather than retried, leaving an empty results file
 standing in the operator's folder while the run's results were parked in the
@@ -48,9 +48,9 @@ reserve.
 ## Where this lives in code
 
 The constant: `REMOVAL_LOCK_BUDGET_MS` in
-[`managedOutputDirectory.ts`](../../apps/web/src/psi/managed/managedOutputDirectory.ts).
+[`managedWorkingDirectory.ts`](../../apps/web/src/psi/managed/managedWorkingDirectory.ts).
 The retry it bounds: `dropCreatedEntry` in the same file. The unit tests pinning
 the retry and its bound:
-[`managedOutputDirectory.test.ts`](../../apps/web/test/unit/psi/managedOutputDirectory.test.ts),
+[`managedWorkingDirectory.test.ts`](../../apps/web/test/unit/psi/managedWorkingDirectory.test.ts),
 "asks again when the removal is refused over the write lock" and "gives up on a
 write lock that never clears".
