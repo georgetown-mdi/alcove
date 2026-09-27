@@ -41,6 +41,9 @@ import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import { leadingCdDestination } from "./lib/shell.mjs";
 import { isInside, worktreeContext } from "./lib/worktrees.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 function block(tree) {
   process.stderr.write(
     `Blocked by block-worktree-cd hook: this command opens with a \`cd\` into ${tree}, ` +

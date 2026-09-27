@@ -31,6 +31,9 @@
 
 import { eventForTools } from "./lib/event.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 // `model: 'fable'` / `"model": "claude-fable-5"` in any quote style (the key is
 // quoted when the option rides in a JSON args object), plus a quoted string that
 // is nothing but a Fable spelling, which reaches the option by another name.

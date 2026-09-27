@@ -36,6 +36,9 @@ import {
   tokenize,
 } from "./lib/shell.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const PROTECTED = new Set(["staging", "main"]);
 
 function block(reason) {

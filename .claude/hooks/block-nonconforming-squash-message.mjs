@@ -52,6 +52,9 @@ import {
 } from "../scripts/format-squash-message.mjs";
 import { eventCwd, eventForTools } from "./lib/event.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const GUARDED_TOOLS = ["Edit", "Write"];
 const MESSAGE_DIR = "squash-messages";
 const MESSAGE_PARENT = "scratch";

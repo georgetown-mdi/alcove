@@ -194,6 +194,8 @@ npm run check:all -- --list  # what each holds, and what it does not run
 
 `check:all` drives its checks from one list in [`scripts/run-checks.mjs`](scripts/run-checks.mjs), which also states which checks it does not run and why -- the production dependency audit needs the npm registry, the deploy-trigger graph check needs a full web build that `eb_build_and_test.yaml` already runs path-filtered, and the rest need a token, a release tag, CI's own install, or minutes the merge path does not have. It runs past a failing check, so one red result does not hide the rest.
 
+Every entry on that list and every hook `.claude/settings.json` registers states an expiry date, which `npm run check:expiry-dates` holds: a proposal for a new check or hook states its date, and the review at each retro of the entries coming due -- renew each with a new date or delete it -- is in the header of [`scripts/check-expiry-dates.mjs`](scripts/check-expiry-dates.mjs).
+
 ## Documentation
 
 Alcove documentation is three-tier:

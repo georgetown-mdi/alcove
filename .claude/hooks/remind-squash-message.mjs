@@ -90,6 +90,9 @@ import { dirname, join, resolve } from "node:path";
 import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import { git } from "./lib/shell.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const PR_BASE = "origin/staging";
 const MESSAGE_SUBDIR = join("scratch", "squash-messages");
 const NORMALIZER_SUBPATH = join(

@@ -40,6 +40,9 @@ import { dirname, isAbsolute, normalize, resolve } from "node:path";
 import { eventCwd, readEvent } from "./lib/event.mjs";
 import { git } from "./lib/shell.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024;
 
 /** A tool_result block's content flattened to text. */

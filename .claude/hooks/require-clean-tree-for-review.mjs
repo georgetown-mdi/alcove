@@ -75,6 +75,9 @@ import {
 import { git } from "./lib/shell.mjs";
 import { worktreeRecords } from "./lib/worktrees.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const DIRTY_ENTRIES_SHOWN = 10;
 const ROUNDS_DIR = join("scratch", "review-rounds");
 const LOCK_SUFFIX = ".lock";

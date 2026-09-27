@@ -19,6 +19,9 @@
 import { commandOf, eventForTools } from "./lib/event.mjs";
 import { splitSegments, tokenize } from "./lib/shell.mjs";
 
+/** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
+export const EXPIRES_ON = "2026-12-31";
+
 const IDENTITY_ENV = new Set([
   "GIT_AUTHOR_NAME",
   "GIT_AUTHOR_EMAIL",
