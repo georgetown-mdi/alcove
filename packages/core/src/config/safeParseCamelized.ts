@@ -5,6 +5,7 @@ import {
   KeyFoldCollisionError,
   NestingDepthExceededError,
   NodeCountExceededError,
+  type WidthBounds,
 } from "../utils/camelizeKeys.js";
 import {
   keyFoldCollisionIssue,
@@ -41,7 +42,7 @@ import {
 export function safeParseCamelized<T>(
   schema: z.ZodType<T>,
   raw: unknown,
-  widthBoundedKeys?: ReadonlyMap<string, number>,
+  widthBoundedKeys?: WidthBounds,
   afterParse?: (camelized: unknown, parsed: T) => Array<z.core.$ZodIssue>,
 ): z.ZodSafeParseResult<T> {
   let camelized: unknown;

@@ -403,8 +403,8 @@ test("two keys of one object that fold to one name are refused, naming both", ()
   expect(collision.foldedKey).toBe("myParam");
   expect(collision.path).toEqual(["outerBlock", 0]);
   expect(collision.message).toBe(
-    'outerBlock.0: keys "my_param" and "myParam" are read as the same key, ' +
-      '"myParam"',
+    'keys "my_param" and "myParam" are read as the same key, "myParam", ' +
+      "at outerBlock.0",
   );
 });
 
@@ -412,6 +412,29 @@ test("a collision at the root names no path", () => {
   expect(() => camelizeKeys({ a_b: 1, aB: 2 })).toThrow(
     /^keys "a_b" and "aB" are read as the same key, "aB"$/,
   );
+});
+
+test("a deep path of long keys leaves the reason within the display budget", () => {
+  let doc: Record<string, unknown> = { a_b: 1, aB: 2 };
+  const path: string[] = [];
+  for (let level = 0; level < 10; level++) {
+    const key = `${level}`.padEnd(300, "x");
+    doc = { [key]: doc };
+    path.unshift(key);
+  }
+  let err: unknown;
+  try {
+    camelizeKeys(doc);
+  } catch (e) {
+    err = e;
+  }
+  expect(err).toBeInstanceOf(KeyFoldCollisionError);
+  expect((err as KeyFoldCollisionError).path).toEqual(path);
+  const shown = (err as Error).message.slice(0, 1024);
+  expect(shown).toContain('"a_b"');
+  expect(shown).toContain('"aB"');
+  expect(shown).toContain("are read as the same key");
+  expect(shown).toMatch(/, at 9x+\S* \.\.\. 0x+\S*$/);
 });
 
 test("keys that fold to different names are not a collision", () => {

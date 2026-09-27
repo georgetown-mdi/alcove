@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
-import { camelizeKeys, KeyFoldCollisionError } from "../utils/camelizeKeys.js";
+import {
+  camelizeKeys,
+  KeyFoldCollisionError,
+  type WidthBounds,
+} from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 import {
   droppedSettingIssues,
@@ -11,6 +15,7 @@ import {
   columnsNamedOnce,
   LinkageTermsSchema,
   MAX_NAME_LENGTH,
+  MAX_PARAMS_ENTRIES,
   MAX_PAYLOAD_ENTRIES,
   MAX_TEXT_LENGTH,
   nameValue,
@@ -210,6 +215,17 @@ export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
 // --- Parse -------------------------------------------------------------------
 
 /**
+ * The width bounds the camelize pre-pass applies to an exchange file: the
+ * embedded linkage terms are folded exactly as `parseLinkageTerms` folds
+ * them, an over-{@link MAX_PARAMS_ENTRIES} `params` object left verbatim for the
+ * schema's count refusal, while a `params` object elsewhere in the file (a
+ * standardization step's) is folded as any other object.
+ */
+const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
+  ["linkageTerms", new Map([["params", MAX_PARAMS_ENTRIES]])],
+]);
+
+/**
  * Parse and validate a raw value as an {@link ExchangeSpec}.
  * Snake_case keys are converted to camelCase before validation, so JSON/YAML
  * from disk can be passed directly.
@@ -230,7 +246,7 @@ export type ExchangeSpec = z.infer<typeof ExchangeSpecSchema>;
 export function parseExchangeSpec(raw: unknown): ExchangeSpec {
   let camelized: unknown;
   try {
-    camelized = camelizeKeys(raw);
+    camelized = camelizeKeys(raw, EXCHANGE_FILE_WIDTH_BOUNDS);
   } catch (err) {
     if (err instanceof KeyFoldCollisionError)
       throw new z.ZodError([keyFoldCollisionIssue(err)]);
@@ -254,7 +270,7 @@ export function safeParseExchangeSpec(raw: unknown) {
   return safeParseCamelized(
     ExchangeSpecSchema,
     raw,
-    undefined,
+    EXCHANGE_FILE_WIDTH_BOUNDS,
     (camelized, parsed) => droppedSettingIssues(raw, camelized, parsed),
   );
 }

@@ -74,6 +74,20 @@ export class NodeCountExceededError extends UsageError {
 }
 
 /**
+ * The longest path a {@link KeyFoldCollisionError} message shows in full; a
+ * longer one shows its first and last segments only.
+ */
+const COLLISION_PATH_DISPLAY_LENGTH = 256;
+
+function collisionPathText(path: ReadonlyArray<PropertyKey>): string {
+  const fitted = path.map(fittedPathSegment);
+  const whole = fitted.join(".");
+  if (whole.length <= COLLISION_PATH_DISPLAY_LENGTH || fitted.length < 3)
+    return whole;
+  return `${fitted[0]} ... ${fitted[fitted.length - 1]}`;
+}
+
+/**
  * Thrown by {@link camelizeKeys} when one object holds two keys that
  * {@link camelizeKey} reads as the same name -- `my_param` beside `myParam`.
  * Keeping either one would silently discard the other, and which one a reader
@@ -81,11 +95,14 @@ export class NodeCountExceededError extends UsageError {
  * path that folds keys (docs/spec/CANONICAL_ENCODING.md, "Object member
  * ordering"). A {@link UsageError} subclass, like the depth and width bounds.
  *
- * The message names both keys and the path of the object holding them, each
- * fitted as a Zod issue path segment is ({@link fittedPathSegment}): on the
- * partner path every one of them is partner-chosen. It is composed raw for the
+ * The message states the reason first -- both keys and the name they fold to --
+ * then the path of the object holding them, each fitted as a Zod issue path
+ * segment is ({@link fittedPathSegment}): on the partner path every one of them
+ * is partner-chosen. A path longer than {@link COLLISION_PATH_DISPLAY_LENGTH}
+ * shows only its first and last segments, so a deep path of long keys cannot
+ * crowd the reason out of the display budget. It is composed raw for the
  * display sink to escape. `path`, `keys`, and `foldedKey` hold the same values
- * unfitted, for a caller that restates the refusal in its own shape.
+ * unfitted and whole, for a caller that restates the refusal in its own shape.
  */
 export class KeyFoldCollisionError extends UsageError {
   /** The path of the object holding both keys, each segment as folded. */
@@ -100,12 +117,11 @@ export class KeyFoldCollisionError extends UsageError {
     keys: readonly [string, string],
     foldedKey: string,
   ) {
-    const at =
-      path.length > 0 ? `${path.map(fittedPathSegment).join(".")}: ` : "";
+    const at = path.length > 0 ? `, at ${collisionPathText(path)}` : "";
     super(
-      `${at}keys "${fittedPathSegment(keys[0])}" and ` +
+      `keys "${fittedPathSegment(keys[0])}" and ` +
         `"${fittedPathSegment(keys[1])}" are read as the same key, ` +
-        `"${fittedPathSegment(foldedKey)}"`,
+        `"${fittedPathSegment(foldedKey)}"${at}`,
     );
     this.name = "KeyFoldCollisionError";
     this.path = [...path];
@@ -184,13 +200,21 @@ export function snakeizeKey(key: string): string {
 }
 
 /**
+ * The width bounds a {@link camelizeKeys} caller names, keyed by canonical
+ * camelCase key name. A number is the most keys that key's object value may
+ * hold before it is left verbatim; a nested map scopes its own bounds to that
+ * key's value, which is walked under them in place of the enclosing ones.
+ */
+export type WidthBounds = ReadonlyMap<string, number | WidthBounds>;
+
+/**
  * The fixed inputs of one {@link transformKeysDeep} walk, and the two values it
  * threads through the recursion: the node `budget`, and the `path` of the value
  * being rewritten as rewritten keys and array indices.
  */
 interface KeyWalk {
   readonly transformKey: (key: string) => string;
-  readonly widthBoundedKeys: ReadonlyMap<string, number> | undefined;
+  readonly widthBoundedKeys: WidthBounds | undefined;
   readonly refuseCollisions: boolean;
   readonly budget: { nodes: number };
   readonly path: Array<PropertyKey>;
@@ -248,6 +272,12 @@ interface KeyWalk {
  * version-deterministic, so it cannot diverge a cross-party canonical
  * encoding within a version.
  *
+ * A `widthBoundedKeys` entry whose value is itself a map is a scope, not a
+ * count: the matching key's value is walked with that map as its bounds, so a
+ * document embedding linkage terms (the exchange file's `linkage_terms`) folds
+ * them exactly as a parse of the terms alone does, without bounding a
+ * same-named key elsewhere in the document.
+ *
  * With `refuseCollisions` set, two keys of one object that rewrite to the
  * same key throw {@link KeyFoldCollisionError}. A skipped subtree's keys are
  * not rewritten, so they cannot collide.
@@ -300,8 +330,17 @@ function transformKeysDeep(
         const camel = camelizeKey(k);
         if (OPAQUE_VALUE_KEYS.has(camel)) return [rewrittenKey, v];
         const widthBound = walk.widthBoundedKeys?.get(camel);
+        if (typeof widthBound === "object") {
+          path.push(rewrittenKey);
+          const rewritten = transformKeysDeep(v, depth + 1, {
+            ...walk,
+            widthBoundedKeys: widthBound,
+          });
+          path.pop();
+          return [rewrittenKey, rewritten];
+        }
         if (
-          widthBound !== undefined &&
+          typeof widthBound === "number" &&
           v !== null &&
           typeof v === "object" &&
           !Array.isArray(v) &&
@@ -336,7 +375,9 @@ function transformKeysDeep(
  * a pathological-count partner record is not rewritten key by key before
  * the schema's own count bound rejects it. Callers parsing
  * partner-controlled input with a bounded record (`parseLinkageTerms`, for
- * `transform.params`) pass it; the rest omit it.
+ * `transform.params`) pass it, and a document embedding such input scopes the
+ * same bounds to it (`parseExchangeSpec`, for `linkage_terms`); the rest omit
+ * it.
  *
  * @throws {NestingDepthExceededError} if input nesting reaches
  *   {@link MAX_NESTING_DEPTH} levels.
@@ -347,7 +388,7 @@ function transformKeysDeep(
  */
 export function camelizeKeys(
   value: unknown,
-  widthBoundedKeys?: ReadonlyMap<string, number>,
+  widthBoundedKeys?: WidthBounds,
 ): unknown {
   return transformKeysDeep(value, 0, {
     transformKey: camelizeKey,

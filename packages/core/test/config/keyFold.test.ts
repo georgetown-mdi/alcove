@@ -8,7 +8,10 @@ import {
   safeParseLinkageTermsTheReaderWrote,
 } from "../../src/config/linkageTermsSchema";
 import { InvitationLinkageTermsSchema } from "../../src/config/invitation";
-import { parseExchangeSpec } from "../../src/config/exchangeSpec";
+import {
+  parseExchangeSpec,
+  safeParseExchangeSpec,
+} from "../../src/config/exchangeSpec";
 import { computeTermsHash } from "../../src/records/exchangeRecord";
 import {
   camelizeKeys,
@@ -87,8 +90,8 @@ test("a partner's terms holding two keys that fold to one name are refused", () 
   expect(collision.foldedKey).toBe("inputFormat");
   expect(collision.path).toEqual(paramsPath);
   expect(collision.message).toBe(
-    'linkageKeys.0.elements.0.transform.0.params: keys "input_format" and ' +
-      '"inputFormat" are read as the same key, "inputFormat"',
+    'keys "input_format" and "inputFormat" are read as the same key, ' +
+      '"inputFormat", at linkageKeys.0.elements.0.transform.0.params',
   );
 });
 
@@ -160,4 +163,53 @@ test("two spellings inside a params object past the width bound are left unfolde
   expect(camelizeKeys({ params: wide }, bound)).toEqual({ params: wide });
   // The schema refuses such a params object on its own count bound.
   expect(safeParseLinkageTerms(dateTerms("Party A", wide)).success).toBe(false);
+});
+
+// A params object of 259 keys, two of which fold to one name.
+function wideCollidingParams(): Record<string, unknown> {
+  const wide: Record<string, unknown> = { a_b: 1, aB: 2 };
+  for (let i = 0; i < MAX_PARAMS_ENTRIES + 1; i++) wide[`p${i}`] = i;
+  return wide;
+}
+
+const widthRefusal = `transform params must not exceed ${MAX_PARAMS_ENTRIES} entries`;
+
+test("the exchange file folds its linkage terms under the same width bound", () => {
+  const terms = dateTerms("Party A", wideCollidingParams());
+  const alone = safeParseLinkageTerms(terms);
+  expect(alone.success).toBe(false);
+  expect(alone.error?.issues).toContainEqual(
+    expect.objectContaining({ path: paramsPath, message: widthRefusal }),
+  );
+  expect(() => parseLinkageTerms(terms)).toThrow(widthRefusal);
+
+  const inFile = { linkage_terms: terms };
+  const inFilePath = ["linkageTerms", ...paramsPath];
+  const safe = safeParseExchangeSpec(inFile);
+  expect(safe.success).toBe(false);
+  const thrown = thrownBy(() => parseExchangeSpec(inFile));
+  expect(thrown).toBeInstanceOf(ZodError);
+  for (const issues of [safe.error?.issues, (thrown as ZodError).issues]) {
+    expect(issues).toContainEqual(
+      expect.objectContaining({ path: inFilePath, message: widthRefusal }),
+    );
+    expect(issues).not.toContainEqual(
+      expect.objectContaining({ keys: ["a_b", "aB"] }),
+    );
+  }
+});
+
+test("the exchange file's width bound reaches no params object outside its linkage terms", () => {
+  const inFile = {
+    linkage_terms: dateTerms("Party A", dateParams),
+    standardization: { steps: [{ params: wideCollidingParams() }] },
+  };
+  const safe = safeParseExchangeSpec(inFile);
+  expect(safe.success).toBe(false);
+  expect(safe.error?.issues).toEqual([
+    expect.objectContaining({
+      path: ["standardization", "steps", 0, "params"],
+      keys: ["a_b", "aB"],
+    }),
+  ]);
 });
