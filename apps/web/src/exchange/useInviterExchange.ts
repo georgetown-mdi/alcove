@@ -51,6 +51,8 @@ import { whenDiagnostic } from "@utils/diagnostics";
 import { buildRunOutputs } from "@psi/runOutputs";
 import { invitationUsable } from "@psi/formatting";
 import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
+import { tooLargeBoundOf } from "@psi/managed/managedRun";
+import { tooLargeFailureTitle } from "@psi/managed/managedFailureCopy";
 
 import { buildRunEvents } from "./runEvents";
 import { useFailedRunRecord } from "./useFailedRunRecord";
@@ -350,10 +352,7 @@ export function failureFor(
   if (isSetTooLargeError(error))
     return {
       category: "config",
-      title:
-        error.setOwner === "local"
-          ? "Your file is too large for a browser exchange"
-          : "Your partner's file is too large for a browser exchange",
+      title: tooLargeFailureTitle(error.setOwner, tooLargeBoundOf(error)),
       message: sanitizedFailureMessage(error),
     };
   if (error instanceof LinkageTermsUnsatisfiableError) {

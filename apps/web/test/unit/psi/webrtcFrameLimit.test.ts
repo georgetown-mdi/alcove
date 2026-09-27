@@ -155,10 +155,13 @@ test("a round's distinct-value refusal is shown as the same alert, with no retry
       "A linkage key gives this party more than 16777216 distinct values in " +
         "one round, the most one round can hold. Split the input into smaller " +
         "files and run one exchange for each.",
+      { distinctValueLimit: 16777216 },
     ),
   );
   expect(failure.category).toBe("config");
-  expect(failure.title).toBe("Your file is too large for a browser exchange");
+  expect(failure.title).toBe(
+    "Your file has too many distinct values for one round of matching",
+  );
   expect(failure.message).toContain("more than 16777216 distinct values");
   expect(failure.reportedCause).toBeUndefined();
 });

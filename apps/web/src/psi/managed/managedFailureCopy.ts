@@ -87,11 +87,6 @@ export const TERMS_SHORTFALL_FAILURE_TITLE =
 export const CONSENT_FAILURE_TITLE =
   "What this run would send is not what this exchange agreed to send";
 
-/** The title over the benign too-large failure tier, read back from a record
- * that does not say whose file it was. */
-export const TOO_LARGE_FAILURE_TITLE =
-  "A file in this exchange is too large for a browser exchange";
-
 /** The bound one WebRTC message holds, as the too-large copy states it. */
 export const WEBRTC_MESSAGE_BOUND_LABEL = `${(
   MAX_WEBRTC_FRAME_BYTES /
@@ -128,15 +123,38 @@ export const TOO_LARGE_REMEDY =
   "Split the input into smaller files and set up one exchange for each; if " +
   "the set was your partner's, ask them to split theirs.";
 
-/** The title over a too-large failure that names whose set it was, shared by a
- * managed run's live refusal and the record read back. */
-export const TOO_LARGE_FAILURE_TITLE_BY_OWNER: Record<
-  TooLargeSetOwner,
-  string
-> = {
-  local: "Your file is too large for a browser exchange",
-  partner: "Your partner's file is too large for a browser exchange",
+/** What was wrong with a too-large file, by which bound refused it, completing
+ * a sentence whose subject is the file. Only one WebRTC message's bound is a
+ * browser limit; the distinct-value bound refuses on every channel. */
+export function tooLargeFileProblem(bound: TooLargeBound | undefined): string {
+  switch (bound) {
+    case "webrtc-message":
+      return "is too large for a browser exchange";
+    case "round-distinct-values":
+      return "has too many distinct values for one round of matching";
+    case undefined:
+      return "is too large to send";
+  }
+}
+
+const TOO_LARGE_FILE_SUBJECT_BY_OWNER: Record<TooLargeSetOwner, string> = {
+  local: "Your file",
+  partner: "Your partner's file",
 };
+
+/** The title over a too-large failure, naming whose file it was when known and
+ * the bound that refused it; shared by the one-shot exchange, a managed run's
+ * live refusal, and the record read back. */
+export function tooLargeFailureTitle(
+  owner: TooLargeSetOwner | undefined,
+  bound: TooLargeBound | undefined,
+): string {
+  const subject =
+    owner === undefined
+      ? "A file in this exchange"
+      : TOO_LARGE_FILE_SUBJECT_BY_OWNER[owner];
+  return `${subject} ${tooLargeFileProblem(bound)}`;
+}
 
 /** Whose values the set over the bound was built from, in the words the
  * next-visit alert and the between-visit notification both state it in. */

@@ -142,7 +142,8 @@ describe("savedExchangeRow", () => {
       undefined,
       NOW,
     );
-    expect(row.status).toMatch(/too large for a browser exchange/i);
+    expect(row.status).toMatch(/a file is too large to send/i);
+    expect(row.status).not.toMatch(/browser/i);
     expect(row.status).toMatch(/split the input/i);
     expect(row.status).not.toMatch(/did not complete|attack|tamper|desync/i);
   });
@@ -155,6 +156,7 @@ describe("savedExchangeRow", () => {
           outcome: "failed",
           failureKind: "too-large",
           tooLargeSetOwner: "local",
+          tooLargeBound: "webrtc-message",
         },
       }),
       undefined,
@@ -175,14 +177,16 @@ describe("savedExchangeRow", () => {
           outcome: "failed",
           failureKind: "too-large",
           tooLargeSetOwner: "partner",
+          tooLargeBound: "round-distinct-values",
         },
       }),
       undefined,
       NOW,
     );
     expect(row.status).toMatch(
-      /your partner's file is too large for a browser exchange/i,
+      /your partner's file has too many distinct values for one round of matching/i,
     );
+    expect(row.status).not.toMatch(/browser/i);
     expect(row.status).toMatch(/; ask your partner to split theirs$/);
     expect(row.status).not.toMatch(/split your input|split the input/i);
   });

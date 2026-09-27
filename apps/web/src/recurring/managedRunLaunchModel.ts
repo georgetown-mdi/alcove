@@ -18,12 +18,11 @@ import {
   PARTIAL_ROTATION_FAILURE_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_SHORTFALL_FAILURE_TITLE,
-  TOO_LARGE_FAILURE_TITLE,
-  TOO_LARGE_FAILURE_TITLE_BY_OWNER,
   TOO_LARGE_REMEDY,
   TOO_LARGE_REMEDY_BY_OWNER,
   TOO_LARGE_SET_SOURCE_BY_OWNER,
   UNEXPLAINED_FAILURE_TITLE,
+  tooLargeFailureTitle,
   tooLargeSetOverBound,
 } from "@psi/managed/managedFailureCopy";
 import {
@@ -54,7 +53,6 @@ export {
   CONSENT_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
-  TOO_LARGE_FAILURE_TITLE,
   UNEXPLAINED_FAILURE_TITLE,
 } from "@psi/managed/managedFailureCopy";
 
@@ -395,7 +393,7 @@ function recordedTooLargeFailure(
   if (owner === undefined)
     return {
       kind: "too-large",
-      title: TOO_LARGE_FAILURE_TITLE,
+      title: tooLargeFailureTitle(undefined, bound),
       message:
         `The last run stopped because a set of values it had to send ` +
         `${overBound}, so that set was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
@@ -404,7 +402,7 @@ function recordedTooLargeFailure(
     };
   return {
     kind: "too-large",
-    title: TOO_LARGE_FAILURE_TITLE_BY_OWNER[owner],
+    title: tooLargeFailureTitle(owner, bound),
     message:
       `The last run stopped because ${TOO_LARGE_SET_SOURCE_BY_OWNER[owner]} ` +
       `${overBound}, so it was not sent. ${TOO_LARGE_RETRY_NOTE} ` +

@@ -433,6 +433,36 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
         now: NOW,
       })?.body;
 
+    test("the title names a browser limit only for the WebRTC message bound", () => {
+      const titleFor = (lastRun: ManagedExchangeLastRun) =>
+        betweenVisitNotice({
+          record: record({ lastRun }),
+          local: undefined,
+          caughtUpMisses: 0,
+          disposition: "failed",
+          now: NOW,
+        })?.title;
+      expect(
+        titleFor({
+          ...failed("too-large"),
+          tooLargeSetOwner: "local",
+          tooLargeBound: "webrtc-message",
+        }),
+      ).toBe("Your file is too large for a browser exchange");
+      expect(
+        titleFor({
+          ...failed("too-large"),
+          tooLargeSetOwner: "partner",
+          tooLargeBound: "round-distinct-values",
+        }),
+      ).toBe(
+        "Your partner's file has too many distinct values for one round of matching",
+      );
+      expect(titleFor(failed("too-large"))).toBe(
+        "A file in this exchange is too large to send",
+      );
+    });
+
     test("the WebRTC message bound, with its size", () => {
       expect(
         bodyFor({
