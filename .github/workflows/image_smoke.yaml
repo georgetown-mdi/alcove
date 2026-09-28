@@ -61,6 +61,8 @@ on:
       # Both sides of the production-scope measurement below are read by this
       # one lister, so an edit to it moves what that step measures.
       - "scripts/list-node-modules-packages.mjs"
+      # The bind-mount smoke step waits on its two exchange halves through this.
+      - "scripts/wait-container-pair.mjs"
       # Both legs run a real exchange over these two synthetic inputs, so a
       # change to their schema breaks it here rather than in a release build.
       - "test_data/**"
@@ -381,14 +383,16 @@ jobs:
           echo "started exchange halves $inviter_cid and $acceptor_cid"
 
           # Each half waits for the other, so both must be running before either
-          # can finish; the timeout keeps a stalled rendezvous from hanging the job.
-          inviter_rc=$(timeout 300 docker wait "$inviter_cid" || echo timed-out)
-          acceptor_rc=$(timeout 300 docker wait "$acceptor_cid" || echo timed-out)
+          # can finish; the timeout keeps a stalled rendezvous from hanging the job,
+          # and a half exiting non-zero stops the other rather than leaving it to
+          # wait out its partner.
+          halves_status=0
+          node scripts/wait-container-pair.mjs 300 \
+            "inviter=$inviter_cid" "acceptor=$acceptor_cid" || halves_status=$?
           docker logs "$inviter_cid" || true
           docker logs "$acceptor_cid" || true
           docker rm -f "$inviter_cid" "$acceptor_cid" >/dev/null 2>&1 || true
-          if [ "$inviter_rc" != 0 ] || [ "$acceptor_rc" != 0 ]; then
-            echo "an exchange half did not exit 0 (inviter=$inviter_rc, acceptor=$acceptor_rc)" >&2
+          if [ "$halves_status" != 0 ]; then
             exit 1
           fi
 
