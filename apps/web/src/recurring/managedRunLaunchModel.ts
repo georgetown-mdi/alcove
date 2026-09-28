@@ -304,24 +304,39 @@ const INPUT_FAILURE: ManagedRunFailureAlert = {
   recovery: "retry",
 };
 
-/** The input state where this site was not allowed to read the working
+/** The input state where an attended run was not allowed to edit the working
  * folder. Choosing the folder again comes first because a permission that
  * already reads as denied shows no prompt on a re-run. */
-const INPUT_PERMISSION_FAILURE: ManagedRunFailureAlert = {
+const INPUT_PERMISSION_FAILURE_READWRITE: ManagedRunFailureAlert = {
   ...INPUT_FAILURE,
   message:
     "The run stopped before connecting because this site was not allowed to " +
-    "read this exchange's folder, so the input file was not read and nothing " +
+    "edit this exchange's folder, so the input file was not read and nothing " +
     "left this device. Choose the folder again on this exchange's page, or " +
     "run this exchange again and allow access if your browser asks.",
 };
 
+/** The input state where a scheduled run's standing permission to read the
+ * working folder lapsed. A scheduled run only ever queries and never prompts,
+ * so the remedy names no browser prompt: running the exchange attended, where
+ * the browser may still offer one, or choosing the folder again. */
+const INPUT_PERMISSION_FAILURE_READ: ManagedRunFailureAlert = {
+  ...INPUT_FAILURE,
+  message:
+    "The run stopped before connecting because this site's permission to " +
+    "read this exchange's folder lapsed, so the input file was not read and " +
+    "nothing left this device. Open the exchange and run it attended, or " +
+    "choose the folder again on this exchange's page.",
+};
+
 /** Which input state a launch error lands on: the one naming the file the run
  * looked for and the folder it looked in, where the working folder held no file
- * under the conventioned name; the permission state, where the folder's
- * permission was refused; and the fixed input copy otherwise. Both names are the
- * operator's own -- the one fixed name and the folder they chose -- so naming
- * them echoes nothing a partner wrote. */
+ * under the conventioned name; the permission state -- by the failed access's
+ * mode, since an attended edit request and a scheduled read query fail into
+ * different remedies -- where the folder's permission was refused; and the
+ * fixed input copy otherwise. Both names are the operator's own -- the one
+ * fixed name and the folder they chose -- so naming them echoes nothing a
+ * partner wrote. */
 function inputFailure(error: unknown): ManagedRunFailureAlert {
   if (
     !(error instanceof ManagedInputError) ||
@@ -329,7 +344,9 @@ function inputFailure(error: unknown): ManagedRunFailureAlert {
   )
     return INPUT_FAILURE;
   if (error.rejection.cause instanceof HandlePermissionError)
-    return INPUT_PERMISSION_FAILURE;
+    return error.rejection.cause.mode === "readwrite"
+      ? INPUT_PERMISSION_FAILURE_READWRITE
+      : INPUT_PERMISSION_FAILURE_READ;
   if (!(error.rejection.cause instanceof ManagedInputFileMissingError))
     return INPUT_FAILURE;
   const { fileName, folderName } = error.rejection.cause;

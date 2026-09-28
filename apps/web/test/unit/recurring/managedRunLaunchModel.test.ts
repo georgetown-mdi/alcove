@@ -212,7 +212,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).toContain("nothing left this device");
   });
 
-  test("a refused folder permission says the site was not allowed to read the folder, and a parse failure keeps the fixed copy", () => {
+  test("a refused folder permission says the site was not allowed to edit the folder, and a parse failure keeps the fixed copy", () => {
     // A refused permission leaves the input unread; the fixed copy's "missing,
     // could not be read, or does not have the columns" would send the operator
     // to check a file that was never looked at. A denied state shows no prompt
@@ -226,11 +226,13 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
         false,
       );
     for (const state of ["denied", "prompt"] as const) {
-      const refused = inputFailureOf(new HandlePermissionError(state, "read"));
+      const refused = inputFailureOf(
+        new HandlePermissionError(state, "readwrite"),
+      );
       expect(refused.kind).toBe("input");
       expect(refused.recovery).toBe("retry");
       expect(refused.message).toContain(
-        "this site was not allowed to read this exchange's folder, so the " +
+        "this site was not allowed to edit this exchange's folder, so the " +
           "input file was not read",
       );
       const chooseAgain = refused.message.indexOf(
@@ -251,13 +253,45 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(unparsed.message).toContain(
       "is missing, could not be read, or does not have the columns",
     );
-    expect(unparsed.message).not.toMatch(/allowed to read|Unexpected quote/);
+    expect(unparsed.message).not.toMatch(/allowed to edit|Unexpected quote/);
   });
 
-  test("a permission request the browser rejects shows the permission copy, and a failed file read keeps the fixed copy", async () => {
+  test("a lapsed read permission on a scheduled run says the read permission lapsed, with no browser-ask remedy", () => {
+    // A scheduled run only ever queries `read` and never prompts, so the
+    // attended `readwrite` copy's "allow access if your browser asks" remedy
+    // is one that can never appear on this path; the run's own remedies are
+    // running attended or choosing the folder again.
+    const inputFailureOf = (cause: unknown) =>
+      classifyAgainstOneRecord(
+        new ManagedInputError({ reason: "acquire", cause }),
+        record(),
+        undefined,
+        NOW,
+        false,
+      );
+    for (const state of ["denied", "prompt"] as const) {
+      const lapsed = inputFailureOf(new HandlePermissionError(state, "read"));
+      expect(lapsed.kind).toBe("input");
+      expect(lapsed.recovery).toBe("retry");
+      expect(lapsed.message).toContain(
+        "this site's permission to read this exchange's folder lapsed, so " +
+          "the input file was not read",
+      );
+      expect(lapsed.message).toContain("run it attended");
+      expect(lapsed.message).toContain(
+        "choose the folder again on this exchange's page",
+      );
+      expect(lapsed.message).not.toMatch(
+        /allowed to edit|browser asks|missing|does not have the columns/,
+      );
+    }
+  });
+
+  test("a declined or rejected readwrite request shows the permission copy after one request, and a failed file read keeps the fixed copy", async () => {
     // A browser that will not show a prompt rejects the request (a SecurityError
     // where the gesture is used up) rather than answering it; the folder was not
-    // read either way, so the run shows the permission copy.
+    // read either way, so the run shows the permission copy. Neither case asks
+    // again in `read`.
     const securityError = () =>
       Promise.reject(
         new DOMException("Must be handling a user gesture", "SecurityError"),
@@ -300,18 +334,16 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       };
     };
     const permissionCopy =
-      "this site was not allowed to read this exchange's folder, so the " +
+      "this site was not allowed to edit this exchange's folder, so the " +
       "input file was not read";
 
-    const onViewAfterDeclinedEdit = await failureOf((_handle, mode) =>
-      mode === "readwrite" ? Promise.resolve("denied") : securityError(),
-    );
-    expect(onViewAfterDeclinedEdit.requested).toEqual(["readwrite", "read"]);
-    expect(onViewAfterDeclinedEdit.failure.message).toContain(permissionCopy);
+    const onDeclined = await failureOf(() => Promise.resolve("denied"));
+    expect(onDeclined.requested).toEqual(["readwrite"]);
+    expect(onDeclined.failure.message).toContain(permissionCopy);
 
-    const onEveryRequest = await failureOf(securityError);
-    expect(onEveryRequest.requested).toEqual(["readwrite", "read"]);
-    expect(onEveryRequest.failure.message).toContain(permissionCopy);
+    const onRejected = await failureOf(securityError);
+    expect(onRejected.requested).toEqual(["readwrite"]);
+    expect(onRejected.failure.message).toContain(permissionCopy);
 
     const onFileRead = await failureOf(
       () => Promise.resolve("granted"),
@@ -324,7 +356,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(onFileRead.failure.message).toContain(
       "is missing, could not be read, or does not have the columns",
     );
-    expect(onFileRead.failure.message).not.toMatch(/allowed to read/);
+    expect(onFileRead.failure.message).not.toMatch(/allowed to edit/);
   });
 
   test("a linkage shortfall is not offered as a retry, and names no agreed key", () => {

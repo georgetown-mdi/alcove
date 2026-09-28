@@ -531,19 +531,17 @@ are kept; the run's disclosure record is already in [the accounting of
 disclosures](#the-accounting-of-disclosures), and a count-only run or one whose
 agreed terms give this party no output has no file to keep.
 
-An attended re-run writes into the working folder too: the same file under the
-same name, beside the download its completion screen offers as it always has.
-Where the browser asks again for access to the folder, the re-run asks, before
-reading its input, to view and edit the folder, so that one answer covers the
-write as well; the write itself never asks. Where the operator declines editing,
-the re-run asks to view the folder alone, as a read-only run always has, and
-runs with the download only; where they decline that too, or the browser will
-not show that second ask, the run stops before connecting, having read nothing,
-and choosing the folder again on the exchange's page recovers it. Where the folder does not take the file -- the
-browser has not allowed the site to write there, or the write fails -- the
-completion screen says so beside the download, and nothing is kept in the
-browser: the operator is there to take the download. An exchange holding no folder grant writes nothing and offers the
-download alone.
+An attended re-run writes into the working folder too: the same file under
+the same name, beside the download its completion screen offers as it always
+has. Where the browser asks again for access to the folder, the re-run asks,
+before reading its input, to edit the folder, so that one answer covers
+the write as well; the write itself never asks. Where the operator declines,
+the run stops before connecting, having read nothing, and choosing the folder
+again on the exchange's page recovers it. Where the folder does not take the
+file -- the browser has not allowed the site to write there, or the write
+fails -- the completion screen says so beside the download, and nothing is
+kept in the browser: the operator is there to take the download. An exchange
+holding no folder grant writes nothing and offers the download alone.
 
 ### The between-visit notification
 

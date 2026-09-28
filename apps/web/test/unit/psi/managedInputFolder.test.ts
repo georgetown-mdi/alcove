@@ -242,76 +242,7 @@ describe("the permission an attended run's input read asks for", () => {
     ]);
   });
 
-  test("still reads the input on a standing read grant where write is refused, asking once", async () => {
-    vi.stubGlobal("FileSystemDirectoryHandle", class {});
-    const folder = fakeFolder(
-      "Riverbend exchange",
-      new Map([[MANAGED_INPUT_FILE_NAME, "ssn\n"]]),
-    );
-    const permission = statefulPermission("denied", {
-      read: "granted",
-      readwrite: "prompt",
-    });
-
-    const acquired = await acquireManagedInput(
-      { kind: "folder", directory: folder.handle, attendance: "attended" },
-      permission.layer,
-    );
-    expect(acquired.columns).toEqual(["ssn"]);
-    expect(permission.calls).toEqual([
-      "query readwrite",
-      "request readwrite",
-      "query read",
-    ]);
-
-    const delivery = await writeRunResultsToWorkingFolder(
-      { label: "Riverbend", workingDirectoryHandle: folder.handle },
-      RUN_AT,
-      new Blob(["ssn\n123\n"]),
-      permission.layer,
-    );
-    expect(delivery).toEqual({ kind: "ungranted", state: "denied" });
-    expect(
-      permission.calls.filter((call) => call.startsWith("request")),
-    ).toHaveLength(1);
-  });
-
-  test("asks to view where edit is declined, reads the input, and the write reports not allowed", async () => {
-    vi.stubGlobal("FileSystemDirectoryHandle", class {});
-    const folder = fakeFolder(
-      "Riverbend exchange",
-      new Map([[MANAGED_INPUT_FILE_NAME, "ssn\n"]]),
-    );
-    const permission = statefulPermission({
-      readwrite: "denied",
-      read: "granted",
-    });
-
-    const acquired = await acquireManagedInput(
-      { kind: "folder", directory: folder.handle, attendance: "attended" },
-      permission.layer,
-    );
-    expect(acquired.columns).toEqual(["ssn"]);
-    expect(permission.calls).toEqual([
-      "query readwrite",
-      "request readwrite",
-      "query read",
-      "request read",
-    ]);
-
-    const delivery = await writeRunResultsToWorkingFolder(
-      { label: "Riverbend", workingDirectoryHandle: folder.handle },
-      RUN_AT,
-      new Blob(["ssn\n123\n"]),
-      permission.layer,
-    );
-    expect(delivery).toEqual({ kind: "ungranted", state: "denied" });
-    expect(
-      permission.calls.filter((call) => call.startsWith("request")),
-    ).toHaveLength(2);
-  });
-
-  test("is refused, naming read as the access asked last, where edit and view are both declined", async () => {
+  test("is refused, naming readwrite, after one declined request and no read fallback", async () => {
     const folder = fakeFolder(
       "Riverbend exchange",
       new Map([[MANAGED_INPUT_FILE_NAME, "ssn\n"]]),
@@ -324,15 +255,10 @@ describe("the permission an attended run's input read asks for", () => {
     ).catch((caught: unknown) => caught);
     expect(acquireCause(error)).toMatchObject({
       name: "HandlePermissionError",
-      mode: "read",
+      mode: "readwrite",
       state: "denied",
     });
-    expect(permission.calls).toEqual([
-      "query readwrite",
-      "request readwrite",
-      "query read",
-      "request read",
-    ]);
+    expect(permission.calls).toEqual(["query readwrite", "request readwrite"]);
     expect(folder.lookups).toEqual([]);
   });
 
