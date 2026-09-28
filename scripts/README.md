@@ -7,6 +7,7 @@ check off it. Beside them: the doc-link checker, the `npm run dev` launcher, the
 mutation run, the release and provenance verifiers, the dependency-drift check
 `.github/actions/setup` runs after a cache restore, the OS-layer attribution
 generator `image_smoke.yaml` regenerates each image's list beside `NOTICE` from,
+the container-pair wait its bind-mount smoke step runs the exchange under,
 and the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or
