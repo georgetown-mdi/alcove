@@ -6,11 +6,18 @@ import { ConnectionError } from "../../src/connection/messageConnection";
 import { UsageError } from "../../src/errors";
 import type { ServerProvision } from "../../src/config/connection";
 import {
+  MAX_ENDPOINT_HOST_LENGTH,
+  MAX_ENDPOINT_PATH_LENGTH,
+} from "../../src/config/invitation";
+import {
   DEFAULT_PROVISION_PORT,
+  MAX_PROVISION_RESPONSE_BYTES,
   callProvisionEndpoint,
   provisionEndpointLabel,
   provisionRequest,
+  requestProvisionedServerAddress,
   serverProvisionOf,
+  withProvisionedServerAddress,
 } from "../../src/config/serverProvision";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 
@@ -445,4 +452,239 @@ test("real fetch: a refused connection is a transport failure that shows no path
   expect(shown).toContain("could not reach the provisioning endpoint");
   expect(shown).not.toContain("path-token");
   expect(shown).not.toContain(BEARER);
+});
+
+// --- create mode: the returned server address --------------------------------
+
+const createProvision: ServerProvision = { ...provision, mode: "create" };
+
+/** A fetch answering `status` with `body` as its exact bytes. */
+function answeringFetch(body: string | null, status = 200) {
+  const calls: RecordedCall[] = [];
+  const fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    calls.push({ url: String(input), init: init ?? {} });
+    return new Response(body, { status });
+  }) as typeof globalThis.fetch;
+  return { fetch, calls };
+}
+
+const BODY_SECRET = "body-sentinel-8910";
+
+test("a create-mode answer resolves to the server address it states", async () => {
+  const { fetch, calls } = answeringFetch(
+    JSON.stringify({ host: "sftp-17.example.org", port: 2222, path: "/in" }),
+  );
+  await expect(
+    requestProvisionedServerAddress(createProvision, { fetch }),
+  ).resolves.toEqual({ host: "sftp-17.example.org", port: 2222, path: "/in" });
+  expect(calls).toHaveLength(1);
+  expect(calls[0].url).toBe(`https://api.example.org${PATH}`);
+  expect(calls[0].init.method).toBe("POST");
+  expect(calls[0].init.body).toBeUndefined();
+  expect(calls[0].init.redirect).toBe("manual");
+});
+
+test("a create-mode answer may state a host alone", async () => {
+  const { fetch } = answeringFetch('{"host":"peers-3.example.org"}');
+  await expect(
+    requestProvisionedServerAddress(createProvision, { fetch }),
+  ).resolves.toEqual({ host: "peers-3.example.org" });
+});
+
+test("the widest answer the schema admits, fully escaped, fits the byte cap", async () => {
+  // Every host and path code unit a six-byte \u escape: the derivation beside
+  // MAX_PROVISION_RESPONSE_BYTES.
+  const body = JSON.stringify({
+    host: "\u0001".repeat(MAX_ENDPOINT_HOST_LENGTH),
+    port: 65535,
+    path: "\u0001".repeat(MAX_ENDPOINT_PATH_LENGTH),
+  });
+  const bytes = new TextEncoder().encode(body).byteLength;
+  expect(bytes).toBe(26_146);
+  expect(bytes).toBeLessThanOrEqual(MAX_PROVISION_RESPONSE_BYTES);
+  const { fetch } = answeringFetch(body);
+  const address = await requestProvisionedServerAddress(createProvision, {
+    fetch,
+  });
+  expect(address.host).toHaveLength(MAX_ENDPOINT_HOST_LENGTH);
+  expect(address.path).toHaveLength(MAX_ENDPOINT_PATH_LENGTH);
+});
+
+test.each([
+  [
+    "an answer over the byte cap",
+    JSON.stringify({
+      host: "a.example.org",
+      path: `/${BODY_SECRET}${" ".repeat(MAX_PROVISION_RESPONSE_BYTES)}`,
+    }),
+    `answered with more than ${MAX_PROVISION_RESPONSE_BYTES} bytes`,
+  ],
+  [
+    "malformed JSON",
+    `{"host": "${BODY_SECRET}"`,
+    "did not answer with a JSON server address",
+  ],
+  ["an empty body", "", "did not answer with a JSON server address"],
+  [
+    "an extra key",
+    JSON.stringify({ host: "a.example.org", [BODY_SECRET]: "x" }),
+    "it holds a field other than host, port and path",
+  ],
+  [
+    "a host one code unit too long",
+    JSON.stringify({ host: "h".repeat(MAX_ENDPOINT_HOST_LENGTH + 1) }),
+    "its host is missing, of the wrong type, or out of range",
+  ],
+  [
+    "no host",
+    JSON.stringify({ port: 22 }),
+    "its host is missing, of the wrong type, or out of range",
+  ],
+  [
+    "a path one code unit too long",
+    JSON.stringify({
+      host: "a.example.org",
+      path: "p".repeat(MAX_ENDPOINT_PATH_LENGTH + 1),
+    }),
+    "its path is missing, of the wrong type, or out of range",
+  ],
+  [
+    "port 0",
+    JSON.stringify({ host: "a.example.org", port: 0 }),
+    "its port is missing, of the wrong type, or out of range",
+  ],
+  [
+    "a port above 65535",
+    JSON.stringify({ host: "a.example.org", port: 65536 }),
+    "its port is missing, of the wrong type, or out of range",
+  ],
+  [
+    "a fractional port",
+    JSON.stringify({ host: "a.example.org", port: 22.5 }),
+    "its port is missing, of the wrong type, or out of range",
+  ],
+  [
+    "a port given as a string",
+    JSON.stringify({ host: "a.example.org", port: "22" }),
+    "its port is missing, of the wrong type, or out of range",
+  ],
+  [
+    "an array",
+    JSON.stringify([{ host: BODY_SECRET }]),
+    "it holds a field other than host, port and path",
+  ],
+])(
+  "a create-mode answer holding %s is refused as a usage error that shows none of it",
+  async (_, body, fragment) => {
+    const { fetch } = answeringFetch(body);
+    const err = await caught(
+      requestProvisionedServerAddress(createProvision, { fetch }),
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    const shown = rendered(err);
+    expect(shown).toContain("the provisioning endpoint at api.example.org:443");
+    expect(shown).toContain(fragment);
+    expect(shown).not.toContain(BODY_SECRET);
+    expect(shown).not.toContain(BEARER);
+    expect(shown).not.toContain("path-token");
+  },
+);
+
+test.each([
+  [503, ConnectionError, "could not create the server (HTTP 503)"],
+  [429, ConnectionError, "could not create the server (HTTP 429)"],
+  [401, UsageError, "refused the credentials"],
+  [404, UsageError, "refused the request (HTTP 404)"],
+  [302, UsageError, "answered with a redirect (HTTP 302)"],
+])(
+  "a create-mode HTTP %s answer rejects with %o, its body unread",
+  async (status, errorClass, fragment) => {
+    const { fetch, state } = fakeFetch(status);
+    const err = await caught(
+      requestProvisionedServerAddress(createProvision, { fetch }),
+    );
+    expect(err).toBeInstanceOf(errorClass);
+    expect((err as Error).message).toContain(fragment);
+    expect(state.bodyRead).toBe(false);
+  },
+);
+
+test("a create-mode answer the timeout cuts off mid-body is a transport failure", async () => {
+  const fetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
+    const signal = init?.signal;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"host":'));
+        signal?.addEventListener("abort", () =>
+          controller.error(signal.reason),
+        );
+      },
+    });
+    return new Response(body, { status: 200 });
+  }) as typeof globalThis.fetch;
+  const err = await caught(
+    requestProvisionedServerAddress(createProvision, { fetch, timeoutMs: 50 }),
+  );
+  expect(err).toBeInstanceOf(ConnectionError);
+  expect((err as ConnectionError).kind).toBe("transport");
+  expect((err as Error).message).toContain("did not answer within 50ms");
+});
+
+test("real fetch: a create-mode answer is read from the stream", async () => {
+  const port = await listen((_req, res) => {
+    res
+      .writeHead(201, { "content-type": "application/json" })
+      .end('{"host":"sftp-9.example.org","port":22}');
+  });
+  await expect(
+    requestProvisionedServerAddress(createProvision, {
+      fetch: loopbackFetch(port),
+    }),
+  ).resolves.toEqual({ host: "sftp-9.example.org", port: 22 });
+});
+
+test("real fetch: an answer stalled mid-body times out as a transport failure", async () => {
+  const port = await listen((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.write('{"host":');
+  });
+  const err = await caught(
+    requestProvisionedServerAddress(createProvision, {
+      fetch: loopbackFetch(port),
+      timeoutMs: 200,
+    }),
+  );
+  expect(err).toBeInstanceOf(ConnectionError);
+  expect((err as ConnectionError).kind).toBe("transport");
+});
+
+test("withProvisionedServerAddress replaces host, keeps an unstated port and path, and keeps the provision block", () => {
+  const connection = {
+    channel: "sftp" as const,
+    server: {
+      host: "pending",
+      port: 2222,
+      path: "/exchange",
+      username: "alice",
+      provision: createProvision,
+    },
+  };
+  expect(
+    withProvisionedServerAddress(connection, { host: "sftp-1.example.org" }),
+  ).toEqual({
+    channel: "sftp",
+    server: { ...connection.server, host: "sftp-1.example.org" },
+  });
+  expect(
+    withProvisionedServerAddress(connection, {
+      host: "sftp-2.example.org",
+      port: 22,
+      path: "/in",
+    }).server,
+  ).toEqual({
+    ...connection.server,
+    host: "sftp-2.example.org",
+    port: 22,
+    path: "/in",
+  });
 });

@@ -1,8 +1,15 @@
+import fs from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { afterEach, expect, test, vi } from "vitest";
 import { UsageError } from "@alcove/core";
 import type { ConnectionConfig } from "@alcove/core";
 
-import { wakeProvisionedServer } from "../../src/serverProvision";
+import {
+  createProvisionedServer,
+  wakeProvisionedServer,
+} from "../../src/serverProvision";
 
 /** Stub the global fetch the wake call sends through, answering `status`. */
 function stubProvisionFetch(status: number) {
@@ -63,4 +70,77 @@ test("a connection stating no provision block is a no-op", async () => {
   const log = mockLog();
   await wakeProvisionedServer({ channel: "filedrop" }, log);
   expect(log.info).not.toHaveBeenCalled();
+});
+
+function withMode(
+  connection: ConnectionConfig,
+  mode: "start" | "create",
+): ConnectionConfig {
+  if (connection.channel === "filedrop") return connection;
+  const provision = connection.server.provision;
+  if (provision === undefined) return connection;
+  return {
+    ...connection,
+    server: { ...connection.server, provision: { ...provision, mode } },
+  } as ConnectionConfig;
+}
+
+test("a create-mode block sends no wake call", async () => {
+  const log = mockLog();
+  const fetch = stubProvisionFetch(200);
+  await wakeProvisionedServer(
+    withMode(sftpConnectionWithProvision("create.example.org"), "create"),
+    log,
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(log.info).not.toHaveBeenCalled();
+});
+
+test("a start-mode block sends no create call", async () => {
+  const log = mockLog();
+  const fetch = stubProvisionFetch(200);
+  await expect(
+    createProvisionedServer(
+      withMode(sftpConnectionWithProvision("wake.example.org"), "start"),
+      log,
+    ),
+  ).resolves.toBeUndefined();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("a create-mode block reads its bearer file, logs the call, and resolves to the returned address", async () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-create-server-"));
+  try {
+    const tokenFile = path.join(dir, "token");
+    fs.writeFileSync(tokenFile, "create-token\n");
+    const fetch = vi.fn(
+      async (_input: URL | RequestInfo, _init?: RequestInit) =>
+        new Response('{"host":"sftp-3.example.org"}', { status: 201 }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const log = mockLog();
+    const address = await createProvisionedServer(
+      {
+        channel: "sftp",
+        server: {
+          host: "pending",
+          provision: {
+            mode: "create",
+            host: "create.example.org",
+            auth: { bearer: `@${tokenFile}` },
+          },
+        },
+      },
+      log,
+    );
+    expect(address).toEqual({ host: "sftp-3.example.org" });
+    expect(
+      new Headers(fetch.mock.calls[0][1]?.headers).get("authorization"),
+    ).toBe("Bearer create-token");
+    expect(log.info.mock.calls[0][0]).toContain(
+      "creating a server through the provisioning endpoint at create.example.org:443",
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

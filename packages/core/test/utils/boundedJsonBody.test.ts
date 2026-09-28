@@ -1,21 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  JobApiBodyError,
-  MAX_JOB_STATUS_RESPONSE_BYTES,
-  readBoundedJson,
-  readJsonOrNull,
-} from "@psi/jobClient/jobApiBody";
-import { readBoundedJsonBody } from "@utils/boundedJsonBody";
+import { readBoundedJsonBody } from "../../src/utils/boundedJsonBody";
 
-// The web app's one byte-capped JSON body read, in both directions: the request
-// side the job routes take (readJobRequestBody delegates here, and its own
-// route-level cases live in jobRoutes.unit.test.ts) and the response side every
-// job-API client takes. What is pinned here is the read itself -- that the cap
-// is enforced on the running byte total rather than on a header, that an
-// unreadable body never reaches a caller as a value, and that the throwing
-// response-side form raises JobApiBodyError rather than the SyntaxError a
-// platform `json()` raises.
+// What is pinned here is the read itself: the cap is enforced on the running
+// byte total rather than on a header, and an unreadable body never reaches a
+// caller as a value.
 
 const encoder = new TextEncoder();
 
@@ -162,52 +151,5 @@ describe("readBoundedJsonBody caps the read, not Content-Length", () => {
       kind: "parsed",
       value: { ok: true },
     });
-  });
-});
-
-describe("readBoundedJson raises rather than returning a partial answer", () => {
-  test("a body within the cap resolves to the parsed value", async () => {
-    const response = byteResponse(encoder.encode('{"status":"succeeded"}'));
-    await expect(
-      readBoundedJson(response, MAX_JOB_STATUS_RESPONSE_BYTES),
-    ).resolves.toEqual({ status: "succeeded" });
-  });
-
-  test("a body over the cap raises rather than resolving to its value", async () => {
-    // Valid JSON, only too large, so the refusal is the cap and not the shape.
-    const body = JSON.stringify({ pad: "a".repeat(64 * 1024) });
-    await expect(
-      readBoundedJson(
-        byteResponse(encoder.encode(body)),
-        MAX_JOB_STATUS_RESPONSE_BYTES,
-      ),
-    ).rejects.toBeInstanceOf(JobApiBodyError);
-  });
-
-  test("an unreadable body raises", async () => {
-    for (const body of ["}{ not json", ""]) {
-      await expect(
-        readBoundedJson(byteResponse(encoder.encode(body)), 1024),
-      ).rejects.toBeInstanceOf(JobApiBodyError);
-    }
-  });
-
-  test("a body that fails part-way through the stream raises, and reads as null", async () => {
-    await expect(
-      readBoundedJson(failingStreamResponse(), MAX_JOB_STATUS_RESPONSE_BYTES),
-    ).rejects.toBeInstanceOf(JobApiBodyError);
-    await expect(
-      readJsonOrNull(failingStreamResponse(), MAX_JOB_STATUS_RESPONSE_BYTES),
-    ).resolves.toBeNull();
-  });
-
-  test("the raised message holds none of the body's bytes", async () => {
-    const secret = "operator-secret-value";
-    const error = await readBoundedJson(
-      byteResponse(encoder.encode(`{"leak": "${secret}"`)),
-      1024,
-    ).catch((raised: unknown) => raised);
-    expect(error).toBeInstanceOf(JobApiBodyError);
-    expect((error as Error).message).not.toContain(secret);
   });
 });

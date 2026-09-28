@@ -703,23 +703,25 @@ connection:
 
 #### On-demand server provisioning
 
-When the primary server is allocated on demand rather than always running, a `provision` sub-object can be added to `server`. It describes the endpoint that brings the server up before either party connects. There are two modes:
+When the primary server is brought up on demand rather than always running, a `provision` sub-object can be added to `server`. It names an HTTPS endpoint that Alcove calls to bring the server up. Its `mode` says which of two things the endpoint does:
 
-**Lifecycle provisioning**: the server has a fixed, known address but is started on demand to avoid consuming resources between exchanges. The static `host` and other `server` fields are present alongside `provision` in both parties' configs; `provision` is the call that wakes the server. Both parties may call the same endpoint independently before connecting.
+- **`start`** (the default): the server has a fixed, known address and is started on demand so it uses no resources between exchanges. The static `host` and other `server` fields are in both parties' configs beside `provision`, and `alcove exchange` calls the endpoint before every run. Both parties may call it independently.
+- **`create`**: the endpoint makes a new server and answers with its address. The inviting party calls it once, with an offline `alcove invite` from its configuration; the invitation names the returned address, and the invite writes it into this configuration's `server`. Every later `alcove exchange` of this configuration connects to that written address without calling the endpoint, until the next invitation creates another server. The accepting party's configuration is seeded from the invitation and holds only static `server` fields.
 
-**Address-returning provisioning** (not yet implemented): the endpoint allocates a fresh resource and returns its address. Because the address is unknown until provisioning runs, this is asymmetric: the provisioning party (conventionally the inviter) calls the endpoint during exchange setup with `alcove invite`, and the resulting static `server` fields are written into the other party's config before either party runs the CLI. At run time the provisioning party's config retains `server.provision`; the other party's config has only static `server` fields.
+Alcove never stops or deletes the server in either mode: stopping an idle server, or deleting a created one after its exchanges, is the endpoint's or its operator's job.
 
-A `provision` block is read as lifecycle provisioning. The fields, a misspelled one refused:
+The fields, a misspelled one refused:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `mode` | string (`start` \| `create`) | no | `start` when unset; any other value is refused, naming it |
 | `host` | string | yes | Hostname of the provisioning API |
 | `port` | integer | no | Port, 1-65535; defaults to 443 |
 | `path` | string | no | API path; defaults to `/` |
 | `auth` | object | no | Authentication credentials (see [HTTP service authentication](#http-service-authentication-auth)) |
 
 ```yaml
-# Lifecycle provisioning: wake a serverless PeerJS instance before connecting
+# Start mode: wake a serverless PeerJS instance before connecting
 connection:
   channel: webrtc
   server:
@@ -732,11 +734,39 @@ connection:
         bearer: "@provision.key"
 ```
 
-##### How `alcove exchange` calls the endpoint
+```yaml
+# Create mode: alcove invite makes a new SFTP server and writes its address
+connection:
+  channel: sftp
+  server:
+    host: pending # replaced by the address the endpoint returns
+    username: alice
+    private_key: "@~/.ssh/id_ed25519"
+    provision:
+      mode: create
+      host: api.example.org
+      path: /sftp/create
+      auth:
+        bearer: "@provision.key"
+```
+
+A `server` block requires `host` in both modes, so a create-mode configuration holds a placeholder host until its first invitation replaces it.
+
+##### How `alcove exchange` calls a start-mode endpoint
 
 The call runs once per run, before the run's first connection to the server, [SFTP host-key trust](CLI.md#sftp-host-key-trust) included. Every check the run can make without contacting anything comes before it, and a run refused by one of them sends nothing: the configuration and key file, the input file and the linkage terms, the signing identity, the shared secret's format and expiry, the key file's path, the size of the first round, the `--event-stream` descriptor, the WebRTC rendezvous settings, and, on an SFTP server with no pinned host key, whether the run is interactive and so can confirm one. The checks that need the server or the partner come after it: reading and confirming an unpinned host key, verifying a pinned one on connect, and the key exchange and terms agreement with the partner. A `2xx` answer means the server now accepts connections, and the run then connects to the static `server` fields. Each party's run sends its own call independently, in either order and possibly at the same time, so the endpoint must tolerate one call from each party. Any other answer stops the run; the request the call sends and how an answer is classified to an exit code are specified in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#server-provisioning-endpoint-call).
 
-Only `alcove exchange` sends the call. An online `alcove invite` or `alcove accept`, and a zero-setup exchange, build their connection from a URL or an invitation and cannot state `provision`, so start the server another way before one of those runs.
+Only `alcove exchange` sends the start call. An online `alcove invite` or `alcove accept`, and a zero-setup exchange, build their connection from a URL or an invitation and cannot state `provision`, so start the server another way before one of those runs.
+
+##### How `alcove invite` calls a create-mode endpoint
+
+An offline `alcove invite` from a configuration whose `server` states a create-mode `provision` sends the call after every check it can make from its own inputs -- the configuration, the key-file path, the input file against the linkage terms -- and before it mints the invitation. The endpoint answers `2xx` with a JSON object holding `host` and, optionally, `port` and `path`, and nothing else:
+
+```json
+{"host": "sftp-17.example.org", "port": 22, "path": "/exchange"}
+```
+
+The invitation names that address, and the invite writes `host` into the configuration's `connection.server`, and `port` and `path` when the answer states them, keeping every other field and the `provision` block. An answer the endpoint's status refuses, or one that is too large, not JSON, or holds a field out of range or any other field, stops the invite before it prints an invitation or writes the key file; the answer's limits and the exit codes are in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#server-provisioning-endpoint-call). An invitation over SFTP names no host-key fingerprint, so the accepting party confirms the new server's key on first use ([SFTP host-key trust](CLI.md#sftp-host-key-trust)). The invite leaves a `host_key_fingerprint` already in the configuration in place, so a created server presenting a different key fails that pin at the next run; remove it to confirm the new key on first use.
 
 ### `connection.role`
 

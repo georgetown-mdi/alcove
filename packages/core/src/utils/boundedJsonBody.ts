@@ -1,13 +1,12 @@
-import { parseBoundedJson } from "@alcove/core";
+import { parseBoundedJson } from "./boundedJson.js";
 
 /**
- * The one byte-capped JSON body read the web app has, for both directions of the
- * console's job API: a route reading a browser's request body, and a browser
- * client reading the console's response body. Both are streamed under a hard
- * byte cap and parsed through `@alcove/core`'s `parseBoundedJson`, so neither
- * direction can buffer an unbounded body or drive `JSON.parse` into the
- * uncatchable engine abort that bound forestalls (see
- * packages/core/src/utils/boundedJson.ts and
+ * The byte-capped JSON body read for any fetched or received body whose sender
+ * the reader does not control: the web app's job API in both directions, and
+ * the CLI's read of a server-provisioning endpoint's answer. The body is
+ * streamed under a hard byte cap and parsed through {@link parseBoundedJson},
+ * so no caller can buffer an unbounded body or drive `JSON.parse` into the
+ * uncatchable engine abort that bound forestalls (see ./boundedJson.ts and
  * docs/spec/CHANNEL_SECURITY.md).
  */
 

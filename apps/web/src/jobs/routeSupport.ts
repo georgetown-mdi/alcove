@@ -1,6 +1,8 @@
-import { getLogger, redactAndSanitizeForDisplay } from "@alcove/core";
-
-import { readBoundedJsonBody } from "@utils/boundedJsonBody";
+import {
+  getLogger,
+  readBoundedJsonBody,
+  redactAndSanitizeForDisplay,
+} from "@alcove/core";
 
 import { MAX_INPUT_CSV_LENGTH } from "./intentSchemas";
 
@@ -13,7 +15,7 @@ import {
 import { isValidJobId } from "./workdir";
 import { useJobManager } from "./index";
 
-import type { BoundedJsonBodyResult } from "@utils/boundedJsonBody";
+import type { BoundedJsonBodyResult } from "@alcove/core";
 import type { JobApiConfig } from "./gate";
 import type { JobManager } from "./jobManager";
 
@@ -291,7 +293,7 @@ export const MAX_CONFIG_HAND_BACK_BODY_BYTES = 32 * 1024 ** 2;
 type JobRequestBodyResult = BoundedJsonBodyResult;
 
 /**
- * Read a request body as JSON under a hard byte cap, through the app's one
+ * Read a request body as JSON under a hard byte cap, through core's
  * byte-capped body read ({@link readBoundedJsonBody}): streamed rather than
  * buffered, `Content-Length` never trusted, and parsed through
  * `parseBoundedJson`. Pure over its arguments, so a test can drive it with any

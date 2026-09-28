@@ -1,4 +1,4 @@
-import { readBoundedJsonBody } from "@utils/boundedJsonBody";
+import { readBoundedJsonBody } from "@alcove/core";
 
 /**
  * Body-shape helpers shared by the same-origin job-API clients: the one bounded

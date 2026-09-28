@@ -14,6 +14,10 @@ import {
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   MAX_RELAY_LOCATOR_URL_LENGTH,
+  provisionEndpointLabel,
+  safeParseConnectionConfig,
+  serverProvisionOf,
+  withProvisionedServerAddress,
   MAX_RELAY_LOCATOR_URLS,
   StunUrlSchema,
   termsReceiveNothing,
@@ -28,14 +32,18 @@ import type {
   LinkageTerms,
   Metadata,
   PreparedExchange,
+  ProvisionedServerAddress,
+  SFTPConnectionConfig,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
 import {
   csvDelimiterForRun,
   loadConfigLinkageSource,
+  loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,
   persistOutboundPayloadConsent,
+  persistProvisionedServerAddress,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { writeTermsRecord } from "../acceptedTermsRecords";
@@ -45,6 +53,7 @@ import {
 } from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
+import { createProvisionedServer } from "../serverProvision";
 import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
 import { runOrExit } from "../util/exit";
 import {
@@ -288,6 +297,34 @@ function offlineWebRTCEndpoint(
 }
 
 /**
+ * The connection with the server address a create-mode endpoint returned in
+ * place of its own, refused when the result is not a connection the schema
+ * accepts (an sftp `path` beside an `inbound_path`, say). The refusal names the
+ * endpoint and the schema's reasons, never the address.
+ */
+function connectionAtProvisionedAddress(
+  connection: SFTPConnectionConfig | WebRTCConnectionConfig,
+  address: ProvisionedServerAddress,
+): SFTPConnectionConfig | WebRTCConnectionConfig {
+  const merged = withProvisionedServerAddress(connection, address);
+  const result = safeParseConnectionConfig(merged);
+  if (!result.success) {
+    const provision = serverProvisionOf(connection);
+    const label =
+      provision !== undefined
+        ? provisionEndpointLabel(provision)
+        : "the provisioning endpoint";
+    throw new UsageError(
+      `${label} returned a server address this configuration's ` +
+        "connection block cannot use: " +
+        result.error.issues.map((issue) => issue.message).join("; ") +
+        "; change connection.server or the endpoint so the two agree.",
+    );
+  }
+  return merged;
+}
+
+/**
  * The warning for an invitation whose webrtc endpoint names a plaintext
  * (ws://) coordination server: an endpoint has no scheme field, so the
  * acceptor seeded from it dials TLS and would meet nobody.
@@ -454,6 +491,9 @@ type InviteReady =
       // holds; undefined when the config declares no metadata (reconcile lazily,
       // and any stale field is removed). See persistDisclosedPayloadColumns.
       disclosedPayloadColumns?: string[];
+      // The address a create-mode server.provision endpoint returned, written
+      // into the reused config's connection.server with the key file.
+      provisionedAddress?: ProvisionedServerAddress;
       invitation: string;
       expires: string;
       sharedSecret: string;
@@ -938,13 +978,30 @@ export async function validateInvite(params: {
 
     // A webrtc config names the coordination server and relay this invitation's
     // exchange runs on, so the acceptor is seeded from them as the online path's
-    // acceptor is. The file-sync channels keep a placeholder-tolerant block and
-    // name no endpoint.
-    const webrtcConnection = loadConfigWebRTCConnection(options.configFile);
-    const connectionEndpoint =
-      webrtcConnection !== undefined
-        ? offlineWebRTCEndpoint(webrtcConnection)
+    // acceptor is. An sftp config names its server only when a create-mode
+    // provision block made it here; otherwise the file-sync channels keep a
+    // placeholder-tolerant block and name no endpoint.
+    const configConnection =
+      loadConfigWebRTCConnection(options.configFile) ??
+      loadConfigProvisionedSFTPConnection(options.configFile);
+    // After every local refusal above and before the mint below, so a failed
+    // call leaves no token printed and no key file written.
+    const provisionedAddress =
+      configConnection !== undefined
+        ? await createProvisionedServer(configConnection, log)
         : undefined;
+    const connection =
+      configConnection !== undefined && provisionedAddress !== undefined
+        ? connectionAtProvisionedAddress(configConnection, provisionedAddress)
+        : configConnection;
+    const connectionEndpoint =
+      connection?.channel === "webrtc"
+        ? offlineWebRTCEndpoint(connection)
+        : connection !== undefined && provisionedAddress !== undefined
+          ? endpointFromConnection(connection)
+          : undefined;
+    const webrtcConnection =
+      connection?.channel === "webrtc" ? connection : undefined;
     if (webrtcConnection?.server.secure === false)
       log.warn(
         plaintextEndpointWarning(
@@ -974,6 +1031,7 @@ export async function validateInvite(params: {
       configPath: options.configFile,
       linkageTerms: configTerms,
       disclosedPayloadColumns,
+      ...(provisionedAddress !== undefined ? { provisionedAddress } : {}),
       invitation,
       expires,
       sharedSecret,
@@ -1219,6 +1277,13 @@ export async function handler(argv: Arguments): Promise<void> {
               // outbound-consent record would go stale against re-edited
               // metadata; it is removed, a no-op where none exists.
               persistOutboundPayloadConsent(keptConfigPath, undefined);
+              // The server this invitation names is the one later runs of
+              // this config connect to.
+              if (ready.provisionedAddress !== undefined)
+                persistProvisionedServerAddress(
+                  keptConfigPath,
+                  ready.provisionedAddress,
+                );
             },
           },
         );
@@ -1234,6 +1299,15 @@ export async function handler(argv: Arguments): Promise<void> {
             `${ready.expires}). Keep the key file private.`,
         );
         log.info(offlineAbandonNotice(keyPath));
+        if (ready.provisionedAddress !== undefined)
+          log.info(
+            "wrote the address of the server the provisioning endpoint " +
+              "created into connection.server in " +
+              `${redactAndRenderOperatorSuppliedText(
+                operatorSuppliedText(ready.configPath),
+              )}; later runs of 'alcove exchange' connect to it without ` +
+              "calling the endpoint.",
+          );
         log.info(
           `ensure the connection block in ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(ready.configPath),

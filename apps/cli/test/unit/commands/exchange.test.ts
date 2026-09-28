@@ -2832,6 +2832,7 @@ test("handler: a signing identity missing from its configured path exits 64 with
 function provisionedRun(
   connection: Record<string, unknown>,
   extra: Record<string, unknown> = {},
+  mode?: "start" | "create",
 ): Arguments {
   const tokenFile = path.join(dir, "provision.token");
   fs.writeFileSync(tokenFile, "wake-token\n");
@@ -2843,6 +2844,7 @@ function provisionedRun(
         server: {
           ...(connection.server as Record<string, unknown>),
           provision: {
+            ...(mode !== undefined ? { mode } : {}),
             host: "wake.example.org",
             path: "/start",
             auth: { bearer: `@${tokenFile}` },
@@ -2965,6 +2967,36 @@ test("handler: a run refused on a local input never sends the wake call", async 
     vi.unstubAllGlobals();
   }
 });
+
+test.each(["sftp", "webrtc"])(
+  "handler: a %s config stating a create-mode provision block connects to its static fields without calling the endpoint",
+  async (channel) => {
+    const argv = provisionedRun(
+      channel === "sftp"
+        ? { channel: "sftp", server: { host: "sftp-7.example.org" } }
+        : {
+            channel: "webrtc",
+            role: "acceptor",
+            server: { host: "peers-7.example.org" },
+          },
+      {},
+      "create",
+    );
+    const fetch = stubProvisionFetch(200);
+    vi.mocked(runProtocol).mockReset();
+    vi.mocked(runProtocol).mockResolvedValueOnce({});
+    const exitSpy = captureProcessExit();
+    try {
+      await handler(argv);
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.mocked(runProtocol)).toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  },
+);
 
 test("handler: a config with no provision block sends no wake call", async () => {
   fs.writeFileSync(configFile, YAML.stringify(minimalSFTPConfig));

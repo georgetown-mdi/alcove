@@ -1,21 +1,39 @@
 /**
- * The wake call a connection's `server.provision` block states: one HTTPS
- * request, sent before the run connects, that starts a primary server kept
- * down between exchanges. A 2xx answer means the server now accepts
- * connections; every other outcome stops the run, classified so the exit code
- * says whether a retry can help. The contract the endpoint meets:
- * docs/EXCHANGE_REFERENCE.md, "On-demand server provisioning".
+ * The HTTPS call a connection's `server.provision` block states. In `start`
+ * mode (the default) `alcove exchange` sends it before the run connects, to
+ * wake a primary server kept down between exchanges; a 2xx answer means the
+ * server now accepts connections, and only the status is read. In `create`
+ * mode `alcove invite` sends it to have a new server made, and the 2xx
+ * answer's body is that server's address. Every other outcome stops the
+ * command, classified so the exit code says whether a retry can help. The
+ * contract the endpoint meets: docs/EXCHANGE_REFERENCE.md, "On-demand server
+ * provisioning".
  *
- * Only the status is read. The body is network content the operator cannot
- * inspect, so it is cancelled unread and no part of it reaches a message.
- * Neither the path (which may hold a token) nor any credential is composed into
- * a message; the endpoint is named by host and port alone.
+ * The body is network content the operator cannot inspect: a start-mode body
+ * is cancelled unread, a create-mode body is read under a byte cap and held to
+ * a strict schema, and no part of either reaches a message. Neither the path
+ * (which may hold a token) nor any credential is composed into a message; the
+ * endpoint is named by host and port alone.
  */
+
+import { z } from "zod";
 
 import { ConnectionError } from "../connection/messageConnection.js";
 import { InternalConsistencyError, UsageError } from "../errors.js";
+import { readBoundedJsonBody } from "../utils/boundedJsonBody.js";
 import { enc } from "../utils/crypto.js";
-import type { ConnectionConfig, ServerProvision } from "./connection.js";
+import { maxCodeUnits } from "../utils/maxCodeUnits.js";
+import {
+  MAX_ENDPOINT_HOST_LENGTH,
+  MAX_ENDPOINT_PATH_LENGTH,
+} from "./invitation.js";
+import type {
+  ConnectionConfig,
+  SFTPConnectionConfig,
+  ServerProvision,
+  ServerProvisionMode,
+  WebRTCConnectionConfig,
+} from "./connection.js";
 
 /** The port a provisioning endpoint is reached on when `port` is unset. */
 export const DEFAULT_PROVISION_PORT = 443;
@@ -26,6 +44,38 @@ export const DEFAULT_PROVISION_PORT = 443;
  * cold start, short enough that an unattended run does not hang.
  */
 export const PROVISION_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * The cap on a create-mode answer's body. The widest document
+ * {@link ProvisionedServerAddress} admits, every host and path code unit
+ * written as a six-byte `\uXXXX` escape, is (256 + 4096) * 6 bytes plus 34 of
+ * keys, punctuation and a five-digit port: 26,146 bytes. 32 KiB is the next
+ * power of two, its margin whitespace between tokens.
+ */
+export const MAX_PROVISION_RESPONSE_BYTES = 32 * 1024;
+
+/**
+ * The server address a create-mode endpoint answers with. `port` and `path`
+ * replace the connection's own when present and leave them when absent.
+ */
+export interface ProvisionedServerAddress {
+  host: string;
+  port?: number;
+  path?: string;
+}
+
+const PROVISIONED_ADDRESS_FIELDS = ["host", "port", "path"] as const;
+
+const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> =
+  z.strictObject({
+    host: z.string().min(1).check(maxCodeUnits(MAX_ENDPOINT_HOST_LENGTH)),
+    port: z.int().min(1).max(65535).optional(),
+    path: z
+      .string()
+      .min(1)
+      .check(maxCodeUnits(MAX_ENDPOINT_PATH_LENGTH))
+      .optional(),
+  });
 
 /** The request a provisioning block describes, before a signal is attached. */
 export interface ProvisionRequest {
@@ -61,6 +111,13 @@ export function serverProvisionOf(
       );
     }
   }
+}
+
+/** The mode a block states: `start` when it states none. */
+export function provisionModeOf(
+  provision: ServerProvision,
+): ServerProvisionMode {
+  return provision.mode ?? "start";
 }
 
 function hostForAuthority(host: string): string {
@@ -223,14 +280,61 @@ function failureForStatus(
     );
   if (status === 408 || status === 429 || status >= 500)
     return new ConnectionError(
-      `${label} could not start the server (HTTP ${status}); try the run ` +
-        "again later.",
+      provisionModeOf(provision) === "create"
+        ? `${label} could not create the server (HTTP ${status}); generate ` +
+            "the invitation again later."
+        : `${label} could not start the server (HTTP ${status}); try the ` +
+            "run again later.",
       "transport",
     );
   return new UsageError(
     `${label} refused the request (HTTP ${status}); check the host, port, ` +
       "and path in connection.server.provision.",
   );
+}
+
+function timeoutFailure(label: string, timeoutMs: number): ConnectionError {
+  return new ConnectionError(
+    `${label} did not answer within ${timeoutMs}ms; check that it is ` +
+      "reachable and try again.",
+    "transport",
+  );
+}
+
+interface ProvisionAnswer {
+  response: Response;
+  signal: AbortSignal;
+  timeoutMs: number;
+}
+
+/** Send the request; resolve to a 2xx answer or reject with its failure. */
+async function sendProvisionRequest(
+  provision: ServerProvision,
+  options: CallProvisionEndpointOptions,
+): Promise<ProvisionAnswer> {
+  const { url, init } = provisionRequest(provision);
+  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const timeoutMs = options.timeoutMs ?? PROVISION_REQUEST_TIMEOUT_MS;
+  const label = provisionEndpointLabel(provision);
+  const signal = AbortSignal.timeout(timeoutMs);
+  let response: Response;
+  try {
+    response = await fetchImpl(url, { ...init, signal });
+  } catch (err) {
+    if (isTimeout(err)) throw timeoutFailure(label, timeoutMs);
+    throw new ConnectionError(
+      `could not reach ${label}; check the host and port in ` +
+        "connection.server.provision and the network path to it.",
+      "transport",
+      { cause: err },
+    );
+  }
+  const failure = failureForStatus(provision, response);
+  if (failure !== undefined) {
+    await discardBody(response);
+    throw failure;
+  }
+  return { response, signal, timeoutMs };
 }
 
 /**
@@ -244,31 +348,91 @@ export async function callProvisionEndpoint(
   provision: ServerProvision,
   options: CallProvisionEndpointOptions = {},
 ): Promise<void> {
-  const { url, init } = provisionRequest(provision);
-  const fetchImpl = options.fetch ?? globalThis.fetch;
-  const timeoutMs = options.timeoutMs ?? PROVISION_REQUEST_TIMEOUT_MS;
+  const { response } = await sendProvisionRequest(provision, options);
+  await discardBody(response);
+}
+
+/**
+ * What is wrong with a refused answer, named by schema field and never by a
+ * key the body chose.
+ */
+function refusedAddressReason(issues: ReadonlyArray<z.core.$ZodIssue>): string {
+  for (const issue of issues) {
+    const field = issue.path[0];
+    if (
+      issue.code !== "unrecognized_keys" &&
+      PROVISIONED_ADDRESS_FIELDS.some((name) => name === field)
+    )
+      return `its ${String(field)} is missing, of the wrong type, or out of range`;
+  }
+  return "it holds a field other than host, port and path";
+}
+
+/**
+ * Send a create-mode call and resolve to the address of the server the
+ * endpoint made. A failed call is classified as {@link callProvisionEndpoint}
+ * classifies it. A 2xx answer whose body exceeds
+ * {@link MAX_PROVISION_RESPONSE_BYTES}, is not JSON, or does not match
+ * {@link ProvisionedServerAddress} with no other key rejects with a
+ * {@link UsageError} (exit 64) naming the endpoint and none of the body; one
+ * the timeout cuts off mid-body, with a `transport`-kind
+ * {@link ConnectionError} (exit 69).
+ */
+export async function requestProvisionedServerAddress(
+  provision: ServerProvision,
+  options: CallProvisionEndpointOptions = {},
+): Promise<ProvisionedServerAddress> {
+  const { response, signal, timeoutMs } = await sendProvisionRequest(
+    provision,
+    options,
+  );
   const label = provisionEndpointLabel(provision);
-  let response: Response;
-  try {
-    response = await fetchImpl(url, {
-      ...init,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    if (isTimeout(err))
-      throw new ConnectionError(
-        `${label} did not answer within ${timeoutMs}ms; check that it is ` +
-          "reachable and try the run again.",
-        "transport",
-      );
-    throw new ConnectionError(
-      `could not reach ${label}; check the host and port in ` +
-        "connection.server.provision and the network path to it.",
-      "transport",
-      { cause: err },
+  const remedy =
+    "check that connection.server.provision names an endpoint that creates " +
+    "a server and answers with its address.";
+  const body = await readBoundedJsonBody(
+    response,
+    MAX_PROVISION_RESPONSE_BYTES,
+  );
+  if (body.kind === "too-large")
+    throw new UsageError(
+      `${label} answered with more than ${MAX_PROVISION_RESPONSE_BYTES} ` +
+        `bytes, more than a server address holds; ${remedy}`,
+    );
+  if (body.kind === "invalid") {
+    if (signal.aborted) throw timeoutFailure(label, timeoutMs);
+    throw new UsageError(
+      `${label} did not answer with a JSON server address; ${remedy}`,
     );
   }
-  const failure = failureForStatus(provision, response);
-  await discardBody(response);
-  if (failure !== undefined) throw failure;
+  const parsed = ProvisionedServerAddressSchema.safeParse(body.value);
+  if (!parsed.success)
+    throw new UsageError(
+      `${label} answered with a server address that cannot be used: ` +
+        `${refusedAddressReason(parsed.error.issues)}. The answer must be a ` +
+        `JSON object holding a host of at most ${MAX_ENDPOINT_HOST_LENGTH} ` +
+        "characters and, optionally, a port (1-65535) and a path of at most " +
+        `${MAX_ENDPOINT_PATH_LENGTH} characters, and nothing else; ${remedy}`,
+    );
+  return parsed.data;
+}
+
+/**
+ * The connection with the address a create-mode endpoint returned in place of
+ * its own: `host` always, `port` and `path` when the answer states them. The
+ * `provision` block is kept, the record the next invitation creates a server
+ * from.
+ */
+export function withProvisionedServerAddress<
+  C extends SFTPConnectionConfig | WebRTCConnectionConfig,
+>(connection: C, address: ProvisionedServerAddress): C {
+  return {
+    ...connection,
+    server: {
+      ...connection.server,
+      host: address.host,
+      ...(address.port !== undefined ? { port: address.port } : {}),
+      ...(address.path !== undefined ? { path: address.path } : {}),
+    },
+  };
 }

@@ -65,7 +65,7 @@ async function directionHits(filePath, source) {
 const PSI = resolve(repoRoot, "apps/web/src/psi/exchangeLifecycle.ts");
 const COMPONENTS = resolve(repoRoot, "apps/web/src/components/ColumnName.tsx");
 const JOBS = resolve(repoRoot, "apps/web/src/jobs/intentSchemas.ts");
-const UTILS = resolve(repoRoot, "apps/web/src/utils/boundedJsonBody.ts");
+const UTILS = resolve(repoRoot, "apps/web/src/utils/clientConfig.ts");
 const CHOKEPOINT = resolve(repoRoot, "apps/web/src/psi/linkageComparison.ts");
 
 // A product file, to pin that the ban is scoped BELOW the products rather than
@@ -202,7 +202,7 @@ const ACCEPTED = [
   ["src/psi", PSI, "./runOutputs"],
   ["src/components", COMPONENTS, "@psi/authoring/advancedInvite"],
   ["src/jobs", JOBS, "@alcove/core"],
-  ["src/jobs", JOBS, "@utils/boundedJsonBody"],
+  ["src/jobs", JOBS, "@utils/clientConfig"],
   ["src/jobs", JOBS, "./workInputName"],
   ["src/utils", UTILS, "@alcove/core"],
   ["src/utils", UTILS, "@jobs/intentSchemas"],
