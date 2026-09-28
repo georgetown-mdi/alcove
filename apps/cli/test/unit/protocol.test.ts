@@ -4090,7 +4090,12 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
   // preflightRun's own local checks (here, the pre-handshake expiry check)
   // refuse the run before runProtocol -- and thus prepareTransport -- is ever
   // reached, so the warning must come from preflightRun's own pass, not the
-  // pass runProtocol would otherwise have made.
+  // pass runProtocol would otherwise have made. An undeclared column rides
+  // along on the same prepared exchange, so this also pins the two notices'
+  // relative order: signing first (warnSigningWithoutRecord runs first in
+  // preflightRun), undeclared columns second, both ahead of the refusal.
+  const undeclaredColumns = ["notes"];
+  const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
   mockFd3Open();
   try {
     await expect(
@@ -4101,7 +4106,7 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
           expires: "2000-01-01T00:00:00.000Z",
           keyFilePath: path.join(tmpDir, "expired.key"),
         },
-        prepared: minimalPrepared,
+        prepared: { ...minimalPrepared, undeclaredColumns },
         signing: signingPersistFixture(path.join(tmpDir, "receipt.json")),
         recordOutput: undefined,
         verbosity: -1,
@@ -4114,22 +4119,31 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
   }
 
   expect(mockState.warnings).toContain(SIGNING_WITHOUT_RECORD_WARNING);
+  expect(mockState.warnings).toContain(notice);
   const lines = takeFd3Lines();
-  expect(lines.map((l) => l.type)).toEqual(["warning", "metrics", "error"]);
+  expect(lines.map((l) => l.type)).toEqual([
+    "warning",
+    "warning",
+    "metrics",
+    "error",
+  ]);
   expect(lines[0].source).toBe("signingWithoutRecord");
-  expect(String(lines[2].message)).toContain("expired");
+  expect(lines[1].source).toBe("undeclaredColumns");
+  expect(lines[1].message).toBe(notice);
+  expect(String(lines[3].message)).toContain("expired");
 });
 
 /**
  * Run one party of a signed, no-record exchange through preflightRun and then
  * runProtocol, exactly as a command handler does: the opened stream and the
- * preflight's signingWithoutRecordWarned both thread into runProtocol so its
- * own pass does not repeat the warning.
+ * preflight's signingWithoutRecordWarned and undeclaredColumnsWarned both
+ * thread into runProtocol so its own pass does not repeat either warning.
  */
 async function runSigningPartyWithPreflight(
   keyFilePath: string,
   name: string,
   receiptFile: string,
+  prepared: PreparedExchange = minimalPrepared,
 ): Promise<unknown> {
   const connection = {
     channel: "filedrop" as const,
@@ -4138,20 +4152,21 @@ async function runSigningPartyWithPreflight(
   };
   const auth = { sharedSecret: TOKEN_A, keyFilePath };
   const signing = signingPersistFixture(receiptFile);
-  const { eventStream, signingWithoutRecordWarned } = await preflightRun({
-    connection,
-    auth,
-    prepared: minimalPrepared,
-    signing,
-    recordOutput: undefined,
-    verbosity: -1,
-    loggerName: name,
-    eventStream: undefined,
-  });
+  const { eventStream, signingWithoutRecordWarned, undeclaredColumnsWarned } =
+    await preflightRun({
+      connection,
+      auth,
+      prepared,
+      signing,
+      recordOutput: undefined,
+      verbosity: -1,
+      loggerName: name,
+      eventStream: undefined,
+    });
   return runProtocol({
     connection,
     auth,
-    prepared: minimalPrepared,
+    prepared,
     output: undefined,
     verbosity: -1,
     loggerName: name,
@@ -4159,6 +4174,7 @@ async function runSigningPartyWithPreflight(
     fileSyncRuntime: { eventStream },
     signing,
     signingWithoutRecordWarned,
+    undeclaredColumnsWarned,
   });
 }
 
@@ -4191,6 +4207,45 @@ test(
     expect(
       mockState.warnings.filter((m) => m === SIGNING_WITHOUT_RECORD_WARNING),
     ).toHaveLength(2);
+  },
+);
+
+test(
+  "a full exchange run emits the undeclaredColumns warning exactly once per party",
+  { timeout: 20_000 },
+  async () => {
+    // Same shape as the signing-warning test above, with an undeclared
+    // column riding on the prepared exchange instead: preflightRun's own
+    // pass must be the one that warns, and runProtocol's pass (fed
+    // undeclaredColumnsWarned back) must not repeat it.
+    const undeclaredColumns = ["notes"];
+    const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+    const prepared = { ...minimalPrepared, undeclaredColumns };
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+
+    const [resultA, resultB] = await Promise.allSettled([
+      runSigningPartyWithPreflight(
+        keyFileA,
+        "test-a",
+        path.join(tmpDir, "receipt-a.json"),
+        prepared,
+      ),
+      runSigningPartyWithPreflight(
+        keyFileB,
+        "test-b",
+        path.join(tmpDir, "receipt-b.json"),
+        prepared,
+      ),
+    ]);
+    expect(resultA.status).toBe("fulfilled");
+    expect(resultB.status).toBe("fulfilled");
+
+    // One per party -- not two, which a repeat from runProtocol's own pass
+    // over the same run would produce.
+    expect(mockState.warnings.filter((m) => m === notice)).toHaveLength(2);
   },
 );
 
