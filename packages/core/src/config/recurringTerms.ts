@@ -15,6 +15,41 @@ export function payloadReceiveFillsOnFirstRun(terms: LinkageTerms): boolean {
 }
 
 /**
+ * The column names an unset `payload.receive` in `terms` resolves to against
+ * the partner's terms as they crossed the wire: the partner's stated
+ * `payload.send`, or none when it states no list. Undefined when the list does
+ * not fill ({@link payloadReceiveFillsOnFirstRun}). The run records these
+ * names, and the agreed-terms hash covers the terms with them in place
+ * ({@link termsResolvingPayloadReceive}); both read them from here.
+ */
+export function payloadReceiveFill(
+  terms: LinkageTerms,
+  partnerTerms: LinkageTerms,
+): string[] | undefined {
+  if (!payloadReceiveFillsOnFirstRun(terms)) return undefined;
+  return (partnerTerms.payload?.send ?? []).map((column) => column.name);
+}
+
+/**
+ * `terms` with an unset `payload.receive` resolved to the partner's stated
+ * send set ({@link payloadReceiveFill}), each column by name alone, as the run
+ * records it; any other `terms` is returned unchanged. Both parties derive the
+ * same resolved pair from the two documents that crossed the wire, and a
+ * configuration the fill has written resolves to itself.
+ */
+export function termsResolvingPayloadReceive(
+  terms: LinkageTerms,
+  partnerTerms: LinkageTerms,
+): LinkageTerms {
+  const filled = payloadReceiveFill(terms, partnerTerms);
+  if (filled === undefined) return terms;
+  return {
+    ...terms,
+    payload: { ...terms.payload, receive: filled.map((name) => ({ name })) },
+  };
+}
+
+/**
  * The one line a front end shows or logs when a run fills `payload.receive`
  * from the partner's declared send set. The names are the partner's, so each
  * is escaped for display here; the line goes to a log or UI sink as it is.

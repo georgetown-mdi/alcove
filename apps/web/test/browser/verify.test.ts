@@ -51,10 +51,12 @@ const LOCAL_TERMS: LinkageTerms = {
   deduplicate: false,
   linkageFields: [{ name: "ssn", type: "ssn" }],
   linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
+  payload: { send: [{ name: "dose" }] },
 };
 const PARTNER_TERMS: LinkageTerms = {
   ...LOCAL_TERMS,
   identity: PARTNER_IDENTITY,
+  payload: { send: [{ name: "clinic" }] },
 };
 
 const localPayloadSent: CommittedPayload = {
@@ -349,6 +351,58 @@ describe("verify receipt screen", () => {
     await expect
       .element(page.getByText("Opened and matches").first())
       .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Re-derives and matches"))
+      .toBeInTheDocument();
+  });
+
+  test("a first run's record re-derives its hash from the configuration the fill wrote", async () => {
+    // The run stated its send set from the metadata and left receive unset; the
+    // configuration pasted here is the one the fill wrote afterwards, receive
+    // recorded and send still unset.
+    const { record, keys } = await buildFixture();
+    await mountVerifyScreen();
+    await uploadAt(
+      0,
+      jsonFile("alcove-record-x.json", serializeExchangeRecord(record)),
+    );
+    await uploadAt(
+      1,
+      jsonFile("alcove-record-x.keys.json", serializeVerificationKeys(keys)),
+    );
+    await userEvent.click(
+      page.getByRole("button", {
+        name: "Re-supply your files to open the commitments",
+      }),
+    );
+    const postFillConfig = {
+      linkage_terms: {
+        ...LOCAL_TERMS,
+        payload: { receive: [{ name: "clinic" }] },
+      },
+      metadata: [
+        { name: "pid", type: "other", role: "identifier", is_payload: false },
+        { name: "ssn", type: "ssn", role: "linkage", is_payload: false },
+        { name: "dose", type: "other", role: "payload", is_payload: true },
+      ],
+    };
+    await userEvent.fill(
+      page.getByLabelText("Your linkage terms"),
+      JSON.stringify(postFillConfig),
+    );
+    await userEvent.click(
+      page.getByRole("button", { name: "Load these terms" }).first(),
+    );
+    await userEvent.fill(
+      page.getByLabelText("Your partner's linkage terms"),
+      JSON.stringify(PARTNER_TERMS),
+    );
+    await userEvent.click(
+      page.getByRole("button", { name: "Load these terms" }).nth(1),
+    );
+    await userEvent.click(
+      page.getByRole("button", { name: "Verify with these files" }),
+    );
     await expect
       .element(page.getByText("Re-derives and matches"))
       .toBeInTheDocument();

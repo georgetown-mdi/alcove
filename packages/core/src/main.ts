@@ -805,6 +805,7 @@ export {
   preparePayload,
   reconcileReceivedPayload,
   termsStatingDeclaredPayloadSend,
+  termsAsTheRunStatedThem,
   toCommittedPayload,
 } from "./payloadExchange";
 export type {

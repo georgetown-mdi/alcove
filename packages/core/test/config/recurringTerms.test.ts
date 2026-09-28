@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   payloadReceiveFilledNotice,
   payloadReceiveFillsOnFirstRun,
+  termsResolvingPayloadReceive,
 } from "../../src/config/recurringTerms";
 import {
   annotateUnsetPayloadReceive,
@@ -55,6 +56,27 @@ test("terms under which the partner sends this party no payload fill nothing", (
       output: { expectsOutput: false, shareWithPartner: true },
     }),
   ).toBe(false);
+});
+
+test("an unset receive list resolves to the partner's stated send set, by name, and a resolved one to itself", () => {
+  const partner: LinkageTerms = {
+    ...terms,
+    identity: "Accepting Org",
+    payload: {
+      send: [{ name: "enrollment_date", description: "first enrolled" }],
+    },
+  };
+  const resolved = termsResolvingPayloadReceive(terms, partner);
+  expect(resolved.payload).toStrictEqual({
+    receive: [{ name: "enrollment_date" }],
+  });
+  expect(termsResolvingPayloadReceive(resolved, partner)).toBe(resolved);
+  expect(
+    termsResolvingPayloadReceive(terms, { ...partner, payload: undefined })
+      .payload,
+  ).toStrictEqual({ receive: [] });
+  const countOnly: LinkageTerms = { ...terms, algorithm: "psi-c" };
+  expect(termsResolvingPayloadReceive(countOnly, partner)).toBe(countOnly);
 });
 
 test("the fill notice names each column escaped, or states that none were declared", () => {

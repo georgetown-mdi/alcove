@@ -5,6 +5,7 @@ import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
 import {
   isDisclosedToPartner,
   disclosedColumnNames,
+  inferMetadata,
   overlongDisclosedColumnPositions,
   ownResultColumnNames,
 } from "./config/metadata.js";
@@ -313,15 +314,60 @@ export function termsStatingDeclaredPayloadSend(
   terms: LinkageTerms,
   metadata: Metadata,
 ): LinkageTerms {
-  if (terms.payload?.send !== undefined) return terms;
-  if (terms.algorithm === "psi-c" || !terms.output.shareWithPartner)
-    return terms;
+  if (!payloadSendStatedFromMetadata(terms)) return terms;
   return {
     ...terms,
     payload: {
       ...terms.payload,
       send: disclosedColumnNames(metadata).map((name) => ({ name })),
     },
+  };
+}
+
+/** Whether the terms exchange states `terms`' send set from the metadata
+ * ({@link termsStatingDeclaredPayloadSend}) rather than sending it as written. */
+function payloadSendStatedFromMetadata(terms: LinkageTerms): boolean {
+  return (
+    terms.payload?.send === undefined &&
+    terms.algorithm !== "psi-c" &&
+    terms.output.shareWithPartner
+  );
+}
+
+/**
+ * This party's terms as a run under them stated them at the terms exchange,
+ * for a verifier recomputing the agreed-terms hash from a configuration after
+ * the fact: an unset `payload.send` is stated from the configuration's
+ * `metadata` ({@link termsStatingDeclaredPayloadSend}), or, where it holds
+ * none, from the metadata the run inferred from its input header, as
+ * `resolveExchangeInputs` infers it. `sendSetUnknown` is true when the terms
+ * needed stating and neither was given: the terms are then returned as written
+ * and a hash recomputed from them does not match the run's.
+ */
+export function termsAsTheRunStatedThem(
+  terms: LinkageTerms,
+  source: {
+    metadata?: Metadata;
+    inputHeader?: {
+      columns: Array<string>;
+      sanitizedColumnPositions: ReadonlyArray<number>;
+    };
+  },
+): { terms: LinkageTerms; sendSetUnknown: boolean } {
+  if (!payloadSendStatedFromMetadata(terms))
+    return { terms, sendSetUnknown: false };
+  const metadata =
+    source.metadata ??
+    (source.inputHeader === undefined
+      ? undefined
+      : inferMetadata(
+          source.inputHeader.columns,
+          source.inputHeader.sanitizedColumnPositions,
+        ));
+  if (metadata === undefined) return { terms, sendSetUnknown: true };
+  return {
+    terms: termsStatingDeclaredPayloadSend(terms, metadata),
+    sendSetUnknown: false,
   };
 }
 

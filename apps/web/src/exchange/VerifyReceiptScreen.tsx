@@ -16,6 +16,8 @@ import {
   reconstructCommittedData,
   reproductionMismatchCauses,
   sanitizeErrorForDisplay,
+  sanitizeForDisplay,
+  termsAsTheRunStatedThem,
   toRetainedResult,
   verifyExchangeRecord,
 } from "@alcove/core";
@@ -27,7 +29,7 @@ import {
 import { CsvDelimiterField } from "@components/CsvDelimiterField";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
-import { importLinkageTerms } from "@psi/linkageTermsIO";
+import { importLinkageTermsDocument } from "@psi/linkageTermsIO";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import styles from "@styles/app.module.css";
@@ -49,6 +51,7 @@ import type {
   DualSignedRecord,
   ExchangeRecord,
   LinkageTerms,
+  Metadata,
   RecordVerificationReport,
   VerificationKeys,
 } from "@alcove/core";
@@ -250,9 +253,24 @@ function ParseAlert({ title, message }: { title: string; message: string }) {
   );
 }
 
+/** Pasted linkage terms, with the metadata block of the configuration they
+ * came from where it held one. */
+interface LoadedTerms {
+  terms: LinkageTerms;
+  metadata?: Metadata;
+}
+
+/** What the record verdict notes when this party's payload send set cannot be
+ * stated, so the agreed-terms hash is recomputed without it. */
+export const SEND_SET_UNKNOWN_NOTE =
+  "Your linkage terms leave payload.send unset and came with no metadata " +
+  "block, so the payload columns you stated at the exchange are not known " +
+  "and the agreed-terms hash will not match. Re-supply your input CSV, or " +
+  "paste the configuration with the metadata block the exchange ran with.";
+
 /** The linkage-terms re-supply idiom, paste-based, mirroring TermsImportExport:
- * a textarea whose Import validates through importLinkageTerms and reports a
- * value-free error inline. */
+ * a textarea whose Import validates through importLinkageTermsDocument and
+ * reports a value-free error inline. */
 function TermsInput({
   label,
   description,
@@ -261,20 +279,24 @@ function TermsInput({
 }: {
   label: string;
   description: string;
-  terms: LinkageTerms | undefined;
-  onTerms: (terms: LinkageTerms | undefined) => void;
+  terms: LoadedTerms | undefined;
+  onTerms: (terms: LoadedTerms | undefined) => void;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
   function handleImport() {
-    const result = importLinkageTerms(text);
+    const result = importLinkageTermsDocument(text);
     if (!result.success) {
       setError(result.error);
       onTerms(undefined);
       return;
     }
     setError(undefined);
-    onTerms(result.terms);
+    onTerms(
+      result.metadata === undefined
+        ? { terms: result.terms }
+        : { terms: result.terms, metadata: result.metadata },
+    );
   }
   return (
     <Stack gap="xs">
@@ -338,8 +360,8 @@ export function VerifyReceiptScreen() {
   const [delimiterChoice, setDelimiterChoice] = useState(
     INITIAL_CSV_DELIMITER_CHOICE,
   );
-  const [localTerms, setLocalTerms] = useState<LinkageTerms>();
-  const [partnerTerms, setPartnerTerms] = useState<LinkageTerms>();
+  const [localTerms, setLocalTerms] = useState<LoadedTerms>();
+  const [partnerTerms, setPartnerTerms] = useState<LoadedTerms>();
 
   // The signed leg (optional): the dual-signed record, and the two anchoring
   // values -- the partner's pinned fingerprint, typed, and this party's own
@@ -457,12 +479,12 @@ export function VerifyReceiptScreen() {
     set(file);
   }
 
-  function onLocalTerms(terms: LinkageTerms | undefined) {
+  function onLocalTerms(terms: LoadedTerms | undefined) {
     invalidateVerdicts();
     setLocalTerms(terms);
   }
 
-  function onPartnerTerms(terms: LinkageTerms | undefined) {
+  function onPartnerTerms(terms: LoadedTerms | undefined) {
     invalidateVerdicts();
     setPartnerTerms(terms);
   }
@@ -493,22 +515,56 @@ export function VerifyReceiptScreen() {
     setVerifyError(undefined);
     try {
       const parsedRecord = record?.record;
+      const readBy =
+        csvDelimiter !== undefined ? { delimiter: csvDelimiter } : {};
+      const inputParse =
+        inputCsv === undefined
+          ? undefined
+          : await loadCSVFileOffMainThread(inputCsv, readBy);
+      // Each party's terms as its run stated them at the exchange, which the
+      // agreed-terms hash covers: an unset payload.send stands for the columns
+      // the pasted configuration's metadata discloses, or, for your own terms
+      // with no metadata block, the columns inferred from your input's header.
+      const localStated =
+        localTerms === undefined
+          ? undefined
+          : termsAsTheRunStatedThem(localTerms.terms, {
+              ...(localTerms.metadata !== undefined
+                ? { metadata: localTerms.metadata }
+                : {}),
+              ...(inputParse !== undefined
+                ? {
+                    inputHeader: {
+                      columns: inputParse.meta.fields ?? [],
+                      sanitizedColumnPositions:
+                        inputParse.meta.sanitizedColumnPositions,
+                    },
+                  }
+                : {}),
+            });
+      const localTermsForRun = localStated?.terms;
       // The dual-signed record holds the partner's terms, so a run with one
       // loaded checks the agreed-terms hash without them being pasted; what is
       // pasted wins over that copy.
       const partnerTermsForRun = partnerTermsForVerification(
-        partnerTerms,
+        partnerTerms === undefined
+          ? undefined
+          : termsAsTheRunStatedThem(partnerTerms.terms, {
+              ...(partnerTerms.metadata !== undefined
+                ? { metadata: partnerTerms.metadata }
+                : {}),
+            }).terms,
         signedRecord?.record,
       );
       let recordReport: RecordVerificationReport | undefined;
-      let recordWarnings: Array<Displayable> = [];
+      let recordWarnings: Array<Displayable> =
+        localStated?.sendSetUnknown === true
+          ? [sanitizeForDisplay(SEND_SET_UNKNOWN_NOTE)]
+          : [];
       if (parsedRecord !== undefined && keys?.keys !== undefined) {
         let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
           {};
-        if (inputCsv !== undefined && resultCsv !== undefined) {
-          const readBy =
-            csvDelimiter !== undefined ? { delimiter: csvDelimiter } : {};
-          const inputParse = await loadCSVFileOffMainThread(inputCsv, readBy);
+        if (inputParse !== undefined && resultCsv !== undefined) {
           const resultParse = await loadCSVFileOffMainThread(resultCsv, readBy);
           const result = toRetainedResult(resultParse);
           const ourIdColumn = deriveOurIdColumn(
@@ -522,11 +578,11 @@ export function VerifyReceiptScreen() {
             ourIdColumn,
           });
           data = reconstructed.data;
-          recordWarnings = reconstructed.warnings;
+          recordWarnings = [...recordWarnings, ...reconstructed.warnings];
         }
         recordReport = await verifyExchangeRecord(parsedRecord, keys.keys, {
           data,
-          localTerms,
+          localTerms: localTermsForRun,
           partnerTerms: partnerTermsForRun,
         });
         // A reproduction limitation is named only once the verdict shows it
@@ -547,12 +603,12 @@ export function VerifyReceiptScreen() {
           },
           {
             record: parsedRecord,
-            localTerms,
+            localTerms: localTermsForRun,
             partnerTerms: partnerTermsForRun,
           },
         );
         signedView = signedVerdictViewModel(report, {
-          localTerms: localTerms !== undefined,
+          localTerms: localTermsForRun !== undefined,
           partnerTerms: partnerTermsForRun !== undefined,
         });
       }
@@ -777,14 +833,14 @@ export function VerifyReceiptScreen() {
             <TermsInput
               key={`local-terms-${exchangeGeneration}`}
               label="Your linkage terms"
-              description="Paste your exchange config or exported linkage-terms document. Only its linkage_terms are read; nothing else in a config is."
+              description="Paste your exchange config or exported linkage-terms document. Its linkage_terms are read, and a config's metadata block names the payload columns you sent where payload.send is unset; with no metadata block, those are read from your input CSV's header."
               terms={localTerms}
               onTerms={onLocalTerms}
             />
             <TermsInput
               key={`partner-terms-${exchangeGeneration}`}
               label="Your partner's linkage terms"
-              description="Paste your partner's config or exported terms, read the same way. A loaded receipt holds them already; what you paste here is used in its place."
+              description="Paste your partner's config or exported terms, read the same way, except that an unset payload.send is taken from their metadata block alone. A loaded receipt holds them already; what you paste here is used in its place."
               terms={partnerTerms}
               onTerms={onPartnerTerms}
             />

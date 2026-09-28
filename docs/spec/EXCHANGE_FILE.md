@@ -543,7 +543,11 @@ count-only (`psi-c`) document and a party with `output.share_with_partner:
 false` state nothing, since no payload moves to the partner under either. The
 stated form is the one `validateCompatibility` compares and the agreed-terms
 hash covers, so a verifier recomputing the hash from a configuration states it
-from that configuration's metadata the same way.
+from that configuration's metadata the same way, or, for a configuration with
+no metadata block, from the input header the run inferred its metadata from
+(`termsAsTheRunStatedThem`). The hash also resolves an unset `payload.receive`
+to the partner's stated send set, the list the fill below records
+([The agreed-terms hash](EXCHANGE_RECORD.md#the-agreed-terms-hash)).
 
 A recurring run whose terms leave `payload.receive` unset, and whose partner
 can send it payload (`payloadReceiveFillsOnFirstRun`,

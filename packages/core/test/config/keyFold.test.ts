@@ -60,7 +60,7 @@ test("a collision-free document hashes as before", async () => {
     parseLinkageTerms(dateTerms("Party A", dateParams)),
     parseLinkageTerms(dateTerms("Party B", dateParams)),
   );
-  expect(hash).toBe("1ku2ognY1RDDTviURNHQ5x9Na6-N7hymtkl41TRaBzg");
+  expect(hash).toBe("se7vHOn5mqB8Sox2MukH5Hpd_AXtO4e_RoOT50JCTtE");
 });
 
 test("a collision-free document with an unfolded provider_options subtree hashes as before", async () => {
@@ -75,7 +75,7 @@ test("a collision-free document with an unfolded provider_options subtree hashes
     terms,
     parseLinkageTerms(dateTerms("Party B", params)),
   );
-  expect(hash).toBe("PZ9Zmep9m8t_M7pzoyseFVfRgtfEgE46IyCnlUauIJo");
+  expect(hash).toBe("zfg-oEpSikt8h_F9gW0LaJrMyVjkm0lZz12UBrwKG6w");
 });
 
 // --- Partner path -------------------------------------------------------------

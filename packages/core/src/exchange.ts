@@ -86,7 +86,7 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
 import type { PayloadWireMessage } from "./payloadExchange.js";
-import { payloadReceiveFillsOnFirstRun } from "./config/recurringTerms.js";
+import { payloadReceiveFill } from "./config/recurringTerms.js";
 import {
   buildExchangeRecord,
   computeTermsHash,
@@ -2330,7 +2330,7 @@ export interface RunExchangeOptions {
   /**
    * Called once, at the terms exchange, when this party's terms leave
    * `payload.receive` unset and the partner can send it payload
-   * ({@link payloadReceiveFillsOnFirstRun}): the argument is the column names
+   * ({@link payloadReceiveFill}): the argument is the column names
    * the partner's terms declare in `payload.send`, which this run then holds
    * the received payload to. The caller records them as `payload.receive` in
    * the configuration it runs from, so the next run compares them strictly. A
@@ -2524,13 +2524,15 @@ export async function runExchange(
   // receives anything under it. The run holds the received payload to the
   // filled set, as a later run holds it to the recorded list.
   let filledPayloadReceive: string[] | undefined;
+  const payloadReceiveFillColumns = payloadReceiveFill(
+    linkageTerms,
+    partnerTerms,
+  );
   if (
     options.onPayloadReceiveFilled !== undefined &&
-    payloadReceiveFillsOnFirstRun(linkageTerms)
+    payloadReceiveFillColumns !== undefined
   ) {
-    const columns = (partnerTerms.payload?.send ?? []).map(
-      (column) => column.name,
-    );
+    const columns = payloadReceiveFillColumns;
     try {
       await options.onPayloadReceiveFilled(columns);
     } catch (err) {

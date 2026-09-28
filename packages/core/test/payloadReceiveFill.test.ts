@@ -3,6 +3,8 @@ import { expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { prepareForExchange, runExchange } from "../src/exchange";
+import { termsStatingDeclaredPayloadSend } from "../src/payloadExchange";
+import { computeTermsHash } from "../src/records/exchangeRecord";
 import {
   createMessagePipe,
   type MessageConnection,
@@ -240,4 +242,50 @@ test("no fill without a caller to record it, or under an explicit receive list",
   );
   expect(filled).toEqual([]);
   expect(fulfilled(nothing.inviterResult).partnerPayload.columns).toEqual([]);
+});
+
+test("the first run's agreed-terms hash is the hash of the resolved terms each post-fill configuration states", async () => {
+  const filledBy = { inviter: [] as string[][], acceptor: [] as string[][] };
+  const recording = (into: string[][]) => () => ({
+    onPayloadReceiveFilled: (columns: string[]) => {
+      into.push(columns);
+    },
+  });
+  const { inviterResult, acceptorResult, inviterSent, acceptorSent } =
+    await settle(
+      { metadata: sendsNothing, options: recording(filledBy.inviter) },
+      { metadata: sendsNote, options: recording(filledBy.acceptor) },
+    );
+  expect(filledBy).toEqual({ inviter: [["note"]], acceptor: [[]] });
+  const inviterHash = fulfilled(inviterResult).audit?.record.termsHash;
+  const acceptorHash = fulfilled(acceptorResult).audit?.record.termsHash;
+  expect(inviterHash).toBeDefined();
+  expect(acceptorHash).toBe(inviterHash);
+
+  // Each configuration as the fill left it: receive written, send unset and
+  // stated from the metadata, as verify-receipt states it.
+  const postFill = (
+    identity: string,
+    metadata: Metadata,
+    receive: string[],
+  ): LinkageTerms =>
+    termsStatingDeclaredPayloadSend(
+      {
+        ...baseTerms,
+        identity,
+        payload: { receive: receive.map((name) => ({ name })) },
+      },
+      metadata,
+    );
+  const inviterConfig = postFill("Inviter Co", sendsNothing, ["note"]);
+  const acceptorConfig = postFill("Acceptor Co", sendsNote, []);
+  expect(await computeTermsHash(inviterConfig, statedTerms(acceptorSent))).toBe(
+    inviterHash,
+  );
+  expect(await computeTermsHash(acceptorConfig, statedTerms(inviterSent))).toBe(
+    inviterHash,
+  );
+  expect(await computeTermsHash(inviterConfig, acceptorConfig)).toBe(
+    inviterHash,
+  );
 });

@@ -23,6 +23,7 @@ import {
 } from "../config/linkageTermsSchema.js";
 import { checkLinkageRuleSetCitation } from "../defaults/builtInLinkageTerms.js";
 import { chainDetailCauses } from "../errors.js";
+import { termsResolvingPayloadReceive } from "../config/recurringTerms.js";
 import { boundedArray } from "../utils/boundedArray.js";
 import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
 import {
@@ -181,16 +182,24 @@ function agreedTermsValue(a: LinkageTerms, b: LinkageTerms): CanonicalValue {
 
 /**
  * Compute the agreed-terms hash: the base64url SHA-256 over the canonical
- * encoding of both parties' linkage terms in a fixed (canonical-sorted) order.
- * Both parties compute the same value for the same agreed terms, and a different
- * value when either side's terms differ.
+ * encoding of both parties' resolved linkage terms in a fixed (canonical-sorted)
+ * order. Each side's unset `payload.receive` is resolved to the other's stated
+ * send set first ({@link termsResolvingPayloadReceive}), so the hash is the same
+ * over the terms as they crossed the wire and over a configuration the
+ * first-run fill has since written. Both parties compute the same value for the
+ * same agreed terms, and a different value when either side's terms differ.
  */
 export async function computeTermsHash(
   localTerms: LinkageTerms,
   partnerTerms: LinkageTerms,
 ): Promise<string> {
   const digest = await sha256(
-    canonicalBytes(agreedTermsValue(localTerms, partnerTerms)),
+    canonicalBytes(
+      agreedTermsValue(
+        termsResolvingPayloadReceive(localTerms, partnerTerms),
+        termsResolvingPayloadReceive(partnerTerms, localTerms),
+      ),
+    ),
   );
   return toBase64Url(digest);
 }
