@@ -34,6 +34,7 @@ import {
 import {
   buildAdvancedTerms,
   seedAdvancedInvite,
+  setDraftMetadata,
 } from "@psi/authoring/advancedInvite";
 import { RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
 
@@ -383,8 +384,12 @@ describe("buildManagedDeposit (inviter)", () => {
     // The inviter's minted terms are the ones the record stores; with no
     // control for the receive list they ask the partner for none, so the
     // partner's mirrored send is empty and bound in the agreed terms.
+    const seeded = seedAdvancedInvite("County Health Dept", [
+      ...keyColumns,
+      "program_code",
+    ]);
     const authored = buildAdvancedTerms(
-      seedAdvancedInvite("County Health Dept", inviterColumns).draft,
+      setDraftMetadata(seeded.draft, inviterMetadata),
     );
     const deposit = buildManagedDeposit(
       depositInputs({
