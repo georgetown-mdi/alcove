@@ -13,6 +13,7 @@ import {
   countIsPartnerReported,
   buildOutputTable,
   resultCsvDelimiter,
+  undeclaredColumnsForOwnResult,
   describeEntityClusters,
   describeResolvedMatching,
   describeResolvedRunShape,
@@ -204,19 +205,18 @@ export const SIGNING_WITHOUT_RECORD_WARNING =
 
 /**
  * The notice naming the input columns this run does not send because its
- * metadata does not declare them, with the remedy the configuration takes, or
- * `undefined` when there are none. Composed raw: the names are the input
- * file's header, escaped once at each sink.
+ * metadata does not declare them, ending with the remedy the configuration
+ * takes, or `undefined` when there are none. Composed raw: the names are the
+ * input file's header, escaped once at each sink.
  */
 export function undeclaredColumnsNotice(
   prepared: Pick<PreparedExchange, "undeclaredColumns">,
 ): string | undefined {
-  const notice = describeUndeclaredColumns(prepared.undeclaredColumns ?? []);
-  if (notice === undefined) return undefined;
-  return (
-    `${notice} To send one, declare it in the configuration's metadata ` +
-    `block with is_payload: true; to leave one out without this notice, ` +
-    `declare it with role: ignored.`
+  return describeUndeclaredColumns(
+    prepared.undeclaredColumns ?? [],
+    "To send one, declare it in the configuration's metadata block with " +
+      "is_payload: true; to leave one out without this notice, declare it " +
+      "with role: ignored.",
   );
 }
 
@@ -2128,7 +2128,7 @@ async function writeExchangeOutputs(params: {
         prepared.metadata,
         partnerPayload,
         prepared.includeOwnColumns,
-        prepared.undeclaredColumns,
+        undeclaredColumnsForOwnResult(prepared),
         resultDelimiter,
       );
     } catch (err) {

@@ -1072,9 +1072,9 @@ function uniqueColumnName(
  * repeating with it under a deduplicating cardinality. It selects them
  * rather than listing them ({@link ownResultColumnNames}); undefined adds
  * none, and the file is then the one the partner's values alone compose.
- * `undeclaredColumns` are the input columns the metadata does not name
- * (`PreparedExchange.undeclaredColumns`), which `all` writes after the
- * declared ones.
+ * `undeclaredColumns` are the undeclared input columns `all` writes after
+ * the declared ones, which `undeclaredColumnsForOwnResult` gives: every one
+ * when the metadata is inferred, none for an authored metadata block.
  * These columns are local: no frame, consent display, or commitment holds
  * them, and the partner's own result is untouched by them.
  *

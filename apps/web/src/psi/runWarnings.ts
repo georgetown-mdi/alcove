@@ -38,7 +38,8 @@ export function appendSanitizedRunWarning(
 export function undeclaredColumnsRunNotice(
   prepared: Pick<PreparedExchange, "undeclaredColumns">,
 ): string | undefined {
-  const notice = describeUndeclaredColumns(prepared.undeclaredColumns ?? []);
-  if (notice === undefined) return undefined;
-  return `${notice} To send one, set it to "Sent to your partner" in the column settings.`;
+  return describeUndeclaredColumns(
+    prepared.undeclaredColumns ?? [],
+    'To send one, set it to "Sent to your partner" in the column settings.',
+  );
 }

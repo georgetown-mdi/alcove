@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
+import {
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  sanitizeForDisplay,
+} from "../utils/sanitizeForDisplay.js";
 
 import { OperatorConfigError, UsageError } from "../errors.js";
 import { SEMANTIC_TYPES } from "../types";
@@ -130,8 +134,9 @@ export function linkageDateOfBirthColumn(
  * Which of this party's own input columns its result file holds beside the
  * partner's values, as the local `include_own_columns` config key selects
  * them: `disclosed` for the columns transmitted to the partner
- * ({@link isDisclosedToPartner}), `all` for every column of the input file,
- * declared or not. The key's absence selects nothing and is not a value here.
+ * ({@link isDisclosedToPartner}), `all` for every column the metadata
+ * declares, or every column of the input file when the metadata is inferred.
+ * The key's absence selects nothing and is not a value here.
  */
 export const OwnColumnSelectionSchema = z.enum(["disclosed", "all"]);
 
@@ -141,8 +146,9 @@ export type OwnColumnSelection = z.infer<typeof OwnColumnSelectionSchema>;
 /**
  * The names of this party's own input columns to write into its result
  * file under `selection`: the selected metadata columns in metadata order,
- * then, under `all`, `undeclaredColumns` (the input columns the metadata does
- * not name, {@link undeclaredColumnNames}) in input order.
+ * then, under `all`, `undeclaredColumns` in input order: the input columns
+ * inferred metadata does not name, and none for an authored metadata block
+ * (`undeclaredColumnsForOwnResult`).
  *
  * The identifier column is left out of both selections: the result's first
  * column already holds its value for every row ({@link buildOutputTable}),
@@ -504,22 +510,52 @@ export function undeclaredColumnNames(
   return columnNames.filter((name) => !declared.has(name));
 }
 
+/** The most undeclared column names one notice lists; an arbitrary working value. */
+export const UNDECLARED_COLUMNS_LISTED_MAX = 20;
+
 /**
  * The notice naming a run's undeclared input columns
- * ({@link undeclaredColumnNames}), or `undefined` when there are none. Each
- * front end appends the remedy its own settings take. The names are the
- * operator's own header, composed raw for the display sink to escape.
+ * ({@link undeclaredColumnNames}) and ending with `remedy`, the fix the front
+ * end's own settings take, or `undefined` when there are none. The names are
+ * the operator's own header, composed raw for the display sink to escape.
+ *
+ * Lists at most {@link UNDECLARED_COLUMNS_LISTED_MAX} names and counts the
+ * rest, and lists fewer when their escaped form would push the message past
+ * {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH}, the cap every warning sink
+ * applies, so the sink never truncates `remedy` away.
  */
 export function describeUndeclaredColumns(
   undeclared: ReadonlyArray<string>,
+  remedy: string,
 ): string | undefined {
   if (undeclared.length === 0) return undefined;
   const plural = undeclared.length > 1;
-  return (
-    `${undeclared.length} input column${plural ? "s are" : " is"} not sent ` +
-    `to your partner because the exchange's column settings do not declare ` +
-    `${plural ? "them" : "it"}: ${undeclared.join(", ")}.`
-  );
+  const compose = (listed: number): string => {
+    const remaining = undeclared.length - listed;
+    const names =
+      listed === 0
+        ? ""
+        : `: ${undeclared.slice(0, listed).join(", ")}` +
+          (remaining > 0 ? `, and ${remaining} more` : "");
+    return (
+      `${undeclared.length} input column${plural ? "s are" : " is"} not sent ` +
+      `to your partner because the exchange's column settings do not declare ` +
+      `${plural ? "them" : "it"}${names}. ${remedy}`
+    );
+  };
+  // The escaped form is never shorter than the raw one, so the raw length
+  // test keeps an overlong header from being escaped whole just to measure it.
+  const fitsEverySink = (message: string): boolean =>
+    message.length <= WARNING_MESSAGE_MAX_DISPLAY_LENGTH &&
+    sanitizeForDisplay(message, { maxLength: Number.POSITIVE_INFINITY })
+      .length <= WARNING_MESSAGE_MAX_DISPLAY_LENGTH;
+  let listed = 0;
+  while (
+    listed < Math.min(undeclared.length, UNDECLARED_COLUMNS_LISTED_MAX) &&
+    fitsEverySink(compose(listed + 1))
+  )
+    listed += 1;
+  return compose(listed);
 }
 
 /**

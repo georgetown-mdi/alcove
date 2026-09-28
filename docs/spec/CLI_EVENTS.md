@@ -105,7 +105,7 @@ The closed set of `source` values. `WARNING_SOURCES` in `apps/cli/src/eventStrea
 | `resolvedCardinality` | What the two parties' agreed `deduplicate` values resolved to, stated at the post-terms, pre-round boundary. |
 | `pairTableAdvisory` | The projected pair-table size at that same boundary, past the advisory bound ([PROTOCOL.md](PROTOCOL.md#deriving-one-table-from-the-exchanged-association-maps), The advisory bound). |
 | `signingWithoutRecord` | A signing identity configured while record writing is off, raised before any credential, terms, or data are sent. |
-| `undeclaredColumns` | The input file holds columns the metadata does not declare, which the run does not send; the message names them. Raised before any credential, terms, or data are sent, and only when there is at least one. |
+| `undeclaredColumns` | The input file holds columns the metadata does not declare, which the run does not send; the message names them, up to a fixed number and counting the rest, and ends with how to declare one. Raised before any credential, terms, or data are sent, and only when there is at least one. |
 | `terminatedRunRecord` | A terminated run's record of what it had already disclosed could not be written, or could not be built at all. |
 | `persistenceLoss` | A completed run's local write that did not reach disk ([Persistence loss](#persistence-loss)). The only value that stands beside a process exit code. |
 | `logFileLoss` | The `--log-file` stopped taking lines during the run. Raised at most once, immediately before the `metrics` event, and only when a line was lost; the event also holds `lostLines`, the count of lines the file is missing ([Log file loss](#log-file-loss)). |

@@ -230,11 +230,20 @@ export interface PreparedExchange {
    * ({@link undeclaredColumnNames}). Set by {@link prepareForExchange} for a
    * front end to show before the run connects
    * (`describeUndeclaredColumns`), and written into this party's own result
-   * under `include_own_columns: all` ({@link buildOutputTable}). Absent on a
+   * under `include_own_columns: all` when {@link metadataInferred} is set
+   * ({@link undeclaredColumnsForOwnResult}). Absent on a
    * {@link PreparedExchange} assembled without it, which then shows nothing
    * and writes only the declared columns.
    */
   undeclaredColumns?: Array<string>;
+  /**
+   * Whether {@link metadata} was inferred from the input's header because
+   * the exchange spec holds no `metadata` block. Set by
+   * {@link prepareForExchange}; absent reads as an authored block. Decides
+   * whether `include_own_columns: all` writes the undeclared columns: an
+   * authored block that leaves a column out keeps it out of the result.
+   */
+  metadataInferred?: boolean;
   /**
    * The original parsed CSV rows, retained for payload extraction after
    * linkage. Held in memory from ingestion through the end of
@@ -1191,20 +1200,38 @@ export function resolveExchangeInputs(
   sanitizedColumnPositions: ReadonlyArray<number>,
 ): {
   metadata: Metadata;
+  metadataInferred: boolean;
   linkageTerms: LinkageTerms;
   undeclaredColumns: Array<string>;
 } {
+  const metadataInferred = exchangeDataSpec.metadata === undefined;
   const metadata =
     exchangeDataSpec.metadata ??
     inferMetadata(columnNames, sanitizedColumnPositions);
   assertDeclaredPayloadColumnsPresent(metadata, columnNames);
   return {
     metadata,
+    metadataInferred,
     linkageTerms:
       exchangeDataSpec.linkageTerms ??
       getDefaultLinkageTerms(identity, metadata),
     undeclaredColumns: undeclaredColumnNames(columnNames, metadata),
   };
+}
+
+/**
+ * The undeclared input columns `include_own_columns: all` writes into this
+ * party's own result, passed to {@link buildOutputTable}: every one of
+ * {@link PreparedExchange.undeclaredColumns} when the metadata was inferred,
+ * and none when the operator authored a `metadata` block, whose omissions
+ * stay out of the result.
+ */
+export function undeclaredColumnsForOwnResult(
+  prepared: Pick<PreparedExchange, "metadataInferred" | "undeclaredColumns">,
+): Array<string> {
+  return prepared.metadataInferred === true
+    ? (prepared.undeclaredColumns ?? [])
+    : [];
 }
 
 /**
@@ -1248,12 +1275,13 @@ export function prepareForExchange(
 ): PreparedExchange {
   const log = getLogger("exchange");
 
-  const { metadata, linkageTerms, undeclaredColumns } = resolveExchangeInputs(
-    exchangeDataSpec,
-    identity,
-    columnNames,
-    sanitizedColumnPositions,
-  );
+  const { metadata, metadataInferred, linkageTerms, undeclaredColumns } =
+    resolveExchangeInputs(
+      exchangeDataSpec,
+      identity,
+      columnNames,
+      sanitizedColumnPositions,
+    );
 
   // Fail closed on an algorithm with no run path before any credential,
   // terms, or data are sent. Refused again at the run boundary (runExchange)
@@ -1484,6 +1512,7 @@ export function prepareForExchange(
     // what runExchange is given, not by the config alone.
     signing: exchangeDataSpec.signing,
     undeclaredColumns,
+    metadataInferred,
     dataset,
     rawRows,
     rowCount: rawRows.length,

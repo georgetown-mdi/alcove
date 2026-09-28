@@ -3985,6 +3985,41 @@ test("undeclared input columns are named on the log and the event stream before 
   expect(lines[0].message).toBe(notice);
 });
 
+test("a wide undeclared header is counted past the listed names and keeps the remedy", async () => {
+  const undeclaredColumns = Array.from(
+    { length: 300 },
+    (_, i) => `column_${i}`,
+  );
+  const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+  expect(notice.length).toBeLessThan(WARNING_MESSAGE_MAX_DISPLAY_LENGTH);
+  expect(notice).toContain("column_19, and 280 more. ");
+  expect(notice).not.toContain("column_20");
+  expect(notice).toMatch(
+    /To send one, declare it in the configuration's metadata block with is_payload: true; to leave one out without this notice, declare it with role: ignored\.$/,
+  );
+  mockFd3Open();
+  try {
+    await expect(
+      runProtocol({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: "" },
+        prepared: { ...minimalPrepared, undeclaredColumns },
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test",
+        fileSyncRuntime: { eventStream: true },
+        signing: null,
+      }),
+    ).rejects.toThrow("key file path is empty");
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+  expect(mockState.warnings).toContain(notice);
+  const [warning] = takeFd3Lines();
+  expect(warning.source).toBe("undeclaredColumns");
+  expect(warning.message).toBe(notice);
+});
+
 test("a run with no undeclared input column names none", async () => {
   expect(undeclaredColumnsNotice({ undeclaredColumns: [] })).toBeUndefined();
   expect(undeclaredColumnsNotice({})).toBeUndefined();

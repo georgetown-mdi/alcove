@@ -6,13 +6,25 @@ import {
   disclosedColumnNames,
   inferMetadata,
   inferMetadataForEveryColumn,
+  UNDECLARED_COLUMNS_LISTED_MAX,
   undeclaredColumnNames,
 } from "../../src/config/metadata";
 import { OperatorConfigError, UsageError } from "../../src/errors";
-import { prepareForExchange, resolveExchangeInputs } from "../../src/exchange";
+import {
+  prepareForExchange,
+  resolveExchangeInputs,
+  undeclaredColumnsForOwnResult,
+} from "../../src/exchange";
 import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
+import {
+  DISPLAY_TRUNCATION_MARKER,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  sanitizeForDisplay,
+} from "../../src/utils/sanitizeForDisplay";
 
 import type { Metadata } from "../../src/config/metadata";
+
+const REMEDY = "To send one, declare it.";
 
 describe("inference sends only what it recognizes", () => {
   test("an unrecognized column is left out of the inferred metadata", () => {
@@ -106,17 +118,52 @@ describe("the undeclared-column list", () => {
       inferMetadata(columns, []),
     );
     expect(undeclared).toEqual([]);
-    expect(describeUndeclaredColumns(undeclared)).toBeUndefined();
+    expect(describeUndeclaredColumns(undeclared, REMEDY)).toBeUndefined();
   });
 
-  test("the notice names each column", () => {
-    expect(describeUndeclaredColumns(["notes"])).toBe(
+  test("the notice names each column and ends with the remedy", () => {
+    expect(describeUndeclaredColumns(["notes"], REMEDY)).toBe(
       "1 input column is not sent to your partner because the exchange's " +
-        "column settings do not declare it: notes.",
+        `column settings do not declare it: notes. ${REMEDY}`,
     );
-    expect(describeUndeclaredColumns(["notes", "amount"])).toBe(
+    expect(describeUndeclaredColumns(["notes", "amount"], REMEDY)).toBe(
       "2 input columns are not sent to your partner because the exchange's " +
-        "column settings do not declare them: notes, amount.",
+        `column settings do not declare them: notes, amount. ${REMEDY}`,
+    );
+  });
+
+  test("the notice lists a bounded number of names and counts the rest", () => {
+    const undeclared = Array.from({ length: 300 }, (_, i) => `column_${i}`);
+    const notice = describeUndeclaredColumns(undeclared, REMEDY) ?? "";
+    const listed = undeclared.slice(0, UNDECLARED_COLUMNS_LISTED_MAX);
+    expect(notice).toContain(`: ${listed.join(", ")}, and 280 more. `);
+    expect(notice).not.toContain(undeclared[UNDECLARED_COLUMNS_LISTED_MAX]);
+    expect(notice.startsWith("300 input columns")).toBe(true);
+    expect(notice.endsWith(REMEDY)).toBe(true);
+  });
+
+  test("the remedy survives the warning cap however wide the names are", () => {
+    // Each name escapes to six characters per code unit, so the listed
+    // names alone would pass the cap.
+    const wide = Array.from(
+      { length: 25 },
+      (_, i) => "\u0430".repeat(200) + String(i),
+    );
+    const notice = describeUndeclaredColumns(wide, REMEDY) ?? "";
+    const shown = sanitizeForDisplay(notice, {
+      maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    });
+    expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(shown.endsWith(REMEDY)).toBe(true);
+    expect(notice).toMatch(/, and \d+ more\. /);
+  });
+
+  test("a single overlong name is counted rather than listed", () => {
+    const notice =
+      describeUndeclaredColumns(["x".repeat(10_000)], REMEDY) ?? "";
+    expect(notice).toBe(
+      "1 input column is not sent to your partner because the exchange's " +
+        `column settings do not declare it. ${REMEDY}`,
     );
   });
 
@@ -166,9 +213,20 @@ describe("this party's own result file", () => {
     case_id: "c1",
   };
   const noPartnerPayload = { columns: [], rowIndices: [], rows: [] };
+  const linkageColumns: Metadata = [
+    { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+    {
+      name: "first_name",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+    { name: "last_name", type: "last_name", role: "linkage", isPayload: false },
+  ];
 
-  test("`all` writes an undeclared column after the declared ones", () => {
+  test("`all` over inferred metadata writes an undeclared column after the declared ones", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(prepared.metadataInferred).toBe(true);
     expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
     const { headers, rows } = buildOutputTable(
       [[0], [0]],
@@ -176,7 +234,7 @@ describe("this party's own result file", () => {
       prepared.metadata,
       noPartnerPayload,
       "all",
-      prepared.undeclaredColumns,
+      undeclaredColumnsForOwnResult(prepared),
     );
     expect(headers).toEqual([
       "id",
@@ -190,7 +248,7 @@ describe("this party's own result file", () => {
     expect(rows).toEqual([["r1", "0", "Ann", "Lee", "1980-01-02", "x", "c1"]]);
   });
 
-  test("`all` writes an undeclared column beside an authored metadata block", () => {
+  test("`all` leaves out a column an authored metadata block does not declare", () => {
     const metadata: Metadata = [
       { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
       { name: "id", type: "identifier", role: "identifier", isPayload: false },
@@ -208,13 +266,34 @@ describe("this party's own result file", () => {
       },
     ];
     const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
+    expect(prepared.metadataInferred).toBe(false);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    expect(undeclaredColumnsForOwnResult(prepared)).toEqual([]);
     const { headers } = buildOutputTable(
       [[0], [0]],
       prepared.rawRows,
       prepared.metadata,
       noPartnerPayload,
       "all",
-      prepared.undeclaredColumns,
+      undeclaredColumnsForOwnResult(prepared),
+    );
+    expect(headers).toEqual(["id", "row_id", "dob", "first_name", "last_name"]);
+  });
+
+  test("`all` writes an ignored column an authored block declares", () => {
+    const metadata: Metadata = [
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
+      ...linkageColumns,
+      { name: "notes", type: "other", role: "ignored", isPayload: false },
+    ];
+    const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
+    const { headers } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "all",
+      undeclaredColumnsForOwnResult(prepared),
     );
     expect(headers).toEqual([
       "id",
@@ -223,21 +302,41 @@ describe("this party's own result file", () => {
       "first_name",
       "last_name",
       "notes",
-      "case_id",
     ]);
   });
 
-  test("`disclosed` leaves an undeclared column out", () => {
-    const prepared = prepareForExchange({}, "alice", [row], columns);
+  test.each([
+    ["inferred metadata", undefined],
+    [
+      "an authored metadata block",
+      [
+        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+        ...linkageColumns,
+      ] satisfies Metadata,
+    ],
+  ])("`disclosed` leaves an undeclared column out under %s", (_, metadata) => {
+    const prepared = prepareForExchange(
+      metadata === undefined ? {} : { metadata },
+      "alice",
+      [row],
+      columns,
+    );
+    expect(prepared.undeclaredColumns).toContain("notes");
     const { headers } = buildOutputTable(
       [[0], [0]],
       prepared.rawRows,
       prepared.metadata,
       noPartnerPayload,
       "disclosed",
-      prepared.undeclaredColumns,
+      undeclaredColumnsForOwnResult(prepared),
     );
     expect(headers).toEqual(["id", "row_id"]);
+  });
+
+  test("a prepared exchange that does not say its metadata was inferred writes no undeclared column", () => {
+    expect(
+      undeclaredColumnsForOwnResult({ undeclaredColumns: ["notes"] }),
+    ).toEqual([]);
   });
 
   test("the payload frame holds no undeclared column", () => {

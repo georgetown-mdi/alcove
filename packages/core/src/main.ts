@@ -463,6 +463,7 @@ export type {
 export {
   MetadataSchema,
   OwnColumnSelectionSchema,
+  UNDECLARED_COLUMNS_LISTED_MAX,
   assertCountOnlyTransmitsNoColumn,
   assertDeclaredPayloadColumnsPresent,
   countOnlyTransmitsColumn,
@@ -668,6 +669,7 @@ export {
   resolveExchangeInputs,
   resolveLinkageCardinality,
   runExchange,
+  undeclaredColumnsForOwnResult,
 } from "./exchange";
 export type {
   ExchangeBootstrapResult,

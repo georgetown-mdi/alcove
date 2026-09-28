@@ -1269,7 +1269,7 @@ The key selects a set of your columns rather than listing them, so there is no c
 | Value | Columns written |
 |-------|-----------------|
 | `disclosed` | The columns you send to your partner -- the ones your metadata marks `is_payload: true` with a role other than `ignored` |
-| `all` | Every column of your input file -- matching, payload, ignored, and [undeclared](#input-metadata) alike, with or without a `metadata` block |
+| `all` | With a `metadata` block, every column the block declares, matching, payload, and ignored alike; a column the block leaves [undeclared](#input-metadata) is not written. With no `metadata` block, every column of your input file, the undeclared ones included |
 
 Your identifier column is left out of both: the result's first column already holds its value for every row, and writing it again would head one input column twice.
 
