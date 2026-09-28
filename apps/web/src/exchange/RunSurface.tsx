@@ -448,13 +448,19 @@ export function NoResultFileInset({
  * calling surface's heading order; a surface whose downloads sit directly under
  * its completion heading passes none and gets no heading. The caller decides
  * WHEN the block appears -- each surface reads completion off its own state.
+ *
+ * `resultNote` is shown directly under the result download, and only where
+ * there is one: what else became of the result file, such as a copy written
+ * into a recurring exchange's working folder.
  */
 export function RunDownloads({
   outputs,
   heading,
+  resultNote,
 }: {
   outputs: RunOutputs;
   heading?: "h2" | "h3";
+  resultNote?: ReactNode;
 }) {
   // Capitalized so JSX reads the tag from this value rather than as an
   // intrinsic element literally named `heading`.
@@ -463,11 +469,14 @@ export function RunDownloads({
     <>
       {Heading !== undefined && <Heading>Downloads</Heading>}
       {outputs.kind === "matched" ? (
-        <DownloadRow
-          label="Download result"
-          href={outputs.resultsUrl}
-          fileName="results.csv"
-        />
+        <>
+          <DownloadRow
+            label="Download result"
+            href={outputs.resultsUrl}
+            fileName="results.csv"
+          />
+          {resultNote}
+        </>
       ) : (
         <NoResultFileInset outputs={outputs} />
       )}

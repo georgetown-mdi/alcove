@@ -58,10 +58,7 @@ import {
 } from "../parkedResultsStore";
 import { runResultsFileName } from "../parkedResults";
 
-import {
-  storedWorkingDirectoryUsable,
-  writeResultsToWorkingDirectory,
-} from "./managedWorkingDirectory";
+import { writeRunResultsToWorkingFolder } from "./managedWorkingDirectory";
 
 import {
   betweenVisitNotificationsArmed,
@@ -430,7 +427,6 @@ async function deliverUnattendedResults(
   };
   const fallback = await writeUnattendedResultsToFolder(
     record,
-    fileName,
     csv,
     runAt,
     details,
@@ -546,20 +542,13 @@ async function recordResultsTooLargeToPark(
  */
 async function writeUnattendedResultsToFolder(
   record: ManagedExchangeRecord,
-  fileName: string,
   csv: Blob,
   runAt: string,
   details: RunEntryDetails,
 ): Promise<ParkedResultsFallback | "none" | undefined> {
-  const directory = record.workingDirectoryHandle;
-  if (directory === undefined || !storedWorkingDirectoryUsable(directory))
-    return "none";
   const id = record.id;
-  const delivery = await writeResultsToWorkingDirectory(
-    directory,
-    fileName,
-    csv,
-  );
+  const delivery = await writeRunResultsToWorkingFolder(record, runAt, csv);
+  if (delivery.kind === "no-folder") return "none";
   if (delivery.kind === "ungranted") {
     log.warn(
       `scheduled managed exchange ${id}: the working folder reports ` +

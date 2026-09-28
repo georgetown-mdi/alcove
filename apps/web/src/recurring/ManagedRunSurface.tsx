@@ -76,6 +76,7 @@ import {
   chooseManagedWorkingDirectory,
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
+  writeRunResultsToWorkingFolder,
 } from "@psi/managed/managedWorkingDirectory";
 
 import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
@@ -144,6 +145,9 @@ import {
   WORKING_FOLDER_GRANT_NOTE,
   WORKING_FOLDER_SCOPE_NOTE,
 } from "./scheduleEntryModel";
+import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
+
+import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 
 import type { Ref } from "react";
 import type { ResolvedMatching } from "@alcove/core";
@@ -310,6 +314,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const staleMigration =
     migrationRefusal !== undefined && migrationRefusal !== "run-in-flight";
   const [outputs, setOutputs] = useState<RunOutputs>();
+  // The copy of a completed run's results written into the working folder,
+  // absent where the record holds no folder grant or the run left no file.
+  const [folderWrite, setFolderWrite] = useState<AttendedFolderWrite>();
   const [finishedAt, setFinishedAt] = useState<Date>();
   // This holds alert copy alone: the hand-off state has no copy of its own and
   // never lands here, because reaching it moves the surface to the spent state below.
@@ -590,13 +597,23 @@ export function ManagedRunSurface({ id }: { id: string }) {
             ? reread
             : record;
         if (controller.signal.aborted) return;
+        // The blob behind each URL, so the folder write takes the same bytes the
+        // download offers rather than reading them back out of a URL.
+        const created = new Map<string, Blob>();
         const result = await runManagedExchangeInBrowser({
           record: launched,
           source,
           signal: controller.signal,
           urls: {
-            create: (blob) => window.URL.createObjectURL(blob),
-            revoke: (url) => window.URL.revokeObjectURL(url),
+            create: (blob) => {
+              const url = window.URL.createObjectURL(blob);
+              created.set(url, blob);
+              return url;
+            },
+            revoke: (url) => {
+              window.URL.revokeObjectURL(url);
+              created.delete(url);
+            },
           },
           // Attended: fail fast when a run is already in progress elsewhere,
           // surfacing the benign "already running" state rather than waiting.
@@ -619,6 +636,30 @@ export function ManagedRunSurface({ id }: { id: string }) {
         if (controller.signal.aborted) return;
         setOutputs(result.exchange);
         setFinishedAt(new Date());
+        const csv =
+          result.exchange.kind === "matched"
+            ? created.get(result.exchange.resultsUrl)
+            : undefined;
+        const directory = launched.workingDirectoryHandle;
+        if (
+          csv === undefined ||
+          directory === undefined ||
+          !storedWorkingDirectoryUsable(directory)
+        )
+          return;
+        setFolderWrite({ directoryName: directory.name });
+        const delivery = await writeRunResultsToWorkingFolder(
+          launched,
+          result.lastRun.at,
+          csv,
+        );
+        if (delivery.kind === "no-folder") {
+          setFolderWrite(undefined);
+          return;
+        }
+        if (delivery.kind === "write-failed")
+          whenDiagnostic(() => console.error(delivery.error));
+        setFolderWrite({ directoryName: directory.name, delivery });
       } catch (error) {
         if (controller.signal.aborted) return;
         // The raw error can embed partner-/server-controlled bytes and displays as an
@@ -1103,7 +1144,14 @@ export function ManagedRunSurface({ id }: { id: string }) {
             <h1>Run complete</h1>
             <DonePanel outputs={outputs} finishedAt={finishedAt} />
             <RunWarningsAlert warnings={runWarnings} />
-            <RunDownloads outputs={outputs} />
+            <RunDownloads
+              outputs={outputs}
+              resultNote={
+                folderWrite !== undefined && (
+                  <FolderWriteNote write={folderWrite} />
+                )
+              }
+            />
             {completion.backupHook !== undefined && (
               <div className={styles.callout}>
                 <p className={styles.calloutLead}>Back up this exchange.</p>
@@ -2180,6 +2228,21 @@ function RetakeControl({
         </div>
       </Modal>
     </>
+  );
+}
+
+/** What became of the copy of a completed run's results written into the
+ * working folder, directly under the result download it does not replace. */
+function FolderWriteNote({ write }: { write: AttendedFolderWrite }) {
+  const note = attendedFolderWriteNote(write);
+  return note.failed ? (
+    <Alert color="yellow" title="Not written to your folder" mb="sm">
+      {note.message}
+    </Alert>
+  ) : (
+    <p className={styles.small} role="status">
+      {note.message}
+    </p>
   );
 }
 

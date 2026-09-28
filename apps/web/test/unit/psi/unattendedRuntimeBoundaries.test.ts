@@ -1,5 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 
+import ts from "typescript";
+
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -40,9 +42,9 @@ import type { ManagedScheduleTickSeams } from "@psi/managed/managedScheduleRunne
  * The four runtime boundaries the unattended runner rests on, as checks rather
  * than as prose: an exchange is executed by the app runtime and by nothing else,
  * a scheduled run never applies a waiting app-shell update, the folder the
- * operator granted is written by the unattended run alone -- an attended run
- * hands its results to the operator who is there -- and the app reads exactly
- * one conventioned name from that folder and never enumerates it.
+ * operator granted is written only by a recurring exchange's runs -- the
+ * scheduled run and the attended one, through one writer -- and the app reads
+ * exactly one conventioned name from that folder and never enumerates it.
  *
  * All four are claims about what does NOT happen, which is exactly the kind a
  * comment cannot keep true (CONTRIBUTING.md, Code Conventions).
@@ -267,7 +269,7 @@ describe("a scheduled run and a waiting app-shell update", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The granted working folder is written by the unattended run alone.
+// The granted working folder is written by a recurring exchange's runs alone.
 
 /** The app source tree, walked for what reaches the folder write. */
 const WEB_SOURCE_ROOT = new URL("../../../src/", import.meta.url);
@@ -285,37 +287,156 @@ function webSourceFiles(within = ""): Array<string> {
   );
 }
 
-/** Which modules name `symbol`, other than the one that defines it. */
-function modulesReaching(symbol: string, definedIn: string): Array<string> {
+/** The name a function-like node is known by, where it has one: a declaration's
+ * own name, or the variable or property an unnamed function is assigned to. */
+function functionName(node: ts.Node): string | undefined {
+  if (
+    (ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node)) &&
+    node.name !== undefined
+  )
+    return node.name.getText();
+  if (
+    (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
+    (ts.isVariableDeclaration(node.parent) ||
+      ts.isPropertyAssignment(node.parent))
+  )
+    return node.parent.name.getText();
+  return undefined;
+}
+
+/** The named functions enclosing `node`, outermost first, joined by dots;
+ * `(module)` for a reference at module scope. */
+function enclosingFunctions(node: ts.Node): string {
+  const names: Array<string> = [];
+  for (let at = node.parent; !ts.isSourceFile(at); at = at.parent) {
+    const name = functionName(at);
+    if (name !== undefined) names.unshift(name);
+  }
+  return names.length === 0 ? "(module)" : names.join(".");
+}
+
+/**
+ * Every place `source` names `symbol`, as `file: enclosing functions`, other
+ * than the plain import that brings it in and its own declaration. A use that
+ * is not a call -- the function passed or stored as a value, or an import that
+ * renames it, either of which would let a caller the list does not name reach
+ * it -- is reported as one, so it fails the exact list below rather than
+ * passing unseen.
+ */
+function symbolSites(file: string, source: string, symbol: string) {
+  const parsed = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const sites: Array<string> = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && node.text === symbol) {
+      const parent = node.parent;
+      if (ts.isImportSpecifier(parent)) {
+        if (parent.propertyName !== undefined)
+          sites.push(`${file}: import renamed to ${parent.name.text}`);
+      } else if (!(ts.isFunctionDeclaration(parent) && parent.name === node)) {
+        const callee = ts.isPropertyAccessExpression(parent) ? parent : node;
+        const called =
+          ts.isCallExpression(callee.parent) &&
+          callee.parent.expression === callee;
+        sites.push(
+          `${file}: ${enclosingFunctions(node)}${called ? "" : " (not a call)"}`,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return sites;
+}
+
+/** Every place the app source names `symbol` (see {@link symbolSites}). Only a
+ * module whose text holds the name can name it, so only those are parsed. */
+function appSymbolSites(symbol: string): Array<string> {
   return webSourceFiles()
-    .filter((file) => file !== definedIn)
-    .filter((file) =>
-      readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8").includes(symbol),
-    )
+    .flatMap((file) => {
+      const source = readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8");
+      return source.includes(symbol) ? symbolSites(file, source, symbol) : [];
+    })
     .sort();
 }
 
+/** The one writer both runs of a recurring exchange write their results
+ * through, and the platform write beneath it. */
+const RUN_RESULTS_WRITER = "writeRunResultsToWorkingFolder";
+const FOLDER_WRITE = "writeResultsToWorkingDirectory";
+
+/** The modules that conduct a one-off exchange, none of which holds a folder
+ * grant to write through. */
+const ONE_OFF_EXCHANGE_SURFACES = [
+  "exchange/AcceptorExchangeSection.tsx",
+  "exchange/DirectRunSection.tsx",
+  "exchange/InviterExchangeSection.tsx",
+  "exchange/RecoveredExchangePanel.tsx",
+];
+
 describe("writing a run's results into the granted folder", () => {
-  test("is reached from the unattended runner and from nowhere else", () => {
-    // The attended run is unchanged by the grant: the operator is present and
-    // takes the download, so no attended path may write into the folder.
-    expect(
-      modulesReaching(
-        "writeResultsToWorkingDirectory",
-        "psi/managed/managedWorkingDirectory.ts",
-      ),
-    ).toEqual(["psi/managed/managedScheduleRuntime.ts"]);
+  test("is reached from the scheduled run and the attended run of a recurring exchange, and from nowhere else", () => {
+    expect(appSymbolSites(RUN_RESULTS_WRITER)).toEqual([
+      "psi/managed/managedScheduleRuntime.ts: writeUnattendedResultsToFolder",
+      "recurring/ManagedRunSurface.tsx: ManagedRunSurface.run",
+    ]);
   });
 
-  test("is guarded by a check that would catch a second caller", () => {
-    // A guard nothing can fail asserts nothing: the same walk finds the several
-    // modules that legitimately reach the picker and the support check.
+  test("goes through that one writer, so both runs write the same file under the same name", () => {
+    expect(appSymbolSites(FOLDER_WRITE)).toEqual([
+      "psi/managed/managedWorkingDirectory.ts: writeRunResultsToWorkingFolder",
+    ]);
+  });
+
+  test("is reached from no one-off exchange's surface", () => {
+    const reaching = new Set(
+      [
+        ...appSymbolSites(RUN_RESULTS_WRITER),
+        ...appSymbolSites(FOLDER_WRITE),
+      ].map((site) => site.slice(0, site.indexOf(":"))),
+    );
+    const modules = webSourceFiles();
+    for (const surface of ONE_OFF_EXCHANGE_SURFACES) {
+      // Each is a real module, so the check cannot pass over a renamed one.
+      expect(modules).toContain(surface);
+      expect(reaching.has(surface)).toBe(false);
+    }
+  });
+
+  test("is guarded by a check that would catch a second caller, however it is reached", () => {
+    // A guard nothing can fail asserts nothing: a one-off surface calling the
+    // writer, calling it through a namespace import, renaming it on import, or
+    // handing it on as a value is each reported.
+    const file = "exchange/DirectRunSection.tsx";
     expect(
-      modulesReaching(
-        "managedWorkingDirectory",
-        "psi/managed/managedWorkingDirectory.ts",
-      ).length,
-    ).toBeGreaterThan(1);
+      symbolSites(
+        file,
+        [
+          `import { ${RUN_RESULTS_WRITER} } from "@psi/managed/managedWorkingDirectory";`,
+          `import * as folder from "@psi/managed/managedWorkingDirectory";`,
+          `import { ${RUN_RESULTS_WRITER} as write } from "@psi/managed/managedWorkingDirectory";`,
+          "export function DirectRunSection() {",
+          `  const finish = async () => { await ${RUN_RESULTS_WRITER}(record, at, csv); };`,
+          `  const again = () => folder.${RUN_RESULTS_WRITER}(record, at, csv);`,
+          `  const later = [${RUN_RESULTS_WRITER}];`,
+          "  return null;",
+          "}",
+        ].join("\n"),
+        RUN_RESULTS_WRITER,
+      ),
+    ).toEqual([
+      `${file}: import renamed to write`,
+      `${file}: DirectRunSection.finish`,
+      `${file}: DirectRunSection.again`,
+      `${file}: DirectRunSection (not a call)`,
+    ]);
   });
 });
 

@@ -1,9 +1,9 @@
 /**
  * The working-folder grant of a managed exchange: the platform layer that asks
- * the operator for the one folder a run reads its input from and a scheduled run
- * writes its results into, reports whether this runtime can offer that at all,
- * and writes one run's results CSV into the folder with nobody present. The input
- * read, by its one conventioned name, is {@link ./managedInputHandle.ts}.
+ * the operator for the one folder a run reads its input from and writes its
+ * results into, reports whether this runtime can offer that at all, and writes
+ * one run's results CSV into the folder. The input read, by its one conventioned
+ * name, is {@link ./managedInputHandle.ts}.
  *
  * The grant is taken under an operator gesture -- where the exchange is put on
  * a schedule, or on the run surface -- never at run time: `showDirectoryPicker`
@@ -16,13 +16,17 @@
  *
  * Delivery is total: every outcome classifies rather than throwing
  * ({@link ResultsDelivery}), because the run it belongs to has already rotated
- * its secret and filed its disclosure. A grant this platform will not honour with
- * nobody present, and a write the folder refuses, each name themselves so the
- * caller parks the results instead (see {@link ./managedScheduleRuntime.ts}).
+ * its secret and filed its disclosure. A grant this platform will not honour
+ * without a prompt, and a write the folder refuses, each name themselves so the
+ * caller keeps the results another way: a scheduled run parks them (see
+ * {@link ./managedScheduleRuntime.ts}), and an attended run still offers the
+ * download.
  *
  * What the record holds is the handle, never a path: the folder is named to the
  * operator by the handle's own `name`, which is the leaf the picker returned.
  */
+
+import { runResultsFileName } from "../parkedResults";
 
 import {
   HandlePermissionError,
@@ -33,6 +37,7 @@ import type {
   HandlePermissionQuery,
   HandlePermissionState,
 } from "./managedInputHandle";
+import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 
 /** The directory picker the File System Access API offers, which the DOM lib does
  * not type. Declared locally, and reached only behind
@@ -111,7 +116,7 @@ export async function chooseManagedWorkingDirectory(): Promise<
 export type ResultsDelivery =
   /** The results are in the folder, under `fileName`. */
   | { kind: "written"; fileName: string; directoryName: string }
-  /** The grant is not one this run may use with nobody present -- revoked, or a
+  /** The grant is not one this run may use without a prompt -- revoked, or a
    * state only an operator gesture could raise to `"granted"`. Nothing was
    * written, and nothing was prompted. */
   | { kind: "ungranted"; state: HandlePermissionState }
@@ -173,9 +178,10 @@ async function dropCreatedEntry(
  * the exchange's label and the run's own instant so successive runs accumulate
  * rather than overwrite ({@link ../parkedResults.ts}, `runResultsFileName`).
  *
- * The permission is QUERIED in `readwrite` and never prompted: this runs with
- * nobody present. `permission` is the injectable permission layer, defaulting to
- * the platform's.
+ * The permission is QUERIED in `readwrite` and never prompted: a scheduled run
+ * has nobody present, and an attended run writes after its run has finished,
+ * past the gesture a prompt needs. `permission` is the injectable permission
+ * layer, defaulting to the platform's.
  *
  * A write that fails leaves the folder as it found it: the platform creates the
  * entry before any byte reaches it, so the empty file is removed rather than left
@@ -218,4 +224,34 @@ export async function writeResultsToWorkingDirectory(
     if (!heldAlready) await dropCreatedEntry(directory, fileName);
     return { kind: "write-failed", error };
   }
+}
+
+/** How writing one run's results into its exchange's working folder turned out:
+ * `"no-folder"` where the record holds no grant this runtime can follow, so
+ * nothing was attempted, and otherwise the folder's own {@link ResultsDelivery}. */
+export type RunResultsFolderWrite = { kind: "no-folder" } | ResultsDelivery;
+
+/**
+ * Write a completed run's results CSV into the working folder its record holds,
+ * under {@link runResultsFileName}'s name for the record's label and the run's
+ * own instant. The one entry both a scheduled run and an attended run write
+ * through, so the two leave the same file under the same name.
+ *
+ * Never rejects, and never prompts ({@link writeResultsToWorkingDirectory}).
+ */
+export async function writeRunResultsToWorkingFolder(
+  record: Pick<ManagedExchangeRecord, "label" | "workingDirectoryHandle">,
+  runAt: string,
+  csv: Blob,
+  permission?: HandlePermissionQuery,
+): Promise<RunResultsFolderWrite> {
+  const directory = record.workingDirectoryHandle;
+  if (directory === undefined || !storedWorkingDirectoryUsable(directory))
+    return { kind: "no-folder" };
+  return writeResultsToWorkingDirectory(
+    directory,
+    runResultsFileName(record.label, runAt),
+    csv,
+    permission,
+  );
 }

@@ -5,7 +5,9 @@ import {
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
   writeResultsToWorkingDirectory,
+  writeRunResultsToWorkingFolder,
 } from "@psi/managed/managedWorkingDirectory";
+import { runResultsFileName } from "@psi/parkedResults";
 
 import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
 
@@ -313,5 +315,54 @@ describe("writing a run's results into the granted folder", () => {
         fakePermission("granted"),
       ),
     ).resolves.toMatchObject({ kind: "write-failed" });
+  });
+});
+
+describe("writing a completed run's results into its exchange's folder", () => {
+  const runAt = "2026-03-01T14:00:00.000Z";
+
+  test("writes under the name the exchange's label and the run's instant give", async () => {
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+    const folder = fakeFolder();
+    const delivery = await writeRunResultsToWorkingFolder(
+      { label: "Riverbend quarterly", workingDirectoryHandle: folder.handle },
+      runAt,
+      new Blob([RESULTS_CSV]),
+      fakePermission("granted"),
+    );
+
+    const fileName = runResultsFileName("Riverbend quarterly", runAt);
+    expect(delivery).toEqual({
+      kind: "written",
+      fileName,
+      directoryName: "Riverbend results",
+    });
+    expect(folder.written).toEqual([{ fileName, text: RESULTS_CSV }]);
+  });
+
+  test("writes nothing, and asks nothing, for an exchange holding no folder", async () => {
+    const permission = fakePermission("granted");
+    await expect(
+      writeRunResultsToWorkingFolder(
+        { label: "Riverbend quarterly", workingDirectoryHandle: undefined },
+        runAt,
+        new Blob([RESULTS_CSV]),
+        permission,
+      ),
+    ).resolves.toEqual({ kind: "no-folder" });
+    expect(permission.modes).toEqual([]);
+  });
+
+  test("writes nothing where this engine cannot follow the grant it holds", async () => {
+    const folder = fakeFolder();
+    await expect(
+      writeRunResultsToWorkingFolder(
+        { label: "Riverbend quarterly", workingDirectoryHandle: folder.handle },
+        runAt,
+        new Blob([RESULTS_CSV]),
+        fakePermission("granted"),
+      ),
+    ).resolves.toEqual({ kind: "no-folder" });
+    expect(folder.opened).toEqual([]);
   });
 });
