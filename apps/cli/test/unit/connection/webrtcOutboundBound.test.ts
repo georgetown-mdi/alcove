@@ -30,8 +30,13 @@ import type { RTCDataChannel } from "werift";
 
 const psiLibrary = await PSI();
 
-/** A data channel that records what is sent and delivers nothing. */
-function recordingSession(): {
+/**
+ * A data channel that records what is sent and delivers nothing, calling
+ * `onSend` with everything sent so far after each send.
+ */
+function recordingSession(
+  onSend: (sent: Array<Uint8Array>) => void = () => {},
+): {
   session: WebRtcPeerSession;
   sent: Array<Uint8Array>;
 } {
@@ -39,7 +44,10 @@ function recordingSession(): {
   const channel = {
     readyState: "open",
     bufferedAmount: 0,
-    send: (data: Buffer) => sent.push(new Uint8Array(data)),
+    send: (data: Buffer) => {
+      sent.push(new Uint8Array(data));
+      onSend(sent);
+    },
     close: () => {},
   };
   return {
@@ -105,7 +113,16 @@ async function starterFirstFrame(
   count: number,
   bound: number,
 ): Promise<{ ended: unknown; sent: Array<Uint8Array> }> {
-  const { session, sent } = recordingSession();
+  // A round that sent its set waits for the partner, which never answers, so
+  // the set reassembling on a receive path bounded the same is its end here.
+  let setSent: () => void = () => {};
+  const setOnWire = new Promise<"waiting">((resolve) => {
+    setSent = () => resolve("waiting");
+  });
+  const { session, sent } = recordingSession((datagrams) => {
+    if (received(datagrams, bound).some((frame) => frame instanceof Uint8Array))
+      setSent();
+  });
   const conn = webRtcMessageConnection(session, {
     inboundBounds: { maxFrameBytes: bound },
   });
@@ -128,11 +145,7 @@ async function starterFirstFrame(
       () => undefined,
       (err: unknown) => err,
     );
-  // A round that sent its setup waits for the partner, which never answers.
-  const settled = await Promise.race([
-    round,
-    new Promise((resolve) => setTimeout(() => resolve("waiting"), 500)),
-  ]);
+  const settled = await Promise.race([round, setOnWire]);
   await conn.close();
   starter.dispose();
   return { ended: settled, sent };
@@ -141,7 +154,7 @@ async function starterFirstFrame(
 test("a set frame one over the bound is refused before sending, and one under and at it is sent", async () => {
   // Large enough that the setup crosses the chunk size, so the bound is the
   // chunked charge rather than the frame's own length.
-  const count = 1000;
+  const count = 500;
   const engine = new InProcessPsiEngine(
     psiLibrary,
     "starter",
