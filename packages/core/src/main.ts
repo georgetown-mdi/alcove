@@ -146,6 +146,11 @@ export { retryPromise, withTimeout, TimeoutError } from "./utils/promise";
 // feed -- and that parse must be the same structurally-bounded one, not a second
 // implementation of it (CONTRIBUTING.md, Untrusted-JSON parsing).
 export { parseBoundedJson, JsonStructureBoundError } from "./utils/boundedJson";
+export { readBoundedJsonBody } from "./utils/boundedJsonBody";
+export type {
+  BoundedJsonBodyResult,
+  ReadBoundedJsonBodyOptions,
+} from "./utils/boundedJsonBody";
 // The split-directory distinctness comparison. Barrelled because the console
 // decides, ahead of a mint, whether the two rendezvous locators it would put on an
 // invitation endpoint are distinct -- and that verdict has to be the one core's own
@@ -293,6 +298,7 @@ export {
   MAX_RELAY_LOCATOR_URLS,
   MAX_TIMEOUT_SECONDS,
   MAX_TOKEN_MAX_AGE_DAYS,
+  SERVER_PROVISION_MODES,
   SHARED_SECRET_REGEX,
   StunUrlSchema,
   TurnUrlSchema,
@@ -309,6 +315,7 @@ export type {
   HttpAuth,
   RelayLocator,
   ServerProvision,
+  ServerProvisionMode,
   SFTPConnectionConfig,
   WebRTCConnectionConfig,
 } from "./config/connection";
@@ -437,14 +444,19 @@ export {
 export type { EndpointSourceConnectionConfig } from "./config/endpointProducer";
 export {
   DEFAULT_PROVISION_PORT,
+  MAX_PROVISION_RESPONSE_BYTES,
   PROVISION_REQUEST_TIMEOUT_MS,
   callProvisionEndpoint,
   provisionEndpointLabel,
+  provisionModeOf,
   provisionRequest,
+  requestProvisionedServerAddress,
   serverProvisionOf,
+  withProvisionedServerAddress,
 } from "./config/serverProvision";
 export type {
   CallProvisionEndpointOptions,
+  ProvisionedServerAddress,
   ProvisionRequest,
 } from "./config/serverProvision";
 export {

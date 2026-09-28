@@ -1,6 +1,11 @@
 import fs from "node:fs";
 
-import type { ConnectionConfig, ExchangeSpec, HttpAuth } from "@alcove/core";
+import type {
+  ConnectionConfig,
+  ExchangeSpec,
+  HttpAuth,
+  ServerProvision,
+} from "@alcove/core";
 import {
   HOST_KEY_FINGERPRINT_REGEX,
   InternalConsistencyError,
@@ -193,6 +198,19 @@ export function resolveHostKeyFingerprintRef(ref: string): string {
       `the @-file reference ${ref} resolved to a value that is not a valid ` +
         `OpenSSH SHA256 host-key fingerprint (SHA256:<43 standard base64 chars>)`,
     );
+  return resolved;
+}
+
+/**
+ * A `server.provision` block with its auth `@path` references read, for a
+ * command that sends the call from a connection block it did not load through
+ * {@link resolveExchangeSpecRefs}. The input is not mutated.
+ */
+export function resolveServerProvisionAtSignRefs(
+  provision: ServerProvision,
+): ServerProvision {
+  const resolved = structuredClone(provision);
+  resolveHttpAuthAtSignRefs(resolved.auth);
   return resolved;
 }
 

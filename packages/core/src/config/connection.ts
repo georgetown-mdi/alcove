@@ -45,6 +45,12 @@ const HttpAuthSchema: z.ZodType<HttpAuth> = z
  * absent. See docs/EXCHANGE_REFERENCE.md, "On-demand server provisioning".
  */
 export interface ServerProvision {
+  /**
+   * `start` (the default) wakes a server at the fixed address `server` states,
+   * on every `alcove exchange`; `create` has `alcove invite` make a new server
+   * and write the address the endpoint returns into `server`.
+   */
+  mode?: ServerProvisionMode;
   /** Hostname of the provisioning API. */
   host: string;
   /** Defaults to 443 when unset. */
@@ -54,7 +60,21 @@ export interface ServerProvision {
   auth?: HttpAuth;
 }
 
+/** The values `server.provision.mode` takes. */
+export const SERVER_PROVISION_MODES = ["start", "create"] as const;
+
+/** How a `server.provision` endpoint is used; see {@link ServerProvision.mode}. */
+export type ServerProvisionMode = (typeof SERVER_PROVISION_MODES)[number];
+
 const ServerProvisionSchema: z.ZodType<ServerProvision> = z.strictObject({
+  mode: z
+    .enum(SERVER_PROVISION_MODES, {
+      error: (issue) =>
+        `unknown mode ${JSON.stringify(issue.input)}; use start (wake a ` +
+        "server at a fixed address) or create (make a new server when " +
+        "inviting)",
+    })
+    .optional(),
   host: z.string().min(1),
   port: z.int().min(1).max(65535).optional(),
   path: z.string().optional(),

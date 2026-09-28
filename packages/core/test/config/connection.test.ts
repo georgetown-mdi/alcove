@@ -22,6 +22,7 @@ import {
 } from "../../src/config/invitation";
 
 import type { FileSyncOptions } from "../../src/config/connection";
+import { provisionModeOf } from "../../src/config/serverProvision";
 import { peerIdLengthRefusal } from "../../src/connection/fileSyncRendezvous";
 
 // Minimal valid configs used as bases for individual tests.
@@ -768,14 +769,61 @@ test("a provision block's unknown key is refused naming it", () => {
     ...webrtcBase,
     server: {
       ...webrtcBase.server,
-      provision: { host: "api.example.org", mode: "lifecycle" },
+      provision: { host: "api.example.org", kind: "create" },
     },
   });
   expect(result.success).toBe(false);
   if (result.success) return;
   expect(result.error.issues[0].code).toBe("unrecognized_keys");
   expect(result.error.issues[0].path).toEqual(["server", "provision"]);
-  expect(result.error.issues[0].message).toContain('"mode"');
+  expect(result.error.issues[0].message).toContain('"kind"');
+});
+
+test.each(["start", "create"] as const)(
+  "a provision block states mode %s",
+  (mode) => {
+    const result = safeParseConnectionConfig({
+      ...sftpBase,
+      server: {
+        ...sftpBase.server,
+        provision: { mode, host: "api.example.org" },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success || result.data.channel !== "sftp") return;
+    expect(result.data.server.provision?.mode).toBe(mode);
+  },
+);
+
+test("a provision block stating no mode is start mode", () => {
+  const result = safeParseConnectionConfig({
+    ...webrtcBase,
+    server: { ...webrtcBase.server, provision: { host: "api.example.org" } },
+  });
+  expect(result.success).toBe(true);
+  if (!result.success || result.data.channel !== "webrtc") return;
+  const provision = result.data.server.provision;
+  expect(provision).toBeDefined();
+  if (provision === undefined) return;
+  expect(provision.mode).toBeUndefined();
+  expect(provisionModeOf(provision)).toBe("start");
+});
+
+test("a provision block's unknown mode is refused naming the value", () => {
+  const result = safeParseConnectionConfig({
+    ...sftpBase,
+    server: {
+      ...sftpBase.server,
+      provision: { mode: "allocate", host: "api.example.org" },
+    },
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  expect(result.error.issues[0].path).toEqual(["server", "provision", "mode"]);
+  expect(result.error.issues[0].message).toBe(
+    'unknown mode "allocate"; use start (wake a server at a fixed address) ' +
+      "or create (make a new server when inviting)",
+  );
 });
 
 // --- SFTPServer: at most one primary auth method -----------------------------

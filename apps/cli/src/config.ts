@@ -11,7 +11,9 @@ import type {
   LinkageTerms,
   Metadata,
   OutboundPayloadConsent,
+  ProvisionedServerAddress,
   RelayLocator,
+  SFTPConnectionConfig,
   SigningConfig,
   Standardization,
   WebRTCConnectionConfig,
@@ -2480,6 +2482,43 @@ function readRetainFilesDeclaration(config: Record<string, unknown>): boolean {
 export function loadConfigWebRTCConnection(
   configPath: string,
 ): WebRTCConnectionConfig | undefined {
+  const connection = loadConfigConnectionBlock(
+    configPath,
+    (block) => block["channel"] === "webrtc",
+  );
+  return connection?.channel === "webrtc" ? connection : undefined;
+}
+
+/**
+ * The connection block of the config at `configPath` when it declares
+ * `channel: sftp` and its server states a `provision` block, validated through
+ * the connection schema, or `undefined` otherwise: an offline `invite` sends a
+ * create-mode block's call and names the server it returns in its invitation.
+ * An sftp block stating no `provision` stays unread, so a placeholder one still
+ * mints. No `@path` reference is resolved.
+ *
+ * A block that fails the schema is a {@link UsageError}, so a misspelled
+ * `mode` is refused rather than minting an invitation that names no server.
+ */
+export function loadConfigProvisionedSFTPConnection(
+  configPath: string,
+): SFTPConnectionConfig | undefined {
+  const connection = loadConfigConnectionBlock(configPath, (block) => {
+    if (block["channel"] !== "sftp") return false;
+    const server = block["server"];
+    return (
+      server !== null &&
+      typeof server === "object" &&
+      (server as Record<string, unknown>)["provision"] !== undefined
+    );
+  });
+  return connection?.channel === "sftp" ? connection : undefined;
+}
+
+function loadConfigConnectionBlock(
+  configPath: string,
+  wanted: (block: Record<string, unknown>) => boolean,
+): ConnectionConfig | undefined {
   let source: string;
   try {
     source = fs.readFileSync(configPath, "utf8");
@@ -2495,13 +2534,13 @@ export function loadConfigWebRTCConnection(
     return undefined;
   const connection = (raw as Record<string, unknown>)["connection"];
   if (connection === null || typeof connection !== "object") return undefined;
-  if ((connection as Record<string, unknown>)["channel"] !== "webrtc")
-    return undefined;
+  const block = connection as Record<string, unknown>;
+  if (!wanted(block)) return undefined;
   const result = safeParseConnectionConfig(connection);
   if (!result.success)
     throw configFileRefusal(
       configPath,
-      "has an invalid webrtc connection block: " +
+      `has an invalid ${String(block["channel"])} connection block: ` +
         describeSchemaIssues(
           result.error.issues.map((issue) => ({
             ...issue,
@@ -2510,7 +2549,48 @@ export function loadConfigWebRTCConnection(
           "camelized",
         ),
     );
-  return result.data.channel === "webrtc" ? result.data : undefined;
+  return result.data;
+}
+
+/**
+ * Write the server address a create-mode `server.provision` endpoint returned
+ * into `connection.server` of an existing `alcove.yaml`, in place: `host`
+ * always, `port` and `path` when the answer states them, every other field --
+ * `provision` among them -- and the operator's comments and key order left as
+ * they are. Rewritten with the same owner-only permissions {@link saveConfig}
+ * uses; throws if the file cannot be read, parsed or updated.
+ */
+export function persistProvisionedServerAddress(
+  configPath: string,
+  address: ProvisionedServerAddress,
+): void {
+  const serialized = editSensitiveYamlDocument(
+    fs.readFileSync(configPath, "utf8"),
+    configFileLabel(configPath),
+    (doc) => {
+      const fields: Array<[string, string | number]> = [["host", address.host]];
+      if (address.port !== undefined) fields.push(["port", address.port]);
+      if (address.path !== undefined) fields.push(["path", address.path]);
+      for (const [field, value] of fields) {
+        normalizeKeyPathSpelling(configPath, doc, [
+          "connection",
+          "server",
+          field,
+        ]);
+        try {
+          doc.setIn(["connection", "server", field], value);
+        } catch (err) {
+          throw configFileRefusal(
+            configPath,
+            "could not be updated with the created server's address " +
+              `(${err instanceof Error ? err.message : String(err)}); ` +
+              "connection.server must be a mapping.",
+          );
+        }
+      }
+    },
+  );
+  writeFileOwnerOnly(configPath, serialized);
 }
 
 /**
