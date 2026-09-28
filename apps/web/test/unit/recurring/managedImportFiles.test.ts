@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 
-import { generateSharedSecret } from "@alcove/core";
+import {
+  connectionFromLocator,
+  generateSharedSecret,
+  getDefaultLinkageTerms,
+  snakeizeKeys,
+} from "@alcove/core";
+
+import { stringify as stringifyYaml } from "yaml";
 
 import {
   BACKUP_NOT_PAIR_REASON,
@@ -14,16 +21,19 @@ import {
   PAIR_IMPORTED_NOTICE,
   TOO_MANY_FILES_REASON,
   managedImportFileChoice,
+  pairImportedNotice,
 } from "@recurring/managedImportFiles";
 import {
   ManagedKeyFileRefusedError,
   readManagedCommandLineKeyFile,
+  readManagedCommandLinePair,
 } from "@psi/managed/managedCommandLineImport";
 import {
   custodyUnreadablePairImportReason,
   handedOffPairImportReason,
 } from "@recurring/managedHandoffGate";
 import { ManagedImportBackupNotConfigurationError } from "@psi/managed/managedExchangeImport";
+import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 // Sorting a control's chosen files into one file or a configuration with its key
 // file, by name alone, and what the pair import says when it refuses or lands.
@@ -87,6 +97,93 @@ describe("what the pair import says", () => {
   test("a landed pair says the exchange runs here now and names the run to stop", () => {
     expect(PAIR_IMPORTED_NOTICE.lead).toContain("runs in this browser now");
     expect(PAIR_IMPORTED_NOTICE.lead).toContain("stop that first");
+  });
+
+  const webrtcLocator = {
+    channel: "webrtc",
+    host: "signaling.example.org",
+  } as const;
+
+  /** A pair import of a hand-written webrtc configuration stating `settings`
+   * beside the connection and the terms. */
+  function importedPair(settings: Record<string, unknown>) {
+    const document = {
+      ...composeManagedExchangeFile({
+        connection: webrtcLocator,
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+      }),
+      connection: { ...connectionFromLocator(webrtcLocator), role: "acceptor" },
+      ...settings,
+    };
+    return readManagedCommandLinePair(
+      stringifyYaml(snakeizeKeys(document)),
+      JSON.stringify({ sharedSecret: generateSharedSecret() }),
+    );
+  }
+
+  test.each([
+    [
+      "metadata",
+      {
+        metadata: [
+          {
+            name: "case_id",
+            type: "identifier",
+            role: "identifier",
+            isPayload: false,
+          },
+        ],
+      },
+    ],
+    [
+      "standardization",
+      {
+        standardization: [
+          { output: "first_name", input: "first_name", steps: [] },
+        ],
+      },
+    ],
+    [
+      "outbound_payload_consent",
+      { outboundPayloadConsent: { status: "pending" } },
+    ],
+    ["disclosed_payload_columns", { disclosedPayloadColumns: ["program"] }],
+    [
+      "expected_payload_columns",
+      { expectedPayloadColumns: ["partner_program"] },
+    ],
+    ["expected_partner_deduplicate", { expectedPartnerDeduplicate: true }],
+  ] as const)(
+    "a landed pair whose file states %s names it as kept unchanged",
+    (name, settings) => {
+      const notice = pairImportedNotice(importedPair(settings));
+
+      expect(notice.title).toBe(PAIR_IMPORTED_NOTICE.title);
+      expect(notice.lead).toBe(PAIR_IMPORTED_NOTICE.lead);
+      expect(notice.consequences).toEqual([
+        `This configuration states a setting this app keeps unchanged but does not show or edit: ${name}.`,
+      ]);
+    },
+  );
+
+  test("a landed pair names every such setting its file states, never a value", () => {
+    const notice = pairImportedNotice(
+      importedPair({
+        disclosedPayloadColumns: ["program"],
+        expectedPartnerDeduplicate: true,
+      }),
+    );
+
+    expect(notice.consequences).toHaveLength(1);
+    expect(notice.consequences[0]).toContain(
+      "settings this app keeps unchanged but does not show or edit: " +
+        "disclosed_payload_columns, expected_partner_deduplicate.",
+    );
+    expect(notice.consequences[0]).not.toContain("program");
+  });
+
+  test("a landed pair whose file states none of them adds no line", () => {
+    expect(pairImportedNotice(importedPair({}))).toEqual(PAIR_IMPORTED_NOTICE);
   });
 
   test("a refused key file states its own reason, and never the secret", () => {

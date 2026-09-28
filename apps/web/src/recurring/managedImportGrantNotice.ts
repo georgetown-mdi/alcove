@@ -25,7 +25,8 @@ export interface ManagedImportGrantNotice {
   title: string;
   /** What this browser does not have, and what to do about it. */
   lead: string;
-  /** One line per missing grant, in the order the grants were given. */
+  /** One line per missing grant, in the order the grants were given; on a
+   * pair import, the line naming the settings kept without a control. */
   consequences: Array<string>;
 }
 
