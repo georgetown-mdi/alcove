@@ -211,8 +211,10 @@ names the field, not the value.
 via `AbortSignal.timeout`, independent of every other connection or liveness
 bound in this document. It is an arbitrary working value: long enough for a
 serverless instance's cold start, short enough that an unattended run does not
-hang. In create mode it bounds the body read too: a body the timeout cuts off
-part-way is the same transport failure.
+hang. In create mode it bounds the body read too: the read is raced against
+the same signal and its reader cancelled when the signal fires, so a body the
+timeout cuts off part-way is the same transport failure whether or not the
+fetch errors its own stream on the abort.
 
 **Create-mode answer.** The body of a `2xx` answer is read through
 `readBoundedJsonBody` (`packages/core/src/utils/boundedJsonBody.ts`), streamed
@@ -225,7 +227,7 @@ parsed value must be an object with exactly these keys, any other key refused:
 
 | Key | Type | Required | Bound |
 |-----|------|----------|-------|
-| `host` | string | yes | 1 to `MAX_ENDPOINT_HOST_LENGTH` (256) UTF-16 code units |
+| `host` | string | yes | 1 to `MAX_ENDPOINT_HOST_LENGTH` (256) UTF-16 code units; a host name (letters, digits, `-`, `.`) or an IP address, the check `server.provision.host` itself gets |
 | `port` | integer | no | 1-65535 |
 | `path` | string | no | 1 to `MAX_ENDPOINT_PATH_LENGTH` (4096) UTF-16 code units |
 

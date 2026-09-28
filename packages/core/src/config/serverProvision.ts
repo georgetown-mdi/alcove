@@ -66,9 +66,23 @@ export interface ProvisionedServerAddress {
 
 const PROVISIONED_ADDRESS_FIELDS = ["host", "port", "path"] as const;
 
+/** A host name (an internationalized one in its `xn--` form) or IPv4 address. */
+const HOST_NAME_PATTERN = /^[A-Za-z0-9.-]+$/;
+/** An IPv6 address, bracketed or bare; the colon tells it from a name. */
+const IPV6_HOST_PATTERN =
+  /^(?:\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]|[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)$/;
+
+function isHostNameOrIpAddress(host: string): boolean {
+  return HOST_NAME_PATTERN.test(host) || IPV6_HOST_PATTERN.test(host);
+}
+
 const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> =
   z.strictObject({
-    host: z.string().min(1).check(maxCodeUnits(MAX_ENDPOINT_HOST_LENGTH)),
+    host: z
+      .string()
+      .min(1)
+      .check(maxCodeUnits(MAX_ENDPOINT_HOST_LENGTH))
+      .refine(isHostNameOrIpAddress),
     port: z.int().min(1).max(65535).optional(),
     path: z
       .string()
@@ -139,20 +153,11 @@ function base64OfUtf8(value: string): string {
   return btoa(binary);
 }
 
-/** A host name (an internationalized one in its `xn--` form) or IPv4 address. */
-const HOST_NAME_PATTERN = /^[A-Za-z0-9.-]+$/;
-/** An IPv6 address, bracketed or bare; the colon tells it from a name. */
-const IPV6_HOST_PATTERN =
-  /^(?:\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]|[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)$/;
-
 function provisionUrl(provision: ServerProvision): URL {
   const port = provision.port ?? DEFAULT_PROVISION_PORT;
   // Checked before parsing because the URL parser drops a tab, CR or LF
   // anywhere in its input, so `a.com\nevil.com` would reach a.comevil.com.
-  if (
-    !HOST_NAME_PATTERN.test(provision.host) &&
-    !IPV6_HOST_PATTERN.test(provision.host)
-  )
+  if (!isHostNameOrIpAddress(provision.host))
     throw new UsageError(
       "connection.server.provision.host holds a character a host name cannot " +
         "contain; set it to a bare host name (letters, digits, hyphens and " +
@@ -359,6 +364,8 @@ export async function callProvisionEndpoint(
 function refusedAddressReason(issues: ReadonlyArray<z.core.$ZodIssue>): string {
   for (const issue of issues) {
     const field = issue.path[0];
+    if (field === "host" && issue.code === "custom")
+      return "its host holds a character a host name cannot contain";
     if (
       issue.code !== "unrecognized_keys" &&
       PROVISIONED_ADDRESS_FIELDS.some((name) => name === field)
@@ -393,6 +400,7 @@ export async function requestProvisionedServerAddress(
   const body = await readBoundedJsonBody(
     response,
     MAX_PROVISION_RESPONSE_BYTES,
+    { signal },
   );
   if (body.kind === "too-large")
     throw new UsageError(
@@ -410,8 +418,9 @@ export async function requestProvisionedServerAddress(
     throw new UsageError(
       `${label} answered with a server address that cannot be used: ` +
         `${refusedAddressReason(parsed.error.issues)}. The answer must be a ` +
-        `JSON object holding a host of at most ${MAX_ENDPOINT_HOST_LENGTH} ` +
-        "characters and, optionally, a port (1-65535) and a path of at most " +
+        "JSON object holding a host name or IP address of at most " +
+        `${MAX_ENDPOINT_HOST_LENGTH} characters and, optionally, a port ` +
+        "(1-65535) and a path of at most " +
         `${MAX_ENDPOINT_PATH_LENGTH} characters, and nothing else; ${remedy}`,
     );
   return parsed.data;

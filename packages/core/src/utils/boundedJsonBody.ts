@@ -23,6 +23,31 @@ export type BoundedJsonBodyResult =
   | { kind: "invalid" }
   | { kind: "parsed"; value: unknown };
 
+/** Options for {@link readBoundedJsonBody}. */
+export interface ReadBoundedJsonBodyOptions {
+  /** Stops the read when it aborts. */
+  signal?: AbortSignal;
+}
+
+interface AbortRejection {
+  rejected: Promise<never>;
+  dispose: () => void;
+}
+
+function abortRejection(signal: AbortSignal): AbortRejection {
+  let onAbort = () => {};
+  const rejected = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+  });
+  rejected.catch(() => undefined);
+  if (signal.aborted) onAbort();
+  else signal.addEventListener("abort", onAbort, { once: true });
+  return {
+    rejected,
+    dispose: () => signal.removeEventListener("abort", onAbort),
+  };
+}
+
 /**
  * Read a `Request` or `Response` body as JSON under a hard byte cap, without
  * trusting `Content-Length` (absent or understated on a chunked message).
@@ -35,20 +60,29 @@ export type BoundedJsonBodyResult =
  *
  * Every failure is a returned refusal, never a raised one: a stream that errors
  * part-way through reads as `invalid`, so a caller's refusal path handles a
- * dropped connection the same way it handles an unparseable body.
+ * dropped connection the same way it handles an unparseable body. A read
+ * `options.signal` aborts also returns `invalid`, the reader cancelled, whether
+ * or not the stream itself reacts to the abort; the caller tells it apart by
+ * checking `signal.aborted`.
  */
 export async function readBoundedJsonBody(
   message: Request | Response,
   maxBytes: number,
+  options: ReadBoundedJsonBodyOptions = {},
 ): Promise<BoundedJsonBodyResult> {
   const body = message.body;
   if (body === null) return { kind: "invalid" };
+  const { signal } = options;
   const reader = body.getReader();
   const chunks: Array<Uint8Array> = [];
   let total = 0;
+  const abort = signal === undefined ? undefined : abortRejection(signal);
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      signal?.throwIfAborted();
+      const { done, value } = await (abort === undefined
+        ? reader.read()
+        : Promise.race([reader.read(), abort.rejected]));
       if (done) break;
       total += value.byteLength;
       if (total > maxBytes) {
@@ -60,8 +94,11 @@ export async function readBoundedJsonBody(
       chunks.push(value);
     }
   } catch {
+    // Not awaited: a source that ignores the abort may never settle a cancel.
+    if (signal?.aborted === true) void reader.cancel().catch(() => undefined);
     return { kind: "invalid" };
   } finally {
+    abort?.dispose();
     reader.releaseLock();
   }
   const merged = new Uint8Array(total);

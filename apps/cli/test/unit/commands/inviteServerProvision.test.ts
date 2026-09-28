@@ -314,6 +314,18 @@ test.each([
   ["an HTTP 401 answer", null, 401, 64],
   ["an answer with an extra key", '{"host":"a.example.org","x":1}', 200, 64],
   ["an answer that is not JSON", "<html>", 200, 64],
+  ...[
+    ["whitespace", "a b.example.org"],
+    ["a control character", "a\u0001b.example.org"],
+    ["a line break", "a\nb.example.org"],
+    ["a leading @", "@evil.example.org"],
+    ["/?#", "a.example.org/?#x"],
+  ].map(([what, host]) => [
+    `a returned host holding ${what}`,
+    JSON.stringify({ host }),
+    200,
+    64,
+  ]),
 ] as Array<[string, string | null, number, number]>)(
   "handler: %s stops the invite before any token or key file",
   async (_, body, status, code) => {

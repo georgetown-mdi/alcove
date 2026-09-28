@@ -25,7 +25,7 @@ Beside them sit the optional top-level blocks documented below -- [`authenticati
 
 ## File references
 
-Credential and opaque string fields in `alcove.yaml` support `@`-file references: a value beginning with `@` is read from the file at the given path rather than used literally. For example:
+Credential and opaque string fields in `alcove.yaml` support `@`-file references: a value beginning with `@` is read from the file at the given path rather than used literally. A relative path is resolved against the directory `alcove` runs in, not the directory holding the configuration. For example:
 
 ```yaml
 connection:
@@ -747,7 +747,7 @@ connection:
       host: api.example.org
       path: /sftp/create
       auth:
-        bearer: "@provision.key"
+        bearer: "@/run/secrets/provision.key"
 ```
 
 A `server` block requires `host` in both modes, so a create-mode configuration holds a placeholder host until its first invitation replaces it.

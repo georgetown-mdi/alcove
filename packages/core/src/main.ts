@@ -147,7 +147,10 @@ export { retryPromise, withTimeout, TimeoutError } from "./utils/promise";
 // implementation of it (CONTRIBUTING.md, Untrusted-JSON parsing).
 export { parseBoundedJson, JsonStructureBoundError } from "./utils/boundedJson";
 export { readBoundedJsonBody } from "./utils/boundedJsonBody";
-export type { BoundedJsonBodyResult } from "./utils/boundedJsonBody";
+export type {
+  BoundedJsonBodyResult,
+  ReadBoundedJsonBodyOptions,
+} from "./utils/boundedJsonBody";
 // The split-directory distinctness comparison. Barrelled because the console
 // decides, ahead of a mint, whether the two rendezvous locators it would put on an
 // invitation endpoint are distinct -- and that verdict has to be the one core's own

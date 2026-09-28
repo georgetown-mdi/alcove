@@ -153,3 +153,42 @@ describe("readBoundedJsonBody caps the read, not Content-Length", () => {
     });
   });
 });
+
+describe("readBoundedJsonBody stops on its abort signal", () => {
+  test("a body that never ends and ignores the abort is invalid once the signal fires, its stream cancelled", async () => {
+    let cancelled = false;
+    const stalled = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"host":'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const controller = new AbortController();
+    const read = readBoundedJsonBody(new Response(stalled), 1024, {
+      signal: controller.signal,
+    });
+    controller.abort();
+    expect(await read).toEqual({ kind: "invalid" });
+    expect(cancelled).toBe(true);
+  });
+
+  test("a signal already aborted refuses the read before any byte", async () => {
+    const response = byteResponse(encoder.encode('{"ok":true}'));
+    expect(
+      await readBoundedJsonBody(response, 1024, {
+        signal: AbortSignal.abort(),
+      }),
+    ).toEqual({ kind: "invalid" });
+  });
+
+  test("a signal that never fires leaves a complete body parsed", async () => {
+    const response = byteResponse(encoder.encode('{"ok":true}'));
+    expect(
+      await readBoundedJsonBody(response, 1024, {
+        signal: new AbortController().signal,
+      }),
+    ).toEqual({ kind: "parsed", value: { ok: true } });
+  });
+});

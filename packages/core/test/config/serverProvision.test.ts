@@ -493,12 +493,11 @@ test("a create-mode answer may state a host alone", async () => {
 
 test("the widest answer the schema admits, fully escaped, fits the byte cap", async () => {
   // Every host and path code unit a six-byte \u escape: the derivation beside
-  // MAX_PROVISION_RESPONSE_BYTES.
-  const body = JSON.stringify({
-    host: "\u0001".repeat(MAX_ENDPOINT_HOST_LENGTH),
-    port: 65535,
-    path: "\u0001".repeat(MAX_ENDPOINT_PATH_LENGTH),
-  });
+  // MAX_PROVISION_RESPONSE_BYTES. JSON may escape any character, so a host
+  // name's letters count at six bytes too.
+  const body =
+    `{"host":"${"\\u0061".repeat(MAX_ENDPOINT_HOST_LENGTH)}",` +
+    `"port":65535,"path":${JSON.stringify("\u0001".repeat(MAX_ENDPOINT_PATH_LENGTH))}}`;
   const bytes = new TextEncoder().encode(body).byteLength;
   expect(bytes).toBe(26_146);
   expect(bytes).toBeLessThanOrEqual(MAX_PROVISION_RESPONSE_BYTES);
@@ -535,6 +534,19 @@ test.each([
     JSON.stringify({ host: "h".repeat(MAX_ENDPOINT_HOST_LENGTH + 1) }),
     "its host is missing, of the wrong type, or out of range",
   ],
+  ...[
+    ["whitespace", "a b.example.org"],
+    ["a control character", "a\u0001b.example.org"],
+    ["a line break", "a\nb.example.org"],
+    ["a leading @", "@evil.example.org"],
+    ["a slash", "a.example.org/x"],
+    ["a question mark", "a.example.org?x"],
+    ["a hash", "a.example.org#x"],
+  ].map(([what, host]): [string, string, string] => [
+    `a host holding ${what}`,
+    JSON.stringify({ host: `${host}${BODY_SECRET}` }),
+    "its host holds a character a host name cannot contain",
+  ]),
   [
     "no host",
     JSON.stringify({ port: 22 }),
@@ -608,6 +620,25 @@ test.each([
     expect(state.bodyRead).toBe(false);
   },
 );
+
+test("a create-mode answer whose body never ends and ignores the abort times out as a transport failure", async () => {
+  const fetch = (async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"host":'));
+      },
+    });
+    return new Response(body, { status: 200 });
+  }) as typeof globalThis.fetch;
+  const started = Date.now();
+  const err = await caught(
+    requestProvisionedServerAddress(createProvision, { fetch, timeoutMs: 50 }),
+  );
+  expect(Date.now() - started).toBeLessThan(5_000);
+  expect(err).toBeInstanceOf(ConnectionError);
+  expect((err as ConnectionError).kind).toBe("transport");
+  expect((err as Error).message).toContain("did not answer within 50ms");
+});
 
 test("a create-mode answer the timeout cuts off mid-body is a transport failure", async () => {
   const fetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
