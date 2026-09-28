@@ -105,6 +105,15 @@ Leave this section out only if there is nothing non-obvious to say.
 List any assumptions you made or questions still unresolved. Empty if everything is decided.
 ```
 
+A closed item that came from a retro or review ends with one template line
+naming where its outcome lives:
+
+```markdown
+encoded as: check | hook | ruleset line | doc | code | none
+```
+
+Keep the one value that applies. It is a template line, not an enforced rule.
+
 ## Style rules
 
 - Titles: imperative mood, under 70 characters. "Add WebRTC reconnect on transient failure", not "WebRTC reconnect would be nice".
@@ -203,11 +212,17 @@ the first. In order:
   from them.
 - Declining to file is a legitimate outcome. Say what the concern is worth and
   where it should live instead.
-- At most one item is filed autonomously per session. Past that, draft the rest
-  and hand them to the caller for the owner's word. The cap counts AUTONOMOUS
-  filings: an owner delegation the caller relays, quoted verbatim in the spawn
-  prompt, licenses the batch it covers, and the report names the delegation it
-  filed under.
+- At most one work item is filed autonomously per session. Past that, draft
+  the rest and hand them to the caller for the owner's word. The cap counts
+  AUTONOMOUS filings: an owner delegation the caller relays, quoted verbatim in
+  the spawn prompt, licenses the batch it covers, and the report names the
+  delegation it filed under. A Decision item is a question, not work, and is
+  exempt from the cap.
+
+The board is the only queue, for work and decisions alike. Anything not
+settled in the session that raised it becomes an item, and a decision becomes
+an item in Decision status -- never held only in a PR follow-on line, a report
+tail, or a chat aside.
 
 The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.
@@ -240,9 +255,12 @@ from the stored body, not from memory; preserve sections you were not asked to
 change. Setting a field (e.g. `--status "In Progress"`) is done only when
 explicitly asked.
 
-Recording a ruling on an item replaces its pending-decision line -- e.g. "do
-not start until the owner rules" -- with "Ruled <date>; see Ruling." and moves
-the item out of Decision status into whatever status the ruling calls for.
+The docket (`/docket`) is the only channel for rulings, one decision per
+message; a session that needs a ruling mid-work files the Decision item and
+presents it the same way. The ruling is recorded verbatim on the item in the
+same turn it is given: it replaces the pending-decision line -- e.g. "do not
+start until the owner rules" -- with "Ruled <date>; see Ruling." and moves the
+item out of Decision status into whatever status the ruling calls for.
 
 All project-item reads and edits go through the scripts under `.claude/scripts/`;
 only `gh project item-create` is called directly. If `gh` is not installed or not
