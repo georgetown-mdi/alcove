@@ -582,7 +582,16 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
+  peerTimeoutGuidance?: string;
 }
+
+const withPeerTimeoutGuidance = (
+  message: string,
+  options: RendezvousOptions,
+): string =>
+  options.peerTimeoutGuidance === undefined
+    ? message
+    : `${message}. ${options.peerTimeoutGuidance}`;
 
 // The connection-owned state the coordinator reads and writes across this
 // boundary. Three kinds:
@@ -1708,7 +1717,14 @@ export class FileSyncRendezvous {
         // hello-filename order may make this party the joiner. The role is
         // indeterminate here, so emit no `[role]` prefix (unlike the lock
         // timeout below, which is reachable only as the lone starter).
-        throw markPeerWaitTimeout(new Error("synchronization has timed out"));
+        throw markPeerWaitTimeout(
+          new Error(
+            withPeerTimeoutGuidance(
+              "synchronization has timed out",
+              deps.options(),
+            ),
+          ),
+        );
       }
 
       // Lock path.
@@ -2164,15 +2180,15 @@ export class FileSyncRendezvous {
             const lockAlreadyExists = await deps.client().exists(lockPath);
 
             if (!lockAlreadyExists) {
-              // The winner never deletes the lock file in its normal path
-              // (it returns from waitForPeer, leaving the lock for the
-              // loser to clean up). If the lock is gone after we received
-              // EEXIST, the winner must have crashed (doCleanup ran during
-              // the narrow window where lockName was in responsibleFiles)
-              // or otherwise abandoned the handshake; polling for their
-              // first protocol message would stall until peerTimeoutMs, so
-              // fail fast instead. Best-effort tidy of both hellos before
-              // throwing so the directory is left clean for a retry.
+              // The winner never deletes the lock file in its normal path (it
+              // returns from waitForPeer, leaving the lock for the loser to
+              // clean up). If the lock is gone after we received EEXIST, the
+              // winner must have crashed (doCleanup ran during the narrow
+              // window where lockName was in responsibleFiles) or otherwise
+              // abandoned the handshake; polling for their first protocol
+              // message would stall until inactivityTimeoutMs, so fail fast
+              // instead. Best-effort tidy of both hellos before throwing so the
+              // directory is left clean for a retry.
               await deps
                 .client()
                 .safeDelete(`${scope.inboundPath}/${otherFile.name}`);
@@ -2227,7 +2243,12 @@ export class FileSyncRendezvous {
         );
       }
       throw markPeerWaitTimeout(
-        new Error("[starter] synchronization has timed out"),
+        new Error(
+          withPeerTimeoutGuidance(
+            "[starter] synchronization has timed out",
+            deps.options(),
+          ),
+        ),
       );
     };
     try {

@@ -191,7 +191,8 @@ export const NOTE_CONTROL_CHAR_PATTERN =
  * `temp` value) are core's, applied through core's own schema.
  *
  * Not every arm admits every field. `connectionPerPoll` is admitted on the
- * sftp arms alone. The zero-setup arms admit only what their argv can pass
+ * sftp arms alone, and `inactivityTimeoutMs`, which has no CLI flag, on the
+ * configured arms alone. The zero-setup arms admit only what their argv can pass
  * (see `zeroSetupOptionsArgv` in `./intentArgv`); a field with no route to
  * that run is
  * refused rather than accepted and dropped.
@@ -199,6 +200,7 @@ export const NOTE_CONTROL_CHAR_PATTERN =
 export interface JobExchangeOptions {
   pollIntervalMs?: number;
   peerTimeoutMs?: number;
+  inactivityTimeoutMs?: number;
   serverConnectTimeoutMs?: number;
   maxReconnectAttempts?: number;
   timestampInFilename?: boolean;
@@ -255,10 +257,17 @@ const jobExchangeOptionsFields = {
   retainFiles: z.boolean().optional(),
 };
 
+// The silence wait reaches a configured run through the document it
+// composes; its range is core's, applied by checkAgainstCoreFileSyncOptions.
+const configuredOnlyOptionsFields = {
+  inactivityTimeoutMs: z.number().int().positive().optional(),
+  unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
+};
+
 const jobExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
   .object({
     ...jobExchangeOptionsFields,
-    unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
+    ...configuredOnlyOptionsFields,
   })
   .strict()
   .superRefine(checkAgainstCoreFileSyncOptions);
@@ -269,7 +278,7 @@ const jobExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
 const jobSftpExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
   .object({
     ...jobExchangeOptionsFields,
-    unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
+    ...configuredOnlyOptionsFields,
     connectionPerPoll: z.boolean().optional(),
   })
   .strict()
@@ -307,9 +316,10 @@ function wholeSecondFlagMs(field: string) {
 }
 
 // The zero-setup arms admit only what `zeroSetupOptionsArgv` (./intentArgv) can pass
-// to the child. `unexpectedFiles` is absent: it has no CLI flag, and a
-// zero-setup run composes no configuration document, so the strict parse
-// refuses it rather than accepting a choice the run would drop. The two
+// to the child. `unexpectedFiles` and `inactivityTimeoutMs` are absent: neither
+// has a CLI flag, and a zero-setup run composes no configuration document, so
+// the strict parse refuses them rather than accepting a choice the run would
+// drop. The two
 // coarse-duration fields are held to whole seconds, the only values their
 // flags can state.
 const jobZeroSetupOptionsFields = {

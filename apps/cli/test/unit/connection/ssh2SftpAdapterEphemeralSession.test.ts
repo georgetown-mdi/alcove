@@ -284,7 +284,7 @@ describe("ephemeral session mode (connection-per-poll)", () => {
     expect(message).not.toContain("further mid-exchange re-dial");
     expect(message).not.toContain("--connection-per-poll");
     // The bound that DOES apply is named instead.
-    expect(message).toContain("peer_timeout_ms");
+    expect(message).toContain("inactivity_timeout_ms");
   });
 
   test("re-dial reuses the retained connect options (no re-prompt / same key + credentials)", async () => {

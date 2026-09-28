@@ -7,6 +7,7 @@ import { ZodError } from "zod";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
 } from "../../src/config/connection";
 import {
   CONNECTION_BLOCK_DOC_URL,
@@ -16,6 +17,7 @@ import { serializeExchangeDocument as write } from "../../src/config/exchangeDoc
 import { parseExchangeSpec } from "../../src/config/exchangeSpec";
 import type { ExchangeSpec } from "../../src/config/exchangeSpec";
 import {
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
 } from "../../src/connection/fileSyncConnection";
@@ -63,6 +65,9 @@ test("the written connection block shows the tuning commented at its defaults", 
   );
   expect(raw).toContain(`#   peer_timeout_ms: ${DEFAULT_PEER_TIMEOUT_MS}`);
   expect(raw).toContain(
+    `#   inactivity_timeout_ms: ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS}`,
+  );
+  expect(raw).toContain(
     `#   max_reconnect_attempts: ${DEFAULT_MAX_RECONNECT_ATTEMPTS}`,
   );
   // Commented, so the config still takes whatever the running version defaults
@@ -93,7 +98,7 @@ test("the commented tuning example loads once the operator uncomments it", () =>
   });
 });
 
-test("a webrtc block shows only peer_timeout_ms, the one option it reads", () => {
+test("a webrtc block shows only the two peer waits, the options it reads", () => {
   const raw = write({
     connection: {
       channel: "webrtc",
@@ -105,7 +110,14 @@ test("a webrtc block shows only peer_timeout_ms, the one option it reads", () =>
   expect(raw).not.toContain("poll_interval_ms");
   expect(raw).not.toContain("server_connect_timeout_ms");
   expect(raw).not.toContain("max_reconnect_attempts");
-  expect(raw).toContain(`#   peer_timeout_ms: ${DEFAULT_PEER_TIMEOUT_MS}`);
+  // The webrtc transport's own arrival default, not the file-sync hour.
+  expect(raw).toContain(
+    `#   peer_timeout_ms: ${DEFAULT_WEBRTC_PEER_TIMEOUT_MS}`,
+  );
+  expect(raw).not.toContain(`peer_timeout_ms: ${DEFAULT_PEER_TIMEOUT_MS}`);
+  expect(raw).toContain(
+    `#   inactivity_timeout_ms: ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS}`,
+  );
   // Offering the field would mislead: a webrtc connection does not read it, so
   // the load refuses the file naming the line rather than running as though the
   // operator had never written it.

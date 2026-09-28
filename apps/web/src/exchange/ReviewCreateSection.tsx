@@ -297,9 +297,6 @@ export function ReviewCreateSection({
   const exchangeFilesBlocked =
     connectionSettingsEditable &&
     exchangeFilesProblems(exchangeFiles, CONFIG_EXCHANGE_FILES).length > 0;
-  const connectionTuningBlocked =
-    connectionSettingsEditable &&
-    connectionTuningProblems(connectionTuning).length > 0;
   const runDiagnosticsBlocked =
     exchangeFilesOffered && runDiagnosticsProblems(runDiagnostics).length > 0;
   const receiptsBlocked =
@@ -315,6 +312,9 @@ export function ReviewCreateSection({
   // withholds it on the shared-directory transport.
   const tuningCapabilities =
     transport === "sftp" ? SFTP_CONNECTION_TUNING : FILEDROP_CONNECTION_TUNING;
+  const connectionTuningBlocked =
+    connectionSettingsEditable &&
+    connectionTuningProblems(connectionTuning, tuningCapabilities).length > 0;
   // The rendezvous and the retain-mode toggle are decided in separate places, so
   // a split rendezvous -- an authored split SFTP connection, or a console
   // provisioned with two filedrop mounts -- can outlive the retain choice it

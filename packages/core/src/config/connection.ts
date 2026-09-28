@@ -664,14 +664,23 @@ const SFTPProxySchema: z.ZodType<SFTPProxy> = z.object({
  */
 interface SharedOptions {
   /**
-   * Total milliseconds to wait for the partner before giving up; default:
-   * 3600000. Must be a positive integer: it is the per-await peer-inactivity
-   * liveness budget, so a zero value would fire every transport await
-   * immediately and disable the liveness control. The effective limit is the
-   * minimum of this and the remaining shared-secret lifetime. At most
-   * {@link MAX_TIMEOUT_SECONDS} seconds.
+   * Milliseconds to wait for the partner to arrive at the rendezvous before
+   * giving up. Unset, each transport applies its own default: 3600000 on the
+   * file-sync channels, 600000 on `webrtc`. It bounds arrival only; a present
+   * partner's silence is {@link inactivityTimeoutMs}. The effective limit is the
+   * minimum of this and the remaining shared-secret lifetime. A positive
+   * integer of at most {@link MAX_TIMEOUT_SECONDS} seconds.
    */
   peerTimeoutMs?: number;
+  /**
+   * Milliseconds a partner present past the rendezvous may send nothing, and a
+   * single transport operation may go unanswered, before the exchange fails;
+   * default 3600000. Armed afresh for each wait, so it bounds silence rather
+   * than the exchange's duration. Must be a positive integer: a zero would fire
+   * every wait at once and disable the liveness control. At most
+   * {@link MAX_TIMEOUT_SECONDS} seconds.
+   */
+  inactivityTimeoutMs?: number;
   /**
    * Milliseconds to wait per connection attempt to the primary exchange server;
    * default 30000. Must be a positive integer: zero is not a meaningful "no
@@ -702,6 +711,12 @@ interface SharedOptions {
  * shorter (~20s) `readyTimeout`.
  */
 export const DEFAULT_SERVER_CONNECT_TIMEOUT_MS = 30000;
+
+/**
+ * The `webrtc` transport's arrival wait when
+ * {@link SharedOptions.peerTimeoutMs} is unset.
+ */
+export const DEFAULT_WEBRTC_PEER_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * Default number of reconnect attempts after a transient connection failure when
@@ -738,13 +753,20 @@ export const MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 export const MAX_RECONNECT_ATTEMPTS = 7 * 24 * 60 * 60;
 
 const sharedOptionsFields = {
-  // positive, not nonnegative: peerTimeoutMs is the per-await liveness budget,
-  // so a zero would fire every transport await immediately and disable the
-  // liveness control (the CLI's --peer-timeout already rejects zero; this closes
-  // the same hole on the config/programmatic path). Capped at the
-  // --peer-timeout flag's ceiling, which also keeps it inside the 2^31-1 ms a
-  // Node timer accepts before it clamps the delay to 1 ms.
+  // positive, not nonnegative: a zero arrival budget would end the rendezvous
+  // before the partner could reach it (the CLI's --peer-timeout already rejects
+  // zero; this closes the same hole on the config/programmatic path). Capped at
+  // the --peer-timeout flag's ceiling, which also keeps it inside the 2^31-1 ms
+  // a Node timer accepts before it clamps the delay to 1 ms.
   peerTimeoutMs: z
+    .int()
+    .positive()
+    .max(MAX_TIMEOUT_SECONDS * 1000)
+    .optional(),
+  // positive, not nonnegative: it arms every per-await liveness bound, so a
+  // zero would fire each wait at once and disable the control. The same
+  // ceiling as peerTimeoutMs, for the same timer limit.
+  inactivityTimeoutMs: z
     .int()
     .positive()
     .max(MAX_TIMEOUT_SECONDS * 1000)

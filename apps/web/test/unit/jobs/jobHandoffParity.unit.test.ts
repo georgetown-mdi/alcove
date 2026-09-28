@@ -71,6 +71,7 @@ const MAXIMAL_OPTIONS: Required<JobExchangeOptions> = {
   unexpectedFiles: "warn",
   pollIntervalMs: 600_000,
   peerTimeoutMs: 7_200_000,
+  inactivityTimeoutMs: 5_400_000,
   serverConnectTimeoutMs: 45_000,
   maxReconnectAttempts: 12,
   connectionPerPoll: true,
@@ -103,6 +104,13 @@ const TUNING_OPTION_ROUTES: Record<
     flag: "--polling-frequency=600000ms",
   },
   peerTimeoutMs: { configKey: "peer_timeout_ms", flag: "--peer-timeout=7200s" },
+  inactivityTimeoutMs: {
+    configKey: "inactivity_timeout_ms",
+    flag: null,
+    because:
+      "a configuration-only setting with no CLI flag; the zero-setup arms " +
+      "refuse it rather than accept a choice the command line would drop",
+  },
   serverConnectTimeoutMs: {
     configKey: "server_connect_timeout_ms",
     flag: "--connection-timeout=45s",
@@ -165,9 +173,14 @@ function maximalExchangeIntent(): JobSftpExchangeIntent {
 }
 
 /** An sftp zero-setup intent with every authorable field set. `unexpectedFiles`
- * is dropped: the zero-setup arms refuse it (see {@link TUNING_OPTION_ROUTES}). */
+ * and `inactivityTimeoutMs` are dropped: the zero-setup arms refuse both (see
+ * {@link TUNING_OPTION_ROUTES}). */
 function maximalZeroSetupIntent(): JobZeroSetupSftpIntent {
-  const { unexpectedFiles: _configOnly, ...zeroSetupOptions } = MAXIMAL_OPTIONS;
+  const {
+    unexpectedFiles: _configOnly,
+    inactivityTimeoutMs: _alsoConfigOnly,
+    ...zeroSetupOptions
+  } = MAXIMAL_OPTIONS;
   return validZeroSetupSftpIntent({
     options: zeroSetupOptions,
     eventStream: true,
@@ -518,6 +531,7 @@ describe("the composed config stays one format with one validator", () => {
       unexpectedFiles: "warn",
       pollIntervalMs: 600_000,
       peerTimeoutMs: 7_200_000,
+      inactivityTimeoutMs: 5_400_000,
       serverConnectTimeoutMs: 45_000,
       maxReconnectAttempts: 12,
       connectionPerPoll: true,

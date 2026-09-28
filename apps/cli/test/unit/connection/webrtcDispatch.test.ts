@@ -809,13 +809,24 @@ test("an injected path fails the run before anything is dialed", async () => {
   expect(mockState.dials).toHaveLength(0);
 });
 
-test("peer_timeout_ms bounds each of the transport's three waits", () => {
-  // Its documented meaning is the total wait for the partner, which on this
-  // transport is three waits: the rendezvous before the channel exists, the
-  // channel opening once both descriptions are exchanged, and the parked
-  // receive after. The reference doc's peer_timeout_ms row states that a set
-  // value replaces all three, and this is what holds it to that.
+test("peer_timeout_ms bounds the rendezvous and inactivity_timeout_ms the open channel", () => {
+  // The partner's arrival and a present partner's silence are separate
+  // settings, each reaching only its own wait.
   const { options } = webRtcDialFrom(
+    {
+      channel: "webrtc",
+      server: { host: "peers.example.org" },
+      role: "inviter",
+      options: { peerTimeoutMs: 90_000, inactivityTimeoutMs: 45_000 },
+    },
+    SECRET,
+  );
+  expect(options.rendezvousTimeoutMs).toBe(90_000);
+  expect(options.inactivityTimeoutMs).toBe(45_000);
+});
+
+test("either setting alone leaves the other wait on the transport default", () => {
+  const arrivalOnly = webRtcDialFrom(
     {
       channel: "webrtc",
       server: { host: "peers.example.org" },
@@ -823,10 +834,43 @@ test("peer_timeout_ms bounds each of the transport's three waits", () => {
       options: { peerTimeoutMs: 90_000 },
     },
     SECRET,
-  );
-  expect(options.inactivityTimeoutMs).toBe(90_000);
-  expect(options.rendezvousTimeoutMs).toBe(90_000);
-  expect(options.channelOpenTimeoutMs).toBe(90_000);
+  ).options;
+  expect(arrivalOnly.rendezvousTimeoutMs).toBe(90_000);
+  expect(arrivalOnly).not.toHaveProperty("inactivityTimeoutMs");
+  const silenceOnly = webRtcDialFrom(
+    {
+      channel: "webrtc",
+      server: { host: "peers.example.org" },
+      role: "inviter",
+      options: { inactivityTimeoutMs: 45_000 },
+    },
+    SECRET,
+  ).options;
+  expect(silenceOnly.inactivityTimeoutMs).toBe(45_000);
+  expect(silenceOnly).not.toHaveProperty("rendezvousTimeoutMs");
+});
+
+test("no setting reaches the channel-open budget", () => {
+  // Once both descriptions are exchanged the partner is present, so a channel
+  // that does not open is a network path failure held to the transport's
+  // fixed ceiling, whatever the two waits around it are set to.
+  for (const options of [
+    {},
+    { peerTimeoutMs: 7 * 24 * 60 * 60 * 1000 },
+    { inactivityTimeoutMs: 7 * 24 * 60 * 60 * 1000 },
+    { peerTimeoutMs: 1_000, inactivityTimeoutMs: 1_000 },
+  ])
+    expect(
+      webRtcDialFrom(
+        {
+          channel: "webrtc",
+          server: { host: "peers.example.org" },
+          role: "acceptor",
+          options,
+        },
+        SECRET,
+      ).options,
+    ).not.toHaveProperty("channelOpenTimeoutMs");
 });
 
 const MINTING_RELAY = { turn: ["turns:relay.example:443?transport=tcp"] };
@@ -926,7 +970,7 @@ test("a run presenting no minted credential renews nothing", () => {
   expect(options).not.toHaveProperty("iceServerRenewal");
 });
 
-test("an unset peer_timeout_ms leaves all three transport defaults in place", () => {
+test("an unset options block leaves all three transport defaults in place", () => {
   const { options } = webRtcDialFrom(
     {
       channel: "webrtc",

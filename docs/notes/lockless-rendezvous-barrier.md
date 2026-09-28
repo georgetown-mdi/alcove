@@ -68,7 +68,7 @@ exchange is first established rather than never occurring.
 
 A loser that writes its barrier and drops straight to receive gives those up for
 its own side. Entering a directory holding only stale residue, it would complete
-a rendezvous with nobody, stall in the key exchange until the peer timeout, and
+a rendezvous with nobody, stall in the key exchange until the inactivity timeout, and
 report generic partner silence -- where the shipped shape fails inside that
 window and names the file to remove. That is the wrong direction on the path the
 deployment walks most, and it is a regression against a shipped guarantee rather

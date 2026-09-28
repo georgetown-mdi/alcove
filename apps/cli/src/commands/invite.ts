@@ -69,10 +69,8 @@ import {
   type InviterOwnRelay,
 } from "../connectionFromUrl";
 import { withWebRTCPeerRole } from "../webrtcPeerRole";
-import { DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS } from "../connection/webrtc/webrtcMessageConnection";
 import {
   brokerLocationFromConnection,
-  DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
   DEFAULT_RENDEZVOUS_TIMEOUT_MS,
 } from "../connection/webrtc/weriftPeer";
 import {
@@ -648,9 +646,9 @@ export async function validateInvite(params: {
       log,
     );
 
-    // --accept-timeout is this run's peer budget unconditionally, since it is
-    // always set (by the flag or its default), so a --peer-timeout typed here
-    // does not bound this wait. It is not discarded either: when the
+    // --accept-timeout is this run's arrival budget unconditionally, since it
+    // is always set (by the flag or its default), so a --peer-timeout typed
+    // here does not bound this wait. It is not discarded either: when the
     // configuration is written, it becomes the budget of the runs that follow.
     // This warning fires before the partner has accepted, so it states that
     // destination conditionally, naming both budgets rather than leaving the
@@ -658,12 +656,11 @@ export async function validateInvite(params: {
     if (options.peerTimeout !== undefined)
       log.warn(
         "--peer-timeout does not bound this online invitation: " +
-          `--accept-timeout (${acceptTimeout}s) is this run's peer budget, ` +
-          "bounding both the wait for the partner to accept and the peer waits " +
-          "of the exchange that follows. When the configuration is saved, " +
+          `--accept-timeout (${acceptTimeout}s) is how long this run waits ` +
+          "for the partner to accept. When the configuration is saved, " +
           `--peer-timeout (${options.peerTimeout}s) is recorded in it as ` +
-          "connection.options.peer_timeout_ms, the budget a later " +
-          "'alcove exchange' runs on.",
+          "connection.options.peer_timeout_ms, how long a later " +
+          "'alcove exchange' waits for the partner to arrive.",
       );
 
     // An accept-timeout longer than the token's lifetime would keep waiting at
@@ -1152,10 +1149,10 @@ export async function handler(argv: Arguments): Promise<void> {
             recordFile: options.recordFile,
           }),
           eventStream: options.eventStream,
-          // The wait this invitation was printed for, and the peer waits of the
-          // exchange that follows it, run on --accept-timeout; the configuration
-          // saved at acceptance does not, so an unattended recurring run is never
-          // handed a budget sized for one operator sitting at a terminal.
+          // The wait for the partner to arrive runs on --accept-timeout; the
+          // configuration saved at acceptance does not, so an unattended
+          // recurring run is never handed a budget sized for one operator
+          // sitting at a terminal.
           runOnlyPeerTimeoutSeconds: acceptTimeout,
           // The inviter's received-payload set is unknown until the acceptor
           // transmits it, so crystallize the observed set into the saved config
@@ -1300,15 +1297,16 @@ function noteSinglePassSelection(
 }
 
 /**
- * What bounds a later `alcove exchange` run from a configuration recording no
- * `peer_timeout_ms`, phrased for the channel that run will use.
+ * How long a later `alcove exchange` run from a configuration recording no
+ * `peer_timeout_ms` waits for the partner to arrive, phrased for the channel
+ * that run will use.
  *
  * Each figure is read from the constant the channel's own transport falls back
- * to: the file-sync pair from core's file-sync budget, webrtc from the three
- * budgets `webRtcDialFrom` leaves unset. These values differ by transport (see
- * `connection/webrtc/webrtcMessageConnection.ts`), so quoting one transport's
- * number on another channel would misreport the wait. A channel with no
- * default named here gets the reference row instead.
+ * to: the file-sync pair from core's rendezvous budget, webrtc from the
+ * rendezvous budget `webRtcDialFrom` leaves unset. These values differ by
+ * transport, so quoting one transport's number on another channel would
+ * misreport the wait. A channel with no default named here gets the reference
+ * row instead.
  */
 function absentPeerBudgetDefaults(
   channel: ConnectionConfig["channel"],
@@ -1317,16 +1315,13 @@ function absentPeerBudgetDefaults(
     case "sftp":
     case "filedrop":
       return (
-        "the file-sync transport's default peer budget " +
+        "the file-sync transport's default wait for the partner " +
         `(${DEFAULT_PEER_TIMEOUT_MS / 1000}s)`
       );
     case "webrtc":
       return (
-        "the webrtc transport's own defaults: " +
-        `${DEFAULT_RENDEZVOUS_TIMEOUT_MS / 1000}s to meet the partner at the ` +
-        `rendezvous, then ${DEFAULT_CHANNEL_OPEN_TIMEOUT_MS / 1000}s for the ` +
-        `data channel to open, then ${DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS / 1000}s of ` +
-        "peer silence on the open channel"
+        "the webrtc transport's default wait for the partner: " +
+        `${DEFAULT_RENDEZVOUS_TIMEOUT_MS / 1000}s to meet it at the rendezvous`
       );
     default:
       return (
@@ -1338,8 +1333,8 @@ function absentPeerBudgetDefaults(
 }
 
 /**
- * The line reporting which peer budget the configuration an online invite just
- * saved holds, logged once that configuration is on disk.
+ * The line reporting which arrival wait the configuration an online invite
+ * just saved holds, logged once that configuration is on disk.
  *
  * `--accept-timeout` bounds the invite's own run and is not written: the two
  * timeouts bound different lifetimes -- one operator waiting at a rendezvous,
@@ -1359,17 +1354,17 @@ export function persistedPeerBudgetNotice(
   if (persistedPeerTimeoutSeconds !== undefined)
     return (
       "the saved configuration records connection.options.peer_timeout_ms as " +
-      `${persistedPeerTimeoutSeconds}s, from --peer-timeout: that is the peer ` +
-      "budget a later 'alcove exchange' runs on. --accept-timeout " +
-      `(${acceptTimeoutSeconds}s) bounded this run alone.`
+      `${persistedPeerTimeoutSeconds}s, from --peer-timeout: that is how long ` +
+      "a later 'alcove exchange' waits for the partner to arrive. " +
+      `--accept-timeout (${acceptTimeoutSeconds}s) bounded this run alone.`
     );
   return (
     "the saved configuration records no connection.options.peer_timeout_ms: " +
     `--accept-timeout (${acceptTimeoutSeconds}s) bounded this run alone, so a ` +
-    `later 'alcove exchange' runs on ${absentPeerBudgetDefaults(channel)}. ` +
+    `later 'alcove exchange' waits on ${absentPeerBudgetDefaults(channel)}. ` +
     "Pass --peer-timeout at invite time, or set " +
     "connection.options.peer_timeout_ms in that configuration, to give those " +
-    "runs a budget of your own."
+    "runs a wait of your own."
   );
 }
 

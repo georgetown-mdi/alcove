@@ -5,6 +5,7 @@ import {
   asConnectionError,
 } from "@alcove/core";
 
+import { INACTIVITY_TIMEOUT_GUIDANCE } from "../timeoutGuidance";
 import { BoundedInboundFrames } from "./inboundBounds";
 import {
   PeerJsFrameEncoder,
@@ -313,9 +314,7 @@ export function webRtcMessageConnection(
     {
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
-      // No `inactivityHint`: the file-sync CLI can name likely receiver-side
-      // causes for a silent peer, but on a live data channel silence means the
-      // peer is computing or gone, and neither is guidance worth a sentence.
+      inactivityHint: INACTIVITY_TIMEOUT_GUIDANCE,
     },
   );
 }

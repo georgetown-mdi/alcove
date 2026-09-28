@@ -158,6 +158,7 @@ export interface DisclosedSigning {
  */
 export interface DisclosedFileSyncOptions {
   peerTimeoutMs?: number;
+  inactivityTimeoutMs?: number;
   serverConnectTimeoutMs?: number;
   maxReconnectAttempts?: number;
   pollIntervalMs?: number;
@@ -248,6 +249,7 @@ function probeIntentFields(): JobExchangeIntentBase {
     options: {
       pollIntervalMs: 1000,
       peerTimeoutMs: 1000,
+      inactivityTimeoutMs: 1000,
       serverConnectTimeoutMs: 1000,
       maxReconnectAttempts: 1,
       timestampInFilename: true,
@@ -723,6 +725,9 @@ function disclosedOptions(options: FileSyncOptions): DisclosedFileSyncOptions {
   return {
     ...(options.peerTimeoutMs !== undefined
       ? { peerTimeoutMs: options.peerTimeoutMs }
+      : {}),
+    ...(options.inactivityTimeoutMs !== undefined
+      ? { inactivityTimeoutMs: options.inactivityTimeoutMs }
       : {}),
     ...(options.serverConnectTimeoutMs !== undefined
       ? { serverConnectTimeoutMs: options.serverConnectTimeoutMs }

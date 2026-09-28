@@ -18,8 +18,8 @@ import {
 
 import {
   CONNECTION_TUNING_DEFAULT,
-  FILEDROP_CONNECTION_TUNING,
-  SFTP_CONNECTION_TUNING,
+  DIRECT_FILEDROP_CONNECTION_TUNING,
+  DIRECT_SFTP_CONNECTION_TUNING,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import {
@@ -212,8 +212,8 @@ export function DirectExchangeScreen() {
       exchangeFilesOptions(exchangeFiles, ZERO_SETUP_EXCHANGE_FILES),
       connectionTuning,
       transport === "sftp"
-        ? SFTP_CONNECTION_TUNING
-        : FILEDROP_CONNECTION_TUNING,
+        ? DIRECT_SFTP_CONNECTION_TUNING
+        : DIRECT_FILEDROP_CONNECTION_TUNING,
     ),
     runDiagnostics: runDiagnosticsIntentFields(runDiagnostics),
   });

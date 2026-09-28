@@ -44,7 +44,7 @@ import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 const ABORT_MARKER_MAX_BYTES = 1024;
 
 // Short per-operation budget (put + rename) for the abort marker write. The
-// marker write must not inherit boundTransport's fresh-peerTimeoutMs
+// marker write must not inherit boundTransport's fresh-inactivityTimeoutMs
 // (default 1 hour) budget: a faulted write, the sick-directory case the
 // marker exists for, would otherwise hang teardown. The SFTP adapter
 // self-bounds reads at ~60 s, but the local-FS/filedrop adapter has no

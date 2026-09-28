@@ -124,7 +124,7 @@ async function boundTransportOf(
     // Short enough that the budget fires promptly; the number it reports is
     // the one variable the budget's own summary holds, and a wider one only
     // shortens the margin measured here by the digits it adds.
-    options: { peerTimeoutMs: 20 },
+    options: { inactivityTimeoutMs: 20 },
   };
   await conn.open(config);
   return (conn as unknown as { client: FileTransportClient }).client;
@@ -171,7 +171,7 @@ async function frameGateRefusal(messageName: string): Promise<unknown> {
   await conn.open({
     channel: "filedrop",
     path: RENDEZVOUS_PATH,
-    options: { peerTimeoutMs: 2_000 },
+    options: { inactivityTimeoutMs: 2_000 },
   } satisfies FileDropConnectionConfig);
   conn.peerId = PEER_ID;
   const errored = new Promise<unknown>((resolve) => conn.on("error", resolve));

@@ -990,7 +990,7 @@ describe("session transitions", () => {
 
   test("a caller that gives up waiting for end() still gets the forced destroy", async () => {
     // What this bound owes the budget end()'s CALLER holds: nothing. Core races
-    // end() against one of its own that a low peer_timeout_ms can put under this
+    // end() against one of its own that a low inactivity_timeout_ms can put under this
     // bound, and abandoning that wait closes nothing -- the destroy is what closes
     // the transport, and the abandon drives it whether or not anything is still
     // waiting on it, which is what leaves that caller an exited process rather

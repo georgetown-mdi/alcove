@@ -262,7 +262,7 @@ export function addCommonBootstrapOptions(
       alias: "t",
       type: "string",
       describe:
-        "how long to wait for the peer before giving up " +
+        "how long to wait for the peer to arrive before giving up " +
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d). ` +
         DURATION_VALUE_HELP,
     })

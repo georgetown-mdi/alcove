@@ -4,7 +4,7 @@ import * as z from "zod";
  * Hello payload envelope: the two bilateral mode flags each party advertises
  * at rendezvous. The peer compares them at every site it reads a peer hello
  * and fails fast on a mismatch, so a divergent pairing never stalls silently
- * until the peer timeout.
+ * until a peer wait times out.
  *
  * The hello is the only payload-bearing control file; the acknowledgment
  * marker is a zero-length file matched by name, with no body to envelope.

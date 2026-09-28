@@ -109,7 +109,7 @@ function makeConnectedConn(
   client: FileTransportClient,
   opts?: Partial<{
     pollingFrequency: number;
-    peerTimeoutMs: number;
+    inactivityTimeoutMs: number;
   }>,
 ): FileSyncConnection {
   const conn = new FileSyncConnection(client, {
@@ -121,10 +121,12 @@ function makeConnectedConn(
   // The peer-inactivity budget send() arms per wait is read from the live
   // config, which only open() sets; these tests stand the connection up without
   // it, so the config is planted here for the one field they need from it.
-  if (opts?.peerTimeoutMs !== undefined) {
+  if (opts?.inactivityTimeoutMs !== undefined) {
     (
-      conn as unknown as { config: { options: { peerTimeoutMs: number } } }
-    ).config = { options: { peerTimeoutMs: opts.peerTimeoutMs } };
+      conn as unknown as {
+        config: { options: { inactivityTimeoutMs: number } };
+      }
+    ).config = { options: { inactivityTimeoutMs: opts.inactivityTimeoutMs } };
   }
   return conn;
 }
@@ -220,7 +222,7 @@ test("fromEventConnection over FileSyncConnection: an error buffered before the 
 test("fromEventConnection over FileSyncConnection: a send-time transport failure becomes a sticky terminal error", async () => {
   const { client, files } = makeMockClient();
   const conn = makeConnectedConn(client, {
-    peerTimeoutMs: 150,
+    inactivityTimeoutMs: 150,
     pollingFrequency: 10,
   });
   conn.peerId = "peer-test";

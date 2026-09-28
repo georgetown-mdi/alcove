@@ -21,6 +21,8 @@ import {
 import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_ADVISORY,
   CONNECTION_TUNING_DEFAULT,
+  DIRECT_FILEDROP_CONNECTION_TUNING,
+  DIRECT_SFTP_CONNECTION_TUNING,
   FILEDROP_CONNECTION_TUNING,
   LOW_POLL_INTERVAL_ADVISORY,
   SFTP_CONNECTION_TUNING,
@@ -143,6 +145,64 @@ describe("the authored draft becomes an option block", () => {
   });
 });
 
+describe("the silence wait", () => {
+  const quiet = draft({ inactivityTimeout: { magnitude: "90", unit: "m" } });
+
+  test("is emitted on a flow that composes a configuration", () => {
+    for (const capabilities of [
+      SFTP_CONNECTION_TUNING,
+      FILEDROP_CONNECTION_TUNING,
+    ])
+      expect(connectionTuningOptions(quiet, capabilities)).toEqual({
+        inactivityTimeoutMs: 5_400_000,
+      });
+  });
+
+  test("is withheld on a zero-setup flow, which has no flag to carry it", () => {
+    for (const capabilities of [
+      DIRECT_SFTP_CONNECTION_TUNING,
+      DIRECT_FILEDROP_CONNECTION_TUNING,
+    ]) {
+      expect(connectionTuningOptions(quiet, capabilities)).toBeUndefined();
+      expect(connectionTuningSummary(quiet, capabilities)).toBe("Default");
+      expect(
+        connectionTuningProblems(
+          draft({ inactivityTimeout: { magnitude: "x", unit: "m" } }),
+          capabilities,
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  test("is held to the same shape and seven-day ceiling as the partner wait", () => {
+    expect(
+      connectionTuningProblems(
+        draft({ inactivityTimeout: { magnitude: "0", unit: "m" } }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      connectionTuningProblems(
+        draft({
+          inactivityTimeout: {
+            magnitude: String(MAX_TIMEOUT_SECONDS / 3600 + 1),
+            unit: "h",
+          },
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      connectionTuningProblems(
+        draft({
+          inactivityTimeout: {
+            magnitude: String(MAX_TIMEOUT_SECONDS / 3600),
+            unit: "h",
+          },
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe("each setting round-trips into the composed config", () => {
   test("every setting reaches a filedrop config under its snake_case name", () => {
     expect(
@@ -150,6 +210,7 @@ describe("each setting round-trips into the composed config", () => {
         draft({
           pollInterval: { magnitude: "30", unit: "s" },
           peerTimeout: { magnitude: "2", unit: "h" },
+          inactivityTimeout: { magnitude: "90", unit: "m" },
           serverConnectTimeout: { magnitude: "45", unit: "s" },
           maxReconnectAttempts: "12",
         }),
@@ -157,6 +218,7 @@ describe("each setting round-trips into the composed config", () => {
     ).toEqual({
       poll_interval_ms: 30_000,
       peer_timeout_ms: 7_200_000,
+      inactivity_timeout_ms: 5_400_000,
       server_connect_timeout_ms: 45_000,
       max_reconnect_attempts: 12,
     });

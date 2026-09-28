@@ -1,6 +1,7 @@
 import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
@@ -47,7 +48,7 @@ export const POLL_INTERVAL_UNITS: ReadonlyArray<DurationUnit> = [
   "m",
 ];
 
-/** The units the two timeout fields offer. Milliseconds are absent by design: a
+/** The units the timeout fields offer. Milliseconds are absent by design: a
  * coarse duration flag cannot state one, so a zero-setup run could not hold
  * the value the operator authored. */
 export const TIMEOUT_UNITS: ReadonlyArray<DurationUnit> = ["s", "m", "h"];
@@ -68,6 +69,7 @@ export interface DurationField {
 export interface ConnectionTuningDraft {
   pollInterval: DurationField;
   peerTimeout: DurationField;
+  inactivityTimeout: DurationField;
   serverConnectTimeout: DurationField;
   /** The retry budget as raw field text; blank means unset. Not a duration: it is
    * a count, exactly as the CLI's `--max-reconnect-attempts` is. */
@@ -84,6 +86,7 @@ export interface ConnectionTuningDraft {
 export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
   pollInterval: { magnitude: "", unit: "s" },
   peerTimeout: { magnitude: "", unit: "m" },
+  inactivityTimeout: { magnitude: "", unit: "m" },
   serverConnectTimeout: { magnitude: "", unit: "s" },
   maxReconnectAttempts: "",
   connectionPerPoll: false,
@@ -91,20 +94,38 @@ export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
 
 /** Which of the card's controls the calling flow can hold. The SFTP session mode
  * is an sftp-only dialing choice -- a filedrop client holds no socket -- so the
- * intent's filedrop arms refuse it and the card withholds it there. */
+ * intent's filedrop arms refuse it and the card withholds it there. The silence
+ * wait has no command-line flag, so a zero-setup run, which reaches the CLI
+ * through flags alone, cannot hold it and its intent arms refuse it. */
 export interface ConnectionTuningCapabilities {
   connectionPerPoll: boolean;
+  inactivityTimeout: boolean;
 }
 
 /** The capabilities of an sftp flow: every control the card offers applies. */
 export const SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
   connectionPerPoll: true,
+  inactivityTimeout: true,
 };
 
 /** The capabilities of a shared-directory (filedrop) flow, whose connectionless
  * client has no session to cycle. */
 export const FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
   connectionPerPoll: false,
+  inactivityTimeout: true,
+};
+
+/** The capabilities of a zero-setup sftp exchange, which composes no
+ * configuration for the silence wait to be written into. */
+export const DIRECT_SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  connectionPerPoll: true,
+  inactivityTimeout: false,
+};
+
+/** The capabilities of a zero-setup shared-directory exchange. */
+export const DIRECT_FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  connectionPerPoll: false,
+  inactivityTimeout: false,
 };
 
 /**
@@ -124,12 +145,13 @@ function durationMs(field: DurationField): number | undefined | null {
 }
 
 /**
- * The longest wait either timeout field may state: core's seven-day
- * {@link MAX_TIMEOUT_SECONDS}, in the milliseconds the job intent speaks. Both
+ * The longest wait a timeout field may state: core's seven-day
+ * {@link MAX_TIMEOUT_SECONDS}, in the milliseconds the job intent speaks. Two
  * fields ride the CLI's `--peer-timeout` / `--connection-timeout` on a
  * zero-setup run, where the same ceiling is a usage error (exit 64); a
  * larger value here would create a job whose child exits immediately. The
- * poll interval takes no ceiling, matching `--polling-frequency`.
+ * silence wait's schema holds the same ceiling. The poll interval takes no
+ * ceiling, matching `--polling-frequency`.
  */
 const MAX_TIMEOUT_MS = MAX_TIMEOUT_SECONDS * 1000;
 
@@ -168,15 +190,19 @@ function reconnectAttempts(raw: string): number | undefined | null {
  */
 export function connectionTuningOptions(
   draft: ConnectionTuningDraft,
-  capabilities: ConnectionTuningCapabilities = { connectionPerPoll: true },
+  capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): JobExchangeOptions | undefined {
   const pollIntervalMs = durationMs(draft.pollInterval);
   const peerTimeoutMs = timeoutMs(draft.peerTimeout);
+  const inactivityTimeoutMs = capabilities.inactivityTimeout
+    ? timeoutMs(draft.inactivityTimeout)
+    : undefined;
   const serverConnectTimeoutMs = timeoutMs(draft.serverConnectTimeout);
   const maxReconnectAttempts = reconnectAttempts(draft.maxReconnectAttempts);
   const stated: JobExchangeOptions = {
     ...(typeof pollIntervalMs === "number" ? { pollIntervalMs } : {}),
     ...(typeof peerTimeoutMs === "number" ? { peerTimeoutMs } : {}),
+    ...(typeof inactivityTimeoutMs === "number" ? { inactivityTimeoutMs } : {}),
     ...(typeof serverConnectTimeoutMs === "number"
       ? { serverConnectTimeoutMs }
       : {}),
@@ -201,7 +227,7 @@ export function connectionTuningOptions(
 export function withConnectionTuning(
   base: JobExchangeOptions | undefined,
   draft: ConnectionTuningDraft,
-  capabilities: ConnectionTuningCapabilities = { connectionPerPoll: true },
+  capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): JobExchangeOptions | undefined {
   const tuning = connectionTuningOptions(draft, capabilities);
   if (base === undefined) return tuning;
@@ -251,6 +277,7 @@ function timeoutProblem(
  */
 export function connectionTuningProblems(
   draft: ConnectionTuningDraft,
+  capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): Array<string> {
   const problems: Array<string> = [];
   if (durationMs(draft.pollInterval) === null)
@@ -260,6 +287,13 @@ export function connectionTuningProblems(
     "The wait for your partner",
   );
   if (peerProblem !== undefined) problems.push(peerProblem);
+  const silenceProblem = capabilities.inactivityTimeout
+    ? timeoutProblem(
+        draft.inactivityTimeout,
+        "The wait while your partner is quiet",
+      )
+    : undefined;
+  if (silenceProblem !== undefined) problems.push(silenceProblem);
   const connectProblem = timeoutProblem(
     draft.serverConnectTimeout,
     "The connection attempt timeout",
@@ -312,7 +346,7 @@ export const CONNECTION_PER_POLL_SHORT_INTERVAL_ADVISORY =
  */
 export function connectionTuningAdvisories(
   draft: ConnectionTuningDraft,
-  capabilities: ConnectionTuningCapabilities = { connectionPerPoll: true },
+  capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): Array<string> {
   const advisories: Array<string> = [];
   const pollIntervalMs = durationMs(draft.pollInterval);
@@ -349,6 +383,8 @@ export function connectionTuningSummary(
   const touched =
     draft.pollInterval.magnitude.trim() !== "" ||
     draft.peerTimeout.magnitude.trim() !== "" ||
+    (capabilities.inactivityTimeout &&
+      draft.inactivityTimeout.magnitude.trim() !== "") ||
     draft.serverConnectTimeout.magnitude.trim() !== "" ||
     draft.maxReconnectAttempts.trim() !== "" ||
     (capabilities.connectionPerPoll && draft.connectionPerPoll);
@@ -394,5 +430,6 @@ export function defaultPlaceholder(
 export const TUNING_DEFAULT_MS = {
   pollInterval: DEFAULT_POLLING_FREQUENCY_MS,
   peerTimeout: DEFAULT_PEER_TIMEOUT_MS,
+  inactivityTimeout: DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   serverConnectTimeout: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
 } as const;

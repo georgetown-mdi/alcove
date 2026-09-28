@@ -232,7 +232,7 @@ export function isRecognizedLoopFile(
 
 // Consecutive ENOENT from get() after list() reported the file indicates a
 // filesystem state unlikely to self-resolve: emit an error rather than
-// looping silently until the peer timeout fires.
+// looping silently until the inactivity timeout fires.
 //
 // 3 is structural, not a tuning value, so it is not a config option: one
 // ENOENT is the expected TOCTOU race between list() and get() when the
@@ -260,7 +260,13 @@ export interface MessageLoopOptions {
   timestampInFilename: boolean;
   pollingFrequency: number;
   unexpectedFiles?: "error" | "warn" | "ignore";
+  inactivityTimeoutGuidance?: string;
 }
+
+const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
+  options.inactivityTimeoutGuidance === undefined
+    ? ""
+    : `. ${options.inactivityTimeoutGuidance}`;
 
 // The connection-owned state the coordinator reads across the boundary.
 // Three kinds:
@@ -285,7 +291,7 @@ export interface MessageLoopDeps {
   role: () => string;
   log: () => ReturnType<typeof getLoggerForVerbosity>;
   options: () => MessageLoopOptions;
-  peerBudgetMs: () => number;
+  inactivityBudgetMs: () => number;
   path: () => string | undefined;
   outbound: () => string | undefined;
   peerId: () => string | undefined;
@@ -461,7 +467,7 @@ export class FileSyncMessageLoop {
     // an honest peer ever gets to reply). Matches the receive side, where
     // every transport await races a fresh budget (see boundTransport). An
     // unresponsive peer is still bounded: this wait ends within one budget.
-    const waitDeadlineMs = Date.now() + deps.peerBudgetMs();
+    const waitDeadlineMs = Date.now() + deps.inactivityBudgetMs();
 
     try {
       if (deps.options().retainFiles) {
@@ -490,7 +496,8 @@ export class FileSyncMessageLoop {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
                 `timed out waiting for ack ${expectedAck} from ` +
-                  `${deps.peerId()!}`,
+                  `${deps.peerId()!}` +
+                  inactivityGuidanceSuffix(deps.options()),
               );
             }
             await deps.wait(deps.options().pollingFrequency);
@@ -506,7 +513,9 @@ export class FileSyncMessageLoop {
           while (await hasOutstandingMessage()) {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
-                `timed out waiting for message from ${deps.id()} to be consumed`,
+                `timed out waiting for message from ${deps.id()} to be ` +
+                  "consumed" +
+                  inactivityGuidanceSuffix(deps.options()),
               );
             }
             await deps.wait(deps.options().pollingFrequency);
@@ -930,7 +939,7 @@ export class FileSyncMessageLoop {
           // ProtocolRefusalError for a partner on another wire format;
           // either is terminal, mode-agnostic:
           // in retain mode the never-deleted file would otherwise be re-read
-          // every poll cycle until the peer timeout.
+          // every poll cycle until the inactivity timeout.
           //
           // The returned `data` is ready for emit: the parsed object for a
           // JSON control message, or the raw frame bytes for a binary frame.

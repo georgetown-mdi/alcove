@@ -4,6 +4,7 @@ import {
   authorityMovingSignalingField,
   chainDetailCauses,
   ConnectionError,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   InternalConsistencyError,
   UsageError,
   deriveRendezvousPeerId,
@@ -15,6 +16,7 @@ import {
 } from "@alcove/core";
 
 import { REPORT_LIBRARY_INCOMPATIBILITY } from "../libraryIncompatibility";
+import { PEER_TIMEOUT_GUIDANCE } from "../timeoutGuidance";
 import { BROKER_MESSAGE, connectToBroker } from "./brokerClient";
 import {
   describeSelectedCandidatePair,
@@ -128,13 +130,14 @@ export const RENEWAL_OVERLAP_MS = 15_000;
  * operator's exchange may start well before the other's, and this is the same
  * ceiling the web app gives its own rendezvous wait.
  */
-export const DEFAULT_RENDEZVOUS_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_RENDEZVOUS_TIMEOUT_MS = DEFAULT_WEBRTC_PEER_TIMEOUT_MS;
 
 /**
  * Ceiling on the data channel opening once both descriptions are exchanged.
  * Reaching it means the peer is present and negotiating but no candidate pair
  * ever worked -- a network path problem, not a peer that has not arrived -- so
- * it fails rather than restarting the rendezvous.
+ * it fails rather than restarting the rendezvous. No configuration setting
+ * reaches it: `webRtcDialFrom` never passes a channel-open budget.
  */
 export const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 30_000;
 
@@ -1306,7 +1309,7 @@ class Negotiation {
             `the exchange partner did not ` +
               `${role === "acceptor" ? "answer" : "offer"} within ` +
               `${budgetSeconds(this.options.rendezvousTimeoutMs)}; ` +
-              "--peer-timeout sets how long to wait for a partner to arrive",
+              PEER_TIMEOUT_GUIDANCE,
             "transport",
           ),
         ),
@@ -1742,8 +1745,7 @@ class Negotiation {
         void this.failWithIceDiagnosis(
           `the data channel did not open within ` +
             `${budgetSeconds(this.options.channelOpenTimeoutMs)} after the ` +
-            "exchange partner's session description arrived; --peer-timeout " +
-            "sets that bound",
+            "exchange partner's session description arrived",
         ),
       this.options.channelOpenTimeoutMs,
     );

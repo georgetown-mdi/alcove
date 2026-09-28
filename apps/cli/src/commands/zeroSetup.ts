@@ -129,7 +129,7 @@ export function builder(cmd: Argv): Argv {
         "Requires --timestamp-in-filename. Both parties must set this flag " +
         "identically -- a mismatch is detected at rendezvous and fails fast on " +
         "both sides with a clear error naming each side's setting, rather than " +
-        "stalling until the peer timeout. A fresh " +
+        "stalling until the inactivity timeout. A fresh " +
         "directory is required for each exchange and is enforced: reusing a " +
         "directory with retained files from a prior session is rejected with " +
         "an error at startup",

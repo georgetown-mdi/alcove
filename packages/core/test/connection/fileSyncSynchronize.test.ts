@@ -432,7 +432,7 @@ test("synchronize() fails within the peer budget when the server withholds the d
   const peerId = "00000000-0000-4000-8000-000000000001";
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     timeToLiveMs: 60_000,
   });
   conn.id = "ffffffff-ffff-4fff-bfff-ffffffffffff";
@@ -2652,7 +2652,7 @@ test("synchronize() re-arms a fresh controller per session so a retry's waits st
   const conn = await makeConnectedConn(client, {
     pollingFrequency: 10,
     timeToLiveMs: 60_000,
-    peerTimeoutMs: 50,
+    inactivityTimeoutMs: 50,
   });
   conn.id = "starter";
 

@@ -1594,7 +1594,8 @@ export function AcceptorScreen() {
               }
               connectionTuningBlocked={
                 acceptServerJob &&
-                connectionTuningProblems(connectionTuning).length > 0
+                connectionTuningProblems(connectionTuning, tuningCapabilities)
+                  .length > 0
               }
               runDiagnosticsBlocked={
                 acceptServerJob &&

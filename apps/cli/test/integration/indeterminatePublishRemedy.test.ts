@@ -136,7 +136,11 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
       ...serverAuth(party),
       path: remoteDir,
     },
-    options: { pollIntervalMs: 50, peerTimeoutMs: PEER_TIMEOUT_MS },
+    options: {
+      pollIntervalMs: 50,
+      peerTimeoutMs: PEER_TIMEOUT_MS,
+      inactivityTimeoutMs: PEER_TIMEOUT_MS,
+    },
   });
 
   const outR = path.join(work, `${tag}-receiver-out.csv`);

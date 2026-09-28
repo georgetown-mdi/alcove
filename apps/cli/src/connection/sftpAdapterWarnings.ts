@@ -169,7 +169,7 @@ export function sessionRecoveredEphemeralWarning(sessionsLost: number): string {
     "re-dial is this mode working and the exchange survives the cap. These " +
     "re-dials are not charged against max_reconnect_attempts; each " +
     "operation remains bounded by the peer-inactivity timeout " +
-    "(peer_timeout_ms), which ends the exchange if they stop it from " +
+    "(inactivity_timeout_ms), which ends the exchange if they stop it from " +
     "making progress."
   );
 }

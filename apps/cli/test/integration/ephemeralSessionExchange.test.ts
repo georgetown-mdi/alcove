@@ -1132,7 +1132,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.usera),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await peer.open({
             channel: "sftp",
@@ -1142,7 +1145,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.userb),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await Promise.all([departing.synchronize(), peer.synchronize()]);
 
@@ -1242,7 +1248,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.usera),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await waiting.open({
             channel: "sftp",
@@ -1252,7 +1261,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.userb),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await Promise.all([failing.synchronize(), waiting.synchronize()]);
           failing.armAbort(failingToken, waitingToken);
@@ -1359,7 +1371,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.usera),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await peer.open({
             channel: "sftp",
@@ -1369,7 +1384,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.userb),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await Promise.all([sender.synchronize(), peer.synchronize()]);
 
@@ -1466,7 +1484,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.usera),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await peer.open({
             channel: "sftp",
@@ -1476,7 +1497,10 @@ inProcessOnly(
               ...serverAuth(srv.handle.userb),
               path: remote,
             },
-            options: { peerTimeoutMs: PEER_TIMEOUT_MS },
+            options: {
+              peerTimeoutMs: PEER_TIMEOUT_MS,
+              inactivityTimeoutMs: PEER_TIMEOUT_MS,
+            },
           });
           await Promise.all([sender.synchronize(), peer.synchronize()]);
 

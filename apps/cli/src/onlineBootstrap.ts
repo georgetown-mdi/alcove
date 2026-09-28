@@ -972,14 +972,14 @@ export async function runOnlineBootstrap(params: {
    */
   expectedPartnerDeduplicate?: boolean;
   /**
-   * The peer budget THIS run alone is bounded by, in seconds: the online
-   * inviter's `--accept-timeout`, which bounds its wait at the rendezvous and the
-   * peer waits of the exchange that follows. Applied to the live connection here
-   * and to nothing that is written, so the configuration this bootstrap saves
-   * has only the budget its `connection` already holds -- the operator's own
-   * `--peer-timeout`, or none, in which case a later recurring `alcove exchange`
-   * takes the documented `peer_timeout_ms` default rather than a wait sized for
-   * one interactive setup. Absent for a caller whose run budget and persisted
+   * The arrival wait THIS run alone is bounded by, in seconds: the online
+   * inviter's `--accept-timeout`, which bounds its wait for the partner at the
+   * rendezvous. Applied to the live connection here and to nothing that is
+   * written, so the configuration this bootstrap saves has only the budget its
+   * `connection` already holds -- the operator's own `--peer-timeout`, or none,
+   * in which case a later recurring `alcove exchange` takes the documented
+   * `peer_timeout_ms` default rather than a wait sized for one interactive
+   * setup. Absent for a caller whose run budget and persisted
    * budget are the same value (the online acceptor), which needs no override.
    */
   runOnlyPeerTimeoutSeconds?: number;

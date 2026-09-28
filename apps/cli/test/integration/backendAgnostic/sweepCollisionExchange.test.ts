@@ -144,7 +144,11 @@ async function runSequentialPair(options: PairOptions): Promise<PairOutcome> {
   const connection = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
     path: dropDir,
-    options: { pollIntervalMs: 5, peerTimeoutMs },
+    options: {
+      pollIntervalMs: 5,
+      peerTimeoutMs,
+      inactivityTimeoutMs: peerTimeoutMs,
+    },
   });
 
   const start = (party: "a" | "b"): Promise<unknown> =>
