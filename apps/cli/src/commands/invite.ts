@@ -38,7 +38,10 @@ import {
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { writeTermsRecord } from "../acceptedTermsRecords";
-import { assertConfigTermsRunnable } from "../configTermsGuards";
+import {
+  assertConfigTermsRunnable,
+  assertRecurringConfigDeclaresReceive,
+} from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
 import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
@@ -920,6 +923,7 @@ export async function validateInvite(params: {
     // exchange would refuse, so the partner is never handed an invitation it
     // accepts only to have the first run refuse it.
     assertConfigTermsRunnable(configTerms, configSource);
+    assertRecurringConfigDeclaresReceive(configTerms, options.configFile);
 
     // Include the disclosed-columns subset only when the config declares an
     // explicit metadata block: without one the run infers metadata from the

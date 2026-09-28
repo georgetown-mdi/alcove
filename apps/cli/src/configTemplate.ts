@@ -12,6 +12,7 @@ import {
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   POLL_INTERVAL_LINES,
+  recurringTermsLackDeclaredReceive,
   snakeizeKeys,
 } from "@alcove/core";
 import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
@@ -224,6 +225,15 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       ],
     },
     {
+      path: ["linkage_terms", "payload", "receive"],
+      lines: [
+        "Payload columns you expect your partner to send for matched records; []",
+        "asks for none. 'alcove invite' requires this list, and your partner's",
+        "payload.send is set from it, so changing it later takes new terms agreed",
+        "with your partner. List each as - name: COLUMN.",
+      ],
+    },
+    {
       path: ["metadata"],
       lines: [
         "Per-column description of your input CSV: semantic type and role",
@@ -409,6 +419,8 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
  * `sftp` connection scaffold with placeholder credentials, the linkage terms
  * (default or inferred), the inferred metadata/standardization when an input
  * file was given, and the optional sections documented as commented examples.
+ * Terms stating no `payload.receive` are written with an empty one, the list
+ * an invitation minted from the file requires.
  *
  * The active sections are built into one YAML document so per-field comments
  * land in the right place and the result round-trips through the schema (the
@@ -437,7 +449,12 @@ export function renderConfigTemplate(data: TemplateDataSpec): string {
         retainFiles: false,
       },
     },
-    linkageTerms: data.linkageTerms,
+    linkageTerms: recurringTermsLackDeclaredReceive(data.linkageTerms)
+      ? {
+          ...data.linkageTerms,
+          payload: { ...data.linkageTerms.payload, receive: [] },
+        }
+      : data.linkageTerms,
   };
   if (data.metadata !== undefined) spec.metadata = data.metadata;
   if (data.standardization !== undefined)

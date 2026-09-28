@@ -16,6 +16,7 @@ import {
   safeParseLinkageTerms,
 } from "../src/config/linkageTermsSchema";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
+import { recurringTermsLackDeclaredReceive } from "../src/config/recurringTerms";
 import {
   assertPresentedDeduplicateMatchesInvitation,
   InvitationTermDivergenceError,
@@ -1249,6 +1250,36 @@ test("deriveAcceptedLinkageTerms mirrors an explicit empty inviter receive to an
   expect(derived.payload?.receive).toBeUndefined();
   expect(validateCompatibility(inviterTerms, derived).errors).toEqual([]);
   expect(validateCompatibility(derived, inviterTerms).errors).toEqual([]);
+});
+
+test("an acceptor of a recurring invitation holds payload.send in its agreed terms", () => {
+  // A recurring invitation states payload.receive, so the acceptor's send is
+  // part of the terms both parties bind, and a later change to the acceptor's
+  // send is a terms mismatch rather than a payload the inviter takes lazily.
+  const inviterTerms: LinkageTerms = {
+    ...inviterBase,
+    payload: {
+      receive: [{ name: "enrollment_date", description: "Date enrolled" }],
+    },
+  };
+  expect(recurringTermsLackDeclaredReceive(inviterTerms)).toBe(false);
+  const derived = deriveAcceptedLinkageTerms(inviterTerms, "Accepting Org");
+  expect(partnerBoundTerms(derived).payload?.send).toStrictEqual([
+    { name: "enrollment_date", description: "Date enrolled" },
+  ]);
+  expect(validateCompatibility(inviterTerms, derived).errors).toEqual([]);
+  expect(validateCompatibility(derived, inviterTerms).errors).toEqual([]);
+
+  const changedSend: LinkageTerms = {
+    ...derived,
+    payload: { send: [{ name: "case_manager" }] },
+  };
+  expect(validateCompatibility(inviterTerms, changedSend).errors).toHaveLength(
+    1,
+  );
+  expect(validateCompatibility(changedSend, inviterTerms).errors).toHaveLength(
+    1,
+  );
 });
 
 test("deriveAcceptedLinkageTerms mirrors an explicit empty inviter send to an explicit empty acceptor receive", () => {

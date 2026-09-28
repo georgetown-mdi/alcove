@@ -543,6 +543,25 @@ the protocol, alongside the schema rule forbidding a no-output party from
 declaring `payload.receive` columns; it is left neither to the data dictionary
 nor to operator discipline.
 
+### Recurring terms state `payload.receive`
+
+Linkage terms authored for a recurring exchange MUST state
+`linkage_terms.payload.receive`; an explicit empty list states "receive nothing"
+and satisfies the rule. The list is the inviter's half of the payload mirror:
+`deriveAcceptedLinkageTerms` adopts it as the acceptor's `payload.send`, so the
+acceptor's send is inside the partner-bound terms (`partnerBoundTerms`) and a
+later change to either party's payload is a terms mismatch at the handshake,
+with no wire change. Terms under which the partner can send this party no
+payload are exempt: a count-only (`psi-c`) document and a party with
+`output.expects_output: false`. The predicate is
+`recurringTermsLackDeclaredReceive` (`packages/core/src/config/recurringTerms.ts`).
+
+A configuration authored for repeated runs is recurring: the one `alcove invite`
+mints from and the template `alcove init` writes. The offline invite-from-config
+path refuses a configuration lacking the list before any token is minted or key
+file written, and `alcove init` writes `receive: []`. A zero-setup run is a
+one-off attended exchange and is not held to the rule.
+
 ## Terms-binding consent
 
 One top-level key states a commitment about the partner's *terms* rather than

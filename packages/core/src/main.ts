@@ -367,6 +367,10 @@ export {
   safeParseLinkageTermsTheReaderWrote,
 } from "./config/linkageTermsSchema";
 export {
+  RECURRING_RECEIVE_REQUIRED_MESSAGE,
+  recurringTermsLackDeclaredReceive,
+} from "./config/recurringTerms";
+export {
   MAX_DISPLAYED_PARAMS,
   NULL_IF_BOTH_VALUE_PARAMS_MESSAGE,
   PRIVATE_KEY_FUNCTION_MESSAGE,
