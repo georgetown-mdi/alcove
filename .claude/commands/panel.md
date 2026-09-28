@@ -78,9 +78,10 @@ panelist saw another's.
 
 ## Step 3 -- Read the verdicts and close
 
-1. Every position aligned: converged -- the question is settled. Proceed on
-   the conclusion and record it in your report: the question, the conclusion,
-   and one line of rationale per panelist.
+1. Every position aligned: converged. The panel informs the decision and the
+   owner settles it: proceed on the conclusion as the session's recommendation
+   and record it in your report -- the question, the conclusion, and one line
+   of rationale per panelist -- without presenting it as settled.
 2. A single dissent the majority's rationale answers (its keyRisk): proceed on
    the majority, record the dissent.
 3. No convergence, or a dissent the majority does not answer: take the
