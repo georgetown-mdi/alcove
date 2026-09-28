@@ -191,8 +191,8 @@ vendored PeerJS broker as a child PROCESS rather than importing it, because a
 deployed broker is a service of its own and the CLI's client is measured against
 what that service does on the wire; the process entry point it spawns is
 `packages/peerjs-broker/src/standalone.ts`, which is why
-`.github/workflows/cli_build_and_test.yaml` filters on that workspace as well as
-on `apps/cli`. Each file starts a broker of its own. The same measurement
+`.github/workflows/cli_build_and_test.yaml` has that workspace in its path scope
+as well as `apps/cli`. Each file starts a broker of its own. The same measurement
 discipline applies here as to the SFTP tree: what the CLI's hand-written
 signaling client and PeerJS framing rest on was established by driving the real
 broker and the real `peerjs`/`peerjs-js-binarypack` packages, and the

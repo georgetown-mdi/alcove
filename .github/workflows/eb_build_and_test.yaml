@@ -49,10 +49,13 @@ jobs:
     name: Decide whether the web suites run
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Off a pull request (the deploy's workflow_call) there is no diff to take,
+    # so both steps skip and `run` defaults to true without a checkout.
     outputs:
-      run: ${{ steps.scope.outputs.run }}
+      run: ${{ steps.scope.outputs.run || 'true' }}
     steps:
       - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
         with:
           # Full history so the diff can reach the pull request's merge base.
           fetch-depth: 0
@@ -74,6 +77,7 @@ jobs:
       # that no suite this gate runs reads one as a fixture or input is held by
       # scripts/check-deploy-trigger-graph.test.mjs, not by this comment.
       - id: scope
+        if: github.event_name == 'pull_request'
         uses: ./.github/actions/path-scope
         with:
           paths: |

@@ -20,8 +20,11 @@ import {
   unreachedRoots,
 } from "./check-deploy-trigger-graph.mjs";
 import {
+  PATH_SCOPE_ACTION,
   parseWorkflow,
   pathScope,
+  readWorkflows,
+  usesNodes,
   workflowDocument,
 } from "./lib/workflows.mjs";
 import { readFileSync } from "node:fs";
@@ -108,6 +111,40 @@ describe("compiling a path filter", () => {
     // Unmatched by the earlier positive pattern in the first place.
     expect(filter.matches("packages/core/README.md")).toBe(false);
   });
+
+  // The path-scope action gates with git pathspecs, where an exclusion wins
+  // wherever it sits; compileFilter applies GitHub's last-match-wins order. The
+  // two agree on a list only while no include follows an exclusion.
+  const scopedWorkflows = readWorkflows(repoRoot)
+    .map(({ path, source }) => ({
+      path,
+      document: parseWorkflow(path, source),
+    }))
+    .filter(({ document }) =>
+      usesNodes(document).some((node) => node.uses === PATH_SCOPE_ACTION),
+    )
+    .map(({ path, document }) => [path, pathScope(document, path)]);
+
+  it("finds the workflows that call the path-scope action", () => {
+    expect(scopedWorkflows.map(([path]) => path)).toContain(
+      ".github/workflows/eb_build_and_test.yaml",
+    );
+  });
+
+  it.each(scopedWorkflows)(
+    "lists no include after an exclusion in %s's path scope",
+    (path, patterns) => {
+      const firstExclusion = patterns.findIndex((p) => p.startsWith("!"));
+      const lateIncludes =
+        firstExclusion === -1
+          ? []
+          : patterns.slice(firstExclusion).filter((p) => !p.startsWith("!"));
+      expect(
+        lateIncludes,
+        `${path} lists ${lateIncludes.join(", ")} after a "!" exclusion. The path-scope action matches with git pathspecs, where an exclusion removes its matches wherever it is listed, while compileFilter lets a later include re-add them, so the deploy-trigger check would judge a scope the gate does not apply. Move every "!" line after the includes.`,
+      ).toEqual([]);
+    },
+  );
 
   it("compiles every pattern eb_build_and_test.yaml's path scope declares", () => {
     const filter = compileFilter(gateScope());

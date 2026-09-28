@@ -40,31 +40,21 @@ jobs:
         with:
           # Full history so the change-detection diff can reach the PR's merge base.
           fetch-depth: 0
+      # Restrict the real (Docker) work to PRs that can affect the shipped native
+      # artifact or this check -- the vendored tarball, the wire vectors, this
+      # workflow, or the Dockerfile the base image is read from. Every other PR
+      # still runs this job and reports success, so the required check never
+      # stalls.
       - name: Decide whether the vendored artifact or this gate changed
         id: scope
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        # Restrict the real (Docker) work to PRs that can affect the shipped native
-        # artifact or this check -- the vendored tarball, the wire vectors, this
-        # workflow, or the Dockerfile the base image is read from -- the same set the
-        # old `paths:` filter named. Every other PR still runs this job and reports
-        # success, so the required check never stalls. On a detection failure, fall
-        # back to running the full check rather than skipping it.
-        run: |
-          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- \
-            lib \
-            packages/core/test/vectors/psi-engine-wire-vectors.json \
-            packages/core/test/vectors/verify-native-wire-vectors.mjs \
-            .github/workflows/native_alpine.yaml \
-            Dockerfile || echo DIFF_FAILED)
-          if [ -n "$changed" ]; then
-            printf 'running the musl check (relevant change or detection failure):\n%s\n' "$changed"
-            echo "run=true" >>"$GITHUB_OUTPUT"
-          else
-            echo "no vendored-artifact or gate change; passing without the musl check"
-            echo "run=false" >>"$GITHUB_OUTPUT"
-          fi
+        uses: ./.github/actions/path-scope
+        with:
+          paths: |
+            lib/**
+            packages/core/test/vectors/psi-engine-wire-vectors.json
+            packages/core/test/vectors/verify-native-wire-vectors.mjs
+            .github/workflows/native_alpine.yaml
+            Dockerfile
       - name: Verify the native addon under the shipped Alpine base
         if: steps.scope.outputs.run == 'true'
         # Derive the base image from the production Dockerfile's RUNTIME stage so this

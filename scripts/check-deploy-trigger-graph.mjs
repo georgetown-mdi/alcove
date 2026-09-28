@@ -160,9 +160,9 @@ export function readTriggerPaths(workflow) {
  * path under `prefix/`, and `!prefix/**\/*.ext` negates every path under
  * `prefix/` ending in `.ext`. Every other pattern THROWS, naming itself -- see
  * the header on why this check does not implement the rest of the glob
- * language. `matches` applies GitHub's own evaluation order: for a given file,
- * the last pattern that matches it decides whether that file is included, so a
- * negated pattern only narrows a positive one earlier in the list.
+ * language. `matches` models GitHub's `paths:` order, where the last matching
+ * pattern decides; a path scope is gated by git pathspecs, where an exclusion
+ * always wins. A test holds every `!` after the includes, where the two agree.
  */
 export function compileFilter(patterns) {
   const matchers = patterns.map((pattern) => {

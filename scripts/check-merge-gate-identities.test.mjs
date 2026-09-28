@@ -8,6 +8,7 @@ import {
   GATING_WORKFLOWS,
   GITHUB_ACTIONS_APP_ID,
   PROTECTED_BRANCHES,
+  UP_TO_DATE_BRANCHES,
   branchRequiredContexts,
   contextViolations,
   declaringWorkflowViolations,
@@ -19,6 +20,7 @@ import {
   pathFilterViolations,
   pullRequestTrigger,
   readRequiredContexts,
+  upToDateViolations,
   workflowJobIndex,
 } from "./check-merge-gate-identities.mjs";
 import { parseWorkflow } from "./lib/workflows.mjs";
@@ -60,6 +62,19 @@ const rulesWithChecks = (...checks) => [
     ruleset_id: 1,
   },
 ];
+
+const withStrictPolicy = (strict) =>
+  rulesWithChecks(requiredCheck("Gate")).map((rule) =>
+    rule.type === "required_status_checks"
+      ? {
+          ...rule,
+          parameters: {
+            ...rule.parameters,
+            strict_required_status_checks_policy: strict,
+          },
+        }
+      : rule,
+  );
 
 const indexOf = (...names) => ({
   literal: new Map(
@@ -571,6 +586,52 @@ describe("rule 3: every workflow declaring a required job is listed", () => {
   });
 });
 
+describe("rule 4: staging merges only an up-to-date pull request", () => {
+  it("names staging as the branch held up to date", () => {
+    expect(UP_TO_DATE_BRANCHES).toEqual(["staging"]);
+  });
+
+  it("passes a branch whose required status checks rule is strict", () => {
+    expect(upToDateViolations({ staging: withStrictPolicy(true) })).toEqual([]);
+  });
+
+  it("fails a branch whose required status checks rule is not strict, naming the setting and who turns it on", () => {
+    const violations = upToDateViolations({ staging: withStrictPolicy(false) });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("strict_required_status_checks_policy");
+    expect(violations[0]).toContain(
+      'The repository owner turns on "Require branches to be up to date before merging"',
+    );
+    expect(violations[0]).toContain("staging ruleset");
+  });
+
+  it("fails a branch whose rules carry no required status checks rule", () => {
+    expect(
+      upToDateViolations({ staging: [{ type: "deletion" }] }),
+    ).toHaveLength(1);
+  });
+
+  it("passes when any one of the branch's required status checks rules is strict", () => {
+    expect(
+      upToDateViolations({
+        staging: [...withStrictPolicy(false), ...withStrictPolicy(true)],
+      }),
+    ).toEqual([]);
+  });
+
+  it("reads only the branches it is given", () => {
+    expect(
+      upToDateViolations({ main: withStrictPolicy(false) }, ["main"]),
+    ).toHaveLength(1);
+    expect(
+      upToDateViolations({
+        main: withStrictPolicy(false),
+        staging: withStrictPolicy(true),
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("repository resolution", () => {
   it("reads the slug out of either remote spelling", () => {
     for (const remote of [
@@ -719,7 +780,7 @@ describe("the stated skip", () => {
   });
 
   it("merges both branches' contexts when the read succeeds", async () => {
-    const { merged, skipped } = await readRequiredContexts({
+    const { merged, rulesByBranch, skipped } = await readRequiredContexts({
       env: { GH_TOKEN: "t0ken", GITHUB_REPOSITORY: "owner/repo" },
       fetchImpl: async () => ({
         ok: true,
@@ -728,6 +789,7 @@ describe("the stated skip", () => {
       }),
     });
     expect(skipped).toBeNull();
+    expect(Object.keys(rulesByBranch)).toEqual(PROTECTED_BRANCHES);
     expect(merged).toEqual([
       {
         context: "Gate",
@@ -777,7 +839,7 @@ describe("the real repository tree", () => {
     );
     expect(output).toContain("::warning title=Merge gate identities::");
     expect(output).toContain(
-      "the required-context rule and the declaring-workflow rule were SKIPPED",
+      "the required-context rule, the declaring-workflow rule, and the up-to-date rule were SKIPPED",
     );
     expect(output).toContain("neither GH_TOKEN nor GITHUB_TOKEN is set");
     expect(output).toContain(

@@ -9,6 +9,7 @@ import {
   fileReferences,
   parseActionReference,
   parseWorkflow,
+  pathScope,
   readWorkflows,
   treeReferences,
   usesNodes,
@@ -348,6 +349,58 @@ describe("tree discovery", () => {
         },
       ]);
     });
+  });
+});
+
+describe("the path-scope read", () => {
+  const scoped = (...pathInputs) =>
+    parseWorkflow(
+      "scoped.yaml",
+      `name: Gate
+on:
+  pull_request:
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    steps:
+${pathInputs
+  .map(
+    (paths) =>
+      `      - uses: ./.github/actions/path-scope\n        with:\n          paths: ${paths}\n`,
+  )
+  .join("")}`,
+    );
+
+  it("reads the globs one per line, dropping blank lines and keeping `!` exclusions", () => {
+    expect(
+      pathScope(
+        scoped(`|
+            apps/cli/**
+
+            lib/**
+            !lib/**/*.md
+`),
+        "scoped.yaml",
+      ),
+    ).toEqual(["apps/cli/**", "lib/**", "!lib/**/*.md"]);
+  });
+
+  it("throws on a workflow that never calls the action", () => {
+    expect(() => pathScope(scoped(), "scoped.yaml")).toThrow(
+      "scoped.yaml: expected one ./.github/actions/path-scope step with a paths input, found 0 call(s)",
+    );
+  });
+
+  it("throws on a workflow that calls the action twice", () => {
+    expect(() =>
+      pathScope(scoped('"apps/cli/**"', '"lib/**"'), "scoped.yaml"),
+    ).toThrow("found 2 call(s)");
+  });
+
+  it("throws on a paths input that is not a string", () => {
+    expect(() =>
+      pathScope(scoped("[apps/cli/**, lib/**]"), "scoped.yaml"),
+    ).toThrow("found 1 call(s)");
   });
 });
 
