@@ -48,8 +48,13 @@ import {
   HandlePermissionError,
   MANAGED_INPUT_FILE_NAME,
   ManagedInputFileMissingError,
+  acquireManagedInput,
 } from "@psi/managed/managedInputHandle";
 
+import type {
+  HandlePermissionMode,
+  HandlePermissionQuery,
+} from "@psi/managed/managedInputHandle";
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
@@ -247,6 +252,79 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       "is missing, could not be read, or does not have the columns",
     );
     expect(unparsed.message).not.toMatch(/allowed to read|Unexpected quote/);
+  });
+
+  test("a permission request the browser rejects shows the permission copy, and a failed file read keeps the fixed copy", async () => {
+    // A browser that will not show a prompt rejects the request (a SecurityError
+    // where the gesture is used up) rather than answering it; the folder was not
+    // read either way, so the run shows the permission copy.
+    const securityError = () =>
+      Promise.reject(
+        new DOMException("Must be handling a user gesture", "SecurityError"),
+      );
+    const folderReading = (getFile: () => Promise<File>) =>
+      ({
+        name: "Riverbend exchange",
+        getFileHandle: () => Promise.resolve({ getFile }),
+      }) as unknown as FileSystemDirectoryHandle;
+    const inputFile = () =>
+      Promise.resolve(new File(["ssn\n"], MANAGED_INPUT_FILE_NAME));
+    const failureOf = async (
+      request: HandlePermissionQuery["request"],
+      getFile: () => Promise<File> = inputFile,
+    ) => {
+      const requested: Array<HandlePermissionMode> = [];
+      const error = await acquireManagedInput(
+        {
+          kind: "folder",
+          directory: folderReading(getFile),
+          attendance: "attended",
+        },
+        {
+          query: () => Promise.resolve("prompt"),
+          request: (handle, mode) => {
+            requested.push(mode);
+            return request(handle, mode);
+          },
+        },
+      ).catch((caught: unknown) => caught);
+      return {
+        requested,
+        failure: classifyAgainstOneRecord(
+          error,
+          record(),
+          undefined,
+          NOW,
+          false,
+        ),
+      };
+    };
+    const permissionCopy =
+      "this site was not allowed to read this exchange's folder, so the " +
+      "input file was not read";
+
+    const onViewAfterDeclinedEdit = await failureOf((_handle, mode) =>
+      mode === "readwrite" ? Promise.resolve("denied") : securityError(),
+    );
+    expect(onViewAfterDeclinedEdit.requested).toEqual(["readwrite", "read"]);
+    expect(onViewAfterDeclinedEdit.failure.message).toContain(permissionCopy);
+
+    const onEveryRequest = await failureOf(securityError);
+    expect(onEveryRequest.requested).toEqual(["readwrite", "read"]);
+    expect(onEveryRequest.failure.message).toContain(permissionCopy);
+
+    const onFileRead = await failureOf(
+      () => Promise.resolve("granted"),
+      () =>
+        Promise.reject(
+          new DOMException("The file could not be read", "NotReadableError"),
+        ),
+    );
+    expect(onFileRead.requested).toEqual(["readwrite"]);
+    expect(onFileRead.failure.message).toContain(
+      "is missing, could not be read, or does not have the columns",
+    );
+    expect(onFileRead.failure.message).not.toMatch(/allowed to read/);
   });
 
   test("a linkage shortfall is not offered as a retry, and names no agreed key", () => {
