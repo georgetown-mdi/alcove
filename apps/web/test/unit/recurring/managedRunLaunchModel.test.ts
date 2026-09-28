@@ -256,6 +256,37 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(unparsed.message).not.toMatch(/allowed to edit|Unexpected quote/);
   });
 
+  test("a lapsed read permission on a scheduled run says the read permission lapsed, with no browser-ask remedy", () => {
+    // A scheduled run only ever queries `read` and never prompts, so the
+    // attended `readwrite` copy's "allow access if your browser asks" remedy
+    // is one that can never appear on this path; the run's own remedies are
+    // running attended or choosing the folder again.
+    const inputFailureOf = (cause: unknown) =>
+      classifyAgainstOneRecord(
+        new ManagedInputError({ reason: "acquire", cause }),
+        record(),
+        undefined,
+        NOW,
+        false,
+      );
+    for (const state of ["denied", "prompt"] as const) {
+      const lapsed = inputFailureOf(new HandlePermissionError(state, "read"));
+      expect(lapsed.kind).toBe("input");
+      expect(lapsed.recovery).toBe("retry");
+      expect(lapsed.message).toContain(
+        "this site's permission to read this exchange's folder lapsed, so " +
+          "the input file was not read",
+      );
+      expect(lapsed.message).toContain("run it attended");
+      expect(lapsed.message).toContain(
+        "choose the folder again on this exchange's page",
+      );
+      expect(lapsed.message).not.toMatch(
+        /allowed to edit|browser asks|missing|does not have the columns/,
+      );
+    }
+  });
+
   test("a declined or rejected readwrite request shows the permission copy after one request, and a failed file read keeps the fixed copy", async () => {
     // A browser that will not show a prompt rejects the request (a SecurityError
     // where the gesture is used up) rather than answering it; the folder was not
