@@ -10,7 +10,7 @@ import {
 } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 
-import { describeResolvedMatching } from "@alcove/core";
+import { describeResolvedMatching, getLogger } from "@alcove/core";
 
 import { triggerBlobDownload } from "@components/blobDownload";
 import { useOnlineStatus } from "@components/useOnlineStatus";
@@ -75,6 +75,7 @@ import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 import {
   chooseManagedWorkingDirectory,
   storedWorkingDirectoryUsable,
+  unallocatedResultsMessage,
   workingDirectoryGrantSupported,
   writeRunResultsToWorkingFolder,
 } from "@psi/managed/managedWorkingDirectory";
@@ -175,6 +176,8 @@ import type { ManagedStandingConditionView } from "./managedStandingConditionMod
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { RunOutputs } from "@psi/runOutputs";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
+
+const log = getLogger("ManagedRunSurface");
 
 /** The classified failure on screen, with the number of the run that produced it.
  * Each tier's copy is a shared constant, so two runs failing the same way yield the
@@ -636,23 +639,30 @@ export function ManagedRunSurface({ id }: { id: string }) {
         if (controller.signal.aborted) return;
         setOutputs(result.exchange);
         setFinishedAt(new Date());
-        const csv =
-          result.exchange.kind === "matched"
-            ? created.get(result.exchange.resultsUrl)
-            : undefined;
+        if (result.exchange.kind !== "matched") return;
         const directory = launched.workingDirectoryHandle;
-        if (
-          csv === undefined ||
-          directory === undefined ||
-          !storedWorkingDirectoryUsable(directory)
-        )
+        if (directory === undefined || !storedWorkingDirectoryUsable(directory))
           return;
+        const csv = created.get(result.exchange.resultsUrl);
+        if (csv === undefined) {
+          log.error(
+            unallocatedResultsMessage(
+              `managed exchange ${launched.id}`,
+              "nothing was written to the working folder",
+            ),
+          );
+          return;
+        }
         setFolderWrite({ directoryName: directory.name });
+        // Once started, the write completes even if the surface is torn down:
+        // every run's results reach the folder. Only what follows it is gated.
         const delivery = await writeRunResultsToWorkingFolder(
           launched,
           result.lastRun.at,
           csv,
         );
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (controller.signal.aborted) return;
         if (delivery.kind === "no-folder") {
           setFolderWrite(undefined);
           return;

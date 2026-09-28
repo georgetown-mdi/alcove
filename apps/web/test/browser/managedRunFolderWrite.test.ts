@@ -1,7 +1,11 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+import {
+  generateSharedSecret,
+  getDefaultLinkageTerms,
+  getLogger,
+} from "@alcove/core";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -19,7 +23,10 @@ import { runResultsFileName } from "@psi/parkedResults";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
+import type * as WorkingDirectory from "@psi/managed/managedWorkingDirectory";
+
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
+import type { RunResultsFolderWrite } from "@psi/managed/managedWorkingDirectory";
 
 // An attended run of a recurring exchange writes its results into the working
 // folder the operator granted, under the name a scheduled run would use, and
@@ -38,6 +45,19 @@ vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
 
+const log = getLogger("ManagedRunSurface");
+
+// What a test varies about the stubbed run and the folder write. `allocated`
+// false builds the results URL outside the caller's allocation; a `hold` keeps
+// the folder write from starting until the test releases it, and `written` is
+// the write's own outcome once it has run.
+const stub = vi.hoisted(() => ({
+  allocated: true,
+  hold: undefined as Promise<void> | undefined,
+  started: undefined as (() => void) | undefined,
+  written: undefined as Promise<unknown> | undefined,
+}));
+
 // The driver is stubbed to a completed run: its results file built through the
 // caller's own URL allocation, as the real driver builds it, and a succeeded
 // stamp at a fixed instant so the written name is known.
@@ -47,17 +67,36 @@ vi.mock("@psi/managed/managedRunDriver", async (importOriginal) => {
     ...actual,
     runManagedExchangeInBrowser: (config: {
       urls: { create: (blob: Blob) => string };
-    }) =>
-      Promise.resolve({
+    }) => {
+      const blob = new Blob([RESULTS_CSV], { type: "text/csv" });
+      return Promise.resolve({
         exchange: {
           kind: "matched",
-          resultsUrl: config.urls.create(
-            new Blob([RESULTS_CSV], { type: "text/csv" }),
-          ),
+          resultsUrl: stub.allocated
+            ? config.urls.create(blob)
+            : window.URL.createObjectURL(blob),
           matchedRecordCount: 1,
         },
         lastRun: { at: RUN_AT, outcome: "succeeded" },
-      }),
+      });
+    },
+  };
+});
+
+vi.mock("@psi/managed/managedWorkingDirectory", async (importOriginal) => {
+  const actual = await importOriginal<typeof WorkingDirectory>();
+  return {
+    ...actual,
+    writeRunResultsToWorkingFolder: (
+      ...args: Parameters<typeof actual.writeRunResultsToWorkingFolder>
+    ): Promise<RunResultsFolderWrite> => {
+      stub.started?.();
+      const written = (stub.hold ?? Promise.resolve()).then(() =>
+        actual.writeRunResultsToWorkingFolder(...args),
+      );
+      stub.written = written;
+      return written;
+    },
   };
 });
 
@@ -104,6 +143,11 @@ afterEach(async () => {
   await flushPendingUpdates();
   app.unmount();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  stub.allocated = true;
+  stub.hold = undefined;
+  stub.started = undefined;
+  stub.written = undefined;
   await clearManagedExchanges();
   const root = await navigator.storage.getDirectory();
   for (const name of FOLDER_NAMES.splice(0))
@@ -157,6 +201,85 @@ describe("an attended run of an exchange holding a folder grant", () => {
     await expect
       .element(page.getByRole("link", { name: /Download result/ }))
       .toBeInTheDocument();
+  });
+});
+
+describe("an attended run whose surface is torn down during the folder write", () => {
+  // A write already under way when the operator leaves still lands, and the
+  // surface it belonged to is not updated or reported on afterwards.
+  async function tearDownDuringWrite(
+    folder: FileSystemDirectoryHandle,
+  ): Promise<void> {
+    let release: () => void = () => undefined;
+    stub.hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      stub.started = resolve;
+    });
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await runToCompletion();
+    await started;
+    await expect
+      .element(page.getByText("Writing the results to", { exact: false }))
+      .toBeInTheDocument();
+    app.unmount();
+    release();
+    await stub.written;
+    await flushPendingUpdates();
+  }
+
+  test("completes the write", async () => {
+    const folder = await opfsFolder("attended-write-torn-down");
+
+    await tearDownDuringWrite(folder);
+
+    const written = await (
+      await folder.getFileHandle(runResultsFileName(LABEL, RUN_AT))
+    ).getFile();
+    expect(await written.text()).toBe(RESULTS_CSV);
+  });
+
+  test("reports nothing once the surface is gone, even for a write that failed", async () => {
+    const folder = await opfsFolder("attended-write-torn-down-fails");
+    await folder.getDirectoryHandle(runResultsFileName(LABEL, RUN_AT), {
+      create: true,
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    await tearDownDuringWrite(folder);
+
+    expect(await stub.written).toMatchObject({ kind: "write-failed" });
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+});
+
+describe("an attended run whose results file the surface did not allocate", () => {
+  test("logs that nothing was written to the folder, and writes nothing", async () => {
+    stub.allocated = false;
+    const error = vi.spyOn(log, "error").mockImplementation(() => undefined);
+    const folder = await opfsFolder("attended-write-unallocated");
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await runToCompletion();
+    await flushPendingUpdates();
+
+    expect(error).toHaveBeenCalledWith(
+      `managed exchange ${created.id}: the run's results file was not built ` +
+        `through this runtime's own allocation, so nothing was written to ` +
+        `the working folder`,
+    );
+    expect(stub.written).toBeUndefined();
+    expect(app.container.textContent).not.toContain("folder you granted");
   });
 });
 

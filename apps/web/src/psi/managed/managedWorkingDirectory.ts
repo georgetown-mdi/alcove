@@ -226,6 +226,20 @@ export async function writeResultsToWorkingDirectory(
   }
 }
 
+/** The diagnostic for a matched run whose results URL is not one its caller
+ * allocated, so the caller holds no file to write or keep. `run` names the run,
+ * and `consequence` what was therefore not done. Shared by the scheduled and
+ * attended runs, which log the same condition. */
+export function unallocatedResultsMessage(
+  run: string,
+  consequence: string,
+): string {
+  return (
+    `${run}: the run's results file was not built through this runtime's ` +
+    `own allocation, so ${consequence}`
+  );
+}
+
 /** How writing one run's results into its exchange's working folder turned out:
  * `"no-folder"` where the record holds no grant this runtime can follow, so
  * nothing was attempted, and otherwise the folder's own {@link ResultsDelivery}. */

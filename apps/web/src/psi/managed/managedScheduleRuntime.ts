@@ -58,7 +58,10 @@ import {
 } from "../parkedResultsStore";
 import { runResultsFileName } from "../parkedResults";
 
-import { writeRunResultsToWorkingFolder } from "./managedWorkingDirectory";
+import {
+  unallocatedResultsMessage,
+  writeRunResultsToWorkingFolder,
+} from "./managedWorkingDirectory";
 
 import {
   betweenVisitNotificationsArmed,
@@ -412,9 +415,10 @@ async function deliverUnattendedResults(
   const csv = created.get(outputs.resultsUrl);
   if (csv === undefined) {
     log.error(
-      `scheduled managed exchange ${id}: the run's results file was not built ` +
-        `through this runtime's own allocation, so nothing was kept for the ` +
-        `next visit`,
+      unallocatedResultsMessage(
+        `scheduled managed exchange ${id}`,
+        "nothing was kept for the next visit",
+      ),
     );
     return;
   }
