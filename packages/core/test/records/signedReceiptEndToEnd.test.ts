@@ -1011,11 +1011,13 @@ describe("the run binder pairs a receipt to one exchange run", () => {
 
 // This party's own terms, the other half of the agreed-terms hash: the receipt
 // retains the partner's, so a verifier holding this document needs no second
-// file.
+// file. Stated as the terms exchange states them: the input discloses no
+// column, so the run states an empty send set.
 const initiatorOwnTerms: LinkageTerms = {
   ...firstNameTerms,
   identity: "Initiator Co",
   output: both,
+  payload: { send: [] },
 };
 
 describe("the partner terms the receipt retains", () => {

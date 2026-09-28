@@ -1689,6 +1689,25 @@ async function delimiterReachingTheRun(
   return vi.mocked(runProtocol).mock.calls[0][0].csvDelimiter;
 }
 
+test("handler: a receive list the run fills is recorded in the configuration it ran from", async () => {
+  // The terms exchange fills an unset payload.receive from the partner's
+  // declared send set; the recorder the handler hands runProtocol writes it
+  // into this configuration, so the next run holds the partner to it.
+  await delimiterReachingTheRun("|", undefined);
+  const recorder =
+    vi.mocked(runProtocol).mock.calls[0][0].recordPayloadReceiveFill;
+  expect(recorder).toBeTypeOf("function");
+  await recorder?.(["program"]);
+  const written = YAML.parse(fs.readFileSync(configFile, "utf8")) as Record<
+    string,
+    { payload?: unknown }
+  >;
+  expect(written["linkage_terms"]?.payload).toEqual({
+    receive: [{ name: "program" }],
+  });
+  expect(written["linkageTerms"]).toBeUndefined();
+});
+
 test("handler: the configuration's csv_delimiter governs a run with no flag", async () => {
   expect(await delimiterReachingTheRun("|", undefined)).toBe("|");
 });

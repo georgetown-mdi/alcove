@@ -1014,6 +1014,37 @@ export function applyManagedExchangeRotation(
 }
 
 /**
+ * Record the `payload.receive` a run filled from the partner's declared send
+ * set into the record's terms, where they left it unset, so the next run holds
+ * the partner to it. Everything else on the record is untouched, and the
+ * result is re-validated through the schema. The input record is not mutated.
+ *
+ * @throws {Error} if the record's terms already state the list.
+ * @throws {ZodError} if the resulting record is invalid.
+ */
+export function applyManagedExchangePayloadReceiveFill(
+  record: ManagedExchangeRecord,
+  columns: ReadonlyArray<string>,
+): ManagedExchangeRecord {
+  const terms = record.exchangeFile.linkageTerms;
+  if (terms.payload?.receive !== undefined)
+    throw new Error("the stored terms already state payload.receive");
+  return parseManagedExchangeRecord({
+    ...record,
+    exchangeFile: {
+      ...record.exchangeFile,
+      linkageTerms: {
+        ...terms,
+        payload: {
+          ...terms.payload,
+          receive: columns.map((name) => ({ name })),
+        },
+      },
+    },
+  });
+}
+
+/**
  * Apply a re-invite rotation to a record: advance the rotated secret and the
  * `expires` bound and remove the rotation-in-flight marker exactly as
  * {@link applyManagedExchangeRotation}, AND drop any `lastRun` bookkeeping. A

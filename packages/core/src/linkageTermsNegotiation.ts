@@ -559,11 +559,11 @@ export function validateCompatibility(
   //   the web consent display, which renders a declared-empty receive as a
   //   "(none)" commitment, not lazy.
   // - `receive` ABSENT means "take whatever I'm given": that direction is
-  //   skipped. This is what lets the invite/accept flow reconcile without
-  //   the inviter knowing the acceptor's schema -- the inviter authors only
-  //   `send` and leaves `receive` unset; the acceptor mirrors the inviter's
-  //   `send` into its own `receive`; a zero-setup exchange is lazy on both
-  //   sides.
+  //   skipped here. This is what lets the invite/accept flow reconcile
+  //   without the inviter knowing the acceptor's schema. A recurring run then
+  //   fills the absent list from the partner's declared `send`
+  //   (`payloadReceiveFillsOnFirstRun`, runExchange), so the next run is
+  //   strict; a one-off run leaves it absent.
   //
   // Laziness relaxes only this cross-party DECLARATION check; it never
   // widens what a party sends -- transmission is governed by each party's
@@ -623,10 +623,10 @@ export function validateCompatibility(
   if (local.payload?.receive !== undefined) {
     checkPayloadDirection(local.payload.receive, partner.payload?.send ?? [], {
       // An empty local receive is the strict "I expect no payload" declaration;
-      // name it and point the operator at the lazy alternative (omit the field),
-      // since a hand-authored `receive: []` is the most likely way to land here.
+      // name it and point the operator at the unset alternative, since a
+      // hand-authored `receive: []` is the most likely way to land here.
       emptyReceiveMessage: (partnerShown) =>
-        compatibilityMessage`payload mismatch: local declared an empty payload.receive (asserting partner sends no payload columns), but partner sends [${partnerShown}]. Omit payload.receive to accept whatever the partner sends.`,
+        compatibilityMessage`payload mismatch: local declared an empty payload.receive (asserting partner sends no payload columns), but partner sends [${partnerShown}]. To receive the partner's columns, remove payload.receive: a recurring exchange sets it from the partner's declared columns on its next run and holds the partner to them after that.`,
       mismatchMessage: (localShown, partnerShown) =>
         compatibilityMessage`payload mismatch: local receive columns [${localShown}] do not match partner send columns [${partnerShown}]`,
     });

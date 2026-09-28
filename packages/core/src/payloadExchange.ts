@@ -8,7 +8,11 @@ import {
   overlongDisclosedColumnPositions,
   ownResultColumnNames,
 } from "./config/metadata.js";
-import type { Output, Payload } from "./config/linkageTermsSchema.js";
+import type {
+  LinkageTerms,
+  Output,
+  Payload,
+} from "./config/linkageTermsSchema.js";
 import { MAX_NAME_LENGTH } from "./config/linkageTermsSchema.js";
 import type { CompatibilityMessageFragment } from "./config/compatibilityMessage.js";
 import {
@@ -296,6 +300,32 @@ export function preparePayload(
 }
 
 /**
+ * `terms` as this party states them to the partner at the terms exchange: an
+ * unset `payload.send` is stated as the columns `metadata` discloses
+ * (`isDisclosedToPartner`), so the partner's `payload.receive` is compared
+ * against, or filled from, a declared set rather than an absent one. A present
+ * `send` -- an explicit empty list included -- is kept as authored, and is
+ * held to the metadata by {@link assertPayloadSendDisclosed}. Terms under
+ * which no payload moves to the partner state nothing: a count-only (`psi-c`)
+ * document, or `output.shareWithPartner` false.
+ */
+export function termsStatingDeclaredPayloadSend(
+  terms: LinkageTerms,
+  metadata: Metadata,
+): LinkageTerms {
+  if (terms.payload?.send !== undefined) return terms;
+  if (terms.algorithm === "psi-c" || !terms.output.shareWithPartner)
+    return terms;
+  return {
+    ...terms,
+    payload: {
+      ...terms.payload,
+      send: disclosedColumnNames(metadata).map((name) => ({ name })),
+    },
+  };
+}
+
+/**
  * Reject a PRESENT `payload.send` data dictionary that does not name EXACTLY
  * the columns this party transmits.
  *
@@ -313,8 +343,9 @@ export function preparePayload(
  * anyway.
  *
  * An ABSENT `payload.send` is not checked: the guided and default paths
- * author no dictionary while metadata still transmits, and the cross-party
- * mirror is lazy on an unauthored `receive`. An acceptor's own outbound set,
+ * author no dictionary while metadata still transmits, and the terms exchange
+ * states it from that same metadata ({@link termsStatingDeclaredPayloadSend}).
+ * An acceptor's own outbound set,
  * left unauthored this way, is instead covered by
  * {@link assertOutboundPayloadConsented}. A PRESENT-but-empty dictionary IS
  * checked: it is an explicit "I disclose nothing," so any disclosed column is

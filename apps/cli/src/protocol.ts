@@ -30,6 +30,7 @@ import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
+  payloadReceiveFilledNotice,
   redactAndDisplayPartyIdentity,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
@@ -520,26 +521,6 @@ export interface OutputCompleteResult {
 /** What {@link FileSyncRuntimeOptions.onOutputComplete} is handed. */
 export interface OutputCompleteContext {
   /**
-   * The received-payload column set this party observed from the partner
-   * (`partnerPayload.columns`, partner's namespace), known as soon as the
-   * exchange completes. Always an array; empty when the partner sent no
-   * payload.
-   *
-   * A save-capable caller that learns its received set only by observation --
-   * the online inviter, a zero-setup `--save` party -- stores this into the
-   * persisted config's `expectedPayloadColumns` so a later recurring
-   * `alcove exchange` fails closed on a divergent received payload
-   * ({@link reconcileReceivedPayload}). Callers must persist an empty
-   * observation as NOTHING, never as `[]`: a zero-match first exchange is
-   * indistinguishable from "partner discloses nothing", and a strict empty
-   * commitment would false-abort a later matching run. See
-   * `observedReceivedColumnsForSave` in bootstrap.ts.
-   *
-   * The only route this observation takes out of {@link runProtocol} --
-   * {@link RunProtocolResult} holds none of it.
-   */
-  observedReceivedPayloadColumns: string[];
-  /**
    * The zero-setup `--save` bootstrap outcome, decided by the terms exchange
    * before this call, so the save itself runs inside this hook rather than
    * after {@link runProtocol} returns. Defined whenever a boolean
@@ -645,6 +626,8 @@ async function runExchangeStage(params: {
   verbosity: number;
   saveIntent: boolean | undefined;
   signing: SigningPersist | null;
+  recordPayloadReceiveFill:
+    ((columns: string[]) => void | Promise<void>) | undefined;
   recordOutput: RecordOutput | undefined;
   stageTimer: { open: (id: string) => void; close: () => void };
   psiProgress: PsiProgressDisplay;
@@ -662,6 +645,7 @@ async function runExchangeStage(params: {
     verbosity,
     saveIntent,
     signing,
+    recordPayloadReceiveFill,
     recordOutput,
     stageTimer,
     psiProgress,
@@ -736,6 +720,16 @@ async function runExchangeStage(params: {
                 }),
               );
               emit((e) => e.warning("partnerCertificatePinned", message));
+            },
+      // Record the receive list this run fills from the partner's declared send
+      // set, before any key or payload moves, and say which columns were taken:
+      // an unattended run leaves the line in its log. A throw stops the run.
+      onPayloadReceiveFilled:
+        recordPayloadReceiveFill === undefined
+          ? undefined
+          : async (columns: string[]) => {
+              await recordPayloadReceiveFill(columns);
+              log.info(payloadReceiveFilledNotice(columns));
             },
       // Advertise the observed SFTP host key for cross-party
       // reconciliation only when the exchange runs over the
@@ -2335,10 +2329,7 @@ async function writeExchangeOutputs(params: {
   // supervisor that stops reading at the terminal event can observe.
   if (onOutputComplete !== undefined) {
     try {
-      const hookOutcome = await onOutputComplete({
-        observedReceivedPayloadColumns: partnerPayload.columns,
-        bootstrap,
-      });
+      const hookOutcome = await onOutputComplete({ bootstrap });
       if (!hookOutcome.persisted) everyArtifactOnDisk = false;
     } catch (hookErr) {
       // The hook reports its own losses; reaching here means one escaped it.
@@ -2409,6 +2400,15 @@ export interface RunProtocolOptions {
   fileSyncRuntime?: FileSyncRuntimeOptions;
   /** The signed-receipt inputs; omit or pass `null` to skip signing. */
   signing?: SigningPersist | null;
+  /**
+   * Records the `payload.receive` a run fills from the partner's declared
+   * send set, where the terms leave it unset (`onPayloadReceiveFilled` in
+   * `@alcove/core`): the caller writes it into the configuration the run
+   * governs. Called at the terms exchange, before any key or payload moves; a
+   * throw stops the run. Omit it on a run with no configuration to record
+   * into, which then accepts whatever the partner sends.
+   */
+  recordPayloadReceiveFill?: (columns: string[]) => void | Promise<void>;
   /**
    * Whether a caller's own {@link preflightRun} call already emitted
    * {@link SIGNING_WITHOUT_RECORD_WARNING} for this run
@@ -2512,6 +2512,7 @@ export async function runProtocol(
     onAuthenticated,
     fileSyncRuntime = {},
     signing = null,
+    recordPayloadReceiveFill,
     signingWithoutRecordWarned = false,
     undeclaredColumnsWarned = false,
   } = options;
@@ -2840,6 +2841,7 @@ export async function runProtocol(
       verbosity,
       saveIntent,
       signing,
+      recordPayloadReceiveFill,
       recordOutput,
       stageTimer,
       psiProgress,

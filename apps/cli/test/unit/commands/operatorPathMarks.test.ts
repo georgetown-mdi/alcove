@@ -1104,10 +1104,7 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
       const filePath = backslashedPath("alcove.yaml");
       saveConfig(filePath, {
         connection: { channel: "filedrop", path: "/mnt/share" },
-        linkageTerms: {
-          ...sampleTerms("Agency A"),
-          payload: { receive: [] },
-        },
+        linkageTerms: sampleTerms("Agency A"),
       });
       const { log, lines } = stubLog();
       await validateInvite({
@@ -1131,10 +1128,7 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
       const filePath = backslashedPath("alcove.yaml");
       saveConfig(filePath, {
         connection: { channel: "filedrop", path: "/mnt/share" },
-        linkageTerms: {
-          ...sampleTerms("Agency A"),
-          payload: { receive: [] },
-        },
+        linkageTerms: sampleTerms("Agency A"),
       });
       const { log, lines } = stubLog();
       await validateInvite({
@@ -1157,10 +1151,7 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
       const filePath = backslashedPath("alcove.yaml");
       saveConfig(filePath, {
         connection: { channel: "filedrop", path: "/mnt/share" },
-        linkageTerms: {
-          ...sampleTerms("Agency A"),
-          payload: { receive: [] },
-        },
+        linkageTerms: sampleTerms("Agency A"),
       });
       const { log, lines } = stubLog();
       await validateInvite({
@@ -1205,10 +1196,7 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
       const filePath = backslashedPath("alcove.yaml");
       saveConfig(filePath, {
         connection: { channel: "filedrop", path: "/mnt/share" },
-        linkageTerms: {
-          ...sampleTerms("Agency A"),
-          payload: { receive: [] },
-        },
+        linkageTerms: sampleTerms("Agency A"),
       });
       const input = writeInput();
       const lines = await stderrLinesOf(() =>

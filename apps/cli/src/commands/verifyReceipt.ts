@@ -27,6 +27,7 @@ import {
   sanitizeForDisplay,
   SIGNED_RECEIPT_VERSION,
   signedRecordExpectations,
+  termsStatingDeclaredPayloadSend,
   toRetainedResult,
   UsageError,
   verifyDualSignedRecord,
@@ -1172,7 +1173,16 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     const localSource = configFileSource(configFile, log);
-    const localTerms = localSource?.linkageTerms;
+    // This party's terms as its run stated them at the terms exchange, where
+    // the configuration's metadata says which columns an unset payload.send
+    // stood for; the agreed-terms hash covers that form.
+    const localTerms =
+      localSource?.metadata === undefined
+        ? localSource?.linkageTerms
+        : termsStatingDeclaredPayloadSend(
+            localSource.linkageTerms,
+            localSource.metadata,
+          );
     // The flag governs this verification and the configuration's csv_delimiter
     // a verification given none, the precedence every command reading a CSV
     // applies: the files being verified are the ones that configuration's own

@@ -374,10 +374,8 @@ export {
   safeParseLinkageTermsTheReaderWrote,
 } from "./config/linkageTermsSchema";
 export {
-  RECURRING_RECEIVE_REQUIRED_MESSAGE,
-  recurringTermsLackDeclaredReceive,
-  termsReceiveNothing,
-  withReceiveNothingWhereUnstated,
+  payloadReceiveFilledNotice,
+  payloadReceiveFillsOnFirstRun,
 } from "./config/recurringTerms";
 export {
   MAX_DISPLAYED_PARAMS,
@@ -465,7 +463,11 @@ export {
   POLL_INTERVAL_LINES,
 } from "./config/connectionGuidance";
 export { commentBlock, commentKey } from "./config/yamlComments";
-export { serializeExchangeDocument } from "./config/exchangeDocument";
+export {
+  annotateUnsetPayloadReceive,
+  removeUnsetPayloadReceiveNote,
+  serializeExchangeDocument,
+} from "./config/exchangeDocument";
 export {
   assembleExchangeSpec,
   connectionFromLocator,
@@ -802,6 +804,7 @@ export {
   outboundPayloadConsentRefusal,
   preparePayload,
   reconcileReceivedPayload,
+  termsStatingDeclaredPayloadSend,
   toCommittedPayload,
 } from "./payloadExchange";
 export type {

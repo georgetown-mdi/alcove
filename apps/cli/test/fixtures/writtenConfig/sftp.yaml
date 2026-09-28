@@ -38,3 +38,7 @@ linkage_terms:
     - name: SSN
       elements:
         - field: ssn
+  # payload.receive is not set: the first exchange sets it to the payload
+  # columns your partner declares it sends, and later exchanges refuse a
+  # partner that sends a different list. Write payload: {receive: []} to
+  # receive none.

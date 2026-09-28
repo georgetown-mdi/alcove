@@ -24,6 +24,7 @@ import {
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
+  applyManagedExchangePayloadReceiveFill,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
@@ -1195,6 +1196,32 @@ export async function recordManagedExchangeLastRun(
       throw new Error(`no managed exchange with id ${id}`);
     const existing = parseManagedExchangeRecord(stored);
     return applyManagedExchangeLastRun(existing, lastRun, runStartedAtMs);
+  });
+}
+
+/**
+ * Record the `payload.receive` a run filled from the partner's declared send
+ * set into the stored record's terms ({@link applyManagedExchangePayloadReceiveFill}),
+ * inside one strict-durability readwrite transaction, so the write lands on
+ * the freshest stored record and cannot carry a stale secret back over a
+ * rotation. Awaited at the terms exchange, before any key or payload moves: a
+ * rejection stops the run.
+ *
+ * @throws {Error} if no record with `id` exists, or its terms already state
+ *   the list.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function persistManagedExchangePayloadReceiveFill(
+  id: string,
+  columns: ReadonlyArray<string>,
+): Promise<ManagedExchangeRecord> {
+  return readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    return applyManagedExchangePayloadReceiveFill(
+      parseManagedExchangeRecord(stored),
+      columns,
+    );
   });
 }
 

@@ -32,11 +32,9 @@ import {
 import {
   CanonicalEncodingError,
   DEFAULT_LINKAGE_RULE_SET,
-  RECURRING_RECEIVE_REQUIRED_MESSAGE,
   canonicalString,
   isDisclosedToPartner,
   partnerBoundTerms,
-  recurringTermsLackDeclaredReceive,
 } from "@alcove/core";
 
 import { OPT_IN_TOKEN_MAX_AGE_DAYS } from "@psi/tokenMaxAge";
@@ -360,33 +358,9 @@ export function termsSettingsWithNoControl(terms: LinkageTerms): Array<string> {
 /** The settings {@link termsSettingsWithNoControl} names that the terms
  * `editor`'s draft builds still state: none of the held ones once a terms
  * import replaces the terms a load held, and no receive list once this party
- * takes no result. The empty receive list a draft holding nothing states is
- * the editor's own default, not a held setting. */
+ * takes no result. */
 export function termsSettingsStatedBy(editor: InviterEditor): Array<string> {
-  if (editor.draft.heldTermsSettings === undefined) return [];
   return termsSettingsWithNoControl(buildAdvancedTerms(editor.draft));
-}
-
-/** Why an invitation is not created from the configuration the console
- * opened: its terms state no `payload.receive`, which no control here sets. */
-export const OPENED_TERMS_RECEIVE_REQUIRED =
-  "The configuration you opened cannot be the source of an invitation: " +
-  `${RECURRING_RECEIVE_REQUIRED_MESSAGE}. Edit the file, then open it again.`;
-
-/**
- * {@link OPENED_TERMS_RECEIVE_REQUIRED} where the terms `draft` builds
- * (`terms`) come from an opened configuration and lack the receive list
- * (`recurringTermsLackDeclaredReceive`), or undefined. A draft no
- * configuration holds states an empty list of its own (`buildAdvancedTerms`).
- */
-export function openedTermsReceiveUnstated(
-  draft: InviterEditor["draft"],
-  terms: LinkageTerms,
-): string | undefined {
-  if (draft.heldTermsSettings === undefined) return undefined;
-  return recurringTermsLackDeclaredReceive(terms)
-    ? OPENED_TERMS_RECEIVE_REQUIRED
-    : undefined;
 }
 
 /** The part of the terms `editor`'s draft builds that the partner refuses an

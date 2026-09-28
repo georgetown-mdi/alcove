@@ -376,8 +376,10 @@ and which is also what lets a correctly gated no-output party pass.
 How a party arrives at its set, by exchange mode:
 
 - **Invite/accept.** The inviter publishes its disclosed subset on the token and
-  leaves its own receive side blank, filling lazily from the acceptor's first
-  transmission. The acceptor locks in the subset the token declared -- known up
+  leaves its own receive side unset; its first run fills `payload.receive` from
+  the acceptor's declared send set ([An unset `payload.receive` is filled on the
+  first run](#an-unset-payloadreceive-is-filled-on-the-first-run)). The
+  acceptor locks in the subset the token declared -- known up
   front, with
   no observation needed -- and both an offline and an online accept persist it to
   the written config so a later `alcove exchange` enforces what was consented to
@@ -389,24 +391,12 @@ How a party arrives at its set, by exchange mode:
   with no subset *removes* the field rather than leaving a set this
   acceptance never showed.
 - **Zero-setup.** Neither party holds the other's metadata in advance, so the
-  first exchange reconciles lazily and neither throws. A `--save` run
-  crystallizes the set it observed into the config it writes.
+  first exchange reconciles lazily and neither throws. A `--save` run fills
+  `payload.receive` from the partner's declared send set and writes it into the
+  config it saves.
 - **Recurring.** Both parties' persisted configs hold the commitment, so each
   enforces its own -- the runtime, actual-bytes counterpart to
   `validateCompatibility`'s terms-level send/receive mirror.
-
-**An observe-then-persist writer records only an unambiguous observation.** The
-online inviter and a zero-setup `--save` party learn their set by watching the
-first exchange, and two observations are not safe to persist. An observed *empty*
-set is left absent, because a partner that discloses nothing and a first exchange
-with zero matched rows are indistinguishable on the receive side, and persisting
-`[]` would false-abort a later run that does match. An observation above
-`MAX_PAYLOAD_ENTRIES` is likewise left absent: the wire message bounds each
-column name but not the count, while the persisted field is bounded on reload, so
-crystallizing it would write a config this party could no longer load, and
-truncating would false-abort every later run against the partner's full set. The
-token path needs neither guard, because the invitation bounds its subset at
-intake.
 
 ### Send-side mint-boundary guard (`assertPayloadSendDisclosed`)
 
@@ -543,31 +533,37 @@ the protocol, alongside the schema rule forbidding a no-output party from
 declaring `payload.receive` columns; it is left neither to the data dictionary
 nor to operator discipline.
 
-### Recurring terms state `payload.receive`
+### An unset `payload.receive` is filled on the first run
 
-Linkage terms authored for a recurring exchange MUST state
-`linkage_terms.payload.receive`; an explicit empty list states "receive nothing"
-and satisfies the rule. The list is the inviter's half of the payload mirror:
-`deriveAcceptedLinkageTerms` adopts it as the acceptor's `payload.send`, so the
-acceptor's send is inside the partner-bound terms (`partnerBoundTerms`) and a
-later change to either party's payload is a terms mismatch at the handshake,
-with no wire change. Terms under which the partner can send this party no
-payload are exempt: a count-only (`psi-c`) document and a party with
-`output.expects_output: false`. The predicate is
-`recurringTermsLackDeclaredReceive` (`packages/core/src/config/recurringTerms.ts`).
+A party whose linkage terms leave `payload.send` unset states, in the terms it
+sends at every terms exchange, the columns its metadata discloses
+(`termsStatingDeclaredPayloadSend`, `packages/core/src/payloadExchange.ts`); a
+present `send`, an explicit empty list included, is sent as authored. A
+count-only (`psi-c`) document and a party with `output.share_with_partner:
+false` state nothing, since no payload moves to the partner under either. The
+stated form is the one `validateCompatibility` compares and the agreed-terms
+hash covers, so a verifier recomputing the hash from a configuration states it
+from that configuration's metadata the same way.
 
-A configuration authored for repeated runs is recurring: the one `alcove invite`
-mints from and the template `alcove init` writes. The offline invite-from-config
-path refuses a configuration lacking the list before any token is minted or key
-file written, and `alcove init` writes `receive: []`. A zero-setup run is a
-one-off attended exchange and is not held to the rule.
+A recurring run whose terms leave `payload.receive` unset, and whose partner
+can send it payload (`payloadReceiveFillsOnFirstRun`,
+`packages/core/src/config/recurringTerms.ts`), fills the list from the
+partner's stated `send` at the terms exchange, before the bootstrap frame and
+before any linkage key or payload row moves (`onPayloadReceiveFilled`,
+`runExchange`). The run holds the payload it receives to the filled set. The
+application driving the exchange records the list in the document it runs
+from: the CLI in its `alcove.yaml` (`persistFilledPayloadReceive`), the web
+app in the saved recurring record. A failure to record it stops the run, with
+an abort frame to the partner, before anything is disclosed. A one-off run
+records nothing and leaves the direction lazy. The next run compares the
+recorded list strictly, so a later change to either side's payload is a terms
+mismatch at the handshake.
 
-An authoring path with no control for the list states `receive: []`
-(`withReceiveNothingWhereUnstated`) and tells the operator so: `alcove invite`
-inferring terms from an input file (`buildDataSpec`), and the web and console
-invitation editor (`buildAdvancedTerms`) for a draft no opened configuration
-holds. The console refuses to create an invitation from an opened configuration
-whose terms lack the list.
+An explicit `receive: []` states "receive nothing" and is not filled. A
+document CLI writes for an exchange with the list unset says, where the key
+would go, that the first run fills it (`annotateUnsetPayloadReceive`,
+`packages/core/src/config/exchangeDocument.ts`), and the write that records the
+list removes that comment.
 
 ## Terms-binding consent
 

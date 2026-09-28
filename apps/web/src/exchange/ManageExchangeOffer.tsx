@@ -70,7 +70,6 @@ function useManagedStoreAvailability(): boolean | undefined {
 export function ManageExchangeOffer({
   status,
   refusal,
-  receiveNotice,
   onManage,
 }: {
   status: ManageOfferStatus;
@@ -79,9 +78,6 @@ export function ManageExchangeOffer({
    * column name the stored document cannot hold -- since a retry then fails
    * identically; undefined keeps the generic try-again copy. */
   refusal?: AlertContent;
-  /** What the terms this record would store ask the partner to send, where
-   * they ask for nothing (`receivesNoPayloadNotice`). */
-  receiveNotice?: string;
   onManage: (choices: ManageOfferChoices) => void;
 }) {
   const [label, setLabel] = useState("");
@@ -171,9 +167,6 @@ export function ManageExchangeOffer({
         run it again with the same partner, without re-inviting. Skip this to
         keep the exchange one-off: nothing is stored.
       </p>
-      {receiveNotice !== undefined && (
-        <p className={`${styles.small} ${styles.sub}`}>{receiveNotice}</p>
-      )}
       <TextInput
         label="Label"
         description={LABEL_GUIDANCE}

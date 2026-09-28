@@ -47,6 +47,7 @@ import {
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
+  removeUnsetPayloadReceiveNote,
   renderedDisplayCost,
   renderedDisplayCostKeepingLineBreaks,
   replaceControlCharactersForDisplay,
@@ -1825,6 +1826,69 @@ export function persistExpectedPayloadColumns(
     },
   );
   writeFileOwnerOnly(configPath, serialized);
+}
+
+/**
+ * Write `linkage_terms.payload.receive` into an existing `alcove.yaml`: the
+ * payload columns a run whose terms left the list unset took from the
+ * partner's declared send set, which the next run holds the partner to. Edits
+ * the file in place through the YAML document model, as
+ * {@link persistPartnerFingerprint} does, removing the note that stated the
+ * list unset, and rewrites it with the owner-only permissions
+ * {@link saveConfig} uses.
+ *
+ * A document that already states the list, or holds no `linkage_terms`
+ * mapping, is refused and left unchanged. Any failure stops the run before a
+ * linkage key or payload row moves, so the refusal says so and how to state
+ * the list by hand.
+ *
+ * @throws {OperatorConfigError} when the list cannot be written.
+ */
+export function persistFilledPayloadReceive(
+  configPath: string,
+  columns: readonly string[],
+): void {
+  try {
+    const serialized = editSensitiveYamlDocument(
+      fs.readFileSync(configPath, "utf8"),
+      configFileLabel(configPath),
+      (doc) => {
+        normalizeKeyPathSpelling(configPath, doc, [
+          "linkage_terms",
+          "payload",
+          "receive",
+        ]);
+        if (!isMap(doc.get("linkage_terms", true)))
+          throw configFileRefusal(
+            configPath,
+            "holds no linkage_terms mapping.",
+          );
+        const existing = doc.getIn(["linkage_terms", "payload", "receive"]);
+        if (existing !== undefined && existing !== null)
+          throw configFileRefusal(
+            configPath,
+            "already states linkage_terms.payload.receive; it was left " +
+              "unchanged.",
+          );
+        doc.setIn(
+          ["linkage_terms", "payload", "receive"],
+          doc.createNode(columns.map((name) => ({ name }))),
+        );
+        removeUnsetPayloadReceiveNote(doc);
+      },
+    );
+    writeFileOwnerOnly(configPath, serialized);
+  } catch (err) {
+    const message = messageWithOperatorText`the payload columns your partner declares it sends could not be recorded as linkage_terms.payload.receive in ${operatorSuppliedText(
+      configPath,
+    )} (${
+      err instanceof Error ? err.message : String(err)
+    }), so the run stopped before any data moved. Make the file writable and run again, or list the columns you expect under linkage_terms.payload.receive yourself.`;
+    throw keepOperatorSuppliedText(
+      new OperatorConfigError(message.text),
+      message,
+    );
+  }
 }
 
 /**

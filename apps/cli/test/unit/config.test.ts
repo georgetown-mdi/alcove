@@ -45,6 +45,7 @@ import {
   persistDisclosedPayloadColumns,
   persistExpectedPartnerDeduplicate,
   persistExpectedPayloadColumns,
+  persistFilledPayloadReceive,
   persistHostKeyFingerprint,
   persistInvitationRelay,
   persistPartnerFingerprint,
@@ -1247,6 +1248,54 @@ describe("saveConfig", () => {
     expect(raw).not.toContain("shared_secret");
     expect(raw).not.toContain(token);
     expect(raw).not.toContain("expires");
+  });
+});
+
+// --- persistFilledPayloadReceive ---------------------------------------------
+
+describe("persistFilledPayloadReceive", () => {
+  test("records the filled list, removes the unset note, and keeps the operator's comments", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/mnt/share/drop" },
+      linkageTerms: getDefaultLinkageTerms("Org"),
+    });
+    fs.appendFileSync(configPath, "# operator note\n");
+    expect(fs.readFileSync(configPath, "utf8")).toContain(
+      "payload.receive is not set",
+    );
+
+    persistFilledPayloadReceive(configPath, ["program", "enrolled"]);
+
+    const raw = fs.readFileSync(configPath, "utf8");
+    expect(raw).not.toContain("payload.receive is not set");
+    expect(raw).toContain("# operator note");
+    expect(
+      parseExchangeSpec(YAML.parse(raw)).linkageTerms.payload?.receive,
+    ).toEqual([{ name: "program" }, { name: "enrolled" }]);
+  });
+
+  test("refuses a configuration that already states the list, leaving it unchanged", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/mnt/share/drop" },
+      linkageTerms: {
+        ...getDefaultLinkageTerms("Org"),
+        payload: { receive: [] },
+      },
+    });
+    const before = fs.readFileSync(configPath, "utf8");
+    expect(() => persistFilledPayloadReceive(configPath, ["program"])).toThrow(
+      OperatorConfigError,
+    );
+    expect(fs.readFileSync(configPath, "utf8")).toBe(before);
+  });
+
+  test("a failure names the file and says the run stopped before any data moved", () => {
+    const configPath = path.join(dir, "missing", "alcove.yaml");
+    expect(() => persistFilledPayloadReceive(configPath, ["program"])).toThrow(
+      /could not be recorded as linkage_terms\.payload\.receive .*so the run stopped before any data moved/s,
+    );
   });
 });
 

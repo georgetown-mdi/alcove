@@ -18,6 +18,7 @@ import {
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
+  applyManagedExchangePayloadReceiveFill,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
@@ -613,6 +614,38 @@ describe("applyManagedExchangeLocalEdits", () => {
     );
     expect(edited).not.toHaveProperty("tokenMaxAgeDays");
     expect(edited).not.toHaveProperty("expires");
+  });
+});
+
+describe("applyManagedExchangePayloadReceiveFill", () => {
+  test("records the filled list in the stored terms and nothing else", () => {
+    const record = runnableRecord({ schedule });
+    const filled = applyManagedExchangePayloadReceiveFill(record, [
+      "program",
+      "enrolled",
+    ]);
+    expect(filled.exchangeFile.linkageTerms.payload?.receive).toEqual([
+      { name: "program" },
+      { name: "enrolled" },
+    ]);
+    expect({
+      ...filled.exchangeFile.linkageTerms,
+      payload: undefined,
+    }).toEqual({ ...record.exchangeFile.linkageTerms, payload: undefined });
+    expect(filled.sharedSecret).toBe(record.sharedSecret);
+    expect(filled.schedule).toEqual(record.schedule);
+  });
+
+  test("refuses terms that already state the list", () => {
+    const record = runnableRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: webrtcLocator,
+        linkageTerms: { ...linkageTerms, payload: { receive: [] } },
+      }),
+    });
+    expect(() =>
+      applyManagedExchangePayloadReceiveFill(record, ["program"]),
+    ).toThrow("already state payload.receive");
   });
 });
 

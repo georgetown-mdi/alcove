@@ -12,7 +12,6 @@ import {
   getLogger,
   inferDateInputFormatFromSource,
   INFER_DATE_SCAN_CAP,
-  MAX_PAYLOAD_ENTRIES,
   MAX_RECONNECT_ATTEMPTS,
   operatorSuppliedSpans,
   parseExchangeSpec,
@@ -63,12 +62,10 @@ import {
   loadInputRows,
   logOnlineBootstrapOutcome,
   looksLikeUrl,
-  observedReceivedColumnsForSave,
   parseLinkageStrategyFlag,
   runOnlineBootstrap,
   singlePassDisclosureNotice,
   warnSanitizedColumns,
-  withheldPayloadColumnsWarning,
 } from "../../src/onlineBootstrap";
 import { redactUrlCredentials } from "../../src/util/connectionUrl";
 import { openInputSource } from "../../src/util/dataIo";
@@ -2611,102 +2608,14 @@ describe("runOnlineBootstrap", () => {
   });
 });
 
-// --- observedReceivedColumnsForSave ------------------------------------------
-
-describe("observedReceivedColumnsForSave", () => {
-  test("keeps a non-empty observation", () => {
-    expect(observedReceivedColumnsForSave(["dob", "zip"])).toEqual({
-      columns: ["dob", "zip"],
-    });
-  });
-
-  test("drops an empty or absent observation", () => {
-    // An empty observed set is the ambiguous zero-match / discloses-nothing case, so
-    // it is left absent (lazy) rather than persisted as a strict "receive nothing".
-    expect(observedReceivedColumnsForSave([])).toEqual({});
-    expect(observedReceivedColumnsForSave(undefined)).toEqual({});
-  });
-
-  test("drops an over-cap observation (stays loadable)", () => {
-    // The wire caps each column NAME's length but not the column COUNT, while the
-    // persisted expected_payload_columns is bounded to MAX_PAYLOAD_ENTRIES on reload.
-    // Persisting an over-cap observed set would write a config this party can no
-    // longer load, so it is dropped (stays lazy) rather than crystallized.
-    const atCap = Array.from(
-      { length: MAX_PAYLOAD_ENTRIES },
-      (_, i) => `c${i}`,
-    );
-    const overCap = Array.from(
-      { length: MAX_PAYLOAD_ENTRIES + 1 },
-      (_, i) => `c${i}`,
-    );
-    expect(observedReceivedColumnsForSave(atCap)).toEqual({ columns: atCap });
-    expect(observedReceivedColumnsForSave(overCap)).toEqual({
-      withheld: "over-cap",
-    });
-  });
-
-  test("drops an observation holding a control or text-direction character", () => {
-    expect(observedReceivedColumnsForSave(["dob", "zip\u202E"])).toEqual({
-      withheld: "name-shape",
-    });
-    expect(observedReceivedColumnsForSave(["dob\u0007"])).toEqual({
-      withheld: "name-shape",
-    });
-  });
-
-  const partnerName = "partnerOnlyColumnXq7";
-
-  test("an over-cap observation warns in one sentence pair quoting no partner name", () => {
-    const overCap = Array.from(
-      { length: MAX_PAYLOAD_ENTRIES + 1 },
-      (_, i) => `${partnerName}${i}`,
-    );
-    expect(observedReceivedColumnsForSave(overCap).withheld).toBe("over-cap");
-    const warning = withheldPayloadColumnsWarning("over-cap");
-    expect(warning).toBe(
-      "the saved config does not record which payload columns your partner " +
-        `sent, because there were more than ${MAX_PAYLOAD_ENTRIES}, the most a ` +
-        "config can store. Later 'alcove exchange' runs will accept whatever " +
-        "columns arrive instead of refusing a changed set.",
-    );
-    expect(warning).not.toContain(partnerName);
-  });
-
-  test("a name a config cannot store warns in one sentence pair quoting no partner name", () => {
-    expect(
-      observedReceivedColumnsForSave([partnerName, `${partnerName}\u202E`])
-        .withheld,
-    ).toBe("name-shape");
-    const warning = withheldPayloadColumnsWarning("name-shape");
-    expect(warning).toBe(
-      "the saved config does not record which payload columns your partner " +
-        "sent, because one name has a control or text-direction character, " +
-        "which a config cannot store. Later 'alcove exchange' runs will " +
-        "accept whatever columns arrive instead of refusing a changed set.",
-    );
-    expect(warning).not.toContain(partnerName);
-  });
-
-  test("a storable or empty observation withholds nothing", () => {
-    expect(
-      observedReceivedColumnsForSave([partnerName, "zip"]).withheld,
-    ).toBeUndefined();
-    expect(observedReceivedColumnsForSave([]).withheld).toBeUndefined();
-    expect(observedReceivedColumnsForSave(undefined).withheld).toBeUndefined();
-  });
-});
-
-// --- runOnlineBootstrap: observe-then-persist received-payload commitment ----
+// --- runOnlineBootstrap: the receive list a run fills --------------------------
 
 /** Mock runProtocol as a successful exchange, in its real order: invoke the
- *  onAuthenticated hook, run `betweenStages`, then invoke the pre-terminal
- *  onOutputComplete hook with the observed received-payload columns, and
- *  resolve with the same observation, as the real runProtocol does. An absent
- *  `observed` means the caller learns nothing, though the hook still receives
- *  an empty array, as the real one always does. */
+ *  onAuthenticated hook, run `betweenStages`, then, where `filled` is given,
+ *  hand the receive-list recorder the partner's declared send set as the terms
+ *  exchange does. */
 function mockSuccessfulExchange(
-  observed: string[] | undefined,
+  filled: string[] | undefined,
   betweenStages?: () => void,
 ): void {
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
@@ -2714,285 +2623,76 @@ function mockSuccessfulExchange(
       (() => void | Promise<void>) | undefined;
     await onAuthenticated?.();
     betweenStages?.();
-    await runtimeOptionsArg(callArgs).onOutputComplete?.({
-      observedReceivedPayloadColumns: observed ?? [],
-    });
-    return { observedReceivedPayloadColumns: observed };
+    if (filled !== undefined)
+      await optionsArg(callArgs).recordPayloadReceiveFill?.(filled);
+    return {};
   }) as never);
 }
 
 describe("runOnlineBootstrap", () => {
-  test("crystallizes the observed received set when the inviter opts in", async () => {
-    // The online inviter passes persistObservedReceivedPayload: after the exchange
-    // it re-writes the freshly-saved config with the columns it observed, so a later
-    // `alcove exchange` fails closed on a divergent payload.
-    mockSuccessfulExchange(["dob", "zip"]);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        persistObservedReceivedPayload: true,
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.expected_payload_columns).toEqual(["dob", "zip"]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("crystallizes from the pre-terminal hook, not after runProtocol returns", async () => {
-    // WHERE the write happens is the contract, not just that it happens. A write
-    // after runProtocol returns would land behind the run's terminal event --
-    // forbidden by the stream spec and discarded outright by the job supervisor
-    // -- so the write must ride runProtocol's pre-terminal hook. A runProtocol
-    // that resolves with the observation without ever invoking that hook must
-    // leave the config exactly as the acceptance write left it.
-    vi.mocked(runProtocol).mockImplementation((async (
-      ...callArgs: unknown[]
-    ) => {
-      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
-        (() => void | Promise<void>) | undefined;
-      await onAuthenticated?.();
-      return { observedReceivedPayloadColumns: ["dob", "zip"] };
-    }) as never);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        persistObservedReceivedPayload: true,
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.expected_payload_columns).toBeUndefined();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("leaves an empty observation lazy even when the inviter opts in", async () => {
-    // An observed-empty payload is an ambiguous zero-match run; persisting [] would
-    // false-abort a later matching exchange, so no commitment is written.
-    mockSuccessfulExchange([]);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        persistObservedReceivedPayload: true,
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.expected_payload_columns).toBeUndefined();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("does not crystallize the observed set without the inviter opt-in", async () => {
-    // The online acceptor learns its received set up front from the token and does
-    // not pass persistObservedReceivedPayload, so its saved config records no
-    // observed commitment.
+  test("records a filled receive list into the configuration it wrote", async () => {
+    // The online inviter's terms leave payload.receive unset, so the terms
+    // exchange fills it from the acceptor's declared send set, and the config
+    // the acceptance hook wrote records it for every later run.
     mockSuccessfulExchange(["dob", "zip"]);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
     try {
       await runOnlineBootstrap(onlineBootstrapParams(configPath));
       const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
+      expect(written.linkage_terms.payload.receive).toEqual([
+        { name: "dob" },
+        { name: "zip" },
+      ]);
       expect(written.expected_payload_columns).toBeUndefined();
+      expect(
+        parseExchangeSpec(written).linkageTerms.payload?.receive,
+      ).toHaveLength(2);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("does not crystallize onto a reused pre-existing config", async () => {
-    // With reuseExistingConfig the hook keeps the operator's config untouched
-    // (configWritten stays false), so the observe-then-persist second write must not
-    // fire and rewrite it -- even with the inviter opt-in set.
-    mockSuccessfulExchange(["dob", "zip"]);
+  test("records a filled receive list into a reused configuration", async () => {
+    mockSuccessfulExchange(["dob"]);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(configPath, "preexisting: true\n");
+    saveConfig(configPath, {
+      connection: { channel: "filedrop", path: "/tmp/alcove-drop" },
+      linkageTerms: getDefaultLinkageTerms("Inviting Org"),
+    });
     try {
       await runOnlineBootstrap({
         ...onlineBootstrapParams(configPath),
         reuseExistingConfig: true,
-        persistObservedReceivedPayload: true,
       });
-      // The operator's config is left exactly as it was.
-      expect(fs.readFileSync(configPath, "utf8")).toBe("preexisting: true\n");
+      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
+      expect(written.linkage_terms.payload.receive).toEqual([{ name: "dob" }]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("keeps a failed observed-payload write non-fatal", async () => {
-    // The hook writes the config at acceptance; the observe-then-persist second write
-    // then fails -- here the path is swapped for a directory after the hook runs, so
-    // saveConfig's rename throws. That failure must be non-fatal: the completed
-    // exchange is not undone, nothing rethrows, and the clean hook write is still
-    // reported (configWriteError undefined). getLogger("bootstrap-test") is silenced
-    // above, so the catch's warn does not print.
+  test("stops the run when the filled receive list cannot be recorded", async () => {
+    // The fill is recorded before any key or payload moves, so a run that
+    // cannot record it stops there rather than receiving under a list the
+    // next run does not hold.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
     mockSuccessfulExchange(["dob", "zip"], () => {
-      fs.rmSync(configPath); // swap the acceptance hook's file for a directory
-      fs.mkdirSync(configPath); // so the second saveConfig's rename throws (EISDIR)
+      fs.rmSync(configPath);
+      fs.mkdirSync(configPath);
     });
     try {
-      const { configWriteError } = await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        persistObservedReceivedPayload: true,
-      });
-      expect(configWriteError).toBeUndefined();
-      // The second write failed (the swapped-in directory is intact),
-      // proving the non-fatal catch fired rather than the write silently succeeding.
-      expect(fs.statSync(configPath).isDirectory()).toBe(true);
+      await expect(
+        runOnlineBootstrap(onlineBootstrapParams(configPath)),
+      ).rejects.toThrow(
+        /could not be recorded as linkage_terms.payload.receive/,
+      );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
-
-  test("reports a lost observed-payload write on fd 3 and in the exit code", async () => {
-    // The same loss as the test above, seen by an unattended supervisor: the
-    // configuration the run left behind is missing the commitment a later recurring
-    // exchange would have been held to. Nothing about the completed exchange
-    // changes -- it is not to be re-run -- so the report is a `warning` on the
-    // machine-interface stream plus the persistence-loss exit code (73), never a
-    // rejection. 69 would tell a supervisor to retry an exchange that already
-    // happened.
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    mockSuccessfulExchange(["dob", "zip"], () => {
-      fs.rmSync(configPath); // swap the acceptance hook's file for a directory
-      fs.mkdirSync(configPath); // so the second saveConfig's rename throws (EISDIR)
-    });
-    try {
-      const { value, lines } = await captureFd3(() =>
-        runOnlineBootstrap({
-          ...onlineBootstrapParams(configPath),
-          eventStream: true,
-          persistObservedReceivedPayload: true,
-        }),
-      );
-      expect(value.configWriteError).toBeUndefined();
-      expect(process.exitCode).toBe(73);
-      expect(lines.map((l) => l.type)).toEqual(["warning"]);
-      expect(lines.map((l) => l.source)).toEqual(["persistenceLoss"]);
-      expect(String(lines[0].message)).toContain(
-        "recording the observed received-payload columns",
-      );
-      // The cause stays on the human log beside this: the emitter escapes its
-      // message exactly once, so pre-rendered error text would reach a supervisor
-      // double-escaped.
-      expect(String(lines[0].message)).not.toContain("EISDIR");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-/** runProtocol's post-output hook as it is declared, result type included. The
- *  `runtimeOptionsArg` accessor above widens that result away to void, so a
- *  case that reads what the hook reported cannot be built on it. */
-type OutputCompleteHook = NonNullable<
-  NonNullable<RunProtocolOptions["fileSyncRuntime"]>["onOutputComplete"]
->;
-
-/** Drive a successful exchange the way `mockSuccessfulExchange` above does,
- *  KEEPING what the post-output hook reported: that stub awaits the hook and
- *  discards its result, so nothing built on it can see the difference between a
- *  write that reached disk and one the hook caught the loss of. The returned
- *  array holds one entry per hook call the driven run made. */
-function captureOutputCompleteResults(
-  observed: string[],
-  betweenStages?: () => void,
-): Awaited<ReturnType<OutputCompleteHook>>[] {
-  const reported: Awaited<ReturnType<OutputCompleteHook>>[] = [];
-  vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
-    await onAuthenticatedArg(callArgs)();
-    betweenStages?.();
-    const hook = optionsArg(callArgs).fileSyncRuntime?.onOutputComplete;
-    expect(hook).toBeTypeOf("function");
-    reported.push(
-      await (hook as OutputCompleteHook)({
-        observedReceivedPayloadColumns: observed,
-      }),
-    );
-    return { observedReceivedPayloadColumns: observed };
-  }) as never);
-  return reported;
-}
-
-test("runOnlineBootstrap's post-output hook reports the write it lost", async () => {
-  // The same lost second write as the two cases above, read where runProtocol
-  // reads it. The catch warns, reports the persistence loss and returns
-  // normally, so the result is the only thing that tells the output stage the
-  // write did not land -- and the stage lowers its every-artifact-on-disk flag
-  // off nothing else, which is what the overrun notice tells the operator.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  const reported = captureOutputCompleteResults(["dob", "zip"], () => {
-    fs.rmSync(configPath); // swap the acceptance hook's file for a directory
-    fs.mkdirSync(configPath); // so the second saveConfig's rename throws (EISDIR)
-  });
-  try {
-    await runOnlineBootstrap({
-      ...onlineBootstrapParams(configPath),
-      persistObservedReceivedPayload: true,
-    });
-    expect(reported).toEqual([{ persisted: false }]);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("runOnlineBootstrap's post-output hook reports the write that landed", async () => {
-  // The other half of the pair: the same opted-in run with nothing in the way
-  // of the write reports a complete persistence, and the config on disk holds
-  // the commitment that report is about -- so `persisted: true` is the answer
-  // to a write that happened rather than a constant.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  const reported = captureOutputCompleteResults(["dob", "zip"]);
-  try {
-    await runOnlineBootstrap({
-      ...onlineBootstrapParams(configPath),
-      persistObservedReceivedPayload: true,
-    });
-    expect(reported).toEqual([{ persisted: true }]);
-    const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-    expect(written.expected_payload_columns).toEqual(["dob", "zip"]);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("runOnlineBootstrap skips the second write for an observation holding a text-direction character", async () => {
-  // The acceptance write lands; the observe-then-persist write is skipped, so
-  // the file is byte-identical to what acceptance wrote and still reloads.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  let afterAcceptance: string | undefined;
-  const reported = captureOutputCompleteResults(
-    ["dob", "zip\u202Eedoc"],
-    () => {
-      afterAcceptance = fs.readFileSync(configPath, "utf8");
-    },
-  );
-  try {
-    await runOnlineBootstrap({
-      ...onlineBootstrapParams(configPath),
-      persistObservedReceivedPayload: true,
-    });
-    expect(reported).toEqual([{ persisted: true }]);
-    const text = fs.readFileSync(configPath, "utf8");
-    expect(text).toBe(afterAcceptance);
-    const written = YAML.parse(text);
-    expect(written.expected_payload_columns).toBeUndefined();
-    expect(parseExchangeSpec(written).expectedPayloadColumns).toBeUndefined();
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 /** Write the pre-existing config every reuse-refresh test below starts from: a
@@ -3054,10 +2754,9 @@ describe("runOnlineBootstrap", () => {
 
   test("persists the acceptor's up-front token received set into the fresh config", async () => {
     // The online ACCEPTOR knows the columns it consented to receive up front from the
-    // token, so the set rides the acceptance hook's FIRST write (no observation
-    // needed, unlike the inviter's observe-then-persist second write above). A later
+    // token, so the set rides the acceptance hook's FIRST write. A later
     // `alcove exchange` then locks it in and fails closed on a divergent payload.
-    mockSuccessfulExchange(undefined); // acceptor learns nothing by observation
+    mockSuccessfulExchange(undefined);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
     try {
@@ -3462,10 +3161,10 @@ describe("runOnlineBootstrap", () => {
 
   test("leaves a reused config's commitment alone for a caller that owns none", async () => {
     // The wrapper's PRESENCE is what marks the caller that owns this field. A caller
-    // with no commitment of its own -- the online inviter, whose received set is learned
-    // by observation -- must not have its recorded set removed by the reuse refresh,
-    // which would silently reopen the fail-closed enforcement its own config holds.
-    mockSuccessfulExchange(["dob", "zip"]);
+    // with no commitment of its own -- the online inviter -- must not have its
+    // recorded set removed by the reuse refresh, which would silently reopen the
+    // fail-closed enforcement its own config holds.
+    mockSuccessfulExchange(undefined);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
     writeReusedConfigWithStaleLockIn(configPath);
@@ -3474,7 +3173,6 @@ describe("runOnlineBootstrap", () => {
       await runOnlineBootstrap({
         ...onlineBootstrapParams(configPath),
         reuseExistingConfig: true,
-        persistObservedReceivedPayload: true,
       });
       expect(fs.readFileSync(configPath, "utf8")).toBe(before);
     } finally {
@@ -3591,33 +3289,6 @@ test("the persisted empty online-accept commitment aborts a later non-empty payl
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
-});
-
-describe("runOnlineBootstrap", () => {
-  test("rejects both received-payload persistence inputs at once", async () => {
-    // The acceptor's up-front token set and the inviter's observe-on-save flag are
-    // mutually exclusive; setting both is a caller error caught fail-fast, before any
-    // connection, rather than silently letting the observe write clobber the token
-    // commitment. runProtocol must never be reached.
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    // Call counts accumulate across this file's tests (no shared reset hook), so clear
-    // before asserting the guard short-circuits before runProtocol.
-    vi.mocked(runProtocol).mockClear();
-    try {
-      await expect(
-        runOnlineBootstrap({
-          ...onlineBootstrapParams(configPath),
-          receivedPayloadLockIn: { consentedColumns: ["diagnosis"] },
-          persistObservedReceivedPayload: true,
-        }),
-      ).rejects.toThrow(/mutually exclusive/);
-      expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
-      expect(fs.existsSync(configPath)).toBe(false);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
 });
 
 test("the persisted online-accept commitment drives fail-closed recurring enforcement", async () => {
