@@ -333,6 +333,18 @@ test.each([
     200,
     64,
   ],
+  [
+    "a returned path holding relative/../../etc",
+    JSON.stringify({ host: "a.example.org", path: "relative/../../etc" }),
+    200,
+    64,
+  ],
+  [
+    "a returned path holding /ok path",
+    JSON.stringify({ host: "a.example.org", path: "/ok path" }),
+    200,
+    64,
+  ],
 ] as Array<[string, string | null, number, number]>)(
   "handler: %s stops the invite before any token or key file",
   async (_, body, status, code) => {
@@ -356,3 +368,19 @@ test.each([
     expect(fs.readFileSync(configPath, "utf8")).toBe(before);
   },
 );
+
+test("handler: a returned path of / is accepted and written into connection.server.path", async () => {
+  const dir = scratch();
+  const configPath = writeConfig(dir, sftpCreate);
+  stubFetch(JSON.stringify({ host: "sftp-7.example.org", path: "/" }));
+  const exitSpy = captureProcessExit();
+  try {
+    await inviteHandler(inviteArgv(dir));
+    expect(exitSpy).not.toHaveBeenCalled();
+  } finally {
+    exitSpy.mockRestore();
+  }
+  const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
+  expect(written.connection.server.path).toBe("/");
+  expect(fs.existsSync(path.join(dir, ".alcove.key"))).toBe(true);
+});

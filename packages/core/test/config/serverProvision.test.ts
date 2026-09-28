@@ -526,6 +526,28 @@ test("the widest answer the schema admits, fully escaped, fits the byte cap", as
   expect(address.path).toHaveLength(MAX_ENDPOINT_PATH_LENGTH);
 });
 
+test("an answer padded with trailing spaces to exactly the byte cap is accepted, one byte more refused", async () => {
+  const base = JSON.stringify({ host: "a.example.org" });
+  const baseBytes = new TextEncoder().encode(base).byteLength;
+  const atCap = base + " ".repeat(MAX_PROVISION_RESPONSE_BYTES - baseBytes);
+  expect(new TextEncoder().encode(atCap).byteLength).toBe(
+    MAX_PROVISION_RESPONSE_BYTES,
+  );
+  const { fetch: fitsFetch } = answeringFetch(atCap);
+  await expect(
+    requestProvisionedServerAddress(createProvision, { fetch: fitsFetch }),
+  ).resolves.toEqual({ host: "a.example.org" });
+  const overCap = `${atCap} `;
+  const { fetch: overFetch } = answeringFetch(overCap);
+  const err = await caught(
+    requestProvisionedServerAddress(createProvision, { fetch: overFetch }),
+  );
+  expect(err).toBeInstanceOf(UsageError);
+  expect(rendered(err)).toContain(
+    `answered with more than ${MAX_PROVISION_RESPONSE_BYTES} bytes`,
+  );
+});
+
 test.each([
   [
     "an answer over the byte cap",
