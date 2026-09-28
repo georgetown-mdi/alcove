@@ -1098,25 +1098,54 @@ const registrarEnv = (host, token = REGISTRAR_TOKEN) => {
   };
 };
 
+// A start takes well under a second; this bounds one that never listens, and
+// once one has failed that way every later start fails at once, so a registrar
+// that cannot start costs the file one bound rather than one per test.
+const REGISTRAR_START_SECONDS = 15;
+let registrarStartTimedOut = false;
+
 // Starts the registrar on a free port and resolves once it is listening.
-const startRegistrar = (host) =>
+const startRegistrarWith = (env) =>
   new Promise((resolvePort, reject) => {
+    if (registrarStartTimedOut) {
+      reject(
+        new Error(
+          `an earlier registrar.py start in this file did not listen within ${REGISTRAR_START_SECONDS}s`,
+        ),
+      );
+      return;
+    }
     const child = spawn("python3", [join(relay, "registrar.py")], {
-      env: { ...registrarEnv(host), ALCOVE_RELAY_REGISTRAR_PORT: "0" },
+      env: { ...env, ALCOVE_RELAY_REGISTRAR_PORT: "0" },
     });
     registrars.push(child);
     const log = { stderr: "" };
+    const deadline = setTimeout(() => {
+      registrarStartTimedOut = true;
+      child.kill();
+      reject(
+        new Error(
+          `registrar.py did not listen within ${REGISTRAR_START_SECONDS}s: ${log.stderr}`,
+        ),
+      );
+    }, REGISTRAR_START_SECONDS * 1000);
     child.stderr.on("data", (chunk) => {
       log.stderr += chunk;
     });
     child.stdout.on("data", (chunk) => {
       const match = /listening on port (\d+)/.exec(String(chunk));
-      if (match) resolvePort({ port: Number(match[1]), log });
+      if (match) {
+        clearTimeout(deadline);
+        resolvePort({ port: Number(match[1]), log });
+      }
     });
-    child.on("exit", (code) =>
-      reject(new Error(`registrar exited ${code}: ${log.stderr}`)),
-    );
+    child.on("exit", (code) => {
+      clearTimeout(deadline);
+      reject(new Error(`registrar exited ${code}: ${log.stderr}`));
+    });
   });
+
+const startRegistrar = (host) => startRegistrarWith(registrarEnv(host));
 
 // Every response header block the registrar sent in this test file, for the
 // check that none of them allows credentials.
@@ -1668,31 +1697,26 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
     expect(result.stderr).toContain("registrar-token");
   });
 
+  it("binds its port without looking up a hostname", () => {
+    python(`import socket
+import registrar
+def refuse(*args):
+    raise AssertionError("looked up a hostname")
+socket.getfqdn = socket.gethostbyaddr = refuse
+registrar.RegistrarServer(("127.0.0.1", 0), registrar.RegistrarHandler).server_close()`);
+  });
+
   it("reads the token and certificate from systemd's credentials directory", async () => {
     const host = fixtureHost();
     const credentials = join(host.root, "credentials");
     rmSync(credentials, { recursive: true, force: true });
     spawnSync("cp", ["-r", certDir, credentials]);
     writeFileSync(join(credentials, "registrar-token"), `${REGISTRAR_TOKEN}\n`);
-    const env = { ...registrarEnv(host), ALCOVE_RELAY_REGISTRAR_PORT: "0" };
+    const env = registrarEnv(host);
     delete env.ALCOVE_RELAY_REGISTRAR_TOKEN_FILE;
     delete env.ALCOVE_RELAY_CERT_DIR;
     env.CREDENTIALS_DIRECTORY = credentials;
-    const child = spawn("python3", [join(relay, "registrar.py")], { env });
-    registrars.push(child);
-    const port = await new Promise((resolvePort, reject) => {
-      let stderr = "";
-      child.stderr.on("data", (chunk) => {
-        stderr += chunk;
-      });
-      child.stdout.on("data", (chunk) => {
-        const match = /listening on port (\d+)/.exec(String(chunk));
-        if (match) resolvePort(Number(match[1]));
-      });
-      child.on("exit", (code) =>
-        reject(new Error(`registrar exited ${code}: ${stderr}`)),
-      );
-    });
+    const { port } = await startRegistrarWith(env);
     const response = await call(port, "PUT", "/exchanges/exchange-1", {
       token: REGISTRAR_TOKEN,
       body: keyBody(KEY_A),
