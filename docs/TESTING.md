@@ -506,6 +506,10 @@ durations themselves stay a tracked limit recorded in
 [docs/spec/WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-clean-close), read
 across runs before anything tighter gates on them.
 
+## Core stress tier
+
+`npm run test:stress -w packages/core` runs `packages/core/test/stress/`, the large-input cases kept out of `npm run test` and run nightly by `.github/workflows/nightly_core_stress.yaml`. Stress files run one at a time, and a case that needs more free memory than the machine has skips with a message naming the case, its need, and the free memory.
+
 ## What a run did not cover
 
 A run that quietly covers less than the suite does is worse than a red one: its
