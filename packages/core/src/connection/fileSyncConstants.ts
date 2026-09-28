@@ -8,9 +8,8 @@
 // Retry budget for the lock-joiner fast-path mismatch advertisement, the one
 // branch that must durably write a new hello at detection time so the
 // lockless peer fast-fails. A failed write here degrades the peer from a
-// fast-fail (exit 64) to the legacy timeout (exit 69). Five attempts at
-// pollingFrequency (~400 ms at the 100 ms default) stays well under
-// peerTimeoutMs. Internal-only; not a user-facing config option.
+// fast-fail (exit 64) to the legacy timeout (exit 69). Internal-only; not a
+// user-facing config option.
 /** @internal */
 export const ADVERTISE_HELLO_RETRY_ATTEMPTS = 5;
 

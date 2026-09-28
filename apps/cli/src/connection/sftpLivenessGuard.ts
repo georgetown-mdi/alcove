@@ -341,7 +341,7 @@ export function createBoundedPutSource(
  * estimate. Above any healthy operation and below the 60 s per-operation
  * fast-fail ({@link SFTP_STALL_DEADLINE_MS}), so a stalled read gets one "slow"
  * warning before it fails. Fixed rather than a fraction of the
- * operator-tunable peer budget, so it fires at a predictable wall-clock point
+ * operator-tunable inactivity budget, so it fires at a predictable wall-clock point
  * regardless of how high that budget is raised.
  */
 export const SFTP_SLOW_OPERATION_WARNING_MS = 30_000;

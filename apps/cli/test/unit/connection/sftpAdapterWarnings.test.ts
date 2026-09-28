@@ -237,7 +237,7 @@ describe("the recovered-session line, connection-per-poll", () => {
     expect(message).toContain(
       "These re-dials are not charged against max_reconnect_attempts",
     );
-    expect(message).toContain("(peer_timeout_ms)");
+    expect(message).toContain("(inactivity_timeout_ms)");
     expect(message).not.toContain("--connection-per-poll");
     expect(message).not.toContain("max_reconnect_attempts=");
   });

@@ -3248,7 +3248,7 @@ test(
 
 const MISSING_RECEIPT_WARNING =
   "A signed receipt was configured for this exchange, but no receipt " +
-  "reached this side before the peer timeout";
+  "reached this side before the exchange ended";
 
 function signingPersistFixture(
   receiptFile: string,

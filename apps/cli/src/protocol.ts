@@ -1314,7 +1314,7 @@ async function authenticateRun(params: {
   // key is in hand (the only path that holds one): derive this party's
   // token -- written into <myId>-abort.json on a terminal organic fault
   // so a waiting peer fails fast instead of waiting out its full
-  // peer-timeout -- and the peer's, verified against an incoming
+  // inactivity timeout -- and the peer's, verified against an incoming
   // <peerId>-abort.json. Placed after the signal guard so an interrupt
   // during setup bails before arming.
   //
@@ -2750,11 +2750,13 @@ export async function runProtocol(
     )
       log.warn(
         "A signed receipt was configured for this exchange, but no receipt " +
-          "reached this side before the peer timeout and the receipt swap " +
+          "reached this side before the exchange ended and the receipt swap " +
           "did not complete. A partner that presents no signing certificate " +
           "is refused earlier, at the authenticated setup step, so check the " +
-          "transport and the peer rather than the partner's signing " +
-          "configuration.",
+          "transport and the peer's own logs rather than the partner's " +
+          "signing configuration. If the peer was still working when the " +
+          "exchange ended, raise inactivity_timeout_ms under " +
+          "connection.options in the configuration.",
       );
 
     // The disclosure a terminated run already made outlives the failure that
@@ -2878,7 +2880,7 @@ export async function runProtocol(
     // the process is exiting on the signal regardless.
     // Authenticated cross-party abort marker: on a terminal organic fault
     // with the directory still writable, leave a signal so a waiting peer
-    // fails fast instead of waiting out its full peer-timeout. Gated to
+    // fails fast instead of waiting out its full inactivity timeout. Gated to
     // fire only on a genuine fault: not on a signal interrupt (Ctrl-C
     // stays clean), and not on a PeerAbortError (the waiting party must
     // not echo a marker back). The await resolves the connection's abort

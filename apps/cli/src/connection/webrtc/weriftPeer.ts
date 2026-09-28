@@ -4,6 +4,7 @@ import {
   authorityMovingSignalingField,
   chainDetailCauses,
   ConnectionError,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   InternalConsistencyError,
   UsageError,
   deriveRendezvousPeerId,
@@ -128,7 +129,7 @@ export const RENEWAL_OVERLAP_MS = 15_000;
  * operator's exchange may start well before the other's, and this is the same
  * ceiling the web app gives its own rendezvous wait.
  */
-export const DEFAULT_RENDEZVOUS_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_RENDEZVOUS_TIMEOUT_MS = DEFAULT_WEBRTC_PEER_TIMEOUT_MS;
 
 /**
  * Ceiling on the data channel opening once both descriptions are exchanged.

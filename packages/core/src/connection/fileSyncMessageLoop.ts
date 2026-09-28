@@ -232,7 +232,7 @@ export function isRecognizedLoopFile(
 
 // Consecutive ENOENT from get() after list() reported the file indicates a
 // filesystem state unlikely to self-resolve: emit an error rather than
-// looping silently until the peer timeout fires.
+// looping silently until the inactivity timeout fires.
 //
 // 3 is structural, not a tuning value, so it is not a config option: one
 // ENOENT is the expected TOCTOU race between list() and get() when the
@@ -930,7 +930,7 @@ export class FileSyncMessageLoop {
           // ProtocolRefusalError for a partner on another wire format;
           // either is terminal, mode-agnostic:
           // in retain mode the never-deleted file would otherwise be re-read
-          // every poll cycle until the peer timeout.
+          // every poll cycle until the inactivity timeout.
           //
           // The returned `data` is ready for emit: the parsed object for a
           // JSON control message, or the raw frame bytes for a binary frame.

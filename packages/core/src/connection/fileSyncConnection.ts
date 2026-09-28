@@ -912,7 +912,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       // its own per-attempt deadline (ssh2 readyTimeout; LocalFSClient's
       // withTimeout), so it passes through unwrapped.
       connect: (options) => raw.connect(options),
-      // The one operation bounded by something other than a fresh peer budget:
+      // The one operation bounded by something other than a fresh inactivity budget:
       // teardown is not a peer round trip the exchange depends on, so it gets the
       // short CONNECTION_CLOSE_TIMEOUT_MS (min'd with inactivityTimeoutMs)
       // instead of riding the full peer-inactivity budget.
@@ -1408,7 +1408,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         // per-call transport budget: boundTransport arms a fresh
         // inactivityTimeoutMs on every list() -- potentially far LARGER than
         // this short drain deadline -- so a list issued late in the drain could
-        // otherwise run a full peer budget PAST `deadline`, blocking teardown
+        // otherwise run a full inactivity budget PAST `deadline`, blocking teardown
         // well beyond it. Racing it against the remaining window keeps total
         // teardown within the drain deadline (the documented "drain times out"
         // contract). This is teardown-specific and does not contradict the

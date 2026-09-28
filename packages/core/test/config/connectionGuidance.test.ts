@@ -7,6 +7,7 @@ import { ZodError } from "zod";
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
 } from "../../src/config/connection";
 import {
   CONNECTION_BLOCK_DOC_URL,
@@ -109,7 +110,11 @@ test("a webrtc block shows only the two peer waits, the options it reads", () =>
   expect(raw).not.toContain("poll_interval_ms");
   expect(raw).not.toContain("server_connect_timeout_ms");
   expect(raw).not.toContain("max_reconnect_attempts");
-  expect(raw).toContain(`#   peer_timeout_ms: ${DEFAULT_PEER_TIMEOUT_MS}`);
+  // The webrtc transport's own arrival default, not the file-sync hour.
+  expect(raw).toContain(
+    `#   peer_timeout_ms: ${DEFAULT_WEBRTC_PEER_TIMEOUT_MS}`,
+  );
+  expect(raw).not.toContain(`peer_timeout_ms: ${DEFAULT_PEER_TIMEOUT_MS}`);
   expect(raw).toContain(
     `#   inactivity_timeout_ms: ${DEFAULT_PEER_INACTIVITY_TIMEOUT_MS}`,
   );

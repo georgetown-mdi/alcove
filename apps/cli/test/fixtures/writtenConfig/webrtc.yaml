@@ -11,7 +11,7 @@ connection:
   # Connection tuning, all optional; the defaults are shown below. Uncomment
   # and edit to change one.
   # options:
-  #   peer_timeout_ms: 3600000
+  #   peer_timeout_ms: 600000
   #   inactivity_timeout_ms: 3600000
 linkage_terms:
   version: 1.0.0

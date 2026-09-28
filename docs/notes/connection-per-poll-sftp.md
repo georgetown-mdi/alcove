@@ -477,14 +477,14 @@ authenticated abort marker. The marker write is already recovery-covered: `close
 awaits it before the adapter's terminal `end()`, so it is issued while the session
 is still recovery-eligible. The drain is not safe by default: it races a directory
 listing against a bounded window (the terminal-frame-drain timeout, or the smaller
-remaining peer budget), and that window encloses the transport op that would trigger
+`inactivity_timeout_ms`), and that window encloses the transport op that would trigger
 a re-dial -- so a re-dial charged against it can time the drain out and drop the
 terminal frame to the cleanup fallback. The mode must therefore ensure a connection
 is established *before* the drain deadline starts, so the handshake cost is not
 billed to the drain budget; and the boundary release must be non-terminal so the
 sticky `closing` latch does not disable the recovery the marker write leans on.
 Getting this wrong silently regresses the fast-fail abort guarantee -- the waiting
-peer would ride the full peer timeout instead of failing fast on the marker. This
+peer would ride the full inactivity timeout instead of failing fast on the marker. This
 is code, and it belongs in the implementation, not in verification.
 
 **Retain-mode whole-directory bookkeeping -- test-hardening.** Responsible-file

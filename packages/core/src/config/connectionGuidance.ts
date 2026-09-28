@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
+  DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
 } from "./connection.js";
 import { commentBlock, commentKey } from "./yamlComments.js";
 
@@ -63,15 +64,16 @@ const POLL_INTERVAL_KEY = "poll_interval_ms";
  * on webrtc would get no effect and no error.
  */
 function tuningDefaults(channel: unknown): Array<[string, number]> {
-  const peerWaits: Array<[string, number]> = [
-    ["peer_timeout_ms", DEFAULT_PEER_TIMEOUT_MS],
-    ["inactivity_timeout_ms", DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
-  ];
-  if (channel === "webrtc") return peerWaits;
+  if (channel === "webrtc")
+    return [
+      ["peer_timeout_ms", DEFAULT_WEBRTC_PEER_TIMEOUT_MS],
+      ["inactivity_timeout_ms", DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
+    ];
   return [
     [POLL_INTERVAL_KEY, DEFAULT_POLLING_FREQUENCY_MS],
     ["server_connect_timeout_ms", DEFAULT_SERVER_CONNECT_TIMEOUT_MS],
-    ...peerWaits,
+    ["peer_timeout_ms", DEFAULT_PEER_TIMEOUT_MS],
+    ["inactivity_timeout_ms", DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
     ["max_reconnect_attempts", DEFAULT_MAX_RECONNECT_ATTEMPTS],
   ];
 }

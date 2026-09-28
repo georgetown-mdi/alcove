@@ -1074,7 +1074,7 @@ The narrowing applies to `algorithms.kex` set here as well -- offering an algori
 - If **none** survives, the connection is refused with an error rather than falling back to the defaults. List at least one algorithm outside the unavailable set, or remove the setting and let Alcove offer everything else.
 - An **empty** list is not an empty offer: SSH reads it as "algorithms unspecified", so Alcove warns that the setting selects nothing and offers the defaults minus the unavailable algorithms, exactly as if you had left it out.
 
-When a server accepts only algorithms this host cannot perform -- a server restricted to `curve25519-sha256`, reached from a host without X25519 -- no configuration can bridge it. The connection fails with an error naming the missing primitive, so the remedy (a key exchange enabled server-side, or a different host) is clear rather than reading as a server misconfiguration. It fails at the first attempt: nothing about the outcome can change between attempts, so [`max_reconnect_attempts`](#connectionoptions) is not spent re-dialing it. Under [`connection_per_poll`](#sftp-only-options) the same holds for the session each poll cycle opens: the exchange ends at that cycle with the same error, rather than skipping cycles until [`peer_timeout_ms`](#connectionoptions) ends the run reporting partner silence.
+When a server accepts only algorithms this host cannot perform -- a server restricted to `curve25519-sha256`, reached from a host without X25519 -- no configuration can bridge it. The connection fails with an error naming the missing primitive, so the remedy (a key exchange enabled server-side, or a different host) is clear rather than reading as a server misconfiguration. It fails at the first attempt: nothing about the outcome can change between attempts, so [`max_reconnect_attempts`](#connectionoptions) is not spent re-dialing it. Under [`connection_per_poll`](#sftp-only-options) the same holds for the session each poll cycle opens: the exchange ends at that cycle with the same error, rather than skipping cycles until [`inactivity_timeout_ms`](#connectionoptions) ends the run reporting partner silence.
 
 ---
 
@@ -1603,7 +1603,7 @@ The cells:
 | `connection.ice_provision` | refused | not applicable | refused |
 | `connection.proxy` | not applicable | refused | not applicable |
 | `connection.options.peer_timeout_ms` | authored | authored | refused |
-| `connection.options.inactivity_timeout_ms` | carried | authored | refused |
+| `connection.options.inactivity_timeout_ms` | authored | authored | refused |
 | `connection.options.server_connect_timeout_ms` | authored | authored | refused |
 | `connection.options.max_reconnect_attempts` | authored | authored | refused |
 | `connection.options.poll_interval_ms` | authored | authored | not applicable |

@@ -713,6 +713,12 @@ interface SharedOptions {
 export const DEFAULT_SERVER_CONNECT_TIMEOUT_MS = 30000;
 
 /**
+ * The `webrtc` transport's arrival wait when
+ * {@link SharedOptions.peerTimeoutMs} is unset.
+ */
+export const DEFAULT_WEBRTC_PEER_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
  * Default number of reconnect attempts after a transient connection failure when
  * the connection options do not set `maxReconnectAttempts`. Exported for the same
  * reason as {@link DEFAULT_SERVER_CONNECT_TIMEOUT_MS}; bounded above by
