@@ -12,6 +12,7 @@ import type { ExchangeSpec } from "@alcove/core";
 import { DEFAULT_CONFIG_PATH, saveConfig } from "../config";
 import { detectFileConflicts, FileExistsError } from "../fileUtils";
 import { DEFAULT_KEY_PATH, saveKeyFile, type KeyFile } from "../keyFile";
+import { exitCodeForError } from "../util/exit";
 
 /**
  * Target paths for {@link provisionConfigAndKey}. Each defaults to the path the
@@ -236,4 +237,41 @@ export function provisionConfigAndKey(
     throw err;
   }
   return resolved;
+}
+
+/**
+ * The offline command a {@link provisionOfflineCommandFiles} failure names:
+ * what the files were being written for, and the step to repeat once the path
+ * is fixed.
+ */
+export interface OfflineProvisioningCommand {
+  /** The object of the write, e.g. `"this acceptance"`. */
+  writingFor: string;
+  /** The step to repeat, e.g. `"accept the invitation again"`. */
+  rerun: string;
+}
+
+/**
+ * {@link provisionConfigAndKey} for an offline invite or acceptance, reporting
+ * a write this machine's filesystem refused -- a permission or I/O fault -- as
+ * a {@link UsageError} (exit 64) rather than the unavailable (69) the command
+ * boundary gives an error it does not classify. An error the boundary does
+ * classify keeps its own code.
+ */
+export function provisionOfflineCommandFiles(
+  command: OfflineProvisioningCommand,
+  ...args: Parameters<typeof provisionConfigAndKey>
+): ReturnType<typeof provisionConfigAndKey> {
+  try {
+    return provisionConfigAndKey(...args);
+  } catch (err) {
+    // Every write here is local, so nothing that fails it is a transport.
+    if (exitCodeForError(err) !== 69) throw err;
+    throw new UsageError(
+      `could not write the configuration and key file for ${command.writingFor}: ` +
+        (err instanceof Error ? err.message : String(err)) +
+        ". Fix the permissions or the fault on that path, or name another " +
+        `path with --config-file or --key-file, then ${command.rerun}.`,
+    );
+  }
 }

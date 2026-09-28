@@ -57,7 +57,11 @@ import {
   COVER_REQUIRED_FIELD_TYPES,
   type LinkagePreflightMessaging,
 } from "./linkagePreflight";
-import { assertNoProvisionConflicts, provisionConfigAndKey } from "./provision";
+import {
+  assertNoProvisionConflicts,
+  provisionOfflineCommandFiles,
+  type OfflineProvisioningCommand,
+} from "./provision";
 import {
   inviterConnectionFromURL,
   isWebAppAddress,
@@ -1045,6 +1049,11 @@ export async function validateInvite(params: {
   return { mode: "offline", dataSpec, invitation, expires, sharedSecret };
 }
 
+const INVITE_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
+  writingFor: "this invitation",
+  rerun: "generate the invitation again",
+};
+
 // --- Handler -----------------------------------------------------------------
 
 export async function handler(argv: Arguments): Promise<void> {
@@ -1183,7 +1192,8 @@ export async function handler(argv: Arguments): Promise<void> {
         // the records below. Under reuseExistingConfig the spec is ignored and
         // the operator-authored config content is left untouched, so the
         // placeholder spec here is never written.
-        const { keyPath } = provisionConfigAndKey(
+        const { keyPath } = provisionOfflineCommandFiles(
+          INVITE_PROVISIONING_COMMAND,
           specWithPlaceholderConnection({ linkageTerms: ready.linkageTerms }),
           { sharedSecret: ready.sharedSecret, expires: ready.expires },
           { configPath: ready.configPath, keyPath: options.keyFile },
@@ -1230,7 +1240,8 @@ export async function handler(argv: Arguments): Promise<void> {
       }
 
       const spec = specWithPlaceholderConnection(ready.dataSpec);
-      const { configPath, keyPath } = provisionConfigAndKey(
+      const { configPath, keyPath } = provisionOfflineCommandFiles(
+        INVITE_PROVISIONING_COMMAND,
         spec,
         { sharedSecret: ready.sharedSecret, expires: ready.expires },
         { configPath: options.configFile, keyPath: options.keyFile },

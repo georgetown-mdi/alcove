@@ -59,7 +59,7 @@ import {
   renderDialedBroker,
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
-import { exitCodeForError, runOrExit } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import { configureLogging } from "../util/logging";
 import { promptConfirm } from "../util/prompt";
@@ -70,7 +70,11 @@ import {
   warnColumnsTheInvitationWillNotAccept,
   type LinkagePreflightMessaging,
 } from "./linkagePreflight";
-import { assertNoProvisionConflicts, provisionConfigAndKey } from "./provision";
+import {
+  assertNoProvisionConflicts,
+  provisionOfflineCommandFiles,
+  type OfflineProvisioningCommand,
+} from "./provision";
 import {
   connectionFromURL,
   type RunnableConnectionConfig,
@@ -1053,30 +1057,10 @@ const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
   termsStanding: "agreed",
 };
 
-/**
- * {@link provisionConfigAndKey} for an offline acceptance, reporting a write
- * this machine's filesystem refused -- a permission or I/O fault -- as a
- * {@link UsageError} (exit 64) rather than the unavailable (69) the command
- * boundary gives an error it does not classify. An error the boundary does
- * classify keeps its own code.
- */
-function provisionAcceptanceFiles(
-  ...args: Parameters<typeof provisionConfigAndKey>
-): ReturnType<typeof provisionConfigAndKey> {
-  try {
-    return provisionConfigAndKey(...args);
-  } catch (err) {
-    // Every write here is local, so nothing that fails it is a transport.
-    if (exitCodeForError(err) !== 69) throw err;
-    throw new UsageError(
-      "could not write the configuration and key file for this acceptance: " +
-        (err instanceof Error ? err.message : String(err)) +
-        ". Fix the permissions or the fault on that path, or name another " +
-        "path with --config-file or --key-file, then accept the invitation " +
-        "again.",
-    );
-  }
-}
+const ACCEPT_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
+  writingFor: "this acceptance",
+  rerun: "accept the invitation again",
+};
 
 // --- Handler -----------------------------------------------------------------
 
@@ -1358,7 +1342,8 @@ export async function handler(argv: Arguments): Promise<void> {
       // When reusing a pre-existing config, provisionConfigAndKey ignores `spec`
       // and writes only the key file, after the records below, leaving the rest
       // of the user's config untouched.
-      const { configPath, keyPath } = provisionAcceptanceFiles(
+      const { configPath, keyPath } = provisionOfflineCommandFiles(
+        ACCEPT_PROVISIONING_COMMAND,
         spec,
         // The acceptor's key file holds the invitation token without an expiry; the
         // inviter's copy has the expiry. The token rotates on first exchange.

@@ -4000,13 +4000,15 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     try {
       fs.chmodSync(confDir, 0o555);
       try {
-        await expect(invite()).rejects.toThrow(/exit:/);
+        await expect(invite()).rejects.toThrow("exit:64");
       } finally {
         fs.chmodSync(confDir, 0o755);
       }
       expect(fs.existsSync(keyFile)).toBe(false);
       expect(printed).not.toHaveBeenCalled();
+      exitSpy.mockClear();
       await invite();
+      expect(exitSpy).not.toHaveBeenCalled();
       expect(fs.existsSync(keyFile)).toBe(true);
       expect(printed).toHaveBeenCalledTimes(1);
       expect(fs.readFileSync(configFile, "utf8")).not.toContain(
@@ -4017,6 +4019,60 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       stdio.restore();
       exitSpy.mockRestore();
       fs.rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+// --- offline files the filesystem refuses ------------------------------------
+
+test
+  .skipIf(process.platform === "win32" || process.getuid?.() === 0)
+  .each(["config", "key"] as const)(
+  "handler: an offline invite whose %s file the filesystem refuses exits 64",
+  async (refused) => {
+    // A permission fault on this machine is a local correction, not a
+    // transport failure: the command boundary reports it as a usage error
+    // naming the path, and no invitation is printed.
+    const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-refused-"));
+    const input = writeCsv(dir, "first_name,last_name,dob,ssn");
+    const readOnlyDir = path.join(dir, "read-only");
+    fs.mkdirSync(readOnlyDir);
+    fs.chmodSync(readOnlyDir, 0o555);
+    const target = {
+      config: path.join(refused === "config" ? readOnlyDir : dir, "a.yaml"),
+      key: path.join(refused === "key" ? readOnlyDir : dir, "a.key"),
+    };
+    const exit = captureProcessExit();
+    const { stderrWrites, restore } = captureStdio();
+    const printed = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await expect(
+        inviteHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency A",
+          args: [input],
+          "config-file": target.config,
+          "key-file": target.key,
+          "log-level": "error",
+          record: false,
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
+      restore();
+      expect(exit).toHaveBeenCalledExactlyOnceWith(64);
+      expect(stderrWrites.join("")).toContain(
+        "could not write the configuration and key file for this invitation",
+      );
+      expect(stderrWrites.join("")).toContain("EACCES");
+      expect(printed).not.toHaveBeenCalled();
+      expect(fs.existsSync(target.config)).toBe(false);
+      expect(fs.existsSync(target.key)).toBe(false);
+    } finally {
+      restore();
+      printed.mockRestore();
+      exit.mockRestore();
+      fs.chmodSync(readOnlyDir, 0o755);
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   },
 );
