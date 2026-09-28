@@ -40,6 +40,7 @@ import {
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 
 import {
+  HandlePermissionError,
   MANAGED_INPUT_FILE_NAME,
   ManagedInputFileMissingError,
 } from "@psi/managed/managedInputHandle";
@@ -303,17 +304,33 @@ const INPUT_FAILURE: ManagedRunFailureAlert = {
   recovery: "retry",
 };
 
+/** The input state where this site was not allowed to read the working
+ * folder. Choosing the folder again comes first because a permission that
+ * already reads as denied shows no prompt on a re-run. */
+const INPUT_PERMISSION_FAILURE: ManagedRunFailureAlert = {
+  ...INPUT_FAILURE,
+  message:
+    "The run stopped before connecting because this site was not allowed to " +
+    "read this exchange's folder, so the input file was not read and nothing " +
+    "left this device. Choose the folder again on this exchange's page, or " +
+    "run this exchange again and allow access if your browser asks.",
+};
+
 /** Which input state a launch error lands on: the one naming the file the run
  * looked for and the folder it looked in, where the working folder held no file
- * under the conventioned name, and the fixed input copy otherwise. Both names
- * are the operator's own -- the one fixed name and the folder they chose -- so
- * naming them echoes nothing a partner wrote. */
+ * under the conventioned name; the permission state, where the folder's
+ * permission was refused; and the fixed input copy otherwise. Both names are the
+ * operator's own -- the one fixed name and the folder they chose -- so naming
+ * them echoes nothing a partner wrote. */
 function inputFailure(error: unknown): ManagedRunFailureAlert {
   if (
     !(error instanceof ManagedInputError) ||
-    error.rejection.reason !== "acquire" ||
-    !(error.rejection.cause instanceof ManagedInputFileMissingError)
+    error.rejection.reason !== "acquire"
   )
+    return INPUT_FAILURE;
+  if (error.rejection.cause instanceof HandlePermissionError)
+    return INPUT_PERMISSION_FAILURE;
+  if (!(error.rejection.cause instanceof ManagedInputFileMissingError))
     return INPUT_FAILURE;
   const { fileName, folderName } = error.rejection.cause;
   return {

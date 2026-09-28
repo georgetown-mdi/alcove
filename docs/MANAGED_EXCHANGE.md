@@ -531,8 +531,19 @@ are kept; the run's disclosure record is already in [the accounting of
 disclosures](#the-accounting-of-disclosures), and a count-only run or one whose
 agreed terms give this party no output has no file to keep.
 
-The attended re-run is unchanged: the operator is present, and the completion
-screen hands the results over as it always has.
+An attended re-run writes into the working folder too: the same file under the
+same name, beside the download its completion screen offers as it always has.
+Where the browser asks again for access to the folder, the re-run asks, before
+reading its input, to view and edit the folder, so that one answer covers the
+write as well; the write itself never asks. Where the operator declines editing,
+the re-run asks to view the folder alone, as a read-only run always has, and
+runs with the download only; where they decline that too, or the browser will
+not show that second ask, the run stops before connecting, having read nothing,
+and choosing the folder again on the exchange's page recovers it. Where the folder does not take the file -- the
+browser has not allowed the site to write there, or the write fails -- the
+completion screen says so beside the download, and nothing is kept in the
+browser: the operator is there to take the download. An exchange holding no folder grant writes nothing and offers the
+download alone.
 
 ### The between-visit notification
 
@@ -667,7 +678,8 @@ The **attended re-run** -- the degradations' path, available on any platform --
 is the same run with the operator present: open the app (the exchange shows
 quiet and green: last run succeeded, backed up as of its date), pick it, run;
 confirm the input file (one action reading from the working folder, or choosing
-the file where the browser cannot grant a folder); the completion surface offers the
+the file where the browser cannot grant a folder); the results are written into
+the working folder where one is granted, and the completion surface offers the
 results and one more action, "download updated backup" -- the export, refreshed
 because the secret just rotated, offered as the natural final step rather than
 a later nagging prompt. On that path, with a fresh backup taken, **no standing
@@ -695,8 +707,8 @@ nor attack](#a-missed-window-is-neither-desync-nor-attack)).
 
 Where the File System Access API exists (Chromium), the operator grants each
 recurring exchange **one folder**, and every run reads its input from the file
-in it named **`input.csv`**. A run with nobody present writes its results into
-the same folder, beside the input (see [Where a scheduled run's results
+in it named **`input.csv`**. Every run writes its results into the same
+folder, beside the input (see [Where a scheduled run's results
 go](#where-a-scheduled-runs-results-go)). That is the layout the CLI works in
 too: the command the exchange's command-line export emits reads `input.csv`
 from the folder it runs in and writes its results there, so an exchange taken

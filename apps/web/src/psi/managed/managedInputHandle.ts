@@ -167,17 +167,21 @@ const browserHandlePermission: HandlePermissionQuery = {
 
 /** Raised when a handle is held but its permission cannot be secured for a run:
  * the unattended path found a non-`"granted"` state (it must not prompt), or an
- * attended request was denied. On the input side it is set as the `cause` of the
- * benign {@link ManagedInputError} `"acquire"` rejection, so a gone permission
- * records the same benign `"input"` failure as a missing file, never desync/attack
- * framing. */
+ * attended request was denied or rejected (the rejection kept as `cause`). On
+ * the input side it is set as the `cause` of the benign {@link ManagedInputError}
+ * `"acquire"` rejection, so a gone permission records the same benign `"input"`
+ * failure as a missing file, never desync/attack framing. */
 export class HandlePermissionError extends Error {
   /** The permission state that blocked the access. */
   readonly state: HandlePermissionState;
   /** The mode the blocked access needed. */
   readonly mode: HandlePermissionMode;
-  constructor(state: HandlePermissionState, mode: HandlePermissionMode) {
-    super(`managed exchange handle ${mode} permission is ${state}`);
+  constructor(
+    state: HandlePermissionState,
+    mode: HandlePermissionMode,
+    options?: ErrorOptions,
+  ) {
+    super(`managed exchange handle ${mode} permission is ${state}`, options);
     this.name = "HandlePermissionError";
     this.state = state;
     this.mode = mode;
@@ -194,7 +198,9 @@ export type ManagedRunAttendance = "unattended" | "attended";
  * throw {@link HandlePermissionError}. The unattended path queries only: a
  * non-`"granted"` state throws (the unattended path may only proceed on an
  * existing grant; it must not prompt). The attended path may additionally
- * request where the state is `"prompt"`.
+ * request where the state is `"prompt"`; a request the browser rejects (a
+ * `SecurityError` where it will not show the prompt) throws
+ * {@link HandlePermissionError} too, so it is reported as a permission failure.
  */
 export async function ensureHandlePermission(
   handle: FileSystemHandle,
@@ -207,9 +213,44 @@ export async function ensureHandlePermission(
   if (attendance === "unattended")
     throw new HandlePermissionError(current, mode);
   if (current === "denied") throw new HandlePermissionError("denied", mode);
-  const afterPrompt = await permission.request(handle, mode);
+  let afterPrompt: HandlePermissionState;
+  try {
+    afterPrompt = await permission.request(handle, mode);
+  } catch (rejection) {
+    throw new HandlePermissionError(current, mode, { cause: rejection });
+  }
   if (afterPrompt !== "granted")
     throw new HandlePermissionError(afterPrompt, mode);
+}
+
+/**
+ * Secure the permission a run's input read needs on the working folder. An
+ * attended run asks in `readwrite` first, so one answer also covers the results
+ * write after the run, which only queries. Where edit is refused it asks in
+ * `read`, so the input is still read and the write reports not allowed; a
+ * refusal of both names `read`. An unattended run queries `read` and never
+ * prompts.
+ */
+async function secureInputReadPermission(
+  directory: FileSystemDirectoryHandle,
+  attendance: ManagedRunAttendance,
+  permission: HandlePermissionQuery,
+): Promise<void> {
+  if (attendance === "unattended") {
+    await ensureHandlePermission(directory, "unattended", "read", permission);
+    return;
+  }
+  try {
+    await ensureHandlePermission(
+      directory,
+      "attended",
+      "readwrite",
+      permission,
+    );
+  } catch (refused) {
+    if (!(refused instanceof HandlePermissionError)) throw refused;
+    await ensureHandlePermission(directory, "attended", "read", permission);
+  }
 }
 
 /** A read input for one run: the `File` read at run start
@@ -279,10 +320,9 @@ export async function acquireManagedInput(
   let file: File;
   try {
     if (source.kind === "folder") {
-      await ensureHandlePermission(
+      await secureInputReadPermission(
         source.directory,
         source.attendance,
-        "read",
         permission,
       );
       file = await (await inputFileHandleIn(source.directory)).getFile();

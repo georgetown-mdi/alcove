@@ -59,8 +59,8 @@ import {
 import { runResultsFileName } from "../parkedResults";
 
 import {
-  storedWorkingDirectoryUsable,
-  writeResultsToWorkingDirectory,
+  unallocatedResultsMessage,
+  writeRunResultsToWorkingFolder,
 } from "./managedWorkingDirectory";
 
 import {
@@ -415,9 +415,10 @@ async function deliverUnattendedResults(
   const csv = created.get(outputs.resultsUrl);
   if (csv === undefined) {
     log.error(
-      `scheduled managed exchange ${id}: the run's results file was not built ` +
-        `through this runtime's own allocation, so nothing was kept for the ` +
-        `next visit`,
+      unallocatedResultsMessage(
+        `scheduled managed exchange ${id}`,
+        "nothing was kept for the next visit",
+      ),
     );
     return;
   }
@@ -430,7 +431,6 @@ async function deliverUnattendedResults(
   };
   const fallback = await writeUnattendedResultsToFolder(
     record,
-    fileName,
     csv,
     runAt,
     details,
@@ -546,20 +546,13 @@ async function recordResultsTooLargeToPark(
  */
 async function writeUnattendedResultsToFolder(
   record: ManagedExchangeRecord,
-  fileName: string,
   csv: Blob,
   runAt: string,
   details: RunEntryDetails,
 ): Promise<ParkedResultsFallback | "none" | undefined> {
-  const directory = record.workingDirectoryHandle;
-  if (directory === undefined || !storedWorkingDirectoryUsable(directory))
-    return "none";
   const id = record.id;
-  const delivery = await writeResultsToWorkingDirectory(
-    directory,
-    fileName,
-    csv,
-  );
+  const delivery = await writeRunResultsToWorkingFolder(record, runAt, csv);
+  if (delivery.kind === "no-folder") return "none";
   if (delivery.kind === "ungranted") {
     log.warn(
       `scheduled managed exchange ${id}: the working folder reports ` +
