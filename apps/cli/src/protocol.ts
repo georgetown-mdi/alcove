@@ -1602,6 +1602,38 @@ interface RunLocalInputs {
 }
 
 /**
+ * Emit {@link SIGNING_WITHOUT_RECORD_WARNING} -- on both stderr and the
+ * machine-interface stream -- when a signed run has no record output: a
+ * receipt no verifier can ever pair to its run, and nothing after the
+ * exchange can repair it. Raised before any credential, terms, or data are
+ * sent, while both choices are still the operator's to change, and before
+ * every other local check, so a run refused by one of them still shows the
+ * warning ahead of its terminal error.
+ *
+ * `preflightRun` and `prepareTransport` each call this ahead of their own
+ * {@link checkRunLocalInputs} pass. The caller threads its own return value
+ * back in as `alreadyWarned` on the later call, so the same run emits it at
+ * most once regardless of which of the two calls actually raises the
+ * refusal.
+ */
+function warnSigningWithoutRecord(params: {
+  signing: SigningPersist | null;
+  recordOutput: RecordOutput | undefined;
+  alreadyWarned: boolean;
+  log: ReturnType<typeof getLogger>;
+  emit: (fn: (e: EventStreamEmitter) => void) => void;
+}): boolean {
+  const { signing, recordOutput, alreadyWarned, log, emit } = params;
+  if (alreadyWarned || signing === null || recordOutput !== undefined)
+    return alreadyWarned;
+  log.warn(SIGNING_WITHOUT_RECORD_WARNING);
+  emit((e) =>
+    e.warning("signingWithoutRecord", SIGNING_WITHOUT_RECORD_WARNING),
+  );
+  return true;
+}
+
+/**
  * The run's refusals decided from local inputs alone: the shared secret's
  * readiness and its key-file path, the first round's size against one message
  * on the channel, and on webrtc the rendezvous resolution. None of them
@@ -1680,6 +1712,19 @@ function emitRunMetrics(
   );
 }
 
+/** What {@link preflightRun} resolves with. */
+export interface PreflightRunResult {
+  /** The opened machine-interface stream; `undefined` when not requested. */
+  eventStream: EventStreamEmitter | undefined;
+  /**
+   * Whether this preflight already emitted
+   * {@link SIGNING_WITHOUT_RECORD_WARNING}. The caller passes it back to
+   * `runProtocol` (`signingWithoutRecordWarned`) so `prepareTransport`'s own
+   * pass does not repeat it.
+   */
+  signingWithoutRecordWarned: boolean;
+}
+
 /**
  * Open the run's machine-interface stream and run {@link runProtocol}'s
  * refusals decided from local inputs, for a command whose own first network
@@ -1688,19 +1733,46 @@ function emitRunMetrics(
  * and is rethrown. Resolves with the open stream, which the caller passes to
  * `runProtocol` as `fileSyncRuntime.eventStream`; `runProtocol` runs the same
  * checks again, and a first round already counted is not counted twice.
+ *
+ * `signing` and `recordOutput` are the same run's signed-receipt inputs, so a
+ * signed run this preflight refuses still shows
+ * {@link SIGNING_WITHOUT_RECORD_WARNING} ahead of the terminal error, as a
+ * run this preflight passes does ahead of `runProtocol`'s own pass. Omit both
+ * on an unsigned run.
  */
 export async function preflightRun(options: {
   connection: ProtocolConnectionConfig;
   auth: AuthPersist | null;
   prepared: PreparedExchange;
+  signing?: SigningPersist | null;
+  recordOutput?: RecordOutput | undefined;
   verbosity: number;
   loggerName: string;
   logFile?: string;
   eventStream: boolean | undefined;
-}): Promise<EventStreamEmitter | undefined> {
-  const { connection, auth, prepared, verbosity, loggerName, logFile } =
-    options;
+}): Promise<PreflightRunResult> {
+  const {
+    connection,
+    auth,
+    prepared,
+    signing = null,
+    recordOutput,
+    verbosity,
+    loggerName,
+    logFile,
+  } = options;
   const eventStream = openEventStream(options.eventStream);
+  const emit = (fn: (e: EventStreamEmitter) => void): void => {
+    if (eventStream !== undefined) fn(eventStream);
+  };
+  const log = getLogger(loggerName);
+  const signingWithoutRecordWarned = warnSigningWithoutRecord({
+    signing,
+    recordOutput,
+    alreadyWarned: false,
+    log,
+    emit,
+  });
   try {
     await checkRunLocalInputs({
       connection,
@@ -1708,14 +1780,14 @@ export async function preflightRun(options: {
       auth,
       verbosity,
       logFile,
-      log: getLogger(loggerName),
+      log,
     });
   } catch (err) {
     emitRunMetrics(eventStream, prepared.rowCount, undefined);
     eventStream?.error(err, "prepare");
     throw err;
   }
-  return eventStream;
+  return { eventStream, signingWithoutRecordWarned };
 }
 
 /**
@@ -1750,6 +1822,7 @@ async function prepareTransport(
     onAuthenticated: (() => void | Promise<void>) | undefined;
     signing: SigningPersist | null;
     recordOutput: RecordOutput | undefined;
+    signingWithoutRecordWarned: boolean;
     verbosity: number;
     logFile: string | undefined;
     fileSyncRuntime: FileSyncRuntimeOptions;
@@ -1765,6 +1838,7 @@ async function prepareTransport(
     onAuthenticated,
     signing,
     recordOutput,
+    signingWithoutRecordWarned,
     verbosity,
     logFile,
     fileSyncRuntime,
@@ -1818,20 +1892,18 @@ async function prepareTransport(
         "unauthenticated (zero-setup) exchange has no session key to bind the " +
         "signed receipt to",
     );
-  // Signing with records off produces a receipt no verifier can ever pair
-  // to its run, and nothing after the exchange can repair it. Raise it here
-  // -- before any credential, terms, or data are sent, while both choices
-  // are still the operator's to change -- on both the machine-interface
-  // warning event and stderr, since an unattended supervisor that discards
-  // stderr on success would otherwise collect unpairable receipts run
-  // after run. First-party prose with no interpolated value, so it takes
-  // its one escape from the emitter.
-  if (signing !== null && recordOutput === undefined) {
-    log.warn(SIGNING_WITHOUT_RECORD_WARNING);
-    emit((e) =>
-      e.warning("signingWithoutRecord", SIGNING_WITHOUT_RECORD_WARNING),
-    );
-  }
+  // A caller that ran preflightRun already raised
+  // SIGNING_WITHOUT_RECORD_WARNING and passed that back as
+  // signingWithoutRecordWarned; a caller that did not run preflightRun (or
+  // whose preflight had no signing/recordOutput to check) has it raised here,
+  // still ahead of every check below.
+  warnSigningWithoutRecord({
+    signing,
+    recordOutput,
+    alreadyWarned: signingWithoutRecordWarned,
+    log,
+    emit,
+  });
   const checked = await checkRunLocalInputs({
     connection,
     prepared,
@@ -2253,6 +2325,14 @@ export interface RunProtocolOptions {
   fileSyncRuntime?: FileSyncRuntimeOptions;
   /** The signed-receipt inputs; omit or pass `null` to skip signing. */
   signing?: SigningPersist | null;
+  /**
+   * Whether a caller's own {@link preflightRun} call already emitted
+   * {@link SIGNING_WITHOUT_RECORD_WARNING} for this run
+   * ({@link PreflightRunResult.signingWithoutRecordWarned}), so
+   * `runProtocol`'s own pass does not repeat it. Omit when the caller did not
+   * run `preflightRun`.
+   */
+  signingWithoutRecordWarned?: boolean;
 }
 
 /**
@@ -2340,6 +2420,7 @@ export async function runProtocol(
     onAuthenticated,
     fileSyncRuntime = {},
     signing = null,
+    signingWithoutRecordWarned = false,
   } = options;
   const log = getLogger(loggerName);
 
@@ -2413,6 +2494,7 @@ export async function runProtocol(
       onAuthenticated,
       signing,
       recordOutput,
+      signingWithoutRecordWarned,
       verbosity,
       logFile,
       fileSyncRuntime,

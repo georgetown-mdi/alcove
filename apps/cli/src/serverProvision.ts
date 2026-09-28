@@ -1,6 +1,7 @@
 import {
   callProvisionEndpoint,
   provisionEndpointLabel,
+  provisionRequest,
   redactAndSanitizeForDisplay,
   serverProvisionOf,
 } from "@alcove/core";
@@ -18,6 +19,11 @@ export async function wakeProvisionedServer(
 ): Promise<void> {
   const provision = serverProvisionOf(connection);
   if (provision === undefined) return;
+  // Validated before the log line below, so a block callProvisionEndpoint
+  // would refuse (an invalid host, say) is never announced as a wake under
+  // way; callProvisionEndpoint's own call to this is redundant but cheap and
+  // pure, and keeps the request-building logic in one place.
+  provisionRequest(provision);
   log.info(
     `waking the server through ${redactAndSanitizeForDisplay(provisionEndpointLabel(provision))}`,
   );

@@ -1198,6 +1198,14 @@ export async function handler(argv: Arguments): Promise<void> {
       configPath: options.configFile,
     } as const;
 
+    // Resolved ahead of the preflight below so a signed run refused there
+    // still carries recordOutput into the same signed-receipt-without-record
+    // check runProtocol's own pass makes.
+    const recordOutput = resolveRecordOutput({
+      enabled: options.record,
+      recordFile: options.recordFile,
+    });
+
     // Every refusal above and here is decided from local inputs alone, so all
     // of them come before the wake call and the host-key probe, the run's
     // first network contact: an unpinned SFTP host on a non-interactive run,
@@ -1205,17 +1213,21 @@ export async function handler(argv: Arguments): Promise<void> {
     // the shared secret, the key-file path, the first round's size, and the
     // webrtc rendezvous), which runProtocol runs again.
     let openedEventStream: EventStreamEmitter | undefined;
+    let signingWithoutRecordWarned = false;
     try {
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
-      openedEventStream = await preflightRun({
-        connection,
-        auth: authentication,
-        prepared,
-        verbosity,
-        loggerName: "exchange",
-        logFile,
-        eventStream,
-      });
+      ({ eventStream: openedEventStream, signingWithoutRecordWarned } =
+        await preflightRun({
+          connection,
+          auth: authentication,
+          prepared,
+          signing,
+          recordOutput,
+          verbosity,
+          loggerName: "exchange",
+          logFile,
+          eventStream,
+        }));
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
     }
@@ -1239,11 +1251,6 @@ export async function handler(argv: Arguments): Promise<void> {
       exitWithError(log, err, exitCodeForError(err));
     }
 
-    const recordOutput = resolveRecordOutput({
-      enabled: options.record,
-      recordFile: options.recordFile,
-    });
-
     let exchangeError: unknown;
     try {
       await runProtocol({
@@ -1262,6 +1269,7 @@ export async function handler(argv: Arguments): Promise<void> {
           eventStream: openedEventStream,
         },
         signing,
+        signingWithoutRecordWarned,
       });
     } catch (err) {
       // Capture rather than exit here so the expiry advisory below can run on the

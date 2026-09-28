@@ -377,6 +377,7 @@ import type {
 } from "@alcove/core";
 import {
   runProtocol,
+  preflightRun,
   PEER_SILENCE_GUIDANCE,
   BOTH_SWEPT_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
@@ -3962,6 +3963,114 @@ test("the warned run still completes", { timeout: 20_000 }, async () => {
     mockState.warnings.filter((m) => m === SIGNING_WITHOUT_RECORD_WARNING),
   ).toHaveLength(2);
 });
+
+test("preflightRun on a signed --no-record run emits the warning ahead of its own refusal", async () => {
+  // preflightRun's own local checks (here, the pre-handshake expiry check)
+  // refuse the run before runProtocol -- and thus prepareTransport -- is ever
+  // reached, so the warning must come from preflightRun's own pass, not the
+  // pass runProtocol would otherwise have made.
+  mockFd3Open();
+  try {
+    await expect(
+      preflightRun({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: {
+          sharedSecret: TOKEN_A,
+          expires: "2000-01-01T00:00:00.000Z",
+          keyFilePath: path.join(tmpDir, "expired.key"),
+        },
+        prepared: minimalPrepared,
+        signing: signingPersistFixture(path.join(tmpDir, "receipt.json")),
+        recordOutput: undefined,
+        verbosity: -1,
+        loggerName: "test",
+        eventStream: true,
+      }),
+    ).rejects.toThrow(/expired/);
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+
+  expect(mockState.warnings).toContain(SIGNING_WITHOUT_RECORD_WARNING);
+  const lines = takeFd3Lines();
+  expect(lines.map((l) => l.type)).toEqual(["warning", "metrics", "error"]);
+  expect(lines[0].source).toBe("signingWithoutRecord");
+  expect(String(lines[2].message)).toContain("expired");
+});
+
+/**
+ * Run one party of a signed, no-record exchange through preflightRun and then
+ * runProtocol, exactly as a command handler does: the opened stream and the
+ * preflight's signingWithoutRecordWarned both thread into runProtocol so its
+ * own pass does not repeat the warning.
+ */
+async function runSigningPartyWithPreflight(
+  keyFilePath: string,
+  name: string,
+  receiptFile: string,
+): Promise<unknown> {
+  const connection = {
+    channel: "filedrop" as const,
+    path: dropDir,
+    options: TWO_PARTY_OPTIONS,
+  };
+  const auth = { sharedSecret: TOKEN_A, keyFilePath };
+  const signing = signingPersistFixture(receiptFile);
+  const { eventStream, signingWithoutRecordWarned } = await preflightRun({
+    connection,
+    auth,
+    prepared: minimalPrepared,
+    signing,
+    recordOutput: undefined,
+    verbosity: -1,
+    loggerName: name,
+    eventStream: undefined,
+  });
+  return runProtocol({
+    connection,
+    auth,
+    prepared: minimalPrepared,
+    output: undefined,
+    verbosity: -1,
+    loggerName: name,
+    recordOutput: undefined,
+    fileSyncRuntime: { eventStream },
+    signing,
+    signingWithoutRecordWarned,
+  });
+}
+
+test(
+  "a successful run emits the warning once, not once per preflightRun/runProtocol pass",
+  { timeout: 20_000 },
+  async () => {
+    const keyFileA = path.join(tmpDir, "a.key");
+    const keyFileB = path.join(tmpDir, "b.key");
+    saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+    saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+
+    const [resultA, resultB] = await Promise.allSettled([
+      runSigningPartyWithPreflight(
+        keyFileA,
+        "test-a",
+        path.join(tmpDir, "receipt-a.json"),
+      ),
+      runSigningPartyWithPreflight(
+        keyFileB,
+        "test-b",
+        path.join(tmpDir, "receipt-b.json"),
+      ),
+    ]);
+    expect(resultA.status).toBe("fulfilled");
+    expect(resultB.status).toBe("fulfilled");
+
+    // One per party -- not two, which a repeat from runProtocol's own pass
+    // over the same run would produce.
+    expect(
+      mockState.warnings.filter((m) => m === SIGNING_WITHOUT_RECORD_WARNING),
+    ).toHaveLength(2);
+  },
+);
 
 // --- Signal and error handler recovery paths ---------------------------------
 //
