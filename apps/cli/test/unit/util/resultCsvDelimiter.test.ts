@@ -55,6 +55,7 @@ test("a result written with a chosen delimiter reads back through the same one",
       metadata,
       partnerPayload,
       undefined,
+      [],
       delimiter,
     );
     const file = tempResultPath();
@@ -95,6 +96,7 @@ test("each field is quoted once against the chosen delimiter", async () => {
     metadata,
     { columns: ["note"], rowIndices: [0, 1], rows: [["x,y"], ["b"]] },
     undefined,
+    [],
     "|",
   );
   const file = tempResultPath();

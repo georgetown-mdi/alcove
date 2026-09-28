@@ -43,15 +43,15 @@ import type { Metadata } from "@alcove/core";
 
 // A right-to-left override (U+202E) and a zero-width joiner (U+200D): the two
 // classes that make a header read differently from its bytes. The name is
-// unrecognized, so it infers to the disclosed set while the linkage columns
-// beside it stay out of it.
+// unrecognized and marked to send, so it is in the disclosed set while the
+// linkage columns beside it stay out of it.
 const RLO = "\u202E";
 const bidiColumn = `notes${RLO}evil\u200D`;
 
 const app = createAppMount();
 
 // The linkage columns hold values their type infers from; anything else is a
-// placeholder, so an added column infers to the disclosed set.
+// placeholder, and {@link editorSendingUnrecognized} marks it to send.
 const SAMPLE_VALUES: Record<string, string> = {
   client_id: "1",
   first_name: "Ann",
@@ -90,11 +90,22 @@ function mountMetadata(metadata: Metadata, announcement: string) {
   );
 }
 
+/** The seed over `acquired` with each column that inference does not recognize
+ * (the seed lists it as ignored) marked to send through the step's own edit. */
+function editorSendingUnrecognized(acquired: AcquiredCsv) {
+  const seeded = editorFromCsv("Dana Okafor", acquired);
+  return seeded.draft.metadata
+    .filter((column) => column.role === "ignored")
+    .reduce(
+      (editor, column) =>
+        editorWithColumnDisclosure(editor, acquired, column.name, "payload")
+          .editor,
+      seeded,
+    );
+}
+
 function mountColumns(columns: Array<string>) {
-  mountMetadata(
-    editorFromCsv("Dana Okafor", csvOf(columns)).draft.metadata,
-    "",
-  );
+  mountMetadata(editorSendingUnrecognized(csvOf(columns)).draft.metadata, "");
 }
 
 function mountSection() {
@@ -363,7 +374,7 @@ describe("column-name isolation: what the wrapper does not contain", () => {
     ]);
     app.render(
       createElement(Ledger, {
-        rows: inviterLedgerRows(editorFromCsv("Dana Okafor", acquired)),
+        rows: inviterLedgerRows(editorSendingUnrecognized(acquired)),
       }),
     );
     await expect

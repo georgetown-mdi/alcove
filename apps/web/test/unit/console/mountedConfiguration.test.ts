@@ -53,6 +53,7 @@ import { outputForDirection } from "@psi/authoring/advancedInvite";
 import type { DisclosedExchangeDocument } from "@jobs/configLoad";
 import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
 import type { LoadedEnforcementRecords } from "@console/loadedConfig";
+import type { Metadata } from "@alcove/core";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
 import type { RunDisclosure } from "@console/mountedConfiguration";
 
@@ -781,7 +782,20 @@ describe("a consent record the configuration leaves pending", () => {
 // command line's confirmation writes and nothing the operator was not shown.
 describe("confirming a pending consent record on the review step", () => {
   const SHARED = outputForDirection("both");
-  const metadata = inferMetadata(["first_name", "dob", "program_code"], []);
+  /** The inferred linkage columns plus each of `sent`, declared as sent. */
+  function withSent(sent: Array<string>): Metadata {
+    return [
+      ...inferMetadata(["first_name", "dob"], []),
+      ...sent.map((name) => ({
+        name,
+        type: "other" as const,
+        role: "payload" as const,
+        isPayload: true,
+      })),
+    ];
+  }
+
+  const metadata = withSent(["program_code"]);
   const sent = disclosedColumnNames(metadata);
   const pending = { outboundPayloadConsent: { status: "pending" as const } };
 
@@ -916,10 +930,7 @@ describe("confirming a pending consent record on the review step", () => {
       SHARED,
       sent,
     );
-    const wider = inferMetadata(
-      ["first_name", "dob", "program_code", "household_id"],
-      [],
-    );
+    const wider = withSent(["program_code", "household_id"]);
     const widerSent = disclosedColumnNames(wider);
     expect(widerSent).toContain("household_id");
     const view = outboundConsentView(state, confirmed, wider, SHARED);

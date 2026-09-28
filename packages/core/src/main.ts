@@ -463,16 +463,21 @@ export type {
 export {
   MetadataSchema,
   OwnColumnSelectionSchema,
+  UNDECLARED_COLUMNS_LISTED_MAX,
   assertCountOnlyTransmitsNoColumn,
+  assertDeclaredPayloadColumnsPresent,
   countOnlyTransmitsColumn,
+  describeUndeclaredColumns,
   disclosedColumnNames,
   inferMetadata,
+  inferMetadataForEveryColumn,
   isDisclosedToPartner,
   linkageDateOfBirthColumn,
   overlongDisclosedColumnPositions,
   ownResultColumnNames,
   safeParseMetadata,
   safeParseMetadataTheReaderWrote,
+  undeclaredColumnNames,
 } from "./config/metadata";
 export type {
   ColumnMetadata,
@@ -664,6 +669,7 @@ export {
   resolveExchangeInputs,
   resolveLinkageCardinality,
   runExchange,
+  undeclaredColumnsForOwnResult,
 } from "./exchange";
 export type {
   ExchangeBootstrapResult,

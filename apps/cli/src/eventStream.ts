@@ -96,6 +96,7 @@ export const WARNING_SOURCES = [
   "resolvedCardinality",
   "pairTableAdvisory",
   "signingWithoutRecord",
+  "undeclaredColumns",
   "terminatedRunRecord",
   "persistenceLoss",
   "logFileLoss",

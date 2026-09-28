@@ -16,6 +16,7 @@ import {
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PreparedExchange } from "../../src/exchange";
 import type { Output } from "../../src/config/linkageTermsSchema";
+import type { Metadata } from "../../src/config/metadata";
 
 // A payload row must supply exactly one value per named column, or the
 // record's readable governance list and its committed values fall out of
@@ -47,8 +48,7 @@ const receiverRows = [
 ];
 const receiverColumns = ["first_name"];
 
-// `diagnosis` is neither a linkage nor a PII alias, so inferMetadata marks it
-// transmitted and the honest run below includes it.
+// `diagnosis` is declared as sent, so the honest run below includes it.
 const senderRows = [
   { first_name: "Alice", diagnosis: "A-hypertension" },
   { first_name: "Carol", diagnosis: "C-diabetes" },
@@ -61,8 +61,13 @@ function prepared(
   rows: Array<Record<string, string>>,
   columns: Array<string>,
 ): PreparedExchange {
+  const metadata: Metadata = columns.map((name) =>
+    name === "first_name"
+      ? { name, type: "first_name", role: "linkage", isPayload: false }
+      : { name, type: "other", role: "payload", isPayload: true },
+  );
   const exchange = prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity, output: both } },
+    { metadata, linkageTerms: { ...firstNameTerms, identity, output: both } },
     identity,
     rows,
     columns,

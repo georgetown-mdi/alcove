@@ -160,9 +160,14 @@ function shownToOperator(): string {
 
 test("a two-config run shows what it sends and what it matches on", async () => {
   // No invitation was accepted here, so nothing has ever shown this operator
-  // the terms their own file commits them to, nor the columns their input file
-  // makes transmittable by default.
-  expect(await prepare({ linkageTerms: localTerms }, true)).toBe(undefined);
+  // the terms their own file commits them to, nor the columns their metadata
+  // declares as sent.
+  expect(
+    await prepare(
+      { linkageTerms: localTerms, metadata: metadataDisclosing(["diagnosis"]) },
+      true,
+    ),
+  ).toBe(undefined);
   const output = shownToOperator();
   expect(output).toContain(DISCLOSURE_HEADING);
   expect(output).toContain("columns you will send (enforced):");
@@ -196,7 +201,12 @@ test("a log level that drops diagnostics still shows the display", async () => {
   // quieted the run's diagnostics quieted its progress reporting, not the one
   // surface stating what leaves their machine.
   logLibrary.getLogger("exchange").setLevel("warn");
-  expect(await prepare({ linkageTerms: localTerms }, false)).toBe(undefined);
+  expect(
+    await prepare(
+      { linkageTerms: localTerms, metadata: metadataDisclosing(["diagnosis"]) },
+      false,
+    ),
+  ).toBe(undefined);
   expect(logged).toEqual([]);
   expect(promptWrites).toContain(DISCLOSURE_HEADING);
   expect(promptWrites).toContain("columns you will send (enforced):");
@@ -212,9 +222,16 @@ test("a log file keeps the display at a level that drops diagnostics", async () 
   const logFile = path.join(dir, "run.log");
   const sink = configureLogFile(logFile);
   try {
-    expect(await prepare({ linkageTerms: localTerms }, false, logFile)).toBe(
-      undefined,
-    );
+    expect(
+      await prepare(
+        {
+          linkageTerms: localTerms,
+          metadata: metadataDisclosing(["diagnosis"]),
+        },
+        false,
+        logFile,
+      ),
+    ).toBe(undefined);
   } finally {
     sink.close();
   }
@@ -231,6 +248,7 @@ test("an accept-derived configuration is not shown the facts a second time", asy
   // terms; the run adds no second account of them.
   const spec: ExchangeDataSpec = {
     linkageTerms: localTerms,
+    metadata: metadataDisclosing(["diagnosis"]),
     outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
   };
   expect(await prepare(spec, true)).toBe(undefined);

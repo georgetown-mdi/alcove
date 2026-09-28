@@ -13,9 +13,11 @@ import {
   countIsPartnerReported,
   buildOutputTable,
   resultCsvDelimiter,
+  undeclaredColumnsForOwnResult,
   describeEntityClusters,
   describeResolvedMatching,
   describeResolvedRunShape,
+  describeUndeclaredColumns,
   authenticateConnection,
   assertSharedSecretReadyForHandshake,
   ConnectionError,
@@ -200,6 +202,23 @@ export const SIGNING_WITHOUT_RECORD_WARNING =
   "exchange record, and the record cannot be reconstructed after the " +
   "exchange. Keep the record (drop --no-record) if you retain receipts as " +
   "evidence, or drop the signing block if you do not.";
+
+/**
+ * The notice naming the input columns this run does not send because its
+ * metadata does not declare them, ending with the remedy the configuration
+ * takes, or `undefined` when there are none. Composed raw: the names are the
+ * input file's header, escaped once at each sink.
+ */
+export function undeclaredColumnsNotice(
+  prepared: Pick<PreparedExchange, "undeclaredColumns">,
+): string | undefined {
+  return describeUndeclaredColumns(
+    prepared.undeclaredColumns ?? [],
+    "To send one, declare it in the configuration's metadata block with " +
+      "is_payload: true; to leave one out without this notice, declare it " +
+      "with role: ignored.",
+  );
+}
 
 /**
  * What a run reports when it disclosed, terminated after that, and owed a
@@ -1634,6 +1653,41 @@ function warnSigningWithoutRecord(params: {
 }
 
 /**
+ * Emit {@link undeclaredColumnsNotice} -- on both stderr and the
+ * machine-interface stream -- when the input has columns metadata does not
+ * declare, so the operator can add them or silence the notice before any
+ * credential, terms, or data are sent. Composes the text through
+ * `undeclaredColumnsNotice`, the one place the notice is worded.
+ *
+ * `preflightRun` and `prepareTransport` each call this ahead of their own
+ * {@link checkRunLocalInputs} pass, the same shape as
+ * {@link warnSigningWithoutRecord}: the caller threads its own return value
+ * back in as `alreadyWarned` on the later call, so the same run emits it at
+ * most once regardless of which of the two calls actually raises the
+ * refusal. A command that opens its own stream and runs no `preflightRun`
+ * calls this itself before its host-key step, then passes the result to
+ * `runProtocol` as `undeclaredColumnsWarned`.
+ */
+export function warnUndeclaredColumns(params: {
+  prepared: Pick<PreparedExchange, "undeclaredColumns">;
+  alreadyWarned: boolean;
+  log: ReturnType<typeof getLogger>;
+  emit: (fn: (e: EventStreamEmitter) => void) => void;
+}): boolean {
+  const { prepared, alreadyWarned, log, emit } = params;
+  if (alreadyWarned) return alreadyWarned;
+  const undeclaredNotice = undeclaredColumnsNotice(prepared);
+  if (undeclaredNotice === undefined) return alreadyWarned;
+  log.warn(
+    redactAndSanitizeForDisplay(undeclaredNotice, {
+      maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    }),
+  );
+  emit((e) => e.warning("undeclaredColumns", undeclaredNotice));
+  return true;
+}
+
+/**
  * The run's refusals decided from local inputs alone: the shared secret's
  * readiness and its key-file path, the first round's size against one message
  * on the channel, and on webrtc the rendezvous resolution. None of them
@@ -1723,6 +1777,13 @@ export interface PreflightRunResult {
    * pass does not repeat it.
    */
   signingWithoutRecordWarned: boolean;
+  /**
+   * Whether this preflight already emitted {@link undeclaredColumnsNotice}.
+   * The caller passes it back to `runProtocol`
+   * (`undeclaredColumnsWarned`) so `prepareTransport`'s own pass does not
+   * repeat it.
+   */
+  undeclaredColumnsWarned: boolean;
 }
 
 /**
@@ -1739,6 +1800,10 @@ export interface PreflightRunResult {
  * {@link SIGNING_WITHOUT_RECORD_WARNING} ahead of the terminal error, as a
  * run this preflight passes does ahead of `runProtocol`'s own pass. Omit both
  * on an unsigned run.
+ *
+ * `prepared` also carries this run's undeclared columns, if any, so a run
+ * this preflight refuses still shows {@link undeclaredColumnsNotice} ahead of
+ * the terminal error, in the same "emit once, at either call" shape.
  */
 export async function preflightRun(options: {
   connection: ProtocolConnectionConfig;
@@ -1773,6 +1838,12 @@ export async function preflightRun(options: {
     log,
     emit,
   });
+  const undeclaredColumnsWarned = warnUndeclaredColumns({
+    prepared,
+    alreadyWarned: false,
+    log,
+    emit,
+  });
   try {
     await checkRunLocalInputs({
       connection,
@@ -1787,7 +1858,7 @@ export async function preflightRun(options: {
     eventStream?.error(err, "prepare");
     throw err;
   }
-  return { eventStream, signingWithoutRecordWarned };
+  return { eventStream, signingWithoutRecordWarned, undeclaredColumnsWarned };
 }
 
 /**
@@ -1823,6 +1894,7 @@ async function prepareTransport(
     signing: SigningPersist | null;
     recordOutput: RecordOutput | undefined;
     signingWithoutRecordWarned: boolean;
+    undeclaredColumnsWarned: boolean;
     verbosity: number;
     logFile: string | undefined;
     fileSyncRuntime: FileSyncRuntimeOptions;
@@ -1839,6 +1911,7 @@ async function prepareTransport(
     signing,
     recordOutput,
     signingWithoutRecordWarned,
+    undeclaredColumnsWarned,
     verbosity,
     logFile,
     fileSyncRuntime,
@@ -1901,6 +1974,16 @@ async function prepareTransport(
     signing,
     recordOutput,
     alreadyWarned: signingWithoutRecordWarned,
+    log,
+    emit,
+  });
+  // A caller that already raised undeclaredColumnsNotice, from preflightRun
+  // or its own warnUndeclaredColumns call, passed that back as
+  // undeclaredColumnsWarned; any other run has it raised here, still ahead of
+  // every check below.
+  warnUndeclaredColumns({
+    prepared,
+    alreadyWarned: undeclaredColumnsWarned,
     log,
     emit,
   });
@@ -2098,6 +2181,7 @@ async function writeExchangeOutputs(params: {
         prepared.metadata,
         partnerPayload,
         prepared.includeOwnColumns,
+        undeclaredColumnsForOwnResult(prepared),
         resultDelimiter,
       );
     } catch (err) {
@@ -2333,6 +2417,14 @@ export interface RunProtocolOptions {
    * run `preflightRun`.
    */
   signingWithoutRecordWarned?: boolean;
+  /**
+   * Whether the caller already emitted {@link undeclaredColumnsNotice} for
+   * this run, through {@link preflightRun}
+   * ({@link PreflightRunResult.undeclaredColumnsWarned}) or its own
+   * {@link warnUndeclaredColumns} call, so `runProtocol`'s own pass does not
+   * repeat it. Omit when the caller did neither.
+   */
+  undeclaredColumnsWarned?: boolean;
 }
 
 /**
@@ -2421,6 +2513,7 @@ export async function runProtocol(
     fileSyncRuntime = {},
     signing = null,
     signingWithoutRecordWarned = false,
+    undeclaredColumnsWarned = false,
   } = options;
   const log = getLogger(loggerName);
 
@@ -2495,6 +2588,7 @@ export async function runProtocol(
       signing,
       recordOutput,
       signingWithoutRecordWarned,
+      undeclaredColumnsWarned,
       verbosity,
       logFile,
       fileSyncRuntime,

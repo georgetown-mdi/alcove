@@ -86,14 +86,15 @@ export function ownColumnsField(
  * re-derivation, so the names the control previews are the names the result
  * gets. Empty for `"none"`, and for a selection that resolves to nothing (a
  * file whose only column is the identifier, which the result's first column
- * already holds).
+ * already holds). The editor's metadata has an entry for every input column,
+ * so no column is undeclared here.
  */
 export function ownColumnsPreview(
   metadata: Metadata,
   choice: OwnColumnsChoice,
 ): Array<string> {
   if (choice === "none") return [];
-  return ownResultColumnNames(metadata, choice);
+  return ownResultColumnNames(metadata, choice, []);
 }
 
 /** What the control says the setting does NOT do, stated at the control rather

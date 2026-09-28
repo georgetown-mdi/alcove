@@ -111,6 +111,15 @@ function rows(columns: Array<string>): Array<CSVRow> {
   return [Object.fromEntries(columns.map((c) => [c, "x"]))];
 }
 
+/** The seed metadata for `columns` with each of `sent` marked to send, since a
+ * column that inference does not recognize is seeded as ignored. */
+function seededWithSent(columns: Array<string>, sent: Array<string>): Metadata {
+  return sent.reduce(
+    (metadata, name) => setColumnDisclosure(metadata, name, "payload").metadata,
+    acceptorInitialColumnsState(columns).metadata,
+  );
+}
+
 /** The derived editor state (metadata + effective standardization) for a fresh
  * acquire of `columns`, plus any state overrides applied on top. */
 function editorFor(
@@ -784,8 +793,8 @@ describe("acceptor launch gates", () => {
 });
 
 describe("a marked column whose name is too long to include", () => {
-  // The gap this closes: the seed metadata comes from inferMetadata over the
-  // acceptor's own header, which no schema bounds, so an oversized name is markable
+  // The gap this closes: the marks name the acceptor's own header, which no
+  // schema bounds, so an oversized name is markable
   // here and refused only by the partner's parse of the payload frame -- after the
   // frame is sent.
   const atCeiling = "a".repeat(MAX_NAME_LENGTH);
@@ -795,11 +804,13 @@ describe("a marked column whose name is too long to include", () => {
   // every such bound uses.
   const astralPastCeiling = "\u{1D54F}".repeat(MAX_NAME_LENGTH);
 
-  /** The columns step for a file covering both keys plus one payload column of
-   * the given name (inferred `other`, so it is marked to send). */
+  /** The columns step for a file covering both keys plus one column of the given
+   * name, marked to send. */
   function stepFor(name: string) {
     const columns = ["first_name", "last_name", name];
-    const { editorState } = editorFor(columns, nameTerms);
+    const { editorState } = editorFor(columns, nameTerms, {
+      metadata: seededWithSent(columns, [name]),
+    });
     return {
       editorState,
       verdict: acceptorVerdict(columns, nameTerms, editorState),
@@ -862,7 +873,9 @@ describe("a marked column whose name is too long to include", () => {
 
   test("several offending columns pluralize the sentence", () => {
     const columns = ["first_name", "last_name", pastCeiling, pastCeiling + "b"];
-    const { editorState } = editorFor(columns, nameTerms);
+    const { editorState } = editorFor(columns, nameTerms, {
+      metadata: seededWithSent(columns, [pastCeiling, pastCeiling + "b"]),
+    });
     const verdict = acceptorVerdict(columns, nameTerms, editorState);
     expect(
       acceptorOverlongDisclosedColumns(nameTerms, editorState.metadata),
@@ -881,7 +894,9 @@ describe("a marked column whose name is too long to include", () => {
       output: { expectsOutput: false, shareWithPartner: true },
     };
     const columns = ["first_name", "last_name", pastCeiling];
-    const { editorState } = editorFor(columns, noResultTerms);
+    const { editorState } = editorFor(columns, noResultTerms, {
+      metadata: seededWithSent(columns, [pastCeiling]),
+    });
     const verdict = acceptorVerdict(columns, noResultTerms, editorState);
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual([
       pastCeiling,
@@ -917,9 +932,9 @@ describe("a marked column whose name is too long to include", () => {
 });
 
 describe("the invitation's declared payload set against the marks", () => {
-  // A file covering both keys plus one unrecognized column, which infers to role:
-  // payload -- so the file discloses exactly one column and every other gate is
-  // clear, leaving this comparison as the only thing that can close the launch.
+  // A file covering both keys plus one unrecognized column marked to send -- so
+  // the file discloses exactly one column and every other gate is clear, leaving
+  // this comparison as the only thing that can close the launch.
   // `record_id` infers to the identifier role (unsent, unmatched), so marking it
   // adds a disclosure without costing a key -- which lets the conflict sentences be
   // pinned at the gate without the linkage clause above them firing too.
@@ -955,21 +970,18 @@ describe("the invitation's declared payload set against the marks", () => {
     return { ...nameTerms, ...shapes[shape] };
   }
 
-  const inferredMarks = acceptorInitialColumnsState(columns).metadata;
+  const notesSent = seededWithSent(columns, ["notes"]);
 
-  /** The mark states every shape is driven in. The inferred marks disclose one
+  /** The mark states every shape is driven in. The base marks disclose one
    * column, so a declaration can only omit that one or name others; the second
    * state discloses two, which is what makes a NON-EMPTY declaration able to omit
    * one while naming another -- the under-declared direction the empty declaration
    * cannot produce on this file. */
   const markStates = {
-    asInferred: inferredMarks,
-    firstNameAlsoSent: setColumnDisclosure(
-      inferredMarks,
-      "first_name",
-      "payload",
-    ).metadata,
-    recordIdAlsoSent: setColumnDisclosure(inferredMarks, "record_id", "payload")
+    onlyNotesSent: notesSent,
+    firstNameAlsoSent: setColumnDisclosure(notesSent, "first_name", "payload")
+      .metadata,
+    recordIdAlsoSent: setColumnDisclosure(notesSent, "record_id", "payload")
       .metadata,
   } satisfies Record<string, Metadata>;
 
@@ -989,7 +1001,7 @@ describe("the invitation's declared payload set against the marks", () => {
 
   test("names the disclosed columns when the invitation accepts none and the inviting party receives the result", () => {
     const terms = invitation("acceptsNothingAndTakesTheResult");
-    const { editorState } = editorFor(columns, terms);
+    const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
     const conflict = acceptorPayloadDeclarationConflict(
       terms,
@@ -1017,7 +1029,7 @@ describe("the invitation's declared payload set against the marks", () => {
     // not refuse this pair -- and the panel beside the grid already states that no
     // column leaves whatever these marks say.
     const terms = invitation("acceptsNothingAndTakesNoResult");
-    const { editorState } = editorFor(columns, terms);
+    const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata),
@@ -1037,7 +1049,9 @@ describe("the invitation's declared payload set against the marks", () => {
       invitation("declaresNoPayloadAtAll"),
       invitation("declaresOnlyWhatItSends"),
     ]) {
-      const { editorState } = editorFor(columns, terms);
+      const { editorState } = editorFor(columns, terms, {
+        metadata: notesSent,
+      });
       expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
       expect(
         acceptorPayloadDeclarationConflict(terms, editorState.metadata),
@@ -1051,7 +1065,7 @@ describe("the invitation's declared payload set against the marks", () => {
 
   test("says nothing when the declaration names exactly the columns the marks send", () => {
     const terms = invitation("acceptsTheDisclosedColumn");
-    const { editorState } = editorFor(columns, terms);
+    const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata),
     ).toBeUndefined();
@@ -1154,7 +1168,7 @@ describe("the invitation's declared payload set against the marks", () => {
     // column their file does not have, so the entry says so and the notice's copy
     // leads with the corrected invitation.
     const terms = invitation("acceptsTheDisclosedColumnAndOneTheFileLacks");
-    const { editorState } = editorFor(columns, terms);
+    const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     const conflict = acceptorPayloadDeclarationConflict(
       terms,
       editorState.metadata,
@@ -1180,7 +1194,7 @@ describe("the invitation's declared payload set against the marks", () => {
     const terms = invitation(
       "acceptsTheDisclosedColumnAndOneMarkedForMatching",
     );
-    const { editorState } = editorFor(columns, terms);
+    const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
@@ -1263,7 +1277,9 @@ describe("the invitation's declared payload set against the marks", () => {
     const terms = invitation(
       "acceptsTheDisclosedColumnAndOneMarkedForMatching",
     );
-    const { state, editorState } = editorFor(columns, terms);
+    const { state, editorState } = editorFor(columns, terms, {
+      metadata: notesSent,
+    });
     expect(
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent,
@@ -1281,13 +1297,12 @@ describe("the invitation's declared payload set against the marks", () => {
       {
         use: "the record identifier",
         declaredName: "record_id",
-        metadata: inferredMarks,
+        metadata: notesSent,
       },
       {
         use: "a column used for nothing",
         declaredName: "notes",
-        metadata: setColumnDisclosure(inferredMarks, "notes", "ignored")
-          .metadata,
+        metadata: setColumnDisclosure(notesSent, "notes", "ignored").metadata,
       },
     ]) {
       const terms: LinkageTerms = {
@@ -1322,7 +1337,9 @@ describe("the invitation's declared payload set against the marks", () => {
       },
     };
     expect(safeParseLinkageTerms(terms).success).toBe(true);
-    const { state, editorState } = editorFor(columns, terms);
+    const { state, editorState } = editorFor(columns, terms, {
+      metadata: notesSent,
+    });
     const gaps =
       acceptorPayloadDeclarationConflict(terms, editorState.metadata)
         ?.declaredButNotSent ?? [];
@@ -1359,6 +1376,7 @@ describe("the invitation's declared payload set against the marks", () => {
       columns: Array<string>;
       terms: LinkageTerms;
       rows: Array<CSVRow>;
+      sent: Array<string>;
       offered: Array<string>;
     }> = [
       {
@@ -1366,6 +1384,7 @@ describe("the invitation's declared payload set against the marks", () => {
         columns,
         terms: invitation("acceptsTheDisclosedColumnAndOneMarkedForMatching"),
         rows: rows(columns),
+        sent: ["notes"],
         offered: ["first_name"],
       },
       {
@@ -1373,6 +1392,7 @@ describe("the invitation's declared payload set against the marks", () => {
         columns: ["first_name", "last_name", "record_id"],
         terms: { ...nameTerms, payload: { receive: [{ name: "record_id" }] } },
         rows: rows(["first_name", "last_name", "record_id"]),
+        sent: [],
         offered: ["record_id"],
       },
       {
@@ -1380,12 +1400,16 @@ describe("the invitation's declared payload set against the marks", () => {
         columns: dobColumns,
         terms: dobTerms,
         rows: [{ date_of_birth: "1980-01-02", first_name: "Ann", notes: "x" }],
+        sent: ["notes"],
         offered: ["date_of_birth"],
       },
     ];
     for (const offer of offers) {
       expect(safeParseLinkageTerms(offer.terms).success, offer.use).toBe(true);
-      const state = acceptorInitialColumnsState(offer.columns);
+      const state: AcceptorColumnsState = {
+        ...acceptorInitialColumnsState(offer.columns),
+        metadata: seededWithSent(offer.columns, offer.sent),
+      };
       const before = acceptorColumnsEditorState(state, offer.terms, offer.rows);
       // What taking the offer does, in full: the declared columns this file has are
       // exactly the ones re-marked below.
@@ -1439,7 +1463,7 @@ describe("the invitation's declared payload set against the marks", () => {
     // statement: an operator who clears the marked column must not meet an
     // unmentioned second problem on the next attempt.
     const terms = invitation("acceptsOnlyAColumnNotDisclosed");
-    const { editorState } = editorFor(columns, terms);
+    const { editorState } = editorFor(columns, terms, { metadata: notesSent });
     const conflict = acceptorPayloadDeclarationConflict(
       terms,
       editorState.metadata,
@@ -1459,7 +1483,7 @@ describe("the invitation's declared payload set against the marks", () => {
     // Re-marking the one column the operator controls leaves the launch closed on
     // the direction they cannot fix, which the same statement already named.
     const reMarked = editorFor(columns, terms, {
-      metadata: setColumnDisclosure(inferredMarks, "notes", "ignored").metadata,
+      metadata: setColumnDisclosure(notesSent, "notes", "ignored").metadata,
     });
     const remaining = acceptorPayloadDeclarationConflict(
       terms,
@@ -1496,7 +1520,9 @@ describe("the invitation's declared payload set against the marks", () => {
       ...nameTerms,
       payload: { receive: [{ name: partnerName }] },
     };
-    const { editorState } = editorFor(ownColumns, terms);
+    const { editorState } = editorFor(ownColumns, terms, {
+      metadata: seededWithSent(ownColumns, [ownHeader]),
+    });
     const conflict = acceptorPayloadDeclarationConflict(
       terms,
       editorState.metadata,

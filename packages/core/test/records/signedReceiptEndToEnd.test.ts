@@ -45,6 +45,7 @@ import type { DualSignedRecord } from "../../src/records/signedReceipt";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { ExchangeRecord } from "../../src/records/exchangeRecord";
 import type { ExchangeResult } from "../../src/exchange";
+import type { Metadata } from "../../src/config/metadata";
 import type { RunExchangeOptions } from "../../src/exchange";
 import type { DualSignedRecordVerificationInputs } from "../../src/records/signedReceiptVerification";
 
@@ -1095,10 +1096,18 @@ const payloadClient = [
   { first_name: "Elizabeth", note: "c-e" },
 ];
 
-/** The suite's `prepared`, with `note` inferred as a transmitted payload column. */
+const firstNameAndSentNote: Metadata = [
+  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
+  { name: "note", type: "other", role: "payload", isPayload: true },
+];
+
+/** The suite's `prepared`, with `note` declared as a transmitted payload column. */
 function preparedWithPayload(identity: string, rows: typeof payloadServer) {
   return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity, output: both } },
+    {
+      metadata: firstNameAndSentNote,
+      linkageTerms: { ...firstNameTerms, identity, output: both },
+    },
     identity,
     rows,
     ["first_name", "note"],

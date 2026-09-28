@@ -30,7 +30,7 @@ import type { ProfiledJobInput } from "@psi/jobClient/workInputClient";
 
 // Headers chosen from inferMetadata's exact-match alias table, as the inviter
 // model's own fixture is: four linkage types, one identifier, and one
-// unrecognized column, which infers to a sent payload column.
+// unrecognized column, which the seed lists as not sent.
 const csv: AcquiredCsv = {
   fileName: "clients.csv",
   sizeBytes: 4096,
@@ -139,14 +139,14 @@ describe("what the terms declare", () => {
     const seeded = withFile();
     if (seeded.editor === undefined || seeded.acquired === undefined)
       throw new Error("the fixture read no file");
-    expect(disclosedColumnNames(seeded.editor.draft.metadata)).toContain(
+    expect(disclosedColumnNames(seeded.editor.draft.metadata)).not.toContain(
       "program_code",
     );
     const edited = editorWithColumnDisclosure(
       seeded.editor,
       seeded.acquired,
       "program_code",
-      "ignored",
+      "payload",
     );
     const state = inviterScreenReducer(seeded, {
       type: "column-edited",
@@ -154,9 +154,9 @@ describe("what the terms declare", () => {
       announcement: "Demoted client_id.",
     });
     expect(state.editor).toBe(edited.editor);
-    expect(
-      disclosedColumnNames(state.editor?.draft.metadata ?? []),
-    ).not.toContain("program_code");
+    expect(disclosedColumnNames(state.editor?.draft.metadata ?? [])).toContain(
+      "program_code",
+    );
     expect(state.announcement).toBe("Demoted client_id.");
   });
 

@@ -709,8 +709,9 @@ export function linkageRuleSetReferenceFor(
  * a party runs when it authors none of its own.
  *
  * When metadata are provided, only linkage key templates whose elements
- * can be satisfied by the present columns are included. If no metadata is
- * provided, all templates are included as a fallback. Either way the
+ * can be satisfied by the present columns are included; metadata declaring
+ * no column satisfies none. If no metadata is provided, all templates are
+ * included as a fallback. Either way the
  * emitted keys are a subset of the set, never an addition to it: what the
  * input supports narrows the set, and nothing widens it -- which is what
  * makes the emitted citation accurate, an upper bound on what was tried
@@ -727,7 +728,7 @@ export function linkageTermsFromRuleSet(
   metadata?: Metadata,
 ): LinkageTerms {
   let linkageKeys: LinkageKey[];
-  if (metadata !== undefined && metadata.length > 0) {
+  if (metadata !== undefined) {
     // Only `role: linkage` columns supply a matchable type: a key kept because a
     // non-linkage column (identifier/payload/ignored) is the only instance of its
     // type would bind nothing at exchange time (resolveFieldColumns binds only a

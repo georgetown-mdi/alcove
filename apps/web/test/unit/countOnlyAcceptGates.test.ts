@@ -8,6 +8,7 @@ import {
   acceptorVerdict,
 } from "@exchange/acceptorColumnsModel";
 import { importLinkageTerms } from "@psi/linkageTermsIO";
+import { setColumnDisclosure } from "@psi/metadataEditing";
 
 import type { CSVRow, LinkageTerms } from "@alcove/core";
 
@@ -34,8 +35,21 @@ function rows(columns: Array<string>): Array<CSVRow> {
   return [Object.fromEntries(columns.map((name) => [name, "value"]))];
 }
 
-function editorFor(columns: Array<string>, terms: LinkageTerms) {
-  const state = acceptorInitialColumnsState(columns);
+/** The columns step over `columns` with each of `sent` marked to send. */
+function editorFor(
+  columns: Array<string>,
+  terms: LinkageTerms,
+  sent: Array<string> = [],
+) {
+  const seeded = acceptorInitialColumnsState(columns);
+  const state = {
+    ...seeded,
+    metadata: sent.reduce(
+      (metadata, name) =>
+        setColumnDisclosure(metadata, name, "payload").metadata,
+      seeded.metadata,
+    ),
+  };
   return {
     editorState: acceptorColumnsEditorState(state, terms, rows(columns)),
     verdict: acceptorVerdict(
@@ -48,10 +62,12 @@ function editorFor(columns: Array<string>, terms: LinkageTerms) {
 
 describe("the count-only launch gate (the acceptor's own marked columns)", () => {
   test("blocks launch when a marked column would be sent under count-only terms", () => {
-    // `notes` is unrecognized, so the acceptor's seeded metadata marks it for
-    // transmission -- which a count-only exchange has nowhere to put.
+    // `notes` is marked for transmission, which a count-only exchange has
+    // nowhere to put.
     const columns = ["first_name", "notes"];
-    const { editorState, verdict } = editorFor(columns, countOnlyTerms);
+    const { editorState, verdict } = editorFor(columns, countOnlyTerms, [
+      "notes",
+    ]);
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
     expect(verdict.satisfiableKeyCount).toBeGreaterThan(0);
     const reason = acceptorLaunchBlockedReason(
@@ -67,7 +83,7 @@ describe("the count-only launch gate (the acceptor's own marked columns)", () =>
   test("the same file under psi terms launches, so the gate is the algorithm's", () => {
     const columns = ["first_name", "notes"];
     const asPsi: LinkageTerms = { ...countOnlyTerms, algorithm: "psi" };
-    const { editorState, verdict } = editorFor(columns, asPsi);
+    const { editorState, verdict } = editorFor(columns, asPsi, ["notes"]);
     expect(acceptorDisclosedColumns(editorState.metadata)).toEqual(["notes"]);
     expect(
       acceptorLaunchBlockedReason(verdict, editorState, asPsi),

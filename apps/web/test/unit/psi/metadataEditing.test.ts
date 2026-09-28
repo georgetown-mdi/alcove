@@ -4,6 +4,7 @@ import {
   SEMANTIC_TYPES,
   assertPayloadSendDisclosed,
   inferMetadata,
+  inferMetadataForEveryColumn,
   isDisclosedToPartner,
   preparePayload,
 } from "@alcove/core";
@@ -65,26 +66,26 @@ describe("disclosure choice <-> {role, isPayload}", () => {
 
 describe("normalizeForEditor collapses off-diagonal inferred metadata", () => {
   test("an inferred identifier column is no longer silently disclosed", () => {
-    // inferMetadata marks a sole `_id` column role:identifier yet isPayload:true --
+    // inferMetadata marks the `id` alias role:identifier yet isPayload:true --
     // an off-diagonal state preparePayload would transmit. Normalizing collapses it
     // to identifier + not-sent.
-    const inferred = inferMetadata(["patient_id", "first_name", "notes"], []);
-    expect(disclosedColumnNames(inferred)).toContain("patient_id");
+    const inferred = inferMetadata(["id", "first_name", "notes"], []);
+    expect(disclosedColumnNames(inferred)).toContain("id");
 
     const normalized = normalizeForEditor(inferred);
-    expect(disclosedColumnNames(normalized)).not.toContain("patient_id");
-    const idCol = normalized.find((c) => c.name === "patient_id");
+    expect(disclosedColumnNames(normalized)).not.toContain("id");
+    const idCol = normalized.find((c) => c.name === "id");
     expect(idCol?.role).toBe("identifier");
     expect(idCol?.isPayload).toBe(false);
   });
 
-  test("an inferred payload (other) column stays sent, a linkage column does not", () => {
+  test("an unrecognized column the editor lists stays unsent, as a linkage column does", () => {
     const normalized = normalizeForEditor(
-      inferMetadata(["first_name", "notes"], []),
+      inferMetadataForEveryColumn(["first_name", "notes"], []),
     );
-    // `notes` -> other/payload: still sent (and now visible). `first_name`: matched,
-    // not sent.
-    expect(disclosedColumnNames(normalized)).toEqual(["notes"]);
+    // `notes` -> other/ignored: listed, not sent. `first_name`: matched, not sent.
+    expect(normalized.find((c) => c.name === "notes")?.role).toBe("ignored");
+    expect(disclosedColumnNames(normalized)).toEqual([]);
   });
 
   test("normalization is idempotent (already on the diagonal)", () => {
@@ -106,18 +107,15 @@ describe("disclosedColumnNames mirrors what is sent", () => {
 });
 
 describe("quickInviteDisclosedColumns mirrors the quick path's wire", () => {
-  // A representative inviter file: a linkage column (not sent), an inferred row
-  // identifier (a sole `_id` column -- the off-diagonal isPayload:true state the
-  // editor normalizes away but the quick path keeps and sends), and an inferred
-  // `other` column (sent). The quick path does NOT normalize, so both the
-  // identifier and the other column leave the machine.
-  const columns = ["first_name", "record_id", "notes"];
+  // A representative inviter file: a linkage column (not sent), the `id` row
+  // identifier (the off-diagonal isPayload:true state the editor normalizes away
+  // but the quick path keeps and sends), and an unrecognized column inference
+  // leaves out (not sent). The quick path does NOT normalize, so the identifier
+  // leaves the machine.
+  const columns = ["first_name", "id", "notes"];
 
-  test("lists exactly the disclosed columns, in order (an _id and an other column, not the linkage column)", () => {
-    expect(quickInviteDisclosedColumns(columns)).toEqual([
-      "record_id",
-      "notes",
-    ]);
+  test("lists exactly the disclosed columns (the `id` identifier, not the linkage or unrecognized column)", () => {
+    expect(quickInviteDisclosedColumns(columns)).toEqual(["id"]);
   });
 
   test("is empty when the quick path would send nothing", () => {
@@ -140,7 +138,7 @@ describe("quickInviteDisclosedColumns mirrors the quick path's wire", () => {
     // quick path runs prepareForExchange with inferMetadata (no authored metadata)
     // and preparePayload gathers exactly the isDisclosedToPartner columns, so the
     // statement and the transmitted column set are one and the same.
-    const rawRows = [{ first_name: "Alice", record_id: "1", notes: "vip" }];
+    const rawRows = [{ first_name: "Alice", id: "1", notes: "vip" }];
     const sent = preparePayload(rawRows, inferMetadata(columns, []), [
       [0],
       [0],
@@ -153,8 +151,9 @@ describe("quickInviteDisclosedColumns mirrors the quick path's wire", () => {
 
 describe("payloadSendForMetadata authors the shared send declaration", () => {
   test("send equals disclosedColumnNames; receive is never authored", () => {
-    const metadata = inferMetadata(["first_name", "record_id", "notes"], []);
+    const metadata = inferMetadata(["first_name", "id", "notes"], []);
     const payload = payloadSendForMetadata(metadata);
+    expect(disclosedColumnNames(metadata)).toEqual(["id"]);
     expect(payload?.send?.map((c) => c.name)).toEqual(
       disclosedColumnNames(metadata),
     );

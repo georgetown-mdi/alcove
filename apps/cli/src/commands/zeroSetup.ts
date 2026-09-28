@@ -25,7 +25,11 @@ import {
   saveConfig,
   DEFAULT_CONFIG_PATH,
 } from "../config";
-import { openEventStream, reportPersistenceLoss } from "../eventStream";
+import {
+  openEventStream,
+  reportPersistenceLoss,
+  type EventStreamEmitter,
+} from "../eventStream";
 import { displayZeroSetupDisclosure } from "../exchangeDisclosure";
 import { assertFileSyncFirstRoundFits } from "../fileSyncFirstRound";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
@@ -68,6 +72,7 @@ import {
 } from "../onlineBootstrap";
 import {
   runProtocol,
+  warnUndeclaredColumns,
   WEBRTC_RENDEZVOUS_SECRET_REQUIRED,
   type ProtocolConnectionConfig,
 } from "../protocol";
@@ -714,6 +719,8 @@ export async function handler(argv: Arguments): Promise<void> {
     let connection: ConnectionConfig;
     let liveConnection: ConnectionConfig;
     let prepared: PreparedExchange;
+    let eventStreamEmitter: EventStreamEmitter | undefined;
+    let undeclaredColumnsWarned: boolean;
     try {
       connection = createConnection(server, options);
       // The quick path asks nothing and requires nothing: `--identity` rides
@@ -744,6 +751,22 @@ export async function handler(argv: Arguments): Promise<void> {
       // a run refused from its own input shows no account of an exchange it
       // does not conduct.
       displayZeroSetupDisclosure({ prepared, logFile, log });
+      // The --save bootstrap persists from the onOutputComplete hook below and
+      // reports what it loses on the machine-interface stream, so this command
+      // opens the stream itself and hands runProtocol the emitter rather than
+      // the flag, keeping both sources on the one stream that sends the run's
+      // terminal event. Opened here, before the host-key step, so the fd-3
+      // preflight and the undeclared-columns notice both precede that step's
+      // probe connection, as in `alcove exchange` (see docs/spec/CLI_EVENTS.md).
+      eventStreamEmitter = openEventStream(eventStream);
+      undeclaredColumnsWarned = warnUndeclaredColumns({
+        prepared,
+        alreadyWarned: false,
+        log,
+        emit: (fn) => {
+          if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
+        },
+      });
       // Establish first-use SSH host-key trust on the ORIGINAL `connection`
       // (before the clone below), so the pin reaches both the live connect and,
       // under --save, the persisted config. A pinned connection is a no-op; an
@@ -771,13 +794,6 @@ export async function handler(argv: Arguments): Promise<void> {
     announceRetainMode(connection, log);
 
     try {
-      // The --save bootstrap persists from the onOutputComplete hook below and
-      // reports what it loses on the machine-interface stream, so this command
-      // opens the stream itself and hands runProtocol the emitter rather than the
-      // flag, keeping both sources on the one stream that sends the run's
-      // terminal event. openEventStream runs the same fail-closed fd-3 preflight
-      // runProtocol would, at the same point (see docs/spec/CLI_EVENTS.md).
-      const eventStreamEmitter = openEventStream(eventStream);
       // Cast: `liveConnection` is `ConnectionConfig` (which includes the webrtc
       // channel), so TypeScript cannot verify it fits `ProtocolConnectionConfig`
       // (constrained to sftp and filedrop). The double cast through `unknown` is
@@ -806,6 +822,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // collapsing false to undefined would silently swallow it. The wire is
         // unaffected either way (see exchangeTerms).
         saveIntent: options.save,
+        undeclaredColumnsWarned,
         fileSyncRuntime: {
           sweepExchangeFiles,
           forceRetainSweep,

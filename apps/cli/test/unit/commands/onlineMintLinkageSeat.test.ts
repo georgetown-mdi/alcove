@@ -52,10 +52,11 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// Columns no built-in linkage key references. The online mint derives its terms
-// from the input's own columns, so the terms it would hold declare no linkage
-// key at all -- the draft shortfall this path reaches.
-const UNLINKABLE_CSV = "notes,memo\na note,a memo\n";
+// A linkage column no built-in linkage key references (phone is opt-in only).
+// The online mint derives its terms from the input's own columns, so the terms
+// it would hold declare no linkage key at all -- the draft shortfall this path
+// reaches.
+const UNLINKABLE_CSV = "phone,memo\n555-0100,a memo\n";
 
 function fixture(csv: string): {
   input: string;

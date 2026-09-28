@@ -77,7 +77,11 @@ import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
 import { assertFileSyncFirstRoundFits } from "../../src/fileSyncFirstRound";
 import { establishHostKeyTrust } from "../../src/hostKeyTrust";
-import { runProtocol } from "../../src/protocol";
+import {
+  runProtocol,
+  undeclaredColumnsNotice,
+  warnUndeclaredColumns,
+} from "../../src/protocol";
 import type { RunProtocolOptions } from "../../src/protocol";
 import { captureFd3 } from "../eventStreamTestSupport";
 import { streamOf, ttyStream, withStdin } from "../stdinStream";
@@ -86,9 +90,16 @@ import { streamOf, ttyStream, withStdin } from "../stdinStream";
 // opening a connection: runProtocol is mocked so each test chooses whether the
 // handshake "succeeds" (the mock invokes onAuthenticated) before it resolves or
 // rejects. saveConfig is left real, so the assertions check the actual file.
-vi.mock("../../src/protocol", () => ({
-  runProtocol: vi.fn(),
-}));
+// The undeclared-columns notice the bootstrap raises itself stays real,
+// spy-wrapped so the ordering test below can place it against the host-key step.
+vi.mock("../../src/protocol", async (importActual) => {
+  const actual = await importActual<typeof import("../../src/protocol")>();
+  return {
+    runProtocol: vi.fn(),
+    warnUndeclaredColumns: vi.fn(actual.warnUndeclaredColumns),
+    undeclaredColumnsNotice: actual.undeclaredColumnsNotice,
+  };
+});
 
 // The event-stream module stays REAL -- the preflight and the emitter it builds
 // are what the fd-3 tests below exercise -- with openEventStream wrapped in a spy
@@ -3869,6 +3880,65 @@ describe("runOnlineBootstrap", () => {
       expect(connectionPassedToRunProtocol?.server.hostKeyFingerprint).toBe(FP);
       // And the credential read before that step still reached the same object.
       expect(connectionPassedToRunProtocol?.server.password).toBe("s3cret");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("names undeclared columns once, before the host-key step", async () => {
+    // The host-key step's first-use probe opens a transport to the server, so
+    // the notice must already be on stderr and fd 3 when it starts, and
+    // runProtocol must be told so, or its own pass would raise it again.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    const base = onlineBootstrapParams(configPath);
+    const undeclaredColumns = ["notes"];
+    const notice = undeclaredColumnsNotice({ undeclaredColumns });
+    const connection: SFTPConnectionConfig = {
+      channel: "sftp",
+      server: { host: "sftp.example.org" },
+    };
+    let noticeEventsAtHostKeyStep: number | undefined;
+    vi.mocked(warnUndeclaredColumns).mockClear();
+    vi.mocked(establishHostKeyTrust).mockClear();
+    vi.mocked(establishHostKeyTrust).mockImplementationOnce((async () => {
+      noticeEventsAtHostKeyStep = vi
+        .mocked(fs.writeSync)
+        .mock.calls.filter(
+          ([fd, buffer]) =>
+            fd === 3 && String(buffer).includes('"undeclaredColumns"'),
+        ).length;
+    }) as never);
+    mockSuccessfulExchange(undefined);
+    vi.mocked(runProtocol).mockClear();
+    try {
+      const { lines } = await captureFd3(() =>
+        runOnlineBootstrap({
+          ...base,
+          connection,
+          prepared: { ...base.prepared, undeclaredColumns },
+          eventStream: true,
+        }),
+      );
+      expect(notice).toBeDefined();
+      expect(vi.mocked(warnUndeclaredColumns)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(warnUndeclaredColumns).mock.results[0].value).toBe(true);
+      expect(vi.mocked(establishHostKeyTrust)).toHaveBeenCalledTimes(1);
+      const [warned] = vi.mocked(warnUndeclaredColumns).mock
+        .invocationCallOrder;
+      const [trusted] = vi.mocked(establishHostKeyTrust).mock
+        .invocationCallOrder;
+      expect(warned).toBeLessThan(trusted);
+      expect(noticeEventsAtHostKeyStep).toBe(1);
+      expect(
+        lines.filter(
+          (l) => l.type === "warning" && l.source === "undeclaredColumns",
+        ),
+      ).toEqual([expect.objectContaining({ message: notice })]);
+      expect(
+        optionsArg(vi.mocked(runProtocol).mock.calls[0])
+          .undeclaredColumnsWarned,
+      ).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

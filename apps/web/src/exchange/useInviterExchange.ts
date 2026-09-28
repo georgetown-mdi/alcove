@@ -49,6 +49,8 @@ import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { whenDiagnostic } from "@utils/diagnostics";
 
+import { undeclaredColumnsRunNotice } from "@psi/runWarnings";
+
 import { buildRunOutputs } from "@psi/runOutputs";
 import { invitationUsable } from "@psi/formatting";
 import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
@@ -837,6 +839,7 @@ export function useInviterExchange({
       onStage,
       onStages,
       onPsiProgress,
+      onRunNotice,
     }) => {
       const psi = loadPsiBackend(
         { loadWasm: () => PSI() as Promise<PSILibrary> },
@@ -868,6 +871,8 @@ export function useInviterExchange({
         signal,
       });
       onStages(stagesFor(prepared));
+      const undeclaredNotice = undeclaredColumnsRunNotice(prepared);
+      if (undeclaredNotice !== undefined) onRunNotice(undeclaredNotice);
 
       onStage(WAITING_STAGE_ID);
       // Listen on the derived inviter id, then await the acceptor's inbound

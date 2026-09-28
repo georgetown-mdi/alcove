@@ -420,8 +420,8 @@ The empty case is where this guard is a disclosure control rather than an
 accuracy one: an acceptor's `send` is `deriveAcceptedLinkageTerms`'s mirror of
 the inviter's `payload.receive`, so an empty one holds the partner's
 declaration that it will take nothing, held against metadata that may be
-*inferred* -- where every column that is not a linkage or PII alias defaults to
-`is_payload: true`. That empty-send enforcement, and only it, is gated on this
+*inferred* -- where the `id` or `identifier` column defaults to
+`is_payload: true` ([Type inference from column names](DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). That empty-send enforcement, and only it, is gated on this
 party's own `output.share_with_partner`: with the partner entitled to no result
 nothing crosses whatever the metadata discloses, leaving a disclosure control
 nothing to control. A non-empty `send` is checked in both directions regardless
@@ -473,8 +473,8 @@ disclosed set is present only when the inviter authored a `payload.receive`.
 An acceptance's outbound column set is authored by no party. The invitation
 authors the inviter's `payload.send`; the mirror leaves the acceptor's own `send`
 absent whenever the inviter authored no `receive` -- the common invite shape --
-so the set is resolved from the acceptor's own CSV header, where inference makes
-every unrecognized column `role: payload, is_payload: true`. Neither guard above
+so the set is resolved from the acceptor's own CSV header, where inference sends
+an `id` or `identifier` column and no other. Neither guard above
 reaches it: the mint-boundary guard early-returns on an absent `send`, and
 `disclosed_payload_columns` records a promise to the partner that an acceptance
 never makes. So an acceptance records the set it *showed* the operator, in a

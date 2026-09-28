@@ -110,6 +110,18 @@ interface ConfigErrorSite {
 // change to either has to be answered here before it can pass.
 const RECORDED_SITES: readonly ConfigErrorSite[] = [
   {
+    file: "packages/core/src/config/metadata.ts",
+    anchor: "assertDeclaredPayloadColumnsPresent",
+    raises: "OperatorConfigError",
+    interpolates: ['missing.join(", ")'],
+    provenance:
+      "`missing` is names off this party's own metadata: the configuration's " +
+      "metadata block, the metadata inferred from its own input header, or the " +
+      "web seat's column edits over that header. No path adopts metadata from " +
+      "an invitation or a partner frame; the invitation holds only the " +
+      "partner's disclosed column list, which never becomes local metadata.",
+  },
+  {
     file: "packages/core/src/exchange.ts",
     anchor: "assertSigningModeImplemented",
     raises: "OperatorConfigError",

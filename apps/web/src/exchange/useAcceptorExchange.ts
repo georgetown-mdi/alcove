@@ -28,6 +28,8 @@ import { whenDiagnostic } from "@utils/diagnostics";
 
 import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
 
+import { undeclaredColumnsRunNotice } from "@psi/runWarnings";
+
 import { buildRunOutputs } from "@psi/runOutputs";
 import { invitationUsable } from "@psi/formatting";
 
@@ -432,6 +434,7 @@ export function useAcceptorExchange({
       onStage,
       onStages,
       onPsiProgress,
+      onRunNotice,
     }) => {
       const psi = loadPsiBackend(
         { loadWasm: () => PSI() as Promise<PSILibrary> },
@@ -456,6 +459,8 @@ export function useAcceptorExchange({
         signal,
       });
       onStages(stagesFor(prepared, "acceptor"));
+      const undeclaredNotice = undeclaredColumnsRunNotice(prepared);
+      if (undeclaredNotice !== undefined) onRunNotice(undeclaredNotice);
 
       // Fail fast: await the WASM library before dialing, so a WASM-load failure
       // is reported before this party publishes anything on the wire -- the

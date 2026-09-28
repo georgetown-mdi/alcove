@@ -2033,8 +2033,10 @@ interface FieldColumnResolution {
  * Binding is independent of whether the bound column is present in the input:
  * the builder reads rows from the column and a presence-only consumer layers the
  * presence test on top. `metadata` is the resolved metadata the caller already
- * chose (an explicit block or `inferMetadata`); under inferred metadata every
- * column is present, so the presence test only bites under an explicit block.
+ * chose (an explicit block or `inferMetadata`). An explicit transform may name
+ * a column `metadata` has no entry for: an undeclared input column, which binds
+ * because the transform is the operator's own statement that the column is a
+ * linkage input, or a column the input lacks, which the presence test reports.
  *
  * @internal Shared primitive for the resolution's three in-package consumers
  * (builder, satisfiability checker, default-standardization derivation);
@@ -2065,8 +2067,9 @@ export function resolveFieldColumns(
       // over a contradictory explicit transform. The field then resolves to no
       // column (reported as unsatisfiable through the shared checker) rather
       // than silently hashing a column the operator did not designate for
-      // matching into a PSI key. An ABSENT named column is not refused here: it
-      // still binds and is reported as unsatisfiable by presence downstream
+      // matching into a PSI key. A named column with no metadata entry binds:
+      // an undeclared input column is matched on as the transform states, and
+      // one the input lacks is reported as unsatisfiable by presence downstream
       // (the documented preempt-the-fallback behavior). "Match and send" stays
       // expressible as a `role: linkage` column with `isPayload: true`.
       const inputColumn = metadata.find((c) => c.name === transform.input);

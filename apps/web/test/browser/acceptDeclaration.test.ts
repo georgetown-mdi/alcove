@@ -129,17 +129,20 @@ function mountStep(
   columns: Array<string>,
   // Columns the step opens with set to "Not used", the state a column has to be in
   // to sit in the declared-but-not-sent half while the file still contains it.
+  // Every other column that inference does not recognize, which the seed lists
+  // as ignored, opens set to sent.
   unsent: ReadonlyArray<string> = [],
 ) {
   const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
   const inferred = acceptorInitialColumnsState(columns);
   const columnsState = {
     ...inferred,
-    metadata: inferred.metadata.map((column) =>
-      unsent.includes(column.name)
-        ? applyDisclosure(column, "ignored")
-        : column,
-    ),
+    metadata: inferred.metadata.map((column) => {
+      if (unsent.includes(column.name))
+        return applyDisclosure(column, "ignored");
+      if (column.role === "ignored") return applyDisclosure(column, "payload");
+      return column;
+    }),
   };
   const editorState = acceptorColumnsEditorState(
     columnsState,

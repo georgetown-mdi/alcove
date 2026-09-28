@@ -51,8 +51,17 @@ interface Partnership {
 
 let partnership: Partnership;
 
-function metadataWith(...extra: string[]): Metadata {
-  return inferMetadata([...LINKAGE_COLUMNS, ...extra], []);
+/** The linkage columns, plus each of `sent` declared as sent to the partner. */
+function metadataWith(...sent: string[]): Metadata {
+  return [
+    ...inferMetadata(LINKAGE_COLUMNS, []),
+    ...sent.map((name) => ({
+      name,
+      type: "other" as const,
+      role: "payload" as const,
+      isPayload: true,
+    })),
+  ];
 }
 
 /**

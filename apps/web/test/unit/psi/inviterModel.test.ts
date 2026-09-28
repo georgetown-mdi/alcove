@@ -77,7 +77,7 @@ const RLO = "\u202e";
 
 // Headers chosen from inferMetadata's exact-match alias table: four linkage
 // types (enough to back several default keys), one _id-suffixed identifier,
-// and one unrecognized column, which infers to a sent payload column.
+// and one unrecognized column, which the seed lists as not sent.
 const csv: AcquiredCsv = {
   fileName: "clients.csv",
   sizeBytes: Math.round(8.4 * 1024 ** 2),
@@ -108,9 +108,25 @@ function ledgerValue(editor: ReturnType<typeof editorFromCsv>, label: string) {
   return row;
 }
 
+/** The seed over `file` with `column` marked to send, through the columns
+ * step's own disclosure edit. */
+function seededSending(identity: string, file: AcquiredCsv, column: string) {
+  return editorWithColumnDisclosure(
+    editorFromCsv(identity, file),
+    file,
+    column,
+    "payload",
+  ).editor;
+}
+
 describe("spine derivation from the read file", () => {
-  test("seeding derives default keys and a disclosed send set", () => {
-    const editor = editorFromCsv("Dana Okafor", csv);
+  test("seeding derives default keys, and a marked column joins the send set", () => {
+    const seeded = editorFromCsv("Dana Okafor", csv);
+    expect(ledgerValue(seeded, "You will send").muted).toBe(
+      "Nothing - matching only",
+    );
+
+    const editor = seededSending("Dana Okafor", csv, "program_code");
     expect(enabledKeys(editor.draft).length).toBeGreaterThan(0);
     expect(editor.draft.identity).toBe("Dana Okafor");
 
@@ -130,13 +146,12 @@ describe("spine derivation from the read file", () => {
   });
 
   test("the send row isolates the operator's own headers", () => {
-    // A header holding a right-to-left override, unrecognized so it infers to
-    // the disclosed set: the ledger names it verbatim inside the isolate, which
-    // is how step 2's chips beside this rail show the same set. Escaping it here
-    // would put one header two ways on the one screen where the operator decides
-    // what leaves their machine.
+    // A header holding a right-to-left override, marked to send: the ledger
+    // names it verbatim inside the isolate, which is how step 2's chips beside
+    // this rail show the same set. Escaping it here would put one header two ways
+    // on the one screen where the operator decides what leaves their machine.
     const bidiColumn = `notes${RLO}evil`;
-    const editor = editorFromCsv("Dana", {
+    const bidiCsv: AcquiredCsv = {
       ...csv,
       columns: ["client_id", "first_name", "last_name", "dob", bidiColumn],
       rawRows: [
@@ -148,7 +163,8 @@ describe("spine derivation from the read file", () => {
           [bidiColumn]: "x",
         },
       ],
-    });
+    };
+    const editor = seededSending("Dana", bidiCsv, bidiColumn);
     const send = ledgerValue(editor, "You will send");
     expect(send.value).toBe(isolatedColumnName(bidiColumn));
     expect(send.value).toContain(RLO);
@@ -351,7 +367,7 @@ describe("review and create", () => {
   });
 
   test("an invalid term raises a problem that targets its source", () => {
-    const seeded = editorFromCsv("Dana", csv);
+    const seeded = seededSending("Dana", csv, "program_code");
     // Sending a column to a partner that receives no results is the
     // incoherent pair validateAdvancedInvite refuses; the column table owns
     // the disclosed set, so the problem points at step 2.
@@ -399,7 +415,10 @@ describe("review and create", () => {
   });
 
   test("check-your-answers restates the proposal with change targets", () => {
-    const editor = editorWithLifetime(editorFromCsv("Dana Okafor", csv), 86400);
+    const editor = editorWithLifetime(
+      seededSending("Dana Okafor", csv, "program_code"),
+      86400,
+    );
     const rows = answersRows(editor, csv);
     const byLabel = new Map(rows.map((row) => [row.label, row]));
     expect(byLabel.get("Your name")?.value).toBe("Dana Okafor");

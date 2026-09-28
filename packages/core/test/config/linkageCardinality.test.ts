@@ -42,6 +42,7 @@ import type {
   LinkageTerms,
 } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
+import type { Metadata } from "../../src/config/metadata";
 
 // The cardinality runExchange passes to the linkage strategies comes from the
 // agreed `deduplicate` settings. Both strategies run every cardinality the
@@ -1493,6 +1494,10 @@ const payloadRowsB: Array<CSVRow> = rowsB.map((row, index) => ({
   ...row,
   note: `b-${index}`,
 }));
+const firstNameAndSentNote: Metadata = [
+  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
+  { name: "note", type: "other", role: "payload", isPayload: true },
+];
 
 async function runAcceptedInvitation(declaredDeduplicate: boolean): Promise<{
   inviter: ExchangeResult;
@@ -1510,19 +1515,23 @@ async function runAcceptedInvitation(declaredDeduplicate: boolean): Promise<{
     runExchange(
       connInviter,
       "initiator",
-      prepareForExchange({ linkageTerms: inviterTerms }, "A", payloadRowsA, [
-        "first_name",
-        "note",
-      ]),
+      prepareForExchange(
+        { linkageTerms: inviterTerms, metadata: firstNameAndSentNote },
+        "A",
+        payloadRowsA,
+        ["first_name", "note"],
+      ),
       { psiLibrary },
     ),
     runExchange(
       connAcceptor,
       "responder",
-      prepareForExchange({ linkageTerms: acceptorTerms }, "B", payloadRowsB, [
-        "first_name",
-        "note",
-      ]),
+      prepareForExchange(
+        { linkageTerms: acceptorTerms, metadata: firstNameAndSentNote },
+        "B",
+        payloadRowsB,
+        ["first_name", "note"],
+      ),
       { psiLibrary },
     ),
   ]);

@@ -189,15 +189,14 @@ test("assertDisclosedNamesCarriable: says nothing when the partner is entitled t
 const rows = [{ first_name: "Alice" }];
 
 test("prepareForExchange: refuses an oversized disclosed CSV header before it prepares anything", () => {
-  // The unbounded path this gate exists for: no metadata in the spec, so it is
-  // inferred from the header, where an unrecognized column becomes transmitted
-  // payload by default.
   let thrown: unknown;
   try {
-    prepareForExchange({ linkageTerms: terms }, "Sender", rows, [
-      "first_name",
-      pastCeiling,
-    ]);
+    prepareForExchange(
+      { linkageTerms: terms, metadata: metadataSending(pastCeiling) },
+      "Sender",
+      rows,
+      ["first_name", pastCeiling],
+    );
   } catch (err) {
     thrown = err;
   }
@@ -207,10 +206,12 @@ test("prepareForExchange: refuses an oversized disclosed CSV header before it pr
 
 test("prepareForExchange: accepts a disclosed header at the ceiling", () => {
   expect(() =>
-    prepareForExchange({ linkageTerms: terms }, "Sender", rows, [
-      "first_name",
-      atCeiling,
-    ]),
+    prepareForExchange(
+      { linkageTerms: terms, metadata: metadataSending(atCeiling) },
+      "Sender",
+      rows,
+      ["first_name", atCeiling],
+    ),
   ).not.toThrow();
 });
 
@@ -219,7 +220,10 @@ test("prepareForExchange: accepts an oversized disclosed header when the partner
   // goes nowhere and the exchange runs.
   expect(() =>
     prepareForExchange(
-      { linkageTerms: { ...terms, output: SHARES_NOTHING } },
+      {
+        linkageTerms: { ...terms, output: SHARES_NOTHING },
+        metadata: metadataSending(pastCeiling),
+      },
       "Sender",
       rows,
       ["first_name", pastCeiling],
@@ -261,10 +265,12 @@ test("runExchange refuses an oversized disclosed name before it connects", async
   // Built legitimately -- a carriable disclosed name -- then given metadata whose
   // disclosed name is over the ceiling, the way a caller that skipped
   // prepareForExchange could.
-  const prepared = prepareForExchange({ linkageTerms: terms }, "Sender", rows, [
-    "first_name",
-    atCeiling,
-  ]);
+  const prepared = prepareForExchange(
+    { linkageTerms: terms, metadata: metadataSending(atCeiling) },
+    "Sender",
+    rows,
+    ["first_name", atCeiling],
+  );
   prepared.metadata = metadataSending(pastCeiling);
 
   const run = runExchange(unusableConnection(), "initiator", prepared, {
@@ -279,7 +285,10 @@ test("runExchange reads the output declaration the run holds, not the one prepar
   // the partner to no result -- where nothing travels, so prepare passes it --
   // then given sharing terms, which is when the name would travel.
   const prepared = prepareForExchange(
-    { linkageTerms: { ...terms, output: SHARES_NOTHING } },
+    {
+      linkageTerms: { ...terms, output: SHARES_NOTHING },
+      metadata: metadataSending(pastCeiling),
+    },
     "Sender",
     rows,
     ["first_name", pastCeiling],
@@ -298,10 +307,12 @@ test("runExchange runs past the guard for a carriable disclosed name", async () 
   // name at the ceiling reaches the terms exchange, so the failure is the
   // connection's -- proof the refusals above fired on the name rather than on the
   // fixtures.
-  const prepared = prepareForExchange({ linkageTerms: terms }, "Sender", rows, [
-    "first_name",
-    atCeiling,
-  ]);
+  const prepared = prepareForExchange(
+    { linkageTerms: terms, metadata: metadataSending(atCeiling) },
+    "Sender",
+    rows,
+    ["first_name", atCeiling],
+  );
   const run = runExchange(unusableConnection(), "initiator", prepared, {
     psiLibrary: unusablePsiLibrary,
   });

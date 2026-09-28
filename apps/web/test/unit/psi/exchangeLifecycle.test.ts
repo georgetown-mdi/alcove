@@ -409,6 +409,43 @@ describe("runExchangeLifecycle", () => {
     },
   );
 
+  test("a notice acquire raises reaches onWarning even when the run then fails", async () => {
+    const acquire: Acquire = ({ onRunNotice }) => {
+      onRunNotice("2 input columns are not sent");
+      return Promise.reject(new Error("dial failed"));
+    };
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    expect(s.onWarning).toHaveBeenCalledWith("2 input columns are not sent");
+    expect(s.onError).toHaveBeenCalledTimes(1);
+  });
+
+  test("a notice acquire raises after the run is cancelled is dropped", async () => {
+    const controller = new AbortController();
+    const acquire: Acquire = ({ onRunNotice }) => {
+      controller.abort();
+      onRunNotice("2 input columns are not sent");
+      return Promise.reject(new Error("aborted"));
+    };
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: controller.signal,
+      ...s,
+    });
+
+    expect(s.onWarning).not.toHaveBeenCalled();
+  });
+
   test("an acquire failure is category 'exchange' and needs no owner teardown", async () => {
     const acquire: Acquire = () => Promise.reject(new Error("CSV load failed"));
     const s = seams();

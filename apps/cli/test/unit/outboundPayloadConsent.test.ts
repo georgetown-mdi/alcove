@@ -362,8 +362,8 @@ test("a narrowed set is asked about too", async () => {
 
 test("prepareDataset: an unattended run refuses a set widened since the accept", async () => {
   // End to end through prepareDataset: a config accepted with one CSV, run
-  // against another whose extra column inferMetadata makes transmittable by
-  // default. The refusal is raised while the dataset is being prepared -- before
+  // against another whose extra column the metadata declares as sent. The
+  // refusal is raised while the dataset is being prepared -- before
   // the run that holds credentials, terms, and data -- and has the exit-64
   // classification a UsageError gets, distinct from a transport failure.
   const input = path.join(dir, "in.csv");
@@ -372,6 +372,7 @@ test("prepareDataset: an unattended run refuses a set widened since the accept",
     prepareDataset(
       {
         linkageTerms: acceptorTerms,
+        metadata: metadataDisclosing(["diagnosis", "ssn_note"]),
         outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
       },
       "Acceptor",
@@ -393,6 +394,7 @@ test("prepareDataset: the same run prepares once the set is the confirmed one", 
     prepareDataset(
       {
         linkageTerms: acceptorTerms,
+        metadata: metadataDisclosing(["diagnosis"]),
         outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
       },
       "Acceptor",

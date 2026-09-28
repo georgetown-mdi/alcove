@@ -579,14 +579,22 @@ test("an out-of-shape count-only pair is refused whichever party's terms hold it
 });
 
 test("a count-only exchange whose input metadata would transmit a column is refused at prepare", async () => {
-  // The fifth shape rule, over the metadata RESOLVED from this run's own input
-  // columns: an unnamed extra column is inferred as a disclosed payload column,
-  // and a count-only exchange includes none in either direction. Refused before
-  // any credential, terms, or data are sent, rather than dropping the marked
-  // column to bring the run into shape.
+  // The fifth shape rule: the metadata declares a column of this run's input as
+  // sent, and a count-only exchange includes none in either direction. Refused
+  // before any credential, terms, or data are sent, rather than dropping the
+  // marked column to bring the run into shape.
   expect(() =>
     prepareForExchange(
       {
+        metadata: [
+          {
+            name: "first_name",
+            type: "first_name",
+            role: "linkage",
+            isPayload: false,
+          },
+          { name: "note", type: "other", role: "payload", isPayload: true },
+        ],
         linkageTerms: {
           ...firstNameTerms,
           algorithm: "psi-c",

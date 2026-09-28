@@ -443,11 +443,16 @@ describe("setDraftMetadata re-derives offerable keys", () => {
     const { draft } = seedAdvancedInvite("Org", COLS);
     expect(ssnKeyNames(draft)).toEqual([]);
 
-    // Remap `extra` -> ssn alone: a type change keeps its inferred `payload`
-    // disclosure (a sent column stays sent), and a payload column is not matched,
-    // so no ssn key is offerable yet -- matching participation is the explicit
-    // `linkage` role, not the type alone.
-    const retyped = setColumnType(draft.metadata, "extra", "ssn").metadata;
+    // Mark `extra` sent, then remap it -> ssn alone: a type change keeps a sent
+    // column sent, and a payload column is not matched, so no ssn key is
+    // offerable yet -- matching participation is the explicit `linkage` role,
+    // not the type alone.
+    const sent = setColumnDisclosure(
+      draft.metadata,
+      "extra",
+      "payload",
+    ).metadata;
+    const retyped = setColumnType(sent, "extra", "ssn").metadata;
     expect(ssnKeyNames(setDraftMetadata(draft, retyped))).toEqual([]);
 
     // Rolling `extra` for matching (role: linkage) makes its ssn keys offerable.
@@ -1067,12 +1072,26 @@ describe("the 3-way output direction control", () => {
 });
 
 describe("payload authoring", () => {
-  // "notes" and "comments" infer as `other` columns -> disclosed (sent) by default;
-  // the linkage columns are not.
+  // "notes" and "comments" are seeded as `other` columns, not sent, and the
+  // linkage columns are not sent either.
   const PAYLOAD_COLUMNS = [...ALL_COLUMNS, "notes", "comments"];
 
+  /** The seed over `columns` with each of `sent` marked to send, through the
+   * editor's own disclosure edit. */
+  function seededWithSent(
+    columns: Array<string> = PAYLOAD_COLUMNS,
+    sent: Array<string> = ["notes", "comments"],
+  ) {
+    const seeded = seedAdvancedInvite("Org", columns);
+    const metadata = sent.reduce(
+      (marked, name) => setColumnDisclosure(marked, name, "payload").metadata,
+      seeded.draft.metadata,
+    );
+    return { ...seeded, draft: setDraftMetadata(seeded.draft, metadata) };
+  }
+
   test("terms.payload.send is exactly the disclosed columns; receive is never authored", () => {
-    const { draft } = seedAdvancedInvite("Org", PAYLOAD_COLUMNS);
+    const { draft } = seededWithSent();
     const disclosed = disclosedColumnNames(draft.metadata);
     expect(disclosed).toEqual(["notes", "comments"]);
     const built = buildAdvancedTerms(draft);
@@ -1107,7 +1126,7 @@ describe("payload authoring", () => {
     // The one combination the schema forbids (a non-empty receive with
     // expectsOutput false) cannot be expressed through the guided editor, in any
     // output direction, because the editor authors no receive at all.
-    const { draft } = seedAdvancedInvite("Org", PAYLOAD_COLUMNS);
+    const { draft } = seededWithSent();
     for (const direction of ["both", "inviter", "partner"] as const)
       expect(
         buildAdvancedTerms({ ...draft, outputDirection: direction }).payload
@@ -1116,7 +1135,7 @@ describe("payload authoring", () => {
   });
 
   test("sending while only the inviter receives is blocked live and the acceptor cannot derive it", () => {
-    const { draft, seed } = seedAdvancedInvite("Org", PAYLOAD_COLUMNS);
+    const { draft, seed } = seededWithSent();
     const inviterOnly = { ...draft, outputDirection: "inviter" as const };
     const result = validateAdvancedInvite(inviterOnly, seed);
     expect(result.errors.payload).toBeDefined();
@@ -1139,11 +1158,10 @@ describe("payload authoring", () => {
     // first-message-wins guard would otherwise drop the schema error behind the (more
     // common) direction conflict -- hiding a second obstacle that still blocks Generate.
     const overLong = "x".repeat(MAX_NAME_LENGTH + 1);
-    // The over-long header infers as an `other` column, disclosed (sent) by default.
-    const { draft, seed } = seedAdvancedInvite("Org", [
-      ...ALL_COLUMNS,
-      overLong,
-    ]);
+    const { draft, seed } = seededWithSent(
+      [...ALL_COLUMNS, overLong],
+      [overLong],
+    );
     expect(disclosedColumnNames(draft.metadata)).toContain(overLong);
 
     // Single-problem baselines, so the both-problems assertion compares against the
@@ -1158,7 +1176,7 @@ describe("payload authoring", () => {
     expect(schemaOnly.canGenerate).toBe(false);
 
     // (2) Direction-conflict only: a normally-named disclosed column, inviter-only.
-    const conflict = seedAdvancedInvite("Org", [...ALL_COLUMNS, "notes"]);
+    const conflict = seededWithSent([...ALL_COLUMNS, "notes"], ["notes"]);
     const conflictOnly = validateAdvancedInvite(
       { ...conflict.draft, outputDirection: "inviter" },
       conflict.seed,
@@ -1186,7 +1204,7 @@ describe("payload authoring", () => {
   });
 
   test("a disclosed-payload invitation round-trips through the acceptor mirror", () => {
-    const { draft } = seedAdvancedInvite("Org", PAYLOAD_COLUMNS);
+    const { draft } = seededWithSent();
     const built = buildAdvancedTerms(draft); // both-receive, sends notes+comments
     const acceptor = deriveAcceptedLinkageTerms(built, "Acceptor");
     // The acceptor's receive is the inviter's send (validated exactly); its send

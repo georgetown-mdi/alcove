@@ -1214,20 +1214,24 @@ export async function handler(argv: Arguments): Promise<void> {
     // webrtc rendezvous), which runProtocol runs again.
     let openedEventStream: EventStreamEmitter | undefined;
     let signingWithoutRecordWarned = false;
+    let undeclaredColumnsWarned = false;
     try {
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
-      ({ eventStream: openedEventStream, signingWithoutRecordWarned } =
-        await preflightRun({
-          connection,
-          auth: authentication,
-          prepared,
-          signing,
-          recordOutput,
-          verbosity,
-          loggerName: "exchange",
-          logFile,
-          eventStream,
-        }));
+      ({
+        eventStream: openedEventStream,
+        signingWithoutRecordWarned,
+        undeclaredColumnsWarned,
+      } = await preflightRun({
+        connection,
+        auth: authentication,
+        prepared,
+        signing,
+        recordOutput,
+        verbosity,
+        loggerName: "exchange",
+        logFile,
+        eventStream,
+      }));
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
     }
@@ -1270,6 +1274,7 @@ export async function handler(argv: Arguments): Promise<void> {
         },
         signing,
         signingWithoutRecordWarned,
+        undeclaredColumnsWarned,
       });
     } catch (err) {
       // Capture rather than exit here so the expiry advisory below can run on the

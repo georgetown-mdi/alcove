@@ -7,16 +7,17 @@ import {
   deriveAcceptedLinkageTerms,
   validateCompatibility,
 } from "../src/linkageTermsNegotiation";
-import { disclosedColumnNames, inferMetadata } from "../src/config/metadata";
+import { disclosedColumnNames } from "../src/config/metadata";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { UsageError } from "../src/errors";
 
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
+import type { Metadata } from "../src/config/metadata";
 import type { MessageConnection } from "../src/connection/messageConnection";
 
 // An inviter that declares `payload.receive: []` mirrors to a present, empty
 // `payload.send` on the acceptor. The acceptor's own metadata may still
-// infer payload columns from its CSV header, with no operator choice.
+// declare payload columns.
 // These tests assert that no payload column reaches the wire before the
 // partner's runtime reconciliation would catch it, which fires only after
 // values arrive.
@@ -67,10 +68,18 @@ const acceptorRows = [
   { first_name: "Elizabeth", diagnosis: "E-asthma", notes: "E-note" },
 ];
 const acceptorColumns = ["first_name", "diagnosis", "notes"];
+const acceptorMetadata: Metadata = [
+  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
+  { name: "diagnosis", type: "other", role: "payload", isPayload: true },
+  { name: "notes", type: "other", role: "payload", isPayload: true },
+];
 
 function acceptorPreparedFor(inviter: LinkageTerms) {
   return prepareForExchange(
-    { linkageTerms: deriveAcceptedLinkageTerms(inviter, "Acceptor Co") },
+    {
+      metadata: acceptorMetadata,
+      linkageTerms: deriveAcceptedLinkageTerms(inviter, "Acceptor Co"),
+    },
     "Acceptor Co",
     acceptorRows,
     acceptorColumns,
@@ -115,13 +124,10 @@ function expectNoPayloadOnWire(sent: unknown[]): void {
 }
 
 test("an acceptor declaring it sends nothing is refused before anything is sent when its metadata discloses columns", () => {
-  // Inferred, not chosen: neither `diagnosis` nor `notes` is a linkage or PII
-  // alias, so both default to transmitted.
-  expect(
-    inferMetadata(acceptorColumns, [])
-      .filter((column) => column.isPayload)
-      .map((column) => column.name),
-  ).toEqual(["diagnosis", "notes"]);
+  expect(disclosedColumnNames(acceptorMetadata)).toEqual([
+    "diagnosis",
+    "notes",
+  ]);
 
   expect(acceptorPrepared).toThrow(UsageError);
   // Both disclosed columns are named, and the remedy is to stop transmitting them

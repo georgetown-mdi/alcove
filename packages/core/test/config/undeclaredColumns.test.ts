@@ -1,0 +1,505 @@
+import { describe, expect, test } from "vitest";
+
+import {
+  assertDeclaredPayloadColumnsPresent,
+  describeUndeclaredColumns,
+  disclosedColumnNames,
+  inferMetadata,
+  inferMetadataForEveryColumn,
+  UNDECLARED_COLUMNS_LISTED_MAX,
+  undeclaredColumnNames,
+} from "../../src/config/metadata";
+import { OperatorConfigError, UsageError } from "../../src/errors";
+import {
+  prepareForExchange,
+  resolveExchangeInputs,
+  undeclaredColumnsForOwnResult,
+} from "../../src/exchange";
+import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
+import { resolveFieldColumns } from "../../src/standardization";
+import {
+  DISPLAY_TRUNCATION_MARKER,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  sanitizeForDisplay,
+} from "../../src/utils/sanitizeForDisplay";
+
+import type { Metadata } from "../../src/config/metadata";
+import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
+import type { Standardization } from "../../src/config/standardizationSchema";
+
+const REMEDY = "To send one, declare it.";
+
+describe("inference sends only what it recognizes", () => {
+  test("an unrecognized column is left out of the inferred metadata", () => {
+    const metadata = inferMetadata(["first_name", "notes"], []);
+    expect(metadata.map((column) => column.name)).toEqual(["first_name"]);
+    expect(disclosedColumnNames(metadata)).toEqual([]);
+  });
+
+  test("a sole _id column is the identifier and is not sent", () => {
+    expect(inferMetadata(["case_id", "dob"], [])).toContainEqual({
+      name: "case_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    });
+  });
+
+  test("an _id column beside an id column is left out", () => {
+    const metadata = inferMetadata(["id", "case_id"], []);
+    expect(metadata.map((column) => column.name)).toEqual(["id"]);
+  });
+
+  test("two _id columns are both left out", () => {
+    expect(inferMetadata(["case_id", "person_id"], [])).toEqual([]);
+  });
+
+  test("a recognized alias keeps its mapped values", () => {
+    expect(inferMetadata(["DOB", "id", "zip"], [])).toEqual([
+      {
+        name: "DOB",
+        type: "date_of_birth",
+        role: "linkage",
+        isPayload: false,
+      },
+      { name: "id", type: "identifier", role: "identifier", isPayload: true },
+      { name: "zip", type: "zip_code", role: "linkage", isPayload: false },
+    ]);
+  });
+
+  test("the every-column variant lists the rest as ignored, in header order", () => {
+    expect(inferMetadataForEveryColumn(["notes", "id", "case_id"], [])).toEqual(
+      [
+        { name: "notes", type: "other", role: "ignored", isPayload: false },
+        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+        {
+          name: "case_id",
+          type: "identifier",
+          role: "ignored",
+          isPayload: false,
+        },
+      ],
+    );
+  });
+
+  test("the every-column variant refuses an empty name as inference does", () => {
+    expect(() => inferMetadataForEveryColumn(["a", ""], [])).toThrow(
+      UsageError,
+    );
+  });
+});
+
+describe("the undeclared-column list", () => {
+  test("names the input columns inferred metadata leaves out", () => {
+    const columns = ["first_name", "notes", "case_id", "id", "amount"];
+    expect(undeclaredColumnNames(columns, inferMetadata(columns, []))).toEqual([
+      "notes",
+      "case_id",
+      "amount",
+    ]);
+  });
+
+  test("names the input columns an authored block does not name", () => {
+    const metadata: Metadata = [
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+      { name: "notes", type: "other", role: "ignored", isPayload: false },
+    ];
+    expect(
+      undeclaredColumnNames(["first_name", "notes", "dob"], metadata),
+    ).toEqual(["dob"]);
+  });
+
+  test("is empty when every column is declared, and the notice is absent", () => {
+    const columns = ["first_name", "last_name"];
+    const undeclared = undeclaredColumnNames(
+      columns,
+      inferMetadata(columns, []),
+    );
+    expect(undeclared).toEqual([]);
+    expect(describeUndeclaredColumns(undeclared, REMEDY)).toBeUndefined();
+  });
+
+  test("the notice names each column and ends with the remedy", () => {
+    expect(describeUndeclaredColumns(["notes"], REMEDY)).toBe(
+      "1 input column is not sent to your partner because the exchange's " +
+        `column settings do not declare it: notes. ${REMEDY}`,
+    );
+    expect(describeUndeclaredColumns(["notes", "amount"], REMEDY)).toBe(
+      "2 input columns are not sent to your partner because the exchange's " +
+        `column settings do not declare them: notes, amount. ${REMEDY}`,
+    );
+  });
+
+  test("the notice lists a bounded number of names and counts the rest", () => {
+    const undeclared = Array.from({ length: 300 }, (_, i) => `column_${i}`);
+    const notice = describeUndeclaredColumns(undeclared, REMEDY) ?? "";
+    const listed = undeclared.slice(0, UNDECLARED_COLUMNS_LISTED_MAX);
+    expect(notice).toContain(`: ${listed.join(", ")}, and 280 more. `);
+    expect(notice).not.toContain(undeclared[UNDECLARED_COLUMNS_LISTED_MAX]);
+    expect(notice.startsWith("300 input columns")).toBe(true);
+    expect(notice.endsWith(REMEDY)).toBe(true);
+  });
+
+  test("the remedy survives the warning cap however wide the names are", () => {
+    // Each name escapes to six characters per code unit, so the listed
+    // names alone would pass the cap.
+    const wide = Array.from(
+      { length: 25 },
+      (_, i) => "\u0430".repeat(200) + String(i),
+    );
+    const notice = describeUndeclaredColumns(wide, REMEDY) ?? "";
+    const shown = sanitizeForDisplay(notice, {
+      maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    });
+    expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(shown.endsWith(REMEDY)).toBe(true);
+    expect(notice).toMatch(/, and \d+ more\. /);
+  });
+
+  test("the remedy survives the warning cap after three escape passes", () => {
+    const names = Array.from(
+      { length: 600 },
+      (_, i) => "\\\u0430".repeat(60) + String(i),
+    );
+    const notice = describeUndeclaredColumns(names, REMEDY) ?? "";
+    let shown = notice;
+    for (let pass = 0; pass < 3; pass += 1)
+      shown = sanitizeForDisplay(shown, {
+        maxLength: Number.POSITIVE_INFINITY,
+      });
+    expect(shown.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    expect(shown.endsWith(REMEDY)).toBe(true);
+    expect(notice).toMatch(/, and \d+ more\. /);
+  });
+
+  test("a key marker in a name is redacted in that name alone", () => {
+    const notice =
+      describeUndeclaredColumns(
+        ["-----BEGIN PRIVATE KEY-----", "notes"],
+        REMEDY,
+      ) ?? "";
+    expect(notice).toBe(
+      "2 input columns are not sent to your partner because the exchange's " +
+        `column settings do not declare them: [redacted private key], notes. ${REMEDY}`,
+    );
+  });
+
+  test("a single overlong name is counted rather than listed", () => {
+    const notice =
+      describeUndeclaredColumns(["x".repeat(10_000)], REMEDY) ?? "";
+    expect(notice).toBe(
+      "1 input column is not sent to your partner because the exchange's " +
+        `column settings do not declare it. ${REMEDY}`,
+    );
+  });
+
+  test("prepareForExchange sets it on the prepared exchange", () => {
+    const prepared = prepareForExchange(
+      {},
+      "alice",
+      [{ first_name: "Ann", last_name: "Lee", dob: "1980-01-02", notes: "x" }],
+      ["first_name", "last_name", "dob", "notes"],
+    );
+    expect(prepared.undeclaredColumns).toEqual(["notes"]);
+    expect(disclosedColumnNames(prepared.metadata)).toEqual([]);
+  });
+
+  test("an undeclared column never reaches the payload frame", () => {
+    const columns = [
+      "first_name",
+      "last_name",
+      "dob",
+      "notes",
+      "case_id",
+      "person_id",
+    ];
+    const row = {
+      first_name: "Ann",
+      last_name: "Lee",
+      dob: "1980-01-02",
+      notes: "x",
+      case_id: "c1",
+      person_id: "p1",
+    };
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
+      hasData: false,
+    });
+  });
+});
+
+describe("a standardization transform naming an undeclared column", () => {
+  const linkageTerms: LinkageTerms = {
+    version: "1.0.0",
+    identity: "alice",
+    date: "2026-01-01",
+    algorithm: "psi",
+    linkageStrategy: "cascade",
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "last_name", type: "last_name" },
+    ],
+    linkageKeys: [
+      {
+        name: "FN_LN",
+        elements: [{ field: "first_name" }, { field: "last_name" }],
+      },
+    ],
+  };
+  const columns = ["id", "first_name", "surname"];
+  const row = { id: "r1", first_name: "Ann", surname: "Lee" };
+  const standardization: Standardization = [
+    {
+      output: "last_name",
+      input: "surname",
+      steps: [{ function: "to_upper_case" }],
+    },
+  ];
+
+  test("matches on it as the transform states, and still never sends it", () => {
+    const prepared = prepareForExchange(
+      { linkageTerms, standardization },
+      "alice",
+      [row],
+      columns,
+    );
+    expect(prepared.undeclaredColumns).toEqual(["surname"]);
+    expect(
+      resolveFieldColumns(linkageTerms, standardization, prepared.metadata).get(
+        "last_name",
+      )?.column,
+    ).toBe("surname");
+    expect(prepared.dataset.getField("last_name")?.get(0)).toEqual(["LEE"]);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
+      hasData: true,
+      columns: ["id"],
+    });
+  });
+});
+
+describe("this party's own result file", () => {
+  const columns = ["id", "first_name", "last_name", "dob", "notes", "case_id"];
+  const row = {
+    id: "r1",
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "1980-01-02",
+    notes: "x",
+    case_id: "c1",
+  };
+  const noPartnerPayload = { columns: [], rowIndices: [], rows: [] };
+  const linkageColumns: Metadata = [
+    { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+    {
+      name: "first_name",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+    { name: "last_name", type: "last_name", role: "linkage", isPayload: false },
+  ];
+
+  test("`all` over inferred metadata writes an undeclared column after the declared ones", () => {
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(prepared.metadataInferred).toBe(true);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    const { headers, rows } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "all",
+      undeclaredColumnsForOwnResult(prepared),
+    );
+    expect(headers).toEqual([
+      "id",
+      "row_id",
+      "first_name",
+      "last_name",
+      "dob",
+      "notes",
+      "case_id",
+    ]);
+    expect(rows).toEqual([["r1", "0", "Ann", "Lee", "1980-01-02", "x", "c1"]]);
+  });
+
+  test("`all` leaves out a column an authored metadata block does not declare", () => {
+    const metadata: Metadata = [
+      { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+      {
+        name: "last_name",
+        type: "last_name",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
+    expect(prepared.metadataInferred).toBe(false);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    expect(undeclaredColumnsForOwnResult(prepared)).toEqual([]);
+    const { headers } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "all",
+      undeclaredColumnsForOwnResult(prepared),
+    );
+    expect(headers).toEqual(["id", "row_id", "dob", "first_name", "last_name"]);
+  });
+
+  test("`all` writes an ignored column an authored block declares", () => {
+    const metadata: Metadata = [
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
+      ...linkageColumns,
+      { name: "notes", type: "other", role: "ignored", isPayload: false },
+    ];
+    const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
+    const { headers } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "all",
+      undeclaredColumnsForOwnResult(prepared),
+    );
+    expect(headers).toEqual([
+      "id",
+      "row_id",
+      "dob",
+      "first_name",
+      "last_name",
+      "notes",
+    ]);
+  });
+
+  test.each([
+    ["inferred metadata", undefined],
+    [
+      "an authored metadata block",
+      [
+        { name: "id", type: "identifier", role: "identifier", isPayload: true },
+        ...linkageColumns,
+      ] satisfies Metadata,
+    ],
+  ])("`disclosed` leaves an undeclared column out under %s", (_, metadata) => {
+    const prepared = prepareForExchange(
+      metadata === undefined ? {} : { metadata },
+      "alice",
+      [row],
+      columns,
+    );
+    expect(prepared.undeclaredColumns).toContain("notes");
+    const { headers } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "disclosed",
+      undeclaredColumnsForOwnResult(prepared),
+    );
+    expect(headers).toEqual(["id", "row_id"]);
+  });
+
+  test("a prepared exchange that does not say its metadata was inferred writes no undeclared column", () => {
+    expect(
+      undeclaredColumnsForOwnResult({ undeclaredColumns: ["notes"] }),
+    ).toEqual([]);
+  });
+
+  test("the payload frame holds no undeclared column", () => {
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
+      hasData: true,
+      columns: ["id"],
+    });
+  });
+});
+
+describe("a sent column the input does not hold", () => {
+  const metadata: Metadata = [
+    {
+      name: "first_name",
+      type: "first_name",
+      role: "linkage",
+      isPayload: false,
+    },
+    { name: "last_name", type: "last_name", role: "linkage", isPayload: false },
+    { name: "notes", type: "other", role: "payload", isPayload: true },
+    { name: "amount", type: "other", role: "payload", isPayload: true },
+    { name: "ssn", type: "ssn", role: "ignored", isPayload: true },
+  ];
+
+  test("is refused naming each missing column", () => {
+    let caught: unknown;
+    try {
+      assertDeclaredPayloadColumnsPresent(metadata, [
+        "first_name",
+        "last_name",
+      ]);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(OperatorConfigError);
+    expect((caught as Error).message).toContain(
+      "the input file does not hold: notes, amount.",
+    );
+  });
+
+  test("passes when the input holds every sent column", () => {
+    expect(() =>
+      assertDeclaredPayloadColumnsPresent(metadata, [
+        "first_name",
+        "last_name",
+        "notes",
+        "amount",
+      ]),
+    ).not.toThrow();
+  });
+
+  test("is refused by resolveExchangeInputs, before any preparation", () => {
+    expect(() =>
+      resolveExchangeInputs({ metadata }, "alice", ["first_name", "notes"], []),
+    ).toThrow(/does not hold: amount\./);
+  });
+
+  test("is refused by prepareForExchange with no commitment on record", () => {
+    expect(() =>
+      prepareForExchange(
+        { metadata },
+        "alice",
+        [{ first_name: "Ann", last_name: "Lee", notes: "x" }],
+        ["first_name", "last_name", "notes"],
+      ),
+    ).toThrow(OperatorConfigError);
+  });
+});
+
+test("an input with no recognized column gets default terms with no key", () => {
+  // A pipe-delimited file read with the comma default is one unrecognized
+  // column: its default terms declare no key, rather than every built-in key.
+  const { linkageTerms, undeclaredColumns } = resolveExchangeInputs(
+    {},
+    "alice",
+    ["first_name|last_name|dob"],
+    [],
+  );
+  expect(linkageTerms.linkageKeys).toEqual([]);
+  expect(undeclaredColumns).toEqual(["first_name|last_name|dob"]);
+});

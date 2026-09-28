@@ -4,6 +4,7 @@ import {
   resultCsvDelimiter,
   serializeExchangeRecord,
   serializeVerificationKeys,
+  undeclaredColumnsForOwnResult,
 } from "@alcove/core";
 
 import type {
@@ -117,6 +118,7 @@ export function buildRunOutputs(
                 prepared.metadata,
                 result.partnerPayload,
                 prepared.includeOwnColumns,
+                undeclaredColumnsForOwnResult(prepared),
                 writeDelimiter,
               );
               const csv =
