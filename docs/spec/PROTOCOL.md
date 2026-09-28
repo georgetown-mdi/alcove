@@ -90,7 +90,7 @@ The refusal (`WebRtcFrameLimitError`, a usage error, CLI exit 64) states the siz
 - **The partner's records matched in one round**: the round's incidence map keyed by the partner's rank (`noteMatch` in `linkViaPSI`), which the round fills before the maps keyed by the partner's rank. It binds even where this party's matched records are far fewer, as in a `one-to-many` round whose values the partner holds several times over.
 - **The entity closure's records on either side, and its pairs**: the row-to-node maps of `entityClusters` and the pair set of `assertRoundDiagonalClosure` (`packages/core/src/psi/entityClosure.ts`), whichever passes 2^24 first.
 
-**Measured run past the limit.** In the development container on Node 26.10, with the heap raised to 16 GiB, each structure driven to 2^24 + 1024 entries and to a 50-million-record input throws at the entry past 2^24. Elapsed time and the process's peak resident set, input construction included:
+**Measured run past the limit.** On a 10-core aarch64 Linux container with 23 GB of memory, Node 26.10, heap raised to 16 GiB, each structure driven to 2^24 + 1024 entries and to a 50-million-record input throws at the entry past 2^24. Elapsed time and the process's peak resident set, input construction included:
 
 | Structure driven | 2^24 + 1024 | 50 million |
 | --- | --- | --- |

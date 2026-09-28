@@ -44,6 +44,8 @@ export default defineConfig({
         test: {
           name: "stress",
           include: ["test/stress/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
+          // One file at a time: each file claims several GB and reports its own peak RSS.
+          fileParallelism: false,
           // Large PSI rounds run for tens of seconds at the default sizes; the
           // 5s default would flake. Headroom here also lets a tuned-up run
           // (raised PSI_STRESS_N / PSI_STRESS_E2E_N) finish without flaking.
