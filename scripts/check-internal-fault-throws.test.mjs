@@ -160,13 +160,12 @@ describe("internalFaultPlainThrows over synthetic source", () => {
   });
 });
 
+// The full-tree run is `check:internal-fault-throws` itself, which `check:all`
+// runs as its own step, so no case here repeats it. A case that did would
+// parse about 4.5 MB of source: 0.6 s alone, and a median 4.8 s (worst 5.1 s,
+// past vitest's 5 s default) with twenty copies of this file running at once
+// on a 10-core container (2026-09-28).
 describe("checkInternalFaultThrows", () => {
-  it("passes this repository's guarded trees", () => {
-    const { ok, message } = checkInternalFaultThrows();
-    expect(message).toMatch(/no internal-fault guard/);
-    expect(ok).toBe(true);
-  });
-
   it("reads both guarded trees and names each finding", () => {
     const sources = {
       "packages/core/src/a.ts":
