@@ -230,8 +230,8 @@ export async function callProvisionEndpoint(
   } catch (err) {
     if (isTimeout(err))
       throw new ConnectionError(
-        `${label} did not answer within ${Math.ceil(timeoutMs / 1000)} ` +
-          "seconds; check that it is reachable and try the run again.",
+        `${label} did not answer within ${timeoutMs}ms; check that it is ` +
+          "reachable and try the run again.",
         "transport",
       );
     throw new ConnectionError(

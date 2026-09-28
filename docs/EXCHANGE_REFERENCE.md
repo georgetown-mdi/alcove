@@ -732,14 +732,7 @@ connection:
 
 ##### How `alcove exchange` calls the endpoint
 
-- **The request.** One `POST` with an empty body to `https://host:port/path`, sending `Accept: application/json` and, when `auth` is set, an `Authorization` header: `Bearer` for a token, `Basic` for a username and password.
-- **When.** Once per run, after every check the run decides from its own inputs -- the configuration, the input file, the linkage terms, the signing identity -- and before its first connection to the server, [SFTP host-key trust](CLI.md#sftp-host-key-trust) included. A run refused on its own inputs sends nothing.
-- **What the endpoint answers.** A `2xx` status means the server now accepts connections; the run then connects to the static `server` fields. The response body is not read. A redirect is not followed, so the credential is sent to `host` alone. The endpoint has 120 seconds to answer.
-- **Two calls per exchange.** Each party's run sends its own call, in either order and possibly at the same time, so the endpoint answers `2xx` to a server that is already up.
-- **Failures.** The run stops, and the message names the endpoint by host and port, never its path or credential:
-  - no answer -- a network, DNS, or TLS failure, or the 120 seconds passing -- or a `408`, `429`, or `5xx` status: exit 69, a retry can succeed;
-  - `401` or `403`: exit 64, the endpoint refused the credential in `auth`;
-  - a redirect or any other status: exit 64, fix `host`, `port`, or `path`.
+The call runs once per run, after every check the run decides from its own inputs -- the configuration, the input file, the linkage terms, the signing identity -- and before the run's first connection to the server, [SFTP host-key trust](CLI.md#sftp-host-key-trust) included; a run refused on its own inputs sends nothing. A `2xx` answer means the server now accepts connections, and the run then connects to the static `server` fields. Each party's run sends its own call independently, in either order and possibly at the same time, so the endpoint must tolerate one call from each party. Any other answer stops the run; the request the call sends and how an answer is classified to an exit code are specified in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#server-provisioning-endpoint-call).
 
 Only `alcove exchange` sends the call. An online `alcove invite` or `alcove accept`, and a zero-setup exchange, build their connection from a URL or an invitation and cannot state `provision`, so start the server another way before one of those runs.
 

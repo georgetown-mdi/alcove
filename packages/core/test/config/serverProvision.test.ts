@@ -375,7 +375,7 @@ test("real fetch: an endpoint that never answers times out as a transport failur
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("transport");
   expect((err as Error).message).toContain(
-    "the provisioning endpoint at api.example.org:443 did not answer within 1 seconds",
+    "the provisioning endpoint at api.example.org:443 did not answer within 200ms",
   );
 });
 
