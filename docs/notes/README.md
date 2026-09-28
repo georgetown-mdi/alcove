@@ -10,7 +10,7 @@ stands, from a direction still open to a decision taken and built.
 
 | Note | Status |
 | ---- | ------ |
-| [abort-marker-retryable-class.md](abort-marker-retryable-class.md) | Design only, not built; waits on an observed base rate, with the classless default open for the maintainer. |
+| [abort-marker-retryable-class.md](abort-marker-retryable-class.md) | Design only, not built; waits on an observed base rate. The classless default is final. |
 | [app-shell-service-worker.md](app-shell-service-worker.md) | Decided and built. |
 | [backup-import-per-exchange-guard.md](backup-import-per-exchange-guard.md) | Decided on the maintainer's ruling and built. |
 | [bound-transformed-value.md](bound-transformed-value.md) | Decided and built, by a 3-panelist design panel. |
