@@ -67,7 +67,7 @@ afterEach(() => {
   rmSync(stubDirectory, { recursive: true, force: true });
 });
 
-function runPair(timeoutSeconds, inviter, acceptor) {
+function runPair(timeoutSeconds, inviter, acceptor, extraEnv = {}) {
   const started = Date.now();
   const result = spawnSync(
     process.execPath,
@@ -83,6 +83,7 @@ function runPair(timeoutSeconds, inviter, acceptor) {
         ...process.env,
         PATH: `${stubDirectory}:${process.env.PATH}`,
         STUB_DIR: stubDirectory,
+        ...extraEnv,
       },
       timeout: 60_000,
     },
@@ -178,14 +179,17 @@ describe("wait-container-pair", () => {
   );
 
   it("waits for both stopped halves concurrently, not sequentially", () => {
-    // Both halves ignore `docker kill` and only resolve through the 30s
-    // STOPPED_HALF_GRACE_MS fallback, which cannot be shortened for this
-    // test (no env override exists for it). Sequential grace waits would
-    // take close to 60s; concurrent waits take close to 30s -- the total
-    // wall time is the only thing this stub can use to tell them apart.
-    const run = runPair(1, "i-neverdies", "a-neverdies");
+    // Both halves ignore `docker kill` and only resolve through the
+    // STOPPED_HALF_GRACE_MS fallback, shortened to 2s via the env override
+    // (the stub's neverdies loop runs up to 60s, well past that). Sequential
+    // grace waits would take close to 4s; concurrent waits take close to
+    // 2-3s -- the total wall time is the only thing this stub can use to
+    // tell them apart.
+    const run = runPair(1, "i-neverdies", "a-neverdies", {
+      WAIT_CONTAINER_PAIR_GRACE_MS: "2000",
+    });
     expect(run.status).toBe(1);
-    expect(run.seconds).toBeLessThan(45);
+    expect(run.seconds).toBeLessThan(3.5);
     expect(run.kills.sort()).toEqual(["a-neverdies", "i-neverdies"]);
     expect(run.stderr).toContain(
       "inviter: stopped after the 1s timeout, status still-running",
@@ -193,5 +197,5 @@ describe("wait-container-pair", () => {
     expect(run.stderr).toContain(
       "acceptor: stopped after the 1s timeout, status still-running",
     );
-  }, 50_000);
+  });
 });

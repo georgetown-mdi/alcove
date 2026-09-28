@@ -12,7 +12,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const STOPPED_HALF_GRACE_MS = 30_000;
+// Overridable so tests can shorten the wait for a stub half that never exits.
+const STOPPED_HALF_GRACE_MS =
+  Number(process.env.WAIT_CONTAINER_PAIR_GRACE_MS) || 30_000;
 const TIMED_OUT = Symbol("timed out");
 
 /**
