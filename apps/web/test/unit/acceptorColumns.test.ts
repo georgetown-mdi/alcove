@@ -112,7 +112,7 @@ function rows(columns: Array<string>): Array<CSVRow> {
 }
 
 /** The seed metadata for `columns` with each of `sent` marked to send, since a
- * column inference does not recognize is seeded as ignored. */
+ * column that inference does not recognize is seeded as ignored. */
 function seededWithSent(columns: Array<string>, sent: Array<string>): Metadata {
   return sent.reduce(
     (metadata, name) => setColumnDisclosure(metadata, name, "payload").metadata,

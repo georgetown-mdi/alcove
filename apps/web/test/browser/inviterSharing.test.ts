@@ -90,8 +90,8 @@ function mountMetadata(metadata: Metadata, announcement: string) {
   );
 }
 
-/** The seed over `acquired` with each column inference does not recognize, which
- * the seed lists as ignored, marked to send through the step's own edit. */
+/** The seed over `acquired` with each column that inference does not recognize
+ * (the seed lists it as ignored) marked to send through the step's own edit. */
 function editorSendingUnrecognized(acquired: AcquiredCsv) {
   const seeded = editorFromCsv("Dana Okafor", acquired);
   return seeded.draft.metadata

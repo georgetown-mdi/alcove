@@ -129,8 +129,8 @@ function mountStep(
   columns: Array<string>,
   // Columns the step opens with set to "Not used", the state a column has to be in
   // to sit in the declared-but-not-sent half while the file still contains it.
-  // Every other column the seed lists as ignored, one inference does not
-  // recognize, opens set to sent.
+  // Every other column that inference does not recognize, which the seed lists
+  // as ignored, opens set to sent.
   unsent: ReadonlyArray<string> = [],
 ) {
   const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];

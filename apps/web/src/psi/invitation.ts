@@ -679,13 +679,11 @@ export async function generateInvitation(params: {
     linkageTerms = getDefaultLinkageTerms(inviterName, metadata);
 
     // Block a file the minted terms cannot be run against, the same rule the
-    // inviter's own run boundary applies. Grade the EMBEDDED terms rather than
-    // the full default set: the derivation narrows the built-in keys to the
-    // ones the columns support, and narrowing all the way to no key is a
-    // refusal in its own right, a file inference declares no column of
-    // included. The missing field types the alert names come
-    // from the FULL default terms, since the narrowed set no longer declares
-    // the fields it dropped.
+    // inviter's own run boundary applies. Grade the EMBEDDED terms: the
+    // derivation keeps only the built-in keys the columns support, and a file
+    // with no recognized column gets empty metadata, which supports no key
+    // and is refused. The alert names the missing field types from the FULL
+    // default terms, since the narrowed set no longer declares them.
     const refusal = linkageRefusalFor(
       decideLinkageTermsVerdict(columns, linkageTerms, undefined, metadata),
       assessLinkageSatisfiability(columns, getDefaultLinkageTerms(inviterName))

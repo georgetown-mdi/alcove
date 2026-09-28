@@ -331,8 +331,8 @@ async function markSent(column: string) {
   );
 }
 
-/** The seed for `columns` with each column inference does not recognize, which
- * the seed lists as ignored, marked to send. */
+/** The seed for `columns` with each column that inference does not recognize
+ * (the seed lists it as ignored) marked to send. */
 function seededWithUnrecognizedSent(
   columns: Array<string>,
 ): AcceptorColumnsState {

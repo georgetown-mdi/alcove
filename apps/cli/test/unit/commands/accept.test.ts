@@ -1122,7 +1122,7 @@ describe("the count-only shape, at the accept boundary", () => {
     // holding the list separator is not misread as two entries.
     expect(refused).toContain("\n  - id\n");
     expect(refused).toContain("\n  - identifier");
-    // A column inference does not recognize is not sent, so it is not listed.
+    // A column that inference does not recognize is not sent, so it is not listed.
     expect(refused).not.toContain(sanitizeForDisplay(hostile));
     expect(refused).not.toContain("\u200d");
     // Offline acceptance completes, so it says where the refusal actually arrives.

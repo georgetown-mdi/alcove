@@ -19,7 +19,7 @@ import type { Algorithm, SemanticType } from "../types";
  * - `payload` -- transmitted to the partner for matched members.
  * - `ignored` -- never linked, never an identifier, never transmitted as
  *   payload, regardless of `isPayload`. {@link inferMetadata} never assigns
- *   it; {@link inferMetadataForEveryColumn} assigns it to each column
+ *   it; {@link inferMetadataForEveryColumn} assigns it to each column that
  *   inference does not recognize.
  *
  * Two independent axes, each checked explicitly rather than inferred from
@@ -450,7 +450,7 @@ export function inferMetadata(
 
 /**
  * {@link inferMetadata} with an entry for every column, in header order: a
- * column inference does not recognize gets `role: ignored` and
+ * column that inference does not recognize gets `role: ignored` and
  * `isPayload: false` (`type: identifier` for an `_id` name, `other`
  * otherwise). For an editor that lists every input column so the operator
  * can declare one; a run resolves its metadata through {@link inferMetadata}.

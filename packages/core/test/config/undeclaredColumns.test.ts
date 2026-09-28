@@ -308,7 +308,7 @@ describe("a sent column the input does not hold", () => {
   });
 });
 
-test("an input inference declares nothing of gets default terms with no key", () => {
+test("an input with no recognized column gets default terms with no key", () => {
   // A pipe-delimited file read with the comma default is one unrecognized
   // column: its default terms declare no key, rather than every built-in key.
   const { linkageTerms, undeclaredColumns } = resolveExchangeInputs(
