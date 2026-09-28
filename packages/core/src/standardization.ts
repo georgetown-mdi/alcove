@@ -409,6 +409,15 @@ export const titles = [
   "misc",
 ];
 
+/**
+ * The {@link titles} as a name pipeline holds them after `to_upper_case` and
+ * `remove_punctuation`, for the default name pipelines' `null_if` that drops a
+ * value that is only a title.
+ */
+export const cleanedTitles: readonly string[] = titles.map((title) =>
+  removePunctuation(title.toUpperCase()),
+);
+
 const titleWordPattern = new RegExp(`^(?:${titles.join("|")})\\.?$`, "i");
 const titleGluedToWordPattern = new RegExp(
   `^(?:${titles.join("|")})\\.(?=[\\p{L}\\p{N}])`,

@@ -219,7 +219,7 @@ steps:
       pattern: "[A-Z]"
   - function: null_if
     params:
-      values: ["MR", "MRS", "MS", "MX", "DR", "PROF"]
+      values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
 ```
 
 Result: an uppercase ASCII value whose word separators are single spaces, with
@@ -247,9 +247,11 @@ Order determines the meaning here:
   affix, and punctuation steps leave behind.
 - The closing `filter_regex` drops a value containing no letter at all, which is
   what removes a cell that cleaned to empty or to punctuation alone.
-- The trailing `null_if` drops a value that is only an honorific (`"Mr."`,
-  `"DR"`): `remove_affixes` never empties a field, so a cell holding a title
-  alone reaches this step intact.
+- The trailing `null_if` drops a value that is only a title (`"Mr."`,
+  `"DR"`, `"Miss"`): `remove_affixes` never empties a field, so a cell holding
+  a title alone reaches this step intact. Its values are every word in the
+  Titles list under [affix removal](#affix-removal), upper-cased, and none of
+  them is a name on its own.
 
 Digits are not punctuation and are not removed: a value containing one keeps
 it.
@@ -336,7 +338,7 @@ steps:
       pattern: "[A-Z]"
   - function: null_if
     params:
-      values: ["MR", "MRS", "MS", "MX", "DR", "PROF"]
+      values: ["DR", "MISS", "MR", "MRS", "MS", "MX", "PROF", "PROFESSOR", "SIR", "FRAU", "HR", "MONSIEUR", "IND", "MISC"]
 ```
 
 The `last_name` and `first_name` sequences are identical, step for step and
@@ -371,8 +373,9 @@ surname that is also an affix word is kept: `"Judge"` stays `"JUDGE"`,
   `remove_punctuation`.
 - Titles are stripped before suffixes, and neither pass strips the last
   remaining word, so affix removal never empties a field: `"Mr Iv"` becomes
-  `"IV"`. A value that is only an honorific is dropped by the pipeline's
-  trailing `null_if` instead.
+  `"IV"`. A value that is only one of the titles below, any of them, is
+  dropped by the pipeline's trailing `null_if` instead; a value that is only a
+  suffix is kept.
 - Matching is case-insensitive.
 
 | List | Words |
@@ -394,7 +397,11 @@ father. A title or suffix word in the middle of the value is always kept.
 | `"Smith Jr III"` | `"SMITH"` |
 | `"Mr Smith Jr"` | `"SMITH"` |
 | `"Smith Ph.D."` | `"SMITH"` |
+| `"Sir John"` | `"JOHN"` |
 | `"Mr"` | `null` |
+| `"Sir."` | `null` |
+| `"Monsieur"` | `null` |
+| `"Jr"` | `"JR"` |
 
 ### `date_of_birth`
 
