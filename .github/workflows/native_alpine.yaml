@@ -53,6 +53,7 @@ jobs:
             lib/**
             packages/core/test/vectors/psi-engine-wire-vectors.json
             packages/core/test/vectors/verify-native-wire-vectors.mjs
+            .github/actions/path-scope/**
             .github/workflows/native_alpine.yaml
             Dockerfile
       - name: Verify the native addon under the shipped Alpine base
