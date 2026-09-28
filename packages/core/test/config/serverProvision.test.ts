@@ -178,6 +178,11 @@ test.each([
   ["an underscore", "api_host.example.org"],
   ["a non-ASCII letter", "münchen.example.org"],
   ["a percent-escape", "api%2eexample.org"],
+  ["a bracketed IPv6 address", "[2001:db8::1]"],
+  ["a leading-hyphen label", "-bad.example.org"],
+  ["consecutive dots", "a..b"],
+  ["only dots", ".."],
+  ["a bare colon", ":"],
 ])(
   "provisionRequest refuses a host holding %s, naming the field",
   (_, host) => {
@@ -193,7 +198,7 @@ test.each([
 test.each([
   ["a hexadecimal IPv4 address", "0x7f.1"],
   ["a shortened IPv4 address", "127.1"],
-  ["an IPv6 address with a zero run written out", "[0:0::1]"],
+  ["an IPv6 address with a zero run written out", "0:0::1"],
   ["an IPv4-mapped IPv6 address in dotted form", "::ffff:127.0.0.1"],
 ])(
   "provisionRequest refuses %s the URL parser would rewrite, naming the field",
@@ -215,8 +220,14 @@ test.each([
     "xn--mnchen-3ya.de",
   ],
   ["an IPv4 address", "127.0.0.1", "127.0.0.1"],
+  ["a hyphenated label", "sftp-1.example.org", "sftp-1.example.org"],
+  ["a dotted-quad IPv4 address", "192.0.2.7", "192.0.2.7"],
   ["a bare IPv6 address", "::1", "[::1]"],
-  ["a bracketed IPv6 address", "[::1]", "[::1]"],
+  [
+    "a bare IPv6 address with a run of hex groups",
+    "2001:db8::1",
+    "[2001:db8::1]",
+  ],
 ])("provisionRequest sends to %s as written", (_, host, hostname) => {
   expect(provisionRequest({ host }).url.hostname).toBe(hostname);
 });
@@ -494,10 +505,16 @@ test("a create-mode answer may state a host alone", async () => {
 test("the widest answer the schema admits, fully escaped, fits the byte cap", async () => {
   // Every host and path code unit a six-byte \u escape: the derivation beside
   // MAX_PROVISION_RESPONSE_BYTES. JSON may escape any character, so a host
-  // name's letters count at six bytes too.
+  // name's letters count at six bytes too. The host is split into 63-unit
+  // labels (the longest a hostname check admits) joined by escaped dots so
+  // its total still spends MAX_ENDPOINT_HOST_LENGTH code units.
+  const hostLabelLengths = [63, 63, 63, 62, 1];
+  const widestHost = hostLabelLengths
+    .map((length) => "\\u0061".repeat(length))
+    .join("\\u002e");
   const body =
-    `{"host":"${"\\u0061".repeat(MAX_ENDPOINT_HOST_LENGTH)}",` +
-    `"port":65535,"path":${JSON.stringify("\u0001".repeat(MAX_ENDPOINT_PATH_LENGTH))}}`;
+    `{"host":"${widestHost}",` +
+    `"port":65535,"path":"\\u002f${"\\u0061".repeat(MAX_ENDPOINT_PATH_LENGTH - 1)}"}`;
   const bytes = new TextEncoder().encode(body).byteLength;
   expect(bytes).toBe(26_146);
   expect(bytes).toBeLessThanOrEqual(MAX_PROVISION_RESPONSE_BYTES);
@@ -545,6 +562,17 @@ test.each([
   ].map(([what, host]): [string, string, string] => [
     `a host holding ${what}`,
     JSON.stringify({ host: `${host}${BODY_SECRET}` }),
+    "its host holds a character a host name cannot contain",
+  ]),
+  ...[
+    ["only dots", ".."],
+    ["a bare colon", ":"],
+    ["a bracketed IPv6 address", "[2001:db8::1]"],
+    ["a leading-hyphen label", "-bad.example.org"],
+    ["consecutive dots", "a..b"],
+  ].map(([what, host]): [string, string, string] => [
+    `a host of ${what}`,
+    JSON.stringify({ host }),
     "its host holds a character a host name cannot contain",
   ]),
   [
@@ -599,6 +627,49 @@ test.each([
     expect(shown).not.toContain(BODY_SECRET);
     expect(shown).not.toContain(BEARER);
     expect(shown).not.toContain("path-token");
+  },
+);
+
+test.each([
+  ["a control character", "/x\u0001y"],
+  ["a line feed", "/a\nb"],
+  ["no leading slash", "relative/../../etc"],
+  ["a space", "/ok path"],
+])(
+  "a create-mode answer with a returned path holding %s is refused, naming the field and not the value",
+  async (_, path) => {
+    const { fetch } = answeringFetch(
+      JSON.stringify({ host: "a.example.org", path }),
+    );
+    const err = await caught(
+      requestProvisionedServerAddress(createProvision, { fetch }),
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    const shown = rendered(err);
+    expect(shown).toContain("its path holds a character a path cannot contain");
+    expect(shown).not.toContain(path);
+  },
+);
+
+test.each(["/", "/peerjs/start"])(
+  "a create-mode answer resolves with the returned path %j",
+  async (path) => {
+    const { fetch } = answeringFetch(
+      JSON.stringify({ host: "a.example.org", path }),
+    );
+    await expect(
+      requestProvisionedServerAddress(createProvision, { fetch }),
+    ).resolves.toEqual({ host: "a.example.org", path });
+  },
+);
+
+test.each(["sftp-1.example.org", "192.0.2.7", "2001:db8::1"])(
+  "a create-mode answer resolves with the returned host %j",
+  async (host) => {
+    const { fetch } = answeringFetch(JSON.stringify({ host }));
+    await expect(
+      requestProvisionedServerAddress(createProvision, { fetch }),
+    ).resolves.toEqual({ host });
   },
 );
 

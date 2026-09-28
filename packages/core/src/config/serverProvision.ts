@@ -66,14 +66,44 @@ export interface ProvisionedServerAddress {
 
 const PROVISIONED_ADDRESS_FIELDS = ["host", "port", "path"] as const;
 
-/** A host name (an internationalized one in its `xn--` form) or IPv4 address. */
-const HOST_NAME_PATTERN = /^[A-Za-z0-9.-]+$/;
-/** An IPv6 address, bracketed or bare; the colon tells it from a name. */
-const IPV6_HOST_PATTERN =
-  /^(?:\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]|[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)$/;
+/** A DNS label: 1-63 characters of letters, digits and hyphens, neither
+ * leading nor trailing with a hyphen. */
+const HOST_LABEL_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+
+/**
+ * A host name (an internationalized one in its `xn--` form) or an IPv4
+ * address, both label sequences separated by `.` with no empty label.
+ */
+function isHostName(host: string): boolean {
+  return host.split(".").every((label) => HOST_LABEL_PATTERN.test(label));
+}
+
+/**
+ * A conservative bare IPv6 literal check: only hex digits, `:` and, in at
+ * most one trailing dotted run (an IPv4-mapped tail), a decimal `.`; at
+ * least two colons tell it from a host name or IPv4 address. Brackets are
+ * refused here -- `hostForAuthority` adds them for the request itself.
+ */
+function isBareIpv6Address(host: string): boolean {
+  if (!/^[0-9A-Fa-f:.]+$/.test(host)) return false;
+  if ((host.match(/:/g) ?? []).length < 2) return false;
+  const dots = host.match(/\./g) ?? [];
+  return dots.length === 0 || dots.length === 3;
+}
 
 function isHostNameOrIpAddress(host: string): boolean {
-  return HOST_NAME_PATTERN.test(host) || IPV6_HOST_PATTERN.test(host);
+  return isHostName(host) || isBareIpv6Address(host);
+}
+
+/** A path starting with `/`, holding no code unit below 0x20 or equal to
+ * 0x7F, and no whitespace. */
+function isSafeProvisionPath(path: string): boolean {
+  if (!path.startsWith("/")) return false;
+  for (let i = 0; i < path.length; i++) {
+    const unit = path.charCodeAt(i);
+    if (unit < 0x20 || unit === 0x7f) return false;
+  }
+  return !/\s/.test(path);
 }
 
 const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> =
@@ -88,6 +118,7 @@ const ProvisionedServerAddressSchema: z.ZodType<ProvisionedServerAddress> =
       .string()
       .min(1)
       .check(maxCodeUnits(MAX_ENDPOINT_PATH_LENGTH))
+      .refine(isSafeProvisionPath)
       .optional(),
   });
 
@@ -366,6 +397,8 @@ function refusedAddressReason(issues: ReadonlyArray<z.core.$ZodIssue>): string {
     const field = issue.path[0];
     if (field === "host" && issue.code === "custom")
       return "its host holds a character a host name cannot contain";
+    if (field === "path" && issue.code === "custom")
+      return "its path holds a character a path cannot contain";
     if (
       issue.code !== "unrecognized_keys" &&
       PROVISIONED_ADDRESS_FIELDS.some((name) => name === field)

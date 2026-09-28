@@ -320,12 +320,19 @@ test.each([
     ["a line break", "a\nb.example.org"],
     ["a leading @", "@evil.example.org"],
     ["/?#", "a.example.org/?#x"],
+    ["a leading-hyphen label", "-bad.example.org"],
   ].map(([what, host]) => [
     `a returned host holding ${what}`,
     JSON.stringify({ host }),
     200,
     64,
   ]),
+  [
+    "a returned path holding a control character",
+    JSON.stringify({ host: "a.example.org", path: "/a\u0001b" }),
+    200,
+    64,
+  ],
 ] as Array<[string, string | null, number, number]>)(
   "handler: %s stops the invite before any token or key file",
   async (_, body, status, code) => {
