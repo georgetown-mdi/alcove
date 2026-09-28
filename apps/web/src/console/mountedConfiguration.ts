@@ -791,6 +791,22 @@ export function outboundConsentView(
 }
 
 /**
+ * Why the review step withholds its create while {@link outboundConsentView}
+ * asks for a confirmation, undefined otherwise: core refuses the run until the
+ * columns are confirmed, and creating seals the draft the confirmation is given
+ * over.
+ */
+export function outboundConsentWithheldReason(
+  view: OutboundConsentView | undefined,
+): string | undefined {
+  if (view?.kind !== "confirm") return undefined;
+  return (
+    `Choose "${CONFIRM_OUTBOUND_COLUMNS_LABEL}" under ` +
+    `"${OUTBOUND_CONSENT_TITLE}" above to continue.`
+  );
+}
+
+/**
  * The records with the operator's confirmation of `shown`, the columns the
  * confirmation listed, written into `outboundPayloadConsent` by core's writer
  * ({@link deriveOutboundPayloadConsent}), the record the command line's

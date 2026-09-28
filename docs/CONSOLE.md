@@ -164,7 +164,7 @@ A configuration that also commits to what this party discloses -- `disclosed_pay
 
 A configuration whose `outbound_payload_consent` is still pending confirms no set at all, so a run that shares results with your partner is refused until you confirm the columns it sends. The console says so beside the load, and the review step is where you confirm them:
 
-- **It lists the columns this run sends**, worked out from your input file and the columns step as the run works them out. **Confirm these columns** records them; **Change the columns** returns to the columns step instead. Until you confirm, the run is refused.
+- **It lists the columns this run sends**, worked out from your input file and the columns step as the run works them out. **Confirm these columns** records them; **Change the columns** returns to the columns step instead. Until you confirm, the review step withholds creating the invitation and starting the run, and says what to confirm.
 - **The confirmation holds for this run and for the configuration the console gives you to run on a schedule**, which states `outbound_payload_consent` as confirmed with those columns. The `alcove.yaml` in your folder is not changed, so a command-line run of that file still asks you to confirm them.
 - **Change the columns after confirming and the review step asks again**, listing the columns added and dropped.
 

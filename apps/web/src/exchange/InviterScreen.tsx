@@ -132,6 +132,7 @@ import {
   conversionStatement,
   editedTermsWarning,
   outboundConsentView,
+  outboundConsentWithheldReason,
   runWithheldReason,
   unconvertedSigningWithheldReason,
 } from "@console/mountedConfiguration";
@@ -1619,6 +1620,9 @@ export function InviterScreen() {
                 runWithheld={
                   runWithheldReason(mountedConfiguration) ?? signingWithheld
                 }
+                outboundConsentUnconfirmed={outboundConsentWithheldReason(
+                  outboundConsent,
+                )}
                 continuesOpenedExchange={continuesOpenedExchange}
                 editedTermsWarning={editedTermsWarning(mountedConfiguration, {
                   termsEdited: openedTermsEdited,

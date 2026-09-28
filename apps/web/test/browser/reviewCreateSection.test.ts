@@ -60,6 +60,7 @@ function render(
   opened: {
     continuesOpenedExchange?: boolean;
     runWithheld?: string;
+    outboundConsentUnconfirmed?: string;
     editedTermsWarning?: string;
   } = {},
 ) {
@@ -193,6 +194,8 @@ describe("ReviewCreateSection: the inert-coalesce notice", () => {
 
 describe("ReviewCreateSection: a run of an opened configuration", () => {
   const WARNING = "The terms changed here are not the ones your partner holds.";
+  const CONSENT_UNCONFIRMED =
+    'Choose "Confirm these columns" above to continue.';
 
   test("a new invitation offers its duration", async () => {
     render(editorFromCsv("Dana Okafor", csv));
@@ -266,6 +269,22 @@ describe("ReviewCreateSection: a run of an opened configuration", () => {
     await expect
       .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
       .toBeEnabled();
+  });
+
+  test("unconfirmed columns withhold the create, keeping the invitation", async () => {
+    render(editorFromCsv("Dana Okafor", csv), {
+      outboundConsentUnconfirmed: CONSENT_UNCONFIRMED,
+    });
+
+    await expect
+      .element(page.getByRole("button", { name: "Create the invitation" }))
+      .toBeDisabled();
+    await expect
+      .element(page.getByText(CONSENT_UNCONFIRMED).first())
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByLabelText("Invitation duration"))
+      .toBeInTheDocument();
   });
 
   test("unchanged terms draw no warning", async () => {

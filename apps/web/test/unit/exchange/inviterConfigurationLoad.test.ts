@@ -22,10 +22,12 @@ import { RECEIPTS_DEFAULT, receiptsIntentFields } from "@psi/receiptsModel";
 import {
   CONFIGURATION_LOAD_SEALED,
   MOUNTED_CONFIGURATION_UNREAD,
+  OUTBOUND_CONSENT_TITLE,
   PENDING_OUTBOUND_CONSENT_WARNING,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
   outboundConsentView,
+  outboundConsentWithheldReason,
   runWithheldReason,
 } from "@console/mountedConfiguration";
 import {
@@ -545,6 +547,7 @@ describe("a webrtc configuration opens for review with its run withheld", () => 
     expect(reason).toContain("webrtc");
     const status = inviterCreateStatus({
       runWithheld: reason,
+      outboundConsentUnconfirmed: undefined,
       offlineBlocked: false,
       connectionIncomplete: false,
       splitDirectoryProblem: undefined,
@@ -1720,6 +1723,58 @@ describe("a consent record the configuration leaves pending", () => {
       ).status,
     ).toBe("confirmation-required");
     expect(noticesOf(state)).toContain(PENDING_OUTBOUND_CONSENT_WARNING);
+  });
+
+  /** The review step's create gate, over the two reasons the screen reads off
+   * the open configuration, every other gate clear. */
+  function createStatusOf(state: InviterScreenState) {
+    return inviterCreateStatus({
+      runWithheld: runWithheldReason(state.mountedConfiguration),
+      outboundConsentUnconfirmed: outboundConsentWithheldReason(viewOf(state)),
+      offlineBlocked: false,
+      connectionIncomplete: false,
+      splitDirectoryProblem: undefined,
+      exchangeFilesBlocked: false,
+      connectionTuningBlocked: false,
+      runDiagnosticsBlocked: false,
+      receiptsBlocked: false,
+      signingIdentityDivergence: undefined,
+      problemCount: 0,
+    });
+  }
+
+  test("create is withheld until the columns are confirmed", () => {
+    const state = pendingAndRead();
+    const withheld = createStatusOf(state);
+    expect(withheld.ready).toBe(false);
+    expect(withheld.statusLine).toBe(
+      outboundConsentWithheldReason(viewOf(state)),
+    );
+    expect(withheld.statusLine).toContain(OUTBOUND_CONSENT_TITLE);
+    const view = viewOf(state);
+    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
+    const confirmed = inviterScreenReducer(state, {
+      type: "outbound-consent-confirmed",
+      columns: view.verdict.columns,
+    });
+    expect(createStatusOf(confirmed).ready).toBe(true);
+  });
+
+  test("a channel the console does not conduct keeps its own reason", () => {
+    const state = withFileRead(
+      loadedInto(INVITER_SCREEN_INITIAL, {
+        channel: "webrtc",
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+        outboundPayloadConsent: { status: "pending" },
+        metadata: documentColumns(),
+      }),
+    );
+    const reason = runWithheldReason(state.mountedConfiguration);
+    expect(reason).toContain("webrtc");
+    const status = createStatusOf(state);
+    expect(status.ready).toBe(false);
+    expect(status.statusLine).toBe(reason);
+    expect(status.announcement).toBe(reason);
   });
 
   test("a confirmation after the invitation is created changes nothing", () => {
