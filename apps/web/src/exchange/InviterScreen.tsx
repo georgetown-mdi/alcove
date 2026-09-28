@@ -131,6 +131,8 @@ import {
   connectionSettingsHeldNotice,
   conversionStatement,
   editedTermsWarning,
+  outboundConsentView,
+  outboundConsentWithheldReason,
   runWithheldReason,
   unconvertedSigningWithheldReason,
 } from "@console/mountedConfiguration";
@@ -143,6 +145,7 @@ import {
   fetchMountedConfiguration,
   saveOpenedConfiguration,
 } from "@psi/jobClient/mountedConfigClient";
+import { OutboundConsentConfirmation } from "@console/OutboundConsentConfirmation";
 import { configurationHandBack } from "@console/configurationHandBack";
 
 import {
@@ -1370,6 +1373,18 @@ export function InviterScreen() {
             : {}),
         };
 
+  // The review step's confirmation of a pending consent the open configuration
+  // states, over the same draft the run's metadata and output are minted from.
+  const outboundConsent =
+    editor === undefined || sealed
+      ? undefined
+      : outboundConsentView(
+          mountedConfiguration,
+          loadedEnforcementRecords,
+          editor.draft.metadata,
+          outputForDirection(editor.draft.outputDirection),
+        );
+
   // Inside a Customize tab no spine step is current; the step the operator
   // came from stays navigable like any completed step. The share and save
   // sections have their own rails, so neither is a Customize tab.
@@ -1585,6 +1600,15 @@ export function InviterScreen() {
           editor !== undefined &&
           acquired !== undefined && (
             <>
+              {isConsoleBuild() && (
+                <OutboundConsentConfirmation
+                  view={outboundConsent}
+                  onConfirm={(columns) =>
+                    dispatch({ type: "outbound-consent-confirmed", columns })
+                  }
+                  onChangeColumns={() => goTo("columns")}
+                />
+              )}
               <ReviewCreateSection
                 editor={editor}
                 csv={acquired}
@@ -1596,6 +1620,9 @@ export function InviterScreen() {
                 runWithheld={
                   runWithheldReason(mountedConfiguration) ?? signingWithheld
                 }
+                outboundConsentUnconfirmed={outboundConsentWithheldReason(
+                  outboundConsent,
+                )}
                 continuesOpenedExchange={continuesOpenedExchange}
                 editedTermsWarning={editedTermsWarning(mountedConfiguration, {
                   termsEdited: openedTermsEdited,

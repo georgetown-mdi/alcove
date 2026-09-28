@@ -15,9 +15,11 @@ import {
   MOUNTED_CONFIGURATION_UNREAD,
   mountedConfigurationRead,
   withConversion,
+  withOutboundConsentConfirmed,
   withTermsNotApplied,
   withUnavailableTransport,
 } from "@console/mountedConfiguration";
+import { outputForDirection } from "@psi/authoring/advancedInvite";
 
 import { availableTransports, transportOffered } from "@psi/transportChooser";
 import { isJobChannel } from "@jobs/intentSchemas";
@@ -225,10 +227,12 @@ export interface InviterScreenState {
    * it to warn of an edit the partner does not hold. Set with that file and
    * dropped with the configuration. */
   loadedTermsBaseline: string | undefined;
-  /** The enforcement records a loaded configuration states and this flow has no
-   * control for, held so the run's composed configuration states each as the
-   * file did (docs/spec/EXCHANGE_FILE.md, "The records that must survive").
-   * Empty where no configuration is open, or the open one states none. */
+  /** The enforcement records a loaded configuration states, held so the run's
+   * composed configuration states each as the file did
+   * (docs/spec/EXCHANGE_FILE.md, "The records that must survive"), except a
+   * pending consent the operator confirms on the review step, which it states
+   * as confirmed. Empty where no configuration is open, or the open one states
+   * none. */
   loadedEnforcementRecords: LoadedEnforcementRecords;
 }
 
@@ -438,6 +442,9 @@ export type InviterScreenAction =
   /** The operator converted the open configuration to the console's own
    * paths. */
   | { type: "mounted-configuration-converted" }
+  /** The operator confirmed `columns`, the columns the review step listed as
+   * the ones this run sends, for the open configuration's pending consent. */
+  | { type: "outbound-consent-confirmed"; columns: ReadonlyArray<string> }
   /** The operator closed the open configuration: it stops being an input, so
    * every card and draft it seeded returns to its own authoring default along
    * with the terms, the records, the connection form and the notices, and the
@@ -837,6 +844,21 @@ function applyAction(
       return {
         ...state,
         mountedConfiguration: withConversion(state.mountedConfiguration),
+      };
+    case "outbound-consent-confirmed":
+      // A sealed draft's run composed its records at the mint, so a
+      // confirmation now would reach nothing.
+      if (state.editor === undefined || state.editor.sealed === true)
+        return state;
+      return {
+        ...state,
+        loadedEnforcementRecords: withOutboundConsentConfirmed(
+          state.mountedConfiguration,
+          state.loadedEnforcementRecords,
+          state.editor.draft.metadata,
+          outputForDirection(state.editor.draft.outputDirection),
+          action.columns,
+        ),
       };
     case "loaded-configuration-discarded":
       // A sealed draft is an invitation already minted over the records the

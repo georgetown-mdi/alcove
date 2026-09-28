@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { getDefaultLinkageTerms } from "@alcove/core";
+import {
+  assessOutboundPayloadConsent,
+  deriveOutboundPayloadConsent,
+  disclosedColumnNames,
+  getDefaultLinkageTerms,
+  inferMetadata,
+} from "@alcove/core";
 
 import {
   CONFIGURATION_LOAD_SEALED,
@@ -31,19 +37,24 @@ import {
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
   mountedConfigurationRead,
+  outboundConsentView,
   runWithheldReason,
   termsNotAppliedNotice,
   unconvertedSigningWithheldReason,
   withConversion,
+  withOutboundConsentConfirmed,
   withTermsNotApplied,
   withUnavailableTransport,
 } from "@console/mountedConfiguration";
 
 import { PREVIOUS_CONFIGURATION_FILE_NAME } from "@jobs/intentSchemas";
+import { outputForDirection } from "@psi/authoring/advancedInvite";
 
 import type { DisclosedExchangeDocument } from "@jobs/configLoad";
 import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
+import type { LoadedEnforcementRecords } from "@console/loadedConfig";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
+import type { RunDisclosure } from "@console/mountedConfiguration";
 
 // The load offer as a value: which of the three states each answer lands in, and
 // the copy beside it. Every notice names SETTINGS ONLY, as the file spells them
@@ -472,7 +483,7 @@ describe("a record this flow has no control for opens and is named", () => {
           expectedPayloadColumns: [],
           expectedPartnerDeduplicate: false,
           disclosedPayloadColumns: [],
-          outboundPayloadConsent: { status: "pending" },
+          outboundPayloadConsent: { status: "confirmed", columns: [] },
         },
         [UNCOMPOSED_SETTING],
       ),
@@ -486,6 +497,35 @@ describe("a record this flow has no control for opens and is named", () => {
       "expected_payload_columns",
       "outbound_payload_consent",
     ]);
+  });
+
+  // A pending record has a control, the review step's confirmation, on the
+  // channels the console conducts. On one it does not conduct, the save hands
+  // the record back as the file states it, so it is held there.
+  test("a pending consent record is named only where the console cannot confirm it", () => {
+    const pending = { outboundPayloadConsent: { status: "pending" as const } };
+    const conducted = mountedConfigurationRead(opened(pending));
+    const unconducted = mountedConfigurationRead({
+      kind: "opened",
+      document: {
+        channel: "webrtc",
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+        ...pending,
+      },
+      carriedThrough: [],
+      warnings: [],
+    });
+    if (
+      conducted.state.status !== "opened" ||
+      unconducted.state.status !== "opened"
+    )
+      throw new Error("expected an open configuration");
+    expect(conducted.state.carriedThrough).not.toContain(
+      "outbound_payload_consent",
+    );
+    expect(unconducted.state.carriedThrough).toContain(
+      "outbound_payload_consent",
+    );
   });
 });
 
@@ -701,7 +741,8 @@ describe("columns the configuration does not state", () => {
 
 // A consent record the file states as pending confirms no set, so core refuses
 // every run that shares results with the partner until it is confirmed. The
-// operator meets that beside the load rather than as a failed run.
+// operator meets that beside the load, and confirms the columns on the review
+// step, rather than meeting it as a failed run.
 describe("a consent record the configuration leaves pending", () => {
   test("the control warns, naming the setting and where to confirm it", () => {
     const read = mountedConfigurationRead(
@@ -714,7 +755,8 @@ describe("a consent record the configuration leaves pending", () => {
       "outbound_payload_consent",
     );
     expect(PENDING_OUTBOUND_CONSENT_WARNING).toMatch(/pending/);
-    expect(PENDING_OUTBOUND_CONSENT_WARNING).toMatch(/command line/);
+    expect(PENDING_OUTBOUND_CONSENT_WARNING).toMatch(/on the review step/);
+    expect(PENDING_OUTBOUND_CONSENT_WARNING).not.toMatch(/command line/);
   });
 
   test("a confirmed record, and no record at all, warn about nothing", () => {
@@ -730,6 +772,167 @@ describe("a consent record the configuration leaves pending", () => {
           PENDING_OUTBOUND_CONSENT_WARNING,
         ),
       ).toBe(false);
+  });
+});
+
+// The review step's confirmation of that record. What it lists is core's own
+// verdict over the draft's metadata, and what confirming records is core's
+// writer over the same metadata, so the console records exactly the shape the
+// command line's confirmation writes and nothing the operator was not shown.
+describe("confirming a pending consent record on the review step", () => {
+  const SHARED = outputForDirection("both");
+  const metadata = inferMetadata(["first_name", "dob", "program_code"], []);
+  const sent = disclosedColumnNames(metadata);
+  const pending = { outboundPayloadConsent: { status: "pending" as const } };
+
+  function openedPending() {
+    const read = mountedConfigurationRead(opened(pending));
+    if (read.loaded === undefined) throw new Error("expected a load");
+    return { state: read.state, records: read.loaded.records };
+  }
+
+  function runOf(records: LoadedEnforcementRecords): RunDisclosure {
+    return { disclosedColumns: sent, sharesWithPartner: true, records };
+  }
+
+  test("the fixture sends at least one column", () => {
+    expect(sent.length).toBeGreaterThan(0);
+  });
+
+  test("a pending record shows the columns the run would send", () => {
+    const { state, records } = openedPending();
+    const view = outboundConsentView(state, records, metadata, SHARED);
+    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
+    expect(view.verdict.columns).toEqual(sent);
+    expect(view.verdict.reason).toBe("unconfirmed");
+    expect(view.reason).toContain("outbound_payload_consent");
+    expect(view.reason).toMatch(/pending/);
+    expect(view.effect).toMatch(/for this run/);
+    expect(view.effect).toMatch(/is not changed/);
+  });
+
+  test("confirming writes the confirmed record with those columns", () => {
+    const { state, records } = openedPending();
+    const confirmed = withOutboundConsentConfirmed(
+      state,
+      records,
+      metadata,
+      SHARED,
+      sent,
+    );
+    expect(confirmed.outboundPayloadConsent).toEqual({
+      status: "confirmed",
+      columns: sent,
+    });
+    expect(confirmed.outboundPayloadConsent).toEqual(
+      deriveOutboundPayloadConsent(SHARED, metadata),
+    );
+    expect(
+      assessOutboundPayloadConsent(
+        confirmed.outboundPayloadConsent,
+        metadata,
+        SHARED,
+      ).status,
+    ).toBe("current");
+    expect(outboundConsentView(state, confirmed, metadata, SHARED)?.kind).toBe(
+      "confirmed",
+    );
+    expect(mountedConfigurationNotices(state, runOf(confirmed))).not.toContain(
+      PENDING_OUTBOUND_CONSENT_WARNING,
+    );
+  });
+
+  test("declining leaves the record pending and the run refused", () => {
+    const { state, records } = openedPending();
+    expect(records.outboundPayloadConsent).toEqual({ status: "pending" });
+    const verdict = assessOutboundPayloadConsent(
+      records.outboundPayloadConsent,
+      metadata,
+      SHARED,
+    );
+    expect(verdict.status).toBe("confirmation-required");
+    expect(mountedConfigurationNotices(state, runOf(records))).toContain(
+      PENDING_OUTBOUND_CONSENT_WARNING,
+    );
+  });
+
+  test("a set other than the one shown is not recorded", () => {
+    const { state, records } = openedPending();
+    for (const shown of [[], sent.slice(1), [...sent, "household_id"]])
+      expect(
+        withOutboundConsentConfirmed(state, records, metadata, SHARED, shown),
+      ).toBe(records);
+  });
+
+  test("nothing is offered where the partner takes no results", () => {
+    const { state, records } = openedPending();
+    const own = outputForDirection("inviter");
+    expect(outboundConsentView(state, records, metadata, own)).toBeUndefined();
+    expect(
+      withOutboundConsentConfirmed(state, records, metadata, own, sent),
+    ).toBe(records);
+  });
+
+  test("nothing is offered for a record the file confirmed, or none", () => {
+    for (const overrides of [
+      { outboundPayloadConsent: { status: "confirmed" as const, columns: [] } },
+      {},
+    ]) {
+      const read = mountedConfigurationRead(opened(overrides));
+      if (read.loaded === undefined) throw new Error("expected a load");
+      expect(
+        outboundConsentView(read.state, read.loaded.records, metadata, SHARED),
+      ).toBeUndefined();
+    }
+  });
+
+  test("nothing is offered on a channel the console does not conduct", () => {
+    const read = mountedConfigurationRead({
+      kind: "opened",
+      document: {
+        channel: "webrtc",
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+        ...pending,
+      },
+      carriedThrough: [],
+      warnings: [],
+    });
+    if (read.loaded === undefined) throw new Error("expected a load");
+    expect(
+      outboundConsentView(read.state, read.loaded.records, metadata, SHARED),
+    ).toBeUndefined();
+  });
+
+  // A set confirmed here that the columns step then changes is asked for
+  // again on the review step, listing what changed, as the command line asks
+  // again at the next run; the columns step does not also report it as a
+  // commitment the file holds.
+  test("columns changed after confirming are asked for again", () => {
+    const { state, records } = openedPending();
+    const confirmed = withOutboundConsentConfirmed(
+      state,
+      records,
+      metadata,
+      SHARED,
+      sent,
+    );
+    const wider = inferMetadata(
+      ["first_name", "dob", "program_code", "household_id"],
+      [],
+    );
+    const widerSent = disclosedColumnNames(wider);
+    expect(widerSent).toContain("household_id");
+    const view = outboundConsentView(state, confirmed, wider, SHARED);
+    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
+    expect(view.verdict.reason).toBe("changed");
+    expect(view.verdict.added).toEqual(["household_id"]);
+    expect(
+      divergedCommitments(state, {
+        disclosedColumns: widerSent,
+        sharesWithPartner: true,
+        records: confirmed,
+      }),
+    ).toEqual([]);
   });
 });
 

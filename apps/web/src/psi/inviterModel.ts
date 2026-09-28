@@ -271,13 +271,19 @@ export function spineProblems(
 }
 
 /** What holds the create on the review step, in the reading order of the screen
- * itself: the blocker no edit here clears, then the transport's own setup, then
- * the cards below it, and the spine's outstanding problems last. */
+ * itself: the blocker no edit here clears, then the consent confirmation above
+ * the step, the transport's own setup, the cards below it, and the spine's
+ * outstanding problems last. */
 export interface InviterCreateGates {
   /** Why an open configuration withholds the run, `undefined` where none does:
    * one on a channel the console does not conduct. Already a complete sentence
    * naming the channel and both remedies, used as-is. */
   runWithheld: string | undefined;
+  /** Why the open configuration's pending consent withholds the create,
+   * `undefined` where it does not: the columns the run sends wait for the
+   * operator's confirmation on this step. Already a complete sentence naming
+   * the confirmation, used as-is. */
+  outboundConsentUnconfirmed: string | undefined;
   /** The device reports no network and the chosen transport begins a live run
    * (a save-a-file transport connects to nothing, so it is never held). */
   offlineBlocked: boolean;
@@ -344,6 +350,11 @@ export function inviterCreateStatus(
 ): InviterCreateStatus {
   if (gates.runWithheld !== undefined)
     return heldCreate(gates.runWithheld, gates.runWithheld);
+  if (gates.outboundConsentUnconfirmed !== undefined)
+    return heldCreate(
+      gates.outboundConsentUnconfirmed,
+      gates.outboundConsentUnconfirmed,
+    );
   if (gates.offlineBlocked)
     return heldCreate(OFFLINE_EXCHANGE_REASON, OFFLINE_EXCHANGE_REASON);
   if (gates.connectionIncomplete)
