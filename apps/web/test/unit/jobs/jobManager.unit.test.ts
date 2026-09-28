@@ -520,6 +520,60 @@ describe("JobManager end-to-end via the stub CLI", () => {
   });
 });
 
+/**
+ * The alert a filedrop inviter seat composes for the run `record` holds: its
+ * real event buffer replayed through the job client's driver, and the one
+ * failure the driver raises handed to the seat's classifier. A reworded
+ * synthesized message is therefore re-composed here rather than asserted
+ * against a copy of itself.
+ */
+async function alertForRelayedRun(
+  id: string,
+  record: JobRecord,
+): Promise<ReturnType<typeof failureFor>> {
+  const relayed = record.events.map((entry) => entry.event);
+  const client: JobApiClient = {
+    createJob: () => Promise.resolve(id),
+    openEventStream: async function* (): AsyncIterable<RelayEvent> {
+      for (const event of relayed) {
+        await Promise.resolve();
+        yield event;
+      }
+    },
+    cancelJob: () => Promise.resolve(),
+    deleteJob: () => Promise.resolve(),
+    fetchJobStatus: () => Promise.resolve({ kind: "live", status: "failed" }),
+    fetchFinalRunStatus: () =>
+      Promise.resolve({
+        record: { available: false },
+        transportTeardownOverran: false,
+        exitReconciled: true,
+      }),
+  };
+  const failures: Array<{
+    category: ExchangeErrorCategory;
+    error: unknown;
+  }> = [];
+  await createServerJobExchangeDriver(
+    {
+      transport: { channel: "filedrop" },
+      side: "inviter",
+      linkageTerms: validLinkageTerms(),
+      sharedSecret: VALID_SHARED_SECRET,
+      inputSource: { kind: "inline", csv: "ssn\n111223333\n" },
+    },
+    client,
+  ).run({
+    signal: new AbortController().signal,
+    onStages: () => undefined,
+    onStage: () => undefined,
+    onResult: () => undefined,
+    onError: (failure) => failures.push(failure),
+  });
+  expect(failures).toHaveLength(1);
+  return failureFor(failures[0].category, failures[0].error);
+}
+
 describe("a synthesized persistence-loss terminal reaches the operator's alert", () => {
   test("the composed alert claims no artifact its own cause cannot confirm", async () => {
     // End to end across the three layers that compose this alert: the manager
@@ -533,48 +587,7 @@ describe("a synthesized persistence-loss terminal reaches the operator's alert",
     const record = manager.getJob(id)!;
     await waitForTerminal(record);
 
-    const relayed = record.events.map((entry) => entry.event);
-    const client: JobApiClient = {
-      createJob: () => Promise.resolve(id),
-      openEventStream: async function* (): AsyncIterable<RelayEvent> {
-        for (const event of relayed) {
-          await Promise.resolve();
-          yield event;
-        }
-      },
-      cancelJob: () => Promise.resolve(),
-      deleteJob: () => Promise.resolve(),
-      fetchJobStatus: () => Promise.resolve({ kind: "live", status: "failed" }),
-      fetchFinalRunStatus: () =>
-        Promise.resolve({
-          record: { available: false },
-          transportTeardownOverran: false,
-          exitReconciled: true,
-        }),
-    };
-    const failures: Array<{
-      category: ExchangeErrorCategory;
-      error: unknown;
-    }> = [];
-    await createServerJobExchangeDriver(
-      {
-        transport: { channel: "filedrop" },
-        side: "inviter",
-        linkageTerms: validLinkageTerms(),
-        sharedSecret: VALID_SHARED_SECRET,
-        inputSource: { kind: "inline", csv: "ssn\n111223333\n" },
-      },
-      client,
-    ).run({
-      signal: new AbortController().signal,
-      onStages: () => undefined,
-      onStage: () => undefined,
-      onResult: () => undefined,
-      onError: (failure) => failures.push(failure),
-    });
-
-    expect(failures).toHaveLength(1);
-    const alert = failureFor(failures[0].category, failures[0].error);
+    const alert = await alertForRelayedRun(id, record);
     expect(alert.category).toBe("output");
     expect(alert.title).toBe("Results unavailable");
     // The alert leads with the do-not-repeat instruction, and the console's own
@@ -588,6 +601,92 @@ describe("a synthesized persistence-loss terminal reaches the operator's alert",
     );
     expect(alert.message).not.toContain("generating the results file");
     expect(alert.reportedCause).not.toContain("generating the results file");
+  });
+});
+
+describe("a run that exits with no terminal event, by the CLI's exit-code table", () => {
+  test("exit 70 (EX_SOFTWARE, docs/CLI.md Exit codes) is an internal fault whose alert withholds Try again", async () => {
+    const manager = makeManager({
+      exitCode: 70,
+      stderr: "a check on the run's own state failed\n",
+    });
+    const id = await manager.createJob(validIntent());
+    const record = manager.getJob(id)!;
+    await waitForTerminal(record);
+    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    expect(record.status).toBe("failed");
+
+    const terminal = record.events[record.events.length - 1].event;
+    expect(terminal.type).toBe("error");
+    expect(terminal.category).toBe("exchange");
+    expect(terminal.internalFault).toBe(true);
+    expect(terminal.recoveryHint).toBe(true);
+    expect(terminal[ERROR_MESSAGE_CHAIN_FIELD]).toEqual([
+      terminal.message,
+      "the CLI last wrote on stderr: a check on the run's own state failed",
+    ]);
+
+    const alert = await alertForRelayedRun(id, record);
+    expect(alert.category).toBe("exchange");
+    expect(alert.retry).toBe("withheld");
+    expect(alert.message).not.toContain("temporary connection problem");
+    expect(alert.reportedCause).toContain(
+      "stopped on a fault in Alcove itself before reporting it",
+    );
+    expect(alert.reportedCause).toContain(
+      "report the fault with what the CLI last wrote on stderr, below",
+    );
+    expect(alert.reportedCause).toContain("a check on the run's own state");
+  });
+
+  test("exit 70 from a run that wrote nothing to stderr names no report below", async () => {
+    const manager = makeManager({ exitCode: 70 });
+    const id = await manager.createJob(validIntent());
+    const record = manager.getJob(id)!;
+    await waitForTerminal(record);
+    const terminal = record.events[record.events.length - 1].event;
+    expect(terminal.internalFault).toBe(true);
+    expect(terminal[ERROR_MESSAGE_CHAIN_FIELD]).toBeUndefined();
+    expect(String(terminal.message)).toMatch(
+      /report the fault with this message$/,
+    );
+  });
+
+  test("exit 70 from a run that captured a diagnostic log names that log", async () => {
+    const { manager, handlersRef } = makeStubSpawnManager();
+    const id = await manager.createJob(validIntent({ diagnosticRun: true }));
+    const record = manager.getJob(id)!;
+    fs.writeFileSync(record.logPath!, "debug lines\n");
+    handlersRef.current!.onTerminal(
+      { outcome: "failed", exitCode: 70, signal: null },
+      NO_DIAGNOSTICS,
+    );
+    const terminal = record.events[record.events.length - 1].event;
+    expect(terminal.internalFault).toBe(true);
+    expect(String(terminal.message)).toMatch(
+      /report the fault with the run log this page offers to download$/,
+    );
+  });
+
+  test("exit 69 (EX_UNAVAILABLE, docs/CLI.md Exit codes) is a broken stream whose alert offers Try again", async () => {
+    const manager = makeManager({
+      exitCode: 69,
+      stderr: "the connection to the server was reset\n",
+    });
+    const id = await manager.createJob(validIntent());
+    const record = manager.getJob(id)!;
+    await waitForTerminal(record);
+    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
+    expect(record.status).toBe("failed");
+
+    const terminal = record.events[record.events.length - 1].event;
+    expect(terminal.category).toBe("exchange");
+    expect(terminal).not.toHaveProperty("internalFault");
+    expect(terminal).not.toHaveProperty("recoveryHint");
+
+    const alert = await alertForRelayedRun(id, record);
+    expect(alert.category).toBe("exchange");
+    expect(alert.retry).toBe("offered");
   });
 });
 

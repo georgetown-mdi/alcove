@@ -52,12 +52,15 @@ const OPENING = "dialling the partner";
 /** The child's last line: what a fail-closed reach forward takes with it. */
 const CLOSING = "run stopped";
 
-/** The two terminals the manager synthesizes for a run that emitted none. */
+/** The terminals the manager synthesizes for a run that emitted none. */
 const MESSAGE_CLASSES: Array<{ name: string; exitCode: number }> = [
   // The exchange completed and a local write did not: the one class whose own
   // sentence is a do-not-repeat instruction, so a fragment that could close it
   // and read on as console copy is what the labelling exists to refuse.
   { name: "the persistence-loss terminal", exitCode: 73 },
+  // An internal fault: its own sentence names the stderr link as what to
+  // report, so the link has to hold what the child wrote and nothing else.
+  { name: "the internal-fault terminal", exitCode: 70 },
   // Any other non-interrupt exit with nothing on fd 3.
   { name: "the stream-broke terminal", exitCode: 64 },
 ];
