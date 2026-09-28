@@ -1294,7 +1294,7 @@ export const RECEIVES_NO_PAYLOAD_NOTICE =
   "the invitation asks your partner to send you no payload columns for " +
   "matched records (linkage_terms.payload.receive: []); to receive columns, " +
   "list them there in a configuration file and invite from it with " +
-  "'alcove invite --config-file FILE'.";
+  "'alcove invite --config-file FILE' and no URL (the offline form).";
 
 /** Log {@link RECEIVES_NO_PAYLOAD_NOTICE} when the authored terms receive
  * nothing from the partner. */
