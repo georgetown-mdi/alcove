@@ -125,14 +125,16 @@ export type ResultsDelivery =
   | { kind: "write-failed"; error: unknown };
 
 /** Whether the folder already holds an entry under this name, so a failed write
- * removes only an entry that write created itself. */
+ * removes only an entry that write created itself. A directory under the name
+ * refuses the file lookup with `TypeMismatchError`, and counts as held. */
 async function entryHeldAlready(
   directory: FileSystemDirectoryHandle,
   fileName: string,
 ): Promise<boolean> {
   return directory.getFileHandle(fileName).then(
     () => true,
-    () => false,
+    (error: unknown) =>
+      error instanceof Error && error.name === "TypeMismatchError",
   );
 }
 

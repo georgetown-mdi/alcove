@@ -50,12 +50,14 @@ const log = getLogger("ManagedRunSurface");
 // What a test varies about the stubbed run and the folder write. `allocated`
 // false builds the results URL outside the caller's allocation; a `hold` keeps
 // the folder write from starting until the test releases it, and `written` is
-// the write's own outcome once it has run.
+// the write's own outcome once it has run. `refuseBytes` has the write's stream
+// refuse the bytes after the results entry is created.
 const stub = vi.hoisted(() => ({
   allocated: true,
   hold: undefined as Promise<void> | undefined,
   started: undefined as (() => void) | undefined,
   written: undefined as Promise<unknown> | undefined,
+  refuseBytes: false,
 }));
 
 // The driver is stubbed to a completed run: its results file built through the
@@ -83,6 +85,39 @@ vi.mock("@psi/managed/managedRunDriver", async (importOriginal) => {
   };
 });
 
+/**
+ * The granted folder with a stream that refuses the bytes, wrapping the REAL
+ * directory: the entry `getFileHandle` creates, the abort, and the removal that
+ * follows are Chromium's own, so what the folder is left holding is the
+ * platform's answer.
+ */
+function refusingBytesFolder(
+  real: FileSystemDirectoryHandle,
+): FileSystemDirectoryHandle {
+  return {
+    name: real.name,
+    getFileHandle: async (
+      fileName: string,
+      options?: FileSystemGetFileOptions,
+    ) => {
+      const file = await real.getFileHandle(fileName, options);
+      return {
+        createWritable: async () => {
+          const writable = await file.createWritable();
+          return {
+            write: () =>
+              Promise.reject(new Error("the folder refused the bytes")),
+            close: () => writable.close(),
+            abort: () => writable.abort(),
+          };
+        },
+      };
+    },
+    removeEntry: (name: string, options?: FileSystemRemoveOptions) =>
+      real.removeEntry(name, options),
+  } as unknown as FileSystemDirectoryHandle;
+}
+
 vi.mock("@psi/managed/managedWorkingDirectory", async (importOriginal) => {
   const actual = await importOriginal<typeof WorkingDirectory>();
   return {
@@ -91,8 +126,14 @@ vi.mock("@psi/managed/managedWorkingDirectory", async (importOriginal) => {
       ...args: Parameters<typeof actual.writeRunResultsToWorkingFolder>
     ): Promise<RunResultsFolderWrite> => {
       stub.started?.();
+      const [record, ...rest] = args;
+      const folder = record.workingDirectoryHandle;
+      const writtenRecord =
+        stub.refuseBytes && folder !== undefined
+          ? { ...record, workingDirectoryHandle: refusingBytesFolder(folder) }
+          : record;
       const written = (stub.hold ?? Promise.resolve()).then(() =>
-        actual.writeRunResultsToWorkingFolder(...args),
+        actual.writeRunResultsToWorkingFolder(writtenRecord, ...rest),
       );
       stub.written = written;
       return written;
@@ -125,6 +166,32 @@ async function opfsFolder(name: string): Promise<FileSystemDirectoryHandle> {
 
 const app = createAppMount();
 
+/** What a directory holds, by entry name. */
+async function entryNames(
+  directory: FileSystemDirectoryHandle,
+): Promise<Array<string>> {
+  const names: Array<string> = [];
+  for await (const name of directory.keys()) names.push(name);
+  return names.sort();
+}
+
+/** The not-written note beside the download, and the download itself. */
+async function expectNotWrittenBesideDownload(): Promise<void> {
+  await expect
+    .element(page.getByText("Not written to your folder"))
+    .toBeInTheDocument();
+  await expect
+    .element(
+      page.getByText("the write failed. Download them above instead", {
+        exact: false,
+      }),
+    )
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByRole("link", { name: /Download result/ }))
+    .toBeInTheDocument();
+}
+
 /** Press Run on the mounted surface and wait for the completion screen. */
 async function runToCompletion(): Promise<void> {
   const runButton = page.getByRole("button", { name: "Run exchange" });
@@ -148,6 +215,7 @@ afterEach(async () => {
   stub.hold = undefined;
   stub.started = undefined;
   stub.written = undefined;
+  stub.refuseBytes = false;
   await clearManagedExchanges();
   const root = await navigator.storage.getDirectory();
   for (const name of FOLDER_NAMES.splice(0))
@@ -175,12 +243,11 @@ describe("an attended run of an exchange holding a folder grant", () => {
       .toBeInTheDocument();
   });
 
-  test("keeps the download and reports a write that did not land beside it", async () => {
+  test("keeps the download, reports a write that did not land beside it, and leaves a folder already under the results name", async () => {
     const folder = await opfsFolder("attended-write-fails");
+    const fileName = runResultsFileName(LABEL, RUN_AT);
     // A folder already under the results name makes the file write refuse.
-    await folder.getDirectoryHandle(runResultsFileName(LABEL, RUN_AT), {
-      create: true,
-    });
+    await folder.getDirectoryHandle(fileName, { create: true });
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: folder }),
     );
@@ -188,19 +255,24 @@ describe("an attended run of an exchange holding a folder grant", () => {
 
     await runToCompletion();
 
-    await expect
-      .element(page.getByText("Not written to your folder"))
-      .toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText("the write failed. Download them above instead", {
-          exact: false,
-        }),
-      )
-      .toBeInTheDocument();
-    await expect
-      .element(page.getByRole("link", { name: /Download result/ }))
-      .toBeInTheDocument();
+    await expectNotWrittenBesideDownload();
+    expect(await stub.written).toMatchObject({ kind: "write-failed" });
+    await expect(folder.getDirectoryHandle(fileName)).resolves.toBeDefined();
+  });
+
+  test("removes the results entry a write created before its bytes were refused", async () => {
+    stub.refuseBytes = true;
+    const folder = await opfsFolder("attended-write-refuses-bytes");
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await runToCompletion();
+
+    await expectNotWrittenBesideDownload();
+    expect(await stub.written).toMatchObject({ kind: "write-failed" });
+    expect(await entryNames(folder)).toEqual([]);
   });
 });
 
