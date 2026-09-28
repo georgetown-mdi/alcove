@@ -225,11 +225,12 @@ export async function ensureHandlePermission(
 
 /**
  * Secure the permission a run's input read needs on the working folder. An
- * attended run asks in `readwrite` first, so one answer also covers the results
- * write after the run, which only queries. Where edit is refused it asks in
- * `read`, so the input is still read and the write reports not allowed; a
- * refusal of both names `read`. An unattended run queries `read` and never
- * prompts.
+ * attended run asks in `readwrite` once, so the same answer also covers the
+ * results write after the run, which only queries; a refusal is not followed
+ * by a `read` request (Chrome shows that second prompt only inside the Run
+ * click's transient-activation window, so whether it appears at all is not
+ * something the operator can see -- see docs/MANAGED_EXCHANGE.md). An
+ * unattended run queries `read` and never prompts.
  */
 async function secureInputReadPermission(
   directory: FileSystemDirectoryHandle,
@@ -240,17 +241,7 @@ async function secureInputReadPermission(
     await ensureHandlePermission(directory, "unattended", "read", permission);
     return;
   }
-  try {
-    await ensureHandlePermission(
-      directory,
-      "attended",
-      "readwrite",
-      permission,
-    );
-  } catch (refused) {
-    if (!(refused instanceof HandlePermissionError)) throw refused;
-    await ensureHandlePermission(directory, "attended", "read", permission);
-  }
+  await ensureHandlePermission(directory, "attended", "readwrite", permission);
 }
 
 /** A read input for one run: the `File` read at run start

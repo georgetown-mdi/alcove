@@ -304,14 +304,14 @@ const INPUT_FAILURE: ManagedRunFailureAlert = {
   recovery: "retry",
 };
 
-/** The input state where this site was not allowed to read the working
+/** The input state where this site was not allowed to edit the working
  * folder. Choosing the folder again comes first because a permission that
  * already reads as denied shows no prompt on a re-run. */
 const INPUT_PERMISSION_FAILURE: ManagedRunFailureAlert = {
   ...INPUT_FAILURE,
   message:
     "The run stopped before connecting because this site was not allowed to " +
-    "read this exchange's folder, so the input file was not read and nothing " +
+    "edit this exchange's folder, so the input file was not read and nothing " +
     "left this device. Choose the folder again on this exchange's page, or " +
     "run this exchange again and allow access if your browser asks.",
 };
