@@ -582,7 +582,16 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
+  peerTimeoutGuidance?: string;
 }
+
+const withPeerTimeoutGuidance = (
+  message: string,
+  options: RendezvousOptions,
+): string =>
+  options.peerTimeoutGuidance === undefined
+    ? message
+    : `${message}. ${options.peerTimeoutGuidance}`;
 
 // The connection-owned state the coordinator reads and writes across this
 // boundary. Three kinds:
@@ -1708,7 +1717,14 @@ export class FileSyncRendezvous {
         // hello-filename order may make this party the joiner. The role is
         // indeterminate here, so emit no `[role]` prefix (unlike the lock
         // timeout below, which is reachable only as the lone starter).
-        throw markPeerWaitTimeout(new Error("synchronization has timed out"));
+        throw markPeerWaitTimeout(
+          new Error(
+            withPeerTimeoutGuidance(
+              "synchronization has timed out",
+              deps.options(),
+            ),
+          ),
+        );
       }
 
       // Lock path.
@@ -2227,7 +2243,12 @@ export class FileSyncRendezvous {
         );
       }
       throw markPeerWaitTimeout(
-        new Error("[starter] synchronization has timed out"),
+        new Error(
+          withPeerTimeoutGuidance(
+            "[starter] synchronization has timed out",
+            deps.options(),
+          ),
+        ),
       );
     };
     try {

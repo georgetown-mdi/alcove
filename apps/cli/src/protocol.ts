@@ -54,6 +54,10 @@ import type {
 import { LocalFSClient } from "./connection/localFSClient";
 import { assertFileSyncFirstRoundFits } from "./fileSyncFirstRound";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
+import {
+  INACTIVITY_TIMEOUT_GUIDANCE,
+  PEER_TIMEOUT_GUIDANCE,
+} from "./connection/timeoutGuidance";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
 import { describeIceTransportPolicy } from "./connection/webrtc/iceDiagnostics";
 import { openWebRtcMessageConnection } from "./connection/webrtc/webrtcMessageConnection";
@@ -1772,6 +1776,8 @@ async function prepareTransport(
       ...(fileSyncRuntime.forceRetainSweep !== undefined && {
         forceRetainSweep: fileSyncRuntime.forceRetainSweep,
       }),
+      peerTimeoutGuidance: PEER_TIMEOUT_GUIDANCE,
+      inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
     });
     build.fileSync = fileSyncConn;
 

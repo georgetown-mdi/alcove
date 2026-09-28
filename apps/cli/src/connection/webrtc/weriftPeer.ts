@@ -16,6 +16,7 @@ import {
 } from "@alcove/core";
 
 import { REPORT_LIBRARY_INCOMPATIBILITY } from "../libraryIncompatibility";
+import { PEER_TIMEOUT_GUIDANCE } from "../timeoutGuidance";
 import { BROKER_MESSAGE, connectToBroker } from "./brokerClient";
 import {
   describeSelectedCandidatePair,
@@ -1308,7 +1309,7 @@ class Negotiation {
             `the exchange partner did not ` +
               `${role === "acceptor" ? "answer" : "offer"} within ` +
               `${budgetSeconds(this.options.rendezvousTimeoutMs)}; ` +
-              "--peer-timeout sets how long to wait for a partner to arrive",
+              PEER_TIMEOUT_GUIDANCE,
             "transport",
           ),
         ),

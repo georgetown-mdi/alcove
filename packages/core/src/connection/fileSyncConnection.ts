@@ -85,11 +85,13 @@ const transportBudgetExceededError = (
   operation: string,
   budgetMs: number,
   targets: readonly string[] = [],
+  guidance?: string,
 ): TransportOperationStalledError =>
   new TransportOperationStalledError(
     `a transport operation exceeded the ${budgetMs} ms peer-inactivity ` +
       `budget; the peer or server has not responded within the budget, so the ` +
-      `exchange is failing rather than waiting on it further`,
+      `exchange is failing rather than waiting on it further` +
+      (guidance === undefined ? "" : `. ${guidance}`),
     {
       details: [
         `stalled operation: ${redactPrivateKeyMaterial(operation)}`,
@@ -289,6 +291,11 @@ interface Options {
   // the public config; defaults to DEFAULT_JOINER_RECOVERY_MS. Tests lower it to
   // exercise the abort path without a real-time wait.
   joinerRecoveryMs: number;
+  // Sentences the caller appends to a timeout failure to name the setting
+  // that bounds the wait: the partner's arrival (the rendezvous), and every
+  // wait the peer-inactivity budget bounds. Unset leaves the message bare.
+  peerTimeoutGuidance?: string;
+  inactivityTimeoutGuidance?: string;
 }
 
 const getDefaultOptions = (): Options => {
@@ -904,7 +911,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     ): Promise<T> => {
       const ms = budgetMs();
       return withTransportBudget(op, ms, () =>
-        transportBudgetExceededError(operation, ms, targets),
+        transportBudgetExceededError(
+          operation,
+          ms,
+          targets,
+          this.options.inactivityTimeoutGuidance,
+        ),
       );
     };
     return {

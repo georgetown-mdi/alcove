@@ -1,6 +1,10 @@
 import { expect, test, vi } from "vitest";
 
-import { ConnectionError, generateSharedSecret } from "@alcove/core";
+import {
+  ConnectionError,
+  generateSharedSecret,
+  sanitizeErrorForDisplay,
+} from "@alcove/core";
 
 import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
 import {
@@ -246,6 +250,27 @@ test("a present partner going silent fails at inactivity_timeout_ms while the ar
     await parked;
     expect(failure?.kind).toBe("transport");
     expect(failure?.message).toContain(`${silenceMs}`);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a silent partner's failure names inactivity_timeout_ms", async () => {
+  vi.useFakeTimers();
+  try {
+    const { session } = harness();
+    const connection = webRtcMessageConnection(session, {
+      inactivityTimeoutMs: 1_000,
+    });
+    let failure: unknown;
+    const parked = connection.receive().catch((err: unknown) => {
+      failure = err;
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await parked;
+    expect(sanitizeErrorForDisplay(failure)).toContain(
+      "inactivity_timeout_ms under connection.options",
+    );
   } finally {
     vi.useRealTimers();
   }

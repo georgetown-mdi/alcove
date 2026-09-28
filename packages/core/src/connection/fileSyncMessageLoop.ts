@@ -260,7 +260,13 @@ export interface MessageLoopOptions {
   timestampInFilename: boolean;
   pollingFrequency: number;
   unexpectedFiles?: "error" | "warn" | "ignore";
+  inactivityTimeoutGuidance?: string;
 }
+
+const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
+  options.inactivityTimeoutGuidance === undefined
+    ? ""
+    : `. ${options.inactivityTimeoutGuidance}`;
 
 // The connection-owned state the coordinator reads across the boundary.
 // Three kinds:
@@ -490,7 +496,8 @@ export class FileSyncMessageLoop {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
                 `timed out waiting for ack ${expectedAck} from ` +
-                  `${deps.peerId()!}`,
+                  `${deps.peerId()!}` +
+                  inactivityGuidanceSuffix(deps.options()),
               );
             }
             await deps.wait(deps.options().pollingFrequency);
@@ -506,7 +513,9 @@ export class FileSyncMessageLoop {
           while (await hasOutstandingMessage()) {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
-                `timed out waiting for message from ${deps.id()} to be consumed`,
+                `timed out waiting for message from ${deps.id()} to be ` +
+                  "consumed" +
+                  inactivityGuidanceSuffix(deps.options()),
               );
             }
             await deps.wait(deps.options().pollingFrequency);

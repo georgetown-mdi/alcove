@@ -129,3 +129,133 @@ describe.each(CHANNELS)("on $channel", ({ config }) => {
     expect(String(failure())).toContain(`${BOUND_MS} ms peer-inactivity`);
   });
 });
+
+describe("each timeout failure ends with the guidance the caller supplied", () => {
+  const PEER_TIMEOUT_GUIDANCE = "peer_timeout_ms sets the arrival wait";
+  const INACTIVITY_TIMEOUT_GUIDANCE =
+    "inactivity_timeout_ms sets the inactivity wait";
+
+  async function openGuided(
+    client: FileTransportClient,
+    options: PeerWaitOptions & {
+      locklessRendezvous?: boolean;
+      retainFiles?: boolean;
+      timestampInFilename?: boolean;
+    },
+    guided = true,
+  ): Promise<FileSyncConnection> {
+    const conn = new FileSyncConnection(client, {
+      verbose: -1,
+      ...(guided && {
+        peerTimeoutGuidance: PEER_TIMEOUT_GUIDANCE,
+        inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
+      }),
+    });
+    await conn.open({
+      channel: "filedrop",
+      path: DIRECTORY,
+      options: { ...options, pollIntervalMs: 1_000 },
+    });
+    return conn;
+  }
+
+  async function arrivalFailure(
+    locklessRendezvous: boolean,
+    guided: boolean,
+  ): Promise<string> {
+    vi.useFakeTimers();
+    const { client } = makeMockClient();
+    const conn = await openGuided(
+      client,
+      {
+        peerTimeoutMs: BOUND_MS,
+        inactivityTimeoutMs: CEILING_MS,
+        locklessRendezvous,
+      },
+      guided,
+    );
+    const failure = track(conn.synchronize());
+    await vi.advanceTimersByTimeAsync(BOUND_MS + 2_000);
+    await conn.close();
+    return String(failure());
+  }
+
+  test.each([
+    ["lock", false],
+    ["lockless", true],
+  ])(
+    "an arrival timeout on the %s rendezvous names peer_timeout_ms",
+    async (_, lockless) => {
+      const message = await arrivalFailure(lockless, true);
+      expect(message).toContain(
+        `synchronization has timed out. ${PEER_TIMEOUT_GUIDANCE}`,
+      );
+      expect(message).not.toContain(INACTIVITY_TIMEOUT_GUIDANCE);
+    },
+  );
+
+  test("an arrival timeout with no guidance supplied is the bare message", async () => {
+    const message = await arrivalFailure(false, false);
+    expect(message).toMatch(/synchronization has timed out$/);
+  });
+
+  test("a transport operation timeout names inactivity_timeout_ms", async () => {
+    vi.useFakeTimers();
+    const { client } = makeMockClient();
+    const conn = await openGuided(client, {
+      peerTimeoutMs: CEILING_MS,
+      inactivityTimeoutMs: BOUND_MS,
+    });
+    conn.peerId = "stub-peer";
+    client.put = () => new Promise<void>(() => {});
+    const failure = track(conn.send({ first: true }));
+    await vi.advanceTimersByTimeAsync(BOUND_MS);
+    expect(String(failure())).toContain(
+      `waiting on it further. ${INACTIVITY_TIMEOUT_GUIDANCE}`,
+    );
+  });
+
+  test("a wait for the partner to consume a message names inactivity_timeout_ms", async () => {
+    vi.useFakeTimers();
+    const { client, files } = makeMockClient();
+    const conn = await openGuided(client, {
+      peerTimeoutMs: CEILING_MS,
+      inactivityTimeoutMs: BOUND_MS,
+    });
+    conn.peerId = "stub-peer";
+    const sentName = `${conn.id}-99.json`;
+    files.set(`${DIRECTORY}/${sentName}`, Buffer.from("{}"));
+    messageLoopInternals(conn).lastSentFile = sentName;
+    const failure = track(conn.send({ next: true }));
+    await vi.advanceTimersByTimeAsync(BOUND_MS + 2_000);
+    expect(String(failure())).toContain(
+      `to be consumed. ${INACTIVITY_TIMEOUT_GUIDANCE}`,
+    );
+    files.delete(`${DIRECTORY}/${sentName}`);
+    await conn.close();
+  });
+
+  test("a wait for the partner's acknowledgement names inactivity_timeout_ms", async () => {
+    vi.useFakeTimers();
+    const { client } = makeMockClient();
+    const conn = await openGuided(client, {
+      peerTimeoutMs: CEILING_MS,
+      inactivityTimeoutMs: BOUND_MS,
+      retainFiles: true,
+      timestampInFilename: true,
+      locklessRendezvous: true,
+    });
+    conn.peerId = "stub-peer";
+    const loop = messageLoopInternals(conn) as { seq?: number };
+    loop.seq = 1;
+    messageLoopInternals(conn).lastSentFile = `${conn.id}-000.json`;
+    const failure = track(conn.send({ next: true }));
+    await vi.advanceTimersByTimeAsync(BOUND_MS + 2_000);
+    expect(String(failure())).toMatch(
+      new RegExp(
+        `timed out waiting for ack .*\\. ${INACTIVITY_TIMEOUT_GUIDANCE}$`,
+      ),
+    );
+    await conn.close();
+  });
+});

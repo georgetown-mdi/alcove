@@ -2669,6 +2669,44 @@ test("the both-swept advice is absent when the sweep could not delete every file
   }
 });
 
+test("a file-sync run whose partner never arrives names --peer-timeout", async () => {
+  const err = await runLonePartyWithNoPartner();
+  expect(isPeerWaitTimeout(err)).toBe(true);
+  expect(renderFailureForOperator(err)).toContain("--peer-timeout");
+});
+
+test("a file-sync run hands its connection the guidance naming each timeout setting", async () => {
+  // Core appends these to its arrival, per-operation and send-wait timeout
+  // failures (pinned in core's fileSyncPeerWaits.test.ts).
+  let guidance:
+    | { peerTimeoutGuidance?: string; inactivityTimeoutGuidance?: string }
+    | undefined;
+  const openSpy = vi
+    .spyOn(FileSyncConnection.prototype, "open")
+    .mockImplementation(async function (this: FileSyncConnection) {
+      guidance = (this as unknown as { options: typeof guidance }).options;
+      throw new Error("stop after construction");
+    });
+  try {
+    await Promise.allSettled([
+      runProtocol({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-a",
+      }),
+    ]);
+  } finally {
+    openSpy.mockRestore();
+  }
+  expect(guidance?.peerTimeoutGuidance).toContain("--peer-timeout");
+  expect(guidance?.inactivityTimeoutGuidance).toContain(
+    "inactivity_timeout_ms under connection.options",
+  );
+});
+
 test("the both-swept advice is absent from a flagged retain-mode run", async () => {
   // Retain mode keeps the transcript -- cleanup() deletes nothing -- so the
   // folder this run leaves behind still holds the rendezvous files, and the
