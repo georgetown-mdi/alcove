@@ -2845,38 +2845,23 @@ test("a marker that cannot be written stops the run before the key exchange, the
   expect(mockState.keyFileBeforeRotation[keyFileA]).toBeUndefined();
 }, 20_000);
 
-test("a marker whose directory flush fails after the rename stops the run before the key exchange, the secret unchanged", async () => {
-  // The key file sits in a directory of its own, so the only directory flush
-  // on it is the marker write's, after the rename has landed the marker.
-  const keyDirA = path.join(tmpDir, "key-a");
-  fs.mkdirSync(keyDirA);
-  const keyFileA = path.join(keyDirA, "a.key");
+test("a marker whose write fails after the rename stops the run before the key exchange, the secret unchanged", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
-  // Only descriptors still open on the directory count: the key-file
-  // pre-flight opens and closes it first, and a later open can reuse that
-  // number for the marker's temp file.
-  const keyDirFds = new Set<number>();
-  const realOpen = fs.openSync;
-  const openSpy = vi
-    .spyOn(fs, "openSync")
-    .mockImplementation((...args: Parameters<typeof fs.openSync>) => {
-      const fd = realOpen(...args);
-      if (String(args[0]) === keyDirA) keyDirFds.add(fd);
-      return fd;
+  // The step after the rename differs by platform -- a directory flush on
+  // POSIX, none on Windows -- so the failure is raised once the rename into
+  // A's key file has landed the marker.
+  const realRename = fs.renameSync;
+  const renameSpy = vi
+    .spyOn(fs, "renameSync")
+    .mockImplementation((...args: Parameters<typeof fs.renameSync>) => {
+      realRename(...args);
+      if (path.resolve(String(args[1])) === path.resolve(keyFileA))
+        throw new Error("EIO: i/o error");
     });
-  const realClose = fs.closeSync;
-  const closeSpy = vi.spyOn(fs, "closeSync").mockImplementation((fd) => {
-    keyDirFds.delete(fd);
-    realClose(fd);
-  });
-  const realFsync = fs.fsyncSync;
-  const fsyncSpy = vi.spyOn(fs, "fsyncSync").mockImplementation((fd) => {
-    if (keyDirFds.has(fd)) throw new Error("EIO: i/o error, fsync");
-    realFsync(fd);
-  });
   let results: PromiseSettledResult<unknown>[];
   try {
     results = await Promise.allSettled(
@@ -2899,9 +2884,7 @@ test("a marker whose directory flush fails after the rename stops the run before
       ),
     );
   } finally {
-    openSpy.mockRestore();
-    closeSpy.mockRestore();
-    fsyncSpy.mockRestore();
+    renameSpy.mockRestore();
   }
   const [resultA] = results;
   expect(resultA.status).toBe("rejected");
@@ -4276,7 +4259,18 @@ test.each([
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+    // Each side raises only once both have started the key exchange: one
+    // side failing first leaves an abort marker, and a partner that reads it
+    // before starting ends on that instead, with no key exchange to advise on.
+    let started = 0;
+    let bothStarted: () => void = () => {};
+    const bothInKeyExchange = new Promise<void>((resolve) => {
+      bothStarted = resolve;
+    });
     vi.mocked(authenticateConnection).mockImplementation(async () => {
+      started += 1;
+      if (started === 2) bothStarted();
+      await bothInKeyExchange;
       throw raise();
     });
 
