@@ -480,6 +480,21 @@ describe("a webrtc connection outside the credential-free locator subset", () =>
       "other-machine-account",
     ],
     [
+      "a server provisioning endpoint's auth",
+      {
+        channel: "webrtc",
+        server: {
+          ...locatorServer,
+          provision: {
+            host: "provision.example.org",
+            auth: { bearer: "@/home/other/provision.bearer" },
+          },
+        },
+      },
+      "server.provision",
+      "@/home/other/provision.bearer",
+    ],
+    [
       "a stun list the locator never carried",
       {
         channel: "webrtc",

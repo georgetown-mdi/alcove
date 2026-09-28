@@ -308,6 +308,7 @@ export type {
   FileSyncOptions,
   HttpAuth,
   RelayLocator,
+  ServerProvision,
   SFTPConnectionConfig,
   WebRTCConnectionConfig,
 } from "./config/connection";
@@ -428,6 +429,18 @@ export {
   endpointFromConnection,
 } from "./config/endpointProducer";
 export type { EndpointSourceConnectionConfig } from "./config/endpointProducer";
+export {
+  DEFAULT_PROVISION_PORT,
+  PROVISION_REQUEST_TIMEOUT_MS,
+  callProvisionEndpoint,
+  provisionEndpointLabel,
+  provisionRequest,
+  serverProvisionOf,
+} from "./config/serverProvision";
+export type {
+  CallProvisionEndpointOptions,
+  ProvisionRequest,
+} from "./config/serverProvision";
 export {
   CONNECTION_BLOCK_DOC_URL,
   CONNECTION_BLOCK_NOTICE,

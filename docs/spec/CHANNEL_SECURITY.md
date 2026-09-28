@@ -177,6 +177,72 @@ A beat is suppressed while any adapter operation is in flight (real traffic is a
 
 Beneath the heartbeat, the adapter enables kernel **TCP keepalive** on the underlying socket (`net.Socket.setKeepAlive(true, 30_000)`, reached through the ssh2 Client's `_sock` since ssh2 exposes `setNoDelay` but not `setKeepAlive`, the same access-past-the-public-API assumption the fatal-'error' guard rests on). This is a transport-layer safety check, **not** a substitute for the heartbeat: it keeps NAT/firewall flow state warm and lets the kernel detect a silently dead peer, but because it rides below the SFTP protocol it does not reset the server's SFTP-command idle timer. The **30,000 ms (30 s)** initial delay (Node sets only `TCP_KEEPIDLE`; the probe interval and count keep their OS defaults) sits below common NAT idle windows and below the application heartbeat interval, so probes keep the flow alive between beats. Both settings are re-applied on every reconnect (a fresh socket per attempt) and both are guarded and non-fatal, exactly like the existing `setNoDelay`: an upstream that relocates the socket degrades to no-keepalive, never to a failed connect.
 
+# Server-provisioning endpoint call
+
+`connection.server.provision` names an HTTP endpoint that wakes a primary
+server kept down between exchanges; see the [On-demand server
+provisioning](../EXCHANGE_REFERENCE.md#on-demand-server-provisioning) overview
+for the field table and when a run calls it. This section specifies the wire
+contract `callProvisionEndpoint` implements
+(`packages/core/src/config/serverProvision.ts`).
+
+**The request.** One `POST` with an empty body to `https://host:port/path`
+(`DEFAULT_PROVISION_PORT` = 443 when `port` is unset), sending `Accept:
+application/json` and, when `auth` is set, an `Authorization` header --
+`Bearer <token>` for a `bearer` credential, `Basic <base64(username:password)>`
+for a `username`/`password` pair. The request sets `redirect: "manual"`, so a
+3xx answer (or the `fetch` implementation's own `opaqueredirect` result type)
+is not followed and the credential in `Authorization` never reaches a second
+host. The response body is never read: once the status is in hand it is
+cancelled unread, since it is network content the operator cannot inspect.
+Before any request, `host` is refused when it holds a character outside a host
+name (letters, digits, hyphens, dots) or an IPv6 address (hex digits, colons,
+dots, optional brackets) -- the URL parser drops a tab, CR or LF anywhere in
+its input, so `a.com<LF>evil.com` would otherwise reach `a.comevil.com` --
+and when the parsed URL's host differs from it as written (lowercased, an IPv6
+address bracketed), as a numeric form such as `0x7f.1` does. The refusal
+names the field, not the value.
+
+**Timeout.** `PROVISION_REQUEST_TIMEOUT_MS` = 120,000 (120 s) bounds the call
+via `AbortSignal.timeout`, independent of every other connection or liveness
+bound in this document. It is an arbitrary working value: long enough for a
+serverless instance's cold start, short enough that an unattended run does not
+hang.
+
+**Status-to-exit-code classification.** Only the response status is read:
+
+| Answer | Exit | Reasoning |
+|--------|------|-----------|
+| No answer -- a network, DNS, or TLS failure, or the timeout above -- or `408`, `429`, or `5xx` | 69 (`ConnectionError`, kind `transport`) | A retry can succeed |
+| `401` or `403` | 64 (`UsageError`) | The endpoint refused the credential in `auth` |
+| A redirect (3xx, or `opaqueredirect`), or any other non-2xx status | 64 (`UsageError`) | Fix `host`, `port`, or `path` |
+| `2xx` | none | The server now accepts connections |
+
+Every failure message names the endpoint by host and port alone
+(`provisionEndpointLabel`) -- never the path, which may hold a token, and
+never the credential.
+
+**When the call runs.** `alcove exchange` sends it once
+(`wakeProvisionedServer`), after every refusal decided from local inputs alone
+and before the first-use host-key probe. Ahead of it run the configuration and
+key-file load, the dataset preparation and its linkage-terms checks, the
+signing-identity load, the non-interactive refusal of an unpinned SFTP host
+(`assertHostKeyTrustCanBeEstablished`), and `runProtocol`'s own local checks
+through `preflightRun`: the `--event-stream` fd-3 preflight, the shared
+secret's format and expiry, the key-file path, the first round's size against
+one message on the channel, and the WebRTC rendezvous resolution. After it run
+the checks that need the network -- the first-use host-key probe and the
+operator's confirmation, then the protocol run, whose connect verifies a
+pinned host key and whose key exchange and terms agreement involve the
+partner. `runProtocol` repeats its local checks before it connects, so an
+input that changes after the call, such as a shared secret expiring in the
+interval, is refused after it.
+
+**Two calls per exchange.** Each party's run sends its own call independently,
+in either order and possibly at the same time, so the endpoint must answer
+`2xx` to a wake call that lands while another already has the server coming
+up, and to one that lands after the server is already live.
+
 # SFTP session lifecycle
 
 ## SFTP mid-exchange session recovery

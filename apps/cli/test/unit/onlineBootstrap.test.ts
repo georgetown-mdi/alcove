@@ -1907,6 +1907,26 @@ describe("endpointFromConnection", () => {
     expect(serialized).not.toContain("id_ed25519");
   });
 
+  test("an sftp provision block stays behind on the emitted endpoint", () => {
+    const endpoint = endpointFromConnection({
+      channel: "sftp",
+      server: {
+        host: "sftp.example.org",
+        path: "/drop",
+        provision: {
+          host: "provision.example.org",
+          path: "/wake",
+          auth: { username: "waker", password: "wakesecret" },
+        },
+      },
+    });
+    expect(endpoint).toEqual({
+      channel: "sftp",
+      host: "sftp.example.org",
+      path: "/drop",
+    });
+  });
+
   test("a filedrop connection emits the shared path locator", () => {
     const endpoint = endpointFromConnection(
       connectionFromURL(platformFileUrl("/mnt/share/drop"), {}),
@@ -1993,7 +2013,8 @@ describe("endpointFromConnection", () => {
   test("nothing but the webrtc locator survives the emit", () => {
     // The producer side of the no-credentials invariant on this channel: a
     // hand-authored connection holding the broker API key, a TURN relay's
-    // credential, and the plaintext scheme emits the locator alone -- the url of
+    // credential, a provisioning endpoint's secret, and the plaintext scheme
+    // emits the locator alone -- the url of
     // the turn entry whose credential is minted from the shared secret, and
     // nothing of the entry holding a static one.
     // `secure` is dropped with them -- the endpoint schema has no field for it --
@@ -2007,6 +2028,11 @@ describe("endpointFromConnection", () => {
         username: "alice",
         key: "broker-api-key",
         secure: false,
+        provision: {
+          host: "provision.example.org",
+          path: "/wake",
+          auth: { bearer: "topsecret" },
+        },
       },
       role: "inviter",
       turn: [
@@ -2033,6 +2059,7 @@ describe("endpointFromConnection", () => {
       "alice",
       "broker-api-key",
       "topsecret",
+      "provision",
       "relaysecret",
       "relay.example.org",
       "alcove",

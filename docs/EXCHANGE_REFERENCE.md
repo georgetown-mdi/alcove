@@ -699,6 +699,43 @@ connection:
       - "SHA256:0PNQ1x9Pe3aaFqkPq0n8Uihhi8nN2nx2nKQ0gWqXm8s" # incoming
 ```
 
+#### On-demand server provisioning
+
+When the primary server is allocated on demand rather than always running, a `provision` sub-object can be added to `server`. It describes the endpoint that brings the server up before either party connects. There are two modes:
+
+**Lifecycle provisioning**: the server has a fixed, known address but is started on demand to avoid consuming resources between exchanges. The static `host` and other `server` fields are present alongside `provision` in both parties' configs; `provision` is the call that wakes the server. Both parties may call the same endpoint independently before connecting.
+
+**Address-returning provisioning** (not yet implemented): the endpoint allocates a fresh resource and returns its address. Because the address is unknown until provisioning runs, this is asymmetric: the provisioning party (conventionally the inviter) calls the endpoint during exchange setup with `alcove invite`, and the resulting static `server` fields are written into the other party's config before either party runs the CLI. At run time the provisioning party's config retains `server.provision`; the other party's config has only static `server` fields.
+
+A `provision` block is read as lifecycle provisioning. The fields, a misspelled one refused:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `host` | string | yes | Hostname of the provisioning API |
+| `port` | integer | no | Port, 1-65535; defaults to 443 |
+| `path` | string | no | API path; defaults to `/` |
+| `auth` | object | no | Authentication credentials (see [HTTP service authentication](#http-service-authentication-auth)) |
+
+```yaml
+# Lifecycle provisioning: wake a serverless PeerJS instance before connecting
+connection:
+  channel: webrtc
+  server:
+    host: peerjs.example.org
+    port: 443
+    provision:
+      host: api.example.org
+      path: /peerjs/start
+      auth:
+        bearer: "@provision.key"
+```
+
+##### How `alcove exchange` calls the endpoint
+
+The call runs once per run, before the run's first connection to the server, [SFTP host-key trust](CLI.md#sftp-host-key-trust) included. Every check the run can make without contacting anything comes before it, and a run refused by one of them sends nothing: the configuration and key file, the input file and the linkage terms, the signing identity, the shared secret's format and expiry, the key file's path, the size of the first round, the `--event-stream` descriptor, the WebRTC rendezvous settings, and, on an SFTP server with no pinned host key, whether the run is interactive and so can confirm one. The checks that need the server or the partner come after it: reading and confirming an unpinned host key, verifying a pinned one on connect, and the key exchange and terms agreement with the partner. A `2xx` answer means the server now accepts connections, and the run then connects to the static `server` fields. Each party's run sends its own call independently, in either order and possibly at the same time, so the endpoint must tolerate one call from each party. Any other answer stops the run; the request the call sends and how an answer is classified to an exit code are specified in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#server-provisioning-endpoint-call).
+
+Only `alcove exchange` sends the call. An online `alcove invite` or `alcove accept`, and a zero-setup exchange, build their connection from a URL or an invitation and cannot state `provision`, so start the server another way before one of those runs.
+
 ### `connection.role`
 
 *Type:* string (`inviter` | `acceptor`)  
@@ -876,7 +913,7 @@ A WebSocket-to-TCP proxy that tunnels the SFTP connection through HTTPS. This fi
 
 ### HTTP service authentication (`auth`)
 
-The `ice_provision` and `proxy` objects each accept an optional `auth` sub-object. Exactly one authentication method may be specified. `username` and `password` must appear together; neither is valid alone.
+The `server.provision`, `ice_provision`, and `proxy` objects each accept an optional `auth` sub-object. Exactly one authentication method may be specified. `username` and `password` must appear together; neither is valid alone.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -1591,6 +1628,8 @@ The cells:
 | `connection.server.host_key_fingerprint` | authored | authored (a rotation list is entered separated by commas; a direct exchange takes one value) | not applicable |
 | `connection.server.certificate` | refused | refused | refused |
 | `connection.server.known_hosts` | refused | refused | refused |
+| `connection.server.provision` (sftp) | carried | refused | not applicable |
+| `connection.server.provision` (webrtc) | carried | not applicable | refused |
 | `connection.server.host`, `port`, `path` (webrtc) | authored | not applicable | carried |
 | `connection.server.secure` (webrtc) | authored | not applicable | refused |
 | `connection.server.key` (webrtc) | carried | not applicable | refused |

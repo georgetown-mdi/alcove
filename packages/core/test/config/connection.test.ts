@@ -680,8 +680,11 @@ test("HttpAuth with password but no username is rejected", () => {
 
 test("HttpAuth with bearer token is valid", () => {
   const result = safeParseConnectionConfig({
-    ...sftpBase,
-    proxy: { host: "proxy.example.org", auth: { bearer: "tok" } },
+    ...webrtcBase,
+    server: {
+      host: "api.peerjs.com",
+      provision: { host: "api.example.org", auth: { bearer: "tok" } },
+    },
   });
   expect(result.success).toBe(true);
 });
@@ -709,6 +712,70 @@ test("HttpAuth with bearer and username together is rejected", () => {
   if (result.success) return;
   const messages = result.error.issues.map((i) => i.message);
   expect(messages.some((m) => m.includes("at most one"))).toBe(true);
+});
+
+// --- server.provision ---------------------------------------------------------
+
+test.each([
+  ["sftp", sftpBase],
+  ["webrtc", webrtcBase],
+])("a %s server accepts a provision block", (_, base) => {
+  const result = safeParseConnectionConfig({
+    ...base,
+    server: {
+      ...base.server,
+      provision: {
+        host: "api.example.org",
+        port: 8443,
+        path: "/wake",
+        auth: { username: "user", password: "pw" },
+      },
+    },
+  });
+  expect(result.success).toBe(true);
+  if (!result.success || result.data.channel === "filedrop") return;
+  expect(result.data.server.provision).toEqual({
+    host: "api.example.org",
+    port: 8443,
+    path: "/wake",
+    auth: { username: "user", password: "pw" },
+  });
+});
+
+test.each([
+  ["an unknown key", { host: "api.example.org", method: "GET" }],
+  ["no host", { path: "/wake" }],
+  ["an empty host", { host: "" }],
+  ["port 0", { host: "api.example.org", port: 0 }],
+  ["a port above 65535", { host: "api.example.org", port: 65536 }],
+  [
+    "two auth methods",
+    {
+      host: "api.example.org",
+      auth: { bearer: "tok", username: "u", password: "p" },
+    },
+  ],
+])("a provision block with %s is refused", (_, provision) => {
+  const result = safeParseConnectionConfig({
+    ...sftpBase,
+    server: { ...sftpBase.server, provision },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("a provision block's unknown key is refused naming it", () => {
+  const result = safeParseConnectionConfig({
+    ...webrtcBase,
+    server: {
+      ...webrtcBase.server,
+      provision: { host: "api.example.org", mode: "lifecycle" },
+    },
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  expect(result.error.issues[0].code).toBe("unrecognized_keys");
+  expect(result.error.issues[0].path).toEqual(["server", "provision"]);
+  expect(result.error.issues[0].message).toContain('"mode"');
 });
 
 // --- SFTPServer: at most one primary auth method -----------------------------

@@ -12,6 +12,8 @@ import {
 import {
   DEFAULT_LINKAGE_RULE_SET,
   assertFirstRoundFitsFileSyncFrame,
+  assertFirstRoundFitsWebRtcFrame,
+  assertSharedSecretReadyForHandshake,
   csvDelimiterRefusal,
   encodeInvitation,
   generateSigningIdentity,
@@ -39,7 +41,10 @@ import {
 import { preflightKeyFilePath } from "../../../src/keyFilePreflight";
 import { runProtocol } from "../../../src/protocol";
 import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
-import { establishHostKeyTrust } from "../../../src/hostKeyTrust";
+import {
+  assertHostKeyTrustCanBeEstablished,
+  establishHostKeyTrust,
+} from "../../../src/hostKeyTrust";
 import { confirmOutboundPayloadConsent } from "../../../src/outboundPayloadConsent";
 import {
   builder,
@@ -55,7 +60,7 @@ import {
 } from "../../../src/commands/exchange";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import { renderConfigTemplate } from "../../../src/configTemplate";
-import { ttyStream, withStdin } from "../../stdinStream";
+import { streamOf, ttyStream, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
 import { ERROR_CLASS_EXIT_CODES } from "../../exitCodeCases";
 
@@ -92,6 +97,12 @@ vi.mock("@alcove/core", async (importActual) => {
     assertFirstRoundFitsFileSyncFrame: vi.fn(
       actual.assertFirstRoundFitsFileSyncFrame,
     ),
+    assertFirstRoundFitsWebRtcFrame: vi.fn(
+      actual.assertFirstRoundFitsWebRtcFrame,
+    ),
+    assertSharedSecretReadyForHandshake: vi.fn(
+      actual.assertSharedSecretReadyForHandshake,
+    ),
     prepareForExchange: vi.fn(
       () =>
         ({
@@ -116,16 +127,34 @@ vi.mock("@alcove/core", async (importActual) => {
 
 // Mock runProtocol so the handler tests drive the exchange outcome (resolve =
 // success, reject = failed exchange) deterministically, without opening a real
-// connection. protocol.test.ts covers the real runProtocol.
-vi.mock("../../../src/protocol", () => ({ runProtocol: vi.fn() }));
+// connection. protocol.test.ts covers the real runProtocol. The local checks
+// the handler runs ahead of it (preflightRun) stay real, spy-wrapped.
+vi.mock("../../../src/protocol", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/protocol")>();
+  return { runProtocol: vi.fn(), preflightRun: vi.fn(actual.preflightRun) };
+});
 
 // First-use host-key trust is a no-op for the filedrop configs the other handler
 // tests use, but live for the sftp one the prepare-before-connect ordering test
 // drives; stub it so that test reaches the runProtocol hand-off without probing
 // sftp.example.org (hostKeyTrust.test.ts covers the real flow).
+// Its non-interactive refusal is stubbed too, since a test run's stdin is not a
+// terminal; a test plants the real one where it drives that refusal.
 vi.mock("../../../src/hostKeyTrust", () => ({
   establishHostKeyTrust: vi.fn(),
+  assertHostKeyTrustCanBeEstablished: vi.fn(),
 }));
+
+// The key-file path preflight is spy-WRAPPED so a test can plant its refusal,
+// which a key file the config load has already read cannot otherwise reach.
+vi.mock("../../../src/keyFilePreflight", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../../src/keyFilePreflight")>();
+  return {
+    ...actual,
+    preflightKeyFilePath: vi.fn(actual.preflightKeyFilePath),
+  };
+});
 
 // The invitation provisioning step is spy-WRAPPED so the exit-boundary tests can
 // plant an error at it; every other key-file export, and provisioning itself
@@ -632,40 +661,6 @@ test("a config with an empty linkage_terms.identity is refused, not silently acc
     "is not a valid exchange spec",
   );
 });
-
-test.each([
-  ["sftp", { channel: "sftp" }],
-  ["webrtc", { channel: "webrtc", role: "acceptor" }],
-])(
-  "a %s config stating server.provision is refused naming the key",
-  (_, connection) => {
-    fs.writeFileSync(
-      configFile,
-      YAML.stringify({
-        connection: {
-          ...connection,
-          server: {
-            host: "server.example.org",
-            provision: { host: "wake.example.org" },
-          },
-        },
-        linkageTerms: minimalLinkageTerms,
-      }),
-    );
-    saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-    let caught: unknown;
-    try {
-      loadConfig(baseOptions());
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(UsageError);
-    expect((caught as Error).message).toContain("is not a valid exchange spec");
-    expect((caught as Error).message).toContain(
-      'Unrecognized key: "provision"',
-    );
-  },
-);
 
 test("a config whose linkage_terms omit the identity loads, holding none", () => {
   // The third shape, and the admissible one: the field is optional, so this
@@ -2826,6 +2821,408 @@ test("handler: a signing identity missing from its configured path exits 64 with
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
   } finally {
     exitSpy.mockRestore();
+  }
+});
+
+// --- handler: the server.provision wake call --------------------------------
+
+/** Write a config whose server states a provision block authenticated by a
+ * bearer token in a file, plus a key file and a CSV, and return the argv a run
+ * of them takes. */
+function provisionedRun(
+  connection: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+): Arguments {
+  const tokenFile = path.join(dir, "provision.token");
+  fs.writeFileSync(tokenFile, "wake-token\n");
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      connection: {
+        ...connection,
+        server: {
+          ...(connection.server as Record<string, unknown>),
+          provision: {
+            host: "wake.example.org",
+            path: "/start",
+            auth: { bearer: `@${tokenFile}` },
+          },
+        },
+      },
+      linkageTerms: minimalLinkageTerms,
+      ...extra,
+    }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  return {
+    _: [],
+    $0: "alcove",
+    input,
+    "config-file": configFile,
+    "key-file": keyFile,
+    "log-level": "silent",
+  } as unknown as Arguments;
+}
+
+/** Stub the global fetch the wake call sends through, answering `status`. */
+function stubProvisionFetch(status: number) {
+  const fetch = vi.fn(
+    async (_input: URL | RequestInfo, _init?: RequestInit) =>
+      new Response(null, { status }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+test.each([
+  ["sftp", { channel: "sftp", server: { host: "sftp.example.org" } }],
+  [
+    "webrtc",
+    {
+      channel: "webrtc",
+      role: "acceptor",
+      server: { host: "peers.example.org" },
+    },
+  ],
+])(
+  "handler: a %s config stating server.provision wakes the server once, after local refusals and before the host-key step",
+  async (_, connection) => {
+    const argv = provisionedRun(connection);
+    const fetch = stubProvisionFetch(200);
+    vi.mocked(prepareForExchange).mockClear();
+    vi.mocked(establishHostKeyTrust).mockClear();
+    vi.mocked(runProtocol).mockReset();
+    vi.mocked(runProtocol).mockResolvedValueOnce({});
+    const exitSpy = captureProcessExit();
+    try {
+      await handler(argv);
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      const [url, init] = fetch.mock.calls[0];
+      expect(String(url)).toBe("https://wake.example.org/start");
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer wake-token",
+      );
+      expect(vi.mocked(establishHostKeyTrust)).toHaveBeenCalled();
+      const [prepared] = vi.mocked(prepareForExchange).mock.invocationCallOrder;
+      const [woke] = fetch.mock.invocationCallOrder;
+      const [trusted] = vi.mocked(establishHostKeyTrust).mock
+        .invocationCallOrder;
+      const [ran] = vi.mocked(runProtocol).mock.invocationCallOrder;
+      expect(prepared).toBeLessThan(woke);
+      expect(woke).toBeLessThan(trusted);
+      expect(trusted).toBeLessThan(ran);
+    } finally {
+      exitSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+test("handler: the wake call follows the signing-identity load", async () => {
+  const identityFile = await seedSigningIdentity("Test Party");
+  const argv = provisionedRun(minimalSFTPConfig.connection, {
+    signing: {
+      mode: "certificate",
+      identityFile,
+      partnerFingerprint: PARTNER_FINGERPRINT,
+    },
+  });
+  const fetch = stubProvisionFetch(204);
+  vi.mocked(loadSigningIdentity).mockClear();
+  vi.mocked(runProtocol).mockReset();
+  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  const exitSpy = captureProcessExit();
+  try {
+    await handler(argv);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(loadSigningIdentity)).toHaveBeenCalled();
+    const [loaded] = vi.mocked(loadSigningIdentity).mock.invocationCallOrder;
+    const [woke] = fetch.mock.invocationCallOrder;
+    expect(loaded).toBeLessThan(woke);
+  } finally {
+    exitSpy.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a run refused on a local input never sends the wake call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection, {
+    signing: {
+      mode: "certificate",
+      identityFile: path.join(dir, "absent-signing-identity.json"),
+      partnerFingerprint: PARTNER_FINGERPRINT,
+    },
+  });
+  const fetch = stubProvisionFetch(200);
+  try {
+    await expectExchangeExit(argv, 64);
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a config with no provision block sends no wake call", async () => {
+  fs.writeFileSync(configFile, YAML.stringify(minimalSFTPConfig));
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  const fetch = stubProvisionFetch(200);
+  vi.mocked(runProtocol).mockReset();
+  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  const exitSpy = captureProcessExit();
+  try {
+    await handler({
+      _: [],
+      $0: "alcove",
+      input,
+      "config-file": configFile,
+      "key-file": keyFile,
+      "log-level": "silent",
+    } as unknown as Arguments);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(vi.mocked(runProtocol)).toHaveBeenCalled();
+  } finally {
+    exitSpy.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test.each([
+  [503, 69, "could not start the server (HTTP 503)"],
+  [429, 69, "could not start the server (HTTP 429)"],
+  [401, 64, "refused the credentials in connection.server.provision.auth"],
+  [404, 64, "refused the request (HTTP 404)"],
+  [302, 64, "answered with a redirect (HTTP 302)"],
+])(
+  "handler: a wake call answered HTTP %s exits %s with no host-key probe",
+  async (status, code, fragment) => {
+    const argv = provisionedRun(minimalSFTPConfig.connection);
+    stubProvisionFetch(status);
+    vi.mocked(establishHostKeyTrust).mockClear();
+    try {
+      await expectExchangeExit(argv, code);
+      expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
+      const shown = mockState.errors.join("\n");
+      expect(shown).toContain(
+        "the provisioning endpoint at wake.example.org:443",
+      );
+      expect(shown).toContain(fragment);
+      expect(shown).not.toContain("wake-token");
+      expect(shown).not.toContain("/start");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+test("handler: a wake call that cannot reach the endpoint exits 69 with no host-key probe", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      throw new TypeError("fetch failed", {
+        cause: new Error("getaddrinfo ENOTFOUND wake.example.org"),
+      });
+    }),
+  );
+  vi.mocked(establishHostKeyTrust).mockClear();
+  try {
+    await expectExchangeExit(argv, 69);
+    expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain(
+      "could not reach the provisioning endpoint at wake.example.org:443",
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+// --- handler: local refusals precede the wake call ---------------------------
+
+test("handler: a non-interactive run on an unpinned sftp config exits 64 without sending the wake call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const fetch = stubProvisionFetch(200);
+  const actual = await vi.importActual<
+    typeof import("../../../src/hostKeyTrust")
+  >("../../../src/hostKeyTrust");
+  vi.mocked(assertHostKeyTrustCanBeEstablished).mockImplementationOnce(
+    actual.assertHostKeyTrustCanBeEstablished,
+  );
+  try {
+    await withStdin(streamOf(""), () => expectExchangeExit(argv, 64));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain(
+      "no host_key_fingerprint is pinned for this SFTP server and this run " +
+        "is not interactive",
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: --event-stream with fd 3 not open exits 64 without sending the wake call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const fetch = stubProvisionFetch(200);
+  const realFstatSync = fs.fstatSync;
+  const fstat = vi.spyOn(fs, "fstatSync").mockImplementation(((
+    fd: number,
+    ...rest: unknown[]
+  ) => {
+    if (fd === 3)
+      throw Object.assign(new Error("EBADF: bad file descriptor, fstat"), {
+        code: "EBADF",
+      });
+    return (realFstatSync as (...args: unknown[]) => fs.Stats)(fd, ...rest);
+  }) as typeof fs.fstatSync);
+  try {
+    await expectExchangeExit({ ...argv, "event-stream": true }, 64);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain(
+      "--event-stream was given but file descriptor 3 is not open for writing",
+    );
+  } finally {
+    fstat.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a shared secret refused before the handshake sends no wake call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const fetch = stubProvisionFetch(200);
+  vi.mocked(assertSharedSecretReadyForHandshake).mockImplementationOnce(() => {
+    throw new UsageError("shared secret expired at 2020-01-01T00:00:00Z");
+  });
+  try {
+    await expectExchangeExit(argv, 64);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain("shared secret expired");
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a key-file path the preflight refuses sends no wake call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const fetch = stubProvisionFetch(200);
+  vi.mocked(preflightKeyFilePath).mockImplementationOnce(() => {
+    throw new UsageError("key file path is not writable");
+  });
+  try {
+    await expectExchangeExit(argv, 64);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain(
+      "key file path is not writable",
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a first round too large for one message file sends no wake call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const fetch = stubProvisionFetch(200);
+  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockImplementationOnce(() => {
+    throw new RoundSetLimitError("first round too large for one file");
+  });
+  try {
+    await expectExchangeExit(argv, 64);
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a webrtc first round too large for one message sends no wake call", async () => {
+  const argv = provisionedRun({
+    channel: "webrtc",
+    role: "acceptor",
+    server: { host: "peers.example.org" },
+  });
+  const fetch = stubProvisionFetch(200);
+  vi.mocked(assertFirstRoundFitsWebRtcFrame).mockImplementationOnce(() => {
+    throw new RoundSetLimitError("first round too large for one message");
+  });
+  try {
+    await expectExchangeExit(argv, 64);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain(
+      "first round too large for one message",
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a webrtc rendezvous that cannot be resolved sends no wake call", async () => {
+  // No role: the rendezvous has no id to register under.
+  const argv = provisionedRun({
+    channel: "webrtc",
+    server: { host: "peers.example.org" },
+  });
+  const fetch = stubProvisionFetch(200);
+  try {
+    await expectExchangeExit(argv, 64);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mockState.errors.join("\n")).toContain(
+      "this webrtc connection has no `role`",
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a local refusal under --event-stream emits its terminal error event", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const fetch = stubProvisionFetch(200);
+  const lines: string[] = [];
+  const realFstatSync = fs.fstatSync;
+  const realWriteSync = fs.writeSync;
+  const fstat = vi
+    .spyOn(fs, "fstatSync")
+    .mockImplementation(((fd: number, ...rest: unknown[]) =>
+      fd === 3
+        ? ({} as fs.Stats)
+        : (realFstatSync as (...args: unknown[]) => fs.Stats)(
+            fd,
+            ...rest,
+          )) as typeof fs.fstatSync);
+  const write = vi.spyOn(fs, "writeSync").mockImplementation(((
+    fd: number,
+    buffer: Uint8Array | string,
+    ...rest: unknown[]
+  ) => {
+    if (fd !== 3)
+      return (realWriteSync as (...args: unknown[]) => number)(
+        fd,
+        buffer,
+        ...rest,
+      );
+    const text = Buffer.from(buffer).toString("utf8");
+    if (text.length > 0) lines.push(...text.split("\n").filter(Boolean));
+    return Buffer.byteLength(text);
+  }) as typeof fs.writeSync);
+  vi.mocked(assertSharedSecretReadyForHandshake).mockImplementationOnce(() => {
+    throw new UsageError("shared secret expired at 2020-01-01T00:00:00Z");
+  });
+  try {
+    await expectExchangeExit({ ...argv, "event-stream": true }, 64);
+    expect(fetch).not.toHaveBeenCalled();
+    const events = lines.map((line) => JSON.parse(line) as { type: string });
+    expect(events.map((event) => event.type)).toEqual(["metrics", "error"]);
+    expect(events[1]).toMatchObject({
+      category: "exchange",
+      message: "shared secret expired at 2020-01-01T00:00:00Z",
+    });
+  } finally {
+    fstat.mockRestore();
+    write.mockRestore();
+    vi.unstubAllGlobals();
   }
 });
 

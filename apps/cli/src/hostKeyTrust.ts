@@ -122,6 +122,63 @@ const REAL_DEPS: HostKeyTrustDeps = {
   confirm: promptConfirm,
 };
 
+/** The labelled refusal link naming the configured host. */
+function hostDetailOf(host: string): string {
+  return `configured host: ${redactPrivateKeyMaterial(host)}`;
+}
+
+/**
+ * Refuse, from the configuration and the terminal alone, a first-use host-key
+ * step that could never finish: an sftp connection with no
+ * `host_key_fingerprint` pinned, on a run whose stdin is not an interactive
+ * terminal. A no-op wherever {@link establishHostKeyTrust} is one.
+ * `establishHostKeyTrust` makes the same check before it probes; a command
+ * with network contact of its own ahead of that step calls this first, so a
+ * run refused here contacts nothing.
+ */
+export function assertHostKeyTrustCanBeEstablished(
+  connection: ConnectionConfig,
+  persistence: HostKeyPersistence,
+): void {
+  if (connection.channel !== "sftp") return;
+  if (connection.server.hostKeyFingerprint !== undefined) return;
+  // stdin must be an interactive terminal to prompt. The strict `!== true` test
+  // mirrors openInputSource: isTTY is `undefined` (not `false`) for a pipe, a
+  // `< file` redirect, or a CSV piped through stdin, so this fails closed for
+  // every non-interactive run rather than hang on a prompt that can never be
+  // answered or silently auto-accept.
+  if (process.stdin.isTTY === true) return;
+  // On an offline-accept-seeded config the host is the PARTNER's, copied
+  // verbatim out of the invitation endpoint (connectionFromEndpoint), and
+  // unbounded by SFTPServerSchema in length or format; the config path is the
+  // operator's own, and unbounded too. Each rides a labelled link of its own
+  // in the refusal, passed through the private-key redaction where it is
+  // interpolated -- see
+  // docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+  const hostDetail = hostDetailOf(connection.server.host);
+  throw hostKeyRefusal(
+    `no host_key_fingerprint is pinned for this SFTP server and this run ` +
+      `is not interactive, so its identity cannot be confirmed; refusing ` +
+      `to connect.`,
+    persistence.mode !== "ephemeral"
+      ? [
+          `Run once from an interactive terminal to review and pin the ` +
+            `presented key, or pin it out-of-band by setting ` +
+            `connection.server.host_key_fingerprint in the configuration ` +
+            `below.`,
+          `configuration file: ${redactPrivateKeyMaterial(persistence.configPath)}`,
+          hostDetail,
+        ]
+      : [
+          `Run once from an interactive terminal to review and pin the ` +
+            `presented key, or pin it out-of-band by setting ` +
+            `connection.server.host_key_fingerprint in a saved ` +
+            `configuration.`,
+          hostDetail,
+        ],
+  );
+}
+
 /**
  * Establish first-use SSH host-key trust for an sftp connection with no
  * `host_key_fingerprint` pinned, the moment before it is opened. Modeled on
@@ -156,60 +213,18 @@ export async function establishHostKeyTrust(
   },
   deps: HostKeyTrustDeps = REAL_DEPS,
 ): Promise<void> {
+  assertHostKeyTrustCanBeEstablished(connection, options.persistence);
   if (connection.channel !== "sftp") return;
   if (connection.server.hostKeyFingerprint !== undefined) return;
 
   const { verbosity, loggerName, persistence } = options;
   const log = getLogger(loggerName);
   // The host reaches the operator down two routes with different escape points:
-  // the refusals below, composed raw because the display boundary escapes the
+  // the refusal below, composed raw because the display boundary escapes the
   // rendered cause chain once, and the log/prompt lines, whose call sites are
   // themselves that value's display sink.
   const host = connection.server.host;
   const hostDisplay = redactAndSanitizeForDisplay(host);
-  // On an offline-accept-seeded config the host is the PARTNER's, copied
-  // verbatim out of the invitation endpoint (connectionFromEndpoint), and
-  // unbounded by SFTPServerSchema in length or format; the config path is the
-  // operator's own, and unbounded too. Each rides a labelled link of its own
-  // in the refusals below, passed through the private-key redaction where it
-  // is interpolated -- see
-  // docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
-  const hostDetail = `configured host: ${redactPrivateKeyMaterial(host)}`;
-  // The config the operator would pin into / where the pin will be saved; absent
-  // for an ephemeral (one-off, no --save) run, which the messages adapt to.
-  const configDetail =
-    persistence.mode === "ephemeral"
-      ? undefined
-      : `configuration file: ${redactPrivateKeyMaterial(persistence.configPath)}`;
-
-  // stdin must be an interactive terminal to prompt. The strict `!== true` test
-  // mirrors openInputSource: isTTY is `undefined` (not `false`) for a pipe, a
-  // `< file` redirect, or a CSV piped through stdin, so this fails closed for
-  // every non-interactive run rather than hang on a prompt that can never be
-  // answered or silently auto-accept.
-  if (process.stdin.isTTY !== true) {
-    throw hostKeyRefusal(
-      `no host_key_fingerprint is pinned for this SFTP server and this run ` +
-        `is not interactive, so its identity cannot be confirmed; refusing ` +
-        `to connect.`,
-      configDetail !== undefined
-        ? [
-            `Run once from an interactive terminal to review and pin the ` +
-              `presented key, or pin it out-of-band by setting ` +
-              `connection.server.host_key_fingerprint in the configuration ` +
-              `below.`,
-            configDetail,
-            hostDetail,
-          ]
-        : [
-            `Run once from an interactive terminal to review and pin the ` +
-              `presented key, or pin it out-of-band by setting ` +
-              `connection.server.host_key_fingerprint in a saved ` +
-              `configuration.`,
-            hostDetail,
-          ],
-    );
-  }
 
   // Probe on a throwaway connection (its own adapter): the verifier records the
   // presented key and refuses, so no credential is ever sent and nothing needs
@@ -249,7 +264,7 @@ export async function establishHostKeyTrust(
       `the presented host key was not trusted; no credential was sent and ` +
         `nothing was written. Obtain and verify the server's fingerprint ` +
         `out-of-band, then retry.`,
-      [hostDetail],
+      [hostDetailOf(host)],
     );
 
   // Pin in memory so the real open() that follows enforces the confirmed key.
