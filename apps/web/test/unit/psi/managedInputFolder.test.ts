@@ -55,10 +55,12 @@ const granted: HandlePermissionQuery = {
 
 /** A permission layer keeping one state per mode, as the browser does: both
  * start at `initial` (`"prompt"`, as after a browser restart), a request sets
- * the mode it asks for to `answer`, and a `readwrite` grant also admits a read.
- * `calls` records every query and request, in order. */
+ * the mode it asks for to `answer` (one answer for every mode, or one per
+ * mode), and a `readwrite` grant also admits a read. `calls` records every
+ * query and request, in order. */
 function statefulPermission(
-  answer: HandlePermissionState,
+  answer:
+    HandlePermissionState | Record<HandlePermissionMode, HandlePermissionState>,
   initial: Record<HandlePermissionMode, HandlePermissionState> = {
     read: "prompt",
     readwrite: "prompt",
@@ -73,8 +75,9 @@ function statefulPermission(
     },
     request: (_handle, mode) => {
       calls.push(`request ${mode}`);
-      states[mode] = answer;
-      if (mode === "readwrite" && answer === "granted") states.read = "granted";
+      const given = typeof answer === "string" ? answer : answer[mode];
+      states[mode] = given;
+      if (mode === "readwrite" && given === "granted") states.read = "granted";
       return Promise.resolve(states[mode]);
     },
   };
@@ -213,7 +216,7 @@ describe("reading a run's input from the working folder", () => {
 describe("the permission an attended run's input read asks for", () => {
   const RUN_AT = "2026-01-06T14:00:00.000Z";
 
-  test("is readwrite, asked once, so the write after the run lands without asking", async () => {
+  test("is readwrite, asked once where edit is granted, so the write after the run lands without asking", async () => {
     vi.stubGlobal("FileSystemDirectoryHandle", class {});
     const entries = new Map([[MANAGED_INPUT_FILE_NAME, "ssn\n"]]);
     const folder = fakeFolder("Riverbend exchange", entries);
@@ -273,7 +276,42 @@ describe("the permission an attended run's input read asks for", () => {
     ).toHaveLength(1);
   });
 
-  test("is refused, naming the readwrite state, where neither grant stands", async () => {
+  test("asks to view where edit is declined, reads the input, and the write reports not allowed", async () => {
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+    const folder = fakeFolder(
+      "Riverbend exchange",
+      new Map([[MANAGED_INPUT_FILE_NAME, "ssn\n"]]),
+    );
+    const permission = statefulPermission({
+      readwrite: "denied",
+      read: "granted",
+    });
+
+    const acquired = await acquireManagedInput(
+      { kind: "folder", directory: folder.handle, attendance: "attended" },
+      permission.layer,
+    );
+    expect(acquired.columns).toEqual(["ssn"]);
+    expect(permission.calls).toEqual([
+      "query readwrite",
+      "request readwrite",
+      "query read",
+      "request read",
+    ]);
+
+    const delivery = await writeRunResultsToWorkingFolder(
+      { label: "Riverbend", workingDirectoryHandle: folder.handle },
+      RUN_AT,
+      new Blob(["ssn\n123\n"]),
+      permission.layer,
+    );
+    expect(delivery).toEqual({ kind: "ungranted", state: "denied" });
+    expect(
+      permission.calls.filter((call) => call.startsWith("request")),
+    ).toHaveLength(2);
+  });
+
+  test("is refused, naming read as the access asked last, where edit and view are both declined", async () => {
     const folder = fakeFolder(
       "Riverbend exchange",
       new Map([[MANAGED_INPUT_FILE_NAME, "ssn\n"]]),
@@ -286,9 +324,15 @@ describe("the permission an attended run's input read asks for", () => {
     ).catch((caught: unknown) => caught);
     expect(acquireCause(error)).toMatchObject({
       name: "HandlePermissionError",
-      mode: "readwrite",
+      mode: "read",
       state: "denied",
     });
+    expect(permission.calls).toEqual([
+      "query readwrite",
+      "request readwrite",
+      "query read",
+      "request read",
+    ]);
     expect(folder.lookups).toEqual([]);
   });
 

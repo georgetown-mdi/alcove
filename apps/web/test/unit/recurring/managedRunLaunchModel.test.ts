@@ -207,11 +207,11 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(failure.message).toContain("nothing left this device");
   });
 
-  test("a declined edit permission says the site was not allowed to edit the folder, and a parse failure keeps the fixed copy", () => {
-    // An attended read asks to edit the folder, so declining that prompt with no
-    // standing read grant leaves the input unread; the fixed copy's "missing,
+  test("a refused folder permission says the site was not allowed to read the folder, and a parse failure keeps the fixed copy", () => {
+    // A refused permission leaves the input unread; the fixed copy's "missing,
     // could not be read, or does not have the columns" would send the operator
-    // to check a file that was never looked at.
+    // to check a file that was never looked at. A denied state shows no prompt
+    // on a re-run, so choosing the folder again is the remedy named first.
     const inputFailureOf = (cause: unknown) =>
       classifyAgainstOneRecord(
         new ManagedInputError({ reason: "acquire", cause }),
@@ -221,20 +221,24 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
         false,
       );
     for (const state of ["denied", "prompt"] as const) {
-      const refused = inputFailureOf(
-        new HandlePermissionError(state, "readwrite"),
-      );
+      const refused = inputFailureOf(new HandlePermissionError(state, "read"));
       expect(refused.kind).toBe("input");
       expect(refused.recovery).toBe("retry");
       expect(refused.message).toContain(
-        "this site was not allowed to edit this exchange's folder, so the " +
+        "this site was not allowed to read this exchange's folder, so the " +
           "input file was not read",
       );
-      expect(refused.message).toContain("allow editing when your browser asks");
-      expect(refused.message).toContain(
-        "choose the folder again on this exchange's page",
+      const chooseAgain = refused.message.indexOf(
+        "Choose the folder again on this exchange's page",
       );
-      expect(refused.message).not.toMatch(/missing|does not have the columns/);
+      const runAgain = refused.message.indexOf(
+        "run this exchange again and allow access if your browser asks",
+      );
+      expect(chooseAgain).toBeGreaterThanOrEqual(0);
+      expect(runAgain).toBeGreaterThan(chooseAgain);
+      expect(refused.message).not.toMatch(
+        /missing|does not have the columns|allow editing/,
+      );
     }
 
     const unparsed = inputFailureOf(new Error("Unexpected quote in field"));
@@ -242,7 +246,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(unparsed.message).toContain(
       "is missing, could not be read, or does not have the columns",
     );
-    expect(unparsed.message).not.toMatch(/allowed to edit|Unexpected quote/);
+    expect(unparsed.message).not.toMatch(/allowed to read|Unexpected quote/);
   });
 
   test("a linkage shortfall is not offered as a retry, and names no agreed key", () => {

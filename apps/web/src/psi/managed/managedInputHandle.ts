@@ -214,10 +214,11 @@ export async function ensureHandlePermission(
 
 /**
  * Secure the permission a run's input read needs on the working folder. An
- * attended run asks in `readwrite`, so the one prompt its gesture allows also
- * covers the results write after the run, which only queries. Where write is
- * refused, a standing read grant still lets the input be read. An unattended
- * run queries `read` and never prompts.
+ * attended run asks in `readwrite` first, so one answer also covers the results
+ * write after the run, which only queries. Where edit is refused it asks in
+ * `read`, so the input is still read and the write reports not allowed; a
+ * refusal of both names `read`. An unattended run queries `read` and never
+ * prompts.
  */
 async function secureInputReadPermission(
   directory: FileSystemDirectoryHandle,
@@ -237,8 +238,7 @@ async function secureInputReadPermission(
     );
   } catch (refused) {
     if (!(refused instanceof HandlePermissionError)) throw refused;
-    if ((await permission.query(directory, "read")) !== "granted")
-      throw refused;
+    await ensureHandlePermission(directory, "attended", "read", permission);
   }
 }
 
