@@ -330,11 +330,11 @@ writes with. In order:
    write replaces the final component in place, so a directory there would fail
    after the handshake. A symlink is accepted, including one to a directory, the
    write acting on the link itself.
-3. **An errno the checks below cannot reproduce is raised as it stands.** Only
-   `ENOENT`, `ENOTDIR`, `EACCES`, and `ELOOP` continue the pre-flight; anything
-   else -- `ENAMETOOLONG` above all -- ends it there, because a pre-flight that
-   passed on such a path would leave the write to fail after the secret had
-   rotated.
+3. **An errno the checks below cannot reproduce ends the pre-flight.** Only
+   `ENOENT`, `ENOTDIR`, `EACCES`, and `ELOOP` continue it; anything else --
+   `ENAMETOOLONG` above all, or an `EIO` from a network mount -- is rejected
+   there, naming the errno, because a pre-flight that passed on such a path
+   would leave the write to fail after the secret had rotated.
 4. **The parent directory is created when it is absent**, recursively, mirroring
    what the write itself would do. This is a side effect the pre-flight does not
    unwind: the creation is logged and stays even where the handshake or the

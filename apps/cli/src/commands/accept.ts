@@ -70,7 +70,11 @@ import {
   warnColumnsTheInvitationWillNotAccept,
   type LinkagePreflightMessaging,
 } from "./linkagePreflight";
-import { assertNoProvisionConflicts, provisionConfigAndKey } from "./provision";
+import {
+  assertNoProvisionConflicts,
+  provisionOfflineCommandFiles,
+  type OfflineProvisioningCommand,
+} from "./provision";
 import {
   connectionFromURL,
   type RunnableConnectionConfig,
@@ -1053,6 +1057,11 @@ const INVITATION_PREFLIGHT_MESSAGING: LinkagePreflightMessaging = {
   termsStanding: "agreed",
 };
 
+const ACCEPT_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
+  writingFor: "this acceptance",
+  rerun: "accept the invitation again",
+};
+
 // --- Handler -----------------------------------------------------------------
 
 export async function handler(argv: Arguments): Promise<void> {
@@ -1333,7 +1342,8 @@ export async function handler(argv: Arguments): Promise<void> {
       // When reusing a pre-existing config, provisionConfigAndKey ignores `spec`
       // and writes only the key file, after the records below, leaving the rest
       // of the user's config untouched.
-      const { configPath, keyPath } = provisionConfigAndKey(
+      const { configPath, keyPath } = provisionOfflineCommandFiles(
+        ACCEPT_PROVISIONING_COMMAND,
         spec,
         // The acceptor's key file holds the invitation token without an expiry; the
         // inviter's copy has the expiry. The token rotates on first exchange.

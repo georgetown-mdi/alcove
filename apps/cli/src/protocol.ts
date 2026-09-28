@@ -87,7 +87,11 @@ import {
   type TeardownOutcome,
 } from "./transportTeardown";
 import { writeOutput } from "./util/dataIo";
-import { AUTHENTICATION_FAILED_EXIT_CODE, fixedNextStep } from "./util/exit";
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  exitCodeForError,
+  fixedNextStep,
+} from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
 import { logRuntimeEnv } from "./util/runtimeEnv";
@@ -2683,7 +2687,9 @@ export async function runProtocol(
     // post-rotation lines, both of which prescribe one. The authStarted
     // line still prints for them, in a form that states the token state
     // without prescribing a retry: a partner that may hold a rotated token
-    // is what the operator needs whatever the next step says.
+    // is what the operator needs whatever the next step says. An
+    // authentication failure (exit 77) rules out a retry too, but no fixed
+    // step prints beneath it, so its authStarted line states the step.
     //
     // The walk follows `cause` so a future wrap (e.g. `new Error('outer: '
     // + inner.message, { cause: inner })`) still suppresses the generic
@@ -2803,8 +2809,12 @@ export async function runProtocol(
       log.error(BOTH_SWEPT_GUIDANCE);
 
     const hintAlreadyEmitted = isHintTagged(err);
+    const authenticationFailed =
+      exitCodeForError(err) === AUTHENTICATION_FAILED_EXIT_CODE;
     const retryRuledOut =
-      hintAlreadyEmitted || fixedNextStep(err) !== undefined;
+      hintAlreadyEmitted ||
+      authenticationFailed ||
+      fixedNextStep(err) !== undefined;
     if (run.tokenRotated) {
       if (retryRuledOut) {
         // No post-rotation line: each prescribes the retry ruled out.
@@ -2831,12 +2841,17 @@ export async function runProtocol(
       }
     } else if (run.authStarted && !hintAlreadyEmitted) {
       log.error(
-        retryRuledOut
-          ? "Authentication started but the rotated token was not saved: " +
+        authenticationFailed
+          ? "Authentication failed, and a retry with this key file fails " +
+              "the same way: do not retry. Both parties must re-invite; for " +
+              "an SFTP host key other than the pinned one, verify the " +
+              "server's key out-of-band and re-pin it instead."
+          : retryRuledOut
+            ? "Authentication started but the rotated token was not saved: " +
               "your partner may already hold a rotated token, so the next " +
               "run after the step above may need a fresh invitation from " +
               "both sides."
-          : "The key exchange was in progress when this error occurred. " +
+            : "The key exchange was in progress when this error occurred. " +
               "Depending on how far the handshake had progressed, the " +
               "partner may have already completed it and saved the rotated " +
               "token even though this side did not. Retry the exchange " +

@@ -7,6 +7,7 @@ import { UsageError, type getLogger } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "../../src/fileUtils";
 import { preflightKeyFilePath } from "../../src/keyFilePreflight";
+import { exitCodeForError } from "../../src/util/exit";
 
 // Minimal logger stub: the helper only calls log.info (the parent-created
 // notice). Capture those messages so the mkdir-side-effect branch can be
@@ -255,6 +256,30 @@ test("an I/O error on the key file's directory is a usage error, not a transport
   } finally {
     openSpy.mockRestore();
   }
+});
+
+test("an I/O error on the key file itself exits 64, as the directory checks do", () => {
+  // The first lstat is on the key path. EIO is not one of the codes the
+  // directory checks meet again, so pre-flight stops there, and the refusal
+  // is the same usage class as theirs rather than a raw errno the command
+  // boundary would report as 69.
+  const { log } = makeLogger();
+  const keyFile = path.join(dir, "key.json");
+  const lstatSpy = vi.spyOn(fs, "lstatSync").mockImplementationOnce(() => {
+    throw Object.assign(new Error("EIO: i/o error, lstat"), { code: "EIO" });
+  });
+  let caught: unknown;
+  try {
+    preflightKeyFilePath(keyFile, log);
+  } catch (err) {
+    caught = err;
+  } finally {
+    lstatSpy.mockRestore();
+  }
+  expect(caught).toBeInstanceOf(UsageError);
+  expect(exitCodeForError(caught)).toBe(64);
+  expect((caught as Error).message).toContain(keyFile);
+  expect((caught as Error).message).toContain("EIO");
 });
 
 test.skipIf(process.platform === "win32")(

@@ -40,6 +40,10 @@ import { runOnlineBootstrap } from "../../src/onlineBootstrap";
 import type { CommonBootstrapOptions } from "../../src/optionDefinitions";
 import { loadKeyFile } from "../../src/keyFile";
 import { keysPathFor, resolveRecordOutput } from "../../src/recordFile";
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  exitCodeForError,
+} from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
 import { localPath, remotePath, sftpServer } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";
@@ -644,7 +648,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
   // exchange completes (writeOutput / writeExchangeRecord), which an aborted
   // handshake never reaches, so this pins that nothing partial leaks on failure.
   // Both sides abort mid-handshake with their token un-rotated, so each emits a
-  // "key exchange was in progress" recovery advisory at ERROR. Run them under
+  // recovery advisory at ERROR. Run them under
   // withCapturedLogs so those intended lines are captured for assertion below
   // rather than leaked to the suite console. The natural "invite"/"accept" names
   // are safe to reuse even though the happy-path test above already created those
@@ -716,17 +720,35 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
   expect(fs.existsSync(inviteOut)).toBe(false);
   expect(fs.existsSync(acceptOut)).toBe(false);
 
-  // Both sides' aborted handshakes emit the "key exchange was in progress"
-  // recovery advisory at ERROR -- the only intended WARN/ERROR of this run.
+  // Each aborted handshake emits one recovery advisory at ERROR -- the only
+  // intended WARN/ERROR of this run -- and which one follows the side's exit
+  // code: an authentication failure (77) rules out a retry with the existing
+  // key file, while a responder that timed out (69) may retry with it.
   // Asserting the captured set proves intent (each is the known advisory) and
   // guards against a genuine, unexpected error being suppressed unseen.
   const advisories = capturedLogs.map((l) => l.message);
+  const authenticationFailures = [inviteOutcome, acceptOutcome].filter(
+    (outcome) =>
+      outcome.status === "rejected" &&
+      exitCodeForError(outcome.reason) === AUTHENTICATION_FAILED_EXIT_CODE,
+  ).length;
+  expect(authenticationFailures).toBeGreaterThan(0);
   expect(advisories).toHaveLength(2);
-  for (const message of advisories) {
-    expect(message).toContain(
-      "The key exchange was in progress when this error occurred.",
-    );
-  }
+  expect(
+    advisories.filter((message) =>
+      message.includes(
+        "Authentication failed, and a retry with this key file fails the " +
+          "same way: do not retry.",
+      ),
+    ),
+  ).toHaveLength(authenticationFailures);
+  expect(
+    advisories.filter((message) =>
+      message.includes(
+        "The key exchange was in progress when this error occurred.",
+      ),
+    ),
+  ).toHaveLength(2 - authenticationFailures);
 }, 60_000);
 
 // --- Happy path: sftp ---------------------------------------------------------
