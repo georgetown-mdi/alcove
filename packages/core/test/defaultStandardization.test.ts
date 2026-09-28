@@ -12,7 +12,7 @@ import {
   CANDIDATE_DATE_FORMATS,
   INFER_DATE_SCAN_CAP,
 } from "../src/utils/date";
-import { runPipeline } from "../src/standardization";
+import { runPipeline, titles } from "../src/standardization";
 import { patternConformsToDialect } from "../src/utils/linearRegex";
 import { regexStepPatternParam } from "../src/config/transformRegexDialect";
 import type { ColumnMetadata } from "../src/config/metadata";
@@ -459,16 +459,41 @@ describe("default name pipeline (first_name / last_name)", () => {
       expect(runLast(input)).toBe(expected);
     });
 
-    test.each(["Mr", "Mr.", "MRS", "ms", "Mx", "Dr", "Prof.", "Mr Dr"])(
-      "%s, a field that is only an honorific, becomes null",
-      (input) => {
-        expect(runFirst(input)).toBeNull();
-        expect(runLast(input)).toBeNull();
+    test.each([
+      "Mr",
+      "Mr.",
+      "MRS",
+      "ms",
+      "Mx",
+      "Dr",
+      "Prof.",
+      "Mr Dr",
+      "Miss",
+      "Sir.",
+      "Frau",
+      "Monsieur",
+    ])("%s, a field that is only a title, becomes null", (input) => {
+      expect(runFirst(input)).toBeNull();
+      expect(runLast(input)).toBeNull();
+    });
+
+    test.each(titles)(
+      "the title %s standing alone becomes null in both name pipelines",
+      (title) => {
+        expect(runFirst(title)).toBeNull();
+        expect(runLast(title)).toBeNull();
       },
     );
 
-    test("a title or suffix standing alone that is not an honorific is kept", () => {
-      expect(runLast("Sir")).toBe("SIR");
+    test.each([
+      ["Sir John", "JOHN"],
+      ["Miss Smith", "SMITH"],
+    ])("%s -> %s in both name pipelines", (input, expected) => {
+      expect(runFirst(input)).toBe(expected);
+      expect(runLast(input)).toBe(expected);
+    });
+
+    test("a suffix standing alone is kept", () => {
       expect(runLast("Jr")).toBe("JR");
     });
   });
