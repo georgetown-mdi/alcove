@@ -16,6 +16,7 @@ import {
   MAX_RELAY_LOCATOR_URL_LENGTH,
   MAX_RELAY_LOCATOR_URLS,
   StunUrlSchema,
+  termsReceiveNothing,
   TurnUrlSchema,
   UsageError,
 } from "@alcove/core";
@@ -697,6 +698,7 @@ export async function validateInvite(params: {
       builtDataSpec.metadata,
     );
     noteSinglePassSelection(linkageStrategy, log);
+    noteReceivesNoPayload(builtDataSpec.linkageTerms, log);
 
     // The metadata this party's disclosure is read from: the same one
     // prepareForExchange uses (dataSpec.metadata, or inferred from the input
@@ -1002,6 +1004,7 @@ export async function validateInvite(params: {
     ...delimiterSection,
   };
   noteSinglePassSelection(linkageStrategy, log);
+  noteReceivesNoPayload(builtDataSpec.linkageTerms, log);
 
   // The metadata the inferred terms (and the eventual exchange) read this party's
   // disclosure from.
@@ -1283,6 +1286,23 @@ function specWithPlaceholderConnection(
     "inviter",
   );
   return { connection, ...dataSpec };
+}
+
+/** The line an invitation minted from inferred terms logs: the terms state
+ * `payload.receive: []`, which no flag changes. */
+export const RECEIVES_NO_PAYLOAD_NOTICE =
+  "the invitation asks your partner to send you no payload columns for " +
+  "matched records (linkage_terms.payload.receive: []); to receive columns, " +
+  "list them there in a configuration file and invite from it with " +
+  "'alcove invite --config-file FILE'.";
+
+/** Log {@link RECEIVES_NO_PAYLOAD_NOTICE} when the authored terms receive
+ * nothing from the partner. */
+function noteReceivesNoPayload(
+  terms: LinkageTerms,
+  log: ReturnType<typeof getLogger>,
+): void {
+  if (termsReceiveNothing(terms)) log.info(RECEIVES_NO_PAYLOAD_NOTICE);
 }
 
 /**

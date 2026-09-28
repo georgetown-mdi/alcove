@@ -7,6 +7,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
   parseExchangeSpec,
+  partnerBoundTerms,
   snakeizeKeys,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
@@ -26,6 +27,14 @@ import {
   retentionNoteValue,
   webrtcLocatorFromEndpoint,
 } from "@exchange/manageOfferModel";
+import {
+  RECEIVES_NO_PAYLOAD_NOTICE_WEB,
+  receivesNoPayloadNotice,
+} from "@psi/inviterModel";
+import {
+  buildAdvancedTerms,
+  seedAdvancedInvite,
+} from "@psi/authoring/advancedInvite";
 import { RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
 
 import type { ColumnMetadata, WebRTCEndpoint } from "@alcove/core";
@@ -368,6 +377,46 @@ describe("buildManagedDeposit (inviter)", () => {
       tokenDisclosedColumns,
     );
     expect(deposit.exchangeFile).not.toHaveProperty("expectedPayloadColumns");
+  });
+
+  test("a deposit of the hosted inviter's terms states that it receives no payload, and the offer says so", () => {
+    // The inviter's minted terms are the ones the record stores; with no
+    // control for the receive list they ask the partner for none, so the
+    // partner's mirrored send is empty and bound in the agreed terms.
+    const authored = buildAdvancedTerms(
+      seedAdvancedInvite("County Health Dept", inviterColumns).draft,
+    );
+    const deposit = buildManagedDeposit(
+      depositInputs({
+        documentParts: {
+          side: "inviter",
+          linkageTerms: authored,
+          metadata: inviterMetadata,
+          disclosedPayloadColumns: tokenDisclosedColumns,
+        },
+      }),
+      Date.UTC(2026, 6, 15, 12, 0, 0),
+    );
+    expect(deposit.exchangeFile.linkageTerms.payload?.receive).toStrictEqual(
+      [],
+    );
+    expect(
+      partnerBoundTerms(
+        deriveAcceptedLinkageTerms(authored, "Riverbend Housing"),
+      ).payload?.send,
+    ).toStrictEqual([]);
+    expect(receivesNoPayloadNotice(authored, false)).toBe(
+      RECEIVES_NO_PAYLOAD_NOTICE_WEB,
+    );
+    expect(
+      receivesNoPayloadNotice(
+        {
+          ...authored,
+          payload: { receive: [{ name: "case_manager" }] },
+        },
+        false,
+      ),
+    ).toBeUndefined();
   });
 
   test("holds no folder grant and no schedule: both are taken on the exchange's page", () => {

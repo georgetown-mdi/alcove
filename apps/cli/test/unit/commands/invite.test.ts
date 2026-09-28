@@ -11,6 +11,7 @@ import {
   CONNECTION_BLOCK_NOTICE,
   decodeInvitation,
   DEFAULT_LINKAGE_RULE_SET,
+  deriveAcceptedLinkageTerms,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   disclosedColumnNames,
@@ -20,6 +21,7 @@ import {
   LinkageTermsUnsatisfiableError,
   MAX_NAME_LENGTH,
   OperatorConfigError,
+  partnerBoundTerms,
   RECURRING_RECEIVE_REQUIRED_MESSAGE,
   sanitizeErrorForDisplay,
   StandardizationTermsError,
@@ -66,6 +68,7 @@ import {
   offlineAbandonNotice,
   onlineWaitInvalidationNotice,
   persistedPeerBudgetNotice,
+  RECEIVES_NO_PAYLOAD_NOTICE,
   resolveInvitePositionals,
   validateInvite,
 } from "../../../src/commands/invite";
@@ -1095,6 +1098,66 @@ test("validateInvite: offline infer-from-input also applies the selected single-
     // only by the online test.
     const info = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(info).toContain("consented disclosure tradeoff");
+  } finally {
+    infoSpy.mockRestore();
+  }
+});
+
+test("validateInvite: an online invitation from inferred terms receives no payload and says so", async () => {
+  const { input, options } = onlineFixture();
+  const log = getLogger("invite-receive-online-test");
+  log.setLevel("silent");
+  const infoSpy = vi.spyOn(log, "info");
+  try {
+    const ready = await validateInvite({
+      resolved: { mode: "online", url: new URL("sftp://host/drop"), input },
+      options,
+      acceptTimeout: 900,
+      log,
+    });
+    const token = await decodeInvitation(ready.invitation);
+    expect(token.linkageTerms.payload?.receive).toStrictEqual([]);
+    const info = infoSpy.mock.calls.map((c) => String(c[0]));
+    expect(info).toContain(RECEIVES_NO_PAYLOAD_NOTICE);
+  } finally {
+    infoSpy.mockRestore();
+  }
+});
+
+test("validateInvite: an offline invitation from inferred terms receives no payload, and its acceptor sends none", async () => {
+  const dir = fs.mkdtempSync(
+    path.join(tmpdir(), "alcove-invite-receive-offline-"),
+  );
+  tmpDirs.push(dir);
+  const input = writeCsv(dir, "first_name,last_name,dob,ssn");
+  const configFile = path.join(dir, "alcove.yaml");
+  const log = getLogger("invite-receive-offline-test");
+  log.setLevel("silent");
+  const infoSpy = vi.spyOn(log, "info");
+  try {
+    const ready = await validateInvite({
+      resolved: { mode: "offline", input },
+      options: testOptions({
+        configFile,
+        keyFile: path.join(dir, ".alcove.key"),
+      }),
+      acceptTimeout: 900,
+      log,
+    });
+    if (ready.mode !== "offline") throw new Error("expected offline");
+    // The terms written to the configuration and minted into the token are
+    // the same, so a later invite from that configuration passes its guard.
+    expect(ready.dataSpec.linkageTerms.payload?.receive).toStrictEqual([]);
+    const token = await decodeInvitation(ready.invitation);
+    expect(token.linkageTerms.payload?.receive).toStrictEqual([]);
+    expect(
+      partnerBoundTerms(
+        deriveAcceptedLinkageTerms(token.linkageTerms, "Accepting Org"),
+      ).payload?.send,
+    ).toStrictEqual([]);
+    expect(infoSpy.mock.calls.map((c) => String(c[0]))).toContain(
+      RECEIVES_NO_PAYLOAD_NOTICE,
+    );
   } finally {
     infoSpy.mockRestore();
   }

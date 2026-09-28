@@ -194,6 +194,7 @@ describe("an offer left alone changes nothing", () => {
       canonicalString({
         ...getDefaultLinkageTerms("Inviter", inferMetadata(COLUMNS, [])),
         date: terms.date,
+        payload: { receive: [] },
       }),
     );
   });

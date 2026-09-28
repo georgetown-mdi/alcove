@@ -9,6 +9,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   UsageError,
+  withReceiveNothingWhereUnstated,
 } from "@alcove/core";
 import type { BuiltInLinkageRuleSet } from "@alcove/core";
 
@@ -262,7 +263,9 @@ export async function buildTemplateData(
   const delimiterSection = csvDelimiter !== undefined ? { csvDelimiter } : {};
   if (input === undefined)
     return {
-      linkageTerms: linkageTermsFromRuleSet(ruleSet, identity),
+      linkageTerms: withReceiveNothingWhereUnstated(
+        linkageTermsFromRuleSet(ruleSet, identity),
+      ),
       ...delimiterSection,
     };
 

@@ -562,6 +562,13 @@ path refuses a configuration lacking the list before any token is minted or key
 file written, and `alcove init` writes `receive: []`. A zero-setup run is a
 one-off attended exchange and is not held to the rule.
 
+An authoring path with no control for the list states `receive: []`
+(`withReceiveNothingWhereUnstated`) and tells the operator so: `alcove invite`
+inferring terms from an input file (`buildDataSpec`), and the web and console
+invitation editor (`buildAdvancedTerms`) for a draft no opened configuration
+holds. The console refuses to create an invitation from an opened configuration
+whose terms lack the list.
+
 ## Terms-binding consent
 
 One top-level key states a commitment about the partner's *terms* rather than

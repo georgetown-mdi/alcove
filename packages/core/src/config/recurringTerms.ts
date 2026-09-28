@@ -30,3 +30,26 @@ export function recurringTermsLackDeclaredReceive(
   if (terms.algorithm === "psi-c" || !terms.output.expectsOutput) return false;
   return terms.payload?.receive === undefined;
 }
+
+/**
+ * `terms` stating `payload.receive: []` where they lack the list
+ * ({@link recurringTermsLackDeclaredReceive}), and unchanged otherwise. The
+ * default an authoring path with no control for the list applies to the terms
+ * it writes.
+ */
+export function withReceiveNothingWhereUnstated(
+  terms: LinkageTerms,
+): LinkageTerms {
+  if (!recurringTermsLackDeclaredReceive(terms)) return terms;
+  return { ...terms, payload: { ...terms.payload, receive: [] } };
+}
+
+/**
+ * Whether `terms` ask the partner for no payload columns through an explicit
+ * empty `payload.receive`. False for terms exempt from the list, whose partner
+ * sends none anyway ({@link recurringTermsLackDeclaredReceive}).
+ */
+export function termsReceiveNothing(terms: LinkageTerms): boolean {
+  if (terms.algorithm === "psi-c" || !terms.output.expectsOutput) return false;
+  return terms.payload?.receive?.length === 0;
+}

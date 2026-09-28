@@ -12,7 +12,6 @@ import {
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   POLL_INTERVAL_LINES,
-  recurringTermsLackDeclaredReceive,
   snakeizeKeys,
 } from "@alcove/core";
 import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
@@ -419,8 +418,6 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
  * `sftp` connection scaffold with placeholder credentials, the linkage terms
  * (default or inferred), the inferred metadata/standardization when an input
  * file was given, and the optional sections documented as commented examples.
- * Terms stating no `payload.receive` are written with an empty one, the list
- * an invitation minted from the file requires.
  *
  * The active sections are built into one YAML document so per-field comments
  * land in the right place and the result round-trips through the schema (the
@@ -449,12 +446,7 @@ export function renderConfigTemplate(data: TemplateDataSpec): string {
         retainFiles: false,
       },
     },
-    linkageTerms: recurringTermsLackDeclaredReceive(data.linkageTerms)
-      ? {
-          ...data.linkageTerms,
-          payload: { ...data.linkageTerms.payload, receive: [] },
-        }
-      : data.linkageTerms,
+    linkageTerms: data.linkageTerms,
   };
   if (data.metadata !== undefined) spec.metadata = data.metadata;
   if (data.standardization !== undefined)

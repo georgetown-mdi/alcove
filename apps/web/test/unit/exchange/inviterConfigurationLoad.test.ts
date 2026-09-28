@@ -35,11 +35,12 @@ import {
   resolveCsvDelimiter,
 } from "@components/csvDelimiterChoice";
 import {
+  OPENED_TERMS_RECEIVE_REQUIRED,
   csvDelimiterFromDocument,
   editorWithLoadedTerms,
+  openedTermsReceiveUnstated,
   termsEditedSinceOpened,
   termsSettingsStatedBy,
-  termsSettingsWithNoControl,
 } from "@console/loadedConfig";
 import {
   editorFromCsv,
@@ -48,10 +49,19 @@ import {
   editorWithIncludeOwnColumns,
   editorWithOutputDirection,
 } from "@psi/inviterEditor";
-import { inviterCreateStatus, reviewValidation } from "@psi/inviterModel";
 import { EMPTY_SFTP_FORM } from "@console/sftpConnectionForm";
 import { configurationHandBack } from "@console/configurationHandBack";
-import { outputForDirection } from "@psi/authoring/advancedInvite";
+
+import {
+  RECEIVES_NO_PAYLOAD_NOTICE_CONSOLE,
+  inviterCreateStatus,
+  receivesNoPayloadNotice,
+  reviewValidation,
+} from "@psi/inviterModel";
+import {
+  buildAdvancedTerms,
+  outputForDirection,
+} from "@psi/authoring/advancedInvite";
 
 import {
   INVITER_SCREEN_INITIAL,
@@ -548,6 +558,7 @@ describe("a webrtc configuration opens for review with its run withheld", () => 
     expect(reason).toContain("webrtc");
     const status = inviterCreateStatus({
       runWithheld: reason,
+      openedTermsReceiveUnstated: undefined,
       outboundConsentUnconfirmed: undefined,
       offlineBlocked: false,
       connectionIncomplete: false,
@@ -1734,6 +1745,7 @@ describe("a consent record the configuration leaves pending", () => {
   function createStatusOf(state: InviterScreenState) {
     return inviterCreateStatus({
       runWithheld: runWithheldReason(state.mountedConfiguration),
+      openedTermsReceiveUnstated: undefined,
       outboundConsentUnconfirmed: outboundConsentWithheldReason(viewOf(state)),
       offlineBlocked: false,
       connectionIncomplete: false,
@@ -1945,9 +1957,12 @@ describe("terms settings with no control reach the run and the hand-back", () =>
         (column) => column.description !== undefined,
       ),
     ).not.toBe(true);
-    expect(composed.payload?.receive).toBeUndefined();
-    expect(termsSettingsWithNoControl(composed)).toEqual([]);
-    expect(termsSettingsWithNoControl(handedBackTerms(imported))).toEqual([]);
+    // With nothing held, the editor's own empty receive list stands, which is
+    // no setting of the file's.
+    expect(composed.payload?.receive).toStrictEqual([]);
+    expect(handedBackTerms(imported).payload?.receive).toStrictEqual([]);
+    if (imported.editor === undefined) throw new Error("expected an editor");
+    expect(termsSettingsStatedBy(imported.editor)).toEqual([]);
     expect(noticesOf(imported).join(" ")).not.toContain("linkage_terms");
   });
 
@@ -1996,6 +2011,78 @@ describe("terms settings with no control reach the run and the hand-back", () =>
       ),
     );
     expect(noticesOf(state).join(" ")).not.toContain("linkage_terms");
+  });
+});
+
+describe("an invitation from an opened configuration needs its payload.receive", () => {
+  function openedWith(linkageTerms: LinkageTerms): InviterScreenState {
+    return withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({ linkageTerms, metadata: documentColumns() }),
+      ),
+    );
+  }
+
+  function refusalOf(state: InviterScreenState): string | undefined {
+    if (state.editor === undefined) throw new Error("expected an editor");
+    return openedTermsReceiveUnstated(
+      state.editor.draft,
+      buildAdvancedTerms(state.editor.draft),
+    );
+  }
+
+  test("terms stating none are refused at the create, naming the field", () => {
+    const state = openedWith(getDefaultLinkageTerms("County Health"));
+    const refusal = refusalOf(state);
+    expect(refusal).toBe(OPENED_TERMS_RECEIVE_REQUIRED);
+    expect(refusal).toContain("linkage_terms.payload.receive");
+    const status = inviterCreateStatus({
+      runWithheld: undefined,
+      openedTermsReceiveUnstated: refusal,
+      outboundConsentUnconfirmed: undefined,
+      offlineBlocked: false,
+      connectionIncomplete: false,
+      splitDirectoryProblem: undefined,
+      exchangeFilesBlocked: false,
+      connectionTuningBlocked: false,
+      runDiagnosticsBlocked: false,
+      receiptsBlocked: false,
+      signingIdentityDivergence: undefined,
+      problemCount: 0,
+    });
+    expect(status.ready).toBe(false);
+    expect(status.statusLine).toBe(OPENED_TERMS_RECEIVE_REQUIRED);
+  });
+
+  test("an explicit empty list is accepted and stated as the file states it", () => {
+    const state = openedWith({
+      ...getDefaultLinkageTerms("County Health"),
+      payload: { receive: [] },
+    });
+    expect(refusalOf(state)).toBeUndefined();
+    if (state.editor === undefined) throw new Error("expected an editor");
+    expect(
+      buildAdvancedTerms(state.editor.draft).payload?.receive,
+    ).toStrictEqual([]);
+  });
+
+  test("terms under which the partner sends this party nothing need no list", () => {
+    const state = withOutputDirection(
+      openedWith(getDefaultLinkageTerms("County Health")),
+      "partner",
+    );
+    expect(refusalOf(state)).toBeUndefined();
+  });
+
+  test("a draft no configuration holds states an empty list and is not refused", () => {
+    const editor = editorFromCsv("County Health", acquired());
+    const terms = buildAdvancedTerms(editor.draft);
+    expect(terms.payload?.receive).toStrictEqual([]);
+    expect(openedTermsReceiveUnstated(editor.draft, terms)).toBeUndefined();
+    expect(receivesNoPayloadNotice(terms, true)).toBe(
+      RECEIVES_NO_PAYLOAD_NOTICE_CONSOLE,
+    );
   });
 });
 

@@ -8,6 +8,7 @@ import {
   authoredLinkageFields,
   disclosedColumnNames,
   sanitizeForDisplay,
+  termsReceiveNothing,
 } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
@@ -32,7 +33,7 @@ import type {
   AdvancedValidation,
 } from "./authoring/advancedInvite";
 
-import type { LinkageField } from "@alcove/core";
+import type { LinkageField, LinkageTerms } from "@alcove/core";
 
 import type { FieldValueCoverage } from "./workers/nonEmptyAggregate";
 
@@ -279,6 +280,11 @@ export interface InviterCreateGates {
    * one on a channel the console does not conduct. Already a complete sentence
    * naming the channel and both remedies, used as-is. */
   runWithheld: string | undefined;
+  /** Why the open configuration's terms cannot be the source of the invitation
+   * this create makes, `undefined` where they can or it makes none: they state
+   * no `payload.receive` (`openedTermsReceiveUnstated`). A complete sentence,
+   * used as-is. */
+  openedTermsReceiveUnstated: string | undefined;
   /** Why the open configuration's pending consent withholds the create,
    * `undefined` where it does not: the columns the run sends wait for the
    * operator's confirmation on this step. Already a complete sentence naming
@@ -339,9 +345,10 @@ function heldCreate(
  * announcement is read on its own.
  *
  * The chain follows the screen's reading order: an operator working down it
- * meets the first unresolved card first. Three gates are not cleared on this
+ * meets the first unresolved card first. Four gates are not cleared on this
  * step: the open configuration's channel, whose remedies are the command line
- * and closing it on the file step; the offline one; and the signing-identity
+ * and closing it on the file step; the open configuration's missing receive
+ * list, whose remedy is the file; the offline one; and the signing-identity
  * divergence, whose two remedies are the name on the file step and a re-key at
  * the command line.
  */
@@ -350,6 +357,11 @@ export function inviterCreateStatus(
 ): InviterCreateStatus {
   if (gates.runWithheld !== undefined)
     return heldCreate(gates.runWithheld, gates.runWithheld);
+  if (gates.openedTermsReceiveUnstated !== undefined)
+    return heldCreate(
+      gates.openedTermsReceiveUnstated,
+      gates.openedTermsReceiveUnstated,
+    );
   if (gates.outboundConsentUnconfirmed !== undefined)
     return heldCreate(
       gates.outboundConsentUnconfirmed,
@@ -399,6 +411,33 @@ export function inviterCreateStatus(
     statusLine: "Ready to create.",
     announcement: "Ready to create the invitation.",
   };
+}
+
+/** What the hosted inviter is told where its invitation asks for no payload
+ * columns. */
+export const RECEIVES_NO_PAYLOAD_NOTICE_WEB =
+  "This invitation asks your partner to send you no columns for matched " +
+  "records; to receive some, set up the exchange from the command line with " +
+  "them listed under linkage_terms.payload.receive.";
+
+/** What the console inviter is told where its invitation asks for no payload
+ * columns. */
+export const RECEIVES_NO_PAYLOAD_NOTICE_CONSOLE =
+  "This invitation asks your partner to send you no columns for matched " +
+  "records; to receive some, list them under linkage_terms.payload.receive " +
+  "in alcove.yaml and open it here.";
+
+/** The notice for `terms` that ask the partner for no payload columns
+ * (`termsReceiveNothing`), on the console or the hosted build, or undefined
+ * where they ask for some or the partner sends none regardless. */
+export function receivesNoPayloadNotice(
+  terms: LinkageTerms,
+  consoleBuild: boolean,
+): string | undefined {
+  if (!termsReceiveNothing(terms)) return undefined;
+  return consoleBuild
+    ? RECEIVES_NO_PAYLOAD_NOTICE_CONSOLE
+    : RECEIVES_NO_PAYLOAD_NOTICE_WEB;
 }
 
 /** One check-your-answers row: the term, its display value, and either the

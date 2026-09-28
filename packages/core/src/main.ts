@@ -369,6 +369,8 @@ export {
 export {
   RECURRING_RECEIVE_REQUIRED_MESSAGE,
   recurringTermsLackDeclaredReceive,
+  termsReceiveNothing,
+  withReceiveNothingWhereUnstated,
 } from "./config/recurringTerms";
 export {
   MAX_DISPLAYED_PARAMS,

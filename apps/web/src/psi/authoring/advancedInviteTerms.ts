@@ -4,6 +4,7 @@ import {
   getDefaultLinkageTerms,
   referencedLinkageFieldNames,
   resolveLinkageRuleSetCitation,
+  withReceiveNothingWhereUnstated,
 } from "@alcove/core";
 
 import {
@@ -284,7 +285,9 @@ function payloadWithHeldSettings(
  *
  * A draft opened from a console configuration also re-emits the terms settings
  * it holds ({@link AdvancedInviteDraft.heldTermsSettings}): each imported
- * field's own constraints, and the payload descriptions and receive list.
+ * field's own constraints, and the payload descriptions and receive list. Every
+ * other draft states `payload.receive: []` where the terms need the list
+ * (`withReceiveNothingWhereUnstated`).
  *
  * Pure: it does not validate. {@link validateAdvancedInvite} runs the result
  * through the core schema, which stays the single validation source.
@@ -384,7 +387,12 @@ export function buildAdvancedTerms(draft: AdvancedInviteDraft): LinkageTerms {
     };
   }
 
-  return terms;
+  // No control here sets the receive list, so a draft no opened configuration
+  // holds states "receive nothing"; an opened one states the file's own list,
+  // and one stating none is refused at the create gate.
+  return draft.heldTermsSettings === undefined
+    ? withReceiveNothingWhereUnstated(terms)
+    : terms;
 }
 
 /**
