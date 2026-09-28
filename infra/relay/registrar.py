@@ -22,6 +22,7 @@ import hmac
 import http.server
 import json
 import os
+import socketserver
 import ssl
 import sys
 import threading
@@ -290,6 +291,14 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
 
 class RegistrarServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self):
+        # HTTPServer's own server_bind looks up the bound address's hostname,
+        # which nothing here reads; where the resolver is slow that held the
+        # start for 70 s (measured on a macOS runner).
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = REALM
+        self.server_port = self.server_address[1]
 
     def handle_error(self, request, client_address):
         error = sys.exc_info()[1]
