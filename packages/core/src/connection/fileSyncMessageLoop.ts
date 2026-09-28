@@ -285,7 +285,7 @@ export interface MessageLoopDeps {
   role: () => string;
   log: () => ReturnType<typeof getLoggerForVerbosity>;
   options: () => MessageLoopOptions;
-  peerBudgetMs: () => number;
+  inactivityBudgetMs: () => number;
   path: () => string | undefined;
   outbound: () => string | undefined;
   peerId: () => string | undefined;
@@ -461,7 +461,7 @@ export class FileSyncMessageLoop {
     // an honest peer ever gets to reply). Matches the receive side, where
     // every transport await races a fresh budget (see boundTransport). An
     // unresponsive peer is still bounded: this wait ends within one budget.
-    const waitDeadlineMs = Date.now() + deps.peerBudgetMs();
+    const waitDeadlineMs = Date.now() + deps.inactivityBudgetMs();
 
     try {
       if (deps.options().retainFiles) {

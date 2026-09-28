@@ -87,7 +87,8 @@ function DurationRow({
 
 /**
  * The console's "Connection tuning" card: how often the exchange checks for the
- * partner's files, how long it waits for the partner and for each connection
+ * partner's files, how long it waits for the partner to start, how long a
+ * started partner may go quiet, how long it waits for each connection
  * attempt, how many times it retries, and -- on SFTP -- whether it opens a fresh
  * session for each check. Offered as a closed disclosure beside the file-handling
  * card, since the defaults are right for a first run and these are the settings an
@@ -113,7 +114,7 @@ export function ConnectionTuningCard({
   onChange: (draft: ConnectionTuningDraft) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const problems = connectionTuningProblems(draft);
+  const problems = connectionTuningProblems(draft, capabilities);
   const advisories = connectionTuningAdvisories(draft, capabilities);
   const set = <TField extends keyof ConnectionTuningDraft>(
     key: TField,
@@ -147,12 +148,23 @@ export function ConnectionTuningCard({
 
         <DurationRow
           label="How long to wait for your partner"
-          description="How long this side waits for the other to appear, and for each step of the exchange, before it gives up."
+          description="How long this side waits for the other to start its half before it gives up."
           units={TIMEOUT_UNITS}
           defaultMs={TUNING_DEFAULT_MS.peerTimeout}
           value={draft.peerTimeout}
           onChange={(next) => set("peerTimeout", next)}
         />
+
+        {capabilities.inactivityTimeout && (
+          <DurationRow
+            label="How long your partner may go quiet"
+            description="Once your partner has started, how long this side waits for each next step from them before it gives up. Raise it for a partner working through a large file."
+            units={TIMEOUT_UNITS}
+            defaultMs={TUNING_DEFAULT_MS.inactivityTimeout}
+            value={draft.inactivityTimeout}
+            onChange={(next) => set("inactivityTimeout", next)}
+          />
+        )}
 
         <DurationRow
           label="How long to wait for each connection attempt"

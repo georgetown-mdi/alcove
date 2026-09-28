@@ -412,10 +412,10 @@ test("an explicit server_connect_timeout_ms passes through unchanged", () => {
 });
 
 test("peer_timeout_ms of zero is rejected", () => {
-  // peerTimeoutMs is the per-await peer-inactivity liveness budget; a zero would
-  // fire every transport await immediately and disable the liveness control. The
-  // CLI's --peer-timeout already rejects zero, so the schema must close the same
-  // hole on the config/programmatic path (snake_case, as read from disk).
+  // A zero arrival budget would end the rendezvous before a partner could reach
+  // it. The CLI's --peer-timeout already rejects zero, so the schema must close
+  // the same hole on the config/programmatic path (snake_case, as read from
+  // disk).
   const result = safeParseConnectionConfig({
     ...sftpBase,
     options: { peer_timeout_ms: 0 },
@@ -508,6 +508,52 @@ test("peer_timeout_ms is capped at the --peer-timeout ceiling", () => {
     const result = safeParseConnectionConfig({
       ...sftpBase,
       options: { peer_timeout_ms: over },
+    });
+    expect(result.success).toBe(false);
+  }
+});
+
+test.each(["sftp", "filedrop", "webrtc"])(
+  "inactivity_timeout_ms reads on a %s connection as a setting of its own",
+  (channel) => {
+    const base =
+      channel === "sftp"
+        ? sftpBase
+        : channel === "filedrop"
+          ? { channel, path: "/drop" }
+          : { channel, server: { host: "peers.example.org" }, role: "inviter" };
+    const result = safeParseConnectionConfig({
+      ...base,
+      options: { peer_timeout_ms: 60_000, inactivity_timeout_ms: 90_000 },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.options?.peerTimeoutMs).toBe(60_000);
+    expect(result.data.options?.inactivityTimeoutMs).toBe(90_000);
+  },
+);
+
+test("inactivity_timeout_ms of zero is rejected", () => {
+  // It arms every per-await liveness bound, so a zero would fire each wait at
+  // once and disable the control.
+  const result = safeParseConnectionConfig({
+    ...sftpBase,
+    options: { inactivity_timeout_ms: 0 },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("inactivity_timeout_ms is capped at the same seven-day ceiling", () => {
+  const ceiling = MAX_TIMEOUT_SECONDS * 1000;
+  const at = safeParseConnectionConfig({
+    ...sftpBase,
+    options: { inactivity_timeout_ms: ceiling },
+  });
+  expect(at.success).toBe(true);
+  for (const over of [ceiling + 1, 2 ** 31]) {
+    const result = safeParseConnectionConfig({
+      ...sftpBase,
+      options: { inactivity_timeout_ms: over },
     });
     expect(result.success).toBe(false);
   }

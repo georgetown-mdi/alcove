@@ -1673,6 +1673,14 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
       expect(jobZeroSetupIntentSchema.safeParse(intent).success).toBe(false);
   });
 
+  test("refuses inactivityTimeoutMs, which has no CLI flag at all", () => {
+    for (const intent of [
+      validZeroSetupIntent({ options: { inactivityTimeoutMs: 60_000 } }),
+      validZeroSetupSftpIntent({ options: { inactivityTimeoutMs: 60_000 } }),
+    ])
+      expect(jobZeroSetupIntentSchema.safeParse(intent).success).toBe(false);
+  });
+
   test("refuses a timeout that is not a whole number of seconds", () => {
     for (const options of [
       { peerTimeoutMs: 1500 },

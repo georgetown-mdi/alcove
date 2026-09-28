@@ -380,7 +380,7 @@ test("lock starter aborts on a stuck mid-arrival joiner over real SFTP", async (
       ...serverAuth(srv.usera),
       path: remote,
     },
-    options: { peerTimeoutMs: 8_000 },
+    options: { peerTimeoutMs: 8_000, inactivityTimeoutMs: 8_000 },
   });
 
   const fakeJoinerId = "00000000-0000-4000-8000-0000000000aa";

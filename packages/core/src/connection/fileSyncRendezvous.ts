@@ -2164,15 +2164,15 @@ export class FileSyncRendezvous {
             const lockAlreadyExists = await deps.client().exists(lockPath);
 
             if (!lockAlreadyExists) {
-              // The winner never deletes the lock file in its normal path
-              // (it returns from waitForPeer, leaving the lock for the
-              // loser to clean up). If the lock is gone after we received
-              // EEXIST, the winner must have crashed (doCleanup ran during
-              // the narrow window where lockName was in responsibleFiles)
-              // or otherwise abandoned the handshake; polling for their
-              // first protocol message would stall until peerTimeoutMs, so
-              // fail fast instead. Best-effort tidy of both hellos before
-              // throwing so the directory is left clean for a retry.
+              // The winner never deletes the lock file in its normal path (it
+              // returns from waitForPeer, leaving the lock for the loser to
+              // clean up). If the lock is gone after we received EEXIST, the
+              // winner must have crashed (doCleanup ran during the narrow
+              // window where lockName was in responsibleFiles) or otherwise
+              // abandoned the handshake; polling for their first protocol
+              // message would stall until inactivityTimeoutMs, so fail fast
+              // instead. Best-effort tidy of both hellos before throwing so the
+              // directory is left clean for a retry.
               await deps
                 .client()
                 .safeDelete(`${scope.inboundPath}/${otherFile.name}`);

@@ -203,7 +203,11 @@ export async function runWebPartyExchange(params: {
     await connection.open({
       channel: "filedrop",
       path: dropDir,
-      options: { pollIntervalMs, peerTimeoutMs },
+      options: {
+        pollIntervalMs,
+        peerTimeoutMs,
+        inactivityTimeoutMs: peerTimeoutMs,
+      },
     });
     await connection.synchronize();
     const handshakeRole = connection.handshakeRole;

@@ -323,6 +323,7 @@ vi.mock("../../src/connection/ssh2SftpAdapter", () => {
 
 import {
   buildOutputTable,
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   parseDualSignedRecord,
   parseExchangeRecord,
   parseVerificationKeys,
@@ -382,6 +383,7 @@ import {
   TERMINATED_RECORD_UNBUILT_WARNING,
   UNNAMED_PARTNER_ACCOUNTING_NOTE,
   entryHelloResidueGuidance,
+  fileSyncInactivityTimeoutMs,
   type RunProtocolResult,
   type SigningPersist,
 } from "../../src/protocol";
@@ -439,6 +441,7 @@ const PEER_WAIT_HANG_BACKSTOP_MS = 15_000;
 const TWO_PARTY_OPTIONS = {
   pollIntervalMs: 1,
   peerTimeoutMs: PEER_WAIT_HANG_BACKSTOP_MS,
+  inactivityTimeoutMs: PEER_WAIT_HANG_BACKSTOP_MS,
 };
 
 // LONE_PARTY_PEER_BUDGET_MS is the peer-wait budget for lone-party cases that
@@ -559,8 +562,30 @@ test("PEER_SILENCE_GUIDANCE names likely receiver-side causes without overclaimi
   // Hedges rather than asserting a single definite cause (no overclaim).
   expect(PEER_SILENCE_GUIDANCE).toContain("may have");
   // Notes the slow-large-dataset case so the timeout is not misread as a death.
-  expect(PEER_SILENCE_GUIDANCE).toContain("--peer-timeout");
+  expect(PEER_SILENCE_GUIDANCE).toContain("inactivity_timeout_ms");
+  expect(PEER_SILENCE_GUIDANCE).not.toContain("--peer-timeout");
 });
+
+test.each([
+  { channel: "sftp" as const, server: { host: "sftp.example.org" } },
+  { channel: "filedrop" as const, path: "/drop" },
+])(
+  "a $channel run's receive deadline is inactivity_timeout_ms, never peer_timeout_ms",
+  (block) => {
+    expect(
+      fileSyncInactivityTimeoutMs({
+        ...block,
+        options: { peerTimeoutMs: 5_000, inactivityTimeoutMs: 90_000 },
+      }),
+    ).toBe(90_000);
+    expect(
+      fileSyncInactivityTimeoutMs({
+        ...block,
+        options: { peerTimeoutMs: 5_000 },
+      }),
+    ).toBe(DEFAULT_PEER_INACTIVITY_TIMEOUT_MS);
+  },
+);
 
 // --- Pre-flight validation ---------------------------------------------------
 
@@ -2244,6 +2269,7 @@ test("runProtocol rejects an already-expired token before opening any connection
         options: {
           pollIntervalMs: 1,
           peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+          inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
         },
       },
       auth: {
@@ -2288,6 +2314,7 @@ test("runProtocol writes no key when the partner never arrives (accept-timeout)"
         options: {
           pollIntervalMs: 1,
           peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+          inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
         },
       },
       auth: { sharedSecret: TOKEN_A, keyFilePath: keyFile },
@@ -2313,7 +2340,11 @@ test("runProtocol writes no key when SIGINT cancels before the handshake complet
     connection: {
       channel: "filedrop",
       path: dropDir,
-      options: { pollIntervalMs: 1, peerTimeoutMs: 5_000 },
+      options: {
+        pollIntervalMs: 1,
+        peerTimeoutMs: 5_000,
+        inactivityTimeoutMs: 5_000,
+      },
     },
     auth: { sharedSecret: TOKEN_A, keyFilePath: keyFile },
     prepared: minimalPrepared,
@@ -2367,6 +2398,7 @@ async function runIntoLeftoverPeerHello(
         options: {
           pollIntervalMs: 1,
           peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+          inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
         },
       },
       auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "a.key") },
@@ -2497,6 +2529,7 @@ async function runLonePartyWithNoPartner(
         options: {
           pollIntervalMs: 1,
           peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+          inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
         },
       },
       auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "a.key") },
@@ -2536,9 +2569,10 @@ async function runPartyToKeyExchangeTimeout(
       options: {
         // Not the shared safety check: this budget is the thing under test, waited
         // out in full on every healthy run, so each case below spends it and
-        // measures ~1.6 s for that reason rather than for a loaded runner.
+        // measures ~1.6 s for that reason rather than for a loaded runner. The
+        // arrival budget stays at its one-hour default: the partner does arrive.
         pollIntervalMs: 1,
-        peerTimeoutMs: 1_500,
+        inactivityTimeoutMs: 1_500,
         ...connectionOptions,
       },
     },
@@ -2827,6 +2861,7 @@ test("a marker that cannot be written stops the run before the key exchange, the
           options: {
             ...TWO_PARTY_OPTIONS,
             peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+            inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
           },
         },
         auth: { sharedSecret: TOKEN_A, keyFilePath },
@@ -2888,6 +2923,7 @@ test("a marker whose directory flush fails after the rename stops the run before
             options: {
               ...TWO_PARTY_OPTIONS,
               peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+              inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
             },
           },
           auth: { sharedSecret: TOKEN_A, keyFilePath },
@@ -2986,6 +3022,7 @@ test("a key exchange the partner never answers leaves the marker set", async () 
           options: {
             ...TWO_PARTY_OPTIONS,
             peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+            inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
           },
         },
         auth: { sharedSecret: TOKEN_A, keyFilePath },
@@ -3110,7 +3147,11 @@ function runAbortParty(keyFilePath: string, name: string): Promise<unknown> {
       // bound is a safety check for that drain, not a budget for the rendezvous
       // and handshake it also bounds, so it must stay well above the happy-path
       // cost of both to avoid failing on scheduling alone.
-      options: { pollIntervalMs: 1, peerTimeoutMs: 2_000 },
+      options: {
+        pollIntervalMs: 1,
+        peerTimeoutMs: 2_000,
+        inactivityTimeoutMs: 2_000,
+      },
     },
     auth: { sharedSecret: TOKEN_A, keyFilePath },
     prepared: minimalPrepared,
@@ -6111,6 +6152,7 @@ test("the terminal event is on the stream before the transport close begins", as
           options: {
             pollIntervalMs: 1,
             peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+            inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
           },
         },
         auth: null,

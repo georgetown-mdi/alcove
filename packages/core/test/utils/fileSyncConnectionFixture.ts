@@ -144,14 +144,14 @@ export function makeMockClient(opts?: MockClientOptions): {
 
 // Put a connection into the post-open state without running the handshake.
 // Calls open() with a fake filedrop config so this.config is populated and
-// the drain deadline in close() reads peerTimeoutMs from the config rather
-// than falling back to DEFAULT_PEER_TIMEOUT_MS (1 hour).
+// the per-await budget and close()'s drain deadline read inactivityTimeoutMs
+// from the config rather than falling back to its one-hour default.
 export async function makeConnectedConn(
   client: FileTransportClient,
   opts?: Partial<{
     pollingFrequency: number;
     timeToLiveMs: number;
-    peerTimeoutMs: number;
+    inactivityTimeoutMs: number;
     joinerRecoveryMs: number;
   }>,
 ): Promise<FileSyncConnection> {
@@ -163,12 +163,10 @@ export async function makeConnectedConn(
       ? { joinerRecoveryMs: opts.joinerRecoveryMs }
       : {}),
   });
-  // Pass peerTimeoutMs via a fake filedrop config so close()'s drain deadline
-  // reads from this.config rather than falling back to DEFAULT_PEER_TIMEOUT_MS.
   const fakeConfig: FileDropConnectionConfig = {
     channel: "filedrop",
     path: "/test",
-    options: { peerTimeoutMs: opts?.peerTimeoutMs ?? 50 },
+    options: { inactivityTimeoutMs: opts?.inactivityTimeoutMs ?? 50 },
   };
   await conn.open(fakeConfig);
   return conn;

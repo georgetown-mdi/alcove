@@ -337,7 +337,11 @@ test("filedrop: a mid-exchange fault writes a real abort marker the waiting peer
   const makeConfig = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
     path: dropDir,
-    options: { pollIntervalMs: 1, peerTimeoutMs: PEER_TIMEOUT_MS },
+    options: {
+      pollIntervalMs: 1,
+      peerTimeoutMs: PEER_TIMEOUT_MS,
+      inactivityTimeoutMs: PEER_TIMEOUT_MS,
+    },
   });
 
   expectFastPeerAbort(await runAbortScenario(work, makeConfig, dropDir));
@@ -348,7 +352,11 @@ test("filedrop: a plain retry under fresh ids after a mid-exchange fault complet
   const makeConfig = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
     path: dropDir,
-    options: { pollIntervalMs: 1, peerTimeoutMs: PEER_TIMEOUT_MS },
+    options: {
+      pollIntervalMs: 1,
+      peerTimeoutMs: PEER_TIMEOUT_MS,
+      inactivityTimeoutMs: PEER_TIMEOUT_MS,
+    },
   });
 
   await expectPlainRetryToComplete(makeConfig, dropDir);
@@ -383,7 +391,11 @@ describe("sftp", () => {
         ...serverAuth(srv.usera),
         path: serverPath,
       },
-      options: { pollIntervalMs: 50, peerTimeoutMs: PEER_TIMEOUT_MS },
+      options: {
+        pollIntervalMs: 50,
+        peerTimeoutMs: PEER_TIMEOUT_MS,
+        inactivityTimeoutMs: PEER_TIMEOUT_MS,
+      },
     });
 
     expectFastPeerAbort(await runAbortScenario(work, makeConfig, localDir));
@@ -400,7 +412,11 @@ describe("sftp", () => {
         ...serverAuth(srv.usera),
         path: serverPath,
       },
-      options: { pollIntervalMs: 50, peerTimeoutMs: PEER_TIMEOUT_MS },
+      options: {
+        pollIntervalMs: 50,
+        peerTimeoutMs: PEER_TIMEOUT_MS,
+        inactivityTimeoutMs: PEER_TIMEOUT_MS,
+      },
     });
 
     await expectPlainRetryToComplete(makeConfig, localDir);

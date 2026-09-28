@@ -14,6 +14,7 @@ connection:
     # and edit to change one.
     # server_connect_timeout_ms: 30000
     # peer_timeout_ms: 3600000
+    # inactivity_timeout_ms: 3600000
     # max_reconnect_attempts: 3
 linkage_terms:
   version: 1.0.0

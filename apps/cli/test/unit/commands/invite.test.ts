@@ -857,19 +857,19 @@ test("persistedPeerBudgetNotice: names the file-sync default when no budget was 
   }
 });
 
-test("persistedPeerBudgetNotice: names the webrtc transport's own three defaults", () => {
+test("persistedPeerBudgetNotice: names the webrtc transport's own arrival default", () => {
   // The webrtc channel does not fall to the file-sync hour: an unset
-  // peer_timeout_ms leaves the transport's rendezvous, channel-open, and
-  // parked-receive budgets in place, and the rendezvous figure is a different
-  // number. Naming the file-sync figure here would tell the operator to expect
-  // an hour at a rendezvous that gives up after ten minutes.
+  // peer_timeout_ms leaves the transport's rendezvous budget in place, a
+  // different number. Naming the file-sync figure here would tell the operator
+  // to expect an hour at a rendezvous that gives up after ten minutes. The
+  // channel-open and silence budgets are not arrival waits, so neither is named.
   const notice = persistedPeerBudgetNotice(undefined, 900, "webrtc");
   expect(notice).toContain("no connection.options.peer_timeout_ms");
-  // Matched on a leading word boundary so the rendezvous figure cannot be read
-  // out of the tail of the inactivity one (600 sits inside 3600).
   expect(notice).toMatch(secondsFigure(DEFAULT_RENDEZVOUS_TIMEOUT_MS));
-  expect(notice).toMatch(secondsFigure(DEFAULT_CHANNEL_OPEN_TIMEOUT_MS));
-  expect(notice).toMatch(secondsFigure(DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS));
+  expect(notice).not.toMatch(secondsFigure(DEFAULT_CHANNEL_OPEN_TIMEOUT_MS));
+  expect(notice).not.toMatch(
+    secondsFigure(DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS),
+  );
   expect(notice).not.toContain("file-sync");
 });
 
@@ -3802,8 +3802,6 @@ test("handler: a webrtc online invite reports the webrtc peer-budget defaults, n
     const stderr = stdio.stderrWrites.join("");
     expect(exit).not.toHaveBeenCalled();
     expect(stderr).toMatch(secondsFigure(DEFAULT_RENDEZVOUS_TIMEOUT_MS));
-    expect(stderr).toMatch(secondsFigure(DEFAULT_CHANNEL_OPEN_TIMEOUT_MS));
-    expect(stderr).toMatch(secondsFigure(DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS));
     expect(stderr).not.toContain("file-sync");
   } finally {
     stdio.restore();

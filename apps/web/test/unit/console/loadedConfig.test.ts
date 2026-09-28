@@ -155,6 +155,7 @@ describe("the connection-tuning draft a loaded options block seeds", () => {
     const stated = {
       pollIntervalMs: 300_000,
       peerTimeoutMs: 1_800_000,
+      inactivityTimeoutMs: 5_400_000,
       serverConnectTimeoutMs: 45_000,
       maxReconnectAttempts: 7,
       connectionPerPoll: true,

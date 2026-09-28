@@ -12,6 +12,7 @@ connection:
   # and edit to change one.
   # options:
   #   peer_timeout_ms: 3600000
+  #   inactivity_timeout_ms: 3600000
 linkage_terms:
   version: 1.0.0
   identity: Agency C

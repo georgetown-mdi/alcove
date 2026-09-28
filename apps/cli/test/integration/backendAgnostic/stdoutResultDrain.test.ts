@@ -116,7 +116,11 @@ test("a reader that stops mid-result fails the run at 73 rather than reporting o
   const makeConfig = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
     path: dropDir,
-    options: { pollIntervalMs: 1, peerTimeoutMs: 20_000 },
+    options: {
+      pollIntervalMs: 1,
+      peerTimeoutMs: 20_000,
+      inactivityTimeoutMs: 20_000,
+    },
   });
 
   // Only party A opens the stream, so fd 3 holds one run's events. Its token

@@ -107,6 +107,7 @@ function fileDropConnectionBlock(params: {
     "  options:",
     `    poll_interval_ms: ${params.pollIntervalMs}`,
     `    peer_timeout_ms: ${params.peerTimeoutMs}`,
+    `    inactivity_timeout_ms: ${params.peerTimeoutMs}`,
     "",
   ].join("\n");
 }

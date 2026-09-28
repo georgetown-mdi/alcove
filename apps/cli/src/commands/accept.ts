@@ -316,13 +316,14 @@ type AcceptReady = {
 
 /**
  * The endpoint-seeded connection with `--peer-timeout` applied, for the
- * acceptance that runs the exchange itself. `peerTimeout` is a SharedOption on
- * every channel, so one value bounds the rendezvous, the channel opening, and
- * the peer silence after (see `webRtcDialFrom`).
+ * acceptance that runs the exchange itself. It bounds the partner's arrival at
+ * the rendezvous only; the channel opening and the partner's silence after it
+ * keep their own budgets (see `webRtcDialFrom`).
  *
  * The same object becomes the run's connection and the one the bootstrap
  * writes, so the live dial and the saved `connection.options.peer_timeout_ms`
- * hold the same budget and a later unattended `alcove exchange` inherits it.
+ * hold the same arrival wait and a later unattended `alcove exchange` inherits
+ * it; nothing else is recorded.
  * An absent flag applies no override and leaves the transport on its own
  * defaults.
  *

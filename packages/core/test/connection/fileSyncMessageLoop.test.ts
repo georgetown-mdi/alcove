@@ -378,7 +378,7 @@ function makeLoop(
     role: () => state.role,
     log: () => log,
     options: () => options,
-    peerBudgetMs: () => budget.ms,
+    inactivityBudgetMs: () => budget.ms,
     path: () => DIR,
     outbound: () => undefined,
     peerId: () => PEER,
@@ -1688,7 +1688,7 @@ test("retain mode: ack-wait timeout throws a UsageError on the peer budget", asy
   await conn.open({
     channel: "filedrop",
     path: "/test",
-    options: { peerTimeoutMs: 100 },
+    options: { inactivityTimeoutMs: 100 },
   });
   conn.path = "/test";
   conn.id = id;
@@ -1899,7 +1899,7 @@ test("retain mode: send() honors an ack already on disk even when its peer budge
   // Regression guard for the ack-gate ordering: the wait checks for the
   // qualifying ack BEFORE its deadline, so an already-written ack is honored
   // rather than discarded as a spurious timeout. What bounds this wait is
-  // the peer-inactivity budget armed at THIS send (peerTimeoutMs, via
+  // the peer-inactivity budget armed at THIS send (inactivityTimeoutMs, via
   // open(), not a hand-flagged connection), not the connection's timeToLive.
   //
   // It is armed by a clock that jumps two budgets on every reading, so any
@@ -1920,7 +1920,7 @@ test("retain mode: send() honors an ack already on disk even when its peer budge
   await conn.open({
     channel: "filedrop",
     path: "/test",
-    options: { peerTimeoutMs: PEER_BUDGET_MS },
+    options: { inactivityTimeoutMs: PEER_BUDGET_MS },
   });
   conn.id = id;
   conn.peerId = peerId;

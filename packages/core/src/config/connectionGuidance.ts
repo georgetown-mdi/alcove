@@ -1,6 +1,7 @@
 import YAML from "yaml";
 
 import {
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
 } from "../connection/fileSyncConnection.js";
@@ -55,21 +56,22 @@ const POLL_INTERVAL_KEY = "poll_interval_ms";
 
 /**
  * The tuning fields shown as a commented example, in render order. A `webrtc`
- * block shows only `peer_timeout_ms`, the one option that channel reads: its
- * options schema strips `poll_interval_ms` on parse, and the connect timeout and
- * reconnect budget are read by the file-based channels alone, so an operator who
- * uncommented any of the three on webrtc would get no effect and no error.
+ * block shows only `peer_timeout_ms` and `inactivity_timeout_ms`, the two
+ * options that channel reads: its options schema strips `poll_interval_ms` on
+ * parse, and the connect timeout and reconnect budget are read by the
+ * file-based channels alone, so an operator who uncommented any of the three
+ * on webrtc would get no effect and no error.
  */
 function tuningDefaults(channel: unknown): Array<[string, number]> {
-  const peerTimeout: [string, number] = [
-    "peer_timeout_ms",
-    DEFAULT_PEER_TIMEOUT_MS,
+  const peerWaits: Array<[string, number]> = [
+    ["peer_timeout_ms", DEFAULT_PEER_TIMEOUT_MS],
+    ["inactivity_timeout_ms", DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
   ];
-  if (channel === "webrtc") return [peerTimeout];
+  if (channel === "webrtc") return peerWaits;
   return [
     [POLL_INTERVAL_KEY, DEFAULT_POLLING_FREQUENCY_MS],
     ["server_connect_timeout_ms", DEFAULT_SERVER_CONNECT_TIMEOUT_MS],
-    peerTimeout,
+    ...peerWaits,
     ["max_reconnect_attempts", DEFAULT_MAX_RECONNECT_ATTEMPTS],
   ];
 }

@@ -148,7 +148,7 @@ async function makeArmedConn(
   client: FileTransportClient,
   opts?: {
     retainFiles?: boolean;
-    peerTimeoutMs?: number;
+    inactivityTimeoutMs?: number;
     arm?: boolean;
     peerId?: string;
     unexpectedFiles?: "error" | "warn" | "ignore";
@@ -162,7 +162,7 @@ async function makeArmedConn(
     channel: "filedrop",
     path: TEST_DIR,
     options: {
-      peerTimeoutMs: opts?.peerTimeoutMs ?? 200,
+      inactivityTimeoutMs: opts?.inactivityTimeoutMs ?? 200,
       ...(opts?.retainFiles ? { retainFiles: true } : {}),
       ...(opts?.unexpectedFiles
         ? { unexpectedFiles: opts.unexpectedFiles }
@@ -390,7 +390,9 @@ test("a hung marker write is abandoned within the short budget without hanging t
     // A 1-hour peer timeout: the marker write must NOT inherit it -- its own
     // few-second budget must win, which is the whole point of the short bound on
     // the local-FS/filedrop adapter (no per-op transport bound of its own).
-    const conn = await makeArmedConn(client, { peerTimeoutMs: 60 * 60 * 1000 });
+    const conn = await makeArmedConn(client, {
+      inactivityTimeoutMs: 60 * 60 * 1000,
+    });
 
     const writeOutcome = conn.writeAbortMarker().then(
       () => "resolved",

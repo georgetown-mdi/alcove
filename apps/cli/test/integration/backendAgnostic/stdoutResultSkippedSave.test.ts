@@ -98,7 +98,11 @@ test("an undelivered stdout result names the save it skipped", async () => {
   const makeConfig = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
     path: dropDir,
-    options: { pollIntervalMs: 1, peerTimeoutMs: 20_000 },
+    options: {
+      pollIntervalMs: 1,
+      peerTimeoutMs: 20_000,
+      inactivityTimeoutMs: 20_000,
+    },
   });
 
   // The save this run was asked for, which the zero-setup command performs

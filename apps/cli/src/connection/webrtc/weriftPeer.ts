@@ -134,7 +134,8 @@ export const DEFAULT_RENDEZVOUS_TIMEOUT_MS = 10 * 60 * 1000;
  * Ceiling on the data channel opening once both descriptions are exchanged.
  * Reaching it means the peer is present and negotiating but no candidate pair
  * ever worked -- a network path problem, not a peer that has not arrived -- so
- * it fails rather than restarting the rendezvous.
+ * it fails rather than restarting the rendezvous. No configuration setting
+ * reaches it: `webRtcDialFrom` never passes a channel-open budget.
  */
 export const DEFAULT_CHANNEL_OPEN_TIMEOUT_MS = 30_000;
 
@@ -1742,8 +1743,7 @@ class Negotiation {
         void this.failWithIceDiagnosis(
           `the data channel did not open within ` +
             `${budgetSeconds(this.options.channelOpenTimeoutMs)} after the ` +
-            "exchange partner's session description arrived; --peer-timeout " +
-            "sets that bound",
+            "exchange partner's session description arrived",
         ),
       this.options.channelOpenTimeoutMs,
     );

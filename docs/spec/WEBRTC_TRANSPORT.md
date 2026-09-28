@@ -600,10 +600,13 @@ The teardown ceiling is the run's, not this transport's: it is applied at the ch
 
 Once the run's own work and its teardown are finished, the process returns within **3 s**. A clean event loop exits at once and says nothing -- measured from the command settling to natural exit, a completed two-party `filedrop` exchange drained in 0-1 ms across ten party-runs -- and a loop still held at the budget names the resource kinds still armed on stderr and exits with the status the run already resolved. The handle that held it is not released or swept: a run that reports what held it is how the next one is found.
 
-`connection.options.peer_timeout_ms`, when set, replaces the rendezvous,
-channel-open, and parked-receive budgets: on this channel the documented "total
-wait for the partner" is three waits, one before the channel exists, one while
-it opens, and one after. It is the only setting an operator has on any of them.
+`connection.options.peer_timeout_ms`, when set, replaces the rendezvous budget,
+and `connection.options.inactivity_timeout_ms` the parked-receive budget: the
+first bounds the partner's arrival, the second a present partner's silence. No
+setting reaches the channel-open budget. Once both descriptions are exchanged
+the partner is present, so a channel that still does not open is a network path
+failure rather than a late partner, and it is held to the fixed ceiling above
+whatever the two settings around it are.
 
 An interrupt (SIGINT or SIGTERM) does not wait any of them out. The run passes
 the transport an abort signal, and the rendezvous fails and tears down the

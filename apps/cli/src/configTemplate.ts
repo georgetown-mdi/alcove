@@ -5,6 +5,7 @@ import {
   commentKey,
   CONNECTION_BLOCK_DOC_URL,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
@@ -110,7 +111,14 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
     },
     {
       path: ["connection", "options", "peer_timeout_ms"],
-      lines: ["How long to wait for the partner at any one step, in ms."],
+      lines: ["How long to wait for the partner to arrive, in ms."],
+    },
+    {
+      path: ["connection", "options", "inactivity_timeout_ms"],
+      lines: [
+        "How long the partner, once arrived, may send nothing before the",
+        "exchange fails, in ms.",
+      ],
     },
     {
       path: ["connection", "options", "poll_interval_ms"],
@@ -420,6 +428,7 @@ export function renderConfigTemplate(data: TemplateDataSpec): string {
       options: {
         serverConnectTimeoutMs: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
         peerTimeoutMs: DEFAULT_PEER_TIMEOUT_MS,
+        inactivityTimeoutMs: DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
         pollIntervalMs: DEFAULT_POLLING_FREQUENCY_MS,
         maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS,
         timestampInFilename: false,

@@ -2,7 +2,7 @@ import {
   FileSyncConnection,
   fromEventConnection,
   EncryptedMessageConnection,
-  DEFAULT_PEER_TIMEOUT_MS,
+  DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
   getLogger,
   describeExchangeStages,
   InternalConsistencyError,
@@ -44,7 +44,9 @@ import type {
   PreparedExchange,
   ExchangeBootstrapResult,
   ExchangeStageDefinition,
+  FileDropConnectionConfig,
   RelayCredential,
+  SFTPConnectionConfig,
   SigningIdentity,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -121,7 +123,8 @@ export const PEER_SILENCE_GUIDANCE =
   "filesystem, or revoked permissions) -- and a peer that cannot write its " +
   "next message also cannot record why, so this side cannot name the cause. " +
   "Check the peer's own logs for the underlying error. If the peer is instead " +
-  "still working on a large dataset, raise the peer timeout (--peer-timeout).";
+  "still working on a large dataset, raise inactivity_timeout_ms under " +
+  "connection.options in the configuration.";
 
 /**
  * Operator guidance replacing {@link PEER_SILENCE_GUIDANCE} when the peer hello
@@ -376,12 +379,13 @@ export function webRtcDialFrom(
     throw new UsageError(WEBRTC_RENDEZVOUS_SECRET_REQUIRED);
   const { role } = connection;
   if (role === undefined) throw new UsageError(WEBRTC_ROLE_REQUIRED);
-  // peer_timeout_ms is documented as the total wait for the partner, which on
-  // this transport is three waits: the rendezvous, the channel opening, and the
-  // parked receive after. It bounds all three, so it is the operator's one
-  // reachable setting on each -- short to fail fast on an absent partner, long
-  // for a negotiation that needs a relay before a candidate pair works.
+  // peer_timeout_ms bounds the partner's arrival (the rendezvous) and
+  // inactivity_timeout_ms a present partner's silence on the open channel.
+  // Neither reaches the channel open between them: once both descriptions are
+  // exchanged the partner is present, and a channel that still does not open
+  // is a network path failure, held to the transport's fixed ceiling.
   const peerTimeoutMs = connection.options?.peerTimeoutMs;
+  const inactivityTimeoutMs = connection.options?.inactivityTimeoutMs;
   return {
     handshakeRole: role === "acceptor" ? "initiator" : "responder",
     options: {
@@ -396,12 +400,27 @@ export function webRtcDialFrom(
         iceTransportPolicy: connection.iceTransportPolicy,
       }),
       ...(peerTimeoutMs !== undefined && {
-        inactivityTimeoutMs: peerTimeoutMs,
         rendezvousTimeoutMs: peerTimeoutMs,
-        channelOpenTimeoutMs: peerTimeoutMs,
       }),
+      ...(inactivityTimeoutMs !== undefined && { inactivityTimeoutMs }),
     },
   };
+}
+
+/**
+ * The parked-receive deadline a file-sync run's message bridge applies: the
+ * configured `inactivity_timeout_ms`, else core's default. `peer_timeout_ms`
+ * bounds the rendezvous in `FileSyncConnection.open()` and never this.
+ *
+ * @internal exported for testing
+ */
+export function fileSyncInactivityTimeoutMs(
+  connection: SFTPConnectionConfig | FileDropConnectionConfig,
+): number {
+  return (
+    connection.options?.inactivityTimeoutMs ??
+    DEFAULT_PEER_INACTIVITY_TIMEOUT_MS
+  );
 }
 
 /**
@@ -1762,10 +1781,7 @@ async function prepareTransport(
     // data/error events reach awaited receive() calls with no per-phase
     // listener gap. The bridge bounds a parked receive() by the
     // peer-inactivity budget, so a silent peer fails as a transport error
-    // rather than hanging; peerTimeoutMs (when configured) overrides the
-    // default and also bounds the file-sync rendezvous TTL in conn.open().
-    const peerBudgetMs =
-      connection.options?.peerTimeoutMs ?? DEFAULT_PEER_TIMEOUT_MS;
+    // rather than hanging.
     // inactivityHint enriches the generic peer-silence error with
     // file-sync operator guidance: the receiver names its own cause
     // locally, but the sender only sees the inactivity timeout, so this
@@ -1774,7 +1790,7 @@ async function prepareTransport(
     // rendezvous outcome, known only after this bridge is built and read
     // from the connection when the deadline fires.
     build.transport = fromEventConnection(fileSyncConn, {
-      inactivityTimeoutMs: peerBudgetMs,
+      inactivityTimeoutMs: fileSyncInactivityTimeoutMs(connection),
       inactivityHint: () => {
         const leftover = fileSyncConn.unconfirmedEntryPeerHello;
         return leftover === undefined

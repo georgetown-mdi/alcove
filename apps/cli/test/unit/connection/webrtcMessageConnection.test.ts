@@ -1,6 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
-import { ConnectionError } from "@alcove/core";
+import { ConnectionError, generateSharedSecret } from "@alcove/core";
 
 import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
 import {
@@ -10,6 +10,7 @@ import {
   packValue,
 } from "../../../src/connection/webrtc/peerjsWire";
 import { webRtcMessageConnection } from "../../../src/connection/webrtc/webrtcMessageConnection";
+import { webRtcDialFrom } from "../../../src/protocol";
 
 import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";
 import type { RTCDataChannel } from "werift";
@@ -213,6 +214,41 @@ test("a partner that vanishes fails the connection rather than stranding it", as
   );
   expect(lost?.kind).toBe("transport");
   expect(lost?.message).toContain("lost");
+});
+
+test("a present partner going silent fails at inactivity_timeout_ms while the arrival wait is long", async () => {
+  // The connection is built from the options a run's dial passes, so what is
+  // pinned is the configured setting reaching the parked receive.
+  const silenceMs = 90_000;
+  const { options } = webRtcDialFrom(
+    {
+      channel: "webrtc",
+      server: { host: "peers.example.org" },
+      role: "inviter",
+      options: {
+        peerTimeoutMs: 7 * 24 * 60 * 60 * 1000,
+        inactivityTimeoutMs: silenceMs,
+      },
+    },
+    generateSharedSecret(),
+  );
+  vi.useFakeTimers();
+  try {
+    const { session } = harness();
+    const connection = webRtcMessageConnection(session, options);
+    let failure: ConnectionError | undefined;
+    const parked = connection.receive().catch((err: unknown) => {
+      failure = err as ConnectionError;
+    });
+    await vi.advanceTimersByTimeAsync(silenceMs - 1);
+    expect(failure).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    await parked;
+    expect(failure?.kind).toBe("transport");
+    expect(failure?.message).toContain(`${silenceMs}`);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 // --- close ------------------------------------------------------------------

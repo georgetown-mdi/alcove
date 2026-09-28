@@ -82,7 +82,11 @@ test("a result-write failure after a completed exchange writes no abort marker",
   const makeConfig = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
     path: dropDir,
-    options: { pollIntervalMs: 1, peerTimeoutMs: 20_000 },
+    options: {
+      pollIntervalMs: 1,
+      peerTimeoutMs: 20_000,
+      inactivityTimeoutMs: 20_000,
+    },
   });
 
   // Party A's output path has a missing parent directory, so its writeOutput

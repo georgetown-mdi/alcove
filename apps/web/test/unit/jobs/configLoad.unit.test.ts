@@ -118,6 +118,27 @@ function refusal(document: Record<string, unknown>): string {
 }
 
 describe("what the load discloses", () => {
+  test("both peer waits, each as the file states it", () => {
+    const { document, carriedThrough } = loadDocument(
+      savedSftpDocument({
+        connection: {
+          ...(savedSftpDocument().connection as Record<string, unknown>),
+          options: {
+            peer_timeout_ms: 600_000,
+            inactivity_timeout_ms: 5_400_000,
+          },
+        },
+      }),
+    );
+    expect(document?.options).toMatchObject({
+      peerTimeoutMs: 600_000,
+      inactivityTimeoutMs: 5_400_000,
+    });
+    expect(carriedThrough).not.toContain(
+      "connection.options.inactivity_timeout_ms",
+    );
+  });
+
   test("the connection fields the form edits, the credential excepted", () => {
     const { document } = loadDocument(savedSftpDocument());
     expect(document?.channel).toBe("sftp");

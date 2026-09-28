@@ -13,7 +13,9 @@ import {
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import { BROKER_MESSAGE } from "../../../src/connection/webrtc/brokerClient";
 import { ICE_STATS_TIMEOUT_MS } from "../../../src/connection/webrtc/iceDiagnostics";
+import { webRtcDialFrom } from "../../../src/protocol";
 import {
+  DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
   DEFAULT_UNREPORTED_OFFER_RESEND_MS,
   MAX_CONNECTION_ID_LENGTH,
   MAX_PENDING_REMOTE_CANDIDATES,
@@ -247,6 +249,11 @@ async function startRendezvous(options: {
   candidatesDuringSetLocal?: Array<Record<string, unknown>>;
   rendezvousTimeoutMs?: number;
   channelOpenTimeoutMs?: number;
+  /**
+   * The budgets a run's dial passes, taken verbatim: an absent one falls to
+   * the transport's own default rather than this harness's short one.
+   */
+  dialBudgets?: { rendezvousTimeoutMs?: number; channelOpenTimeoutMs?: number };
   unreportedOfferResendMs?: number;
   renewalOverlapMs?: number;
   iceTransportPolicy?: "all" | "relay";
@@ -293,8 +300,15 @@ async function startRendezvous(options: {
     role: options.role,
     sharedSecret,
     iceServers: [{ urls: "stun:127.0.0.1:3478" }],
-    rendezvousTimeoutMs: options.rendezvousTimeoutMs ?? 10_000,
-    channelOpenTimeoutMs: options.channelOpenTimeoutMs ?? 10_000,
+    ...(options.dialBudgets !== undefined
+      ? {
+          rendezvousTimeoutMs: options.dialBudgets.rendezvousTimeoutMs,
+          channelOpenTimeoutMs: options.dialBudgets.channelOpenTimeoutMs,
+        }
+      : {
+          rendezvousTimeoutMs: options.rendezvousTimeoutMs ?? 10_000,
+          channelOpenTimeoutMs: options.channelOpenTimeoutMs ?? 10_000,
+        }),
     unreportedOfferResendMs: options.unreportedOfferResendMs,
     renewalOverlapMs: options.renewalOverlapMs,
     iceTransportPolicy: options.iceTransportPolicy,
@@ -734,7 +748,71 @@ test("a channel that never opens after the answer fails at the open ceiling", as
     payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
   });
   await expect(session).rejects.toThrow(
-    /did not open within 0.1s .* --peer-timeout sets that bound/,
+    /did not open within 0.1s after the exchange partner's session description arrived/,
+  );
+});
+
+/** The budgets a run's dial passes the transport under these connection options. */
+function dialBudgetsFor(options: {
+  peerTimeoutMs?: number;
+  inactivityTimeoutMs?: number;
+}): { rendezvousTimeoutMs?: number; channelOpenTimeoutMs?: number } {
+  return webRtcDialFrom(
+    {
+      channel: "webrtc",
+      server: { host: "127.0.0.1" },
+      role: "acceptor",
+      options,
+    },
+    generateSharedSecret(),
+  ).options;
+}
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+test("an absent partner fails at peer_timeout_ms while the silence budget is long", async () => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    shouldAdvanceTime: true,
+  });
+  const arrivalMs = 60_000;
+  const { session } = await startRendezvous({
+    role: "acceptor",
+    dialBudgets: dialBudgetsFor({
+      peerTimeoutMs: arrivalMs,
+      inactivityTimeoutMs: SEVEN_DAYS_MS,
+    }),
+  });
+  await vi.advanceTimersByTimeAsync(arrivalMs - 1_000);
+  expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(2_000);
+  await expect(session).rejects.toThrow(/did not answer within 60s/);
+});
+
+test("the channel open fails at its fixed ceiling whatever both settings hold", async () => {
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    shouldAdvanceTime: true,
+  });
+  const { socket, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    dialBudgets: dialBudgetsFor({
+      peerTimeoutMs: SEVEN_DAYS_MS,
+      inactivityTimeoutMs: SEVEN_DAYS_MS,
+    }),
+  });
+  socket.deliver({
+    type: BROKER_MESSAGE.answer,
+    src: inviterId,
+    payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
+  });
+  await vi.advanceTimersByTimeAsync(DEFAULT_CHANNEL_OPEN_TIMEOUT_MS - 1_000);
+  expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(2_000 + ICE_STATS_TIMEOUT_MS);
+  await expect(session).rejects.toThrow(
+    new RegExp(
+      `did not open within ${DEFAULT_CHANNEL_OPEN_TIMEOUT_MS / 1000}s`,
+    ),
   );
 });
 

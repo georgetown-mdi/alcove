@@ -186,6 +186,10 @@ export function connectionTuningFromOptions(
       stated.peerTimeoutMs,
       CONNECTION_TUNING_DEFAULT.peerTimeout,
     ),
+    inactivityTimeout: durationField(
+      stated.inactivityTimeoutMs,
+      CONNECTION_TUNING_DEFAULT.inactivityTimeout,
+    ),
     serverConnectTimeout: durationField(
       stated.serverConnectTimeoutMs,
       CONNECTION_TUNING_DEFAULT.serverConnectTimeout,

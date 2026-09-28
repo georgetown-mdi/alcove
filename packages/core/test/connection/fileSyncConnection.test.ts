@@ -1493,7 +1493,7 @@ test("a binary frame sent through the new framing is read back byte-exactly by a
   const sender = await makeConnectedConn(client, { pollingFrequency: 10 });
   const receiver = await makeConnectedConn(client, {
     pollingFrequency: 10,
-    peerTimeoutMs: 2_000,
+    inactivityTimeoutMs: 2_000,
   });
   // send() needs a committed peerId; the receiver polls for `${peerId}-<n>.json`,
   // so point it at the sender's id to consume the sender's message.
@@ -1532,7 +1532,7 @@ test("send waits for a previous unconsumed message before writing the next", asy
   // armed with that budget at send() entry, so leaving the helper's 50 ms
   // default in place would race the wait against the very delay it must sit
   // through and fail the send with a spurious timeout on a slow run.
-  const conn = await makeConnectedConn(client, { peerTimeoutMs: 2_000 });
+  const conn = await makeConnectedConn(client, { inactivityTimeoutMs: 2_000 });
   conn.peerId = "stub-peer";
 
   // Simulate a message this connection sent that is still on disk (the peer's
@@ -1561,7 +1561,7 @@ test("send times out when the previous message is never consumed", async () => {
   // Short peer budget -- what the wait for the previous message is armed with --
   // so the test doesn't take long.
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 150,
+    inactivityTimeoutMs: 150,
     pollingFrequency: 10,
   });
   conn.peerId = "stub-peer";
@@ -1719,7 +1719,7 @@ test("setInboundFrameCap tightens the poll-loop read gate; an over-cap frame is 
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
     pollingFrequency: 10,
-    peerTimeoutMs: 2_000,
+    inactivityTimeoutMs: 2_000,
   });
   conn.peerId = peerId;
 
@@ -1751,7 +1751,7 @@ test("setInboundFrameCap clamps to MAX_FRAME_SIZE_BYTES and delivers an in-cap f
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
     pollingFrequency: 10,
-    peerTimeoutMs: 2_000,
+    inactivityTimeoutMs: 2_000,
   });
   conn.peerId = peerId;
 
@@ -2017,7 +2017,7 @@ test("poll() stops the poller on a stalled retain-mode ack-write, not advanced-a
 test("send() fails within the peer budget when the server withholds the put callback", async () => {
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2030,7 +2030,7 @@ test("send() fails within the peer budget when the server withholds the put call
 test("send() fails within the peer budget when the server withholds the rename callback", async () => {
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2052,7 +2052,7 @@ test("send() fails within the peer budget when the server withholds the rename c
 test("a private-key-shaped rename source does not take the destination with it", async () => {
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     timeToLiveMs: 60_000,
   });
   // The server accepts the rename but never invokes its callback, so the
@@ -2090,7 +2090,7 @@ test("poll() fails within the peer budget when the server withholds (slow-drips)
   ];
   client.get = () => new Promise<Buffer<ArrayBufferLike>>(() => {});
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     pollingFrequency: 10,
     timeToLiveMs: 60_000,
   });
@@ -2118,7 +2118,7 @@ test("poll() budget error escapes a hostile peer filename in the stalled-operati
   client.list = async () => [{ name: hostileName, modifyTime: 0, size: 5 }];
   client.get = () => new Promise<Buffer<ArrayBufferLike>>(() => {});
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     pollingFrequency: 10,
     timeToLiveMs: 60_000,
   });
@@ -2143,7 +2143,7 @@ test("close() does not hang when the server withholds a cleanup safeDelete callb
   // close().
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2160,7 +2160,7 @@ test("close() does not hang or throw when the server withholds the end() callbac
   // call.
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 100,
+    inactivityTimeoutMs: 100,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2181,12 +2181,12 @@ test("close() bounds a withheld end() by the teardown budget, not the peer budge
   // The transport's own close is not a peer round trip the exchange depends on:
   // the result is already computed and persisted by teardown, so core's wait for
   // it is the short CONNECTION_CLOSE_TIMEOUT_MS rather than a fresh
-  // peerTimeoutMs. With a peer budget far above it, a transport whose end() never
-  // settles must not park teardown for the peer budget.
-  const peerTimeoutMs = CONNECTION_CLOSE_TIMEOUT_MS * 10;
+  // inactivityTimeoutMs. With an inactivity budget far above it, a transport whose end() never
+  // settles must not park teardown for the inactivity budget.
+  const inactivityTimeoutMs = CONNECTION_CLOSE_TIMEOUT_MS * 10;
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs,
+    inactivityTimeoutMs,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2207,15 +2207,15 @@ test("close() bounds a withheld end() by the teardown budget, not the peer budge
   }
 });
 
-test("close() applies the teardown budget as min(budget, peerTimeoutMs)", async () => {
-  // An operator who configures a peer budget SMALLER than the teardown budget
+test("close() applies the teardown budget as min(budget, inactivityTimeoutMs)", async () => {
+  // An operator who configures an inactivity budget SMALLER than the teardown budget
   // asked for a shorter wait, not a longer one, so the smaller of the two wins --
   // the same min() rule the terminal-frame drain follows.
-  const peerTimeoutMs = 100;
-  expect(peerTimeoutMs).toBeLessThan(CONNECTION_CLOSE_TIMEOUT_MS);
+  const inactivityTimeoutMs = 100;
+  expect(inactivityTimeoutMs).toBeLessThan(CONNECTION_CLOSE_TIMEOUT_MS);
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs,
+    inactivityTimeoutMs,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2233,7 +2233,7 @@ test("the cycle-boundary signals are forwarded unwrapped, unlike end()", async (
   // its own close, so a budget imposed here would abandon core's wait
   // mid-close on a session only that release can finish tearing down. Pinned
   // by driving both against a transport that never settles either one.
-  const peerTimeoutMs = 100;
+  const inactivityTimeoutMs = 100;
   const { client } = makeMockClient();
   // Installed BEFORE the connection is constructed: the forwarding binds each
   // optional signal once, at construction, so a transport that gains one later
@@ -2241,7 +2241,7 @@ test("the cycle-boundary signals are forwarded unwrapped, unlike end()", async (
   client.releaseForIdle = () => new Promise<void>(() => {});
   client.ensureConnected = () => new Promise<boolean>(() => {});
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs,
+    inactivityTimeoutMs,
     timeToLiveMs: 60_000,
   });
   const forwarded = (conn as unknown as { client: FileTransportClient }).client;
@@ -2266,7 +2266,7 @@ test("the cycle-boundary signals are forwarded unwrapped, unlike end()", async (
       },
     );
 
-    await vi.advanceTimersByTimeAsync(peerTimeoutMs * 100);
+    await vi.advanceTimersByTimeAsync(inactivityTimeoutMs * 100);
 
     expect(releaseSettled).toBe(false);
     expect(readySettled).toBe(false);
@@ -2295,7 +2295,7 @@ test("close() ends the client LAST, after the drain and cleanup()", async () => 
     order.push("end");
   };
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 500,
+    inactivityTimeoutMs: 500,
     timeToLiveMs: 60_000,
   });
   (conn as unknown as { client: FileTransportClient }).client.beginTeardown =
@@ -2341,7 +2341,7 @@ test("a failing end() reaches no caller, and the teardown before it still ran", 
     return safeDeleted(path);
   };
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 500,
+    inactivityTimeoutMs: 500,
     timeToLiveMs: 60_000,
   });
   conn.peerId = "stub-peer";
@@ -2641,7 +2641,7 @@ test("close() drains the last sent file before cleanup, preventing premature del
 
   const sender = await makeConnectedConn(client, {
     pollingFrequency: 5,
-    peerTimeoutMs: 500,
+    inactivityTimeoutMs: 500,
   });
   sender.peerId = "stub-peer";
 
@@ -2695,7 +2695,7 @@ test("close() emits an info log at drain entry when the last sent file is still 
         await conn.open({
           channel: "filedrop",
           path: "/test",
-          options: { peerTimeoutMs: 500 },
+          options: { inactivityTimeoutMs: 500 },
         });
         conn.peerId = "stub-peer";
 
@@ -2745,7 +2745,7 @@ test("close() emits an info log when the drain deadline fires", async () => {
         await conn.open({
           channel: "filedrop",
           path: "/test",
-          options: { peerTimeoutMs: 50 },
+          options: { inactivityTimeoutMs: 50 },
         });
         conn.peerId = "stub-peer";
 
@@ -2803,7 +2803,7 @@ test("close() does not emit the deadline log when the final poll observes the fi
         await conn.open({
           channel: "filedrop",
           path: "/test",
-          options: { peerTimeoutMs: 1000 },
+          options: { inactivityTimeoutMs: 1000 },
         });
         conn.peerId = "stub-peer";
 
@@ -2845,8 +2845,10 @@ test("close() does not emit the deadline log when the final poll observes the fi
 });
 
 test("close() drain is bounded by the fixed terminal-frame budget, not the full peer timeout", async () => {
-  const hugePeerTimeoutMs = 60 * 60 * 1000; // one hour, > the fixed drain budget
-  expect(hugePeerTimeoutMs).toBeGreaterThan(TERMINAL_FRAME_DRAIN_TIMEOUT_MS);
+  const hugeInactivityTimeoutMs = 60 * 60 * 1000; // one hour, > the fixed drain budget
+  expect(hugeInactivityTimeoutMs).toBeGreaterThan(
+    TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
+  );
   const prevLevel = logLibrary.getLevel();
   logLibrary.setLevel("info");
   try {
@@ -2860,7 +2862,7 @@ test("close() drain is bounded by the fixed terminal-frame budget, not the full 
         await conn.open({
           channel: "filedrop",
           path: "/test",
-          options: { peerTimeoutMs: hugePeerTimeoutMs },
+          options: { inactivityTimeoutMs: hugeInactivityTimeoutMs },
         });
         conn.peerId = "stub-peer";
 
@@ -2883,7 +2885,7 @@ test("close() drain is bounded by the fixed terminal-frame budget, not the full 
     expect(entryLog!.message).toContain(
       `${TERMINAL_FRAME_DRAIN_TIMEOUT_MS} ms`,
     );
-    expect(entryLog!.message).not.toContain(`${hugePeerTimeoutMs} ms`);
+    expect(entryLog!.message).not.toContain(`${hugeInactivityTimeoutMs} ms`);
   } finally {
     logLibrary.setLevel(prevLevel);
   }
@@ -2913,7 +2915,7 @@ test("send() completes without spinning on a foreign <thisId>-<digits>.json (sit
     pollingFrequency: 10,
     // The budget a send arms for its wait, so a regression that counted the
     // foreign file as outstanding fails fast here instead of hanging the run.
-    peerTimeoutMs: 200,
+    inactivityTimeoutMs: 200,
   });
   conn.peerId = "stub-peer";
 
@@ -3015,7 +3017,7 @@ test("peerId from constructor option sets this.id and appears in message filenam
   await conn.open({
     channel: "filedrop",
     path: "/test",
-    options: { peerTimeoutMs: 50 },
+    options: { inactivityTimeoutMs: 50 },
   });
   expect(conn.id).toBe("agency-a");
   conn.peerId = "stub-peer";
@@ -3036,7 +3038,7 @@ test("peerId from open() config sets this.id and appears in message filenames", 
   await conn.open({
     channel: "filedrop",
     path: "/test",
-    options: { peerTimeoutMs: 50, peerId: "agency-b" },
+    options: { inactivityTimeoutMs: 50, peerId: "agency-b" },
   });
   expect(conn.id).toBe("agency-b");
   conn.peerId = "stub-peer";
@@ -3055,7 +3057,7 @@ test("send() message timeout throws UsageError", async () => {
   // ensuring the peer is polling.
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
-    peerTimeoutMs: 150,
+    inactivityTimeoutMs: 150,
     pollingFrequency: 10,
   });
   conn.peerId = "stub-peer";
@@ -3772,7 +3774,7 @@ test("I8: retain send() ack-gate list throws -- send rejects rather than spinnin
   await conn.open({
     channel: "filedrop",
     path: "/test",
-    options: { peerTimeoutMs: 200 },
+    options: { inactivityTimeoutMs: 200 },
   });
   conn.id = id;
   conn.peerId = peerId;
@@ -4678,7 +4680,7 @@ test("delete mode: hasOutstandingMessage ignores a `<id>-...-ack.json` file (num
   // unconsumed message. send() proceeds rather than spinning out the budget it
   // armed for the wait.
   const { client, files } = makeMockClient();
-  const conn = await makeConnectedConn(client, { peerTimeoutMs: 300 });
+  const conn = await makeConnectedConn(client, { inactivityTimeoutMs: 300 });
   conn.id = "me";
   conn.peerId = "peer";
   files.set(`/test/me-peer-20260101T000000-000-42-ack.json`, Buffer.alloc(0));
@@ -5201,7 +5203,7 @@ test("close() cancels an in-flight retain ack-wait promptly (site 4)", async () 
   await conn.open({
     channel: "filedrop",
     path: "/shared",
-    options: { peerTimeoutMs: HUGE_BUDGET_MS },
+    options: { inactivityTimeoutMs: HUGE_BUDGET_MS },
   });
   conn.id = "me";
   conn.peerId = "peer";
@@ -5245,7 +5247,7 @@ test("close() cancels an in-flight delete-mode consume-wait promptly (site 5)", 
   const PEER_BUDGET_MS = 500;
   const conn = await makeConnectedConn(client, {
     pollingFrequency: 10,
-    peerTimeoutMs: PEER_BUDGET_MS,
+    inactivityTimeoutMs: PEER_BUDGET_MS,
   });
   conn.peerId = "peer";
   // An outstanding message nobody consumes drives send() into the consume-wait.
@@ -5290,7 +5292,7 @@ test("close() cancels a parked rendezvous wait promptly (site 3)", async () => {
   const conn = await makeConnectedConn(client, {
     pollingFrequency: 10,
     timeToLiveMs: HUGE_TTL,
-    peerTimeoutMs: 50,
+    inactivityTimeoutMs: 50,
   });
 
   // The peer hello never appears, so waitForPeer parks in this.wait every poll.
@@ -5329,7 +5331,7 @@ test("close() during a parked poll delete-retry emits no spurious error (site 6 
     const conn = await makeConnectedConn(client, {
       pollingFrequency: 10_000,
       timeToLiveMs: 60_000,
-      peerTimeoutMs: 50,
+      inactivityTimeoutMs: 50,
     });
     const peerId = "peer";
     conn.peerId = peerId;
@@ -6021,7 +6023,7 @@ describe("connection-per-poll idle-boundary signal", () => {
 
     const conn = await makeConnectedConn(client, {
       pollingFrequency: 500,
-      peerTimeoutMs: 200,
+      inactivityTimeoutMs: 200,
     });
     conn.peerId = "stub-peer";
     conn.armAbort(new Uint8Array(32).fill(7), new Uint8Array(32).fill(9));
@@ -6062,7 +6064,7 @@ describe("connection-per-poll idle-boundary signal", () => {
 
     const conn = await makeConnectedConn(client, {
       pollingFrequency: 5,
-      peerTimeoutMs: 200,
+      inactivityTimeoutMs: 200,
     });
     conn.peerId = "stub-peer";
     await conn.send({ terminal: true });

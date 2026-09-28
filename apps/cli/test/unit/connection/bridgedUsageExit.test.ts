@@ -70,7 +70,7 @@ afterEach(async () => {
 // consumes, and A is bridged the way runProtocol bridges it. The bridge's own
 // inactivity bound is set past every case, so what fails a case is the
 // transport's refusal rather than the bridge's timer.
-async function rendezvous(peerTimeoutMs = 60_000): Promise<{
+async function rendezvous(inactivityTimeoutMs = 60_000): Promise<{
   client: FaultingClient;
   connA: FileSyncConnection;
   bridge: MessageConnection;
@@ -90,7 +90,7 @@ async function rendezvous(peerTimeoutMs = 60_000): Promise<{
   const config = {
     channel: "filedrop" as const,
     path: dropDir,
-    options: { peerTimeoutMs },
+    options: { inactivityTimeoutMs },
   };
   await Promise.all([connA.open(config), connB.open(config)]);
   await Promise.all([connA.synchronize(), connB.synchronize()]);

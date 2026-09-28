@@ -1652,19 +1652,23 @@ describe("accepting and running a webrtc exchange in one command", () => {
       // Seconds at the flag, milliseconds in the connection this run dials and
       // the bootstrap writes.
       expect(ready.connection.options?.peerTimeoutMs).toBe(10_000);
+      // The arrival wait is all it records: the silence budget is not written.
+      expect(ready.connection.options).not.toHaveProperty(
+        "inactivityTimeoutMs",
+      );
       expect(
         messages.some((m) => m.includes("--peer-timeout")),
         "the running acceptance reported the flag it just applied as ignored",
       ).toBe(false);
-      // What that one value buys on this transport: the wait for the partner to
-      // arrive, the wait for the channel to open, and the peer silence after.
+      // What that value buys on this transport: the wait for the partner to
+      // arrive, and neither the channel opening nor the silence after it.
       const { options } = webRtcDialFrom(
         ready.connection,
         generateSharedSecret(),
       );
       expect(options.rendezvousTimeoutMs).toBe(10_000);
-      expect(options.channelOpenTimeoutMs).toBe(10_000);
-      expect(options.inactivityTimeoutMs).toBe(10_000);
+      expect(options).not.toHaveProperty("channelOpenTimeoutMs");
+      expect(options).not.toHaveProperty("inactivityTimeoutMs");
     } finally {
       fs.rmSync(input, { force: true });
     }
