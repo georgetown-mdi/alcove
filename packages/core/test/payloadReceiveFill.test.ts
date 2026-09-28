@@ -214,6 +214,13 @@ test("a fill that is not recorded stops the run before any round, for both parti
     ((inviterResult as PromiseRejectedResult).reason as Error).message,
   ).toBe("the configuration could not be written");
   expect(acceptorResult.status).toBe("rejected");
+  expect(inviterSent).toContainEqual(
+    expect.objectContaining({
+      abortReasons: [
+        "a party could not record the payload columns it receives",
+      ],
+    }),
+  );
   for (const sent of [inviterSent, acceptorSent])
     expect(sent.every(isTermsOrDecisionFrame)).toBe(true);
 });

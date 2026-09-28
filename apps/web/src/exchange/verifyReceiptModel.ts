@@ -18,6 +18,7 @@ import {
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
   signedRecordExpectations,
+  termsAsTheRunStatedThem,
   verifyDualSignedRecord,
 } from "@alcove/core";
 
@@ -31,6 +32,8 @@ import type {
   DualSignedRecord,
   DualSignedRecordVerificationReport,
   ExchangeRecord,
+  LinkageTerms,
+  Metadata,
   ReceiptSignatureStatus,
   RecordVerificationReport,
   ResultSizeStatus,
@@ -1085,5 +1088,78 @@ export function signedVerdictViewModel(
       `The per-exchange binder ${sanitizeForDisplay(verdict.binder)} is ` +
       "covered by both signatures and is never recomputed here: deriving it " +
       "needs the exchange session key, which only the two parties held.",
+  };
+}
+
+/** What the record verdict notes when this party's payload send set cannot be
+ * stated, so the agreed-terms hash is recomputed without it. */
+export const SEND_SET_UNKNOWN_NOTE =
+  "Your linkage terms leave payload.send unset and came with no metadata " +
+  "block, so the payload columns you stated at the exchange are not known " +
+  "and the agreed-terms hash will not match. Re-supply your input CSV, or " +
+  "paste the configuration with the metadata block the exchange ran with.";
+
+/** What the record verdict notes when the partner's payload send set cannot
+ * be stated from its pasted terms. */
+export const PARTNER_SEND_SET_UNKNOWN_NOTE =
+  "Your partner's linkage terms leave payload.send unset and came with no " +
+  "metadata block, so the payload columns your partner stated at the " +
+  "exchange are not known and the agreed-terms hash will not match. Paste " +
+  "your partner's configuration with the metadata block its exchange ran with.";
+
+/** Pasted linkage terms, with the metadata block of the configuration they
+ * came from where it held one. */
+export interface PastedTerms {
+  terms: LinkageTerms;
+  metadata?: Metadata;
+}
+
+/** Both parties' pasted terms as their runs stated them at the exchange, and
+ * the notes for each whose unset send set cannot be stated. */
+export interface StatedTermsForVerification {
+  localTerms?: LinkageTerms;
+  partnerTerms?: LinkageTerms;
+  notes: Array<Displayable>;
+}
+
+/**
+ * Each party's pasted terms as its run stated them, which the agreed-terms
+ * hash covers: an unset `payload.send` stands for the columns the pasted
+ * configuration's metadata discloses, or, for this party's own terms with no
+ * metadata block, the columns inferred from its re-supplied input's header.
+ */
+export function statedTermsForVerification(
+  local: PastedTerms | undefined,
+  partner: PastedTerms | undefined,
+  inputHeader?: {
+    columns: Array<string>;
+    sanitizedColumnPositions: ReadonlyArray<number>;
+  },
+): StatedTermsForVerification {
+  const localStated =
+    local === undefined
+      ? undefined
+      : termsAsTheRunStatedThem(local.terms, {
+          ...(local.metadata !== undefined ? { metadata: local.metadata } : {}),
+          ...(inputHeader !== undefined ? { inputHeader } : {}),
+        });
+  const partnerStated =
+    partner === undefined
+      ? undefined
+      : termsAsTheRunStatedThem(
+          partner.terms,
+          partner.metadata !== undefined ? { metadata: partner.metadata } : {},
+        );
+  const notes: Array<Displayable> = [];
+  if (localStated?.sendSetUnknown === true)
+    notes.push(sanitizeForDisplay(SEND_SET_UNKNOWN_NOTE));
+  if (partnerStated?.sendSetUnknown === true)
+    notes.push(sanitizeForDisplay(PARTNER_SEND_SET_UNKNOWN_NOTE));
+  return {
+    ...(localStated !== undefined ? { localTerms: localStated.terms } : {}),
+    ...(partnerStated !== undefined
+      ? { partnerTerms: partnerStated.terms }
+      : {}),
+    notes,
   };
 }

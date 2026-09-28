@@ -49,6 +49,7 @@ import {
   readSignedRecordFile,
   readVerifiableArtifact,
   readVerificationKeysFile,
+  PARTNER_SEND_SET_UNKNOWN_WARNING,
   SEND_SET_UNKNOWN_WARNING,
   toRetainedResult,
 } from "../../../src/commands/verifyReceipt";
@@ -945,7 +946,20 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     writeFileSync(recPath, JSON.stringify(bumped, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(UsageError);
     expect(() => readExchangeRecordFile(recPath)).toThrow(
-      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v9/,
+      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v10/,
+    );
+  });
+
+  test("reject a record whose terms hash predates the resolved terms", async () => {
+    // A v9 record hashed the terms with an unset receive list unresolved:
+    // refused on its version rather than reported as a terms mismatch.
+    const dir = tmp();
+    const { record } = await buildExchangeRecord(baseInputs);
+    const previous = { ...record, version: "alcove-exchange-record/v9" };
+    const recPath = join(dir, "rec.json");
+    writeFileSync(recPath, JSON.stringify(previous, null, 2));
+    expect(() => readExchangeRecordFile(recPath)).toThrow(
+      /unrecognized version \(alcove-exchange-record\/v9\); this build recognizes alcove-exchange-record\/v10/,
     );
   });
 
@@ -1383,6 +1397,55 @@ describe("handler", () => {
       expect(exits).toEqual([]);
       expect(stderr).toContain(SEND_SET_UNKNOWN_WARNING);
       expect(stdout).not.toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    // The partner's own configuration: send unset, stated at the exchange
+    // from the metadata block beside it.
+    const partnerConfigTerms = {
+      ...baseInputs.partnerTerms,
+      payload: {},
+    };
+    const partnerMetadata = [
+      { name: "ssn", type: "ssn", role: "linkage", is_payload: false },
+      { name: "status", type: "other", role: "payload", is_payload: true },
+    ];
+    const localConfigFile = () =>
+      writeYaml(YAML.stringify({ linkage_terms: postFillTerms, metadata }));
+
+    test("states the partner's unset send set from its file's metadata block", async () => {
+      const { path } = await firstRunRecord(["dose"]);
+      const { stdout, stderr, exits } = await runVerify({
+        record: path,
+        "log-level": "warn",
+        "config-file": localConfigFile(),
+        "partner-terms": writeYaml(
+          YAML.stringify({
+            linkage_terms: partnerConfigTerms,
+            metadata: partnerMetadata,
+          }),
+          "partner.yaml",
+        ),
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).not.toContain(PARTNER_SEND_SET_UNKNOWN_WARNING);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    test("a partner-terms file with no metadata block says what the hash needs", async () => {
+      const { path } = await firstRunRecord(["dose"]);
+      const { stdout, stderr, exits } = await runVerify({
+        record: path,
+        "log-level": "warn",
+        "config-file": localConfigFile(),
+        "partner-terms": writeYaml(
+          YAML.stringify({ linkage_terms: partnerConfigTerms }),
+          "partner.yaml",
+        ),
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain(PARTNER_SEND_SET_UNKNOWN_WARNING);
+      expect(stderr).not.toContain(SEND_SET_UNKNOWN_WARNING);
+      expect(stdout).toContain("agreed-terms hash: DOES NOT MATCH");
     });
   });
 

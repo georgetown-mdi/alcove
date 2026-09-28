@@ -840,6 +840,14 @@ export const SEND_SET_UNKNOWN_WARNING =
   "with --input-file and --result-file, or add the metadata block the " +
   "exchange ran with";
 
+/** What the command says when the partner's payload send set cannot be
+ * stated from the `--partner-terms` file. */
+export const PARTNER_SEND_SET_UNKNOWN_WARNING =
+  "the partner-terms file leaves payload.send unset and has no metadata " +
+  "block, so the payload columns the partner stated at the exchange are not " +
+  "known here and the agreed-terms hash will not match; add the metadata " +
+  "block the partner's exchange ran with to that file";
+
 /**
  * This party's terms as its run stated them at the terms exchange, which the
  * agreed-terms hash covers: an unset `payload.send` stands for the columns the
@@ -881,10 +889,12 @@ function localTermsAsTheRunStatedThem(
  * into this build's rules, so the hash is computed over the partner's own
  * terms and a name this build does not ship stops nothing here. An unset
  * `payload.send` is stated from the file's metadata block where it has one, as
- * the partner's run stated it.
+ * the partner's run stated it; with none, the terms are used as written and
+ * the command says the hash cannot match.
  */
 function partnerTermsFrom(
   partnerTermsFile: string | undefined,
+  log: { warn: (message: string) => void },
 ): LinkageTerms | undefined {
   if (partnerTermsFile === undefined) return undefined;
   const source = readConfigLinkageSource(
@@ -903,12 +913,14 @@ function partnerTermsFrom(
     )} defines no linkage_terms; pass the partner's exported linkage terms, or a configuration file that defines them`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-  return termsAsTheRunStatedThem(
+  const stated = termsAsTheRunStatedThem(
     source.source.linkageTerms,
     source.source.metadata !== undefined
       ? { metadata: source.source.metadata }
       : {},
-  ).terms;
+  );
+  if (stated.sendSetUnknown) log.warn(PARTNER_SEND_SET_UNKNOWN_WARNING);
+  return stated.terms;
 }
 
 /**
@@ -1236,7 +1248,7 @@ export async function handler(argv: Arguments): Promise<void> {
       localSource === undefined
         ? undefined
         : localTermsAsTheRunStatedThem(localSource, inputParse?.meta, log);
-    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile);
+    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile, log);
     const signedRecord =
       artifact.kind === "signed"
         ? artifact.signed

@@ -51,12 +51,12 @@ const OTHER_ALCOVE_STRINGS: readonly string[] = [
   "alcove-signed-receipt/v4",
   "alcove-signing-cert/v3",
   "alcove-signing-identity/v3",
-  "alcove-exchange-record/v9",
+  "alcove-exchange-record/v10",
   "alcove-exchange-keys/v2",
   "alcove-commit-association-table/v2",
   "alcove-commit-payload-sent/v2",
   "alcove-commit-payload-received/v2",
-  "alcove-agreed-terms/v2",
+  "alcove-agreed-terms/v3",
   "alcove-signing-keypair-probe/v2",
 ];
 

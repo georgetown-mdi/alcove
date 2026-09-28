@@ -51,12 +51,14 @@ import type { Algorithm, AssociationTable } from "../types.js";
 /**
  * The one recognized format version for an {@link ExchangeRecord}. A reader
  * rejects an unrecognized version rather than migrating it. It moves with the
- * field set, so adding or removing an omittable field bumps it: what a
+ * field set and with the bytes a field is computed over, so adding or
+ * removing an omittable field, or changing what the terms hash covers, bumps
+ * it: what a
  * reader would otherwise misread an old record's silence as, and which
  * fields have moved it, are in docs/spec/EXCHANGE_RECORD.md ("Record
  * fields").
  */
-export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v9";
+export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v10";
 
 /** The one recognized format version for v2 {@link VerificationKeys}. */
 export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v2";
@@ -91,7 +93,7 @@ const COMMITMENT_DOMAINS: Record<CommitmentName, string> = {
 
 // Domain-separation label for the agreed-terms hash, kept distinct from the
 // commitment domains above.
-const AGREED_TERMS_DOMAIN = "alcove-agreed-terms/v2";
+const AGREED_TERMS_DOMAIN = "alcove-agreed-terms/v3";
 
 // computeCommitment, verifyCommitmentOpening, and computeTermsHash are part of
 // the public API (re-exported via main.ts), not internal helpers: an

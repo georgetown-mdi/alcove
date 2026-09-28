@@ -16,8 +16,6 @@ import {
   reconstructCommittedData,
   reproductionMismatchCauses,
   sanitizeErrorForDisplay,
-  sanitizeForDisplay,
-  termsAsTheRunStatedThem,
   toRetainedResult,
   verifyExchangeRecord,
 } from "@alcove/core";
@@ -41,6 +39,7 @@ import {
   parseSignedRecordDocument,
   pinnedFingerprintProblem,
   signedVerdictViewModel,
+  statedTermsForVerification,
   verdictViewModel,
   verifySignedRecord,
 } from "./verifyReceiptModel";
@@ -50,12 +49,11 @@ import type {
   Displayable,
   DualSignedRecord,
   ExchangeRecord,
-  LinkageTerms,
-  Metadata,
   RecordVerificationReport,
   VerificationKeys,
 } from "@alcove/core";
 import type {
+  PastedTerms,
   SignedVerdictViewModel,
   VerdictRow,
   VerdictTone,
@@ -253,21 +251,6 @@ function ParseAlert({ title, message }: { title: string; message: string }) {
   );
 }
 
-/** Pasted linkage terms, with the metadata block of the configuration they
- * came from where it held one. */
-interface LoadedTerms {
-  terms: LinkageTerms;
-  metadata?: Metadata;
-}
-
-/** What the record verdict notes when this party's payload send set cannot be
- * stated, so the agreed-terms hash is recomputed without it. */
-export const SEND_SET_UNKNOWN_NOTE =
-  "Your linkage terms leave payload.send unset and came with no metadata " +
-  "block, so the payload columns you stated at the exchange are not known " +
-  "and the agreed-terms hash will not match. Re-supply your input CSV, or " +
-  "paste the configuration with the metadata block the exchange ran with.";
-
 /** The linkage-terms re-supply idiom, paste-based, mirroring TermsImportExport:
  * a textarea whose Import validates through importLinkageTermsDocument and
  * reports a value-free error inline. */
@@ -279,8 +262,8 @@ function TermsInput({
 }: {
   label: string;
   description: string;
-  terms: LoadedTerms | undefined;
-  onTerms: (terms: LoadedTerms | undefined) => void;
+  terms: PastedTerms | undefined;
+  onTerms: (terms: PastedTerms | undefined) => void;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
@@ -360,8 +343,8 @@ export function VerifyReceiptScreen() {
   const [delimiterChoice, setDelimiterChoice] = useState(
     INITIAL_CSV_DELIMITER_CHOICE,
   );
-  const [localTerms, setLocalTerms] = useState<LoadedTerms>();
-  const [partnerTerms, setPartnerTerms] = useState<LoadedTerms>();
+  const [localTerms, setLocalTerms] = useState<PastedTerms>();
+  const [partnerTerms, setPartnerTerms] = useState<PastedTerms>();
 
   // The signed leg (optional): the dual-signed record, and the two anchoring
   // values -- the partner's pinned fingerprint, typed, and this party's own
@@ -479,12 +462,12 @@ export function VerifyReceiptScreen() {
     set(file);
   }
 
-  function onLocalTerms(terms: LoadedTerms | undefined) {
+  function onLocalTerms(terms: PastedTerms | undefined) {
     invalidateVerdicts();
     setLocalTerms(terms);
   }
 
-  function onPartnerTerms(terms: LoadedTerms | undefined) {
+  function onPartnerTerms(terms: PastedTerms | undefined) {
     invalidateVerdicts();
     setPartnerTerms(terms);
   }
@@ -521,46 +504,27 @@ export function VerifyReceiptScreen() {
         inputCsv === undefined
           ? undefined
           : await loadCSVFileOffMainThread(inputCsv, readBy);
-      // Each party's terms as its run stated them at the exchange, which the
-      // agreed-terms hash covers: an unset payload.send stands for the columns
-      // the pasted configuration's metadata discloses, or, for your own terms
-      // with no metadata block, the columns inferred from your input's header.
-      const localStated =
-        localTerms === undefined
+      const stated = statedTermsForVerification(
+        localTerms,
+        partnerTerms,
+        inputParse === undefined
           ? undefined
-          : termsAsTheRunStatedThem(localTerms.terms, {
-              ...(localTerms.metadata !== undefined
-                ? { metadata: localTerms.metadata }
-                : {}),
-              ...(inputParse !== undefined
-                ? {
-                    inputHeader: {
-                      columns: inputParse.meta.fields ?? [],
-                      sanitizedColumnPositions:
-                        inputParse.meta.sanitizedColumnPositions,
-                    },
-                  }
-                : {}),
-            });
-      const localTermsForRun = localStated?.terms;
+          : {
+              columns: inputParse.meta.fields ?? [],
+              sanitizedColumnPositions:
+                inputParse.meta.sanitizedColumnPositions,
+            },
+      );
+      const localTermsForRun = stated.localTerms;
       // The dual-signed record holds the partner's terms, so a run with one
       // loaded checks the agreed-terms hash without them being pasted; what is
       // pasted wins over that copy.
       const partnerTermsForRun = partnerTermsForVerification(
-        partnerTerms === undefined
-          ? undefined
-          : termsAsTheRunStatedThem(partnerTerms.terms, {
-              ...(partnerTerms.metadata !== undefined
-                ? { metadata: partnerTerms.metadata }
-                : {}),
-            }).terms,
+        stated.partnerTerms,
         signedRecord?.record,
       );
       let recordReport: RecordVerificationReport | undefined;
-      let recordWarnings: Array<Displayable> =
-        localStated?.sendSetUnknown === true
-          ? [sanitizeForDisplay(SEND_SET_UNKNOWN_NOTE)]
-          : [];
+      let recordWarnings: Array<Displayable> = stated.notes;
       if (parsedRecord !== undefined && keys?.keys !== undefined) {
         let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
           {};

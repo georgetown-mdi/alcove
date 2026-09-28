@@ -162,7 +162,7 @@ export const UNCOVERED_VECTORS = [
   {
     vectors: "exchange-record-vectors.json",
     versionedBy:
-      "the record document's own `alcove-exchange-record/v9` discriminant (docs/spec/EXCHANGE_RECORD.md). The record is written locally and never sent to the partner.",
+      "the record document's own `alcove-exchange-record/v10` discriminant (docs/spec/EXCHANGE_RECORD.md). The record is written locally and never sent to the partner.",
   },
   {
     vectors: "kex-vectors.json",

@@ -121,7 +121,7 @@ export const CHECK_SOURCE = "scripts/check-exchange-record-version.mjs";
 
 /** The exchange-record version the recovery path has been driven against. Moving
  * it here is how the bump decision this check defers is recorded as taken. */
-export const RECORD_VERSION_PIN = "alcove-exchange-record/v9";
+export const RECORD_VERSION_PIN = "alcove-exchange-record/v10";
 
 /** The entry points the recovery from a version-invalidated accounting is built
  * on, per file. Named functions rather than a surface description: a declaration

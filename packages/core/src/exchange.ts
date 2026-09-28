@@ -840,6 +840,11 @@ export async function assertReceiptBindingsOrAbort(
 const PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON =
   "a party could not record the fingerprint it pinned on this first contact";
 
+// The abort reason a caller that could not record the payload receive list the
+// first run filled sends; its own failure, like the pin's above.
+const PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON =
+  "a party could not record the payload columns it receives";
+
 /**
  * The five refusals the terms-time pin resolution raises, by the condition the
  * partner's certificate met, each holding the abort reason its refusal sends
@@ -2539,9 +2544,7 @@ export async function runExchange(
       // Best-effort abort before the throw, as the deduplicate refusal above
       // sends one: the failure is this party's own, so the reason is a fixed
       // literal naming no value.
-      await sendAbort(conn, [
-        "partner could not record the payload columns it receives",
-      ]);
+      await sendAbort(conn, [PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON]);
       throw err;
     }
     filledPayloadReceive = columns;

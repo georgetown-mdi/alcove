@@ -24,12 +24,15 @@ import {
 } from "@alcove/core";
 
 import {
+  PARTNER_SEND_SET_UNKNOWN_NOTE,
+  SEND_SET_UNKNOWN_NOTE,
   parseCertificateDocument,
   parseKeysDocument,
   parseRecordDocument,
   parseSignedRecordDocument,
   pinnedFingerprintProblem,
   signedVerdictViewModel,
+  statedTermsForVerification,
   verdictViewModel,
   verifySignedRecord,
 } from "@exchange/verifyReceiptModel";
@@ -42,6 +45,7 @@ import type {
   DualSignedRecordVerificationReport,
   ExchangeRecord,
   LinkageTerms,
+  Metadata,
   ReceiptContent,
   RecordVerificationReport,
   SignedReceiptPartyReport,
@@ -313,6 +317,76 @@ describe("verdictViewModel: wrong keys (missing salt is distinct from tamper)", 
     expect(table?.status).toBe("Cannot be opened");
     expect(table?.tone).toBe("incomplete");
     expect(table?.explanation).toContain("wrong or drifted keys file");
+  });
+});
+
+describe("statedTermsForVerification: an unset payload.send", () => {
+  // Each party's terms as stated at the exchange, and as its configuration
+  // holds them: send unset, stated from the metadata beside it.
+  const wireLocal: LinkageTerms = {
+    ...LOCAL_TERMS,
+    payload: { send: [{ name: "dose" }] },
+  };
+  const wirePartner: LinkageTerms = {
+    ...PARTNER_TERMS,
+    payload: { send: [{ name: "clinic" }] },
+  };
+  const configuredLocal = { ...LOCAL_TERMS, payload: {} };
+  const configuredPartner = { ...PARTNER_TERMS, payload: {} };
+  const localMetadata: Metadata = [
+    { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+    { name: "dose", type: "other", role: "payload", isPayload: true },
+  ];
+  const partnerMetadata: Metadata = [
+    { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+    { name: "clinic", type: "other", role: "payload", isPayload: true },
+  ];
+  const statedRecord = () =>
+    buildExchangeRecord({
+      ...baseInputs,
+      localTerms: wireLocal,
+      partnerTerms: wirePartner,
+    });
+
+  test("pasted partner terms with a metadata block are stated from it", async () => {
+    const { record, keys } = await statedRecord();
+    const stated = statedTermsForVerification(
+      { terms: configuredLocal, metadata: localMetadata },
+      { terms: configuredPartner, metadata: partnerMetadata },
+    );
+    expect(stated.notes).toEqual([]);
+    const report = await verifyExchangeRecord(record, keys, {
+      localTerms: stated.localTerms,
+      partnerTerms: stated.partnerTerms,
+    });
+    expect(report.termsHash).toBe("verified");
+  });
+
+  test("pasted partner terms with no metadata block are noted, and do not match", async () => {
+    const { record, keys } = await statedRecord();
+    const stated = statedTermsForVerification(
+      { terms: configuredLocal, metadata: localMetadata },
+      { terms: configuredPartner },
+    );
+    expect(stated.notes).toEqual([
+      sanitizeForDisplay(PARTNER_SEND_SET_UNKNOWN_NOTE),
+    ]);
+    const report = await verifyExchangeRecord(record, keys, {
+      localTerms: stated.localTerms,
+      partnerTerms: stated.partnerTerms,
+    });
+    expect(report.termsHash).toBe("mismatch");
+  });
+
+  test("each party's unknown send set is noted on its own", () => {
+    const stated = statedTermsForVerification(
+      { terms: configuredLocal },
+      { terms: configuredPartner },
+    );
+    expect(stated.notes).toEqual([
+      sanitizeForDisplay(SEND_SET_UNKNOWN_NOTE),
+      sanitizeForDisplay(PARTNER_SEND_SET_UNKNOWN_NOTE),
+    ]);
   });
 });
 

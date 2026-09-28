@@ -1083,8 +1083,16 @@ describe("serialize / parse", () => {
 
   test("parseExchangeRecord rejects an unrecognized version", async () => {
     const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
-    const bumped = { ...record, version: "alcove-exchange-record/v10" };
+    const bumped = { ...record, version: "alcove-exchange-record/v11" };
     expect(() => parseExchangeRecord(bumped)).toThrow();
+  });
+
+  test("parseExchangeRecord refuses a record hashed over the unresolved terms", async () => {
+    // v9 hashed the terms as sent, an unset receive list unresolved: its
+    // termsHash would mismatch a recomputation rather than be refused.
+    const { record } = await buildExchangeRecord(baseInputs, fixedRandomness);
+    const v9 = { ...record, version: "alcove-exchange-record/v9" };
+    expect(() => parseExchangeRecord(v9)).toThrow(/"version"/);
   });
 
   test("parseExchangeRecord refuses a record written before the run outcome", async () => {

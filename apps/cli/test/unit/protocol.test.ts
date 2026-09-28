@@ -1459,7 +1459,7 @@ test("tells a non-receiving party what the run's completion tells it too", async
 // --- Self-attested record persistence via runProtocol ------------------------
 
 const sampleRecord: ExchangeRecord = {
-  version: "alcove-exchange-record/v9",
+  version: "alcove-exchange-record/v10",
   outcome: "completed",
   certificateMismatchObserved: false,
   createdAt: "2026-01-02T03:04:05.000Z",
