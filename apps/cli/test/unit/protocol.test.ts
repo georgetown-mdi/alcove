@@ -3985,6 +3985,38 @@ test("undeclared input columns are named on the log and the event stream before 
   expect(lines[0].message).toBe(notice);
 });
 
+test("a key marker in an undeclared column name costs only that name on both sinks", async () => {
+  const undeclaredColumns = ["-----BEGIN PRIVATE KEY-----", "notes"];
+  const remedy = /declare it with role: ignored\.$/;
+  const notice = undeclaredColumnsNotice({ undeclaredColumns }) ?? "";
+  expect(notice).toContain(": [redacted private key], notes. ");
+  mockFd3Open();
+  try {
+    await expect(
+      runProtocol({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: "" },
+        prepared: { ...minimalPrepared, undeclaredColumns },
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test",
+        fileSyncRuntime: { eventStream: true },
+        signing: null,
+      }),
+    ).rejects.toThrow("key file path is empty");
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+  const logged = mockState.warnings.find((warning) =>
+    String(warning).includes("not sent to your partner"),
+  );
+  expect(String(logged)).toMatch(remedy);
+  const [warning] = takeFd3Lines();
+  expect(warning.source).toBe("undeclaredColumns");
+  expect(warning.message).toMatch(remedy);
+  expect(warning.message).toContain("notes");
+});
+
 test("a wide undeclared header is counted past the listed names and keeps the remedy", async () => {
   const undeclaredColumns = Array.from(
     { length: 300 },

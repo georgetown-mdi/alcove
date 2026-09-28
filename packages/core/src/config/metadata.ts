@@ -4,6 +4,7 @@ import {
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   sanitizeForDisplay,
 } from "../utils/sanitizeForDisplay.js";
+import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
 
 import { OperatorConfigError, UsageError } from "../errors.js";
 import { SEMANTIC_TYPES } from "../types";
@@ -514,15 +515,25 @@ export function undeclaredColumnNames(
 export const UNDECLARED_COLUMNS_LISTED_MAX = 20;
 
 /**
+ * The most times any sink route escapes a warning before showing it: a
+ * console-run CLI warning is escaped by the CLI's event, by the console's
+ * event relay, and by the seat's warning sink.
+ */
+const RELAY_ESCAPE_PASSES = 3;
+
+/**
  * The notice naming a run's undeclared input columns
  * ({@link undeclaredColumnNames}) and ending with `remedy`, the fix the front
  * end's own settings take, or `undefined` when there are none. The names are
- * the operator's own header, composed raw for the display sink to escape.
+ * the operator's own header, composed raw for the display sink to escape,
+ * each passed through {@link redactPrivateKeyMaterial} first so a key marker
+ * in one name costs only that name, not the text composed after it.
  *
  * Lists at most {@link UNDECLARED_COLUMNS_LISTED_MAX} names and counts the
  * rest, and lists fewer when their escaped form would push the message past
  * {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH}, the cap every warning sink
- * applies, so the sink never truncates `remedy` away.
+ * applies after the deepest route's {@link RELAY_ESCAPE_PASSES} escapes, so no
+ * sink truncates `remedy` away.
  */
 export function describeUndeclaredColumns(
   undeclared: ReadonlyArray<string>,
@@ -535,7 +546,7 @@ export function describeUndeclaredColumns(
     const names =
       listed === 0
         ? ""
-        : `: ${undeclared.slice(0, listed).join(", ")}` +
+        : `: ${undeclared.slice(0, listed).map(redactPrivateKeyMaterial).join(", ")}` +
           (remaining > 0 ? `, and ${remaining} more` : "");
     return (
       `${undeclared.length} input column${plural ? "s are" : " is"} not sent ` +
@@ -543,12 +554,17 @@ export function describeUndeclaredColumns(
       `${plural ? "them" : "it"}${names}. ${remedy}`
     );
   };
-  // The escaped form is never shorter than the raw one, so the raw length
-  // test keeps an overlong header from being escaped whole just to measure it.
-  const fitsEverySink = (message: string): boolean =>
-    message.length <= WARNING_MESSAGE_MAX_DISPLAY_LENGTH &&
-    sanitizeForDisplay(message, { maxLength: Number.POSITIVE_INFINITY })
-      .length <= WARNING_MESSAGE_MAX_DISPLAY_LENGTH;
+  // The escaped form is never shorter than its input, so testing each pass
+  // before the next keeps an overlong header from being escaped whole just to
+  // measure it.
+  const fitsEverySink = (message: string): boolean => {
+    let text = message;
+    for (let pass = 0; pass < RELAY_ESCAPE_PASSES; pass += 1) {
+      if (text.length > WARNING_MESSAGE_MAX_DISPLAY_LENGTH) return false;
+      text = sanitizeForDisplay(text, { maxLength: Number.POSITIVE_INFINITY });
+    }
+    return text.length <= WARNING_MESSAGE_MAX_DISPLAY_LENGTH;
+  };
   let listed = 0;
   while (
     listed < Math.min(undeclared.length, UNDECLARED_COLUMNS_LISTED_MAX) &&

@@ -158,6 +158,36 @@ describe("the undeclared-column list", () => {
     expect(notice).toMatch(/, and \d+ more\. /);
   });
 
+  test("the remedy survives the warning cap after three escape passes", () => {
+    const names = Array.from(
+      { length: 600 },
+      (_, i) => "\\\u0430".repeat(60) + String(i),
+    );
+    const notice = describeUndeclaredColumns(names, REMEDY) ?? "";
+    let shown = notice;
+    for (let pass = 0; pass < 3; pass += 1)
+      shown = sanitizeForDisplay(shown, {
+        maxLength: Number.POSITIVE_INFINITY,
+      });
+    expect(shown.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    expect(shown.endsWith(REMEDY)).toBe(true);
+    expect(notice).toMatch(/, and \d+ more\. /);
+  });
+
+  test("a key marker in a name is redacted in that name alone", () => {
+    const notice =
+      describeUndeclaredColumns(
+        ["-----BEGIN PRIVATE KEY-----", "notes"],
+        REMEDY,
+      ) ?? "";
+    expect(notice).toBe(
+      "2 input columns are not sent to your partner because the exchange's " +
+        `column settings do not declare them: [redacted private key], notes. ${REMEDY}`,
+    );
+  });
+
   test("a single overlong name is counted rather than listed", () => {
     const notice =
       describeUndeclaredColumns(["x".repeat(10_000)], REMEDY) ?? "";
