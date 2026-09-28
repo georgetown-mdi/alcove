@@ -4256,6 +4256,14 @@ test.each([
     absent: "Retry the exchange with the existing key file",
   },
   {
+    failure: "an authentication failure",
+    raise: () => new AuthenticationError("key exchange authentication failed"),
+    code: 77,
+    nextStep: undefined,
+    advisory: "do not retry. Both parties must re-invite",
+    absent: "Retry the exchange with the existing key file",
+  },
+  {
     failure: "a transport failure",
     raise: () =>
       new ConnectionError("the exchange directory went away", "transport"),
@@ -4265,13 +4273,14 @@ test.each([
     absent: "rotated token was not saved",
   },
 ])(
-  "runProtocol keeps the rotation-state advisory for $failure during the key exchange",
+  "runProtocol gives the key-exchange advisory the exit code allows for $failure",
   async ({ raise, code, nextStep, advisory, absent }) => {
     // The failure lands after authentication started and before this side
     // saved a rotated token, so the partner may hold one this side does not.
     // A fixed step beneath the error rules out a retry, so the advisory states
-    // the token state without prescribing one; without a fixed step it
-    // prescribes the retry.
+    // the token state without prescribing one. An authentication failure has
+    // no fixed step, and its advisory states the exit-77 step: no retry.
+    // Without a fixed step any other failure prescribes the retry.
     const keyFileA = path.join(tmpDir, "a.key");
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });

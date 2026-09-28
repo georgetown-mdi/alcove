@@ -30,6 +30,20 @@ function nameTooLongError(keyFilePath: string, name: string): UsageError {
 }
 
 /**
+ * Refuse a key path whose own lookup failed with an errno the later checks do
+ * not re-encounter, such as `EIO` from a network mount.
+ */
+function keyPathUncheckableError(
+  keyFilePath: string,
+  err: unknown,
+): UsageError {
+  const message = messageWithOperatorText`key file path ${operatorSuppliedText(
+    keyFilePath,
+  )} cannot be checked: ${err instanceof Error ? err.message : String(err)}. Make the path reachable (on a network mount, check the mount), or choose a key file path elsewhere, before running the exchange; ${FAILS_AFTER_KEY_EXCHANGE}.`;
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+/**
  * The mount points `/proc/self/mountinfo` lists: the fifth field of each line,
  * with the octal escapes the kernel writes for a space, tab, newline, or
  * backslash decoded.
@@ -84,6 +98,8 @@ function keyFileIsMountPoint(keyFilePath: string): boolean {
  *
  * - `keyFilePath` is missing or whitespace-only;
  * - the path already exists but is a directory or other non-regular node;
+ * - the path's own lookup fails with an errno the later checks do not
+ *   re-encounter (an `EIO`, for example);
  * - the path, or the temp name the write creates beside it, is too long;
  * - the parent exists but is not a directory, or cannot be created, written,
  *   or (on POSIX) read;
@@ -125,8 +141,8 @@ export function preflightKeyFilePath(
     // Fall through (leaving targetStat undefined) only for ENOENT, ENOTDIR,
     // EACCES, and ELOOP -- the codes the downstream parent/probe checks
     // re-encounter and re-classify with actionable guidance. Any other code
-    // (above all ENAMETOOLONG, which those checks do not reproduce) is
-    // rethrown, so pre-flight does not wrongly pass and leave saveKeyFile to
+    // (above all ENAMETOOLONG, which those checks do not reproduce) stops
+    // pre-flight here, so it does not wrongly pass and leave saveKeyFile to
     // fail post-handshake, after the secret has rotated.
     if (code === "ENAMETOOLONG") throw nameTooLongError(kfp, kfp);
     if (
@@ -135,7 +151,7 @@ export function preflightKeyFilePath(
       code !== "EACCES" &&
       code !== "ELOOP"
     )
-      throw err;
+      throw keyPathUncheckableError(kfp, err);
   }
   // The directory/special-node rejection runs outside the try because it
   // applies only when lstat SUCCEEDED and returned a stat (a non-file, non-
