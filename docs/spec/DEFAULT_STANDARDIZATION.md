@@ -620,8 +620,8 @@ promotion to a column literally named `id` or `identifier` if one is present,
 and to no column at all otherwise.
 
 A column that ends the second pass with no role is undeclared: the inferred
-metadata has no entry for it, so the run does not match on it, index by it, or
-send it. What a party sends is exactly what its metadata declares, and the
+metadata has no entry for it, so the run does not index by it or send it, and
+matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares, and the
 table's `identifier` row is the one inferred entry with `is_payload: true`. The
 run names its undeclared columns before it connects; the operator-facing
 detail is in [Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).

@@ -16,6 +16,7 @@ import {
   undeclaredColumnsForOwnResult,
 } from "../../src/exchange";
 import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
+import { resolveFieldColumns } from "../../src/standardization";
 import {
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -23,6 +24,8 @@ import {
 } from "../../src/utils/sanitizeForDisplay";
 
 import type { Metadata } from "../../src/config/metadata";
+import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
+import type { Standardization } from "../../src/config/standardizationSchema";
 
 const REMEDY = "To send one, declare it.";
 
@@ -228,6 +231,57 @@ describe("the undeclared-column list", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
     expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
       hasData: false,
+    });
+  });
+});
+
+describe("a standardization transform naming an undeclared column", () => {
+  const linkageTerms: LinkageTerms = {
+    version: "1.0.0",
+    identity: "alice",
+    date: "2026-01-01",
+    algorithm: "psi",
+    linkageStrategy: "cascade",
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "last_name", type: "last_name" },
+    ],
+    linkageKeys: [
+      {
+        name: "FN_LN",
+        elements: [{ field: "first_name" }, { field: "last_name" }],
+      },
+    ],
+  };
+  const columns = ["id", "first_name", "surname"];
+  const row = { id: "r1", first_name: "Ann", surname: "Lee" };
+  const standardization: Standardization = [
+    {
+      output: "last_name",
+      input: "surname",
+      steps: [{ function: "to_upper_case" }],
+    },
+  ];
+
+  test("matches on it as the transform states, and still never sends it", () => {
+    const prepared = prepareForExchange(
+      { linkageTerms, standardization },
+      "alice",
+      [row],
+      columns,
+    );
+    expect(prepared.undeclaredColumns).toEqual(["surname"]);
+    expect(
+      resolveFieldColumns(linkageTerms, standardization, prepared.metadata).get(
+        "last_name",
+      )?.column,
+    ).toBe("surname");
+    expect(prepared.dataset.getField("last_name")?.get(0)).toEqual(["LEE"]);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
+      hasData: true,
+      columns: ["id"],
     });
   });
 });

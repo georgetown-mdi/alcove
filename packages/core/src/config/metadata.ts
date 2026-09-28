@@ -500,8 +500,9 @@ export function inferMetadataForEveryColumn(
 
 /**
  * The input columns `metadata` does not name, in header order: the columns a
- * run neither matches on, indexes by, nor sends. Shown to the operator before
- * the run connects, so a column can be declared on purpose.
+ * run neither indexes by nor sends, and matches on only when a standardization
+ * transform names one as its input. Shown to the operator before the run
+ * connects, so a column can be declared on purpose.
  */
 export function undeclaredColumnNames(
   columnNames: ReadonlyArray<string>,

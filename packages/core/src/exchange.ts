@@ -226,7 +226,8 @@ export interface PreparedExchange {
   signing?: SigningConfig;
   /**
    * The input columns the metadata does not declare, in header order: none
-   * of them is matched on, indexes a record, or is sent
+   * of them indexes a record or is sent, and one is matched on only when a
+   * standardization transform names it as its input
    * ({@link undeclaredColumnNames}). Set by {@link prepareForExchange} for a
    * front end to show before the run connects
    * (`describeUndeclaredColumns`), and written into this party's own result
