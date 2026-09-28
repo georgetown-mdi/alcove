@@ -1,0 +1,67 @@
+# Decides whether a pull request touches a workflow's path scope, for a
+# workflow that is a required status check and so cannot carry a `paths:`
+# filter: a filtered-out run never reports, and the required check waits on it
+# forever. The workflow instead always runs, and gates its real jobs on this
+# action's `run` output while its terminal job reports success on a skip.
+#
+# Each `paths` line is a glob matched as a git `:(glob)` pathspec against the
+# files the pull request changes since its merge base; a line starting with `!`
+# is an exclusion and removes its matches from the whole list. Off a pull
+# request (a deploy's workflow_call) there is no base to diff against, and the
+# answer is always to run. A failed diff also answers to run, so a detection
+# failure costs a full run rather than a skipped gate.
+#
+# The caller checks out with `fetch-depth: 0`, so the merge base is reachable.
+name: "Path scope"
+description: "Decide whether a pull request changes a file in the given scope"
+
+inputs:
+  paths:
+    description: >-
+      Newline-separated globs; a line starting with `!` excludes its matches.
+    required: true
+
+outputs:
+  run:
+    description: '"true" when the scope changed or cannot be ruled out, else "false".'
+    value: ${{ steps.scope.outputs.run }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Match the changed files against the scope
+      id: scope
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        SCOPE_PATHS: ${{ inputs.paths }}
+      run: |
+        if [ "$EVENT_NAME" != pull_request ]; then
+          echo "not a pull request ($EVENT_NAME); running the full workflow"
+          echo "run=true" >>"$GITHUB_OUTPUT"
+          exit 0
+        fi
+        pathspecs=()
+        while IFS= read -r entry; do
+          entry="${entry#"${entry%%[![:space:]]*}"}"
+          entry="${entry%"${entry##*[![:space:]]}"}"
+          case "$entry" in
+            "") ;;
+            "!"*) pathspecs+=(":(exclude,glob)${entry#!}") ;;
+            *) pathspecs+=(":(glob)$entry") ;;
+          esac
+        done <<<"$SCOPE_PATHS"
+        if [ "${#pathspecs[@]}" -eq 0 ]; then
+          echo "the paths input names no glob" >&2
+          exit 1
+        fi
+        changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" -- "${pathspecs[@]}" || echo DIFF_FAILED)
+        if [ -n "$changed" ]; then
+          printf 'running the full workflow (in-scope change or detection failure):\n%s\n' "$changed"
+          echo "run=true" >>"$GITHUB_OUTPUT"
+        else
+          echo "no in-scope change; the real jobs are skipped and the gate passes"
+          echo "run=false" >>"$GITHUB_OUTPUT"
+        fi

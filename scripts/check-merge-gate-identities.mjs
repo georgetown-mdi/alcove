@@ -5,7 +5,8 @@
 // which GitHub matches against the check runs a pull request produces. Three
 // ordinary edits break that match with nothing red to show for it, leaving the
 // requirement pending forever and every pull request unmergeable until branch
-// protection is edited:
+// protection is edited (A-C), and one ruleset setting decides whether a green
+// check says anything about the branch as it will merge (D):
 //
 //   A. Renaming a job whose `name:` is a required context. The check run the
 //      ruleset waits for is never created under that name again.
@@ -15,8 +16,11 @@
 //   C. Requiring a context whose job a workflow outside GATING_WORKFLOWS
 //      declares. Rule 2 reads only the files that list names, so hazard B is
 //      unwatched on the workflow the requirement just added to the merge gate.
+//   D. Turning off "require branches to be up to date" on staging. A pull
+//      request green against an older staging tip then merges untested against
+//      the current one.
 //
-// Three rules, one per hazard:
+// Four rules, one per hazard:
 //
 //   1. Every required status-check context on main and staging matches a job
 //      name under .github/workflows. Reading the rules needs a token, so this
@@ -30,6 +34,9 @@
 //      GATING_WORKFLOWS, so rule 2's scope is the merge gate's own rather than
 //      a hand-held list nothing measures against it. It reads the branch rules
 //      rule 1 reads, and states the same skip when they cannot be read.
+//   4. Each branch in UP_TO_DATE_BRANCHES has a required status checks rule
+//      with strict_required_status_checks_policy on. It reads the same branch
+//      rules and states the same skip.
 //
 // The rules are read per protected branch rather than per ruleset name, so
 // renaming a ruleset does not drop coverage, and the branch endpoint reports
@@ -78,11 +85,19 @@ export const PROTECTED_BRANCHES = ["main", "staging"];
  * rule 3 fails until it is added, on any run that can read the branch rules.
  */
 export const GATING_WORKFLOWS = [
+  `${WORKFLOW_DIR}/cli_build_and_test.yaml`,
   `${WORKFLOW_DIR}/codeql.yaml`,
   `${WORKFLOW_DIR}/dependency_review.yaml`,
+  `${WORKFLOW_DIR}/eb_build_and_test.yaml`,
   `${WORKFLOW_DIR}/native_alpine.yaml`,
   `${WORKFLOW_DIR}/static_checks.yaml`,
 ];
+
+/**
+ * The branches that merge only a pull request up to date with their tip. The
+ * setting is the repository owner's to change, in the branch's ruleset.
+ */
+export const UP_TO_DATE_BRANCHES = ["staging"];
 
 /**
  * The GitHub Actions app. A required context attributed to any other app is
@@ -348,6 +363,30 @@ export function pathFilterViolations(root, files = GATING_WORKFLOWS) {
 }
 
 /**
+ * Every branch in `branches` whose rules do not require a pull request to be up
+ * to date with it before merging, as message strings. `rulesByBranch` maps a
+ * branch to the rule documents GitHub reports for it.
+ */
+export function upToDateViolations(
+  rulesByBranch,
+  branches = UP_TO_DATE_BRANCHES,
+) {
+  return branches
+    .filter(
+      (branch) =>
+        !(rulesByBranch[branch] ?? []).some(
+          (rule) =>
+            rule?.type === "required_status_checks" &&
+            rule?.parameters?.strict_required_status_checks_policy === true,
+        ),
+    )
+    .map(
+      (branch) =>
+        `${branch}: the branch rules do not require a pull request to be up to date before merging (strict_required_status_checks_policy is not true on any required status checks rule), so a pull request green against an older ${branch} tip merges untested against the current one. The repository owner turns on "Require branches to be up to date before merging" under the required status checks rule of the ${branch} ruleset.`,
+    );
+}
+
+/**
  * Every required context declared by a workflow rule 2 does not hold
  * filter-free, as message strings naming the files to list. Empty means every
  * workflow that can raise one of those check runs is in `files`, so rule 2
@@ -379,7 +418,8 @@ export function declaringWorkflowViolations(
 }
 
 /**
- * The merged required contexts of every protected branch, or a `skipped` reason
+ * The merged required contexts of every protected branch with the rule
+ * documents each branch reported (`rulesByBranch`), or a `skipped` reason
  * naming why they could not be read. The token is whatever the environment
  * offers; the repository is `GITHUB_REPOSITORY` under Actions and the origin
  * remote otherwise.
@@ -393,6 +433,7 @@ export async function readRequiredContexts({
   if (!token) {
     return {
       merged: null,
+      rulesByBranch: null,
       skipped:
         "neither GH_TOKEN nor GITHUB_TOKEN is set, and reading a branch's rules needs a token with repository metadata read",
     };
@@ -401,11 +442,13 @@ export async function readRequiredContexts({
   if (!slug) {
     return {
       merged: null,
+      rulesByBranch: null,
       skipped:
         "no repository to read: GITHUB_REPOSITORY is unset and the origin remote names no github.com repository",
     };
   }
   const contexts = [];
+  const rulesByBranch = {};
   for (const branch of PROTECTED_BRANCHES) {
     const { rules, reason } = await fetchBranchRules({
       slug,
@@ -413,10 +456,12 @@ export async function readRequiredContexts({
       token,
       fetchImpl,
     });
-    if (rules === null) return { merged: null, skipped: reason };
+    if (rules === null)
+      return { merged: null, rulesByBranch: null, skipped: reason };
+    rulesByBranch[branch] = rules;
     contexts.push(...branchRequiredContexts(branch, rules));
   }
-  return { merged: mergeContexts(contexts), skipped: null };
+  return { merged: mergeContexts(contexts), rulesByBranch, skipped: null };
 }
 
 // CLI entry: only runs when invoked directly, so the test can import the pure
@@ -433,9 +478,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   // Stated before the rules are judged, so the skip is on the record even when
   // the path-filter rule that still ran goes on to fail.
-  const { merged, skipped } = await readRequiredContexts({ cwd: root });
+  const { merged, rulesByBranch, skipped } = await readRequiredContexts({
+    cwd: root,
+  });
   if (skipped !== null) {
-    const stated = `Merge gate identities: the required-context rule and the declaring-workflow rule were SKIPPED -- ${skipped}. Both read the branch rules. The pull_request path-filter rule still ran.`;
+    const stated = `Merge gate identities: the required-context rule, the declaring-workflow rule, and the up-to-date rule were SKIPPED -- ${skipped}. All three read the branch rules. The pull_request path-filter rule still ran.`;
     if (process.env.GITHUB_ACTIONS === "true") {
       console.log(`::warning title=Merge gate identities::${stated}`);
     }
@@ -448,6 +495,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       : [
           ...contextViolations(merged, index),
           ...declaringWorkflowViolations(merged, index),
+          ...upToDateViolations(rulesByBranch),
         ];
   violations.push(...pathFilterViolations(root));
   if (violations.length > 0) {
@@ -472,7 +520,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
             ),
           )}.`;
     console.log(
-      `Merge gate identities check passed: ${plural(merged.length - foreign.length, "required context")} across ${list(PROTECTED_BRANCHES)} match a job name under ${WORKFLOW_DIR}, every workflow declaring one of those jobs is named in GATING_WORKFLOWS, and ${list(GATING_WORKFLOWS)} declare no pull_request path filter.${raisedElsewhere}`,
+      `Merge gate identities check passed: ${plural(merged.length - foreign.length, "required context")} across ${list(PROTECTED_BRANCHES)} match a job name under ${WORKFLOW_DIR}, every workflow declaring one of those jobs is named in GATING_WORKFLOWS, ${list(UP_TO_DATE_BRANCHES)} merge only an up-to-date pull request, and ${list(GATING_WORKFLOWS)} declare no pull_request path filter.${raisedElsewhere}`,
     );
   }
 }

@@ -19,12 +19,22 @@ import {
   trackedFiles,
   unreachedRoots,
 } from "./check-deploy-trigger-graph.mjs";
-import { parseWorkflow, workflowDocument } from "./lib/workflows.mjs";
+import {
+  PATH_SCOPE_ACTION,
+  parseWorkflow,
+  pathScope,
+  readWorkflows,
+  usesNodes,
+  workflowDocument,
+} from "./lib/workflows.mjs";
 import { readFileSync } from "node:fs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const readRepo = (path) => readFileSync(resolve(repoRoot, path), "utf8");
+const GATE_WORKFLOW = ".github/workflows/eb_build_and_test.yaml";
+const gateScope = () =>
+  pathScope(workflowDocument(repoRoot, GATE_WORKFLOW), GATE_WORKFLOW);
 
 const scratchDirs = [];
 function scratchRepo() {
@@ -102,11 +112,42 @@ describe("compiling a path filter", () => {
     expect(filter.matches("packages/core/README.md")).toBe(false);
   });
 
-  it("compiles every pattern eb_build_and_test.yaml's pull_request filter declares", () => {
-    const filter = compileFilter(
-      workflowDocument(repoRoot, ".github/workflows/eb_build_and_test.yaml").on
-        .pull_request.paths,
+  // The path-scope action gates with git pathspecs, where an exclusion wins
+  // wherever it sits; compileFilter applies GitHub's last-match-wins order. The
+  // two agree on a list only while no include follows an exclusion.
+  const scopedWorkflows = readWorkflows(repoRoot)
+    .map(({ path, source }) => ({
+      path,
+      document: parseWorkflow(path, source),
+    }))
+    .filter(({ document }) =>
+      usesNodes(document).some((node) => node.uses === PATH_SCOPE_ACTION),
+    )
+    .map(({ path, document }) => [path, pathScope(document, path)]);
+
+  it("finds the workflows that call the path-scope action", () => {
+    expect(scopedWorkflows.map(([path]) => path)).toContain(
+      ".github/workflows/eb_build_and_test.yaml",
     );
+  });
+
+  it.each(scopedWorkflows)(
+    "lists no include after an exclusion in %s's path scope",
+    (path, patterns) => {
+      const firstExclusion = patterns.findIndex((p) => p.startsWith("!"));
+      const lateIncludes =
+        firstExclusion === -1
+          ? []
+          : patterns.slice(firstExclusion).filter((p) => !p.startsWith("!"));
+      expect(
+        lateIncludes,
+        `${path} lists ${lateIncludes.join(", ")} after a "!" exclusion. The path-scope action matches with git pathspecs, where an exclusion removes its matches wherever it is listed, while compileFilter lets a later include re-add them, so the deploy-trigger check would judge a scope the gate does not apply. Move every "!" line after the includes.`,
+      ).toEqual([]);
+    },
+  );
+
+  it("compiles every pattern eb_build_and_test.yaml's path scope declares", () => {
+    const filter = compileFilter(gateScope());
     expect(filter.patterns.length).toBeGreaterThan(0);
   });
 
@@ -121,16 +162,13 @@ describe("compiling a path filter", () => {
 });
 
 describe("holding the markdown negation against what the gate reads", () => {
-  // eb_build_and_test.yaml's pull_request filter negates markdown under each
+  // eb_build_and_test.yaml's path scope negates markdown under each
   // positive prefix on the claim that no suite this gate runs reads one as a
   // fixture or input. This is that claim as a check: no tracked non-markdown
   // file under a tree the gate builds or tests may name a negated markdown
   // path, so a PR adding such a read and editing only the markdown file could
   // no longer skip the gate silently.
-  const gateFilterPaths = workflowDocument(
-    repoRoot,
-    ".github/workflows/eb_build_and_test.yaml",
-  ).on.pull_request.paths;
+  const gateFilterPaths = gateScope();
 
   const negatedMarkdownPrefixes = gateFilterPaths
     .map((pattern) => /^!(.+)\/\*\*\/\*\.md$/.exec(pattern)?.[1])
@@ -409,11 +447,7 @@ describe("wiring", () => {
   // The check reads the deploy filter, so a pull request editing only that file
   // has to reach the workflow that runs the check.
   it("triggers that workflow on a change to the deploy filter itself", () => {
-    const workflow = workflowDocument(
-      repoRoot,
-      ".github/workflows/eb_build_and_test.yaml",
-    );
-    const filter = compileFilter(workflow.on.pull_request.paths);
+    const filter = compileFilter(gateScope());
     expect(filter.matches(DEPLOY_WORKFLOW)).toBe(true);
   });
 });

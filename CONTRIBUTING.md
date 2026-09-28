@@ -192,7 +192,7 @@ npm run check:all            # the repo-wide guards, driven from one list
 npm run check:all -- --list  # what each holds, and what it does not run
 ```
 
-`check:all` drives its checks from one list in [`scripts/run-checks.mjs`](scripts/run-checks.mjs), which also states which checks it does not run and why -- the production dependency audit needs the npm registry, the deploy-trigger graph check needs a full web build that `eb_build_and_test.yaml` already runs path-filtered, and the rest need a token, a release tag, CI's own install, or minutes the merge path does not have. It runs past a failing check, so one red result does not hide the rest.
+`check:all` drives its checks from one list in [`scripts/run-checks.mjs`](scripts/run-checks.mjs), which also states which checks it does not run and why -- the production dependency audit needs the npm registry, the deploy-trigger graph check needs a full web build that `eb_build_and_test.yaml` already runs on the pull requests that can move its result, and the rest need a token, a release tag, CI's own install, or minutes the merge path does not have. It runs past a failing check, so one red result does not hide the rest.
 
 Every entry on that list and every hook `.claude/settings.json` registers states an expiry date, which `npm run check:expiry-dates` holds: a proposal for a new check or hook states its date, and the review at each retro of the entries coming due -- renew each with a new date or delete it -- is in the header of [`scripts/check-expiry-dates.mjs`](scripts/check-expiry-dates.mjs).
 
@@ -252,7 +252,7 @@ Documentation-tier placement is in scope for code review: a reviewer flags spec-
 3. Ensure typecheck, lint, format, and the relevant tests pass before marking the PR ready for review (CI enforces all four). Record what you ran and the coverage you added in the PR's Test plan, and resolve every line of the template Checklist.
 4. Changes within the security-review scope -- cryptographic code, the channel-security controls, credential or disclosure surfaces, or a security-relevant dependency -- require explicit security review before merging (see [Dependency Policy](#dependency-policy) for the full enumeration).
 5. Update documentation when behavior changes - see [Documentation](#documentation) for which tier. Add a `CHANGELOG.md` entry when the change is visible to an operator or a reviewer - see [Changelog](#changelog).
-6. A maintainer will review and squash-merge. Force-pushes to `main` are not permitted.
+6. A maintainer will review and squash-merge. `staging` merges only a pull request that is up to date with its tip and green on every required check, so a pull request behind `staging` is updated and its checks re-run first. [`scripts/check-merge-gate-identities.mjs`](scripts/check-merge-gate-identities.mjs) holds both halves against the live `staging` ruleset: it fails when the ruleset stops requiring an up-to-date branch, and it lists the workflows holding the required checks in `GATING_WORKFLOWS`. Force-pushes to `main` are not permitted.
 
 ### Pull Request Description
 

@@ -145,7 +145,7 @@ export const CHECKS = [
     script: "check:merge-gate-identities",
     expiresOn: "2026-12-31",
     description:
-      "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, and every workflow declaring a required job is on the list held filter-free. The branch-rule half needs a token and states a skip without one.",
+      "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, every workflow declaring a required job is on the list held filter-free, and staging requires a pull request to be up to date before merging. The branch-rule half needs a token and states a skip without one.",
   },
   {
     script: "check:dependabot-ignore-shape",
@@ -314,7 +314,7 @@ export const OUT_OF_CHECK_ALL = [
     script: "check:deploy-trigger-graph",
     expiresOn: "2026-12-31",
     reason:
-      "Reads the deployed import graph out of a full apps/web production build, minutes the merge path does not have. Run by eb_build_and_test.yaml, path-filtered to the changes that can move that graph.",
+      "Reads the deployed import graph out of a full apps/web production build, minutes the merge path does not have. Run by eb_build_and_test.yaml, on the pull requests its path scope names as able to move that graph.",
   },
   {
     script: "test:mutation",

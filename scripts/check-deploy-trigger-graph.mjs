@@ -37,10 +37,10 @@
 //     language; modelling it here would be predicting a tool's parser rather
 //     than driving it. compileFilter reads a literal path, `prefix/**`, and the
 //     negated `!prefix/**/*.ext` markdown-exclusion shape eb_build_and_test.yaml
-//     also carries on its pull_request filter -- and THROWS on anything else, so
-//     a pattern it cannot model fails the check rather than being silently over-
+//     also carries in its path scope -- and THROWS on anything else, so a
+//     pattern it cannot model fails the check rather than being silently over-
 //     or under-matched. Adding another glob or negated pattern to either
-//     workflow's filter means teaching this check the shape, or the check stops
+//     workflow's list means teaching this check the shape, or the check stops
 //     the change.
 //   - The reverse direction. A filter entry that matches nothing in the graph is
 //     not a finding: the filter legitimately covers files no module graph reads
@@ -153,16 +153,16 @@ export function readTriggerPaths(workflow) {
 }
 
 /**
- * Compile a path filter (a deploy filter, or a pull_request filter carrying the
- * same shapes) into `{ patterns, matches }`.
+ * Compile a path filter (a deploy filter, or a pull-request path scope
+ * carrying the same shapes) into `{ patterns, matches }`.
  *
  * Three shapes are read: a literal path matches itself, `prefix/**` matches any
  * path under `prefix/`, and `!prefix/**\/*.ext` negates every path under
  * `prefix/` ending in `.ext`. Every other pattern THROWS, naming itself -- see
  * the header on why this check does not implement the rest of the glob
- * language. `matches` applies GitHub's own evaluation order: for a given file,
- * the last pattern that matches it decides whether that file is included, so a
- * negated pattern only narrows a positive one earlier in the list.
+ * language. `matches` models GitHub's `paths:` order, where the last matching
+ * pattern decides; a path scope is gated by git pathspecs, where an exclusion
+ * always wins. A test holds every `!` after the includes, where the two agree.
  */
 export function compileFilter(patterns) {
   const matchers = patterns.map((pattern) => {
