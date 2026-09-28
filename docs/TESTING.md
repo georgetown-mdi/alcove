@@ -428,7 +428,7 @@ and inviter spec assembly, and its browser WASM PSI engine.
 
 It runs on both `cli_build_and_test.yaml` and `eb_build_and_test.yaml`. That is
 by design rather than redundant: the drift it exists to catch can land on
-either runtime, and each workflow's path filter sees only its own.
+either runtime, and each workflow's path scope sees only its own.
 
 ## Live WebRTC leg
 

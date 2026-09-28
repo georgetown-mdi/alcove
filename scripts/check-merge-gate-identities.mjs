@@ -78,8 +78,10 @@ export const PROTECTED_BRANCHES = ["main", "staging"];
  * rule 3 fails until it is added, on any run that can read the branch rules.
  */
 export const GATING_WORKFLOWS = [
+  `${WORKFLOW_DIR}/cli_build_and_test.yaml`,
   `${WORKFLOW_DIR}/codeql.yaml`,
   `${WORKFLOW_DIR}/dependency_review.yaml`,
+  `${WORKFLOW_DIR}/eb_build_and_test.yaml`,
   `${WORKFLOW_DIR}/native_alpine.yaml`,
   `${WORKFLOW_DIR}/static_checks.yaml`,
 ];

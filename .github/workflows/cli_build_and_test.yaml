@@ -2,35 +2,22 @@ name: CLI Build and Test
 
 # Pull-request gate for the CLI (apps/cli), kept separate from
 # eb_build_and_test.yaml -- which builds and tests only the web app for its
-# Elastic Beanstalk deploy. This is the merge-time gate that catches a
-# dependency bump breaking the ssh2 SFTPWrapper coupling the SFTP adapter
-# relies on (see docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack"); the same
+# Elastic Beanstalk deploy. It catches a dependency bump breaking the ssh2
+# SFTPWrapper coupling the SFTP adapter relies on (see
+# docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack"); the same
 # integration suite also runs in release.yaml as the ship gate before publish.
 #
-# Scoped by path to CLI-affecting changes. If the terminal `Test` job is made a
-# required status check, configure branch protection so a path-skipped run does
-# not block an unrelated PR -- a skipped required check otherwise stays pending.
+# The terminal `CLI Build and Test` job is a required status check on main and
+# staging, so the workflow runs on EVERY pull request: a `paths:`-filtered
+# required check leaves an unrelated pull request waiting on it forever. The
+# `scope` job decides from the changed files whether the suites run, and on a
+# pull request touching none of the CLI's inputs the terminal job passes
+# without them. The merge-gate identities check, run by static_checks.yaml,
+# fails this file carrying a path filter under on.pull_request.
 
 on:
   pull_request:
     branches: [main, staging]
-    paths:
-      - "apps/cli/**"
-      - "packages/core/**"
-      - "lib/**"
-      # The CLI's WebRTC signaling suite drives the PeerJS broker as a spawned
-      # process (apps/cli/test/signaling/brokerProcess.ts), so a change to the
-      # broker workspace or to the standalone entry point it spawns must re-run
-      # this gate.
-      - "packages/peerjs-broker/**"
-      # The CLI's unit suite is driven by fixtures this workspace holds
-      # (docs/TESTING.md, Shared test material), so a change confined to them
-      # weakens this gate's own assertions unless it re-runs the gate.
-      - "packages/testkit/**"
-      - "package-lock.json"
-      - "tsconfig.base.json"
-      - ".github/actions/setup/**"
-      - ".github/workflows/cli_build_and_test.yaml"
 
 # Cancel a superseded run when a newer commit lands on the same PR/branch.
 concurrency:
@@ -42,6 +29,37 @@ permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Decide whether the CLI suites run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history so the diff can reach the pull request's merge base.
+          fetch-depth: 0
+      - id: scope
+        uses: ./.github/actions/path-scope
+        with:
+          # The CLI's WebRTC signaling suite drives the PeerJS broker as a
+          # spawned process (apps/cli/test/signaling/brokerProcess.ts), so the
+          # broker workspace is in scope. The CLI's unit suite is driven by
+          # fixtures packages/testkit holds (docs/TESTING.md, Shared test
+          # material), so a change confined to them re-runs the suites too.
+          paths: |
+            apps/cli/**
+            packages/core/**
+            lib/**
+            packages/peerjs-broker/**
+            packages/testkit/**
+            package-lock.json
+            tsconfig.base.json
+            .github/actions/setup/**
+            .github/actions/path-scope/**
+            .github/workflows/cli_build_and_test.yaml
+
   # The six suites this gate runs share no mutable state, so they run as
   # parallel legs of one matrix rather than as serial steps of one job, and the
   # gate's wall time is its slowest suite rather than their sum. Each leg is a
@@ -59,6 +77,8 @@ jobs:
   # check to name, since each leg's own check-run name carries its leg values.
   suite:
     name: Test (${{ matrix.suite }})
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -103,7 +123,7 @@ jobs:
           # from the web app's own exchange modules over one file-drop
           # directory. It is a web-workspace script because only that workspace
           # may import apps/web/src, but the drift it catches lands as readily
-          # on this side of the wire, so it runs on this workflow's path filter
+          # on this side of the wire, so it runs on this workflow's path scope
           # as well as on the web app's own
           # (.github/workflows/eb_build_and_test.yaml). It stands up no server
           # and no browser, and it spawns the CLI from apps/cli/dist
@@ -155,18 +175,27 @@ jobs:
   # leg above. `if: always()` is what makes it usable as one: without it a failed
   # leg leaves this job skipped, and a skipped required check stays pending
   # rather than red, so the pull request would be unmergeable with nothing red
-  # to show for it.
+  # to show for it. The name is unique across the workflow tree, so the
+  # required context matches this job alone.
   test:
-    name: Test
+    name: CLI Build and Test
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: suite
+    needs: [scope, suite]
     if: always()
     steps:
       - name: Report the suite results
         env:
+          SCOPE: ${{ needs.scope.result }}
+          RUN: ${{ needs.scope.outputs.run }}
           RESULT: ${{ needs.suite.result }}
         run: |
+          echo "scope: $SCOPE (run=$RUN)"
+          test "$SCOPE" = success
+          if [ "$RUN" = false ]; then
+            echo "no CLI-affecting change; passing without the suites"
+            exit 0
+          fi
           echo "suite legs: $RESULT"
           test "$RESULT" = success
 
@@ -182,6 +211,8 @@ jobs:
   # independent legs.
   hardened-native:
     name: Hardened native sshd (${{ matrix.profile }})
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -215,9 +246,12 @@ jobs:
   # configure branch protection so the skipped fork-PR run does not block the PR.
   chroot-native:
     name: Hardened native sshd (chroot)
+    needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      needs.scope.outputs.run == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -252,7 +286,10 @@ jobs:
     # Rewrites the runner's smb.conf, adds an account, restarts smbd, and
     # kernel-mounts CIFS under passwordless sudo -- the same class of host
     # control as chroot-native, so like it, not exposed to fork PRs.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: scope
+    if: >-
+      needs.scope.outputs.run == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     env:
       SMB_TEST_USER: runner
       SMB_TEST_PASSWORD: alcove-ci-throwaway

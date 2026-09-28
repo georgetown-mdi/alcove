@@ -19,12 +19,19 @@ import {
   trackedFiles,
   unreachedRoots,
 } from "./check-deploy-trigger-graph.mjs";
-import { parseWorkflow, workflowDocument } from "./lib/workflows.mjs";
+import {
+  parseWorkflow,
+  pathScope,
+  workflowDocument,
+} from "./lib/workflows.mjs";
 import { readFileSync } from "node:fs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const readRepo = (path) => readFileSync(resolve(repoRoot, path), "utf8");
+const GATE_WORKFLOW = ".github/workflows/eb_build_and_test.yaml";
+const gateScope = () =>
+  pathScope(workflowDocument(repoRoot, GATE_WORKFLOW), GATE_WORKFLOW);
 
 const scratchDirs = [];
 function scratchRepo() {
@@ -102,11 +109,8 @@ describe("compiling a path filter", () => {
     expect(filter.matches("packages/core/README.md")).toBe(false);
   });
 
-  it("compiles every pattern eb_build_and_test.yaml's pull_request filter declares", () => {
-    const filter = compileFilter(
-      workflowDocument(repoRoot, ".github/workflows/eb_build_and_test.yaml").on
-        .pull_request.paths,
-    );
+  it("compiles every pattern eb_build_and_test.yaml's path scope declares", () => {
+    const filter = compileFilter(gateScope());
     expect(filter.patterns.length).toBeGreaterThan(0);
   });
 
@@ -121,16 +125,13 @@ describe("compiling a path filter", () => {
 });
 
 describe("holding the markdown negation against what the gate reads", () => {
-  // eb_build_and_test.yaml's pull_request filter negates markdown under each
+  // eb_build_and_test.yaml's path scope negates markdown under each
   // positive prefix on the claim that no suite this gate runs reads one as a
   // fixture or input. This is that claim as a check: no tracked non-markdown
   // file under a tree the gate builds or tests may name a negated markdown
   // path, so a PR adding such a read and editing only the markdown file could
   // no longer skip the gate silently.
-  const gateFilterPaths = workflowDocument(
-    repoRoot,
-    ".github/workflows/eb_build_and_test.yaml",
-  ).on.pull_request.paths;
+  const gateFilterPaths = gateScope();
 
   const negatedMarkdownPrefixes = gateFilterPaths
     .map((pattern) => /^!(.+)\/\*\*\/\*\.md$/.exec(pattern)?.[1])
@@ -409,11 +410,7 @@ describe("wiring", () => {
   // The check reads the deploy filter, so a pull request editing only that file
   // has to reach the workflow that runs the check.
   it("triggers that workflow on a change to the deploy filter itself", () => {
-    const workflow = workflowDocument(
-      repoRoot,
-      ".github/workflows/eb_build_and_test.yaml",
-    );
-    const filter = compileFilter(workflow.on.pull_request.paths);
+    const filter = compileFilter(gateScope());
     expect(filter.matches(DEPLOY_WORKFLOW)).toBe(true);
   });
 });

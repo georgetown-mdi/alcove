@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
+import { WORKFLOW_DIR, pathScope, workflowDocument } from "./lib/workflows.mjs";
 
 // Drift guard for the two web/core path filters. The pull-request gate
 // (eb_build_and_test.yaml) globs each guarded root -- apps/web/**,
@@ -184,7 +184,10 @@ describe("ci path-filter drift guard (live workflows)", () => {
   });
 
   it("the PR gate globs each guarded root so test-only changes still run the suite", () => {
-    const prEntries = workflowPaths(PR_WORKFLOW, "pull_request");
+    const prEntries = pathScope(
+      workflowDocument(repoRoot, PR_WORKFLOW),
+      PR_WORKFLOW,
+    );
     for (const root of GUARDED_ROOTS) {
       expect(prEntries).toContain(`${root}/**`);
     }

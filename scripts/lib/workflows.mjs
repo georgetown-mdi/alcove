@@ -202,3 +202,28 @@ export function treeReferences(root) {
     actionReferences: referencesIn(compositeFiles(root)),
   };
 }
+
+/** The composite action a required workflow decides its path scope with. */
+export const PATH_SCOPE_ACTION = `./${ACTION_DIR}/path-scope`;
+
+/**
+ * The globs a parsed workflow hands the path-scope action, one entry per
+ * non-blank line in file order, `!` exclusions included. Throws unless the
+ * workflow calls the action exactly once with a `paths` input, so a reader
+ * cannot take an empty scope for a real one.
+ */
+export function pathScope(document, path) {
+  const calls = usesNodes(document).filter(
+    (node) => node.uses === PATH_SCOPE_ACTION,
+  );
+  const paths = calls.length === 1 ? calls[0].inputs?.paths : undefined;
+  if (typeof paths !== "string") {
+    throw new Error(
+      `${path}: expected one ${PATH_SCOPE_ACTION} step with a paths input, found ${calls.length} call(s)`,
+    );
+  }
+  return paths
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+}

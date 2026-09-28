@@ -314,7 +314,7 @@ export const OUT_OF_CHECK_ALL = [
     script: "check:deploy-trigger-graph",
     expiresOn: "2026-12-31",
     reason:
-      "Reads the deployed import graph out of a full apps/web production build, minutes the merge path does not have. Run by eb_build_and_test.yaml, path-filtered to the changes that can move that graph.",
+      "Reads the deployed import graph out of a full apps/web production build, minutes the merge path does not have. Run by eb_build_and_test.yaml, on the pull requests its path scope names as able to move that graph.",
   },
   {
     script: "test:mutation",

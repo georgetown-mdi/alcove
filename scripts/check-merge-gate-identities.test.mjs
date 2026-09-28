@@ -741,11 +741,23 @@ describe("the stated skip", () => {
 describe("the real repository tree", () => {
   it("names each workflow declaring a job the merge gate requires", () => {
     expect(GATING_WORKFLOWS).toEqual([
+      ".github/workflows/cli_build_and_test.yaml",
       ".github/workflows/codeql.yaml",
       ".github/workflows/dependency_review.yaml",
+      ".github/workflows/eb_build_and_test.yaml",
       ".github/workflows/native_alpine.yaml",
       ".github/workflows/static_checks.yaml",
     ]);
+  });
+
+  // Each build-and-test workflow's terminal job is the one context the merge
+  // gate requires from it, so no other workflow may declare that name: rule 3
+  // would hold the requirement to the second declarer as well.
+  it.each([
+    ["CLI Build and Test", ".github/workflows/cli_build_and_test.yaml"],
+    ["Web Build and Test", ".github/workflows/eb_build_and_test.yaml"],
+  ])("declares the %s job in %s alone", (name, file) => {
+    expect(workflowJobIndex(repoRoot).literal.get(name)).toEqual([file]);
   });
 
   it("has job names to match against, and no filter on the gating workflows", () => {
@@ -769,7 +781,7 @@ describe("the real repository tree", () => {
     );
     expect(output).toContain("neither GH_TOKEN nor GITHUB_TOKEN is set");
     expect(output).toContain(
-      "Path-filter rule passed: .github/workflows/codeql.yaml, .github/workflows/dependency_review.yaml, .github/workflows/native_alpine.yaml, .github/workflows/static_checks.yaml",
+      "Path-filter rule passed: .github/workflows/cli_build_and_test.yaml, .github/workflows/codeql.yaml, .github/workflows/dependency_review.yaml, .github/workflows/eb_build_and_test.yaml, .github/workflows/native_alpine.yaml, .github/workflows/static_checks.yaml",
     );
     expect(output).not.toContain("Merge gate identities check passed");
   });

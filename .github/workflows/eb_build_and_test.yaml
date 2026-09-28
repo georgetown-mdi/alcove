@@ -3,58 +3,20 @@ name: Build and Test for Elastic Beanstalk
 # Yoinked from here:
 # https://blog.danskingdom.com/Multiple-ways-to-setup-your-CI-CD-pipelines-in-GitHub-Actions/#approach-5-deploy-workflow-includes-build-workflow-and-uses-template-for-deployments-include-approach-with-reusable-workflows
 
+# The terminal `Web Build and Test` job is a required status check on main and
+# staging, so the pull_request trigger carries no `paths:` filter: a filtered
+# required check leaves an unrelated pull request waiting on it forever. The
+# `scope` job decides from the changed files whether the real jobs run, and on
+# a pull request touching none of the web app's inputs the terminal job passes
+# without them. The merge-gate identities check, run by static_checks.yaml,
+# fails this file carrying a path filter under on.pull_request.
 on:
-  # PR validation only, scoped by path to web/core-affecting changes. Deploys
-  # build through eb_deploy.yaml's workflow_call, so there is no standalone push
-  # trigger here -- it would double-run with the pull_request event on a feature
-  # branch that already has an open PR. If the terminal `build-and-test` job
-  # becomes a required status check, configure branch protection so a
-  # path-skipped run does not block an unrelated PR -- a skipped required check
-  # otherwise stays pending.
-  #
-  # Note: this PR filter diverges from the push filter in eb_deploy.yaml on test
-  # sources -- it uses the broad apps/web/** and packages/core/** globs so a
-  # test-only PR (deleting or weakening assertions, or changing vitest config)
-  # still runs the full suite, including the core tests this gate runs on its
-  # `core` leg. The deploy filter stays scoped to deploy-affecting sources only
-  # and omits the test/** trees. The two filters cannot share a single list
-  # because of this intentional difference.
-  # packages/core/** matches the sibling cli_build_and_test.yaml, and
-  # packages/peerjs-broker/** is here because the web app consumes the signaling
-  # broker from that workspace and bundles it into the deployed server.
-  # packages/testkit/** is here for the same reason the test trees are: the web
-  # unit suite is driven by fixtures that workspace holds, so a change confined
-  # to them would otherwise weaken this gate without re-running it.
-  #
-  # The negated entries below exclude markdown under the directory globs above.
-  # The claim that no suite this gate runs reads one as a fixture or input is
-  # held by scripts/check-deploy-trigger-graph.test.mjs, not by this comment. A
-  # negated pattern applies only to paths a positive pattern earlier in this
-  # list already matched, per GitHub's paths evaluation order, so each sits
-  # after the glob it narrows.
+  # Pull-request validation. Deploys build through eb_deploy.yaml's
+  # workflow_call, so there is no standalone push trigger here -- it would
+  # double-run with the pull_request event on a feature branch that already has
+  # an open PR.
   pull_request:
     branches: [main, staging]
-    paths:
-      - "lib/**"
-      - "package-lock.json"
-      - "tsconfig.base.json"
-      - "apps/web/**"
-      - "packages/core/**"
-      - "packages/peerjs-broker/**"
-      - "packages/testkit/**"
-      - ".github/actions/setup/**"
-      - ".github/workflows/eb_build_and_test.yaml"
-      # The deploy-trigger coverage check below reads eb_deploy.yaml's push
-      # filter, so a pull request that edits only that filter has to reach this
-      # workflow -- narrowing the filter is exactly the change the check exists
-      # to catch, and it touches nothing else here.
-      - ".github/workflows/eb_deploy.yaml"
-      - "!lib/**/*.md"
-      - "!apps/web/**/*.md"
-      - "!packages/core/**/*.md"
-      - "!packages/peerjs-broker/**/*.md"
-      - "!packages/testkit/**/*.md"
-      - "!.github/actions/setup/**/*.md"
 
   workflow_call:
     outputs:
@@ -83,6 +45,56 @@ env:
   ARTIFACT_NAME: ${{format('{0}-{1}', vars.EB_APPLICATION_NAME, github.sha)}}
 
 jobs:
+  scope:
+    name: Decide whether the web suites run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history so the diff can reach the pull request's merge base.
+          fetch-depth: 0
+      # This scope diverges from the push filter in eb_deploy.yaml on test
+      # sources: it uses the broad apps/web/** and packages/core/** globs so a
+      # test-only PR (deleting or weakening assertions, or changing vitest
+      # config) still runs the full suite, including the core tests on the
+      # `core` leg, while the deploy filter omits the test/** trees. The two
+      # lists cannot be one because of that difference.
+      #
+      # packages/peerjs-broker/** is here because the web app bundles the
+      # signaling broker from that workspace into the deployed server, and
+      # packages/testkit/** because the web unit suite is driven by fixtures it
+      # holds. eb_deploy.yaml is here because the deploy-trigger coverage step
+      # reads its push filter, and narrowing that filter is the change the step
+      # exists to catch.
+      #
+      # The `!` entries exclude markdown under the directory globs. The claim
+      # that no suite this gate runs reads one as a fixture or input is held by
+      # scripts/check-deploy-trigger-graph.test.mjs, not by this comment.
+      - id: scope
+        uses: ./.github/actions/path-scope
+        with:
+          paths: |
+            lib/**
+            package-lock.json
+            tsconfig.base.json
+            apps/web/**
+            packages/core/**
+            packages/peerjs-broker/**
+            packages/testkit/**
+            .github/actions/setup/**
+            .github/actions/path-scope/**
+            .github/workflows/eb_build_and_test.yaml
+            .github/workflows/eb_deploy.yaml
+            !lib/**/*.md
+            !apps/web/**/*.md
+            !packages/core/**/*.md
+            !packages/peerjs-broker/**/*.md
+            !packages/testkit/**/*.md
+            !.github/actions/setup/**/*.md
+
   # The deploy artifact's producer. A job of its own rather than a leg of the
   # suite matrix below because it carries the workflow_call output eb_deploy.yaml
   # reads, and because the matrix legs run in parallel with it rather than behind
@@ -94,6 +106,8 @@ jobs:
   # included.
   package:
     name: Package the deploy artifact
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     # Bound the job: eb_deploy.yaml gates its deploy on this workflow through
     # workflow_call, so a stalled install or build here holds a production deploy
@@ -155,6 +169,8 @@ jobs:
   # values.
   suite:
     name: Test (${{ matrix.suite }})
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
     # Bound every leg: the integration and browser leg drives a real browser and
     # a live WebRTC exchange through a spawned dev server -- workloads that can
@@ -192,7 +208,7 @@ jobs:
           # browser: its whole world is a temporary file-drop directory.
           #
           # It runs here AND on the CLI workflow's own leg: the drift it exists
-          # to catch can land on either runtime, and each workflow's path filter
+          # to catch can land on either runtime, and each workflow's path scope
           # sees only its own.
           - suite: cross-runtime interop
             command: npm run test:interop -w apps/web
@@ -356,18 +372,29 @@ jobs:
   # job and every suite leg above. `if: always()` is what makes it usable as one:
   # without it a failed job leaves this one skipped, and a skipped required check
   # stays pending rather than red, so the pull request would be unmergeable with
-  # nothing red to show for it.
+  # nothing red to show for it. The name is unique across the workflow tree, so
+  # the required context matches this job alone; eb_deploy.yaml's caller job
+  # shares the bare id.
   build-and-test:
+    name: Web Build and Test
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [package, suite]
+    needs: [scope, package, suite]
     if: always()
     steps:
       - name: Report the job results
         env:
+          SCOPE: ${{ needs.scope.result }}
+          RUN: ${{ needs.scope.outputs.run }}
           PACKAGE: ${{ needs.package.result }}
           SUITE: ${{ needs.suite.result }}
         run: |
+          echo "scope: $SCOPE (run=$RUN)"
+          test "$SCOPE" = success
+          if [ "$RUN" = false ]; then
+            echo "no web-affecting change; passing without the build and suites"
+            exit 0
+          fi
           echo "package: $PACKAGE"
           echo "suite legs: $SUITE"
           test "$PACKAGE" = success
