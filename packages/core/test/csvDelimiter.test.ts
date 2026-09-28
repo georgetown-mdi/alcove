@@ -319,6 +319,7 @@ test("a value holding the chosen delimiter survives a write-then-read round trip
       metadata,
       { columns: ["note"], rowIndices: [0], rows: [[held]] },
       undefined,
+      [],
       delimiter,
     );
     const file =
@@ -336,6 +337,7 @@ test("buildOutputTable quotes against the chosen delimiter, not against the comm
     metadata,
     { columns: ["note"], rowIndices: [0], rows: [["x,y"]] },
     undefined,
+    [],
     "|",
   );
   // The pipe is the delimiter, so the cell holding it is quoted; the comma is
@@ -356,6 +358,7 @@ test("buildOutputTable refuses a delimiter that is not a single character", () =
         metadata,
         { columns: ["note"], rowIndices: [0], rows: [["x"]] },
         undefined,
+        [],
         unresolved,
       ),
     ).toThrow(/^result delimiter is not a single accepted character/);

@@ -566,22 +566,31 @@ const ownColumnsMeta: Metadata = [
 
 test("ownResultColumnNames: 'disclosed' is the transmitted set less the identifier", () => {
   // pid is transmitted (is_payload with role identifier) but heads the result's
-  // first column already; internal is ignored, so it is never transmitted.
-  expect(ownResultColumnNames(ownColumnsMeta, "disclosed")).toEqual(["dose"]);
+  // first column already; internal is ignored and notes undeclared, so
+  // neither is transmitted.
+  expect(ownResultColumnNames(ownColumnsMeta, "disclosed", ["notes"])).toEqual([
+    "dose",
+  ]);
 });
 
 test("ownResultColumnNames: 'all' is every declared column less the identifier, in metadata order", () => {
-  expect(ownResultColumnNames(ownColumnsMeta, "all")).toEqual([
+  expect(ownResultColumnNames(ownColumnsMeta, "all", [])).toEqual([
     "ssn",
     "dose",
     "internal",
   ]);
 });
 
+test("ownResultColumnNames: 'all' writes the undeclared columns after the declared ones", () => {
+  expect(
+    ownResultColumnNames(ownColumnsMeta, "all", ["notes", "code"]),
+  ).toEqual(["ssn", "dose", "internal", "notes", "code"]);
+});
+
 test("ownResultColumnNames: with no identifier column every declared column stands", () => {
   // The result's first column is then the row index, which no input column is.
   const meta = ownColumnsMeta.filter((column) => column.name !== "pid");
-  expect(ownResultColumnNames(meta, "all")).toEqual([
+  expect(ownResultColumnNames(meta, "all", [])).toEqual([
     "ssn",
     "dose",
     "internal",

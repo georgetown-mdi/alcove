@@ -10,7 +10,7 @@ import {
 } from "../../src/config/metadata";
 import { OperatorConfigError, UsageError } from "../../src/errors";
 import { prepareForExchange, resolveExchangeInputs } from "../../src/exchange";
-import { preparePayload } from "../../src/payloadExchange";
+import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
 
 import type { Metadata } from "../../src/config/metadata";
 
@@ -151,6 +151,100 @@ describe("the undeclared-column list", () => {
     const prepared = prepareForExchange({}, "alice", [row], columns);
     expect(preparePayload([row], prepared.metadata, [[0], [0]])).toEqual({
       hasData: false,
+    });
+  });
+});
+
+describe("this party's own result file", () => {
+  const columns = ["id", "first_name", "last_name", "dob", "notes", "case_id"];
+  const row = {
+    id: "r1",
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "1980-01-02",
+    notes: "x",
+    case_id: "c1",
+  };
+  const noPartnerPayload = { columns: [], rowIndices: [], rows: [] };
+
+  test("`all` writes an undeclared column after the declared ones", () => {
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    const { headers, rows } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "all",
+      prepared.undeclaredColumns,
+    );
+    expect(headers).toEqual([
+      "id",
+      "row_id",
+      "first_name",
+      "last_name",
+      "dob",
+      "notes",
+      "case_id",
+    ]);
+    expect(rows).toEqual([["r1", "0", "Ann", "Lee", "1980-01-02", "x", "c1"]]);
+  });
+
+  test("`all` writes an undeclared column beside an authored metadata block", () => {
+    const metadata: Metadata = [
+      { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+      { name: "id", type: "identifier", role: "identifier", isPayload: false },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+      {
+        name: "last_name",
+        type: "last_name",
+        role: "linkage",
+        isPayload: false,
+      },
+    ];
+    const prepared = prepareForExchange({ metadata }, "alice", [row], columns);
+    const { headers } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "all",
+      prepared.undeclaredColumns,
+    );
+    expect(headers).toEqual([
+      "id",
+      "row_id",
+      "dob",
+      "first_name",
+      "last_name",
+      "notes",
+      "case_id",
+    ]);
+  });
+
+  test("`disclosed` leaves an undeclared column out", () => {
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    const { headers } = buildOutputTable(
+      [[0], [0]],
+      prepared.rawRows,
+      prepared.metadata,
+      noPartnerPayload,
+      "disclosed",
+      prepared.undeclaredColumns,
+    );
+    expect(headers).toEqual(["id", "row_id"]);
+  });
+
+  test("the payload frame holds no undeclared column", () => {
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
+      hasData: true,
+      columns: ["id"],
     });
   });
 });

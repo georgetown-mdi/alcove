@@ -1072,6 +1072,9 @@ function uniqueColumnName(
  * repeating with it under a deduplicating cardinality. It selects them
  * rather than listing them ({@link ownResultColumnNames}); undefined adds
  * none, and the file is then the one the partner's values alone compose.
+ * `undeclaredColumns` are the input columns the metadata does not name
+ * (`PreparedExchange.undeclaredColumns`), which `all` writes after the
+ * declared ones.
  * These columns are local: no frame, consent display, or commitment holds
  * them, and the partner's own result is untouched by them.
  *
@@ -1088,6 +1091,7 @@ export function buildOutputTable(
   metadata: Metadata,
   partnerPayload: PartnerPayload,
   includeOwnColumns?: OwnColumnSelection,
+  undeclaredColumns: ReadonlyArray<string> = [],
   delimiter: string = DEFAULT_CSV_DELIMITER,
 ): { headers: string[]; rows: Array<Array<string>> } {
   // The escaping holds only against a single character: a caller that passed a
@@ -1175,7 +1179,7 @@ export function buildOutputTable(
   const ownColumns =
     includeOwnColumns === undefined
       ? []
-      : ownResultColumnNames(metadata, includeOwnColumns);
+      : ownResultColumnNames(metadata, includeOwnColumns, undeclaredColumns);
 
   // Our first column's name is taken before any other, then our own columns,
   // then the partner's payload columns, and the partner row-index column last:

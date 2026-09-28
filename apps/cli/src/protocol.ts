@@ -2128,6 +2128,7 @@ async function writeExchangeOutputs(params: {
         prepared.metadata,
         partnerPayload,
         prepared.includeOwnColumns,
+        prepared.undeclaredColumns,
         resultDelimiter,
       );
     } catch (err) {

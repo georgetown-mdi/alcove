@@ -229,8 +229,10 @@ export interface PreparedExchange {
    * of them is matched on, indexes a record, or is sent
    * ({@link undeclaredColumnNames}). Set by {@link prepareForExchange} for a
    * front end to show before the run connects
-   * (`describeUndeclaredColumns`); absent on a
-   * {@link PreparedExchange} assembled without it, which shows nothing.
+   * (`describeUndeclaredColumns`), and written into this party's own result
+   * under `include_own_columns: all` ({@link buildOutputTable}). Absent on a
+   * {@link PreparedExchange} assembled without it, which then shows nothing
+   * and writes only the declared columns.
    */
   undeclaredColumns?: Array<string>;
   /**

@@ -322,7 +322,7 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # include_own_columns: which of your own input columns your result file holds
 # beside the values your partner sends, so you do not have to join the result
 # back to your input by hand. disclosed writes the columns you send to the
-# partner; all writes every column your metadata declares. Your identifier
+# partner; all writes every column of your input file. Your identifier
 # column is left out either way -- the result's first column already holds it.
 # Purely local: nothing extra is sent, and your partner's result is unchanged.
 # Omit the field to write your partner's values alone.

@@ -117,6 +117,7 @@ export function buildRunOutputs(
                 prepared.metadata,
                 result.partnerPayload,
                 prepared.includeOwnColumns,
+                prepared.undeclaredColumns,
                 writeDelimiter,
               );
               const csv =
