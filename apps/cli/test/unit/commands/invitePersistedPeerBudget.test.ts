@@ -13,7 +13,10 @@ import type { ConnectionConfig } from "@alcove/core";
 // reaches the file only through the connection the command builds and the
 // bootstrap writes twice -- asserting on just one write could miss a stale
 // value left by the other.
-vi.mock("../../../src/protocol", () => ({ runProtocol: vi.fn() }));
+vi.mock("../../../src/protocol", async (importActual) => ({
+  ...(await importActual<typeof import("../../../src/protocol")>()),
+  runProtocol: vi.fn(),
+}));
 
 import { handler as inviteHandler } from "../../../src/commands/invite";
 import { runProtocol } from "../../../src/protocol";

@@ -1664,9 +1664,11 @@ function warnSigningWithoutRecord(params: {
  * {@link warnSigningWithoutRecord}: the caller threads its own return value
  * back in as `alreadyWarned` on the later call, so the same run emits it at
  * most once regardless of which of the two calls actually raises the
- * refusal.
+ * refusal. A command that opens its own stream and runs no `preflightRun`
+ * calls this itself before its host-key step, then passes the result to
+ * `runProtocol` as `undeclaredColumnsWarned`.
  */
-function warnUndeclaredColumns(params: {
+export function warnUndeclaredColumns(params: {
   prepared: Pick<PreparedExchange, "undeclaredColumns">;
   alreadyWarned: boolean;
   log: ReturnType<typeof getLogger>;
@@ -1975,9 +1977,10 @@ async function prepareTransport(
     log,
     emit,
   });
-  // A caller that ran preflightRun already raised undeclaredColumnsNotice
-  // and passed that back as undeclaredColumnsWarned; a caller that did not
-  // run preflightRun has it raised here, still ahead of every check below.
+  // A caller that already raised undeclaredColumnsNotice, from preflightRun
+  // or its own warnUndeclaredColumns call, passed that back as
+  // undeclaredColumnsWarned; any other run has it raised here, still ahead of
+  // every check below.
   warnUndeclaredColumns({
     prepared,
     alreadyWarned: undeclaredColumnsWarned,
@@ -2415,11 +2418,11 @@ export interface RunProtocolOptions {
    */
   signingWithoutRecordWarned?: boolean;
   /**
-   * Whether a caller's own {@link preflightRun} call already emitted
-   * {@link undeclaredColumnsNotice} for this run
-   * ({@link PreflightRunResult.undeclaredColumnsWarned}), so
-   * `runProtocol`'s own pass does not repeat it. Omit when the caller did
-   * not run `preflightRun`.
+   * Whether the caller already emitted {@link undeclaredColumnsNotice} for
+   * this run, through {@link preflightRun}
+   * ({@link PreflightRunResult.undeclaredColumnsWarned}) or its own
+   * {@link warnUndeclaredColumns} call, so `runProtocol`'s own pass does not
+   * repeat it. Omit when the caller did neither.
    */
   undeclaredColumnsWarned?: boolean;
 }

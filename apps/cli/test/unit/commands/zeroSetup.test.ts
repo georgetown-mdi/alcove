@@ -38,7 +38,11 @@ import type { ConnectionOverrideOptions } from "../../../src/optionDefinitions";
 import { resolveConnectionCredentials } from "../../../src/util/atSignRefs";
 import { redactUrlCredentials } from "../../../src/util/connectionUrl";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
-import { runProtocol } from "../../../src/protocol";
+import {
+  runProtocol,
+  undeclaredColumnsNotice,
+  warnUndeclaredColumns,
+} from "../../../src/protocol";
 import type { RunProtocolOptions } from "../../../src/protocol";
 import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { captureFd3 } from "../../eventStreamTestSupport";
@@ -56,10 +60,16 @@ import {
 // Hoisted above the imports by vitest. Only runProtocol is stubbed -- the
 // refusal messages the handler raises are the module's real constants, so an
 // assertion here matches what the operator actually sees, not a copy of it.
-vi.mock("../../../src/protocol", async (importActual) => ({
-  ...(await importActual<typeof import("../../../src/protocol")>()),
-  runProtocol: vi.fn(),
-}));
+// The undeclared-columns notice stays real, spy-wrapped so the ordering test
+// below can place it against the host-key step.
+vi.mock("../../../src/protocol", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/protocol")>();
+  return {
+    ...actual,
+    runProtocol: vi.fn(),
+    warnUndeclaredColumns: vi.fn(actual.warnUndeclaredColumns),
+  };
+});
 
 // First-use host-key trust runs in the connect path before runProtocol; stub it
 // out (its own behavior is covered in hostKeyTrust.test.ts) so the handler tests
@@ -826,6 +836,78 @@ test("handler: the dataset is prepared before host-key trust", async () => {
     const [prepared] = vi.mocked(prepareForExchange).mock.invocationCallOrder;
     const [trusted] = vi.mocked(establishHostKeyTrust).mock.invocationCallOrder;
     expect(prepared).toBeLessThan(trusted);
+  } finally {
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("handler: undeclared columns are named once, before host-key trust", async () => {
+  // Host-key trust's first-use probe opens a connection to the server, so the
+  // notice must already be on stderr and fd 3 when it starts, and runProtocol
+  // must be told so, or its own pass would raise it again.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeroundeclared-"));
+  const exitSpy = captureProcessExit();
+  try {
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(
+      input,
+      "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+    );
+    const undeclaredColumns = ["notes"];
+    const notice = undeclaredColumnsNotice({ undeclaredColumns });
+    const realPrepare = vi.mocked(prepareForExchange).getMockImplementation();
+    if (realPrepare === undefined) throw new Error("prepare is not wrapped");
+    vi.mocked(prepareForExchange).mockImplementationOnce((...args) => ({
+      ...realPrepare(...args),
+      undeclaredColumns,
+    }));
+    let noticeEventsAtHostKeyStep: number | undefined;
+    vi.mocked(warnUndeclaredColumns).mockClear();
+    vi.mocked(establishHostKeyTrust).mockClear();
+    vi.mocked(establishHostKeyTrust).mockImplementationOnce((async () => {
+      noticeEventsAtHostKeyStep = vi
+        .mocked(fs.writeSync)
+        .mock.calls.filter(
+          ([fd, buffer]) =>
+            fd === 3 && String(buffer).includes('"undeclaredColumns"'),
+        ).length;
+    }) as never);
+    vi.mocked(runProtocol).mockClear();
+    vi.mocked(runProtocol).mockImplementationOnce((async (
+      ...callArgs: unknown[]
+    ) =>
+      driveCompletedExchange(callArgs, { partnerSaveIntent: false })) as never);
+
+    const { lines } = await captureFd3(() =>
+      handler({
+        _: ["sftp://userb@localhost:2222/drop", input],
+        $0: "alcove",
+        "event-stream": true,
+        "config-file": path.join(dir, "alcove.yaml"),
+        "key-file": path.join(dir, ".alcove.key"),
+        identity: "Tester",
+        record: false,
+        "log-level": "silent",
+      } as unknown as Arguments),
+    );
+
+    expect(notice).toBeDefined();
+    expect(vi.mocked(warnUndeclaredColumns)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(warnUndeclaredColumns).mock.results[0].value).toBe(true);
+    expect(vi.mocked(establishHostKeyTrust)).toHaveBeenCalledTimes(1);
+    const [warned] = vi.mocked(warnUndeclaredColumns).mock.invocationCallOrder;
+    const [trusted] = vi.mocked(establishHostKeyTrust).mock.invocationCallOrder;
+    expect(warned).toBeLessThan(trusted);
+    expect(noticeEventsAtHostKeyStep).toBe(1);
+    expect(
+      lines.filter(
+        (l) => l.type === "warning" && l.source === "undeclaredColumns",
+      ),
+    ).toEqual([expect.objectContaining({ message: notice })]);
+    expect(
+      optionsArg(vi.mocked(runProtocol).mock.calls[0]).undeclaredColumnsWarned,
+    ).toBe(true);
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });

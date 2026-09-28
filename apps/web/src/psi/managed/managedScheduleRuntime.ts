@@ -363,8 +363,9 @@ async function runUnattendedAttempt(
         pairTableFactors = factors;
       },
       onWarning: (message) => {
-        // Seven notices reach this sink, not one kind: the close-outcome notice
+        // Eight notices reach this sink, not one kind: the close-outcome notice
         // speaks to an operator watching the run and is dropped. The rest --
+        // the undeclared-columns notice (raised before the rendezvous opens),
         // the resolved-cardinality notice and pair-table advisory (raised at
         // core's post-terms, pre-round boundary), plus the four for a
         // disclosure the accounting did not get, which an unattended run has

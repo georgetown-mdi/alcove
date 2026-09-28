@@ -58,6 +58,7 @@ import { openInputSource } from "./util/dataIo";
 import { singleValue } from "./util/flags";
 import {
   runProtocol,
+  warnUndeclaredColumns,
   type AuthPersist,
   type ProtocolConnectionConfig,
 } from "./protocol";
@@ -894,9 +895,10 @@ export async function runOnlineBootstrap(params: {
   /**
    * `--event-stream`: emit the opt-in NDJSON machine-interface stream on fd 3
    * for the online exchange (see protocol.FileSyncRuntimeOptions and
-   * docs/spec/CLI_EVENTS.md). Threaded straight to runProtocol, which runs the
-   * fail-closed fd-3 preflight before opening the connection. Undefined/false on
-   * the offline invite/accept paths, which never reach runProtocol.
+   * docs/spec/CLI_EVENTS.md). Opened by this bootstrap before its host-key
+   * step, which runs the fail-closed fd-3 preflight there, and the emitter
+   * handed to runProtocol. Undefined/false on the offline invite/accept paths,
+   * which never reach runProtocol.
    */
   eventStream?: boolean;
   /**
@@ -1029,6 +1031,23 @@ export async function runOnlineBootstrap(params: {
       assertFileSyncFirstRoundFits(params.connection, params.prepared, report),
   );
 
+  // Open the machine-interface stream here rather than leaving it to runProtocol:
+  // this bootstrap's own persistence losses (both hooks below) must ride the
+  // same fd-3 channel as the run's terminal result event, and runProtocol drives
+  // the emitter but does not hand it to a hook, so reporting a loss means
+  // holding the object here and passing it in. Opened before the host-key step,
+  // so the fd-3 preflight and the undeclared-columns notice both precede that
+  // step's probe connection, as in `alcove exchange`.
+  const eventStream = openEventStream(params.eventStream);
+  const undeclaredColumnsWarned = warnUndeclaredColumns({
+    prepared: params.prepared,
+    alreadyWarned: false,
+    log: getLogger(params.loggerName),
+    emit: (fn) => {
+      if (eventStream !== undefined) fn(eventStream);
+    },
+  });
+
   // Establish first-use SSH host-key trust before connecting, on the ORIGINAL
   // params.connection so the pin reaches both the live connect (via the clone
   // below) and the persisted config. A pinned connection is a no-op; an unpinned
@@ -1075,15 +1094,6 @@ export async function runOnlineBootstrap(params: {
   // succeeded (key saved) from one that failed pre-handshake (no key) -- and
   // would falsely promise `alcove exchange` recovery in the latter.
   let keyPersisted = false;
-  // Open the machine-interface stream here rather than leaving it to runProtocol:
-  // this bootstrap's own persistence losses (both hooks below) must ride the
-  // same fd-3 channel as the run's terminal result event, and runProtocol drives
-  // the emitter but does not hand it to a hook, so reporting a loss means
-  // holding the object here and passing it in. Opened immediately before
-  // runProtocol -- after this command's host-key trust and credential
-  // resolution, before any connection of the exchange's own -- so the
-  // fail-closed fd-3 preflight still lands at the same point of the run.
-  const eventStream = openEventStream(params.eventStream);
   try {
     const runResult = await runProtocol({
       connection: liveConnection,
@@ -1095,6 +1105,7 @@ export async function runOnlineBootstrap(params: {
       loggerName: params.loggerName,
       logFile: params.logFile,
       recordOutput: params.recordOutput,
+      undeclaredColumnsWarned,
       // Persist the configuration exactly at acceptance: runProtocol invokes this
       // once, after the rotated token is saved to the key file and before the
       // data exchange begins. Writing here (rather than after runProtocol
