@@ -212,6 +212,36 @@ export async function ensureHandlePermission(
     throw new HandlePermissionError(afterPrompt, mode);
 }
 
+/**
+ * Secure the permission a run's input read needs on the working folder. An
+ * attended run asks in `readwrite`, so the one prompt its gesture allows also
+ * covers the results write after the run, which only queries. Where write is
+ * refused, a standing read grant still lets the input be read. An unattended
+ * run queries `read` and never prompts.
+ */
+async function secureInputReadPermission(
+  directory: FileSystemDirectoryHandle,
+  attendance: ManagedRunAttendance,
+  permission: HandlePermissionQuery,
+): Promise<void> {
+  if (attendance === "unattended") {
+    await ensureHandlePermission(directory, "unattended", "read", permission);
+    return;
+  }
+  try {
+    await ensureHandlePermission(
+      directory,
+      "attended",
+      "readwrite",
+      permission,
+    );
+  } catch (refused) {
+    if (!(refused instanceof HandlePermissionError)) throw refused;
+    if ((await permission.query(directory, "read")) !== "granted")
+      throw refused;
+  }
+}
+
 /** A read input for one run: the `File` read at run start
  * (never retained across runs), its parsed CSV rows, and its column names -- what
  * the column-shape guard and the exchange consume. The rows ride the same parse
@@ -279,10 +309,9 @@ export async function acquireManagedInput(
   let file: File;
   try {
     if (source.kind === "folder") {
-      await ensureHandlePermission(
+      await secureInputReadPermission(
         source.directory,
         source.attendance,
-        "read",
         permission,
       );
       file = await (await inputFileHandleIn(source.directory)).getFile();

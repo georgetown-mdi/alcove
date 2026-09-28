@@ -533,7 +533,10 @@ agreed terms give this party no output has no file to keep.
 
 An attended re-run writes into the working folder too: the same file under the
 same name, beside the download its completion screen offers as it always has.
-Where the folder does not take the file -- the browser has not allowed the site
+Where the browser asks again for access to the folder, the re-run asks once,
+before reading its input, to view and edit the folder, so that one answer covers
+the write as well; the write itself never asks. Where the folder does not take
+the file -- the browser has not allowed the site
 to write there, or the write fails -- the completion screen says so beside the
 download, and nothing is kept in the browser: the operator is there to take the
 download. An exchange holding no folder grant writes nothing and offers the

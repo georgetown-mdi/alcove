@@ -180,8 +180,9 @@ async function dropCreatedEntry(
  *
  * The permission is QUERIED in `readwrite` and never prompted: a scheduled run
  * has nobody present, and an attended run writes after its run has finished,
- * past the gesture a prompt needs. `permission` is the injectable permission
- * layer, defaulting to the platform's.
+ * past the gesture a prompt needs -- its input read asked in `readwrite` under
+ * that gesture instead ({@link ./managedInputHandle.ts}). `permission` is the
+ * injectable permission layer, defaulting to the platform's.
  *
  * A write that fails leaves the folder as it found it: the platform creates the
  * entry before any byte reaches it, so the empty file is removed rather than left
