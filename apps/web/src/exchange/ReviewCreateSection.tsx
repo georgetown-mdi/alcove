@@ -24,7 +24,11 @@ import {
   RESULTS_DIRECTION_LABELS,
   expiryLabel,
 } from "@psi/formatting";
-import { answersRows, inviterCreateStatus } from "@psi/inviterModel";
+import {
+  answersRows,
+  inviterCreateStatus,
+  receivesNoPayloadNotice,
+} from "@psi/inviterModel";
 import {
   availableTransports,
   transportChooserCopy,
@@ -57,6 +61,7 @@ import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { ReceiptsCard } from "@console/ReceiptsCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { SftpConnectionCard } from "@console/SftpConnectionCard";
+import { openedTermsReceiveUnstated } from "@console/loadedConfig";
 import { splitDirectoryRetainProblem } from "@console/sftpConnectionChoice";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
@@ -335,8 +340,14 @@ export function ReviewCreateSection({
   // is no promise the partner is there (see @utils/networkStatus).
   const offlineBlocked =
     !online && transportRunMode(available, transport) !== "save-file";
+  // An opened configuration makes no invitation, whether this step runs it or
+  // withholds the run, so the step offers no invitation duration.
+  const makesInvitation = !continuesOpenedExchange && runWithheld === undefined;
   const createStatus = inviterCreateStatus({
     runWithheld,
+    openedTermsReceiveUnstated: makesInvitation
+      ? openedTermsReceiveUnstated(editor.draft, currentTerms)
+      : undefined,
     outboundConsentUnconfirmed,
     offlineBlocked,
     connectionIncomplete,
@@ -357,9 +368,10 @@ export function ReviewCreateSection({
   const saveOffered =
     runWithheld !== undefined && onSaveConfiguration !== undefined;
   const configurationSaving = configurationSave?.status === "saving";
-  // An opened configuration makes no invitation, whether this step runs it or
-  // withholds the run, so the step offers no invitation duration.
-  const makesInvitation = !continuesOpenedExchange && runWithheld === undefined;
+  const receiveNotice =
+    consoleBuild && makesInvitation
+      ? receivesNoPayloadNotice(currentTerms, true)
+      : undefined;
   return (
     <>
       <p className={styles.eyebrow}>Step 3 of 3</p>
@@ -566,6 +578,9 @@ export function ReviewCreateSection({
           </tbody>
         </table>
       </div>
+      {receiveNotice !== undefined && (
+        <p className={`${styles.small} ${styles.sub}`}>{receiveNotice}</p>
+      )}
       <VisuallyHidden>
         <p role="status" aria-live="polite" aria-atomic="true">
           {readiness}

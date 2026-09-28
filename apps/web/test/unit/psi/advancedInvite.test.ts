@@ -13,7 +13,9 @@ import {
   getDefaultStandardization,
   inferMetadata,
   linkageRuleSetReferenceFor,
+  partnerBoundTerms,
   prepareForExchange,
+  recurringTermsLackDeclaredReceive,
   safeParseLinkageTerms,
   validateCompatibility,
   validateStandardizationAgainstTerms,
@@ -224,14 +226,15 @@ describe("seedAdvancedInvite + buildAdvancedTerms", () => {
       "County Health Dept",
       ALL_COLUMNS,
     );
-    // Generating with no changes produces terms equivalent to today's quick-path
-    // auto-derived output for the same inputs.
-    expect(buildAdvancedTerms(draft)).toStrictEqual(
-      getDefaultLinkageTerms(
+    // Generating with no changes produces the auto-derived terms for the same
+    // inputs, stating that this party receives no payload.
+    expect(buildAdvancedTerms(draft)).toStrictEqual({
+      ...getDefaultLinkageTerms(
         "County Health Dept",
         inferMetadata(ALL_COLUMNS, []),
       ),
-    );
+      payload: { receive: [] },
+    });
     // The seed itself is that auto-derived set, so it opens valid, never blank.
     expect(seed.terms).toStrictEqual(
       getDefaultLinkageTerms(
@@ -972,8 +975,8 @@ describe("controls the editor does not expose stay at their safe defaults", () =
           k.elements.every((e) => e.generateFuzzyComparisons === undefined),
         ),
       ).toBe(true);
-      // No payload is authored either.
-      expect(built.payload).toBeUndefined();
+      // No payload is sent either.
+      expect(built.payload?.send).toBeUndefined();
     }
   });
 });
@@ -1090,15 +1093,16 @@ describe("payload authoring", () => {
     return { ...seeded, draft: setDraftMetadata(seeded.draft, metadata) };
   }
 
-  test("terms.payload.send is exactly the disclosed columns; receive is never authored", () => {
+  test("terms.payload.send is exactly the disclosed columns; receive states none", () => {
     const { draft } = seededWithSent();
     const disclosed = disclosedColumnNames(draft.metadata);
     expect(disclosed).toEqual(["notes", "comments"]);
     const built = buildAdvancedTerms(draft);
     expect(built.payload?.send?.map((c) => c.name)).toEqual(disclosed);
-    // The inviter does not know the partner's schema, so it authors no receive and
-    // takes whatever the partner discloses (validateCompatibility is lazy on it).
-    expect(built.payload?.receive).toBeUndefined();
+    // No control here names the columns the partner sends, so the terms ask for
+    // none, the list a recurring exchange requires.
+    expect(built.payload?.receive).toStrictEqual([]);
+    expect(recurringTermsLackDeclaredReceive(built)).toBe(false);
   });
 
   test("payload.send never over-declares: it is a subset of the disclosed set, and core's reject agrees", () => {
@@ -1122,16 +1126,18 @@ describe("payload authoring", () => {
     ).not.toThrow();
   });
 
-  test("the editor never authors payload.receive, so receive-while-no-output is unrepresentable", () => {
+  test("the editor never authors a non-empty payload.receive, so receive-while-no-output is unrepresentable", () => {
     // The one combination the schema forbids (a non-empty receive with
     // expectsOutput false) cannot be expressed through the guided editor, in any
-    // output direction, because the editor authors no receive at all.
+    // output direction: the editor states an empty receive where this party
+    // takes the result and none where it does not.
     const { draft } = seededWithSent();
-    for (const direction of ["both", "inviter", "partner"] as const)
-      expect(
-        buildAdvancedTerms({ ...draft, outputDirection: direction }).payload
-          ?.receive,
-      ).toBeUndefined();
+    const receiveFor = (direction: "both" | "inviter" | "partner") =>
+      buildAdvancedTerms({ ...draft, outputDirection: direction }).payload
+        ?.receive;
+    expect(receiveFor("both")).toStrictEqual([]);
+    expect(receiveFor("inviter")).toStrictEqual([]);
+    expect(receiveFor("partner")).toBeUndefined();
   });
 
   test("sending while only the inviter receives is blocked live and the acceptor cannot derive it", () => {
@@ -1207,10 +1213,13 @@ describe("payload authoring", () => {
     const { draft } = seededWithSent();
     const built = buildAdvancedTerms(draft); // both-receive, sends notes+comments
     const acceptor = deriveAcceptedLinkageTerms(built, "Acceptor");
-    // The acceptor's receive is the inviter's send (validated exactly); its send
-    // stays open (the inviter's absent receive), so it is not forced to declare one.
-    expect(acceptor.payload).toStrictEqual({ receive: built.payload?.send });
-    expect(acceptor.payload?.send).toBeUndefined();
+    // The acceptor's receive is the inviter's send (validated exactly), and its
+    // send is the inviter's empty receive, part of the terms both parties bind.
+    expect(acceptor.payload).toStrictEqual({
+      send: [],
+      receive: built.payload?.send,
+    });
+    expect(partnerBoundTerms(acceptor).payload?.send).toStrictEqual([]);
     expect(validateCompatibility(built, acceptor).errors).toEqual([]);
     expect(validateCompatibility(acceptor, built).errors).toEqual([]);
   });

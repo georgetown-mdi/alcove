@@ -88,6 +88,7 @@ import {
   cleaningCoverageProblems,
   inviterCleaningAttention,
   inviterRailFacts,
+  receivesNoPayloadNotice,
   reviewValidation,
   spineProblems,
 } from "@psi/inviterModel";
@@ -1846,6 +1847,10 @@ export function InviterScreen() {
                 <ManageExchangeOffer
                   status={manageOffer.status}
                   refusal={manageOffer.refusal}
+                  receiveNotice={receivesNoPayloadNotice(
+                    invitation.linkageTerms,
+                    isConsoleBuild(),
+                  )}
                   onManage={(choices) => void manageExchange(choices)}
                 />
               )}

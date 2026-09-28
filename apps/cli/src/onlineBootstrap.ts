@@ -25,6 +25,7 @@ import {
   safeParseConnectionConfig,
   sanitizeErrorForDisplay,
   UsageError,
+  withReceiveNothingWhereUnstated,
 } from "@alcove/core";
 import type {
   BuiltInLinkageRuleSet,
@@ -651,6 +652,9 @@ export function singlePassDisclosureNotice(): string {
  * Absent (or `cascade`) leaves the default strategy untouched, so omitting the
  * selection is byte-identical to before the flag existed.
  *
+ * Terms this function authors state `payload.receive: []`, since no flag sets
+ * the list an invitation requires (`withReceiveNothingWhereUnstated`).
+ *
  * `ruleSet`, when given, is the built-in rule set the terms this function
  * authors are drawn from; it is the default set otherwise, and it is ignored
  * where `terms` are supplied, which were drawn from whatever their author drew
@@ -696,9 +700,11 @@ export function buildDataSpec(args: {
   const metadata = inferMetadata(rows.columns, rows.sanitizedColumnPositions);
   const linkageTerms =
     terms ??
-    withLinkageStrategy(
-      linkageTermsFromRuleSet(ruleSet, identity, metadata),
-      linkageStrategy,
+    withReceiveNothingWhereUnstated(
+      withLinkageStrategy(
+        linkageTermsFromRuleSet(ruleSet, identity, metadata),
+        linkageStrategy,
+      ),
     );
 
   const dobCol = linkageDateOfBirthColumn(metadata);

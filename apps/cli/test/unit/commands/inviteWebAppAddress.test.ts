@@ -197,10 +197,16 @@ describe("alcove invite with a web app address", () => {
     };
     expect(onlineToken.connectionEndpoint).toEqual(endpoint);
 
-    // The bootstrap writes this connection as the configuration's block.
+    // The bootstrap writes this connection as the configuration's block. The
+    // offline form mints from that configuration, which must state
+    // payload.receive, so the fixture adds the empty list an operator writes.
     saveConfig(options.configFile, {
       connection: ready.connection,
       ...ready.dataSpec,
+      linkageTerms: {
+        ...ready.dataSpec.linkageTerms,
+        payload: { receive: [] },
+      },
     });
     const written = YAML.parse(fs.readFileSync(options.configFile, "utf8"));
     expect(written.connection).toEqual({

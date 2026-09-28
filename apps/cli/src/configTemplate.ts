@@ -224,6 +224,15 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       ],
     },
     {
+      path: ["linkage_terms", "payload", "receive"],
+      lines: [
+        "Payload columns you expect your partner to send for matched records; []",
+        "asks for none. 'alcove invite' requires this list, and your partner's",
+        "payload.send is set from it, so changing it later takes new terms agreed",
+        "with your partner. List each as - name: COLUMN.",
+      ],
+    },
+    {
       path: ["metadata"],
       lines: [
         "Per-column description of your input CSV: semantic type and role",
