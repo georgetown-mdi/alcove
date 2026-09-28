@@ -732,7 +732,7 @@ test("an unanswered dialer fails on the rendezvous budget, and says so", async (
     rendezvousTimeoutMs: 150,
   });
   await expect(session).rejects.toThrow(
-    /did not answer within 0.15s; --peer-timeout sets how long to wait/,
+    /did not answer within 0.15s; --peer-timeout sets how long to wait.*--accept-timeout for an online invitation/,
   );
 });
 
@@ -747,9 +747,17 @@ test("a channel that never opens after the answer fails at the open ceiling", as
     src: inviterId,
     payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
   });
-  await expect(session).rejects.toThrow(
+  const failure = await session.then(
+    () => expect.unreachable("the channel open should have failed"),
+    (err: unknown) => err,
+  );
+  expect(failure).toBeInstanceOf(Error);
+  const { message } = failure as Error;
+  expect(message).toMatch(
     /did not open within 0.1s after the exchange partner's session description arrived/,
   );
+  expect(message).not.toContain("--peer-timeout");
+  expect(message).not.toContain("inactivity_timeout_ms");
 });
 
 /** The budgets a run's dial passes the transport under these connection options. */

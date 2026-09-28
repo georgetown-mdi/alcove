@@ -2304,7 +2304,8 @@ test("runProtocol rejects an already-expired token before opening any connection
 test("runProtocol writes no key when the partner never arrives (accept-timeout)", async () => {
   // A lone inviter waits at the rendezvous and the accept-timeout (modeled by
   // the lone-party peerTimeoutMs) elapses with no peer. The run rejects with a
-  // timeout and must persist nothing: the key file is never created.
+  // timeout that names --accept-timeout, and must persist nothing: the key file
+  // is never created.
   const keyFile = path.join(tmpDir, "a.key");
   await expect(
     runProtocol({
@@ -2323,7 +2324,7 @@ test("runProtocol writes no key when the partner never arrives (accept-timeout)"
       verbosity: -1,
       loggerName: "test-a",
     }),
-  ).rejects.toThrow(/timed out/i);
+  ).rejects.toThrow(/timed out.*--accept-timeout for an online invitation/i);
   expect(fs.existsSync(keyFile)).toBe(false);
 });
 

@@ -1140,10 +1140,10 @@ export async function handler(argv: Arguments): Promise<void> {
             recordFile: options.recordFile,
           }),
           eventStream: options.eventStream,
-          // The wait this invitation was printed for, and the peer waits of the
-          // exchange that follows it, run on --accept-timeout; the configuration
-          // saved at acceptance does not, so an unattended recurring run is never
-          // handed a budget sized for one operator sitting at a terminal.
+          // The wait for the partner to arrive runs on --accept-timeout; the
+          // configuration saved at acceptance does not, so an unattended
+          // recurring run is never handed a budget sized for one operator
+          // sitting at a terminal.
           runOnlyPeerTimeoutSeconds: acceptTimeout,
           // The inviter's received-payload set is unknown until the acceptor
           // transmits it, so crystallize the observed set into the saved config
