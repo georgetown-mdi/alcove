@@ -195,6 +195,13 @@ for a `username`/`password` pair. The request sets `redirect: "manual"`, so a
 is not followed and the credential in `Authorization` never reaches a second
 host. The response body is never read: once the status is in hand it is
 cancelled unread, since it is network content the operator cannot inspect.
+Before any request, `host` is refused when it holds a character outside a host
+name (letters, digits, hyphens, dots) or an IPv6 address (hex digits, colons,
+dots, optional brackets) -- the URL parser drops a tab, CR or LF anywhere in
+its input, so `a.com<LF>evil.com` would otherwise reach `a.comevil.com` --
+and when the parsed URL's host differs from it as written (lowercased, an IPv6
+address bracketed), as a numeric form such as `0x7f.1` does. The refusal
+names the field, not the value.
 
 **Timeout.** `PROVISION_REQUEST_TIMEOUT_MS` = 120,000 (120 s) bounds the call
 via `AbortSignal.timeout`, independent of every other connection or liveness

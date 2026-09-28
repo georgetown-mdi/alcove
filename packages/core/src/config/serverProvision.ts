@@ -82,19 +82,46 @@ function base64OfUtf8(value: string): string {
   return btoa(binary);
 }
 
+/** A host name (an internationalized one in its `xn--` form) or IPv4 address. */
+const HOST_NAME_PATTERN = /^[A-Za-z0-9.-]+$/;
+/** An IPv6 address, bracketed or bare; the colon tells it from a name. */
+const IPV6_HOST_PATTERN =
+  /^(?:\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]|[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)$/;
+
 function provisionUrl(provision: ServerProvision): URL {
   const port = provision.port ?? DEFAULT_PROVISION_PORT;
+  // Checked before parsing because the URL parser drops a tab, CR or LF
+  // anywhere in its input, so `a.com\nevil.com` would reach a.comevil.com.
+  if (
+    !HOST_NAME_PATTERN.test(provision.host) &&
+    !IPV6_HOST_PATTERN.test(provision.host)
+  )
+    throw new UsageError(
+      "connection.server.provision.host holds a character a host name cannot " +
+        "contain; set it to a bare host name (letters, digits, hyphens and " +
+        "dots, an internationalized name in its xn-- form) or an IP address.",
+    );
   const invalid = () =>
     new UsageError(
       "connection.server.provision.host and path do not form a valid https URL; " +
         "set host to a bare host name and path to a path beginning with /.",
     );
+  const authorityHost = hostForAuthority(provision.host);
   let origin: URL;
   try {
-    origin = new URL(`https://${hostForAuthority(provision.host)}:${port}`);
+    origin = new URL(`https://${authorityHost}:${port}`);
   } catch {
     throw invalid();
   }
+  // The parser rewrites some hosts it accepts -- a numeric form such as
+  // 0x7f.1 becomes 127.0.0.1 -- so the request goes only to the host as
+  // written.
+  if (origin.hostname !== authorityHost.toLowerCase())
+    throw new UsageError(
+      "connection.server.provision.host is not in the form the request would " +
+        "use; write an IP address in its standard form (for example " +
+        "127.0.0.1, or ::1 for IPv6).",
+    );
   // A host holding `/`, `@`, `?` or `#` parses as some other URL part, which
   // would move the request (and its credential) to a different host.
   if (

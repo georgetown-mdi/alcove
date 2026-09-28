@@ -148,17 +148,70 @@ test("provisionRequest sends no authorization header without auth", () => {
   expect(init.headers.has("authorization")).toBe(false);
 });
 
+/** The refusal `provisionRequest` raises for `host`, which must throw. */
+function hostRefusal(host: string): Error {
+  try {
+    provisionRequest({ host });
+  } catch (err) {
+    return err as Error;
+  }
+  throw new Error(`provisionRequest accepted ${JSON.stringify(host)}`);
+}
+
 test.each([
   ["a path segment", "api.example.org/other"],
   ["userinfo", "user@other.example.org"],
   ["a query", "api.example.org?x"],
   ["a fragment", "api.example.org#x"],
+  ["a port", "api.example.org:8080"],
   ["a space", "api example.org"],
-])("provisionRequest refuses a host holding %s", (_, host) => {
-  expect(() => provisionRequest({ host })).toThrow(UsageError);
-  expect(() => provisionRequest({ host })).toThrow(
-    "connection.server.provision.host and path do not form a valid https URL",
-  );
+  ["a tab", "api.example.org\tother.example.org"],
+  ["a carriage return", "api.example.org\rother.example.org"],
+  ["a line feed", "api.example.org\nother.example.org"],
+  ["an underscore", "api_host.example.org"],
+  ["a non-ASCII letter", "münchen.example.org"],
+  ["a percent-escape", "api%2eexample.org"],
+])(
+  "provisionRequest refuses a host holding %s, naming the field",
+  (_, host) => {
+    const refusal = hostRefusal(host);
+    expect(refusal).toBeInstanceOf(UsageError);
+    expect(refusal.message).toContain(
+      "connection.server.provision.host holds a character a host name cannot contain",
+    );
+    expect(refusal.message).not.toContain(host);
+  },
+);
+
+test.each([
+  ["a hexadecimal IPv4 address", "0x7f.1"],
+  ["a shortened IPv4 address", "127.1"],
+  ["an IPv6 address with a zero run written out", "[0:0::1]"],
+  ["an IPv4-mapped IPv6 address in dotted form", "::ffff:127.0.0.1"],
+])(
+  "provisionRequest refuses %s the URL parser would rewrite, naming the field",
+  (_, host) => {
+    const refusal = hostRefusal(host);
+    expect(refusal).toBeInstanceOf(UsageError);
+    expect(refusal.message).toContain(
+      "connection.server.provision.host is not in the form the request would use",
+    );
+    expect(refusal.message).not.toContain(host);
+  },
+);
+
+test.each([
+  ["a mixed-case name", "API.Example.org", "api.example.org"],
+  [
+    "an internationalized name in its xn-- form",
+    "xn--mnchen-3ya.de",
+    "xn--mnchen-3ya.de",
+  ],
+  ["an IPv4 address", "127.0.0.1", "127.0.0.1"],
+  ["a bare IPv6 address", "::1", "[::1]"],
+  ["a bracketed IPv6 address", "[::1]", "[::1]"],
+])("provisionRequest sends to %s as written", (_, host, hostname) => {
+  expect(provisionRequest({ host }).url.hostname).toBe(hostname);
 });
 
 test("provisionRequest keeps a protocol-relative-looking path on the configured host", () => {
