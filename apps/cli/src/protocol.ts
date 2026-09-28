@@ -17,7 +17,6 @@ import {
   describeResolvedMatching,
   describeResolvedRunShape,
   authenticateConnection,
-  assertFirstRoundFitsWebRtcFrame,
   assertSharedSecretReadyForHandshake,
   ConnectionError,
   deriveAbortToken,
@@ -52,7 +51,7 @@ import type {
 } from "@alcove/core";
 
 import { LocalFSClient } from "./connection/localFSClient";
-import { assertFileSyncFirstRoundFits } from "./fileSyncFirstRound";
+import { assertFirstRoundFits } from "./fileSyncFirstRound";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import {
   INACTIVITY_TIMEOUT_GUIDANCE,
@@ -1595,6 +1594,130 @@ function logTransportCounters(
     if (count > 0) log.info(line(count));
 }
 
+/** What {@link checkRunLocalInputs} resolves, for the transport to be built from. */
+interface RunLocalInputs {
+  trimmedKeyFilePath?: string;
+  webRtcDial?: WebRtcDial;
+  runRelayCredential?: RelayCredential;
+}
+
+/**
+ * The run's refusals decided from local inputs alone: the shared secret's
+ * readiness and its key-file path, the first round's size against one message
+ * on the channel, and on webrtc the rendezvous resolution. None of them
+ * contacts the network, so {@link preflightRun} runs them ahead of a
+ * command's own first network contact as well.
+ */
+async function checkRunLocalInputs(params: {
+  connection: ProtocolConnectionConfig;
+  prepared: PreparedExchange;
+  auth: AuthPersist | null;
+  verbosity: number;
+  logFile: string | undefined;
+  log: ReturnType<typeof getLogger>;
+}): Promise<RunLocalInputs> {
+  const { connection, prepared, auth, verbosity, logFile, log } = params;
+  let trimmedKeyFilePath: string | undefined;
+  if (auth) {
+    // Fail fast on the locally-knowable secret preconditions -- a malformed
+    // or already-expired shared secret -- before any credential is
+    // presented, rather than letting a dead credential drive the file-sync
+    // rendezvous first, whose losing side would then get a misleading
+    // "peer abandoned the handshake" hint for what is really an expired or
+    // malformed secret. authenticateConnection still runs the same check
+    // as the authoritative boundary for library consumers that bypass
+    // runProtocol. The shared check sets alcoveRecoveryHintEmitted, so
+    // runProtocol's catch block suppresses its generic advisory.
+    assertSharedSecretReadyForHandshake(auth);
+    // Validate and trim the key-file path before any credential is
+    // presented, so a misconfiguration fails here rather than at
+    // saveKeyFile post-handshake, before the partner could be left holding
+    // a rotated token this side cannot persist. The trimmed path is the one
+    // saveKeyFile writes after the handshake.
+    trimmedKeyFilePath = preflightKeyFilePath(auth.keyFilePath, log);
+  }
+  // A first round too large for one message is refused before the rendezvous
+  // is resolved, before the transport is built, and before anything is sent.
+  await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
+    assertFirstRoundFits(connection, prepared, report),
+  );
+  if (connection.channel !== "webrtc") return { trimmedKeyFilePath };
+  // Resolve the rendezvous -- broker location, ICE servers, role, and the
+  // secret both ids derive from -- here rather than at the dial, so a
+  // misconfigured connection fails with no socket opened and no id
+  // registered.
+  const runRelayCredential = await relayCredentialForRun(
+    connection,
+    auth?.sharedSecret,
+    new Date(),
+  );
+  return {
+    trimmedKeyFilePath,
+    runRelayCredential,
+    webRtcDial: webRtcDialFrom(
+      connection,
+      auth?.sharedSecret,
+      runRelayCredential,
+    ),
+  };
+}
+
+/**
+ * Emit the operational-counter summary, and report any `--log-file` lines
+ * lost, ahead of a terminal event, so the terminal event stays last on the
+ * stream. `client` is the file-sync transport client, when one was built.
+ */
+function emitRunMetrics(
+  eventStream: EventStreamEmitter | undefined,
+  rowCount: number,
+  client: LocalFSClient | SSH2SFTPClientAdapter | undefined,
+): void {
+  reportLogFileLoss(eventStream);
+  eventStream?.metrics(
+    rowCount,
+    client?.transportRetryCount ?? 0,
+    client?.reconnectCount ?? 0,
+  );
+}
+
+/**
+ * Open the run's machine-interface stream and run {@link runProtocol}'s
+ * refusals decided from local inputs, for a command whose own first network
+ * contact comes before `runProtocol`. A refusal emits the run's one terminal
+ * `error` event, in the "prepare" phase `runProtocol` would have given it,
+ * and is rethrown. Resolves with the open stream, which the caller passes to
+ * `runProtocol` as `fileSyncRuntime.eventStream`; `runProtocol` runs the same
+ * checks again, and a first round already counted is not counted twice.
+ */
+export async function preflightRun(options: {
+  connection: ProtocolConnectionConfig;
+  auth: AuthPersist | null;
+  prepared: PreparedExchange;
+  verbosity: number;
+  loggerName: string;
+  logFile?: string;
+  eventStream: boolean | undefined;
+}): Promise<EventStreamEmitter | undefined> {
+  const { connection, auth, prepared, verbosity, loggerName, logFile } =
+    options;
+  const eventStream = openEventStream(options.eventStream);
+  try {
+    await checkRunLocalInputs({
+      connection,
+      prepared,
+      auth,
+      verbosity,
+      logFile,
+      log: getLogger(loggerName),
+    });
+  } catch (err) {
+    emitRunMetrics(eventStream, prepared.rowCount, undefined);
+    eventStream?.error(err, "prepare");
+    throw err;
+  }
+  return eventStream;
+}
+
 /**
  * What the preparation stage builds: the transport pieces the run then opens
  * and exchanges over, plus the validated key-file path. Filled in place rather
@@ -1709,53 +1832,22 @@ async function prepareTransport(
       e.warning("signingWithoutRecord", SIGNING_WITHOUT_RECORD_WARNING),
     );
   }
-  if (auth) {
-    // Fail fast on the locally-knowable secret preconditions -- a malformed
-    // or already-expired shared secret -- before any credential is
-    // presented, rather than letting a dead credential drive the file-sync
-    // rendezvous first, whose losing side would then get a misleading
-    // "peer abandoned the handshake" hint for what is really an expired or
-    // malformed secret. authenticateConnection still runs the same check
-    // as the authoritative boundary for library consumers that bypass
-    // runProtocol. The shared check sets alcoveRecoveryHintEmitted, so the
-    // catch block below suppresses its generic advisory.
-    assertSharedSecretReadyForHandshake(auth);
-    // Validate and trim the key-file path before any credential is
-    // presented, so a misconfiguration fails here rather than at
-    // saveKeyFile post-handshake, before the partner could be left holding
-    // a rotated token this side cannot persist. Returns the trimmed path,
-    // reused by the saveKeyFile call below.
-    build.trimmedKeyFilePath = preflightKeyFilePath(auth.keyFilePath, log);
-  }
+  const checked = await checkRunLocalInputs({
+    connection,
+    prepared,
+    auth,
+    verbosity,
+    logFile,
+    log,
+  });
+  build.trimmedKeyFilePath = checked.trimmedKeyFilePath;
   if (connection.channel === "webrtc") {
-    // A first round too large for one WebRTC message is refused here, before
-    // the rendezvous is resolved and before anything is sent.
-    await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
-      assertFirstRoundFitsWebRtcFrame(prepared, { onProgress: report }),
-    );
-    // Resolve the rendezvous -- broker location, ICE servers, role, and the
-    // secret both ids derive from -- here rather than at the dial, so a
-    // misconfigured connection fails with no socket opened and no id
-    // registered. The file-sync construction below has no webrtc
-    // counterpart: on this channel there is no client to build.
-    const runRelayCredential = await relayCredentialForRun(
-      connection,
-      auth?.sharedSecret,
-      new Date(),
-    );
-    build.webRtcDial = webRtcDialFrom(
-      connection,
-      auth?.sharedSecret,
-      runRelayCredential,
-    );
-    if (runRelayCredential !== undefined)
-      log.info(relayCredentialNotice(connection, runRelayCredential));
+    // The file-sync construction below has no webrtc counterpart: on this
+    // channel there is no client to build.
+    build.webRtcDial = checked.webRtcDial;
+    if (checked.runRelayCredential !== undefined)
+      log.info(relayCredentialNotice(connection, checked.runRelayCredential));
   } else {
-    // A first round too large for one message file is refused before the
-    // transport is built and before any file is written for the partner.
-    await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
-      assertFileSyncFirstRoundFits(connection, prepared, report),
-    );
     const client =
       connection.channel === "filedrop"
         ? new LocalFSClient()
@@ -2303,22 +2395,15 @@ export async function runProtocol(
   // the transport client's existing loops -- all this party's own integers, never
   // partner-controlled. A `--log-file` that lost lines is reported beside it,
   // for the same reason: the terminal event must stay last.
-  const emitMetrics = (): void => {
-    reportLogFileLoss(eventStream);
-    emit((e) =>
-      e.metrics(
-        prepared.rowCount,
-        build.client?.transportRetryCount ?? 0,
-        build.client?.reconnectCount ?? 0,
-      ),
-    );
-  };
+  const emitMetrics = (): void =>
+    emitRunMetrics(eventStream, prepared.rowCount, build.client);
   // The prepare block. Its throw sites -- channel/caller-contract guards, the
   // shared-secret readiness check, the key-file-path preflight, and
   // client/connection/bridge construction -- all run before the main try
   // below; this catch and the main try's catch are the two disjoint
   // terminal-error-emission sites (phase "prepare" here), so exactly one
-  // terminal event fires per run.
+  // terminal event fires per run. A run preflightRun refuses emits from there
+  // and never reaches this function.
   try {
     await prepareTransport(build, {
       connection,

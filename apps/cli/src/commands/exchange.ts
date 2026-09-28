@@ -34,10 +34,12 @@ import {
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { expandTilde } from "../fileUtils";
-import { assertFileSyncFirstRoundFits } from "../fileSyncFirstRound";
-import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
-import { establishHostKeyTrust } from "../hostKeyTrust";
+import {
+  assertHostKeyTrustCanBeEstablished,
+  establishHostKeyTrust,
+} from "../hostKeyTrust";
 import { wakeProvisionedServer } from "../serverProvision";
+import type { EventStreamEmitter } from "../eventStream";
 import {
   loadKeyFile,
   checkKeyFileExpiry,
@@ -81,6 +83,7 @@ import {
 } from "./linkagePreflight";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
 import {
+  preflightRun,
   runProtocol,
   type AuthPersist,
   type ProtocolConnectionConfig,
@@ -1174,11 +1177,9 @@ export async function handler(argv: Arguments): Promise<void> {
     // holding no identity file fails here (exit 64) rather than after the
     // handshake, and an identity bound to something other than this run's terms
     // identity is refused while the run can still be stopped rather than after
-    // it has sent this party's data toward receipts the partner rejects. Both
-    // refusals read this party's own configuration and its own identity file, so
-    // they are decided ahead of the host-key step below and the transport its
-    // first-use probe opens. `null` when signing is not configured for
-    // certificate mode, which leaves the exchange unsigned.
+    // it has sent this party's data toward receipts the partner rejects. `null`
+    // when signing is not configured for certificate mode, which leaves the
+    // exchange unsigned.
     let signing: SigningPersist | null;
     try {
       signing = await resolveSigningPersist(
@@ -1186,15 +1187,39 @@ export async function handler(argv: Arguments): Promise<void> {
         termsIdentity,
         options.configFile,
       );
-      await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
-        assertFileSyncFirstRoundFits(connection, prepared, report),
-      );
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
     }
 
-    // The wake call is the run's first network contact when the config states
-    // one, so it follows every refusal decided from local inputs above.
+    // The config is already on disk and exchange does not re-write it, so a
+    // first-use host-key pin is written in place.
+    const hostKeyPersistence = {
+      mode: "write-now",
+      configPath: options.configFile,
+    } as const;
+
+    // Every refusal above and here is decided from local inputs alone, so all
+    // of them come before the wake call and the host-key probe, the run's
+    // first network contact: an unpinned SFTP host on a non-interactive run,
+    // then runProtocol's own local checks (the --event-stream fd-3 preflight,
+    // the shared secret, the key-file path, the first round's size, and the
+    // webrtc rendezvous), which runProtocol runs again.
+    let openedEventStream: EventStreamEmitter | undefined;
+    try {
+      assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
+      openedEventStream = await preflightRun({
+        connection,
+        auth: authentication,
+        prepared,
+        verbosity,
+        loggerName: "exchange",
+        logFile,
+        eventStream,
+      });
+    } catch (err) {
+      exitWithError(log, err, exitCodeForError(err));
+    }
+
     try {
       await wakeProvisionedServer(connection, log);
     } catch (err) {
@@ -1202,22 +1227,13 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     // Establish SSH host-key trust: on an unpinned sftp config this prompts and
-    // pins on first interactive use, and fails closed (no prompt, no
-    // auto-accept) on a non-interactive run. It is a no-op for a pinned config
-    // or a non-sftp channel. It follows the dataset preparation and the signing
-    // resolution above because the first-use probe opens a real transport to the
-    // server, while every refusal those two can raise -- the linkage terms the
-    // input cannot satisfy, an unconfirmed outbound payload, a signing identity
-    // that is missing or bound to another party, a first round too large for
-    // one message file -- is decided from local inputs alone; deciding those
-    // first is what keeps a refused run from connecting.
+    // pins on first interactive use. It is a no-op for a pinned config or a
+    // non-sftp channel, and its non-interactive refusal was made above.
     try {
       await establishHostKeyTrust(connection, {
         verbosity,
         loggerName: "exchange",
-        // The config is already on disk and exchange does not re-write it, so a
-        // first-use pin is written in place now.
-        persistence: { mode: "write-now", configPath: options.configFile },
+        persistence: hostKeyPersistence,
       });
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
@@ -1240,7 +1256,11 @@ export async function handler(argv: Arguments): Promise<void> {
         loggerName: "exchange",
         logFile,
         recordOutput,
-        fileSyncRuntime: { sweepExchangeFiles, forceRetainSweep, eventStream },
+        fileSyncRuntime: {
+          sweepExchangeFiles,
+          forceRetainSweep,
+          eventStream: openedEventStream,
+        },
         signing,
       });
     } catch (err) {

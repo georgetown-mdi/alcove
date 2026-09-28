@@ -1,4 +1,7 @@
-import { assertFirstRoundFitsFileSyncFrame } from "@alcove/core";
+import {
+  assertFirstRoundFitsFileSyncFrame,
+  assertFirstRoundFitsWebRtcFrame,
+} from "@alcove/core";
 import type {
   ConnectionConfig,
   PreparedExchange,
@@ -6,6 +9,7 @@ import type {
 } from "@alcove/core";
 
 const passedFileSyncFirstRoundCheck = new WeakSet<PreparedExchange>();
+const passedWebRtcFirstRoundCheck = new WeakSet<PreparedExchange>();
 
 /**
  * Refuse, on an SFTP or synced-folder connection, a first round too large for
@@ -25,4 +29,22 @@ export async function assertFileSyncFirstRoundFits(
   if (passedFileSyncFirstRoundCheck.has(prepared)) return;
   await assertFirstRoundFitsFileSyncFrame(prepared, { onProgress });
   passedFileSyncFirstRoundCheck.add(prepared);
+}
+
+/**
+ * Refuse a first round too large for one message on the connection's channel:
+ * one WebRTC message (`assertFirstRoundFitsWebRtcFrame`) or one message file
+ * ({@link assertFileSyncFirstRoundFits}). As there, a prepared exchange that
+ * already passed is not counted a second time.
+ */
+export async function assertFirstRoundFits(
+  connection: Pick<ConnectionConfig, "channel">,
+  prepared: PreparedExchange,
+  onProgress?: PsiProgressReporter,
+): Promise<void> {
+  if (connection.channel !== "webrtc")
+    return assertFileSyncFirstRoundFits(connection, prepared, onProgress);
+  if (passedWebRtcFirstRoundCheck.has(prepared)) return;
+  await assertFirstRoundFitsWebRtcFrame(prepared, { onProgress });
+  passedWebRtcFirstRoundCheck.add(prepared);
 }

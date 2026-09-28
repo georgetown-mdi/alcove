@@ -112,7 +112,7 @@ const CLI_ANCHORS: Record<PreflightId, CliAnchor> = {
   hostKeyTrust: {
     kind: "export",
     module: "hostKeyTrust",
-    names: ["establishHostKeyTrust"],
+    names: ["assertHostKeyTrustCanBeEstablished", "establishHostKeyTrust"],
   },
   identityDivergence: {
     kind: "export",

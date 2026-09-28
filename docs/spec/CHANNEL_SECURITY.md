@@ -215,6 +215,22 @@ Every failure message names the endpoint by host and port alone
 (`provisionEndpointLabel`) -- never the path, which may hold a token, and
 never the credential.
 
+**When the call runs.** `alcove exchange` sends it once
+(`wakeProvisionedServer`), after every refusal decided from local inputs alone
+and before the first-use host-key probe. Ahead of it run the configuration and
+key-file load, the dataset preparation and its linkage-terms checks, the
+signing-identity load, the non-interactive refusal of an unpinned SFTP host
+(`assertHostKeyTrustCanBeEstablished`), and `runProtocol`'s own local checks
+through `preflightRun`: the `--event-stream` fd-3 preflight, the shared
+secret's format and expiry, the key-file path, the first round's size against
+one message on the channel, and the WebRTC rendezvous resolution. After it run
+the checks that need the network -- the first-use host-key probe and the
+operator's confirmation, then the protocol run, whose connect verifies a
+pinned host key and whose key exchange and terms agreement involve the
+partner. `runProtocol` repeats its local checks before it connects, so an
+input that changes after the call, such as a shared secret expiring in the
+interval, is refused after it.
+
 **Two calls per exchange.** Each party's run sends its own call independently,
 in either order and possibly at the same time, so the endpoint must answer
 `2xx` to a wake call that lands while another already has the server coming
