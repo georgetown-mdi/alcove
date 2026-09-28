@@ -16,6 +16,7 @@ import {
 import { PeerAbortError } from "../src/errors";
 
 import type { BuiltExchangeRecord } from "../src/records/exchangeRecord";
+import type { Metadata } from "../src/config/metadata";
 import type {
   LinkageStrategy,
   LinkageTerms,
@@ -49,6 +50,12 @@ const baseTerms = {
   linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
 };
 
+// A party sends only the columns its metadata declares as sent.
+const firstNameAndSentNote: Metadata = [
+  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
+  { name: "note", type: "other", role: "payload", isPayload: true },
+];
+
 const serverRows = [
   { first_name: "Alice", note: "s-a" },
   { first_name: "Bob", note: "s-b" },
@@ -69,6 +76,7 @@ function prepared(
 ) {
   return prepareForExchange(
     {
+      metadata: firstNameAndSentNote,
       linkageTerms: {
         ...baseTerms,
         linkageStrategy: strategy,
@@ -133,7 +141,7 @@ test("single-pass dispatch: a full runExchange yields the correct matched table 
   expect(built(initiator).record.resultSize).toBe(2);
   expect(built(responder).record.resultSize).toBe(2);
 
-  // `note` is an inferred payload column; under single-pass it must flow for exactly
+  // `note` is a declared payload column; under single-pass it must flow for exactly
   // the matched rows, keyed by the partner's row indices. This drives preparePayload
   // over a single-pass association table -- the path the unit tests never reach.
   expect(initiator.partnerPayload.columns).toEqual(["note"]);
@@ -324,6 +332,9 @@ async function settleOneSidedSinglePass(
   ) =>
     prepareForExchange(
       {
+        ...(columnNames.includes("note")
+          ? { metadata: firstNameAndSentNote }
+          : {}),
         linkageTerms: {
           ...baseTerms,
           linkageStrategy: opts.strategy ?? "single-pass",
@@ -738,6 +749,7 @@ async function settleTwoSided(opts: TwoSidedOptions): Promise<SettledTwoSided> {
   ) =>
     prepareForExchange(
       {
+        metadata: firstNameAndSentNote,
         linkageTerms: {
           ...baseTerms,
           linkageStrategy: opts.strategy,

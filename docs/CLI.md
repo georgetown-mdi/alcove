@@ -573,7 +573,7 @@ An exchange you accepted an invitation for prints none of this once acceptance h
 
 ### Confirming what you send
 
-An exchange you accepted an invitation for has one fact no invitation determines: the columns *you* send to your partner for matched records. The invitation determines what you receive; what you send comes from your own input file, where a column Alcove does not recognize as a linkage or identifier column is transmitted by default. So acceptance records the set it showed you, and the exchange holds itself to that record:
+An exchange you accepted an invitation for has one fact no invitation determines: the columns *you* send to your partner for matched records. The invitation determines what you receive; what you send comes from your own input file and its metadata, which sends an `id` or `identifier` column by default and no column it does not declare. So acceptance records the set it showed you, and the exchange holds itself to that record:
 
 - **The set is the one you confirmed** -- the exchange runs, without asking again.
 - **The set is not the one you confirmed**, whether it gained a column or lost one -- the run stops before any credential, terms, or data are sent, prints the columns it would send and what changed, and asks you to confirm. A yes records the new set and the exchange proceeds; a no stops the run (exit 64) with nothing sent. A narrower set is asked about no less than a wider one: your partner's consent surface and the [exchange record](spec/EXCHANGE_RECORD.md) state the set you confirmed, so a run that sends a different one is sending a set neither party decided on.

@@ -16,6 +16,7 @@ import {
   describeEntityClusters,
   describeResolvedMatching,
   describeResolvedRunShape,
+  describeUndeclaredColumns,
   authenticateConnection,
   assertSharedSecretReadyForHandshake,
   ConnectionError,
@@ -200,6 +201,24 @@ export const SIGNING_WITHOUT_RECORD_WARNING =
   "exchange record, and the record cannot be reconstructed after the " +
   "exchange. Keep the record (drop --no-record) if you retain receipts as " +
   "evidence, or drop the signing block if you do not.";
+
+/**
+ * The notice naming the input columns this run does not send because its
+ * metadata does not declare them, with the remedy the configuration takes, or
+ * `undefined` when there are none. Composed raw: the names are the input
+ * file's header, escaped once at each sink.
+ */
+export function undeclaredColumnsNotice(
+  prepared: Pick<PreparedExchange, "undeclaredColumns">,
+): string | undefined {
+  const notice = describeUndeclaredColumns(prepared.undeclaredColumns ?? []);
+  if (notice === undefined) return undefined;
+  return (
+    `${notice} To send one, declare it in the configuration's metadata ` +
+    `block with is_payload: true; to leave one out without this notice, ` +
+    `declare it with role: ignored.`
+  );
+}
 
 /**
  * What a run reports when it disclosed, terminated after that, and owed a
@@ -1904,6 +1923,17 @@ async function prepareTransport(
     log,
     emit,
   });
+  // Named before any credential, terms, or data are sent, on both sinks, so
+  // an unattended supervisor that discards stderr on success still sees it.
+  const undeclaredNotice = undeclaredColumnsNotice(prepared);
+  if (undeclaredNotice !== undefined) {
+    log.warn(
+      redactAndSanitizeForDisplay(undeclaredNotice, {
+        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      }),
+    );
+    emit((e) => e.warning("undeclaredColumns", undeclaredNotice));
+  }
   const checked = await checkRunLocalInputs({
     connection,
     prepared,

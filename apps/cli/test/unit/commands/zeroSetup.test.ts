@@ -874,9 +874,9 @@ test("handler: an input the prepare refuses exits 64 with no host-key probe", as
   // The ordering above is a call order, which a handler that STARTED host-key
   // trust without awaiting it would satisfy just as well -- and then the probe
   // would have connected anyway. So the refusing case is driven too, over the
-  // same sftp URL: a header naming a transmitted column too long to send is
-  // refused from this party's own file, and must end the run there, exit 64,
-  // with the host-key step -- and so the probe inside it -- never entered.
+  // same sftp URL: a header with an empty column name is refused from this
+  // party's own file, and must end the run there, exit 64, with the host-key
+  // step -- and so the probe inside it -- never entered.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerorefusal-"));
   const stderrChunks: string[] = [];
   const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
@@ -887,12 +887,10 @@ test("handler: an input the prepare refuses exits 64 with no host-key probe", as
   }) as never);
   const exitSpy = captureProcessExit();
   try {
-    const overlong = "z".repeat(300);
     const input = path.join(dir, "input.csv");
     fs.writeFileSync(
       input,
-      `first_name,last_name,date_of_birth,${overlong}\n` +
-        "Bob,Jones,1990-01-02,x\n",
+      "first_name,last_name,,date_of_birth\nBob,Jones,x,1990-01-02\n",
     );
     vi.mocked(establishHostKeyTrust).mockClear();
     vi.mocked(runProtocol).mockClear();
@@ -908,7 +906,7 @@ test("handler: an input the prepare refuses exits 64 with no host-key probe", as
         "log-level": "error",
       } as unknown as Arguments),
     ).rejects.toThrow("exit:64");
-    expect(stderrChunks.join("")).toContain("limit on a column name");
+    expect(stderrChunks.join("")).toContain("input column 3 has an empty name");
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
   } finally {
@@ -1106,10 +1104,10 @@ async function zeroSetupRunOutput(
   }
 }
 
-/** A CSV whose fourth column Alcove recognizes as neither a linkage nor an
- * identifier column, which is the set a zero-setup run transmits. */
+/** A CSV whose `id` column inference marks as sent: a zero-setup run has no
+ * metadata of its own, so the inferred set is the set it transmits. */
 const CSV_WITH_TRANSMITTED_COLUMN =
-  "first_name,last_name,date_of_birth,diagnosis\nBob,Jones,1990-01-02,A\n";
+  "first_name,last_name,date_of_birth,id\nBob,Jones,1990-01-02,1\n";
 
 test("handler: the run states what it transmits and what it matches on", async () => {
   const { stderr } = await zeroSetupRunOutput(CSV_WITH_TRANSMITTED_COLUMN);
@@ -1117,10 +1115,10 @@ test("handler: the run states what it transmits and what it matches on", async (
   expect(stderr).toContain(
     "What this exchange sends and matches on. Nothing has been sent yet:",
   );
-  // The column the inference marked as payload, which is the point of the
-  // display: an operator who did not mean to send `diagnosis` learns it here.
+  // The column the inference marks as sent, which is the point of the
+  // display: an operator who did not mean to send `id` learns it here.
   expect(stderr).toContain("columns you will send");
-  expect(stderr).toContain("- diagnosis");
+  expect(stderr).toContain("- id");
   expect(stderr).toContain("you will receive the result");
   expect(stderr).toContain("your partner will receive the result");
   expect(stderr).toContain("PSI algorithm");
@@ -1167,7 +1165,7 @@ test("handler: the whole display reaches the operator before the server is conta
   expect(atFirstContact).toContain(
     "What this exchange sends and matches on. Nothing has been sent yet:",
   );
-  expect(atFirstContact).toContain("- diagnosis");
+  expect(atFirstContact).toContain("- id");
   // The keys are the last block the display renders, so their presence is what
   // establishes that it finished rather than started.
   expect(atFirstContact).toContain("linkage keys");

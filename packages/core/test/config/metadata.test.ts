@@ -26,19 +26,19 @@ test("phone and email: linkage role, not payload by default", () => {
 test("zip_code: linkage role, not payload by default", () => {
   // A recognized PII type defaults to linkage and is NOT disclosed: an inferred
   // ZIP column participates in matching only if a key references it, and is never
-  // silently shipped as payload (unlike an unrecognized `other` column, which is).
+  // silently shipped as payload.
   const [zip] = inferMetadata(["zip"], []);
   expect(zip.type).toBe("zip_code");
   expect(zip.role).toBe("linkage");
   expect(zip.isPayload).toBe(false);
 });
 
-test("an inferred zip column is excluded from the disclosed set", () => {
+test("an inferred zip column and an unrecognized column are excluded from the disclosed set", () => {
   const disclosed = disclosedColumnNames(
     inferMetadata(["first_name", "last_name", "zip", "notes"], []),
   );
   expect(disclosed).not.toContain("zip");
-  expect(disclosed).toContain("notes");
+  expect(disclosed).not.toContain("notes");
 });
 
 // --- inferMetadata: identifier column ----------------------------------------
@@ -59,10 +59,10 @@ test("identifier alias 'id': identifier role, not linkage", () => {
 
 // --- inferMetadata: _id suffix ----------------------------------------------
 
-test("column ending in _id: inferred as identifier type, isPayload true", () => {
+test("column ending in _id: inferred as identifier type, isPayload false", () => {
   const [col] = inferMetadata(["client_id"], []);
   expect(col.type).toBe("identifier");
-  expect(col.isPayload).toBe(true);
+  expect(col.isPayload).toBe(false);
 });
 
 test("single _id column: promoted to identifier role", () => {
@@ -70,20 +70,17 @@ test("single _id column: promoted to identifier role", () => {
   expect(col.role).toBe("identifier");
 });
 
-test("multiple _id columns: no promotion, all remain payload role", () => {
+test("multiple _id columns: no promotion, all left out of the inferred metadata", () => {
   const result = inferMetadata(["client_id", "member_id"], []);
-  expect(result[0].type).toBe("identifier");
-  expect(result[0].role).toBe("payload");
-  expect(result[1].type).toBe("identifier");
-  expect(result[1].role).toBe("payload");
+  expect(result).toEqual([]);
 });
 
-test("canonical id column alongside _id column: id keeps identifier role, _id stays payload", () => {
+test("canonical id column alongside _id column: id keeps identifier role, _id is left out", () => {
   const result = inferMetadata(["id", "client_id"], []);
   const idCol = result.find((c) => c.name === "id");
   const clientIdCol = result.find((c) => c.name === "client_id");
   expect(idCol?.role).toBe("identifier");
-  expect(clientIdCol?.role).toBe("payload");
+  expect(clientIdCol).toBeUndefined();
 });
 
 // --- inferMetadata: name is preserved ----------------------------------------
@@ -146,35 +143,26 @@ test.each([
 );
 
 test.each(["constructor", "Constructor", "__proto__", "toString"])(
-  "column %s, an Object.prototype member name, is inferred as an ordinary column",
+  "column %s, an Object.prototype member name, is left out like any unrecognized column",
   (name) => {
     const metadata = inferMetadata(["id", name], []);
-    expect(metadata[1]).toEqual({
-      name,
-      type: "other",
-      role: "payload",
-      isPayload: true,
-    });
+    expect(metadata.map((column) => column.name)).toEqual(["id"]);
     expect(safeParseMetadata(metadata).success).toBe(true);
-    expect(disclosedColumnNames(metadata)).toContain(name);
+    expect(disclosedColumnNames(metadata)).not.toContain(name);
   },
 );
 
 // --- inferMetadata: mixed columns --------------------------------------------
 
-test("known and unknown columns are inferred correctly in a single call", () => {
+test("known columns are inferred and an unknown one left out in a single call", () => {
   const result = inferMetadata(["ssn", "program_start_date", "first_name"], []);
+  expect(result).toHaveLength(2);
   expect(result[0]).toMatchObject({
     type: "ssn",
     role: "linkage",
     isPayload: false,
   });
   expect(result[1]).toMatchObject({
-    type: "other",
-    role: "payload",
-    isPayload: true,
-  });
-  expect(result[2]).toMatchObject({
     type: "first_name",
     role: "linkage",
     isPayload: false,
@@ -456,9 +444,9 @@ test("safeParseMetadata rejects an unknown role", () => {
 });
 
 test("inferMetadata never assigns role: ignored", () => {
-  // ignored is opt-in (user intent, not inferable): inference only ever emits
-  // linkage, identifier, or payload. Exercise linkage, canonical-identifier,
-  // _id-suffix, promoted-single-id, and unknown columns together.
+  // inferMetadata leaves an unrecognized column out rather than listing it as
+  // ignored. Exercise linkage, canonical-identifier, _id-suffix,
+  // promoted-single-id, and unknown columns together.
   const result = inferMetadata(
     [
       "ssn",

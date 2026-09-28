@@ -17,6 +17,7 @@ import type { Algorithm } from "../../src/types";
 import type { BuiltExchangeRecord } from "../../src/records/exchangeRecord";
 import type { Output } from "../../src/config/linkageTermsSchema";
 import type { ExchangeResult } from "../../src/exchange";
+import type { Metadata } from "../../src/config/metadata";
 
 // End-to-end coverage of the record boundary in runExchange: two parties run
 // a full exchange over an in-memory pipe (real PSI), and we assert the
@@ -52,6 +53,12 @@ const clientRows = [
   { first_name: "Henry", note: "c-h" },
 ];
 
+// A party sends only the columns its metadata declares as sent.
+const firstNameAndSentNote: Metadata = [
+  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
+  { name: "note", type: "other", role: "payload", isPayload: true },
+];
+
 function prepared(
   identity: string,
   output: Output,
@@ -59,7 +66,10 @@ function prepared(
   linkageStrategy: "cascade" | "single-pass" = "cascade",
 ) {
   return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity, output, linkageStrategy } },
+    {
+      metadata: firstNameAndSentNote,
+      linkageTerms: { ...firstNameTerms, identity, output, linkageStrategy },
+    },
     identity,
     rows,
     ["first_name", "note"],
@@ -130,7 +140,7 @@ test("run boundary: an algorithm with no run path is refused before anything goe
 });
 
 test("run boundary: a psi-c run whose metadata transmits a column is refused before anything goes on the wire", async () => {
-  // The fixtures' inferred metadata makes the non-linkage `note` column a
+  // The fixtures' metadata declares the non-linkage `note` column a
   // disclosed payload column, but a count-only exchange transmits no payload
   // in either direction. Overriding the prepared terms to pair `psi-c` with
   // that metadata is refused by the metadata rule at the run boundary: no
@@ -255,7 +265,7 @@ test("both-output: both records agree on terms and hold the result size", async 
 
   // Governance metadata is derived from the agreed terms on both sides and
   // agrees on the cross-party-consistent fields. firstNameTerms configure no
-  // payload dictionary or legal agreement, but inferred metadata makes the
+  // payload dictionary or legal agreement, but the metadata declares the
   // non-linkage 'note' column a disclosed payload column that flows for the
   // two matched rows and is committed. The payload categories read from that
   // disclosure, so both sides report a bare 'note' rather than as empty.
@@ -335,6 +345,7 @@ function preparedDeclaring(
 ) {
   return prepareForExchange(
     {
+      metadata: firstNameAndSentNote,
       linkageTerms: {
         ...firstNameTerms,
         identity,
@@ -427,6 +438,7 @@ test("both-output: a legal-agreement purpose flows end-to-end into both records"
   const withAgreement = (identity: string, rows: typeof serverRows) =>
     prepareForExchange(
       {
+        metadata: firstNameAndSentNote,
         linkageTerms: {
           ...firstNameTerms,
           identity,
@@ -484,6 +496,7 @@ test("retention/disposition pointer is per-party and self-facing end-to-end", as
   ) =>
     prepareForExchange(
       {
+        metadata: firstNameAndSentNote,
         linkageTerms: { ...firstNameTerms, identity, output: both },
         ...(retentionDisposition !== undefined ? { retentionDisposition } : {}),
       },
@@ -665,8 +678,8 @@ test("single-output: the no-output helper is sent no payload (one-sided disclosu
 
 // --- Acceptor payload enforcement (live) -------------------------------------
 
-// The responder's inferred metadata discloses `note` (role: other -> payload),
-// so for the matched rows it transmits exactly ["note"]. These two tests pin the
+// The responder's metadata declares `note` as payload, so for the matched rows
+// it transmits exactly ["note"]. These two tests pin the
 // runtime enforcement end to end: when the initiator has committed to an
 // expected received-column set (a fresh acceptor's disclosedPayloadColumns, or
 // a recurring party's payload.receive, both threaded as prepared.expectedPayload-

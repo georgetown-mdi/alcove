@@ -5,7 +5,10 @@ import {
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 
-import { appendSanitizedRunWarning } from "@psi/runWarnings";
+import {
+  appendSanitizedRunWarning,
+  undeclaredColumnsRunNotice,
+} from "@psi/runWarnings";
 
 // What the console's rendezvous preflight puts in front of an operator when the
 // mount is not empty: the entry names are the PARTNER's, since the partner syncs
@@ -86,5 +89,33 @@ describe("appendSanitizedRunWarning", () => {
     // The input array is never mutated: each seat holds this in React state.
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(2);
+  });
+});
+
+describe("undeclaredColumnsRunNotice", () => {
+  test("names each undeclared column and how to send one", () => {
+    expect(
+      undeclaredColumnsRunNotice({ undeclaredColumns: ["notes", "amount"] }),
+    ).toBe(
+      "2 input columns are not sent to your partner because the exchange's " +
+        "column settings do not declare them: notes, amount. To send one, " +
+        'set it to "Sent to your partner" in the column settings.',
+    );
+  });
+
+  test("is absent for a run with none", () => {
+    expect(undeclaredColumnsRunNotice({ undeclaredColumns: [] })).toBe(
+      undefined,
+    );
+    expect(undeclaredColumnsRunNotice({})).toBe(undefined);
+  });
+
+  test("a control character in a header name reaches the seat escaped", () => {
+    const notice = undeclaredColumnsRunNotice({
+      undeclaredColumns: ["a\u0007b"],
+    });
+    expect(notice).toBeDefined();
+    const [shown] = appendSanitizedRunWarning([], notice ?? "");
+    expect(shown).not.toContain("\u0007");
   });
 });

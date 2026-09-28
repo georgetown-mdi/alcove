@@ -455,7 +455,10 @@ test("deriveAcceptedInvitationTerms keeps this party's own deduplicate where giv
 });
 
 test("termsUpdateWrite restates a recorded send-side commitment from the metadata", () => {
-  const metadata = inferMetadata([...LINKAGE_COLUMNS, "program"], []);
+  const metadata: Metadata = [
+    ...inferMetadata(LINKAGE_COLUMNS, []),
+    { name: "program", type: "other", role: "payload", isPayload: true },
+  ];
   const accepted = deriveAcceptedInvitationTerms(
     sampleToken({ disclosedPayloadColumns: ["notes"] }),
     "Acceptor Org",

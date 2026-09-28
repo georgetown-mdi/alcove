@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 
-import { UsageError } from "../errors.js";
+import { OperatorConfigError, UsageError } from "../errors.js";
 import { SEMANTIC_TYPES } from "../types";
 import { COUNT_ONLY_SHAPE_REFUSALS } from "../linkageTermsPolicy.js";
 import { MAX_NAME_LENGTH, NAME_SHAPE_PATTERN } from "./linkageTermsSchema.js";
@@ -16,11 +16,11 @@ import type { Algorithm, SemanticType } from "../types";
  *
  * - `linkage` -- participates in PSI matching via its semantic type.
  * - `identifier` -- indexes this party's matched records in the output.
- * - `payload` -- transmitted to the partner for matched members (the
- *   default for a column not used for linkage or identification).
+ * - `payload` -- transmitted to the partner for matched members.
  * - `ignored` -- never linked, never an identifier, never transmitted as
- *   payload, regardless of `isPayload`. Opt-in only: {@link inferMetadata}
- *   never assigns it.
+ *   payload, regardless of `isPayload`. {@link inferMetadata} never assigns
+ *   it; {@link inferMetadataForEveryColumn} assigns it to each column
+ *   inference does not recognize.
  *
  * Two independent axes, each checked explicitly rather than inferred from
  * `type` alone:
@@ -410,13 +410,14 @@ function assertColumnNamesNonEmpty(
 }
 
 /**
- * Assigns default roles to columns based on their names, using aliases
- * where appropriate. Columns ending in `_id` are also treated as
- * identifiers.
+ * Assigns default roles to the columns inference recognizes by name: an
+ * alias in {@link ALIAS_TYPE_META_MAP}, or a name ending in `_id` that
+ * becomes this party's identifier. Every other column is left out, so it is
+ * not declared and never sent ({@link undeclaredColumnNames} lists them).
  *
- * A single identifier column gets `role: identifier`, used to index
+ * A single identifier-typed column gets `role: identifier`, used to index
  * observations. With more than one, only a column literally named `id` or
- * `identifier` gets that role; otherwise no identifier role is assigned.
+ * `identifier` gets that role, and an `_id` column is left out.
  *
  * `sanitizedPositions` are the 1-based positions the CSV parse removed
  * control characters from, so the empty-name refusal below can name the removal
@@ -438,6 +439,24 @@ export function inferMetadata(
   columnNames: Array<string>,
   sanitizedPositions: ReadonlyArray<number>,
 ): Metadata {
+  return inferMetadataForEveryColumn(columnNames, sanitizedPositions).filter(
+    (column) => column.role !== "ignored",
+  );
+}
+
+/**
+ * {@link inferMetadata} with an entry for every column, in header order: a
+ * column inference does not recognize gets `role: ignored` and
+ * `isPayload: false` (`type: identifier` for an `_id` name, `other`
+ * otherwise). For an editor that lists every input column so the operator
+ * can declare one; a run resolves its metadata through {@link inferMetadata}.
+ *
+ * @throws {UsageError} as {@link inferMetadata} does.
+ */
+export function inferMetadataForEveryColumn(
+  columnNames: Array<string>,
+  sanitizedPositions: ReadonlyArray<number>,
+): Metadata {
   assertColumnNamesNonEmpty(columnNames, sanitizedPositions);
 
   const result: Metadata = columnNames.map((name) => {
@@ -446,8 +465,8 @@ export function inferMetadata(
     // `constructor` and `__proto__`, which have no entry.
     if (!Object.hasOwn(ALIAS_TYPE_META_MAP, lookupName)) {
       if (lookupName.endsWith("_id"))
-        return { name, type: "identifier", role: "payload", isPayload: true };
-      return { name, type: "other", role: "payload", isPayload: true };
+        return { name, type: "identifier", role: "ignored", isPayload: false };
+      return { name, type: "other", role: "ignored", isPayload: false };
     }
     const { type, role, isPayload } = ALIAS_TYPE_META_MAP[lookupName];
     return { name, type, role, isPayload };
@@ -466,4 +485,61 @@ export function inferMetadata(
   // id/identifier columns already have role: "identifier" via
   // ALIAS_TYPE_META_MAP
   return result;
+}
+
+/**
+ * The input columns `metadata` does not name, in header order: the columns a
+ * run neither matches on, indexes by, nor sends. Shown to the operator before
+ * the run connects, so a column can be declared on purpose.
+ */
+export function undeclaredColumnNames(
+  columnNames: ReadonlyArray<string>,
+  metadata: Metadata,
+): Array<string> {
+  const declared = new Set(metadata.map((column) => column.name));
+  return columnNames.filter((name) => !declared.has(name));
+}
+
+/**
+ * The notice naming a run's undeclared input columns
+ * ({@link undeclaredColumnNames}), or `undefined` when there are none. Each
+ * front end appends the remedy its own settings take. The names are the
+ * operator's own header, composed raw for the display sink to escape.
+ */
+export function describeUndeclaredColumns(
+  undeclared: ReadonlyArray<string>,
+): string | undefined {
+  if (undeclared.length === 0) return undefined;
+  const plural = undeclared.length > 1;
+  return (
+    `${undeclared.length} input column${plural ? "s are" : " is"} not sent ` +
+    `to your partner because the exchange's column settings do not declare ` +
+    `${plural ? "them" : "it"}: ${undeclared.join(", ")}.`
+  );
+}
+
+/**
+ * Refuse metadata that declares a column as sent ({@link isDisclosedToPartner})
+ * when the input does not hold it, naming each such column, before the run
+ * connects. Stands on the metadata and the input header alone.
+ *
+ * @throws {OperatorConfigError} naming the missing columns, which are this
+ *   party's own metadata names.
+ */
+export function assertDeclaredPayloadColumnsPresent(
+  metadata: Metadata,
+  columnNames: ReadonlyArray<string>,
+): void {
+  const present = new Set(columnNames);
+  const missing = disclosedColumnNames(metadata).filter(
+    (name) => !present.has(name),
+  );
+  if (missing.length === 0) return;
+  const plural = missing.length > 1;
+  throw new OperatorConfigError(
+    `the metadata declares ${plural ? "columns" : "a column"} as sent to ` +
+      `the partner that the input file does not hold: ${missing.join(", ")}. ` +
+      `Add ${plural ? "them" : "it"} to the input file, or set ` +
+      `is_payload: false on ${plural ? "their metadata entries" : "its metadata entry"}.`,
+  );
 }

@@ -1,9 +1,11 @@
 import { getLogger } from "./utils/logger.js";
 import {
   assertCountOnlyTransmitsNoColumn,
+  assertDeclaredPayloadColumnsPresent,
   inferMetadata,
   isDisclosedToPartner,
   linkageDateOfBirthColumn,
+  undeclaredColumnNames,
 } from "./config/metadata.js";
 import {
   assertBothSidedDeduplicateImplemented,
@@ -222,6 +224,15 @@ export interface PreparedExchange {
    * going through it leaves those refusals unheld.
    */
   signing?: SigningConfig;
+  /**
+   * The input columns the metadata does not declare, in header order: none
+   * of them is matched on, indexes a record, or is sent
+   * ({@link undeclaredColumnNames}). Set by {@link prepareForExchange} for a
+   * front end to show before the run connects
+   * (`describeUndeclaredColumns`); absent on a
+   * {@link PreparedExchange} assembled without it, which shows nothing.
+   */
+  undeclaredColumns?: Array<string>;
   /**
    * The original parsed CSV rows, retained for payload extraction after
    * linkage. Held in memory from ingestion through the end of
@@ -1165,21 +1176,32 @@ export function resolveLinkageCardinality(
  * read's own positions passes them, so a header the removal emptied is refused
  * naming it rather than the header-row causes; one handed a column list passes
  * an empty list, saying so at the call site.
+ *
+ * Also resolves the input columns the metadata does not declare
+ * ({@link undeclaredColumnNames}), which the run does not send, and refuses
+ * metadata that declares a sent column the input does not hold
+ * ({@link assertDeclaredPayloadColumnsPresent}).
  */
 export function resolveExchangeInputs(
   exchangeDataSpec: ExchangeDataSpec,
   identity: string | undefined,
   columnNames: Array<string>,
   sanitizedColumnPositions: ReadonlyArray<number>,
-): { metadata: Metadata; linkageTerms: LinkageTerms } {
+): {
+  metadata: Metadata;
+  linkageTerms: LinkageTerms;
+  undeclaredColumns: Array<string>;
+} {
   const metadata =
     exchangeDataSpec.metadata ??
     inferMetadata(columnNames, sanitizedColumnPositions);
+  assertDeclaredPayloadColumnsPresent(metadata, columnNames);
   return {
     metadata,
     linkageTerms:
       exchangeDataSpec.linkageTerms ??
       getDefaultLinkageTerms(identity, metadata),
+    undeclaredColumns: undeclaredColumnNames(columnNames, metadata),
   };
 }
 
@@ -1224,7 +1246,7 @@ export function prepareForExchange(
 ): PreparedExchange {
   const log = getLogger("exchange");
 
-  const { metadata, linkageTerms } = resolveExchangeInputs(
+  const { metadata, linkageTerms, undeclaredColumns } = resolveExchangeInputs(
     exchangeDataSpec,
     identity,
     columnNames,
@@ -1459,6 +1481,7 @@ export function prepareForExchange(
     // this step cannot settle: whether the run signs in band is decided by
     // what runExchange is given, not by the config alone.
     signing: exchangeDataSpec.signing,
+    undeclaredColumns,
     dataset,
     rawRows,
     rowCount: rawRows.length,

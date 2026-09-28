@@ -659,8 +659,7 @@ describe("generateInvitation", () => {
   const AT_CEILING = "a".repeat(MAX_NAME_LENGTH);
   const PAST_CEILING = AT_CEILING + "a";
 
-  /** A linkable CSV whose last column holds `name`, which the quick path infers
-   * as an `other` column and therefore sends. */
+  /** A linkable CSV whose last column holds `name`. */
   function csvSending(name: string): string {
     return (
       `ssn,first_name,last_name,dob,${name}\n` +
@@ -668,17 +667,33 @@ describe("generateInvitation", () => {
     );
   }
 
+  /** Mint over {@link csvSending} with the column `name` declared as sent, the
+   * metadata and terms the console's editor authors when the operator marks it:
+   * inference does not recognize the name, so it sends only when declared. */
+  function mintSending(name: string) {
+    const metadata: Metadata = [
+      ...inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
+      { name, type: "other", role: "payload", isPayload: true },
+    ];
+    return generateInvitation({
+      inviterName: "Org",
+      file: csvStream(csvSending(name)),
+      location,
+      linkageTerms: {
+        ...getDefaultLinkageTerms("Org", metadata),
+        payload: { send: [{ name }] },
+      },
+      metadata,
+    });
+  }
+
   test("rejects a sent column name past the length ceiling as an overlong InvitationFileError", async () => {
-    // The mint boundary is where an oversized header is caught: the quick path
-    // infers metadata from the CSV, which no schema bounds, so without this the
+    // The mint boundary is where an oversized header is caught: the metadata
+    // names the CSV's own header, which no schema bounds, so without this the
     // name reaches PayloadColumnSchema's .max at encode as a raw ZodError the UI
     // flattens into its generic retry dead-end -- and the partner's parse would be
     // the first real enforcement, after the frame was sent.
-    const error = await generateInvitation({
-      inviterName: "Org",
-      file: csvStream(csvSending(PAST_CEILING)),
-      location,
-    }).catch((e: unknown) => e);
+    const error = await mintSending(PAST_CEILING).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(InvitationFileError);
     expect((error as InvitationFileError).failure).toEqual({
       kind: "overlong",
@@ -687,11 +702,7 @@ describe("generateInvitation", () => {
   });
 
   test("mints a sent column name exactly at the length ceiling", async () => {
-    const { encoded } = await generateInvitation({
-      inviterName: "Org",
-      file: csvStream(csvSending(AT_CEILING)),
-      location,
-    });
+    const { encoded } = await mintSending(AT_CEILING);
     const token = await decodeInvitation(encoded);
     expect(token.disclosedPayloadColumns).toEqual([AT_CEILING]);
   });
@@ -704,11 +715,7 @@ describe("generateInvitation", () => {
     const astral = "\u{1D54F}".repeat(MAX_NAME_LENGTH);
     expect([...astral].length).toBe(MAX_NAME_LENGTH);
     expect(astral.length).toBe(MAX_NAME_LENGTH * 2);
-    const error = await generateInvitation({
-      inviterName: "Org",
-      file: csvStream(csvSending(astral)),
-      location,
-    }).catch((e: unknown) => e);
+    const error = await mintSending(astral).catch((e: unknown) => e);
     expect((error as InvitationFileError).failure).toEqual({
       kind: "overlong",
       positions: [5],
@@ -962,10 +969,10 @@ describe("generateInvitation", () => {
   });
 
   // A linkable CSV (ssn + names + dob give satisfiable keys) that ALSO contains
-  // columns the quick path discloses: `notes` infers as an `other` column (role
-  // payload), and `member_id` infers as a single row-identifier left isPayload, so
-  // both are transmitted -- exactly the two inferred-disclosure shapes the quick
-  // path must now declare.
+  // a column the quick path discloses: the `id` alias infers as the record
+  // identifier with isPayload set, so it is transmitted. `notes` and `member_id`
+  // are not recognized beside `id`, so inference leaves them out and they are
+  // not sent.
   const DISCLOSING_COLUMNS = [
     "ssn",
     "first_name",
@@ -973,19 +980,18 @@ describe("generateInvitation", () => {
     "dob",
     "notes",
     "member_id",
+    "id",
   ];
   const DISCLOSING_CSV =
-    "ssn,first_name,last_name,dob,notes,member_id\n" +
-    "123456789,Alice,Smith,1990-01-02,vip,M001\n";
+    "ssn,first_name,last_name,dob,notes,member_id,id\n" +
+    "123456789,Alice,Smith,1990-01-02,vip,M001,7\n";
 
   test("quick path authors payload.send equal to the inferred metadata's disclosed columns", async () => {
     const inviterName = "County Health Dept";
     const disclosed = disclosedColumnNames(
       inferMetadata(DISCLOSING_COLUMNS, []),
     );
-    // An inferred "other" column (notes) and an _id row-identifier (member_id),
-    // both still transmitted by the quick path.
-    expect(disclosed).toEqual(["notes", "member_id"]);
+    expect(disclosed).toEqual(["id"]);
 
     const { encoded, linkageTerms } = await generateInvitation({
       inviterName,
@@ -1085,10 +1091,7 @@ describe("generateInvitation", () => {
       file: csvStream(DISCLOSING_CSV),
       location,
     });
-    expect(linkageTerms.payload?.send?.map((c) => c.name)).toEqual([
-      "notes",
-      "member_id",
-    ]);
+    expect(linkageTerms.payload?.send?.map((c) => c.name)).toEqual(["id"]);
 
     // A lazy acceptor declares no payload.receive expectation (it does not know it
     // will receive these columns), so the reconcile takes whatever the inviter
@@ -1319,12 +1322,10 @@ describe("generateInvitation fail-closed before mint", () => {
     expect(missingTypes).toContain("date_of_birth");
   });
 
-  test("rejects a column-less file, not fooled by the empty-metadata all-keys fallback", async () => {
-    // The subtle case the block must catch: with no columns, getDefaultLinkageTerms
-    // falls back to ALL keys (its metadata is empty), so the embedded set declares
-    // keys -- and none of them is producible, which core's verdict grades as a
-    // shortfall rather than as terms declaring nothing. So an empty CSV is refused,
-    // and every default field is named as unproducible.
+  test("rejects a column-less file, naming every default field it lacks", async () => {
+    // With no columns the inferred metadata is empty, so the derivation narrows
+    // the built-in set to no key, the same refusal as a file of unrecognized
+    // columns, and every default field is named as missing.
     const err: unknown = await generateInvitation({
       inviterName: "County Health Dept",
       file: csvStream(""),
@@ -1335,11 +1336,10 @@ describe("generateInvitation fail-closed before mint", () => {
     const failure = (err as InvitationFileError).failure;
     expect(failure.kind).toBe("unlinkable");
     if (failure.kind !== "unlinkable") throw new Error("unreachable");
-    expect(failure.refusal.kind).toBe("shortfall");
-    if (failure.refusal.kind !== "shortfall") throw new Error("unreachable");
-    expect(
-      failure.refusal.verdict.unsatisfiedFields.map((f) => f.type),
-    ).toEqual(
+    expect(failure.refusal.kind).toBe("no-linkable-key");
+    if (failure.refusal.kind !== "no-linkable-key")
+      throw new Error("unreachable");
+    expect(failure.refusal.missingFields.map((f) => f.type)).toEqual(
       expect.arrayContaining([
         "ssn",
         "ssn4",

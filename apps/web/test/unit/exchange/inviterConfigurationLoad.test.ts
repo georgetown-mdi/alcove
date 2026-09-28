@@ -4,7 +4,7 @@ import {
   assessOutboundPayloadConsent,
   disclosedColumnNames,
   getDefaultLinkageTerms,
-  inferMetadata,
+  inferMetadataForEveryColumn,
 } from "@alcove/core";
 
 import {
@@ -230,19 +230,20 @@ function withFileRead(
   return withLoadedTermsDerived(withFileCommitted(state, csv));
 }
 
-/** The inference over this file's headers as a configuration states it: the
- * record identifier held back, the pair `role: identifier` takes in the columns
- * step. Inference itself states that column as sent beside the identifier role
- * ({@link inferMetadata}), the one pair the step cannot hold, which the
- * off-diagonal cases below drive on its own. */
+/** A configuration's `metadata` for this file: the roles inference gives each
+ * header, the record identifier held back, and `program_code`, which inference
+ * does not recognize and so leaves unsent, declared as sent. */
 function documentColumns(columns: Array<string> = COLUMNS): Metadata {
-  return inferMetadata(columns, []).map((column) =>
-    column.role === "identifier" ? { ...column, isPayload: false } : column,
-  );
+  return inferMetadataForEveryColumn(columns, []).map((column) => {
+    if (column.role === "identifier") return { ...column, isPayload: false };
+    if (column.name === "program_code")
+      return { ...column, role: "payload" as const, isPayload: true };
+    return column;
+  });
 }
 
 /** A document's own `metadata`: every column this file has, with `program_code`
- * stated as one this party keeps to itself where inference would send it. */
+ * stated as one this party keeps to itself. */
 function statedColumns(): Metadata {
   return documentColumns().map((column) =>
     column.name === "program_code"
@@ -252,7 +253,7 @@ function statedColumns(): Metadata {
 }
 
 /** The same document stating four of the file's five columns: `program_code`,
- * the one column inference sends to the partner, goes unnamed. */
+ * the one column {@link documentColumns} sends to the partner, goes unnamed. */
 function fourOfFiveColumns(): Metadata {
   return documentColumns(COLUMNS.slice(0, 4));
 }
@@ -576,8 +577,8 @@ describe("a webrtc configuration opens for review with its run withheld", () => 
 // therefore takes the document's terms again rather than the headers' own
 // inference -- the reading that decides what leaves the machine.
 describe("the open configuration holds across the files it is derived over", () => {
-  const ignoredProgramCode: DisclosedExchangeDocument["metadata"] = [
-    { name: "program_code", type: "other", role: "ignored", isPayload: false },
+  const sentProgramCode: DisclosedExchangeDocument["metadata"] = [
+    { name: "program_code", type: "other", role: "payload", isPayload: true },
   ];
 
   test("applying the terms announces the import and books the file", () => {
@@ -590,19 +591,19 @@ describe("the open configuration holds across the files it is derived over", () 
   });
 
   test("a voided file and the next one keep the document's own roles", () => {
-    // program_code infers as a disclosed payload column, and the file states it
-    // as one this party keeps to itself.
+    // program_code is not recognized, so the headers leave it unsent, and the
+    // file states it as sent.
     const opened = loadedInto(
       INVITER_SCREEN_INITIAL,
-      sftpDocument({ metadata: ignoredProgramCode }),
+      sftpDocument({ metadata: sentProgramCode }),
     );
     const voided = inviterScreenReducer(withFileRead(opened), {
       type: "console-file-voided",
     });
     const again = withFileRead(voided);
     expect(columnRole(again, "program_code")).toMatchObject({
-      role: "ignored",
-      isPayload: false,
+      role: "payload",
+      isPayload: true,
     });
     expect(again.mountedConfiguration.status).toBe("opened");
   });
@@ -613,7 +614,7 @@ describe("the open configuration holds across the files it is derived over", () 
     const applied = withFileRead(
       loadedInto(
         INVITER_SCREEN_INITIAL,
-        sftpDocument({ metadata: ignoredProgramCode }),
+        sftpDocument({ metadata: sentProgramCode }),
       ),
     );
     const editor = applied.editor;
@@ -629,7 +630,7 @@ describe("the open configuration holds across the files it is derived over", () 
     });
     expect(reprofiled.loadedTermsFile).toBe(csv);
     expect(columnRole(reprofiled, "program_code")).toMatchObject({
-      role: "ignored",
+      role: "payload",
     });
   });
 
@@ -653,17 +654,21 @@ describe("the open configuration holds across the files it is derived over", () 
     const applied = withFileRead(
       loadedInto(
         INVITER_SCREEN_INITIAL,
-        sftpDocument({ ...records, metadata: ignoredProgramCode }),
+        sftpDocument({ ...records, metadata: sentProgramCode }),
       ),
     );
+    expect(columnRole(applied, "program_code")).toMatchObject({
+      role: "payload",
+      isPayload: true,
+    });
     const csv = applied.acquired as AcquiredCsv;
     const closed = inviterScreenReducer(applied, {
       type: "loaded-configuration-discarded",
       editor: editorFromCsv("County Health", csv),
     });
     expect(columnRole(closed, "program_code")).toMatchObject({
-      role: "payload",
-      isPayload: true,
+      role: "ignored",
+      isPayload: false,
     });
     expect(closed.loadedConfiguration).toBeUndefined();
     expect(closed.loadedSftpForm).toBeUndefined();
@@ -967,18 +972,17 @@ describe("a loaded configuration reaches the editor once a file is read", () => 
   });
 
   test("the document's column roles replace what the headers infer", () => {
-    // program_code infers as a disclosed payload column; the file states it as
-    // one this party keeps to itself, and the editor opens on what the file
-    // states.
+    // program_code is not recognized, so the headers leave it unsent; the file
+    // states it as sent, and the editor opens on what the file states.
     const applied = withFileRead(
       loadedInto(
         INVITER_SCREEN_INITIAL,
-        sftpDocument({ metadata: statedColumns() }),
+        sftpDocument({ metadata: documentColumns() }),
       ),
     );
     expect(columnRole(applied, "program_code")).toMatchObject({
-      role: "ignored",
-      isPayload: false,
+      role: "payload",
+      isPayload: true,
     });
     expect(columnRole(applied, "first_name")?.role).toBe("linkage");
     expect(noticesOf(applied)).toEqual([]);
@@ -1118,7 +1122,7 @@ describe("a column whose is_payload does not follow its role", () => {
   });
 
   test("a record identifier stated as sent is sent, not held as one", () => {
-    // Inference states this pair for an `_id` column, so a configuration
+    // Inference states this pair for an `id` column, so a configuration
     // written from it sends that column on the command line. The step holds
     // either the identifier role or the sending one, and it takes sending, so
     // the run discloses what the file discloses.
@@ -1149,7 +1153,7 @@ describe("a column whose is_payload does not follow its role", () => {
 
 // A document stating `metadata` states the column set whole, the way the command
 // line reads it, so a column of this file the document does not name is held
-// back rather than disclosed on inference's default.
+// back.
 describe("a column the configuration does not name is kept back", () => {
   const applied = withFileRead(
     loadedInto(
@@ -1187,11 +1191,11 @@ describe("a column the configuration does not name is kept back", () => {
     expect(noticesOf(whole)).toEqual([]);
   });
 
-  test("with no configuration open the same file still infers", () => {
+  test("with no configuration open the same file lists the column unsent too", () => {
     const own = withFileCommitted(INVITER_SCREEN_INITIAL, acquired());
     expect(columnRole(own, "program_code")).toMatchObject({
-      role: "payload",
-      isPayload: true,
+      role: "ignored",
+      isPayload: false,
     });
   });
 });
@@ -1200,7 +1204,7 @@ describe("a column the configuration does not name is kept back", () => {
 // over a file the operator already edited keeps their edits rather than
 // returning the draft to what the file's headers infer.
 describe("a document stating no column roles keeps the operator's own", () => {
-  function withProgramCodeIgnored(): InviterScreenState {
+  function withProgramCodeSent(): InviterScreenState {
     const committed = withFileCommitted(INVITER_SCREEN_INITIAL, acquired());
     if (committed.editor === undefined || committed.acquired === undefined)
       throw new Error("expected a committed file");
@@ -1210,19 +1214,19 @@ describe("a document stating no column roles keeps the operator's own", () => {
         committed.editor,
         committed.acquired,
         "program_code",
-        "ignored",
+        "payload",
       ).editor,
       announcement: "",
     });
   }
 
-  test("a column the operator set ignored stays ignored", () => {
+  test("a column the operator set sent stays sent", () => {
     const opened = withLoadedTermsDerived(
-      loadedInto(withProgramCodeIgnored(), sftpDocument()),
+      loadedInto(withProgramCodeSent(), sftpDocument()),
     );
     expect(columnRole(opened, "program_code")).toMatchObject({
-      role: "ignored",
-      isPayload: false,
+      role: "payload",
+      isPayload: true,
     });
     expect(noticesOf(opened)).toEqual([]);
   });
@@ -1230,13 +1234,13 @@ describe("a document stating no column roles keeps the operator's own", () => {
   test("a document that states its roles still replaces them", () => {
     const opened = withLoadedTermsDerived(
       loadedInto(
-        withProgramCodeIgnored(),
-        sftpDocument({ metadata: documentColumns() }),
+        withProgramCodeSent(),
+        sftpDocument({ metadata: statedColumns() }),
       ),
     );
     expect(columnRole(opened, "program_code")).toMatchObject({
-      role: "payload",
-      isPayload: true,
+      role: "ignored",
+      isPayload: false,
     });
   });
 });

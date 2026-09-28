@@ -38,6 +38,7 @@ import {
 } from "@alcove/core";
 
 import { buildRunOutputs } from "../runOutputs";
+import { undeclaredColumnsRunNotice } from "../runWarnings";
 
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
 import { HANDSHAKE_ROLE_FOR_SIDE } from "../handshakeRole";
@@ -247,6 +248,8 @@ export function runManagedExchangeInBrowser(
           acquired.columns,
         );
         await assertFirstRoundFitsWebRtcFrame(prepared, { signal });
+        const undeclaredNotice = undeclaredColumnsRunNotice(prepared);
+        if (undeclaredNotice !== undefined) emitRunNotice(undeclaredNotice);
         return { prepared };
       },
       // Inside the lock: open the side-dispatched rendezvous, authenticate the

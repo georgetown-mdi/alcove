@@ -170,6 +170,9 @@ interface AcquireContext {
   onPsiProgress: (progress: PsiProgress) => void;
   /** Emit the full per-exchange stage tree, once, after load/prepare. */
   onStages: (stages: Array<StageDefinition>) => void;
+  /** Raise a notice on the run surface, such as the undeclared input columns
+   * named after prepare and before the peer is drawn in. */
+  onRunNotice: (message: string) => void;
 }
 
 /**
@@ -453,6 +456,7 @@ export async function runExchangeLifecycle<
       onStage: emitStage,
       onStages: emitStages,
       onPsiProgress: emitPsiProgress,
+      onRunNotice: emitRunNotice,
     });
   } catch (error) {
     // acquire is atomic: it has already torn down anything it built, so there is

@@ -15,10 +15,9 @@ import type { OutboundPayloadConsent } from "../../src/config/outboundPayloadCon
 
 // The acceptor shape this whole mechanism exists for: an invitation authors
 // the inviter's send and no receive, so the mirror leaves the acceptor's
-// own `payload.send` ABSENT and its outbound set comes from its own CSV
-// header, where every unrecognized column is transmitted by default. The
-// consent record is what makes that set chosen rather than inferred, so
-// these fixtures hold no payload block at all.
+// own `payload.send` ABSENT and its outbound set comes from its own
+// metadata alone. The consent record is what holds that set to the one the
+// party confirmed, so these fixtures hold no payload block at all.
 
 const acceptorTerms: LinkageTerms = {
   version: "1.0.0",
@@ -332,19 +331,18 @@ test("assertOutboundPayloadConsented: the passing cases throw nothing", () => {
 // --- prepareForExchange wiring -----------------------------------------------
 
 // The run-boundary safety check: whatever front end prepared the exchange,
-// a set this party never confirmed does not reach a connection. These
-// drive the CSV-header path (no metadata in the spec), which is the
-// acceptor's own -- an unrecognized column becomes transmitted payload
-// with no operator choice involved.
+// a set this party never confirmed does not reach a connection.
 
 const acceptorRows = [{ first_name: "Alice", diagnosis: "A" }];
 const acceptorColumns = ["first_name", "diagnosis"];
+const acceptorMetadata = metadataDisclosing(["diagnosis"]);
 
 test("prepareForExchange: refuses a pending consent before it prepares anything", () => {
   expect(() =>
     prepareForExchange(
       {
         linkageTerms: acceptorTerms,
+        metadata: acceptorMetadata,
         outboundPayloadConsent: { status: "pending" },
       },
       "Acceptor",
@@ -355,12 +353,13 @@ test("prepareForExchange: refuses a pending consent before it prepares anything"
 });
 
 test("prepareForExchange: refuses a set widened since it was confirmed", () => {
-  // The acceptor confirmed a CSV disclosing nothing but the linkage column; this
-  // run's CSV adds one, which inferMetadata makes transmittable by default.
+  // The acceptor confirmed disclosing nothing but the linkage column; this
+  // run's metadata sends one more.
   expect(() =>
     prepareForExchange(
       {
         linkageTerms: acceptorTerms,
+        metadata: acceptorMetadata,
         outboundPayloadConsent: { status: "confirmed", columns: [] },
       },
       "Acceptor",
@@ -380,6 +379,7 @@ test("prepareForExchange: refuses a set narrowed since it was confirmed, as a Us
     prepareForExchange(
       {
         linkageTerms: acceptorTerms,
+        metadata: acceptorMetadata,
         outboundPayloadConsent: {
           status: "confirmed",
           columns: ["diagnosis", "notes"],
@@ -400,6 +400,7 @@ test("prepareForExchange: prepares normally once the resolved set is the confirm
   const prepared = prepareForExchange(
     {
       linkageTerms: acceptorTerms,
+      metadata: acceptorMetadata,
       outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
     },
     "Acceptor",
@@ -412,7 +413,7 @@ test("prepareForExchange: prepares normally once the resolved set is the confirm
 test("prepareForExchange: a party with no consent record is untouched", () => {
   expect(() =>
     prepareForExchange(
-      { linkageTerms: acceptorTerms },
+      { linkageTerms: acceptorTerms, metadata: acceptorMetadata },
       "Acceptor",
       acceptorRows,
       acceptorColumns,
@@ -455,7 +456,7 @@ test("resolveExchangeInputs: derives default terms for a spec that holds none", 
   // The zero-setup shape, where the terms themselves come from the header.
   const resolved = resolveExchangeInputs({}, "Acceptor", acceptorColumns, []);
   expect(resolved.linkageTerms.identity).toBe("Acceptor");
-  expect(resolved.metadata.map((c) => c.name)).toEqual(acceptorColumns);
+  expect(resolved.metadata.map((c) => c.name)).toEqual(["first_name"]);
 });
 
 test("prepareForExchange: positions name the removal for an emptied header", () => {

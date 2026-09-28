@@ -78,8 +78,7 @@ const CLIENTS_PROFILE = {
 };
 
 /** The document's own column set over that file: every column it has, with
- * `program_code` -- the one column inference sends to the partner -- stated as
- * one this party keeps to itself. */
+ * `program_code` stated as one this party keeps to itself. */
 const STATED_COLUMNS = [
   {
     name: "client_id",
@@ -92,6 +91,14 @@ const STATED_COLUMNS = [
   { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
   { name: "program_code", type: "other", role: "ignored", isPayload: false },
 ];
+
+/** The same column set with `program_code`, which inference leaves unsent,
+ * stated as sent. */
+const SENDING_COLUMNS = STATED_COLUMNS.map((column) =>
+  column.name === "program_code"
+    ? { ...column, role: "payload", isPayload: true }
+    : column,
+);
 
 /** The body `GET /api/jobs/config` answers for an opened configuration. */
 function openedBody(document: unknown): unknown {
@@ -273,11 +280,11 @@ describe("the load offer on the file step", () => {
 // and the draft is derived from it at every commit -- the screen's own effect,
 // driven here rather than transcribed by a unit test.
 describe("the open configuration over the files it is derived across", () => {
-  test("the column it keeps back is kept back again after a void", async () => {
+  test("the column it sends is sent again after a void", async () => {
     stubConfigRoute(
       {
         status: 200,
-        body: openedBody({ ...CONFIG_DOCUMENT, metadata: STATED_COLUMNS }),
+        body: openedBody({ ...CONFIG_DOCUMENT, metadata: SENDING_COLUMNS }),
       },
       { files: [CLIENTS_FILE] },
     );
@@ -304,7 +311,7 @@ describe("the open configuration over the files it is derived across", () => {
           `How ${isolatedColumnName("program_code")} is used`,
         ),
       )
-      .toHaveValue("ignored");
+      .toHaveValue("payload");
   });
 
   test("a webrtc configuration opens for review and holds the create", async () => {

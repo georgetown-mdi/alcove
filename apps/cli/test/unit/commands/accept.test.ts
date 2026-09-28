@@ -1034,14 +1034,14 @@ function countOnlyToken(): InvitationToken {
 
 describe("the count-only shape, at the accept boundary", () => {
   test("validateAccept: refuses a count-only invitation whose own columns would send one", async () => {
-    // The count-only rule this party's own metadata holds: `diagnosis` is an
-    // unrecognized column, which inferMetadata marks for transmission, and a
+    // The count-only rule this party's own metadata holds: `ID` is the row
+    // identifier, which inferMetadata marks for transmission, and a
     // count-only exchange moves no data column in either direction. Refused at the
     // accept boundary, naming what to clear -- not left to the algorithm gate,
     // which says only that no count-only run path exists yet.
     const { error, ready } = await acceptWarnings({
       token: countOnlyToken(),
-      columns: [...LINKAGE_COLUMNS, "diagnosis"],
+      columns: [...LINKAGE_COLUMNS, "ID"],
       loggerName: "accept-count-only-transmits",
     });
     expect(ready).toBeUndefined();
@@ -1049,14 +1049,14 @@ describe("the count-only shape, at the accept boundary", () => {
     expect((error as Error).message).toMatch(/transmits no data columns/);
     // Named by the rule rather than by the column, matching every other refusal
     // composed beside a partner's document.
-    expect((error as Error).message).not.toContain("diagnosis");
+    expect((error as Error).message).not.toContain("ID");
   });
 
   test("validateAccept: online refuses the same arrangement, writing nothing", async () => {
     const options = testOptions();
     const { error } = await acceptWarnings({
       token: countOnlyToken(),
-      columns: [...LINKAGE_COLUMNS, "diagnosis"],
+      columns: [...LINKAGE_COLUMNS, "ID"],
       loggerName: "accept-count-only-transmits-online",
       mode: "online",
       options,
@@ -1101,17 +1101,17 @@ describe("the count-only shape, at the accept boundary", () => {
 
   test("validateAccept: warns when the input discloses columns the invitation accepts none of", async () => {
     // An explicit empty receive is the inviter declaring it takes no payload column,
-    // while inferMetadata defaults every unrecognized column to is_payload: true --
+    // while inferMetadata marks the `id` and `identifier` columns is_payload: true --
     // so the configuration this acceptance writes cannot run (prepareForExchange
     // refuses it before any data is sent). One warning, however many columns, naming them
     // and both remedies, while the operator can still decline.
     // A zero-width joiner rather than an ESC: this name comes from the CSV
     // header, which the read strips every control character from, and the
-    // joiner is outside that class and still needs escaping here.
+    // joiner is outside that class and still needs escaping wherever it is shown.
     const hostile = `notes\u200d[0m`;
     const { warnings, ready } = await acceptWarnings({
       token: tokenDeclaringReceive([]),
-      columns: [...LINKAGE_COLUMNS, "diagnosis", hostile],
+      columns: [...LINKAGE_COLUMNS, "id", "identifier", hostile],
       loggerName: "accept-refused-disclosure-warn",
     });
     expect((ready as { mode: string }).mode).toBe("offline");
@@ -1120,10 +1120,10 @@ describe("the count-only shape, at the accept boundary", () => {
     expect(refused).toContain("ask your partner for an invitation");
     // One entry per line, the rendering both consent surfaces use, so a name
     // holding the list separator is not misread as two entries.
-    expect(refused).toContain("\n  - diagnosis");
-    expect(refused).toContain(`\n  - ${sanitizeForDisplay(hostile)}`);
-    // The names are the operator's own file's and reach the log sink without ever
-    // becoming an Error, so the sink is where they are escaped.
+    expect(refused).toContain("\n  - id\n");
+    expect(refused).toContain("\n  - identifier");
+    // A column inference does not recognize is not sent, so it is not listed.
+    expect(refused).not.toContain(sanitizeForDisplay(hostile));
     expect(refused).not.toContain("\u200d");
     // Offline acceptance completes, so it says where the refusal actually arrives.
     expect(refused).toContain("alcove exchange");
@@ -1137,7 +1137,7 @@ describe("the count-only shape, at the accept boundary", () => {
     const options = testOptions();
     const { warnings, error } = await acceptWarnings({
       token: tokenDeclaringReceive([]),
-      columns: [...LINKAGE_COLUMNS, "diagnosis"],
+      columns: [...LINKAGE_COLUMNS, "id"],
       loggerName: "accept-refused-disclosure-online",
       mode: "online",
       options,
@@ -1159,7 +1159,7 @@ describe("the count-only shape, at the accept boundary", () => {
       (
         await acceptWarnings({
           token: tokenDeclaringReceive(undefined),
-          columns: [...LINKAGE_COLUMNS, "diagnosis"],
+          columns: [...LINKAGE_COLUMNS, "id"],
           loggerName: "accept-refused-disclosure-absent",
         })
       ).warnings,
@@ -1183,7 +1183,7 @@ describe("the count-only shape, at the accept boundary", () => {
       (
         await acceptWarnings({
           token: tokenDeclaringReceive([{ name: "dose" }]),
-          columns: [...LINKAGE_COLUMNS, "diagnosis"],
+          columns: [...LINKAGE_COLUMNS, "id"],
           loggerName: "accept-refused-disclosure-nonempty",
         })
       ).warnings,
@@ -1202,7 +1202,7 @@ describe("the count-only shape, at the accept boundary", () => {
     });
     const { warnings, error } = await acceptWarnings({
       token,
-      columns: [...LINKAGE_COLUMNS, "diagnosis"],
+      columns: [...LINKAGE_COLUMNS, "id"],
       loggerName: "accept-refused-disclosure-no-inviter-output",
     });
     expect(error).toBeUndefined();
@@ -1214,7 +1214,7 @@ describe("the count-only shape, at the accept boundary", () => {
       "accept-refused-disclosure-no-inviter-output-display",
     );
     log.setLevel("silent");
-    expect(renderDisplayInvitation(log, token, ["diagnosis"])).toContain(
+    expect(renderDisplayInvitation(log, token, ["id"])).toContain(
       "no payload is sent",
     );
   });
@@ -5405,8 +5405,8 @@ function fixtureWithPayloadColumn(): ReturnType<typeof offlineAcceptFixture> {
   const fixture = offlineAcceptFixture();
   fs.writeFileSync(
     fixture.input,
-    "first_name,last_name,dob,ssn,diagnosis\n" +
-      "Alice,Smith,1990-01-02,123456789,A\n",
+    "first_name,last_name,dob,ssn,id\n" +
+      "Alice,Smith,1990-01-02,123456789,1\n",
   );
   return fixture;
 }
@@ -5451,14 +5451,14 @@ describe("handler: the acceptance records consent to its OWN outbound set", () =
   test("handler: an acceptance that resolves its outbound set records it as confirmed", async () => {
     // The set is resolvable here, so what the display showed is what is recorded --
     // and it is the disclosed set, not every column in the file: the four linkage
-    // columns are not transmitted, diagnosis is.
+    // columns are not transmitted, id is.
     const { dir, input, configFile, keyFile } = fixtureWithPayloadColumn();
     try {
       const raw = await runOfflineAcceptFresh({ configFile, keyFile, input });
       expect(parseExchangeSpec(YAML.parse(raw)).outboundPayloadConsent).toEqual(
         {
           status: "confirmed",
-          columns: ["diagnosis"],
+          columns: ["id"],
         },
       );
     } finally {
@@ -5536,7 +5536,7 @@ describe("handler: the acceptance records consent to its OWN outbound set", () =
       expect(parseExchangeSpec(YAML.parse(raw)).outboundPayloadConsent).toEqual(
         {
           status: "confirmed",
-          columns: ["diagnosis"],
+          columns: ["id"],
         },
       );
     } finally {
@@ -5676,7 +5676,7 @@ describe("handler: the acceptance records consent to its OWN outbound set", () =
       expect(exit).not.toHaveBeenCalled();
       expect(
         runOnlineBootstrapMock.mock.calls[0][0].outboundPayloadConsent,
-      ).toEqual({ status: "confirmed", columns: ["diagnosis"] });
+      ).toEqual({ status: "confirmed", columns: ["id"] });
     } finally {
       exit.mockRestore();
       runOnlineBootstrapMock.mockReset();

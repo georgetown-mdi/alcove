@@ -28,11 +28,12 @@ import {
 } from "@exchange/manageOfferModel";
 import { RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
 
+import type { ColumnMetadata, WebRTCEndpoint } from "@alcove/core";
+
 import type {
   ManagedDepositInputs,
   ManagedExchangeDocumentParts,
 } from "@exchange/manageOfferModel";
-import type { WebRTCEndpoint } from "@alcove/core";
 
 // The inviter's own signaling location (window.location-derived) is already the
 // invitation's endpoint shape; the acceptor's endpoint is the invitation's own.
@@ -52,17 +53,19 @@ const invitationEndpoint: WebRTCEndpoint = {
   path: "/api/",
 };
 
+/** `name` declared as a column sent to the partner. */
+function sentColumn(name: string): ColumnMetadata {
+  return { name, type: "other", role: "payload", isPayload: true };
+}
+
 // ssn/first_name/last_name/dob infer matching keys; program_code is not in the
-// alias map, so it infers a disclosed payload column -- a non-trivial published
-// set for the inviter deposit to hold.
-const inviterColumns = [
-  "ssn",
-  "first_name",
-  "last_name",
-  "dob",
-  "program_code",
+// alias map, so it is declared as sent -- a non-trivial published set for the
+// inviter deposit to hold.
+const keyColumns = ["ssn", "first_name", "last_name", "dob"];
+const inviterMetadata = [
+  ...inferMetadata(keyColumns, []),
+  sentColumn("program_code"),
 ];
-const inviterMetadata = inferMetadata(inviterColumns, []);
 const inviterTerms = getDefaultLinkageTerms(
   "County Health Dept",
   inviterMetadata,
@@ -230,12 +233,12 @@ describe("composeManagedDocument", () => {
 // output and payload mirrored -- what the accept flow composes its document from.
 const acceptedTerms = deriveAcceptedLinkageTerms(inviterTerms, "Clinic A");
 // The acceptor's own file: ssn/first_name/last_name/dob infer linkage columns and
-// visit_id infers a disclosed payload column, so the set it would send is
-// non-empty and derived, not authored.
-const acceptorMetadataFixture = inferMetadata(
-  ["ssn", "first_name", "last_name", "dob", "visit_id"],
-  [],
-);
+// visit_id is declared as sent, so the set it would send is non-empty and derived
+// from the metadata.
+const acceptorMetadataFixture = [
+  ...inferMetadata(keyColumns, []),
+  sentColumn("visit_id"),
+];
 
 describe("the acceptor's outbound-payload consent record", () => {
   test("records the resolved set as confirmed -- exactly what the columns step showed", () => {
@@ -404,8 +407,7 @@ describe("buildManagedDeposit (inviter)", () => {
 });
 
 describe("buildManagedDeposit (acceptor)", () => {
-  const acceptorColumns = ["ssn", "first_name", "last_name", "dob", "visit_id"];
-  const acceptorMetadata = inferMetadata(acceptorColumns, []);
+  const acceptorMetadata = acceptorMetadataFixture;
   // The acceptor's own perspective: identity replaced, output/payload mirrored.
   const acceptorTerms = deriveAcceptedLinkageTerms(inviterTerms, "Clinic A");
 

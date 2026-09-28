@@ -896,15 +896,16 @@ test("persistedPeerBudgetNotice: names the recorded budget when one was written"
 });
 
 test("validateInvite: online includes the disclosed-columns subset from the inferred metadata", async () => {
-  // An input with non-linkage columns: `notes` infers as an `other` payload column
-  // and `member_id` as an `_id` row-identifier, both transmitted; the name/dob/ssn
-  // linkage columns are not. The token must hold exactly that disclosed subset so
-  // the acceptor's consent and commitment derive from the wire's own predicate.
+  // An input with non-linkage columns: `id` infers as the row identifier, which
+  // is transmitted, while `notes` is not recognized and so is left out; the
+  // name/dob/ssn linkage columns are not transmitted. The token must hold exactly
+  // that disclosed subset so the acceptor's consent and commitment derive from
+  // the wire's own predicate.
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-disc-"));
   const input = path.join(dir, "input.csv");
   fs.writeFileSync(
     input,
-    "first_name,last_name,dob,ssn,notes,member_id\n" +
+    "first_name,last_name,dob,ssn,notes,id\n" +
       "Alice,Smith,1990-01-02,123456789,vip,M001\n",
   );
   const ready = await validateInvite({
@@ -917,12 +918,12 @@ test("validateInvite: online includes the disclosed-columns subset from the infe
   expect(token.disclosedPayloadColumns).toEqual(
     disclosedColumnNames(
       inferMetadata(
-        ["first_name", "last_name", "dob", "ssn", "notes", "member_id"],
+        ["first_name", "last_name", "dob", "ssn", "notes", "id"],
         [],
       ),
     ),
   );
-  expect(token.disclosedPayloadColumns).toEqual(["notes", "member_id"]);
+  expect(token.disclosedPayloadColumns).toEqual(["id"]);
   // The same disclosed set is persisted into the saved config's
   // disclosedPayloadColumns (the send-side commitment), so a later recurring
   // `alcove exchange` can verify its metadata still discloses it before any
@@ -941,7 +942,7 @@ test("validateInvite: offline infer-from-input persists the disclosed subset as 
   const input = path.join(dir, "input.csv");
   fs.writeFileSync(
     input,
-    "first_name,last_name,dob,ssn,notes,member_id\n" +
+    "first_name,last_name,dob,ssn,notes,id\n" +
       "Alice,Smith,1990-01-02,123456789,vip,M001\n",
   );
   const ready = await validateInvite({
@@ -951,7 +952,7 @@ test("validateInvite: offline infer-from-input persists the disclosed subset as 
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.disclosedPayloadColumns).toEqual(["notes", "member_id"]);
+  expect(token.disclosedPayloadColumns).toEqual(["id"]);
   if (ready.mode !== "offline") throw new Error("expected offline mode");
   expect(ready.dataSpec.disclosedPayloadColumns).toEqual(
     token.disclosedPayloadColumns,
@@ -1000,80 +1001,13 @@ function fixtureWithTrailingColumn(name: string): {
   };
 }
 
-/** A disclosed column name one character past the length ceiling: inferred as
- *  an `other` payload column, so it is transmitted and its name is included. */
+/** A column name one character past the length ceiling. */
 const OVERLONG_COLUMN = "n".repeat(MAX_NAME_LENGTH + 1);
 
-test("validateInvite: online refuses an over-long disclosed column name before minting", async () => {
-  // The header is unbounded by any schema, so without the mint-boundary guard the
-  // name reaches the token's own name bound inside encodeInvitation as a raw
-  // ZodError. The operator gets the typed refusal naming the position instead.
+test("validateInvite: an over-long unrecognized column is not sent, so it does not stop the mint", async () => {
+  // Inference sends only the columns it recognizes, so an unrecognized header
+  // is never disclosed and its length costs the invitation nothing.
   const { input, options } = fixtureWithTrailingColumn(OVERLONG_COLUMN);
-  let thrown: unknown;
-  try {
-    await validateInvite({
-      resolved: { mode: "online", url: new URL("sftp://host/drop"), input },
-      options,
-      acceptTimeout: 900,
-      log: silentLog,
-    });
-  } catch (err) {
-    thrown = err;
-  }
-  expect(thrown).toBeInstanceOf(UsageError);
-  const message = String(thrown);
-  expect(message).toMatch(/metadata column 5 /);
-  expect(message).toContain(`${MAX_NAME_LENGTH}-character limit`);
-  // The offending name is located, not echoed: it is longer than any message that
-  // would hold it.
-  expect(message).not.toContain(OVERLONG_COLUMN);
-  expect(fs.existsSync(options.configFile)).toBe(false);
-  expect(fs.existsSync(options.keyFile)).toBe(false);
-});
-
-test("handler: the offline infer path refuses an over-long disclosed name, writing nothing", async () => {
-  // Driven through the handler, so the refusal is asserted where the invitation
-  // is printed and the config and key file are written -- the offline mint's
-  // commit step, which a failure in the no-commit phase never reaches.
-  const { input, options } = fixtureWithTrailingColumn(OVERLONG_COLUMN);
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
-  const stdio = captureStdio();
-  try {
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: [input],
-      "config-file": options.configFile,
-      "key-file": options.keyFile,
-      "log-level": "error",
-    } as unknown as Arguments);
-    // Read before the finally block restores the spies.
-    const stdout = stdio.stdoutWrites.join("");
-    const stderr = stdio.stderrWrites.join("");
-    // Exit 64: the shared usage-error classification, not a transport or
-    // internal failure.
-    expect(exit).toHaveBeenCalledWith(64);
-    expect(fs.existsSync(options.configFile)).toBe(false);
-    expect(fs.existsSync(options.keyFile)).toBe(false);
-    // The invitation is the only thing stdout ever holds, and it was never
-    // minted.
-    expect(stdout).toBe("");
-    expect(stderr).toMatch(/metadata column 5 /);
-    expect(stderr).toContain(`${MAX_NAME_LENGTH}-character limit`);
-  } finally {
-    stdio.restore();
-    exit.mockRestore();
-  }
-});
-
-test("validateInvite: a disclosed column name at the ceiling still mints", async () => {
-  // The boundary in the other direction, so the refusal cannot be an off-by-one
-  // that costs a legitimate header its invitation.
-  const atCeiling = "n".repeat(MAX_NAME_LENGTH);
-  const { input, options } = fixtureWithTrailingColumn(atCeiling);
   const ready = await validateInvite({
     resolved: { mode: "offline", input },
     options,
@@ -1081,7 +1015,7 @@ test("validateInvite: a disclosed column name at the ceiling still mints", async
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.disclosedPayloadColumns).toEqual([atCeiling]);
+  expect(token.disclosedPayloadColumns).toEqual([]);
 });
 
 // --- linkage strategy selection ----------------------------------------------
@@ -1488,6 +1422,15 @@ function defaultTerms(): LinkageTerms {
     "Agency A",
     inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
   );
+}
+
+// Metadata for the {@link defaultTerms} input plus a `notes` column declared as
+// sent to the partner.
+function metadataSendingNotes(): Metadata {
+  return [
+    ...inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
+    { name: "notes", type: "other", role: "payload", isPayload: true },
+  ];
 }
 
 // A pre-existing config holding `terms` (and optionally an explicit
@@ -2009,10 +1952,7 @@ test("validateInvite: config-as-source threads the disclosed subset for the send
   // the reused config's disclosed_payload_columns (closing the init-config gap and
   // refreshing a stale prior commitment on re-invite).
   const terms = defaultTerms();
-  const metadata = inferMetadata(
-    ["first_name", "last_name", "dob", "ssn", "notes"],
-    [],
-  );
+  const metadata = metadataSendingNotes();
   const { dir, configPath, keyPath } = withConfig(terms, undefined, metadata);
   try {
     const ready = await validateInvite({
@@ -2461,10 +2401,7 @@ test("validateInvite: offline config-source refuses a count-only config whose me
   // for. Refused before the token is minted, and ahead of the algorithm gate, so
   // the operator is told which marking to clear rather than only that the
   // algorithm is not runnable yet.
-  const metadata = inferMetadata(
-    ["first_name", "last_name", "dob", "ssn", "notes"],
-    [],
-  );
+  const metadata = metadataSendingNotes();
   expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
   const { dir, configPath, keyPath } = withConfig(
     countOnlyTerms(),
@@ -2496,10 +2433,7 @@ test("validateInvite: an explicit empty payload pair still names the count-only 
   // output.shareWithPartner: false, and these terms have shareWithPartner:
   // true (the default), so metadata marking a column disclosed falls through
   // to the generic disclosure message unless the count-only check runs first.
-  const metadata = inferMetadata(
-    ["first_name", "last_name", "dob", "ssn", "notes"],
-    [],
-  );
+  const metadata = metadataSendingNotes();
   expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
   const terms: LinkageTerms = {
     ...countOnlyTerms(),
@@ -2527,10 +2461,7 @@ test("validateInvite: an explicit empty payload pair still names the count-only 
 test("validateInvite: a psi config with the same metadata and shape still mints", async () => {
   // The narrowing claim at this boundary: every refusal above reads the
   // algorithm first, so the identical document under `psi` is untouched.
-  const metadata = inferMetadata(
-    ["first_name", "last_name", "dob", "ssn", "notes"],
-    [],
-  );
+  const metadata = metadataSendingNotes();
   const { dir, configPath, keyPath } = withConfig(
     { ...defaultTerms(), deduplicate: false },
     undefined,
@@ -3368,10 +3299,7 @@ test("handler: offline-from-config persists the disclosed subset into the reused
   // exchange has the commitment to check. validateInvite is tested above; this
   // proves the handler actually calls persistDisclosedPayloadColumns on the reused
   // config (the offlineFromConfig branch), not merely that the value is threaded.
-  const metadata = inferMetadata(
-    ["first_name", "last_name", "dob", "ssn", "notes"],
-    [],
-  );
+  const metadata = metadataSendingNotes();
   const { dir, configPath, keyPath } = withConfig(
     defaultTerms(),
     undefined,
@@ -3548,7 +3476,7 @@ test("handler: offline infer-from-input writes the disclosed subset into the fre
   const input = path.join(dir, "input.csv");
   fs.writeFileSync(
     input,
-    "first_name,last_name,dob,ssn,notes\nAlice,Smith,1990-01-02,123456789,hi\n",
+    "first_name,last_name,dob,ssn,id\nAlice,Smith,1990-01-02,123456789,1\n",
   );
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   const exit = vi
@@ -3570,7 +3498,7 @@ test("handler: offline infer-from-input writes the disclosed subset into the fre
     const parsed = YAML.parse(fs.readFileSync(configFile, "utf8")) as {
       disclosed_payload_columns?: string[];
     };
-    expect(parsed.disclosed_payload_columns).toEqual(["notes"]);
+    expect(parsed.disclosed_payload_columns).toEqual(["id"]);
   } finally {
     logSpy.mockRestore();
     exit.mockRestore();

@@ -5,6 +5,7 @@ import {
   computeTermsHash,
   getDefaultStandardization,
   inferMetadata,
+  inferMetadataForEveryColumn,
   prepareForExchange,
   validateCompatibility,
 } from "@alcove/core";
@@ -52,12 +53,12 @@ function termsOf(spec: ExchangeDataSpec): LinkageTerms {
 }
 
 /** The editor's edited metadata that makes both keys satisfiable: bind `a` to
- * first_name and `b` to last_name, then roll both for matching. A type change
- * alone keeps the inferred `payload` disclosure (a sent column stays sent), and a
- * payload column does not participate in matching, so the explicit `match`
- * (role: linkage) is what makes the keys satisfiable. */
+ * first_name and `b` to last_name, then roll both for matching. The editor seeds
+ * every column, an unrecognized one as ignored, and only a linkage column
+ * participates in matching, so the `match` choice (role: linkage) is what makes
+ * the keys satisfiable. */
 function remappedMetadata(): Metadata {
-  let md = normalizeForEditor(inferMetadata(columns, []));
+  let md = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   md = setColumnType(md, "a", "first_name").metadata;
   md = setColumnType(md, "b", "last_name").metadata;
   md = setColumnDisclosure(md, "a", "match").metadata;

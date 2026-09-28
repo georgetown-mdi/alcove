@@ -384,6 +384,7 @@ import {
   TERMINATED_RECORD_UNBUILT_WARNING,
   UNNAMED_PARTNER_ACCOUNTING_NOTE,
   entryHelloResidueGuidance,
+  undeclaredColumnsNotice,
   fileSyncInactivityTimeoutMs,
   type RunProtocolResult,
   type SigningPersist,
@@ -3941,6 +3942,60 @@ test("an unsigned run with records off does not warn", async () => {
   );
 
   expect(mockState.warnings).not.toContain(SIGNING_WITHOUT_RECORD_WARNING);
+});
+
+// --- Input columns the metadata does not declare -----------------------------
+
+test("undeclared input columns are named on the log and the event stream before connecting", async () => {
+  const notice = undeclaredColumnsNotice({
+    undeclaredColumns: ["notes", "amount"],
+  });
+  expect(notice).toBe(
+    "2 input columns are not sent to your partner because the exchange's " +
+      "column settings do not declare them: notes, amount. To send one, " +
+      "declare it in the configuration's metadata block with is_payload: " +
+      "true; to leave one out without this notice, declare it with role: " +
+      "ignored.",
+  );
+  mockFd3Open();
+  try {
+    await expect(
+      runProtocol({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: "" },
+        prepared: {
+          ...minimalPrepared,
+          undeclaredColumns: ["notes", "amount"],
+        },
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test",
+        fileSyncRuntime: { eventStream: true },
+        signing: null,
+      }),
+    ).rejects.toThrow("key file path is empty");
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+
+  expect(mockState.warnings).toContain(notice);
+  const lines = takeFd3Lines();
+  expect(lines.map((l) => l.type)).toEqual(["warning", "metrics", "error"]);
+  expect(lines[0].source).toBe("undeclaredColumns");
+  expect(lines[0].message).toBe(notice);
+});
+
+test("a run with no undeclared input column names none", async () => {
+  expect(undeclaredColumnsNotice({ undeclaredColumns: [] })).toBeUndefined();
+  expect(undeclaredColumnsNotice({})).toBeUndefined();
+  await expect(runThroughWarnGate(null)).rejects.toThrow(
+    "key file path is empty",
+  );
+  expect(
+    mockState.warnings.some((warning) =>
+      String(warning).includes("not sent to your partner"),
+    ),
+  ).toBe(false);
 });
 
 test("the warned run still completes", { timeout: 20_000 }, async () => {

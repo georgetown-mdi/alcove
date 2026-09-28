@@ -44,6 +44,8 @@ import styles from "@styles/app.module.css";
 // them.
 import { isolatedColumnName } from "@components/ColumnName";
 
+import { applyDisclosure } from "@psi/metadataEditing";
+
 import { createAppMount } from "./renderApp";
 import { openDisclosure } from "./collapsePanels";
 import { visualOrderWithin } from "./visualOrder";
@@ -53,6 +55,7 @@ import type {
   LinkageTerms,
   PreparedExchange,
 } from "@alcove/core";
+import type { AcceptorColumnsState } from "@exchange/acceptorColumnsModel";
 
 // Capture what the router boundary was navigated to, so the lobby paste test
 // can assert the target and hash.
@@ -313,6 +316,33 @@ afterEach(() => {
 async function consentAndName() {
   await userEvent.click(page.getByRole("checkbox"));
   await userEvent.fill(page.getByLabelText("Your name"), "Sam Alvarez");
+}
+
+/** Mark `column` as sent on the columns step, through the grid's own control. */
+async function markSent(column: string) {
+  await userEvent.click(
+    page.getByRole("combobox", {
+      name: `How column ${isolatedColumnName(column)} is used`,
+      exact: true,
+    }),
+  );
+  await userEvent.click(
+    page.getByRole("option", { name: "Sent to your partner" }),
+  );
+}
+
+/** The seed for `columns` with each column inference does not recognize, which
+ * the seed lists as ignored, marked to send. */
+function seededWithUnrecognizedSent(
+  columns: Array<string>,
+): AcceptorColumnsState {
+  const seeded = acceptorInitialColumnsState(columns);
+  return {
+    ...seeded,
+    metadata: seeded.metadata.map((column) =>
+      column.role === "ignored" ? applyDisclosure(column, "payload") : column,
+    ),
+  };
 }
 
 describe("lobby: review invitation", () => {
@@ -918,8 +948,8 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
   });
 
   test("mapping the missing fields flips partial -> all-clear and voices the announcement", async () => {
-    // Both columns are unrecognized (inferred payload), so the file is blocked and
-    // the mapper offers one Select per missing type.
+    // Both columns are unrecognized, so the file is blocked and the mapper offers
+    // one Select per missing type.
     await reachColumns("alpha,beta\nAlice,Smith\n");
     await expect
       .element(page.getByText("This file cannot match yet"))
@@ -1127,11 +1157,12 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
   test("the ledger's You will send names the extra disclosed column, not the invitation's request", async () => {
     // The invitation requests no payload from the acceptor (acceptorTerms has no
     // payload.receive), so its terms name nothing to send. The file has an
-    // unrecognized `comment` column that infers to role: payload, so the acceptor
+    // unrecognized `comment` column the operator marks to send, so the acceptor
     // transmits it for matched rows. The ledger's "You will send" must name that
     // column (what actually leaves), not read "No additional columns" off the
     // inviter's empty request.
     await reachColumns("first_name,last_name,comment\nAlice,Smith,ok\n");
+    await markSent("comment");
     const ledger = document.querySelector(
       'aside[aria-label="This exchange"]',
     ) as Element;
@@ -1227,6 +1258,7 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     await reachColumns(
       `first_name,last_name,pre,${hostileHeader},post\nAlice,Smith,a,b,c\n`,
     );
+    for (const column of ["pre", sanitized, "post"]) await markSent(column);
     const ledger = document.querySelector(
       'aside[aria-label="This exchange"]',
     ) as Element;
@@ -1282,8 +1314,9 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
 
   test("the backlink returns to consent preserving the file, then re-enters reseeded", async () => {
     await reachColumns("first_name,last_name,comment\nAlice,Smith,ok\n");
-    // The unrecognized comment column is the inferred payload; the columns step's
-    // "what you will send" summary names it.
+    // The unrecognized comment column, marked to send; the columns step's "what
+    // you will send" summary names it.
+    await markSent("comment");
     await expect
       .element(page.getByText("For each matched row: comment."))
       .toBeInTheDocument();
@@ -1378,7 +1411,7 @@ describe("acceptor columns step: one column name across the screen", () => {
   // on @components/ColumnName.
   function mountStep(columns: Array<string>) {
     const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
-    const columnsState = acceptorInitialColumnsState(columns);
+    const columnsState = seededWithUnrecognizedSent(columns);
     const editorState = acceptorColumnsEditorState(
       columnsState,
       acceptorTerms,
@@ -1412,7 +1445,7 @@ describe("acceptor columns step: one column name across the screen", () => {
   test("a header holding a bidi override reads alike in the grid row and the panel", async () => {
     // A right-to-left override (U+202E) and a zero-width joiner (U+200D): the two
     // classes that make a name read differently from its bytes. The name is
-    // unrecognized, so it infers to role: payload -- the disclosed set -- while
+    // unrecognized and marked to send -- the disclosed set -- while
     // first_name/last_name satisfy both keys, so the "What you will send" panel
     // renders instead of the mapper.
     const bidiColumn = "notes\u202Eevil\u200D";
@@ -1653,7 +1686,7 @@ describe("acceptor columns step: the send summary is gated on the inviting party
   function mountStep(linkageTerms: LinkageTerms) {
     const columns = ["first_name", "last_name", "risk_score"];
     const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
-    const columnsState = acceptorInitialColumnsState(columns);
+    const columnsState = seededWithUnrecognizedSent(columns);
     const editorState = acceptorColumnsEditorState(
       columnsState,
       linkageTerms,
@@ -1758,8 +1791,8 @@ describe("acceptor columns step: the columns the invitation will not accept", ()
     payload: { receive: [] },
   };
 
-  // The name fields satisfy both keys and the unrecognized column infers to role:
-  // payload, so this conflict is the only thing that can close the launch. That
+  // The name fields satisfy both keys and the unrecognized column is marked to
+  // send, so this conflict is the only thing that can close the launch. That
   // column has a bidi override (U+202E) because the alert names it beside the
   // grid row the operator has to change, and the two must name it alike.
   const bidiColumn = "notes\u202Eevil";
@@ -1767,7 +1800,7 @@ describe("acceptor columns step: the columns the invitation will not accept", ()
   function mountStep(linkageTerms: LinkageTerms) {
     const columns = ["first_name", "last_name", bidiColumn];
     const rows = [Object.fromEntries(columns.map((c) => [c, "x"]))];
-    const columnsState = acceptorInitialColumnsState(columns);
+    const columnsState = seededWithUnrecognizedSent(columns);
     const editorState = acceptorColumnsEditorState(
       columnsState,
       linkageTerms,
@@ -2132,8 +2165,8 @@ describe("acceptor screen: run and completion", () => {
 
   test("the settled ledger's You sent names the launched disclosed column", async () => {
     // The full flow with an extra unrecognized `comment` column against a run token
-    // whose terms request no payload from the acceptor. The column transmits (infers
-    // to role: payload), so the settled "You sent" row must name it -- the completion
+    // whose terms request no payload from the acceptor. The operator marks the
+    // column to send, so the settled "You sent" row must name it -- the completion
     // footer attests "the results above are all your partner received about your
     // data," so a ledger that hid this column would make that attestation false.
     window.location.hash = await encodeRunToken();
@@ -2159,6 +2192,7 @@ describe("acceptor screen: run and completion", () => {
     await expect
       .element(page.getByRole("heading", { name: "Confirm your columns" }))
       .toBeInTheDocument();
+    await markSent("comment");
     await userEvent.click(
       page.getByRole("button", { name: "Start the exchange" }),
     );

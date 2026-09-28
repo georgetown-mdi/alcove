@@ -245,7 +245,7 @@ interface DirectTermsPreview {
    * hold ({@link overlongDisclosedColumnPositions}); non-empty means the run
    * would be refused at prepare time, so the confirm screen refuses it here
    * instead. This spine has no disclosure control -- the inferred metadata sends
-   * every non-linkage column -- so the remedy is a shorter header. */
+   * only an `id` or `identifier` column -- so the remedy is a shorter header. */
   overlongDisclosedColumns: Array<number>;
   /** Why this file cannot be run under the previewed terms, or `undefined` when it
    * can. Derived from the same verdict the run boundary enforces, over the very

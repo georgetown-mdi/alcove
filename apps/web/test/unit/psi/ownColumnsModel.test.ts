@@ -26,7 +26,7 @@ import {
 } from "@psi/inviterEditor";
 import { generateInvitation } from "@psi/invitation";
 
-import type { LinkageTerms, Output } from "@alcove/core";
+import type { LinkageTerms, Metadata, Output } from "@alcove/core";
 import type { AcquiredCsv } from "@psi/inviterEditor";
 import type { InvitationLocation } from "@psi/invitation";
 
@@ -36,9 +36,12 @@ import type { InvitationLocation } from "@psi/invitation";
 
 const columns = ["client_id", "first_name", "last_name", "dob", "program_code"];
 // client_id/first_name/last_name/dob infer matching roles; program_code is not
-// in the alias map, so it infers a disclosed payload column -- the one column
-// that separates the `disclosed` selection from `all`.
-const metadata = inferMetadata(columns, []);
+// in the alias map, so it is declared as sent -- the one column that separates
+// the `disclosed` selection from `all`.
+const metadata: Metadata = [
+  ...inferMetadata(columns.slice(0, 4), []),
+  { name: "program_code", type: "other", role: "payload", isPayload: true },
+];
 
 const BOTH_RECEIVE: Output = { expectsOutput: true, shareWithPartner: true };
 const PARTNER_ONLY: Output = { expectsOutput: false, shareWithPartner: true };
@@ -90,7 +93,7 @@ describe("the control's three states", () => {
   });
 
   test("`disclosed` previews the columns this party sends its partner", () => {
-    // program_code is the inferred payload column; the identifier is left out of
+    // program_code is the declared payload column; the identifier is left out of
     // both selections because the result's first column already holds it.
     expect(ownColumnsPreview(metadata, "disclosed")).toEqual(["program_code"]);
   });

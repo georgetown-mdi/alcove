@@ -1,7 +1,9 @@
 import {
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  describeUndeclaredColumns,
   sanitizeForDisplay,
 } from "@alcove/core";
+import type { PreparedExchange } from "@alcove/core";
 
 /**
  * Fold one driver `onWarning` message into a seat's accumulated run warnings.
@@ -25,4 +27,18 @@ export function appendSanitizedRunWarning(
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
   ];
+}
+
+/**
+ * The run notice naming the input columns a run does not send because its
+ * column settings do not declare them, or `undefined` when there are none.
+ * Raised on a seat's run surface before the run connects; composed raw, since
+ * the seat's `onWarning` sink escapes it ({@link appendSanitizedRunWarning}).
+ */
+export function undeclaredColumnsRunNotice(
+  prepared: Pick<PreparedExchange, "undeclaredColumns">,
+): string | undefined {
+  const notice = describeUndeclaredColumns(prepared.undeclaredColumns ?? []);
+  if (notice === undefined) return undefined;
+  return `${notice} To send one, set it to "Sent to your partner" in the column settings.`;
 }

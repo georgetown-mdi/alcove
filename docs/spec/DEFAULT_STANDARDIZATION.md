@@ -609,23 +609,28 @@ as well as a separated one.
 Two rules sit outside the table:
 
 - A name absent from the table but ending in `_id` infers `type: identifier`,
-  `role: payload`, `is_payload: true`.
-- Any other unrecognized name infers `type: other`, `role: payload`,
-  `is_payload: true`.
+  `is_payload: false`, and has a role only if the second pass below makes it
+  the identifier.
+- Any other name absent from the table infers nothing.
 
 A second pass then decides which column indexes this party's own records: a
 header with exactly one `identifier`-typed column promotes that column to
 `role: identifier` whatever its name, and a header with several leaves the
 promotion to a column literally named `id` or `identifier` if one is present,
-and to no column at all otherwise. The operator-facing consequences of that --
-that an inferred identifier column is transmitted -- are in
-[Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).
+and to no column at all otherwise.
+
+A column that ends the second pass with no role is undeclared: the inferred
+metadata has no entry for it, so the run does not match on it, index by it, or
+send it. What a party sends is exactly what its metadata declares, and the
+table's `identifier` row is the one inferred entry with `is_payload: true`. The
+run names its undeclared columns before it connects; the operator-facing
+detail is in [Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).
 
 Two properties of these assignments are critical for matching. Every
 inferred linkage type has `is_payload: false`, so a column inferred into
 matching is not also disclosed to the partner unless the operator says so; and
 matching participation still requires `role: linkage`, so a column inferred
-`identifier` or `payload` never reaches a key however its type reads (see
+`identifier` never reaches a key however its type reads (see
 [Linkage participation](PROTOCOL.md#linkage-participation-the-role-axis)).
 
 ## See also

@@ -525,9 +525,10 @@ describe("inviter screen", () => {
       Array.from(ledger().querySelectorAll(`.${styles.ledgerRow}`)).find(
         (row) => row.querySelector("dt")?.childNodes[0].textContent === label,
       );
-    expect(ledgerRow("You will send")?.querySelector("dd")?.textContent).toBe(
-      isolatedColumnName("program_code"),
-    );
+    // program_code is not recognized, so the seed lists it as not sent.
+    expect(
+      ledgerRow("You will send")?.querySelector("dd")?.textContent,
+    ).not.toContain("program_code");
     expect(ledgerRow("Expires")?.querySelector("dd")?.textContent).toBe(
       "1 hour after you share",
     );
@@ -549,8 +550,14 @@ describe("inviter screen", () => {
       .element(page.getByLabelText(usedLabel("program_code")))
       .toBeInTheDocument();
 
-    // Undiscloses the only sent column: the ledger and the empty-state inset
-    // track the edit.
+    // Marks the column sent, then undiscloses it again: the ledger and the
+    // empty-state inset track each edit.
+    await page
+      .getByLabelText(usedLabel("program_code"))
+      .selectOptions("payload");
+    await expect
+      .poll(() => ledgerRow("You will send")?.querySelector("dd")?.textContent)
+      .toBe(isolatedColumnName("program_code"));
     await page
       .getByLabelText(usedLabel("program_code"))
       .selectOptions("ignored");
@@ -656,6 +663,11 @@ describe("inviter screen", () => {
     await page
       .getByRole("button", { name: "Continue to matching & sharing" })
       .click();
+    // program_code is not recognized, so it is marked sent here for the
+    // direction check below to have a sent column to refuse.
+    await page
+      .getByLabelText(usedLabel("program_code"))
+      .selectOptions("payload");
     await page
       .getByRole("button", { name: "Continue to review & create" })
       .click();
@@ -847,11 +859,11 @@ describe("inviter screen", () => {
     await page
       .getByRole("button", { name: "Continue to matching & sharing" })
       .click();
-    // On step 2, undisclose the sent column so there is an in-progress edit to
+    // On step 2, mark the unsent column sent so there is an in-progress edit to
     // pin as surviving the Back.
     await page
       .getByLabelText(usedLabel("program_code"))
-      .selectOptions("ignored");
+      .selectOptions("payload");
     await page
       .getByRole("button", { name: "Continue to review & create" })
       .click();
@@ -867,7 +879,7 @@ describe("inviter screen", () => {
       .toMatchTextContent("Matching & sharing");
     await expect
       .element(page.getByLabelText(usedLabel("program_code")))
-      .toHaveValue("ignored");
+      .toHaveValue("payload");
 
     // Back again lands on step 1 with the loaded file still shown -- not a
     // remount to an empty Your file step.
@@ -889,7 +901,7 @@ describe("inviter screen", () => {
       .toMatchTextContent("Matching & sharing");
     await expect
       .element(page.getByLabelText(usedLabel("program_code")))
-      .toHaveValue("ignored");
+      .toHaveValue("payload");
   });
 
   test("navigation never writes the file to storage or disk", async () => {

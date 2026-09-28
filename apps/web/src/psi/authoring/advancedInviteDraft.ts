@@ -7,7 +7,7 @@ import {
   getDefaultLinkageTerms,
   getDefaultStandardization,
   inferDateFormat,
-  inferMetadata,
+  inferMetadataForEveryColumn,
   linkageDateOfBirthColumn,
   optInLinkageKeys,
   referencedLinkageFieldNames,
@@ -174,8 +174,8 @@ export function dateInputFormatsForColumns(
 /**
  * Seed an editor session from the inviter's identity, CSV columns, and parsed
  * rows. Terms are the metadata-aware defaults (`getDefaultLinkageTerms` over
- * {@link inferMetadata}), so only keys the columns can satisfy are present;
- * the built-in set's unused keys are offered beside them, off
+ * {@link inferMetadataForEveryColumn}), so only keys the columns can satisfy are
+ * present; the built-in set's unused keys are offered beside them, off
  * ({@link offerableDraftKeys}). Calling this again is the "Reset to
  * defaults" action. `rawRows` defaults to empty (yielding the `MM/DD/YYYY`
  * date default); profiled `dateInputFormats`
@@ -192,7 +192,7 @@ export function seedAdvancedInvite(
   // re-derives isPayload from role, so the offerable key set -- which
   // getDefaultLinkageTerms derives from the `role: linkage` column TYPES -- is
   // unchanged by it.
-  const metadata = normalizeForEditor(inferMetadata(columns, []));
+  const metadata = normalizeForEditor(inferMetadataForEveryColumn(columns, []));
   const terms = getDefaultLinkageTerms(identity, metadata);
   const keys = offerableDraftKeys(identity, metadata);
   return {

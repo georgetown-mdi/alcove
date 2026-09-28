@@ -27,7 +27,7 @@ import type { ProfiledJobInput } from "@psi/jobClient/workInputClient";
 
 // Headers chosen from inferMetadata's exact-match alias table, as the acceptor
 // columns model's own fixture is: three linkage types and one unrecognized
-// column, which infers to a sent payload column.
+// column, which the seed lists as not sent.
 const csv: AcceptorAcquiredCsv = {
   fileName: "members.csv",
   sizeBytes: 2048,
@@ -176,31 +176,41 @@ describe("the invitation the console reviews", () => {
   });
 });
 
+/** `state` with `program_code` marked to send, through the columns step's own
+ * disclosure edit. */
+function withProgramCodeSent(state: AcceptorScreenState): AcceptorScreenState {
+  if (state.columnsState === undefined)
+    throw new Error("the fixture acquired no file");
+  return acceptorScreenReducer(state, {
+    type: "metadata-changed",
+    metadata: setColumnDisclosure(
+      state.columnsState.metadata,
+      "program_code",
+      "payload",
+    ).metadata,
+  });
+}
+
 describe("what the acceptor discloses", () => {
-  test("a settled read seeds the columns the launch would send", () => {
+  test("a settled read seeds an unrecognized column as listed but not sent", () => {
     const state = accepted();
     expect(state.acquired).toBe(csv);
     expect(state.committedName).toBe("Sam Rivera");
-    expect(disclosedBy(state)).toContain("program_code");
-  });
-
-  test("a disclosure edit is written to the metadata the launch reads", () => {
-    const seeded = accepted();
-    if (seeded.columnsState === undefined)
-      throw new Error("the fixture acquired no file");
-    const state = acceptorScreenReducer(seeded, {
-      type: "metadata-changed",
-      metadata: setColumnDisclosure(
-        seeded.columnsState.metadata,
-        "program_code",
-        "ignored",
-      ).metadata,
-    });
+    expect(
+      state.columnsState?.metadata.find(
+        (column) => column.name === "program_code",
+      )?.role,
+    ).toBe("ignored");
     expect(disclosedBy(state)).not.toContain("program_code");
   });
 
+  test("a disclosure edit is written to the metadata the launch reads", () => {
+    const state = withProgramCodeSent(accepted());
+    expect(disclosedBy(state)).toContain("program_code");
+  });
+
   test("a remap re-roles the column for matching rather than sending it", () => {
-    const seeded = accepted();
+    const seeded = withProgramCodeSent(accepted());
     const state = acceptorScreenReducer(seeded, {
       type: "column-remapped",
       semanticType: "last_name",
@@ -234,17 +244,15 @@ describe("what the acceptor discloses", () => {
   });
 
   test("a reset drops every override back to the seed", () => {
-    const state = accepted(
-      { type: "field-input-changed", output: "first_name", column: "dob" },
-      {
-        type: "column-remapped",
-        semanticType: "last_name",
-        column: "program_code",
-      },
-      { type: "columns-reset" },
-    );
+    const edited = acceptorScreenReducer(withProgramCodeSent(accepted()), {
+      type: "field-input-changed",
+      output: "first_name",
+      column: "dob",
+    });
+    expect(disclosedBy(edited)).toContain("program_code");
+    const state = acceptorScreenReducer(edited, { type: "columns-reset" });
     expect(state.columnsState?.inputOverrides.size).toBe(0);
-    expect(disclosedBy(state)).toContain("program_code");
+    expect(disclosedBy(state)).not.toContain("program_code");
   });
 
   test("an edit before any file moves nothing", () => {

@@ -31,6 +31,7 @@ import { camelizeKeys } from "../../src/utils/camelizeKeys.js";
 import { runPipeline } from "../../src/standardization.js";
 
 import type { ConnectionEndpoint } from "../../src/config/invitation.js";
+import type { Metadata } from "../../src/config/metadata.js";
 import type {
   LinkageStrategy,
   LinkageTerms,
@@ -38,20 +39,21 @@ import type {
   TransformStep,
 } from "../../src/config/linkageTermsSchema.js";
 
-// A linkable column set (ssn + names + dob give satisfiable keys) that ALSO
-// includes columns the inferred metadata discloses: `notes` infers as an
-// `other` column (role payload) and `member_id` as a single row-identifier
-// left isPayload, so both are transmitted.
-const DISCLOSING_COLUMNS = [
-  "ssn",
-  "first_name",
-  "last_name",
-  "dob",
-  "notes",
-  "member_id",
-];
-
 const LINKAGE_ONLY_COLUMNS = ["ssn", "first_name", "last_name", "dob"];
+
+// A linkable column set (ssn + names + dob give satisfiable keys) that ALSO
+// declares two columns as sent: `notes` as payload and `member_id` as the
+// row identifier.
+const DISCLOSING_METADATA: Metadata = [
+  ...inferMetadata(LINKAGE_ONLY_COLUMNS, []),
+  { name: "notes", type: "other", role: "payload", isPayload: true },
+  {
+    name: "member_id",
+    type: "identifier",
+    role: "identifier",
+    isPayload: true,
+  },
+];
 
 describe("the consent summary's payload block", () => {
   test("derives the received set from the held subset with no payload.send authored", () => {
@@ -61,7 +63,7 @@ describe("the consent summary's payload block", () => {
     // the wire transmits on -- not from the (absent) payload.send. This is the
     // under-declaration gap the dedicated field closes, and the no-drift
     // invariant: the displayed set equals the transmitted set over one metadata.
-    const metadata = inferMetadata(DISCLOSING_COLUMNS, []);
+    const metadata = DISCLOSING_METADATA;
     const disclosed = disclosedColumnNames(metadata);
     const terms = getDefaultLinkageTerms("Inviter", metadata);
     expect(terms.payload).toBeUndefined();
@@ -78,7 +80,7 @@ describe("the consent summary's payload block", () => {
     // against it, while an authored send with no held subset leaves nothing to
     // reconcile against. A surface classifying the received-columns line reads
     // this narrower flag, so it is pinned apart from sendDeclared.
-    const metadata = inferMetadata(DISCLOSING_COLUMNS, []);
+    const metadata = DISCLOSING_METADATA;
     const terms = getDefaultLinkageTerms("Inviter", metadata);
     const authoredSend = { payload: { send: [{ name: "notes" }] } };
     const authored = summarizeInvitation({
@@ -140,7 +142,7 @@ describe("the consent summary's payload block", () => {
     // the partner is entitled to one, so no column crosses here: the summary
     // states no arriving set rather than one a surface would count beside its
     // own "you receive no result" line.
-    const metadata = inferMetadata(DISCLOSING_COLUMNS, []);
+    const metadata = DISCLOSING_METADATA;
     expect(disclosedColumnNames(metadata).length).toBeGreaterThan(0);
     const terms = getDefaultLinkageTerms("Inviter", metadata);
     const summary = summarizeInvitation({
@@ -905,7 +907,7 @@ describe("the consent summary's withheld-table register", () => {
     expect(() =>
       assertPayloadSendDisclosed(
         accepted.payload,
-        inferMetadata(DISCLOSING_COLUMNS, []),
+        DISCLOSING_METADATA,
         accepted.output,
       ),
     ).toThrow(/payload.send/);

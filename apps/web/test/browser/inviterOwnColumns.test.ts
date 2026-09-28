@@ -30,12 +30,12 @@ import type { OwnColumnsChoice } from "@psi/ownColumnsModel";
 const app = createAppMount();
 
 // client_id/first_name/last_name/dob infer matching roles; program_code is not
-// in the alias map, so it infers a disclosed payload column -- the one column
-// separating "the columns I send" from "every column of my file".
-const metadata = inferMetadata(
-  ["client_id", "first_name", "last_name", "dob", "program_code"],
-  [],
-);
+// in the alias map, so it is declared as sent -- the one column separating "the
+// columns I send" from "every column of my file".
+const metadata: Metadata = [
+  ...inferMetadata(["client_id", "first_name", "last_name", "dob"], []),
+  { name: "program_code", type: "other", role: "payload", isPayload: true },
+];
 
 // A file whose only column is the record identifier: the result already begins
 // with it, so `all` selects nothing.
