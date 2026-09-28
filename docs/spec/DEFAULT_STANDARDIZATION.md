@@ -629,8 +629,10 @@ detail is in [Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).
 Two properties of these assignments are critical for matching. Every
 inferred linkage type has `is_payload: false`, so a column inferred into
 matching is not also disclosed to the partner unless the operator says so; and
-matching participation still requires `role: linkage`, so a column inferred
-`identifier` never reaches a key however its type reads (see
+for a declared column, matching participation still requires `role: linkage`,
+so a column inferred `identifier` never reaches a key however its type reads,
+and not even an explicit transform naming it can bind it, since a declared
+role wins over the transform (see
 [Linkage participation](PROTOCOL.md#linkage-participation-the-role-axis)).
 
 ## See also
