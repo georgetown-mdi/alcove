@@ -55,8 +55,12 @@ export async function waitForPair(halves, timeoutSeconds) {
     ...half,
     ...waitForContainer(half.container),
   }));
+  const settledStatus = new Array(waits.length);
   const settled = waits.map((wait, index) =>
-    wait.finished.then((status) => ({ index, status })),
+    wait.finished.then((status) => {
+      settledStatus[index] = status;
+      return { index, status };
+    }),
   );
 
   let pending = [0, 1];
@@ -74,23 +78,32 @@ export async function waitForPair(halves, timeoutSeconds) {
     if (next.status !== "0") failedHalf = waits[next.index];
   }
 
+  const stopped = [];
   for (const index of pending) {
     const wait = waits[index];
+    if (settledStatus[index] !== undefined) {
+      wait.status = settledStatus[index];
+      wait.reason = "exited";
+      wait.child.kill();
+      continue;
+    }
     wait.reason =
       failedHalf === undefined
         ? `stopped after the ${timeoutSeconds}s timeout`
         : `stopped because ${failedHalf.name} failed`;
     spawnSync("docker", ["kill", wait.container], { stdio: "ignore" });
+    stopped.push(wait);
   }
-  for (const index of pending) {
-    const wait = waits[index];
-    wait.status = await withDeadline(
-      wait.finished,
-      STOPPED_HALF_GRACE_MS,
-      () => "still-running",
-    );
-    wait.child.kill();
-  }
+  await Promise.all(
+    stopped.map(async (wait) => {
+      wait.status = await withDeadline(
+        wait.finished,
+        STOPPED_HALF_GRACE_MS,
+        () => "still-running",
+      );
+      wait.child.kill();
+    }),
+  );
 
   return waits.map(({ name, container, status, reason }) => ({
     name,

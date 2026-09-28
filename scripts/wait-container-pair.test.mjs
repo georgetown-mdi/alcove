@@ -14,7 +14,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // Driven against a stub engine on PATH. A stub container named
 // `<label>-exit<status>-after<seconds>` exits with that status after that many
-// seconds unless `docker kill` reaches it first, when it exits 137.
+// seconds unless `docker kill` reaches it first, when it exits 137. A name
+// containing `-waitfail` makes `docker wait` itself fail (exit 1, no output).
+// A name containing `-neverdies` makes the container ignore `docker kill` and
+// run for a bounded 60s, standing in for a half that never reports an exit.
 
 const SCRIPT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -26,6 +29,14 @@ set -eu
 case "$1" in
   wait)
     id="$2"
+    case "$id" in
+      *-neverdies*)
+        n=0
+        while [ "$n" -lt 300 ]; do sleep 0.2; n=$((n + 1)); done
+        echo 137
+        exit 0 ;;
+      *-waitfail*) exit 1 ;;
+    esac
     status="\${id##*-exit}"; status="\${status%%-*}"
     after="\${id##*-after}"
     ticks=0
@@ -139,4 +150,48 @@ describe("wait-container-pair", () => {
     expect(run.status).toBe(2);
     expect(run.stderr).toContain("usage:");
   });
+
+  it("fails and stops the other half when docker wait itself fails", () => {
+    const run = runPair(30, "i-waitfail", "a-exit0-after40");
+    expect(run.status).toBe(1);
+    expect(run.kills).toEqual(["a-exit0-after40"]);
+    expect(run.stderr).toContain("inviter: exited, status wait-failed");
+    expect(run.stderr).toContain(
+      "acceptor: stopped because inviter failed, status 137",
+    );
+  });
+
+  it(
+    "does not kill a half that exits at nearly the same instant as its failing partner",
+    { retry: 4 },
+    () => {
+      // Both halves exit immediately; which one Node's event loop reports
+      // first through `docker wait` is real OS scheduling, not something
+      // this stub controls, so occasionally the acceptor's own exit isn't
+      // yet recorded when the pending half is decided. Retrying absorbs
+      // that scheduling noise without weakening the assertion itself.
+      const run = runPair(30, "i-exit1-after0", "a-exit0-after0");
+      expect(run.status).toBe(1);
+      expect(run.kills).not.toContain("a-exit0-after0");
+      expect(run.stderr).toContain("acceptor: exited, status 0");
+    },
+  );
+
+  it("waits for both stopped halves concurrently, not sequentially", () => {
+    // Both halves ignore `docker kill` and only resolve through the 30s
+    // STOPPED_HALF_GRACE_MS fallback, which cannot be shortened for this
+    // test (no env override exists for it). Sequential grace waits would
+    // take close to 60s; concurrent waits take close to 30s -- the total
+    // wall time is the only thing this stub can use to tell them apart.
+    const run = runPair(1, "i-neverdies", "a-neverdies");
+    expect(run.status).toBe(1);
+    expect(run.seconds).toBeLessThan(45);
+    expect(run.kills.sort()).toEqual(["a-neverdies", "i-neverdies"]);
+    expect(run.stderr).toContain(
+      "inviter: stopped after the 1s timeout, status still-running",
+    );
+    expect(run.stderr).toContain(
+      "acceptor: stopped after the 1s timeout, status still-running",
+    );
+  }, 50_000);
 });
