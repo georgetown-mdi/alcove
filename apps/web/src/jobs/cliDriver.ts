@@ -102,6 +102,16 @@ export function buildSynthesizedWarningEvent(
 export const PERSISTENCE_LOSS_EXIT_CODE = 73;
 
 /**
+ * The exit code the CLI reports for an internal fault in Alcove itself
+ * (docs/CLI.md, Exit codes; docs/spec/CLI_EVENTS.md, The internal-fault code),
+ * mirrored from `INTERNAL_FAULT_EXIT_CODE` in `apps/cli/src/util/exit.ts` for
+ * the same reason as {@link PERSISTENCE_LOSS_EXIT_CODE}. A run exiting with it
+ * is `failed`; what it changes is the terminal synthesized when the run emitted
+ * none, which withholds the retry a run exiting 70 cannot use.
+ */
+export const INTERNAL_FAULT_EXIT_CODE = 70;
+
+/**
  * How a driven CLI run terminated, reconciled with the CLI's terminal-event
  * contract (docs/spec/CLI_EVENTS.md, Terminal-event guarantees):
  * - `succeeded`: exit 0.

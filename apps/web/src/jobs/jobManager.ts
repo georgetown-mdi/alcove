@@ -50,6 +50,7 @@ import {
 } from "./jobRendezvous";
 
 import {
+  INTERNAL_FAULT_EXIT_CODE,
   buildSynthesizedWarningEvent,
   resolveCliBinaryPath,
   spawnExchangeJob,
@@ -1492,7 +1493,9 @@ export class JobManager {
    * already-emitted CLI terminal event stands; otherwise one is synthesized
    * to match the exit: cancelled -> a `cancelled`-flavored error, succeeded
    * -> a `result`, persistence loss -> a non-retryable `output`-category
-   * error, anything else -> a stream-broke `exchange`-category error.
+   * error, an internal fault -> an `exchange`-category error marked
+   * `internalFault`, which withholds its retry, anything else -> a stream-broke
+   * `exchange`-category error.
    *
    * The exit decides the outcome; the terminal event's type decides the
    * status the result route gates on. A persistence loss with the CLI's own
@@ -1566,6 +1569,19 @@ export class JobManager {
             diagnostics.stderrTail,
           ),
         );
+      else if (state.exitCode === INTERNAL_FAULT_EXIT_CODE)
+        this.synthesizeTerminal(record, {
+          ...diagnosedTerminal(
+            "exchange",
+            internalFaultStopMessage(
+              record.logPath !== null && jobFileExists(record.logPath),
+              diagnostics.stderrTail !== null,
+            ),
+            diagnostics.stderrTail,
+          ),
+          internalFault: true,
+          recoveryHint: true,
+        });
       else
         this.synthesizeTerminal(
           record,
@@ -1852,6 +1868,28 @@ function diagnosedTerminal(
     message,
     ...(chain === null ? {} : { [ERROR_MESSAGE_CHAIN_FIELD]: chain }),
   };
+}
+
+/**
+ * The message of the terminal synthesized for a run that exited
+ * {@link INTERNAL_FAULT_EXIT_CODE} with no terminal event: what stopped it, and
+ * what to report it with -- the run log where this run captured one, else the
+ * stderr link beside the message, else the message itself.
+ */
+function internalFaultStopMessage(
+  logCaptured: boolean,
+  stderrLinked: boolean,
+): string {
+  const reportWith = logCaptured
+    ? "the run log this page offers to download"
+    : stderrLinked
+      ? "what the CLI last wrote on stderr, below"
+      : "this message";
+  return (
+    "the exchange process stopped on a fault in Alcove itself before " +
+    `reporting it (exit ${INTERNAL_FAULT_EXIT_CODE}); report the fault with ` +
+    reportWith
+  );
 }
 
 /**
