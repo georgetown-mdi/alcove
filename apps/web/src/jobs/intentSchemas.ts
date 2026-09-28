@@ -675,7 +675,8 @@ export interface JobExchangeIntentBase {
    * Absent for an exchange authored here, where an acceptance derives the
    * record from its own terms and metadata instead (see `side` below). It is
    * on the intent so a configuration loaded from the mount keeps the record
-   * its file states: an enforcement record whose absence is a valid state, so
+   * its file states, or the review step's confirmation of a pending one: an
+   * enforcement record whose absence is a valid state, so
    * composing a document without it would release this party from a
    * disclosure it confirmed (docs/spec/EXCHANGE_FILE.md, "The acceptor's
    * outbound consent"). A stated record is composed verbatim, so a run whose

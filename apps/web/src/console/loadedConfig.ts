@@ -106,9 +106,11 @@ export interface LoadedReceiptsChoices {
 /** The enforcement records a loaded configuration puts back on the job intent,
  * so a run composed here states what the file it came from stated
  * (docs/spec/EXCHANGE_FILE.md, "The records that must survive", and "The
- * acceptor's outbound consent" for the consent record). None has an editor on
- * the console: each is held as the file states it and composed back unchanged,
- * since an absent one turns its own enforcement off. */
+ * acceptor's outbound consent" for the consent record). Each is held as the file
+ * states it and composed back unchanged, since an absent one turns its own
+ * enforcement off. The one control is the review step's confirmation of a
+ * pending consent record, which replaces it with the confirmed columns
+ * (`outboundConsentView` in `./mountedConfiguration`). */
 export interface LoadedEnforcementRecords {
   expectedPayloadColumns?: Array<string>;
   expectedPartnerDeduplicate?: boolean;

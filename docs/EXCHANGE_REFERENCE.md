@@ -1572,7 +1572,7 @@ The cells:
 | `linkage_terms.payload.receive` | carried | carried with a notice (left out once you choose not to receive the results) | carried with a notice |
 | `expected_payload_columns` | authored (recorded on accept or save) | carried with a notice | carried with a notice |
 | `disclosed_payload_columns` | authored (recorded on invite) | carried with a notice | carried with a notice |
-| `outbound_payload_consent` | authored (the accept consent prompt) | carried with a notice | carried with a notice |
+| `outbound_payload_consent` | authored (the accept consent prompt) | authored (a pending record is confirmed on the review step); a confirmed one is carried with a notice | carried with a notice |
 | **[Connection](#connection)** | | | |
 | `connection.channel` | authored | authored (`sftp`, `filedrop`); `webrtc` opens but is refused at run | carried (`webrtc`); `sftp` and `filedrop` open but are refused at run |
 | `connection.path` (filedrop) | authored | carried with a notice (the run uses the mounted folder; converting replaces it) | not applicable |

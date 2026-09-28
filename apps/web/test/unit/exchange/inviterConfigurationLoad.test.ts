@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  assessOutboundPayloadConsent,
   disclosedColumnNames,
   getDefaultLinkageTerms,
   inferMetadata,
@@ -24,6 +25,7 @@ import {
   PENDING_OUTBOUND_CONSENT_WARNING,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
+  outboundConsentView,
   runWithheldReason,
 } from "@console/mountedConfiguration";
 import {
@@ -1618,6 +1620,123 @@ describe("a consent record the configuration leaves pending", () => {
     expect(noticesOf(confirmed)).not.toContain(
       PENDING_OUTBOUND_CONSENT_WARNING,
     );
+  });
+
+  function pendingAndRead(): InviterScreenState {
+    return withFileRead(
+      loadedInto(
+        INVITER_SCREEN_INITIAL,
+        sftpDocument({
+          outboundPayloadConsent: { status: "pending" },
+          metadata: documentColumns(),
+        }),
+      ),
+    );
+  }
+
+  /** What the review step lists for the screen, read the way the screen reads
+   * it. */
+  function viewOf(state: InviterScreenState) {
+    if (state.editor === undefined) throw new Error("expected an editor");
+    return outboundConsentView(
+      state.mountedConfiguration,
+      state.loadedEnforcementRecords,
+      state.editor.draft.metadata,
+      outputForDirection(state.editor.draft.outputDirection),
+    );
+  }
+
+  /** The configuration the run started from this screen composes, and the
+   * metadata and output it transmits under. */
+  function composedRun(state: InviterScreenState) {
+    if (state.editor === undefined) throw new Error("expected an editor");
+    const { metadata, outputDirection } = state.editor.draft;
+    const linkageTerms = {
+      ...getDefaultLinkageTerms("County Health"),
+      output: outputForDirection(outputDirection),
+    };
+    const intent = intentFor(
+      inviterServerJobConfig({
+        minted: { linkageTerms, sharedSecret: "a".repeat(43), metadata },
+        inputSource: { kind: "workFile", name: "cohort.csv" },
+        transport: { channel: "sftp" },
+        loadedEnforcementRecords: state.loadedEnforcementRecords,
+        mountedConfigurationOpened: true,
+      }),
+    );
+    if (intent.channel !== "sftp") throw new Error("expected an sftp intent");
+    return {
+      spec: composeSftpConfigSpec(intent, testSftpServerEntry()),
+      metadata,
+      output: linkageTerms.output,
+    };
+  }
+
+  test("the review step lists the columns the run would send", () => {
+    const state = pendingAndRead();
+    const view = viewOf(state);
+    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
+    if (state.editor === undefined) throw new Error("expected an editor");
+    const sent = disclosedColumnNames(state.editor.draft.metadata);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(view.verdict.columns).toEqual(sent);
+  });
+
+  test("confirming them composes the run's record as confirmed", () => {
+    const state = pendingAndRead();
+    const view = viewOf(state);
+    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
+    const confirmed = inviterScreenReducer(state, {
+      type: "outbound-consent-confirmed",
+      columns: view.verdict.columns,
+    });
+    const { spec, metadata, output } = composedRun(confirmed);
+    expect(spec.outboundPayloadConsent).toEqual({
+      status: "confirmed",
+      columns: view.verdict.columns,
+    });
+    expect(
+      assessOutboundPayloadConsent(
+        spec.outboundPayloadConsent,
+        metadata,
+        output,
+      ).status,
+    ).toBe("current");
+    expect(noticesOf(confirmed)).not.toContain(
+      PENDING_OUTBOUND_CONSENT_WARNING,
+    );
+    expect(viewOf(confirmed)?.kind).toBe("confirmed");
+  });
+
+  test("declining leaves the run's record pending, and the run refused", () => {
+    const state = pendingAndRead();
+    const { spec, metadata, output } = composedRun(state);
+    expect(spec.outboundPayloadConsent).toEqual({ status: "pending" });
+    expect(
+      assessOutboundPayloadConsent(
+        spec.outboundPayloadConsent,
+        metadata,
+        output,
+      ).status,
+    ).toBe("confirmation-required");
+    expect(noticesOf(state)).toContain(PENDING_OUTBOUND_CONSENT_WARNING);
+  });
+
+  test("a confirmation after the invitation is created changes nothing", () => {
+    const state = pendingAndRead();
+    const view = viewOf(state);
+    if (view?.kind !== "confirm" || state.editor === undefined)
+      throw new Error("expected a confirmation");
+    const sealed = {
+      ...state,
+      editor: { ...state.editor, sealed: true },
+    };
+    expect(
+      inviterScreenReducer(sealed, {
+        type: "outbound-consent-confirmed",
+        columns: view.verdict.columns,
+      }),
+    ).toBe(sealed);
   });
 });
 
