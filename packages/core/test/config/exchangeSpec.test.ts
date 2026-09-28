@@ -608,6 +608,22 @@ test("a key no block reads is refused, naming it as the file spells it", () => {
   expect(issue?.message).not.toContain("mysterySetting");
 });
 
+test("a filedrop connection stating server.provision is refused: the channel has no server", () => {
+  const result = safeParseExchangeSpec({
+    ...minimalSpec,
+    connection: {
+      channel: "filedrop",
+      path: "/mnt/share/drop",
+      server: { provision: { host: "api.example.org" } },
+    },
+  });
+  expect(result.success).toBe(false);
+  const issue = result.error?.issues[0];
+  expect(issue?.code).toBe("unrecognized_keys");
+  expect(issue?.path).toEqual(["connection"]);
+  expect(issue?.message).toBe('Unrecognized key: "server"');
+});
+
 test("an unread key is named in the spelling the file writes, not snake_case", () => {
   // Both spellings reach the schema, so an operator's own key arrives here as
   // the case conversion left it. Converting that name back to snake_case names

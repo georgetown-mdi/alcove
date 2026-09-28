@@ -37,6 +37,7 @@ import { expandTilde } from "../fileUtils";
 import { assertFileSyncFirstRoundFits } from "../fileSyncFirstRound";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
 import { establishHostKeyTrust } from "../hostKeyTrust";
+import { wakeProvisionedServer } from "../serverProvision";
 import {
   loadKeyFile,
   checkKeyFileExpiry,
@@ -1188,6 +1189,14 @@ export async function handler(argv: Arguments): Promise<void> {
       await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
         assertFileSyncFirstRoundFits(connection, prepared, report),
       );
+    } catch (err) {
+      exitWithError(log, err, exitCodeForError(err));
+    }
+
+    // The wake call is the run's first network contact when the config states
+    // one, so it follows every refusal decided from local inputs above.
+    try {
+      await wakeProvisionedServer(connection, log);
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
     }

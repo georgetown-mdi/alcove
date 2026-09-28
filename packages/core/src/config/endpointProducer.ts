@@ -62,9 +62,10 @@ export const PLACEHOLDER_SSH_USERNAME = "REPLACE_WITH_SSH_USERNAME";
  * {@link relayLocatorFromOwnRelay}. A `turn` entry with a static username and
  * credential is left out whole: the partner cannot authenticate to it, so
  * naming it would only show the partner's address to that relay's operator.
- * Everything else (`key`, `username`, `secure`, `invitationRelay`) is left
- * behind: those are either not a public locator or have no endpoint-schema
- * field, so a plaintext-broker locator is unreachable here by construction.
+ * Everything else (`key`, `username`, `secure`, `provision`,
+ * `invitationRelay`) is left behind: those are either not a public locator or
+ * have no endpoint-schema field, so a plaintext-broker locator is unreachable
+ * here by construction.
  *
  * `port` is carried only when it is a reachable 1-65535 value: port 0 (an
  * OS-assigned ephemeral port) is dropped rather than emitted as an

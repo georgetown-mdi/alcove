@@ -189,6 +189,7 @@ const WEBRTC_CREDENTIALS = {
   brokerKey: "fake-broker-key-for-tests",
   turnCredential: "fake-turn-credential-for-tests",
   iceBearer: "fake-ice-bearer-for-tests",
+  provisionPassword: "fake-provision-password-for-tests",
   providerOptionPath: "@/run/secrets/fake-provider-option",
 };
 
@@ -202,6 +203,13 @@ function webrtcDocuments(): Array<unknown> {
   const server = {
     host: "broker.example",
     key: WEBRTC_CREDENTIALS.brokerKey,
+    provision: {
+      host: "provision.example",
+      auth: {
+        username: "county",
+        password: WEBRTC_CREDENTIALS.provisionPassword,
+      },
+    },
   };
   return [
     {

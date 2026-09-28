@@ -332,8 +332,13 @@ describe("accepting a configuration on a channel this app does not run", () => {
     expect(connection.server.keyboardInteractive).toBe(true);
   });
 
-  test("a proxy and provider options are held with @path credentials", () => {
-    const document = sftpDocumentWithServerLine({});
+  test("a proxy, provisioning endpoint, and provider options are held with @path credentials", () => {
+    const document = sftpDocumentWithServerLine({
+      provision: {
+        host: "wake.example.org",
+        auth: { bearer: "@/secrets/wake.bearer" },
+      },
+    });
     const record = readManagedCommandLineConfiguration(
       configText({
         ...document,
@@ -353,6 +358,9 @@ describe("accepting a configuration on a channel this app does not run", () => {
 
     const { connection } = record.exchangeFile;
     if (connection.channel !== "sftp") throw new Error("not an sftp record");
+    expect(connection.server.provision?.auth?.bearer).toBe(
+      "@/secrets/wake.bearer",
+    );
     expect(connection.proxy?.auth).toEqual({
       username: "relay",
       password: "@/secrets/proxy.password",
@@ -363,9 +371,15 @@ describe("accepting a configuration on a channel this app does not run", () => {
     });
   });
 
-  test("a literal credential in a proxy or provider option is refused", () => {
-    const secrets = ["proxy-not-echoed", "option-not-echoed"];
-    const document = sftpDocumentWithServerLine({});
+  test("a literal credential in a proxy, provisioning auth, or provider option is refused", () => {
+    const secrets = [
+      "bearer-not-echoed",
+      "proxy-not-echoed",
+      "option-not-echoed",
+    ];
+    const document = sftpDocumentWithServerLine({
+      provision: { host: "wake.example.org", auth: { bearer: secrets[0] } },
+    });
     const message = refusal(
       configText({
         ...document,
@@ -373,15 +387,16 @@ describe("accepting a configuration on a channel this app does not run", () => {
           ...document.connection,
           proxy: {
             host: "proxy.example.org",
-            auth: { username: "relay", password: secrets[0] },
+            auth: { username: "relay", password: secrets[1] },
           },
-          providerOptions: { password: secrets[1] },
+          providerOptions: { password: secrets[2] },
         },
       }),
     );
 
     expect(message).toContain(
-      "connection.provider_options.password, connection.proxy.auth.password",
+      "connection.provider_options.password, connection.proxy.auth.password, " +
+        "connection.server.provision.auth.bearer",
     );
     for (const secret of secrets) expect(message).not.toContain(secret);
   });
@@ -665,11 +680,8 @@ describe("refusing what this app cannot hold", () => {
     ).toThrow(ManagedConfigurationRefusedError);
   });
 
-  test.each([
-    ["sftp", () => sftpDocumentWithServerLine({})],
-    ["webrtc", () => commandLineDocument()],
-  ])("a %s server block stating provision is refused naming it", (_, make) => {
-    const document = make();
+  test("a webrtc server block stating provision is refused naming it", () => {
+    const document = commandLineDocument();
     const connection = document.connection as { server: object };
     const message = refusal(
       configText({
@@ -684,7 +696,10 @@ describe("refusing what this app cannot hold", () => {
       }),
     );
 
-    expect(message).toContain("connection.server.provision");
+    expect(message).toContain(
+      "Remove these lines from the connection and import it again: " +
+        "server.provision.",
+    );
   });
 
   test("a refused field is named as the file spells it, not as Zod saw it", () => {

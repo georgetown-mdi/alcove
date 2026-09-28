@@ -145,6 +145,7 @@ const SFTP_HELD_SERVER_FIELDS = [
   "privateKeyPassphrase",
   "keyboardInteractive",
   "hostKeyFingerprint",
+  "provision",
 ] as const satisfies ReadonlyArray<keyof SFTPConnectionConfig["server"]>;
 
 function withHeldFields(
@@ -342,6 +343,10 @@ function sftpFileReadableValues(
       value: pin,
       credential: false,
     })),
+    ...httpAuthValues(
+      "connection.server.provision.auth",
+      server.provision?.auth,
+    ),
     ...httpAuthValues("connection.proxy.auth", connection.proxy?.auth),
     ...providerOptionValues(
       "connection.provider_options",

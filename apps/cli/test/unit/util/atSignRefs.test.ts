@@ -243,6 +243,7 @@ test("resolveExchangeSpecRefs resolves @path credential and opaque fields on an 
       server: {
         host: "h",
         password: atFile("pw", "s3cret\n"),
+        provision: { host: "prov", auth: { bearer: atFile("tok", "BEAR\n") } },
       },
       proxy: {
         host: "proxy",
@@ -253,6 +254,7 @@ test("resolveExchangeSpecRefs resolves @path credential and opaque fields on an 
   });
   const conn = resolveExchangeSpecRefs(spec).connection as SFTPConnectionConfig;
   expect(conn.server.password).toBe("s3cret");
+  expect(conn.server.provision?.auth?.bearer).toBe("BEAR");
   expect(conn.proxy?.auth?.password).toBe("PROXYPW");
   expect((conn.providerOptions?.nested as { secret: string }).secret).toBe(
     "OPAQUE",
@@ -367,11 +369,17 @@ test("resolveExchangeSpecRefs rejects a host_key_fingerprint list whose @path en
   expect(() => resolveExchangeSpecRefs(spec)).toThrow(ref);
 });
 
-test("resolveExchangeSpecRefs resolves @path turn credentials on a webrtc connection", () => {
+test("resolveExchangeSpecRefs resolves @path turn credentials and provision auth on a webrtc connection", () => {
   const spec = parseSpec({
     connection: {
       channel: "webrtc",
-      server: { host: "peer" },
+      server: {
+        host: "peer",
+        provision: {
+          host: "prov",
+          auth: { bearer: atFile("wtok", "WBEAR\n") },
+        },
+      },
       turn: [
         {
           url: "turn:relay:3478",
@@ -385,6 +393,7 @@ test("resolveExchangeSpecRefs resolves @path turn credentials on a webrtc connec
   const conn = resolveExchangeSpecRefs(spec)
     .connection as WebRTCConnectionConfig;
   expect(conn.turn?.[0].credential).toBe("TURNPW");
+  expect(conn.server.provision?.auth?.bearer).toBe("WBEAR");
   expect(conn.providerOptions?.key).toBe("WOPAQUE");
 });
 
@@ -472,6 +481,25 @@ test("resolveExchangeSpecRefs reports a missing @path credential file as a Usage
   });
   expect(() => resolveExchangeSpecRefs(spec)).toThrow(UsageError);
 });
+
+test.each(["sftp", "webrtc"] as const)(
+  "resolveExchangeSpecRefs reports a missing @path %s provision credential as a UsageError",
+  (channel) => {
+    const missing = `@${path.join(dir, "gone-provision")}`;
+    const spec = parseSpec({
+      connection: {
+        channel,
+        ...(channel === "webrtc" ? { role: "acceptor" } : {}),
+        server: {
+          host: "h",
+          provision: { host: "prov", auth: { bearer: missing } },
+        },
+      },
+    });
+    expect(() => resolveExchangeSpecRefs(spec)).toThrow(UsageError);
+    expect(() => resolveExchangeSpecRefs(spec)).toThrow(missing);
+  },
+);
 
 test("resolveExchangeSpecRefs rejects an @path turn credential that resolves to an empty file", () => {
   // Resolution runs after parse, so turn.credential's min(1) validated the

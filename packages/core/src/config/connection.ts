@@ -9,9 +9,9 @@ import { boundedArray } from "../utils/boundedArray.js";
 // --- HTTP service authentication ---------------------------------------------
 
 /**
- * Authentication credentials for an HTTP service (`iceProvision` or `proxy`).
- * Exactly one method may be specified; `username` and `password` must appear
- * together.
+ * Authentication credentials for an HTTP service (`server.provision`,
+ * `iceProvision`, or `proxy`). Exactly one method may be specified; `username`
+ * and `password` must appear together.
  */
 export interface HttpAuth {
   /** Bearer token; @-file recommended. */
@@ -36,6 +36,31 @@ const HttpAuthSchema: z.ZodType<HttpAuth> = z
     { message: "at most one authentication method may be specified" },
   );
 
+// --- Server provisioning -----------------------------------------------------
+
+/**
+ * An HTTPS endpoint that wakes the primary server before a run connects to it.
+ * Strict, unlike the sibling server fields: it holds a credential and sends a
+ * request before connecting, so a misspelled key is refused rather than read as
+ * absent. See docs/EXCHANGE_REFERENCE.md, "On-demand server provisioning".
+ */
+export interface ServerProvision {
+  /** Hostname of the provisioning API. */
+  host: string;
+  /** Defaults to 443 when unset. */
+  port?: number;
+  /** Request path; defaults to `/`. */
+  path?: string;
+  auth?: HttpAuth;
+}
+
+const ServerProvisionSchema: z.ZodType<ServerProvision> = z.strictObject({
+  host: z.string().min(1),
+  port: z.int().min(1).max(65535).optional(),
+  path: z.string().optional(),
+  auth: HttpAuthSchema.optional(),
+});
+
 // --- Servers -----------------------------------------------------------------
 
 /** PeerJS peer-coordination server for a WebRTC exchange. */
@@ -56,6 +81,7 @@ interface WebRTCServer {
    * the scheme from the page it was served over.
    */
   secure?: boolean;
+  provision?: ServerProvision;
 }
 
 const WebRTCServerSchema: z.ZodType<WebRTCServer> = z.object({
@@ -65,6 +91,7 @@ const WebRTCServerSchema: z.ZodType<WebRTCServer> = z.object({
   username: z.string().optional(),
   key: z.string().optional(),
   secure: z.boolean().optional(),
+  provision: ServerProvisionSchema.optional(),
 });
 
 /**
@@ -129,6 +156,7 @@ interface SFTPServer {
    * validated to canonical form; @-file supported per entry.
    */
   hostKeyFingerprint?: string | string[];
+  provision?: ServerProvision;
 }
 
 // Shape of a signing partner_fingerprint (base64url, 43 chars, no prefix) --
@@ -160,6 +188,7 @@ const SFTPServerSchema: z.ZodType<SFTPServer> = z
     // union/array errors.
     hostKeyFingerprint: z.union([z.string(), z.array(z.string())]).optional(),
     knownHosts: z.string().optional(),
+    provision: ServerProvisionSchema.optional(),
   })
   .refine(
     (s) =>
