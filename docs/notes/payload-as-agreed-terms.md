@@ -28,7 +28,7 @@ The records also cost the operator: an accepting party with no input file at acc
 The agreement is the only record of the payload.
 
 - **What a party sends** is what its input metadata declares as payload. A column the metadata does not name is not sent, and the run lists the undeclared columns.
-- **What a party receives** is `linkage_terms.payload.receive`: required for a recurring exchange, optional for a one-off attended one.
+- **What a party receives** is `linkage_terms.payload.receive`: required for a recurring exchange, optional for a one-off attended one. A party that declares `output.expects_output: false` has already stated that it receives nothing, so the requirement is met by that declaration, and such a party lists no `payload.receive`. The requirement binds a party that expects output; for it, an explicit empty `receive: []` is how it states that it receives nothing (the cross-check itself: [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload)).
 - **No tool-written payload records.** The send-side commitment, the outbound consent and its pending state, the receive-side expected set, and the check that runs after the payload has crossed are removed, along with the console's confirmation card for the consent and the web import's lines for those records. The accept screen keeps showing the data dictionary.
 - **A change on either side is a terms mismatch at the handshake**, refused before any key or data moves. A declared column missing from the input is refused locally, before connecting.
 
