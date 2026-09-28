@@ -203,20 +203,34 @@ export function heldSettings(record: ManagedExchangeRecord): Array<string> {
   ].sort();
 }
 
-/** What the operator is told about the settings {@link heldSettings} names, or
- * undefined where the document states none. */
-export function heldSettingsNotice(
+/** The sentence naming the settings {@link heldSettings} names, or undefined
+ * where the document states none. */
+export function heldSettingsSentence(
   record: ManagedExchangeRecord,
 ): string | undefined {
   const fields = heldSettings(record);
   if (fields.length === 0) return undefined;
-  const one = fields.length === 1;
   return (
     "This configuration states " +
-    (one ? "a setting" : "settings") +
+    (fields.length === 1 ? "a setting" : "settings") +
     " this app keeps unchanged but does not show or edit: " +
     fields.join(", ") +
-    ". The alcove.yaml you download states " +
+    "."
+  );
+}
+
+/** What a configuration-only surface tells the operator about the settings
+ * {@link heldSettings} names, and where to edit them, or undefined where the
+ * document states none. */
+export function heldSettingsNotice(
+  record: ManagedExchangeRecord,
+): string | undefined {
+  const sentence = heldSettingsSentence(record);
+  if (sentence === undefined) return undefined;
+  const one = heldSettings(record).length === 1;
+  return (
+    sentence +
+    " The alcove.yaml you download states " +
     (one ? "it" : "each") +
     " as your file does; edit " +
     (one ? "it" : "them") +

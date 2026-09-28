@@ -72,8 +72,8 @@ import {
   handedOffPairImportReason,
 } from "./managedHandoffGate";
 import {
-  PAIR_IMPORTED_NOTICE,
   managedImportFileChoice,
+  pairImportedNotice,
 } from "./managedImportFiles";
 import {
   managedImportGrantNotice,
@@ -781,8 +781,9 @@ const KEY_FILE_CHOOSER_NOTE =
  * with that notice and a button onward, rather than taking the operator straight to
  * the exchange ({@link managedImportGrantNotice}): the folder is what they have to
  * choose again, and the notice is only read where it is shown. A pair import stops
- * the same way to say the exchange now runs here ({@link PAIR_IMPORTED_NOTICE}). An
- * import with nothing to say goes straight through. */
+ * the same way to say the exchange now runs here and to name the settings it keeps
+ * without a control ({@link pairImportedNotice}). An import with nothing to say
+ * goes straight through. */
 function ImportExchangeFile() {
   const {
     onFiles,
@@ -1021,7 +1022,7 @@ function useImportFile({
         const grantNotice =
           keySource === undefined
             ? managedImportGrantNotice(missingGrants)
-            : PAIR_IMPORTED_NOTICE;
+            : pairImportedNotice(record);
         const notice =
           sameTermsAs === undefined
             ? grantNotice

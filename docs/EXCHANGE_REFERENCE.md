@@ -1561,7 +1561,7 @@ The cells:
 | `linkage_terms.output.expects_output` | carried | authored | carried with a notice |
 | `linkage_terms.output.share_with_partner` | carried | authored | carried with a notice |
 | `linkage_terms.deduplicate` | authored (zero-setup exchange only) | authored | carried with a notice |
-| `expected_partner_deduplicate` | authored (recorded on accept) | carried with a notice | carried |
+| `expected_partner_deduplicate` | authored (recorded on accept) | carried with a notice | carried with a notice |
 | `linkage_terms.linkage_fields` (`name`, `type`) | authored (inferred) | authored (inferred) | carried with a notice |
 | `linkage_terms.linkage_fields` (`constraints`) | carried | carried with a notice | carried with a notice |
 | `linkage_terms.linkage_keys` | authored (inferred) | authored | carried with a notice |
@@ -1570,9 +1570,9 @@ The cells:
 | `linkage_terms.payload.send` (`name`) | carried | authored (inferred) | carried with a notice |
 | `linkage_terms.payload.send` (`description`) | carried | carried with a notice | carried with a notice |
 | `linkage_terms.payload.receive` | carried | carried with a notice (left out once you choose not to receive the results) | carried with a notice |
-| `expected_payload_columns` | authored (recorded on accept or save) | carried with a notice | carried |
-| `disclosed_payload_columns` | authored (recorded on invite) | carried with a notice | carried |
-| `outbound_payload_consent` | authored (the accept consent prompt) | carried with a notice | carried |
+| `expected_payload_columns` | authored (recorded on accept or save) | carried with a notice | carried with a notice |
+| `disclosed_payload_columns` | authored (recorded on invite) | carried with a notice | carried with a notice |
+| `outbound_payload_consent` | authored (the accept consent prompt) | carried with a notice | carried with a notice |
 | **[Connection](#connection)** | | | |
 | `connection.channel` | authored | authored (`sftp`, `filedrop`); `webrtc` opens but is refused at run | carried (`webrtc`); `sftp` and `filedrop` open but are refused at run |
 | `connection.path` (filedrop) | authored | carried with a notice (the run uses the mounted folder; converting replaces it) | not applicable |
@@ -1627,10 +1627,10 @@ The cells:
 | `include_own_columns` | carried | authored | authored |
 | `csv_delimiter` | authored | authored | authored |
 | **[Input metadata](#input-metadata)** | | | |
-| `metadata` (`name`, `type`, `role`, `is_payload`) | authored (inferred) | authored | carried |
-| `metadata` (`description`) | carried | carried | carried |
+| `metadata` (`name`, `type`, `role`, `is_payload`) | authored (inferred) | authored | carried with a notice |
+| `metadata` (`description`) | carried | carried | carried with a notice |
 | **[Data standardizing transformations](#data-standardizing-transformations)** | | | |
-| `standardization` | authored (inferred) | authored | carried |
+| `standardization` | authored (inferred) | authored | carried with a notice |
 
 ---
 

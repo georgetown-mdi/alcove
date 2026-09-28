@@ -1216,8 +1216,11 @@ flow](#eviction-recovery-is-the-import-flow)).
 **To run the exchange in this browser, choose its `.alcove.key` too**, in the
 same pick as the `alcove.yaml`. Its name starts with a dot, so the file chooser
 may hide it until hidden files are shown. The pair lands as an exchange that runs
-here, and the import says so before you open it; an `alcove.yaml` chosen alone
-lands as the configuration only, and its page says that instead. Before the
+here, and the import says so before you open it, naming each setting of the file
+it keeps unchanged with no control here -- `metadata`, `standardization`, and the
+payload records such as `disclosed_payload_columns` -- in the file's own
+snake_case; an `alcove.yaml` chosen alone lands as the configuration only, and its
+page says that instead. Before the
 first run here, stop the scheduled command-line run of the same exchange: each
 run on either side changes the shared secret, and the copy that falls behind can
 no longer connect to your partner. What the pair import takes and refuses:

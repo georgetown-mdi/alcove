@@ -8,6 +8,9 @@
  * chosen alone.
  */
 
+import { heldSettingsSentence } from "./managedConfigurationModel";
+
+import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedImportGrantNotice } from "./managedImportGrantNotice";
 
 /** The file extension that marks a chosen file as the key file. */
@@ -54,6 +57,19 @@ export const PAIR_IMPORTED_NOTICE: ManagedImportGrantNotice = {
     "and the copy that falls behind can no longer connect to your partner.",
   consequences: [],
 };
+
+/** The notice a landed pair import shows: {@link PAIR_IMPORTED_NOTICE}, and a
+ * line naming the settings the imported document states that this app keeps
+ * unchanged without a control, where it states any. */
+export function pairImportedNotice(
+  record: ManagedExchangeRecord,
+): ManagedImportGrantNotice {
+  const held = heldSettingsSentence(record);
+  return {
+    ...PAIR_IMPORTED_NOTICE,
+    consequences: held === undefined ? [] : [held],
+  };
+}
 
 /** Whether a file's name marks it as the key file. */
 function isKeyFileName(name: string): boolean {
