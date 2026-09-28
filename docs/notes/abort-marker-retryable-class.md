@@ -4,7 +4,7 @@ title: "A Retryable or Final Class in the Abort Marker"
 
 # A retryable or final class in the file-sync abort marker
 
-_Status: design only; nothing is built. Building waits on an observed base rate of partner-side stalls reaching the marker (below), and the default for a marker with no class is an open decision for the maintainer. The marker itself is specified in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#authenticated-abort-marker), and its file-sync row, lifetime and exit code in [FILE_SYNC.md](../spec/FILE_SYNC.md#sender-side-peer-silence-attribution); this note does not restate them. See [docs/notes/README.md](README.md)._
+_Status: design only; nothing is built. Building waits on an observed base rate of partner-side stalls reaching the marker (below). The classless default is ruled: a fault with no class is final. The marker itself is specified in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#authenticated-abort-marker), and its file-sync row, lifetime and exit code in [FILE_SYNC.md](../spec/FILE_SYNC.md#sender-side-peer-silence-attribution); this note does not restate them. See [docs/notes/README.md](README.md)._
 
 ## The problem
 
@@ -17,7 +17,7 @@ The envelope stays `{ version: 1, token }`, the same size, with no new field. Th
 - **Final**: `alcove-abort-token-v2:<role>`, the label in use today, unchanged.
 - **Retryable**: `alcove-abort-token-retryable-v1:<role>`, one new label, exact-distinct and prefix-free from the final label, the AEAD `alcove-aead-v2:<context>` labels and `alcove-shared-secret-rotation-v2`.
 
-That assignment follows the recommended classless default below. Under the other option the new label is `alcove-abort-token-final-v1:<role>` and the existing label means retryable; nothing else in this section changes.
+The existing label means final because the classless default below is final.
 
 Writer: `arm()` precomputes both envelope bodies from the two self tokens, and `writeMarker(class)` writes the body for the class of the fault the CLI's catch is handling. The write stays memoized, so a writer never leaves two markers.
 
@@ -59,24 +59,14 @@ Final:
 
 The classifier is a pure function of the caught error, placed beside `exitCodeForError`, so a test can hold each raise site to one class.
 
-## The classless default -- open decision for the maintainer
+## The classless default: final
 
-Two cases have no class: a marker from a writer built before the class existed, and a fault the writer's classifier does not recognize. Whichever class the existing label is given answers both.
+A fault the writer has not classified writes a final marker, which the reader maps to exit 76.
 
-**Classless means final (76).**
-
-- An older writer's marker keeps today's meaning, so a mixed-version pair behaves as it does now.
-- An older reader facing a newer writer still verifies every final marker and misses only retryable ones, which fall to the peer-silence timeout and exit 69: the right code, late.
-- An unrecognized fault stops the reader's schedule instead of retrying into a partner that may have refused, re-sending this party's records each time.
-- Cost: a stall from an older writer, or from a fault nobody classified, still alerts as a refusal, which is the problem this design exists to fix.
-
-**Classless means retryable (69).**
-
-- An unrecognized fault is retried, within the supervisor's retry cap (docs/CLI.md, Exit codes).
-- An older writer's stalls improve at once on an upgraded reader.
-- Cost: an older writer's refusals become 69 too, and an older reader facing a newer writer misses every final marker, so a partner refusal reaches that reader as a peer-silence timeout (default one hour) exiting 69 -- the wrong code, and slow.
-
-**Recommendation: final (76).** It is the only option under which no version pairing reports a refusal as retryable, and it leaves the marker specified today unchanged.
+- **Writer.** It emits the retryable label only for a fault it has positively classified as transient (the retryable list above), and the final label for every other fault, one its classifier does not recognize included.
+- **Reader.** The class is bound into the HKDF label, so a marker derived under neither label -- an unlabelled token included -- fails both comparisons and falls back to the peer-silence timeout, as any marker that does not verify does. No third reader state exists: a verified marker is final or retryable.
+- **Why final.** An unrecognized fault stops the reader's schedule instead of retrying into a partner that may have refused, re-sending this party's records each time.
+- **Cost.** A transient fault nobody classified still stops the reader's schedule as a refusal, until its raise site joins the retryable list.
 
 ## The spec text it would change (proposed, not applied)
 
@@ -94,7 +84,7 @@ FILE_SYNC.md, the abort row's envelope cell:
 
 FILE_SYNC.md, Abort-marker lifetime, the Written bullet: append "under the label for its fault's class; one marker per failing party whatever the class." Sender-side peer-silence attribution: replace the sentences from "The marker states only that the partner ended the exchange" to "which is why it exits 76 and not 69." with
 
-> The marker states that the partner ended the exchange and whether a retry may clear the partner's fault, and nothing else. A final marker exits 76: retrying alone does not help until the partner acts. A retryable marker -- the partner's own transport stall or drop -- exits 69, the code the partner's run reports for the same fault. A marker from a writer that predates the class verifies under the final label.
+> The marker states that the partner ended the exchange and whether a retry may clear the partner's fault, and nothing else. A final marker exits 76: retrying alone does not help until the partner acts. A retryable marker -- the partner's own transport stall or drop -- exits 69, the code the partner's run reports for the same fault. The partner writes a retryable marker only for a fault it has classified as transient, and a final marker for every other fault.
 
 The exit-code rows for 69 and 76 in docs/CLI.md and the partner-refusal code in CLI_EVENTS.md would change in the same work.
 
