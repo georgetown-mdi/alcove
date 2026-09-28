@@ -150,7 +150,11 @@ const hasLogrotate = () =>
 const inCI = process.env.GITHUB_ACTIONS === "true";
 const inDevcontainer = process.env.DEVCONTAINER === "true";
 
-describe("the real logrotate gate", () => {
+// The hook runs only on Linux instances, and the nightly macOS runner carries
+// no logrotate, so on macOS the gap is reported as a skip rather than failed.
+const onMacOS = process.platform === "darwin";
+
+describe.skipIf(onMacOS)("the real logrotate gate", () => {
   it("is available where it is expected to run", (ctx) => {
     if (hasLogrotate()) return;
     if (!inCI && !inDevcontainer) {

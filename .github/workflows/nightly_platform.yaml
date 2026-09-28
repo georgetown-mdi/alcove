@@ -68,6 +68,11 @@ jobs:
           # A manual dispatch instead takes the ref it was dispatched on, so a
           # platform fix can be confirmed on its own branch before it lands.
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'staging' }}
+          # The script suites read the repository's history: one drives
+          # worktree-init.sh as of a pinned earlier commit, and one reads the
+          # last fifty landed commit messages. static_checks.yaml, which runs
+          # the same suites through check:all, also takes the full history.
+          fetch-depth: 0
       # Pins Node, installs from the lockfile, and builds @alcove/core so the
       # unit tests run against the compiled fork in dist/.
       - uses: ./.github/actions/setup
