@@ -2,12 +2,12 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   descendants,
   parseSource,
-  readSource,
+  readSources,
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
 
@@ -124,11 +124,13 @@ export function scanNoteCalls(file, sourceFile) {
 }
 
 /** The scan over a tree of shipped sources, skipping files that name no note. */
-function scanTree(tree) {
+async function scanTree(tree) {
+  const files = sourceModules(tree);
+  const texts = await readSources(files);
   const sites = [];
   const refusals = [];
-  for (const file of sourceModules(tree)) {
-    const text = readSource(file);
+  for (const [index, file] of files.entries()) {
+    const text = texts[index];
     if (!text.includes(NOTE_FUNCTION)) continue;
     const found = scanNoteCalls(file, parseSource(file, text));
     sites.push(...found.sites);
@@ -211,7 +213,10 @@ describe("the note shapes the check refuses", () => {
 });
 
 describe("the notes the shipped sources compose", () => {
-  const composed = scanTree(COMPOSING_TREE);
+  let composed;
+  beforeAll(async () => {
+    composed = await scanTree(COMPOSING_TREE);
+  });
 
   it("reads the calls it is pointed at", () => {
     expect(
@@ -229,9 +234,9 @@ describe("the notes the shipped sources compose", () => {
 
   it.each(SOURCE_TREES.filter((tree) => tree !== COMPOSING_TREE))(
     "composes no note in %s",
-    (tree) => {
+    async (tree) => {
       expect(
-        scanTree(tree).sites,
+        (await scanTree(tree)).sites,
         `${NOTE_FUNCTION} is composed in ${COMPOSING_TREE}: a consumer is handed a Displayable and renders it`,
       ).toEqual([]);
     },
