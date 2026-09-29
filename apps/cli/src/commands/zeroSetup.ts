@@ -53,7 +53,10 @@ import {
   establishHostKeyTrust,
   type HostKeyPersistence,
 } from "../hostKeyTrust";
-import { readStartModeProvision, wakeServerThrough } from "../serverProvision";
+import {
+  startModeProvisionAsRead,
+  wakeServerThrough,
+} from "../serverProvision";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -750,7 +753,10 @@ export async function handler(argv: Arguments): Promise<void> {
       // from this party's own filesystem, so it is settled here rather than
       // after the host-key step below has contacted the server.
       const credentials = readConnectionCredentials(connection);
-      const provision = readStartModeProvision(connection);
+      const provision = startModeProvisionAsRead(
+        connection,
+        options.serverProvisionRead,
+      );
       // Decided from the input alone, so settled before the host-key step too.
       await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
         assertFileSyncFirstRoundFits(connection, prepared, report),

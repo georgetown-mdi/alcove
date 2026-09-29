@@ -1212,6 +1212,7 @@ export async function handler(argv: Arguments): Promise<void> {
           // recurring run is never handed a budget sized for one operator
           // sitting at a terminal.
           runOnlyPeerTimeoutSeconds: acceptTimeout,
+          provision: options.serverProvisionRead,
         });
         // The summary only; the exit code a failed persistence implies was set
         // where that persistence was lost, so nothing here can raise or lower it.

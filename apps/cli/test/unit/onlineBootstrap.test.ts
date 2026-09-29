@@ -13,6 +13,7 @@ import {
   getLogger,
   inferDateInputFormatFromSource,
   INFER_DATE_SCAN_CAP,
+  InternalConsistencyError,
   MAX_RECONNECT_ATTEMPTS,
   operatorSuppliedSpans,
   parseExchangeSpec,
@@ -796,6 +797,57 @@ describe("runOrExit", () => {
 });
 
 describe("parseCommonBootstrapArgs", () => {
+  test("--server-provision credential files are read at parsing, the block keeping the references", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-provision-"));
+    try {
+      const passwordFile = path.join(dir, "wake.password");
+      fs.writeFileSync(passwordFile, "wake-password\n");
+      const parsed = parseCommonBootstrapArgs({
+        _: [],
+        $0: "alcove",
+        "server-provision": "https://wake.example.org/start",
+        "server-provision-username": "operator",
+        "server-provision-password": `@${passwordFile}`,
+      } as unknown as Arguments);
+      expect(parsed.serverProvision?.auth).toEqual({
+        username: "operator",
+        password: `@${passwordFile}`,
+      });
+      expect(parsed.serverProvisionRead).toEqual({
+        host: "wake.example.org",
+        path: "/start",
+        auth: { username: "operator", password: "wake-password" },
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ["missing", "cannot read the @-file reference"],
+    ["empty", "resolved to an empty file"],
+  ])(
+    "a %s --server-provision-bearer file is a usage error at parsing",
+    (kind, message) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-provision-"));
+      try {
+        const tokenFile = path.join(dir, "wake.token");
+        if (kind === "empty") fs.writeFileSync(tokenFile, "\n");
+        const parse = () =>
+          parseCommonBootstrapArgs({
+            _: [],
+            $0: "alcove",
+            "server-provision": "https://wake.example.org/start",
+            "server-provision-bearer": `@${tokenFile}`,
+          } as unknown as Arguments);
+        expect(parse).toThrow(UsageError);
+        expect(parse).toThrow(message);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("an unrecognized log-level is a usage error", () => {
     // Routed through runOrExit by the handlers, so a UsageError exits 64 via the
     // consistent error path rather than yargs's noisier top-level catch.
@@ -4990,7 +5042,8 @@ describe("runOnlineBootstrap: the server.provision wake call", () => {
   const FP = "SHA256:" + "W".repeat(43);
 
   /** A directory holding a bearer token file, and the params of a run whose
-   * connection states a start-mode block authenticated by it. */
+   * connection states a start-mode block authenticated by it, the token read
+   * as argument parsing reads it. */
   function provisionedBootstrap(connection: ConnectionConfig): {
     dir: string;
     tokenFile: string;
@@ -5018,6 +5071,11 @@ describe("runOnlineBootstrap: the server.provision wake call", () => {
       params: {
         ...onlineBootstrapParams(path.join(dir, "alcove.yaml")),
         connection: withProvision,
+        provision: {
+          host: "wake.example.org",
+          path: "/start",
+          auth: { bearer: "wake-token" },
+        },
       },
     };
   }
@@ -5163,18 +5221,17 @@ describe("runOnlineBootstrap: the server.provision wake call", () => {
     }
   });
 
-  test("a bearer file that cannot be read is refused without the wake call", async () => {
-    const { dir, tokenFile, params } = provisionedBootstrap({
+  test("a block stated with no read credentials is refused without the wake call", async () => {
+    const { dir, params } = provisionedBootstrap({
       channel: "sftp",
       server: { host: "sftp.example.org", hostKeyFingerprint: FP },
     });
-    fs.rmSync(tokenFile);
     const fetch = stubProvisionFetch(200);
     vi.mocked(preflightRun).mockClear();
     try {
-      await expect(runOnlineBootstrap(params)).rejects.toBeInstanceOf(
-        UsageError,
-      );
+      await expect(
+        runOnlineBootstrap({ ...params, provision: undefined }),
+      ).rejects.toBeInstanceOf(InternalConsistencyError);
       expect(fetch).not.toHaveBeenCalled();
       expect(vi.mocked(preflightRun)).not.toHaveBeenCalled();
     } finally {

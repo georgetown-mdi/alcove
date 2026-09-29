@@ -1281,6 +1281,7 @@ export async function handler(argv: Arguments): Promise<void> {
           }),
           eventStream: options.eventStream,
           reuseExistingConfig: ready.reuseExistingConfig,
+          provision: options.serverProvisionRead,
           // Persist the consented received-column commitment so the later
           // `alcove exchange` enforces it via reconcileReceivedPayload, the
           // online sibling of the offline path's expectedPayloadColumns write

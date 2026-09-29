@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import logLibrary from "loglevel";
 import YAML from "yaml";
@@ -4071,4 +4071,91 @@ test("validateInvite: offline warns that --server-provision is ignored", async (
   } finally {
     warnSpy.mockRestore();
   }
+});
+
+describe("handler: the --server-provision credential file on an online invite", () => {
+  function provisionedInviteArgv(
+    options: CommonBootstrapOptions,
+    input: string,
+    tokenFile: string,
+  ): Arguments {
+    return {
+      _: [],
+      $0: "alcove",
+      identity: "Agency A",
+      args: ["sftp://host/drop", input],
+      "server-provision": "https://wake.example.org/start",
+      "server-provision-bearer": `@${tokenFile}`,
+      "config-file": options.configFile,
+      "key-file": options.keyFile,
+      "log-level": "silent",
+      record: false,
+    } as unknown as Arguments;
+  }
+
+  test.each(["missing", "empty"])(
+    "a %s bearer file exits 64 before the invitation is printed",
+    async (kind) => {
+      const { input, options } = onlineFixture();
+      const tokenFile = path.join(path.dirname(input), "wake.token");
+      if (kind === "empty") fs.writeFileSync(tokenFile, "");
+      const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+      runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const exit = vi
+        .spyOn(process, "exit")
+        .mockImplementation((() => undefined) as never);
+      const stdio = captureStdio();
+      try {
+        await inviteHandler(provisionedInviteArgv(options, input, tokenFile));
+        expect(exit).toHaveBeenCalledWith(64);
+        expect(logSpy).not.toHaveBeenCalled();
+        expect(stdio.stdoutWrites.join("")).toBe("");
+        expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+        expect(fs.existsSync(options.keyFile)).toBe(false);
+        expect(fs.existsSync(options.configFile)).toBe(false);
+      } finally {
+        stdio.restore();
+        exit.mockRestore();
+        logSpy.mockRestore();
+        runOnlineBootstrapMock.mockReset();
+      }
+    },
+  );
+
+  test("a readable bearer file reaches the wake call read and the saved connection as the reference", async () => {
+    const { input, options } = onlineFixture();
+    const tokenFile = path.join(path.dirname(input), "wake.token");
+    fs.writeFileSync(tokenFile, "wake-token\n");
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    const printed: string[] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      printed.push(args.map(String).join(" "));
+    });
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      await inviteHandler(provisionedInviteArgv(options, input, tokenFile));
+      expect(exit).not.toHaveBeenCalled();
+      expect(printed).toHaveLength(1);
+      expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+      const passed = runOnlineBootstrapMock.mock.calls[0][0];
+      expect(passed.provision).toEqual({
+        host: "wake.example.org",
+        path: "/start",
+        auth: { bearer: "wake-token" },
+      });
+      if (passed.connection.channel !== "sftp")
+        throw new Error("expected sftp");
+      expect(passed.connection.server.provision?.auth).toEqual({
+        bearer: `@${tokenFile}`,
+      });
+    } finally {
+      exit.mockRestore();
+      logSpy.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+    }
+  });
 });

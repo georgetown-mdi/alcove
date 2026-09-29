@@ -23,7 +23,10 @@ import {
 } from "./util/flags";
 import { logLevelFlag } from "./util/logging";
 import { DURATION_VALUE_HELP, FINE_DURATION_VALUE_HELP } from "./util/duration";
-import { resolveHostKeyFingerprintRef } from "./util/atSignRefs";
+import {
+  resolveHostKeyFingerprintRef,
+  resolveServerProvisionAtSignRefs,
+} from "./util/atSignRefs";
 
 /**
  * Upper bound for `--server-port`, matching the config schema's own
@@ -98,8 +101,9 @@ export function hostKeyFingerprintFlag(argv: Arguments): string | undefined {
  * URL must be `https:` with a host and no user, query, or fragment; its host,
  * port and path become the block's. `--server-provision-bearer`, or
  * `--server-provision-username` with `--server-provision-password`, become its
- * `auth`, each kept verbatim so an `@path` reference is read at live use and a
- * saved configuration records the reference. A credential flag without the
+ * `auth`, each kept verbatim so a saved configuration records an `@path`
+ * reference rather than the secret; {@link parseCommonBootstrapArgs} reads the
+ * referenced files alongside. A credential flag without the
  * URL, or a malformed URL, is a {@link UsageError} (exit 64) naming the flag.
  * No value is interpolated into a message, since the URL's path may hold a
  * token.
@@ -535,9 +539,17 @@ export interface CommonBootstrapOptions {
   /**
    * The start-mode `server.provision` block `--server-provision` and its
    * credential flags state, from {@link serverProvisionFlag}; its auth holds
-   * any `@path` reference unread.
+   * any `@path` reference unread, so a configuration built from it records
+   * the reference.
    */
   serverProvision?: ServerProvision;
+  /**
+   * {@link serverProvision} with its auth `@path` references read: the block a
+   * wake call sends. Read at argument parsing, so an unreadable or empty
+   * referenced file is a `UsageError` (exit 64) raised before a command
+   * prints or mints anything.
+   */
+  serverProvisionRead?: ServerProvision;
   connectionTimeout?: number;
   peerTimeout?: number;
   // The --polling-frequency override, in MILLISECONDS (not seconds like the two
@@ -573,6 +585,7 @@ export function parseCommonBootstrapArgs(
   // reaches a cast that lies about the type. The boolean and count options
   // (lockless-rendezvous, timestamp-in-filename, retain-files, record, verbose)
   // keep their plain casts: a repeat is valid for them.
+  const serverProvision = serverProvisionFlag(argv);
   return {
     configFile:
       (singleValue(argv, "config-file") as string | undefined) ??
@@ -601,7 +614,11 @@ export function parseCommonBootstrapArgs(
     // format-validated) here at parse time, same as the config-load path already
     // does for an @-authored host_key_fingerprint (resolveHostKeyFingerprintRef).
     serverHostKeyFingerprint: hostKeyFingerprintFlag(argv),
-    serverProvision: serverProvisionFlag(argv),
+    serverProvision,
+    serverProvisionRead:
+      serverProvision === undefined
+        ? undefined
+        : resolveServerProvisionAtSignRefs(serverProvision),
     connectionTimeout: durationFlagSeconds(
       argv,
       "connection-timeout",

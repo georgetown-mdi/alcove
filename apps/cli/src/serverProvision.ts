@@ -1,5 +1,6 @@
 import {
   callProvisionEndpoint,
+  InternalConsistencyError,
   provisionEndpointLabel,
   provisionModeOf,
   provisionRequest,
@@ -30,19 +31,25 @@ export function startModeProvisionOf(
 }
 
 /**
- * {@link startModeProvisionOf} with the block's auth `@path` references read,
- * for a command whose connection keeps them so the configuration it saves
- * holds the reference and not the secret. A missing, unreadable, or empty
- * referenced file is a `UsageError` (exit 64) raised here, so a caller reads
- * the block alongside its other local files, before any network contact.
+ * The start-mode block `connection` states, in the form `read` holds it: the
+ * same block from `--server-provision` with its auth `@path` references read
+ * at argument parsing (`serverProvisionRead`), while the connection keeps the
+ * references so the configuration it saves records them and not the secret.
+ * `undefined` when the connection states no start-mode block. A block the
+ * connection states with no `read` is an {@link InternalConsistencyError}
+ * rather than a wake call sending an unread reference.
  */
-export function readStartModeProvision(
+export function startModeProvisionAsRead(
   connection: ConnectionConfig,
+  read: ServerProvision | undefined,
 ): ServerProvision | undefined {
-  const provision = startModeProvisionOf(connection);
-  return provision === undefined
-    ? undefined
-    : resolveServerProvisionAtSignRefs(provision);
+  if (startModeProvisionOf(connection) === undefined) return undefined;
+  if (read === undefined)
+    throw new InternalConsistencyError(
+      "internal error: the connection states a server.provision block whose " +
+        "credential references were not read",
+    );
+  return read;
 }
 
 /**

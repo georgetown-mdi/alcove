@@ -52,6 +52,7 @@ import {
 } from "../../../src/hostKeyTrust";
 import { streamOf, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
+import { captureStdio } from "../../loggingTestSupport";
 import {
   pathAsDisplayed,
   platformAbsolutePath,
@@ -2040,3 +2041,32 @@ test("handler: a non-interactive run on an unpinned sftp server exits 64 without
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test.each(["missing", "empty"])(
+  "handler: a %s --server-provision-bearer file exits 64 at argument parsing, before the dataset is read",
+  async (kind) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowake-"));
+    const exitSpy = captureProcessExit();
+    const fetch = stubZeroSetupProvisionFetch(200);
+    const stdio = captureStdio();
+    try {
+      const argv = provisionedZeroSetupRun(dir, true);
+      const tokenFile = path.join(dir, "wake.token");
+      if (kind === "missing") fs.rmSync(tokenFile);
+      else fs.writeFileSync(tokenFile, "");
+      vi.mocked(prepareForExchange).mockClear();
+      vi.mocked(runProtocol).mockClear();
+      await expect(handler(argv)).rejects.toThrow("exit:64");
+      expect(stdio.stdoutWrites.join("")).toBe("");
+      expect(vi.mocked(prepareForExchange)).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(dir, "alcove.yaml"))).toBe(false);
+    } finally {
+      stdio.restore();
+      exitSpy.mockRestore();
+      vi.unstubAllGlobals();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

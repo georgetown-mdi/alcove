@@ -37,6 +37,7 @@ import type {
   LinkageTerms,
   OutboundPayloadConsent,
   PreparedExchange,
+  ServerProvision,
   SFTPConnectionConfig,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -69,7 +70,7 @@ import {
 } from "./protocol";
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
 import type { RecordOutput } from "./recordFile";
-import { readStartModeProvision, wakeServerThrough } from "./serverProvision";
+import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
 
 /**
  * The exchange-data portion of a spec: linkage terms (always present once
@@ -895,6 +896,14 @@ export async function runOnlineBootstrap(params: {
    * budget are the same value (the online acceptor), which needs no override.
    */
   runOnlyPeerTimeoutSeconds?: number;
+  /**
+   * The start-mode `server.provision` block `connection` states, with its auth
+   * `@path` references already read by the command's argument parsing
+   * (`serverProvisionRead`), so an unreadable file ends the command before it
+   * prints an invitation. `connection` keeps the references, which the
+   * configuration saved below records.
+   */
+  provision?: ServerProvision;
 }): Promise<{ configWriteError?: unknown }> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
@@ -914,7 +923,10 @@ export async function runOnlineBootstrap(params: {
   // host-key step below, whose first-use probe opens a real transport to the
   // server.
   const credentials = readConnectionCredentials(params.connection);
-  const provision = readStartModeProvision(params.connection);
+  const provision = startModeProvisionAsRead(
+    params.connection,
+    params.provision,
+  );
   // Decided from the input alone, so settled before the host-key step too.
   await withFirstRoundCountDisplay(
     {
