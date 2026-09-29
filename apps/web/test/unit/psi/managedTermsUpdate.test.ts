@@ -1,26 +1,38 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   PLACEHOLDER_IDENTITY,
   UsageError,
   decodeTermsUpdate,
+  deriveAcceptedLinkageTerms,
   disclosedColumnNames,
+  generateSharedSecret,
   inferMetadata,
+  validateCompatibility,
 } from "@alcove/core";
 
-import { managedExchangeLockName } from "@psi/managed/managedExchangeLock";
+import {
+  ManagedExchangeLockUnavailableError,
+  managedExchangeLockName,
+} from "@psi/managed/managedExchangeLock";
 
 import {
+  ManagedTermsUpdateNotAppliedError,
   ManagedTermsUpdateRefusedError,
+  applyManagedTermsUpdate,
   makeManagedTermsUpdate,
   managedTermsUpdateRefusal,
+  readManagedTermsUpdate,
 } from "@psi/managed/managedTermsUpdate";
 import {
   applyManagedExchangeSentColumns,
+  applyManagedExchangeTermsChange,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  parseManagedExchangeRecord,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
+import { clearManagedExchangeTermsProposal } from "@psi/managed/managedLocalState";
 
 import {
   CLI_TERMS_UPDATE,
@@ -28,11 +40,43 @@ import {
   CLI_TERMS_UPDATE_SECRET,
 } from "../../utils/cliTermsUpdateFixture";
 
+import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
 import type { LinkageTerms, Metadata } from "@alcove/core";
 import type {
   ManagedExchangeRecord,
+  ManagedTermsChangeWrite,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate";
+
+/** The stored exchanges, by id, as the bytes the store would hold. */
+const storedBytes = vi.hoisted(() => new Map<string, string>());
+
+vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
+  const records = await import("@psi/managed/managedExchangeRecord");
+  const read = (id: string) => {
+    const bytes = storedBytes.get(id);
+    return bytes === undefined
+      ? undefined
+      : records.parseManagedExchangeRecord(JSON.parse(bytes));
+  };
+  return {
+    ...(await importOriginal<typeof ManagedExchangeStore>()),
+    getManagedExchange: vi.fn((id: string) => Promise.resolve(read(id))),
+    persistManagedExchangeTermsChange: vi.fn(
+      (id: string, write: ManagedTermsChangeWrite) => {
+        const stored = read(id);
+        if (stored === undefined) throw new Error(`no exchange ${id}`);
+        const next = records.applyManagedExchangeTermsChange(stored, write);
+        storedBytes.set(id, JSON.stringify(next));
+        return Promise.resolve(next);
+      },
+    ),
+  };
+});
+vi.mock("@psi/managed/managedLocalState", () => ({
+  clearManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
+}));
 
 const CONNECTION = {
   channel: "webrtc",
@@ -230,5 +274,233 @@ describe("refusing a terms update", () => {
     await expect(makeManagedTermsUpdate(record)).resolves.toEqual(
       expect.any(String),
     );
+  });
+});
+
+describe("applying a partner's terms update", () => {
+  /** Agency A's terms before the update: it sent `notes`. */
+  async function agencyATermsBefore(): Promise<LinkageTerms> {
+    return {
+      ...(await agencyATerms()),
+      payload: { send: [{ name: "notes" }] },
+    };
+  }
+
+  /** Agency B, which accepted Agency A's invitation and receives `notes`. */
+  async function agencyBRecord(
+    sharedSecret = CLI_TERMS_UPDATE_SECRET,
+    overrides: Partial<ManagedExchangeRecord> = {},
+  ): Promise<RunnableManagedExchangeRecord> {
+    const record = runnableManagedExchangeOrRefuse({
+      ...buildManagedExchangeRecord({
+        label: "Riverbend quarterly",
+        exchangeFile: composeManagedExchangeFile({
+          connection: CONNECTION,
+          linkageTerms: deriveAcceptedLinkageTerms(
+            await agencyATermsBefore(),
+            "Agency B",
+          ),
+          metadata: inferMetadata(CLI_TERMS_UPDATE_LINKAGE_COLUMNS, []),
+          expectedPayloadColumns: ["notes"],
+          expectedPartnerDeduplicate: false,
+        }),
+        side: "acceptor",
+        sharedSecret,
+      }),
+      ...overrides,
+    });
+    storedBytes.set(record.id, JSON.stringify(record));
+    return record;
+  }
+
+  function storedRecord(id: string): ManagedExchangeRecord {
+    return parseManagedExchangeRecord(
+      JSON.parse(storedBytes.get(id) as string),
+    );
+  }
+
+  async function refusalOf(work: Promise<unknown>): Promise<string> {
+    const error: unknown = await work.then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ManagedTermsUpdateNotAppliedError);
+    return (error as ManagedTermsUpdateNotAppliedError).refusal;
+  }
+
+  /** A reading as a page would hold it, for an update read nowhere. */
+  function unreadUpdate(encoded: string): ManagedTermsUpdateReading {
+    return {
+      encoded,
+      partnerTerms: OWN_TERMS,
+      delta: {
+        received: undefined,
+        sent: undefined,
+        partnerDeduplicate: undefined,
+        otherTerms: [],
+      },
+    };
+  }
+
+  let OWN_TERMS: LinkageTerms;
+
+  beforeEach(async () => {
+    storedBytes.clear();
+    vi.mocked(clearManagedExchangeTermsProposal).mockClear();
+    OWN_TERMS = await agencyATerms();
+  });
+
+  test("shows and applies an update alcove update printed, and the next run agrees", async () => {
+    const record = await agencyBRecord();
+
+    const reading = await readManagedTermsUpdate(
+      record,
+      `${CLI_TERMS_UPDATE.slice(0, 80)}\n  ${CLI_TERMS_UPDATE.slice(80)}\n`,
+    );
+    expect(reading.encoded).toBe(CLI_TERMS_UPDATE);
+    expect(reading.partnerTerms.identity).toBe("Agency A");
+    expect(reading.delta).toEqual({
+      received: { added: ["county"], removed: [] },
+      sent: undefined,
+      partnerDeduplicate: undefined,
+      otherTerms: [],
+    });
+
+    const applied = await applyManagedTermsUpdate(record.id, reading);
+    expect(storedRecord(record.id)).toEqual(applied);
+    expect(applied.exchangeFile.expectedPayloadColumns).toEqual([
+      "notes",
+      "county",
+    ]);
+    expect(applied.exchangeFile.linkageTerms.identity).toBe("Agency B");
+    expect(applied.sharedSecret).toBe(record.sharedSecret);
+    expect(clearManagedExchangeTermsProposal).toHaveBeenCalledWith(record.id);
+
+    expect(
+      validateCompatibility(
+        applied.exchangeFile.linkageTerms,
+        reading.partnerTerms,
+      ).errors,
+    ).toEqual([]);
+    const again = await readManagedTermsUpdate(
+      runnableManagedExchangeOrRefuse(applied),
+      CLI_TERMS_UPDATE,
+    );
+    expect(again.delta).toEqual({
+      received: undefined,
+      sent: undefined,
+      partnerDeduplicate: undefined,
+      otherTerms: [],
+    });
+  });
+
+  const tampered = `${CLI_TERMS_UPDATE.slice(0, -2)}${
+    CLI_TERMS_UPDATE.endsWith("AA") ? "BB" : "AA"
+  }`;
+
+  test.each([
+    ["format", "not a terms update"],
+    ["format", CLI_TERMS_UPDATE.slice(0, 200)],
+    ["authentication", tampered],
+  ])(
+    "refuses a malformed update (%s) and leaves the record byte-identical",
+    async (refusal, pasted) => {
+      const record = await agencyBRecord();
+      const before = storedBytes.get(record.id);
+      expect(await refusalOf(readManagedTermsUpdate(record, pasted))).toBe(
+        refusal,
+      );
+      expect(
+        await refusalOf(
+          applyManagedTermsUpdate(record.id, unreadUpdate(pasted)),
+        ),
+      ).toBe(refusal);
+      expect(storedBytes.get(record.id)).toBe(before);
+    },
+  );
+
+  test("refuses an update for a different exchange and leaves the record byte-identical", async () => {
+    const record = await agencyBRecord(generateSharedSecret());
+    const before = storedBytes.get(record.id);
+    expect(
+      await refusalOf(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)),
+    ).toBe("partnership");
+    expect(
+      await refusalOf(
+        applyManagedTermsUpdate(record.id, unreadUpdate(CLI_TERMS_UPDATE)),
+      ),
+    ).toBe("partnership");
+    expect(storedBytes.get(record.id)).toBe(before);
+  });
+
+  test("refuses an update made from this exchange's own terms", async () => {
+    const own = runnableManagedExchangeOrRefuse(
+      applyManagedExchangeSentColumns(inviterRecord(OWN_TERMS), [
+        "notes",
+        "county",
+      ]),
+    );
+    storedBytes.set(own.id, JSON.stringify(own));
+    const before = storedBytes.get(own.id);
+    expect(
+      await refusalOf(
+        readManagedTermsUpdate(own, await makeManagedTermsUpdate(own)),
+      ),
+    ).toBe("own-terms");
+    expect(
+      await refusalOf(
+        applyManagedTermsUpdate(own.id, unreadUpdate(CLI_TERMS_UPDATE)),
+      ),
+    ).toBe("own-terms");
+    expect(storedBytes.get(own.id)).toBe(before);
+  });
+
+  test("refuses under a lapsed secret", async () => {
+    const record = await agencyBRecord(CLI_TERMS_UPDATE_SECRET, {
+      expires: "2000-01-01T00:00:00.000Z",
+    });
+    const before = storedBytes.get(record.id);
+    expect(
+      await refusalOf(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)),
+    ).toBe("lapsed");
+    expect(
+      await refusalOf(
+        applyManagedTermsUpdate(record.id, unreadUpdate(CLI_TERMS_UPDATE)),
+      ),
+    ).toBe("lapsed");
+    expect(storedBytes.get(record.id)).toBe(before);
+  });
+
+  test("refuses without waiting while a run is in flight", async () => {
+    const record = await agencyBRecord();
+    const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
+    const before = storedBytes.get(record.id);
+    await navigator.locks.request(
+      managedExchangeLockName(record.id),
+      async () => {
+        expect(
+          await refusalOf(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)),
+        ).toBe("run-in-flight");
+        await expect(
+          applyManagedTermsUpdate(record.id, reading),
+        ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+      },
+    );
+    expect(storedBytes.get(record.id)).toBe(before);
+  });
+
+  test("refuses where the stored exchange changed after the update was read", async () => {
+    const record = await agencyBRecord();
+    const reading = await readManagedTermsUpdate(record, CLI_TERMS_UPDATE);
+    const changed = applyManagedExchangeTermsChange(record, {
+      scope: "apply",
+      partnerTerms: reading.partnerTerms,
+    });
+    storedBytes.set(record.id, JSON.stringify(changed));
+    const before = storedBytes.get(record.id);
+    expect(await refusalOf(applyManagedTermsUpdate(record.id, reading))).toBe(
+      "changed",
+    );
+    expect(storedBytes.get(record.id)).toBe(before);
   });
 });

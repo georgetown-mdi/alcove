@@ -1,13 +1,15 @@
 import { useState } from "react";
 
-import { Button, Checkbox, Stack } from "@mantine/core";
+import { Button, Checkbox, Group, Stack, Textarea } from "@mantine/core";
 
 import { isDisclosedToPartner } from "@alcove/core";
 
 import {
   ManagedTermsUpdateRefusedError,
+  applyManagedTermsUpdate,
   makeManagedTermsUpdate,
   managedTermsUpdateRefusal,
+  readManagedTermsUpdate,
   saveManagedSentColumns,
 } from "@psi/managed/managedTermsUpdate";
 import {
@@ -16,34 +18,49 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import { ColumnName } from "@components/ColumnName";
 import { CopyRow } from "@exchange/RunSurface";
+import { TermsChangeDelta } from "@components/TermsChangeDelta";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import styles from "@styles/app.module.css";
 
 import {
+  ACCEPT_TERMS_CHANGE_LABEL,
+  DECLINE_TERMS_CHANGE_LABEL,
+} from "./managedTermsChangeModel";
+import {
+  APPLY_TERMS_UPDATE_LABEL,
+  APPLY_TERMS_UPDATE_TEXT,
   CHANGE_TERMS_TITLE,
   MAKE_TERMS_UPDATE_LABEL,
+  READ_TERMS_UPDATE_LABEL,
   SAVE_SENT_COLUMNS_LABEL,
   SEND_TERMS_UPDATE_LABEL,
   SEND_TERMS_UPDATE_TEXT,
   SENT_COLUMNS_LABEL,
   SENT_COLUMNS_SAVED_TEXT,
   SENT_COLUMNS_TEXT,
+  TERMS_UPDATE_APPLIED_TEXT,
+  TERMS_UPDATE_CHANGE_TEXT,
   TERMS_UPDATE_COPY_HINT,
   TERMS_UPDATE_COPY_LABEL,
+  TERMS_UPDATE_INPUT_LABEL,
   TERMS_UPDATE_NOT_MADE_TEXT,
+  TERMS_UPDATE_NO_CHANGE_TEXT,
   TERMS_UPDATE_WITHHELD_TEXT,
   fixedColumnNote,
   sentColumnsFailureText,
+  termsUpdateNotAppliedText,
 } from "./managedTermsUpdateModel";
 
+import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+import type { TermsDelta } from "@alcove/core";
 
 /**
  * Changing a saved exchange's terms between runs: the columns this party
- * sends, and the terms update that tells the partner. Every write is withheld
- * while a run holds the exchange. `onChanged` is told once the stored
- * exchange changed, so the page reads it again.
+ * sends, the terms update that tells the partner, and applying the partner's.
+ * Every write is withheld while a run holds the exchange. `onChanged` is told
+ * once the stored exchange changed, so the page reads it again.
  */
 export function ManagedTermsUpdate({
   record,
@@ -75,7 +92,10 @@ export function ManagedTermsUpdate({
       {refusal !== null ? (
         <p className={styles.small}>{TERMS_UPDATE_WITHHELD_TEXT[refusal]}</p>
       ) : (
-        <SendTermsUpdate record={record} />
+        <>
+          <SendTermsUpdate record={record} />
+          <ApplyTermsUpdate record={record} onApplied={onChanged} />
+        </>
       )}
     </div>
   );
@@ -237,6 +257,129 @@ function SendTermsUpdate({
           hint={TERMS_UPDATE_COPY_HINT}
           value={made.update}
         />
+      )}
+    </div>
+  );
+}
+
+function deltaIsEmpty(delta: TermsDelta): boolean {
+  return (
+    delta.received === undefined &&
+    delta.sent === undefined &&
+    delta.partnerDeduplicate === undefined &&
+    delta.otherTerms.length === 0
+  );
+}
+
+/**
+ * The partner's terms update: pasted, checked against this exchange, its
+ * change shown, and saved on Accept. The partner's column names and terms
+ * values arrive raw and are escaped where they are shown.
+ */
+function ApplyTermsUpdate({
+  record,
+  onApplied,
+}: {
+  record: RunnableManagedExchangeRecord;
+  onApplied: () => void;
+}) {
+  const [pasted, setPasted] = useState("");
+  const [reading, setReading] = useState<{
+    record: RunnableManagedExchangeRecord;
+    update: ManagedTermsUpdateReading;
+  }>();
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string>();
+  const shown = reading?.record === record ? reading.update : undefined;
+
+  async function read(): Promise<void> {
+    setBusy(true);
+    setReading(undefined);
+    setStatus(undefined);
+    try {
+      setReading({
+        record,
+        update: await readManagedTermsUpdate(record, pasted),
+      });
+    } catch (error) {
+      whenDiagnostic(() => console.error(error));
+      setStatus(termsUpdateNotAppliedText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function accept(update: ManagedTermsUpdateReading): Promise<void> {
+    setBusy(true);
+    setStatus(undefined);
+    try {
+      await applyManagedTermsUpdate(record.id, update);
+      setReading(undefined);
+      setPasted("");
+      setStatus(TERMS_UPDATE_APPLIED_TEXT);
+      onApplied();
+    } catch (error) {
+      whenDiagnostic(() => console.error(error));
+      setStatus(termsUpdateNotAppliedText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function decline(): void {
+    setReading(undefined);
+    setPasted("");
+    setStatus(undefined);
+  }
+
+  return (
+    <div>
+      <p className={styles.calloutLead}>{APPLY_TERMS_UPDATE_LABEL}</p>
+      <p className={styles.small}>{APPLY_TERMS_UPDATE_TEXT}</p>
+      <Textarea
+        label={TERMS_UPDATE_INPUT_LABEL}
+        autosize
+        minRows={2}
+        maxRows={6}
+        value={pasted}
+        onChange={(event) => {
+          setPasted(event.currentTarget.value);
+          setReading(undefined);
+          setStatus(undefined);
+        }}
+      />
+      {shown === undefined ? (
+        <Button
+          mt="sm"
+          variant="default"
+          loading={busy}
+          disabled={pasted.trim() === ""}
+          onClick={() => void read()}
+        >
+          {READ_TERMS_UPDATE_LABEL}
+        </Button>
+      ) : (
+        <div>
+          <p className={styles.small}>
+            {deltaIsEmpty(shown.delta)
+              ? TERMS_UPDATE_NO_CHANGE_TEXT
+              : TERMS_UPDATE_CHANGE_TEXT}
+          </p>
+          <TermsChangeDelta delta={shown.delta} escaped={false} />
+          <Group mt="sm">
+            <Button loading={busy} onClick={() => void accept(shown)}>
+              {ACCEPT_TERMS_CHANGE_LABEL}
+            </Button>
+            <Button variant="default" disabled={busy} onClick={decline}>
+              {DECLINE_TERMS_CHANGE_LABEL}
+            </Button>
+          </Group>
+        </div>
+      )}
+      {status !== undefined && (
+        <p className={styles.small} role="status">
+          {status}
+        </p>
       )}
     </div>
   );

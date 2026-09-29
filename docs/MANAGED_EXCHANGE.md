@@ -1763,8 +1763,8 @@ attack](#telling-a-desync-from-an-attack)).
 ### Changing the terms of a saved exchange
 
 The exchange's page has a **Change terms** section, offered once the exchange
-holds its shared secret. It does for a saved exchange what `alcove update` does
-for a command-line configuration (see
+holds its shared secret. It does for a saved exchange what `alcove update` and
+`alcove apply` do for a command-line configuration (see
 [CLI.md](CLI.md#changing-the-terms-of-an-established-partnership)).
 
 - **Columns you send.** Where the terms send your partner columns for matched
@@ -1777,19 +1777,30 @@ for a command-line configuration (see
   `alcove update` prints for a configuration holding these terms: your linkage
   terms and the names of the columns you send, authenticated under the
   exchange's shared secret, with no secret, credential, or connection detail in
-  it. Copy it, as you copy an invitation code, and send it to a partner on the
-  command line over any channel that delivers it unchanged; they apply it with
-  `alcove apply`. Every run between you replaces the secret it was made under,
-  so an update not applied before the next run is refused and has to be made
-  again. It is not offered once the exchange's secret has expired, where its
-  terms name no identity for you, or while a run of the exchange is in
-  progress.
+  it. Copy it, as you copy an invitation code, and send it to your partner
+  over any channel that delivers it unchanged; they apply it on this
+  exchange's page, or with `alcove apply` on the command line. Every run
+  between you replaces the secret it was made under, so an update not applied
+  before the next run is refused and has to be made again.
+- **Apply a terms update.** Paste an update your partner made, here or with
+  `alcove update`, and choose **Check update**. It is checked as `alcove
+  apply` checks one, and refused, naming what is wrong, when it is not a whole
+  terms update, when it was made for a different exchange or under a secret a
+  run has since replaced, when its content was changed after it was made, when
+  it was made from your own terms rather than your partner's, or when it
+  changes terms this exchange cannot take on here, such as the columns used to
+  match. An update that passes shows its change in the sections a run shows
+  (see [When your partner's terms change](#when-your-partners-terms-change)).
+  **Accept** saves your partner's terms to the stored exchange, and the next
+  run uses them; **Decline** leaves the exchange as it is. A refused update
+  changes nothing.
 
-This app does not apply a terms update: a partner using it takes on your
-change at their next run instead, as in [When your partner's terms
-change](#when-your-partners-terms-change) -- an attended run asks them, and a
-scheduled one stops and keeps the change for them to apply. The same holds for
-a command-line partner who has not applied your update.
+Making and applying an update are not offered once the exchange's secret has
+expired, where its terms name no identity for you, or while a run of the
+exchange is in progress. A partner who has not applied your update meets the
+change at their next run, as in [When your partner's terms
+change](#when-your-partners-terms-change): an attended run asks them, and a
+scheduled one stops and keeps the change for them to apply.
 How each write is stored: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#a-terms-update).
 
 ### When your partner's terms change

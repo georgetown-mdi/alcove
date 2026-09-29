@@ -123,7 +123,7 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
  * {@link ./disclosureAccountingModel.ts}.
  *
  * The agreed terms are read-only in {@link ConfigurationView}; the columns this
- * party sends change, and a terms update is made, in
+ * party sends change, and a terms update is made or applied, in
  * {@link ManagedTermsUpdate}. The local fields edit in place
  * without touching the partnership ({@link LocalFieldsEditor}). The accounting
  * is self-attested and links to the verify page; it is never a signed receipt.

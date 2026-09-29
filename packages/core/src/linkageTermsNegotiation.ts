@@ -361,6 +361,21 @@ export interface TermsBaselines {
   partnerDeduplicate?: boolean;
 }
 
+/**
+ * The column set a party holds its received payload to at the terms exchange
+ * ({@link TermsBaselines.receive}): the columns its document records it
+ * receives, where its terms receive a payload at all -- not count-only, and
+ * expecting output. Undefined compares `payload.receive` alone.
+ */
+export function receivedPayloadBaseline(
+  terms: LinkageTerms,
+  expectedPayloadColumns: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> | undefined {
+  return terms.algorithm !== "psi-c" && terms.output.expectsOutput
+    ? expectedPayloadColumns
+    : undefined;
+}
+
 function columnsChange(
   receiverNames: ReadonlyArray<string>,
   senderNames: ReadonlyArray<string>,
