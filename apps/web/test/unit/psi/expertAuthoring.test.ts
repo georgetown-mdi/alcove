@@ -143,8 +143,13 @@ describe("expert authoring round-trips", () => {
     const token = await decodeInvitation(encoded);
     // The authored fields, the element transform, and the swap survive the encode
     // and decode byte-for-byte -- the cross-party contract is exactly what was
-    // authored.
-    expect(token.linkageTerms).toStrictEqual(authored);
+    // authored, with the send the mint states from metadata that discloses no
+    // column.
+    expect(authored.payload).toBeUndefined();
+    expect(token.linkageTerms).toStrictEqual({
+      ...authored,
+      payload: { send: [] },
+    });
   });
 
   test("removing a swapped element prunes the now-orphaned swap", () => {

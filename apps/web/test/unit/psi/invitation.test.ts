@@ -9,6 +9,7 @@ import {
   MAX_NAME_LENGTH,
   assertPayloadSendDisclosed,
   decodeInvitation,
+  deriveAcceptedLinkageTerms,
   disclosedColumnNames,
   encodeInvitation,
   getDefaultLinkageTerms,
@@ -90,10 +91,12 @@ describe("generateInvitation", () => {
     // padding-constrained set); see SHARED_SECRET_REGEX in core.
     expect(token.sharedSecret).toMatch(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/);
     // The file contains every default column, so the file-derived terms equal the
-    // full default set keyed on the inviter's name -- real terms, not a placeholder.
-    expect(token.linkageTerms).toStrictEqual(
-      getDefaultLinkageTerms(inviterName),
-    );
+    // full default set keyed on the inviter's name -- real terms, not a placeholder
+    // -- with the send stated empty, since every column is a linkage column.
+    expect(token.linkageTerms).toStrictEqual({
+      ...getDefaultLinkageTerms(inviterName),
+      payload: { send: [] },
+    });
     expect(token.linkageTerms.identity).toBe(inviterName);
     expect(token.linkageTerms.linkageKeys.length).toBeGreaterThan(0);
     expect(token.connectionEndpoint).toStrictEqual({
@@ -314,11 +317,15 @@ describe("generateInvitation", () => {
 
     // The embedded terms are the defaults filtered to the file's columns
     // (inferred metadata -> default terms): a CSV without ssn4 drops every
-    // ssn4-keyed combination.
-    const expected = getDefaultLinkageTerms(
-      inviterName,
-      inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
-    );
+    // ssn4-keyed combination. Every column is a linkage column, so the send
+    // is stated empty.
+    const expected = {
+      ...getDefaultLinkageTerms(
+        inviterName,
+        inferMetadata(["ssn", "first_name", "last_name", "dob"], []),
+      ),
+      payload: { send: [] },
+    };
     const token = await decodeInvitation(result.encoded);
     expect(token.linkageTerms).toStrictEqual(expected);
     // It is filtered, not the full default set: fewer keys, and none of
@@ -419,7 +426,11 @@ describe("generateInvitation", () => {
       "Authored Org",
       inferMetadata(["ssn", "ssn4", "first_name", "last_name", "dob"], []),
     );
-    const authored = { ...base, linkageKeys: base.linkageKeys.slice(0, 1) };
+    const authored = {
+      ...base,
+      linkageKeys: base.linkageKeys.slice(0, 1),
+      payload: { send: [] },
+    };
 
     const { encoded, linkageTerms } = await generateInvitation({
       inviterName: "ignored-name",
@@ -1059,9 +1070,9 @@ describe("generateInvitation", () => {
     expect(token.disclosedPayloadColumns).toEqual([]);
   });
 
-  test("quick path authors no payload when the file discloses no column", async () => {
-    // ALL_COLUMNS_CSV is all linkage-typed columns: the inferred metadata discloses
-    // nothing, so no (empty) payload block is authored.
+  test("quick path states an empty send when the file discloses no column, so the acceptor receives nothing", async () => {
+    // ALL_COLUMNS_CSV is all linkage-typed columns: the inferred metadata
+    // discloses nothing.
     expect(
       disclosedColumnNames(
         inferMetadata(["ssn", "ssn4", "first_name", "last_name", "dob"], []),
@@ -1073,10 +1084,58 @@ describe("generateInvitation", () => {
       location,
     });
     const token = await decodeInvitation(encoded);
-    expect(token.linkageTerms.payload).toBeUndefined();
-    // No `payload: undefined` key either -- the returned terms equal the bare
-    // defaults, so the inviter's own exchange sees no payload to reconcile.
-    expect("payload" in linkageTerms).toBe(false);
+    expect(token.linkageTerms.payload).toEqual({ send: [] });
+    expect(linkageTerms).toStrictEqual(token.linkageTerms);
+    expect(
+      deriveAcceptedLinkageTerms(token.linkageTerms, "Acceptor").payload
+        ?.receive,
+    ).toEqual([]);
+  });
+
+  test("advanced path states an empty send for authored terms that leave it unset", async () => {
+    const metadata = inferMetadata(
+      ["ssn", "ssn4", "first_name", "last_name", "dob"],
+      [],
+    );
+    const authored = getDefaultLinkageTerms("Authored Org", metadata);
+    expect(authored.payload).toBeUndefined();
+    const { encoded, linkageTerms } = await generateInvitation({
+      inviterName: "ignored-name",
+      file: csvStream(ALL_COLUMNS_CSV),
+      location,
+      linkageTerms: authored,
+      metadata,
+    });
+    const token = await decodeInvitation(encoded);
+    expect(token.linkageTerms).toStrictEqual({
+      ...authored,
+      payload: { send: [] },
+    });
+    expect(linkageTerms).toStrictEqual(token.linkageTerms);
+    expect(token.disclosedPayloadColumns).toEqual([]);
+    expect(
+      deriveAcceptedLinkageTerms(token.linkageTerms, "Acceptor").payload
+        ?.receive,
+    ).toEqual([]);
+  });
+
+  test("advanced path states the disclosed columns for authored terms that leave the send unset", async () => {
+    const metadata = inferMetadata(DISCLOSING_COLUMNS, []);
+    const disclosed = disclosedColumnNames(metadata);
+    expect(disclosed.length).toBeGreaterThan(0);
+    const authored = getDefaultLinkageTerms("Authored Org", metadata);
+    const { encoded } = await generateInvitation({
+      inviterName: "ignored-name",
+      file: csvStream(DISCLOSING_CSV),
+      location,
+      linkageTerms: authored,
+      metadata,
+    });
+    const token = await decodeInvitation(encoded);
+    expect(token.linkageTerms.payload?.send?.map(({ name }) => name)).toEqual(
+      disclosed,
+    );
+    expect(token.disclosedPayloadColumns).toEqual(disclosed);
   });
 
   test("the quick path's authored payload reconciles with a lazy acceptor", async () => {

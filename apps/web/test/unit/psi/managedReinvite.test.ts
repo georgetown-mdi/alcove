@@ -4,6 +4,7 @@ import {
   encodeInvitation,
   generateSharedSecret,
   getDefaultLinkageTerms,
+  inferMetadata,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
 
@@ -160,7 +161,7 @@ describe("composeManagedReinvite", () => {
     );
   });
 
-  test("the re-minted token states no disclosed set", async () => {
+  test("a document with no metadata re-mints its terms as stored and no disclosed set", async () => {
     const record = inviterRecord({
       exchangeFile: composeManagedExchangeFile({
         connection: { channel: "webrtc", host: "signaling.example.org" },
@@ -171,6 +172,46 @@ describe("composeManagedReinvite", () => {
       (await composeManagedReinvite(record, location, seams)).encoded,
     );
     expect(token.disclosedPayloadColumns).toBeUndefined();
+  });
+
+  test("a document whose metadata discloses nothing states an empty send, so the acceptor receives nothing", async () => {
+    const terms = getDefaultLinkageTerms("County Health Dept");
+    expect(terms.payload).toBeUndefined();
+    const record = inviterRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "signaling.example.org" },
+        linkageTerms: terms,
+        metadata: inferMetadata(["first_name", "last_name", "dob"], []),
+      }),
+    });
+    const token = await decodeInvitation(
+      (await composeManagedReinvite(record, location, seams)).encoded,
+    );
+    expect(token.linkageTerms.payload?.send).toEqual([]);
+    expect(token.disclosedPayloadColumns).toEqual([]);
+    expect(
+      deriveAcceptedLinkageTerms(token.linkageTerms, "Partner Org").payload
+        ?.receive,
+    ).toEqual([]);
+  });
+
+  test("a document whose metadata discloses a column states it as the send", async () => {
+    const record = inviterRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: { channel: "webrtc", host: "signaling.example.org" },
+        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        metadata: inferMetadata(["first_name", "last_name", "dob", "id"], []),
+      }),
+    });
+    const token = await decodeInvitation(
+      (await composeManagedReinvite(record, location, seams)).encoded,
+    );
+    expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
+    expect(token.disclosedPayloadColumns).toEqual(["id"]);
+    expect(
+      deriveAcceptedLinkageTerms(token.linkageTerms, "Partner Org").payload
+        ?.receive,
+    ).toEqual([{ name: "id" }]);
   });
 
   test("the acceptor side cannot re-mint from its mirrored document", async () => {
