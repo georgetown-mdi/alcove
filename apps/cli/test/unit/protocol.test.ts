@@ -7137,6 +7137,7 @@ test("the question before a receive list is filled reaches the exchange, and a r
       loggerName: "test-a",
       onPayloadReceiveFill: async (columns) => {
         asked.push(columns);
+        return { accepted: true };
       },
     }),
     runProtocol({

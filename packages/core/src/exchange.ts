@@ -854,6 +854,18 @@ const PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON =
 export const PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON =
   "the partner has not accepted the payload columns you send";
 
+// The abort reason a party sends when asking about the payload columns failed
+// rather than being answered; its own failure, like the unrecorded fill's.
+const PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON =
+  "a party could not confirm the payload columns it receives";
+
+/**
+ * The answer to {@link RunExchangeOptions.onPayloadReceiveFill}: the columns
+ * are taken, or declined with the error the run then ends on.
+ */
+export type PayloadReceiveFillAnswer =
+  { accepted: true } | { accepted: false; refusal: Error };
+
 /**
  * The five refusals the terms-time pin resolution raises, by the condition the
  * partner's certificate met, each holding the abort reason its refusal sends
@@ -2318,14 +2330,18 @@ export interface RunExchangeOptions {
    * `payload.receive` unset and {@link PreparedExchange.expectedPayloadColumns}
    * is undefined -- and the partner's terms declare at least one column it
    * sends this party: the argument is those column names, which
-   * {@link onPayloadReceiveFilled} would then record. Resolving takes them; a
-   * throw ends the exchange, sends the partner
-   * {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON}, and records neither the pin
-   * nor the fill. Refusals held after it still apply. The names are the
-   * partner's and reach the callback raw. Omitted, the columns are taken
-   * without asking.
+   * {@link onPayloadReceiveFilled} would then record. An accepted answer takes
+   * them. A decline sends the partner {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON} and
+   * the run ends on its `refusal`; a throw sends a fixed abort naming this
+   * party's own failure and propagates. Either records neither the pin nor the
+   * fill. Refusals held after it still apply. Asked whether or not
+   * {@link onPayloadReceiveFilled} is set; that recorder without this
+   * confirmation fills silently. The names are the partner's and reach the
+   * callback raw. Omitted, the columns are taken without asking.
    */
-  onPayloadReceiveFill?: (columns: string[]) => Promise<void>;
+  onPayloadReceiveFill?: (
+    columns: string[],
+  ) => Promise<PayloadReceiveFillAnswer>;
   /**
    * Called once, after the terms exchange's refusals have all passed, when
    * this party's terms leave `payload.receive` unset and the partner can send
@@ -2587,11 +2603,16 @@ export async function runExchange(
     payloadReceiveFillColumns !== undefined &&
     payloadReceiveFillColumns.length > 0
   ) {
+    let answer: PayloadReceiveFillAnswer;
     try {
-      await options.onPayloadReceiveFill(payloadReceiveFillColumns);
+      answer = await options.onPayloadReceiveFill(payloadReceiveFillColumns);
     } catch (err) {
-      await sendAbort(conn, [PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON]);
+      await sendAbort(conn, [PAYLOAD_RECEIVE_UNCONFIRMED_ABORT_REASON]);
       throw err;
+    }
+    if (!answer.accepted) {
+      await sendAbort(conn, [PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON]);
+      throw answer.refusal;
     }
   }
 
@@ -2672,9 +2693,9 @@ export async function runExchange(
     throw err;
   }
 
-  // Fill an unset receive list from the partner's declared send set after
-  // every terms-time refusal above, so a refused run records nothing, and
-  // before the bootstrap frame and any key or payload moves, so the caller has
+  // Record the fill after every terms-time refusal, so a refused run records
+  // nothing though the confirmation above may already have asked, and before
+  // the bootstrap frame and any key or payload moves, so the caller has
   // recorded it before this run receives anything under it. The run holds the
   // received payload to the filled set, as a later run holds it to the
   // recorded list.

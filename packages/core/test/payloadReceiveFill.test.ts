@@ -401,6 +401,7 @@ test("a party holding no receive list is offered the partner's declared send set
           offered.push(columns);
           onlyTermsSentWhenOffered = sent.every(isTermsOrDecisionFrame);
           expect(filled).toEqual([]);
+          return { accepted: true };
         },
         onPayloadReceiveFilled: (columns) => {
           filled.push(columns);
@@ -428,8 +429,10 @@ test("a declined send set stops both parties before any round, recording neither
           onPartnerCertificatePinned: (fingerprint) => {
             pinned.push(fingerprint);
           },
-          onPayloadReceiveFill: () =>
-            Promise.reject(new Error("the operator declined")),
+          onPayloadReceiveFill: async () => ({
+            accepted: false,
+            refusal: new Error("the operator declined"),
+          }),
           onPayloadReceiveFilled: (columns) => {
             filled.push(columns);
           },
@@ -461,6 +464,7 @@ test("no send set is offered to a party holding a receive list, or from a partne
   const offering = (): Partial<RunExchangeOptions> => ({
     onPayloadReceiveFill: async (columns) => {
       offered.push(columns);
+      return { accepted: true };
     },
   });
   const held = await settle(
@@ -489,4 +493,33 @@ test("no send set is offered to a party holding a receive list, or from a partne
   );
   fulfilled(none.inviterResult);
   expect(offered).toEqual([]);
+});
+
+test("a confirmation that fails rather than answers is not sent to the partner as a decline", async () => {
+  const filled: Array<Array<string>> = [];
+  const { inviterResult, acceptorResult, inviterSent } = await settle(
+    {
+      metadata: sendsNothing,
+      options: () => ({
+        onPayloadReceiveFill: () =>
+          Promise.reject(new Error("the prompt could not be read")),
+        onPayloadReceiveFilled: (columns) => {
+          filled.push(columns);
+        },
+      }),
+    },
+    { metadata: sendsNote },
+  );
+  expect(
+    ((inviterResult as PromiseRejectedResult).reason as Error).message,
+  ).toBe("the prompt could not be read");
+  expect(acceptorResult.status).toBe("rejected");
+  expect(filled).toEqual([]);
+  const abortReasons = inviterSent.flatMap((frame) =>
+    typeof frame === "object" && frame !== null && "abortReasons" in frame
+      ? (frame as { abortReasons: string[] }).abortReasons
+      : [],
+  );
+  expect(abortReasons).toHaveLength(1);
+  expect(abortReasons).not.toContain(PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON);
 });

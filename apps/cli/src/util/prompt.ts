@@ -79,3 +79,12 @@ export async function promptConfirm(question: string): Promise<boolean> {
     .toLowerCase();
   return normalized === "y" || normalized === "yes";
 }
+
+/**
+ * Whether a run reading its input CSV from `input` can ask the operator a
+ * question: a terminal is on stdin, and stdin is not the CSV (`-`), which is
+ * single-use and already spoken for.
+ */
+export function stdinAnswersPrompts(input: string | undefined): boolean {
+  return process.stdin.isTTY === true && input !== "-";
+}

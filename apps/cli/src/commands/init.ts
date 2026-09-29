@@ -29,7 +29,7 @@ import {
   singleValue,
 } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
-import { promptConfirm } from "../util/prompt";
+import { promptConfirm, stdinAnswersPrompts } from "../util/prompt";
 import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
 import { buildDataSpec, warnSanitizedColumns } from "../onlineBootstrap";
 import {
@@ -115,11 +115,9 @@ export async function handler(argv: Arguments): Promise<void> {
       assertNoUnknownOptions(positionals);
       const input = resolveInitInput(positionals);
 
-      // One interactivity decision serves both questions this command can ask:
-      // a terminal is there to answer, and stdin is not already spoken for by a
-      // `-` CSV. stdin is single-use, so a second rule here would be a way for
-      // the two questions to disagree about who owns it.
-      const interactive = process.stdin.isTTY === true && input !== "-";
+      // One interactivity decision serves both questions this command can ask,
+      // so the two cannot disagree about who owns stdin.
+      const interactive = stdinAnswersPrompts(input);
 
       // Decide whether to (over)write before reading the input, so a `-` stdin CSV
       // is never consumed when the answer is "fail-closed" or "leave it" -- the

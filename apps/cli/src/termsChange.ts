@@ -21,7 +21,12 @@ import {
   termsDeltaSections,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
-import type { getLogger, TermsChange, TermsDelta } from "@alcove/core";
+import type {
+  getLogger,
+  PayloadReceiveFillAnswer,
+  TermsChange,
+  TermsDelta,
+} from "@alcove/core";
 
 import { termsUpdateWrite } from "./acceptedTermsRecords";
 import {
@@ -272,45 +277,70 @@ export function termsChangeHandler(params: {
  * for an unattended one, which takes the partner's declared columns without
  * asking. Shows the columns against the empty receive set the configuration
  * lists, the way {@link displayTermsChange} shows a change, and asks whether
- * to take them. A yes resolves, and the run records them as
- * `payload.receive` in `configPath` through its fill. A no refuses with an
+ * to take them. A yes accepts, and a run with a `configPath` records them
+ * there as `payload.receive` through its fill; a zero-setup run without
+ * `--save` has none and records nothing. A no declines with an
  * {@link OperatorConfigError} (exit 64, event category `config`) and nothing
  * is written.
  */
 export function payloadReceiveFillConfirmation(params: {
-  configPath: string;
+  configPath: string | undefined;
   interactive: boolean;
   log: ReturnType<typeof getLogger>;
   logFile: string | undefined;
-}): ((columns: string[]) => Promise<void>) | undefined {
+}): ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined {
   const { configPath, interactive, log, logFile } = params;
   if (!interactive) return undefined;
   return async (columns) => {
     const emit = consentSurfaceSink({ log, logFile, toPromptStream: true });
-    const shownConfig = redactAndRenderOperatorSuppliedText(
-      operatorSuppliedText(configPath),
-    );
     const delta: TermsDelta = {
       received: { added: columns, removed: [] },
       sent: undefined,
       partnerDeduplicate: undefined,
       otherTerms: [],
     };
+    const shownConfig =
+      configPath === undefined
+        ? undefined
+        : redactAndRenderOperatorSuppliedText(operatorSuppliedText(configPath));
     displayTermsDelta(
       emit,
-      `Your partner's linkage terms declare payload columns it sends you, and ${shownConfig} lists none you receive (linkage_terms.payload.receive):`,
+      shownConfig === undefined
+        ? "Your partner's linkage terms declare payload columns it sends you:"
+        : `Your partner's linkage terms declare payload columns it sends you, and ${shownConfig} lists none you receive (linkage_terms.payload.receive):`,
       delta,
     );
     const accepted = await promptConfirm(
-      `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
+      shownConfig === undefined
+        ? "Receive these columns and continue this exchange?"
+        : `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
     );
-    if (accepted) return;
+    if (accepted) return { accepted: true };
+    if (configPath === undefined)
+      return {
+        accepted: false,
+        refusal: notTaken(
+          new OperatorConfigError(
+            "you did not accept the payload columns your partner declares it " +
+              "sends you, so the exchange stopped before any linkage key or " +
+              "data moved. Run the exchange again to be asked again, or ask " +
+              "your partner about the columns.",
+          ),
+          delta,
+        ),
+      };
     const message = messageWithOperatorText`you did not accept the payload columns your partner declares it sends you, so the exchange stopped before any linkage key or data moved and ${operatorSuppliedText(
       configPath,
     )} was not changed. Run the exchange again to be asked again, or ask your partner about the columns.`;
-    throw notTaken(
-      keepOperatorSuppliedText(new OperatorConfigError(message.text), message),
-      delta,
-    );
+    return {
+      accepted: false,
+      refusal: notTaken(
+        keepOperatorSuppliedText(
+          new OperatorConfigError(message.text),
+          message,
+        ),
+        delta,
+      ),
+    };
   };
 }

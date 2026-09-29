@@ -61,6 +61,7 @@ import {
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
+import { stdinAnswersPrompts } from "../util/prompt";
 import { channelFromURL, connectionFromURL } from "../connectionFromUrl";
 import {
   addCommonBootstrapOptions,
@@ -857,16 +858,13 @@ export async function handler(argv: Arguments): Promise<void> {
             }
           : undefined,
         payloadReceiveFillNoticeDeferred: options.save,
-        // A terminal on stdin answers the question; stdin carrying the input
-        // CSV cannot.
-        onPayloadReceiveFill: options.save
-          ? payloadReceiveFillConfirmation({
-              configPath: options.configFile,
-              interactive: process.stdin.isTTY === true && input !== "-",
-              log,
-              logFile,
-            })
-          : undefined,
+        // Without --save there is no configuration, so a yes records nothing.
+        onPayloadReceiveFill: payloadReceiveFillConfirmation({
+          configPath: options.save ? options.configFile : undefined,
+          interactive: stdinAnswersPrompts(input),
+          log,
+          logFile,
+        }),
         undeclaredColumnsWarned,
         fileSyncRuntime: {
           sweepExchangeFiles,

@@ -71,6 +71,7 @@ import {
 } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging } from "../util/logging";
+import { stdinAnswersPrompts } from "../util/prompt";
 import { loadInputRows } from "../onlineBootstrap";
 import {
   addCommonBootstrapOptions,
@@ -1266,9 +1267,7 @@ export async function handler(argv: Arguments): Promise<void> {
       exitWithError(log, err, exitCodeForError(err));
     }
 
-    // A terminal on stdin answers the questions; stdin carrying the input CSV
-    // cannot.
-    const interactive = process.stdin.isTTY === true && input !== "-";
+    const interactive = stdinAnswersPrompts(input);
     let exchangeError: unknown;
     try {
       await runProtocol({
