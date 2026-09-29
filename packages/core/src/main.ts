@@ -11,6 +11,7 @@
 // Shared test material.
 
 export {
+  AcceptedTermsShapeError,
   AuthenticationError,
   DirectoryListingBoundsError,
   FrameSizeExceededError,
@@ -382,12 +383,16 @@ export {
   TRANSFORM_PARAM_COUNT_MESSAGE,
 } from "./config/transformParamDisplay";
 export {
+  compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,
+  receivedPayloadBaseline,
   validateCompatibility,
 } from "./linkageTermsNegotiation";
 export type {
   PartnerBoundTerms,
+  TermsBaselines,
+  TermsComparison,
   PayloadColumnsChange,
   TermsDelta,
   PartnerDeduplicateChange,

@@ -1,13 +1,15 @@
 import { useState } from "react";
 
-import { Button, Checkbox, Stack } from "@mantine/core";
+import { Button, Checkbox, Group, Stack, Textarea } from "@mantine/core";
 
-import { isDisclosedToPartner } from "@alcove/core";
+import { isDisclosedToPartner, termsDeltaSections } from "@alcove/core";
 
 import {
   ManagedTermsUpdateRefusedError,
+  applyManagedTermsUpdate,
   makeManagedTermsUpdate,
   managedTermsUpdateRefusal,
+  readManagedTermsUpdate,
   saveManagedSentColumns,
 } from "@psi/managed/managedTermsUpdate";
 import {
@@ -16,34 +18,48 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import { ColumnName } from "@components/ColumnName";
 import { CopyRow } from "@exchange/RunSurface";
+import { TermsChangeDelta } from "@components/TermsChangeDelta";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import styles from "@styles/app.module.css";
 
 import {
+  ACCEPT_TERMS_CHANGE_LABEL,
+  DECLINE_TERMS_CHANGE_LABEL,
+} from "./managedTermsChangeModel";
+import {
+  APPLY_TERMS_UPDATE_LABEL,
+  APPLY_TERMS_UPDATE_TEXT,
   CHANGE_TERMS_TITLE,
   MAKE_TERMS_UPDATE_LABEL,
+  READ_TERMS_UPDATE_LABEL,
   SAVE_SENT_COLUMNS_LABEL,
   SEND_TERMS_UPDATE_LABEL,
   SEND_TERMS_UPDATE_TEXT,
   SENT_COLUMNS_LABEL,
   SENT_COLUMNS_SAVED_TEXT,
   SENT_COLUMNS_TEXT,
+  TERMS_UPDATE_APPLIED_TEXT,
+  TERMS_UPDATE_CHANGE_TEXT,
   TERMS_UPDATE_COPY_HINT,
   TERMS_UPDATE_COPY_LABEL,
+  TERMS_UPDATE_INPUT_LABEL,
   TERMS_UPDATE_NOT_MADE_TEXT,
+  TERMS_UPDATE_NO_CHANGE_TEXT,
   TERMS_UPDATE_WITHHELD_TEXT,
   fixedColumnNote,
   sentColumnsFailureText,
+  termsUpdateNotAppliedText,
 } from "./managedTermsUpdateModel";
 
+import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 /**
  * Changing a saved exchange's terms between runs: the columns this party
- * sends, and the terms update that tells the partner. Every write is withheld
- * while a run holds the exchange. `onChanged` is told once the stored
- * exchange changed, so the page reads it again.
+ * sends, the terms update that tells the partner, and applying the partner's.
+ * Every write is withheld while a run holds the exchange. `onChanged` is told
+ * once the stored exchange changed, so the page reads it again.
  */
 export function ManagedTermsUpdate({
   record,
@@ -75,7 +91,10 @@ export function ManagedTermsUpdate({
       {refusal !== null ? (
         <p className={styles.small}>{TERMS_UPDATE_WITHHELD_TEXT[refusal]}</p>
       ) : (
-        <SendTermsUpdate record={record} />
+        <>
+          <SendTermsUpdate record={record} />
+          <ApplyTermsUpdate record={record} onApplied={onChanged} />
+        </>
       )}
     </div>
   );
@@ -237,6 +256,129 @@ function SendTermsUpdate({
           hint={TERMS_UPDATE_COPY_HINT}
           value={made.update}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The partner's terms update: pasted, checked against this exchange, its
+ * change shown, and saved on Accept. A reading, and what a read or an Accept
+ * reports, stand only while the text they were for is the text in the box.
+ * The partner's column names and terms values arrive raw and are escaped
+ * where they are shown.
+ */
+function ApplyTermsUpdate({
+  record,
+  onApplied,
+}: {
+  record: RunnableManagedExchangeRecord;
+  onApplied: () => void;
+}) {
+  const [pasted, setPasted] = useState("");
+  const [reading, setReading] = useState<{
+    record: RunnableManagedExchangeRecord;
+    pasted: string;
+    update: ManagedTermsUpdateReading;
+  }>();
+  const [busy, setBusy] = useState(false);
+  const [reported, setReported] = useState<{
+    pasted: string;
+    message: string;
+  }>();
+  const shown =
+    reading?.record === record && reading.pasted === pasted
+      ? reading.update
+      : undefined;
+  const status = reported?.pasted === pasted ? reported.message : undefined;
+
+  async function read(): Promise<void> {
+    const text = pasted;
+    setBusy(true);
+    setReading(undefined);
+    setReported(undefined);
+    try {
+      setReading({
+        record,
+        pasted: text,
+        update: await readManagedTermsUpdate(record, text),
+      });
+    } catch (error) {
+      whenDiagnostic(() => console.error(error));
+      setReported({ pasted: text, message: termsUpdateNotAppliedText(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function accept(update: ManagedTermsUpdateReading): Promise<void> {
+    const text = pasted;
+    setBusy(true);
+    setReported(undefined);
+    try {
+      await applyManagedTermsUpdate(record.id, update);
+      setReading(undefined);
+      setPasted("");
+      setReported({ pasted: "", message: TERMS_UPDATE_APPLIED_TEXT });
+      onApplied();
+    } catch (error) {
+      whenDiagnostic(() => console.error(error));
+      setReported({ pasted: text, message: termsUpdateNotAppliedText(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function decline(): void {
+    setReading(undefined);
+    setPasted("");
+    setReported(undefined);
+  }
+
+  return (
+    <div>
+      <p className={styles.calloutLead}>{APPLY_TERMS_UPDATE_LABEL}</p>
+      <p className={styles.small}>{APPLY_TERMS_UPDATE_TEXT}</p>
+      <Textarea
+        label={TERMS_UPDATE_INPUT_LABEL}
+        autosize
+        minRows={2}
+        maxRows={6}
+        value={pasted}
+        onChange={(event) => setPasted(event.currentTarget.value)}
+      />
+      {shown === undefined ? (
+        <Button
+          mt="sm"
+          variant="default"
+          loading={busy}
+          disabled={pasted.trim() === ""}
+          onClick={() => void read()}
+        >
+          {READ_TERMS_UPDATE_LABEL}
+        </Button>
+      ) : (
+        <div>
+          <p className={styles.small}>
+            {termsDeltaSections(shown.delta).length === 0
+              ? TERMS_UPDATE_NO_CHANGE_TEXT
+              : TERMS_UPDATE_CHANGE_TEXT}
+          </p>
+          <TermsChangeDelta delta={shown.delta} escaped={false} />
+          <Group mt="sm">
+            <Button loading={busy} onClick={() => void accept(shown)}>
+              {ACCEPT_TERMS_CHANGE_LABEL}
+            </Button>
+            <Button variant="default" disabled={busy} onClick={decline}>
+              {DECLINE_TERMS_CHANGE_LABEL}
+            </Button>
+          </Group>
+        </div>
+      )}
+      {status !== undefined && (
+        <p className={styles.small} role="status">
+          {status}
+        </p>
       )}
     </div>
   );

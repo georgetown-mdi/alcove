@@ -1180,7 +1180,8 @@ export async function persistManagedExchangeReinvite(
  * an apply outside a run takes the lock around it.
  *
  * @throws {Error} if no record with `id` exists.
- * @throws {UsageError} for an `apply` the record's own identity cannot take.
+ * @throws {UsageError} for an `apply` or `update` the record's own identity
+ *   cannot take.
  * @throws {ZodError} if the stored value or the resulting record is invalid.
  */
 export async function persistManagedExchangeTermsChange(

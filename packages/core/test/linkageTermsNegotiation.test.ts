@@ -23,7 +23,7 @@ import {
   resolveLinkageCardinality,
 } from "../src/exchange";
 import { COUNT_ONLY_SHAPE_REFUSALS } from "../src/linkageTermsPolicy";
-import { UsageError } from "../src/errors";
+import { AcceptedTermsShapeError, UsageError } from "../src/errors";
 import {
   DISPLAY_TRUNCATION_MARKER,
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -1067,6 +1067,8 @@ test("deriveAcceptedLinkageTerms fails closed when the mirror is incoherent (pay
   }
   // An acceptor identity the free-text rule admits leaves the mirror as the
   // thing refused, so the account stays the invitation's.
+  expect(thrown).toBeInstanceOf(AcceptedTermsShapeError);
+  expect(thrown).toBeInstanceOf(UsageError);
   expect((thrown as Error).message).toContain("cannot be accepted unchanged");
   expect((thrown as Error).message).not.toContain(TEXT_CONTROL_CHAR_MESSAGE);
   // The schema's own issue, named rather than described: a caller rendering

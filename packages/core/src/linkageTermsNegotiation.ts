@@ -4,7 +4,7 @@
 // parsed by the schema in config/linkageTermsSchema.ts -- and both are driven by the
 // exchange rather than by a document load.
 
-import { UsageError } from "./errors.js";
+import { AcceptedTermsShapeError, UsageError } from "./errors.js";
 import { canonicalString, CanonicalEncodingError } from "./utils/canonical.js";
 import { redactAndSanitizeForDisplay } from "./utils/sanitizeErrorForDisplay.js";
 import {
@@ -121,7 +121,7 @@ import type {
  *   declare `deduplicate` under a strategy that matches no deduplicating
  *   cardinality, or when an element transform the inviter declared does not
  *   compile.
- * @throws {Error} when the derived document fails
+ * @throws {AcceptedTermsShapeError} when the derived document fails
  *   {@link LinkageTermsSchema}: the inviter's terms cannot be coherently
  *   accepted for the mirrored output direction, or `acceptorDeduplicate` is
  *   a value that document cannot hold.
@@ -214,7 +214,7 @@ export function deriveAcceptedLinkageTerms(
   // built, not parsed.data, so the canonical/agreed-terms bytes are unchanged.
   const recheck = LinkageTermsSchema.safeParse(derived);
   if (!recheck.success) {
-    throw new Error(
+    throw new AcceptedTermsShapeError(
       "the invitation's linkage terms cannot be accepted unchanged: the terms " +
         "derived for the accepting party -- the invitation's output direction " +
         "and payload mirrored, this party's own deduplicate applied -- are not " +
@@ -359,6 +359,21 @@ export interface TermsComparison {
 export interface TermsBaselines {
   receive?: ReadonlyArray<string>;
   partnerDeduplicate?: boolean;
+}
+
+/**
+ * The column set a party holds its received payload to at the terms exchange
+ * ({@link TermsBaselines.receive}): the columns its document records it
+ * receives, where its terms receive a payload at all -- not count-only, and
+ * expecting output. Undefined compares `payload.receive` alone.
+ */
+export function receivedPayloadBaseline(
+  terms: LinkageTerms,
+  expectedPayloadColumns: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> | undefined {
+  return terms.algorithm !== "psi-c" && terms.output.expectsOutput
+    ? expectedPayloadColumns
+    : undefined;
 }
 
 function columnsChange(

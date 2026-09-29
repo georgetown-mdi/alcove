@@ -1,8 +1,13 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { getDefaultLinkageTerms, inferMetadata } from "@alcove/core";
+import {
+  decodeTermsUpdate,
+  deriveAcceptedLinkageTerms,
+  getDefaultLinkageTerms,
+  inferMetadata,
+} from "@alcove/core";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -16,14 +21,28 @@ import {
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
+import {
+  clearManagedExchanges,
+  createManagedExchange,
+  getManagedExchange,
+} from "@psi/managed/managedExchangeStore";
 import { ManagedTermsUpdate } from "@recurring/ManagedTermsUpdate";
 
 import {
   MAKE_TERMS_UPDATE_LABEL,
+  READ_TERMS_UPDATE_LABEL,
   SAVE_SENT_COLUMNS_LABEL,
+  TERMS_UPDATE_APPLIED_TEXT,
+  TERMS_UPDATE_INPUT_LABEL,
+  TERMS_UPDATE_NOT_APPLIED_TEXT,
   TERMS_UPDATE_WITHHELD_TEXT,
 } from "@recurring/managedTermsUpdateModel";
+import { ACCEPT_TERMS_CHANGE_LABEL } from "@recurring/managedTermsChangeModel";
 
+import {
+  CLI_TERMS_UPDATE,
+  CLI_TERMS_UPDATE_SECRET,
+} from "../utils/cliTermsUpdateFixture";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
 import type { Metadata } from "@alcove/core";
@@ -71,13 +90,10 @@ afterEach(async () => {
 function renderSection(
   record: RunnableManagedExchangeRecord,
   runInFlight: boolean,
+  onChanged: () => void = () => undefined,
 ): void {
   app.render(
-    createElement(ManagedTermsUpdate, {
-      record,
-      runInFlight,
-      onChanged: () => undefined,
-    }),
+    createElement(ManagedTermsUpdate, { record, runInFlight, onChanged }),
   );
 }
 
@@ -91,6 +107,9 @@ describe("changing a saved exchange's terms", () => {
       .toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: MAKE_TERMS_UPDATE_LABEL }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }))
       .not.toBeInTheDocument();
     await userEvent.click(page.getByRole("checkbox", { name: "county" }));
     await expect
@@ -125,5 +144,117 @@ describe("changing a saved exchange's terms", () => {
     await expect
       .element(page.getByRole("button", { name: SAVE_SENT_COLUMNS_LABEL }))
       .toBeDisabled();
+  });
+});
+
+describe("applying a partner's terms update", () => {
+  beforeEach(clearManagedExchanges);
+  afterEach(clearManagedExchanges);
+
+  /** Agency B, which accepted Agency A's terms while A sent only `notes`. */
+  async function storedAgencyB(): Promise<RunnableManagedExchangeRecord> {
+    const { linkageTerms } = await decodeTermsUpdate(
+      CLI_TERMS_UPDATE,
+      CLI_TERMS_UPDATE_SECRET,
+    );
+    return runnableManagedExchangeOrRefuse(
+      await createManagedExchange({
+        label: "Riverbend quarterly",
+        exchangeFile: composeManagedExchangeFile({
+          connection: {
+            channel: "webrtc",
+            host: "signaling.example.org",
+            port: 3000,
+            path: "/api/",
+          },
+          linkageTerms: deriveAcceptedLinkageTerms(
+            { ...linkageTerms, payload: { send: [{ name: "notes" }] } },
+            "Agency B",
+          ),
+          metadata: inferMetadata(LINKAGE_COLUMNS, []),
+          expectedPayloadColumns: ["notes"],
+          expectedPartnerDeduplicate: false,
+        }),
+        side: "acceptor",
+        sharedSecret: CLI_TERMS_UPDATE_SECRET,
+      }),
+    );
+  }
+
+  test("shows the change an update from the command line makes and saves it on Accept", async () => {
+    const record = await storedAgencyB();
+    const onChanged = vi.fn();
+    renderSection(record, false, onChanged);
+
+    await userEvent.fill(
+      page.getByLabelText(TERMS_UPDATE_INPUT_LABEL),
+      CLI_TERMS_UPDATE,
+    );
+    await userEvent.click(
+      page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }),
+    );
+    await expect
+      .element(page.getByText("Columns your partner now sends you"))
+      .toBeInTheDocument();
+    await expect.element(page.getByText("county")).toBeInTheDocument();
+    await userEvent.click(
+      page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }),
+    );
+
+    await expect
+      .element(page.getByText(TERMS_UPDATE_APPLIED_TEXT))
+      .toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalledOnce();
+    expect(
+      (await getManagedExchange(record.id))?.exchangeFile
+        .expectedPayloadColumns,
+    ).toEqual(["notes", "county"]);
+  });
+
+  test("hides the change and Accept once the pasted text is edited", async () => {
+    const record = await storedAgencyB();
+    renderSection(record, false);
+    const input = page.getByLabelText(TERMS_UPDATE_INPUT_LABEL);
+
+    await userEvent.fill(input, CLI_TERMS_UPDATE);
+    await userEvent.click(
+      page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }),
+    );
+    await expect
+      .element(page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }))
+      .toBeInTheDocument();
+
+    await userEvent.fill(input, `${CLI_TERMS_UPDATE}x`);
+    await expect
+      .element(page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByText("Columns your partner now sends you"))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }))
+      .toBeInTheDocument();
+    expect(await getManagedExchange(record.id)).toEqual(record);
+  });
+
+  test("names what is wrong with a malformed update and changes nothing", async () => {
+    const record = await storedAgencyB();
+    renderSection(record, false);
+
+    await userEvent.fill(
+      page.getByLabelText(TERMS_UPDATE_INPUT_LABEL),
+      "not a terms update",
+    );
+    await userEvent.click(
+      page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }),
+    );
+
+    await expect
+      .element(page.getByText(TERMS_UPDATE_NOT_APPLIED_TEXT.format))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }))
+      .not.toBeInTheDocument();
+    expect(await getManagedExchange(record.id)).toEqual(record);
   });
 });

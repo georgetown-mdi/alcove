@@ -1,4 +1,5 @@
 import {
+  AcceptedTermsShapeError,
   UsageError,
   assertDeduplicateImplemented,
   assertTransformsCompile,
@@ -271,7 +272,7 @@ export interface AcceptorDeduplicateRefusal {
  * The two scopes are told apart by what clearing this party's side does, not by
  * the error's type alone: a refusal the closed default meets as well stands
  * whatever this party sets -- the invitation's own `deduplicate` against its own
- * strategy, or a mirror the schema refuses -- so it is `terms`, and the seat
+ * strategy, or a mirror the schema refuses (`AcceptedTermsShapeError`) -- so it is `terms`, and the seat
  * blocks the accept rather than pointing at a control that cannot clear it.
  *
  * It returns for every invitation this build decoded rather than throwing for
@@ -293,7 +294,12 @@ export function acceptorDeduplicateRefusal(
   } catch (error) {
     const clearingRuns = deduplicate && acceptorClosedDefaultRuns(linkageTerms);
     return {
-      scope: error instanceof UsageError && clearingRuns ? "pair" : "terms",
+      scope:
+        error instanceof UsageError &&
+        !(error instanceof AcceptedTermsShapeError) &&
+        clearingRuns
+          ? "pair"
+          : "terms",
       message: sanitizeErrorForDisplay(error),
     };
   }

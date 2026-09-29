@@ -64,6 +64,17 @@ export class UsageError extends Error {
 }
 
 /**
+ * The refusal for accepted linkage terms that mirror to a document the terms
+ * schema rejects, whatever the accepting party sets.
+ */
+export class AcceptedTermsShapeError extends UsageError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "AcceptedTermsShapeError";
+  }
+}
+
+/**
  * Options a bounded-transport refusal takes beyond its summary message.
  *
  * @see {@link FrameSizeExceededError}

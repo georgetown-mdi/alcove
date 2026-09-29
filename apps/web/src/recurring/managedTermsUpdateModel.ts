@@ -1,7 +1,11 @@
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { ManagedTermsUpdateNotAppliedError } from "@psi/managed/managedTermsUpdate";
 
+import type {
+  ManagedTermsUpdateApplyRefusal,
+  ManagedTermsUpdateRefusal,
+} from "@psi/managed/managedTermsUpdate";
 import type { ColumnMetadata } from "@alcove/core";
-import type { ManagedTermsUpdateRefusal } from "@psi/managed/managedTermsUpdate";
 
 export const CHANGE_TERMS_TITLE = "Change terms";
 
@@ -16,8 +20,8 @@ export const SENT_COLUMNS_TEXT =
 export const SAVE_SENT_COLUMNS_LABEL = "Save columns";
 
 export const SENT_COLUMNS_SAVED_TEXT =
-  "Saved. Your next run sends these columns. If your partner uses the " +
-  "command line, make a terms update and send it to them.";
+  "Saved. Your next run sends these columns. Make a terms update and send " +
+  "it to your partner to apply before then.";
 
 /** Why a declared column's send choice is not offered, by its role. */
 export function fixedColumnNote(column: ColumnMetadata): string {
@@ -46,9 +50,10 @@ export const SEND_TERMS_UPDATE_LABEL = "Send a terms update";
 
 export const SEND_TERMS_UPDATE_TEXT =
   "A terms update states this exchange's linkage terms and the names of the " +
-  "columns you send, and no secret. A partner on the command line applies " +
-  "it with alcove apply. A partner using this app is asked about the change " +
-  "at their next run, and does not need the update.";
+  "columns you send, and no secret. Your partner applies it on this " +
+  "exchange's page in this app, or with alcove apply on the command line. " +
+  "A partner who does not apply it is asked about the change at their next " +
+  "run.";
 
 export const MAKE_TERMS_UPDATE_LABEL = "Make a terms update";
 
@@ -62,17 +67,89 @@ export const TERMS_UPDATE_COPY_HINT =
 export const TERMS_UPDATE_NOT_MADE_TEXT =
   "The terms update could not be made. Reload the page and try again.";
 
-/** Why a terms update is not made, by the reason `managedTermsUpdateRefusal`
- * gives. */
+/** Why a terms update is not made or applied, by the reason
+ * `managedTermsUpdateRefusal` gives. */
 export const TERMS_UPDATE_WITHHELD_TEXT = {
   lapsed:
-    "This exchange's shared secret has expired, so it cannot make a terms " +
-    "update. Re-invite your partner to run again.",
+    "This exchange's shared secret has expired, so it cannot make or apply a " +
+    "terms update. Re-invite your partner to run again.",
   "no-identity":
-    "This exchange's terms name no identity for you, so it cannot make a " +
-    "terms update. Start a new exchange that names your agency.",
+    "This exchange's terms name no identity for you, so it cannot make or " +
+    "apply a terms update. Start a new exchange that names your agency.",
   "run-in-flight":
     "This exchange is running right now -- in this browser, in another tab, " +
     "or on its schedule. The run replaces the shared secret a terms update " +
-    "is made under, so make one when it finishes.",
+    "is made and checked under, so make or apply one when it finishes.",
 } as const satisfies Record<ManagedTermsUpdateRefusal, string>;
+
+export const APPLY_TERMS_UPDATE_LABEL = "Apply a terms update";
+
+export const APPLY_TERMS_UPDATE_TEXT =
+  "Paste a terms update your partner made, in this app or with alcove " +
+  "update. It is checked against this exchange's shared secret, and the " +
+  "change it makes is shown before anything is saved.";
+
+export const TERMS_UPDATE_INPUT_LABEL = "Terms update from your partner";
+
+export const READ_TERMS_UPDATE_LABEL = "Check update";
+
+export const TERMS_UPDATE_CHANGE_TEXT =
+  "Your partner's terms in this update differ from the ones this exchange " +
+  "holds, as shown below. Accept to save them to this exchange; your next " +
+  "run uses them. Decline to leave the exchange as it is.";
+
+export const TERMS_UPDATE_NO_CHANGE_TEXT =
+  "Your partner's terms in this update match the ones this exchange holds. " +
+  "Accept to save them to this exchange anyway, or Decline to leave it as " +
+  "it is.";
+
+export const TERMS_UPDATE_APPLIED_TEXT =
+  "Applied. Your next run uses your partner's new terms.";
+
+const NOTHING_CHANGED = "Nothing was changed.";
+
+/** Why a partner's terms update was not applied, by the reason
+ * `ManagedTermsUpdateNotAppliedError` gives. */
+export const TERMS_UPDATE_NOT_APPLIED_TEXT = {
+  ...TERMS_UPDATE_WITHHELD_TEXT,
+  format:
+    "This is not a terms update, or not all of one. " +
+    `${NOTHING_CHANGED} Ask your partner to send the whole update again.`,
+  partnership:
+    "This terms update is for a different exchange, or was made under a " +
+    "shared secret a run between you has since replaced. " +
+    `${NOTHING_CHANGED} Ask your partner to make a new one from this ` +
+    "exchange.",
+  authentication:
+    "This terms update names this exchange, but its content was changed " +
+    `after your partner made it. ${NOTHING_CHANGED} Ask your partner to ` +
+    "send it again.",
+  "own-terms":
+    "This terms update was made from your own terms for this exchange, not " +
+    `your partner's. ${NOTHING_CHANGED} Send it to your partner to apply ` +
+    "instead.",
+  "not-applicable":
+    "This terms update changes terms this exchange cannot take on here, " +
+    `such as the columns used to match. ${NOTHING_CHANGED} Ask your ` +
+    "partner about the change, or set up a new exchange on the new terms.",
+  changed:
+    "This exchange changed after the update was checked. " +
+    `${NOTHING_CHANGED} Check the update again to see the change as it ` +
+    "now stands.",
+} as const satisfies Record<ManagedTermsUpdateApplyRefusal, string>;
+
+/**
+ * What the apply control says when a terms update was not applied: the
+ * reason it was refused, a run in flight holding the exchange, or a write
+ * that failed.
+ */
+export function termsUpdateNotAppliedText(error: unknown): string {
+  if (error instanceof ManagedTermsUpdateNotAppliedError)
+    return TERMS_UPDATE_NOT_APPLIED_TEXT[error.refusal];
+  if (error instanceof ManagedExchangeLockUnavailableError)
+    return TERMS_UPDATE_WITHHELD_TEXT["run-in-flight"];
+  return (
+    "The terms update could not be saved to this exchange, and the " +
+    "exchange was not changed. Reload the page and try again."
+  );
+}

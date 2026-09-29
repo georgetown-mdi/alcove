@@ -54,6 +54,7 @@ import {
 } from "./protocolSetup.js";
 import type { TermsChange } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
+import { receivedPayloadBaseline } from "./linkageTermsNegotiation.js";
 import {
   RoundSetCounter,
   requireSingleCandidate,
@@ -2464,10 +2465,10 @@ export async function runExchange(
   // The column set this party holds its received payload to, compared at the
   // terms exchange against what the partner's terms send, so a partner whose
   // columns changed is met there rather than at the received-payload check.
-  const receiveBaseline =
-    linkageTerms.algorithm !== "psi-c" && linkageTerms.output.expectsOutput
-      ? prepared.expectedPayloadColumns
-      : undefined;
+  const receiveBaseline = receivedPayloadBaseline(
+    linkageTerms,
+    prepared.expectedPayloadColumns,
+  );
   const { onTermsChange } = options;
 
   onStage(CONFIRMING_PROTOCOL_STAGE_ID);

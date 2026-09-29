@@ -44,6 +44,7 @@ import type {
   ExchangeSpec,
   LinkageTerms,
   OwnColumnSelection,
+  TermsUpdate,
   WebRTCExchangeLocator,
 } from "@alcove/core";
 import type { ZodType } from "zod";
@@ -1046,9 +1047,9 @@ export function applyManagedExchangePayloadReceiveFill(
 }
 
 /**
- * How a record takes on a partner's changed linkage terms, mirroring the two
+ * How a record takes on a partner's changed linkage terms, mirroring the
  * writes the command line makes (docs/CLI.md, "When your partner's terms
- * change"):
+ * change", and `alcove apply`):
  *
  * - `run`: an attended run took the change on at the terms exchange and
  *   continues under `adoptedTerms` (core's `TermsChange.adoptedTerms`). The
@@ -1062,10 +1063,15 @@ export function applyManagedExchangePayloadReceiveFill(
  *   `deduplicate`. A `lastRun` recording a refused
  *   terms change is dropped: the change it refused is the one applied, so a
  *   later visit has nothing left to answer.
+ * - `update`: the operator applied a partner's terms update, as `alcove
+ *   apply` writes one: as `apply` with the update's `linkageTerms`, except
+ *   that the columns this party receives are the update's
+ *   `disclosedPayloadColumns`, and none are recorded where it states none.
  */
 export type ManagedTermsChangeWrite =
   | { scope: "run"; adoptedTerms: LinkageTerms; partnerTerms: LinkageTerms }
-  | { scope: "apply"; partnerTerms: LinkageTerms };
+  | { scope: "apply"; partnerTerms: LinkageTerms }
+  | { scope: "update"; update: TermsUpdate };
 
 /**
  * Record a partner's changed linkage terms into the record's exchange file
@@ -1073,8 +1079,8 @@ export type ManagedTermsChangeWrite =
  * are untouched. The result is
  * re-validated through the schema, and the input record is not mutated.
  *
- * @throws {UsageError} for an `apply` on a record whose terms name no
- *   identity for this party, or name one the terms cannot hold.
+ * @throws {UsageError} for an `apply` or `update` on a record whose terms
+ *   name no identity for this party, or name one the terms cannot hold.
  * @throws {ZodError} if the resulting record is invalid.
  */
 export function applyManagedExchangeTermsChange(
@@ -1082,7 +1088,12 @@ export function applyManagedExchangeTermsChange(
   write: ManagedTermsChangeWrite,
 ): ManagedExchangeRecord {
   const current = record.exchangeFile;
-  const partnerSend = write.partnerTerms.payload?.send?.map(({ name }) => name);
+  const partnerTerms =
+    write.scope === "update" ? write.update.linkageTerms : write.partnerTerms;
+  const received =
+    write.scope === "update"
+      ? write.update.disclosedPayloadColumns
+      : partnerTerms.payload?.send?.map(({ name }) => name);
   let exchangeFile: ExchangeSpec;
   if (write.scope === "run") {
     exchangeFile = { ...current, linkageTerms: write.adoptedTerms };
@@ -1094,25 +1105,23 @@ export function applyManagedExchangeTermsChange(
           "partner's terms cannot be applied to it. Re-invite your partner.",
       );
     const linkageTerms = deriveAcceptedLinkageTerms(
-      write.partnerTerms,
+      partnerTerms,
       identity,
       current.linkageTerms.deduplicate,
     );
     exchangeFile = {
       ...current,
       linkageTerms,
-      expectedPartnerDeduplicate: write.partnerTerms.deduplicate,
+      expectedPartnerDeduplicate: partnerTerms.deduplicate,
     };
   }
   const { expectedPayloadColumns: _receive, ...withoutReceive } = exchangeFile;
   exchangeFile = {
     ...withoutReceive,
-    ...(partnerSend !== undefined
-      ? { expectedPayloadColumns: partnerSend }
-      : {}),
+    ...(received !== undefined ? { expectedPayloadColumns: received } : {}),
   };
   const next: ManagedExchangeRecord = { ...record, exchangeFile };
-  if (write.scope === "apply" && record.lastRun?.failureKind === "terms-change")
+  if (write.scope !== "run" && record.lastRun?.failureKind === "terms-change")
     delete next.lastRun;
   return parseManagedExchangeRecord(next);
 }
