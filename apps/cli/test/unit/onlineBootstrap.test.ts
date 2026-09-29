@@ -3481,6 +3481,51 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
+  test("connects with credentials the caller already read, without reading the file again", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const pwFile = path.join(dir, "pw");
+    const configPath = path.join(dir, "alcove.yaml");
+
+    let connectionPassedToRunProtocol: SFTPConnectionConfig | undefined;
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      connectionPassedToRunProtocol = optionsArg(callArgs)
+        .connection as SFTPConnectionConfig;
+      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+        (() => void | Promise<void>) | undefined;
+      await onAuthenticated?.();
+      return {};
+    }) as never);
+
+    try {
+      const params = onlineBootstrapParams(configPath);
+      const connection: SFTPConnectionConfig = {
+        channel: "sftp",
+        server: {
+          host: "sftp.example.org",
+          password: `@${pwFile}`,
+          hostKeyFingerprint: "SHA256:" + "A".repeat(43),
+        },
+      };
+      await runOnlineBootstrap({
+        ...params,
+        connection,
+        credentials: { password: "already-read" },
+      });
+
+      expect(connectionPassedToRunProtocol?.server.password).toBe(
+        "already-read",
+      );
+      const parsed = YAML.parse(fs.readFileSync(configPath, "utf8")) as {
+        connection: SFTPConnectionConfig;
+      };
+      expect(parsed.connection.server.password).toBe(`@${pwFile}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("persists an @path private-key passphrase as the reference while connecting with the resolved value", async () => {
     // The encrypted-key end-to-end path: the connection has an @path private
     // key and its @path passphrase. saveConfig (in the hook) must write both @path

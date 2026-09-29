@@ -55,6 +55,7 @@ import {
   applyConnectionCredentials,
   readConnectionCredentials,
 } from "./util/atSignRefs";
+import type { ResolvedConnectionCredentials } from "./util/atSignRefs";
 import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
@@ -904,6 +905,8 @@ export async function runOnlineBootstrap(params: {
    * configuration saved below records.
    */
   provision?: ServerProvision;
+  /** Values behind `connection`'s `@path` references when the caller already read them; absent, read here. */
+  credentials?: ResolvedConnectionCredentials;
 }): Promise<{ configWriteError?: unknown }> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
@@ -922,7 +925,8 @@ export async function runOnlineBootstrap(params: {
   // this party's own filesystem, so it is checked here rather than after the
   // host-key step below, whose first-use probe opens a real transport to the
   // server.
-  const credentials = readConnectionCredentials(params.connection);
+  const credentials =
+    params.credentials ?? readConnectionCredentials(params.connection);
   const provision = startModeProvisionAsRead(
     params.connection,
     params.provision,
