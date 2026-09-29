@@ -344,6 +344,29 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "are recorded because the conditional's branches are followed.",
   },
   {
+    file: "apps/cli/src/termsChange.ts",
+    anchor: "proposalRefusal",
+    raises: "OperatorConfigError",
+    interpolates: ["applyCommand(paths)", "paths.proposalPath"],
+    provenance:
+      "`paths.proposalPath` is derived from the configuration path the " +
+      "operator passed (--config-file, else the default), and applyCommand " +
+      "composes fixed text around that path, the proposal path, and the key " +
+      "file path from the same command line. The lead is one of two module " +
+      "constants of fixed prose. The partner's terms and column names are " +
+      "written into the proposal file and shown on the terms-change display, " +
+      "never quoted in the message.",
+  },
+  {
+    file: "apps/cli/src/termsChange.ts",
+    anchor: "termsChangeHandler",
+    raises: "OperatorConfigError",
+    interpolates: ["configPath"],
+    provenance:
+      "`configPath` is the operator's own path, as above; the rest is fixed " +
+      "prose naming none of the partner's terms.",
+  },
+  {
     file: "apps/cli/src/signingIdentityDivergence.ts",
     anchor: "assertIdentityMatchesAgreedTerms",
     raises: "OperatorConfigError",

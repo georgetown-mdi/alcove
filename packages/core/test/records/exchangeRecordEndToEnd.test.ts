@@ -12,6 +12,7 @@ import {
 import { StandardizedDataset } from "../../src/standardization";
 import { LinkageTermsUnsatisfiableError, UsageError } from "../../src/errors";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
+import { misstatingPayloadSend } from "../utils/misstatedPayloadSend";
 
 import type { Algorithm } from "../../src/types";
 import type { BuiltExchangeRecord } from "../../src/records/exchangeRecord";
@@ -689,13 +690,15 @@ const bothOut: Output = { expectsOutput: true, shareWithPartner: true };
 
 test("enforcement: a received payload diverging from the consented set aborts the exchange", async () => {
   const initiatorPrepared = prepared("Initiator Co", bothOut, clientRows);
-  // The initiator consented to receive a column the responder will never send.
+  // The initiator consented to receive a column the responder will never
+  // send, and the responder's terms claim to send it, so only the received
+  // payload shows the divergence.
   initiatorPrepared.expectedPayloadColumns = ["a_column_not_sent"];
   const [connInitiator, connResponder] = createMessagePipe();
   const [initResult, respResult] = await Promise.allSettled([
     runExchange(connInitiator, "initiator", initiatorPrepared, { psiLibrary }),
     runExchange(
-      connResponder,
+      misstatingPayloadSend(connResponder, [{ name: "a_column_not_sent" }]),
       "responder",
       prepared("Responder Co", bothOut, serverRows),
       { psiLibrary },

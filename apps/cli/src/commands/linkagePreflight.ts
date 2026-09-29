@@ -225,20 +225,15 @@ export function checkLinkageSatisfiability(
 export type AcceptMode = "online" | "offline";
 
 /**
- * What happens to the acceptance after the warning, which the two accept paths
- * answer differently: online, `prepareForOnlineExchange` inside `validateAccept`
- * enforces the refusal before the terms display, the prompt, or any write;
- * offline there is no prepare call, so the acceptance runs to its prompt and the
- * refusal waits for `alcove exchange`.
+ * When the exchange the acceptance configures runs, which the two accept paths
+ * answer differently: online, right after the acceptance; offline, at the
+ * operator's later `alcove exchange`.
  */
 const ACCEPTANCE_OUTCOME: Record<AcceptMode, string> = {
-  online:
-    "This acceptance cannot finish: it stops next as a configuration error " +
-    "(exit 64), before the terms are displayed and without writing a " +
-    "configuration or key file.",
+  online: "This acceptance runs that exchange next.",
   offline:
-    "This acceptance is not stopped by it: confirming writes the configuration " +
-    "and key file, and the refusal arrives when you run 'alcove exchange'.",
+    "Confirming writes the configuration and key file, and the exchange runs " +
+    "when you run 'alcove exchange'.",
 };
 
 /**
@@ -260,11 +255,12 @@ const ACCEPTANCE_OUTCOME: Record<AcceptMode, string> = {
  * acceptance given no input file) leaves nothing to compare, so no warning
  * fires either.
  *
- * The pair this warns on cannot run: `assertPayloadSendDisclosed` refuses it
- * inside `prepareForExchange` before any data is sent. This warns rather than
+ * The pair this warns on meets at the terms exchange: this party's terms state
+ * the columns its metadata discloses, and the inviting party refuses them there,
+ * before any data is sent, unless it takes them on. This warns rather than
  * refuses on both paths, since the disagreement is fixed by editing the
  * configuration this acceptance is about to write; {@link ACCEPTANCE_OUTCOME}
- * states what the acceptance then does.
+ * states when that exchange runs.
  *
  * Does not cover a NON-EMPTY declared `send` that disagrees with the disclosed
  * set -- a different comparison with different remedies. Column names are
@@ -296,8 +292,9 @@ export function warnColumnsTheInvitationWillNotAccept(params: {
       disclosed
         .map((name) => `  - ${redactAndSanitizeForDisplay(name)}`)
         .join("\n") +
-      "\nThe exchange this acceptance configures refuses to run, before any " +
-      `data is sent, while the two disagree. ${ACCEPTANCE_OUTCOME[mode]} Set the ` +
+      "\nThe inviting party sees these columns as a change to its terms when " +
+      "the exchange runs, and the exchange stops before any data is sent " +
+      `unless it accepts them. ${ACCEPTANCE_OUTCOME[mode]} Set the ` +
       "metadata for those columns not to transmit (is_payload: false or role " +
       "ignored), or ask your partner for an invitation that accepts them.",
   );

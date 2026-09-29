@@ -301,25 +301,39 @@ export function preparePayload(
 }
 
 /**
- * `terms` as this party states them to the partner at the terms exchange: an
- * unset `payload.send` is stated as the columns `metadata` discloses
+ * `terms` as this party states them to the partner at the terms exchange:
+ * `payload.send` is stated as the columns `metadata` discloses
  * (`isDisclosedToPartner`), so the partner's `payload.receive` is compared
- * against, or filled from, a declared set rather than an absent one. A present
- * `send` -- an explicit empty list included -- is kept as authored, and is
- * held to the metadata by {@link assertPayloadSendDisclosed}. Terms under
- * which no payload moves to the partner state nothing: a count-only (`psi-c`)
- * document, or `output.shareWithPartner` false.
+ * against, or filled from, the set this party sends. A present `send` naming
+ * exactly those columns is kept as authored, descriptions and order included;
+ * one naming any other set is replaced by the disclosed columns, each keeping
+ * the description the authored list gave it, and the partner sees the change
+ * at the terms exchange. Terms under which no payload moves to the partner
+ * state nothing: a count-only (`psi-c`) document, or `output.shareWithPartner`
+ * false.
  */
 export function termsStatingDeclaredPayloadSend(
   terms: LinkageTerms,
   metadata: Metadata,
 ): LinkageTerms {
   if (!payloadSendStatedFromMetadata(terms)) return terms;
+  const disclosed = disclosedColumnNames(metadata);
+  const authored = terms.payload?.send;
+  if (
+    authored !== undefined &&
+    authored.length === disclosed.length &&
+    new Set([...authored.map(({ name }) => name), ...disclosed]).size ===
+      disclosed.length
+  )
+    return terms;
+  const authoredByName = new Map(
+    (authored ?? []).map((column) => [column.name, column]),
+  );
   return {
     ...terms,
     payload: {
       ...terms.payload,
-      send: disclosedColumnNames(metadata).map((name) => ({ name })),
+      send: disclosed.map((name) => authoredByName.get(name) ?? { name }),
     },
   };
 }
@@ -327,22 +341,18 @@ export function termsStatingDeclaredPayloadSend(
 /** Whether the terms exchange states `terms`' send set from the metadata
  * ({@link termsStatingDeclaredPayloadSend}) rather than sending it as written. */
 function payloadSendStatedFromMetadata(terms: LinkageTerms): boolean {
-  return (
-    terms.payload?.send === undefined &&
-    terms.algorithm !== "psi-c" &&
-    terms.output.shareWithPartner
-  );
+  return terms.algorithm !== "psi-c" && terms.output.shareWithPartner;
 }
 
 /**
  * This party's terms as a run under them stated them at the terms exchange,
  * for a verifier recomputing the agreed-terms hash from a configuration after
- * the fact: an unset `payload.send` is stated from the configuration's
- * `metadata` ({@link termsStatingDeclaredPayloadSend}), or, where it holds
- * none, from the metadata the run inferred from its input header, as
- * `resolveExchangeInputs` infers it. `sendSetUnknown` is true when the terms
- * needed stating and neither was given: the terms are then returned as written
- * and a hash recomputed from them does not match the run's.
+ * the fact: `payload.send` is stated from the configuration's `metadata`
+ * ({@link termsStatingDeclaredPayloadSend}), or, where it holds none, from the
+ * metadata the run inferred from its input header, as `resolveExchangeInputs`
+ * infers it. With neither, a present `send` is taken as the run stated it,
+ * and `sendSetUnknown` is true for an unset one: the terms are then returned
+ * as written and a hash recomputed from them does not match the run's.
  */
 export function termsAsTheRunStatedThem(
   terms: LinkageTerms,
@@ -364,7 +374,8 @@ export function termsAsTheRunStatedThem(
           source.inputHeader.columns,
           source.inputHeader.sanitizedColumnPositions,
         ));
-  if (metadata === undefined) return { terms, sendSetUnknown: true };
+  if (metadata === undefined)
+    return { terms, sendSetUnknown: terms.payload?.send === undefined };
   return {
     terms: termsStatingDeclaredPayloadSend(terms, metadata),
     sendSetUnknown: false,
@@ -404,11 +415,13 @@ export function termsAsTheRunStatedThem(
  * metadata gates sending, not receiving; `validateCompatibility`
  * cross-checks it instead.
  *
- * Enforced at two points, both with the local metadata beside the terms:
- * `prepareForExchange` (every exchange, including paths with no invitation)
- * and the invitation-mint boundary (CLI `validateInvite`, web
- * `generateInvitation`), since the dictionary reaches the partner's consent
- * screen via the invitation token, encoded before `prepareForExchange` runs.
+ * Enforced where terms leave a configuration without an exchange to state
+ * them -- the invitation-mint boundary (CLI `validateInvite`, web
+ * `generateInvitation`) and the CLI's terms update -- since the dictionary
+ * reaches the partner's consent screen in the token as written. An exchange
+ * does not refuse the drift: it states the disclosed set
+ * ({@link termsStatingDeclaredPayloadSend}), and the partner sees the change
+ * at the terms exchange.
  * Offending names are partner-controlled on the accept side, so the messages
  * below compose through {@link compatibilityMessage}
  * (`config/compatibilityMessage.ts`), as `validateCompatibility`'s

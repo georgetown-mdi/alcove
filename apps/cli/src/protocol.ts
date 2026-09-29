@@ -51,6 +51,7 @@ import type {
   RelayCredential,
   SFTPConnectionConfig,
   SigningIdentity,
+  TermsChange,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
@@ -630,6 +631,7 @@ async function runExchangeStage(params: {
   recordPayloadReceiveFill:
     ((columns: string[]) => void | Promise<void>) | undefined;
   payloadReceiveFillNoticeDeferred: boolean | undefined;
+  onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
   recordOutput: RecordOutput | undefined;
   stageTimer: { open: (id: string) => void; close: () => void };
   psiProgress: PsiProgressDisplay;
@@ -649,6 +651,7 @@ async function runExchangeStage(params: {
     signing,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    onTermsChange,
     recordOutput,
     stageTimer,
     psiProgress,
@@ -742,6 +745,7 @@ async function runExchangeStage(params: {
                 }),
               );
             },
+      ...(onTermsChange !== undefined ? { onTermsChange } : {}),
       // Advertise the observed SFTP host key for cross-party
       // reconciliation only when the exchange runs over the
       // authenticated, AEAD-wrapped channel (`secure` set): the value is
@@ -2432,6 +2436,14 @@ export interface RunProtocolOptions {
    */
   payloadReceiveFillNoticeDeferred?: boolean;
   /**
+   * Settles partner terms that differ from this party's at the terms
+   * exchange (`onTermsChange` in `@alcove/core`): resolving takes them on and
+   * continues the run, a throw refuses. Called before any key or payload
+   * moves. Omit it on a run with no configuration to record into, which then
+   * refuses every difference.
+   */
+  onTermsChange?: (change: TermsChange) => Promise<void>;
+  /**
    * Whether a caller's own {@link preflightRun} call already emitted
    * {@link SIGNING_WITHOUT_RECORD_WARNING} for this run
    * ({@link PreflightRunResult.signingWithoutRecordWarned}), so
@@ -2536,6 +2548,7 @@ export async function runProtocol(
     signing = null,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    onTermsChange,
     signingWithoutRecordWarned = false,
     undeclaredColumnsWarned = false,
   } = options;
@@ -2866,6 +2879,7 @@ export async function runProtocol(
       signing,
       recordPayloadReceiveFill,
       payloadReceiveFillNoticeDeferred,
+      onTermsChange,
       recordOutput,
       stageTimer,
       psiProgress,

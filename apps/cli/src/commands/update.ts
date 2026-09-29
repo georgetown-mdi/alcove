@@ -115,8 +115,9 @@ export async function handler(argv: Arguments): Promise<void> {
       log.info(
         "Your partner applies it with:\n  alcove apply <UPDATE>\nwhere " +
           "<UPDATE> is the update printed above. Until they have applied it, " +
-          "an exchange between you is refused wherever your terms and theirs " +
-          "differ. " +
+          "an exchange between you shows them where your terms and theirs " +
+          "differ and asks them to accept the change, or refuses it where no " +
+          "one is at a terminal to answer. " +
           `The key file and the connection block in ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configPath),
           )} were not changed.`,

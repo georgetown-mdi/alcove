@@ -402,9 +402,14 @@ How a party arrives at its set, by exchange mode:
 
 The receive-side commitment's counterpart, holding a *present* `payload.send` to
 exactly the disclosed set and rejecting both over- and under-declaration, so the
-dictionary shown for consent and written into the exchange record matches the
-bytes that flow. It runs inside `prepareForExchange`, before any credential,
-terms, or data are sent, so a contradiction costs no disclosure.
+dictionary shown for consent matches the bytes that flow. It runs where terms
+leave a configuration with no exchange to state them -- an invitation minted
+from it, and a terms update made or applied -- since those reach the partner's
+consent screen as written. An exchange does not run it: `runExchange` states
+the disclosed set as `payload.send` (`termsStatingDeclaredPayloadSend`), and a
+partner whose held list differs meets that as a terms change at the terms
+exchange, before any key or data moves
+([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)).
 
 The empty case is where this guard is a disclosure control rather than an
 accuracy one: an acceptor's `send` is `deriveAcceptedLinkageTerms`'s mirror of

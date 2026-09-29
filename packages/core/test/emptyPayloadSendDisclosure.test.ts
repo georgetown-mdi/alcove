@@ -9,7 +9,8 @@ import {
 } from "../src/linkageTermsNegotiation";
 import { disclosedColumnNames } from "../src/config/metadata";
 import { createMessagePipe } from "../src/connection/messageConnection";
-import { UsageError } from "../src/errors";
+import { ProtocolRefusalError } from "../src/errors";
+import { termsStatingDeclaredPayloadSend } from "../src/payloadExchange";
 
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import type { Metadata } from "../src/config/metadata";
@@ -123,18 +124,19 @@ function expectNoPayloadOnWire(sent: unknown[]): void {
   expect(JSON.stringify(sent)).not.toContain("E-asthma");
 }
 
-test("an acceptor declaring it sends nothing is refused before anything is sent when its metadata discloses columns", () => {
+test("an acceptor declaring it sends nothing states the columns its metadata discloses", () => {
   expect(disclosedColumnNames(acceptorMetadata)).toEqual([
     "diagnosis",
     "notes",
   ]);
 
-  expect(acceptorPrepared).toThrow(UsageError);
-  // Both disclosed columns are named, and the remedy is to stop transmitting them
-  // or to get a corrected invitation -- never to widen the declaration locally,
-  // which the partner never agreed to.
-  expect(acceptorPrepared).toThrow(/\["diagnosis","notes"\]/);
-  expect(acceptorPrepared).toThrow(/corrected invitation/);
+  // The partner, which receives nothing, sees the stated columns as a change
+  // to its terms at the terms exchange; nothing refuses them locally.
+  const prepared = acceptorPrepared();
+  expect(
+    termsStatingDeclaredPayloadSend(prepared.linkageTerms, prepared.metadata)
+      .payload?.send,
+  ).toStrictEqual([{ name: "diagnosis" }, { name: "notes" }]);
 });
 
 test("no payload column reaches the wire from an acceptor declaring it sends nothing", async () => {
@@ -163,17 +165,16 @@ test("no payload column reaches the wire from an acceptor declaring it sends not
   ]);
 
   // Nothing the acceptor put on the wire holds a payload column or a payload
-  // value. A regression that let the empty declaration through would transmit
+  // value. A regression that let the disclosure through would transmit
   // {columns: [diagnosis, notes]} here, and these three assertions catch it even
   // though the partner-side reconciliation would still abort afterwards.
   expectNoPayloadOnWire(sent);
 
-  // The acceptor is the party whose configuration is wrong, so it is the party
-  // that fails, and it fails as its own configuration error rather than as the
-  // partner's mid-exchange protocol abort.
+  // The inviter, which receives nothing, refuses the columns the acceptor's
+  // terms state at the terms exchange, before any key or payload moves.
   expect(acceptorResult.status).toBe("rejected");
   if (acceptorResult.status === "rejected")
-    expect(acceptorResult.reason).toBeInstanceOf(UsageError);
+    expect(acceptorResult.reason).toBeInstanceOf(ProtocolRefusalError);
 });
 
 test("the same acceptor configuration runs to completion when the inviting party receives no result", async () => {

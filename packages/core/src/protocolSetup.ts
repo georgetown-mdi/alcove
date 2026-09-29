@@ -5,7 +5,13 @@ import type { HandshakeRole, PsiRole } from "./types";
 import type { LinkageTerms, Output } from "./config/linkageTermsSchema";
 import type { PresentedHostKey } from "./connection/fileSyncConnection";
 import { parseLinkageTerms } from "./config/linkageTermsSchema";
-import { validateCompatibility } from "./linkageTermsNegotiation";
+import {
+  adoptableWithoutPreparing,
+  compareTerms,
+  termsAdoptingPartnerTerms,
+  termsReceivingPartnerSend,
+} from "./linkageTermsNegotiation";
+import type { TermsComparison, TermsDelta } from "./linkageTermsNegotiation";
 import { SHARED_SECRET_REGEX } from "./config/connection";
 import { MAX_RECORD_COUNT } from "./connection/frameSize";
 import { randomBytes, toBase64Url } from "./utils/crypto";
@@ -282,8 +288,78 @@ const partnerAbortError = (
 
 // --- Terms exchange ----------------------------------------------------------
 
+/**
+ * A terms exchange refused because the partner's terms differ from this
+ * party's and the difference was not taken on: {@link delta} states how the
+ * two differ.
+ */
+export class TermsChangeRefusedError extends ProtocolRefusalError {
+  /** How the partner's terms differ from this party's. */
+  readonly delta: TermsDelta;
+
+  constructor(message: string, delta: TermsDelta) {
+    super(message);
+    this.name = "TermsChangeRefusedError";
+    this.delta = delta;
+  }
+}
+
+/**
+ * The abort reason a party sends when it does not take on the partner's
+ * changed terms. A fixed literal: the frame is a disclosure to the partner.
+ */
+export const TERMS_CHANGE_NOT_ACCEPTED_REASON =
+  "the partner has not accepted your changed linkage terms";
+
+/**
+ * A difference in the partner's terms that this party can take on and run
+ * under, handed to {@link TermsChangeOptions.onTermsChange}.
+ */
+export interface TermsChange {
+  /** How the partner's terms differ from this party's. */
+  delta: TermsDelta;
+  /** The partner's terms as they crossed the wire. */
+  partnerTerms: LinkageTerms;
+  /** This party's terms with the partner's taken on. */
+  adoptedTerms: LinkageTerms;
+  /**
+   * Whether this run can continue under {@link adoptedTerms}. False where
+   * they change a term this run was prepared under -- the linkage fields or
+   * keys, the algorithm, the strategy, the output direction, or the version
+   * -- which takes a new run.
+   */
+  continuable: boolean;
+}
+
+/** How {@link exchangeTerms} treats partner terms that differ from its own. */
+export interface TermsChangeOptions {
+  /**
+   * The payload columns this party holds its received payload to, compared
+   * against the partner's send set in place of this party's own
+   * `payload.receive`. Undefined compares `payload.receive` alone.
+   */
+  expectedReceive?: ReadonlyArray<string>;
+  /**
+   * Called when the partner's terms differ from this party's in a way taking
+   * on the partner's terms resolves, before this party's decision is sent and
+   * so before any key or data moves. Resolves to the terms this party runs
+   * under; a throw refuses the exchange with
+   * {@link TERMS_CHANGE_NOT_ACCEPTED_REASON}, and so does a change that is not
+   * {@link TermsChange.continuable}, whatever this returns. Omitted, every
+   * difference is refused as a {@link TermsChangeRefusedError}.
+   */
+  onTermsChange?: (change: TermsChange) => Promise<LinkageTerms>;
+}
+
 export interface TermsExchangeResult {
   partnerTerms: LinkageTerms;
+  /**
+   * The terms this party agreed under: its own, or the partner's it took on
+   * through {@link TermsChangeOptions.onTermsChange}.
+   */
+  localTerms: LinkageTerms;
+  /** Whether {@link localTerms} are the partner's terms taken on. */
+  termsChanged: boolean;
   /**
    * Non-fatal observations from this terms exchange, for the caller to
    * report at the run boundary (runExchange hands each to its `onWarning`,
@@ -489,6 +565,64 @@ async function reconcileProtocolVersion(
   throw new ProtocolRefusalError(PROTOCOL_VERSION_MISMATCH_MESSAGE);
 }
 
+/** The diagnostics a comparison refuses on: the partner decides what this
+ * party sends, so the sent direction is not among them. */
+function refusalsOf(comparison: TermsComparison): string[] {
+  return comparison.receivedMessage === undefined
+    ? comparison.delta.otherTerms
+    : [...comparison.delta.otherTerms, comparison.receivedMessage];
+}
+
+/**
+ * Settle a comparison that refuses: offer the change to `onTermsChange` where
+ * `adopted` resolves it, and otherwise refuse. Returns the terms this party
+ * runs under and the comparison that holds for them. `abortTerms` is the
+ * responder's own terms, which its abort frame holds.
+ */
+async function settleTermsChange(params: {
+  conn: MessageConnection;
+  localTerms: LinkageTerms;
+  partnerTerms: LinkageTerms;
+  comparison: TermsComparison;
+  adopted: LinkageTerms | undefined;
+  options: TermsChangeOptions | undefined;
+  abortTerms: LinkageTerms | undefined;
+}): Promise<{ terms: LinkageTerms; comparison: TermsComparison }> {
+  const { conn, localTerms, partnerTerms, comparison, adopted, abortTerms } =
+    params;
+  const onTermsChange = params.options?.onTermsChange;
+  const refuse = async (reasons: string[]): Promise<never> => {
+    await sendAbort(conn, reasons, abortTerms);
+    throw new TermsChangeRefusedError(
+      `linkage terms are incompatible: ${reasons.join("; ")}`,
+      comparison.delta,
+    );
+  };
+  const refusals = refusalsOf(comparison);
+  if (
+    onTermsChange === undefined ||
+    adopted === undefined ||
+    refusalsOf(compareTerms(adopted, partnerTerms)).length > 0
+  )
+    return refuse(refusals);
+  const continuable = adoptableWithoutPreparing(localTerms, adopted);
+  let terms: LinkageTerms;
+  try {
+    terms = await onTermsChange({
+      delta: comparison.delta,
+      partnerTerms,
+      adoptedTerms: adopted,
+      continuable,
+    });
+  } catch (err) {
+    await sendAbort(conn, [TERMS_CHANGE_NOT_ACCEPTED_REASON], abortTerms);
+    throw err;
+  }
+  const settled = compareTerms(terms, partnerTerms);
+  if (!continuable || refusalsOf(settled).length > 0) return refuse(refusals);
+  return { terms, comparison: settled };
+}
+
 /**
  * Exchange {@link LinkageTerms} with a partner over an established
  * connection, validate compatibility, and obtain agreement from both parties to
@@ -500,7 +634,13 @@ async function reconcileProtocolVersion(
  *   3. Initiator  -> Responder : `{ decision }`
  *
  * If either party finds the terms incompatible, it sends `decision: "abort"`
- * with its reasons and this function throws. On success, returns the partner's
+ * with its reasons and this function throws. A party refuses on the columns it
+ * receives and on every other term, never on the columns it sends, which are
+ * the partner's to take on; where `termsChange` offers a way to take on the
+ * partner's terms, a difference is offered there first
+ * ({@link TermsChangeOptions}). The responder takes on every term and sends the
+ * terms it took on as its message 2; the initiator can then differ only in
+ * the columns it receives. On success, returns the partner's
  * validated terms, its record count, and any non-fatal warnings (e.g. a `date`
  * mismatch). Call {@link resolveRole} afterwards to determine each party's PSI
  * role -- it is a local computation over the counts exchanged here, with no
@@ -542,6 +682,7 @@ export async function exchangeTerms(
   localHostKey?: PresentedHostKey,
   localDisclosesPayload?: boolean,
   localCertificate?: SigningCertificate,
+  termsChange?: TermsChangeOptions,
 ): Promise<TermsExchangeResult> {
   // Spread into the outgoing terms frame only when this party is saving, so a
   // non-save exchange sends no `save` field at all.
@@ -634,23 +775,37 @@ export async function exchangeTerms(
       );
     }
 
-    const { errors, warnings } = validateCompatibility(
-      localTerms,
-      partnerTerms,
-    );
-
-    if (errors.length > 0) {
-      await sendAbort(conn, errors);
-      throw new ProtocolRefusalError(
-        `linkage terms are incompatible: ${errors.join("; ")}`,
-      );
-    }
+    // The responder has already taken on any other term it would change, so
+    // what is left for this party to take on is the columns it receives.
+    let agreed = {
+      terms: localTerms,
+      comparison: compareTerms(
+        localTerms,
+        partnerTerms,
+        termsChange?.expectedReceive,
+      ),
+    };
+    if (refusalsOf(agreed.comparison).length > 0)
+      agreed = await settleTermsChange({
+        conn,
+        localTerms,
+        partnerTerms,
+        comparison: agreed.comparison,
+        adopted:
+          agreed.comparison.delta.otherTerms.length === 0
+            ? termsReceivingPartnerSend(localTerms, partnerTerms)
+            : undefined,
+        options: termsChange,
+        abortTerms: undefined,
+      });
 
     await conn.send({ decision: "proceed" });
 
     return {
       partnerTerms,
-      warnings,
+      localTerms: agreed.terms,
+      termsChanged: agreed.terms !== localTerms,
+      warnings: agreed.comparison.warnings,
       partnerRecordCount: msg.recordCount,
       partnerSaveIntent: msg.save === true,
       partnerDisclosesPayload: msg.disclosesPayload,
@@ -710,23 +865,35 @@ export async function exchangeTerms(
     // responder's message-2 slot always does).
     await reconcileProtocolVersion(conn, partnerProtocolVersion, localTerms);
 
-    const { errors, warnings } =
-      parseError !== undefined
-        ? {
-            errors: [`partner linkage terms failed to parse: ${parseError}`],
-            warnings: [],
-          }
-        : validateCompatibility(localTerms, partnerTerms!);
-
-    if (errors.length > 0) {
+    if (parseError !== undefined) {
+      const errors = [`partner linkage terms failed to parse: ${parseError}`];
       await sendAbort(conn, errors, localTerms);
       throw new ProtocolRefusalError(
         `linkage terms are incompatible: ${errors.join("; ")}`,
       );
     }
 
+    let agreed = {
+      terms: localTerms,
+      comparison: compareTerms(
+        localTerms,
+        partnerTerms!,
+        termsChange?.expectedReceive,
+      ),
+    };
+    if (refusalsOf(agreed.comparison).length > 0)
+      agreed = await settleTermsChange({
+        conn,
+        localTerms,
+        partnerTerms: partnerTerms!,
+        comparison: agreed.comparison,
+        adopted: termsAdoptingPartnerTerms(localTerms, partnerTerms!),
+        options: termsChange,
+        abortTerms: localTerms,
+      });
+
     await conn.send({
-      linkageTerms: localTerms,
+      linkageTerms: agreed.terms,
       decision: "proceed",
       recordCount: localRecordCount,
       protocolVersion: PROTOCOL_VERSION,
@@ -741,7 +908,9 @@ export async function exchangeTerms(
 
     return {
       partnerTerms: partnerTerms!,
-      warnings,
+      localTerms: agreed.terms,
+      termsChanged: agreed.terms !== localTerms,
+      warnings: agreed.comparison.warnings,
       partnerRecordCount,
       partnerSaveIntent,
       partnerDisclosesPayload,

@@ -289,9 +289,59 @@ export function partnerBoundTerms(terms: LinkageTerms): PartnerBoundTerms {
   };
 }
 
+/**
+ * How one direction's payload columns differ between the party that sends
+ * them and the party that receives them, by column name.
+ */
+export interface PayloadColumnsChange {
+  /** Columns the sender's terms send that the receiver's do not receive. */
+  added: string[];
+  /** Columns the receiver's terms receive that the sender's do not send. */
+  removed: string[];
+}
+
+/**
+ * How a partner's terms differ from this party's: `received` is the partner's
+ * send set against the columns this party receives, `sent` this party's send
+ * set against the columns the partner receives, and `otherTerms` a diagnostic
+ * for each other term the two copies disagree on. A direction is undefined
+ * where the two agree or the receiving party states no list.
+ */
+export interface TermsDelta {
+  received: PayloadColumnsChange | undefined;
+  sent: PayloadColumnsChange | undefined;
+  otherTerms: string[];
+}
+
 interface CompatibilityResult {
   errors: string[];
   warnings: string[];
+  /** The disagreements `errors` states, sorted by what each changes. */
+  delta: TermsDelta;
+}
+
+/**
+ * {@link validateCompatibility}'s findings with each payload direction kept
+ * apart from the other terms: `receivedMessage` and `sentMessage` are the
+ * diagnostics for the two directions `delta` describes.
+ */
+export interface TermsComparison {
+  delta: TermsDelta;
+  warnings: string[];
+  receivedMessage: string | undefined;
+  sentMessage: string | undefined;
+}
+
+function columnsChange(
+  receiverNames: ReadonlyArray<string>,
+  senderNames: ReadonlyArray<string>,
+): PayloadColumnsChange {
+  const receiving = new Set(receiverNames);
+  const sending = new Set(senderNames);
+  return {
+    added: senderNames.filter((name) => !receiving.has(name)),
+    removed: receiverNames.filter((name) => !sending.has(name)),
+  };
 }
 
 /**
@@ -313,6 +363,25 @@ export function validateCompatibility(
   local: LinkageTerms,
   partner: LinkageTerms,
 ): CompatibilityResult {
+  const comparison = compareTerms(local, partner);
+  const errors = [...comparison.delta.otherTerms];
+  if (comparison.sentMessage !== undefined) errors.push(comparison.sentMessage);
+  if (comparison.receivedMessage !== undefined)
+    errors.push(comparison.receivedMessage);
+  return { errors, warnings: comparison.warnings, delta: comparison.delta };
+}
+
+/**
+ * The comparison {@link validateCompatibility} reports, each payload direction
+ * kept apart. `receiveBaseline`, when given, is the column set this party
+ * holds its received payload to; it is compared against the partner's send
+ * set in place of `local.payload.receive`, whether or not that is stated.
+ */
+export function compareTerms(
+  local: LinkageTerms,
+  partner: LinkageTerms,
+  receiveBaseline?: ReadonlyArray<string>,
+): TermsComparison {
   // Both accumulators hold CompatibilityMessageFragment rather than string, which
   // is the whole of the sweep below: a diagnostic reaches either list only
   // through the compatibilityMessage tagged template, whose interpolations are
@@ -584,7 +653,7 @@ export function validateCompatibility(
   // supplied by the caller (emptyReceiveMessage for the strict empty `receive: []`
   // case, mismatchMessage otherwise).
   const checkPayloadDirection = (
-    receiverReceive: ReadonlyArray<PayloadColumn>,
+    receiverReceive: ReadonlyArray<string>,
     senderSend: ReadonlyArray<PayloadColumn>,
     messages: {
       emptyReceiveMessage: (
@@ -595,42 +664,156 @@ export function validateCompatibility(
         senderShown: CompatibilityMessageFragment,
       ) => CompatibilityMessageFragment;
     },
-  ): void => {
-    const receiverNames = receiverReceive.map((c) => c.name).sort();
+  ): { change: PayloadColumnsChange; message: string } | undefined => {
+    const receiverNames = [...receiverReceive].sort();
     const senderNames = senderSend.map((c) => c.name).sort();
-    if (sameColumnSet(senderNames, receiverNames)) return;
+    if (sameColumnSet(senderNames, receiverNames)) return undefined;
     const receiverShown = quoteTermsValueList(receiverNames);
     const senderShown = quoteTermsValueList(senderNames);
-    errors.push(
-      receiverNames.length === 0
-        ? messages.emptyReceiveMessage(senderShown)
-        : messages.mismatchMessage(receiverShown, senderShown),
-    );
+    return {
+      change: columnsChange(receiverNames, senderNames),
+      message:
+        receiverNames.length === 0
+          ? messages.emptyReceiveMessage(senderShown)
+          : messages.mismatchMessage(receiverShown, senderShown),
+    };
   };
+  const namesOf = (columns: ReadonlyArray<PayloadColumn>): string[] =>
+    columns.map((column) => column.name);
 
-  if (partner.payload?.receive !== undefined) {
-    checkPayloadDirection(partner.payload.receive, local.payload?.send ?? [], {
-      // An empty partner receive is the strict "partner expects no payload"
-      // declaration (see the gate comment above); spell that out rather than
-      // printing an empty bracket pair that reads like a rendering glitch.
-      emptyReceiveMessage: (localShown) =>
-        compatibilityMessage`payload mismatch: partner declared an empty payload.receive (asserting local sends no payload columns), but local sends [${localShown}]`,
-      mismatchMessage: (partnerShown, localShown) =>
-        compatibilityMessage`payload mismatch: local send columns [${localShown}] do not match partner receive columns [${partnerShown}]`,
-    });
+  const sent =
+    partner.payload?.receive === undefined
+      ? undefined
+      : checkPayloadDirection(
+          namesOf(partner.payload.receive),
+          local.payload?.send ?? [],
+          {
+            // An empty partner receive is the strict "partner expects no
+            // payload" declaration (see the gate comment above); spell that
+            // out rather than printing an empty bracket pair that reads like
+            // a rendering glitch.
+            emptyReceiveMessage: (localShown) =>
+              compatibilityMessage`payload mismatch: partner declared an empty payload.receive (asserting local sends no payload columns), but local sends [${localShown}]`,
+            mismatchMessage: (partnerShown, localShown) =>
+              compatibilityMessage`payload mismatch: local send columns [${localShown}] do not match partner receive columns [${partnerShown}]`,
+          },
+        );
+
+  const localReceive =
+    receiveBaseline ??
+    (local.payload?.receive === undefined
+      ? undefined
+      : namesOf(local.payload.receive));
+  const received =
+    localReceive === undefined
+      ? undefined
+      : checkPayloadDirection(localReceive, partner.payload?.send ?? [], {
+          // An empty local receive is the strict "I expect no payload"
+          // declaration; name it and point the operator at the unset
+          // alternative, since a hand-authored `receive: []` is the most
+          // likely way to land here.
+          emptyReceiveMessage: (partnerShown) =>
+            compatibilityMessage`payload mismatch: local declared an empty payload.receive (asserting partner sends no payload columns), but partner sends [${partnerShown}]. To receive the partner's columns, remove payload.receive: a recurring exchange sets it from the partner's declared columns on its next run and holds the partner to them after that.`,
+          mismatchMessage: (localShown, partnerShown) =>
+            compatibilityMessage`payload mismatch: local receive columns [${localShown}] do not match partner send columns [${partnerShown}]`,
+        });
+
+  return {
+    delta: {
+      received: received?.change,
+      sent: sent?.change,
+      otherTerms: errors,
+    },
+    warnings,
+    receivedMessage: received?.message,
+    sentMessage: sent?.message,
+  };
+}
+
+/**
+ * This party's terms with the partner's adopted, as `alcove apply` adopts
+ * them from a terms update: every agreed field is the partner's, `output` and
+ * `payload` are mirrored, and `identity` and `deduplicate` stay this party's
+ * own. Undefined where the result is not a valid terms document.
+ */
+export function termsAdoptingPartnerTerms(
+  local: LinkageTerms,
+  partner: LinkageTerms,
+): LinkageTerms | undefined {
+  const {
+    identity: _partnerIdentity,
+    payload: partnerPayload,
+    ...agreed
+  } = partner;
+  const adopted: LinkageTerms = {
+    ...agreed,
+    ...(local.identity !== undefined ? { identity: local.identity } : {}),
+    deduplicate: local.deduplicate,
+    output: {
+      expectsOutput: partner.output.shareWithPartner,
+      shareWithPartner: partner.output.expectsOutput,
+    },
+  };
+  if (partnerPayload !== undefined) {
+    const mirrored: Payload = {};
+    if (partnerPayload.receive !== undefined)
+      mirrored.send = partnerPayload.receive;
+    if (partnerPayload.send !== undefined)
+      mirrored.receive = partnerPayload.send;
+    adopted.payload = mirrored;
   }
+  return LinkageTermsSchema.safeParse(adopted).success ? adopted : undefined;
+}
 
-  if (local.payload?.receive !== undefined) {
-    checkPayloadDirection(local.payload.receive, partner.payload?.send ?? [], {
-      // An empty local receive is the strict "I expect no payload" declaration;
-      // name it and point the operator at the unset alternative, since a
-      // hand-authored `receive: []` is the most likely way to land here.
-      emptyReceiveMessage: (partnerShown) =>
-        compatibilityMessage`payload mismatch: local declared an empty payload.receive (asserting partner sends no payload columns), but partner sends [${partnerShown}]. To receive the partner's columns, remove payload.receive: a recurring exchange sets it from the partner's declared columns on its next run and holds the partner to them after that.`,
-      mismatchMessage: (localShown, partnerShown) =>
-        compatibilityMessage`payload mismatch: local receive columns [${localShown}] do not match partner send columns [${partnerShown}]`,
-    });
+/**
+ * This party's terms with its received payload set taken from the partner's
+ * stated send set, each column by name alone, and nothing else changed.
+ */
+export function termsReceivingPartnerSend(
+  local: LinkageTerms,
+  partner: LinkageTerms,
+): LinkageTerms {
+  return {
+    ...local,
+    payload: {
+      ...local.payload,
+      receive: (partner.payload?.send ?? []).map(({ name }) => ({ name })),
+    },
+  };
+}
+
+// The terms whose difference a run already prepared can take on without
+// re-reading its input: the rest shape the linkage keys, the record count and
+// payload disclosure the terms exchange has already advertised.
+const TERMS_A_PREPARED_RUN_CAN_ADOPT = [
+  "identity",
+  "date",
+  "deduplicate",
+  "payload",
+  "legalAgreement",
+  "linkageRuleSet",
+] as const;
+
+/**
+ * Whether a run prepared under `prepared` can run under `adopted` instead:
+ * the two differ in none of the terms that shape its keys, its record count,
+ * or what it advertised it discloses.
+ */
+export function adoptableWithoutPreparing(
+  prepared: LinkageTerms,
+  adopted: LinkageTerms,
+): boolean {
+  const shaping = (terms: LinkageTerms): Record<string, unknown> => {
+    const copy: Record<string, unknown> = { ...partnerBoundTerms(terms) };
+    for (const field of TERMS_A_PREPARED_RUN_CAN_ADOPT) delete copy[field];
+    return copy;
+  };
+  try {
+    return (
+      canonicalString(shaping(prepared)) === canonicalString(shaping(adopted))
+    );
+  } catch (err) {
+    if (err instanceof CanonicalEncodingError) return false;
+    throw err;
   }
-
-  return { errors, warnings };
 }

@@ -8,6 +8,7 @@ import {
   assertPayloadSendDisclosed,
   assertDisclosureMatchesCommitment,
   reconcileReceivedPayload,
+  termsStatingDeclaredPayloadSend,
 } from "../src/payloadExchange";
 import { prepareForExchange } from "../src/exchange";
 import { deriveAcceptedLinkageTerms } from "../src/linkageTermsNegotiation";
@@ -622,7 +623,7 @@ test("assertPayloadSendDisclosed: a name containing the list separator is one el
   );
 });
 
-test("prepareForExchange: rejects a config whose payload.send over-declares", () => {
+test("prepareForExchange: a payload.send the metadata has drifted from runs, stating the metadata's columns", () => {
   const metadata: Metadata = [
     {
       name: "first_name",
@@ -631,6 +632,7 @@ test("prepareForExchange: rejects a config whose payload.send over-declares", ()
       isPayload: false,
     },
     { name: "secret", type: "other", role: "ignored", isPayload: true },
+    { name: "note", type: "other", role: "payload", isPayload: true },
   ];
   const linkageTerms = {
     version: "1.0.0",
@@ -642,23 +644,31 @@ test("prepareForExchange: rejects a config whose payload.send over-declares", ()
     deduplicate: false,
     linkageFields: [{ name: "first_name", type: "first_name" as const }],
     linkageKeys: [{ name: "FN", elements: [{ field: "first_name" }] }],
-    payload: { send: [{ name: "secret" }] },
+    payload: { send: [{ name: "secret", description: "not sent" }] },
   };
-  // The check fires during preparation, before any connection or dataset build.
-  expect(() =>
-    prepareForExchange(
-      { linkageTerms, metadata },
-      "Tester",
-      [{ first_name: "Alice", secret: "x" }],
-      ["first_name", "secret"],
-    ),
-  ).toThrow(UsageError);
+  const prepared = prepareForExchange(
+    { linkageTerms, metadata },
+    "Tester",
+    [{ first_name: "Alice", secret: "x", note: "n" }],
+    ["first_name", "secret", "note"],
+  );
+  // The partner sees the stated set as a change at the terms exchange.
+  expect(
+    termsStatingDeclaredPayloadSend(prepared.linkageTerms, prepared.metadata)
+      .payload?.send,
+  ).toStrictEqual([{ name: "note" }]);
+  // A send naming exactly the disclosed set is stated as authored.
+  const described = {
+    ...linkageTerms,
+    payload: { send: [{ name: "note", description: "a note" }] },
+  };
+  expect(termsStatingDeclaredPayloadSend(described, metadata)).toBe(described);
 });
 
 // --- assertPayloadSendDisclosed on the ACCEPTOR path -------------------------
 
-// assertPayloadSendDisclosed runs in prepareForExchange for EVERY party,
-// including the acceptor, whose payload is the MIRROR of the inviter's
+// assertPayloadSendDisclosed holds EVERY party's authored send where terms
+// leave a configuration, the acceptor's included, whose payload is the MIRROR of the inviter's
 // (deriveAcceptedLinkageTerms): the acceptor's `send` is the inviter's `receive`
 // -- the PARTNER's columns the inviter requested, which are in the ACCEPTOR's own
 // column namespace. Validating that mirrored send against the acceptor's own

@@ -1129,11 +1129,9 @@ describe("the count-only shape, at the accept boundary", () => {
     expect(refused).toContain("alcove exchange");
   });
 
-  test("validateAccept: online states that the acceptance itself stops, and it does", async () => {
-    // prepareForOnlineExchange runs inside validateAccept, so the refusal the
-    // warning names aborts the acceptance itself rather than waiting for a later
-    // command -- a configuration error, before the terms display and before any
-    // file is written.
+  test("validateAccept: online states that the exchange it runs next meets the columns at the terms exchange", async () => {
+    // Nothing refuses the disclosed columns locally: this party's terms state
+    // them, and the inviting party meets them as a change to its terms.
     const options = testOptions();
     const { warnings, error } = await acceptWarnings({
       token: tokenDeclaringReceive([]),
@@ -1143,13 +1141,10 @@ describe("the count-only shape, at the accept boundary", () => {
       options,
     });
     const refused = refusedDisclosureWarning(warnings);
-    expect(refused).toContain("exit 64");
+    expect(refused).toContain("runs that exchange next");
+    expect(refused).toContain("change to its terms");
     expect(refused).not.toContain("alcove exchange");
-    expect(error).toBeInstanceOf(UsageError);
-    // The refusal the warning describes, not some other usage error on the path.
-    expect((error as Error).message).toContain("payload.send");
-    expect(fs.existsSync(options.configFile)).toBe(false);
-    expect(fs.existsSync(options.keyFile)).toBe(false);
+    expect(error).toBeUndefined();
   });
 
   test("validateAccept: stays silent where the disclosure and the invitation can agree", async () => {

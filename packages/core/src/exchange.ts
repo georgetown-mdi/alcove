@@ -52,6 +52,7 @@ import {
   resolveRole,
   sendAbort,
 } from "./protocolSetup.js";
+import type { TermsChange } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import {
   MAX_ROUND_DISTINCT_VALUES,
@@ -78,7 +79,6 @@ import {
   preparePayload,
   exchangePayloads,
   toCommittedPayload,
-  assertPayloadSendDisclosed,
   assertDisclosedNamesCarriable,
   assertDisclosureMatchesCommitment,
   assertOutboundPayloadConsented,
@@ -86,7 +86,10 @@ import {
   termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
 import type { PayloadWireMessage } from "./payloadExchange.js";
-import { payloadReceiveFill } from "./config/recurringTerms.js";
+import {
+  payloadReceiveFill,
+  termsResolvingChangedPayloadReceive,
+} from "./config/recurringTerms.js";
 import {
   buildExchangeRecord,
   computeTermsHash,
@@ -382,9 +385,9 @@ export class PayloadDisclosureDivergenceError extends ConnectionError {
  *
  * - The disclosing party's `payload.send` declared present and empty binds
  *   it to disclosing no column whatever it asserts, so this direction moves
- *   nothing and the exchange continues. `assertPayloadSendDisclosed` holds
- *   that declaration to exactly what metadata transmits before any data
- *   moves, so a conforming party in this shape discloses none.
+ *   nothing and the exchange continues. A conforming party states its send
+ *   set from what its metadata transmits (`termsStatingDeclaredPayloadSend`),
+ *   so one in this shape discloses none.
  * - The receiving party's `payload.receive` declared present and empty, with
  *   no such declaration on the disclosing party's own document to hold it
  *   to, while that party asserts disclosure: the two contradict, and the
@@ -1324,16 +1327,6 @@ export function prepareForExchange(
   // signature swap refuses an unnamed side after the payloads have
   // crossed. See assertCertificateModeNamesLocalParty.
   assertCertificateModeNamesLocalParty(exchangeDataSpec.signing, linkageTerms);
-
-  // Reject a payload data dictionary that does not match what metadata
-  // transmits: metadata's isPayload/role is the single source of truth for
-  // what leaves the machine. A no-op on the default and guided paths,
-  // which author no payload block. See assertPayloadSendDisclosed.
-  assertPayloadSendDisclosed(
-    linkageTerms.payload,
-    metadata,
-    linkageTerms.output,
-  );
 
   // Reject a disclosed column whose name is too long to carry, before the
   // frame is sent. Refused again at the run boundary (runExchange), so the
@@ -2346,6 +2339,21 @@ export interface RunExchangeOptions {
    */
   onPayloadReceiveFilled?: (columns: string[]) => void | Promise<void>;
   /**
+   * Called at the terms exchange, before this party's decision is sent and so
+   * before any linkage key or payload row moves, when the partner's terms
+   * differ from this party's in a way taking them on resolves: the columns
+   * the partner sends against the columns this party receives, or, on the
+   * responder, any other agreed term. Resolving takes on
+   * {@link TermsChange.adoptedTerms}, with this party's send set stated from
+   * its metadata as always, and continues the run under them where the change
+   * is {@link TermsChange.continuable}; the caller records them in the
+   * configuration it runs from before resolving. A throw ends the exchange
+   * and sends the partner `TERMS_CHANGE_NOT_ACCEPTED_REASON`. The partner's
+   * values reach the callback raw. Omitted, every difference is refused as a
+   * `TermsChangeRefusedError` naming it.
+   */
+  onTermsChange?: (change: TermsChange) => Promise<void>;
+  /**
    * The 32-byte session key from the authenticated key exchange, needed to derive
    * the per-exchange replay binder that the signed receipt commits to. Present only
    * on the authenticated path (the CLI discards it otherwise; the web has no key
@@ -2379,10 +2387,11 @@ export async function runExchange(
   options: RunExchangeOptions,
 ): Promise<ExchangeResult> {
   const { dataset, rowCount, retentionDisposition } = prepared;
-  // The terms this party sends, compares, and records the run under: an unset
+  // The terms this party sends, compares, and records the run under: the
   // payload send set is stated from the metadata, so the partner holds this
-  // party to a declared set. See termsStatingDeclaredPayloadSend.
-  const linkageTerms = termsStatingDeclaredPayloadSend(
+  // party to what it sends. See termsStatingDeclaredPayloadSend. Replaced by
+  // the partner's terms where this party takes them on at the terms exchange.
+  let linkageTerms = termsStatingDeclaredPayloadSend(
     prepared.linkageTerms,
     prepared.metadata,
   );
@@ -2470,9 +2479,20 @@ export async function runExchange(
   // before anything goes on the wire. See assertDeclaredWidthMatchesStrategy.
   assertDeclaredWidthMatchesStrategy(linkageTerms, effectiveKeyCount);
 
+  // The column set this party holds its received payload to, compared at the
+  // terms exchange against what the partner's terms send, so a partner whose
+  // columns changed is met there rather than at the received-payload check.
+  const receiveBaseline =
+    linkageTerms.algorithm !== "psi-c" && linkageTerms.output.expectsOutput
+      ? prepared.expectedPayloadColumns
+      : undefined;
+  const { onTermsChange } = options;
+
   onStage(CONFIRMING_PROTOCOL_STAGE_ID);
   const {
-    partnerTerms,
+    partnerTerms: partnerTermsAsSent,
+    localTerms: agreedLocalTerms,
+    termsChanged,
     warnings,
     partnerRecordCount,
     partnerSaveIntent,
@@ -2493,8 +2513,29 @@ export async function runExchange(
     // step itself gates on, so a party holding no session key puts no
     // certificate on the wire.
     willSignReceipt ? signingIdentity.certificate : undefined,
+    {
+      expectedReceive: receiveBaseline,
+      onTermsChange:
+        onTermsChange === undefined
+          ? undefined
+          : async (change) => {
+              await onTermsChange(change);
+              return termsStatingDeclaredPayloadSend(
+                change.adoptedTerms,
+                prepared.metadata,
+              );
+            },
+    },
   );
   for (const warning of warnings) onWarning(warning);
+  linkageTerms = agreedLocalTerms;
+  // A partner that proceeded past a declared receive list other than the
+  // columns this party sends has taken them on, as its own run records; both
+  // parties hold the partner to them from here.
+  const partnerTerms = termsResolvingChangedPayloadReceive(
+    partnerTermsAsSent,
+    linkageTerms,
+  );
 
   // Hold the partner's presented `deduplicate` to what its invitation declared,
   // where this run came from accepting one: the term is per-party, so no
@@ -2911,7 +2952,9 @@ export async function runExchange(
   // - An output party enforces the column set it consented to receive (a fresh
   //   acceptor's disclosedPayloadColumns, or a persisted commitment), else the
   //   set this run filled its unset receive list with; a lazy one (neither)
-  //   takes whatever the sender's own disclosure metadata transmits.
+  //   takes whatever the sender's own disclosure metadata transmits. A party
+  //   that took on the partner's terms at the terms exchange enforces the
+  //   receive list it took on.
   //
   // The refusal is caught by the region's guard below rather than thrown straight
   // through: this party's own payload has left it through the transport whatever
@@ -2921,7 +2964,9 @@ export async function runExchange(
   const expectedReceive = countOnly
     ? []
     : linkageTerms.output.expectsOutput
-      ? (prepared.expectedPayloadColumns ?? filledPayloadReceive)
+      ? termsChanged
+        ? linkageTerms.payload?.receive?.map(({ name }) => name)
+        : (prepared.expectedPayloadColumns ?? filledPayloadReceive)
       : [];
 
   // resultSize (the intersection size) is bound only when both parties are
