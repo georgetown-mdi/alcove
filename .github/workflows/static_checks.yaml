@@ -5,7 +5,9 @@ name: Static Checks
 # are path-scoped to one app and run the heavier unit/integration suites. These
 # checks span the whole monorepo -- a type error in a test file, an eslint
 # violation, or prettier drift can land in any workspace -- so this workflow is
-# intentionally NOT path-filtered.
+# intentionally NOT path-filtered. It also runs on every push to staging, so a
+# conflict between two pull requests that were each green on their own shows on
+# the merged tip.
 #
 # `npm run typecheck` runs each workspace's noEmit tsconfig, including the
 # tsconfig.test.json files that cover test sources (the build/composite configs
@@ -31,6 +33,8 @@ name: Static Checks
 on:
   pull_request:
     branches: [main, staging]
+  push:
+    branches: [staging]
 
 # Cancel a superseded run when a newer commit lands on the same PR/branch.
 concurrency:
@@ -92,9 +96,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The base the comment history-narration check measures its range
           # from, taken from the event rather than left to a ref resolving in
-          # the checkout. On any event that is not a pull request this is empty
-          # and the check falls back to its ref candidates.
-          ALCOVE_NARRATION_BASE: ${{ github.event.pull_request.base.sha || '' }}
+          # the checkout: a pull request's base sha, or on a push the tip it
+          # replaced. When neither resolves the check falls back to its ref
+          # candidates.
+          ALCOVE_NARRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
         run: npm run check:all
       # Blocking half of the dependency audit, over the production tree the
       # shipped image runs: the release SBOM's scope -- the two workspaces the

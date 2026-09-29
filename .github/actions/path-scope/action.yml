@@ -7,9 +7,9 @@
 # Each `paths` line is a glob matched as a git `:(glob)` pathspec against the
 # files the pull request changes since its merge base; a line starting with `!`
 # is an exclusion and removes its matches from the whole list. Off a pull
-# request (a deploy's workflow_call) there is no base to diff against, and the
-# answer is always to run. A failed diff also answers to run, so a detection
-# failure costs a full run rather than a skipped gate.
+# request (a push to staging, or a deploy's workflow_call) the answer is always
+# to run, so the whole merged tip is tested. A failed diff also answers to run,
+# so a detection failure costs a full run rather than a skipped gate.
 #
 # The caller checks out with `fetch-depth: 0`, so the merge base is reachable.
 name: "Path scope"

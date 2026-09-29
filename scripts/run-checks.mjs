@@ -145,7 +145,7 @@ export const CHECKS = [
     script: "check:merge-gate-identities",
     expiresOn: "2026-12-31",
     description:
-      "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, every workflow declaring a required job is on the list held filter-free, and staging requires a pull request to be up to date before merging. The branch-rule half needs a token and states a skip without one.",
+      "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, every gating workflow but the exempt ones runs on push to staging, and every workflow declaring a required job is on the list held filter-free. The branch-rule half needs a token and states a skip without one.",
   },
   {
     script: "check:dependabot-ignore-shape",
