@@ -440,6 +440,10 @@ export {
   termsUpdatePartnership,
 } from "./config/termsUpdate";
 export type { TermsUpdate, TermsUpdateCheck } from "./config/termsUpdate";
+export {
+  PLACEHOLDER_IDENTITY,
+  unnamedPartyIdentity,
+} from "./config/partyIdentityLabel";
 export type {
   ConnectionEndpoint,
   FileDropEndpoint,
