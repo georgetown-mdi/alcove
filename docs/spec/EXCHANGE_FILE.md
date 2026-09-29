@@ -494,8 +494,11 @@ Where the party also holds no `expectedPayloadColumns` and the partner's stated
 exchange and before the partner-certificate pin, so a decline records neither
 the pin nor the fill, and the refusals listed above still apply after the
 operator confirms. A decline sends the partner the abort reason
-`PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON` and moves no linkage key or payload row;
-a confirmation that fails rather than answers sends a fixed reason naming this
+`PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON`; the declining party sends none of its
+linkage keys or payload rows and records no fill. The partner, which passed
+the terms exchange before the confirmation began, may already have sent its
+first-round blinded set, which discloses nothing about its records. A
+confirmation that fails rather than answers sends a fixed reason naming this
 party's own failure instead, so the partner does not read it as a decline.
 The CLI confirms at a terminal and takes the columns without asking otherwise
 ([CLI.md](../CLI.md#your-partners-first-payload-columns)).

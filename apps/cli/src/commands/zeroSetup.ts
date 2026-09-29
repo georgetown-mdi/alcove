@@ -861,6 +861,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // Without --save there is no configuration, so a yes records nothing.
         onPayloadReceiveFill: payloadReceiveFillConfirmation({
           configPath: options.save ? options.configFile : undefined,
+          configSavedAfterExchange: options.save,
           interactive: stdinAnswersPrompts(input),
           log,
           logFile,

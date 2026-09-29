@@ -278,18 +278,21 @@ export function termsChangeHandler(params: {
  * asking. Shows the columns against the empty receive set the configuration
  * lists, the way {@link displayTermsChange} shows a change, and asks whether
  * to take them. A yes accepts, and a run with a `configPath` records them
- * there as `payload.receive` through its fill; a zero-setup run without
- * `--save` has none and records nothing. A no declines with an
- * {@link OperatorConfigError} (exit 64, event category `config`) and nothing
- * is written.
+ * there as `payload.receive` through its fill -- a zero-setup `--save` run
+ * (`configSavedAfterExchange`) in the configuration it saves when the exchange
+ * completes; a zero-setup run without `--save` has none and records nothing. A
+ * no declines with an {@link OperatorConfigError} (exit 64, event category
+ * `config`) and records no receive columns.
  */
 export function payloadReceiveFillConfirmation(params: {
   configPath: string | undefined;
+  configSavedAfterExchange?: boolean;
   interactive: boolean;
   log: ReturnType<typeof getLogger>;
   logFile: string | undefined;
 }): ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined {
   const { configPath, interactive, log, logFile } = params;
+  const savedAfterExchange = params.configSavedAfterExchange === true;
   if (!interactive) return undefined;
   return async (columns) => {
     const emit = consentSurfaceSink({ log, logFile, toPromptStream: true });
@@ -305,7 +308,7 @@ export function payloadReceiveFillConfirmation(params: {
         : redactAndRenderOperatorSuppliedText(operatorSuppliedText(configPath));
     displayTermsDelta(
       emit,
-      shownConfig === undefined
+      shownConfig === undefined || savedAfterExchange
         ? "Your partner's linkage terms declare payload columns it sends you:"
         : `Your partner's linkage terms declare payload columns it sends you, and ${shownConfig} lists none you receive (linkage_terms.payload.receive):`,
       delta,
@@ -313,7 +316,9 @@ export function payloadReceiveFillConfirmation(params: {
     const accepted = await promptConfirm(
       shownConfig === undefined
         ? "Receive these columns and continue this exchange?"
-        : `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
+        : savedAfterExchange
+          ? `Receive these columns, record them as linkage_terms.payload.receive in the configuration this run saves to ${shownConfig} when the exchange completes, and continue this exchange?`
+          : `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
     );
     if (accepted) return { accepted: true };
     if (configPath === undefined)
@@ -322,16 +327,16 @@ export function payloadReceiveFillConfirmation(params: {
         refusal: notTaken(
           new OperatorConfigError(
             "you did not accept the payload columns your partner declares it " +
-              "sends you, so the exchange stopped before any linkage key or " +
-              "data moved. Run the exchange again to be asked again, or ask " +
-              "your partner about the columns.",
+              "sends you, so the exchange stopped before sending any of your " +
+              "linkage keys or data. Run the exchange again to be asked " +
+              "again, or ask your partner about the columns.",
           ),
           delta,
         ),
       };
-    const message = messageWithOperatorText`you did not accept the payload columns your partner declares it sends you, so the exchange stopped before any linkage key or data moved and ${operatorSuppliedText(
+    const message = messageWithOperatorText`you did not accept the payload columns your partner declares it sends you, so the exchange stopped before sending any of your linkage keys or data, and no columns you receive were recorded in ${operatorSuppliedText(
       configPath,
-    )} was not changed. Run the exchange again to be asked again, or ask your partner about the columns.`;
+    )}. Run the exchange again to be asked again, or ask your partner about the columns.`;
     return {
       accepted: false,
       refusal: notTaken(

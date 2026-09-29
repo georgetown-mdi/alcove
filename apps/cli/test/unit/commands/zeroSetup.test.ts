@@ -774,11 +774,14 @@ test("handler without --save fills nothing: the one-off run takes what the partn
 
 // --- handler: the question before a one-off run takes the partner's columns --
 
-/** Drive a zero-setup run without --save on `stdin`, whose terms exchange
- * offers the partner's declared send set to the question the handler passed,
- * ending the run on a decline as core does. Reports whether it asked, the
- * prompt output, and the files the run left beside its input. */
-async function oneOffRunConfirming(stdin: Readable): Promise<{
+/** Drive a zero-setup run on `stdin`, without --save unless `save`, whose
+ * terms exchange offers the partner's declared send set to the question the
+ * handler passed, ending the run on a decline as core does. Reports whether it
+ * asked, the prompt output, and the files the run left beside its input. */
+async function oneOffRunConfirming(
+  stdin: Readable,
+  save = false,
+): Promise<{
   asked: boolean;
   stderr: string;
   outcome: PromiseSettledResult<void>;
@@ -816,6 +819,7 @@ async function oneOffRunConfirming(stdin: Readable): Promise<{
             "key-file": path.join(dir, ".alcove.key"),
             identity: "Tester",
             record: false,
+            save,
             "log-level": "silent",
           } as unknown as Arguments),
         ),
@@ -857,6 +861,20 @@ test("handler without --save at a terminal ends the run on a no, exit 64, writin
     "exit:64",
   );
   expect(written).toEqual([]);
+});
+
+test("handler with --save at a terminal asks to record the columns in the configuration it saves when the exchange completes, and a no records nothing", async () => {
+  const { asked, stderr, outcome, written } = await oneOffRunConfirming(
+    answeringTtyStream("n"),
+    true,
+  );
+  expect(asked).toBe(true);
+  expect(stderr).toContain("declare payload columns it sends you:");
+  expect(stderr).not.toContain("lists none you receive");
+  expect(stderr).toContain("in the configuration this run saves to");
+  expect(stderr).toContain("when the exchange completes");
+  expect(outcome.status).toBe("rejected");
+  expect(written).not.toContain("alcove.yaml");
 });
 
 test("handler without --save and no terminal takes the partner's columns without asking", async () => {

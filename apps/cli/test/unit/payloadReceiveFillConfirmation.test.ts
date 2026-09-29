@@ -169,14 +169,16 @@ describe("an attended first run", () => {
     expect(receivedColumns(readSpec())).toEqual(["notes", "county"]);
   });
 
-  test("declining ends the run before any key or data moves and leaves the configuration as it was", async () => {
+  test("declining ends the run before this party sends any key or data and records no receive columns", async () => {
     promptConfirmMock.mockResolvedValue(false);
     const before = fs.readFileSync(config, "utf8");
     const { aOutcome, bOutcome, bSent } = await firstRun(true);
     expect(bOutcome.status).toBe("rejected");
     const error = (bOutcome as PromiseRejectedResult).reason as Error;
     expect(error).toBeInstanceOf(OperatorConfigError);
-    expect(error.message).toMatch(/did not accept the payload columns/);
+    expect(error.message).toMatch(
+      /did not accept the payload columns .* stopped before sending any of your linkage keys or data, and no columns you receive were recorded in /,
+    );
     expect(exitCodeForError(error)).toBe(64);
     expect(classifyTerminalError(error, "prepare")).toBe("config");
     expect(buildErrorEvent(error, "prepare").termsChange).toEqual({
