@@ -22,7 +22,7 @@ A command that edits an existing `alcove.yaml` in place -- recording a pin, fill
 
 - A comment on the line of a key whose whole value is replaced is dropped with that value.
 - A line the writer lays out together with the change is rewritten with it: all of a flow collection written across several lines when the change falls inside it, or a comment the writer moves off its key's line when the change is right below.
-- The whole file is rewritten in the writer's style where the change cannot be placed within the file's own layout -- for example inside a sequence entry written with extra space after its dash -- or where the file holds more than about two thousand lines the writer would change by more than their spacing.
+- The whole file is rewritten in the writer's style where the change cannot be placed within the file's own layout -- for example inside a sequence entry written with extra space after its dash -- or where the file is too large for the line comparison, a working cap set in the code and raised on request.
 
 The "safe to commit" property protects the author of a configuration, not whoever later runs it. Never run `alcove exchange` against a configuration from an untrusted source: treat one received from a partner or pulled from a shared repository as you would treat handing over the files it references.
 

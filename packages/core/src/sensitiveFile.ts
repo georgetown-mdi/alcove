@@ -128,10 +128,10 @@ export function parseSensitiveYaml(
  * `edit` callback receives it to mutate (e.g. `setIn`) and returns nothing, so
  * a caller cannot accidentally `toJS()`/`toString()`/`JSON.stringify` it back
  * into an error elsewhere -- the one leak channel the ESLint ban cannot see (a
- * method call on a Document instance, not on the YAML namespace). Guards the syntax-error channel (doc.errors, before the edit) and
- * the deferred-alias channel (the alias shows only when toString materializes
- * the document, after the edit). An error the `edit` callback itself throws
- * propagates unchanged.
+ * method call on a Document instance, not on the YAML namespace). Guards the
+ * syntax-error channel (doc.errors, before the edit) and the deferred-alias
+ * channel (the alias shows only when toString materializes the document, after
+ * the edit). An error the `edit` callback itself throws propagates unchanged.
  */
 export function editSensitiveYamlDocument(
   source: string,

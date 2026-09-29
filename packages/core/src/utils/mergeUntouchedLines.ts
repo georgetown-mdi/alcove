@@ -7,7 +7,8 @@ interface Hunk {
   side: "source" | "edit";
 }
 
-/** The largest table the line diff fills; past it no merge is attempted. */
+/** The largest table the line diff fills; past it no merge is attempted. An
+ * arbitrary working value, raised on request. */
 const MAX_DIFF_CELLS = 4_000_000;
 
 /**
