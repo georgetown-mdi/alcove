@@ -5,9 +5,9 @@
 // through environment variables so a test can drive one binary through many
 // scenarios without a separate script per case.
 //
-// It also emulates the `probe-host-key` and `fingerprint` subcommands the
-// console spawns (self-contained branches that never touch the exchange
-// emulation).
+// It also emulates the `probe-host-key`, `fingerprint`, and `apply`
+// subcommands the console spawns (self-contained branches that never touch the
+// exchange emulation).
 //
 // Environment variables (all optional):
 //   STUB_FD3_EVENTS   JSON array of event objects to write to fd 3, in order.
@@ -33,6 +33,14 @@
 //                     document named by --config-file before the fd-3 events,
 //                     as the real first-contact adoption does (it persists the
 //                     pin and only then emits its warning).
+//   STUB_TERMS_PROPOSAL  When set, this content is written beside the document
+//                     --config-file names, as `<name>.proposed-terms`, before
+//                     the fd-3 events, as the real CLI writes a partner's
+//                     changed terms before its refusal.
+//   STUB_APPLY_STDIN_FILE  When the `apply` subcommand is invoked, the answer it
+//                     read from stdin is written to this path.
+//   STUB_APPLY_EXIT_CODE  When set, the `apply` subcommand exits with this code
+//                     and writes nothing.
 //   STUB_RECORD_JSON  When set, the record file named by --record-file is written
 //                     with this content, and its paired .keys.json alongside it
 //                     (so the record/keys routes have files). The keys path is
@@ -201,8 +209,39 @@ if (process.argv[2] === "probe-host-key") {
     }
   }
   exitAfterDelay(outcome);
+} else if (process.argv[2] === "apply") {
+  runApplyStub();
 } else {
   runExchangeStub();
+}
+
+// The `apply` subcommand the console's terms-proposal apply spawns: read the
+// answer from stdin as the real command's prompt does, and on a yes append a
+// line to the file --config-file names, standing in for the rewrite. An `@path`
+// update naming no file is the real command's usage exit. STUB_APPLY_EXIT_CODE,
+// when set, replaces the whole run with that exit -- its own variable, since
+// one child environment serves the exchange a test stages alongside it.
+function runApplyStub() {
+  const chunks = [];
+  process.stdin.on("data", (chunk) => chunks.push(chunk));
+  process.stdin.on("end", () => {
+    const answer = Buffer.concat(chunks).toString("utf8");
+    if (process.env.STUB_APPLY_STDIN_FILE !== undefined)
+      fs.writeFileSync(process.env.STUB_APPLY_STDIN_FILE, answer);
+    if (process.env.STUB_APPLY_EXIT_CODE !== undefined) {
+      exitAfterDelay(Number.parseInt(process.env.STUB_APPLY_EXIT_CODE, 10));
+      return;
+    }
+    const update = process.argv.find((token) => token.startsWith("@"));
+    if (update === undefined || !fs.existsSync(update.slice(1))) {
+      exitAfterDelay(64);
+      return;
+    }
+    const configFile = flagValue(process.argv, "--config-file");
+    if (answer.trim().toLowerCase() === "y" && configFile !== undefined)
+      fs.appendFileSync(configFile, "# applied by the stub\n");
+    exitAfterDelay(0);
+  });
 }
 
 function runExchangeStub() {
@@ -229,6 +268,17 @@ function runExchangeStub() {
       );
       fs.writeFileSync(configPath, document.toString());
     }
+  }
+
+  // The real CLI writes a partner's changed terms beside its configuration
+  // before it emits the refusal naming them, so the stub does too.
+  if (process.env.STUB_TERMS_PROPOSAL !== undefined) {
+    const configPath = separatedFlagValue(process.argv, "--config-file");
+    if (configPath !== undefined)
+      fs.writeFileSync(
+        configPath.replace(/\.yaml$/, ".proposed-terms"),
+        process.env.STUB_TERMS_PROPOSAL,
+      );
   }
 
   if (process.env.STUB_RECORD_JSON !== undefined) {

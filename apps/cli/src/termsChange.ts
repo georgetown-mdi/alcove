@@ -16,14 +16,10 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
+  termsDeltaSections,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
-import type {
-  ExchangeSpec,
-  getLogger,
-  PayloadColumnsChange,
-  TermsChange,
-} from "@alcove/core";
+import type { ExchangeSpec, getLogger, TermsChange } from "@alcove/core";
 
 import { termsUpdateWrite } from "./acceptedTermsRecords";
 import {
@@ -38,6 +34,7 @@ import {
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
 import { DEFAULT_KEY_PATH } from "./keyFile";
+import { recordTermsChangeNotTaken } from "./termsChangeNotTaken";
 import { readPartnershipSecret } from "./termsUpdateFiles";
 import { promptConfirm } from "./util/prompt";
 
@@ -67,32 +64,10 @@ function applyCommand(paths: {
   return ["alcove apply", ...flags, `@${paths.proposalPath}`].join(" ");
 }
 
-function columnLines(
-  emit: ConsentSurfaceSink,
-  label: string,
-  columns: ReadonlyArray<string>,
-): void {
-  if (columns.length === 0) return;
-  emit(`  ${label}:`);
-  for (const column of columns)
-    emit(`    ${redactAndSanitizeForDisplay(column)}`);
-}
-
-function directionLines(
-  emit: ConsentSurfaceSink,
-  change: PayloadColumnsChange | undefined,
-  labels: { added: string; removed: string },
-): void {
-  if (change === undefined) return;
-  columnLines(emit, labels.added, change.added);
-  columnLines(emit, labels.removed, change.removed);
-}
-
 /**
- * Show how the partner's terms differ from the configuration's: the columns
- * the partner sends, the columns this party sends, the partner's
- * `deduplicate`, and each other term. Every name and value is the partner's
- * and is escaped here.
+ * Show how the partner's terms differ from the configuration's, in the
+ * sections every front end shows (`termsDeltaSections`). Every name and value
+ * is the partner's and is escaped here.
  */
 export function displayTermsChange(
   emit: ConsentSurfaceSink,
@@ -104,28 +79,28 @@ export function displayTermsChange(
       operatorSuppliedText(configPath),
     )}:`,
   );
-  directionLines(emit, change.delta.received, {
-    added: "columns your partner now sends you",
-    removed: "columns your partner no longer sends you",
-  });
-  directionLines(emit, change.delta.sent, {
-    added: "columns you now send your partner (your partner decides on these)",
-    removed:
-      "columns you no longer send your partner (your partner decides on this)",
-  });
-  const deduplicate = change.delta.partnerDeduplicate;
-  if (deduplicate !== undefined)
-    emit(
-      `  your partner's deduplicate: ${String(deduplicate.expected)} -> ${String(deduplicate.presented)}`,
-    );
-  if (change.delta.otherTerms.length > 0) {
-    emit("  other terms that differ:");
-    for (const difference of change.delta.otherTerms)
-      emit(
-        `    ${redactAndSanitizeForDisplay(difference, {
-          maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-        })}`,
-      );
+  for (const section of termsDeltaSections(change.delta)) {
+    switch (section.kind) {
+      case "columns":
+        emit(`  ${section.label}:`);
+        for (const column of section.columns)
+          emit(`    ${redactAndSanitizeForDisplay(column)}`);
+        break;
+      case "partnerDeduplicate":
+        emit(
+          `  ${section.label}: ${String(section.expected)} -> ${String(section.presented)}`,
+        );
+        break;
+      case "otherTerms":
+        emit(`  ${section.label}:`);
+        for (const difference of section.differences)
+          emit(
+            `    ${redactAndSanitizeForDisplay(difference, {
+              maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+            })}`,
+          );
+        break;
+    }
   }
 }
 
@@ -145,18 +120,32 @@ const NOT_CONTINUABLE_REFUSAL =
  * paths, marked as theirs.
  */
 function proposalRefusal(
-  continuable: boolean,
+  change: TermsChange,
   paths: { configPath: string; keyPath: string; proposalPath: string },
 ): OperatorConfigError {
-  const message = messageWithOperatorText`${continuable ? UNATTENDED_REFUSAL : NOT_CONTINUABLE_REFUSAL} Your partner's terms were written to ${operatorSuppliedText(
+  const message = messageWithOperatorText`${change.continuable ? UNATTENDED_REFUSAL : NOT_CONTINUABLE_REFUSAL} Your partner's terms were written to ${operatorSuppliedText(
     paths.proposalPath,
   )}. Review and apply them, then run the exchange again:\n  ${operatorSuppliedText(
     applyCommand(paths),
   )}`;
-  return keepOperatorSuppliedText(
+  const refusal = keepOperatorSuppliedText(
     new OperatorConfigError(message.text),
     message,
   );
+  recordTermsChangeNotTaken(refusal, {
+    delta: change.delta,
+    proposalWritten: true,
+  });
+  return refusal;
+}
+
+/** `refusal`, recorded as ending its run on `change` with no proposal written. */
+function notTaken<E extends Error>(refusal: E, change: TermsChange): E {
+  recordTermsChangeNotTaken(refusal, {
+    delta: change.delta,
+    proposalWritten: false,
+  });
+  return refusal;
 }
 
 /**
@@ -224,9 +213,12 @@ export function termsChangeHandler(params: {
         const message = messageWithOperatorText`your partner's linkage terms would leave ${operatorSuppliedText(
           configPath,
         )} unable to load (its ${invalidTerm} term would be invalid), so the exchange stopped before any linkage key or data moved and the file was not changed. Ask your partner about the change.`;
-        throw keepOperatorSuppliedText(
-          new OperatorConfigError(message.text),
-          message,
+        throw notTaken(
+          keepOperatorSuppliedText(
+            new OperatorConfigError(message.text),
+            message,
+          ),
+          change,
         );
       }
       const accepted = await promptConfirm(
@@ -236,9 +228,12 @@ export function termsChangeHandler(params: {
         const message = messageWithOperatorText`you did not accept your partner's changed linkage terms, so the exchange stopped before any linkage key or data moved and ${operatorSuppliedText(
           configPath,
         )} was not changed. Run the exchange again to be asked again, or ask your partner about the change.`;
-        throw keepOperatorSuppliedText(
-          new OperatorConfigError(message.text),
-          message,
+        throw notTaken(
+          keepOperatorSuppliedText(
+            new OperatorConfigError(message.text),
+            message,
+          ),
+          change,
         );
       }
       persistTermsUpdate(configPath, write);
@@ -260,7 +255,7 @@ export function termsChangeHandler(params: {
       readPartnershipSecret(keyPath),
     );
     writeFileOwnerOnly(proposalPath, `${proposal}\n`);
-    throw proposalRefusal(change.continuable, {
+    throw proposalRefusal(change, {
       configPath,
       keyPath,
       proposalPath,

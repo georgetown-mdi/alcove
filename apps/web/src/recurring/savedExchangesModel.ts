@@ -146,12 +146,14 @@ const TOO_LARGE_ROW_REMEDY_BY_OWNER: Record<TooLargeSetOwner, string> = {
  * here; the unexplained tier displays as "needs you to check with your partner", the
  * plain lead without the checklist. `at` is the last run's phrased instant;
  * `tooLargeSetOwner` and `tooLargeBound` name whose set a too-large run's was
- * and the bound that refused it, when recorded. */
+ * and the bound that refused it, when recorded; `termsProposalStored` is
+ * whether a terms change waits on this device for the operator's decision. */
 function tierStatus(
   tier: ManagedFailureTier,
   at: string,
   tooLargeSetOwner: TooLargeSetOwner | undefined,
   tooLargeBound: TooLargeBound | undefined,
+  termsProposalStored: boolean,
 ): string {
   switch (tier) {
     case "expired":
@@ -170,6 +172,10 @@ function tierStatus(
         `file ${tooLargeFileProblem(tooLargeBound)} (${at}); ` +
         TOO_LARGE_ROW_REMEDY_BY_OWNER[tooLargeSetOwner]
       );
+    case "terms-change":
+      return termsProposalStored
+        ? `Your partner's terms changed (${at}); apply or decline the change`
+        : `Your partner's terms changed (${at}); the change was declined, run again to review it`;
     case "handed-off":
       // The row already names the hand-off and its date beside this line, so the
       // status says what the run did rather than repeating the state.
@@ -262,6 +268,7 @@ function lastRunStatus(
     at,
     record.lastRun?.tooLargeSetOwner,
     record.lastRun?.tooLargeBound,
+    local?.termsProposal !== undefined,
   );
 }
 

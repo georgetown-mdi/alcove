@@ -70,7 +70,7 @@ function failed(
 
 /** The in-app alert's title for a tier, which the notification's title holds to. */
 function alertTitle(tier: ManagedFailureTier): string {
-  const failure = managedRunTierFailure(tier, record());
+  const failure = managedRunTierFailure(tier, record(), undefined);
   if (!("title" in failure))
     throw new Error(`the ${tier} tier has no alert title`);
   return failure.title;
@@ -368,7 +368,11 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
       disposition: "failed",
       now: NOW,
     });
-    const alert = managedRunTierFailure("too-large", record({ lastRun }));
+    const alert = managedRunTierFailure(
+      "too-large",
+      record({ lastRun }),
+      undefined,
+    );
     if (!("title" in alert)) throw new Error("expected the too-large alert");
 
     expect(notice?.kind).toBe("too-large");
@@ -392,7 +396,11 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
       disposition: "failed",
       now: NOW,
     });
-    const alert = managedRunTierFailure("too-large", record({ lastRun }));
+    const alert = managedRunTierFailure(
+      "too-large",
+      record({ lastRun }),
+      undefined,
+    );
     if (!("title" in alert)) throw new Error("expected the too-large alert");
 
     expect(notice?.kind).toBe("too-large");
@@ -650,5 +658,34 @@ describe("betweenVisitNotice: a missed window after an interrupted key exchange"
     });
 
     expect(notice?.kind).toBe("missed");
+  });
+});
+
+describe("betweenVisitNotice: a partner terms change the run did not take on", () => {
+  const stored: ManagedLocalState = {
+    termsProposal: {
+      proposedAt: RUN_AT,
+      partnerTerms: getDefaultLinkageTerms("Agency A"),
+      delta: { received: { added: ["county"], removed: [] }, otherTerms: [] },
+    },
+  };
+  const notice = (local: ManagedLocalState | undefined) =>
+    betweenVisitNotice({
+      record: record({ lastRun: failed("terms-change") }),
+      local,
+      caughtUpMisses: 0,
+      disposition: "failed",
+      now: NOW,
+    });
+
+  test("with a proposal stored, asks the operator to apply or decline it", () => {
+    expect(notice(stored)?.kind).toBe("terms-change");
+    expect(notice(stored)?.body).toContain("apply or decline it");
+  });
+
+  test("with none stored, says the change was declined and names no apply", () => {
+    expect(notice(undefined)?.kind).toBe("terms-change");
+    expect(notice(undefined)?.body).toContain("the change was declined");
+    expect(notice(undefined)?.body).not.toMatch(/apply/i);
   });
 });

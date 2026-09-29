@@ -186,6 +186,7 @@ The failure **terminal event**. Emitted exactly once, for an organic (non-signal
 | `message` | string | Display-safe error text, the same rendering stderr receives (see [Sanitization](#sanitization)). |
 | `recoveryHint` | optional boolean | Present as `true` only, absent otherwise (see [The self-explaining marker](#the-self-explaining-marker)). |
 | `internalFault` | optional boolean | Present as `true` only, on exactly the failures the CLI exits 70; absent otherwise (see [The internal-fault code](#the-internal-fault-code)). |
+| `termsChange` | optional object | Present only on a run that ended on a partner terms change it did not take on; absent otherwise (see [A partner terms change the run did not take on](#a-partner-terms-change-the-run-did-not-take-on)). |
 
 ```json
 {"v":1,"type":"error","category":"security","message":"key exchange authentication failed"}
@@ -219,6 +220,18 @@ The `config` rule keys on the type alone, where the web's alert classification a
 ### A partner terms change the run did not take on
 
 When the partner's linkage terms differ from this party's at the terms exchange and `alcove exchange` does not take them on -- the operator declined at the prompt, the run had no terminal on stdin, or the change reaches terms the run's input was prepared under -- the run ends with `category: "config"` and exits `EX_USAGE` (64), before any linkage key or data moves ([CLI.md](../CLI.md#when-your-partners-terms-change)). The terminal error is an `OperatorConfigError` whose message holds fixed text and this party's own paths: the configuration, its key file, and the proposal file the run wrote beside the configuration, inside the `alcove apply` command that applies it. The change itself -- the partner's column names and the other terms that differ -- is shown on the operator log before the event, escaped, and never in the event's `message`. The partner's run ends with a partner abort at the terms exchange, `category: "exchange"` and exit 76.
+
+The event's `termsChange` object states the same change for a supervisor that reads fd 3 alone. It is present on this refusal and on a terms-exchange refusal core raised before the run could offer the change at all (the partner's terms would not make a valid document, or would still differ once taken on), which is `category: "exchange"` and exit 76:
+
+| Field | Type | Meaning |
+| ----- | ---- | ------- |
+| `proposalWritten` | boolean | `true` where the run wrote the partner's terms beside the configuration for `alcove apply`, `false` where it wrote nothing. |
+| `received` | optional `{ "added": [string], "removed": [string] }` | The columns the partner now sends, and no longer sends, against the columns this party receives; absent where the two agree. |
+| `sent` | optional `{ "added": [string], "removed": [string] }` | The columns this party sends against the columns the partner receives, the partner's to decide; absent where the two agree. |
+| `partnerDeduplicate` | optional `{ "expected": boolean, "presented": boolean }` | The partner's `deduplicate` against the value this party holds it to; absent where they agree. |
+| `otherTerms` | array of string | The diagnostic for each other term that differs. |
+
+These are the parts of core's `TermsDelta` ([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)). Each column name and diagnostic is partner-chosen and escaped at construction as the operator log's display of the same change escapes it: a column name under the per-value cap, a diagnostic under the warning cap. The object names no path.
 
 The `output` category covers the whole stage, so it is broader than the exit code that usually accompanies it. The run exits `EX_CANTCREAT` (73) when the loss is the result file failing to reach disk -- the local write the code names, and the terminal counterpart of a [persistence loss](#persistence-loss). A result streamed to stdout takes the same code on the same ground: the run gives the reader as long as it keeps taking the result and gives up **60 s** after the last of it that left the process, so a reader that stopped -- or that closed the pipe, which fails the write outright -- leaves the result undelivered, and that run fails with this category rather than reporting a `result` a supervisor would read as delivery. The bound is on the stall and not on the transfer: a reader consuming a multi-megabyte result in small reads holds the run open for as long as it needs. The exchange record and the receipt are written before that failure is raised, the disclosure having occurred whatever became of the result. It exits `EX_PROTOCOL` (76) for the other faults of that stage, which are not local write failures: a partner payload that does not fit the shape the association table requires (duplicate or missing partner row indices) is refused while building the table, and 73 would tell an operator to go looking on their own disk for something that is not there.
 

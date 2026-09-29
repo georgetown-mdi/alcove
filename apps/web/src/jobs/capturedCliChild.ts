@@ -6,12 +6,13 @@ import type { ChildProcess } from "node:child_process";
 
 /**
  * The one spawn boundary the console's short-lived CLI drivers cross: the
- * host-key probe ({@link ./sftpProbe}) and the signing-identity fingerprint
- * ({@link ./signingIdentity}). Each is a request-scoped child that prints a
- * single line and exits, so both need the same three controls -- a no-shell argv
+ * host-key probe ({@link ./sftpProbe}), the signing-identity fingerprint
+ * ({@link ./signingIdentity}), and the terms-proposal apply
+ * ({@link ./termsProposal}). Each is a request-scoped child that prints at most a
+ * single line and exits, so all need the same three controls -- a no-shell argv
  * array, a capped stdout read, and a watchdog that bounds the child's lifetime
- * -- and both are reached from an unauthenticated loopback endpoint. Holding them
- * once is what keeps the two from drifting apart: a caller contributes only its
+ * -- and each is reached from an unauthenticated loopback endpoint. Holding them
+ * once is what keeps them from drifting apart: a caller contributes only its
  * argv, its own timeouts, and its own mapping from an outcome to a typed result.
  * The watchdog bounds the child, not the endpoint's latency: settling waits for
  * the stdio pipes to close, so a child that handed its stdout to a longer-lived
@@ -61,11 +62,16 @@ type CapturedChildOutcome =
  *
  * `cwd` is omitted to inherit the server's working directory; a caller resolving
  * paths relative to it pins its own and creates it first.
+ *
+ * `stdin` is written to the child's standard input, which is then closed: the
+ * answer to a question the child asks there, for a caller whose operator gave
+ * that answer on the console. Omitted, the child's stdin is ignored.
  */
 export function runCapturedCliChild(args: {
   argv: Array<string>;
   cwd?: string;
   childEnv?: NodeJS.ProcessEnv;
+  stdin?: string;
   sigtermMs: number;
   sigkillGraceMs: number;
 }): Promise<CapturedChildOutcome> {
@@ -74,13 +80,19 @@ export function runCapturedCliChild(args: {
     try {
       child = spawn(process.execPath, args.argv, {
         ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [args.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
         shell: false,
         env: { ...sanitizedChildEnv(), ...args.childEnv },
       });
     } catch {
       resolve({ kind: "spawnFailed" });
       return;
+    }
+    if (args.stdin !== undefined && child.stdin !== null) {
+      // A child that exits before reading closes the pipe under the write; its
+      // exit code is what reports the run, so the write's own error is dropped.
+      child.stdin.on("error", () => {});
+      child.stdin.end(args.stdin);
     }
 
     let stdout = "";

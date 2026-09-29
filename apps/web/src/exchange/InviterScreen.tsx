@@ -715,6 +715,15 @@ export function InviterScreen() {
     goTo("review");
   }
 
+  // After the partner's changed terms were applied to the mounted
+  // configuration: start over, then open the configuration again, so the
+  // draft takes the terms the file now holds and the next run is composed
+  // from them rather than from the terms this run was refused under.
+  function reviewAppliedTerms() {
+    startOver();
+    void openMountedConfiguration();
+  }
+
   // Deposit a managed-exchange record for this exchange as the inviter: the
   // standing terms plus the secret embedded in the just-minted invitation, so the
   // partnership can run again later. The connection block is composed from this
@@ -1832,6 +1841,7 @@ export function InviterScreen() {
               reattaching={reattaching}
               onTryAgain={tryAgain}
               onStartOver={startOver}
+              onReviewAppliedTerms={reviewAppliedTerms}
               onAbandon={abandonRun}
             />
             {/* The manage offer is webrtc-only (its record composes a webrtc

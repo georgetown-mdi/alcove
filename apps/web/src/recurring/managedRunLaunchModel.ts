@@ -17,6 +17,7 @@ import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
+  TERMS_CHANGE_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
   TOO_LARGE_REMEDY,
   TOO_LARGE_REMEDY_BY_OWNER,
@@ -125,6 +126,7 @@ export interface ManagedRunFailureAlert {
     | "terms-shortfall"
     | "consent"
     | "too-large"
+    | "terms-change"
     | "custody-unreadable"
     | "already-running"
     | "missed"
@@ -381,6 +383,54 @@ const TERMS_SHORTFALL_FAILURE: ManagedRunFailureAlert = {
   recovery: "restate",
 };
 
+/** The benign terms-change state with a proposal stored for the exchange: the
+ * partner's linkage terms changed, the run did not take them on, and the
+ * change waits on this device for the operator's decision. Its copy claims
+ * nothing about what this run sent: the terms exchange that meets the change
+ * runs past the data-exchange boundary this model gates such claims on. Not
+ * the retry state -- the same terms refuse identically -- and its way forward
+ * is the run surface's own terms-change panel, so the alert offers no
+ * recovery of its own. */
+export const TERMS_CHANGE_FAILURE: ManagedRunFailureAlert = {
+  kind: "terms-change",
+  title: TERMS_CHANGE_FAILURE_TITLE,
+  message:
+    "Your partner's linkage terms changed since this exchange last ran, and " +
+    "this run did not take them on. Running it again stops the same way " +
+    "until you apply the change to this exchange or your partner goes back " +
+    "to the terms you agreed.",
+  recovery: "none",
+};
+
+/** The benign terms-change state with no proposal stored: the operator
+ * declined the change, at the question or on the panel, or the proposal could
+ * not be kept. No change waits to be applied, and the next run the operator
+ * starts asks about the change again, so running again is the way forward. */
+export const TERMS_CHANGE_DECLINED_FAILURE: ManagedRunFailureAlert = {
+  kind: "terms-change",
+  title: TERMS_CHANGE_FAILURE_TITLE,
+  message:
+    "Your partner's linkage terms changed since this exchange last ran, and " +
+    "the change was declined, so this exchange was not changed. Run the " +
+    "exchange again to see the change and accept or decline it.",
+  recovery: "retry",
+};
+
+/** The state after the operator accepted the partner's changed terms that this
+ * run could not continue under: the stored exchange holds them, and the next
+ * run exchanges under them. Retryable in place: running again is the whole of
+ * the way forward. */
+export const TERMS_CHANGE_TAKEN_ON_FAILURE: ManagedRunFailureAlert = {
+  kind: "terms-change",
+  title: "Run the exchange again",
+  message:
+    "Your partner's changed linkage terms were saved to this exchange. They " +
+    "change terms this run was prepared under, so it stopped before any " +
+    "linkage key or data moved. Run the exchange again to exchange under the " +
+    "new terms.",
+  recovery: "retry",
+};
+
 /** The shortfall state for an input whose whole header read as ONE column: the
  * shape a file separated by something other than the delimiter this exchange
  * reads it by comes out as ({@link ../psi/managed/managedInputGuard.ts}). The
@@ -575,8 +625,9 @@ const UNEXPLAINED_FAILURE: ManagedRunFailureAlert = {
 /** The surface state for a derived failure tier. The expired tier reads
  * `record.expires` to name the lapsed instant; the shortfall tier reads the
  * stamp's own `singleColumnInput` to choose between the delimiter remedy and
- * the agreed-keys copy; the transport, missed, and none tiers map to the
- * generic transport copy.
+ * the agreed-keys copy; the terms-change tier reads whether `local` holds a
+ * terms proposal; the transport, missed, and none tiers map to the generic
+ * transport copy.
  *
  * The missed tier does not use the no-show copy: that copy attests nothing left
  * this device for THIS failure, while a recorded `"missed"` outcome belongs to
@@ -591,6 +642,7 @@ const UNEXPLAINED_FAILURE: ManagedRunFailureAlert = {
 export function managedRunTierFailure(
   tier: ManagedFailureTier,
   record: ManagedExchangeRecord,
+  local: ManagedLocalState | undefined,
 ): ManagedRunFailure {
   switch (tier) {
     case "expired":
@@ -609,6 +661,10 @@ export function managedRunTierFailure(
         : TERMS_SHORTFALL_FAILURE;
     case "consent":
       return CONSENT_FAILURE;
+    case "terms-change":
+      return local?.termsProposal !== undefined
+        ? TERMS_CHANGE_FAILURE
+        : TERMS_CHANGE_DECLINED_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(
         record.lastRun?.tooLargeSetOwner,
@@ -675,7 +731,7 @@ function missedFailure(
 ): ManagedRunFailure {
   const tier = deriveManagedFailureTier(atLaunch, local, now);
   if (MISSED_OUTRANKED_BY.includes(tier))
-    return managedRunTierFailure(tier, atLaunch);
+    return managedRunTierFailure(tier, atLaunch, local);
   if (importedSinceLastSuccess(local)) return IMPORTED_FAILURE;
   if (rotationInFlightUnansweredAtLaunch(atLaunch))
     return PARTIAL_ROTATION_FAILURE;
@@ -726,6 +782,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   consent: "alert-copy",
   "terms-shortfall": "alert-copy",
   "too-large": "none",
+  "terms-change": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -792,6 +849,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "terms-shortfall": "withheld",
   consent: "withheld",
   "too-large": "withheld",
+  "terms-change": "withheld",
   "already-running": "withheld",
   missed: "withheld",
   storage: "withheld",
@@ -929,6 +987,7 @@ function classifyLaunchState(
   return managedRunTierFailure(
     dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier,
     afterRun,
+    local,
   );
 }
 
@@ -947,7 +1006,7 @@ export function managedRunFailureFromRecord(
 ): ManagedRunFailure | undefined {
   const tier = deriveManagedFailureTier(record, local, now);
   if (tier === "none" || tier === "missed") return undefined;
-  return managedRunTierFailure(tier, record);
+  return managedRunTierFailure(tier, record, local);
 }
 
 /** Whether a classified failure is retryable in place: the input and transport

@@ -401,6 +401,8 @@ export {
   TermsChangeRefusedError,
 } from "./protocolSetup";
 export type { TermsChange } from "./protocolSetup";
+export { termsDeltaSections } from "./termsDeltaDisplay";
+export type { TermsDeltaSection } from "./termsDeltaDisplay";
 export type {
   CountOnlyShapeViolation,
   ResolvedMatching,

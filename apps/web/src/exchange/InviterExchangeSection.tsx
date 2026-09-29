@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@mantine/core";
 
@@ -7,6 +7,7 @@ import { describeResolvedMatching } from "@alcove/core";
 import { dateTimeLabel, invitationUsable } from "@psi/formatting";
 import { OPENED_EXCHANGE_CONTINUES } from "@console/mountedConfiguration";
 import { RecurringHandoff } from "@recurring/RecurringHandoff";
+import { TermsChangeRecovery } from "@console/TermsChangeRecovery";
 import styles from "@styles/app.module.css";
 
 import { awaitingPartner } from "./exchangeRun";
@@ -65,6 +66,7 @@ export function InviterExchangeSection({
   reattaching,
   onTryAgain,
   onStartOver,
+  onReviewAppliedTerms,
   onAbandon,
 }: {
   invitation: GeneratedInvitation;
@@ -117,6 +119,10 @@ export function InviterExchangeSection({
   reattaching: boolean;
   onTryAgain: () => void;
   onStartOver: () => void;
+  /** Leave a run whose partner's changed terms were applied to the mounted
+   * configuration for Review & create, with that configuration opened again
+   * so the next run is composed from the terms it now holds. */
+  onReviewAppliedTerms: () => void;
   /** Discard the current server-job exchange (cancel-if-running + DELETE), fired
    * as the operator leaves for a fresh exchange from the completion workfoot, so
    * the console's single slot frees for the next one. A no-op on a browser run
@@ -173,8 +179,19 @@ export function InviterExchangeSection({
   // Every non-retryable failure except output (whose exchange already succeeded, so
   // nothing here may invite a re-run) offers exactly one recovery: a fresh invitation
   // via start-over, back to Review & create with every input intact.
+  //
+  // Once the partner's changed terms are applied to the mounted configuration,
+  // the terms-change recovery's own control is the way forward: starting over
+  // without reopening the file would run the terms it no longer holds.
+  const [termsApplied, setTermsApplied] = useState(false);
+  useEffect(() => {
+    setTermsApplied(false);
+  }, [failure]);
   const offersStartOver =
-    !retryable && failure !== undefined && failure.category !== "output";
+    !retryable &&
+    !termsApplied &&
+    failure !== undefined &&
+    failure.category !== "output";
 
   // The phase-level focus throughline. The console host moves focus to the h1
   // when the section mounts; within the section, focus moves again when the
@@ -233,6 +250,15 @@ export function InviterExchangeSection({
       />
       {failure !== undefined && (
         <FailureAlert failure={failure}>
+          {failure.termsChange !== undefined && (
+            <TermsChangeRecovery
+              termsChange={failure.termsChange}
+              jobId={jobId}
+              canApply={serverJob && continuesOpenedExchange}
+              onApplied={() => setTermsApplied(true)}
+              onReviewApplied={onReviewAppliedTerms}
+            />
+          )}
           {retryable && (
             <FailureRecoveryButton
               label="Try again"

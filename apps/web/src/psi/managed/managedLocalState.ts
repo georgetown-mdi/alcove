@@ -21,6 +21,8 @@
  *   so its writers are the cross-store steps in
  *   {@link ./managedExchangeStore.ts} (`spendManagedExchangeIfCurrent` and
  *   `retakeHandedOffManagedExchange`).
+ * - The terms proposal is a partner terms change an unattended run refused,
+ *   pending the operator's decision on this device ({@link ./managedTermsProposal.ts}).
  *
  * This is the thin IndexedDB layer over the sibling store the records database also
  * holds ({@link MANAGED_EXCHANGE_LOCAL_STORE_NAME}); the state's shape and its
@@ -40,12 +42,14 @@ import {
 } from "./managedExchangeStore";
 import {
   managedLocalStateSchema,
+  managedTermsProposalSchema,
   partitionReadableManagedLocalState,
 } from "./managedLocalStateShape";
 
 import type {
   ManagedLocalState,
   ManagedReadableLocalState,
+  ManagedTermsProposal,
 } from "./managedLocalStateShape";
 
 export type {
@@ -55,6 +59,7 @@ export type {
   ManagedSpendOutcome,
   ManagedSpentHandoff,
   ManagedSpentState,
+  ManagedTermsProposal,
 } from "./managedLocalStateShape";
 
 /** Run `work` inside a transaction over the local-state store, resolving on the
@@ -291,4 +296,34 @@ export async function markManagedExchangeKeyImported(
     ...current,
     imported: { importedAt: at },
   }));
+}
+
+/**
+ * Keep the partner terms change an unattended run refused, for the next
+ * visit to apply or decline, replacing any earlier one: the latest refusal
+ * states the partner's current terms.
+ */
+export async function recordManagedExchangeTermsProposal(
+  id: string,
+  proposal: ManagedTermsProposal,
+): Promise<void> {
+  const termsProposal = managedTermsProposalSchema.parse(proposal);
+  await readModifyWriteLocalState(id, (current) => ({
+    ...current,
+    termsProposal,
+  }));
+}
+
+/**
+ * Drop the pending terms proposal for a record, leaving every other sibling
+ * marker as it is: the operator applied or declined it, or a later run agreed
+ * terms with the partner and so has nothing left to take on.
+ */
+export async function clearManagedExchangeTermsProposal(
+  id: string,
+): Promise<void> {
+  await readModifyWriteLocalState(id, (current) => {
+    const { termsProposal: _cleared, ...rest } = current ?? {};
+    return Object.keys(rest).length === 0 ? null : rest;
+  });
 }

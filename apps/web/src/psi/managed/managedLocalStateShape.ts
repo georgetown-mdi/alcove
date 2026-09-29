@@ -14,6 +14,13 @@
 
 import { z } from "zod";
 
+import { LinkageTermsSchema } from "@alcove/core";
+
+import type {
+  LinkageTerms,
+  PartnerDeduplicateChange,
+  PayloadColumnsChange,
+} from "@alcove/core";
 import type { ManagedBackupMarker } from "./managedBackupState";
 import type { ZodType } from "zod";
 
@@ -69,9 +76,36 @@ export interface ManagedImportMarker {
   importedAt: string;
 }
 
+/** One direction's changed payload columns, as a stored terms proposal keeps
+ * them. */
+export type ManagedStoredColumnsChange = PayloadColumnsChange;
+
+/**
+ * The partner terms change an unattended run refused, kept for the operator's
+ * next visit to apply or decline: when the run met it, the partner's terms as
+ * they crossed the wire, and how they differ from the stored exchange's
+ * (core's `TermsDelta`, each part present where it differs). It holds the
+ * partner's column names and diagnostics raw, as the run received them; the
+ * run surface escapes them where it shows them. A local sibling rather than a
+ * record field: it is this device's pending decision, not a term of the
+ * partnership, and an older build reading a record that held it would drop it.
+ */
+export interface ManagedTermsProposal {
+  /** ISO 8601 UTC instant the run refused the change. */
+  proposedAt: string;
+  partnerTerms: LinkageTerms;
+  delta: {
+    received?: ManagedStoredColumnsChange;
+    sent?: ManagedStoredColumnsChange;
+    partnerDeduplicate?: PartnerDeduplicateChange;
+    otherTerms: Array<string>;
+  };
+}
+
 /** The local sibling state for a record: the optional backup marker, the optional
- * spent state, and the optional import marker, each present independently. An entry
- * with none is meaningless and never written (a cleared state deletes the entry). */
+ * spent state, the optional import marker, and the optional terms proposal, each
+ * present independently. An entry with none is meaningless and never written (a
+ * cleared state deletes the entry). */
 export interface ManagedLocalState {
   /** When a backup was last taken (see {@link ManagedBackupMarker}); absent until
    * the first export. */
@@ -83,12 +117,46 @@ export interface ManagedLocalState {
    * from a command-line hand-off (see {@link ManagedImportMarker}); absent for a
    * record created by an invite/accept deposit and neither imported nor taken back. */
   imported?: ManagedImportMarker;
+  /** The partner terms change the last unattended run refused (see
+   * {@link ManagedTermsProposal}); absent when none is pending. */
+  termsProposal?: ManagedTermsProposal;
 }
 
-/** The sibling-state validator: reader-rejects-unknown at every level, so a
- * corrupted or app-upgrade-invalidated entry rejects rather than loading. */
+const storedColumnsChangeSchema: ZodType<ManagedStoredColumnsChange> = z
+  .object({ added: z.array(z.string()), removed: z.array(z.string()) })
+  .strict();
+
+/** The terms proposal's own validator, reader-rejects-unknown like the rest of
+ * the entry. A write validates the proposal with it before storing it. */
+export const managedTermsProposalSchema: ZodType<ManagedTermsProposal> = z
+  .object({
+    proposedAt: z.iso.datetime(),
+    partnerTerms: LinkageTermsSchema,
+    delta: z
+      .object({
+        received: storedColumnsChangeSchema.optional(),
+        sent: storedColumnsChangeSchema.optional(),
+        partnerDeduplicate: z
+          .object({ expected: z.boolean(), presented: z.boolean() })
+          .strict()
+          .optional(),
+        otherTerms: z.array(z.string()),
+      })
+      .strict(),
+  })
+  .strict();
+
+/**
+ * The sibling-state validator: reader-rejects-unknown at every level, so a
+ * corrupted or app-upgrade-invalidated entry rejects rather than loading. The
+ * one exception is the terms proposal, validated on its own: one that does
+ * not parse is dropped and the entry loads without it, so a proposal core's
+ * terms schema no longer accepts cannot take the backup, spent, and import
+ * markers down with it.
+ */
 export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
   .object({
+    termsProposal: z.unknown().optional(),
     backup: z.object({ backedUpAt: z.iso.datetime() }).strict().optional(),
     spent: z
       .object({
@@ -99,12 +167,20 @@ export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
       .optional(),
     imported: z.object({ importedAt: z.iso.datetime() }).strict().optional(),
   })
-  .strict();
+  .strict()
+  .transform(({ termsProposal, ...markers }): ManagedLocalState => {
+    if (termsProposal === undefined) return markers;
+    const proposal = managedTermsProposalSchema.safeParse(termsProposal);
+    return proposal.success
+      ? { ...markers, termsProposal: proposal.data }
+      : markers;
+  });
 
 /**
  * Parse and validate a value read from the sibling store as a
  * {@link ManagedLocalState}. Throws on an unknown key or a malformed instant rather
- * than silently accepting -- the reader-rejects-unknown rule.
+ * than silently accepting -- the reader-rejects-unknown rule -- except inside the
+ * terms proposal, which is dropped instead ({@link managedLocalStateSchema}).
  *
  * @throws {ZodError} if the value is not valid local state.
  */
