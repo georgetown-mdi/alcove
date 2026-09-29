@@ -294,9 +294,10 @@ often a window opens, and how long it stays open. Scheduling is off until
 someone enters one, and turning it off again returns the exchange to
 attended-only without touching anything else. The schedule is
 **not** minted into the exchange-file document and **not** part of the
-invitation wire: the document is the shared terms-and-locator config, fixed for
-the partnership -- changing the terms means setting up a new exchange, not
-altering this one -- and a reschedule is neither a terms change nor a credential,
+invitation wire: the document is the shared terms-and-locator config, whose
+terms change only through a terms change both parties review (see [What the
+setup consent covers across runs](#what-the-setup-consent-covers-across-runs)),
+and a reschedule is neither a terms change nor a credential,
 so the schedule is a local record field instead (the
 `schedule` object; see
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object)).
@@ -1687,21 +1688,26 @@ design.
 ## What the setup consent covers across runs
 
 A managed exchange runs again on an agreement made once. The linkage terms and
-the columns each side discloses are decided at setup and then **fixed for the
-partnership** -- they are not edited in place, and changing them from this side
-means setting up a new exchange rather than altering this one (see [Where the
-schedule is agreed, and where it lives](#where-the-schedule-is-agreed-and-where-it-lives)).
-The one way they change is a change the partner makes, which this party
-accepts or declines when a run meets it (see [When your partner's terms
-change](#when-your-partners-terms-change)).
-A scheduled or unattended run therefore presents nothing new to review, because
-nothing about what is disclosed has changed: the same document, run against
-whatever the standing input file holds this period (see [The input file each
-run](#the-input-file-each-run)). The consent given at setup is what authorizes
-every later run, and it keeps authorizing them because the terms it named
-cannot be widened without a new exchange. What would need a fresh agreement --
-different linkage columns, a different disclosed payload set, a different
-partner -- is exactly what a managed exchange cannot be edited into. Agreeing
+the columns each side discloses are decided at setup, and change afterwards
+only in two ways, each of which the other party reviews before a run proceeds
+under it:
+
+- **This party changes the columns it sends**, and tells its partner with a
+  terms update (see [Changing the terms of a saved
+  exchange](#changing-the-terms-of-a-saved-exchange)).
+- **The partner changes its terms**, and this party answers the change when a
+  run meets it (see [When your partner's terms
+  change](#when-your-partners-terms-change)).
+
+A scheduled or unattended run therefore presents nothing new to review: it runs
+the stored document against whatever the standing input file holds this period
+(see [The input file each run](#the-input-file-each-run)), and a partner whose
+terms differ from that document stops it before any linkage key or data moves.
+The consent given at setup is what authorizes every later run, and a change to
+what is disclosed reaches each party as a change it accepts or declines. A
+different partner, or linkage terms this app does not edit, still take a new
+exchange (see [Where the schedule is agreed, and where it
+lives](#where-the-schedule-is-agreed-and-where-it-lives)). Agreeing
 or changing a cadence is not in that class (a schedule is neither a term nor a
 credential), and neither are this party's own local acts: pausing, deleting,
 migrating the exchange to another device, dropping the next extract in the
@@ -1759,6 +1765,37 @@ permits impersonation until the partnership rotates past it (see the
 that fails cannot by itself say whether the two sides drifted apart or someone
 is attacking the exchange (see [Telling a desync from an
 attack](#telling-a-desync-from-an-attack)).
+
+### Changing the terms of a saved exchange
+
+The exchange's page has a **Change terms** section, offered once the exchange
+holds its shared secret. It does for a saved exchange what `alcove update` does
+for a command-line configuration (see
+[CLI.md](CLI.md#changing-the-terms-of-an-established-partnership)).
+
+- **Columns you send.** Where the terms send your partner columns for matched
+  records, each of your own payload columns has a checkbox. Columns used to
+  match, or as the record identifier, are listed but change only with the
+  linkage terms. **Save columns** changes the stored exchange: the next run
+  sends the chosen columns and states them in its terms. It is refused while a
+  run of the exchange is in progress.
+- **Send a terms update.** **Make a terms update** makes the same update
+  `alcove update` prints for a configuration holding these terms: your linkage
+  terms and the names of the columns you send, authenticated under the
+  exchange's shared secret, with no secret, credential, or connection detail in
+  it. Copy it, as you copy an invitation code, and send it to a partner on the
+  command line over any channel that delivers it unchanged; they apply it with
+  `alcove apply`. Every run between you replaces the secret it was made under,
+  so an update not applied before the next run is refused and has to be made
+  again. It is not offered once the exchange's secret has expired, or where its
+  terms name no identity for you.
+
+This app does not apply a terms update: a partner using it takes on your
+change at their next run instead, as in [When your partner's terms
+change](#when-your-partners-terms-change) -- an attended run asks them, and a
+scheduled one stops and keeps the change for them to apply. The same holds for
+a command-line partner who has not applied your update.
+How each write is stored: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#a-terms-update).
 
 ### When your partner's terms change
 

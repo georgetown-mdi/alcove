@@ -8,8 +8,9 @@
  *
  * Holds this party's exchange-file document verbatim (no `authentication`
  * block), the one at-rest secret, and a small set of local-only fields; never
- * input content or a row value. The document is fixed for the partnership --
- * only `label`, `schedule`, and `tokenMaxAgeDays` update in place.
+ * input content or a row value. The document's terms change only as a
+ * partner's terms change is taken on and as this party chooses the columns it
+ * sends; the local fields beside it update in place.
  *
  * A record may hold no secret. A record without one is a CONFIGURATION ONLY --
  * settings to edit and export, running nowhere here -- and
@@ -27,15 +28,18 @@ import {
   connectionFromLocator,
   deriveAcceptedLinkageTerms,
   maxCodeUnits,
+  termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
 import { z } from "zod";
 
+import { applyDisclosure } from "../metadataEditing";
 import { tokenMaxAgeDaysSchema } from "../tokenMaxAge";
 
 import { deriveEditedExpiry } from "./managedTokenAgeEdit";
 
 import type {
+  ColumnMetadata,
   ConnectionConfig,
   ExchangeSpec,
   LinkageTerms,
@@ -1112,6 +1116,84 @@ export function applyManagedExchangeTermsChange(
   if (write.scope === "apply" && record.lastRun?.failureKind === "terms-change")
     delete next.lastRun;
   return parseManagedExchangeRecord(next);
+}
+
+/**
+ * Whether the operator can choose which of this party's own columns an
+ * exchange sends: the document declares its columns (`metadata`), and its
+ * terms send the partner payload columns at all -- not a count-only exchange,
+ * and not one whose `output` gives the partner no result.
+ */
+export function managedSentColumnsEditable(
+  exchangeFile: ExchangeSpec,
+): boolean {
+  const { algorithm, output } = exchangeFile.linkageTerms;
+  return (
+    exchangeFile.metadata !== undefined &&
+    algorithm !== "psi-c" &&
+    output.shareWithPartner
+  );
+}
+
+/**
+ * Whether a declared column's send choice is the operator's to change here: a
+ * column that only carries payload, or is ignored. A column used to match or
+ * as the record identifier changes with the linkage terms, not here.
+ */
+export function sentColumnChoiceOffered(column: ColumnMetadata): boolean {
+  return column.role === "payload" || column.role === "ignored";
+}
+
+/**
+ * Set which of the record's offered columns ({@link sentColumnChoiceOffered})
+ * are sent to the partner: each named in `sent` is sent, each other one is
+ * not, and every other column is left as it is. The terms' `payload.send` is
+ * restated from the edited metadata (`termsStatingDeclaredPayloadSend`), so
+ * the next run and a terms update state the new set. The connection, secret,
+ * and bookkeeping are untouched; the input record is not mutated.
+ *
+ * @throws {UsageError} where the exchange offers no column choice
+ *   ({@link managedSentColumnsEditable}) or `sent` names a column it does not
+ *   offer.
+ * @throws {ZodError} if the resulting record is invalid.
+ */
+export function applyManagedExchangeSentColumns(
+  record: ManagedExchangeRecord,
+  sent: ReadonlyArray<string>,
+): ManagedExchangeRecord {
+  const current = record.exchangeFile;
+  if (!managedSentColumnsEditable(current) || current.metadata === undefined)
+    throw new UsageError(
+      "this exchange's terms send your partner no columns, so there is no " +
+        "column choice to change",
+    );
+  const offered = new Set(
+    current.metadata
+      .filter(sentColumnChoiceOffered)
+      .map((column) => column.name),
+  );
+  if (sent.some((name) => !offered.has(name)))
+    throw new UsageError(
+      "a column chosen to send is not one of this exchange's own payload " +
+        "columns; reload the page and choose again",
+    );
+  const chosen = new Set(sent);
+  const metadata = current.metadata.map((column) =>
+    sentColumnChoiceOffered(column)
+      ? applyDisclosure(column, chosen.has(column.name) ? "payload" : "ignored")
+      : column,
+  );
+  return parseManagedExchangeRecord({
+    ...record,
+    exchangeFile: {
+      ...current,
+      metadata,
+      linkageTerms: termsStatingDeclaredPayloadSend(
+        current.linkageTerms,
+        metadata,
+      ),
+    },
+  });
 }
 
 /**

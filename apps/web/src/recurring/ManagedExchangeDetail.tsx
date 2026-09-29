@@ -17,6 +17,7 @@ import {
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
 } from "@psi/managed/managedWorkingDirectory";
+import { runnableManagedExchange } from "@psi/managed/managedExchangeRecord";
 
 import { DisclosureSection } from "@components/DisclosureSection";
 import { isInstalledRuntime } from "@utils/installedRuntime";
@@ -90,7 +91,9 @@ import {
   REPEATED_MISS_TITLE,
   UNCHANGED_INPUT_TITLE,
 } from "./scheduleSurfacingModel";
+import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { LocalDocumentFields } from "./LocalDocumentFields";
+import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
 
@@ -119,9 +122,9 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
  * {@link ./managedDetailModel.ts}, {@link ./parkedResultsModel.ts}, and
  * {@link ./disclosureAccountingModel.ts}.
  *
- * The agreed terms are read-only here and fixed for this partnership; changing
- * them means a new exchange, not an in-place edit ({@link ConfigurationView}
- * offers a re-invite on the same terms instead). The local fields edit in place
+ * The agreed terms are read-only in {@link ConfigurationView}; the columns this
+ * party sends change, and a terms update is made, in
+ * {@link ManagedTermsUpdate}. The local fields edit in place
  * without touching the partnership ({@link LocalFieldsEditor}). The accounting
  * is self-attested and links to the verify page; it is never a signed receipt.
  */
@@ -141,6 +144,7 @@ export function ManagedExchangeDetail({
   onGrantWorkingFolder,
   onStopUsingWorkingFolder,
   onReinviteToChangeTerms,
+  onTermsChanged,
   canReinvite,
   compromiseResponse,
   runInFlight,
@@ -210,6 +214,9 @@ export function ManagedExchangeDetail({
    * inviter mints a fresh invitation; the acceptor's affordance names asking the
    * partner instead (the caller routes by {@link canReinvite}). */
   onReinviteToChangeTerms: () => void;
+  /** Read the stored exchange again after {@link ManagedTermsUpdate} changed
+   * its terms. */
+  onTermsChanged: () => void;
   /** Whether this party can mint a re-invite (inviter-only); drives the terms
    * re-invite affordance's copy. */
   canReinvite: boolean;
@@ -263,6 +270,13 @@ export function ManagedExchangeDetail({
         reinviting={reinviting}
         reinviteFailed={reinviteFailed}
       />
+      {runnableManagedExchange(record) && (
+        <ManagedTermsUpdate
+          record={record}
+          runInFlight={runInFlight}
+          onChanged={onTermsChanged}
+        />
+      )}
       <LocalFieldsEditor
         record={record}
         resultSizeWarning={resultSizeWarning}
@@ -378,9 +392,9 @@ function ConfigurationView({
         <ConfigRowItem key={row.label} row={row} />
       ))}
       <p className={`${styles.small} ${styles.sub}`}>
-        These agreed terms are fixed for this partnership. Re-inviting refreshes
-        the partnership with a new secret on these same terms; it does not
-        change them. To exchange on different terms, set up a{" "}
+        Re-inviting refreshes the partnership with a new secret on these same
+        terms; it does not change them. What you can change here is under{" "}
+        {CHANGE_TERMS_TITLE} below. To change anything else, set up a{" "}
         <Link to="/exchange">new exchange</Link> and delete this one if you no
         longer want it.
       </p>
@@ -413,11 +427,12 @@ function ConfigurationView({
         </>
       ) : (
         <p className={styles.small}>
-          These agreed terms are fixed for this partnership; your partner cannot
-          re-invite you onto different ones. To exchange on different terms,
-          your partner sets up a new exchange with those terms and sends you its
-          invitation -- accept it and you can save it as a new recurring
-          exchange, then delete this one if you no longer want it.
+          Only your partner can re-invite, and your partner cannot re-invite you
+          onto different terms. What you can change here is under{" "}
+          {CHANGE_TERMS_TITLE} below. To change anything else, your partner sets
+          up a new exchange with those terms and sends you its invitation --
+          accept it and you can save it as a new recurring exchange, then delete
+          this one if you no longer want it.
         </p>
       )}
     </div>

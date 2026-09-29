@@ -29,6 +29,7 @@ import {
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
   applyManagedExchangeScheduleAdvance,
+  applyManagedExchangeSentColumns,
   applyManagedExchangeStandingConditionCleared,
   applyManagedExchangeTermsChange,
   applyManagedExchangeWorkingDirectory,
@@ -1192,6 +1193,30 @@ export async function persistManagedExchangeTermsChange(
     return applyManagedExchangeTermsChange(
       parseManagedExchangeRecord(stored),
       write,
+    );
+  });
+}
+
+/**
+ * Record which of this party's own columns the stored exchange sends
+ * ({@link applyManagedExchangeSentColumns}), inside one strict-durability
+ * readwrite transaction, as {@link persistManagedExchangeTermsChange} does.
+ * Takes no lock of its own; the caller holds the run lock around it.
+ *
+ * @throws {Error} if no record with `id` exists.
+ * @throws {UsageError} where the exchange offers no such choice.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function persistManagedExchangeSentColumns(
+  id: string,
+  sent: ReadonlyArray<string>,
+): Promise<ManagedExchangeRecord> {
+  return readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    return applyManagedExchangeSentColumns(
+      parseManagedExchangeRecord(stored),
+      sent,
     );
   });
 }

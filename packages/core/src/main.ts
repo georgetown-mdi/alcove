@@ -436,6 +436,7 @@ export {
   TermsUpdateRefusedError,
   decodeTermsUpdate,
   encodeTermsUpdate,
+  termsUpdateFor,
   termsUpdatePartnership,
 } from "./config/termsUpdate";
 export type { TermsUpdate, TermsUpdateCheck } from "./config/termsUpdate";
