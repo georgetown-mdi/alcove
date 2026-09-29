@@ -10,6 +10,7 @@ import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
   connectionOverridesFrom,
   hostKeyFingerprintFlag,
+  serverProvisionFlag,
   warnConnectionPerPollShortInterval,
   warnOptionsOverridesIgnoredOffline,
   warnUnsupportedFileSyncFlags,
@@ -241,4 +242,113 @@ test("warnOptionsOverridesIgnoredOffline: names --connection-per-poll when set",
   warnOptionsOverridesIgnoredOffline({ connectionPerPoll: true }, log);
   expect(log.messages).toHaveLength(1);
   expect(log.messages[0]).toContain("--connection-per-poll");
+});
+
+// --- serverProvisionFlag -------------------------------------------------------
+
+test("serverProvisionFlag: no flag states no block", () => {
+  expect(serverProvisionFlag(argv({}))).toBeUndefined();
+});
+
+test.each([
+  [
+    "https://wake.example.org/sftp/start",
+    { host: "wake.example.org", path: "/sftp/start" },
+  ],
+  ["https://wake.example.org", { host: "wake.example.org" }],
+  ["https://wake.example.org:8443/", { host: "wake.example.org", port: 8443 }],
+  ["https://[::1]:9000/w", { host: "::1", port: 9000, path: "/w" }],
+])("serverProvisionFlag: %s states a start-mode block", (raw, expected) => {
+  expect(serverProvisionFlag(argv({ "server-provision": raw }))).toEqual(
+    expected,
+  );
+});
+
+test("serverProvisionFlag: credentials are kept verbatim, an @path unread", () => {
+  expect(
+    serverProvisionFlag(
+      argv({
+        "server-provision": "https://wake.example.org/start",
+        "server-provision-bearer": "@/run/secrets/wake.token",
+      }),
+    ),
+  ).toEqual({
+    host: "wake.example.org",
+    path: "/start",
+    auth: { bearer: "@/run/secrets/wake.token" },
+  });
+  expect(
+    serverProvisionFlag(
+      argv({
+        "server-provision": "https://wake.example.org/start",
+        "server-provision-username": "waker",
+        "server-provision-password": "@pw",
+      }),
+    )?.auth,
+  ).toEqual({ username: "waker", password: "@pw" });
+});
+
+test.each([
+  "http://wake.example.org/start",
+  "https://user:secret-token@wake.example.org/start",
+  "https://wake.example.org/start?token=secret-token",
+  "https://wake.example.org/start#secret-token",
+  "https://wake.example.org\n/secret-token",
+  "https://0x7f.1/secret-token",
+  "wake.example.org/secret-token",
+])("serverProvisionFlag: %j is refused without echoing it", (raw) => {
+  let caught: unknown;
+  try {
+    serverProvisionFlag(argv({ "server-provision": raw }));
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).toBeInstanceOf(UsageError);
+  expect((caught as Error).message).toContain(
+    "--server-provision must be an https URL",
+  );
+  expect((caught as Error).message).not.toContain("secret-token");
+});
+
+test.each([
+  [{ "server-provision-bearer": "t" }, "requires --server-provision"],
+  [{ "server-provision-password": "p" }, "requires --server-provision"],
+  [
+    {
+      "server-provision": "https://wake.example.org",
+      "server-provision-bearer": "t",
+      "server-provision-username": "u",
+      "server-provision-password": "p",
+    },
+    "pass one",
+  ],
+  [
+    {
+      "server-provision": "https://wake.example.org",
+      "server-provision-username": "u",
+    },
+    "must be passed together",
+  ],
+])("serverProvisionFlag: %j is refused", (flags, fragment) => {
+  expect(() => serverProvisionFlag(argv(flags))).toThrow(fragment);
+});
+
+test("serverProvisionFlag: a non-string bearer is refused", () => {
+  let caught: unknown;
+  try {
+    serverProvisionFlag(argv({ "server-provision-bearer": 5 }));
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).toBeInstanceOf(UsageError);
+  expect((caught as Error).message).toContain(
+    "--server-provision-bearer must be a string",
+  );
+});
+
+test("connectionOverridesFrom: --server-provision reaches the server overrides", () => {
+  const provision = { host: "wake.example.org" };
+  expect(
+    connectionOverridesFrom({ serverProvision: provision }).server?.provision,
+  ).toBe(provision);
 });

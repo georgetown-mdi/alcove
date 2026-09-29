@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, expect, test, vi } from "vitest";
-import { UsageError } from "@alcove/core";
+import { InternalConsistencyError, UsageError } from "@alcove/core";
 import type { ConnectionConfig } from "@alcove/core";
 
 import {
   createProvisionedServer,
+  startModeProvisionAsRead,
+  wakeServerThrough,
   wakeProvisionedServer,
 } from "../../src/serverProvision";
 
@@ -143,4 +145,31 @@ test("a create-mode block reads its bearer file, logs the call, and resolves to 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("startModeProvisionAsRead takes the read block for a start-mode connection only", () => {
+  const read = {
+    host: "wake.example.org",
+    path: "/start",
+    auth: { bearer: "wake-token" },
+  };
+  const connection = sftpConnectionWithProvision("wake.example.org");
+  expect(startModeProvisionAsRead(connection, read)).toBe(read);
+  expect(
+    startModeProvisionAsRead(withMode(connection, "create"), read),
+  ).toBeUndefined();
+  expect(
+    startModeProvisionAsRead({ channel: "filedrop" }, undefined),
+  ).toBeUndefined();
+  expect(() => startModeProvisionAsRead(connection, undefined)).toThrow(
+    InternalConsistencyError,
+  );
+});
+
+test("wakeServerThrough sends nothing for a connection stating no start-mode block", async () => {
+  const log = mockLog();
+  const fetch = stubProvisionFetch(200);
+  await wakeServerThrough(undefined, log);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(log.info).not.toHaveBeenCalled();
 });

@@ -37,6 +37,7 @@ import type {
   LinkageTerms,
   OutboundPayloadConsent,
   PreparedExchange,
+  ServerProvision,
   SFTPConnectionConfig,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -49,23 +50,27 @@ import {
 import { detectFileConflicts, FileExistsError } from "./fileUtils";
 import { assertFileSyncFirstRoundFits } from "./fileSyncFirstRound";
 import { withFirstRoundCountDisplay } from "./psiProgressDisplay";
-import { openEventStream } from "./eventStream";
 import { writeAcceptanceRecordReportingLoss } from "./acceptedTermsRecords";
 import {
   applyConnectionCredentials,
   readConnectionCredentials,
 } from "./util/atSignRefs";
-import { establishHostKeyTrust, type HostKeyPersistence } from "./hostKeyTrust";
+import {
+  assertHostKeyTrustCanBeEstablished,
+  establishHostKeyTrust,
+  type HostKeyPersistence,
+} from "./hostKeyTrust";
 import { openInputSource } from "./util/dataIo";
 import { singleValue } from "./util/flags";
 import {
+  preflightRun,
   runProtocol,
-  warnUndeclaredColumns,
   type AuthPersist,
   type ProtocolConnectionConfig,
 } from "./protocol";
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
 import type { RecordOutput } from "./recordFile";
+import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
 
 /**
  * The exchange-data portion of a spec: linkage terms (always present once
@@ -891,6 +896,14 @@ export async function runOnlineBootstrap(params: {
    * budget are the same value (the online acceptor), which needs no override.
    */
   runOnlyPeerTimeoutSeconds?: number;
+  /**
+   * The start-mode `server.provision` block `connection` states, with its auth
+   * `@path` references already read by the command's argument parsing
+   * (`serverProvisionRead`), so an unreadable file ends the command before it
+   * prints an invitation. `connection` keeps the references, which the
+   * configuration saved below records.
+   */
+  provision?: ServerProvision;
 }): Promise<{ configWriteError?: unknown }> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
@@ -910,6 +923,10 @@ export async function runOnlineBootstrap(params: {
   // host-key step below, whose first-use probe opens a real transport to the
   // server.
   const credentials = readConnectionCredentials(params.connection);
+  const provision = startModeProvisionAsRead(
+    params.connection,
+    params.provision,
+  );
   // Decided from the input alone, so settled before the host-key step too.
   await withFirstRoundCountDisplay(
     {
@@ -925,18 +942,27 @@ export async function runOnlineBootstrap(params: {
   // this bootstrap's own persistence losses (both hooks below) must ride the
   // same fd-3 channel as the run's terminal result event, and runProtocol drives
   // the emitter but does not hand it to a hook, so reporting a loss means
-  // holding the object here and passing it in. Opened before the host-key step,
-  // so the fd-3 preflight and the undeclared-columns notice both precede that
-  // step's probe connection, as in `alcove exchange`.
-  const eventStream = openEventStream(params.eventStream);
-  const undeclaredColumnsWarned = warnUndeclaredColumns({
+  // holding the object here and passing it in. preflightRun opens it and makes
+  // runProtocol's own local checks -- the fd-3 preflight, the shared secret and
+  // its key-file path, the first round's size, and the webrtc rendezvous -- so
+  // each, like the non-interactive host-key refusal after it, comes before the
+  // wake call and the host-key probe, as in `alcove exchange`.
+  const hostKeyPersistence: HostKeyPersistence = params.reuseExistingConfig
+    ? { mode: "write-now", configPath: params.configPath }
+    : { mode: "save-with-config", configPath: params.configPath };
+  const { eventStream, undeclaredColumnsWarned } = await preflightRun({
+    connection: params.connection,
+    auth,
     prepared: params.prepared,
-    alreadyWarned: false,
-    log: getLogger(params.loggerName),
-    emit: (fn) => {
-      if (eventStream !== undefined) fn(eventStream);
-    },
+    recordOutput: params.recordOutput,
+    verbosity: params.verbosity,
+    loggerName: params.loggerName,
+    logFile: params.logFile,
+    eventStream: params.eventStream,
   });
+  assertHostKeyTrustCanBeEstablished(params.connection, hostKeyPersistence);
+
+  await wakeServerThrough(provision, getLogger(params.loggerName));
 
   // Establish first-use SSH host-key trust before connecting, on the ORIGINAL
   // params.connection so the pin reaches both the live connect (via the clone
@@ -947,9 +973,6 @@ export async function runOnlineBootstrap(params: {
   // config instead defers the mutation to its saveConfig (save-with-config), so a
   // failure before that hook fires leaves the pin unwritten and the next attempt
   // re-prompts (still failing closed, never silently downgraded).
-  const hostKeyPersistence: HostKeyPersistence = params.reuseExistingConfig
-    ? { mode: "write-now", configPath: params.configPath }
-    : { mode: "save-with-config", configPath: params.configPath };
   await establishHostKeyTrust(params.connection, {
     verbosity: params.verbosity,
     loggerName: params.loggerName,

@@ -6372,3 +6372,38 @@ test("the citation-drift warning names the config path as the operator typed it"
   expect(warnings[0]).toContain(`${configPath}: linkage_terms`);
   expect(warnings[0]).not.toContain(escaped(configPath));
 });
+
+// --- server.provision override (--server-provision) ---------------------------
+
+describe("server.provision override", () => {
+  const provision = {
+    host: "wake.example.org",
+    path: "/start",
+    auth: { bearer: "@/run/secrets/wake.token" },
+  };
+
+  test.each<ConnectionConfig>([
+    {
+      channel: "sftp",
+      server: {
+        host: "sftp.example.org",
+        provision: { mode: "create", host: "old.example.org" },
+      },
+    },
+    { channel: "webrtc", server: { host: "peers.example.org" } },
+  ])("replaces the $channel server's block", (base) => {
+    const result = applyConnectionOverrides(base, { server: { provision } });
+    if (result.channel === "filedrop") throw new Error("expected a server");
+    expect(result.server.provision).toEqual(provision);
+    expect(result.server.provision).not.toBe(provision);
+  });
+
+  test("is refused on a filedrop connection, which has no server", () => {
+    expect(() =>
+      applyConnectionOverrides(
+        { channel: "filedrop", path: "/mnt/share/drop" },
+        { server: { provision } },
+      ),
+    ).toThrow(UsageError);
+  });
+});

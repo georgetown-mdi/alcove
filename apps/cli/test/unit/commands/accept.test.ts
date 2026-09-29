@@ -5941,3 +5941,155 @@ describe("handler: a completed acceptance restores the diagnostic sink", () => {
     }
   });
 });
+
+// --- --server-provision --------------------------------------------------------
+
+describe("--server-provision on an acceptance", () => {
+  const WAKE_PROVISION = {
+    host: "wake.example.org",
+    path: "/start",
+    auth: { bearer: "@/run/secrets/wake.token" },
+  };
+
+  test("validateAccept: online from a URL carries it into the connection the run wakes and saves", async () => {
+    const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      const ready = await validateAccept({
+        resolved: {
+          mode: "online",
+          url: new URL("sftp://host/drop"),
+          invitation: encoded,
+          input,
+        },
+        options: testOptions({ serverProvision: WAKE_PROVISION }),
+        log: silentLog,
+      });
+      expect(ready.mode).toBe("online");
+      if (ready.mode !== "online") return;
+      if (ready.connection.channel !== "sftp") throw new Error("expected sftp");
+      expect(ready.connection.server.provision).toEqual(WAKE_PROVISION);
+    } finally {
+      fs.rmSync(input, { force: true });
+    }
+  });
+
+  test("validateAccept: a webrtc invitation run carries it into the connection the run wakes and saves, with no ignored warning", async () => {
+    const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
+    const messages: string[] = [];
+    try {
+      const encoded = await encodeInvitation(
+        sampleToken(FUTURE(), WEBRTC_ENDPOINT),
+      );
+      const ready = await validateAccept({
+        resolved: { mode: "offline", invitation: encoded, input },
+        options: testOptions({ serverProvision: WAKE_PROVISION }),
+        log: recordingLog(messages),
+      });
+      expect(ready.mode).toBe("endpointRun");
+      if (ready.mode !== "endpointRun") return;
+      expect(ready.connection.server.provision).toEqual(WAKE_PROVISION);
+      expect(messages.join("\n")).not.toContain("--server-provision");
+    } finally {
+      fs.rmSync(input, { force: true });
+    }
+  });
+
+  test("validateAccept: an acceptance that runs no exchange warns it is ignored", async () => {
+    const messages: string[] = [];
+    const encoded = await encodeInvitation(
+      sampleToken(FUTURE(), WEBRTC_ENDPOINT),
+    );
+    const ready = await validateAccept({
+      resolved: { mode: "offline", invitation: encoded },
+      options: testOptions({ serverProvision: WAKE_PROVISION }),
+      log: recordingLog(messages),
+    });
+    expect(ready.mode).toBe("offline");
+    const warned = messages.filter((m) => m.includes("--server-provision"));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain("no effect on an offline invite/accept");
+    expect(warned[0]).not.toContain("wake.token");
+  });
+
+  function provisionedAcceptArgv(
+    fixture: ReturnType<typeof offlineAcceptFixture>,
+    encoded: string,
+    tokenFile: string,
+  ): Arguments {
+    return {
+      _: [],
+      $0: "alcove",
+      identity: "Agency B",
+      args: ["sftp://host/drop", encoded, fixture.input],
+      "server-provision": "https://wake.example.org/start",
+      "server-provision-bearer": `@${tokenFile}`,
+      "consent-to-terms": true,
+      "config-file": fixture.configFile,
+      "key-file": fixture.keyFile,
+      "log-level": "silent",
+      record: false,
+    } as unknown as Arguments;
+  }
+
+  test.each(["missing", "empty"])(
+    "handler: a %s bearer file on an online acceptance exits 64 before anything is shown or written",
+    async (kind) => {
+      const fixture = offlineAcceptFixture();
+      const tokenFile = path.join(fixture.dir, "wake.token");
+      if (kind === "empty") fs.writeFileSync(tokenFile, "");
+      const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+      runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+      const exit = vi
+        .spyOn(process, "exit")
+        .mockImplementation((() => undefined) as never);
+      const stdio = captureStdio();
+      try {
+        const encoded = await encodeInvitation(sampleToken(FUTURE()));
+        await acceptHandler(provisionedAcceptArgv(fixture, encoded, tokenFile));
+        expect(exit).toHaveBeenCalledWith(64);
+        expect(stdio.stdoutWrites.join("")).toBe("");
+        expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+        expect(fs.existsSync(fixture.keyFile)).toBe(false);
+        expect(fs.existsSync(fixture.configFile)).toBe(false);
+      } finally {
+        stdio.restore();
+        exit.mockRestore();
+        runOnlineBootstrapMock.mockReset();
+        fs.rmSync(fixture.dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("handler: a readable bearer file reaches the wake call read and the saved connection as the reference", async () => {
+    const fixture = offlineAcceptFixture();
+    const tokenFile = path.join(fixture.dir, "wake.token");
+    fs.writeFileSync(tokenFile, "wake-token\n");
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      await acceptHandler(provisionedAcceptArgv(fixture, encoded, tokenFile));
+      expect(exit).not.toHaveBeenCalled();
+      expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+      const passed = runOnlineBootstrapMock.mock.calls[0][0];
+      expect(passed.provision).toEqual({
+        host: "wake.example.org",
+        path: "/start",
+        auth: { bearer: "wake-token" },
+      });
+      if (passed.connection.channel !== "sftp")
+        throw new Error("expected sftp");
+      expect(passed.connection.server.provision?.auth).toEqual({
+        bearer: `@${tokenFile}`,
+      });
+    } finally {
+      exit.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+});

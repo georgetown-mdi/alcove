@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import YAML from "yaml";
 import {
+  ConnectionError,
   CsvRowParseError,
   getDefaultLinkageTerms,
   getDiagnosticSink,
   getLogger,
   inferDateInputFormatFromSource,
   INFER_DATE_SCAN_CAP,
+  InternalConsistencyError,
   MAX_RECONNECT_ATTEMPTS,
   operatorSuppliedSpans,
   parseExchangeSpec,
@@ -69,15 +71,18 @@ import {
 } from "../../src/onlineBootstrap";
 import { redactUrlCredentials } from "../../src/util/connectionUrl";
 import { openInputSource } from "../../src/util/dataIo";
-import { runOrExit } from "../../src/util/exit";
+import { exitCodeForError, runOrExit } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
 import { assertFileSyncFirstRoundFits } from "../../src/fileSyncFirstRound";
-import { establishHostKeyTrust } from "../../src/hostKeyTrust";
 import {
+  assertHostKeyTrustCanBeEstablished,
+  establishHostKeyTrust,
+} from "../../src/hostKeyTrust";
+import {
+  preflightRun,
   runProtocol,
   undeclaredColumnsNotice,
-  warnUndeclaredColumns,
 } from "../../src/protocol";
 import type { RunProtocolOptions } from "../../src/protocol";
 import { captureFd3 } from "../eventStreamTestSupport";
@@ -87,13 +92,13 @@ import { streamOf, ttyStream, withStdin } from "../stdinStream";
 // opening a connection: runProtocol is mocked so each test chooses whether the
 // handshake "succeeds" (the mock invokes onAuthenticated) before it resolves or
 // rejects. saveConfig is left real, so the assertions check the actual file.
-// The undeclared-columns notice the bootstrap raises itself stays real,
+// The preflight that raises the undeclared-columns notice stays real,
 // spy-wrapped so the ordering test below can place it against the host-key step.
 vi.mock("../../src/protocol", async (importActual) => {
   const actual = await importActual<typeof import("../../src/protocol")>();
   return {
+    preflightRun: vi.fn(actual.preflightRun),
     runProtocol: vi.fn(),
-    warnUndeclaredColumns: vi.fn(actual.warnUndeclaredColumns),
     undeclaredColumnsNotice: actual.undeclaredColumnsNotice,
   };
 });
@@ -127,6 +132,9 @@ vi.mock("../../src/hostKeyTrust", async (importActual) => {
   const actual = await importActual<typeof import("../../src/hostKeyTrust")>();
   return {
     ...actual,
+    assertHostKeyTrustCanBeEstablished: vi.fn(
+      actual.assertHostKeyTrustCanBeEstablished,
+    ),
     establishHostKeyTrust: vi.fn(actual.establishHostKeyTrust),
   };
 });
@@ -789,6 +797,57 @@ describe("runOrExit", () => {
 });
 
 describe("parseCommonBootstrapArgs", () => {
+  test("--server-provision credential files are read at parsing, the block keeping the references", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-provision-"));
+    try {
+      const passwordFile = path.join(dir, "wake.password");
+      fs.writeFileSync(passwordFile, "wake-password\n");
+      const parsed = parseCommonBootstrapArgs({
+        _: [],
+        $0: "alcove",
+        "server-provision": "https://wake.example.org/start",
+        "server-provision-username": "operator",
+        "server-provision-password": `@${passwordFile}`,
+      } as unknown as Arguments);
+      expect(parsed.serverProvision?.auth).toEqual({
+        username: "operator",
+        password: `@${passwordFile}`,
+      });
+      expect(parsed.serverProvisionRead).toEqual({
+        host: "wake.example.org",
+        path: "/start",
+        auth: { username: "operator", password: "wake-password" },
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ["missing", "cannot read the @-file reference"],
+    ["empty", "resolved to an empty file"],
+  ])(
+    "a %s --server-provision-bearer file is a usage error at parsing",
+    (kind, message) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-provision-"));
+      try {
+        const tokenFile = path.join(dir, "wake.token");
+        if (kind === "empty") fs.writeFileSync(tokenFile, "\n");
+        const parse = () =>
+          parseCommonBootstrapArgs({
+            _: [],
+            $0: "alcove",
+            "server-provision": "https://wake.example.org/start",
+            "server-provision-bearer": `@${tokenFile}`,
+          } as unknown as Arguments);
+        expect(parse).toThrow(UsageError);
+        expect(parse).toThrow(message);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("an unrecognized log-level is a usage error", () => {
     // Routed through runOrExit by the handlers, so a UsageError exits 64 via the
     // consistent error path rather than yargs's noisier top-level catch.
@@ -3566,6 +3625,10 @@ describe("runOnlineBootstrap", () => {
       server: { host: "sftp.example.org", password: `@${pwFile}` },
     };
 
+    // Stands in for the interactive terminal the first-use step prompts at.
+    vi.mocked(assertHostKeyTrustCanBeEstablished).mockImplementationOnce(
+      () => {},
+    );
     vi.mocked(establishHostKeyTrust).mockImplementationOnce((async (
       conn: SFTPConnectionConfig,
     ) => {
@@ -3608,8 +3671,11 @@ describe("runOnlineBootstrap", () => {
       server: { host: "sftp.example.org" },
     };
     let noticeEventsAtHostKeyStep: number | undefined;
-    vi.mocked(warnUndeclaredColumns).mockClear();
+    vi.mocked(preflightRun).mockClear();
     vi.mocked(establishHostKeyTrust).mockClear();
+    vi.mocked(assertHostKeyTrustCanBeEstablished).mockImplementationOnce(
+      () => {},
+    );
     vi.mocked(establishHostKeyTrust).mockImplementationOnce((async () => {
       noticeEventsAtHostKeyStep = vi
         .mocked(fs.writeSync)
@@ -3630,11 +3696,12 @@ describe("runOnlineBootstrap", () => {
         }),
       );
       expect(notice).toBeDefined();
-      expect(vi.mocked(warnUndeclaredColumns)).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(warnUndeclaredColumns).mock.results[0].value).toBe(true);
+      expect(vi.mocked(preflightRun)).toHaveBeenCalledTimes(1);
+      await expect(
+        vi.mocked(preflightRun).mock.results[0].value,
+      ).resolves.toMatchObject({ undeclaredColumnsWarned: true });
       expect(vi.mocked(establishHostKeyTrust)).toHaveBeenCalledTimes(1);
-      const [warned] = vi.mocked(warnUndeclaredColumns).mock
-        .invocationCallOrder;
+      const [warned] = vi.mocked(preflightRun).mock.invocationCallOrder;
       const [trusted] = vi.mocked(establishHostKeyTrust).mock
         .invocationCallOrder;
       expect(warned).toBeLessThan(trusted);
@@ -4966,5 +5033,209 @@ describe("singlePassDisclosureNotice", () => {
     // Links the operator-facing reference, not the internal design note.
     expect(note).toContain("docs/EXCHANGE_REFERENCE.md");
     expect(note).not.toContain("one-sided-disclosure");
+  });
+});
+
+// --- the server.provision wake call ------------------------------------------
+
+describe("runOnlineBootstrap: the server.provision wake call", () => {
+  const FP = "SHA256:" + "W".repeat(43);
+
+  /** A directory holding a bearer token file, and the params of a run whose
+   * connection states a start-mode block authenticated by it, the token read
+   * as argument parsing reads it. */
+  function provisionedBootstrap(connection: ConnectionConfig): {
+    dir: string;
+    tokenFile: string;
+    params: Parameters<typeof runOnlineBootstrap>[0];
+  } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const tokenFile = path.join(dir, "wake.token");
+    fs.writeFileSync(tokenFile, "wake-token\n");
+    if (connection.channel === "filedrop")
+      throw new Error("expected a channel with a server");
+    const withProvision = {
+      ...connection,
+      server: {
+        ...connection.server,
+        provision: {
+          host: "wake.example.org",
+          path: "/start",
+          auth: { bearer: `@${tokenFile}` },
+        },
+      },
+    } as Parameters<typeof runOnlineBootstrap>[0]["connection"];
+    return {
+      dir,
+      tokenFile,
+      params: {
+        ...onlineBootstrapParams(path.join(dir, "alcove.yaml")),
+        connection: withProvision,
+        provision: {
+          host: "wake.example.org",
+          path: "/start",
+          auth: { bearer: "wake-token" },
+        },
+      },
+    };
+  }
+
+  function stubProvisionFetch(status: number) {
+    const fetch = vi.fn(
+      async (_input: URL | RequestInfo, _init?: RequestInit) =>
+        new Response(null, { status }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test.each([
+    [
+      "sftp",
+      {
+        channel: "sftp",
+        server: { host: "sftp.example.org", hostKeyFingerprint: FP },
+      } as ConnectionConfig,
+    ],
+    [
+      "webrtc",
+      {
+        channel: "webrtc",
+        role: "inviter",
+        server: { host: "peers.example.org" },
+      } as ConnectionConfig,
+    ],
+  ])(
+    "a %s connection wakes its server once, after the local refusals and before the host-key step, and saves the reference",
+    async (_, connection) => {
+      const { dir, tokenFile, params } = provisionedBootstrap(connection);
+      const fetch = stubProvisionFetch(200);
+      vi.mocked(preflightRun).mockClear();
+      vi.mocked(establishHostKeyTrust).mockClear();
+      vi.mocked(runProtocol).mockClear();
+      mockSuccessfulExchange(undefined);
+      try {
+        await runOnlineBootstrap(params);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const [url, init] = fetch.mock.calls[0];
+        expect(String(url)).toBe("https://wake.example.org/start");
+        expect(init?.method).toBe("POST");
+        expect(new Headers(init?.headers).get("authorization")).toBe(
+          "Bearer wake-token",
+        );
+        const [preflighted] = vi.mocked(preflightRun).mock.invocationCallOrder;
+        const [woke] = fetch.mock.invocationCallOrder;
+        const [trusted] = vi.mocked(establishHostKeyTrust).mock
+          .invocationCallOrder;
+        const [ran] = vi.mocked(runProtocol).mock.invocationCallOrder;
+        expect(preflighted).toBeLessThan(woke);
+        expect(woke).toBeLessThan(trusted);
+        expect(trusted).toBeLessThan(ran);
+        const raw = fs.readFileSync(params.configPath, "utf8");
+        expect(YAML.parse(raw).connection.server.provision).toEqual({
+          host: "wake.example.org",
+          path: "/start",
+          auth: { bearer: `@${tokenFile}` },
+        });
+        expect(raw).not.toContain("wake-token\n");
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.each([
+    [503, 69, ConnectionError],
+    [401, 64, UsageError],
+  ])(
+    "a wake call answered HTTP %s rejects with exit %s before the host-key step, writing nothing",
+    async (status, code, errorClass) => {
+      const { dir, params } = provisionedBootstrap({
+        channel: "sftp",
+        server: { host: "sftp.example.org", hostKeyFingerprint: FP },
+      });
+      stubProvisionFetch(status);
+      vi.mocked(establishHostKeyTrust).mockClear();
+      vi.mocked(runProtocol).mockClear();
+      try {
+        const err = await runOnlineBootstrap(params).then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+        expect(err).toBeInstanceOf(errorClass);
+        expect(exitCodeForError(err)).toBe(code);
+        expect(String((err as Error).message)).toContain(
+          "the provisioning endpoint at wake.example.org:443",
+        );
+        expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
+        expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+        expect(fs.existsSync(params.configPath)).toBe(false);
+        expect(fs.existsSync(params.keyPath)).toBe(false);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("a non-interactive run on an unpinned sftp server is refused without the wake call", async () => {
+    const { dir, params } = provisionedBootstrap({
+      channel: "sftp",
+      server: { host: "sftp.example.org" },
+    });
+    const fetch = stubProvisionFetch(200);
+    try {
+      await expect(
+        withStdin(streamOf(""), () => runOnlineBootstrap(params)),
+      ).rejects.toThrow(
+        "no host_key_fingerprint is pinned for this SFTP server and this " +
+          "run is not interactive",
+      );
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an expired shared secret is refused without the wake call", async () => {
+    const { dir, params } = provisionedBootstrap({
+      channel: "sftp",
+      server: { host: "sftp.example.org", hostKeyFingerprint: FP },
+    });
+    const fetch = stubProvisionFetch(200);
+    vi.mocked(preflightRun).mockClear();
+    try {
+      const run = runOnlineBootstrap({
+        ...params,
+        expires: new Date(Date.now() - 60_000).toISOString(),
+      });
+      await expect(run).rejects.toThrow();
+      const refused = vi.mocked(preflightRun).mock.results[0].value;
+      await expect(refused).rejects.toBe(await run.catch((e: unknown) => e));
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a block stated with no read credentials is refused without the wake call", async () => {
+    const { dir, params } = provisionedBootstrap({
+      channel: "sftp",
+      server: { host: "sftp.example.org", hostKeyFingerprint: FP },
+    });
+    const fetch = stubProvisionFetch(200);
+    vi.mocked(preflightRun).mockClear();
+    try {
+      await expect(
+        runOnlineBootstrap({ ...params, provision: undefined }),
+      ).rejects.toBeInstanceOf(InternalConsistencyError);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.mocked(preflightRun)).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

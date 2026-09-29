@@ -46,8 +46,13 @@ import {
 import type { RunProtocolOptions } from "../../../src/protocol";
 import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { captureFd3 } from "../../eventStreamTestSupport";
-import { establishHostKeyTrust } from "../../../src/hostKeyTrust";
+import {
+  assertHostKeyTrustCanBeEstablished,
+  establishHostKeyTrust,
+} from "../../../src/hostKeyTrust";
+import { streamOf, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
+import { captureStdio } from "../../loggingTestSupport";
 import {
   pathAsDisplayed,
   platformAbsolutePath,
@@ -76,6 +81,7 @@ vi.mock("../../../src/protocol", async (importActual) => {
 // reach the runProtocol hand-off without a real probe over the fake URL, and
 // assert the handler wires it with the right persistence mode.
 vi.mock("../../../src/hostKeyTrust", () => ({
+  assertHostKeyTrustCanBeEstablished: vi.fn(),
   establishHostKeyTrust: vi.fn(),
 }));
 
@@ -1910,3 +1916,157 @@ test("handler --save: the save rides the pre-terminal hook, not the return from 
     f.restore();
   }
 });
+
+// --- handler: --server-provision -----------------------------------------------
+
+/** A zero-setup run over sftp stating a start-mode endpoint whose bearer token
+ * is in a file, with its input written, and the argv it takes. */
+function provisionedZeroSetupRun(dir: string, save = false): Arguments {
+  const tokenFile = path.join(dir, "wake.token");
+  fs.writeFileSync(tokenFile, "wake-token\n");
+  const input = path.join(dir, "input.csv");
+  fs.writeFileSync(
+    input,
+    "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+  );
+  return {
+    _: ["sftp://userb@localhost:2222/drop", input],
+    $0: "alcove",
+    "server-provision": "https://wake.example.org/start",
+    "server-provision-bearer": `@${tokenFile}`,
+    ...(save ? { save: true } : {}),
+    "config-file": path.join(dir, "alcove.yaml"),
+    "key-file": path.join(dir, ".alcove.key"),
+    record: false,
+    "log-level": "silent",
+  } as unknown as Arguments;
+}
+
+function stubZeroSetupProvisionFetch(status: number) {
+  const fetch = vi.fn(
+    async (_input: URL | RequestInfo, _init?: RequestInit) =>
+      new Response(null, { status }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+test("handler: --server-provision wakes the server once, after the dataset is prepared and before the host-key step, and --save keeps the reference", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowake-"));
+  const exitSpy = captureProcessExit();
+  const fetch = stubZeroSetupProvisionFetch(200);
+  try {
+    const argv = provisionedZeroSetupRun(dir, true);
+    vi.mocked(prepareForExchange).mockClear();
+    vi.mocked(establishHostKeyTrust).mockClear();
+    vi.mocked(runProtocol).mockClear();
+    vi.mocked(runProtocol).mockImplementationOnce((async (
+      ...callArgs: unknown[]
+    ) =>
+      driveCompletedExchange(callArgs, { partnerSaveIntent: false })) as never);
+
+    await handler(argv);
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(String(url)).toBe("https://wake.example.org/start");
+    expect(new Headers(init?.headers).get("authorization")).toBe(
+      "Bearer wake-token",
+    );
+    const [prepared] = vi.mocked(prepareForExchange).mock.invocationCallOrder;
+    const [woke] = fetch.mock.invocationCallOrder;
+    const [trusted] = vi.mocked(establishHostKeyTrust).mock.invocationCallOrder;
+    const [ran] = vi.mocked(runProtocol).mock.invocationCallOrder;
+    expect(prepared).toBeLessThan(woke);
+    expect(woke).toBeLessThan(trusted);
+    expect(trusted).toBeLessThan(ran);
+    const saved = fs.readFileSync(path.join(dir, "alcove.yaml"), "utf8");
+    expect(YAML.parse(saved).connection.server.provision).toEqual({
+      host: "wake.example.org",
+      path: "/start",
+      auth: { bearer: `@${path.join(dir, "wake.token")}` },
+    });
+    expect(saved).not.toContain("wake-token\n");
+  } finally {
+    exitSpy.mockRestore();
+    vi.unstubAllGlobals();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  [503, 69],
+  [401, 64],
+])(
+  "handler: a wake call answered HTTP %s exits %s with no host-key probe",
+  async (status, code) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowake-"));
+    const exitSpy = captureProcessExit();
+    stubZeroSetupProvisionFetch(status);
+    try {
+      vi.mocked(establishHostKeyTrust).mockClear();
+      vi.mocked(runProtocol).mockClear();
+      await expect(handler(provisionedZeroSetupRun(dir))).rejects.toThrow(
+        `exit:${code}`,
+      );
+      expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
+      expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
+      vi.unstubAllGlobals();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("handler: a non-interactive run on an unpinned sftp server exits 64 without the wake call", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowake-"));
+  const exitSpy = captureProcessExit();
+  const fetch = stubZeroSetupProvisionFetch(200);
+  const actual = await vi.importActual<
+    typeof import("../../../src/hostKeyTrust")
+  >("../../../src/hostKeyTrust");
+  vi.mocked(assertHostKeyTrustCanBeEstablished).mockImplementationOnce(
+    actual.assertHostKeyTrustCanBeEstablished,
+  );
+  try {
+    await expect(
+      withStdin(streamOf(""), () => handler(provisionedZeroSetupRun(dir))),
+    ).rejects.toThrow("exit:64");
+    expect(fetch).not.toHaveBeenCalled();
+  } finally {
+    exitSpy.mockRestore();
+    vi.unstubAllGlobals();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.each(["missing", "empty"])(
+  "handler: a %s --server-provision-bearer file exits 64 at argument parsing, before the dataset is read",
+  async (kind) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowake-"));
+    const exitSpy = captureProcessExit();
+    const fetch = stubZeroSetupProvisionFetch(200);
+    const stdio = captureStdio();
+    try {
+      const argv = provisionedZeroSetupRun(dir, true);
+      const tokenFile = path.join(dir, "wake.token");
+      if (kind === "missing") fs.rmSync(tokenFile);
+      else fs.writeFileSync(tokenFile, "");
+      vi.mocked(prepareForExchange).mockClear();
+      vi.mocked(runProtocol).mockClear();
+      await expect(handler(argv)).rejects.toThrow("exit:64");
+      expect(stdio.stdoutWrites.join("")).toBe("");
+      expect(vi.mocked(prepareForExchange)).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(dir, "alcove.yaml"))).toBe(false);
+    } finally {
+      stdio.restore();
+      exitSpy.mockRestore();
+      vi.unstubAllGlobals();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

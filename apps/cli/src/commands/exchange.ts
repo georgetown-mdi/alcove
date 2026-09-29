@@ -274,6 +274,7 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
     serverPrivateKeyPassphrase: resolveAtSignRefs(
       common.serverPrivateKeyPassphrase,
     ) as string | undefined,
+    serverProvision: common.serverProvisionRead,
     csvDelimiter,
     // exchange-specific positionals; not repeatable flags, so they stay plain.
     input: expandTilde(argv["input"] as string),

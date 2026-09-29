@@ -187,7 +187,7 @@ The communication channels described above each depend on supporting infrastruct
 
 A service reached at a static address needs nothing beyond the address in each party's connection block. For a service brought up per exchange instead, the configuration schema has three provisioning shapes:
 
-- **`server.provision`** brings the primary server up ([EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#on-demand-server-provisioning)). In `start` mode `alcove exchange` calls it once before its first connection to the server and stops the run if the call fails; a run started from a URL or an invitation cannot state it. In `create` mode an offline `alcove invite` calls it once, and the invitation names the server it returns.
+- **`server.provision`** brings the primary server up ([EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#on-demand-server-provisioning)). In `start` mode `alcove exchange` calls it once before its first connection to the server and stops the run if the call fails; a run started from a URL or an invitation states it with `--server-provision` and calls it the same way. In `create` mode an offline `alcove invite` calls it once, and the invitation names the server it returns.
 - **`ice_provision`** and the SFTP **`proxy`** are called by no connect path: a config with one connects straight to its static fields, so that service has to be running before the exchange starts.
 
 Which application ignores which key, and which refuses it outright, is stated per field in [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#where-each-setting-is-edited); provision the rest out-of-band until their calls are wired in.

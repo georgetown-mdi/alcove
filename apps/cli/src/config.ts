@@ -13,6 +13,7 @@ import type {
   OutboundPayloadConsent,
   ProvisionedServerAddress,
   RelayLocator,
+  ServerProvision,
   SFTPConnectionConfig,
   SigningConfig,
   Standardization,
@@ -114,6 +115,13 @@ export interface ConnectionServerOverrides {
    * at the real connect. sftp-only.
    */
   hostKeyFingerprint?: string;
+  /**
+   * The start-mode `server.provision` block from `--server-provision`, its auth
+   * `@path` references unread. Replaces any block on the base config. Applies
+   * on `sftp` and `webrtc`; a `filedrop` connection has no server to start, so
+   * {@link applyConnectionOverrides} refuses it there.
+   */
+  provision?: ServerProvision;
   port?: number;
   /**
    * Outbound (self-written) directory for a split-directory exchange. When set,
@@ -241,6 +249,16 @@ export function applyConnectionOverrides(
           "keyboard-interactive prompts with that password and has no effect " +
           "without one.",
       );
+  }
+
+  if (serverOverrides.provision !== undefined) {
+    if (result.channel === "filedrop")
+      throw new UsageError(
+        "--server-provision is only supported on the sftp and webrtc " +
+          "channels; a synced folder has no server to start.",
+      );
+    result.server.provision = structuredClone(serverOverrides.provision);
+    serverModified = true;
   }
 
   // Tracks whether any override merged into result.options, so the single

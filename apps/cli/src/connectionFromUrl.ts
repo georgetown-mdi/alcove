@@ -198,8 +198,8 @@ export function connectionFromURL(
       path: localDirectoryFromFileURL(url),
     };
     // applyConnectionOverrides ignores the server-* fields on a filedrop
-    // connection, so the full override set is safe here -- only the shared and
-    // file-sync options take effect.
+    // connection and refuses a provision endpoint, so the full override set is
+    // safe here -- only the shared and file-sync options take effect.
     return applyConnectionOverrides(
       base,
       overrides,
