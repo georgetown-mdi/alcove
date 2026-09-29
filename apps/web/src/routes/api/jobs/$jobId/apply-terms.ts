@@ -12,7 +12,8 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
  * No request body. `404` on a malformed or unknown id and on a job with no
  * proposal to apply; `409` (empty body) while an apply runs or the run's
  * child has not exited. A completed attempt is `200 { "status" }`: `applied`,
- * `refused`, `timeout`, `error`, or `configuration-changed`.
+ * `refused`, `timeout`, `error`, `configuration-changed`, or
+ * `run-terms-differ`.
  */
 export const Route = createFileRoute("/api/jobs/$jobId/apply-terms")({
   server: {

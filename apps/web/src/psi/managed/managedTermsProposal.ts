@@ -106,8 +106,8 @@ export async function keepManagedTermsProposal(
 }
 
 /**
- * Apply the proposal stored for the exchange, as `alcove apply` applies a
- * terms update, then drop it. `shownProposedAt` is the `proposedAt` of the
+ * Apply the partner terms of the proposal stored for the exchange
+ * (the `apply` scope of `applyManagedExchangeTermsChange`), then drop it. `shownProposedAt` is the `proposedAt` of the
  * proposal the operator reviewed; the stored one is read under the lock and
  * applied only where it is that proposal. Held under the run lock without
  * waiting: a run of this exchange in flight refuses the apply, rather than
@@ -169,7 +169,7 @@ export const TERMS_CHANGE_NOT_KEPT_REASON =
  * `decideTermsChange`: a yes records the partner's terms into the stored
  * exchange before the run continues under them -- as the command line's
  * attended run writes its configuration, or, where the change is one the run
- * cannot continue under, as `alcove apply` does, after which core refuses and
+ * cannot continue under, as the `apply` scope writes it, after which core refuses and
  * the next run holds the new terms. A no refuses and writes nothing.
  * Unattended, it keeps the change for the next visit and refuses, the
  * refusal stating a keep that failed rather than being replaced by it. Each

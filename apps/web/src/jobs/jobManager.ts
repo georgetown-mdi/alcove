@@ -1488,7 +1488,8 @@ export class JobManager {
    * is running or the run's child has not exited; `configuration-changed`
    * where the mounted `alcove.yaml` is no longer the one the run was opened
    * from, so the change the operator was shown is not the one the file would
-   * take on.
+   * take on; `run-terms-differ` where the run's own configuration states
+   * other linkage terms than that file, for the same reason.
    */
   async applyTermsProposal(
     id: string,

@@ -26,8 +26,6 @@ import {
   assembleExchangeSpec,
   connectionFromLocator,
   deriveAcceptedLinkageTerms,
-  deriveOutboundPayloadConsent,
-  disclosedColumnNames,
   maxCodeUnits,
 } from "@alcove/core";
 
@@ -1067,11 +1065,12 @@ export function applyManagedExchangePayloadReceiveFill(
  * - `apply`: the operator applied a change a run did not take on -- a stored
  *   proposal, or one the run could not continue under. The terms are derived
  *   from `partnerTerms` as an acceptance derives them, keeping this party's
- *   identity and `deduplicate`; the partner is held to its stated
- *   `deduplicate`, and this party's outbound consent is derived afresh from
- *   the adopted output and its own metadata, as `alcove apply` writes them. A
- *   `lastRun` recording a refused terms change is dropped: the change it
- *   refused is the one applied, so a later visit has nothing left to answer.
+ *   identity and `deduplicate`, and the partner is held to its stated
+ *   `deduplicate`. This party's outbound consent is left as stored: the
+ *   operator reviewed only the terms delta, so the run-time consent gate
+ *   still asks or refuses as it did before. A `lastRun` recording a refused
+ *   terms change is dropped: the change it refused is the one applied, so a
+ *   later visit has nothing left to answer.
  */
 export type ManagedTermsChangeWrite =
   | { scope: "run"; adoptedTerms: LinkageTerms; partnerTerms: LinkageTerms }
@@ -1079,10 +1078,9 @@ export type ManagedTermsChangeWrite =
 
 /**
  * Record a partner's changed linkage terms into the record's exchange file
- * ({@link ManagedTermsChangeWrite}); the connection, secret, and bookkeeping
- * are untouched. Where the record states its own disclosed set, it is
- * restated from its metadata. The result is re-validated through the schema,
- * and the input record is not mutated.
+ * ({@link ManagedTermsChangeWrite}); the connection, secret, bookkeeping,
+ * outbound consent, and disclosed set are untouched. The result is
+ * re-validated through the schema, and the input record is not mutated.
  *
  * @throws {UsageError} for an `apply` on a record whose terms name no
  *   identity for this party, or name one the terms cannot hold.
@@ -1109,17 +1107,10 @@ export function applyManagedExchangeTermsChange(
       identity,
       current.linkageTerms.deduplicate,
     );
-    const consent =
-      deriveOutboundPayloadConsent(linkageTerms.output, current.metadata) ??
-      (linkageTerms.output.shareWithPartner
-        ? ({ status: "pending" } as const)
-        : undefined);
-    const { outboundPayloadConsent: _replaced, ...rest } = current;
     exchangeFile = {
-      ...rest,
+      ...current,
       linkageTerms,
       expectedPartnerDeduplicate: write.partnerTerms.deduplicate,
-      ...(consent !== undefined ? { outboundPayloadConsent: consent } : {}),
     };
   }
   const { expectedPayloadColumns: _receive, ...withoutReceive } = exchangeFile;
@@ -1129,16 +1120,6 @@ export function applyManagedExchangeTermsChange(
       ? { expectedPayloadColumns: partnerSend }
       : {}),
   };
-  if (current.disclosedPayloadColumns !== undefined) {
-    const { disclosedPayloadColumns: _disclosed, ...rest } = exchangeFile;
-    exchangeFile =
-      current.metadata === undefined
-        ? rest
-        : {
-            ...rest,
-            disclosedPayloadColumns: disclosedColumnNames(current.metadata),
-          };
-  }
   const next: ManagedExchangeRecord = { ...record, exchangeFile };
   if (write.scope === "apply" && record.lastRun?.failureKind === "terms-change")
     delete next.lastRun;

@@ -115,6 +115,12 @@ describe("applying the proposal from the run step", () => {
         respond(200, { status: "configuration-changed" }),
       ),
     ).toBe("configuration-changed");
+    expect(
+      await applyJobTermsProposal(
+        "id",
+        respond(200, { status: "run-terms-differ" }),
+      ),
+    ).toBe("run-terms-differ");
     expect(await applyJobTermsProposal("id", respond(404))).toBe("unavailable");
     expect(await applyJobTermsProposal("id", respond(409))).toBe("busy");
     expect(
@@ -131,6 +137,7 @@ describe("applying the proposal from the run step", () => {
     for (const outcome of [
       "busy",
       "configuration-changed",
+      "run-terms-differ",
       "refused",
       "unavailable",
       "error",
@@ -138,6 +145,12 @@ describe("applying the proposal from the run step", () => {
       expect(termsApplyOutcomeText(outcome)).toMatch(/\.$/);
     expect(termsApplyOutcomeText("configuration-changed")).toContain(
       "nothing was applied",
+    );
+    expect(termsApplyOutcomeText("run-terms-differ")).toContain(
+      "from the command line with alcove apply",
+    );
+    expect(termsApplyOutcomeText("run-terms-differ")).toContain(
+      "open the configuration again",
     );
   });
 });

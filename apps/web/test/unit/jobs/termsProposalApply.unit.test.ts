@@ -219,6 +219,28 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     );
   });
 
+  test("refuses where the run's terms are not the mounted configuration's, running nothing", async () => {
+    const root = mountedRoot();
+    const answerFile = path.join(scratch("answer"), "stdin");
+    const manager = managerFor(root, { STUB_APPLY_STDIN_FILE: answerFile });
+    manager.openMountedConfiguration();
+    const intent = openedIntent();
+    const id = await manager.createJob({
+      ...intent,
+      linkageTerms: { ...intent.linkageTerms, date: "2026-07-12" },
+    });
+    const record = await settledRun(manager, id);
+    const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
+    expect(await manager.applyTermsProposal(id)).toEqual({
+      kind: "run-terms-differ",
+    });
+    expect(fs.existsSync(answerFile)).toBe(false);
+    expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
+      before,
+    );
+    expect(record.termsProposal).toBe("available");
+  });
+
   test("reports the CLI's refusal and leaves the proposal available", async () => {
     const root = mountedRoot();
     const manager = managerFor(root, { STUB_APPLY_EXIT_CODE: "64" });

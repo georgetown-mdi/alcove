@@ -26,6 +26,13 @@ export function termsApplyOutcomeText(
         "The alcove.yaml in your working folder changed after you opened " +
         "it, so nothing was applied. Start over to open it again."
       );
+    case "run-terms-differ":
+      return (
+        "This run used terms you changed in the console, not the ones in " +
+        "the alcove.yaml in your working folder, so nothing was applied. " +
+        "Apply the change from the command line with alcove apply, or start " +
+        "over to open the configuration again and run it."
+      );
     case "refused":
       return (
         "The command-line tool refused the change and alcove.yaml was not " +

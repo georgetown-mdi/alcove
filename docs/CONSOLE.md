@@ -165,7 +165,7 @@ A configuration that also commits to what this party discloses -- `disclosed_pay
 A configuration whose `outbound_payload_consent` is still pending confirms no set at all, so a run that shares results with your partner is refused until you confirm the columns it sends. The console says so beside the load, and the review step is where you confirm them:
 
 - **It lists the columns this run sends**, worked out from your input file and the columns step as the run works them out. **Confirm these columns** records them; **Change the columns** returns to the columns step instead. Until you confirm, the review step withholds creating the invitation and starting the run, and says what to confirm.
-- **The confirmation holds for this run and for the configuration the console gives you to run on a schedule**, which states `outbound_payload_consent` as confirmed with those columns. The `alcove.yaml` in your folder is not changed, so a command-line run of that file still asks you to confirm them.
+- **The confirmation holds for this run and for the configuration the console gives you to run on a schedule**, which states `outbound_payload_consent` as confirmed with those columns. The console itself writes nothing to the `alcove.yaml` in your folder, so a command-line run of that file still asks you to confirm them unless you choose **Apply to alcove.yaml** after a partner's terms change, whose `alcove apply` writes what that command writes.
 - **Change the columns after confirming and the review step asks again**, listing the columns added and dropped.
 
 ### When your partner's terms change
@@ -174,6 +174,7 @@ The console runs `alcove` with no terminal to ask at, so a run whose partner cha
 
 - **For a run of the configuration you opened**, **Apply to alcove.yaml** runs `alcove apply` on the terms the run kept, against the `alcove.yaml` and `.alcove.key` in your folder. The command line writes the file; the console writes nothing itself. **Review the updated terms** then opens the configuration again and returns you to the review step, where **Start the exchange** runs under the new terms.
   - Apply is refused, and nothing is written, when `alcove.yaml` changed after you opened it: start over to open it again.
+  - Apply is also refused, and nothing is written, when the run used terms you changed on these pages rather than the ones in `alcove.yaml`, since the change shown is against the terms the run used: apply it from the command line with `alcove apply`, or start over to open the configuration again and run it.
   - **Start over** instead leaves `alcove.yaml` as it was, and the next run stops the same way until your partner goes back to the agreed terms.
 - **For any other run**, the console composed its configuration from these pages, so there is no file to apply the change to. The run screen shows the change: agree the terms with your partner and start over.
 

@@ -16,6 +16,7 @@ import {
   TERMS_CHANGE_NOT_KEPT_REASON,
   TERMS_CHANGE_UNATTENDED_REASON,
   applyManagedTermsProposal,
+  declineManagedTermsProposal,
   managedTermsChangeHandler,
   managedTermsProposalDelta,
   managedTermsProposalFor,
@@ -155,6 +156,47 @@ describe("recording a partner's changed terms in the stored exchange", () => {
     expect(written.lastRun).toBeUndefined();
   });
 
+  test("an apply leaves a pending outbound consent and the disclosed set as stored", () => {
+    const base = acceptorRecord();
+    const record: ManagedExchangeRecord = {
+      ...base,
+      exchangeFile: { ...base.exchangeFile, disclosedPayloadColumns: [] },
+    };
+    const sharing: LinkageTerms = {
+      ...partnerTerms,
+      output: { ...partnerTerms.output, shareWithPartner: true },
+    };
+    const written = applyManagedExchangeTermsChange(record, {
+      scope: "apply",
+      partnerTerms: sharing,
+    });
+    expect(written.exchangeFile.linkageTerms.output.shareWithPartner).toBe(
+      true,
+    );
+    expect(written.exchangeFile.outboundPayloadConsent).toEqual({
+      status: "pending",
+    });
+    expect(written.exchangeFile.disclosedPayloadColumns).toEqual([]);
+  });
+
+  test("an apply writes no outbound consent where none was stored", () => {
+    const base = acceptorRecord();
+    const { outboundPayloadConsent: _pending, ...withoutConsent } =
+      base.exchangeFile;
+    const written = applyManagedExchangeTermsChange(
+      { ...base, exchangeFile: withoutConsent },
+      {
+        scope: "apply",
+        partnerTerms: {
+          ...partnerTerms,
+          output: { ...partnerTerms.output, shareWithPartner: true },
+        },
+      },
+    );
+    expect(written.exchangeFile).not.toHaveProperty("outboundPayloadConsent");
+    expect(written.exchangeFile).not.toHaveProperty("disclosedPayloadColumns");
+  });
+
   test("an apply keeps a run outcome that was not a refused terms change", () => {
     const lastRun = {
       at: "2026-09-28T09:00:00.000Z",
@@ -241,6 +283,12 @@ describe("applying the stored proposal", () => {
       partnerTerms: stored.partnerTerms,
     });
     expect(clear).toHaveBeenCalledWith("id");
+  });
+
+  test("declining drops the proposal and writes nothing to the stored exchange", async () => {
+    await declineManagedTermsProposal("id");
+    expect(clear).toHaveBeenCalledWith("id");
+    expect(persist).not.toHaveBeenCalled();
   });
 
   test("refuses and writes nothing when no proposal is stored", async () => {

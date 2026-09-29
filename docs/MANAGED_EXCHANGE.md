@@ -1785,8 +1785,8 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   data moves, keeps your partner's terms beside this exchange in this browser,
   and, where you turned notifications on, tells you so. The next time you open
   the exchange it shows the change with **Apply**, which saves the terms to the
-  exchange as `alcove apply` would, and **Decline**, which drops them and leaves
-  the exchange as it was. After Apply, the next run exchanges under the new
+  exchange and changes nothing else, and **Decline**, which drops them and
+  leaves the exchange as it was. After Apply, the next run exchanges under the new
   terms; after Decline, scheduled runs stop the same way until your partner
   goes back to the agreed terms, and the next run you start from this page
   asks about the change again. Apply and Decline are not offered while a run
