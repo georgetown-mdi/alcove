@@ -8,6 +8,7 @@ import {
   GATING_WORKFLOWS,
   GITHUB_ACTIONS_APP_ID,
   PROTECTED_BRANCHES,
+  PUSH_EXEMPT_WORKFLOWS,
   branchRequiredContexts,
   contextViolations,
   declaringWorkflowViolations,
@@ -18,6 +19,7 @@ import {
   parseRepositorySlug,
   pathFilterViolations,
   pullRequestTrigger,
+  pushesOnStaging,
   readRequiredContexts,
   workflowJobIndex,
 } from "./check-merge-gate-identities.mjs";
@@ -36,6 +38,8 @@ const gatingWorkflow = (name) => `name: Gate
 on:
   pull_request:
     branches: [main, staging]
+  push:
+    branches: [staging]
 jobs:
   gate:
     name: ${name}
@@ -358,6 +362,7 @@ describe("rule 2: a gating workflow filters nothing", () => {
   pull_request:
     branches: [main]
   push:
+    branches: [staging]
     paths: ["apps/**"]
 jobs:
   gate:
@@ -379,6 +384,8 @@ jobs:
   pull_request:
     branches: [main, staging]
     paths: ["apps/**"]
+  push:
+    branches: [staging]
 jobs:
   gate:
     name: Gate
@@ -402,6 +409,8 @@ jobs:
         `on:
   pull_request:
     paths-ignore: ["docs/**"]
+  push:
+    branches: [staging]
 jobs:
   gate:
     name: Gate
@@ -418,7 +427,7 @@ jobs:
     withTempRoot((root) => {
       writeFileSync(
         join(root, ".github/workflows/gate.yaml"),
-        "on:\n  push:\n    branches: [main]\njobs:\n  gate:\n    name: Gate\n",
+        "on:\n  push:\n    branches: [staging]\njobs:\n  gate:\n    name: Gate\n",
         "utf8",
       );
       expect(
@@ -457,6 +466,8 @@ jobs:
   pull_request:
     branches: [main, staging]
     paths: ["apps/**"]
+  push:
+    branches: [staging]
 jobs:
   gate:
     name: Gate
@@ -476,6 +487,8 @@ jobs:
         `on:
   pull_request:
     paths-ignore: ["docs/**"]
+  push:
+    branches: [staging]
 jobs:
   gate:
     name: Gate
@@ -493,7 +506,7 @@ jobs:
     (file) => {
       const violations = gatingTreeWith(
         file,
-        "on:\n  push:\n    branches: [main]\njobs:\n  gate:\n    name: Gate\n",
+        "on:\n  push:\n    branches: [staging]\njobs:\n  gate:\n    name: Gate\n",
       );
       expect(violations).toHaveLength(1);
       expect(violations[0]).toContain(
@@ -501,6 +514,65 @@ jobs:
       );
     },
   );
+
+  it("reads the push trigger's staging branch", () => {
+    const pushes = (source) =>
+      pushesOnStaging(parseWorkflow("fixture.yaml", source));
+    expect(pushes("on:\n  push:\n    branches: [main, staging]\n")).toBe(true);
+    expect(pushes("on:\n  push:\n    branches: [main]\n")).toBe(false);
+    expect(pushes("on:\n  pull_request:\n")).toBe(false);
+    expect(pushes("on: [push, pull_request]\n")).toBe(false);
+  });
+
+  const pushFixture = (push) => `on:
+  pull_request:
+    branches: [main, staging]
+${push}jobs:
+  gate:
+    name: Gate
+`;
+
+  it.each(GATING_WORKFLOWS.filter((f) => !PUSH_EXEMPT_WORKFLOWS.includes(f)))(
+    "fails %s alone for a missing push trigger",
+    (file) => {
+      const violations = gatingTreeWith(file, pushFixture(""));
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(
+        `${file} declares no on.push trigger with branches listing staging`,
+      );
+    },
+  );
+
+  it.each(GATING_WORKFLOWS.filter((f) => !PUSH_EXEMPT_WORKFLOWS.includes(f)))(
+    "fails %s alone for a push trigger whose branches omit staging",
+    (file) => {
+      const violations = gatingTreeWith(
+        file,
+        pushFixture("  push:\n    branches: [main]\n"),
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(
+        `${file} declares no on.push trigger with branches listing staging`,
+      );
+    },
+  );
+
+  it.each(PUSH_EXEMPT_WORKFLOWS)(
+    "passes %s without a push trigger, as exempt",
+    (file) => {
+      expect(gatingTreeWith(file, pushFixture(""))).toEqual([]);
+    },
+  );
+
+  it("names only gating workflows as exempt from the push trigger", () => {
+    expect(PUSH_EXEMPT_WORKFLOWS).toEqual([
+      ".github/workflows/dependency_review.yaml",
+      ".github/workflows/eb_build_and_test.yaml",
+    ]);
+    for (const file of PUSH_EXEMPT_WORKFLOWS) {
+      expect(GATING_WORKFLOWS).toContain(file);
+    }
+  });
 });
 
 describe("rule 3: every workflow declaring a required job is listed", () => {
@@ -781,7 +853,7 @@ describe("the real repository tree", () => {
     );
     expect(output).toContain("neither GH_TOKEN nor GITHUB_TOKEN is set");
     expect(output).toContain(
-      "Path-filter rule passed: .github/workflows/cli_build_and_test.yaml, .github/workflows/codeql.yaml, .github/workflows/dependency_review.yaml, .github/workflows/eb_build_and_test.yaml, .github/workflows/native_alpine.yaml, .github/workflows/static_checks.yaml",
+      "Gating-workflow trigger rule passed: .github/workflows/cli_build_and_test.yaml, .github/workflows/codeql.yaml, .github/workflows/dependency_review.yaml, .github/workflows/eb_build_and_test.yaml, .github/workflows/native_alpine.yaml, .github/workflows/static_checks.yaml declare no pull_request path filter, and all but .github/workflows/dependency_review.yaml, .github/workflows/eb_build_and_test.yaml run on push to staging",
     );
     expect(output).not.toContain("Merge gate identities check passed");
   });

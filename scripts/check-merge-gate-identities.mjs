@@ -6,7 +6,8 @@
 // which GitHub matches against the check runs a pull request produces. Three
 // ordinary edits break that match with nothing red to show for it, leaving the
 // requirement pending forever and every pull request unmergeable until branch
-// protection is edited:
+// protection is edited (A-C), and one more drops the check the merge gate
+// leans on after a merge (D):
 //
 //   A. Renaming a job whose `name:` is a required context. The check run the
 //      ruleset waits for is never created under that name again.
@@ -16,8 +17,12 @@
 //   C. Requiring a context whose job a workflow outside GATING_WORKFLOWS
 //      declares. Rule 2 reads only the files that list names, so hazard B is
 //      unwatched on the workflow the requirement just added to the merge gate.
+//   D. Dropping a gating workflow's push trigger on staging. A pull request
+//      merges without being brought up to date with staging, so the push run
+//      is what tests two independently green pull requests together; a gating
+//      workflow that stops running on push silently reopens that gap.
 //
-// Three rules, one per hazard:
+// Three rules; rule 2 holds both B and D:
 //
 //   1. Every required status-check context on main and staging matches a job
 //      name under .github/workflows. Reading the rules needs a token, so this
@@ -25,8 +30,10 @@
 //      under Actions -- when it has none or the read fails. It never passes
 //      silently: a skip says which half did not run.
 //   2. The gating workflows in GATING_WORKFLOWS declare no `paths:` or
-//      `paths-ignore:` under `on.pull_request`, and do declare that trigger. No
-//      API, so this rule runs on every invocation including rule 1's skips.
+//      `paths-ignore:` under `on.pull_request`, and do declare that trigger.
+//      Each one not in PUSH_EXEMPT_WORKFLOWS also declares `on.push` with
+//      `branches` listing staging. No API, so this rule runs on every
+//      invocation including rule 1's skips.
 //   3. Every workflow declaring a job one of those contexts names is in
 //      GATING_WORKFLOWS, so rule 2's scope is the merge gate's own rather than
 //      a hand-held list nothing measures against it. It reads the branch rules
@@ -85,6 +92,17 @@ export const GATING_WORKFLOWS = [
   `${WORKFLOW_DIR}/eb_build_and_test.yaml`,
   `${WORKFLOW_DIR}/native_alpine.yaml`,
   `${WORKFLOW_DIR}/static_checks.yaml`,
+];
+
+/**
+ * The gating workflows rule 2 does not require to run on push to staging.
+ * Dependency review compares a pull request's dependency changes, and a merged
+ * tip adds no dependency that neither pull request added. The web build and
+ * test already runs on push to staging through eb_deploy.yaml, which calls it.
+ */
+export const PUSH_EXEMPT_WORKFLOWS = [
+  `${WORKFLOW_DIR}/dependency_review.yaml`,
+  `${WORKFLOW_DIR}/eb_build_and_test.yaml`,
 ];
 
 /**
@@ -296,33 +314,62 @@ export function contextViolations(merged, index) {
 }
 
 /**
- * A parsed workflow's `on.pull_request` trigger: whether it is declared at all,
- * and which path-filter keys it declares.
+ * A parsed workflow's trigger for `event`: whether it is declared at all, and
+ * its settings object, or null when it has none.
  */
-export function pullRequestTrigger(workflow) {
+function eventTrigger(workflow, event) {
   const on = workflow?.on;
   // The `on: pull_request` scalar and `on: [push, pull_request]` array
-  // shorthands declare the trigger with no filter surface at all.
-  if (on === "pull_request") return { declared: true, filters: [] };
+  // shorthands declare the trigger with no settings at all.
+  if (on === event) return { declared: true, settings: null };
   if (Array.isArray(on))
-    return { declared: on.includes("pull_request"), filters: [] };
-  const pullRequest = on?.pull_request;
-  if (pullRequest === undefined) return { declared: false, filters: [] };
-  if (pullRequest === null || typeof pullRequest !== "object") {
-    return { declared: true, filters: [] };
-  }
+    return { declared: on.includes(event), settings: null };
+  const settings = on?.[event];
+  if (settings === undefined) return { declared: false, settings: null };
   return {
     declared: true,
-    filters: ["paths", "paths-ignore"].filter((key) => key in pullRequest),
+    settings:
+      settings !== null && typeof settings === "object" ? settings : null,
   };
 }
 
 /**
- * Every way a gating workflow's pull-request trigger can fail to run on some
- * pull request. Empty means each named file declares the trigger and filters
- * nothing out of it.
+ * A parsed workflow's `on.pull_request` trigger: whether it is declared at all,
+ * and which path-filter keys it declares.
  */
-export function pathFilterViolations(root, files = GATING_WORKFLOWS) {
+export function pullRequestTrigger(workflow) {
+  const { declared, settings } = eventTrigger(workflow, "pull_request");
+  return {
+    declared,
+    filters:
+      settings === null
+        ? []
+        : ["paths", "paths-ignore"].filter((key) => key in settings),
+  };
+}
+
+/**
+ * Whether a parsed workflow declares `on.push` with `branches` listing staging.
+ * Only the literal list is read: GitHub's branch-pattern matching is not
+ * modeled, so a gating workflow names staging outright.
+ */
+export function pushesOnStaging(workflow) {
+  const { settings } = eventTrigger(workflow, "push");
+  const branches = settings?.branches;
+  return Array.isArray(branches) && branches.includes("staging");
+}
+
+/**
+ * Every way a gating workflow's pull-request trigger can fail to run on some
+ * pull request, and every non-exempt one that does not run on push to staging.
+ * Empty means each named file declares the pull_request trigger, filters
+ * nothing out of it, and runs on push to staging unless `pushExempt` names it.
+ */
+export function pathFilterViolations(
+  root,
+  files = GATING_WORKFLOWS,
+  pushExempt = PUSH_EXEMPT_WORKFLOWS,
+) {
   const violations = [];
   for (const file of files) {
     const absolute = resolve(root, file);
@@ -332,9 +379,13 @@ export function pathFilterViolations(root, files = GATING_WORKFLOWS) {
       );
       continue;
     }
-    const { declared, filters } = pullRequestTrigger(
-      workflowDocument(root, file),
-    );
+    const workflow = workflowDocument(root, file);
+    if (!pushExempt.includes(file) && !pushesOnStaging(workflow)) {
+      violations.push(
+        `${file} declares no on.push trigger with branches listing staging, so it does not run on the merged staging tip and a conflict between two pull requests that were each green on their own merges unnoticed. A gating workflow runs on push to staging; add \`push: branches: [staging]\`, or list it in PUSH_EXEMPT_WORKFLOWS in scripts/check-merge-gate-identities.mjs with the reason a push run catches nothing.`,
+      );
+    }
+    const { declared, filters } = pullRequestTrigger(workflow);
     if (!declared) {
       violations.push(
         `${file} declares no on.pull_request trigger, so it raises no check run on a pull request at all and any required context naming one of its jobs holds every pull request pending.`,
@@ -435,12 +486,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
 
   // Stated before the rules are judged, so the skip is on the record even when
-  // the path-filter rule that still ran goes on to fail.
+  // the trigger rule that still ran goes on to fail.
   const { merged, skipped } = await readRequiredContexts({
     cwd: root,
   });
   if (skipped !== null) {
-    const stated = `Merge gate identities: the required-context rule and the declaring-workflow rule were SKIPPED -- ${skipped}. Both read the branch rules. The pull_request path-filter rule still ran.`;
+    const stated = `Merge gate identities: the required-context rule and the declaring-workflow rule were SKIPPED -- ${skipped}. Both read the branch rules. The gating-workflow trigger rule still ran.`;
     if (process.env.GITHUB_ACTIONS === "true") {
       console.log(`::warning title=Merge gate identities::${stated}`);
     }
@@ -462,7 +513,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   if (merged === null) {
     console.log(
-      `Path-filter rule passed: ${list(GATING_WORKFLOWS)} declare no pull_request path filter.`,
+      `Gating-workflow trigger rule passed: ${list(GATING_WORKFLOWS)} declare no pull_request path filter, and all but ${list(PUSH_EXEMPT_WORKFLOWS)} run on push to staging.`,
     );
   } else {
     const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -477,7 +528,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
             ),
           )}.`;
     console.log(
-      `Merge gate identities check passed: ${plural(merged.length - foreign.length, "required context")} across ${list(PROTECTED_BRANCHES)} match a job name under ${WORKFLOW_DIR}, every workflow declaring one of those jobs is named in GATING_WORKFLOWS, and ${list(GATING_WORKFLOWS)} declare no pull_request path filter.${raisedElsewhere}`,
+      `Merge gate identities check passed: ${plural(merged.length - foreign.length, "required context")} across ${list(PROTECTED_BRANCHES)} match a job name under ${WORKFLOW_DIR}, every workflow declaring one of those jobs is named in GATING_WORKFLOWS, ${list(GATING_WORKFLOWS)} declare no pull_request path filter, and all but ${list(PUSH_EXEMPT_WORKFLOWS)} run on push to staging.${raisedElsewhere}`,
     );
   }
 }

@@ -18,9 +18,15 @@ name: Native Addon (Alpine/musl)
 # actually changed (the same set the old `paths:` filter named). The merge-gate
 # identities check, run by the Repository checks step of static_checks.yaml,
 # holds that: this file carrying a path filter under on.pull_request fails it.
+#
+# It also runs on every push to staging, with no path scoping, so a conflict
+# between two pull requests that were each green on their own shows on the
+# merged tip.
 on:
   pull_request:
     branches: [main, staging]
+  push:
+    branches: [staging]
 
 # Cancel a superseded run when a newer commit lands on the same PR/branch.
 concurrency:
