@@ -24,6 +24,7 @@ import {
 } from "../src/jobs/index";
 import { ConfigManager } from "../src/utils/serverConfig";
 import { jobApiRequestTimeoutMs } from "../src/jobs/routeSupport";
+import { readJobApiConfig } from "../src/jobs/gate";
 import { registerServer } from "../src/httpServer";
 
 import { attachRequestAbortSignal } from "./requestAbortSignal";
@@ -102,22 +103,24 @@ const listener = server.listen(path ? { path } : { port, host }, (err) => {
   // localFetch dispatches in-process through the nitro app (no real socket), so it
   // is independent of bind type (TCP, TLS, unix socket) and of this entry's own
   // module-alias resolution.
-  void nitroApp
-    .localFetch("/api/peerjs/id")
-    .then(async (res) => {
-      // A non-2xx resolves normally (no rejection to .catch): surface it, since
-      // it means usePeerServer() did not attach the handler. Release the body
-      // either way -- we read neither. Unlike the dev warm (vite.config.ts), no
-      // content-type check is needed here: the built server registers this route
-      // eagerly, so a 2xx cannot be a lazily-compiled SPA fallback the way it can
-      // under Vite.
-      if (!res.ok)
-        log.warn(`peer signaling warm-up returned HTTP ${res.status}`);
-      await res.body?.cancel();
-    })
-    .catch((warmErr: unknown) =>
-      log.warn("peer signaling warm-up failed:", warmErr),
-    );
+  // The console profile serves no signaling server, so it has nothing to warm.
+  if (!readJobApiConfig().consoleProfile)
+    void nitroApp
+      .localFetch("/api/peerjs/id")
+      .then(async (res) => {
+        // A non-2xx resolves normally (no rejection to .catch): surface it, since
+        // it means usePeerServer() did not attach the handler. Release the body
+        // either way -- we read neither. Unlike the dev warm (vite.config.ts), no
+        // content-type check is needed here: the built server registers this route
+        // eagerly, so a 2xx cannot be a lazily-compiled SPA fallback the way it can
+        // under Vite.
+        if (!res.ok)
+          log.warn(`peer signaling warm-up returned HTTP ${res.status}`);
+        await res.body?.cancel();
+      })
+      .catch((warmErr: unknown) =>
+        log.warn("peer signaling warm-up failed:", warmErr),
+      );
   const protocol = cert && key ? "https" : "http";
   const addressInfo = listener.address() as AddressInfo;
   if (typeof addressInfo === "string") {

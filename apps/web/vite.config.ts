@@ -12,6 +12,7 @@ import viteReact from "@vitejs/plugin-react";
 
 import { ConfigManager } from "./src/utils/serverConfig.ts";
 
+import { readJobApiConfig } from "./src/jobs/gate.ts";
 import { registerServer } from "./src/httpServer.ts";
 
 // A type-only import, erased before either config loader resolves anything.
@@ -434,7 +435,9 @@ export default defineConfig((_configEnv) => {
                       );
                       return;
                     }
-                    void warmPeerSignaling(address.port);
+                    // The console profile serves no signaling server.
+                    if (!readJobApiConfig().consoleProfile)
+                      void warmPeerSignaling(address.port);
                   });
                 } else {
                   console.warn("http server is undefined");

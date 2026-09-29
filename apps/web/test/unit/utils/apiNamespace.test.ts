@@ -175,7 +175,26 @@ describe("the /api refusal on a deployment without the job API", () => {
   });
 });
 
-describe("the /api refusal on a deployment with the job API enabled", () => {
+/** Every spelling of the broker's subtree a client writes or the router
+ * resolves, and the ones only the refusal's own decoding reaches. */
+const BROKER_SPELLINGS: ReadonlyArray<[string, string]> = [
+  ["GET", "/api/peerjs"],
+  ["GET", "/api/peerjs/"],
+  ["GET", "/api/peerjs/id"],
+  ["GET", "/api/peerjs/id/"],
+  ["GET", "/api/peerjs/peerjs/peers"],
+  ["GET", "/api/peerjs?key=peerjs&id=probe&token=t"],
+  ["GET", "/API/peerjs/id"],
+  ["GET", "/%61pi/peerjs/id"],
+  ["GET", "/api/PEERJS/id"],
+  ["GET", "/api/%70eerjs/id"],
+  ["GET", "/api/%2570eerjs/id"],
+  ["GET", "/api//peerjs/id"],
+  ["POST", "/api/peerjs/id"],
+  ["OPTIONS", "/api/peerjs/id"],
+];
+
+describe("the /api refusal on the console profile with the job API enabled", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
     vi.stubEnv("JOB_DATA_ROOT", "/var/lib/alcove-jobs");
@@ -185,7 +204,6 @@ describe("the /api refusal on a deployment with the job API enabled", () => {
     ["GET", "/api/jobs/slot"],
     ["GET", "/api/nothing-here"],
     ["GET", "/API/jobs/slot"],
-    ["GET", "/api/peerjs/id"],
   ])(
     "routes %s %s, leaving the per-route gate to answer",
     async (method, path) => {
@@ -193,12 +211,58 @@ describe("the /api refusal on a deployment with the job API enabled", () => {
       expect(reached).toHaveLength(1);
     },
   );
+
+  test.each(BROKER_SPELLINGS)(
+    "refuses %s %s, the broker's subtree, before the router",
+    async (method, path) => {
+      const { response, reached } = await answer(method, path);
+      expect(reached).toEqual([]);
+      expect(await shapeOf(response)).toEqual(
+        await shapeOf(jobEmptyResponse(404)),
+      );
+    },
+  );
+
+  test("refuses a double-encoded dot segment written under the broker's subtree", async () => {
+    const { response, reached } = await answer(
+      "GET",
+      "/api/peerjs/%252e%252e/jobs/slot",
+    );
+    expect(reached).toEqual([]);
+    expect(response.status).toBe(404);
+  });
+
+  test.each([
+    ["GET", "/"],
+    ["GET", "/nothing-here"],
+    ["GET", "/peerjs/id"],
+  ])("routes %s %s, outside the namespace", async (method, path) => {
+    const { reached } = await answer(method, path);
+    expect(reached).toHaveLength(1);
+  });
 });
 
-describe("the served-everywhere allowlist", () => {
+describe("the /api refusal on the console profile with no data root", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
+    vi.stubEnv("JOB_DATA_ROOT", "");
+  });
+
+  test.each([...BROKER_SPELLINGS, ["GET", "/api/jobs/slot"]])(
+    "refuses %s %s before the router",
+    async (method, path) => {
+      const { response, reached } = await answer(method, path);
+      expect(reached).toEqual([]);
+      expect(response.status).toBe(404);
+    },
+  );
+});
+
+describe("the hosted-only allowlist", () => {
   test("names the broker's subtree under /api", () => {
-    // A rot guard: an emptied list would make the namespace refuse the broker
-    // and stop signaling, and a list reaching past /api would refuse nothing.
+    // A rot guard: an emptied list would make the hosted namespace refuse the
+    // broker and stop signaling, and a list reaching past /api would refuse
+    // nothing.
     expect(HOSTED_API_PREFIXES.length).toBeGreaterThan(0);
     for (const prefix of HOSTED_API_PREFIXES)
       expect(prefix.startsWith("/api/")).toBe(true);
