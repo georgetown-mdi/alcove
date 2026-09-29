@@ -4002,3 +4002,73 @@ test
     }
   },
 );
+
+// --- --server-provision --------------------------------------------------------
+
+const WAKE_PROVISION = {
+  host: "wake.example.org",
+  path: "/start",
+  auth: { bearer: "@/run/secrets/wake.token" },
+};
+
+test.each(["sftp://host/drop", "wss://peers.example.org/psi"])(
+  "validateInvite: online from %s carries --server-provision into the connection the run wakes and saves",
+  async (raw) => {
+    const { input, options } = onlineFixture();
+    const ready = await validateInvite({
+      resolved: { mode: "online", url: new URL(raw), input },
+      options: { ...options, serverProvision: WAKE_PROVISION },
+      acceptTimeout: 900,
+      log: silentLog,
+    });
+    expect(ready.mode).toBe("online");
+    if (ready.mode !== "online") return;
+    if (ready.connection.channel === "filedrop")
+      throw new Error("expected a channel with a server");
+    expect(ready.connection.server.provision).toEqual(WAKE_PROVISION);
+  },
+);
+
+test("validateInvite: online from a file:// URL refuses --server-provision", async () => {
+  const { input, options } = onlineFixture();
+  await expect(
+    validateInvite({
+      resolved: {
+        mode: "online",
+        url: new URL("file:///mnt/share/drop"),
+        input,
+      },
+      options: { ...options, serverProvision: WAKE_PROVISION },
+      acceptTimeout: 900,
+      log: silentLog,
+    }),
+  ).rejects.toThrow("--server-provision is only supported on the sftp");
+});
+
+test("validateInvite: offline warns that --server-provision is ignored", async () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-provision-"));
+  tmpDirs.push(dir);
+  const input = writeCsv(dir, "first_name,last_name,dob,ssn");
+  const log = getLogger("invite-offline-provision-warn");
+  log.setLevel("warn");
+  const warnSpy = vi.spyOn(log, "warn");
+  try {
+    await validateInvite({
+      resolved: { mode: "offline", input },
+      options: testOptions({
+        configFile: path.join(dir, "alcove.yaml"),
+        keyFile: path.join(dir, ".alcove.key"),
+        serverProvision: WAKE_PROVISION,
+      }),
+      acceptTimeout: 900,
+      log,
+    });
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(warned).toContain(
+      "--server-provision has no effect on an offline invite/accept",
+    );
+    expect(warned).not.toContain("wake.token");
+  } finally {
+    warnSpy.mockRestore();
+  }
+});

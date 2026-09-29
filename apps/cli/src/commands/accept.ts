@@ -22,6 +22,7 @@ import type {
   InvitationToken,
   LinkageTerms,
   PreparedExchange,
+  ServerProvision,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
@@ -319,10 +320,10 @@ type AcceptReady = {
 );
 
 /**
- * The endpoint-seeded connection with `--peer-timeout` applied, for the
- * acceptance that runs the exchange itself. It bounds the partner's arrival at
- * the rendezvous only; the channel opening and the partner's silence after it
- * keep their own budgets (see `webRtcDialFrom`).
+ * The endpoint-seeded connection with `--peer-timeout` and `--server-provision`
+ * applied, for the acceptance that runs the exchange itself. The timeout bounds
+ * the partner's arrival at the rendezvous only; the channel opening and the
+ * partner's silence after it keep their own budgets (see `webRtcDialFrom`).
  *
  * The same object becomes the run's connection and the one the bootstrap
  * writes, so the live dial and the saved `connection.options.peer_timeout_ms`
@@ -337,8 +338,10 @@ type AcceptReady = {
 function withRunPeerTimeout(
   connection: WebRTCConnectionConfig,
   peerTimeoutSeconds: number | undefined,
+  provision: ServerProvision | undefined,
 ): WebRTCConnectionConfig {
   return applyConnectionOverrides(connection, {
+    server: { provision },
     options: { peerTimeout: peerTimeoutSeconds },
   }) as WebRTCConnectionConfig;
 }
@@ -602,7 +605,12 @@ export async function validateAccept(params: {
   // flag the operator passed. Ahead of the config reconciliation and the input
   // read below, either of which aborts, so the operator reads the diagnostic
   // even when the acceptance then fails.
-  warnServerOverridesIgnoredOffline(options, log);
+  // --server-provision takes effect on the acceptance that runs the exchange,
+  // so it is reported below, once runsExchange is known.
+  warnServerOverridesIgnoredOffline(
+    { ...options, serverProvision: undefined },
+    log,
+  );
   const { reuse: reuseExistingConfig, existingOutputShares } =
     reconcileAcceptConfig({
       configPath: options.configFile,
@@ -643,9 +651,18 @@ export async function validateAccept(params: {
     endpointRoleConnection.channel === "webrtc" &&
     !reuseExistingConfig &&
     rows !== undefined
-      ? withRunPeerTimeout(endpointRoleConnection, options.peerTimeout)
+      ? withRunPeerTimeout(
+          endpointRoleConnection,
+          options.peerTimeout,
+          options.serverProvision,
+        )
       : undefined;
   const runsExchange = runnableConnection !== undefined;
+  if (!runsExchange)
+    warnServerOverridesIgnoredOffline(
+      { serverProvision: options.serverProvision },
+      log,
+    );
   const connection = runnableConnection ?? endpointRoleConnection;
   // The connection-options overrides (timeouts, --max-reconnect-attempts, the
   // file-sync toggles) are dropped the same way as the server block, except

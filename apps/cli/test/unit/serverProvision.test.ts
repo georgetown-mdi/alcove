@@ -8,6 +8,8 @@ import type { ConnectionConfig } from "@alcove/core";
 
 import {
   createProvisionedServer,
+  readStartModeProvision,
+  wakeServerThrough,
   wakeProvisionedServer,
 } from "../../src/serverProvision";
 
@@ -143,4 +145,42 @@ test("a create-mode block reads its bearer file, logs the call, and resolves to 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("readStartModeProvision reads a start-mode block's bearer file and leaves the connection's reference", () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-read-provision-"));
+  try {
+    const tokenFile = path.join(dir, "token");
+    fs.writeFileSync(tokenFile, "wake-token\n");
+    const connection: ConnectionConfig = {
+      channel: "sftp",
+      server: {
+        host: "sftp.example.org",
+        provision: {
+          host: "wake.example.org",
+          auth: { bearer: `@${tokenFile}` },
+        },
+      },
+    };
+    expect(readStartModeProvision(connection)?.auth).toEqual({
+      bearer: "wake-token",
+    });
+    if (connection.channel !== "sftp") throw new Error("expected sftp");
+    expect(connection.server.provision?.auth?.bearer).toBe(`@${tokenFile}`);
+    expect(
+      readStartModeProvision(
+        withMode(sftpConnectionWithProvision("wake.example.org"), "create"),
+      ),
+    ).toBeUndefined();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("wakeServerThrough sends nothing for a connection stating no start-mode block", async () => {
+  const log = mockLog();
+  const fetch = stubProvisionFetch(200);
+  await wakeServerThrough(undefined, log);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(log.info).not.toHaveBeenCalled();
 });

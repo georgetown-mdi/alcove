@@ -3667,3 +3667,30 @@ test("prepareDataset: a config with no declaration binds nothing (the two-config
   );
   expect(prepared.expectedPartnerDeduplicate).toBeUndefined();
 });
+
+test("handler: --server-provision replaces the config's block, its @path bearer read before the call", async () => {
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  const flagToken = path.join(dir, "flag.token");
+  fs.writeFileSync(flagToken, "flag-token\n");
+  const fetch = stubProvisionFetch(200);
+  vi.mocked(runProtocol).mockReset();
+  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  const exitSpy = captureProcessExit();
+  try {
+    await handler({
+      ...argv,
+      "server-provision": "https://flag.example.org:8443/wake",
+      "server-provision-bearer": `@${flagToken}`,
+    } as unknown as Arguments);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(String(url)).toBe("https://flag.example.org:8443/wake");
+    expect(new Headers(init?.headers).get("authorization")).toBe(
+      "Bearer flag-token",
+    );
+  } finally {
+    exitSpy.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});

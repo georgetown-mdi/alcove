@@ -48,7 +48,12 @@ import {
   applyConnectionCredentials,
   readConnectionCredentials,
 } from "../util/atSignRefs";
-import { establishHostKeyTrust } from "../hostKeyTrust";
+import {
+  assertHostKeyTrustCanBeEstablished,
+  establishHostKeyTrust,
+  type HostKeyPersistence,
+} from "../hostKeyTrust";
+import { readStartModeProvision, wakeServerThrough } from "../serverProvision";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -745,6 +750,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // from this party's own filesystem, so it is settled here rather than
       // after the host-key step below has contacted the server.
       const credentials = readConnectionCredentials(connection);
+      const provision = readStartModeProvision(connection);
       // Decided from the input alone, so settled before the host-key step too.
       await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
         assertFileSyncFirstRoundFits(connection, prepared, report),
@@ -778,12 +784,17 @@ export async function handler(argv: Arguments): Promise<void> {
       // under --save, one-off otherwise. Runs after dataset prep and the
       // credential read above: those can only fail from this party's own input,
       // so a refused run never opens a connection.
+      const hostKeyPersistence: HostKeyPersistence = options.save
+        ? { mode: "save-with-config", configPath: options.configFile }
+        : { mode: "ephemeral" };
+      // The last refusal decided from local inputs, ahead of the wake call and
+      // the host-key probe, the run's first network contact.
+      assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
+      await wakeServerThrough(provision, log);
       await establishHostKeyTrust(connection, {
         verbosity,
         loggerName: "alcove",
-        persistence: options.save
-          ? { mode: "save-with-config", configPath: options.configFile }
-          : { mode: "ephemeral" },
+        persistence: hostKeyPersistence,
       });
       // The connection the exchange dials: the original cloned AFTER the host-key
       // step, so any just-confirmed pin rides along, with the credential values

@@ -7,9 +7,10 @@ import {
   HOST_KEY_FINGERPRINT_REGEX,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
+  provisionRequest,
   UsageError,
 } from "@alcove/core";
-import type { ConnectionConfig } from "@alcove/core";
+import type { ConnectionConfig, ServerProvision } from "@alcove/core";
 
 import { type ConnectionOverrides, DEFAULT_CONFIG_PATH } from "./config";
 import { DEFAULT_KEY_PATH } from "./keyFile";
@@ -89,6 +90,107 @@ export function hostKeyFingerprintFlag(argv: Arguments): string | undefined {
         "prior interactive Alcove run)",
     );
   return resolved;
+}
+
+/**
+ * Read `--server-provision` and its credential flags into the start-mode
+ * `server.provision` block they state, or `undefined` when none is set. The
+ * URL must be `https:` with a host and no user, query, or fragment; its host,
+ * port and path become the block's. `--server-provision-bearer`, or
+ * `--server-provision-username` with `--server-provision-password`, become its
+ * `auth`, each kept verbatim so an `@path` reference is read at live use and a
+ * saved configuration records the reference. A credential flag without the
+ * URL, or a malformed URL, is a {@link UsageError} (exit 64) naming the flag.
+ * No value is interpolated into a message, since the URL's path may hold a
+ * token.
+ */
+export function serverProvisionFlag(
+  argv: Arguments,
+): ServerProvision | undefined {
+  const raw = singleValue(argv, "server-provision");
+  const bearer = singleValue(argv, "server-provision-bearer");
+  const username = singleValue(argv, "server-provision-username");
+  const password = singleValue(argv, "server-provision-password");
+  if (raw === undefined) {
+    const stray = [
+      ["--server-provision-bearer", bearer],
+      ["--server-provision-username", username],
+      ["--server-provision-password", password],
+    ].find(([, value]) => value !== undefined);
+    if (stray !== undefined)
+      throw new UsageError(
+        `${String(stray[0])} requires --server-provision, the https URL of ` +
+          "the endpoint it authenticates to.",
+      );
+    return undefined;
+  }
+  const invalid = new UsageError(
+    "--server-provision must be an https URL naming a host and, optionally, " +
+      "a port and path, with no user, query, or fragment; write an IP " +
+      "address in its standard form and an internationalized host name in " +
+      "its xn-- form. Pass credentials with --server-provision-bearer or " +
+      "--server-provision-username and --server-provision-password.",
+  );
+  // The URL parser drops a tab, CR or LF anywhere in its input, which would
+  // join two host names into one.
+  if (typeof raw !== "string" || /[\s\x00-\x1f\x7f]/.test(raw)) throw invalid;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw invalid;
+  }
+  // The parser rewrites some hosts it accepts -- 0x7f.1 becomes 127.0.0.1 --
+  // so the request goes only to a host as typed.
+  const authority = raw.replace(/^https:\/\//i, "").split(/[/?#]/)[0];
+  const typedHost = authority.startsWith("[")
+    ? authority.slice(0, authority.indexOf("]") + 1)
+    : authority.replace(/:\d*$/, "");
+  if (
+    url.protocol !== "https:" ||
+    url.hostname === "" ||
+    typedHost.toLowerCase() !== url.hostname ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  )
+    throw invalid;
+  if (
+    bearer !== undefined &&
+    (username !== undefined || password !== undefined)
+  )
+    throw new UsageError(
+      "--server-provision-bearer and --server-provision-username/-password " +
+        "are two ways to authenticate to the provisioning endpoint; pass one.",
+    );
+  if ((username === undefined) !== (password === undefined))
+    throw new UsageError(
+      "--server-provision-username and --server-provision-password must be " +
+        "passed together.",
+    );
+  const address: ServerProvision = {
+    host: url.hostname.startsWith("[")
+      ? url.hostname.slice(1, -1)
+      : url.hostname,
+    ...(url.port !== "" ? { port: Number(url.port) } : {}),
+    ...(url.pathname !== "/" ? { path: url.pathname } : {}),
+  };
+  // The request the wake call would send, built now so a host it refuses is
+  // reported against this flag rather than at the call.
+  try {
+    provisionRequest(address);
+  } catch {
+    throw invalid;
+  }
+  return {
+    ...address,
+    ...(bearer !== undefined
+      ? { auth: { bearer: String(bearer) } }
+      : username !== undefined
+        ? { auth: { username: String(username), password: String(password) } }
+        : {}),
+  };
 }
 
 /**
@@ -248,6 +350,30 @@ export function addCommonBootstrapOptions(
           "connect without the interactive trust prompt; a server presenting a " +
           "different key still fails closed",
     })
+    .option("server-provision", {
+      type: "string",
+      describe:
+        "the https URL of an endpoint that starts the server on demand; it " +
+        "is called once before the first connection to the server, and a " +
+        "configuration this command writes keeps it for later runs",
+    })
+    .option("server-provision-bearer", {
+      type: "string",
+      describe:
+        "bearer token for --server-provision; use @path to read from file",
+    })
+    .option("server-provision-username", {
+      type: "string",
+      describe:
+        "HTTP Basic username for --server-provision; requires " +
+        "--server-provision-password",
+    })
+    .option("server-provision-password", {
+      type: "string",
+      describe:
+        "HTTP Basic password for --server-provision; use @path to read from " +
+        "file",
+    })
     .option("connection-timeout", {
       type: "string",
       describe:
@@ -394,6 +520,12 @@ export interface CommonBootstrapOptions {
    * stored pin, so a wrong value still fails closed. See hostKeyTrust.ts.
    */
   serverHostKeyFingerprint?: string;
+  /**
+   * The start-mode `server.provision` block `--server-provision` and its
+   * credential flags state, from {@link serverProvisionFlag}; its auth holds
+   * any `@path` reference unread.
+   */
+  serverProvision?: ServerProvision;
   connectionTimeout?: number;
   peerTimeout?: number;
   // The --polling-frequency override, in MILLISECONDS (not seconds like the two
@@ -457,6 +589,7 @@ export function parseCommonBootstrapArgs(
     // format-validated) here at parse time, same as the config-load path already
     // does for an @-authored host_key_fingerprint (resolveHostKeyFingerprintRef).
     serverHostKeyFingerprint: hostKeyFingerprintFlag(argv),
+    serverProvision: serverProvisionFlag(argv),
     connectionTimeout: durationFlagSeconds(
       argv,
       "connection-timeout",
@@ -511,6 +644,7 @@ export type ConnectionOverrideOptions = Pick<
   | "serverPrivateKeyPassphrase"
   | "serverKeyboardInteractive"
   | "serverHostKeyFingerprint"
+  | "serverProvision"
   | "serverPort"
   | "locklessRendezvous"
   | "peerId"
@@ -540,6 +674,7 @@ export function connectionOverridesFrom(
       privateKeyPassphrase: options.serverPrivateKeyPassphrase,
       keyboardInteractive: options.serverKeyboardInteractive,
       hostKeyFingerprint: options.serverHostKeyFingerprint,
+      provision: options.serverProvision,
       port: options.serverPort,
       outboundPath: options.outboundPath,
     },
@@ -878,6 +1013,7 @@ export type OfflineIgnoredServerOverrides = Pick<
   | "serverPrivateKeyPassphrase"
   | "serverKeyboardInteractive"
   | "serverHostKeyFingerprint"
+  | "serverProvision"
   | "serverPort"
   | "outboundPath"
 >;
@@ -886,7 +1022,7 @@ export type OfflineIgnoredServerOverrides = Pick<
  * Warn that the server-block overrides (`--server-username`, `--server-password`,
  * `--server-private-key`, `--server-private-key-passphrase`,
  * `--server-keyboard-interactive`, `--server-host-key-fingerprint`,
- * `--server-port`, and `--outbound-path`) have no effect
+ * `--server-provision`, `--server-port`, and `--outbound-path`) have no effect
  * on an OFFLINE invite/accept. Those paths write a placeholder (invite) or
  * invitation-endpoint-seeded (accept) connection block for the operator to edit
  * before `alcove exchange`, rather than building a connection from a URL the way
@@ -922,6 +1058,7 @@ export function warnServerOverridesIgnoredOffline(
     ignored.push("--server-keyboard-interactive");
   if (options.serverHostKeyFingerprint !== undefined)
     ignored.push("--server-host-key-fingerprint");
+  if (options.serverProvision !== undefined) ignored.push("--server-provision");
   if (options.serverPort !== undefined) ignored.push("--server-port");
   if (options.outboundPath !== undefined) ignored.push("--outbound-path");
   if (ignored.length === 0) return;
