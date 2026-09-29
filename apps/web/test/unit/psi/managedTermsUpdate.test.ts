@@ -1,22 +1,26 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  PLACEHOLDER_IDENTITY,
   UsageError,
   decodeTermsUpdate,
   disclosedColumnNames,
   inferMetadata,
 } from "@alcove/core";
 
+import { managedExchangeLockName } from "@psi/managed/managedExchangeLock";
+
+import {
+  ManagedTermsUpdateRefusedError,
+  makeManagedTermsUpdate,
+  managedTermsUpdateRefusal,
+} from "@psi/managed/managedTermsUpdate";
 import {
   applyManagedExchangeSentColumns,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  makeManagedTermsUpdate,
-  managedTermsUpdateWithheld,
-} from "@psi/managed/managedTermsUpdate";
 
 import {
   CLI_TERMS_UPDATE,
@@ -25,7 +29,10 @@ import {
 } from "../../utils/cliTermsUpdateFixture";
 
 import type { LinkageTerms, Metadata } from "@alcove/core";
-import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+import type {
+  ManagedExchangeRecord,
+  RunnableManagedExchangeRecord,
+} from "@psi/managed/managedExchangeRecord";
 
 const CONNECTION = {
   channel: "webrtc",
@@ -123,17 +130,105 @@ describe("making a terms update from a saved exchange", () => {
     );
     expect(await makeManagedTermsUpdate(record)).toBe(CLI_TERMS_UPDATE);
   });
+});
 
-  test("is withheld once the secret has lapsed", async () => {
-    const record: ManagedExchangeRecord = {
-      ...inviterRecord(await agencyATerms()),
-      expires: "2026-09-01T00:00:00.000Z",
+describe("refusing a terms update", () => {
+  const NOW = Date.parse("2026-09-29T00:00:00Z");
+
+  async function runnableRecord(
+    overrides: Partial<ManagedExchangeRecord> = {},
+  ): Promise<RunnableManagedExchangeRecord> {
+    return {
+      ...runnableManagedExchangeOrRefuse(inviterRecord(await agencyATerms())),
+      ...overrides,
     };
+  }
+
+  async function withIdentity(
+    identity: string | undefined,
+  ): Promise<RunnableManagedExchangeRecord> {
+    const record = await runnableRecord();
+    const { identity: _identity, ...terms } = record.exchangeFile.linkageTerms;
+    return {
+      ...record,
+      exchangeFile: {
+        ...record.exchangeFile,
+        linkageTerms: identity === undefined ? terms : { ...terms, identity },
+      },
+    };
+  }
+
+  async function refusalOfMake(
+    record: RunnableManagedExchangeRecord,
+  ): Promise<string> {
+    const error: unknown = await makeManagedTermsUpdate(record).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ManagedTermsUpdateRefusedError);
+    return (error as ManagedTermsUpdateRefusedError).refusal;
+  }
+
+  test("refuses nothing for a named exchange with a live secret and no run", async () => {
+    const record = await runnableRecord({
+      expires: "2026-10-29T00:00:00.000Z",
+    });
+    expect(managedTermsUpdateRefusal(record, NOW, false)).toBeNull();
+  });
+
+  test("refuses once the secret has lapsed", async () => {
+    const record = await runnableRecord({
+      expires: "2026-09-01T00:00:00.000Z",
+    });
+    expect(managedTermsUpdateRefusal(record, NOW, false)).toBe("lapsed");
     expect(
-      managedTermsUpdateWithheld(record, Date.parse("2026-09-29T00:00:00Z")),
+      managedTermsUpdateRefusal(
+        record,
+        Date.parse("2026-08-29T00:00:00Z"),
+        false,
+      ),
+    ).toBeNull();
+  });
+
+  test("refuses terms naming no identity, a blank one, or the placeholder", async () => {
+    for (const identity of [undefined, " ", PLACEHOLDER_IDENTITY])
+      expect(
+        managedTermsUpdateRefusal(await withIdentity(identity), NOW, false),
+      ).toBe("no-identity");
+  });
+
+  test("refuses while a run is in flight", async () => {
+    const record = await runnableRecord({
+      expires: "2026-10-29T00:00:00.000Z",
+    });
+    expect(managedTermsUpdateRefusal(record, NOW, true)).toBe("run-in-flight");
+  });
+
+  test("make refuses under a lapsed secret at the time of the call", async () => {
+    expect(
+      await refusalOfMake(
+        await runnableRecord({ expires: "2000-01-01T00:00:00.000Z" }),
+      ),
     ).toBe("lapsed");
-    expect(
-      managedTermsUpdateWithheld(record, Date.parse("2026-08-29T00:00:00Z")),
-    ).toBeUndefined();
+  });
+
+  test("make refuses terms naming no identity, a blank one, or the placeholder", async () => {
+    for (const identity of [undefined, " ", PLACEHOLDER_IDENTITY])
+      expect(await refusalOfMake(await withIdentity(identity))).toBe(
+        "no-identity",
+      );
+  });
+
+  test("make refuses while the run lock is held", async () => {
+    const record = await runnableRecord();
+    await navigator.locks.request(
+      managedExchangeLockName(record.id),
+      async () => {
+        expect(await refusalOfMake(record)).toBe("run-in-flight");
+      },
+    );
+    await expect(makeManagedTermsUpdate(record)).resolves.toEqual(
+      expect.any(String),
+    );
   });
 });

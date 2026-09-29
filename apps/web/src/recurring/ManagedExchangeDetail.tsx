@@ -345,13 +345,14 @@ export function ConfigRowItem({ row }: { row: ConfigRow }) {
 
 /**
  * The read-only configuration view: this party's side, the channel and partner
- * endpoint, and the agreed linkage terms. The agreed terms are the persisted
- * exchange-file document, fixed for this partnership -- a change to them is a
- * new exchange, not an in-place edit (see docs/spec/MANAGED_EXCHANGE_RECORD.md,
- * the `exchangeFile` row). The re-invite affordance refreshes the partnership
- * with a new secret on the SAME terms: the inviter mints a fresh invitation; the
- * acceptor is told the terms cannot change by re-invite, and that different
- * terms mean a new exchange from the partner. It is withheld while a compromise
+ * endpoint, and the agreed linkage terms, as the persisted exchange-file
+ * document states them (see docs/spec/MANAGED_EXCHANGE_RECORD.md, the
+ * `exchangeFile` row). The columns this party sends change in place, in
+ * {@link ManagedTermsUpdate}; the match and identifier columns do not, and
+ * changing them is a new exchange. The re-invite affordance refreshes the
+ * partnership with a new secret on the SAME terms: the inviter mints a fresh
+ * invitation; the acceptor is told the terms cannot change by re-invite, and
+ * that other terms mean a new exchange from the partner. It is withheld while a compromise
  * response stands -- minting would put a fresh secret on a channel the operator
  * has flagged -- and while a run is in flight, whose secret the mint replaces
  * ({@link ./managedReinviteGate.ts} holds both reasons, shared with the failure

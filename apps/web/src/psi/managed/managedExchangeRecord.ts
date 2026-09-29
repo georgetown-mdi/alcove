@@ -1623,10 +1623,10 @@ export function applyManagedExchangeWorkingDirectory(
 /** The local fields an operator may edit in place without a re-invite: the
  * display label, the run schedule, the max-token-age policy, and the three
  * per-party settings of the document that are not terms (its own-columns
- * choice, its field delimiter, and its retention note). The agreed terms and
- * the connection are fixed for the partnership -- a re-invite only refreshes
- * the secret, and a terms change is a new exchange, not a re-invite -- so they
- * and the secret are not editable here. */
+ * choice, its field delimiter, and its retention note). The agreed terms, the
+ * connection, and the secret are not editable here: the columns this party
+ * sends change in place through {@link applyManagedExchangeSentColumns}, while
+ * a change to the match or identifier columns is a new exchange. */
 export interface ManagedExchangeLocalEdits {
   /** A new display label (validated to {@link MAX_LABEL_LENGTH}). */
   label?: string;

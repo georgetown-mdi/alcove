@@ -5,8 +5,9 @@ import { Button, Checkbox, Stack } from "@mantine/core";
 import { isDisclosedToPartner } from "@alcove/core";
 
 import {
+  ManagedTermsUpdateRefusedError,
   makeManagedTermsUpdate,
-  managedTermsUpdateWithheld,
+  managedTermsUpdateRefusal,
   saveManagedSentColumns,
 } from "@psi/managed/managedTermsUpdate";
 import {
@@ -53,19 +54,26 @@ export function ManagedTermsUpdate({
   runInFlight: boolean;
   onChanged: () => void;
 }) {
-  const withheld = managedTermsUpdateWithheld(record, Date.now());
+  const refusal = managedTermsUpdateRefusal(record, Date.now(), runInFlight);
+  const storedKey = sentColumnsKey(storedSentColumns(record));
+  const [savedKey, setSavedKey] = useState<string>();
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>{CHANGE_TERMS_TITLE}</h2>
       {managedSentColumnsEditable(record.exchangeFile) && (
         <SentColumnsEditor
+          key={storedKey}
           record={record}
           runInFlight={runInFlight}
-          onSaved={onChanged}
+          saved={savedKey === storedKey}
+          onSaved={(key) => {
+            setSavedKey(key);
+            onChanged();
+          }}
         />
       )}
-      {withheld !== undefined ? (
-        <p className={styles.small}>{TERMS_UPDATE_WITHHELD_TEXT[withheld]}</p>
+      {refusal !== null ? (
+        <p className={styles.small}>{TERMS_UPDATE_WITHHELD_TEXT[refusal]}</p>
       ) : (
         <SendTermsUpdate record={record} />
       )}
@@ -73,25 +81,44 @@ export function ManagedTermsUpdate({
   );
 }
 
+function sentColumnsKey(names: ReadonlyArray<string>): string {
+  return JSON.stringify(names);
+}
+
+function storedSentColumns(
+  record: RunnableManagedExchangeRecord,
+): Array<string> {
+  return (record.exchangeFile.metadata ?? [])
+    .filter(sentColumnChoiceOffered)
+    .filter(isDisclosedToPartner)
+    .map((column) => column.name);
+}
+
+/**
+ * The column choice, seeded from the stored set: the caller keys it on that
+ * set, so a re-read that changes it starts the choice again. `saved` states
+ * the stored set is the one this page last saved.
+ */
 function SentColumnsEditor({
   record,
   runInFlight,
+  saved,
   onSaved,
 }: {
   record: RunnableManagedExchangeRecord;
   runInFlight: boolean;
-  onSaved: () => void;
+  saved: boolean;
+  onSaved: (key: string) => void;
 }) {
   const columns = record.exchangeFile.metadata ?? [];
-  const stored = columns
-    .filter(sentColumnChoiceOffered)
-    .filter(isDisclosedToPartner)
-    .map((column) => column.name);
+  const stored = storedSentColumns(record);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set(stored));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string>();
   const unchanged =
     chosen.size === stored.length && stored.every((name) => chosen.has(name));
+  const shownStatus =
+    status ?? (saved && unchanged ? SENT_COLUMNS_SAVED_TEXT : undefined);
 
   function toggle(name: string, sent: boolean): void {
     const next = new Set(chosen);
@@ -104,15 +131,12 @@ function SentColumnsEditor({
   async function save(): Promise<void> {
     setBusy(true);
     setStatus(undefined);
+    const sent = columns
+      .filter((column) => chosen.has(column.name))
+      .map((column) => column.name);
     try {
-      await saveManagedSentColumns(
-        record.id,
-        columns
-          .filter((column) => chosen.has(column.name))
-          .map((column) => column.name),
-      );
-      setStatus(SENT_COLUMNS_SAVED_TEXT);
-      onSaved();
+      await saveManagedSentColumns(record.id, sent);
+      onSaved(sentColumnsKey(sent));
     } catch (error) {
       whenDiagnostic(() => console.error(error));
       setStatus(sentColumnsFailureText(error));
@@ -157,9 +181,9 @@ function SentColumnsEditor({
       >
         {SAVE_SENT_COLUMNS_LABEL}
       </Button>
-      {status !== undefined && (
+      {shownStatus !== undefined && (
         <p className={styles.small} role="status">
-          {status}
+          {shownStatus}
         </p>
       )}
     </fieldset>
@@ -175,15 +199,25 @@ function SendTermsUpdate({
     record: RunnableManagedExchangeRecord;
     update: string;
   }>();
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<{
+    record: RunnableManagedExchangeRecord;
+    message: string;
+  }>();
 
   async function make(): Promise<void> {
-    setFailed(false);
+    setMade(undefined);
+    setFailed(undefined);
     try {
       setMade({ record, update: await makeManagedTermsUpdate(record) });
     } catch (error) {
       whenDiagnostic(() => console.error(error));
-      setFailed(true);
+      setFailed({
+        record,
+        message:
+          error instanceof ManagedTermsUpdateRefusedError
+            ? TERMS_UPDATE_WITHHELD_TEXT[error.refusal]
+            : TERMS_UPDATE_NOT_MADE_TEXT,
+      });
     }
   }
 
@@ -194,7 +228,9 @@ function SendTermsUpdate({
       <Button variant="default" onClick={() => void make()}>
         {MAKE_TERMS_UPDATE_LABEL}
       </Button>
-      {failed && <p className={styles.small}>{TERMS_UPDATE_NOT_MADE_TEXT}</p>}
+      {failed?.record === record && (
+        <p className={styles.small}>{failed.message}</p>
+      )}
       {made?.record === record && (
         <CopyRow
           label={TERMS_UPDATE_COPY_LABEL}

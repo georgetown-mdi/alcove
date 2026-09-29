@@ -52,10 +52,7 @@ export interface TermsUpdate {
  * The {@link TermsUpdate} a party's configuration makes: its linkage terms
  * with `payload.send` stated from `metadata` as the terms exchange states it
  * (`termsStatingDeclaredPayloadSend`), and the columns `metadata` discloses.
- * Without metadata the terms are taken as written and no columns are stated:
- * the disclosed columns are then known only from the input file. Every front
- * end that makes a terms update composes it here, so the command line and the
- * web app encode the same update for the same configuration.
+ * Without metadata the terms are taken as written and no columns are stated.
  */
 export function termsUpdateFor(
   linkageTerms: LinkageTerms,

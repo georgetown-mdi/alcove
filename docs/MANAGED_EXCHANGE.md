@@ -1787,8 +1787,9 @@ for a command-line configuration (see
   command line over any channel that delivers it unchanged; they apply it with
   `alcove apply`. Every run between you replaces the secret it was made under,
   so an update not applied before the next run is refused and has to be made
-  again. It is not offered once the exchange's secret has expired, or where its
-  terms name no identity for you.
+  again. It is not offered once the exchange's secret has expired, where its
+  terms name no identity for you, or while a run of the exchange is in
+  progress.
 
 This app does not apply a terms update: a partner using it takes on your
 change at their next run instead, as in [When your partner's terms
