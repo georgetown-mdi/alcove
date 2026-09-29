@@ -6,10 +6,13 @@ import {
   getLogger,
   InternalConsistencyError,
   operatorSuppliedText,
+  payloadReceiveFilledNotice,
   prepareForExchange,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
+  sanitizeForDisplay,
   UsageError,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -422,8 +425,34 @@ export function finalizeBootstrap(params: {
     info: (message: string) => void;
     warn: (message: string) => void;
   };
+  /**
+   * The payload.receive columns this run filled from the partner's declared
+   * send set, when it filled one -- already folded into
+   * `spec.linkageTerms.payload.receive` ({@link buildSaveSpec}'s matching
+   * argument). Logged as {@link payloadReceiveFilledNotice} only once the
+   * write below that holds it actually lands, never before: a run whose save
+   * fails here reports that failure and no fill notice, since the recorded
+   * list never reached disk.
+   */
+  filledPayloadReceive?: string[];
 }): void {
-  const { save, bootstrap, spec, configFile, keyFile, log } = params;
+  const {
+    save,
+    bootstrap,
+    spec,
+    configFile,
+    keyFile,
+    log,
+    filledPayloadReceive,
+  } = params;
+  const logPayloadReceiveFilledNotice = (): void => {
+    if (filledPayloadReceive === undefined) return;
+    log.info(
+      sanitizeForDisplay(payloadReceiveFilledNotice(filledPayloadReceive), {
+        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      }),
+    );
+  };
 
   // Invariant guard: a shared secret is established only when both parties pass
   // --save, so a secret reaching here with save === false is an internal
@@ -460,6 +489,7 @@ export function finalizeBootstrap(params: {
           `private. Run 'alcove exchange' for future exchanges with this ` +
           `partner.`,
       );
+      logPayloadReceiveFilledNotice();
       return;
     }
     // We saved but the partner did not: there is no secret, so persist the
@@ -487,6 +517,7 @@ export function finalizeBootstrap(params: {
         `a recurring exchange, run 'alcove invite' and share the invitation ` +
         `with your partner.`,
     );
+    logPayloadReceiveFilledNotice();
     return;
   }
 
@@ -797,12 +828,17 @@ export async function handler(argv: Arguments): Promise<void> {
         // unaffected either way (see exchangeTerms).
         saveIntent: options.save,
         // A saving party fills an unset receive list from the partner's
-        // declared send set; the config the hook below writes records it.
+        // declared send set; the config the hook below writes records it. The
+        // write itself happens later, in onOutputComplete once the whole
+        // exchange has completed, so the fill notice is deferred to
+        // finalizeBootstrap rather than logged here on the strength of this
+        // in-memory record alone.
         recordPayloadReceiveFill: options.save
           ? (columns) => {
               filledPayloadReceive = columns;
             }
           : undefined,
+        payloadReceiveFillNoticeDeferred: options.save,
         undeclaredColumnsWarned,
         fileSyncRuntime: {
           sweepExchangeFiles,
@@ -839,6 +875,7 @@ export async function handler(argv: Arguments): Promise<void> {
                 configFile: options.configFile,
                 keyFile: options.keyFile,
                 log,
+                filledPayloadReceive,
               });
               return { persisted: true };
             } catch (err) {

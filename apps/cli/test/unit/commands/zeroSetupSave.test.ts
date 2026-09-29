@@ -163,6 +163,72 @@ test("both-saved: writes config and key, and reports the shared secret", () => {
   );
 });
 
+// --- the fill notice logs only after the write it depends on ----------------
+
+test("both-saved: the fill notice logs only once the config write lands", () => {
+  // The columns are recorded in memory well before this call (at the terms
+  // exchange); the notice must not follow that record but the write this
+  // function itself performs, so a message logged before the config exists
+  // on disk would be a false claim.
+  const messages: string[] = [];
+  const configExistsAtLog: boolean[] = [];
+  const log = {
+    info: (m: string) => {
+      messages.push(m);
+      configExistsAtLog.push(fs.existsSync(configFile));
+    },
+    warn: () => {},
+  };
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip"],
+  );
+  finalizeBootstrap({
+    save: true,
+    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
+    spec,
+    configFile,
+    keyFile,
+    log,
+    filledPayloadReceive: ["dob", "zip"],
+  });
+
+  const noticeIndex = messages.findIndex((m) =>
+    m.includes("payload.receive was not set"),
+  );
+  expect(noticeIndex).toBeGreaterThanOrEqual(0);
+  expect(configExistsAtLog[noticeIndex]).toBe(true);
+});
+
+test("we-saved-partner-did-not: logs no fill notice when the save fails", () => {
+  const { log, messages } = capture();
+  // Simulate the same post-preflight conflict the TOCTOU tests below exercise,
+  // so the config-only branch's write throws before returning.
+  fs.writeFileSync(configFile, "preexisting: true\n");
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip"],
+  );
+
+  expect(() =>
+    finalizeBootstrap({
+      save: true,
+      bootstrap: { partnerSaveIntent: false },
+      spec,
+      configFile,
+      keyFile,
+      log,
+      filledPayloadReceive: ["dob", "zip"],
+    }),
+  ).toThrow(UsageError);
+
+  expect(messages.some((m) => m.includes("payload.receive was not set"))).toBe(
+    false,
+  );
+});
+
 test("save persists an @path credential as the reference, never the secret contents", () => {
   // End-to-end at-rest check for the --save path: a connection whose password is
   // an @path reference is persisted verbatim, so the referenced file's contents
