@@ -272,11 +272,11 @@ time: the run connects to the static fields the invite wrote.
 
 An online `alcove invite` or `alcove accept`, and a zero-setup run, send the
 same start-mode call (`wakeServerThrough`) from the block `--server-provision`
-states, its auth `@path` references read with the connection's other
-credential files. The online paths run `preflightRun` and
-`assertHostKeyTrustCanBeEstablished` inside `runOnlineBootstrap` ahead of it;
-the zero-setup run has no shared secret or key file, so its local checks are
-the dataset preparation, the first round's size, and the host-key refusal.
+states, its auth `@path` references read at argument parsing, before an
+invitation is printed or any file written. The online paths run `preflightRun`
+and `assertHostKeyTrustCanBeEstablished` inside `runOnlineBootstrap` ahead of
+it; the zero-setup run has no shared secret or key file, so its local checks
+are the dataset preparation, the first round's size, and the host-key refusal.
 
 An offline `alcove invite` from a configuration sends a create-mode call once
 (`createProvisionedServer`), after the configuration, key-file conflict,
