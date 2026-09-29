@@ -847,6 +847,14 @@ const PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON =
   "a party could not record the payload columns it receives";
 
 /**
+ * The abort reason a party sends when its operator declines the payload
+ * columns the partner's terms declare it sends, on a run that holds no list of
+ * the columns it receives ({@link RunExchangeOptions.onPayloadReceiveFill}).
+ */
+export const PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON =
+  "the partner has not accepted the payload columns you send";
+
+/**
  * The five refusals the terms-time pin resolution raises, by the condition the
  * partner's certificate met, each holding the abort reason its refusal sends
  * the partner and the message it raises to this party's operator.
@@ -2304,6 +2312,21 @@ export interface RunExchangeOptions {
    */
   onPartnerCertificatePinned?: (fingerprint: string) => void;
   /**
+   * Called once, at the terms exchange, before the partner's certificate is
+   * pinned and before any linkage key or payload row moves, when this party
+   * holds no list of the columns it receives -- its terms leave
+   * `payload.receive` unset and {@link PreparedExchange.expectedPayloadColumns}
+   * is undefined -- and the partner's terms declare at least one column it
+   * sends this party: the argument is those column names, which
+   * {@link onPayloadReceiveFilled} would then record. Resolving takes them; a
+   * throw ends the exchange, sends the partner
+   * {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON}, and records neither the pin
+   * nor the fill. Refusals held after it still apply. The names are the
+   * partner's and reach the callback raw. Omitted, the columns are taken
+   * without asking.
+   */
+  onPayloadReceiveFill?: (columns: string[]) => Promise<void>;
+  /**
    * Called once, after the terms exchange's refusals have all passed, when
    * this party's terms leave `payload.receive` unset and the partner can send
    * it payload ({@link payloadReceiveFill}): the argument is the column names
@@ -2551,6 +2574,27 @@ export async function runExchange(
     throw err;
   }
 
+  // Offer a partner's first declared send set to a caller that confirms it
+  // before anything is recorded: ahead of the pin below, so a decline leaves
+  // the configuration as it was, and before any key or payload moves.
+  const payloadReceiveFillColumns = payloadReceiveFill(
+    linkageTerms,
+    partnerTerms,
+  );
+  if (
+    options.onPayloadReceiveFill !== undefined &&
+    prepared.expectedPayloadColumns === undefined &&
+    payloadReceiveFillColumns !== undefined &&
+    payloadReceiveFillColumns.length > 0
+  ) {
+    try {
+      await options.onPayloadReceiveFill(payloadReceiveFillColumns);
+    } catch (err) {
+      await sendAbort(conn, [PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON]);
+      throw err;
+    }
+  }
+
   // A run that will sign a receipt needs both parties named and its own
   // certificate bound to the name it agreed terms under. Both are decided the
   // moment the partner's terms arrive, so both are held here, at the same point
@@ -2635,10 +2679,6 @@ export async function runExchange(
   // received payload to the filled set, as a later run holds it to the
   // recorded list.
   let filledPayloadReceive: string[] | undefined;
-  const payloadReceiveFillColumns = payloadReceiveFill(
-    linkageTerms,
-    partnerTerms,
-  );
   if (
     options.onPayloadReceiveFilled !== undefined &&
     payloadReceiveFillColumns !== undefined

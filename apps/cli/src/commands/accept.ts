@@ -1245,6 +1245,9 @@ export async function handler(argv: Arguments): Promise<void> {
           eventStream: options.eventStream,
           reuseExistingConfig: ready.reuseExistingConfig,
           provision: options.serverProvisionRead,
+          // Asked where the acceptance was: at a terminal, and not under
+          // --consent-to-terms, which declares the run unattended.
+          interactive: process.stdin.isTTY === true && !consentToTerms,
           // Persist the consented received-column commitment so the later
           // `alcove exchange` enforces it via reconcileReceivedPayload, the
           // online sibling of the offline path's expectedPayloadColumns write

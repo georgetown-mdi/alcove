@@ -7113,6 +7113,49 @@ test("a receive list the exchange fills is recorded, then named on the log escap
   for (const raw of ["\u0007", "\u202e"]) expect(logged[0]).not.toContain(raw);
 }, 20_000);
 
+test("the question before a receive list is filled reaches the exchange, and a run passing none asks nothing", async () => {
+  const asked: string[][] = [];
+  const offered: boolean[] = [];
+  vi.mocked(runExchange).mockImplementation((async (
+    ...args: Parameters<typeof runExchange>
+  ) => {
+    offered.push(args[3].onPayloadReceiveFill !== undefined);
+    await args[3].onPayloadReceiveFill?.(["notes"]);
+    return defaultRunExchange();
+  }) as never);
+  await Promise.all([
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: null,
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test-a",
+      onPayloadReceiveFill: async (columns) => {
+        asked.push(columns);
+      },
+    }),
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: null,
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test-b",
+    }),
+  ]);
+  expect(asked).toEqual([["notes"]]);
+  expect(offered.sort()).toEqual([false, true]);
+}, 20_000);
+
 test("a loss reported from the pre-terminal hook precedes the terminal events and drops the on-disk claim", async () => {
   // The ordering the whole hook exists for, measured on the REAL stream. A
   // caller's last write -- the zero-setup `--save` configuration -- can fail,

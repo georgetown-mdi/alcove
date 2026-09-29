@@ -573,6 +573,15 @@ Where your own terms leave neither party expecting a result, the display says so
 
 On a zero-setup run the display is the only statement of these facts you get, because nothing was written down for you to read: the terms and the transmitted columns are inferred from your input file as the run starts, and a column Alcove recognizes as neither a linkage nor an identifier column is sent to your partner for matched records. Check the list against what you meant to send. A column that should not be there is removed from the input file, or kept out of the transmitted set by authoring a configuration ([`alcove init`](#initialization)) and running [`alcove exchange`](#recurring-exchange) against it instead.
 
+### Your partner's first payload columns
+
+A configuration that lists no payload columns you receive -- no `linkage_terms.payload.receive` and no `expected_payload_columns` -- takes the columns your partner's terms declare it sends on its first run and records them as `payload.receive` ([Leaving `payload.receive` unset](EXCHANGE_REFERENCE.md#leaving-payloadreceive-unset)). This holds for `alcove exchange`, the online `alcove invite` and `alcove accept`, and a zero-setup `--save` run.
+
+- **At a terminal**, the run first shows those columns, under the heading a [terms change](#when-your-partners-terms-change) uses for the columns your partner sends you, and asks whether to take them. Yes writes them into the configuration and the same run continues. No ends the run before any key or data moves (exit 64), and the configuration is not changed; running the exchange again asks again. Your partner's run ends with a partner refusal (exit 76).
+- **Unattended** -- no terminal on stdin, an `INPUT_FILE` of `-`, or `alcove accept --consent-to-terms` -- the run takes the columns without asking and logs one line naming them. A run the [console](CONSOLE.md) drives is unattended.
+
+Nothing is asked where your partner declares no column, or where you hold a list -- an acceptance of an invitation that disclosed the columns your partner sends holds that list. A later difference from a list is a terms change.
+
 ### When your partner's terms change
 
 A partner that changed its terms since your last exchange -- most often by adding or dropping a payload column in its input -- just runs. Your run meets the change at the terms exchange, before any linkage key or data moves, and shows it: the columns your partner now sends you or no longer sends you, the columns you send that its terms do not receive (its decision, shown for your information), and each other term that differs. A dropped column is decided exactly as an added one. What counts as a change, and which party decides which part of it: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#when-your-partners-terms-change).

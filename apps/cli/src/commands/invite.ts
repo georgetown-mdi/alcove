@@ -1204,6 +1204,9 @@ export async function handler(argv: Arguments): Promise<void> {
           // sitting at a terminal.
           runOnlyPeerTimeoutSeconds: acceptTimeout,
           provision: options.serverProvisionRead,
+          // A terminal on stdin answers the question; stdin carrying the
+          // input CSV cannot.
+          interactive: process.stdin.isTTY === true && resolved.input !== "-",
         });
         // The summary only; the exit code a failed persistence implies was set
         // where that persistence was lost, so nothing here can raise or lower it.

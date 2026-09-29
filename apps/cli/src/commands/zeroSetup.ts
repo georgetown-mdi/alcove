@@ -44,6 +44,7 @@ import {
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
+import { payloadReceiveFillConfirmation } from "../termsChange";
 import {
   applyConnectionCredentials,
   readConnectionCredentials,
@@ -856,6 +857,16 @@ export async function handler(argv: Arguments): Promise<void> {
             }
           : undefined,
         payloadReceiveFillNoticeDeferred: options.save,
+        // A terminal on stdin answers the question; stdin carrying the input
+        // CSV cannot.
+        onPayloadReceiveFill: options.save
+          ? payloadReceiveFillConfirmation({
+              configPath: options.configFile,
+              interactive: process.stdin.isTTY === true && input !== "-",
+              log,
+              logFile,
+            })
+          : undefined,
         undeclaredColumnsWarned,
         fileSyncRuntime: {
           sweepExchangeFiles,

@@ -71,6 +71,7 @@ import {
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
 import type { RecordOutput } from "./recordFile";
 import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
+import { payloadReceiveFillConfirmation } from "./termsChange";
 
 /**
  * The exchange-data portion of a spec: linkage terms (always present once
@@ -894,6 +895,14 @@ export async function runOnlineBootstrap(params: {
   provision?: ServerProvision;
   /** Values behind `connection`'s `@path` references when the caller already read them; absent, read here. */
   credentials?: ResolvedConnectionCredentials;
+  /**
+   * Whether the operator is there to answer a question: set, a run that fills
+   * `payload.receive` from the partner's declared send set, holding no list of
+   * the columns it receives, first asks whether to take them
+   * (`payloadReceiveFillConfirmation`). Absent or false, it takes them without
+   * asking.
+   */
+  interactive?: boolean;
 }): Promise<{ configWriteError?: unknown }> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
@@ -1158,6 +1167,12 @@ export async function runOnlineBootstrap(params: {
           message,
         );
       },
+      onPayloadReceiveFill: payloadReceiveFillConfirmation({
+        configPath: params.configPath,
+        interactive: params.interactive === true,
+        log: getLogger(params.loggerName),
+        logFile: params.logFile,
+      }),
     });
 
     // onAuthenticatedError is the config-write failure, if any: the acceptance

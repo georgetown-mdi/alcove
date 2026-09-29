@@ -2,7 +2,11 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { prepareForExchange, runExchange } from "../src/exchange";
+import {
+  PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON,
+  prepareForExchange,
+  runExchange,
+} from "../src/exchange";
 import { termsStatingDeclaredPayloadSend } from "../src/payloadExchange";
 import { computeTermsHash } from "../src/records/exchangeRecord";
 import {
@@ -58,6 +62,7 @@ const acceptorRows = [
 interface Party {
   metadata: Metadata;
   payload?: Payload;
+  expectedPayloadColumns?: string[];
   // The run options beside the library, given the frames this party has sent
   // so far so a callback can read what had moved when it was called.
   options?: (sent: Array<unknown>) => Partial<RunExchangeOptions>;
@@ -80,8 +85,12 @@ async function settle(inviter: Party, acceptor: Party) {
     close: () => conn.close(),
     setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
   });
-  const prepare = (identity: string, party: Party, rows: typeof inviterRows) =>
-    prepareForExchange(
+  const prepare = (
+    identity: string,
+    party: Party,
+    rows: typeof inviterRows,
+  ) => ({
+    ...prepareForExchange(
       {
         metadata: party.metadata,
         linkageTerms: {
@@ -93,7 +102,11 @@ async function settle(inviter: Party, acceptor: Party) {
       identity,
       rows,
       ["first_name", "note"],
-    );
+    ),
+    ...(party.expectedPayloadColumns !== undefined
+      ? { expectedPayloadColumns: party.expectedPayloadColumns }
+      : {}),
+  });
   const [inviterResult, acceptorResult] = await Promise.allSettled([
     runExchange(
       capturing(connInviter, inviterSent),
@@ -374,4 +387,106 @@ test("the first run's agreed-terms hash is the hash of the resolved terms each p
   expect(await computeTermsHash(inviterConfig, acceptorConfig)).toBe(
     inviterHash,
   );
+});
+
+test("a party holding no receive list is offered the partner's declared send set before the pin and the fill", async () => {
+  const offered: Array<Array<string>> = [];
+  const filled: Array<Array<string>> = [];
+  let onlyTermsSentWhenOffered = false;
+  const { inviterResult } = await settle(
+    {
+      metadata: sendsNothing,
+      options: (sent) => ({
+        onPayloadReceiveFill: async (columns) => {
+          offered.push(columns);
+          onlyTermsSentWhenOffered = sent.every(isTermsOrDecisionFrame);
+          expect(filled).toEqual([]);
+        },
+        onPayloadReceiveFilled: (columns) => {
+          filled.push(columns);
+        },
+      }),
+    },
+    { metadata: sendsNote },
+  );
+  expect(offered).toEqual([["note"]]);
+  expect(onlyTermsSentWhenOffered).toBe(true);
+  expect(filled).toEqual([["note"]]);
+  expect(fulfilled(inviterResult).partnerPayload.columns).toEqual(["note"]);
+});
+
+test("a declined send set stops both parties before any round, recording neither the pin nor the fill", async () => {
+  const filled: Array<Array<string>> = [];
+  const pinned: string[] = [];
+  const { inviterResult, acceptorResult, inviterSent, acceptorSent } =
+    await settle(
+      {
+        metadata: sendsNothing,
+        options: () => ({
+          signingIdentity: inviterIdentity,
+          sessionKey,
+          onPartnerCertificatePinned: (fingerprint) => {
+            pinned.push(fingerprint);
+          },
+          onPayloadReceiveFill: () =>
+            Promise.reject(new Error("the operator declined")),
+          onPayloadReceiveFilled: (columns) => {
+            filled.push(columns);
+          },
+        }),
+      },
+      {
+        metadata: sendsNote,
+        options: () => ({ signingIdentity: acceptorIdentity, sessionKey }),
+      },
+    );
+  expect(inviterResult.status).toBe("rejected");
+  expect(
+    ((inviterResult as PromiseRejectedResult).reason as Error).message,
+  ).toBe("the operator declined");
+  expect(acceptorResult.status).toBe("rejected");
+  expect(filled).toEqual([]);
+  expect(pinned).toEqual([]);
+  expect(inviterSent).toContainEqual(
+    expect.objectContaining({
+      abortReasons: [PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON],
+    }),
+  );
+  for (const sent of [inviterSent, acceptorSent])
+    expect(sent.every(isTermsOrDecisionFrame)).toBe(true);
+});
+
+test("no send set is offered to a party holding a receive list, or from a partner declaring none", async () => {
+  const offered: Array<Array<string>> = [];
+  const offering = (): Partial<RunExchangeOptions> => ({
+    onPayloadReceiveFill: async (columns) => {
+      offered.push(columns);
+    },
+  });
+  const held = await settle(
+    {
+      metadata: sendsNothing,
+      expectedPayloadColumns: ["note"],
+      options: offering,
+    },
+    { metadata: sendsNote },
+  );
+  expect(fulfilled(held.inviterResult).partnerPayload.columns).toEqual([
+    "note",
+  ]);
+  const stated = await settle(
+    {
+      metadata: sendsNothing,
+      payload: { receive: [{ name: "note" }] },
+      options: offering,
+    },
+    { metadata: sendsNote },
+  );
+  fulfilled(stated.inviterResult);
+  const none = await settle(
+    { metadata: sendsNothing, options: offering },
+    { metadata: sendsNothing },
+  );
+  fulfilled(none.inviterResult);
+  expect(offered).toEqual([]);
 });

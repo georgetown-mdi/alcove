@@ -3,7 +3,9 @@
  * its configuration's at the terms exchange: show how they differ, and either
  * take them on -- written into the configuration, the run continuing under
  * them -- or refuse, writing them beside the configuration as a terms update
- * `alcove apply` reads.
+ * `alcove apply` reads. Also the question an attended run asks before it takes
+ * a partner's first declared payload columns into a configuration that lists
+ * none it receives.
  */
 
 import path from "node:path";
@@ -19,7 +21,7 @@ import {
   termsDeltaSections,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
-import type { getLogger, TermsChange } from "@alcove/core";
+import type { getLogger, TermsChange, TermsDelta } from "@alcove/core";
 
 import { termsUpdateWrite } from "./acceptedTermsRecords";
 import {
@@ -65,21 +67,17 @@ function applyCommand(paths: {
 }
 
 /**
- * Show how the partner's terms differ from the configuration's, in the
- * sections every front end shows (`termsDeltaSections`). Every name and value
- * is the partner's and is escaped here.
+ * Show `heading`, then `delta` in the sections every front end shows
+ * (`termsDeltaSections`). Every name and value in `delta` is the partner's and
+ * is escaped here.
  */
-export function displayTermsChange(
+function displayTermsDelta(
   emit: ConsentSurfaceSink,
-  configPath: string,
-  change: TermsChange,
+  heading: string,
+  delta: TermsDelta,
 ): void {
-  emit(
-    `Your partner's linkage terms differ from those in ${redactAndRenderOperatorSuppliedText(
-      operatorSuppliedText(configPath),
-    )}:`,
-  );
-  for (const section of termsDeltaSections(change.delta)) {
+  emit(heading);
+  for (const section of termsDeltaSections(delta)) {
     switch (section.kind) {
       case "columns":
         emit(`  ${section.label}:`);
@@ -102,6 +100,24 @@ export function displayTermsChange(
         break;
     }
   }
+}
+
+/**
+ * Show how the partner's terms differ from the configuration's
+ * ({@link displayTermsDelta}).
+ */
+export function displayTermsChange(
+  emit: ConsentSurfaceSink,
+  configPath: string,
+  change: TermsChange,
+): void {
+  displayTermsDelta(
+    emit,
+    `Your partner's linkage terms differ from those in ${redactAndRenderOperatorSuppliedText(
+      operatorSuppliedText(configPath),
+    )}:`,
+    change.delta,
+  );
 }
 
 const UNATTENDED_REFUSAL =
@@ -139,12 +155,9 @@ function proposalRefusal(
   return refusal;
 }
 
-/** `refusal`, recorded as ending its run on `change` with no proposal written. */
-function notTaken<E extends Error>(refusal: E, change: TermsChange): E {
-  recordTermsChangeNotTaken(refusal, {
-    delta: change.delta,
-    proposalWritten: false,
-  });
+/** `refusal`, recorded as ending its run on `delta` with no proposal written. */
+function notTaken<E extends Error>(refusal: E, delta: TermsDelta): E {
+  recordTermsChangeNotTaken(refusal, { delta, proposalWritten: false });
   return refusal;
 }
 
@@ -209,7 +222,7 @@ export function termsChangeHandler(params: {
             new OperatorConfigError(message.text),
             message,
           ),
-          change,
+          change.delta,
         );
       }
       const accepted = await promptConfirm(
@@ -224,7 +237,7 @@ export function termsChangeHandler(params: {
             new OperatorConfigError(message.text),
             message,
           ),
-          change,
+          change.delta,
         );
       }
       persistTermsUpdate(configPath, write);
@@ -251,5 +264,53 @@ export function termsChangeHandler(params: {
       keyPath,
       proposalPath,
     });
+  };
+}
+
+/**
+ * The `onPayloadReceiveFill` an attended run passes to core, or `undefined`
+ * for an unattended one, which takes the partner's declared columns without
+ * asking. Shows the columns against the empty receive set the configuration
+ * lists, the way {@link displayTermsChange} shows a change, and asks whether
+ * to take them. A yes resolves, and the run records them as
+ * `payload.receive` in `configPath` through its fill. A no refuses with an
+ * {@link OperatorConfigError} (exit 64, event category `config`) and nothing
+ * is written.
+ */
+export function payloadReceiveFillConfirmation(params: {
+  configPath: string;
+  interactive: boolean;
+  log: ReturnType<typeof getLogger>;
+  logFile: string | undefined;
+}): ((columns: string[]) => Promise<void>) | undefined {
+  const { configPath, interactive, log, logFile } = params;
+  if (!interactive) return undefined;
+  return async (columns) => {
+    const emit = consentSurfaceSink({ log, logFile, toPromptStream: true });
+    const shownConfig = redactAndRenderOperatorSuppliedText(
+      operatorSuppliedText(configPath),
+    );
+    const delta: TermsDelta = {
+      received: { added: columns, removed: [] },
+      sent: undefined,
+      partnerDeduplicate: undefined,
+      otherTerms: [],
+    };
+    displayTermsDelta(
+      emit,
+      `Your partner's linkage terms declare payload columns it sends you, and ${shownConfig} lists none you receive (linkage_terms.payload.receive):`,
+      delta,
+    );
+    const accepted = await promptConfirm(
+      `Receive these columns, write them to ${shownConfig} as linkage_terms.payload.receive, and continue this exchange?`,
+    );
+    if (accepted) return;
+    const message = messageWithOperatorText`you did not accept the payload columns your partner declares it sends you, so the exchange stopped before any linkage key or data moved and ${operatorSuppliedText(
+      configPath,
+    )} was not changed. Run the exchange again to be asked again, or ask your partner about the columns.`;
+    throw notTaken(
+      keepOperatorSuppliedText(new OperatorConfigError(message.text), message),
+      delta,
+    );
   };
 }

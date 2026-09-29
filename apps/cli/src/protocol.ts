@@ -675,6 +675,7 @@ async function runExchangeStage(params: {
   recordPayloadReceiveFill:
     ((columns: string[]) => void | Promise<void>) | undefined;
   payloadReceiveFillNoticeDeferred: boolean | undefined;
+  onPayloadReceiveFill: ((columns: string[]) => Promise<void>) | undefined;
   onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
   recordOutput: RecordOutput | undefined;
   stageTimer: { open: (id: string) => void; close: () => void };
@@ -695,6 +696,7 @@ async function runExchangeStage(params: {
     signing,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    onPayloadReceiveFill,
     onTermsChange,
     recordOutput,
     stageTimer,
@@ -789,6 +791,7 @@ async function runExchangeStage(params: {
                 }),
               );
             },
+      ...(onPayloadReceiveFill !== undefined ? { onPayloadReceiveFill } : {}),
       ...(onTermsChange !== undefined ? { onTermsChange } : {}),
       // Advertise the observed SFTP host key for cross-party
       // reconciliation only when the exchange runs over the
@@ -2489,6 +2492,15 @@ export interface RunProtocolOptions {
    */
   payloadReceiveFillNoticeDeferred?: boolean;
   /**
+   * Asks whether to take the payload columns the partner's terms declare it
+   * sends, on a run holding no list of the columns it receives
+   * (`onPayloadReceiveFill` in `@alcove/core`): resolving takes them, and
+   * `recordPayloadReceiveFill` then records them; a throw refuses. Called
+   * before any key or payload moves. Omit it on an unattended run, which takes
+   * them without asking.
+   */
+  onPayloadReceiveFill?: (columns: string[]) => Promise<void>;
+  /**
    * Settles partner terms that differ from this party's at the terms
    * exchange (`onTermsChange` in `@alcove/core`): resolving takes them on and
    * continues the run, a throw refuses. Called before any key or payload
@@ -2601,6 +2613,7 @@ export async function runProtocol(
     signing = null,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    onPayloadReceiveFill,
     onTermsChange,
     signingWithoutRecordWarned = false,
     undeclaredColumnsWarned = false,
@@ -2932,6 +2945,7 @@ export async function runProtocol(
       signing,
       recordPayloadReceiveFill,
       payloadReceiveFillNoticeDeferred,
+      onPayloadReceiveFill,
       onTermsChange,
       recordOutput,
       stageTimer,

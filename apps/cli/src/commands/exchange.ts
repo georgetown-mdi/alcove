@@ -58,7 +58,10 @@ import { resolveReceiptOutput } from "../receiptFile";
 import { assertIdentityMatchesAgreedTerms } from "../signingIdentityDivergence";
 import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
-import { termsChangeHandler } from "../termsChange";
+import {
+  payloadReceiveFillConfirmation,
+  termsChangeHandler,
+} from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
 import {
@@ -1263,6 +1266,9 @@ export async function handler(argv: Arguments): Promise<void> {
       exitWithError(log, err, exitCodeForError(err));
     }
 
+    // A terminal on stdin answers the questions; stdin carrying the input CSV
+    // cannot.
+    const interactive = process.stdin.isTTY === true && input !== "-";
     let exchangeError: unknown;
     try {
       await runProtocol({
@@ -1283,12 +1289,16 @@ export async function handler(argv: Arguments): Promise<void> {
         signing,
         recordPayloadReceiveFill: (columns) =>
           persistFilledPayloadReceive(options.configFile, columns),
-        // A terminal on stdin answers the question; stdin carrying the input
-        // CSV cannot.
+        onPayloadReceiveFill: payloadReceiveFillConfirmation({
+          configPath: options.configFile,
+          interactive,
+          log,
+          logFile,
+        }),
         onTermsChange: termsChangeHandler({
           configPath: options.configFile,
           keyPath: authentication.keyFilePath,
-          interactive: process.stdin.isTTY === true && input !== "-",
+          interactive,
           log,
           logFile,
         }),
