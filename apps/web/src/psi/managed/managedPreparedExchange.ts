@@ -28,12 +28,6 @@
  * moves. Absent on an inviter's record, and on a document composed from no
  * acceptance, where nothing was declared to bind.
  *
- * The send side has its own persisted gate: the acceptor's `outboundPayloadConsent`
- * rides the document into `prepareForExchange`, which refuses before connecting if
- * the set this re-run resolves is not the one the operator confirmed at accept
- * (`assertOutboundPayloadConsented`). Absent on every other party, where it is a
- * no-op.
- *
  * The document's `includeOwnColumns` rides into `prepareForExchange` beside the
  * metadata, so a re-run's result file holds the same own columns the operator
  * chose for this exchange. A record holding no such key composes the result
@@ -71,12 +65,6 @@ export function prepareManagedRerunExchange(
         : {}),
       ...(exchangeFile.standardization !== undefined
         ? { standardization: exchangeFile.standardization }
-        : {}),
-      ...(exchangeFile.disclosedPayloadColumns !== undefined
-        ? { disclosedPayloadColumns: exchangeFile.disclosedPayloadColumns }
-        : {}),
-      ...(exchangeFile.outboundPayloadConsent !== undefined
-        ? { outboundPayloadConsent: exchangeFile.outboundPayloadConsent }
         : {}),
       ...(exchangeFile.includeOwnColumns !== undefined
         ? { includeOwnColumns: exchangeFile.includeOwnColumns }

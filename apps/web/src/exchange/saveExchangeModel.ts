@@ -252,10 +252,6 @@ export function exchangeFileInputFor(
     ...(invitation.standardization !== undefined
       ? { standardization: invitation.standardization }
       : {}),
-    // The token's own published set (including the strict empty set), so the
-    // persisted send-side commitment is the one the token holds -- never a
-    // re-derivation that could drift from it.
-    disclosedPayloadColumns: invitation.disclosedPayloadColumns,
     // The local own-column selection the mint decided against these terms, so
     // the saved file writes the result the operator authored in the browser.
     ...(invitation.includeOwnColumns !== undefined

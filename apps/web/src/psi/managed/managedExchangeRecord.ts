@@ -39,7 +39,6 @@ import type {
   ConnectionConfig,
   ExchangeSpec,
   LinkageTerms,
-  OutboundPayloadConsent,
   OwnColumnSelection,
   WebRTCExchangeLocator,
 } from "@alcove/core";
@@ -218,13 +217,12 @@ export interface ManagedExchangeSchedule {
 export type ManagedExchangeRunOutcome =
   "succeeded" | "failed" | "desynced" | "missed" | "skipped";
 
-/** For a non-succeeded outcome, the kind of failure. Closed enum: the five benign
+/** For a non-succeeded outcome, the kind of failure. Closed enum: the four benign
  * pre-run problems -- an `"input"` problem (the file missing from the working
  * folder, or unreadable), a `"terms-shortfall"` refusal (the file cannot satisfy
- * every linkage key the standing terms declare), a `"consent"` refusal (this
- * run's outbound disclosure is not the set this exchange recorded agreeing to
- * send), a `"handed-off"` refusal (an export gave this device's copy away, so
- * the run does not rotate a secret whose owner is elsewhere), and a
+ * every linkage key the standing terms declare), a `"handed-off"` refusal (an
+ * export gave this device's copy away, so the run does not rotate a secret
+ * whose owner is elsewhere), and a
  * `"custody-unreadable"` refusal (the sibling entry recording whether the copy
  * was handed off did not read, so the run does not rotate on custody it could
  * not establish) -- are detected before any connection and never routed through
@@ -242,7 +240,6 @@ export type ManagedExchangeFailureKind =
   | "custody-unreadable"
   | "input"
   | "terms-shortfall"
-  | "consent"
   | "handed-off"
   | "too-large"
   | "terms-change"
@@ -475,7 +472,6 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "consent",
       "handed-off",
       "too-large",
       "terms-change",
@@ -858,18 +854,12 @@ export interface ManagedExchangeFileComposition {
   metadata?: ExchangeSpec["metadata"];
   /** This party's per-party standardization, when authored. */
   standardization?: ExchangeSpec["standardization"];
-  /** This party's send-side disclosure commitment. */
-  disclosedPayloadColumns?: Array<string>;
   /** This party's receive-side commitment. */
   expectedPayloadColumns?: Array<string>;
   /** The `deduplicate` an accepted invitation declared for the partner's own
    * side -- this party's terms-side commitment. Absent for a party that accepted
    * no invitation, which has no declaration to bind. */
   expectedPartnerDeduplicate?: boolean;
-  /** This party's consent to its own outbound payload set. Absent for a party
-   * that records none -- every side but the acceptor, whose record the console's
-   * deposit builder derives at composition. */
-  outboundPayloadConsent?: OutboundPayloadConsent;
   /** Which of this party's own input columns its result file holds beside the
    * partner's values, decided at the mint and held verbatim so a scheduled
    * re-run writes the same file the one-shot run did. Absent where the
@@ -1059,16 +1049,14 @@ export function applyManagedExchangePayloadReceiveFill(
  *
  * - `run`: an attended run took the change on at the terms exchange and
  *   continues under `adoptedTerms` (core's `TermsChange.adoptedTerms`). The
- *   columns this party receives follow the partner's send set; this party's
- *   outbound consent and the `deduplicate` it holds the partner to are left as
- *   they were, since the change is to neither.
+ *   columns this party receives follow the partner's send set; the
+ *   `deduplicate` this party holds the partner to is left as it was, since the
+ *   change is not to it.
  * - `apply`: the operator applied a change a run did not take on -- a stored
  *   proposal, or one the run could not continue under. The terms are derived
  *   from `partnerTerms` as an acceptance derives them, keeping this party's
  *   identity and `deduplicate`, and the partner is held to its stated
- *   `deduplicate`. This party's outbound consent is left as stored: the
- *   operator reviewed only the terms delta, so the run-time consent gate
- *   still asks or refuses as it did before. A `lastRun` recording a refused
+ *   `deduplicate`. A `lastRun` recording a refused
  *   terms change is dropped: the change it refused is the one applied, so a
  *   later visit has nothing left to answer.
  */
@@ -1078,8 +1066,8 @@ export type ManagedTermsChangeWrite =
 
 /**
  * Record a partner's changed linkage terms into the record's exchange file
- * ({@link ManagedTermsChangeWrite}); the connection, secret, bookkeeping,
- * outbound consent, and disclosed set are untouched. The result is
+ * ({@link ManagedTermsChangeWrite}); the connection, secret, and bookkeeping
+ * are untouched. The result is
  * re-validated through the schema, and the input record is not mutated.
  *
  * @throws {UsageError} for an `apply` on a record whose terms name no

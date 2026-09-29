@@ -13,6 +13,7 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
+  deriveAcceptedLinkageTerms,
   disclosedColumnNames,
   getDefaultLinkageTerms,
   getLogger,
@@ -31,6 +32,15 @@ import type {
   Metadata,
   Standardization,
 } from "@alcove/core";
+
+// Wrap inferMetadata as a passthrough spy: header inference discloses only
+// short alias names, so the over-long-name refusal at the mint is reached by
+// substituting the inferred metadata for one call.
+vi.mock("@alcove/core", async () => {
+  const actual =
+    await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
+  return { ...actual, inferMetadata: vi.fn(actual.inferMetadata) };
+});
 
 // Mock only runOnlineBootstrap, so the online-handler wiring can be asserted
 // without opening a connection or running a real exchange; every other
@@ -895,12 +905,12 @@ test("persistedPeerBudgetNotice: names the recorded budget when one was written"
   expect(notice).not.toContain(`${DEFAULT_PEER_TIMEOUT_MS / 1000}s`);
 });
 
-test("validateInvite: online includes the disclosed-columns subset from the inferred metadata", async () => {
+test("validateInvite: online states the disclosed columns in the token and its terms' payload.send", async () => {
   // An input with non-linkage columns: `id` infers as the row identifier, which
   // is transmitted, while `notes` is not recognized and so is left out; the
-  // name/dob/ssn linkage columns are not transmitted. The token must hold exactly
-  // that disclosed subset so the acceptor's consent and commitment derive from
-  // the wire's own predicate.
+  // name/dob/ssn linkage columns are not transmitted. The token and its terms
+  // state exactly that set, so the acceptor's mirrored payload.receive holds
+  // what the payload step transmits.
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-disc-"));
   const input = path.join(dir, "input.csv");
   fs.writeFileSync(
@@ -924,20 +934,15 @@ test("validateInvite: online includes the disclosed-columns subset from the infe
     ),
   );
   expect(token.disclosedPayloadColumns).toEqual(["id"]);
-  // The same disclosed set is persisted into the saved config's
-  // disclosedPayloadColumns (the send-side commitment), so a later recurring
-  // `alcove exchange` can verify its metadata still discloses it before any
-  // credential, terms, or data are sent -- byte-identical to the token copy.
+  expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
+  expect(
+    deriveAcceptedLinkageTerms(token.linkageTerms, "Agency B").payload?.receive,
+  ).toEqual([{ name: "id" }]);
   if (ready.mode !== "online") throw new Error("expected online mode");
-  expect(ready.dataSpec.disclosedPayloadColumns).toEqual(
-    token.disclosedPayloadColumns,
-  );
+  expect(ready.dataSpec.linkageTerms).toEqual(token.linkageTerms);
 });
 
-test("validateInvite: offline infer-from-input persists the disclosed subset as the send commitment", async () => {
-  // The offline infer path writes a config, so it persists the disclosed set it
-  // published on the token into disclosedPayloadColumns too -- the send-side
-  // commitment the later recurring `alcove exchange` checks.
+test("validateInvite: offline infer-from-input states the disclosed columns in the terms it saves", async () => {
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-disc-off-"));
   const input = path.join(dir, "input.csv");
   fs.writeFileSync(
@@ -953,10 +958,9 @@ test("validateInvite: offline infer-from-input persists the disclosed subset as 
   });
   const token = await decodeInvitation(ready.invitation);
   expect(token.disclosedPayloadColumns).toEqual(["id"]);
+  expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
   if (ready.mode !== "offline") throw new Error("expected offline mode");
-  expect(ready.dataSpec.disclosedPayloadColumns).toEqual(
-    token.disclosedPayloadColumns,
-  );
+  expect(ready.dataSpec.linkageTerms).toEqual(token.linkageTerms);
 });
 
 test("validateInvite: an all-linkage input has an empty disclosed subset", async () => {
@@ -973,9 +977,10 @@ test("validateInvite: an all-linkage input has an empty disclosed subset", async
   });
   const token = await decodeInvitation(ready.invitation);
   expect(token.disclosedPayloadColumns).toEqual([]);
+  expect(token.linkageTerms.payload?.send).toEqual([]);
 });
 
-// --- an over-long disclosed column name is refused pre-mint ------------------
+// --- an over-long column name ------------------------------------------------
 
 /** A scratch directory holding an input whose last column is the given name, plus
  *  fresh (non-existent) config/key paths inside it, so a refusal can be checked to
@@ -1016,6 +1021,41 @@ test("validateInvite: an over-long unrecognized column is not sent, so it does n
   });
   const token = await decodeInvitation(ready.invitation);
   expect(token.disclosedPayloadColumns).toEqual([]);
+});
+
+/** Make every inference in the next mint also disclose a column of `name`. */
+function inferDisclosingColumn(name: string): void {
+  const actual = vi.mocked(inferMetadata).getMockImplementation();
+  if (actual === undefined) throw new Error("inferMetadata is not wrapped");
+  vi.mocked(inferMetadata).mockImplementation((columns, positions) => [
+    ...actual(columns, positions),
+    { name, type: "other", role: "payload", isPayload: true },
+  ]);
+}
+
+describe.each([
+  { mode: "online" as const, url: new URL("sftp://host/drop") },
+  { mode: "offline" as const },
+])("validateInvite: $mode refuses an over-long disclosed column", (target) => {
+  afterEach(() => {
+    vi.mocked(inferMetadata).mockRestore();
+  });
+
+  test("by position, before the key file is written", async () => {
+    const { input, options } = fixtureWithTrailingColumn(OVERLONG_COLUMN);
+    inferDisclosingColumn(OVERLONG_COLUMN);
+    const refusal = validateInvite({
+      resolved: { ...target, input },
+      options,
+      acceptTimeout: 900,
+      log: silentLog,
+    });
+    await expect(refusal).rejects.toThrow(UsageError);
+    await expect(refusal).rejects.toThrow(
+      /metadata column 5 .* is sent to the partner, but its name is longer/,
+    );
+    expect(fs.existsSync(options.keyFile)).toBe(false);
+  });
 });
 
 // --- linkage strategy selection ----------------------------------------------
@@ -1946,11 +1986,10 @@ test("validateInvite: a drifted citation on accepted terms offers the mint's own
   }
 });
 
-test("validateInvite: config-as-source threads the disclosed subset for the send commitment", async () => {
-  // A config with an explicit metadata block: the disclosed set is derived from
-  // it, held on the token, AND threaded to the handler so it is persisted into
-  // the reused config's disclosed_payload_columns (closing the init-config gap and
-  // refreshing a stale prior commitment on re-invite).
+test("validateInvite: config-as-source states the metadata's disclosed columns as payload.send", async () => {
+  // A config with an explicit metadata block and no payload.send: the token's
+  // terms state the disclosed set, and the handler is given it to write into
+  // the reused config.
   const terms = defaultTerms();
   const metadata = metadataSendingNotes();
   const { dir, configPath, keyPath } = withConfig(terms, undefined, metadata);
@@ -1964,21 +2003,19 @@ test("validateInvite: config-as-source threads the disclosed subset for the send
     expect(ready.mode).toBe("offlineFromConfig");
     if (ready.mode !== "offlineFromConfig") return;
     const token = await decodeInvitation(ready.invitation);
-    expect(ready.disclosedPayloadColumns).toEqual(
+    expect(token.disclosedPayloadColumns).toEqual(
       disclosedColumnNames(metadata),
     );
-    expect(ready.disclosedPayloadColumns).toEqual(
-      token.disclosedPayloadColumns,
-    );
-    expect(ready.disclosedPayloadColumns).toEqual(["notes"]);
+    expect(token.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
+    expect(ready.linkageTerms).toEqual(token.linkageTerms);
+    expect(ready.statedPayloadSend).toEqual([{ name: "notes" }]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("validateInvite: config-as-source with no metadata block has no commitment (lazy)", async () => {
-  // Without a metadata block the transmitted set is unknown at mint, so nothing is
-  // committed and the handler removes any stale field rather than freezing one.
+test("validateInvite: config-as-source with no metadata block states no send set", async () => {
+  // Without a metadata block the transmitted set is unknown at mint.
   const terms = defaultTerms();
   const { dir, configPath, keyPath } = withConfig(terms);
   try {
@@ -1990,9 +2027,10 @@ test("validateInvite: config-as-source with no metadata block has no commitment 
     });
     expect(ready.mode).toBe("offlineFromConfig");
     if (ready.mode !== "offlineFromConfig") return;
-    expect(ready.disclosedPayloadColumns).toBeUndefined();
+    expect(ready.statedPayloadSend).toBeUndefined();
     const token = await decodeInvitation(ready.invitation);
     expect(token.disclosedPayloadColumns).toBeUndefined();
+    expect(token.linkageTerms.payload?.send).toBeUndefined();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -3290,21 +3328,14 @@ test("handler: a mistyped --flag exits 64 naming it, before any side effect", as
   }
 });
 
-// --- handler: the send commitment is persisted end-to-end --------------------
+// --- handler: offline-from-config writes the stated payload.send ------------
 
-test("handler: offline-from-config persists the disclosed subset into the reused config", async () => {
-  // The end-to-end wiring this whole change exists for. `alcove invite` from a
-  // pre-existing config with a metadata block reuses that config (writing only the
-  // key) and refreshes disclosed_payload_columns in place, so the later recurring
-  // exchange has the commitment to check. validateInvite is tested above; this
-  // proves the handler actually calls persistDisclosedPayloadColumns on the reused
-  // config (the offlineFromConfig branch), not merely that the value is threaded.
-  const metadata = metadataSendingNotes();
-  const { dir, configPath, keyPath } = withConfig(
-    defaultTerms(),
-    undefined,
-    metadata,
-  );
+/** Run the offline invite handler on the config at `configPath`, expecting no
+ *  usage-error exit, and return the config's text afterwards. */
+async function inviteFromConfig(
+  configPath: string,
+  keyPath: string,
+): Promise<string> {
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   const exit = vi
     .spyOn(process, "exit")
@@ -3320,66 +3351,104 @@ test("handler: offline-from-config persists the disclosed subset into the reused
       "log-level": "silent",
       record: false,
     } as unknown as Arguments);
-    // The branch ran to completion: the key was written and no usage-error exit.
     expect(exit).not.toHaveBeenCalledWith(64);
     expect(fs.existsSync(keyPath)).toBe(true);
-    // The reused config now holds the send commitment, equal to the disclosed set.
-    const parsed = YAML.parse(fs.readFileSync(configPath, "utf8")) as {
-      disclosed_payload_columns?: string[];
-    };
-    expect(parsed.disclosed_payload_columns).toEqual(
-      disclosedColumnNames(metadata),
-    );
-    expect(parsed.disclosed_payload_columns).toEqual(["notes"]);
+    return fs.readFileSync(configPath, "utf8");
   } finally {
     logSpy.mockRestore();
     exit.mockRestore();
+  }
+}
+
+function payloadSendOf(configText: string): unknown {
+  const parsed = YAML.parse(configText) as {
+    linkage_terms: { payload?: { send?: unknown } };
+  };
+  return parsed.linkage_terms.payload?.send;
+}
+
+test("handler: offline-from-config writes the stated payload.send into the reused config, keeping comments", async () => {
+  const { dir, configPath, keyPath } = withConfig(
+    defaultTerms(),
+    undefined,
+    metadataSendingNotes(),
+  );
+  try {
+    fs.writeFileSync(
+      configPath,
+      "# operator-authored note\n" + fs.readFileSync(configPath, "utf8"),
+    );
+    const raw = await inviteFromConfig(configPath, keyPath);
+    expect(raw).toContain("# operator-authored note");
+    expect(payloadSendOf(raw)).toEqual([{ name: "notes" }]);
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("handler: offline-from-config removes an acceptor-era outbound consent record", async () => {
-  // A mint re-establishes the config as the inviting side, whose outbound set is
-  // the disclosed-columns commitment itself: an acceptor-era record left behind
-  // would go stale against re-edited metadata and refuse a later unattended run
-  // with remedy text about re-accepting. Same no-field-lags-this-mint rule as the
-  // commitment refresh proven above.
-  const metadata = inferMetadata(["first_name", "last_name", "dob", "ssn"], []);
+test("handler: offline-from-config leaves a config already stating the send set byte-identical", async () => {
   const { dir, configPath, keyPath } = withConfig(
-    defaultTerms(),
+    { ...defaultTerms(), payload: { send: [{ name: "notes" }] } },
     undefined,
-    metadata,
+    metadataSendingNotes(),
   );
-  fs.appendFileSync(
-    configPath,
-    "outbound_payload_consent:\n  status: confirmed\n  columns:\n" +
-      "    - acceptor_era_col\n",
-  );
-  const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
   try {
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: [],
-      "config-file": configPath,
-      "key-file": keyPath,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
-    expect(exit).not.toHaveBeenCalledWith(64);
-    const raw = fs.readFileSync(configPath, "utf8");
-    expect(raw).not.toContain("outbound_payload_consent");
-    expect(raw).not.toContain("acceptor_era_col");
+    const before = fs.readFileSync(configPath, "utf8");
+    expect(await inviteFromConfig(configPath, keyPath)).toBe(before);
   } finally {
-    logSpy.mockRestore();
-    exit.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("handler: offline-from-config with no metadata block leaves the config unchanged", async () => {
+  const { dir, configPath, keyPath } = withConfig(defaultTerms());
+  try {
+    const before = fs.readFileSync(configPath, "utf8");
+    expect(await inviteFromConfig(configPath, keyPath)).toBe(before);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  {
+    shape: "does not share output with the partner",
+    terms: (): LinkageTerms => {
+      const terms = defaultTerms();
+      return { ...terms, output: { ...terms.output, shareWithPartner: false } };
+    },
+    metadata: metadataSendingNotes,
+  },
+  {
+    shape: "is count-only",
+    terms: countOnlyTerms,
+    metadata: (): Metadata =>
+      inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
+  },
+])(
+  "handler: offline-from-config states no send set for terms that $shape",
+  async ({ terms, metadata }) => {
+    const { dir, configPath, keyPath } = withConfig(
+      terms(),
+      undefined,
+      metadata(),
+    );
+    try {
+      const before = fs.readFileSync(configPath, "utf8");
+      const ready = await validateInvite({
+        resolved: { mode: "offline" },
+        options: testOptions({ configFile: configPath, keyFile: keyPath }),
+        acceptTimeout: 900,
+        log: silentLog,
+      });
+      const token = await decodeInvitation(ready.invitation);
+      expect(token.linkageTerms.payload?.send).toBeUndefined();
+      expect(await inviteFromConfig(configPath, keyPath)).toBe(before);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("handler: an offline invitation's placeholder connection has no role", async () => {
   // `role` is a WebRTC-only field: the placeholder block an offline invite writes
@@ -3464,12 +3533,7 @@ test("handler: the offline notice and the written config point at the block", as
   }
 });
 
-test("handler: offline infer-from-input writes the disclosed subset into the fresh config", async () => {
-  // The fresh-config counterpart: `alcove invite input.csv` infers metadata,
-  // mints, and writes a new config via saveConfig; disclosed_payload_columns must
-  // land in that written file (not just on the token) so the recurring exchange can
-  // enforce it -- proven here on the written file, not only at the validateInvite
-  // return value.
+test("handler: offline infer-from-input writes the stated payload.send into the fresh config", async () => {
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-infer-"));
   const configFile = path.join(dir, "alcove.yaml");
   const keyFile = path.join(dir, ".alcove.key");
@@ -3495,10 +3559,9 @@ test("handler: offline infer-from-input writes the disclosed subset into the fre
     } as unknown as Arguments);
     expect(exit).not.toHaveBeenCalledWith(64);
     expect(fs.existsSync(configFile)).toBe(true);
-    const parsed = YAML.parse(fs.readFileSync(configFile, "utf8")) as {
-      disclosed_payload_columns?: string[];
-    };
-    expect(parsed.disclosed_payload_columns).toEqual(["id"]);
+    expect(payloadSendOf(fs.readFileSync(configFile, "utf8"))).toEqual([
+      { name: "id" },
+    ]);
   } finally {
     logSpy.mockRestore();
     exit.mockRestore();
@@ -3908,7 +3971,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
         "Inviter Org",
         inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
       ),
-      outboundPayloadConsent: { status: "pending" },
+      metadata: metadataSendingNotes(),
     });
     const invite = () =>
       inviteHandler({
@@ -3937,9 +4000,9 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       expect(exitSpy).not.toHaveBeenCalled();
       expect(fs.existsSync(keyFile)).toBe(true);
       expect(printed).toHaveBeenCalledTimes(1);
-      expect(fs.readFileSync(configFile, "utf8")).not.toContain(
-        "outbound_payload_consent",
-      );
+      expect(payloadSendOf(fs.readFileSync(configFile, "utf8"))).toEqual([
+        { name: "notes" },
+      ]);
     } finally {
       printed.mockRestore();
       stdio.restore();
@@ -4308,3 +4371,43 @@ describe("handler: an @path connection credential on an online invite", () => {
     }
   });
 });
+
+// --- a retired setting in the source config ----------------------------------
+
+test.each(["disclosed_payload_columns", "outbound_payload_consent"])(
+  "handler: a config holding %s mints no invitation, naming the key and the remedy",
+  async (key) => {
+    const { dir, configPath, keyPath } = withConfig(defaultTerms());
+    const written = YAML.parse(fs.readFileSync(configPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    fs.writeFileSync(configPath, YAML.stringify({ ...written, [key]: [] }));
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const stdio = captureStdio();
+    try {
+      await inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [],
+        "config-file": configPath,
+        "key-file": keyPath,
+        "log-level": "info",
+        record: false,
+      } as unknown as Arguments);
+      expect(exit).toHaveBeenCalledWith(64);
+      expect(stdio.stdoutWrites.join("")).toBe("");
+      expect(stdio.stderrWrites.join("")).toContain(
+        `the setting "${key}" is retired; delete it from the file`,
+      );
+      expect(fs.existsSync(keyPath)).toBe(false);
+    } finally {
+      stdio.restore();
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

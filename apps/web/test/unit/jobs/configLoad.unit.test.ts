@@ -68,7 +68,6 @@ function savedSftpDocument(
       includeOwnColumns: "all",
       expectedPayloadColumns: ["partner_notes"],
       expectedPartnerDeduplicate: false,
-      disclosedPayloadColumns: ["own_notes"],
       retentionDisposition: "Filed with the 2026 intake.",
     }) as Record<string, unknown>),
     ...overrides,
@@ -724,8 +723,6 @@ describe("the records that must survive a load", () => {
   const MUST_SURVIVE = [
     "expected_payload_columns",
     "expected_partner_deduplicate",
-    "disclosed_payload_columns",
-    "outbound_payload_consent",
   ];
 
   test("none of them is reported as held without an editor", () => {
@@ -733,82 +730,45 @@ describe("the records that must survive a load", () => {
     // gets, and these records have no such fallback: one this console cannot
     // put back into the document it composes turns off a check the operator
     // wrote.
-    const response = loadDocument(
-      savedSftpDocument({
-        outbound_payload_consent: {
-          status: "confirmed",
-          columns: ["own_notes"],
-        },
-      }),
-    );
+    const response = loadDocument(savedSftpDocument());
     for (const field of MUST_SURVIVE)
       expect(response.carriedThrough).not.toContain(field);
   });
 
   test("each reaches the disclosed document with the value the file states", () => {
-    const { document } = loadDocument(
-      savedSftpDocument({
-        outbound_payload_consent: {
-          status: "confirmed",
-          columns: ["own_notes"],
-        },
-      }),
-    );
+    const { document } = loadDocument(savedSftpDocument());
     expect(document?.expectedPayloadColumns).toEqual(["partner_notes"]);
     expect(document?.expectedPartnerDeduplicate).toBe(false);
-    expect(document?.disclosedPayloadColumns).toEqual(["own_notes"]);
-    expect(document?.outboundPayloadConsent).toEqual({
-      status: "confirmed",
-      columns: ["own_notes"],
-    });
-  });
-
-  test("a pending consent record survives as pending", () => {
-    // The state that refuses an unattended run until the set is confirmed:
-    // losing it would let the next run proceed against no record at all.
-    const { document } = loadDocument(
-      savedSftpDocument({ outbound_payload_consent: { status: "pending" } }),
-    );
-    expect(document?.outboundPayloadConsent).toEqual({ status: "pending" });
   });
 
   test("each survives the whole cycle: load, authoring state, composition", () => {
     // The cycle a console run makes of a mounted configuration. Each record's
     // absence is a valid state that turns its own enforcement off, so the
     // composed configuration has to state what the file stated.
-    const consent = { status: "confirmed" as const, columns: ["own_notes"] };
-    const { document } = loadDocument(
-      savedSftpDocument({ outbound_payload_consent: consent }),
-    );
+    const { document } = loadDocument(savedSftpDocument());
     if (document === undefined)
       throw new Error("the load disclosed no document");
     const { records } = authoringStateFromDocument(document);
     const composed = composeSftpConfigSpec(
-      validSftpIntent({ ...records, side: "acceptor" }),
+      validSftpIntent({ ...records }),
       testSftpServerEntry(),
     );
     expect(composed.expectedPayloadColumns).toEqual(["partner_notes"]);
     expect(composed.expectedPartnerDeduplicate).toBe(false);
-    expect(composed.disclosedPayloadColumns).toEqual(["own_notes"]);
-    expect(composed.outboundPayloadConsent).toEqual(consent);
   });
 
   test("an empty list survives as an empty list, not as an absence", () => {
     const { document } = loadDocument(
-      savedSftpDocument({
-        expected_payload_columns: [],
-        disclosed_payload_columns: [],
-      }),
+      savedSftpDocument({ expected_payload_columns: [] }),
     );
     expect(document?.expectedPayloadColumns).toEqual([]);
-    expect(document?.disclosedPayloadColumns).toEqual([]);
   });
 
   test("a document stating one the composition cannot emit refuses by name", () => {
-    // Driven against carriedThroughFields directly: were one of the three to
+    // Driven against carriedThroughFields directly: were one of the two to
     // leave the composers, it would appear here, which is the condition the
     // load's own refusal reads. This is the check standing in for a comment
-    // claiming the three survive.
+    // claiming the two survive.
     const spec = {
       connection: {
         channel: "sftp",
@@ -817,8 +777,6 @@ describe("the records that must survive a load", () => {
       linkageTerms: terms(),
       expectedPayloadColumns: ["a"],
       expectedPartnerDeduplicate: true,
-      disclosedPayloadColumns: ["b"],
-      outboundPayloadConsent: { status: "pending" },
     } as unknown as ExchangeSpec;
     expect(carriedThroughFields(spec)).toEqual([]);
   });

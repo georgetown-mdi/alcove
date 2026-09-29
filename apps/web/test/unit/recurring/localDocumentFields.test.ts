@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  disclosedColumnNames,
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
@@ -67,7 +66,6 @@ function storedDocument(overrides: Partial<ExchangeSpec> = {}): ExchangeSpec {
       connection: { channel: "webrtc", host: "signaling.example.org" },
       linkageTerms,
       metadata,
-      disclosedPayloadColumns: disclosedColumnNames(metadata),
     }),
     ...overrides,
   };

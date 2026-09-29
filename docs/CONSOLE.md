@@ -160,14 +160,6 @@ Where your input file cannot supply all of one of them -- a column your configur
 
 Where your configuration states column roles and your file has a column it does not name, that column is kept back rather than sent, which is what `alcove` on the command line does with the same pair; the notice names the setting and the columns step is where you send it after all. Where your configuration states no column roles, the columns step keeps the roles you already set there. The request the browser makes and everything it discloses are in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#loading-a-configuration-from-the-mount).
 
-A configuration that also commits to what this party discloses -- `disclosed_payload_columns`, or an `outbound_payload_consent` it already confirmed -- runs only while the columns it sends to your partner are exactly the columns that commitment names: a run sending any other set is refused when it starts. The console says so beside the load, and again on the columns step, while the two differ, so the columns step or **Close this configuration** settles it before you run. The consent record is read only where your partner receives the matched results: where the results come to you alone nothing is sent, so the record holds nothing.
-
-A configuration whose `outbound_payload_consent` is still pending confirms no set at all, so a run that shares results with your partner is refused until you confirm the columns it sends. The console says so beside the load, and the review step is where you confirm them:
-
-- **It lists the columns this run sends**, worked out from your input file and the columns step as the run works them out. **Confirm these columns** records them; **Change the columns** returns to the columns step instead. Until you confirm, the review step withholds creating the invitation and starting the run, and says what to confirm.
-- **The confirmation holds for this run and for the configuration the console gives you to run on a schedule**, which states `outbound_payload_consent` as confirmed with those columns. The console itself writes nothing to the `alcove.yaml` in your folder, so a command-line run of that file still asks you to confirm them unless you choose **Apply to alcove.yaml** after a partner's terms change, whose `alcove apply` writes what that command writes.
-- **Change the columns after confirming and the review step asks again**, listing the columns added and dropped.
-
 ### When your partner's terms change
 
 The console runs `alcove` with no terminal to ask at, so a run whose partner changed its terms since your last exchange stops before any linkage key or data moves ([CLI.md](CLI.md#when-your-partners-terms-change)). The run screen shows the change in the sections the command line shows: the columns your partner now sends you or no longer sends you, the columns you send that its terms do not receive, its changed `deduplicate`, and each other term that differs.

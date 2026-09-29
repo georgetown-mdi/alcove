@@ -341,7 +341,7 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * {@link ../psi/managedExchangeRun.ts}). A `failureKind` that fires at or before
  * the persist precedes any data leaving this party: `"handed-off"` and
  * `"custody-unreadable"` (the run+rotate lock's first act, before any
- * connection), `"input"`, `"terms-shortfall"`, and `"consent"` (all
+ * connection), `"input"` and `"terms-shortfall"` (both
  * pre-connection), `"auth"` (a `security`-kind failure the classifier stamps
  * only before the data exchange begins; see {@link ../psi/managedRun.ts},
  * `rerunFailureLastRun`), `"storage"` (persist-before-success), and
@@ -359,7 +359,6 @@ function disclosurePrecedesExchange(
     failureKind === "custody-unreadable" ||
     failureKind === "input" ||
     failureKind === "terms-shortfall" ||
-    failureKind === "consent" ||
     failureKind === "auth" ||
     failureKind === "storage" ||
     failureKind === "terms-change"

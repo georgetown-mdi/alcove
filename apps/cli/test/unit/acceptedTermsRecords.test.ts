@@ -10,23 +10,17 @@ import {
   inferMetadata,
   parseExchangeSpec,
 } from "@alcove/core";
-import type {
-  ExchangeSpec,
-  InvitationToken,
-  LinkageTerms,
-  Metadata,
-} from "@alcove/core";
+import type { ExchangeSpec, InvitationToken, LinkageTerms } from "@alcove/core";
 
 import {
   deriveAcceptedInvitationTerms,
-  deriveOutboundConsentRecords,
   diffKeptLinkageTerms,
   receivedCommitmentRemovalWarning,
   refreshAcceptanceRecords,
   termsUpdateWrite,
   writeAcceptanceRecordReportingLoss,
   writeTermsRecord,
-  type AcceptanceRecordWrite,
+  type TermsRecordWrite,
 } from "../../src/acceptedTermsRecords";
 import { persistTermsUpdate, saveConfig } from "../../src/config";
 import {
@@ -88,8 +82,6 @@ function writeCamelCaseKeptConfig(): void {
       linkageTerms: sampleTerms("Acceptor Org"),
       expectedPayloadColumns: ["old_column"],
       expectedPartnerDeduplicate: true,
-      outboundPayloadConsent: { status: "confirmed", columns: ["dob"] },
-      disclosedPayloadColumns: ["stale_column"],
     }),
   );
 }
@@ -98,8 +90,6 @@ const CAMEL_CASE_RECORD_KEYS = [
   "linkageTerms",
   "expectedPayloadColumns",
   "expectedPartnerDeduplicate",
-  "outboundPayloadConsent",
-  "disclosedPayloadColumns",
 ];
 
 function readKeptConfig(): Record<string, unknown> {
@@ -231,40 +221,6 @@ test("receivedCommitmentRemovalWarning warns only where a recorded set is cleare
   ).toContain("exactly these columns:\n  - zip\n  - county");
 });
 
-// --- deriveOutboundConsentRecords --------------------------------------------
-
-const OWN_METADATA: Metadata = inferMetadata(LINKAGE_COLUMNS, []);
-
-test("deriveOutboundConsentRecords records nothing where nothing is shared", () => {
-  expect(
-    deriveOutboundConsentRecords({
-      acceptedOutput: { expectsOutput: true, shareWithPartner: false },
-      ownMetadata: OWN_METADATA,
-      keptConfigurationShares: undefined,
-    }),
-  ).toEqual({ fresh: undefined, kept: undefined });
-});
-
-test("deriveOutboundConsentRecords records pending on a kept config that shares", () => {
-  expect(
-    deriveOutboundConsentRecords({
-      acceptedOutput: { expectsOutput: true, shareWithPartner: false },
-      ownMetadata: OWN_METADATA,
-      keptConfigurationShares: true,
-    }),
-  ).toEqual({ fresh: undefined, kept: { status: "pending" } });
-});
-
-test("deriveOutboundConsentRecords records the same consent fresh and kept where shared", () => {
-  const records = deriveOutboundConsentRecords({
-    acceptedOutput: { expectsOutput: false, shareWithPartner: true },
-    ownMetadata: undefined,
-    keptConfigurationShares: false,
-  });
-  expect(records.fresh).toEqual({ status: "pending" });
-  expect(records.kept).toBe(records.fresh);
-});
-
 // --- writeTermsRecord and refreshAcceptanceRecords ----------------------------
 
 test("writeTermsRecord writes and removes each record in place", () => {
@@ -277,37 +233,17 @@ test("writeTermsRecord writes and removes each record in place", () => {
     record: "expected_partner_deduplicate",
     declared: true,
   });
-  writeTermsRecord(configPath, {
-    record: "outbound_payload_consent",
-    consent: { status: "confirmed", columns: ["dob"] },
-  });
-  writeTermsRecord(configPath, {
-    record: "disclosed_payload_columns",
-    columns: [],
-  });
   expect(readKeptConfig()).toMatchObject({
     expected_payload_columns: ["zip"],
     expected_partner_deduplicate: true,
-    outbound_payload_consent: { status: "confirmed", columns: ["dob"] },
-    disclosed_payload_columns: [],
   });
 
   writeTermsRecord(configPath, {
     record: "expected_payload_columns",
     columns: undefined,
   });
-  writeTermsRecord(configPath, {
-    record: "outbound_payload_consent",
-    consent: undefined,
-  });
-  writeTermsRecord(configPath, {
-    record: "disclosed_payload_columns",
-    columns: undefined,
-  });
   const cleared = readKeptConfig();
   expect(cleared).not.toHaveProperty("expected_payload_columns");
-  expect(cleared).not.toHaveProperty("outbound_payload_consent");
-  expect(cleared).not.toHaveProperty("disclosed_payload_columns");
   expect(cleared.expected_partner_deduplicate).toBe(true);
 });
 
@@ -321,21 +257,15 @@ test("writeTermsRecord throws where the configuration cannot be read", () => {
   expect(fs.existsSync(configPath)).toBe(false);
 });
 
-test("refreshAcceptanceRecords writes all three records a config parses back", () => {
+test("refreshAcceptanceRecords writes both records a config parses back", () => {
   writeKeptConfig();
-  writeTermsRecord(configPath, {
-    record: "outbound_payload_consent",
-    consent: { status: "confirmed", columns: ["dob"] },
-  });
   refreshAcceptanceRecords(configPath, {
     expectedPayloadColumns: ["zip"],
     expectedPartnerDeduplicate: false,
-    outboundPayloadConsent: undefined,
   });
   const spec = parseExchangeSpec(readKeptConfig());
   expect(spec.expectedPayloadColumns).toEqual(["zip"]);
   expect(spec.expectedPartnerDeduplicate).toBe(false);
-  expect(spec.outboundPayloadConsent).toBeUndefined();
 });
 
 test("refreshAcceptanceRecords removes a camelCase record the invitation no longer states", () => {
@@ -343,32 +273,26 @@ test("refreshAcceptanceRecords removes a camelCase record the invitation no long
   refreshAcceptanceRecords(configPath, {
     expectedPayloadColumns: undefined,
     expectedPartnerDeduplicate: false,
-    outboundPayloadConsent: { status: "pending" },
   });
   expect(fs.readFileSync(configPath, "utf8")).not.toContain("old_column");
   const raw = readKeptConfig();
-  for (const key of [
-    "expectedPayloadColumns",
-    "expectedPartnerDeduplicate",
-    "outboundPayloadConsent",
-  ])
+  for (const key of ["expectedPayloadColumns", "expectedPartnerDeduplicate"])
     expect(raw).not.toHaveProperty(key);
   const spec = parseExchangeSpec(raw);
   expect(spec.expectedPayloadColumns).toBeUndefined();
   expect(spec.expectedPartnerDeduplicate).toBe(false);
-  expect(spec.outboundPayloadConsent).toEqual({ status: "pending" });
 });
 
 test("writeTermsRecord sets a camelCase record under one spelling", () => {
   writeCamelCaseKeptConfig();
   writeTermsRecord(configPath, {
-    record: "disclosed_payload_columns",
+    record: "expected_payload_columns",
     columns: ["zip"],
   });
   const raw = readKeptConfig();
-  expect(raw).not.toHaveProperty("disclosedPayloadColumns");
-  expect(raw["disclosed_payload_columns"]).toEqual(["zip"]);
-  expect(parseExchangeSpec(raw).disclosedPayloadColumns).toEqual(["zip"]);
+  expect(raw).not.toHaveProperty("expectedPayloadColumns");
+  expect(raw["expected_payload_columns"]).toEqual(["zip"]);
+  expect(parseExchangeSpec(raw).expectedPayloadColumns).toEqual(["zip"]);
 });
 
 test("refreshAcceptanceRecords throws where the configuration cannot be read", () => {
@@ -376,7 +300,6 @@ test("refreshAcceptanceRecords throws where the configuration cannot be read", (
     refreshAcceptanceRecords(configPath, {
       expectedPayloadColumns: undefined,
       expectedPartnerDeduplicate: false,
-      outboundPayloadConsent: undefined,
     }),
   ).toThrow();
 });
@@ -400,19 +323,12 @@ test("writeAcceptanceRecordReportingLoss writes without reporting a loss", () =>
 });
 
 const LOST_WRITE_CASES: Array<{
-  write: AcceptanceRecordWrite;
+  write: TermsRecordWrite;
   clause: string;
 }> = [
   {
     write: { record: "expected_payload_columns", columns: ["zip"] },
     clause: "recording the columns you consented to receive",
-  },
-  {
-    write: {
-      record: "outbound_payload_consent",
-      consent: { status: "pending" },
-    },
-    clause: "recording your outbound-column confirmation",
   },
   {
     write: { record: "expected_partner_deduplicate", declared: false },
@@ -454,46 +370,15 @@ test("deriveAcceptedInvitationTerms keeps this party's own deduplicate where giv
   expect(accepted.expectedPartnerDeduplicate).toBe(false);
 });
 
-test("termsUpdateWrite restates a recorded send-side commitment from the metadata", () => {
-  const metadata: Metadata = [
-    ...inferMetadata(LINKAGE_COLUMNS, []),
-    { name: "program", type: "other", role: "payload", isPayload: true },
-  ];
+test("termsUpdateWrite takes the terms and records from the accepted update", () => {
   const accepted = deriveAcceptedInvitationTerms(
     sampleToken({ disclosedPayloadColumns: ["notes"] }),
     "Acceptor Org",
   );
-  const write = termsUpdateWrite(accepted, {
-    metadata,
-    disclosedPayloadColumns: ["stale"],
-  });
-  expect(write.disclosedPayloadColumns).toEqual({ columns: ["program"] });
-  expect(write.expectedPayloadColumns).toEqual(["notes"]);
-  expect(write.outboundPayloadConsent).toEqual(
-    deriveOutboundConsentRecords({
-      acceptedOutput: accepted.linkageTerms.output,
-      ownMetadata: metadata,
-      keptConfigurationShares: true,
-    }).kept,
-  );
-});
-
-test("termsUpdateWrite leaves an absent commitment absent and removes one no metadata backs", () => {
-  const accepted = deriveAcceptedInvitationTerms(sampleToken(), "Acceptor Org");
-  expect(termsUpdateWrite(accepted, {}).disclosedPayloadColumns).toBe(
-    "unchanged",
-  );
-  expect(
-    termsUpdateWrite(accepted, { disclosedPayloadColumns: ["stale"] })
-      .disclosedPayloadColumns,
-  ).toEqual({ columns: undefined });
-});
-
-test("termsUpdateWrite records a pending outbound consent where the metadata cannot state it", () => {
-  const accepted = deriveAcceptedInvitationTerms(sampleToken(), "Acceptor Org");
-  expect(accepted.linkageTerms.output.shareWithPartner).toBe(true);
-  expect(termsUpdateWrite(accepted, {}).outboundPayloadConsent).toEqual({
-    status: "pending",
+  expect(termsUpdateWrite(accepted)).toEqual({
+    linkageTerms: accepted.linkageTerms,
+    expectedPayloadColumns: ["notes"],
+    expectedPartnerDeduplicate: false,
   });
 });
 
@@ -508,15 +393,11 @@ test("persistTermsUpdate writes the terms and every record, keeping the rest of 
     linkageTerms: terms,
     expectedPayloadColumns: ["notes"],
     expectedPartnerDeduplicate: true,
-    outboundPayloadConsent: { status: "pending" },
-    disclosedPayloadColumns: { columns: ["program"] },
   });
   const after = readKeptConfig();
   expect(after["connection"]).toEqual(before["connection"]);
   expect(after["expected_payload_columns"]).toEqual(["notes"]);
   expect(after["expected_partner_deduplicate"]).toBe(true);
-  expect(after["outbound_payload_consent"]).toEqual({ status: "pending" });
-  expect(after["disclosed_payload_columns"]).toEqual(["program"]);
   expect(parseExchangeSpec(after).linkageTerms).toEqual(terms);
 });
 
@@ -530,20 +411,15 @@ test("persistTermsUpdate replaces camelCase records instead of keeping them besi
     linkageTerms: terms,
     expectedPayloadColumns: undefined,
     expectedPartnerDeduplicate: false,
-    outboundPayloadConsent: undefined,
-    disclosedPayloadColumns: { columns: undefined },
   });
   const text = fs.readFileSync(configPath, "utf8");
   expect(text).not.toContain("old_column");
-  expect(text).not.toContain("stale_column");
   const raw = readKeptConfig();
   for (const key of CAMEL_CASE_RECORD_KEYS) expect(raw).not.toHaveProperty(key);
   const spec = parseExchangeSpec(raw);
   expect(spec.linkageTerms).toEqual(terms);
   expect(spec.expectedPayloadColumns).toBeUndefined();
   expect(spec.expectedPartnerDeduplicate).toBe(false);
-  expect(spec.outboundPayloadConsent).toBeUndefined();
-  expect(spec.disclosedPayloadColumns).toBeUndefined();
 });
 
 test("persistTermsUpdate refuses a document that would not load and leaves the file unchanged", () => {
@@ -554,8 +430,6 @@ test("persistTermsUpdate refuses a document that would not load and leaves the f
       linkageTerms: { ...sampleTerms("Acceptor Org"), linkageKeys: [] },
       expectedPayloadColumns: undefined,
       expectedPartnerDeduplicate: false,
-      outboundPayloadConsent: undefined,
-      disclosedPayloadColumns: "unchanged",
     }),
   ).toThrow("was left unchanged");
   expect(fs.readFileSync(configPath, "utf8")).toBe(before);

@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   parseExchangeSpec,
   safeParseExchangeSpec,
+  retiredSettingIssue,
 } from "../../src/config/exchangeSpec";
 import {
   METADATA_NAME_SHAPE_MESSAGE,
@@ -258,43 +259,72 @@ test("a control character in a metadata name is rejected through this spec path"
   );
 });
 
-test("a name-class character is rejected in every payload column list", () => {
-  // The three local enforcement records list column names rather than terms, so
-  // each holds the same shape a terms payload name does. expected_payload_columns
-  // is written from a partner's invitation and the other two from this party's
-  // own metadata, so this is what keeps the class out of the file whichever side
-  // authored the name. U+202E RLO, written as an escape.
+test("a name-class character is rejected in the local payload column list", () => {
+  // expected_payload_columns lists column names rather than terms, so it holds
+  // the same shape a terms payload name does. It is written from a partner's
+  // invitation, so this is what keeps the class out of the file. U+202E RLO,
+  // written as an escape.
   const hostile = "risk\u202escore";
-  for (const [key, issuePath] of [
-    ["expected_payload_columns", "expectedPayloadColumns.0"],
-    ["disclosed_payload_columns", "disclosedPayloadColumns.0"],
-  ] as const) {
-    const result = safeParseExchangeSpec({ ...minimalSpec, [key]: [hostile] });
-    expect(result.success).toBe(false);
-    if (result.success) continue;
-    expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
-      issuePath,
-    );
-    expect(JSON.stringify(result.error.issues)).toContain(NAME_SHAPE_MESSAGE);
-  }
-
-  const consent = safeParseExchangeSpec({
+  const result = safeParseExchangeSpec({
     ...minimalSpec,
-    outbound_payload_consent: { status: "confirmed", columns: [hostile] },
+    expected_payload_columns: [hostile],
   });
-  expect(consent.success).toBe(false);
-  if (consent.success) return;
-  expect(JSON.stringify(consent.error.issues)).toContain(NAME_SHAPE_MESSAGE);
-  // The refusal locates the field and reports none of the name.
-  expect(JSON.stringify(consent.error.issues)).not.toContain("risk");
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
+    "expectedPayloadColumns.0",
+  );
+  expect(JSON.stringify(result.error.issues)).toContain(NAME_SHAPE_MESSAGE);
+});
+
+test.each([
+  "disclosed_payload_columns",
+  "outbound_payload_consent",
+  "disclosedPayloadColumns",
+  "outboundPayloadConsent",
+])(
+  "a configuration holding %s is refused, naming the key and the remedy",
+  (key) => {
+    const refusal = `the setting "${key}" is retired; delete it from the file`;
+    let thrown: unknown;
+    try {
+      parseExchangeSpec({ ...minimalSpec, [key]: ["program"] });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ZodError);
+    expect((thrown as ZodError).issues.map(({ message }) => message)).toEqual([
+      refusal,
+    ]);
+    const result = safeParseExchangeSpec({ ...minimalSpec, [key]: [] });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map(({ message }) => message)).toEqual([
+      refusal,
+    ]);
+  },
+);
+
+test("a configuration holding both retired settings is refused naming both", () => {
+  expect(
+    retiredSettingIssue({
+      ...minimalSpec,
+      disclosed_payload_columns: [],
+      outbound_payload_consent: {},
+    })?.message,
+  ).toBe(
+    'the settings "disclosed_payload_columns" and "outbound_payload_consent" ' +
+      "are retired; delete them from the file",
+  );
+  expect(retiredSettingIssue(minimalSpec)).toBeUndefined();
+  expect(retiredSettingIssue(["disclosed_payload_columns"])).toBeUndefined();
 });
 
 // --- Payload column-name duplicate normalization -----------------------------
-// The two top-level lists and the outbound consent record's own list name each
-// column once, the treatment the negotiated payload dictionary already applies.
-// All three are hand-authorable in a recurring config, and each is compared
-// against a set of columns holding each name once, so a repeat left standing
-// refuses the run for the operator's own typo.
+// The top-level list names each column once, the treatment the negotiated
+// payload dictionary already applies. It is hand-authorable in a recurring
+// config and compared against a set of columns holding each name once, so a
+// repeat left standing refuses the run for the operator's own typo.
 
 test("expectedPayloadColumns: a column named twice parses to one entry", () => {
   expect(
@@ -305,42 +335,18 @@ test("expectedPayloadColumns: a column named twice parses to one entry", () => {
   ).toEqual(["notes", "member_id"]);
 });
 
-test("disclosedPayloadColumns: a column named twice parses to one entry", () => {
-  expect(
-    parseExchangeSpec({
-      ...minimalSpec,
-      disclosed_payload_columns: ["diagnosis", "diagnosis", "dose"],
-    }).disclosedPayloadColumns,
-  ).toEqual(["diagnosis", "dose"]);
-});
-
-test("outboundPayloadConsent: a column named twice parses to one entry", () => {
-  expect(
-    parseExchangeSpec({
-      ...minimalSpec,
-      outbound_payload_consent: {
-        status: "confirmed",
-        columns: ["dose", "notes", "dose"],
-      },
-    }).outboundPayloadConsent,
-  ).toEqual({ status: "confirmed", columns: ["dose", "notes"] });
-});
-
 test("a payload column list over the maximum count is refused by its authored count, not normalized under it", () => {
-  // The count gate stands ahead of the collapse on every list: a list padded
+  // The count gate stands ahead of the collapse on the list: a list padded
   // with one name repeated is refused for the count it was authored with rather
   // than admitted for the single entry it would collapse to.
   const padded = Array.from({ length: MAX_PAYLOAD_ENTRIES + 1 }, () => "dose");
-  for (const fields of [
-    { expected_payload_columns: padded },
-    { disclosed_payload_columns: padded },
-    { outbound_payload_consent: { status: "confirmed", columns: padded } },
-  ]) {
-    const result = safeParseExchangeSpec({ ...minimalSpec, ...fields });
-    expect(result.success).toBe(false);
-    if (result.success) continue;
-    expect(JSON.stringify(result.error.issues)).toContain("must not exceed");
-  }
+  const result = safeParseExchangeSpec({
+    ...minimalSpec,
+    expected_payload_columns: padded,
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  expect(JSON.stringify(result.error.issues)).toContain("must not exceed");
 });
 
 test("expectedPayloadColumns: a repeat does not reach payload reconciliation as a mismatch", () => {
@@ -774,7 +780,6 @@ test("every key of a document that parses survives into the parse result", () =>
     standardization: [{ output: "last_name", input: "LAST_NAME", steps: [] }],
     retention_disposition: "Filed with the program office for seven years.",
     expected_payload_columns: ["partner_program"],
-    disclosed_payload_columns: ["program"],
     expected_partner_deduplicate: true,
     include_own_columns: "all",
     csv_delimiter: "|",

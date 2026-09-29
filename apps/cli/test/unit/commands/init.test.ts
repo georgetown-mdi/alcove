@@ -135,7 +135,6 @@ test("renderConfigTemplate: every exchange-spec section is represented", async (
   expect(template).toContain("# signing:");
   expect(template).toContain("# retention_disposition:");
   expect(template).toContain("# expected_payload_columns:");
-  expect(template).toContain("# disclosed_payload_columns:");
   expect(template).toContain("# expected_partner_deduplicate:");
   // With no input file, metadata/standardization are documented as commented
   // examples rather than written active.
@@ -278,8 +277,6 @@ test("every commented OPTIONAL section is valid when uncommented", async () => {
     "retention_disposition",
     "include_own_columns",
     "expected_payload_columns",
-    "disclosed_payload_columns",
-    "outbound_payload_consent",
     "expected_partner_deduplicate",
   ]) {
     const section = YAML.parse(

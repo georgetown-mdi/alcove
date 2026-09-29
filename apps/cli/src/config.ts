@@ -10,7 +10,7 @@ import type {
   LinkageSetIdentity,
   LinkageTerms,
   Metadata,
-  OutboundPayloadConsent,
+  Payload,
   ProvisionedServerAddress,
   RelayLocator,
   ServerProvision,
@@ -61,6 +61,7 @@ import {
   safeParseStandardizationTheReaderWrote,
   sanitizeForDisplay,
   parseExchangeSpec,
+  retiredSettingIssue,
   serializeExchangeDocument,
   snakeizeKey,
   snakeizeKeys,
@@ -1752,63 +1753,15 @@ function partnerFingerprintRecorded(
 }
 
 /**
- * Write, overwrite, or remove the top-level `disclosed_payload_columns` in
- * an existing `alcove.yaml`: the SEND-side disclosure commitment (this
- * party's own column namespace) that a later recurring `alcove exchange`
- * verifies its current metadata still discloses
- * ({@link assertDisclosureMatchesCommitment} in core).
- *
- * Used by the offline invite-from-config / re-invite path. Like
- * {@link persistHostKeyFingerprint}, this edits the file in place through
- * the YAML document model so the operator's comments, key order, and
- * formatting survive.
- *
- * `columns === undefined` removes the field rather than leaving a stale
- * value; an empty array is written verbatim, a strict "disclose nothing"
- * commitment distinct from absent.
- *
- * Rewritten with the same owner-only permissions {@link saveConfig} uses.
- * Throws if the file cannot be read or parsed, since the caller just read it
- * and a silent failure would leave the operator believing the commitment was
- * recorded.
- */
-export function persistDisclosedPayloadColumns(
-  configPath: string,
-  columns: string[] | undefined,
-): void {
-  // Parse, edit, and re-serialize through the sensitive-file chokepoint (see
-  // persistHostKeyFingerprint), preserving the operator's comments and key order
-  // on this surgical one-field write.
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, ["disclosed_payload_columns"]);
-      if (columns === undefined) {
-        // No commitment on record for this mint: remove any stale field rather
-        // than leave a value the current metadata no longer backs.
-        doc.deleteIn(["disclosed_payload_columns"]);
-        return;
-      }
-      // createNode turns the JS array into a proper YAML sequence node (a bare
-      // value is not reliably wrapped by setIn across versions); setIn creates or
-      // overwrites the single top-level key, leaving everything else untouched.
-      doc.setIn(["disclosed_payload_columns"], doc.createNode(columns));
-    },
-  );
-  writeFileOwnerOnly(configPath, serialized);
-}
-
-/**
  * Write, overwrite, or remove the top-level `expected_payload_columns` in an
  * existing `alcove.yaml`: the RECEIVE-side consent commitment (the
  * PARTNER's column namespace) that a later recurring `alcove exchange`
  * holds the received payload to ({@link reconcileReceivedPayload} in core).
  *
  * Used by both accept-reuse paths (offline, and the online hook's reuse
- * branch). Like {@link persistDisclosedPayloadColumns}, its send-side twin,
- * this edits the file in place through the YAML document model so the
- * operator's comments, key order, and formatting survive.
+ * branch). Like {@link persistHostKeyFingerprint}, this edits the file in
+ * place through the YAML document model so the operator's comments, key
+ * order, and formatting survive.
  *
  * `columns === undefined` removes the field rather than leaving a stale
  * value; an empty array is written verbatim, a strict "receive nothing"
@@ -1910,45 +1863,35 @@ export function persistFilledPayloadReceive(
 }
 
 /**
- * Write, overwrite, or remove the top-level `outbound_payload_consent` in an
- * existing `alcove.yaml`: this party's consent to its OWN outbound set (or
- * the `pending` marker recorded when an acceptance could not resolve it
- * yet), which a later `alcove exchange` holds the transmitted set to
- * ({@link assertOutboundPayloadConsented} in core).
+ * Write `linkage_terms.payload.send` into an existing `alcove.yaml`: the
+ * columns an invitation or terms update minted from the configuration states
+ * this party sends, from its `metadata`, where the terms left the list unset.
+ * Edits the file in place through the YAML document model, as
+ * {@link persistFilledPayloadReceive} does, and rewrites it with the
+ * owner-only permissions {@link saveConfig} uses.
  *
- * Used by the accept-reuse path and the run that resolves and confirms a
- * `pending` record in place. Like {@link persistDisclosedPayloadColumns},
- * this edits the file in place through the YAML document model so the
- * operator's comments, key order, and formatting survive.
- *
- * `consent === undefined` removes the field rather than leaving a stale
- * value: an acceptance transmitting nothing records no consent.
- *
- * Rewritten with the same owner-only permissions {@link saveConfig} uses.
- * Throws if the file cannot be read or parsed, since the caller just read
- * it and a silent failure would leave the operator believing their
- * confirmation was recorded.
+ * @throws when the file cannot be read, parsed, or written, or holds no
+ *   `linkage_terms` mapping.
  */
-export function persistOutboundPayloadConsent(
+export function persistStatedPayloadSend(
   configPath: string,
-  consent: OutboundPayloadConsent | undefined,
+  send: NonNullable<Payload["send"]>,
 ): void {
-  // Parse, edit, and re-serialize through the sensitive-file chokepoint (see
-  // persistHostKeyFingerprint), preserving the operator's comments and key order
-  // on this surgical one-field write.
   const serialized = editSensitiveYamlDocument(
     fs.readFileSync(configPath, "utf8"),
     configFileLabel(configPath),
     (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, ["outbound_payload_consent"]);
-      if (consent === undefined) {
-        doc.deleteIn(["outbound_payload_consent"]);
-        return;
-      }
-      // createNode turns the JS object into a proper YAML mapping node (a bare
-      // value is not reliably wrapped by setIn across versions); setIn creates or
-      // overwrites the single top-level key, leaving everything else untouched.
-      doc.setIn(["outbound_payload_consent"], doc.createNode(consent));
+      normalizeKeyPathSpelling(configPath, doc, [
+        "linkage_terms",
+        "payload",
+        "send",
+      ]);
+      if (!isMap(doc.get("linkage_terms", true)))
+        throw configFileRefusal(configPath, "holds no linkage_terms mapping.");
+      doc.setIn(
+        ["linkage_terms", "payload", "send"],
+        doc.createNode(send.map((column) => snakeizeKeys(column))),
+      );
     },
   );
   writeFileOwnerOnly(configPath, serialized);
@@ -1996,26 +1939,21 @@ export function persistExpectedPartnerDeduplicate(
 
 /**
  * The fields {@link persistTermsUpdate} writes. `expectedPartnerDeduplicate`
- * and `disclosedPayloadColumns` are `"unchanged"` where the configuration's
- * record is left as it stands; otherwise an undefined `columns` removes the
- * send-side commitment.
+ * is `"unchanged"` where the configuration's record is left as it stands.
  */
 export interface TermsUpdateWrite {
   linkageTerms: LinkageTerms;
   expectedPayloadColumns: string[] | undefined;
   expectedPartnerDeduplicate: boolean | "unchanged";
-  outboundPayloadConsent: OutboundPayloadConsent | undefined;
-  disclosedPayloadColumns: "unchanged" | { columns: string[] | undefined };
 }
 
 /**
- * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the
- * records that follow from it -- `expected_payload_columns`,
- * `expected_partner_deduplicate`, `outbound_payload_consent`, and
- * `disclosed_payload_columns` -- in one write, so no record is left stating a
- * commitment the new terms do not back. Every other key, the connection block
- * included, keeps its values and its key order, and a line the write does
- * not change keeps its bytes as {@link editSensitiveYamlDocument} allows.
+ * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the records
+ * that follow from it -- `expected_payload_columns` and
+ * `expected_partner_deduplicate` -- in one write, so no record is left stating
+ * a commitment the new terms do not back. Every other key, the connection block
+ * included, keeps its values and its key order, and a line the write does not
+ * change keeps its bytes as {@link editSensitiveYamlDocument} allows.
  *
  * The edited document is read back through the same schema `alcove
  * exchange` loads it with before it is written; a document that would not
@@ -2101,8 +2039,6 @@ function termsUpdateDocument(
         "linkage_terms",
         "expected_payload_columns",
         "expected_partner_deduplicate",
-        "outbound_payload_consent",
-        "disclosed_payload_columns",
       ])
         normalizeKeyPathSpelling(configPath, doc, [record]);
       doc.setIn(
@@ -2121,18 +2057,6 @@ function termsUpdateDocument(
           ["expected_partner_deduplicate"],
           write.expectedPartnerDeduplicate,
         );
-      if (write.outboundPayloadConsent === undefined)
-        doc.deleteIn(["outbound_payload_consent"]);
-      else
-        doc.setIn(
-          ["outbound_payload_consent"],
-          doc.createNode(write.outboundPayloadConsent),
-        );
-      if (write.disclosedPayloadColumns !== "unchanged") {
-        const { columns } = write.disclosedPayloadColumns;
-        if (columns === undefined) doc.deleteIn(["disclosed_payload_columns"]);
-        else doc.setIn(["disclosed_payload_columns"], doc.createNode(columns));
-      }
     },
   );
 }
@@ -2405,11 +2329,14 @@ export type NamedRuleSetRules = "from-the-named-set" | "as-written";
  * parsed and validated; the connection block is excluded by design, so a
  * still-placeholder one does not fail the read.
  *
- * Each of those three blocks is read through the entry point that refuses a
- * key its schema would drop rather than read, the rule `parseExchangeSpec`
- * holds over the whole file (docs/spec/EXCHANGE_FILE.md, "What a consumer does
- * with a setting it cannot honor"), so a file `alcove exchange` refuses is not
- * one `alcove invite` mints an invitation from.
+ * A retired top-level setting is refused first, with the refusal
+ * `parseExchangeSpec` raises ({@link retiredSettingIssue}), and each of those
+ * three blocks is read through the entry point that refuses a key its schema
+ * would drop rather than read, the rule `parseExchangeSpec` holds over the
+ * whole file (docs/spec/EXCHANGE_FILE.md, "What a consumer does with a setting
+ * it cannot honor"). So a file `alcove exchange` refuses for either of those
+ * reasons is not one `alcove invite` mints an invitation from; an unknown
+ * top-level key or a defect in another block is left to `alcove exchange`.
  *
  * Every other defect is a {@link UsageError}: a config present at the path
  * is treated as intentional, so a broken one is reported for the user to
@@ -2452,6 +2379,9 @@ export function readConfigLinkageSource(
       "is not a valid configuration object (expected a YAML mapping at the " +
         "top level)",
     );
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined)
+    throw configFileRefusal(configPath, "is not valid: " + retired.message);
   const obj = raw as Record<string, unknown>;
   const rawTerms = obj["linkage_terms"] ?? obj["linkageTerms"];
   if (rawTerms === undefined) return { status: "no-linkage-terms" };

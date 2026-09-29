@@ -482,12 +482,8 @@ describe("the create gate and the two sentences that state it", () => {
   const RUN_WITHHELD =
     "The console cannot run this webrtc configuration: it conducts sftp and " +
     "filedrop exchanges only.";
-  const CONSENT_UNCONFIRMED =
-    'Choose "Confirm these columns" under "Confirm the columns you send" ' +
-    "above to continue.";
   const clearGates: InviterCreateGates = {
     runWithheld: undefined,
-    outboundConsentUnconfirmed: undefined,
     offlineBlocked: false,
     connectionIncomplete: false,
     splitDirectoryProblem: undefined,
@@ -513,12 +509,6 @@ describe("the create gate and the two sentences that state it", () => {
       gates: { ...clearGates, runWithheld: RUN_WITHHELD },
       statusLine: RUN_WITHHELD,
       announcement: RUN_WITHHELD,
-    },
-    {
-      gate: "outboundConsentUnconfirmed",
-      gates: { ...clearGates, outboundConsentUnconfirmed: CONSENT_UNCONFIRMED },
-      statusLine: CONSENT_UNCONFIRMED,
-      announcement: CONSENT_UNCONFIRMED,
     },
     {
       gate: "offlineBlocked",
@@ -629,15 +619,6 @@ describe("the create gate and the two sentences that state it", () => {
     expect(status.ready).toBe(false);
     expect(status.statusLine).toBe(RUN_WITHHELD);
     expect(status.announcement).toBe(RUN_WITHHELD);
-  });
-
-  test("a withheld run speaks ahead of an unconfirmed consent", () => {
-    const status = inviterCreateStatus({
-      ...clearGates,
-      runWithheld: RUN_WITHHELD,
-      outboundConsentUnconfirmed: CONSENT_UNCONFIRMED,
-    });
-    expect(status.statusLine).toBe(RUN_WITHHELD);
   });
 
   test("offline speaks ahead of the settings no edit here can outrun", () => {

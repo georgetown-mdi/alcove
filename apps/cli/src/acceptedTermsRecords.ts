@@ -2,9 +2,7 @@
  * The terms an acceptance adopts from an invitation, the comparison of those
  * terms against a configuration that already exists, and the fail-closed
  * records an acceptance writes into that configuration:
- * `expected_payload_columns`, `expected_partner_deduplicate`, and
- * `outbound_payload_consent`, with the inviter's `disclosed_payload_columns`
- * beside them.
+ * `expected_payload_columns` and `expected_partner_deduplicate`.
  *
  * Every entry point takes what it needs as arguments, so any command that
  * records consent to an invitation's terms drives the same derivation and the
@@ -16,8 +14,6 @@
 
 import {
   deriveAcceptedLinkageTerms,
-  deriveOutboundPayloadConsent,
-  disclosedColumnNames,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   operatorSuppliedText,
@@ -27,8 +23,6 @@ import type {
   ExchangeSpec,
   InvitationToken,
   LinkageTerms,
-  Metadata,
-  OutboundPayloadConsent,
   RelayLocator,
 } from "@alcove/core";
 
@@ -36,10 +30,8 @@ import {
   diffLinkageTerms,
   linkageTermsStandingOf,
   type TermsUpdateWrite,
-  persistDisclosedPayloadColumns,
   persistExpectedPartnerDeduplicate,
   persistExpectedPayloadColumns,
-  persistOutboundPayloadConsent,
   warnOnLinkageRuleSetCitationDrift,
   type CitationDriftAlternative,
   type ReconcileDiff,
@@ -166,55 +158,13 @@ export function receivedCommitmentRemovalWarning(params: {
 }
 
 /**
- * This party's consent to its own outbound set, for a configuration an
- * acceptance writes fresh and for one it keeps.
- *
- * `fresh` is derived from the accepted output terms and this party's own
- * metadata. `kept` follows the kept configuration's own output terms, which no
- * reconciliation compares: where `fresh` records nothing but the kept
- * configuration shares with its partner, it is `pending`, so the next run asks
- * or refuses unattended rather than transmitting on partner-controlled terms.
- */
-export function deriveOutboundConsentRecords(params: {
-  acceptedOutput: LinkageTerms["output"];
-  ownMetadata: Metadata | undefined;
-  keptConfigurationShares: boolean | undefined;
-}): {
-  fresh: OutboundPayloadConsent | undefined;
-  kept: OutboundPayloadConsent | undefined;
-} {
-  const fresh = deriveOutboundPayloadConsent(
-    params.acceptedOutput,
-    params.ownMetadata,
-  );
-  const kept: OutboundPayloadConsent | undefined =
-    fresh !== undefined
-      ? fresh
-      : params.keptConfigurationShares === true
-        ? { status: "pending" }
-        : undefined;
-  return { fresh, kept };
-}
-
-/**
  * One fail-closed record written in place into an existing configuration.
  * An undefined value removes the field, except `expected_partner_deduplicate`,
  * which always has a value.
  */
 export type TermsRecordWrite =
   | { record: "expected_payload_columns"; columns: string[] | undefined }
-  | { record: "expected_partner_deduplicate"; declared: boolean }
-  | {
-      record: "outbound_payload_consent";
-      consent: OutboundPayloadConsent | undefined;
-    }
-  | { record: "disclosed_payload_columns"; columns: string[] | undefined };
-
-/** The records an acceptance writes; the inviter's disclosure is excluded. */
-export type AcceptanceRecordWrite = Exclude<
-  TermsRecordWrite,
-  { record: "disclosed_payload_columns" }
->;
+  | { record: "expected_partner_deduplicate"; declared: boolean };
 
 /**
  * Write one record into the configuration at `configPath`, keeping the rest
@@ -232,25 +182,18 @@ export function writeTermsRecord(
     case "expected_partner_deduplicate":
       persistExpectedPartnerDeduplicate(configPath, write.declared);
       return;
-    case "outbound_payload_consent":
-      persistOutboundPayloadConsent(configPath, write.consent);
-      return;
-    case "disclosed_payload_columns":
-      persistDisclosedPayloadColumns(configPath, write.columns);
-      return;
   }
 }
 
 /**
- * Refresh an acceptance's three records in a configuration it keeps, in
- * order, stopping at the first write that throws.
+ * Refresh an acceptance's two records in a configuration it keeps, in order,
+ * stopping at the first write that throws.
  */
 export function refreshAcceptanceRecords(
   configPath: string,
   records: {
     expectedPayloadColumns: string[] | undefined;
     expectedPartnerDeduplicate: boolean;
-    outboundPayloadConsent: OutboundPayloadConsent | undefined;
   },
 ): void {
   writeTermsRecord(configPath, {
@@ -261,10 +204,6 @@ export function refreshAcceptanceRecords(
     record: "expected_partner_deduplicate",
     declared: records.expectedPartnerDeduplicate,
   });
-  writeTermsRecord(configPath, {
-    record: "outbound_payload_consent",
-    consent: records.outboundPayloadConsent,
-  });
 }
 
 /**
@@ -273,7 +212,7 @@ export function refreshAcceptanceRecords(
  */
 function acceptanceRecordLossNotice(
   configPath: string,
-  record: AcceptanceRecordWrite["record"],
+  record: TermsRecordWrite["record"],
 ): string {
   switch (record) {
     case "expected_payload_columns":
@@ -284,15 +223,6 @@ function acceptanceRecordLossNotice(
         `exchange' holds the received payload to the set that ` +
         `configuration already records, and checks it against no ` +
         `consented set if it records none`
-      );
-    case "outbound_payload_consent":
-      return (
-        `the exchange continues and the existing configuration at ` +
-        `${configPath} stands, but recording your ` +
-        `outbound-column confirmation in it failed; the next ` +
-        `'alcove exchange' compares against the previously ` +
-        `recorded set and will show the columns and ask again if ` +
-        `they differ`
       );
     case "expected_partner_deduplicate":
       return (
@@ -314,7 +244,7 @@ function acceptanceRecordLossNotice(
  */
 export function writeAcceptanceRecordReportingLoss(
   configPath: string,
-  write: AcceptanceRecordWrite,
+  write: TermsRecordWrite,
   report: {
     log: { warn: (message: string) => void };
     eventStream: EventStreamEmitter | undefined;
@@ -333,40 +263,16 @@ export function writeAcceptanceRecordReportingLoss(
 
 /**
  * What applying a verified terms update writes into the configuration it
- * changes (see `persistTermsUpdate`), from the terms that update adopts and
- * the configuration as it stands.
- *
- * The acceptance records are the ones an acceptance of the same terms would
- * write: the partner's disclosed columns and declared `deduplicate`, and
- * this party's consent to its own outbound set, which falls to `pending`
- * where the new terms share with the partner and the configuration's
- * metadata cannot state the set. A recorded `disclosed_payload_columns` is
- * restated from the configuration's metadata, or removed where it declares
- * none, on the rule an invitation minted from the configuration follows; an
- * absent one stays absent.
+ * changes (see `persistTermsUpdate`): the terms that update adopts, and the
+ * acceptance records an acceptance of the same terms would write -- the
+ * partner's disclosed columns and declared `deduplicate`.
  */
 export function termsUpdateWrite(
   accepted: AcceptedInvitationTerms,
-  existing: Pick<ExchangeSpec, "metadata" | "disclosedPayloadColumns">,
 ): TermsUpdateWrite {
-  const { kept } = deriveOutboundConsentRecords({
-    acceptedOutput: accepted.linkageTerms.output,
-    ownMetadata: existing.metadata,
-    keptConfigurationShares: accepted.linkageTerms.output.shareWithPartner,
-  });
   return {
     linkageTerms: accepted.linkageTerms,
     expectedPayloadColumns: accepted.expectedPayloadColumns,
     expectedPartnerDeduplicate: accepted.expectedPartnerDeduplicate,
-    outboundPayloadConsent: kept,
-    disclosedPayloadColumns:
-      existing.disclosedPayloadColumns === undefined
-        ? "unchanged"
-        : {
-            columns:
-              existing.metadata === undefined
-                ? undefined
-                : disclosedColumnNames(existing.metadata),
-          },
   };
 }

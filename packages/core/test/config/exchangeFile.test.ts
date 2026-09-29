@@ -167,7 +167,6 @@ test("mintExchangeFile: FileSyncOptions, metadata, standardization, and payload 
     standardization: [
       { output: "ssn", input: "ssn", steps: [{ function: "trim" }] },
     ],
-    disclosedPayloadColumns: ["first_name"],
     expectedPayloadColumns: ["last_name"],
     expectedPartnerDeduplicate: false,
   };
@@ -180,7 +179,6 @@ test("mintExchangeFile: FileSyncOptions, metadata, standardization, and payload 
   expect(reparsed.connection.options?.unexpectedFiles).toBe("warn");
   expect(reparsed.metadata).toEqual(baseMetadata);
   expect(reparsed.standardization).toBeDefined();
-  expect(reparsed.disclosedPayloadColumns).toEqual(["first_name"]);
   expect(reparsed.expectedPayloadColumns).toEqual(["last_name"]);
   // The terms-side commitment survives the snake_case wire form as `false`
   // rather than as an absent key: absent would bind nothing, which is the
@@ -199,7 +197,6 @@ test("mintExchangeFile: absent optional blocks are omitted keys, not explicit nu
   // re-parse differently than the assembled spec.
   expect(raw).not.toHaveProperty("metadata");
   expect(raw).not.toHaveProperty("standardization");
-  expect(raw).not.toHaveProperty("disclosed_payload_columns");
   expect(raw).not.toHaveProperty("expected_payload_columns");
   expect(raw).not.toHaveProperty("expected_partner_deduplicate");
   // Never an authentication block: the secret rides only the invitation code.
@@ -228,7 +225,6 @@ test("mintExchangeFile: no credential field appears anywhere in a maximal minted
     standardization: [
       { output: "ssn", input: "ssn", steps: [{ function: "trim" }] },
     ],
-    disclosedPayloadColumns: ["first_name"],
     expectedPayloadColumns: ["last_name"],
   });
 

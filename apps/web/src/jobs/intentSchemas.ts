@@ -18,7 +18,6 @@ import {
   MAX_TIMEOUT_SECONDS,
   MAX_TRANSFORM_PATTERN_LENGTH,
   MetadataSchema,
-  OutboundPayloadConsentSchema,
   OwnColumnSelectionSchema,
   SHARED_SECRET_REGEX,
   StandardizationSchema,
@@ -39,7 +38,6 @@ import type {
   FileSyncOptions,
   LinkageTerms,
   Metadata,
-  OutboundPayloadConsent,
   OwnColumnSelection,
   SigningConfig,
   Standardization,
@@ -573,13 +571,6 @@ export type JobExchangeSide = "inviter" | "acceptor";
  *   the field doc for the empty-vs-absent semantics.
  * - `expectedPartnerDeduplicate` is the acceptor's terms-side enforcement: a
  *   schema boolean, contributing one YAML `true`/`false` and no free text.
- * - `disclosedPayloadColumns` is this party's send-side commitment: a list of
- *   its OWN column names, bounded exactly as `expectedPayloadColumns` is, with
- *   no path/host/credential.
- * - `outboundPayloadConsent` is this party's recorded consent to its own
- *   outbound set: core's own two-state record, whose `confirmed` column list
- *   holds this party's OWN column names under core's per-name and count
- *   bounds, and no path/host/credential.
  * - `includeOwnColumns` is this party's local output-composition setting: a
  *   closed two-value enum naming no column, contributing one YAML string that
  *   changes only the result file the console writes for this operator.
@@ -587,8 +578,8 @@ export type JobExchangeSide = "inviter" | "acceptor";
  *   character or the reserved `detect` word, graded by core's own rule, that
  *   contributes one YAML scalar and governs only how this party's own file is
  *   read and its own result written.
- * - `side` is a closed two-value enum selecting which composition rules apply
- *   to this party; it contributes no value to the composed config.
+ * - `side` is a closed two-value enum naming this party's side; it contributes
+ *   no value to the composed config.
  * - `mountedConfigurationOpened` is a bare schema boolean selecting whether
  *   the recurring-run hand-off merges the mounted document into its template;
  *   it names no setting and contributes no value of its own.
@@ -663,38 +654,6 @@ export interface JobExchangeIntentBase {
    */
   expectedPartnerDeduplicate?: boolean;
   /**
-   * This party's SEND-side commitment: the columns, in its OWN namespace, it
-   * promised to disclose when the exchange was established -- core's local
-   * `disclosed_payload_columns`. Column names only, this party's own, so it
-   * holds no path, host, or credential and nothing of the partner's namespace.
-   *
-   * Absent for a console exchange authored here: the invitation mint writes
-   * the commitment, not the run. It is on the intent so a configuration loaded
-   * from the mount keeps the one its file states -- an enforcement record whose
-   * absence is a valid state, so composing a document without it would silently
-   * release this party from what it promised (docs/spec/EXCHANGE_FILE.md, "The
-   * records that must survive").
-   */
-  disclosedPayloadColumns?: Array<string>;
-  /**
-   * This party's recorded consent to its OWN outbound payload set -- core's
-   * `outbound_payload_consent`, the record a later unattended run's consent
-   * gate reads. Column names in this party's own namespace, or a `pending`
-   * status holding none; never a path, host, or credential.
-   *
-   * Absent for an exchange authored here, where an acceptance derives the
-   * record from its own terms and metadata instead (see `side` below). It is
-   * on the intent so a configuration loaded from the mount keeps the record
-   * its file states, or the review step's confirmation of a pending one: an
-   * enforcement record whose absence is a valid state, so
-   * composing a document without it would release this party from a
-   * disclosure it confirmed (docs/spec/EXCHANGE_FILE.md, "The acceptor's
-   * outbound consent"). A stated record is composed verbatim, so a run whose
-   * resolved set no longer matches is refused at that gate rather than
-   * consented to afresh.
-   */
-  outboundPayloadConsent?: OutboundPayloadConsent;
-  /**
    * Which of this party's own input columns the composed config writes into
    * its result file beside the partner's values -- core's local
    * `include_own_columns`. A closed two-value enum selecting a set of the
@@ -715,18 +674,8 @@ export interface JobExchangeIntentBase {
    */
   csvDelimiter?: string;
   /**
-   * Which side of the partnership this party runs. The composers read it for
-   * one decision: only an acceptance DERIVES an `outbound_payload_consent`
-   * record into the composed config, because only an acceptance has an
-   * outbound set nobody authored (the invitation authors the inviter's and
-   * pins it; the mirror leaves the acceptor's absent, so it resolves from
-   * this party's own columns). An intent stating
-   * {@link JobExchangeIntentBase.outboundPayloadConsent} composes that record
-   * instead, on either side. See `composeConfigDocument` in `./intentConfig`.
-   *
-   * Optional on the wire; an absent value derives no record. The
-   * server-job driver's own config makes `side` required, so the console
-   * cannot build an acceptance that omits it.
+   * Which side of the partnership this party runs. Optional on the wire; the
+   * server-job driver's own config makes it required.
    */
   side?: JobExchangeSide;
   /**
@@ -1147,11 +1096,6 @@ const jobExchangeIntentCommonFields = {
     .max(MAX_EXPECTED_PAYLOAD_COLUMNS)
     .optional(),
   expectedPartnerDeduplicate: z.boolean().optional(),
-  disclosedPayloadColumns: z
-    .array(z.string().check(maxCodeUnits(MAX_NAME_LENGTH)))
-    .max(MAX_EXPECTED_PAYLOAD_COLUMNS)
-    .optional(),
-  outboundPayloadConsent: OutboundPayloadConsentSchema.optional(),
   includeOwnColumns: OwnColumnSelectionSchema.optional(),
   csvDelimiter: jobCsvDelimiterSchema.optional(),
   side: z.enum(["inviter", "acceptor"]).optional(),

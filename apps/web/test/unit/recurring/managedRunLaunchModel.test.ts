@@ -1092,23 +1092,6 @@ describe("classifyManagedRunFailure: the recorded tiers from the record's bookke
     expect(failure.recovery).toBe("retry");
     expect(failure.message).not.toMatch(/attack|tamper|desync/i);
   });
-
-  test("a recorded consent refusal is its own benign state naming what it sends", () => {
-    const failure = classifyAgainstOneRecord(
-      new Error("refused before connecting"),
-      record({ lastRun: failed("consent") }),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(failure.kind).toBe("consent");
-    expect(failure.recovery).toBe("reconfirm");
-    // The copy names deciding what this exchange sends, not retrying a connection,
-    // and is never treated as attack framing.
-    expect(failure.message).toMatch(/sends|send/i);
-    expect(failure.message).toMatch(/not a connection problem/i);
-    expect(failure.message).not.toMatch(/attack|tamper|desync|impersonat/i);
-  });
 });
 
 describe("classifyManagedRunFailure: the derived benign tiers take this run's boundary", () => {
@@ -1153,32 +1136,6 @@ describe("classifyManagedRunFailure: the derived benign tiers take this run's bo
       expect(failure.message).not.toMatch(/nothing left this device/i);
       expect(failure.message).not.toMatch(/partner was not contacted/i);
     }
-  });
-
-  test("a stored consent refusal gives way past the boundary", () => {
-    // The record-only tier: no live error brings a disclosure refusal to this
-    // classification, so the standing stamp is the whole of what it reads.
-    const stamped = record({ lastRun: failed("consent") });
-    const before = classifyAgainstOneRecord(
-      new Error("refused before connecting"),
-      stamped,
-      undefined,
-      NOW,
-      false,
-    );
-    expect(before.kind).toBe("consent");
-    expect(before.message).toMatch(/nothing left this device/i);
-
-    const past = classifyAgainstOneRecord(
-      new Error("data channel dropped"),
-      stamped,
-      undefined,
-      NOW,
-      true,
-    );
-    expect(past.kind).toBe("transport");
-    expect(past.message).not.toMatch(/nothing left this device/i);
-    expect(past.message).not.toMatch(/stopped before connecting/i);
   });
 
   test("a stored linkage shortfall gives way past the boundary", () => {
@@ -1260,16 +1217,6 @@ describe("managedRunFailureFromRecord: the next-visit tier (no live launch)", ()
       NOW,
     );
     expect(failure?.kind).toBe("unexplained");
-  });
-
-  test("a stored consent refusal shows the consent tier at the next visit", () => {
-    const failure = managedRunFailureFromRecord(
-      record({ lastRun: failed("consent") }),
-      undefined,
-      NOW,
-    );
-    expect(failure?.kind).toBe("consent");
-    expect(failure?.recovery).toBe("reconfirm");
   });
 
   test("a stored terms shortfall shows its own tier, not the input re-pick", () => {
@@ -1420,20 +1367,6 @@ describe("managedRunRetryable and managedRunReinvites", () => {
     ).toBe(false);
   });
 
-  test("a consent refusal is neither retryable in place nor a direct re-invite", () => {
-    // The remedy is deciding what this exchange sends; retrying the same input
-    // refuses identically, and re-minting the secret does not touch the disclosure.
-    const failure = classifyAgainstOneRecord(
-      new Error("refused before connecting"),
-      record({ lastRun: failed("consent") }),
-      undefined,
-      NOW,
-      false,
-    );
-    expect(managedRunRetryable(failure)).toBe(false);
-    expect(managedRunReinvites(failure)).toBe(false);
-  });
-
   test("the storage and imported tiers re-invite; the unexplained tier does not (it gates first)", () => {
     expect(
       managedRunReinvites(
@@ -1529,7 +1462,6 @@ describe("the launch error a classified state shows", () => {
     expired: "withheld",
     input: "withheld",
     "terms-shortfall": "withheld",
-    consent: "withheld",
     "too-large": "withheld",
     "terms-change": "withheld",
     "already-running": "withheld",
@@ -1626,7 +1558,6 @@ describe("the launch error a classified state shows", () => {
       [new ManagedExchangeLockUnavailableError(WITHHELD_TEXT), record()],
       [new Error(WITHHELD_TEXT), record({ lastRun: failed("storage") })],
       [new Error(WITHHELD_TEXT), record({ lastRun: failed("auth") })],
-      [new Error(WITHHELD_TEXT), record({ lastRun: failed("consent") })],
     ];
     for (const [error, stored] of errors) {
       const failure = classifyAgainstOneRecord(

@@ -114,9 +114,7 @@ function transportForEndpointChannel(
  * OPEN (silently ingesting extra partner columns) while the browser aborts.
  *
  * The confirm-columns `edits` are threaded into the config so the CLI honors
- * them rather than inferring metadata from the CSV column names, and the
- * stated `side` is what makes the composed config hold this party's
- * `outbound_payload_consent`, derived from these `edits.metadata`.
+ * them rather than inferring metadata from the CSV column names.
  *
  * Pure and exported so the derivation is the tested boundary, without running
  * the hook.

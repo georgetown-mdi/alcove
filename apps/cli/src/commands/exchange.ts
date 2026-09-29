@@ -1,5 +1,6 @@
 import type { Argv, Arguments } from "yargs";
 import fs from "node:fs";
+import { z } from "zod";
 
 import {
   keepOperatorSuppliedText,
@@ -7,6 +8,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   parseExchangeSpec,
+  retiredSettingIssue,
   getLogger,
   OperatorConfigError,
   PLACEHOLDER_SSH_USERNAME,
@@ -56,7 +58,6 @@ import { resolveReceiptOutput } from "../receiptFile";
 import { assertIdentityMatchesAgreedTerms } from "../signingIdentityDivergence";
 import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
-import { confirmOutboundPayloadConsent } from "../outboundPayloadConsent";
 import { termsChangeHandler } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
@@ -377,13 +378,22 @@ const MISSING_SIGNING_IDENTITY_REMEDY =
   "fingerprint --identity-file <that path>', or point signing.identity_file " +
   "at the file you already hold";
 
-/** @internal exported for testing */
-export function loadConfig(options: ExchangeOptions): {
-  connection: ProtocolConnectionConfig;
-  authentication: AuthPersist;
-} & ExchangeDataSpec {
-  const log = getLogger("exchange");
+/** The usage error for a configuration that fails exchange-spec validation. */
+function invalidExchangeSpecError(
+  configFile: string,
+  err: unknown,
+): UsageError {
+  const message = messageWithOperatorText`config file ${operatorSuppliedText(
+    configFile,
+  )} is not a valid exchange spec: ${describeConfigSchemaError(err)}`;
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
 
+/**
+ * Read the configuration at `configFile` and parse its YAML, ahead of any
+ * schema.
+ */
+function readConfigDocument(configFile: string): unknown {
   // Read, then parse through the sensitive-file chokepoint. The fs read can only
   // fail with an errno (ENOENT, EACCES, EISDIR) -- a path plus code, no config
   // content -- so it is reported; ENOENT gets the create-a-config guidance. The
@@ -392,11 +402,11 @@ export function loadConfig(options: ExchangeOptions): {
   // caller configuration is a UsageError (exit 64), not a transport failure (69).
   let source: string;
   try {
-    source = fs.readFileSync(options.configFile, "utf8");
+    source = fs.readFileSync(configFile, "utf8");
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       const message = messageWithOperatorText`config file ${operatorSuppliedText(
-        options.configFile,
+        configFile,
       )} does not exist; to create one, run 'alcove invite URL ...' first`;
       throw Object.assign(
         keepOperatorSuppliedText(new Error(message.text), message),
@@ -404,14 +414,43 @@ export function loadConfig(options: ExchangeOptions): {
       );
     }
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      options.configFile,
+      configFile,
     )} could not be read: ${err instanceof Error ? err.message : String(err)}`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-  const rawConfig = parseSensitiveYaml(
+  return parseSensitiveYaml(
     source,
-    messageWithOperatorText`config file ${operatorSuppliedText(options.configFile)}`,
+    messageWithOperatorText`config file ${operatorSuppliedText(configFile)}`,
   );
+}
+
+/**
+ * Refuse a configuration holding a retired setting with the refusal
+ * {@link loadConfig} raises, for a caller about to write a key file first: the
+ * operator deletes the setting as told and re-runs, so nothing may have been
+ * written. A configuration that cannot be read or parsed is left for
+ * {@link loadConfig} to report.
+ */
+function refuseRetiredSettingBeforeProvisioning(configFile: string): void {
+  let raw: unknown;
+  try {
+    raw = readConfigDocument(configFile);
+  } catch {
+    return;
+  }
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined)
+    throw invalidExchangeSpecError(configFile, new z.ZodError([retired]));
+}
+
+/** @internal exported for testing */
+export function loadConfig(options: ExchangeOptions): {
+  connection: ProtocolConnectionConfig;
+  authentication: AuthPersist;
+} & ExchangeDataSpec {
+  const log = getLogger("exchange");
+
+  const rawConfig = readConfigDocument(options.configFile);
 
   // Warn about and strip the runtime-injected fields from the top-level
   // `authentication` block (their values come only from the key file). Operator-
@@ -440,10 +479,7 @@ export function loadConfig(options: ExchangeOptions): {
   } catch (err) {
     // Well-formed YAML that fails schema validation is still invalid caller
     // configuration (exit 64), not a transport failure.
-    const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      options.configFile,
-    )} is not a valid exchange spec: ${describeConfigSchemaError(err)}`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
+    throw invalidExchangeSpecError(options.configFile, err);
   }
 
   // Resolve @-file references in the supported credential/opaque fields after
@@ -755,27 +791,16 @@ export function tokenExpiringAdvisory(
 }
 
 /**
- * Where a run records an outbound-payload confirmation, and how the surface that
- * asks for it is routed. Required rather than optional: the confirmation is the
- * only thing standing between an unconfirmed acceptance and a disclosure no party
- * chose, so a caller cannot omit it and silently lose the gate.
+ * `logFile` is the operator's `--log-file`, so the log keeps a copy of the
+ * disclosure display printed on the prompt stream.
+ *
+ * @internal exported for testing
  */
-export interface OutboundConsentContext {
-  /** The config this run loaded, where a confirmation is written back. */
-  configPath: string;
-  /**
-   * The operator's `--log-file`, so the log keeps a copy of what the two
-   * disclosure surfaces here printed on the prompt stream.
-   */
-  logFile: string | undefined;
-}
-
-/** @internal exported for testing */
 export async function prepareDataset(
   exchangeDataSpec: ExchangeDataSpec,
   identity: string | undefined,
   input: string,
-  outboundConsent: OutboundConsentContext,
+  logFile: string | undefined,
   csvDelimiter?: string,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
@@ -790,7 +815,7 @@ export async function prepareDataset(
   // here, naming the removal rather than the header-row causes, and ahead of the
   // linkage grading below, whose own resolution is handed a column list and so
   // states those causes. Resolved through the same resolveExchangeInputs call
-  // prepareForExchange itself uses, so what is confirmed below is what the run
+  // prepareForExchange itself uses, so what is displayed below is what the run
   // would transmit.
   const resolved = resolveExchangeInputs(
     exchangeDataSpec,
@@ -821,30 +846,10 @@ export async function prepareDataset(
       exchangeDataSpec.metadata,
     );
 
-  // The two disclosure surfaces this point owes the operator, each covering the
-  // party the other does not: the display for a configuration the operator
-  // wrote, which no acceptance showed the terms of, and the confirmation for one
-  // written by accepting an invitation.
   displayExchangeDisclosure({
-    spec: exchangeDataSpec,
     metadata: resolved.metadata,
     linkageTerms: resolved.linkageTerms,
-    logFile: outboundConsent.logFile,
-    log,
-  });
-
-  // Show and confirm this party's OWN outbound columns before any credential,
-  // terms, or data are sent, when the exchange has a consent record its current
-  // set does not satisfy. The confirmation is recorded in the config, and an
-  // unconfirmable or declined set refuses here -- ahead of prepareForExchange's
-  // fail-closed safety check (assertOutboundPayloadConsented). A party with no
-  // consent record -- every non-acceptor -- passes through untouched.
-  await confirmOutboundPayloadConsent({
-    spec: exchangeDataSpec,
-    metadata: resolved.metadata,
-    output: resolved.linkageTerms.output,
-    configPath: outboundConsent.configPath,
-    logFile: outboundConsent.logFile,
+    logFile,
     log,
   });
 
@@ -924,13 +929,12 @@ function certificateModeIdentityPath(identityFile: string | undefined): string {
  * the parsed configuration alone -- no disk read, no prompt, no connection.
  *
  * The exchange handler runs this as a pre-flight, ahead of both the dataset
- * preparation that can put the outbound-payload consent prompt in front of the
- * operator and the first-use host-key step whose probe opens a transport to the
- * server and whose accepted pin is written into the operator's `alcove.yaml`.
- * A run this refuses could never have finished, so none of that should have
- * happened on its way to being told so. {@link resolveSigningPersist} raises the
- * same refusal where it loads the identity, which is where a caller
- * outside the handler meets it.
+ * preparation and the first-use host-key step whose probe opens a transport to
+ * the server and whose accepted pin is written into the operator's
+ * `alcove.yaml`. A run this refuses could never have finished, so none of that
+ * should have happened on its way to being told so.
+ * {@link resolveSigningPersist} raises the same refusal where it loads the
+ * identity, which is where a caller outside the handler meets it.
  *
  * A no-op for every other mode and for a config with no `signing` block: neither
  * signs, so neither needs an identity.
@@ -1059,6 +1063,7 @@ export async function handler(argv: Arguments): Promise<void> {
     // usage error (exit 64), raised before anything is written or connected.
     if (invitation !== undefined) {
       try {
+        refuseRetiredSettingBeforeProvisioning(options.configFile);
         await provisionKeyFileFromInvitation(invitation, options.keyFile);
       } catch (err) {
         exitWithError(log, err, exitCodeForError(err));
@@ -1090,8 +1095,7 @@ export async function handler(argv: Arguments): Promise<void> {
 
     // A certificate-mode run naming no signing identity is unrunnable from the
     // parsed configuration alone, so it is refused here: ahead of the dataset
-    // preparation that can put the outbound-payload consent prompt in front of
-    // the operator, and ahead of the first-use host-key step that opens a probe
+    // preparation, and ahead of the first-use host-key step that opens a probe
     // transport to the server and writes an accepted pin into alcove.yaml.
     // Neither should happen on the way to telling an operator the run could
     // never have finished.
@@ -1167,7 +1171,7 @@ export async function handler(argv: Arguments): Promise<void> {
         exchangeDataSpec,
         termsIdentity,
         input,
-        { configPath: options.configFile, logFile },
+        logFile,
         csvDelimiter,
       );
     } catch (err) {
@@ -1284,7 +1288,6 @@ export async function handler(argv: Arguments): Promise<void> {
         onTermsChange: termsChangeHandler({
           configPath: options.configFile,
           keyPath: authentication.keyFilePath,
-          existing: exchangeDataSpec,
           interactive: process.stdin.isTTY === true && input !== "-",
           log,
           logFile,

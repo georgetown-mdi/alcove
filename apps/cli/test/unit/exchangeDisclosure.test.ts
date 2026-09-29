@@ -15,7 +15,6 @@ import {
   linkageRuleSetVerdictNote,
   SELF_AUTHORED_EXCHANGE_FACTS,
   setDiagnosticSink,
-  UsageError,
 } from "@alcove/core";
 import type {
   ConsentFact,
@@ -39,8 +38,6 @@ snapshotDiagnosticSinkAndLevel();
 
 const DISCLOSURE_HEADING =
   "What this exchange sends and matches on. Nothing has been sent yet:";
-const CONFIRMATION_HEADING =
-  "Nothing is sent until you confirm what this exchange will send:";
 
 /** Terms of the shape two parties author from their own files: no invitation
  * between them, so nothing here was adopted from a partner's proposal. */
@@ -94,14 +91,12 @@ function rendered(terms: LinkageTerms, columns: string[] = []): string[] {
 }
 
 let dir: string;
-let configFile: string;
 let input: string;
 let logged: string[];
 let promptWrites: string;
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-exchange-disclosure-"));
-  configFile = path.join(dir, "alcove.yaml");
   input = path.join(dir, "in.csv");
   fs.writeFileSync(input, "first_name,last_name,diagnosis\nAda,Lovelace,A\n");
   logged = [];
@@ -135,10 +130,7 @@ async function prepare(
   const stdio = captureStdio();
   try {
     return await withStdin(interactive ? ttyStream() : streamOf(""), () =>
-      prepareDataset(spec, "County Health", input, {
-        configPath: configFile,
-        logFile,
-      }).then(
+      prepareDataset(spec, "County Health", input, logFile).then(
         () => undefined,
         (e: unknown) => e,
       ),
@@ -239,32 +231,6 @@ test("a log file keeps the display at a level that drops diagnostics", async () 
   expect(kept).toContain(DISCLOSURE_HEADING);
   expect(kept).toContain("columns you will send (enforced):");
   expect(kept).toContain("    - diagnosis");
-});
-
-// --- A configuration written by accepting an invitation ----------------------
-
-test("an accept-derived configuration is not shown the facts a second time", async () => {
-  // Its consent record is the confirmation surface's, and accepting showed the
-  // terms; the run adds no second account of them.
-  const spec: ExchangeDataSpec = {
-    linkageTerms: localTerms,
-    metadata: metadataDisclosing(["diagnosis"]),
-    outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
-  };
-  expect(await prepare(spec, true)).toBe(undefined);
-  expect(shownToOperator()).not.toContain(DISCLOSURE_HEADING);
-});
-
-test("a set the confirmation surface asks about is shown once, by that surface", async () => {
-  const spec: ExchangeDataSpec = {
-    linkageTerms: localTerms,
-    outboundPayloadConsent: { status: "pending" },
-  };
-  expect(await prepare(spec, false)).toBeInstanceOf(UsageError);
-  const output = shownToOperator();
-  expect(output).toContain(CONFIRMATION_HEADING);
-  expect(output).not.toContain(DISCLOSURE_HEADING);
-  expect(output.match(/columns you will send \(enforced\)/g)).toHaveLength(1);
 });
 
 // --- The shapes the columns line takes ---------------------------------------

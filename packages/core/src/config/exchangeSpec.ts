@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import {
+  camelizeKey,
   camelizeKeys,
   KeyFoldCollisionError,
   type WidthBounds,
@@ -28,7 +29,6 @@ import {
 import { AuthenticationSchema, ConnectionConfigSchema } from "./connection.js";
 import { StandardizationSchema } from "./standardizationSchema.js";
 import { MetadataSchema, OwnColumnSelectionSchema } from "./metadata.js";
-import { OutboundPayloadConsentSchema } from "./outboundPayloadConsent.js";
 import { SigningConfigSchema } from "./signing.js";
 import { boundedArray } from "../utils/boundedArray.js";
 
@@ -63,9 +63,8 @@ const payloadColumnNameList = (message: string): z.ZodType<string[]> =>
  * rather than used literally; apply `readAtSignFile` (or equivalent) to
  * credential fields before parsing.
  *
- * `strictObject`: `outboundPayloadConsent`, `disclosedPayloadColumns`,
- * `expectedPayloadColumns`, and `expectedPartnerDeduplicate` are
- * enforcement records whose ABSENCE is a valid state, so a misspelled key
+ * `strictObject`: `expectedPayloadColumns` and `expectedPartnerDeduplicate`
+ * are enforcement records whose ABSENCE is a valid state, so a misspelled key
  * that `strip` discards would silently disable the control it names. The
  * nested blocks still strip, `authentication` and the connection union's
  * webrtc member excepted, which are strict for the same reason as the top
@@ -130,32 +129,6 @@ export const ExchangeSpecSchema = z
     expectedPayloadColumns: payloadColumnNameList(
       `expectedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
     ).optional(),
-    // Optional local SEND-side commitment: the payload columns (in THIS
-    // party's OWN namespace) it promised to disclose when the exchange was
-    // established -- the send-side mirror of expectedPayloadColumns above.
-    // Per-party and local, distinct from linkageTerms.payload.send (the
-    // negotiated dictionary). Persisted by every `alcove invite` mint path
-    // that publishes a disclosed set, so it never lags the token the
-    // partner locks in. A later recurring `alcove exchange` verifies its
-    // current metadata still discloses exactly this set before any
-    // credential, terms, or data are sent
-    // (assertDisclosureMatchesCommitment): drift would otherwise abort the
-    // partner mid-exchange, attributing the failure to them. The acceptor
-    // does not set this (it carries payload.send instead). An empty array
-    // is a strict "disclose nothing"; an absent field reconciles lazily.
-    // `payloadColumnNameList` holds the count, the name shape, and the
-    // one-entry-per-name collapse; the metadata these names are derived from
-    // already holds that shape, and the names are this party's own.
-    disclosedPayloadColumns: payloadColumnNameList(
-      `disclosedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
-    ).optional(),
-    // Optional local record of this party's consent to its OWN outbound
-    // payload set, the third per-party local field beside the two above and
-    // never exchanged. Written only by an acceptance, whose outbound set no
-    // party authors (see config/outboundPayloadConsent.ts for the full
-    // states). Distinct from disclosedPayloadColumns above, which records a
-    // promise made TO THE PARTNER rather than a choice made BY this party.
-    outboundPayloadConsent: OutboundPayloadConsentSchema.optional(),
     // Optional local TERMS-side enforcement record, the deduplicate
     // counterpart of expectedPayloadColumns above: the `deduplicate` the accepted
     // INVITATION declared for the INVITING party's own side, which a later
@@ -227,6 +200,43 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
 ]);
 
 /**
+ * Top-level settings this build refuses by name rather than as unknown keys,
+ * so the refusal tells the operator to delete them. The agreed terms'
+ * `payload.send` states the outbound payload set each of them named.
+ */
+const RETIRED_TOP_LEVEL_SETTINGS: ReadonlySet<string> = new Set([
+  "disclosedPayloadColumns",
+  "outboundPayloadConsent",
+]);
+
+/**
+ * The refusal of a raw exchange file holding a retired top-level setting,
+ * naming each such key as the file writes it and stating the remedy, or
+ * `undefined` when it holds none. The whole-file parses apply it before any
+ * other check, and so does a CLI reader of only some of the file's blocks, so
+ * each refuses such a file with the same message.
+ */
+export function retiredSettingIssue(
+  raw: unknown,
+): z.core.$ZodIssue | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    return undefined;
+  const retired = Object.keys(raw).filter((key) =>
+    RETIRED_TOP_LEVEL_SETTINGS.has(camelizeKey(key)),
+  );
+  if (retired.length === 0) return undefined;
+  const named = retired.map((key) => `"${key}"`).join(" and ");
+  return {
+    code: "custom",
+    path: [],
+    message:
+      retired.length === 1
+        ? `the setting ${named} is retired; delete it from the file`
+        : `the settings ${named} are retired; delete them from the file`,
+  };
+}
+
+/**
  * Parse and validate a raw value as an {@link ExchangeSpec}.
  * Snake_case keys are converted to camelCase before validation, so JSON/YAML
  * from disk can be passed directly.
@@ -239,12 +249,15 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
  * both spellings is refused by the case conversion above
  * ({@link keyFoldCollisionIssue}). Every refusal names its keys as the raw
  * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
- * included.
+ * included. A retired top-level setting is refused first, by name
+ * ({@link retiredSettingIssue}).
  *
  * @throws {ZodError} if validation fails, if the document holds a key the
  *   schema does not read, or if it writes one key in two spellings.
  */
 export function parseExchangeSpec(raw: unknown): ExchangeSpec {
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined) throw new z.ZodError([retired]);
   let camelized: unknown;
   try {
     camelized = camelizeKeys(raw, EXCHANGE_FILE_WIDTH_BOUNDS);
@@ -267,7 +280,15 @@ export function parseExchangeSpec(raw: unknown): ExchangeSpec {
  * contract for the {@link camelizeKeys} bounds too -- see
  * {@link safeParseCamelized}.
  */
-export function safeParseExchangeSpec(raw: unknown) {
+export function safeParseExchangeSpec(
+  raw: unknown,
+): z.ZodSafeParseResult<ExchangeSpec> {
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined)
+    return {
+      success: false,
+      error: new z.ZodError([retired]) as z.ZodError<ExchangeSpec>,
+    };
   return safeParseCamelized(
     ExchangeSpecSchema,
     raw,

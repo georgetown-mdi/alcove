@@ -88,7 +88,6 @@ function mintedFrom(state: InviterScreenState): GeneratedInvitation {
     linkageTerms: terms,
     rawRows: csv.rawRows,
     columns: csv.columns,
-    disclosedPayloadColumns: ["program_code"],
   };
 }
 

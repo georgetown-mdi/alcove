@@ -93,7 +93,6 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("terms-shortfall") }),
     undefined,
   ],
-  consent: [record({ lastRun: failed("consent") }), undefined],
   "too-large": [record({ lastRun: failed("too-large") }), undefined],
   "terms-change": [record({ lastRun: failed("terms-change") }), undefined],
   "handed-off": [record({ lastRun: failed("handed-off") }), undefined],

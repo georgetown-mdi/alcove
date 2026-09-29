@@ -3,7 +3,6 @@ import { describe, expect, test } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 import {
-  disclosedColumnNames,
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
@@ -70,7 +69,6 @@ function depositRecord(includeOwnColumns?: "disclosed" | "all") {
           side: "inviter",
           linkageTerms: terms,
           metadata,
-          disclosedPayloadColumns: disclosedColumnNames(metadata),
           ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
         },
         connection: webrtcLocatorFromEndpoint(endpoint),
@@ -132,7 +130,6 @@ describe("the saved exchange file states the selection", () => {
   const minted = {
     linkageTerms: terms,
     metadata,
-    disclosedPayloadColumns: disclosedColumnNames(metadata),
   } as unknown as GeneratedInvitation;
 
   test("the mint's decided selection reaches the file's input", () => {

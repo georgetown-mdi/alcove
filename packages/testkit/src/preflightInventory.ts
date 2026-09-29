@@ -44,7 +44,6 @@ export type PreflightId =
   | "keyFilePath"
   | "hostKeyTrust"
   | "identityDivergence"
-  | "outboundPayloadConsent"
   | "splitDirectoryRequiresRetain"
   | "jobAdmission";
 
@@ -225,19 +224,6 @@ export const PREFLIGHT_INVENTORY: Record<PreflightId, PreflightRow> = {
         "the control that starts the exchange, naming both names and the two " +
         "ways to reconcile them; the card where the identity is authored " +
         "points at that statement",
-    },
-  },
-  outboundPayloadConsent: {
-    concern:
-      "what this exchange will send has not been confirmed by the operator " +
-      "running it",
-    weight: "asks",
-    console: {
-      kind: "authored",
-      how:
-        "the operator authors the disclosed columns themselves and the step " +
-        "lists them, so there is no inferred set to put back to them; the " +
-        "consent record is core's derivation of that same authored metadata",
     },
   },
   splitDirectoryRequiresRetain: {

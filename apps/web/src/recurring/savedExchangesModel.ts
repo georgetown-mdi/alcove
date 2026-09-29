@@ -162,8 +162,6 @@ function tierStatus(
       return `Last run could not use your input file (${at})`;
     case "terms-shortfall":
       return `Last run stopped before connecting (${at}); settle the terms or use a covering file`;
-    case "consent":
-      return `Last run stopped before sending (${at}); settle what it sends`;
     case "too-large":
       if (tooLargeSetOwner === undefined)
         return `Last run stopped: a file ${tooLargeFileProblem(tooLargeBound)} (${at}); split the input`;

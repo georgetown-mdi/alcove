@@ -690,10 +690,8 @@ describe("the exportable top-level document fields", () => {
           { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
         ],
         standardization: [{ output: "ssn", input: "SSN" }],
-        disclosedPayloadColumns: ["program"],
         expectedPayloadColumns: ["enrollment"],
         expectedPartnerDeduplicate: true,
-        outboundPayloadConsent: { status: "confirmed", columns: ["program"] },
       }),
     });
     expect(parseExportedConfig(record)).toEqual({

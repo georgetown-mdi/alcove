@@ -157,8 +157,6 @@ function maximalExchangeIntent(): JobSftpExchangeIntent {
     standardization: MAXIMAL_STANDARDIZATION,
     expectedPayloadColumns: ["partner_notes"],
     expectedPartnerDeduplicate: false,
-    disclosedPayloadColumns: ["own_notes"],
-    outboundPayloadConsent: { status: "confirmed", columns: ["own_notes"] },
     side: "acceptor",
     options: MAXIMAL_OPTIONS,
     eventStream: true,
@@ -232,19 +230,9 @@ const EXCHANGE_INTENT_ROUTES: Record<
     carries: "configKey",
     key: "expected_partner_deduplicate",
   },
-  disclosedPayloadColumns: {
-    carries: "configKey",
-    key: "disclosed_payload_columns",
-  },
-  outboundPayloadConsent: {
-    carries: "configKey",
-    key: "outbound_payload_consent",
-  },
   side: {
     carries: "nothing",
-    because:
-      "it selects whether an acceptance DERIVES a consent record when the " +
-      "intent states none; the record itself graduates under its own field",
+    because: "it names this party's side, which no composer reads",
   },
   mountedConfigurationOpened: {
     carries: "nothing",

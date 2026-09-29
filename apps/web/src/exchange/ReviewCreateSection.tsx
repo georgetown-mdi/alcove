@@ -108,7 +108,6 @@ export function ReviewCreateSection({
   loadedSftpForm,
   sftpSaveFilePreferred,
   runWithheld,
-  outboundConsentUnconfirmed,
   continuesOpenedExchange = false,
   editedTermsWarning,
   connectionSettingsHeld,
@@ -152,10 +151,6 @@ export function ReviewCreateSection({
   /** Why the configuration opened from the mounted folder withholds the run,
    * undefined where nothing withholds it (`runWithheldReason`). */
   runWithheld?: string;
-  /** Why the open configuration's pending consent withholds the create until
-   * the operator confirms the columns sent (`outboundConsentWithheldReason`),
-   * undefined where it does not. */
-  outboundConsentUnconfirmed?: string;
   /** Whether the run continues the exchange the opened configuration set up,
    * under the key file beside it, so the start action makes no invitation. */
   continuesOpenedExchange?: boolean;
@@ -337,7 +332,6 @@ export function ReviewCreateSection({
     !online && transportRunMode(available, transport) !== "save-file";
   const createStatus = inviterCreateStatus({
     runWithheld,
-    outboundConsentUnconfirmed,
     offlineBlocked,
     connectionIncomplete,
     splitDirectoryProblem,

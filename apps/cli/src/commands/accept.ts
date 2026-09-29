@@ -38,7 +38,6 @@ import {
 } from "../config";
 import {
   deriveAcceptedInvitationTerms,
-  deriveOutboundConsentRecords,
   diffKeptLinkageTerms,
   receivedCommitmentRemovalWarning,
   refreshAcceptanceRecords,
@@ -259,13 +258,6 @@ type AcceptReady = {
    * is written. False when no config existed and a fresh one will be written.
    */
   reuseExistingConfig: boolean;
-  /**
-   * The kept config's own `output.shareWithPartner`, present only under reuse.
-   * Reconciliation compares no output field, so the invitation's mirror cannot
-   * stand in for it when deciding what outbound-consent record the kept config
-   * needs (see the derivation at the accept handler).
-   */
-  existingOutputShares?: boolean;
 } & (
   | {
       mode: "online";
@@ -525,15 +517,14 @@ export async function validateAccept(params: {
     // endpoint-influenced) before the input is read and before any network
     // activity, so a location disagreement aborts with a diff and no acceptance
     // is ever sent to the inviter.
-    const { reuse: reuseExistingConfig, existingOutputShares } =
-      reconcileAcceptConfig({
-        configPath: options.configFile,
-        existing: keptConfig,
-        myTerms,
-        consentedPayloadColumns: accepted.expectedPayloadColumns,
-        target: connection,
-        log,
-      });
+    const { reuse: reuseExistingConfig } = reconcileAcceptConfig({
+      configPath: options.configFile,
+      existing: keptConfig,
+      myTerms,
+      consentedPayloadColumns: accepted.expectedPayloadColumns,
+      target: connection,
+      log,
+    });
     // accept reads its y/N confirmation from stdin (promptConfirm), so it cannot
     // also take the CSV there -- unless `--consent-to-terms` skips that prompt,
     // which frees stdin for the CSV. Gate `-` on it: rejected when the prompt
@@ -553,14 +544,13 @@ export async function validateAccept(params: {
     };
     // Fail closed on a count-only invitation this party's own columns would
     // transmit a column under: the algorithm has no payload in either
-    // direction, so the marked columns are neither dropped to bring the run into
-    // the count-only shape nor included in an outbound-consent record. This is
-    // the one count-only shape rule no linkage-terms document holds -- the
-    // other four are refused as the invitation is decoded, and again by
-    // deriveAcceptedLinkageTerms above. Ahead of the prepare below, whose
-    // algorithm gate would report only that no count-only run path exists, and
-    // ahead of the consent surface, which states the same fact with no account of
-    // what to change.
+    // direction, so the marked columns are not dropped to bring the run into
+    // the count-only shape. This is the one count-only shape rule no
+    // linkage-terms document holds -- the other four are refused as the
+    // invitation is decoded, and again by deriveAcceptedLinkageTerms above.
+    // Ahead of the prepare below, whose algorithm gate would report only that
+    // no count-only run path exists, and ahead of the consent surface, which
+    // states the same fact with no account of what to change.
     assertCountOnlyTransmitsNoColumn(myTerms.algorithm, dataSpec.metadata);
     warnColumnsTheInvitationWillNotAccept({
       metadata: dataSpec.metadata,
@@ -595,7 +585,6 @@ export async function validateAccept(params: {
       dataSpec,
       prepared,
       reuseExistingConfig,
-      existingOutputShares,
     };
   }
 
@@ -611,14 +600,13 @@ export async function validateAccept(params: {
     { ...options, serverProvision: undefined },
     log,
   );
-  const { reuse: reuseExistingConfig, existingOutputShares } =
-    reconcileAcceptConfig({
-      configPath: options.configFile,
-      existing: keptConfig,
-      myTerms,
-      consentedPayloadColumns: accepted.expectedPayloadColumns,
-      log,
-    });
+  const { reuse: reuseExistingConfig } = reconcileAcceptConfig({
+    configPath: options.configFile,
+    existing: keptConfig,
+    myTerms,
+    consentedPayloadColumns: accepted.expectedPayloadColumns,
+    log,
+  });
   const { connection: endpointConnection, seeded } = connectionFromEndpoint(
     token.connectionEndpoint,
   );
@@ -755,7 +743,6 @@ export async function validateAccept(params: {
       dataSpec,
       prepared,
       reuseExistingConfig,
-      existingOutputShares,
     };
   }
 
@@ -771,7 +758,6 @@ export async function validateAccept(params: {
     ...(endpointDirectories !== undefined ? { endpointDirectories } : {}),
     dataSpec,
     reuseExistingConfig,
-    existingOutputShares,
   };
 }
 
@@ -968,7 +954,7 @@ function reconcileAcceptConfig(params: {
   consentedPayloadColumns: string[] | undefined;
   target?: RunnableConnectionConfig;
   log: ReturnType<typeof getLogger>;
-}): { reuse: boolean; existingOutputShares?: boolean } {
+}): { reuse: boolean } {
   const {
     configPath,
     existing,
@@ -1049,14 +1035,7 @@ function reconcileAcceptConfig(params: {
           "connection and linkage settings unchanged; the connection " +
           "differences above apply to this exchange only.",
   );
-  // The kept config's own output terms ride back with the verdict: the later
-  // run is governed by them, and this diff compares no output field by design,
-  // so a caller deciding what to record about the acceptor's outbound set must
-  // not take the invitation's mirror as the kept config's reality.
-  return {
-    reuse: true,
-    existingOutputShares: existing.linkageTerms.output.shareWithPartner,
-  };
+  return { reuse: true };
 }
 
 // --- Linkage preflight -------------------------------------------------------
@@ -1163,22 +1142,6 @@ export async function handler(argv: Arguments): Promise<void> {
         ownMetadata !== undefined
           ? disclosedColumnNames(ownMetadata)
           : undefined;
-      // This party's consent to its OWN outbound set, recorded into the
-      // configuration this acceptance writes so a later run cannot transmit a set no
-      // party chose. Derived from the same metadata the display's set resolves from,
-      // so what is recorded is exactly what the prompt below shows (or what
-      // --consent-to-terms records advance consent to). A REUSED config's record
-      // follows that config's own output terms instead: undefined only where the
-      // kept config itself does not share, or none is kept, where a leftover
-      // record is inert.
-      const {
-        fresh: outboundPayloadConsent,
-        kept: reuseOutboundPayloadConsent,
-      } = deriveOutboundConsentRecords({
-        acceptedOutput: ready.dataSpec.linkageTerms.output,
-        ownMetadata,
-        keptConfigurationShares: ready.existingOutputShares,
-      });
       // The coordination server this acceptance will dial itself, stated above
       // the terms and again in the question: on this path confirming is what
       // connects and transmits, and the locator is the invitation's rather than
@@ -1295,14 +1258,6 @@ export async function handler(argv: Arguments): Promise<void> {
           receivedPayloadLockIn: {
             consentedColumns: ready.accepted.expectedPayloadColumns,
           },
-          // Record this party's consent to its own outbound set in the same fresh
-          // write, so a later `alcove exchange` from this configuration is held to
-          // the columns just consented to here. The reuse path writes no fresh
-          // config; the hook refreshes the kept config's record surgically instead,
-          // with the record derived for the KEPT config's own output terms (the
-          // reuse derivation above) -- identical to the invitation-derived record
-          // on the fresh path, where the written config's terms are the mirror's.
-          outboundPayloadConsent: reuseOutboundPayloadConsent,
           // Record the invitation's declared cardinality side in the same write,
           // and refresh it in place under reuse, so a later `alcove exchange`
           // from this configuration refuses a partner presenting a value this
@@ -1346,13 +1301,6 @@ export async function handler(argv: Arguments): Promise<void> {
         // linkage terms hold the INVITER's own side; this party's own value is
         // the mirror's false and rides `linkageTerms` in the spread above.
         expectedPartnerDeduplicate: ready.accepted.expectedPartnerDeduplicate,
-        // This party's consent to its own outbound set (see its derivation above),
-        // so the later `alcove exchange` sends exactly what was consented to here
-        // or stops to ask. Omitted -- and the run left ungated -- only where nothing
-        // is transmitted to the partner at all.
-        ...(outboundPayloadConsent !== undefined
-          ? { outboundPayloadConsent }
-          : {}),
       };
       const invitationRelay = ready.accepted.invitationRelay;
       // Widened by the assertion: the refresh callback assigns it, which
@@ -1376,13 +1324,11 @@ export async function handler(argv: Arguments): Promise<void> {
             // the machine-managed consent records are rewritten while the
             // connection and linkage blocks are kept: a prior value would
             // false-abort the next recurring exchange or bind it to terms nobody
-            // consented to. The outbound record follows the KEPT config's own
-            // output terms.
+            // consented to.
             refreshAcceptanceRecords(keptConfigPath, {
               expectedPayloadColumns: ready.accepted.expectedPayloadColumns,
               expectedPartnerDeduplicate:
                 ready.accepted.expectedPartnerDeduplicate,
-              outboundPayloadConsent: reuseOutboundPayloadConsent,
             });
             // The relay the terms review just showed is the one the kept
             // configuration's runs use: `invitation_relay` is refreshed from

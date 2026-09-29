@@ -69,17 +69,12 @@ hand-authored config is not obligated to meet. They are guarantees about what a
 minted file cannot contain; the commitments it does hold, and what enforces
 them, are in [Payload-disclosure consent](#payload-disclosure-consent) below.
 
-Three of the keys assembly attaches to a minted file are those commitments --
-`disclosed_payload_columns`, `expected_payload_columns`, and
-`outbound_payload_consent` -- and the mint guarantees nothing about their
-content. Each is written exactly as the calling surface supplied it and omitted
-where it supplied none, so an absent key states that the caller held no
-commitment rather than that the mint dropped one, which is the absent-is-lazy
-reading the consent section makes normative. `outbound_payload_consent` is the
-one to be careful with: assembly holds it verbatim and neither derives it from
-the `metadata` assembled beside it nor checks it against that metadata, so
-naming the set the operator was actually shown is the calling surface's
-obligation, not a property of the artifact.
+One of the keys assembly attaches to a minted file is such a commitment --
+`expected_payload_columns` -- and the mint guarantees nothing about its content.
+It is written exactly as the calling surface supplied it and omitted where it
+supplied none, so an absent key states that the caller held no commitment rather
+than that the mint dropped one, which is the absent-is-lazy reading the consent
+section makes normative.
 
 - **No `authentication` block.** The mint layer never assembles the top-level
   `authentication` block at all. The schema makes that block optional and gives
@@ -167,13 +162,20 @@ sharply:
 
 - **An unknown top-level key is rejected loudly.** `ExchangeSpecSchema` is a
   `z.strictObject`, so a key the older CLI's schema does not know -- whether a
-  newer web app's addition or an operator's typo -- is reported from `loadConfig` as
-  a load-time `UsageError` (CLI exit 64) naming the key, and the exchange never
-  starts. Four of the top-level keys are enforcement records whose absence is a
-  valid state (`outbound_payload_consent`, `disclosed_payload_columns`,
-  `expected_payload_columns`, `expected_partner_deduplicate`), so stripping a
-  misspelling of one would silently disable the control it names; that hazard
-  governs the whole top level rather than being spot-checked key by key.
+  newer web app's addition or an operator's typo -- is reported from
+  `loadConfig` as a load-time `UsageError` (CLI exit 64) naming the key, and the
+  exchange never starts. Two of the top-level keys are enforcement records whose
+  absence is a valid state (`expected_payload_columns`,
+  `expected_partner_deduplicate`), so stripping a misspelling of one would
+  silently disable the control it names; that hazard governs the whole top level
+  rather than being spot-checked key by key. A file holding the retired
+  `disclosed_payload_columns` or `outbound_payload_consent` is refused before
+  that rule applies, by every reader that parses the whole file and by
+  `alcove invite` and `alcove update`, which read only its terms, metadata, and
+  standardization, with a message naming the key and telling the operator to
+  delete it (`retiredSettingIssue` in `packages/core/src/config/exchangeSpec.ts`):
+  the send side is stated in the agreed terms instead ([The send side is in the
+  agreed terms](#the-send-side-is-in-the-agreed-terms)).
 - **An unknown field inside a spec block is rejected loudly too.** The blocks
   themselves (`linkage_terms`, `metadata`, `standardization`, `connection`) strip
   unrecognized keys on parse, the `connection` union's webrtc member excepted
@@ -265,13 +267,12 @@ conversion ahead of the schema, which would otherwise keep only one of the two.
 
 ### The records that must survive
 
-Three per-party records are fail-closed: their ABSENCE is a valid state that turns
+Two per-party records are fail-closed: their ABSENCE is a valid state that turns
 the control off, so a consumer that loses one silently disables an enforcement the
 operator wrote.
 
 - `expected_payload_columns` -- the receive-side enforcement record.
 - `expected_partner_deduplicate` -- the terms-side enforcement record.
-- `disclosed_payload_columns` -- the send-side commitment.
 
 A consumer that would drop one of these refuses the load instead. It has no
 "hold it unchanged" option to fall back on: holding a record it cannot enforce is
@@ -292,19 +293,20 @@ both.
 
 ## Payload-disclosure consent
 
-Four fields hold a party's payload-disclosure commitments, and every one of them
-is enforced at run time rather than merely recorded. Three are top-level keys of
-the artifact -- `expected_payload_columns`, `disclosed_payload_columns`, and
-`outbound_payload_consent`, siblings of `linkage_terms` -- and the fourth,
-`disclosedPayloadColumns`, rides the invitation token (its wire declaration and
-version policy are in
-[FILE_SYNC.md](FILE_SYNC.md#disclosed-columns-subset-on-the-token); its
-job-intent form in [SERVER_JOB_API.md](SERVER_JOB_API.md)). None of the three
-local fields is exchanged, cross-checked against the partner, or folded into the
-agreed-terms hash. What an operator authors, and what each field means to them,
-is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload).
+Two fields hold a party's receive-side payload-disclosure commitments, and both
+are enforced at run time rather than merely recorded. One is a top-level key of
+the artifact -- `expected_payload_columns`, a sibling of `linkage_terms` -- and
+the other, `disclosedPayloadColumns`, rides the invitation token (its wire
+declaration and version policy are in
+[FILE_SYNC.md](FILE_SYNC.md#disclosed-columns-subset-on-the-token)). The local
+field is not exchanged, cross-checked against the partner, or folded into the
+agreed-terms hash. The send side has no local record: it is stated in the agreed
+terms ([The send side is in the agreed
+terms](#the-send-side-is-in-the-agreed-terms)). What an operator authors, and
+what each field means to them, is in
+[EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload).
 
-The set of columns any of them describes is always
+The set of columns either of them describes is always
 `disclosedColumnNames(metadata)` over some party's metadata -- the names
 `isDisclosedToPartner` selects and `preparePayload` transmits -- never a
 separately authored dictionary. That is what keeps a consented set from drifting
@@ -312,17 +314,17 @@ from the bytes that flow. Each field is bounded to `MAX_PAYLOAD_ENTRIES` entries
 of `MAX_NAME_LENGTH` each, the same bounds a `payload.send`/`receive` list
 holds.
 
-All four -- the two top-level lists, `outbound_payload_consent.columns`, and the
-token's `disclosedPayloadColumns` -- name a column at most once: a repeated name
-parses to one entry, the first occurrence standing and a later one naming it
-dropped, the collapse a `payload.send`/`receive` list takes. Names are compared
-code unit for code unit, with no Unicode normalization and no case folding -- the
-equality [CANONICAL_ENCODING.md](CANONICAL_ENCODING.md) makes normative for those
-terms lists, whose collapse changes the agreed-terms hash. None of the four
-fields here enters that hash, computed over the linkage terms alone. The count
-bound is applied to the AUTHORED count, ahead of the collapse, so a list padded
-past `MAX_PAYLOAD_ENTRIES` with one name repeated is refused rather than admitted
-for what it would collapse to.
+Both -- the top-level list and the token's `disclosedPayloadColumns` -- name a
+column at most once: a repeated name parses to one entry, the first occurrence
+standing and a later one naming it dropped, the collapse a
+`payload.send`/`receive` list takes. Names are compared code unit for code unit,
+with no Unicode normalization and no case folding -- the equality
+[CANONICAL_ENCODING.md](CANONICAL_ENCODING.md) makes normative for those terms
+lists, whose collapse changes the agreed-terms hash. Neither field here enters
+that hash, computed over the linkage terms alone. The count bound is applied to
+the AUTHORED count, ahead of the collapse, so a list padded past
+`MAX_PAYLOAD_ENTRIES` with one name repeated is refused rather than admitted for
+what it would collapse to.
 
 Collapsing rather than refusing keeps a hand-authored repeat -- which declares
 nothing the set does not already hold -- from reaching
@@ -345,7 +347,7 @@ is the whole disclosure control:
 
 Laziness relaxes only the declaration check, never what is disclosed.
 Transmission stays governed by each sender's own `isDisclosedToPartner` metadata
-and the send-side guards below, so a lazy receiver still receives only what the
+and the send-side guard below, so a lazy receiver still receives only what the
 sender's consented metadata transmits.
 
 ### Receive-side runtime enforcement (`reconcileReceivedPayload`)
@@ -375,21 +377,20 @@ and which is also what lets a correctly gated no-output party pass.
 
 How a party arrives at its set, by exchange mode:
 
-- **Invite/accept.** The inviter publishes its disclosed subset on the token and
-  leaves its own receive side unset; its first run fills `payload.receive` from
-  the acceptor's declared send set ([An unset `payload.receive` is filled on the
-  first run](#an-unset-payloadreceive-is-filled-on-the-first-run)). The
-  acceptor locks in the subset the token declared -- known up
-  front, with
-  no observation needed -- and both an offline and an online accept persist it to
-  the written config so a later `alcove exchange` enforces what was consented to
-  at accept time. An acceptance that reuses a pre-existing config refreshes that
-  config's field surgically in place, leaving the operator's connection and
-  linkage blocks untouched: a partner that changes only what it discloses is
-  re-consented to on that acceptance, and a prior acceptance's set left standing
-  would false-abort the next exchange against an honest partner. An invitation
-  with no subset *removes* the field rather than leaving a set this
-  acceptance never showed.
+- **Invite/accept.** The inviter publishes its disclosed subset on the token,
+  states it as `payload.send` in the token's terms, and leaves its own receive
+  side unset; its first run fills `payload.receive` from the acceptor's declared
+  send set ([An unset `payload.receive` is filled on the first
+  run](#an-unset-payloadreceive-is-filled-on-the-first-run)). The acceptor locks
+  in the subset the token declared -- known up front, with no observation needed
+  -- and both an offline and an online accept persist it to the written config
+  so a later `alcove exchange` enforces what was consented to at accept time. An
+  acceptance that reuses a pre-existing config refreshes that config's field
+  surgically in place, leaving the operator's connection and linkage blocks
+  untouched: a partner that changes only what it discloses is re-consented to on
+  that acceptance, and a prior acceptance's set left standing would false-abort
+  the next exchange against an honest partner. An invitation with no subset
+  *removes* the field rather than leaving a set this acceptance never showed.
 - **Zero-setup.** Neither party holds the other's metadata in advance, so the
   first exchange reconciles lazily and neither throws. A `--save` run fills
   `payload.receive` from the partner's declared send set and writes it into the
@@ -429,105 +430,23 @@ party's own configuration, while the `runExchange` send gate, reading the
 partner's authenticated terms, stays the fail-closed control over what actually
 leaves.
 
-### Send-side prepare-time commitment (`assertDisclosureMatchesCommitment`)
+### The send side is in the agreed terms
 
-The runtime enforcement above catches a partner that under- or over-delivers, but it
-fires on the *receiver*, after data has moved, and attributes the abort to the
-partner. Its proactive counterpart runs on the *committing* party at prepare
-time, before any credential, terms, or data are sent. A party that persisted the
-disclosed set it published -- the top-level `disclosed_payload_columns`, in this
-party's own column namespace -- verifies that its current metadata still
-discloses exactly that set, and throws a `UsageError` (CLI exit 64, a local
-configuration error) naming the offending column(s) otherwise. Without it a
-metadata drift on the committing side silently under-delivers a promised column,
-and the partner aborts mid-exchange under a partner-attributed `protocol` error;
-this turns that into an early, self-attributed local failure.
+No local record holds a party's send set. Every mint -- `alcove invite` online,
+offline from an input file, or from a configuration, and `alcove update` --
+states `payload.send` as the columns its metadata discloses
+(`termsStatingDeclaredPayloadSend`), and writes the list into the configuration
+it writes or reuses where that configuration leaves it unset. An acceptor's
+mirrored `payload.receive` (`deriveAcceptedLinkageTerms`) therefore holds the
+inviter's send set inside the agreed terms, which the agreed-terms hash covers.
+A mint from a configuration with no `metadata` block states nothing, since the
+set is known only from the input file the mint does not read; the partner's
+receive list is then filled on its first run.
 
-The error states a **dual** remedy -- restore the column's metadata to transmit,
-*or* re-establish the exchange with the narrower disclosure -- so it never
-pressures the operator toward wider disclosure, narrowing one's own disclosure
-being always legitimate.
-
-**Every mint that publishes a subset also persists it, and no mint skips it.**
-That binding is what keeps the commitment from going stale against the token the
-partner locked in: a re-invite over edited metadata republishes a fresh token and
-refreshes the field in the same operation, so the two cannot disagree. The online
-invite and the offline infer-from-input path write a fresh config and include it
-in the ordinary `saveConfig`; the offline invite-from-config and re-invite paths
-reuse the operator's config and write the field surgically through the YAML
-document model, leaving operator content and comments untouched. A config that
-declares no metadata block publishes no subset, so the field is *removed* rather
-than left at a stale prior value. The only remaining drift is metadata edited
-without re-inviting, which is exactly the case this guard catches. The acceptor
-does not persist this field: its send side is covered by its own consent record
-instead, because the mirrored `payload.send` the mint-boundary guard holds to the
-disclosed set is present only when the inviter authored a `payload.receive`.
-
-### The acceptor's outbound consent (`assertOutboundPayloadConsented`)
-
-An acceptance's outbound column set is authored by no party. The invitation
-authors the inviter's `payload.send`; the mirror leaves the acceptor's own `send`
-absent whenever the inviter authored no `receive` -- the common invite shape --
-so the set is resolved from the acceptor's own CSV header, where inference sends
-an `id` or `identifier` column and no other. Neither guard above
-reaches it: the mint-boundary guard early-returns on an absent `send`, and
-`disclosed_payload_columns` records a promise to the partner that an acceptance
-never makes. So an acceptance records the set it *showed* the operator, in a
-third per-party local field:
-
-- `outbound_payload_consent: { status: confirmed, columns: [...] }` -- the exact
-  set the operator was shown and consented to, in this party's own namespace. The
-  empty set is a real confirmation that nothing is disclosed.
-- `outbound_payload_consent: { status: pending }` -- the acceptance could not
-  resolve the set (no input file was named, or its columns could not satisfy the
-  invitation's linkage keys), so nothing is confirmed yet.
-- **Absent** -- no record, and nothing is checked. Every non-acceptor is here (an
-  inviter, a zero-setup run, a hand-authored config), as is an acceptance whose
-  partner is entitled to no result.
-
-`assertOutboundPayloadConsented` enforces it inside `prepareForExchange`, before
-any credential, terms, or data are sent, throwing a `UsageError` (CLI exit 64) on
-`pending`, or on a `confirmed` set the run no longer resolves. The comparison is
-by **membership** in both directions but **not by order**, since metadata order
-decides which order columns are transmitted in and not which are. This check is
-gated on `output.share_with_partner`: with the partner entitled to no result
-nothing crosses, and the assessment returns `not-required`. The
-`disclosed_payload_columns` check above is not gated that way --
-`assertDisclosureMatchesCommitment` runs whatever the entitlement, so an
-inviter whose partner is entitled to nothing is still refused (exit 64) on a
-metadata drift.
-
-Every fresh acceptance surface derives the record through one function,
-`deriveOutboundPayloadConsent`: `alcove accept` writes it into the configuration
-it provisions, the browser's accept composes it into the exchange-file document
-it persists as a [managed exchange](MANAGED_EXCHANGE_RECORD.md), and a console
-acceptance composes it into the CLI configuration the console runs the job from
-(see [SERVER_JOB_API.md](SERVER_JOB_API.md), "Composed CLI configuration"). The
-two composing surfaces derive it from the same `metadata` the document they write
-holds -- so the persisted record and the persisted metadata cannot state
-different disclosures. A front end shows the set and takes the answer; this
-assert is the run-boundary safety check behind whichever one prepared the exchange,
-so an unattended run refuses rather than transmit a set no party chose.
-
-**Lifecycle across re-acceptance and re-invitation follows one rule:** no
-machine-managed field may lag the operation that rewrites the config's role or
-terms, and no partner-controlled input may remove one from a config that still
-transmits. An acceptance that reuses an existing config therefore derives the
-refreshed record from the *kept* config's own `output.share_with_partner`, never
-solely from the invitation's mirror -- reconciliation compares no output field,
-so an invitation on which the mirror yields no record cannot decide that about a
-kept config that still shares. There the record falls to `pending`, and it is
-removed only where the kept config itself does not share, where a leftover record
-is inert. A mint over the same config removes the record on the same rule the
-`disclosed_payload_columns` refresh follows: the config becomes the inviting
-side's, whose outbound set is that commitment instead. One narrow shape restores
-the pre-record laziness, stated as a limit: a mint over a config with no
-metadata block publishes no commitment either, so both gates end up absent and a
-later unattended exchange from that config transmits its inferred set unchecked,
-exactly as every pre-record config does. The removal there weakens no previously
-enforced set, but nothing replaces it. A [terms update](#terms-update) is held to the same
-rule: applying one rewrites the terms and every record they bear on in one write,
-and minting one refreshes the minting party's records as an invitation mint does.
+At every run a party states its send set from its metadata at the terms
+exchange, an acceptor included, so a send set that changed on either side meets
+the partner as a terms change before any key or data moves
+([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)).
 
 ### The no-output send gate
 
@@ -686,14 +605,12 @@ The CLI then refuses, before any display, an update whose terms name the applyin
 
 ### What applying writes
 
-Applying rewrites `linkage_terms` and every record that follows from it in one atomic write (`persistTermsUpdate`, `apps/cli/src/config.ts`), after reading the edited document back through `parseExchangeSpec`; a document that would not load is refused and the file left unchanged. The records follow the [lifecycle rule](#the-acceptors-outbound-consent-assertoutboundpayloadconsented) above:
+Applying rewrites `linkage_terms` and every record that follows from it in one atomic write (`persistTermsUpdate`, `apps/cli/src/config.ts`), after reading the edited document back through `parseExchangeSpec`; a document that would not load is refused and the file left unchanged:
 
 - `expected_payload_columns` takes the update's disclosed columns, and is removed where the update states none.
 - `expected_partner_deduplicate` takes the update's `deduplicate`.
-- `outbound_payload_consent` is derived from the new output terms and the configuration's own metadata, and is `pending` where the new terms share with the partner and no metadata block states the set.
-- `disclosed_payload_columns`, where recorded, is restated from the configuration's metadata, or removed where it has none; an absent one stays absent.
 
-Minting an update refreshes the minting party's own records on the rule an invitation minted from the same configuration follows: `disclosed_payload_columns` from its metadata, and `outbound_payload_consent` removed. Neither command writes the key file or any key of the connection block.
+Minting an update states `payload.send` on the rule an invitation minted from the same configuration follows ([The send side is in the agreed terms](#the-send-side-is-in-the-agreed-terms)). Neither command writes the key file or any key of the connection block.
 
 ## Channel-binding semantics
 

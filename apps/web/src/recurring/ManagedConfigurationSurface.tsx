@@ -31,7 +31,6 @@ import {
   fileReferenceExportNote,
   fileReferenceNotice,
   heldSettingsNotice,
-  pendingOutboundConsentNotice,
   sftpCredentialNote,
 } from "./managedConfigurationModel";
 import { ConfigRowItem } from "./ManagedExchangeDetail";
@@ -61,8 +60,8 @@ const UNNAMED_CONFIGURATION_TITLE = "Imported configuration";
  * What it tells the operator is derived from the record, so the import lands on
  * it and every later visit shows it alike: why nothing here runs the exchange,
  * naming the channel where that is the reason, then the settings naming a file
- * by `@path` and a pending outbound payload consent, then the settings kept
- * unchanged without an editor ({@link ./managedConfigurationModel.ts}).
+ * by `@path`, then the settings kept unchanged without an editor
+ * ({@link ./managedConfigurationModel.ts}).
  *
  * The agreed terms are read-only, as they are for a browser-run exchange: they
  * are the partnership's, not this browser's, and exchanging on different ones is
@@ -83,7 +82,6 @@ export function ManagedConfigurationSurface({
   onDeleted: () => void;
 }) {
   const heldNotice = heldSettingsNotice(record);
-  const consentNotice = pendingOutboundConsentNotice(record);
   const referenceNotice = fileReferenceNotice(record);
   return (
     <AppPage>
@@ -100,16 +98,6 @@ export function ManagedConfigurationSurface({
             mb="sm"
           >
             {referenceNotice}
-          </Alert>
-        )}
-        {consentNotice !== undefined && (
-          <Alert
-            color="yellow"
-            title="Confirm what this exchange sends"
-            mt="sm"
-            mb="sm"
-          >
-            {consentNotice}
           </Alert>
         )}
         <ConfigurationRows record={record} />

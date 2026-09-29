@@ -42,14 +42,13 @@ import {
   reconcileConflictMessage,
   reconcileDiffValue,
   loadConfigLinkageSource,
-  persistDisclosedPayloadColumns,
   persistExpectedPartnerDeduplicate,
   persistExpectedPayloadColumns,
   persistFilledPayloadReceive,
   persistHostKeyFingerprint,
   persistInvitationRelay,
   persistPartnerFingerprint,
-  persistOutboundPayloadConsent,
+  persistStatedPayloadSend,
   readConfigLinkageSource,
   saveConfig,
   warnOnLinkageRuleSetCitationDrift,
@@ -1596,10 +1595,10 @@ describe("assertPartnerFingerprintRecordable", () => {
   });
 });
 
-// --- persistDisclosedPayloadColumns ------------------------------------------
+// --- persistStatedPayloadSend -----------------------------------------------
 
-describe("persistDisclosedPayloadColumns", () => {
-  test("adds the field and preserves comments and other fields", () => {
+describe("persistStatedPayloadSend", () => {
+  test("writes linkage_terms.payload.send and preserves comments and other fields", () => {
     const configPath = path.join(dir, "alcove.yaml");
     fs.writeFileSync(
       configPath,
@@ -1609,96 +1608,50 @@ describe("persistDisclosedPayloadColumns", () => {
         "  channel: sftp",
         "  server:",
         "    host: sftp.example.org # the drop",
+        "linkage_terms:",
+        "  identity: Agency A # our name",
+        "  payload:",
+        "    receive:",
+        "      - name: partner_notes",
         "",
       ].join("\n"),
     );
-    persistDisclosedPayloadColumns(configPath, ["notes", "member_id"]);
+    persistStatedPayloadSend(configPath, [
+      { name: "notes", description: "Case notes" },
+      { name: "member_id" },
+    ]);
     const raw = fs.readFileSync(configPath, "utf8");
-    // Operator comments and other fields survive the surgical write.
     expect(raw).toContain("# hand-authored config");
     expect(raw).toContain("host: sftp.example.org # the drop");
+    expect(raw).toContain("identity: Agency A # our name");
     const parsed = YAML.parse(raw) as {
-      disclosed_payload_columns: string[];
+      linkage_terms: { payload: { send: unknown; receive: unknown } };
     };
-    expect(parsed.disclosed_payload_columns).toEqual(["notes", "member_id"]);
+    expect(parsed.linkage_terms.payload).toEqual({
+      receive: [{ name: "partner_notes" }],
+      send: [
+        { name: "notes", description: "Case notes" },
+        { name: "member_id" },
+      ],
+    });
   });
 
-  test("refreshes a stale value (the re-invite fix)", () => {
-    // A config with an OLD commitment, re-minted over changed metadata: the
-    // field must be overwritten to the new set, never left stale (else the next
-    // exchange false-fires against a promise the partner no longer holds).
+  test("refuses a configuration with no linkage_terms mapping, leaving it unchanged", () => {
     const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      [
-        "connection:",
-        "  channel: sftp",
-        "  server:",
-        "    host: h",
-        "disclosed_payload_columns:",
-        "  - old_col",
-        "",
-      ].join("\n"),
-    );
-    persistDisclosedPayloadColumns(configPath, ["new_col"]);
-    const raw = fs.readFileSync(configPath, "utf8");
-    expect(raw).not.toContain("old_col");
-    const parsed = YAML.parse(raw) as { disclosed_payload_columns: string[] };
-    expect(parsed.disclosed_payload_columns).toEqual(["new_col"]);
-  });
-
-  test("removes the field when the commitment is undefined", () => {
-    // A re-invite from a config whose metadata is unknown publishes no subset, so a
-    // previously-recorded commitment must be cleared, not retained stale.
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      [
-        "connection:",
-        "  channel: sftp",
-        "  server:",
-        "    host: h",
-        "disclosed_payload_columns:",
-        "  - old_col",
-        "",
-      ].join("\n"),
-    );
-    persistDisclosedPayloadColumns(configPath, undefined);
-    const raw = fs.readFileSync(configPath, "utf8");
-    expect(raw).not.toContain("disclosed_payload_columns");
-    expect(raw).not.toContain("old_col");
-    // The rest of the config is intact.
-    const parsed = YAML.parse(raw) as {
-      connection: { channel: string };
-      disclosed_payload_columns?: string[];
-    };
-    expect(parsed.connection.channel).toBe("sftp");
-    expect(parsed.disclosed_payload_columns).toBeUndefined();
-  });
-
-  test("writes an empty array verbatim (strict disclose-nothing)", () => {
-    // Empty is a real commitment ("disclose nothing"), distinct from absent; it must
-    // be written, not dropped.
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      "connection:\n  channel: sftp\n  server:\n    host: h\n",
-    );
-    persistDisclosedPayloadColumns(configPath, []);
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed = YAML.parse(raw) as { disclosed_payload_columns: string[] };
-    expect(parsed.disclosed_payload_columns).toEqual([]);
+    const before = "connection:\n  channel: sftp\n  server:\n    host: h\n";
+    fs.writeFileSync(configPath, before);
+    expect(() =>
+      persistStatedPayloadSend(configPath, [{ name: "notes" }]),
+    ).toThrow("holds no linkage_terms mapping");
+    expect(fs.readFileSync(configPath, "utf8")).toBe(before);
   });
 
   test.skipIf(process.platform === "win32")(
     "writes the config owner-read-only (0600)",
     () => {
       const configPath = path.join(dir, "alcove.yaml");
-      fs.writeFileSync(
-        configPath,
-        "connection:\n  channel: sftp\n  server:\n    host: h\n",
-      );
-      persistDisclosedPayloadColumns(configPath, ["notes"]);
+      fs.writeFileSync(configPath, "linkage_terms:\n  identity: Agency A\n");
+      persistStatedPayloadSend(configPath, [{ name: "notes" }]);
       expect(fs.statSync(configPath).mode & 0o777).toBe(0o600);
     },
   );
@@ -2021,9 +1974,9 @@ const MALFORMED_CONFIG_CASES: Array<
     false,
   ],
   [
-    "persistDisclosedPayloadColumns",
+    "persistStatedPayloadSend",
     "connection: [unbalanced\n",
-    (configPath) => persistDisclosedPayloadColumns(configPath, ["notes"]),
+    (configPath) => persistStatedPayloadSend(configPath, [{ name: "notes" }]),
     true,
   ],
   [
@@ -5025,7 +4978,6 @@ test("a setting this build does not edit survives a load, an edit, and a save", 
     standardization: [{ output: "last_name", input: "LAST_NAME", steps: [] }],
     retention_disposition: "Filed with the program office for seven years.",
     expected_payload_columns: ["partner_program"],
-    disclosed_payload_columns: ["program"],
     expected_partner_deduplicate: true,
     csv_delimiter: "|",
   };
@@ -5048,7 +5000,6 @@ test("a setting this build does not edit survives a load, an edit, and a save", 
   expect(saved.metadata).toEqual(loaded.metadata);
   expect(saved.csvDelimiter).toBe("|");
   expect(saved.expectedPayloadColumns).toEqual(["partner_program"]);
-  expect(saved.disclosedPayloadColumns).toEqual(["program"]);
   expect(saved.expectedPartnerDeduplicate).toBe(true);
 });
 
@@ -5143,63 +5094,6 @@ describe("assertRetainSweepGuard", () => {
     expect(() => assertRetainSweepGuard(true, true)).not.toThrow();
     expect(() => assertRetainSweepGuard(true, false)).not.toThrow();
     expect(() => assertRetainSweepGuard(false, false)).not.toThrow();
-  });
-});
-
-// --- persistOutboundPayloadConsent: removal and empty-set shapes -------------
-
-describe("persistOutboundPayloadConsent", () => {
-  test("removes the record on undefined, and no-ops when absent", () => {
-    // The removal branch is what the accept-reuse and mint paths lean on: a record
-    // that should not stand is deleted, never left stale -- and removing from a
-    // config that has none must not rewrite the operator's file.
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      [
-        "connection:",
-        "  channel: sftp",
-        "  server:",
-        "    host: h",
-        "outbound_payload_consent:",
-        "  status: confirmed",
-        "  columns:",
-        "    - old_col",
-        "",
-      ].join("\n"),
-    );
-    persistOutboundPayloadConsent(configPath, undefined);
-    const raw = fs.readFileSync(configPath, "utf8");
-    expect(raw).not.toContain("outbound_payload_consent");
-    expect(raw).not.toContain("old_col");
-    const parsed = YAML.parse(raw) as { connection: { channel: string } };
-    expect(parsed.connection.channel).toBe("sftp");
-    persistOutboundPayloadConsent(configPath, undefined);
-    expect(fs.readFileSync(configPath, "utf8")).toBe(raw);
-  });
-
-  test("writes a confirmed-empty set verbatim", () => {
-    // An empty confirmed set is a real confirmation that nothing is disclosed, not
-    // an absence: it must survive to disk as `columns: []` and parse back as an
-    // empty array, so a later run enforcing it refuses any disclosure at all.
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      ["connection:", "  channel: sftp", "  server:", "    host: h", ""].join(
-        "\n",
-      ),
-    );
-    persistOutboundPayloadConsent(configPath, {
-      status: "confirmed",
-      columns: [],
-    });
-    const parsed = YAML.parse(fs.readFileSync(configPath, "utf8")) as {
-      outbound_payload_consent?: { status: string; columns?: string[] };
-    };
-    expect(parsed.outbound_payload_consent).toEqual({
-      status: "confirmed",
-      columns: [],
-    });
   });
 });
 
@@ -6240,10 +6134,10 @@ const CONFIG_REFUSALS: ReadonlyArray<
     "escaped",
   ],
   [
-    "a disclosed-columns write to a configuration that cannot be parsed",
+    "a stated-send write to a configuration that cannot be parsed",
     (configPath) => {
       fs.writeFileSync(configPath, UNPARSEABLE_YAML);
-      persistDisclosedPayloadColumns(configPath, ["notes"]);
+      persistStatedPayloadSend(configPath, [{ name: "notes" }]);
     },
   ],
   [
@@ -6251,16 +6145,6 @@ const CONFIG_REFUSALS: ReadonlyArray<
     (configPath) => {
       fs.writeFileSync(configPath, UNPARSEABLE_YAML);
       persistExpectedPayloadColumns(configPath, ["notes"]);
-    },
-  ],
-  [
-    "an outbound-consent write to a configuration that cannot be parsed",
-    (configPath) => {
-      fs.writeFileSync(configPath, UNPARSEABLE_YAML);
-      persistOutboundPayloadConsent(configPath, {
-        status: "confirmed",
-        columns: ["notes"],
-      });
     },
   ],
   [

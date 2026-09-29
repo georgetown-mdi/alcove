@@ -17,7 +17,6 @@ import { ReceiptVerificationError } from "../../src/records/signedReceipt";
 import {
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
-  OutboundDisclosureRefusalError,
   StandardizationTermsError,
   UsageError,
 } from "../../src/errors";
@@ -1327,28 +1326,6 @@ const refusalCases: Array<{
     },
     columnNames: [...columns, "n".repeat(MAX_NAME_LENGTH + 1)],
     errorClass: UsageError,
-    messageRendered: false,
-  },
-  {
-    what: "a disclosure that has drifted from this party's own commitment",
-    says: /no longer honor the payload disclosure it committed to/,
-    spec: {
-      linkageTerms: terms,
-      metadata,
-      disclosedPayloadColumns: ["note"],
-    },
-    errorClass: OutboundDisclosureRefusalError,
-    messageRendered: false,
-  },
-  {
-    what: "an outbound payload set this party has not confirmed",
-    says: /has not confirmed which of its own columns it sends/,
-    spec: {
-      linkageTerms: terms,
-      metadata,
-      outboundPayloadConsent: { status: "pending" },
-    },
-    errorClass: OutboundDisclosureRefusalError,
     messageRendered: false,
   },
   {

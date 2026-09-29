@@ -239,9 +239,8 @@ export function reasonTermsCannotStateIdentity(
  * The payload column lists that name those same columns hold it too -- the
  * invitation token's `disclosedPayloadColumns`, which a partner authors and an
  * acceptance writes into the operator's configuration, and the configuration's
- * own `expectedPayloadColumns`, `disclosedPayloadColumns`, and outbound consent
- * `columns` -- so a column name reaches a party's disk under this shape from
- * either direction.
+ * own `expectedPayloadColumns` -- so a column name reaches a party's disk
+ * under this shape from either direction.
  *
  * Applied at each FIELD, as the `version` semver regex below is, rather than as
  * a pass over the class: every field named above holds it in its own string
@@ -478,10 +477,8 @@ const recordedFreeTextValue = (schema: z.ZodString) =>
  *
  * The payload column lists outside this document name the same columns and take
  * the same shape through this helper: the invitation token's
- * `disclosedPayloadColumns` (config/invitation.ts), the exchange spec's
- * `expectedPayloadColumns` and `disclosedPayloadColumns`
- * (config/exchangeSpec.ts), and the outbound consent record's `columns`
- * (config/outboundPayloadConsent.ts).
+ * `disclosedPayloadColumns` (config/invitation.ts) and the exchange spec's
+ * `expectedPayloadColumns` (config/exchangeSpec.ts).
  */
 export const nameValue = (schema: z.ZodString) =>
   schema.regex(NAME_SHAPE_PATTERN, NAME_SHAPE_MESSAGE);

@@ -712,7 +712,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // shows one (`managedRunLaunchModel`).
         whenDiagnostic(() => console.error(error));
         // The tier is derived from the record's OWN bookkeeping, which the run path
-        // just stamped (the auth/transport/storage/input/consent/cancelled
+        // just stamped (the auth/transport/storage/input/cancelled
         // failureKind), so the record and its import marker are reloaded before
         // classifying -- an unattended run's failure would show through the same
         // tiers at the next visit. A corrupted record or sibling entry makes the

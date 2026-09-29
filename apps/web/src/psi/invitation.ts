@@ -16,13 +16,13 @@ import {
   overlongDisclosedColumnPositions,
   relayLocatorFromOwnRelay,
   stripInvitationWhitespace,
+  termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
 import { emptyColumnPositions } from "./columnNames";
 import { linkageRefusalFor } from "./linkageRefusal";
 import { loadCSVFileOffMainThread } from "./workers/csvParseController";
 import { ownColumnsField } from "./ownColumnsModel";
-import { payloadSendForMetadata } from "./metadataEditing";
 import { relayForRun } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
@@ -169,15 +169,6 @@ export interface GeneratedInvitation {
    * here names a field `linkageTerms` declares, checked at the mint.
    */
   standardization?: Standardization;
-  /**
-   * The disclosed-column subset the token holds -- the value already inside
-   * `encoded`, exposed so a persisting caller (the managed-exchange deposit)
-   * records the SAME send-side commitment the token published rather than
-   * re-deriving one that could drift. Always set, including the EMPTY set (a
-   * strict "sends nothing" commitment, not the absent/lazy case); see
-   * docs/spec/FILE_SYNC.md, "Which mint paths persist disclosedPayloadColumns".
-   */
-  disclosedPayloadColumns: Array<string>;
   /**
    * Which of the inviter's own input columns its result file holds beside the
    * partner's values -- the local `include_own_columns` key, narrowed at the
@@ -468,7 +459,8 @@ export async function generateInvitation(params: {
   lifetimeSeconds?: number;
   /**
    * Authored linkage terms to embed, from the AdvancedInvite model
-   * (`buildAdvancedTerms`). When supplied they are embedded VERBATIM: the
+   * (`buildAdvancedTerms`). When supplied they are embedded as written, but
+   * for a `payload.send` left unset, which is stated from the metadata: the
    * model seeded them from this file's columns, validated them through
    * {@link safeParseLinkageTerms}, and confirmed at least one key is
    * satisfiable, so the default-terms derivation is skipped and
@@ -619,11 +611,11 @@ export async function generateInvitation(params: {
     });
 
   // The terms to embed. The AdvancedInvite model's authored terms are
-  // embedded verbatim; the quick path derives them from the file's columns
-  // (inferred metadata filters the default keys to those the columns can
-  // satisfy, and authors a payload.send for the columns that metadata
-  // discloses, below). standardization is left to CSV inference downstream
-  // in both cases.
+  // embedded as written but for payload.send; the quick path derives them from
+  // the file's columns (inferred metadata filters the default keys to those
+  // the columns can satisfy). Both state payload.send from the disclosing
+  // metadata below. standardization is left to CSV inference downstream in
+  // both cases.
   //
   // disclosedPayloadColumns is the disclosed set the token holds. Always
   // set, including the EMPTY set when nothing is disclosed -- an empty set
@@ -661,9 +653,8 @@ export async function generateInvitation(params: {
     // is sent. The AdvancedInvite model derives payload.send from the
     // disclosed columns, so this is a defense-in-depth safety check (against
     // a regression or a non-editor caller): the exchange-time check in
-    // prepareForExchange runs too late for the consent surface. The quick
-    // path (else) authors its own payload from the inferred metadata and
-    // runs the same check there.
+    // prepareForExchange runs too late for the consent surface. A send left
+    // unset is stated from the metadata below.
     if (params.metadata !== undefined)
       assertPayloadSendDisclosed(
         linkageTerms.payload,
@@ -693,23 +684,16 @@ export async function generateInvitation(params: {
     if (refusal !== undefined)
       throw new InvitationFileError({ kind: "unlinkable", refusal });
 
-    // Author terms.payload.send from the same inferMetadata(columns) the inviter's
-    // own exchange falls back to on the quick path, so the declaration equals the
-    // disclosed set that leaves the machine. When nothing is disclosed the helper
-    // returns undefined and no empty payload block is minted (assigning it would
-    // leave a `payload: undefined` key, diverging from the default terms).
-    const payload = payloadSendForMetadata(metadata);
-    if (payload !== undefined) linkageTerms.payload = payload;
     disclosedPayloadColumns = disclosedColumnNames(metadata);
-    // Mint-boundary safety check keeping the consent surface accurate -- runs
-    // before prepareForExchange, which checks the same invariant too late for
-    // the token.
-    assertPayloadSendDisclosed(
-      linkageTerms.payload,
-      metadata,
-      linkageTerms.output,
-    );
   }
+
+  // State terms.payload.send from the metadata that decides what is disclosed,
+  // as the CLI's mint does: the disclosed columns, or an empty list when none
+  // is, so the acceptor's receive list is exact rather than left unset.
+  linkageTerms = termsStatingDeclaredPayloadSend(
+    linkageTerms,
+    disclosureMetadata,
+  );
 
   // Refuse a disclosed column whose name is too long, before the secret is
   // minted. The quick path infers its metadata from the CSV header, which no
@@ -798,7 +782,6 @@ export async function generateInvitation(params: {
     columns,
     metadata: params.metadata,
     standardization,
-    disclosedPayloadColumns,
     // Decided ONCE against the terms this mint emits: a count-only exchange
     // writes no result file for anyone, and terms that hand the result to the
     // partner alone leave this party none of its own, so neither can reach a

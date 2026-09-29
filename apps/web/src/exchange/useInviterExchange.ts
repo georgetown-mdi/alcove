@@ -564,11 +564,6 @@ function failureContentFor(
  * unresolved field is forwarded as absent, matching how the browser path
  * guards these fields.
  *
- * `side` is the inviter's, so the config has no `outbound_payload_consent` --
- * this party authored its own outbound set at mint, and the invitation is
- * that statement. The acceptor's outbound set is unauthored and recorded
- * instead (see `acceptorServerJobConfig`).
- *
  * `loadedEnforcementRecords` are the records a configuration opened from the
  * mount states and this console has no control for. An invitation authored here
  * states none of its own, so they ride to the intent as the file stated them

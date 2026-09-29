@@ -113,23 +113,6 @@ describe("savedExchangeRow", () => {
     expect(row.status).toMatch(/re-invite/i);
   });
 
-  test("a consent refusal displays as its own quiet line, not a connection problem", () => {
-    const row = savedExchangeRow(
-      record({
-        lastRun: {
-          at: "2026-07-10T09:00:00.000Z",
-          outcome: "failed",
-          failureKind: "consent",
-        },
-      }),
-      undefined,
-      NOW,
-    );
-    expect(row.status).toMatch(/stopped before sending/i);
-    expect(row.status).toMatch(/what it sends/i);
-    expect(row.status).not.toMatch(/attack|tamper|desync|connection/i);
-  });
-
   test("a set too large to send displays as its own line, with no retry", () => {
     const row = savedExchangeRow(
       record({

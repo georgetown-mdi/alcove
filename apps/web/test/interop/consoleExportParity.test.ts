@@ -32,9 +32,9 @@ import {
   startCli,
 } from "./cliParty";
 
-import type { JobExchangeIntent, JobExchangeSide } from "@jobs/intentSchemas";
 import type { CliRun } from "./cliParty";
 import type { ExchangeSpec } from "@alcove/core";
+import type { JobExchangeIntent } from "@jobs/intentSchemas";
 import type { JobSftpServerEntry } from "@jobs/sftpServer";
 
 /**
@@ -246,15 +246,10 @@ function intentFromLoaded(
 ): JobExchangeIntent {
   const disclosed = disclosedDocument(document);
   const loaded = authoringStateFromDocument(disclosed);
-  // The side the document was written on: only an acceptance records an
-  // outbound payload consent, and only that side's composition derives one.
-  const side: JobExchangeSide =
-    document.outboundPayloadConsent !== undefined ? "acceptor" : "inviter";
   const base = {
     linkageTerms: loaded.linkageTerms,
     sharedSecret: RUN_SHARED_SECRET,
     inputCsv: FIXTURE_CSV,
-    side,
     ...(loaded.metadata !== undefined ? { metadata: loaded.metadata } : {}),
     ...(loaded.standardization !== undefined
       ? { standardization: loaded.standardization }

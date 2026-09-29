@@ -11,7 +11,6 @@ import { Alert, VisuallyHidden } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
 import {
-  disclosedColumnNames,
   mintExchangeFile,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
@@ -122,17 +121,11 @@ import {
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 
 import {
-  DivergedCommitmentNotice,
-  MountedConfigurationCard,
-} from "@console/MountedConfigurationCard";
-import {
   configurationSaveShown,
   configurationSaveState,
   connectionSettingsHeldNotice,
   conversionStatement,
   editedTermsWarning,
-  outboundConsentView,
-  outboundConsentWithheldReason,
   runWithheldReason,
   unconvertedSigningWithheldReason,
 } from "@console/mountedConfiguration";
@@ -145,7 +138,7 @@ import {
   fetchMountedConfiguration,
   saveOpenedConfiguration,
 } from "@psi/jobClient/mountedConfigClient";
-import { OutboundConsentConfirmation } from "@console/OutboundConsentConfirmation";
+import { MountedConfigurationCard } from "@console/MountedConfigurationCard";
 import { configurationHandBack } from "@console/configurationHandBack";
 
 import {
@@ -751,10 +744,6 @@ export function InviterScreen() {
               ...(invitation.standardization !== undefined
                 ? { standardization: invitation.standardization }
                 : {}),
-              // The token's own published set (including the strict empty set),
-              // so the persisted send-side commitment is the one the partner
-              // locked in -- never a re-derivation that could drift from it.
-              disclosedPayloadColumns: invitation.disclosedPayloadColumns,
               ...(invitation.includeOwnColumns !== undefined
                 ? { includeOwnColumns: invitation.includeOwnColumns }
                 : {}),
@@ -1366,33 +1355,14 @@ export function InviterScreen() {
   const fileReady = name.trim().length > 0 && linkable;
   const sealed = editor?.sealed === true;
 
-  // What an open configuration's commitments are read against: the set this
-  // draft would send and the direction it would send it in. Absent until a file
-  // is read, where no draft settles either.
+  // What an open configuration's notices are narrowed by. Absent until a file
+  // is read.
   const runDisclosure =
     editor === undefined
       ? undefined
-      : {
-          disclosedColumns: disclosedColumnNames(editor.draft.metadata),
-          sharesWithPartner: outputForDirection(editor.draft.outputDirection)
-            .shareWithPartner,
-          records: loadedEnforcementRecords,
-          ...(loadedTermsFile !== undefined && loadedTermsFile === acquired
-            ? { termsSettingsStated: termsSettingsStatedBy(editor) }
-            : {}),
-        };
-
-  // The review step's confirmation of a pending consent the open configuration
-  // states, over the same draft the run's metadata and output are minted from.
-  const outboundConsent =
-    editor === undefined || sealed
-      ? undefined
-      : outboundConsentView(
-          mountedConfiguration,
-          loadedEnforcementRecords,
-          editor.draft.metadata,
-          outputForDirection(editor.draft.outputDirection),
-        );
+      : loadedTermsFile !== undefined && loadedTermsFile === acquired
+        ? { termsSettingsStated: termsSettingsStatedBy(editor) }
+        : {};
 
   // Inside a Customize tab no spine step is current; the step the operator
   // came from stays navigable like any completed step. The share and save
@@ -1561,12 +1531,6 @@ export function InviterScreen() {
             onDownloadSamples={downloadSampleCsvs}
           />
         )}
-        {isConsoleBuild() && section === "columns" && (
-          <DivergedCommitmentNotice
-            state={mountedConfiguration}
-            disclosure={runDisclosure}
-          />
-        )}
         {section === "columns" &&
           editor !== undefined &&
           acquired !== undefined && (
@@ -1609,15 +1573,6 @@ export function InviterScreen() {
           editor !== undefined &&
           acquired !== undefined && (
             <>
-              {isConsoleBuild() && (
-                <OutboundConsentConfirmation
-                  view={outboundConsent}
-                  onConfirm={(columns) =>
-                    dispatch({ type: "outbound-consent-confirmed", columns })
-                  }
-                  onChangeColumns={() => goTo("columns")}
-                />
-              )}
               <ReviewCreateSection
                 editor={editor}
                 csv={acquired}
@@ -1629,9 +1584,6 @@ export function InviterScreen() {
                 runWithheld={
                   runWithheldReason(mountedConfiguration) ?? signingWithheld
                 }
-                outboundConsentUnconfirmed={outboundConsentWithheldReason(
-                  outboundConsent,
-                )}
                 continuesOpenedExchange={continuesOpenedExchange}
                 editedTermsWarning={editedTermsWarning(mountedConfiguration, {
                   termsEdited: openedTermsEdited,

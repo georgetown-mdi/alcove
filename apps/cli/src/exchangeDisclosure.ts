@@ -28,7 +28,6 @@ import {
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
 
 import type {
-  ExchangeDataSpec,
   InvitationRuleSetSummary,
   LinkageTerms,
   Metadata,
@@ -362,23 +361,9 @@ function disclosureSink(
 
 /**
  * Show what this run will disclose and match on, before any credential, terms,
- * or data are sent, for an exchange whose configuration the operator wrote
- * themselves.
- *
- * A no-op for a configuration written by accepting an invitation, which holds
- * an outbound-payload consent record: that party read these facts when it
- * accepted, and the confirmation surface shows the columns again on any run
- * whose set is not the one it confirmed. Printing here as well would state them
- * twice.
- *
- * An acceptance records nothing where the partner is entitled to no result,
- * since no column is sent to it whatever the input file holds. Those runs reach
- * the display, which states that same absence and the terms beside it.
+ * or data are sent.
  */
 export function displayExchangeDisclosure(params: {
-  /** The spec this run prepares from; its consent record decides whether the
-   * confirmation surface covers this party already. */
-  spec: ExchangeDataSpec;
   /** The metadata this run resolved -- the source of what it would transmit. */
   metadata: Metadata;
   /** The terms this run resolved, which decide what it matches on. */
@@ -387,8 +372,7 @@ export function displayExchangeDisclosure(params: {
   logFile: string | undefined;
   log: ReturnType<typeof getLogger>;
 }): void {
-  const { spec, metadata, linkageTerms, logFile, log } = params;
-  if (spec.outboundPayloadConsent !== undefined) return;
+  const { metadata, linkageTerms, logFile, log } = params;
   renderExchangeDisclosure(
     disclosureSink(log, logFile),
     linkageTerms,

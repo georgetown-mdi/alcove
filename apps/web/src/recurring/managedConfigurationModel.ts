@@ -5,7 +5,7 @@
  * from the stored record, so it is shown where the import lands and on every
  * later visit alike.
  *
- * Four things are said, each only where it holds:
+ * Three things are said, each only where it holds:
  *
  * - why nothing here runs it: the channel, where the document names one this
  *   app does not conduct, and each part it states that this app cannot run
@@ -14,9 +14,7 @@
  *   without showing or editing them (docs/spec/EXCHANGE_FILE.md, "What a
  *   consumer does with a setting it cannot honor");
  * - which settings name a file by `@path`, which this browser does not read
- *   and Alcove reads on the machine that runs the exported file;
- * - that the outbound payload consent it states is pending, which the command
- *   line meets at the first run that shares results with the partner.
+ *   and Alcove reads on the machine that runs the exported file.
  *
  * Every notice names a setting as the file spells it, in snake_case, and never
  * its value.
@@ -316,25 +314,5 @@ export function sftpCredentialNote(
   return (
     "This configuration names no SFTP host key. Before you run it, add " +
     `${hostKeyLine} under connection.server.`
-  );
-}
-
-/**
- * What the operator is told about an `outbound_payload_consent` the document
- * states as pending, or undefined where it states none or a confirmed set. Alcove
- * asks for the confirmation at the first run that shares results with the
- * partner and refuses such a run with no terminal to ask on, so a scheduled run
- * is refused until the operator has confirmed the columns once at a terminal.
- */
-export function pendingOutboundConsentNotice(
-  record: ManagedExchangeRecord,
-): string | undefined {
-  if (record.exchangeFile.outboundPayloadConsent?.status !== "pending")
-    return undefined;
-  return (
-    "This configuration's outbound_payload_consent is pending. An Alcove run " +
-    "that shares results with your partner stops to ask you to confirm the " +
-    "columns it sends, and is refused when no one is at a terminal to answer, " +
-    "so run it once with Alcove at a terminal before you schedule it."
   );
 }

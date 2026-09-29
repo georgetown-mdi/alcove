@@ -248,7 +248,6 @@ describe("the surface of a configuration on a channel this app does not run", ()
           }),
           linkageTerms,
         }),
-        outboundPayloadConsent: { status: "pending" },
         expectedPartnerDeduplicate: true,
       },
     });
@@ -257,11 +256,6 @@ describe("the surface of a configuration on a channel this app does not run", ()
 
     await expect
       .element(page.getByText("SFTP (channel: sftp)", { exact: false }))
-      .toBeInTheDocument();
-    await expect
-      .element(
-        page.getByText("outbound_payload_consent is pending", { exact: false }),
-      )
       .toBeInTheDocument();
     await expect
       .element(page.getByText("expected_partner_deduplicate", { exact: false }))

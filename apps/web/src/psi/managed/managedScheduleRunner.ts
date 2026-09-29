@@ -51,11 +51,7 @@
  *   could have started would disclose a second time.
  */
 
-import {
-  ConnectionError,
-  LinkageTermsUnsatisfiableError,
-  OutboundDisclosureRefusalError,
-} from "@alcove/core";
+import { ConnectionError, LinkageTermsUnsatisfiableError } from "@alcove/core";
 
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
@@ -735,8 +731,7 @@ function managedScheduleWindowVerdict(
     error instanceof ManagedExchangeCustodyUnreadableError ||
     error instanceof ManagedExchangeNotRunnableError ||
     error instanceof ManagedInputError ||
-    error instanceof LinkageTermsUnsatisfiableError ||
-    error instanceof OutboundDisclosureRefusalError
+    error instanceof LinkageTermsUnsatisfiableError
   )
     return { disposition: "failed", retryable: false, provesContact };
   return { disposition: "failed", retryable, provesContact };

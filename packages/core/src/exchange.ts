@@ -80,8 +80,6 @@ import {
   exchangePayloads,
   toCommittedPayload,
   assertDisclosedNamesCarriable,
-  assertDisclosureMatchesCommitment,
-  assertOutboundPayloadConsented,
   reconcileReceivedPayload,
   termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
@@ -1333,26 +1331,6 @@ export function prepareForExchange(
   // refusal holds for a PreparedExchange built without this function. See
   // assertDisclosedNamesCarriable.
   assertDisclosedNamesCarriable(metadata, linkageTerms.output);
-
-  // Fail fast when this party cannot produce a payload disclosure it
-  // committed to on a prior invitation (disclosedPayloadColumns): a
-  // metadata drift here would otherwise make the partner abort mid-exchange
-  // (reconcileReceivedPayload). A no-op when no commitment is on record.
-  // See assertDisclosureMatchesCommitment.
-  assertDisclosureMatchesCommitment(
-    exchangeDataSpec.disclosedPayloadColumns,
-    metadata,
-  );
-
-  // Fail closed on an outbound payload set this party has not confirmed.
-  // An acceptor's own send set is authored by no party, so a recorded
-  // confirmation is what makes it chosen rather than inferred. A no-op for
-  // every party with no consent record. See assertOutboundPayloadConsented.
-  assertOutboundPayloadConsented(
-    exchangeDataSpec.outboundPayloadConsent,
-    metadata,
-    linkageTerms.output,
-  );
 
   // The effective key count the agreed terms declare: the sum over their
   // keys of the width each key's elements declare. Sizes the pre-flight
