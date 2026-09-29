@@ -59,6 +59,17 @@ const PARTNER_TERMS: LinkageTerms = {
   payload: { send: [{ name: "clinic" }] },
 };
 
+// The hash covers the send set the run stated from its metadata, so the
+// pasted configuration discloses the column LOCAL_TERMS names.
+const LOCAL_CONFIG = {
+  linkage_terms: LOCAL_TERMS,
+  metadata: [
+    { name: "pid", type: "other", role: "identifier", is_payload: false },
+    { name: "ssn", type: "ssn", role: "linkage", is_payload: false },
+    { name: "dose", type: "other", role: "payload", is_payload: true },
+  ],
+};
+
 const localPayloadSent: CommittedPayload = {
   columns: ["dose"],
   rows: [["10mg"], ["20mg"]],
@@ -330,7 +341,7 @@ describe("verify receipt screen", () => {
     // Paste both parties' linkage terms so the agreed-terms hash is checked too.
     await userEvent.fill(
       page.getByLabelText("Your linkage terms"),
-      JSON.stringify(LOCAL_TERMS),
+      JSON.stringify(LOCAL_CONFIG),
     );
     await userEvent.click(
       page.getByRole("button", { name: "Load these terms" }).first(),
@@ -691,7 +702,7 @@ describe("verify receipt screen", () => {
     await uploadAt(3, csvFile("result.csv", RESULT_CSV));
     await userEvent.fill(
       page.getByLabelText("Your linkage terms"),
-      JSON.stringify(LOCAL_TERMS),
+      JSON.stringify(LOCAL_CONFIG),
     );
     await userEvent.click(
       page.getByRole("button", { name: "Load these terms" }).first(),
@@ -811,7 +822,7 @@ describe("verify receipt screen", () => {
     await uploadAt(3, csvFile("result.csv", RESULT_CSV));
     await userEvent.fill(
       page.getByLabelText("Your linkage terms"),
-      JSON.stringify(LOCAL_TERMS),
+      JSON.stringify(LOCAL_CONFIG),
     );
     await userEvent.click(
       page.getByRole("button", { name: "Load these terms" }).first(),
@@ -920,7 +931,7 @@ describe("verify receipt screen", () => {
     await uploadAt(3, csvFile("result.csv", RESULT_CSV));
     await userEvent.fill(
       page.getByLabelText("Your linkage terms"),
-      JSON.stringify(LOCAL_TERMS),
+      JSON.stringify(LOCAL_CONFIG),
     );
     await userEvent.click(
       page.getByRole("button", { name: "Load these terms" }).first(),

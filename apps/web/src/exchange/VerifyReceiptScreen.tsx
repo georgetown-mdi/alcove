@@ -797,14 +797,14 @@ export function VerifyReceiptScreen() {
             <TermsInput
               key={`local-terms-${exchangeGeneration}`}
               label="Your linkage terms"
-              description="Paste your exchange config or exported linkage-terms document. Its linkage_terms are read, and a config's metadata block names the payload columns you sent where payload.send is unset; with no metadata block, those are read from your input CSV's header."
+              description="Paste your exchange config or exported linkage-terms document. Its linkage_terms are read, and a config's metadata block names the payload columns you sent, as your exchange stated them; with no metadata block, those are read from your input CSV's header."
               terms={localTerms}
               onTerms={onLocalTerms}
             />
             <TermsInput
               key={`partner-terms-${exchangeGeneration}`}
               label="Your partner's linkage terms"
-              description="Paste your partner's config or exported terms, read the same way, except that an unset payload.send is taken from their metadata block alone. A loaded receipt holds them already; what you paste here is used in its place."
+              description="Paste your partner's config or exported terms, read the same way, except that their payload columns come from their metadata block alone; without one, a stated payload.send is taken as written. A loaded receipt holds them already; what you paste here is used in its place."
               terms={partnerTerms}
               onTerms={onPartnerTerms}
             />
