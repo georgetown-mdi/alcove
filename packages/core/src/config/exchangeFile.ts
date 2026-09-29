@@ -5,7 +5,6 @@ import type { ExchangeSpec } from "./exchangeSpec.js";
 import type { ConnectionConfig, FileSyncOptions } from "./connection.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 import type { Metadata, OwnColumnSelection } from "./metadata.js";
-import type { OutboundPayloadConsent } from "./outboundPayloadConsent.js";
 import type { SigningConfig } from "./signing.js";
 import type { Standardization } from "./standardizationSchema.js";
 import { snakeizeKeys } from "../utils/camelizeKeys.js";
@@ -127,21 +126,11 @@ export interface ExchangeFileInput {
   metadata?: Metadata;
   standardization?: Standardization;
   /**
-   * This party's SEND-side disclosure commitment (its own column namespace) --
-   * the top-level `disclosed_payload_columns` a later recurring `alcove
-   * exchange` verifies its metadata still discloses. Optional; omit to reconcile
-   * lazily.
-   */
-  disclosedPayloadColumns?: string[];
-  /**
    * This party's RECEIVE-side commitment (the partner's column namespace) -- the
    * top-level `expected_payload_columns` a later `alcove exchange` enforces it
    * receives. Optional; omit to reconcile lazily.
    */
   expectedPayloadColumns?: string[];
-  /** See {@link ExchangeSpecAssembly.outboundPayloadConsent} -- held verbatim
-   * through {@link mintExchangeFile} on the same caller's-obligation terms. */
-  outboundPayloadConsent?: OutboundPayloadConsent;
   /**
    * The `deduplicate` an accepted invitation declared for the PARTNER's own side
    * -- the top-level `expected_partner_deduplicate` a later `alcove exchange`
@@ -173,22 +162,8 @@ interface ExchangeSpecAssembly {
   linkageTerms: LinkageTerms;
   metadata?: Metadata;
   standardization?: Standardization;
-  /** See {@link ExchangeFileInput.disclosedPayloadColumns}. */
-  disclosedPayloadColumns?: string[];
   /** See {@link ExchangeFileInput.expectedPayloadColumns}. */
   expectedPayloadColumns?: string[];
-  /**
-   * This party's consent to its OWN outbound payload set -- the record a
-   * later run is held to before any credential, terms, or data are sent
-   * (`assertOutboundPayloadConsented`). Absent for every party that is not
-   * an acceptor, whose own set is authored at mint.
-   *
-   * Held verbatim: the assembler neither derives nor checks this
-   * record against the `metadata` assembled beside it. Naming the set the
-   * operator was shown is the CALLER's obligation, via
-   * `deriveOutboundPayloadConsent` from that same metadata.
-   */
-  outboundPayloadConsent?: OutboundPayloadConsent;
   /** See {@link ExchangeFileInput.expectedPartnerDeduplicate}. */
   expectedPartnerDeduplicate?: boolean;
   /**
@@ -262,14 +237,8 @@ export function assembleExchangeSpec(
     ...(input.standardization !== undefined
       ? { standardization: input.standardization }
       : {}),
-    ...(input.disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns: input.disclosedPayloadColumns }
-      : {}),
     ...(input.expectedPayloadColumns !== undefined
       ? { expectedPayloadColumns: input.expectedPayloadColumns }
-      : {}),
-    ...(input.outboundPayloadConsent !== undefined
-      ? { outboundPayloadConsent: input.outboundPayloadConsent }
       : {}),
     ...(input.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: input.expectedPartnerDeduplicate }

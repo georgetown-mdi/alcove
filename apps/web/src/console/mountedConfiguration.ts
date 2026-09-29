@@ -2,10 +2,6 @@ import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   isJobChannel,
 } from "@jobs/intentSchemas";
-import {
-  assessOutboundPayloadConsent,
-  deriveOutboundPayloadConsent,
-} from "@alcove/core";
 
 import {
   HELD_TERMS_SETTINGS,
@@ -18,15 +14,7 @@ import type {
   MountedConfigurationAnswer,
 } from "@psi/jobClient/mountedConfigClient";
 import type { JobChannel, JobConfigurationHandBack } from "@jobs/intentSchemas";
-import type {
-  LoadedAuthoringState,
-  LoadedEnforcementRecords,
-} from "./loadedConfig";
-import type {
-  Metadata,
-  OutboundPayloadConsentConfirmationRequired,
-  Output,
-} from "@alcove/core";
+import type { LoadedAuthoringState } from "./loadedConfig";
 import type { ReceiptsSigningMode } from "@psi/receiptsModel";
 
 /**
@@ -40,7 +28,7 @@ import type { ReceiptsSigningMode } from "@psi/receiptsModel";
  * can be a credential, which is why the server names rather than sends the two
  * lists ({@link ../jobs/configLoad}), and nothing here reverses that.
  *
- * The four records whose absence turns an enforcement off have no control on
+ * The two records whose absence turns an enforcement off have no control on
  * the invitation-authoring path this offer sits in. A document stating one is
  * opened with its value held: the record rides the authoring state into the
  * intent the run submits, so the configuration composed for that run states it
@@ -79,12 +67,7 @@ export type MountedConfigurationState =
    * has nothing to run it over, so the transport stays where the review step
    * had it; `notApplied` names the settings the operator's own input file could
    * not supply and `notCovered` the settings whose own column set does not
-   * reach every column that file has, both settled once the held terms reach it;
-   * `pendingOutboundConsent` is the consent record the file states as pending,
-   * which no run that shares results with the partner gets past until the
-   * operator confirms the columns on the review step
-   * ({@link outboundConsentView}); it stays set once they do, since the file
-   * still states it.
+   * reach every column that file has, both settled once the held terms reach it.
    * `notConducted` is the file's channel where the console conducts no
    * exchange over it at all, derived once at the read: it withholds the run
    * and replaces every notice about the run with the one naming the channel.
@@ -104,7 +87,6 @@ export type MountedConfigurationState =
       transportUnavailable?: UnofferedChannel;
       notApplied?: Array<string>;
       notCovered?: Array<string>;
-      pendingOutboundConsent?: boolean;
     }
   /** The console refused the file, in the words the read answered with. */
   | { status: "refused"; error: string };
@@ -481,8 +463,6 @@ const RECORDS_WITH_NO_CONTROL: ReadonlyArray<
 > = [
   ["expectedPayloadColumns", "expected_payload_columns"],
   ["expectedPartnerDeduplicate", "expected_partner_deduplicate"],
-  ["disclosedPayloadColumns", "disclosed_payload_columns"],
-  ["outboundPayloadConsent", "outbound_payload_consent"],
 ];
 
 /** What the operator is told about a configuration whose channel this console
@@ -504,20 +484,13 @@ function nameList(fields: ReadonlyArray<string>): string {
 /**
  * The records a loaded document states that this flow has no control for, named
  * as the file spells them, for the carry-through notice. Each is composed back
- * into the run's own configuration all the same. A pending consent record on a
- * channel the console conducts is not among them: the review step confirms it
- * ({@link outboundConsentView}).
+ * into the run's own configuration all the same.
  */
 export function recordsWithNoControl(
   loaded: LoadedAuthoringState,
 ): Array<string> {
-  const consentConfirmedHere =
-    loaded.records.outboundPayloadConsent?.status === "pending" &&
-    isJobChannel(loaded.channel);
   return RECORDS_WITH_NO_CONTROL.filter(
-    ([key]) =>
-      loaded.records[key] !== undefined &&
-      !(key === "outboundPayloadConsent" && consentConfirmedHere),
+    ([key]) => loaded.records[key] !== undefined,
   ).map(([, field]) => field);
 }
 
@@ -661,308 +634,14 @@ export function columnsNotCoveredNotice(
   );
 }
 
-/**
- * What the operator is told about a consent record the loaded configuration
- * states as pending: core refuses every run that shares results with the
- * partner until the record names a confirmed set, and the review step is where
- * that confirmation is given ({@link outboundConsentView}). Names the setting
- * only, as the notices beside it do.
- */
-export const PENDING_OUTBOUND_CONSENT_WARNING =
-  "This configuration's outbound_payload_consent is pending, so a run that " +
-  "shares results with your partner is refused until you confirm the columns " +
-  "it sends. Choose your input file, then confirm them on the review step.";
-
-/** The title of the review step's confirmation of the columns this party
- * sends ({@link outboundConsentView}). */
-export const OUTBOUND_CONSENT_TITLE = "Confirm the columns you send";
-
-/** The title the confirmation takes once the columns are confirmed. */
-export const OUTBOUND_CONSENT_CONFIRMED_TITLE = "Columns you send confirmed";
-
-/** The label of the control that confirms the columns. */
-export const CONFIRM_OUTBOUND_COLUMNS_LABEL = "Confirm these columns";
-
-/** The label of the control that returns to the columns step instead. */
-export const CHANGE_OUTBOUND_COLUMNS_LABEL = "Change the columns";
-
-/** The label above the columns the run sends. */
-export const OUTBOUND_COLUMNS_LABEL = "Columns you will send";
-
-/** What the list says where the run sends no column at all. */
-export const NO_OUTBOUND_COLUMNS =
-  "None: your partner learns only which records matched.";
-
-/** The label above the columns a changed set adds. */
-export const OUTBOUND_COLUMNS_ADDED_LABEL = "Not confirmed before";
-
-/** The label above the confirmed columns a changed set drops. */
-export const OUTBOUND_COLUMNS_REMOVED_LABEL =
-  "Confirmed before, no longer sent";
-
-/** What the confirmation says ahead of the columns, for each way it comes to be
- * asked for: the file's record is still pending, or the columns changed after
- * the operator confirmed them here. */
-const OUTBOUND_CONSENT_REASONS: Record<
-  OutboundPayloadConsentConfirmationRequired["reason"],
-  string
-> = {
-  unconfirmed:
-    "Your alcove.yaml has not confirmed which of your columns this exchange " +
-    "sends to your partner for matched records: its outbound_payload_consent " +
-    "is pending. Your input file decides the columns, and a run that shares " +
-    "results with your partner is refused until you confirm them.",
-  changed:
-    "The columns this exchange would send are not the ones you confirmed, so " +
-    "a run that shares results with your partner is refused until you " +
-    "confirm them again.",
-};
-
-/** What confirming does, stated beside the control. */
-const OUTBOUND_CONSENT_EFFECT =
-  "Confirming records these columns in outbound_payload_consent for this run " +
-  `and in ${SCHEDULED_CONFIGURATION}, so each run sends exactly these ` +
-  "columns and sends no other set without asking you again. The alcove.yaml " +
-  "in your folder is not changed. To send different columns, change them on " +
-  "the columns step.";
-
-/** What the confirmation says once the columns are confirmed. */
-const OUTBOUND_CONSENT_CONFIRMED =
-  "This run sends exactly the columns you confirmed, and " +
-  `${SCHEDULED_CONFIGURATION} states them in outbound_payload_consent. The ` +
-  "alcove.yaml in your folder still states it as pending.";
-
-/**
- * What the review step shows for the open configuration's consent record: the
- * columns to confirm, with why and what confirming does, or the statement that
- * they are confirmed.
- */
-export type OutboundConsentView =
-  | {
-      kind: "confirm";
-      /** Core's verdict: the columns this run sends and, against a set
-       * confirmed here, what changed. */
-      verdict: OutboundPayloadConsentConfirmationRequired;
-      reason: string;
-      effect: string;
-    }
-  | { kind: "confirmed"; statement: string };
-
-/**
- * The {@link OutboundConsentView} for the open configuration, over the records
- * the run states and the draft's own metadata and output. The columns are core's
- * verdict ({@link assessOutboundPayloadConsent}) over the metadata the run
- * transmits from, so what is shown is the set core holds the run to.
- *
- * Undefined where there is nothing to confirm here: nothing is open, the
- * console does not conduct the file's channel, the file states no pending
- * record, or the partner takes no results and so is sent nothing.
- */
-export function outboundConsentView(
-  state: MountedConfigurationState,
-  records: LoadedEnforcementRecords,
-  metadata: Metadata,
-  output: Output,
-): OutboundConsentView | undefined {
-  if (
-    state.status !== "opened" ||
-    state.notConducted !== undefined ||
-    state.pendingOutboundConsent !== true
-  )
-    return undefined;
-  const verdict = assessOutboundPayloadConsent(
-    records.outboundPayloadConsent,
-    metadata,
-    output,
-  );
-  switch (verdict.status) {
-    case "not-required":
-      return undefined;
-    case "current":
-      return { kind: "confirmed", statement: OUTBOUND_CONSENT_CONFIRMED };
-    case "confirmation-required":
-      return {
-        kind: "confirm",
-        verdict,
-        reason: OUTBOUND_CONSENT_REASONS[verdict.reason],
-        effect: OUTBOUND_CONSENT_EFFECT,
-      };
-  }
-}
-
-/**
- * Why the review step withholds its create while {@link outboundConsentView}
- * asks for a confirmation, undefined otherwise: core refuses the run until the
- * columns are confirmed, and creating seals the draft the confirmation is given
- * over.
- */
-export function outboundConsentWithheldReason(
-  view: OutboundConsentView | undefined,
-): string | undefined {
-  if (view?.kind !== "confirm") return undefined;
-  return (
-    `Choose "${CONFIRM_OUTBOUND_COLUMNS_LABEL}" under ` +
-    `"${OUTBOUND_CONSENT_TITLE}" above to continue.`
-  );
-}
-
-/**
- * The records with the operator's confirmation of `shown`, the columns the
- * confirmation listed, written into `outboundPayloadConsent` by core's writer
- * ({@link deriveOutboundPayloadConsent}), the record the command line's
- * confirmation writes. Unchanged where {@link outboundConsentView} offers no
- * confirmation, or where the columns the run would send are no longer the ones
- * shown, so a set the operator did not see is never recorded. The comparison is
- * by membership, as core's own is.
- */
-export function withOutboundConsentConfirmed(
-  state: MountedConfigurationState,
-  records: LoadedEnforcementRecords,
-  metadata: Metadata,
-  output: Output,
-  shown: ReadonlyArray<string>,
-): LoadedEnforcementRecords {
-  const view = outboundConsentView(state, records, metadata, output);
-  if (
-    view?.kind !== "confirm" ||
-    !sameColumnSet(shown, new Set(view.verdict.columns))
-  )
-    return records;
-  const consent = deriveOutboundPayloadConsent(output, metadata);
-  if (consent === undefined) return records;
-  return { ...records, outboundPayloadConsent: consent };
-}
-
-/**
- * What the operator is told when the columns this run would send to the partner
- * are not the columns a commitment the file states holds: core enforces the
- * commitment against the run's own disclosed set when the run starts, so the
- * refusal is already decided and is met here rather than as a failed run.
- * `conductedHere` false is a configuration the console only saves back, whose
- * refusal is met by the command-line run of the saved file instead.
- */
-export function divergedCommitmentWarning(
-  fields: ReadonlyArray<string>,
-  conductedHere = true,
-): string | undefined {
-  if (fields.length === 0) return undefined;
-  const one = fields.length === 1;
-  const refusal = conductedHere
-    ? ", so a run started here is refused. Change the columns on the next " +
-      "step to match " +
-      (one ? "it" : "them") +
-      ", or close this configuration."
-    : ", so Alcove on the command line refuses to run the file you save " +
-      "here. Change the columns on the next step to match " +
-      (one ? "it" : "them") +
-      ", or invite your partner again so a new invitation states these columns.";
-  return (
-    "The columns this exchange would send to your partner are not the " +
-    "columns this configuration's " +
-    nameList(fields) +
-    (one ? " states" : " state") +
-    refusal
-  );
-}
-
-/** The diverged-commitment warning for the configuration open in `state`, in
- * the variant for whether the console conducts it. The divergence is a
- * property of the document the steps hold, so it is derived on every channel:
- * a save hands the file's commitments back unchanged beside the edited
- * columns. */
-export function divergedCommitmentNotice(
-  state: MountedConfigurationState,
-  run: RunDisclosure | undefined,
-): string | undefined {
-  return divergedCommitmentWarning(
-    divergedCommitments(state, run),
-    state.status !== "opened" || state.notConducted === undefined,
-  );
-}
-
-/** What the run the console holds would disclose, and the commitments it keeps
- * from the file it was opened from: the pair {@link divergedCommitments}
- * compares. Absent until an input file is read, where no disclosed set is
- * settled yet. */
+/** What the run the console holds states, read by the notices beside an opened
+ * configuration. Absent until an input file is read. */
 export interface RunDisclosure {
-  /** The columns the draft this screen holds sends to the partner,
-   * `disclosedColumnNames` over its own metadata -- the set core compares the
-   * commitment against. */
-  disclosedColumns: ReadonlyArray<string>;
-  /** Whether the partner is entitled to the matched results, the draft's own
-   * `output.shareWithPartner`. Core's consent gate
-   * (`assessOutboundPayloadConsent`) reports not-required where it is false,
-   * since the run sends nothing at all. */
-  sharesWithPartner: boolean;
-  records: LoadedEnforcementRecords;
   /** The terms settings with no control that the terms this draft builds
    * state (`termsSettingsStatedBy`), once the open configuration's terms have
    * reached the input file. Absent before then, where the load's own list is
    * named, since the terms hold each setting once they reach it. */
   termsSettingsStated?: ReadonlyArray<string>;
-}
-
-/** The commitments a loaded document can state about the columns this party
- * discloses, named as the file spells them, each beside the column set it holds
- * for the run in hand. A `pending` consent record confirms no set, so it has
- * none to compare, and a run the partner takes no results from is past core's
- * consent gate whatever the record states. The commitment on
- * `disclosed_payload_columns` has no such gate: core holds it in either
- * direction. */
-const DISCLOSURE_COMMITMENTS: ReadonlyArray<{
-  field: string;
-  columnsOf: (
-    run: RunDisclosure,
-    confirmedHere: boolean,
-  ) => ReadonlyArray<string> | undefined;
-}> = [
-  {
-    field: "disclosed_payload_columns",
-    columnsOf: (run) => run.records.disclosedPayloadColumns,
-  },
-  {
-    field: "outbound_payload_consent",
-    columnsOf: (run, confirmedHere) =>
-      !confirmedHere &&
-      run.sharesWithPartner &&
-      run.records.outboundPayloadConsent?.status === "confirmed"
-        ? run.records.outboundPayloadConsent.columns
-        : undefined,
-  },
-];
-
-/** Whether a commitment holds exactly the columns the run discloses, the
- * membership comparison core's own enforcement makes
- * (`assertDisclosureMatchesCommitment`, `assertOutboundPayloadConsented`):
- * neither a column dropped from the set nor one added to it matches. */
-function sameColumnSet(
-  committed: ReadonlyArray<string>,
-  disclosed: ReadonlySet<string>,
-): boolean {
-  const committedSet = new Set(committed);
-  return (
-    committedSet.size === disclosed.size &&
-    [...committedSet].every((name) => disclosed.has(name))
-  );
-}
-
-/** The disclosure commitments an opened configuration states that the run's own
- * disclosed set no longer matches, named as the file spells them. Empty where
- * every commitment holds exactly what the run would send, which is what core
- * lets through. A consent the file left pending is not among them once the
- * operator confirms it on the review step, which asks again where the columns
- * change ({@link outboundConsentView}). */
-export function divergedCommitments(
-  state: MountedConfigurationState,
-  run: RunDisclosure | undefined,
-): Array<string> {
-  if (state.status !== "opened" || run === undefined) return [];
-  const disclosed = new Set(run.disclosedColumns);
-  const confirmedHere = state.pendingOutboundConsent === true;
-  return DISCLOSURE_COMMITMENTS.filter((commitment) => {
-    const columns = commitment.columnsOf(run, confirmedHere);
-    return columns !== undefined && !sameColumnSet(columns, disclosed);
-  }).map((commitment) => commitment.field);
 }
 
 /**
@@ -983,13 +662,11 @@ export function mountedConfigurationOfferable(
 /** The whole of what an opened configuration puts beside the control, in the
  * order it renders: what this console cannot run at all, then the carry-through
  * notice, since it is about the run itself, then the credential the operator
- * has to supply, then what their input file could not supply, then a consent
- * record the file states as pending, and last a commitment the run's own
- * disclosed set no longer matches. `run` is what that last one is read from,
- * absent until a file is read. A configuration the console does not conduct
- * puts the notice naming its channel in place of every one about a run here,
- * and keeps the two about what the steps below hold and the diverged
- * commitment, which the command-line run of the saved file meets. */
+ * has to supply, and last what their input file could not supply. `run` is what
+ * the carry-through notice is narrowed by, absent until a file is read. A
+ * configuration the console does not conduct puts the notice naming its channel
+ * in place of every one about a run here, and keeps the two about what the
+ * steps below hold. */
 export function mountedConfigurationNotices(
   state: MountedConfigurationState,
   run?: RunDisclosure,
@@ -1000,7 +677,6 @@ export function mountedConfigurationNotices(
       channelNotConductedNotice(state.notConducted),
       termsNotAppliedNotice(state.notApplied ?? []),
       columnsNotCoveredNotice(state.notCovered ?? []),
-      divergedCommitmentNotice(state, run),
     ].filter((notice): notice is string => notice !== undefined);
   return [
     state.transportUnavailable === undefined
@@ -1010,11 +686,6 @@ export function mountedConfigurationNotices(
     credentialWarningNotice(state.warnings),
     termsNotAppliedNotice(state.notApplied ?? []),
     columnsNotCoveredNotice(state.notCovered ?? []),
-    state.pendingOutboundConsent === true &&
-    run?.records.outboundPayloadConsent?.status !== "confirmed"
-      ? PENDING_OUTBOUND_CONSENT_WARNING
-      : undefined,
-    divergedCommitmentNotice(state, run),
   ].filter((notice): notice is string => notice !== undefined);
 }
 
@@ -1088,9 +759,6 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
           ...(isJobChannel(loaded.channel)
             ? {}
             : { notConducted: loaded.channel }),
-          ...(loaded.records.outboundPayloadConsent?.status === "pending"
-            ? { pendingOutboundConsent: true }
-            : {}),
         },
         loaded,
       };

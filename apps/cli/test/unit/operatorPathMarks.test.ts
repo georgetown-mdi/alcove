@@ -3,38 +3,19 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import YAML from "yaml";
 import { getLogger, operatorSuppliedSpans } from "@alcove/core";
 import type {
   DualSignedRecord,
-  ExchangeDataSpec,
   ExchangeRecord,
-  LinkageTerms,
-  Metadata,
   VerificationKeys,
 } from "@alcove/core";
 
-// The prompt is mocked so the confirmation cases drive the answer rather than a
-// terminal; util/prompt's own tests cover promptConfirm, and the sink under test
-// here is the line the confirmation writes after it, not the question.
-vi.mock("../../src/util/prompt", async () => {
-  const actual = await vi.importActual<typeof import("../../src/util/prompt")>(
-    "../../src/util/prompt",
-  );
-  return { ...actual, promptConfirm: vi.fn() };
-});
-
 import { logOnlineBootstrapOutcome } from "../../src/onlineBootstrap";
-import { confirmOutboundPayloadConsent } from "../../src/outboundPayloadConsent";
 import { writeDualSignedRecord } from "../../src/receiptFile";
 import { writeExchangeRecord } from "../../src/recordFile";
 import { openInputSource } from "../../src/util/dataIo";
-import { promptConfirm } from "../../src/util/prompt";
-import { captureStdio } from "../loggingTestSupport";
-import { ttyStream, withStdin } from "../stdinStream";
 
-// Every message the record and receipt writers, the outbound-payload
-// confirmation, the online-bootstrap summary and the CSV input reader compose
+// Every message the record and receipt writers, the online-bootstrap summary and the CSV input reader compose
 // about the OPERATOR's own path marks that path, so the display sink shows it
 // as they typed it instead of escaping every separator and handing back a path
 // they cannot copy into a command
@@ -56,7 +37,6 @@ let dir: string;
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-operator-path-"));
-  vi.mocked(promptConfirm).mockReset();
 });
 
 afterEach(() => {
@@ -230,90 +210,9 @@ const DUAL_SIGNED_RECORD: DualSignedRecord = {
   },
 };
 
-// --- the outbound-payload confirmation ---------------------------------------
-
-const ACCEPTOR_TERMS: LinkageTerms = {
-  version: "1.0.0",
-  identity: "Acceptor",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  output: { expectsOutput: true, shareWithPartner: true },
-  deduplicate: false,
-  linkageFields: [{ name: "first_name", type: "first_name" }],
-  linkageKeys: [{ name: "FN", elements: [{ field: "first_name" }] }],
-};
-
-const DISCLOSING_METADATA: Metadata = [
-  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
-  { name: "diagnosis", type: "other", role: "payload", isPayload: true },
-];
-
-/** A config on disk the confirmation can record its answer in. */
-function writePendingConfig(configPath: string): void {
-  fs.writeFileSync(
-    configPath,
-    YAML.stringify({
-      connection: { channel: "filedrop", path: "/mnt/share" },
-      linkage_terms: {
-        version: "1.0.0",
-        identity: "Acceptor",
-        date: "2026-01-01",
-        algorithm: "psi",
-        output: { expects_output: true, share_with_partner: true },
-        deduplicate: false,
-        linkage_fields: [{ name: "first_name", type: "first_name" }],
-        linkage_keys: [{ name: "FN", elements: [{ field: "first_name" }] }],
-      },
-      outbound_payload_consent: { status: "pending" },
-    }),
-  );
-}
-
-/** Answer the confirmation with a yes, over a terminal stdin. */
-async function confirmYes(
-  configPath: string,
-  log: ReturnType<typeof getLogger>,
-): Promise<void> {
-  const spec: ExchangeDataSpec = {
-    linkageTerms: ACCEPTOR_TERMS,
-    outboundPayloadConsent: { status: "pending" },
-  };
-  vi.mocked(promptConfirm).mockResolvedValue(true);
-  const stdio = captureStdio();
-  try {
-    await withStdin(ttyStream(), () =>
-      confirmOutboundPayloadConsent({
-        spec,
-        metadata: DISCLOSING_METADATA,
-        output: ACCEPTOR_TERMS.output,
-        configPath,
-        logFile: undefined,
-        log,
-      }),
-    );
-  } finally {
-    stdio.restore();
-  }
-}
-
 // --- refusals ----------------------------------------------------------------
 
 const REFUSALS: readonly SinkCase<RefusalOutcome>[] = [
-  {
-    name: "outbound consent: a confirmation that could not be recorded",
-    says: ["could not be recorded in"],
-    drive: async () => {
-      // No file at the path, so the surgical one-field write fails where the
-      // answer has already been given and nothing has been sent.
-      const filePath = backslashedPath("alcove.yaml");
-      const { log } = stubLog();
-      return {
-        filePath,
-        thrown: await raised(() => confirmYes(filePath, log)),
-      };
-    },
-  },
   {
     name: "input CSV: a positional naming a file that is not there",
     says: ["does not exist"],
@@ -398,17 +297,6 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
         "2026-01-01T00:00:00Z",
         "receipt-marks",
       );
-      return { filePaths: [filePath], lines };
-    },
-  },
-  {
-    name: "outbound consent: the confirmation it recorded",
-    says: ["recorded your confirmation in"],
-    drive: async () => {
-      const filePath = backslashedPath("alcove.yaml");
-      writePendingConfig(filePath);
-      const { log, lines } = stubLog();
-      await confirmYes(filePath, log);
       return { filePaths: [filePath], lines };
     },
   },

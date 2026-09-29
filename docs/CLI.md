@@ -292,7 +292,7 @@ An acceptance that takes its exchange directories from the invitation's endpoint
   - the invitation gives the inviting party no result, in which case the payload step transmits nothing at all and no column set is listed -- your input file cannot change that answer; or
   - the algorithm is `psi-c`, which moves no payload in either direction whoever receives the count, and the line names the algorithm as the reason.
 
-  Where columns are listed they are derived from your own input through the same rule that decides what Alcove transmits, so no column outside that list is sent. The list is also what acceptance records as your consent to it (see [Confirming what you send](#confirming-what-you-send)), so the bound holds over later runs and not only over the configuration this acceptance writes: a run that resolves a different set -- including one on a configuration that already existed, whose stored metadata nothing here compares against this input -- shows it and asks again rather than send it. Where the set is not yet known -- an offline acceptance given no input file -- the line says so and names what determines it: your input file, read when the exchange runs, which shows the columns and asks you to confirm them there instead. An online acceptance always lists the set, since it prepares the exchange it is about to run and reads the list off that.
+  Where columns are listed they are derived from your own input through the same rule that decides what Alcove transmits, so no column outside that list is sent. Every run states the columns it sends in its terms, so a later run whose input sends a different set -- including one on a configuration that already existed, whose stored metadata nothing here compares against this input -- reaches your partner as a [change to your terms](#when-your-partners-terms-change) before any data moves. Where the set is not yet known -- an offline acceptance given no input file -- the line says so and names what determines it: your input file, read when the exchange runs, which [shows the columns](#what-the-run-shows-before-it-starts) before it sends anything. An online acceptance always lists the set, since it prepares the exchange it is about to run and reads the list off that.
 - **`inviting party`** (`your partner's word`) -- the name your partner chose for their own terms. Alcove has not verified it, and supplies none where they gave none: an invitation whose terms hold no identity displays as `(no name given)` rather than as a blank.
 - **`PSI algorithm`** (`enforced`) -- `psi` reveals the shared identifiers of matched records to whoever receives the result; `psi-c` reveals only their count. Both parties must end up on the same algorithm. A `psi-c` invitation has the count-only lines below it, immediately beneath the algorithm they qualify.
 - **`what a count-only exchange still discloses`** (`enforced`) -- shown for a `psi-c` invitation. A count-only run hands neither party a matched pairing, but each round still has one encrypted element per value a party contributed, and the terms exchange already holds each party's raw row count. Neither figure is the intersection, and the count-only mode hides neither.
@@ -505,7 +505,7 @@ Once a partnership is set up with `alcove invite` and `alcove accept`, either pa
 Before the update is printed, the command:
 
 - runs the checks an [offline invitation](#offline-invitation) made from the same configuration runs, so it refuses terms your own next exchange would refuse
-- records the columns you disclose in `disclosed_payload_columns`, as an offline invitation does, and removes an `outbound_payload_consent` left from an earlier acceptance
+- writes the columns your `metadata` discloses into `linkage_terms.payload.send` where your configuration leaves it unset, as an offline invitation does, so the update states the columns you send
 
 It refuses (exit 64) when there is no configuration or key file at the paths, when the configuration has no `linkage_terms.identity`, or when the shared secret in the key file has expired. An expired secret cannot authenticate an update; re-establish the partnership as in [Out-of-sync tokens](#out-of-sync-tokens) instead.
 
@@ -534,8 +534,6 @@ Confirming rewrites the configuration in one write. It replaces `linkage_terms` 
 
 - `expected_payload_columns`: the columns the update says your partner discloses
 - `expected_partner_deduplicate`: the `deduplicate` it states for your partner's side
-- `outbound_payload_consent`: your consent to the columns you send, shown above, or a pending record where your configuration has no `metadata` block to state them
-- `disclosed_payload_columns`: where one is recorded, restated from your `metadata`, or removed where your configuration has none
 
 The connection block and every other key keep their values and order, every line the update does not change is kept as written except as [Configuration](#configuration) states, and the key file is not touched. Your next `alcove exchange` runs on the new terms.
 
@@ -559,7 +557,7 @@ Before any credential, terms, or data are sent, the `INPUT_FILE`'s columns are c
 
 ### What the run shows before it starts
 
-An exchange whose terms you settled for yourself prints what it will disclose before any credential, terms, or data are sent. Two runs do: one you authored -- your own configuration and your partner's, settled between you out of band rather than through an invitation -- and a [zero-setup exchange](#zero-setup-exchange), whose terms are inferred from the input file you point it at. Both print the same lines:
+An exchange prints what it will disclose before any credential, terms, or data are sent. Two runs do: [`alcove exchange`](#recurring-exchange), whichever command wrote its configuration, and a [zero-setup exchange](#zero-setup-exchange), whose terms are inferred from the input file you point it at. Both print the same lines:
 
 - the columns you send your partner for matched records, resolved from your input file exactly as the exchange transmits them;
 - which of you receives the result;
@@ -575,23 +573,11 @@ Where your own terms leave neither party expecting a result, the display says so
 
 On a zero-setup run the display is the only statement of these facts you get, because nothing was written down for you to read: the terms and the transmitted columns are inferred from your input file as the run starts, and a column Alcove recognizes as neither a linkage nor an identifier column is sent to your partner for matched records. Check the list against what you meant to send. A column that should not be there is removed from the input file, or kept out of the transmitted set by authoring a configuration ([`alcove init`](#initialization)) and running [`alcove exchange`](#recurring-exchange) against it instead.
 
-An exchange you accepted an invitation for prints none of this once acceptance has recorded the columns you send: accepting showed you the same facts, and [Confirming what you send](#confirming-what-you-send) below shows the columns again on any run whose set is not the one you confirmed. An acceptance whose partner is entitled to no result records no columns, because none are sent to it; those runs print the display like any other.
-
-### Confirming what you send
-
-An exchange you accepted an invitation for has one fact no invitation determines: the columns *you* send to your partner for matched records. The invitation determines what you receive; what you send comes from your own input file and its metadata, which sends an `id` or `identifier` column by default and no column it does not declare. So acceptance records the set it showed you, and the exchange holds itself to that record:
-
-- **The set is the one you confirmed** -- the exchange runs, without asking again.
-- **The set is not the one you confirmed**, whether it gained a column or lost one -- the run stops before any credential, terms, or data are sent, prints the columns it would send and what changed, and asks you to confirm. A yes records the new set and the exchange proceeds; a no stops the run (exit 64) with nothing sent. A narrower set is asked about no less than a wider one: your partner's consent surface and the [exchange record](spec/EXCHANGE_RECORD.md) state the set you confirmed, so a run that sends a different one is sending a set neither party decided on.
-- **Acceptance never resolved the set** -- you accepted without naming an input file, or with one whose columns could not satisfy the linkage terms. The first run that can resolve it shows the columns and asks, exactly as above.
-
-Where there is no terminal to ask on -- an unattended or scheduled run, or one reading its CSV from standard input -- the run refuses instead (exit 64, before any credential, terms, or data are sent), naming the columns and how to confirm them: run it once from a terminal, or accept the invitation again naming your input file. That refusal is the point of the record. An exchange whose partner is entitled to no result is never asked about, because nothing is transmitted to it whatever your file holds; nor is an exchange you *invited* a partner to, whose outbound columns you authored yourself when you minted the invitation.
-
 ### When your partner's terms change
 
 A partner that changed its terms since your last exchange -- most often by adding or dropping a payload column in its input -- just runs. Your run meets the change at the terms exchange, before any linkage key or data moves, and shows it: the columns your partner now sends you or no longer sends you, the columns you send that its terms do not receive (its decision, shown for your information), and each other term that differs. A dropped column is decided exactly as an added one. What counts as a change, and which party decides which part of it: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#when-your-partners-terms-change).
 
-- **At a terminal**, the run asks whether to accept your partner's terms. Yes writes them into the configuration through the write [`alcove apply`](#applying-an-update) makes -- `linkage_terms` and the records that follow from them, except that `outbound_payload_consent` is left as it was, since the change is not to what you send, and so is `expected_partner_deduplicate` -- and the same run continues under them. No ends the run before any key moves (exit 64), and the configuration is not changed. Terms your configuration would not load under are refused before you are asked (exit 64), naming the setting they would make invalid.
+- **At a terminal**, the run asks whether to accept your partner's terms. Yes writes them into the configuration through the write [`alcove apply`](#applying-an-update) makes -- `linkage_terms` and the records that follow from them, except that `expected_partner_deduplicate` is left as it was -- and the same run continues under them. No ends the run before any key moves (exit 64), and the configuration is not changed. Terms your configuration would not load under are refused before you are asked (exit 64), naming the setting they would make invalid.
 - **Unattended** -- no terminal on stdin, or an `INPUT_FILE` of `-` -- the run refuses (exit 64) before any key or data moves. It writes your partner's terms beside the configuration as a terms update, `alcove.proposed-terms` beside `alcove.yaml` (named after the configuration file), and its error names the command that applies it:
 
   ```sh
@@ -861,9 +847,8 @@ Keep the scheduling host's clock synchronized. Expiry is evaluated against local
 
 ### What an unattended run refuses rather than asking
 
-A scheduled run has no terminal, and Alcove never reads that as consent: a question it cannot ask becomes a refusal (exit 64) that fails the job visibly, before any credential, terms, or data are sent. Settle both before the first scheduled run:
+A scheduled run has no terminal, and Alcove never reads that as consent: a question it cannot ask becomes a refusal (exit 64) that fails the job visibly, before any credential, terms, or data are sent. Settle this before the first scheduled run:
 
-- **The outbound columns.** A run whose outbound column set differs from the set recorded when the invitation was accepted refuses instead of asking, naming the columns and what changed (see [Confirming what you send](#confirming-what-you-send)). Run it once from a terminal, or accept the invitation again naming your input file.
 - **An unpinned SFTP host key.** First-use trust is established interactively, and a run with no terminal fails closed instead of trusting the presented key (see [SFTP host-key trust](#sftp-host-key-trust)). Pin `connection.server.host_key_fingerprint` before scheduling -- from a fingerprint verified out-of-band, read with [`alcove probe-host-key`](#reading-a-host-key-with-probe-host-key), or established by one interactive run.
 
 ### Runs that overlap, and runs that wait

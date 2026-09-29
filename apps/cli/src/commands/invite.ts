@@ -3,7 +3,7 @@ import type { Argv, Arguments } from "yargs";
 import {
   getLogger,
   encodeInvitation,
-  assertDisclosedNamesCarriable,
+  termsStatingDeclaredPayloadSend,
   CONNECTION_BLOCK_NOTICE,
   DEFAULT_PEER_TIMEOUT_MS,
   disclosedColumnNames,
@@ -30,6 +30,7 @@ import type {
   LinkageStrategy,
   LinkageTerms,
   Metadata,
+  Payload,
   PreparedExchange,
   ProvisionedServerAddress,
   SFTPConnectionConfig,
@@ -41,11 +42,10 @@ import {
   loadConfigLinkageSource,
   loadConfigProvisionedSFTPConnection,
   loadConfigWebRTCConnection,
-  persistOutboundPayloadConsent,
   persistProvisionedServerAddress,
+  persistStatedPayloadSend,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { writeTermsRecord } from "../acceptedTermsRecords";
 import { assertConfigTermsSendable } from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
@@ -478,19 +478,17 @@ type InviteReady =
     }
   | {
       // Offline sourcing terms from a pre-existing config: the config supplies
-      // the linkage terms (and its operator-authored content persists unchanged),
-      // so the key file is written and the machine-managed
-      // disclosed_payload_columns commitment is refreshed in place. When an input
+      // the linkage terms (and its operator-authored content persists unchanged
+      // but for an unset payload.send), so the key file is written. When an input
       // file was also supplied it has already been checked against the config's
       // linkage fields here.
       mode: "offlineFromConfig";
       configPath: string;
       linkageTerms: LinkageTerms;
-      // The disclosed set this re-invite published (this party's own namespace),
-      // persisted into the reused config so a later exchange can verify it still
-      // holds; undefined when the config declares no metadata (reconcile lazily,
-      // and any stale field is removed). See persistDisclosedPayloadColumns.
-      disclosedPayloadColumns?: string[];
+      // The payload.send this mint stated from the config's metadata where the
+      // config leaves it unset, written into the reused config so its later
+      // runs state what the partner mirrored. See persistStatedPayloadSend.
+      statedPayloadSend?: NonNullable<Payload["send"]>;
       // The address a create-mode server.provision endpoint returned, written
       // into the reused config's connection.server with the key file.
       provisionedAddress?: ProvisionedServerAddress;
@@ -749,32 +747,17 @@ export async function validateInvite(params: {
       builtDataSpec.metadata ??
       inferMetadata(rows.columns, rows.sanitizedColumnPositions);
 
-    // Fail closed, before the token is minted or any file is written, on a
-    // disclosed column whose name is too long to hold. This path infers its
-    // metadata from the input header (no schema), so the name would otherwise
-    // reach the token's own MAX_NAME_LENGTH bound inside encodeInvitation as a
-    // raw ZodError, not an operator-facing refusal naming the position. The same
-    // guard applies at exchange time in prepareForExchange. See
-    // assertDisclosedNamesCarriable.
-    assertDisclosedNamesCarriable(
-      disclosureMetadata,
-      builtDataSpec.linkageTerms.output,
-    );
-
-    // The columns this party will transmit for matched records, over that same
-    // metadata, so the declared set equals what preparePayload transmits.
-    // Included on the token and persisted into the saved config as
-    // disclosedPayloadColumns, so a later recurring `alcove exchange` verifies
-    // its current metadata still discloses exactly this set before any data is
-    // sent (assertDisclosureMatchesCommitment) -- the send-side commitment the
-    // online path would otherwise keep only on the discarded token.
-    const disclosedPayloadColumns = disclosedColumnsFor(disclosureMetadata);
+    // The terms and the saved config state the columns this party will
+    // transmit for matched records, over that same metadata, so the acceptor's
+    // mirrored payload.receive holds exactly what preparePayload transmits.
     const dataSpec: ResolvedDataSpec = {
       ...builtDataSpec,
-      ...(disclosedPayloadColumns !== undefined
-        ? { disclosedPayloadColumns }
-        : {}),
+      linkageTerms: termsStatingDeclaredPayloadSend(
+        builtDataSpec.linkageTerms,
+        disclosureMetadata,
+      ),
     };
+    const disclosedPayloadColumns = disclosedColumnsFor(disclosureMetadata);
 
     const expires = expiresFromNow(lifetimeSeconds);
     const sharedSecret = generateSharedSecret();
@@ -795,9 +778,8 @@ export async function validateInvite(params: {
         turn: "--turn",
         stun: "--stun",
       }),
-      // The same disclosed-columns subset persisted above: the acceptor's consent
-      // screen and runtime enforcement derive from the wire's own disclosure
-      // predicate.
+      // The acceptor's consent screen and runtime enforcement derive from the
+      // wire's own disclosure predicate.
       disclosedPayloadColumns,
       // Declare retain mode where this invite's own connection runs it, so the
       // acceptor is told before consenting that the exchange leaves a permanent
@@ -969,13 +951,14 @@ export async function validateInvite(params: {
     // partner never accepts an invitation the first run refuses or changes.
     assertConfigTermsSendable(configTerms, configSource);
 
-    // Include the disclosed-columns subset only when the config declares an
-    // explicit metadata block: without one the run infers metadata from the
-    // exchange input (which this offline invite never reads), so the transmitted
-    // set is unknown at mint and the acceptor reconciles lazily. The same value
-    // is persisted into the reused config's disclosed_payload_columns below, so a
-    // later recurring `alcove exchange` (and a re-invite) checks and refreshes
-    // the commitment; undefined here means the field is removed, never left stale.
+    // State the send set only when the config declares an explicit metadata
+    // block: without one the run infers metadata from the exchange input (which
+    // this offline invite never reads), so the transmitted set is unknown at
+    // mint and the acceptor fills its receive list at the first exchange.
+    const mintTerms =
+      configSource.metadata !== undefined
+        ? termsStatingDeclaredPayloadSend(configTerms, configSource.metadata)
+        : configTerms;
     const disclosedPayloadColumns = disclosedColumnsFor(configSource.metadata);
 
     // A webrtc config names the coordination server and relay this invitation's
@@ -1015,7 +998,7 @@ export async function validateInvite(params: {
     const sharedSecret = generateSharedSecret();
     const invitation = await encodeInvitation({
       version: "1",
-      linkageTerms: configTerms,
+      linkageTerms: mintTerms,
       sharedSecret,
       expires,
       disclosedPayloadColumns,
@@ -1031,8 +1014,10 @@ export async function validateInvite(params: {
     return {
       mode: "offlineFromConfig",
       configPath: options.configFile,
-      linkageTerms: configTerms,
-      disclosedPayloadColumns,
+      linkageTerms: mintTerms,
+      ...(mintTerms !== configTerms && mintTerms.payload?.send !== undefined
+        ? { statedPayloadSend: mintTerms.payload.send }
+        : {}),
       ...(provisionedAddress !== undefined ? { provisionedAddress } : {}),
       invitation,
       expires,
@@ -1071,29 +1056,17 @@ export async function validateInvite(params: {
     builtDataSpec.metadata ??
     inferMetadata(rows.columns, rows.sanitizedColumnPositions);
 
-  // Fail closed pre-mint on a disclosed column name too long to hold, for the
-  // reason the online path above does: this path's metadata comes from the input
-  // header too, so the refusal is the operator's own file's, named by position,
-  // rather than the raw ZodError of the token bound inside encodeInvitation --
-  // and it lands before the config and key file are written. See
-  // assertDisclosedNamesCarriable.
-  assertDisclosedNamesCarriable(
-    disclosureMetadata,
-    builtDataSpec.linkageTerms.output,
-  );
-
-  // The disclosed-columns subset over that metadata, so the acceptor's consent and
-  // commitment derive from what preparePayload will actually transmit. Included
-  // on the token and persisted into the written config as disclosedPayloadColumns,
-  // so a later recurring `alcove exchange` verifies its metadata still discloses
-  // exactly this set before any data is sent (assertDisclosureMatchesCommitment).
-  const disclosedPayloadColumns = disclosedColumnsFor(disclosureMetadata);
+  // The terms and the written config state the send set over that metadata,
+  // so the acceptor's mirrored payload.receive holds what preparePayload will
+  // actually transmit.
   const dataSpec: ResolvedDataSpec = {
     ...builtDataSpec,
-    ...(disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns }
-      : {}),
+    linkageTerms: termsStatingDeclaredPayloadSend(
+      builtDataSpec.linkageTerms,
+      disclosureMetadata,
+    ),
   };
+  const disclosedPayloadColumns = disclosedColumnsFor(disclosureMetadata);
 
   const expires = expiresFromNow(lifetimeSeconds);
   const sharedSecret = generateSharedSecret();
@@ -1259,21 +1232,12 @@ export async function handler(argv: Arguments): Promise<void> {
           {
             reuseExistingConfig: true,
             refreshReusedConfig: (keptConfigPath) => {
-              // Refresh the machine-managed send-side commitment in place
-              // (comments and operator content preserved), binding the write to
-              // this mint so it can never lag the token the acceptor commits
-              // to. A config with no metadata publishes no subset, so the field
-              // is removed rather than left stale. Before the token print, so a
-              // failure never follows disclosure.
-              writeTermsRecord(keptConfigPath, {
-                record: "disclosed_payload_columns",
-                columns: ready.disclosedPayloadColumns,
-              });
-              // This mint re-establishes the config as the inviting side, whose
-              // outbound set is the commitment itself, so an acceptor-era
-              // outbound-consent record would go stale against re-edited
-              // metadata; it is removed, a no-op where none exists.
-              persistOutboundPayloadConsent(keptConfigPath, undefined);
+              // Before the token print, so a failure never follows disclosure.
+              if (ready.statedPayloadSend !== undefined)
+                persistStatedPayloadSend(
+                  keptConfigPath,
+                  ready.statedPayloadSend,
+                );
               // The server this invitation names is the one later runs of
               // this config connect to.
               if (ready.provisionedAddress !== undefined)

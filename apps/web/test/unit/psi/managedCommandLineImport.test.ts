@@ -794,14 +794,12 @@ describe("import then export", () => {
           },
           { name: "program", type: "other", role: "payload", isPayload: true },
         ],
-        disclosedPayloadColumns: ["program"],
         expectedPayloadColumns: ["partner_program"],
         expectedPartnerDeduplicate: true,
       }),
     });
     const record = readManagedCommandLineConfiguration(exported);
 
-    expect(record.exchangeFile.disclosedPayloadColumns).toEqual(["program"]);
     expect(record.exchangeFile.expectedPayloadColumns).toEqual([
       "partner_program",
     ]);
@@ -813,7 +811,6 @@ describe("import then export", () => {
         "re-export",
       ),
     );
-    expect(reexported.disclosedPayloadColumns).toEqual(["program"]);
     expect(reexported.expectedPayloadColumns).toEqual(["partner_program"]);
     expect(reexported.expectedPartnerDeduplicate).toBe(true);
   });
@@ -832,10 +829,8 @@ describe("import, edit, and export on every channel", () => {
       },
       { name: "program", type: "other", role: "payload", isPayload: true },
     ],
-    disclosedPayloadColumns: ["program"],
     expectedPayloadColumns: ["partner_program"],
     expectedPartnerDeduplicate: true,
-    outboundPayloadConsent: { status: "confirmed", columns: ["program"] },
     includeOwnColumns: "all",
     csvDelimiter: ";",
     retentionDisposition: "Filed with the program office for seven years.",

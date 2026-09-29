@@ -17,7 +17,6 @@ export {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
-  OutboundDisclosureRefusalError,
   PeerAbortError,
   ProtocolRefusalError,
   RoundSetLimitError,
@@ -516,8 +515,6 @@ export type {
   Metadata,
   OwnColumnSelection,
 } from "./config/metadata";
-export { OutboundPayloadConsentSchema } from "./config/outboundPayloadConsent";
-export type { OutboundPayloadConsent } from "./config/outboundPayloadConsent";
 export { FINGERPRINT_REGEX, partnerPinIsPresent } from "./config/signing";
 export type { SigningConfig } from "./config/signing";
 export {
@@ -810,20 +807,14 @@ export type {
 export {
   assertDisclosedNamesCarriable,
   assertPayloadSendDisclosed,
-  assessOutboundPayloadConsent,
   buildOutputTable,
-  deriveOutboundPayloadConsent,
-  outboundPayloadConsentRefusal,
   preparePayload,
   reconcileReceivedPayload,
   termsStatingDeclaredPayloadSend,
   termsAsTheRunStatedThem,
   toCommittedPayload,
 } from "./payloadExchange";
-export type {
-  OutboundPayloadConsentConfirmationRequired,
-  PartnerPayload,
-} from "./payloadExchange";
+export type { PartnerPayload } from "./payloadExchange";
 export {
   authenticateConnection,
   assertSharedSecretReadyForHandshake,

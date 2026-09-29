@@ -8,7 +8,6 @@ import YAML from "yaml";
 import {
   decodeTermsUpdate,
   deriveAcceptedLinkageTerms,
-  deriveOutboundPayloadConsent,
   encodeTermsUpdate,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -65,9 +64,10 @@ function metadataWith(...sent: string[]): Metadata {
 }
 
 /**
- * An established partnership as `alcove invite` and `alcove accept` leave
- * it: Agency A's configuration discloses `notes`, Agency B's records that
- * commitment and discloses `program`, and both key files hold one secret.
+ * An established partnership: Agency A's metadata discloses `notes` and its
+ * terms leave `payload.send` unset, Agency B's configuration records the
+ * `notes` it receives and discloses `program`, and both key files hold one
+ * secret.
  */
 function establishPartnership(): Partnership {
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-terms-update-"));
@@ -81,18 +81,14 @@ function establishPartnership(): Partnership {
     connection: { channel: "filedrop", path: "/mnt/a" },
     linkageTerms: aTerms,
     metadata: metadataWith("notes"),
-    disclosedPayloadColumns: ["notes"],
   });
   const bTerms = deriveAcceptedLinkageTerms(aTerms, "Agency B");
-  const bMetadata = metadataWith("program");
-  const bOutbound = deriveOutboundPayloadConsent(bTerms.output, bMetadata);
   saveConfig(b.config, {
     connection: { channel: "filedrop", path: "/mnt/b" },
     linkageTerms: bTerms,
-    metadata: bMetadata,
+    metadata: metadataWith("program"),
     expectedPayloadColumns: ["notes"],
     expectedPartnerDeduplicate: false,
-    ...(bOutbound !== undefined ? { outboundPayloadConsent: bOutbound } : {}),
   });
   const secret = generateSharedSecret();
   saveKeyFile(a.key, { sharedSecret: secret });
@@ -189,14 +185,60 @@ describe("alcove update", () => {
     const printed = await runUpdate();
 
     const update = await decodeTermsUpdate(printed, partnership.secret);
-    expect(update.linkageTerms).toEqual(edited);
+    expect(update.linkageTerms).toEqual({
+      ...edited,
+      payload: { send: [{ name: "notes" }, { name: "county" }] },
+    });
     expect(update.disclosedPayloadColumns).toEqual(["notes", "county"]);
     expect(printed).not.toContain(partnership.secret);
-
-    const after = readSpec(partnership.a.config);
-    expect(after.disclosedPayloadColumns).toEqual(["notes", "county"]);
-    expect(after.outboundPayloadConsent).toBeUndefined();
     expect(fs.readFileSync(partnership.a.key, "utf8")).toBe(keyBefore);
+  });
+
+  test("writes the stated payload.send into a configuration that leaves it unset, keeping comments", async () => {
+    fs.writeFileSync(
+      partnership.a.config,
+      "# operator-authored note\n" +
+        fs.readFileSync(partnership.a.config, "utf8"),
+    );
+    const printed = await runUpdate();
+
+    const update = await decodeTermsUpdate(printed, partnership.secret);
+    expect(update.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
+    const raw = fs.readFileSync(partnership.a.config, "utf8");
+    expect(raw).toContain("# operator-authored note");
+    expect(readSpec(partnership.a.config).linkageTerms).toEqual(
+      update.linkageTerms,
+    );
+  });
+
+  test("leaves a configuration already stating the send set byte-identical", async () => {
+    saveConfig(partnership.a.config, {
+      ...readSpec(partnership.a.config),
+      linkageTerms: {
+        ...partnership.aTerms,
+        payload: { send: [{ name: "notes" }] },
+      },
+    });
+    const before = fs.readFileSync(partnership.a.config, "utf8");
+    const printed = await runUpdate();
+
+    const update = await decodeTermsUpdate(printed, partnership.secret);
+    expect(update.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
+    expect(fs.readFileSync(partnership.a.config, "utf8")).toBe(before);
+  });
+
+  test("states no send set and leaves the configuration unchanged without a metadata block", async () => {
+    const { metadata: _metadata, ...withoutMetadata } = readSpec(
+      partnership.a.config,
+    );
+    saveConfig(partnership.a.config, withoutMetadata);
+    const before = fs.readFileSync(partnership.a.config, "utf8");
+    const printed = await runUpdate();
+
+    const update = await decodeTermsUpdate(printed, partnership.secret);
+    expect(update.linkageTerms.payload?.send).toBeUndefined();
+    expect(update.disclosedPayloadColumns).toBeUndefined();
+    expect(fs.readFileSync(partnership.a.config, "utf8")).toBe(before);
   });
 
   test("refuses a payload.send that differs from what the metadata transmits", async () => {
@@ -257,15 +299,17 @@ describe("alcove apply", () => {
     expect(exit).toBeUndefined();
     expect(promptConfirmMock).toHaveBeenCalledTimes(1);
 
+    const stated = await decodeTermsUpdate(update, partnership.secret);
     const after = readSpec(partnership.b.config);
     expect(after.linkageTerms).toEqual(
-      deriveAcceptedLinkageTerms(edited, "Agency B", false),
+      deriveAcceptedLinkageTerms(stated.linkageTerms, "Agency B", false),
     );
+    expect(after.linkageTerms.payload?.receive).toEqual([
+      { name: "notes" },
+      { name: "county" },
+    ]);
     expect(after.expectedPayloadColumns).toEqual(["notes", "county"]);
     expect(after.expectedPartnerDeduplicate).toBe(edited.deduplicate);
-    expect(after.outboundPayloadConsent).toEqual(
-      deriveOutboundPayloadConsent(after.linkageTerms.output, after.metadata),
-    );
   });
 
   test("records the partner's changed deduplicate and keeps this party's own", async () => {
@@ -312,7 +356,7 @@ describe("alcove apply", () => {
     expect(lines).toContain("      county");
   });
 
-  test("a disclosure-only update reports the linkage terms unchanged", async () => {
+  test("a disclosure-only update reports a payload change of the linkage terms", async () => {
     saveConfig(partnership.a.config, {
       ...readSpec(partnership.a.config),
       metadata: metadataWith("notes", "county"),
@@ -322,7 +366,9 @@ describe("alcove apply", () => {
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
-    expect(lines).toContain("  linkage terms: no change");
+    expect(lines).toContain(
+      "  linkage terms: payload change (the new terms follow)",
+    );
     expect(lines).toContain("  columns you will receive: change");
   });
 

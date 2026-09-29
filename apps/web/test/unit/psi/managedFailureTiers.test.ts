@@ -193,70 +193,8 @@ describe("deriveManagedFailureTier: tier per recorded benign state", () => {
   });
 });
 
-describe("deriveManagedFailureTier: the consent tier, from the real send-side gates", () => {
-  // Each gate's REAL refusal is driven through the re-run's prepare, classified by the
-  // runner, and tiered from what that classification wrote -- so the whole chain from
-  // the pre-connection refusal to the operator-facing tier is pinned, not a
-  // hand-built failureKind standing in for it.
-  const columns = ["first_name", "last_name", "date_of_birth"];
-  const rows: Array<CSVRow> = [
-    { first_name: "Ada", last_name: "Lovelace", date_of_birth: "12/10/1815" },
-  ];
-
-  function tierOfPrepareRefusal(
-    exchangeFile: ManagedExchangeRecord["exchangeFile"],
-  ) {
-    let thrown: unknown;
-    try {
-      prepareManagedRerunExchange(exchangeFile, rows, columns);
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeDefined();
-    const lastRun = rerunFailureLastRun(
-      thrown,
-      Date.parse(RUN_AT),
-      false,
-      false,
-    );
-    expect(lastRun?.failureKind).toBe("consent");
-    return deriveManagedFailureTier(record({ lastRun }), undefined, NOW);
-  }
-
-  test("an outbound-consent refusal tiers as consent", () => {
-    // A stored acceptor document whose confirmed set this run's columns no longer
-    // resolve: assertOutboundPayloadConsented refuses before connecting.
-    expect(
-      tierOfPrepareRefusal(
-        composeManagedExchangeFile({
-          connection: { channel: "webrtc", host: "signaling.example.org" },
-          linkageTerms: getDefaultLinkageTerms("Clinic A"),
-          outboundPayloadConsent: {
-            status: "confirmed",
-            columns: ["consented_column"],
-          },
-        }),
-      ),
-    ).toBe("consent");
-  });
-
-  test("a disclosure-commitment drift tiers as consent", () => {
-    // A stored document committing a column this run's metadata no longer discloses:
-    // assertDisclosureMatchesCommitment refuses before connecting.
-    expect(
-      tierOfPrepareRefusal(
-        composeManagedExchangeFile({
-          connection: { channel: "webrtc", host: "signaling.example.org" },
-          linkageTerms: getDefaultLinkageTerms("Clinic A"),
-          disclosedPayloadColumns: ["committed_column"],
-        }),
-      ),
-    ).toBe("consent");
-  });
-
+describe("deriveManagedFailureTier: a transport drop from the runner", () => {
   test("a genuine transport drop still tiers as transport", () => {
-    // The refusal's own tier must not swallow the retryable one: a connection drop
-    // classified by the same runner still reaches the transport tier.
     const lastRun = rerunFailureLastRun(
       new ConnectionError("data channel dropped", "transport"),
       Date.parse(RUN_AT),

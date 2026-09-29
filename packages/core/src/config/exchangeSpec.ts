@@ -28,7 +28,6 @@ import {
 import { AuthenticationSchema, ConnectionConfigSchema } from "./connection.js";
 import { StandardizationSchema } from "./standardizationSchema.js";
 import { MetadataSchema, OwnColumnSelectionSchema } from "./metadata.js";
-import { OutboundPayloadConsentSchema } from "./outboundPayloadConsent.js";
 import { SigningConfigSchema } from "./signing.js";
 import { boundedArray } from "../utils/boundedArray.js";
 
@@ -63,9 +62,8 @@ const payloadColumnNameList = (message: string): z.ZodType<string[]> =>
  * rather than used literally; apply `readAtSignFile` (or equivalent) to
  * credential fields before parsing.
  *
- * `strictObject`: `outboundPayloadConsent`, `disclosedPayloadColumns`,
- * `expectedPayloadColumns`, and `expectedPartnerDeduplicate` are
- * enforcement records whose ABSENCE is a valid state, so a misspelled key
+ * `strictObject`: `expectedPayloadColumns` and `expectedPartnerDeduplicate`
+ * are enforcement records whose ABSENCE is a valid state, so a misspelled key
  * that `strip` discards would silently disable the control it names. The
  * nested blocks still strip, `authentication` and the connection union's
  * webrtc member excepted, which are strict for the same reason as the top
@@ -130,32 +128,6 @@ export const ExchangeSpecSchema = z
     expectedPayloadColumns: payloadColumnNameList(
       `expectedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
     ).optional(),
-    // Optional local SEND-side commitment: the payload columns (in THIS
-    // party's OWN namespace) it promised to disclose when the exchange was
-    // established -- the send-side mirror of expectedPayloadColumns above.
-    // Per-party and local, distinct from linkageTerms.payload.send (the
-    // negotiated dictionary). Persisted by every `alcove invite` mint path
-    // that publishes a disclosed set, so it never lags the token the
-    // partner locks in. A later recurring `alcove exchange` verifies its
-    // current metadata still discloses exactly this set before any
-    // credential, terms, or data are sent
-    // (assertDisclosureMatchesCommitment): drift would otherwise abort the
-    // partner mid-exchange, attributing the failure to them. The acceptor
-    // does not set this (it carries payload.send instead). An empty array
-    // is a strict "disclose nothing"; an absent field reconciles lazily.
-    // `payloadColumnNameList` holds the count, the name shape, and the
-    // one-entry-per-name collapse; the metadata these names are derived from
-    // already holds that shape, and the names are this party's own.
-    disclosedPayloadColumns: payloadColumnNameList(
-      `disclosedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
-    ).optional(),
-    // Optional local record of this party's consent to its OWN outbound
-    // payload set, the third per-party local field beside the two above and
-    // never exchanged. Written only by an acceptance, whose outbound set no
-    // party authors (see config/outboundPayloadConsent.ts for the full
-    // states). Distinct from disclosedPayloadColumns above, which records a
-    // promise made TO THE PARTNER rather than a choice made BY this party.
-    outboundPayloadConsent: OutboundPayloadConsentSchema.optional(),
     // Optional local TERMS-side enforcement record, the deduplicate
     // counterpart of expectedPayloadColumns above: the `deduplicate` the accepted
     // INVITATION declared for the INVITING party's own side, which a later

@@ -50,7 +50,6 @@ import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
 } from "../../../src/hostKeyTrust";
-import { confirmOutboundPayloadConsent } from "../../../src/outboundPayloadConsent";
 import {
   builder,
   handler,
@@ -181,18 +180,6 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
   const actual =
     await importActual<typeof import("../../../src/signingIdentityFile")>();
   return { ...actual, loadSigningIdentity: vi.fn(actual.loadSigningIdentity) };
-});
-
-// The outbound-consent surface is spy-WRAPPED rather than replaced: the ordering
-// test below needs to observe when the handler reaches it, while the
-// prepareDataset tests further down keep running the real gate behind it.
-vi.mock("../../../src/outboundPayloadConsent", async (importActual) => {
-  const actual =
-    await importActual<typeof import("../../../src/outboundPayloadConsent")>();
-  return {
-    ...actual,
-    confirmOutboundPayloadConsent: vi.fn(actual.confirmOutboundPayloadConsent),
-  };
 });
 
 // The named-rule-set expansion is the first call in loadConfig outside a catch
@@ -385,6 +372,21 @@ test("loadConfig refuses the placeholder SSH username before reading the key", (
     "still has the placeholder REPLACE_WITH_SSH_USERNAME as connection.server.username",
   );
 });
+
+test.each(["outbound_payload_consent", "disclosed_payload_columns"])(
+  "loadConfig refuses a configuration holding %s, naming the key",
+  (key) => {
+    fs.writeFileSync(
+      configFile,
+      YAML.stringify({ ...minimalSFTPConfig, [key]: ["notes"] }),
+    );
+    saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+    expect(() => loadConfig(baseOptions())).toThrow(UsageError);
+    expect(() => loadConfig(baseOptions())).toThrow(
+      `Unrecognized key: "${key}"`,
+    );
+  },
+);
 
 test("loadConfig runs a placeholder username that --server-username replaces", () => {
   fs.writeFileSync(configFile, YAML.stringify(placeholderUsernameConfig));
@@ -2476,8 +2478,6 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     // refusal the run connects, spends the SFTP credential, presents its terms
     // and certificate, and only then dies at the adoption write. Held ahead of
     // the host-key probe, which is the first step to open a transport.
-    const core =
-      await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
     const readOnlyDir = path.join(dir, "readonly");
     fs.mkdirSync(readOnlyDir);
     const readOnlyConfig = path.join(readOnlyDir, "alcove.yaml");
@@ -2496,9 +2496,6 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     const input = path.join(dir, "in.csv");
     fs.writeFileSync(input, "ssn\n123456789\n");
 
-    vi.mocked(prepareForExchange).mockImplementationOnce(
-      core.prepareForExchange,
-    );
     vi.mocked(runProtocol).mockReset();
     vi.mocked(establishHostKeyTrust).mockClear();
     const exitSpy = captureProcessExit();
@@ -2617,8 +2614,7 @@ test("handler: an unnamed party that signs nothing runs unchanged", async () => 
 // --- handler: the local preparation precedes host-key trust ------------------
 // An exchange refused from local inputs alone must not have connected to the
 // server first: on an unpinned sftp config, the first-use host-key step is
-// what would connect. Preparation (its linkage-satisfiability gate and
-// outbound-consent surface), signing resolution (a missing or mismatched
+// what would connect. Preparation (its linkage-satisfiability gate), signing resolution (a missing or mismatched
 // identity file), and a config-only refusal (certificate mode naming no
 // identity) must all run ahead of it -- the tests below pin only that STEP
 // order.
@@ -2633,7 +2629,7 @@ function writeSftpExchangeInputs(csv = "ssn\n123456789\n"): string {
   return input;
 }
 
-test("handler: the outbound-consent surface runs before host-key trust", async () => {
+test("handler: dataset preparation runs before host-key trust", async () => {
   const input = writeSftpExchangeInputs();
 
   const steps: string[] = [];
@@ -2642,9 +2638,11 @@ test("handler: the outbound-consent surface runs before host-key trust", async (
     steps.push("host-key trust");
     return Promise.resolve();
   });
-  vi.mocked(confirmOutboundPayloadConsent).mockImplementationOnce(() => {
-    steps.push("outbound consent");
-    return Promise.resolve();
+  const preparation = vi.mocked(prepareForExchange);
+  const stubbedPreparation = preparation.getMockImplementation();
+  preparation.mockImplementationOnce((...args) => {
+    steps.push("preparation");
+    return stubbedPreparation!(...args);
   });
   vi.mocked(runProtocol).mockReset();
   vi.mocked(runProtocol).mockResolvedValueOnce({});
@@ -2661,7 +2659,7 @@ test("handler: the outbound-consent surface runs before host-key trust", async (
     expect(exitSpy).not.toHaveBeenCalled();
     // Both steps ran, and in this order: an assertion over one call alone would
     // read a silently skipped step as satisfied.
-    expect(steps).toEqual(["outbound consent", "host-key trust"]);
+    expect(steps).toEqual(["preparation", "host-key trust"]);
   } finally {
     exitSpy.mockRestore();
   }
@@ -2736,9 +2734,8 @@ test("handler: a first round too large for one message file exits 64 with no hos
 
 test("handler: certificate mode naming no identity file is refused before either", async () => {
   // A run the parsed configuration alone shows cannot finish, so it is refused
-  // ahead of BOTH steps: the preparation, whose consent surface can stop for an
-  // answer, and the first-use host-key step, whose probe connects and writes an
-  // accepted pin into alcove.yaml. The config below is unpinned sftp and pins
+  // ahead of BOTH steps: the preparation, and the first-use host-key step,
+  // whose probe connects and writes an accepted pin into alcove.yaml. The config below is unpinned sftp and pins
   // the partner's certificate, so the missing identity file is the only thing
   // that makes it unrunnable; the host-key step is stubbed file-wide, so the
   // config-file assertion adds that nothing else on the handler's path wrote it.
@@ -2756,7 +2753,6 @@ test("handler: certificate mode naming no identity file is refused before either
   const configMtimeMs = fs.statSync(configFile).mtimeMs;
 
   vi.mocked(prepareForExchange).mockClear();
-  vi.mocked(confirmOutboundPayloadConsent).mockClear();
   vi.mocked(establishHostKeyTrust).mockClear();
   vi.mocked(runProtocol).mockReset();
   const exitSpy = captureProcessExit();
@@ -2773,7 +2769,6 @@ test("handler: certificate mode naming no identity file is refused before either
     ).rejects.toThrow("exit:64");
     expect(mockState.errors.join("\n")).toContain("names no signing identity");
     expect(vi.mocked(prepareForExchange)).not.toHaveBeenCalled();
-    expect(vi.mocked(confirmOutboundPayloadConsent)).not.toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
     expect(fs.readFileSync(configFile, "utf8")).toBe(configBytes);
@@ -3368,14 +3363,6 @@ function writeInput(contents: string): string {
   return input;
 }
 
-// prepareDataset takes where an outbound-payload confirmation would be recorded
-// and how the surface asking for it is routed. None of the specs below has a
-// consent record, so the confirmation is a no-op and the context is inert; the
-// gate itself is covered in outboundPayloadConsent.test.ts.
-function consentContext(): { configPath: string; logFile: string | undefined } {
-  return { configPath: configFile, logFile: undefined };
-}
-
 test("prepareDataset: a header the strip emptied names the removal, not the trailing comma", async () => {
   // This seat resolves its metadata from the columns loadInputRows returned, so
   // the same read's changed positions have to travel with them: the operator's
@@ -3392,7 +3379,7 @@ test("prepareDataset: a header the strip emptied names the removal, not the trai
       spec,
       "Test Party",
       input,
-      consentContext(),
+      undefined,
     ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UsageError);
     const message = (err as Error).message;
@@ -3415,7 +3402,7 @@ test("prepareDataset: the read's stripped positions reach prepareForExchange", a
   // an escape so a fixture about invisible characters is readable.
   const input = writeInput("id,d\u202eob,city\n1,1990-01-02,Rome\n");
   vi.mocked(prepareForExchange).mockClear();
-  await prepareDataset({}, "Test Party", input, consentContext());
+  await prepareDataset({}, "Test Party", input, undefined);
   expect(vi.mocked(prepareForExchange).mock.calls[0][4]).toEqual([2]);
 });
 
@@ -3427,7 +3414,7 @@ test("prepareDataset: refuses (UsageError) naming the field when the CSV satisfi
     { linkageTerms: ssnOnlyTerms },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   ).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(UsageError);
   expect((err as Error).message).toMatch(
@@ -3450,7 +3437,7 @@ test("prepareDataset: refuses when only some of the committed keys are satisfiab
     { linkageTerms: ssnAndNameDobTerms },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   ).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(UsageError);
   const rendered = sanitizeErrorForDisplay(err);
@@ -3472,7 +3459,7 @@ test("prepareDataset: an explicit standardization remap satisfies a field the co
       { linkageTerms: ssnOnlyTerms },
       "Test Party",
       input,
-      consentContext(),
+      undefined,
     ),
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
@@ -3499,7 +3486,7 @@ test("prepareDataset: an explicit standardization remap satisfies a field the co
     },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared).toBeDefined();
   expect(mockState.warnings).toHaveLength(0);
@@ -3514,7 +3501,7 @@ test("prepareDataset: an explicit metadata type satisfies a column whose name do
       { linkageTerms: ssnOnlyTerms },
       "Test Party",
       input,
-      consentContext(),
+      undefined,
     ),
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
@@ -3537,7 +3524,7 @@ test("prepareDataset: an explicit metadata type satisfies a column whose name do
     },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared).toBeDefined();
   expect(mockState.warnings).toHaveLength(0);
@@ -3560,7 +3547,7 @@ test("prepareDataset: an explicit metadata type that retypes the column away blo
       },
       "Test Party",
       input,
-      consentContext(),
+      undefined,
     ),
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
@@ -3582,7 +3569,7 @@ test("prepareDataset: a committed payload.receive fixes the expected received co
     { linkageTerms: terms },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared.expectedPayloadColumns).toEqual(["diagnosis", "notes"]);
 });
@@ -3593,7 +3580,7 @@ test("prepareDataset: a config without payload.receive fixes nothing (lazy)", as
     { linkageTerms: nameDobTerms },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared.expectedPayloadColumns).toBeUndefined();
 });
@@ -3613,7 +3600,7 @@ test("prepareDataset: the top-level expectedPayloadColumns is the canonical comm
     { linkageTerms: terms, expectedPayloadColumns: ["diagnosis", "notes"] },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared.expectedPayloadColumns).toEqual(["diagnosis", "notes"]);
 });
@@ -3626,7 +3613,7 @@ test("prepareDataset: an empty expectedPayloadColumns fixes the strict empty set
     { linkageTerms: nameDobTerms, expectedPayloadColumns: [] },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared.expectedPayloadColumns).toEqual([]);
 });
@@ -3647,7 +3634,7 @@ test("prepareDataset: the config's expectedPartnerDeduplicate is restored onto t
       },
       "Test Party",
       input,
-      consentContext(),
+      undefined,
     );
     expect(prepared.expectedPartnerDeduplicate).toBe(declared);
   }
@@ -3663,7 +3650,7 @@ test("prepareDataset: a config with no declaration binds nothing (the two-config
     { linkageTerms: { ...nameDobTerms, deduplicate: true } },
     "Test Party",
     input,
-    consentContext(),
+    undefined,
   );
   expect(prepared.expectedPartnerDeduplicate).toBeUndefined();
 });

@@ -132,7 +132,6 @@ async function settle(
   const handler = termsChangeHandler({
     configPath: setup.config,
     keyPath: setup.key,
-    existing: readSpec(setup.config),
     interactive,
     log: getLogger("exchange"),
     logFile: undefined,
@@ -172,9 +171,6 @@ describe("an attended run", () => {
     expect(receivedColumns(after)).toEqual(["notes", "county"]);
     expect(after.expectedPayloadColumns).toEqual(["notes", "county"]);
     expect(after.expectedPartnerDeduplicate).toBe(false);
-    // What this party sends is not part of the change, so no consent to it is
-    // recorded.
-    expect(after.outboundPayloadConsent).toBeUndefined();
     expect(fs.existsSync(termsProposalPath(setup.config))).toBe(false);
   });
 
@@ -357,7 +353,6 @@ async function exchangeWithPartner(
         onTermsChange: termsChangeHandler({
           configPath: setup.config,
           keyPath: setup.key,
-          existing: spec,
           interactive,
           log: getLogger("exchange"),
           logFile: undefined,

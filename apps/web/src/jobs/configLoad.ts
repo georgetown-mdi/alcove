@@ -184,8 +184,6 @@ export interface DisclosedExchangeDocument {
   standardization?: ExchangeSpec["standardization"];
   expectedPayloadColumns?: Array<string>;
   expectedPartnerDeduplicate?: boolean;
-  disclosedPayloadColumns?: Array<string>;
-  outboundPayloadConsent?: ExchangeSpec["outboundPayloadConsent"];
   includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
   csvDelimiter?: string;
   retentionDisposition?: string;
@@ -238,8 +236,6 @@ function probeIntentFields(): JobExchangeIntentBase {
     ],
     expectedPayloadColumns: [],
     expectedPartnerDeduplicate: false,
-    disclosedPayloadColumns: [],
-    outboundPayloadConsent: { status: "pending" },
     includeOwnColumns: "all",
     csvDelimiter: "|",
     retentionDisposition: "composition probe",
@@ -353,9 +349,8 @@ const PROBE_FINGERPRINT = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 /**
  * The linkage terms the composition probe states: core's own defaults with both
- * halves of `output` on, since a party that shares its result is the one whose
- * composition derives an `outbound_payload_consent` record. Only the composed
- * document's KEYS are read, never what they hold.
+ * halves of `output` on. Only the composed document's KEYS are read, never what
+ * they hold.
  */
 function probeLinkageTerms(): ExchangeSpec["linkageTerms"] {
   const terms = getDefaultLinkageTerms("composition probe");
@@ -505,17 +500,13 @@ function assertHeldSettingsSurvive(document: ExchangeSpec): void {
 /**
  * The records whose ABSENCE is a valid state turning an enforcement off, so a
  * load that could not put one back into the composed document would silently
- * release this party from it: the three of docs/spec/EXCHANGE_FILE.md, "The
- * records that must survive", and the consent record this party confirmed its
- * own outbound set with, whose absent state is read the same lazy way ("The
- * acceptor's outbound consent"). Named here as the file spells them; whether
- * the composition still emits each is measured, never assumed.
+ * release this party from it (docs/spec/EXCHANGE_FILE.md, "The records that
+ * must survive"). Named here as the file spells them; whether the composition
+ * still emits each is measured, never assumed.
  */
 const RECORDS_THAT_MUST_SURVIVE: ReadonlyArray<string> = [
   "expected_payload_columns",
   "expected_partner_deduplicate",
-  "disclosed_payload_columns",
-  "outbound_payload_consent",
 ];
 
 /**
@@ -787,12 +778,6 @@ export function disclosedDocument(
       : {}),
     ...(document.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: document.expectedPartnerDeduplicate }
-      : {}),
-    ...(document.disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns: document.disclosedPayloadColumns }
-      : {}),
-    ...(document.outboundPayloadConsent !== undefined
-      ? { outboundPayloadConsent: document.outboundPayloadConsent }
       : {}),
     ...(document.includeOwnColumns !== undefined
       ? { includeOwnColumns: document.includeOwnColumns }

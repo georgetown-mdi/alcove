@@ -19,11 +19,8 @@ import {
   SPLIT_DIRECTORY_RETAIN_REQUIREMENT,
   sftpFormError,
 } from "@console/sftpConnectionForm";
-import {
-  acceptorDisclosedColumns,
-  acceptorPayloadDeclarationConflict,
-} from "@exchange/acceptorColumnsModel";
 import { StandardizationPreview } from "@components/StandardizationPreview";
+import { acceptorPayloadDeclarationConflict } from "@exchange/acceptorColumnsModel";
 import { linkageRefusalFor } from "@psi/linkageRefusal";
 import { probePeerAnswerCopy } from "@console/SftpAuthoringForm";
 import { signingIdentityDivergence } from "@psi/receiptsModel";
@@ -78,10 +75,6 @@ const CONSOLE_SURFACES: Record<PreflightId, ConsoleSurface> = {
   keyFilePath: null,
   hostKeyTrust: ["@console/SftpAuthoringForm", probePeerAnswerCopy],
   identityDivergence: ["@psi/receiptsModel", signingIdentityDivergence],
-  outboundPayloadConsent: [
-    "@exchange/acceptorColumnsModel",
-    acceptorDisclosedColumns,
-  ],
   splitDirectoryRequiresRetain: [
     "@console/sftpConnectionForm",
     SPLIT_DIRECTORY_RETAIN_REQUIREMENT,

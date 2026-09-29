@@ -31,7 +31,6 @@ import {
   fileReferenceExportNote,
   fileReferenceNotice,
   heldSettingsNotice,
-  pendingOutboundConsentNotice,
   sftpCredentialNote,
 } from "./managedConfigurationModel";
 import { ConfigRowItem } from "./ManagedExchangeDetail";
@@ -83,7 +82,6 @@ export function ManagedConfigurationSurface({
   onDeleted: () => void;
 }) {
   const heldNotice = heldSettingsNotice(record);
-  const consentNotice = pendingOutboundConsentNotice(record);
   const referenceNotice = fileReferenceNotice(record);
   return (
     <AppPage>
@@ -100,16 +98,6 @@ export function ManagedConfigurationSurface({
             mb="sm"
           >
             {referenceNotice}
-          </Alert>
-        )}
-        {consentNotice !== undefined && (
-          <Alert
-            color="yellow"
-            title="Confirm what this exchange sends"
-            mt="sm"
-            mb="sm"
-          >
-            {consentNotice}
           </Alert>
         )}
         <ConfigurationRows record={record} />

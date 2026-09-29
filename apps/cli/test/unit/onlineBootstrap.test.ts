@@ -2911,144 +2911,6 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
-  test("persists the acceptor's own outbound consent into the fresh config", async () => {
-    // The send-side sibling of the commitment above, known at the same moment (it is the
-    // set the acceptance displayed), so it rides the same first write. Without it the
-    // fresh config would leave the acceptor's own disclosure unrecorded and a later
-    // `alcove exchange` would transmit whatever its CSV happened to disclose.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.outbound_payload_consent).toEqual({
-        status: "confirmed",
-        columns: ["diagnosis"],
-      });
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("persists a pending outbound consent into the fresh config", async () => {
-    // The unresolvable shape through the online first write: the acceptance could
-    // not resolve the set, so `pending` rides the write and the first resolving run
-    // shows and asks before anything is sent.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        outboundPayloadConsent: { status: "pending" },
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.outbound_payload_consent).toEqual({ status: "pending" });
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("refreshes a reused config's record to pending", async () => {
-    // The unresolvable shape through the reuse refresh: a prior acceptance's
-    // confirmed columns must not stand as if confirmed by THIS acceptance, which
-    // displayed no set -- pending overwrites them and the next run asks.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      "preexisting: true\noutbound_payload_consent:\n  status: confirmed\n" +
-        "  columns:\n    - stale_col\n",
-    );
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        reuseExistingConfig: true,
-        outboundPayloadConsent: { status: "pending" },
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.preexisting).toBe(true);
-      expect(written.outbound_payload_consent).toEqual({ status: "pending" });
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("refreshes the outbound consent surgically on a reused config", async () => {
-    // The reuse path writes no fresh config, but the operator has just consented to
-    // THIS acceptance's outbound set; leaving a prior record stale would make the
-    // next recurring run stop for a set the operator never declined. The write is
-    // surgical: the operator's own keys and comments survive it.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      "# operator note\npreexisting: true\noutbound_payload_consent:\n  status: pending\n",
-    );
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        reuseExistingConfig: true,
-        outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
-      });
-      const raw = fs.readFileSync(configPath, "utf8");
-      expect(raw).toContain("# operator note");
-      const written = YAML.parse(raw);
-      expect(written.preexisting).toBe(true);
-      expect(written.outbound_payload_consent).toEqual({
-        status: "confirmed",
-        columns: ["diagnosis"],
-      });
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("keeps a failed reuse-path consent refresh non-fatal", async () => {
-    // The kept config stands whatever happens to the surgical refresh: here the
-    // config path is a directory, so the refresh's read throws, and the completed
-    // exchange must not be undone -- nothing rethrows and no configWriteError is
-    // reported (that channel's recovery text is for the fresh-config write; the
-    // catch's warn covers this one). getLogger("bootstrap-test") is silenced above,
-    // so the warn does not print. A stale record only makes the next run ask again.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.mkdirSync(configPath);
-    try {
-      const { configWriteError } = await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        reuseExistingConfig: true,
-        outboundPayloadConsent: { status: "confirmed", columns: ["diagnosis"] },
-      });
-      expect(configWriteError).toBeUndefined();
-      expect(fs.statSync(configPath).isDirectory()).toBe(true);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("omits the outbound consent when the caller passes none", async () => {
-    // The online INVITER, which authored its own set at mint and pins it as
-    // disclosedPayloadColumns instead: no consent record, so its runs stay lazy.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap(onlineBootstrapParams(configPath));
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.outbound_payload_consent).toBeUndefined();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test("persists an empty token set as a strict receive-nothing commitment", async () => {
     // Unlike the observe path (which drops an ambiguous empty observation), an empty
     // DISCLOSED subset held by the token is a real "receive nothing" commitment the
@@ -3294,7 +3156,7 @@ describe("runOnlineBootstrap", () => {
         ...onlineBootstrapParams(configPath),
         reuseExistingConfig: true,
         receivedPayloadLockIn: { consentedColumns: ["diagnosis"] },
-        outboundPayloadConsent: { status: "confirmed", columns: ["dob"] },
+        expectedPartnerDeduplicate: true,
       });
       expect(configWriteError).toBeUndefined();
       expect(fs.statSync(configPath).isDirectory()).toBe(true);
@@ -3303,7 +3165,7 @@ describe("runOnlineBootstrap", () => {
         warned.filter((m) => m.includes("consented to receive")),
       ).toHaveLength(1);
       expect(
-        warned.filter((m) => m.includes("outbound-column confirmation")),
+        warned.filter((m) => m.includes("recording the duplicate matching")),
       ).toHaveLength(1);
     } finally {
       warn.mockRestore();
@@ -3329,7 +3191,7 @@ describe("runOnlineBootstrap", () => {
           eventStream: true,
           reuseExistingConfig: true,
           receivedPayloadLockIn: { consentedColumns: ["diagnosis"] },
-          outboundPayloadConsent: { status: "confirmed", columns: ["dob"] },
+          expectedPartnerDeduplicate: true,
         }),
       );
       expect(value.configWriteError).toBeUndefined();
@@ -3346,7 +3208,7 @@ describe("runOnlineBootstrap", () => {
         messages.filter((m) => m.includes("consented to receive")),
       ).toHaveLength(1);
       expect(
-        messages.filter((m) => m.includes("outbound-column confirmation")),
+        messages.filter((m) => m.includes("recording the duplicate matching")),
       ).toHaveLength(1);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

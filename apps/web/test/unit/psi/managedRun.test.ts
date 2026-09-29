@@ -2,7 +2,6 @@ import {
   ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
-  OutboundDisclosureRefusalError,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
@@ -755,59 +754,6 @@ describe("rerunFailureLastRun: the runner's failure bookkeeping", () => {
     });
   });
 
-  test("a send-side disclosure refusal before the data exchange records a consent-kind failed run", () => {
-    expect(
-      rerunFailureLastRun(
-        new OutboundDisclosureRefusalError(
-          "this run would send a set nobody chose",
-        ),
-        AT,
-        false,
-        false,
-      ),
-    ).toEqual({
-      at: new Date(AT).toISOString(),
-      outcome: "failed",
-      failureKind: "consent",
-    });
-  });
-
-  test("a disclosure refusal after the data exchange began records transport, not consent", () => {
-    // The "consent" tier's copy tells the operator nothing left this device, which
-    // only the phase boundary can prove -- so a refusal delivered past it is not
-    // stamped consent, whatever raised it. Both send-side gates refuse inside the
-    // pre-connection prepare today; this pins that the tier depends on the boundary
-    // rather than on where the gates happen to sit.
-    const lastRun = rerunFailureLastRun(
-      new OutboundDisclosureRefusalError(
-        "this run would send a set nobody chose",
-      ),
-      AT,
-      false,
-      true,
-    );
-    expect(lastRun).toEqual({
-      at: new Date(AT).toISOString(),
-      outcome: "failed",
-      failureKind: "transport",
-    });
-  });
-
-  test("a disclosure refusal outranks the abort probe", () => {
-    // Unlike a teardown-provoked error, the refusal is a deterministic local state
-    // that refuses identically next run, so recording it as the operator's own
-    // cancellation would drop the remedy the record can name.
-    const lastRun = rerunFailureLastRun(
-      new OutboundDisclosureRefusalError(
-        "this run would send a set nobody chose",
-      ),
-      AT,
-      true,
-      false,
-    );
-    expect(lastRun?.failureKind).toBe("consent");
-  });
-
   test("a partner who never arrived records the benign missed outcome", () => {
     // The write this whole path exists for: a no-show is its own outcome, not the
     // transport fault a fall-through would file it as. No failureKind rides along --
@@ -839,8 +785,8 @@ describe("rerunFailureLastRun: the runner's failure bookkeeping", () => {
 
   test("a no-show past the data-exchange boundary records transport, not missed", () => {
     // The "missed" outcome is what the disclosure copy reads to say nothing left
-    // this device, so it follows the same phase guard as the auth and consent
-    // tiers: past the boundary it cannot make that claim.
+    // this device, so it follows the same phase guard as the auth tier: past
+    // the boundary it cannot make that claim.
     expect(
       rerunFailureLastRun(
         new PartnerNoShowError("timed out waiting for the other party"),

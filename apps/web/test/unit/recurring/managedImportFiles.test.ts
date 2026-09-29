@@ -144,11 +144,6 @@ describe("what the pair import says", () => {
       },
     ],
     [
-      "outbound_payload_consent",
-      { outboundPayloadConsent: { status: "pending" } },
-    ],
-    ["disclosed_payload_columns", { disclosedPayloadColumns: ["program"] }],
-    [
       "expected_payload_columns",
       { expectedPayloadColumns: ["partner_program"] },
     ],
@@ -169,7 +164,7 @@ describe("what the pair import says", () => {
   test("a landed pair names every such setting its file states, never a value", () => {
     const notice = pairImportedNotice(
       importedPair({
-        disclosedPayloadColumns: ["program"],
+        expectedPayloadColumns: ["program"],
         expectedPartnerDeduplicate: true,
       }),
     );
@@ -177,7 +172,7 @@ describe("what the pair import says", () => {
     expect(notice.consequences).toHaveLength(1);
     expect(notice.consequences[0]).toContain(
       "settings this app keeps unchanged but does not show or edit: " +
-        "disclosed_payload_columns, expected_partner_deduplicate.",
+        "expected_partner_deduplicate, expected_payload_columns.",
     );
     expect(notice.consequences[0]).not.toContain("program");
   });

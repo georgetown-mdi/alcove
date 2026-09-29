@@ -66,7 +66,6 @@ function inviterRecord(
         port: 9999,
       },
       linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-      disclosedPayloadColumns: ["diagnosis_code"],
     }),
     side: "inviter",
     sharedSecret: STORED_SECRET,
@@ -96,14 +95,10 @@ describe("composeManagedReinvite", () => {
     expect(token.linkageTerms).toEqual(record.exchangeFile.linkageTerms);
   });
 
-  test("the token holds the document's committed send set, so the partner's accept re-locks the same receive set", async () => {
+  test("the partner's accept re-derives its perspective from the token's terms", async () => {
     const record = inviterRecord();
     const reinvite = await composeManagedReinvite(record, location, seams);
     const token = await decodeInvitation(reinvite.encoded);
-
-    // The partner's receive enforcement derives from the token's disclosed set (see
-    // core's runtime enforcement); it must equal the record's own committed send set.
-    expect(token.disclosedPayloadColumns).toEqual(["diagnosis_code"]);
 
     // The accept re-derives the acceptor's perspective from the same terms it did
     // originally, without error -- the round-trip is consistent.
@@ -165,21 +160,7 @@ describe("composeManagedReinvite", () => {
     );
   });
 
-  test("a strict empty send commitment is preserved (never dropped)", async () => {
-    const record = inviterRecord({
-      exchangeFile: composeManagedExchangeFile({
-        connection: { channel: "webrtc", host: "signaling.example.org" },
-        linkageTerms: getDefaultLinkageTerms("County Health Dept"),
-        disclosedPayloadColumns: [],
-      }),
-    });
-    const token = await decodeInvitation(
-      (await composeManagedReinvite(record, location, seams)).encoded,
-    );
-    expect(token.disclosedPayloadColumns).toEqual([]);
-  });
-
-  test("a document with no send commitment mints no disclosed set", async () => {
+  test("the re-minted token states no disclosed set", async () => {
     const record = inviterRecord({
       exchangeFile: composeManagedExchangeFile({
         connection: { channel: "webrtc", host: "signaling.example.org" },

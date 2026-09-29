@@ -92,7 +92,7 @@ export function buildSynthesizedWarningEvent(
 
 /**
  * The exit code the CLI reports when the exchange itself completed and a local
- * write did not -- an audit artifact, a configuration or consent record, or the
+ * write did not -- an audit artifact, a configuration, or the
  * result file (docs/spec/CLI_EVENTS.md, Persistence loss). Mirrored here rather
  * than imported, exactly as the fd-3 vocabulary above is: the CLI is a separate
  * workspace this server drives as a subprocess. What holds the pair together in

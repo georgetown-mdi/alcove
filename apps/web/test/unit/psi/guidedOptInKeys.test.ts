@@ -974,7 +974,6 @@ describe("what a mint over an offered column hands the surfaces that keep it", (
         linkageTerms: minted.linkageTerms,
         metadata: minted.metadata,
         standardization: minted.standardization,
-        disclosedPayloadColumns: minted.disclosedPayloadColumns,
       },
       { channel: "webrtc", host: "example.org", port: 3000, path: "/api/" },
     );

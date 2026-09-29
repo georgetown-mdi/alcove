@@ -25,7 +25,6 @@ import type {
   EntityClusterSummary,
   LinkageTerms,
   Metadata,
-  OutboundPayloadConsent,
   OwnColumnSelection,
   PayloadColumnsChange,
   ResolvedMatching,
@@ -81,13 +80,7 @@ export type JobInputSource =
  * exchange payload and the channel it rides. */
 export interface ServerJobExchangeDriverConfig {
   transport: ServerJobExchangeTransport;
-  /**
-   * Which side of the partnership this run is. Required, not optional: it decides
-   * whether the composed config holds an `outbound_payload_consent` record (only
-   * an acceptance's outbound set is unauthored, so only an acceptance records
-   * one), and a side omitted into a default would silently leave a later
-   * unattended run of that config unheld to any set. Every caller states it.
-   */
+  /** Which side of the partnership this run is. Every caller states it. */
   side: JobExchangeSide;
   linkageTerms: LinkageTerms;
   /** The shared secret the run's key file holds. Absent exactly on a run of the
@@ -123,20 +116,6 @@ export interface ServerJobExchangeDriverConfig {
    * inviter path leaves it undefined -- the commitment is the acceptor's, and
    * an absent field binds nothing. */
   expectedPartnerDeduplicate?: boolean;
-  /** This party's SEND-side commitment: the columns, in its own namespace, it
-   * promised to disclose when the exchange was established. Absent for an
-   * exchange authored in the console -- the mint writes the commitment, not the
-   * run -- and present where a configuration opened from the mount states one,
-   * whose absence from the composed config would release this party from what it
-   * promised. Forwarded whenever present, an empty array included. */
-  disclosedPayloadColumns?: Array<string>;
-  /** This party's recorded consent to its own outbound set, as a configuration
-   * opened from the mount states it. Absent for an exchange authored in the
-   * console -- the mint is this party's own statement of what it discloses --
-   * and present where the file states one, whose absence from the composed
-   * config would leave a later run held to no set at all. Forwarded whenever
-   * present, a pending record included. */
-  outboundPayloadConsent?: OutboundPayloadConsent;
   /** Which of this party's own input columns the console's composed config
    * writes into its result file beside the partner's values -- the local
    * `include_own_columns` key, decided at the mint. Local: it changes only the
@@ -1249,8 +1228,6 @@ export function intentFor(
     standardization,
     expectedPayloadColumns,
     expectedPartnerDeduplicate,
-    disclosedPayloadColumns,
-    outboundPayloadConsent,
     includeOwnColumns,
     csvDelimiter,
     options,
@@ -1272,10 +1249,6 @@ export function intentFor(
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
       : {}),
-    ...(disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns }
-      : {}),
-    ...(outboundPayloadConsent !== undefined ? { outboundPayloadConsent } : {}),
     ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
     ...(options !== undefined ? { options } : {}),

@@ -170,15 +170,6 @@ export interface GeneratedInvitation {
    */
   standardization?: Standardization;
   /**
-   * The disclosed-column subset the token holds -- the value already inside
-   * `encoded`, exposed so a persisting caller (the managed-exchange deposit)
-   * records the SAME send-side commitment the token published rather than
-   * re-deriving one that could drift. Always set, including the EMPTY set (a
-   * strict "sends nothing" commitment, not the absent/lazy case); see
-   * docs/spec/FILE_SYNC.md, "Which mint paths persist disclosedPayloadColumns".
-   */
-  disclosedPayloadColumns: Array<string>;
-  /**
    * Which of the inviter's own input columns its result file holds beside the
    * partner's values -- the local `include_own_columns` key, narrowed at the
    * mint to terms that give this party a result table to write into. Every
@@ -798,7 +789,6 @@ export async function generateInvitation(params: {
     columns,
     metadata: params.metadata,
     standardization,
-    disclosedPayloadColumns,
     // Decided ONCE against the terms this mint emits: a count-only exchange
     // writes no result file for anyone, and terms that hand the result to the
     // partner alone leave this party none of its own, so neither can reach a

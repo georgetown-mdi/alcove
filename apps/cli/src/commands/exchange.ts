@@ -56,7 +56,6 @@ import { resolveReceiptOutput } from "../receiptFile";
 import { assertIdentityMatchesAgreedTerms } from "../signingIdentityDivergence";
 import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
-import { confirmOutboundPayloadConsent } from "../outboundPayloadConsent";
 import { termsChangeHandler } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
@@ -755,27 +754,16 @@ export function tokenExpiringAdvisory(
 }
 
 /**
- * Where a run records an outbound-payload confirmation, and how the surface that
- * asks for it is routed. Required rather than optional: the confirmation is the
- * only thing standing between an unconfirmed acceptance and a disclosure no party
- * chose, so a caller cannot omit it and silently lose the gate.
+ * `logFile` is the operator's `--log-file`, so the log keeps a copy of the
+ * disclosure display printed on the prompt stream.
+ *
+ * @internal exported for testing
  */
-export interface OutboundConsentContext {
-  /** The config this run loaded, where a confirmation is written back. */
-  configPath: string;
-  /**
-   * The operator's `--log-file`, so the log keeps a copy of what the two
-   * disclosure surfaces here printed on the prompt stream.
-   */
-  logFile: string | undefined;
-}
-
-/** @internal exported for testing */
 export async function prepareDataset(
   exchangeDataSpec: ExchangeDataSpec,
   identity: string | undefined,
   input: string,
-  outboundConsent: OutboundConsentContext,
+  logFile: string | undefined,
   csvDelimiter?: string,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
@@ -790,7 +778,7 @@ export async function prepareDataset(
   // here, naming the removal rather than the header-row causes, and ahead of the
   // linkage grading below, whose own resolution is handed a column list and so
   // states those causes. Resolved through the same resolveExchangeInputs call
-  // prepareForExchange itself uses, so what is confirmed below is what the run
+  // prepareForExchange itself uses, so what is displayed below is what the run
   // would transmit.
   const resolved = resolveExchangeInputs(
     exchangeDataSpec,
@@ -821,30 +809,10 @@ export async function prepareDataset(
       exchangeDataSpec.metadata,
     );
 
-  // The two disclosure surfaces this point owes the operator, each covering the
-  // party the other does not: the display for a configuration the operator
-  // wrote, which no acceptance showed the terms of, and the confirmation for one
-  // written by accepting an invitation.
   displayExchangeDisclosure({
-    spec: exchangeDataSpec,
     metadata: resolved.metadata,
     linkageTerms: resolved.linkageTerms,
-    logFile: outboundConsent.logFile,
-    log,
-  });
-
-  // Show and confirm this party's OWN outbound columns before any credential,
-  // terms, or data are sent, when the exchange has a consent record its current
-  // set does not satisfy. The confirmation is recorded in the config, and an
-  // unconfirmable or declined set refuses here -- ahead of prepareForExchange's
-  // fail-closed safety check (assertOutboundPayloadConsented). A party with no
-  // consent record -- every non-acceptor -- passes through untouched.
-  await confirmOutboundPayloadConsent({
-    spec: exchangeDataSpec,
-    metadata: resolved.metadata,
-    output: resolved.linkageTerms.output,
-    configPath: outboundConsent.configPath,
-    logFile: outboundConsent.logFile,
+    logFile,
     log,
   });
 
@@ -924,8 +892,7 @@ function certificateModeIdentityPath(identityFile: string | undefined): string {
  * the parsed configuration alone -- no disk read, no prompt, no connection.
  *
  * The exchange handler runs this as a pre-flight, ahead of both the dataset
- * preparation that can put the outbound-payload consent prompt in front of the
- * operator and the first-use host-key step whose probe opens a transport to the
+ * preparation and the first-use host-key step whose probe opens a transport to the
  * server and whose accepted pin is written into the operator's `alcove.yaml`.
  * A run this refuses could never have finished, so none of that should have
  * happened on its way to being told so. {@link resolveSigningPersist} raises the
@@ -1090,8 +1057,7 @@ export async function handler(argv: Arguments): Promise<void> {
 
     // A certificate-mode run naming no signing identity is unrunnable from the
     // parsed configuration alone, so it is refused here: ahead of the dataset
-    // preparation that can put the outbound-payload consent prompt in front of
-    // the operator, and ahead of the first-use host-key step that opens a probe
+    // preparation, and ahead of the first-use host-key step that opens a probe
     // transport to the server and writes an accepted pin into alcove.yaml.
     // Neither should happen on the way to telling an operator the run could
     // never have finished.
@@ -1167,7 +1133,7 @@ export async function handler(argv: Arguments): Promise<void> {
         exchangeDataSpec,
         termsIdentity,
         input,
-        { configPath: options.configFile, logFile },
+        logFile,
         csvDelimiter,
       );
     } catch (err) {
@@ -1284,7 +1250,6 @@ export async function handler(argv: Arguments): Promise<void> {
         onTermsChange: termsChangeHandler({
           configPath: options.configFile,
           keyPath: authentication.keyFilePath,
-          existing: exchangeDataSpec,
           interactive: process.stdin.isTTY === true && input !== "-",
           log,
           logFile,

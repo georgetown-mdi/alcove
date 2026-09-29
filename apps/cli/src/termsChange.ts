@@ -19,7 +19,7 @@ import {
   termsDeltaSections,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
-import type { ExchangeSpec, getLogger, TermsChange } from "@alcove/core";
+import type { getLogger, TermsChange } from "@alcove/core";
 
 import { termsUpdateWrite } from "./acceptedTermsRecords";
 import {
@@ -169,15 +169,11 @@ function notTaken<E extends Error>(refusal: E, change: TermsChange): E {
 export function termsChangeHandler(params: {
   configPath: string;
   keyPath: string;
-  existing: Pick<
-    ExchangeSpec,
-    "metadata" | "disclosedPayloadColumns" | "outboundPayloadConsent"
-  >;
   interactive: boolean;
   log: ReturnType<typeof getLogger>;
   logFile: string | undefined;
 }): (change: TermsChange) => Promise<void> {
-  const { configPath, keyPath, existing, interactive, log, logFile } = params;
+  const { configPath, keyPath, interactive, log, logFile } = params;
   return async (change) => {
     const emit = consentSurfaceSink({
       log,
@@ -192,21 +188,16 @@ export function termsChangeHandler(params: {
 
     if (interactive && change.continuable) {
       const partnerSend = change.partnerTerms.payload?.send;
-      // The change is to what the partner sends and the agreed terms; what
-      // this party sends stays under the consent record it already holds, and
-      // the partner's deduplicate under the record the operator last applied.
+      // The partner's deduplicate stays under the record the operator last
+      // applied.
       const write: TermsUpdateWrite = {
-        ...termsUpdateWrite(
-          {
-            linkageTerms: change.adoptedTerms,
-            expectedPayloadColumns: partnerSend?.map(({ name }) => name),
-            expectedPartnerDeduplicate: change.partnerTerms.deduplicate,
-            invitationRelay: undefined,
-          },
-          existing,
-        ),
+        ...termsUpdateWrite({
+          linkageTerms: change.adoptedTerms,
+          expectedPayloadColumns: partnerSend?.map(({ name }) => name),
+          expectedPartnerDeduplicate: change.partnerTerms.deduplicate,
+          invitationRelay: undefined,
+        }),
         expectedPartnerDeduplicate: "unchanged",
-        outboundPayloadConsent: existing.outboundPayloadConsent,
       };
       const invalidTerm = termsUpdateInvalidTerm(configPath, write);
       if (invalidTerm !== undefined) {

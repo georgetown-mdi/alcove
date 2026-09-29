@@ -99,11 +99,7 @@ describe("inviterServerJobConfig includes the party's own field delimiter", () =
 });
 
 describe("inviterServerJobConfig", () => {
-  test("states the inviter side, which is what records NO outbound consent", () => {
-    // The composer derives an outbound_payload_consent record for the acceptance
-    // alone. A config that stated the acceptor side here would record one against
-    // terms this party already authored at mint -- the invitation IS its statement
-    // of what it sends.
+  test("states the inviter side", () => {
     expect(configFor().side).toBe("inviter");
   });
 

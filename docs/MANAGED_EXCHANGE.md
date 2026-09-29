@@ -1231,9 +1231,8 @@ flow](#eviction-recovery-is-the-import-flow)).
 same pick as the `alcove.yaml`. Its name starts with a dot, so the file chooser
 may hide it until hidden files are shown. The pair lands as an exchange that runs
 here, and the import says so before you open it, naming each setting of the file
-it keeps unchanged with no control here -- `metadata`, `standardization`, and the
-payload records such as `disclosed_payload_columns` -- in the file's own
-snake_case; an `alcove.yaml` chosen alone lands as the configuration only, and its
+it keeps unchanged with no control here -- `metadata` and `standardization` among
+them -- in the file's own snake_case; an `alcove.yaml` chosen alone lands as the configuration only, and its
 page says that instead. Before the
 first run here, stop the scheduled command-line run of the same exchange: each
 run on either side changes the shared secret, and the copy that falls behind can
@@ -1349,11 +1348,6 @@ The page states three more things where they apply:
   that the alcove.yaml it hands back keeps the reference as the file wrote it
   and Alcove reads that file on the machine that runs the exchange; the export
   panel repeats the names.
-- **A pending outbound payload consent.** A configuration whose
-  `outbound_payload_consent` is pending is refused by Alcove at any run that
-  shares results with the partner until the columns are confirmed, which it asks
-  for at a terminal. The page says so, so a scheduled run is not the first place
-  the operator meets that refusal.
 
 An SFTP configuration that names no credential or no host key exports without
 one: the export panel says to add `private_key` or `password` (as an `@path`),

@@ -318,23 +318,3 @@ export function sftpCredentialNote(
     `${hostKeyLine} under connection.server.`
   );
 }
-
-/**
- * What the operator is told about an `outbound_payload_consent` the document
- * states as pending, or undefined where it states none or a confirmed set. Alcove
- * asks for the confirmation at the first run that shares results with the
- * partner and refuses such a run with no terminal to ask on, so a scheduled run
- * is refused until the operator has confirmed the columns once at a terminal.
- */
-export function pendingOutboundConsentNotice(
-  record: ManagedExchangeRecord,
-): string | undefined {
-  if (record.exchangeFile.outboundPayloadConsent?.status !== "pending")
-    return undefined;
-  return (
-    "This configuration's outbound_payload_consent is pending. An Alcove run " +
-    "that shares results with your partner stops to ask you to confirm the " +
-    "columns it sends, and is refused when no one is at a terminal to answer, " +
-    "so run it once with Alcove at a terminal before you schedule it."
-  );
-}

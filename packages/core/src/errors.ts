@@ -160,11 +160,7 @@ function refusalCauseChain(
  * nothing to exclude, whichever document the counts were read off.
  * {@link StandardizationTermsError} is a member by subclass; a check
  * whose refusal meets the contract without needing a narrower type raises
- * the base class directly. The two send-side disclosure refusals
- * ({@link OutboundDisclosureRefusalError}) meet the same content rule --
- * each compares this party's own current metadata against its own
- * recorded set -- but joining is a per-check decision not yet taken, so
- * they sit outside this family. The payload-SEND disclosure check
+ * the base class directly. The payload-SEND disclosure check
  * (`assertPayloadSendDisclosed`) is not a member: on the accept side its
  * `payload.send` names are adopted from the partner's invitation, and the
  * check cannot tell its role at the throw site, so it stays out and its
@@ -262,40 +258,6 @@ export function isSetTooLargeError(
     error instanceof WebRtcFrameLimitError ||
     error instanceof RoundSetLimitError
   );
-}
-
-/**
- * The family of refusals raised, before any credential, terms, or data are
- * sent, when this party can no longer make the outbound disclosure it
- * recorded agreeing to. The two send-side gates raise it from
- * {@link prepareForExchange}, and a non-interactive caller that cannot ask
- * for confirmation raises it through the same refusal builder; every raise
- * compares this party's own current metadata against its own recorded set:
- *
- * - `assertDisclosureMatchesCommitment` -- the column set this party
- *   committed to send when the exchange was established has drifted from
- *   what its metadata now discloses.
- * - `assertOutboundPayloadConsented` -- the set this run would send is not
- *   the one this party confirmed sending (or none was ever confirmed).
- *
- * Neither is a transport fault: both fire before any credential, terms, or
- * data are sent, and a caller that retries the same input refuses
- * identically. It is a distinct type rather than a plain {@link UsageError}
- * so a caller keeping per-failure bookkeeping can branch on it
- * deterministically (the web's managed re-run records it as its own
- * failure kind, whose recovery is re-confirming the disclosure, not
- * retrying the connection), while the CLI's `instanceof UsageError` check
- * still classifies it as a configuration error (exit 64, EX_USAGE).
- *
- * Not an {@link OperatorConfigError}: that base type is the membership
- * rule for the web's message-rendering "config" alert, and joining it is a
- * surfacing decision taken per check.
- */
-export class OutboundDisclosureRefusalError extends UsageError {
-  constructor(message: string) {
-    super(message);
-    this.name = "OutboundDisclosureRefusalError";
-  }
 }
 
 /**

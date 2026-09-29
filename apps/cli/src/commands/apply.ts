@@ -264,7 +264,7 @@ export async function handler(argv: Arguments): Promise<void> {
         existing.linkageTerms.deduplicate,
       );
       assertConfigTermsRunnable(accepted.linkageTerms, existing);
-      const write = termsUpdateWrite(accepted, existing);
+      const write = termsUpdateWrite(accepted);
 
       const consentSurface = consentSurfaceSink({
         log,

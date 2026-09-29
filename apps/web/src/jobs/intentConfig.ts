@@ -2,7 +2,6 @@ import { stringify as stringifyYaml } from "yaml";
 
 import {
   ExchangeSpecSchema,
-  deriveOutboundPayloadConsent,
   mintExchangeSpec,
   snakeizeKeys,
 } from "@alcove/core";
@@ -13,7 +12,6 @@ import type {
   ExchangeFileInput,
   ExchangeSpec,
   FileSyncOptions,
-  OutboundPayloadConsent,
 } from "@alcove/core";
 
 import type { JobSftpServerEntry } from "./sftpServer";
@@ -25,39 +23,6 @@ import type {
   JobSftpExchangeIntent,
   JobSigningPaths,
 } from "./intentSchemas";
-
-/**
- * This party's consent to its OWN outbound payload set, for the composed
- * config's `outbound_payload_consent`.
- *
- * A record the intent states is composed verbatim, on either side: it is the
- * one a configuration loaded from the mount holds, and a record this party
- * already confirmed is not re-derived from what the console was re-authored
- * with. A run whose resolved set no longer matches is then refused at core's
- * own consent gate rather than consented to afresh.
- *
- * Otherwise an acceptance is the only side that records one, deriving core's
- * {@link deriveOutboundPayloadConsent} from the same `linkageTerms.output` and
- * `metadata` the same call composes into the config, so the derived consent and
- * the config it rides in cannot disagree.
- *
- * The three states are core's: absent where nothing is transmitted,
- * `pending` where no metadata was resolvable, `confirmed` with the resolved
- * set otherwise. A `pending` or `confirmed` record is what a later
- * unattended run's consent gate reads; without one the gate finds no record
- * and no run is held to a set.
- */
-function outboundPayloadConsentFor(
-  intent: JobExchangeIntent,
-): OutboundPayloadConsent | undefined {
-  if (intent.outboundPayloadConsent !== undefined)
-    return intent.outboundPayloadConsent;
-  if (intent.side !== "acceptor") return undefined;
-  return deriveOutboundPayloadConsent(
-    intent.linkageTerms.output,
-    intent.metadata,
-  );
-}
 
 /**
  * Compose the CLI config document (snake_case YAML the CLI loads verbatim) from a
@@ -90,22 +55,11 @@ function outboundPayloadConsentFor(
  * fallback); an empty array is forwarded verbatim -- it means "receive
  * nothing" -- and only an omitted field reconciles lazily.
  *
- * `disclosedPayloadColumns`, when present, is forwarded verbatim as the
- * config's `disclosed_payload_columns`: this party's send-side commitment,
- * which a console run inherits from a loaded configuration rather than
- * authoring. An empty array is forwarded as written -- a strict "disclose
- * nothing" -- and only an omitted field reconciles lazily.
- *
  * `expectedPartnerDeduplicate`, when present, is forwarded as the config's
  * `expected_partner_deduplicate`: the CLI holds the inviter's presented
  * `deduplicate` to the value its invitation declared and refuses a
  * contradiction before any key or payload moves. `false` is forwarded
  * verbatim, a real declaration; only an omitted field binds nothing.
- *
- * The send-side counterpart is `outbound_payload_consent`: the record the
- * intent states, else one derived here for an acceptance alone (see
- * {@link outboundPayloadConsentFor}), so the config this composer hands the
- * operator is one a later unattended run's consent gate is held to.
  *
  * `signingPaths` supplies the two paths a `signing` block names, which the
  * intent cannot hold; it is read only under `certificate` mode, so a caller
@@ -160,12 +114,10 @@ export function composeFiledropConfigSpec(
     standardization,
     expectedPayloadColumns,
     expectedPartnerDeduplicate,
-    disclosedPayloadColumns,
     retentionDisposition,
     includeOwnColumns,
     csvDelimiter,
   } = intent;
-  const outboundPayloadConsent = outboundPayloadConsentFor(intent);
   const signing = composedSigning(intent, signingPaths);
   const authentication = composedAuthentication(intent);
   const fileInput: ExchangeFileInput = {
@@ -183,12 +135,8 @@ export function composeFiledropConfigSpec(
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
     ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
-    ...(outboundPayloadConsent !== undefined ? { outboundPayloadConsent } : {}),
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
-      : {}),
-    ...(disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns }
       : {}),
     ...(signing !== undefined ? { signing } : {}),
     ...(retentionDisposition !== undefined ? { retentionDisposition } : {}),
@@ -214,10 +162,8 @@ export function composeFiledropConfigSpec(
  * entry's `@path` credential strings land in the YAML verbatim -- references
  * the CLI child resolves at exchange time, so no secret byte transits this
  * process. The client's `linkageTerms`, `metadata`, `standardization`,
- * `expectedPayloadColumns`, `expectedPartnerDeduplicate`,
- * `disclosedPayloadColumns`, `outbound_payload_consent`, `signing`,
- * `retention_disposition`,
- * `include_own_columns`, and `csv_delimiter` are
+ * `expectedPayloadColumns`, `expectedPartnerDeduplicate`, `signing`,
+ * `retention_disposition`, `include_own_columns`, and `csv_delimiter` are
  * composed as they are on the filedrop path; `options` is the same
  * numeric/boolean/enum subset, plus the `connectionPerPoll` dialing mode
  * this channel alone admits.
@@ -241,12 +187,10 @@ export function composeSftpConfigSpec(
     standardization,
     expectedPayloadColumns,
     expectedPartnerDeduplicate,
-    disclosedPayloadColumns,
     retentionDisposition,
     includeOwnColumns,
     csvDelimiter,
   } = intent;
-  const outboundPayloadConsent = outboundPayloadConsentFor(intent);
   const signing = composedSigning(intent, signingPaths);
   const authentication = composedAuthentication(intent);
   const assembled: ExchangeSpec = {
@@ -259,12 +203,8 @@ export function composeSftpConfigSpec(
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
     ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
-    ...(outboundPayloadConsent !== undefined ? { outboundPayloadConsent } : {}),
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
-      : {}),
-    ...(disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns }
       : {}),
     ...(authentication !== undefined ? { authentication } : {}),
     ...(signing !== undefined ? { signing } : {}),

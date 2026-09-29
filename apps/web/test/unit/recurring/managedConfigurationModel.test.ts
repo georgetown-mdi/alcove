@@ -13,7 +13,6 @@ import {
   fileReferenceNotice,
   heldSettings,
   heldSettingsNotice,
-  pendingOutboundConsentNotice,
   sftpCredentialNote,
 } from "@recurring/managedConfigurationModel";
 import { buildManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -156,17 +155,17 @@ describe("a signing block whose mode is none", () => {
 describe("the settings held without an editor", () => {
   test("are named in the file's snake_case, never their values", () => {
     const record = configuration("sftp", {
-      disclosedPayloadColumns: ["program_code"],
+      expectedPayloadColumns: ["program_code"],
       expectedPartnerDeduplicate: true,
     });
 
     expect(heldSettings(record)).toEqual([
-      "disclosed_payload_columns",
       "expected_partner_deduplicate",
+      "expected_payload_columns",
     ]);
     const notice = heldSettingsNotice(record);
     expect(notice).toContain(
-      "disclosed_payload_columns, expected_partner_deduplicate",
+      "expected_partner_deduplicate, expected_payload_columns",
     );
     expect(notice).not.toContain("program_code");
   });
@@ -289,28 +288,6 @@ describe("the settings naming a file by @path", () => {
       expect(fileReferenceNotice(record)).toBeUndefined();
       expect(fileReferenceExportNote(record)).toBeUndefined();
     }
-  });
-});
-
-describe("a pending outbound payload consent", () => {
-  test("is warned about by the setting's name", () => {
-    const notice = pendingOutboundConsentNotice(
-      configuration("sftp", { outboundPayloadConsent: { status: "pending" } }),
-    );
-
-    expect(notice).toContain("outbound_payload_consent is pending");
-    expect(notice).toContain("at a terminal");
-  });
-
-  test("a confirmed one, or none, says nothing", () => {
-    expect(
-      pendingOutboundConsentNotice(
-        configuration("sftp", {
-          outboundPayloadConsent: { status: "confirmed", columns: [] },
-        }),
-      ),
-    ).toBeUndefined();
-    expect(pendingOutboundConsentNotice(configuration("sftp"))).toBeUndefined();
   });
 });
 

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  assessOutboundPayloadConsent,
   disclosedColumnNames,
   getDefaultLinkageTerms,
   inferMetadataForEveryColumn,
@@ -22,12 +21,8 @@ import { RECEIPTS_DEFAULT, receiptsIntentFields } from "@psi/receiptsModel";
 import {
   CONFIGURATION_LOAD_SEALED,
   MOUNTED_CONFIGURATION_UNREAD,
-  OUTBOUND_CONSENT_TITLE,
-  PENDING_OUTBOUND_CONSENT_WARNING,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
-  outboundConsentView,
-  outboundConsentWithheldReason,
   runWithheldReason,
 } from "@console/mountedConfiguration";
 import {
@@ -52,10 +47,7 @@ import { inviterCreateStatus, reviewValidation } from "@psi/inviterModel";
 import { EMPTY_SFTP_FORM } from "@console/sftpConnectionForm";
 import { configurationHandBack } from "@console/configurationHandBack";
 
-import {
-  buildAdvancedTerms,
-  outputForDirection,
-} from "@psi/authoring/advancedInvite";
+import { buildAdvancedTerms } from "@psi/authoring/advancedInvite";
 
 import {
   INVITER_SCREEN_INITIAL,
@@ -267,24 +259,16 @@ function columnRole(state: InviterScreenState, name: string) {
 }
 
 /** The notices the load control shows for a screen state, read the way the
- * screen reads them: beside the state, the columns the draft would send to the
- * partner and the records the open configuration holds. */
+ * screen reads them. */
 function noticesOf(state: InviterScreenState): Array<string> {
   return mountedConfigurationNotices(
     state.mountedConfiguration,
     state.editor === undefined
       ? undefined
-      : {
-          disclosedColumns: disclosedColumnNames(state.editor.draft.metadata),
-          sharesWithPartner: outputForDirection(
-            state.editor.draft.outputDirection,
-          ).shareWithPartner,
-          records: state.loadedEnforcementRecords,
-          ...(state.loadedTermsFile !== undefined &&
+      : state.loadedTermsFile !== undefined &&
           state.loadedTermsFile === state.acquired
-            ? { termsSettingsStated: termsSettingsStatedBy(state.editor) }
-            : {}),
-        },
+        ? { termsSettingsStated: termsSettingsStatedBy(state.editor) }
+        : {},
   );
 }
 
@@ -299,14 +283,6 @@ function withOutputDirection(
     type: "editor-applied",
     editor: editorWithOutputDirection(state.editor, direction),
   });
-}
-
-/** Whether the load control warns that a run started here is refused for a
- * commitment the run's own disclosed set no longer matches. */
-function refusalWarned(state: InviterScreenState): boolean {
-  return noticesOf(state).some((text) =>
-    text.includes("a run started here is refused"),
-  );
 }
 
 describe("every step the document covers is filled in", () => {
@@ -552,7 +528,6 @@ describe("a webrtc configuration opens for review with its run withheld", () => 
     expect(reason).toContain("webrtc");
     const status = inviterCreateStatus({
       runWithheld: reason,
-      outboundConsentUnconfirmed: undefined,
       offlineBlocked: false,
       connectionIncomplete: false,
       splitDirectoryProblem: undefined,
@@ -654,7 +629,7 @@ describe("the open configuration holds across the files it is derived over", () 
   });
 
   test("closing it leaves the file's own inference and no records", () => {
-    const records = { disclosedPayloadColumns: ["program_code"] };
+    const records = { expectedPayloadColumns: ["partner_program"] };
     const applied = withFileRead(
       loadedInto(
         INVITER_SCREEN_INITIAL,
@@ -689,7 +664,7 @@ describe("the open configuration holds across the files it is derived over", () 
           transport: { channel: "sftp" },
           loadedEnforcementRecords: closed.loadedEnforcementRecords,
         }),
-      ).disclosedPayloadColumns,
+      ).expectedPayloadColumns,
     ).toBeUndefined();
   });
 });
@@ -737,12 +712,12 @@ describe("a sealed draft takes no configuration", () => {
   });
 
   test("a close landing after the mint keeps the records on the run", () => {
-    // The records are what put the disclosure commitment back on the intent,
-    // so dropping them after the mint would compose a run with nothing left
-    // for core to enforce.
+    // The records are what put the receive-side enforcement back on the
+    // intent, so dropping them after the mint would compose a run with nothing
+    // left for core to enforce.
     const open = loadedInto(
       INVITER_SCREEN_INITIAL,
-      sftpDocument({ disclosedPayloadColumns: ["program_code"] }),
+      sftpDocument({ expectedPayloadColumns: ["partner_program"] }),
     );
     const minted: InviterScreenState = {
       ...open,
@@ -753,7 +728,7 @@ describe("a sealed draft takes no configuration", () => {
     });
     expect(closed).toBe(minted);
     expect(closed.loadedEnforcementRecords).toEqual({
-      disclosedPayloadColumns: ["program_code"],
+      expectedPayloadColumns: ["partner_program"],
     });
     expect(closed.loadedConfiguration).toBeDefined();
   });
@@ -864,22 +839,17 @@ describe("a run started from a loaded configuration composes what a hand-authore
   });
 });
 
-// The four records whose absence turns an enforcement off. The console has no
-// control for any of them, so an opened document's values ride the authoring
+// The two records whose absence turns an enforcement off. The console has no
+// control for either, so an opened document's values ride the authoring
 // state into the intent the run submits, and the configuration composed for that
 // run states each one as the file did.
 describe("the records the console cannot edit reach the run unchanged", () => {
   const records = {
     expectedPayloadColumns: ["partner_program"],
     expectedPartnerDeduplicate: false,
-    disclosedPayloadColumns: ["program_code"],
-    outboundPayloadConsent: {
-      status: "confirmed" as const,
-      columns: ["program_code"],
-    },
   };
 
-  /** The intent a document stating all three submits when it is opened and
+  /** The intent a document stating both submits when it is opened and
    * started with nothing touched. */
   function intentFromUntouchedLoad() {
     const state = loadedInto(INVITER_SCREEN_INITIAL, sftpDocument(records));
@@ -896,22 +866,16 @@ describe("the records the console cannot edit reach the run unchanged", () => {
     );
   }
 
-  test("the intent states all four with the file's values", () => {
+  test("the intent states both with the file's values", () => {
     expect(intentFromUntouchedLoad()).toMatchObject(records);
   });
 
-  test("the composed configuration states all four", () => {
+  test("the composed configuration states both", () => {
     const intent = intentFromUntouchedLoad();
     if (intent.channel !== "sftp") throw new Error("expected an sftp intent");
     const spec = composeSftpConfigSpec(intent, testSftpServerEntry());
     expect(spec.expectedPayloadColumns).toEqual(records.expectedPayloadColumns);
     expect(spec.expectedPartnerDeduplicate).toBe(false);
-    expect(spec.disclosedPayloadColumns).toEqual(
-      records.disclosedPayloadColumns,
-    );
-    // The consent record the file confirmed, composed verbatim: the run is held
-    // to the set this party already confirmed rather than consenting afresh.
-    expect(spec.outboundPayloadConsent).toEqual(records.outboundPayloadConsent);
   });
 
   test("the notice beside the load names each one", () => {
@@ -921,8 +885,6 @@ describe("the records the console cannot edit reach the run unchanged", () => {
     for (const field of [
       "expected_payload_columns",
       "expected_partner_deduplicate",
-      "disclosed_payload_columns",
-      "outbound_payload_consent",
     ])
       expect(notices[0]).toContain(field);
   });
@@ -1446,363 +1408,6 @@ describe("closing the configuration under a committed file", () => {
   });
 });
 
-// A commitment about what this party discloses, held from the file it was opened
-// from, is enforced against the run's own disclosed set when the run starts:
-// core compares the two sets (`assertDisclosureMatchesCommitment`,
-// `assertOutboundPayloadConsented`) and refuses on any difference. The console
-// reports that refusal where the sets differ, and stays quiet where a setting
-// the file could not supply leaves the disclosed set matching all the same.
-describe("a disclosure commitment the run's own columns no longer match", () => {
-  const records = {
-    disclosedPayloadColumns: ["household_id"],
-    outboundPayloadConsent: {
-      status: "confirmed" as const,
-      columns: ["household_id"],
-    },
-  };
-  const missingColumn: Metadata = [
-    ...statedColumns(),
-    { name: "household_id", type: "other", role: "payload", isPayload: true },
-  ];
-
-  test("the warning names both records and what to do about them", () => {
-    const applied = withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({ ...records, metadata: missingColumn }),
-      ),
-    );
-    const warning = noticesOf(applied).find((text) =>
-      text.includes("a run started here is refused"),
-    );
-    expect(warning).toContain("disclosed_payload_columns");
-    expect(warning).toContain("outbound_payload_consent");
-    expect(warning).toContain("close this configuration");
-    expect(warning).not.toContain("household_id");
-  });
-
-  test("a commitment holding what the run sends warns about nothing", () => {
-    const applied = withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({
-          disclosedPayloadColumns: ["program_code"],
-          outboundPayloadConsent: {
-            status: "confirmed",
-            columns: ["program_code"],
-          },
-          metadata: documentColumns(),
-        }),
-      ),
-    );
-    expect(refusalWarned(applied)).toBe(false);
-  });
-
-  test("a column the file lacks is not a divergence where it sends none", () => {
-    // The document names a column this file does not have and keeps it back,
-    // so the run discloses exactly what the commitment holds: core lets it
-    // through, and the notice for the setting stands alone.
-    const applied = withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({
-          disclosedPayloadColumns: ["program_code"],
-          metadata: [
-            ...documentColumns(),
-            {
-              name: "household_id",
-              type: "other",
-              role: "ignored",
-              isPayload: false,
-            },
-          ],
-        }),
-      ),
-    );
-    expect(
-      noticesOf(applied).find((text) => text.includes("cannot supply")),
-    ).toContain("metadata");
-    expect(refusalWarned(applied)).toBe(false);
-  });
-
-  test("a demoted record identifier sends nothing, so it warns of nothing", () => {
-    // The columns rule demotes the first of two record identifiers to ignored,
-    // which the load reports; neither column was ever sent, so the disclosed
-    // set still matches the commitment.
-    const applied = withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({
-          disclosedPayloadColumns: [],
-          metadata: [
-            {
-              name: "client_id",
-              type: "identifier",
-              role: "identifier",
-              isPayload: false,
-            },
-            {
-              name: "program_code",
-              type: "identifier",
-              role: "identifier",
-              isPayload: false,
-            },
-          ],
-        }),
-      ),
-    );
-    expect(columnRole(applied, "client_id")).toMatchObject({ role: "ignored" });
-    expect(
-      noticesOf(applied).find((text) => text.includes("cannot supply")),
-    ).toContain("metadata");
-    expect(refusalWarned(applied)).toBe(false);
-  });
-});
-
-// core's consent gate reads the run's output direction: a partner not entitled
-// to the matched results receives nothing, so the consent record holds nothing
-// and the run is allowed. The commitment beside it is held in either direction.
-describe("a run the partner takes no results from", () => {
-  const loaded = loadedInto(
-    INVITER_SCREEN_INITIAL,
-    sftpDocument({
-      outboundPayloadConsent: {
-        status: "confirmed",
-        columns: ["household_id"],
-      },
-      metadata: statedColumns(),
-    }),
-  );
-
-  test("warns of the consent record where the partner receives", () => {
-    const applied = withOutputDirection(withFileRead(loaded), "both");
-    const warning = noticesOf(applied).find((text) =>
-      text.includes("a run started here is refused"),
-    );
-    expect(warning).toContain("outbound_payload_consent");
-  });
-
-  test("warns of nothing where only the inviter receives", () => {
-    const applied = withOutputDirection(withFileRead(loaded), "inviter");
-    expect(refusalWarned(applied)).toBe(false);
-  });
-
-  test("still holds the commitment core enforces in either direction", () => {
-    const committed = loadedInto(
-      INVITER_SCREEN_INITIAL,
-      sftpDocument({
-        disclosedPayloadColumns: ["household_id"],
-        metadata: statedColumns(),
-      }),
-    );
-    const applied = withOutputDirection(withFileRead(committed), "inviter");
-    const warning = noticesOf(applied).find((text) =>
-      text.includes("a run started here is refused"),
-    );
-    expect(warning).toContain("disclosed_payload_columns");
-    expect(warning).not.toContain("outbound_payload_consent");
-  });
-});
-
-// A consent record the file leaves pending confirms no column set, so core
-// refuses every run that shares results with the partner until the command line
-// confirms one. The load says so rather than leaving it to a failed run.
-describe("a consent record the configuration leaves pending", () => {
-  test("the load warns, and a confirmed record does not", () => {
-    const pending = withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({
-          outboundPayloadConsent: { status: "pending" },
-          metadata: statedColumns(),
-        }),
-      ),
-    );
-    expect(noticesOf(pending)).toContain(PENDING_OUTBOUND_CONSENT_WARNING);
-    const confirmed = withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({
-          outboundPayloadConsent: { status: "confirmed", columns: [] },
-          metadata: statedColumns(),
-        }),
-      ),
-    );
-    expect(noticesOf(confirmed)).not.toContain(
-      PENDING_OUTBOUND_CONSENT_WARNING,
-    );
-  });
-
-  function pendingAndRead(): InviterScreenState {
-    return withFileRead(
-      loadedInto(
-        INVITER_SCREEN_INITIAL,
-        sftpDocument({
-          outboundPayloadConsent: { status: "pending" },
-          metadata: documentColumns(),
-        }),
-      ),
-    );
-  }
-
-  /** What the review step lists for the screen, read the way the screen reads
-   * it. */
-  function viewOf(state: InviterScreenState) {
-    if (state.editor === undefined) throw new Error("expected an editor");
-    return outboundConsentView(
-      state.mountedConfiguration,
-      state.loadedEnforcementRecords,
-      state.editor.draft.metadata,
-      outputForDirection(state.editor.draft.outputDirection),
-    );
-  }
-
-  /** The configuration the run started from this screen composes, and the
-   * metadata and output it transmits under. */
-  function composedRun(state: InviterScreenState) {
-    if (state.editor === undefined) throw new Error("expected an editor");
-    const { metadata, outputDirection } = state.editor.draft;
-    const linkageTerms = {
-      ...getDefaultLinkageTerms("County Health"),
-      output: outputForDirection(outputDirection),
-    };
-    const intent = intentFor(
-      inviterServerJobConfig({
-        minted: { linkageTerms, sharedSecret: "a".repeat(43), metadata },
-        inputSource: { kind: "workFile", name: "cohort.csv" },
-        transport: { channel: "sftp" },
-        loadedEnforcementRecords: state.loadedEnforcementRecords,
-        mountedConfigurationOpened: true,
-      }),
-    );
-    if (intent.channel !== "sftp") throw new Error("expected an sftp intent");
-    return {
-      spec: composeSftpConfigSpec(intent, testSftpServerEntry()),
-      metadata,
-      output: linkageTerms.output,
-    };
-  }
-
-  test("the review step lists the columns the run would send", () => {
-    const state = pendingAndRead();
-    const view = viewOf(state);
-    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
-    if (state.editor === undefined) throw new Error("expected an editor");
-    const sent = disclosedColumnNames(state.editor.draft.metadata);
-    expect(sent.length).toBeGreaterThan(0);
-    expect(view.verdict.columns).toEqual(sent);
-  });
-
-  test("confirming them composes the run's record as confirmed", () => {
-    const state = pendingAndRead();
-    const view = viewOf(state);
-    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
-    const confirmed = inviterScreenReducer(state, {
-      type: "outbound-consent-confirmed",
-      columns: view.verdict.columns,
-    });
-    const { spec, metadata, output } = composedRun(confirmed);
-    expect(spec.outboundPayloadConsent).toEqual({
-      status: "confirmed",
-      columns: view.verdict.columns,
-    });
-    expect(
-      assessOutboundPayloadConsent(
-        spec.outboundPayloadConsent,
-        metadata,
-        output,
-      ).status,
-    ).toBe("current");
-    expect(noticesOf(confirmed)).not.toContain(
-      PENDING_OUTBOUND_CONSENT_WARNING,
-    );
-    expect(viewOf(confirmed)?.kind).toBe("confirmed");
-  });
-
-  test("declining leaves the run's record pending, and the run refused", () => {
-    const state = pendingAndRead();
-    const { spec, metadata, output } = composedRun(state);
-    expect(spec.outboundPayloadConsent).toEqual({ status: "pending" });
-    expect(
-      assessOutboundPayloadConsent(
-        spec.outboundPayloadConsent,
-        metadata,
-        output,
-      ).status,
-    ).toBe("confirmation-required");
-    expect(noticesOf(state)).toContain(PENDING_OUTBOUND_CONSENT_WARNING);
-  });
-
-  /** The review step's create gate, over the two reasons the screen reads off
-   * the open configuration, every other gate clear. */
-  function createStatusOf(state: InviterScreenState) {
-    return inviterCreateStatus({
-      runWithheld: runWithheldReason(state.mountedConfiguration),
-      outboundConsentUnconfirmed: outboundConsentWithheldReason(viewOf(state)),
-      offlineBlocked: false,
-      connectionIncomplete: false,
-      splitDirectoryProblem: undefined,
-      exchangeFilesBlocked: false,
-      connectionTuningBlocked: false,
-      runDiagnosticsBlocked: false,
-      receiptsBlocked: false,
-      signingIdentityDivergence: undefined,
-      problemCount: 0,
-    });
-  }
-
-  test("create is withheld until the columns are confirmed", () => {
-    const state = pendingAndRead();
-    const withheld = createStatusOf(state);
-    expect(withheld.ready).toBe(false);
-    expect(withheld.statusLine).toBe(
-      outboundConsentWithheldReason(viewOf(state)),
-    );
-    expect(withheld.statusLine).toContain(OUTBOUND_CONSENT_TITLE);
-    const view = viewOf(state);
-    if (view?.kind !== "confirm") throw new Error("expected a confirmation");
-    const confirmed = inviterScreenReducer(state, {
-      type: "outbound-consent-confirmed",
-      columns: view.verdict.columns,
-    });
-    expect(createStatusOf(confirmed).ready).toBe(true);
-  });
-
-  test("a channel the console does not conduct keeps its own reason", () => {
-    const state = withFileRead(
-      loadedInto(INVITER_SCREEN_INITIAL, {
-        channel: "webrtc",
-        linkageTerms: getDefaultLinkageTerms("County Health"),
-        outboundPayloadConsent: { status: "pending" },
-        metadata: documentColumns(),
-      }),
-    );
-    const reason = runWithheldReason(state.mountedConfiguration);
-    expect(reason).toContain("webrtc");
-    const status = createStatusOf(state);
-    expect(status.ready).toBe(false);
-    expect(status.statusLine).toBe(reason);
-    expect(status.announcement).toBe(reason);
-  });
-
-  test("a confirmation after the invitation is created changes nothing", () => {
-    const state = pendingAndRead();
-    const view = viewOf(state);
-    if (view?.kind !== "confirm" || state.editor === undefined)
-      throw new Error("expected a confirmation");
-    const sealed = {
-      ...state,
-      editor: { ...state.editor, sealed: true },
-    };
-    expect(
-      inviterScreenReducer(sealed, {
-        type: "outbound-consent-confirmed",
-        columns: view.verdict.columns,
-      }),
-    ).toBe(sealed);
-  });
-});
-
 // The linkage-terms settings the invitation editor has no control for: a
 // field's own constraints, a sent column's description, and the columns this
 // party expects back. Each is held as the file states it, so the run started
@@ -2083,7 +1688,6 @@ describe("an opened configuration that leaves payload.receive unset", () => {
     );
     const status = inviterCreateStatus({
       runWithheld: undefined,
-      outboundConsentUnconfirmed: undefined,
       offlineBlocked: false,
       connectionIncomplete: false,
       splitDirectoryProblem: undefined,

@@ -112,9 +112,11 @@ async function inviteOnline(
   >;
   // The filled list, which only the in-place edit could have put there: what
   // every assertion below reads is therefore the edited configuration, not
-  // the acceptance hook's first draft.
+  // the acceptance hook's first draft. The input discloses no column, so the
+  // send list the invitation stated is empty.
   const terms = saved["linkage_terms"] as Record<string, unknown>;
   expect(terms["payload"]).toEqual({
+    send: [],
     receive: FILLED_RECEIVE_COLUMNS.map((name) => ({ name })),
   });
   return {

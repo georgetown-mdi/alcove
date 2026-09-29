@@ -18,7 +18,6 @@ import {
   conversionOffered,
   conversionStatement,
   convertedStatement,
-  divergedCommitmentNotice,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
 } from "./mountedConfiguration";
@@ -95,25 +94,6 @@ function NoticesAlert({
 }
 
 /**
- * The diverged-commitment warning on its own, for the columns step the warning
- * tells the operator to change: the remedy and the report of whether it worked
- * stand together, rather than the report staying on the file step. Nothing else
- * the load says renders here -- each of those is about the load itself.
- */
-export function DivergedCommitmentNotice({
-  state,
-  disclosure,
-}: {
-  state: MountedConfigurationState;
-  /** What the draft this step edits would send to the partner, beside the
-   * commitments the open configuration holds. Absent until a file is read. */
-  disclosure?: RunDisclosure;
-}) {
-  const warning = divergedCommitmentNotice(state, disclosure);
-  return <NoticesAlert notices={warning === undefined ? [] : [warning]} />;
-}
-
-/**
  * The warning that the opened configuration's terms were changed here, for the
  * review step the run starts from (`editedTermsWarning`). An edit made on
  * that step itself can raise it, so the polite region announces its title when
@@ -149,9 +129,8 @@ export function MountedConfigurationCard({
   /** Whether an invitation is already minted from the terms the steps below
    * hold, which withholds the offer. */
   sealed: boolean;
-  /** What the draft below would send to the partner, beside the commitments the
-   * open configuration holds, for the notice that reports a run core refuses.
-   * Absent until a file is read, where no draft settles a disclosed set. */
+  /** What the draft below states, which narrows the held settings the notices
+   * name. Absent until a file is read. */
   disclosure?: RunDisclosure;
   /** Read the mounted configuration. Offered while nothing is open, so a read
    * that did not answer can be tried again without a page reload. */

@@ -1044,11 +1044,6 @@ describe("generateInvitation", () => {
     const token = await decodeInvitation(result.encoded);
     // The dedicated wire field holds exactly what preparePayload transmits.
     expect(token.disclosedPayloadColumns).toEqual(disclosed);
-    // The exposed field is the token's value, so a persisting caller (the
-    // managed-exchange deposit) records the same commitment the token published.
-    expect(result.disclosedPayloadColumns).toEqual(
-      token.disclosedPayloadColumns,
-    );
   });
 
   test("quick path holds an empty disclosed subset when the file discloses nothing", async () => {
@@ -1062,7 +1057,6 @@ describe("generateInvitation", () => {
     });
     const token = await decodeInvitation(result.encoded);
     expect(token.disclosedPayloadColumns).toEqual([]);
-    expect(result.disclosedPayloadColumns).toEqual([]);
   });
 
   test("quick path authors no payload when the file discloses no column", async () => {

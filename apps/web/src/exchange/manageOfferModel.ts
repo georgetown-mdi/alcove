@@ -23,11 +23,7 @@
  * "compose then throw away" path here -- a caller that declines never composes.
  */
 
-import {
-  MAX_TEXT_LENGTH,
-  MAX_TOKEN_MAX_AGE_DAYS,
-  deriveOutboundPayloadConsent,
-} from "@alcove/core";
+import { MAX_TEXT_LENGTH, MAX_TOKEN_MAX_AGE_DAYS } from "@alcove/core";
 
 import { NOTE_CONTROL_CHAR_PATTERN } from "@jobs/intentSchemas";
 import { RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
@@ -117,9 +113,7 @@ export interface ManagedExchangeDocumentParts {
    * This party's side of the partnership, and the deposit's ONE statement of it:
    * {@link buildManagedDeposit} composes the document from these parts and records
    * this same value as the record's `side`, so a deposit cannot store one side
-   * while holding the other side's document. Required, not optional: an omitted
-   * side would default to no outbound-payload consent record, a silent pass at
-   * every later run (see {@link composeManagedDocument}).
+   * while holding the other side's document.
    */
   side: ManagedExchangeSide;
   /** This party's linkage terms -- the inviter's minted terms, or the acceptor's
@@ -129,15 +123,6 @@ export interface ManagedExchangeDocumentParts {
   metadata?: Metadata;
   /** This party's per-party standardization, when authored. */
   standardization?: Standardization;
-  /**
-   * This party's SEND-side disclosure commitment -- the inviter supplies the
-   * token's own `disclosedPayloadColumns` (one source: the set the partner
-   * consented to, never a re-derivation that could drift from it). Empty means a
-   * strict "sends nothing" commitment; absent means no commitment on record (the
-   * acceptor's send commitment rides its mirrored `payload.send` instead -- see
-   * docs/spec/FILE_SYNC.md, "Which mint paths persist disclosedPayloadColumns").
-   */
-  disclosedPayloadColumns?: Array<string>;
   /**
    * This party's RECEIVE-side enforcement -- the acceptor supplies the
    * invitation token's `disclosedPayloadColumns` (the partner's committed send
@@ -185,19 +170,11 @@ export interface ManagedExchangeDocumentParts {
 
 /**
  * Compose this party's persisted exchange-file document from its own document
- * parts and the credential-free webrtc locator. The payload-column commitments
- * (`disclosedPayloadColumns`, `expectedPayloadColumns`, and
- * `expectedPartnerDeduplicate`) are caller-supplied and held verbatim, never
- * re-derived, so the persisted commitment cannot disagree with the token's. An
- * empty array is a strict commitment and is preserved; only an absent field is
- * omitted.
- *
- * The one field this composer DERIVES rather than holds is the acceptor's
- * `outboundPayloadConsent`: nobody authors it directly, so core's
- * `deriveOutboundPayloadConsent` resolves it from the very `metadata` this
- * document persists, keeping the two from disagreeing. An inviter records none:
- * its own set was authored at mint as `disclosedPayloadColumns` (see
- * docs/spec/EXCHANGE_FILE.md, "The acceptor's outbound consent").
+ * parts and the credential-free webrtc locator. The receive-side records
+ * (`expectedPayloadColumns` and `expectedPartnerDeduplicate`) are
+ * caller-supplied and held verbatim, never re-derived, so the persisted record
+ * cannot disagree with the token's. An empty array is a strict record and is
+ * preserved; only an absent field is omitted.
  *
  * Exported so the composition rules stay the tested boundary, even though
  * {@link buildManagedDeposit} is its only caller.
@@ -209,10 +186,6 @@ export function composeManagedDocument(
   parts: ManagedExchangeDocumentParts,
   connection: WebRTCExchangeLocator,
 ): ExchangeSpec {
-  const outboundPayloadConsent =
-    parts.side === "acceptor"
-      ? deriveOutboundPayloadConsent(parts.linkageTerms.output, parts.metadata)
-      : undefined;
   return composeManagedExchangeFile({
     connection,
     linkageTerms: parts.linkageTerms,
@@ -220,16 +193,12 @@ export function composeManagedDocument(
     ...(parts.standardization !== undefined
       ? { standardization: parts.standardization }
       : {}),
-    ...(parts.disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns: parts.disclosedPayloadColumns }
-      : {}),
     ...(parts.expectedPayloadColumns !== undefined
       ? { expectedPayloadColumns: parts.expectedPayloadColumns }
       : {}),
     ...(parts.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: parts.expectedPartnerDeduplicate }
       : {}),
-    ...(outboundPayloadConsent !== undefined ? { outboundPayloadConsent } : {}),
     ...(parts.includeOwnColumns !== undefined
       ? { includeOwnColumns: parts.includeOwnColumns }
       : {}),
@@ -279,9 +248,8 @@ export interface ManagedDepositInputs {
 /**
  * Assemble the {@link NewManagedExchange} fields a deposit persists, composing
  * this party's document from `documentParts` here rather than accepting a
- * pre-composed one, so the record's `side` and the document's side-dependent
- * content (the acceptor's `outboundPayloadConsent`) are read from a single
- * stated side and cannot diverge. A record reconstructed from an imported
+ * pre-composed one, so the record's `side` is read from the same parts the
+ * document is composed from. A record reconstructed from an imported
  * artifact (`managedExchangeImport`) is a separate path, holding the
  * artifact's own side and document verbatim.
  *

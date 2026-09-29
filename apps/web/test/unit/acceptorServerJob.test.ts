@@ -215,10 +215,7 @@ describe("acceptorServerJobConfig", () => {
     );
   });
 
-  test("states the acceptor side, which is what records the outbound consent", () => {
-    // The composer derives an outbound_payload_consent record for this side
-    // alone. A config that stated any other side would compose none, leaving a
-    // later unattended run of it held to no set.
+  test("states the acceptor side", () => {
     expect(configFor().side).toBe("acceptor");
   });
 });

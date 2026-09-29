@@ -22,10 +22,6 @@
  *
  * - `linkageTerms` -- the document's terms verbatim (the inviter's own perspective),
  *   so the partner adopts the same set it did originally.
- * - `disclosedPayloadColumns` -- the document's own committed send set (empty is a
- *   strict "sends nothing" commitment and is preserved; absent stays absent), so the
- *   partner's receive enforcement re-crystallizes to the same set it consented to --
- *   never a re-derivation that could drift.
  * - `connectionEndpoint` -- built FRESH from this app's current signaling location,
  *   not the document's stored `server` locator: the inviter derives its rendezvous
  *   from `window.location` on the re-run path, so the stored locator is inert (see
@@ -115,15 +111,11 @@ function buildReinviteRotation(
 
 /**
  * Build the fresh invitation token a re-invite mints from the stored inviter
- * document: the document's linkage terms and committed send set verbatim, a fresh
- * webrtc endpoint from the current location, the fresh setup secret, and the bounded
- * setup expiry. The token holds no credential -- the endpoint is credential-free by
- * construction and `encodeInvitation` re-validates it through the strict endpoint
- * schema (see {@link ./invitation.ts}).
- *
- * The document's `disclosedPayloadColumns` passes through verbatim, including the
- * strict empty set; only an absent field is omitted, so the token cannot mint a
- * commitment the document did not hold.
+ * document: the document's linkage terms verbatim, a fresh webrtc endpoint from the
+ * current location, the fresh setup secret, and the bounded setup expiry. The token
+ * holds no credential -- the endpoint is credential-free by construction and
+ * `encodeInvitation` re-validates it through the strict endpoint schema (see
+ * {@link ./invitation.ts}).
  */
 function buildReinviteToken(
   record: ManagedExchangeRecord,
@@ -138,9 +130,6 @@ function buildReinviteToken(
     sharedSecret: freshSecret,
     expires: tokenExpires,
     connectionEndpoint: invitationWebrtcEndpoint(location, ownRelay),
-    ...(record.exchangeFile.disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns: record.exchangeFile.disclosedPayloadColumns }
-      : {}),
   };
 }
 

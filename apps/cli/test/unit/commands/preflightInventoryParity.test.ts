@@ -10,7 +10,6 @@ import * as hostKeyTrust from "../../../src/hostKeyTrust";
 import * as keyFilePreflight from "../../../src/keyFilePreflight";
 import * as linkagePreflight from "../../../src/commands/linkagePreflight";
 import * as optionDefinitions from "../../../src/optionDefinitions";
-import * as outboundPayloadConsent from "../../../src/outboundPayloadConsent";
 import * as signingIdentityDivergence from "../../../src/signingIdentityDivergence";
 import * as valueConstraintWarnings from "../../../src/commands/valueConstraintWarnings";
 import { applyConnectionOverrides } from "../../../src/config";
@@ -32,7 +31,6 @@ const DEDICATED_PREFLIGHT_MODULES: Record<string, Record<string, unknown>> = {
   "commands/valueConstraintWarnings": valueConstraintWarnings,
   hostKeyTrust,
   keyFilePreflight,
-  outboundPayloadConsent,
   signingIdentityDivergence,
 };
 
@@ -118,11 +116,6 @@ const CLI_ANCHORS: Record<PreflightId, CliAnchor> = {
     kind: "export",
     module: "signingIdentityDivergence",
     names: ["assertIdentityMatchesAgreedTerms", "warnOnIdentityDivergence"],
-  },
-  outboundPayloadConsent: {
-    kind: "export",
-    module: "outboundPayloadConsent",
-    names: ["confirmOutboundPayloadConsent"],
   },
   splitDirectoryRequiresRetain: {
     kind: "inline",
