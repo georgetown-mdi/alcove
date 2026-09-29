@@ -227,12 +227,12 @@ export type ManagedExchangeRunOutcome =
  * was handed off did not read, so the run does not rotate on custody it could
  * not establish) -- are detected before any connection and never routed through
  * desync/attack framing. A `"too-large"` refusal (a set this run had to send
- * was over the bound one WebRTC message holds, or had more distinct values
- * than one round holds) is benign the same way, but a round past the first
- * can meet it after data has moved. A `"terms-change"` refusal (the partner's
- * linkage terms changed and this run did not take them on) is met at the terms
- * exchange, after the handshake and before any linkage key or data moves, and
- * is benign too: its remedy is the operator's decision on the change. */
+ * was over the bound one WebRTC message holds) is benign the same way, but a
+ * round past the first can meet it after data has moved. A `"terms-change"`
+ * refusal (the partner's linkage terms changed and this run did not take them
+ * on) is met at the terms exchange, after the handshake and before any linkage
+ * key or data moves, and is benign too: its remedy is the operator's decision
+ * on the change. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -250,9 +250,8 @@ export type ManagedExchangeFailureKind =
 export type TooLargeSetOwner = "local" | "partner";
 
 /** Which bound a `"too-large"` refusal found a set over: `"webrtc-message"`
- * for the bytes one WebRTC message holds, `"round-distinct-values"` for the
- * distinct values one linkage key round holds. */
-export type TooLargeBound = "webrtc-message" | "round-distinct-values";
+ * for the bytes one WebRTC message holds. */
+export type TooLargeBound = "webrtc-message";
 
 /** Run bookkeeping the backup state and the desync UX read. Every field is a
  * timestamp, a closed enum, or a marker present only as `true` -- no free-text
@@ -480,7 +479,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
     .optional(),
   singleColumnInput: z.literal(true).optional(),
   tooLargeSetOwner: z.enum(["local", "partner"]).optional(),
-  tooLargeBound: z.enum(["webrtc-message", "round-distinct-values"]).optional(),
+  tooLargeBound: z.enum(["webrtc-message"]).optional(),
 });
 
 /** The canonical validator for the operator's answer. Strict, so a member a

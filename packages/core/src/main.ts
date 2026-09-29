@@ -54,11 +54,7 @@ export type {
   PsiWorkerRequest,
   PsiWorkerResponse,
 } from "./psi/psiWorkerEngine";
-export {
-  MAX_ROUND_DISTINCT_VALUES,
-  SINGLE_PASS_STAGE_IDS,
-  linkViaSinglePassPSI,
-} from "./psi/link";
+export { SINGLE_PASS_STAGE_IDS, linkViaSinglePassPSI } from "./psi/link";
 export type { SinglePassStageId } from "./psi/link";
 
 export { AlgorithmSchema, SEMANTIC_TYPES } from "./types";

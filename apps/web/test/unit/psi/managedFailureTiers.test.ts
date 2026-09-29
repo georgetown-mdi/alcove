@@ -516,9 +516,9 @@ describe("managedStandingConditionTier", () => {
 
 describe("the too-large tier: a set over a bound the exchange cannot send past", () => {
   // The refusal an unattended run meets when its input is over a bound the
-  // exchange cannot send past (one WebRTC message, or the distinct values
-  // one round holds). Reconnecting sends the same set, so it tiers apart from
-  // the retryable transport drop, and its copy names splitting the input.
+  // exchange cannot send past (one WebRTC message, or one message file).
+  // Reconnecting sends the same set, so it tiers apart from the retryable
+  // transport drop, and its copy names splitting the input.
   const columns = ["ssn", "ssn4", "first_name", "last_name", "date_of_birth"];
   const rows: Array<CSVRow> = [
     {
@@ -606,63 +606,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     ).toBeUndefined();
   });
 
-  test("a round's distinct-value refusal records too-large and is not re-mapped to an expiry", () => {
-    const distinctRefusal = new RoundSetLimitError(
-      "A linkage key gives this party more than 16777216 distinct values in " +
-        "one round, the most one round can hold. Split the input into smaller " +
-        "files and run one exchange for each.",
-      { distinctValueLimit: 16777216 },
-    );
-    const lastRun = rerunFailureLastRun(
-      distinctRefusal,
-      Date.parse(RUN_AT),
-      false,
-      true,
-    );
-    expect(lastRun).toEqual({
-      at: RUN_AT,
-      outcome: "failed",
-      failureKind: "too-large",
-      tooLargeSetOwner: "local",
-      tooLargeBound: "round-distinct-values",
-    });
-    expect(
-      remapLapsedRunFailure(
-        distinctRefusal,
-        { expires: "2026-07-01T00:00:00.000Z" },
-        NOW,
-      ),
-    ).toBeUndefined();
-    const failure = classifyManagedRunFailure(
-      distinctRefusal,
-      { atLaunch: record(), afterRun: record({ lastRun }) },
-      undefined,
-      NOW,
-      true,
-    );
-    if (failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
-    expect(failure.kind).toBe("too-large");
-    expect(failure.title).toBe(
-      "Your file has too many distinct values for one round of matching",
-    );
-    expect(failure.message).toBe(distinctRefusal.message);
-    expect(managedRunRetryable(failure)).toBe(false);
-  });
-
-  test("a first-round distinct-value refusal records the distinct-value bound", () => {
-    const firstRoundDistinct = new WebRtcFrameLimitError(
-      "A linkage key gives this party more than 16777216 distinct values in " +
-        "one round, the most one round can hold.",
-      "local",
-      { distinctValueLimit: 16777216 },
-    );
-    expect(
-      rerunFailureLastRun(firstRoundDistinct, Date.parse(RUN_AT), false, false)
-        ?.tooLargeBound,
-    ).toBe("round-distinct-values");
-  });
-
   test("a message-file refusal names no bound", () => {
     const lastRun = rerunFailureLastRun(
       new RoundSetLimitError("over one message file"),
@@ -692,28 +635,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     expect(managedRunRetryable(failure)).toBe(false);
   });
 
-  test("the next visit names the distinct-value bound and its count", () => {
-    const failure = managedRunFailureFromRecord(
-      record({
-        lastRun: {
-          ...failed("too-large"),
-          tooLargeSetOwner: "local",
-          tooLargeBound: "round-distinct-values",
-        },
-      }),
-      undefined,
-      NOW,
-    );
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
-    expect(failure.message).toContain(
-      "had more distinct values than the 16,777,216 one round of matching " +
-        "can hold",
-    );
-    expect(failure.message).not.toMatch(/WebRTC/);
-    expect(failure.recovery).toBe("split");
-  });
-
   test("the next visit names no bound for a record that does not say which", () => {
     const failure = managedRunFailureFromRecord(
       record({ lastRun: failed("too-large") }),
@@ -725,7 +646,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     expect(failure.message).toContain(
       "a set of values it had to send was too large, so that set was not sent",
     );
-    expect(failure.message).not.toMatch(/WebRTC|distinct/);
+    expect(failure.message).not.toMatch(/WebRTC/);
   });
 
   test("the next visit names splitting your own input for your own set", () => {
@@ -758,7 +679,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
         lastRun: {
           ...failed("too-large"),
           tooLargeSetOwner: "partner",
-          tooLargeBound: "round-distinct-values",
+          tooLargeBound: "webrtc-message",
         },
       }),
       undefined,
@@ -767,7 +688,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     if (failure === undefined || failure.kind === "handed-off")
       throw new Error("expected the too-large alert");
     expect(failure.title).toBe(
-      "Your partner's file has too many distinct values for one round of matching",
+      "Your partner's file is too large for a browser exchange",
     );
     expect(failure.message).toContain("built from your partner's input file");
     expect(failure.message).toContain(

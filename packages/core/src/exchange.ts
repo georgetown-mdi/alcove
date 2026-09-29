@@ -55,7 +55,6 @@ import {
 import type { TermsChange } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
 import {
-  MAX_ROUND_DISTINCT_VALUES,
   RoundSetCounter,
   requireSingleCandidate,
   linkViaCountOnlyPSI,
@@ -1519,8 +1518,7 @@ export function prepareForExchange(
  * refuses on a count over the bound in both roles, and on any failure to
  * count, with the failure as the refusal's cause. A {@link UsageError} the
  * round would raise in one role is left to the round when the other role
- * fits; raised in both, it is thrown as it is, except that the count passing
- * the round's distinct-value bound raises this refusal with its message.
+ * fits; raised in both, it is thrown as it is.
  * Every later round, and a frame this bound cannot size from a count,
  * is checked on the frame the round builds (`PSIParticipant`). Where the
  * round reads one candidate per record, a record holding a candidate set
@@ -1549,10 +1547,6 @@ export async function assertFirstRoundFitsWebRtcFrame(
         roundOneSetTooLargeMessage(fewest, maxFrameBytes),
         "local",
       ),
-    tooManyDistinct: (refusal) =>
-      new WebRtcFrameLimitError(refusal.message, refusal.setOwner, {
-        distinctValueLimit: refusal.distinctValueLimit,
-      }),
     uncounted: (failure) =>
       new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, "local", {
         cause: failure,
@@ -1580,33 +1574,16 @@ export function fileSyncRoundOneSetTooLargeMessage(
 }
 
 /**
- * The refusal an SFTP or synced-folder exchange raises at its start when this
- * party's first round holds more than `limit` distinct values, the most one
- * round's deduplication holds. The count stops at the bound, so the message
- * names the bound rather than a count.
- */
-export function fileSyncRoundOneTooManyDistinctMessage(limit: number): string {
-  return (
-    "Too large for SFTP or a synced folder: the first linkage key gives " +
-    `this party more than ${limit} distinct values, the most one round ` +
-    `can hold. Nothing was sent. ${SPLIT_INPUT_REMEDY}`
-  );
-}
-
-/**
  * Refuse an SFTP or synced-folder exchange whose first round alone cannot fit
  * one message file, before anything is written for the partner: a
- * {@link RoundSetLimitError} naming the count, the bound, and the remedy, or,
- * where the count stopped at the deduplication bound, that bound and the
- * remedy. Call it at the start of such an exchange, once {@link prepareForExchange}
+ * {@link RoundSetLimitError} naming the count, the bound, and the remedy.
+ * Call it at the start of such an exchange, once {@link prepareForExchange}
  * has returned and before the connection opens.
  *
  * It counts as {@link assertFirstRoundFitsWebRtcFrame} does, against the
  * inbound frame bound every file-sync receiver applies
- * (`MAX_FRAME_SIZE_BYTES`), so it also refuses a first round with more
- * distinct values than `MAX_ROUND_DISTINCT_VALUES` (`psi/link.ts`), which the count
- * itself raises. A later round's set is known only once the earlier rounds
- * have matched, so it is checked on the frame the round builds
+ * (`MAX_FRAME_SIZE_BYTES`). A later round's set is known only once the
+ * earlier rounds have matched, so it is checked on the frame the round builds
  * (`PSIParticipant`; docs/spec/FILE_SYNC.md, "Round set size limits").
  * Progress is reported as {@link assertFirstRoundFitsWebRtcFrame} reports it.
  */
@@ -1622,13 +1599,6 @@ export async function assertFirstRoundFitsFileSyncFrame(
     tooLarge: (fewest) =>
       new RoundSetLimitError(
         fileSyncRoundOneSetTooLargeMessage(fewest, maxValues),
-      ),
-    tooManyDistinct: (refusal) =>
-      new RoundSetLimitError(
-        fileSyncRoundOneTooManyDistinctMessage(
-          refusal.distinctValueLimit ?? MAX_ROUND_DISTINCT_VALUES,
-        ),
-        { distinctValueLimit: refusal.distinctValueLimit },
       ),
     uncounted: (failure) =>
       new RoundSetLimitError(
@@ -1680,16 +1650,14 @@ function yieldToEventLoop(): Promise<void> {
 
 // The first-round count both channel checks above share. `exceeds` is the
 // channel's bound on a set of that many values, `tooLarge` its refusal on the
-// fewest values the round sends in either role, `tooManyDistinct` its refusal
-// when the count passes the round's distinct-value bound, which the round
-// itself would refuse, `uncounted` its refusal when the count fails otherwise.
+// fewest values the round sends in either role, `uncounted` its refusal when
+// the count fails other than with a refusal the round would raise.
 async function assertFirstRoundFits(
   prepared: PreparedExchange,
   options: FirstRoundCheckOptions,
   bound: {
     exceeds: (elementCount: number) => boolean;
     tooLarge: (fewest: number) => Error;
-    tooManyDistinct: (refusal: RoundSetLimitError) => Error;
     uncounted: (failure: unknown) => Error;
   },
 ): Promise<void> {
@@ -1800,12 +1768,8 @@ async function assertFirstRoundFits(
   if (!refusedInRole(asSender)) return;
   const asReceiver = await roundSetSize(true);
   if (!refusedInRole(asReceiver)) return;
-  const refusal = (roundRefusal: UsageError): Error =>
-    roundRefusal instanceof RoundSetLimitError
-      ? bound.tooManyDistinct(roundRefusal)
-      : roundRefusal;
-  if (typeof asSender !== "number") throw refusal(asSender);
-  if (typeof asReceiver !== "number") throw refusal(asReceiver);
+  if (typeof asSender !== "number") throw asSender;
+  if (typeof asReceiver !== "number") throw asReceiver;
   throw bound.tooLarge(Math.min(asSender, asReceiver));
 }
 

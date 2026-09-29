@@ -65,10 +65,10 @@ import {
 import {
   InternalConsistencyError,
   ProtocolRefusalError,
-  RoundSetLimitError,
   UsageError,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import { MAX_MAP_SHARD_ENTRIES, ShardedMap } from "./shardedMap";
 import { receiveCountReport, sendCountReport } from "../protocolSetup";
 
 import { getLoggerForVerbosity } from "../utils/logger";
@@ -183,24 +183,9 @@ function forEachCandidate(
   }
 }
 
-/**
- * The most distinct values one linkage key round holds. The round's
- * deduplication keeps one `Map` entry per distinct value, and a V8 `Map`
- * holds at most 2^24 entries (docs/spec/FILE_SYNC.md, Round set size limits).
- */
-export const MAX_ROUND_DISTINCT_VALUES = 2 ** 24;
-
-/** @internal */
-export function roundDistinctValueLimitRefusal(
-  limit: number,
-): RoundSetLimitError {
-  return new RoundSetLimitError(
-    `A linkage key gives this party more than ${limit} distinct values in ` +
-      "one round, the most one round can hold. Split the input into smaller " +
-      "files and run one exchange for each.",
-    { distinctValueLimit: limit },
-  );
-}
+// A value's first row in removeDuplicatesAndUndefineds and RoundSetCounter,
+// once a second row holds the value too.
+const HELD_BY_SEVERAL_ROWS = -1;
 
 /**
  * The round's candidate list for a party that DROPS its within-round
@@ -210,40 +195,36 @@ export function roundDistinctValueLimitRefusal(
  * The uniqueness rule applies per VALUE rather than per record, so a record
  * whose other candidates are unique keeps them, and a record whose every
  * candidate is a duplicate participates with nothing
- * (docs/spec/PROTOCOL.md, Value-level round participation). Keeps one
- * first-seen-row map plus a set of the recurring values rather than three
- * maps: deleting a recurring value preserves the survivors' insertion order,
- * which is the row-major order.
+ * (docs/spec/PROTOCOL.md, Value-level round participation). Keeps one map
+ * from each value to its first row, marked once a second row holds the value,
+ * and reads the survivors off it in insertion order, which is the row-major
+ * order.
  *
  * `permutation` maps a survivor's index back to its original row when the
- * input is a carried-forward subset of a later round. A value past
- * `maxDistinctValues` distinct ones is refused with a
- * {@link RoundSetLimitError}; tests lower the bound.
+ * input is a carried-forward subset of a later round. The map holds any
+ * number of distinct values ({@link ShardedMap}); tests lower
+ * `shardEntries`.
  *
  * @internal
  */
 export function removeDuplicatesAndUndefineds(
   dataWithDuplicatesAndUndefineds: ReadonlyArray<KeyCandidates>,
   permutation?: Array<number>,
-  maxDistinctValues: number = MAX_ROUND_DISTINCT_VALUES,
+  shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): [Array<string>, Array<number>] {
-  const firstRow = new Map<string, number>();
-  const recurring = new Set<string>();
+  const firstRow = new ShardedMap<string, number>(shardEntries);
   forEachCandidate(dataWithDuplicatesAndUndefineds, (row, value) => {
-    const first = firstRow.get(value);
-    if (first === undefined) {
-      if (firstRow.size === maxDistinctValues)
-        throw roundDistinctValueLimitRefusal(maxDistinctValues);
-      firstRow.set(value, row);
-    } else if (first !== row) recurring.add(value);
+    const first = firstRow.setIfAbsent(value, row);
+    if (first !== undefined && first !== row && first !== HELD_BY_SEVERAL_ROWS)
+      firstRow.set(value, HELD_BY_SEVERAL_ROWS);
   });
-  for (const value of recurring) firstRow.delete(value);
   const data: Array<string> = [];
   const originalIndices: Array<number> = [];
-  for (const [value, i] of firstRow) {
+  firstRow.forEach((i, value) => {
+    if (i === HELD_BY_SEVERAL_ROWS) return;
     data.push(value);
     originalIndices.push(permutation ? permutation[i] : i);
-  }
+  });
   return [data, originalIndices];
 }
 
@@ -255,27 +236,21 @@ export function removeDuplicatesAndUndefineds(
  * the values exactly one record holds, the set
  * {@link removeDuplicatesAndUndefineds} builds. A record holding a candidate
  * set contributes each candidate, as the round's own set does. Rows are added
- * in ascending order, one call each.
- *
- * Past `maxDistinctValues` distinct values it raises the round's own
- * {@link RoundSetLimitError}; tests lower the bound.
+ * in ascending order, one call each. Tests lower `shardEntries`.
  *
  * @internal
  */
 export class RoundSetCounter {
-  // Each value seen, against the one row holding it, or -1 once a second row
-  // holds it too.
-  private readonly rowOf = new Map<string, number>();
+  private readonly rowOf: ShardedMap<string, number>;
   private heldByOneRow = 0;
   private readonly keepsDuplicates: boolean;
-  private readonly maxDistinctValues: number;
 
   constructor(
     keepsDuplicates: boolean,
-    maxDistinctValues: number = MAX_ROUND_DISTINCT_VALUES,
+    shardEntries: number = MAX_MAP_SHARD_ENTRIES,
   ) {
     this.keepsDuplicates = keepsDuplicates;
-    this.maxDistinctValues = maxDistinctValues;
+    this.rowOf = new ShardedMap(shardEntries);
   }
 
   /** Count the candidates of row `row`. */
@@ -286,14 +261,10 @@ export class RoundSetCounter {
   }
 
   private addValue(row: number, value: string): void {
-    const holder = this.rowOf.get(value);
-    if (holder === undefined) {
-      if (this.rowOf.size === this.maxDistinctValues)
-        throw roundDistinctValueLimitRefusal(this.maxDistinctValues);
-      this.rowOf.set(value, row);
-      ++this.heldByOneRow;
-    } else if (holder !== row && holder !== -1) {
-      this.rowOf.set(value, -1);
+    const holder = this.rowOf.setIfAbsent(value, row);
+    if (holder === undefined) ++this.heldByOneRow;
+    else if (holder !== row && holder !== HELD_BY_SEVERAL_ROWS) {
+      this.rowOf.set(value, HELD_BY_SEVERAL_ROWS);
       --this.heldByOneRow;
     }
   }
@@ -323,38 +294,43 @@ export class RoundSetCounter {
  * multiplicity is re-expanded locally when a match comes back
  * (docs/spec/PROTOCOL.md, The per-side rules). Values appear in
  * first-occurrence order and each group's rows ascend, which is what makes
- * the expansion ordering reproducible on both parties. The distinct-value
- * bound is {@link removeDuplicatesAndUndefineds}'s.
+ * the expansion ordering reproducible on both parties. Like
+ * {@link removeDuplicatesAndUndefineds}, it holds any number of distinct
+ * values; tests lower `shardEntries`. A group's first row is held apart from
+ * the rest, so only a value several records hold allocates a list.
  *
  * @internal exported for the round-construction tests.
  */
 export function groupDuplicatesAndRemoveUndefineds(
   dataWithDuplicatesAndUndefineds: ReadonlyArray<KeyCandidates>,
   permutation?: Array<number>,
-  maxDistinctValues: number = MAX_ROUND_DISTINCT_VALUES,
+  shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): [Array<string>, RoundCandidates] {
-  const positionOf = new Map<string, number>();
+  const positionOf = new ShardedMap<string, number>(shardEntries);
   const data: Array<string> = [];
-  const rowsByPosition: Array<Array<number>> = [];
+  const firstRowAt: Array<number> = [];
+  const laterRowsAt: Array<Array<number> | undefined> = [];
   forEachCandidate(dataWithDuplicatesAndUndefineds, (i, value) => {
-    let position = positionOf.get(value);
-    if (position === undefined) {
-      if (positionOf.size === maxDistinctValues)
-        throw roundDistinctValueLimitRefusal(maxDistinctValues);
-      position = data.length;
-      positionOf.set(value, position);
-      data.push(value);
-      rowsByPosition.push([]);
-    }
-    const group = rowsByPosition[position];
     const row = permutation ? permutation[i] : i;
-    if (group[group.length - 1] !== row) group.push(row);
+    const position = positionOf.setIfAbsent(value, data.length);
+    if (position === undefined) {
+      data.push(value);
+      firstRowAt.push(row);
+      laterRowsAt.push(undefined);
+      return;
+    }
+    const laterRows = laterRowsAt[position];
+    if (laterRows === undefined) {
+      if (firstRowAt[position] !== row) laterRowsAt[position] = [row];
+    } else if (laterRows[laterRows.length - 1] !== row) laterRows.push(row);
   });
   const rows: Array<number> = [];
-  const groupStarts: Array<number> = new Array(rowsByPosition.length + 1);
+  const groupStarts: Array<number> = new Array(data.length + 1);
   groupStarts[0] = 0;
-  for (let position = 0; position < rowsByPosition.length; ++position) {
-    for (const row of rowsByPosition[position]) rows.push(row);
+  for (let position = 0; position < data.length; ++position) {
+    rows.push(firstRowAt[position]);
+    const laterRows = laterRowsAt[position];
+    if (laterRows !== undefined) for (const row of laterRows) rows.push(row);
     groupStarts[position + 1] = rows.length;
   }
   return [data, { rows, groupStarts }];

@@ -148,21 +148,18 @@ test("the refusal is shown as its own alert, with no retry", () => {
   );
 });
 
-test("a round's distinct-value refusal is shown as the same alert, with no retry", () => {
+test("a message-file refusal is shown as the same alert, with no retry", () => {
   const failure = failureFor(
     "exchange",
     new RoundSetLimitError(
-      "A linkage key gives this party more than 16777216 distinct values in " +
-        "one round, the most one round can hold. Split the input into smaller " +
-        "files and run one exchange for each.",
-      { distinctValueLimit: 16777216 },
+      "The set holds 20000000 values, over the 15339166 one message file " +
+        "holds. Split the input into smaller files and run one exchange for " +
+        "each.",
     ),
   );
   expect(failure.category).toBe("config");
-  expect(failure.title).toBe(
-    "Your file has too many distinct values for one round of matching",
-  );
-  expect(failure.message).toContain("more than 16777216 distinct values");
+  expect(failure.title).toBe("Your file is too large to send");
+  expect(failure.message).toContain("over the 15339166 one message file");
   expect(failure.reportedCause).toBeUndefined();
 });
 

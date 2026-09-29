@@ -290,16 +290,13 @@ export function remapLapsedRunFailure(
 }
 
 /**
- * Which bound a set-too-large refusal found the set over: the distinct values
- * one round holds wherever the refusal states that limit, else one WebRTC
+ * Which bound a set-too-large refusal found the set over: one WebRTC
  * message's bytes for {@link WebRtcFrameLimitError}. A
- * {@link RoundSetLimitError} without the limit refused a message file's
- * bound and names none.
+ * {@link RoundSetLimitError} refused a message file's bound and names none.
  */
 export function tooLargeBoundOf(
   error: WebRtcFrameLimitError | RoundSetLimitError,
 ): TooLargeBound | undefined {
-  if (error.distinctValueLimit !== undefined) return "round-distinct-values";
   if (error instanceof WebRtcFrameLimitError) return "webrtc-message";
   return undefined;
 }

@@ -1,6 +1,5 @@
 import { expect, test } from "vitest";
 
-import { RoundSetLimitError } from "../../src/errors";
 import {
   groupDuplicatesAndRemoveUndefineds,
   removeDuplicatesAndUndefineds,
@@ -15,9 +14,8 @@ import type { KeyCandidates } from "../../src/standardization";
 function counted(
   rows: ReadonlyArray<KeyCandidates>,
   keepsDuplicates: boolean,
-  maxDistinctValues?: number,
 ): number {
-  const counter = new RoundSetCounter(keepsDuplicates, maxDistinctValues);
+  const counter = new RoundSetCounter(keepsDuplicates);
   rows.forEach((candidates, row) => counter.add(row, candidates));
   return counter.size;
 }
@@ -62,15 +60,4 @@ test("the size only grows where duplicates are kept", () => {
   keeping.add(1, "a");
   expect(keeping.sizeOnlyGrows).toBe(true);
   expect(keeping.size).toBe(1);
-});
-
-test("the counter refuses the distinct value past its bound, as the round does", () => {
-  for (const keepsDuplicates of [false, true]) {
-    expect(counted(["a", "b", "a", "b"], keepsDuplicates, 2)).toBe(
-      keepsDuplicates ? 2 : 0,
-    );
-    expect(() => counted(["a", "b", "c"], keepsDuplicates, 2)).toThrow(
-      RoundSetLimitError,
-    );
-  }
 });
