@@ -153,18 +153,17 @@ function refusalCauseChain(
  * `new <Identifier>(...)`, so a member or a construction reached through a
  * factory, an alias, or a variable is outside it.
  *
- * Extend it from -- or raise it directly in -- any check that fails
- * closed on the operator's own configuration and whose message names only
- * local content. What that content rule excludes is text another party
- * authored, so a refusal built from fixed prose over counts alone has
- * nothing to exclude, whichever document the counts were read off.
- * {@link StandardizationTermsError} is a member by subclass; a check
- * whose refusal meets the contract without needing a narrower type raises
- * the base class directly. The payload-SEND disclosure check
- * (`assertPayloadSendDisclosed`) is not a member: on the accept side its
- * `payload.send` names are adopted from the partner's invitation, and the
- * check cannot tell its role at the throw site, so it stays out and its
- * message stays swallowed.
+ * Extend it from -- or raise it directly in -- any check that fails closed on
+ * the operator's own configuration and whose message names only local content.
+ * What that content rule excludes is text another party authored, so a refusal
+ * built from fixed prose over counts alone has nothing to exclude, whichever
+ * document the counts were read off. {@link StandardizationTermsError} is a
+ * member by subclass; a check whose refusal meets the contract without needing
+ * a narrower type raises the base class directly. The payload-SEND disclosure
+ * check (`assertPayloadSendDisclosed`) is not a member: on the accept side its
+ * `payload.send` names are adopted from the partner's invitation, and the check
+ * cannot tell its role at the throw site, so it stays out and its message stays
+ * swallowed.
  *
  * Being a {@link UsageError} subclass, the CLI's `instanceof UsageError`
  * check still classifies every member as a configuration error (exit 64,

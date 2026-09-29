@@ -1758,8 +1758,9 @@ function partnerFingerprintRecorded(
  * holds the received payload to ({@link reconcileReceivedPayload} in core).
  *
  * Used by both accept-reuse paths (offline, and the online hook's reuse
- * branch). Like {@link persistHostKeyFingerprint}, this edits the file in place through the YAML document model so the
- * operator's comments, key order, and formatting survive.
+ * branch). Like {@link persistHostKeyFingerprint}, this edits the file in
+ * place through the YAML document model so the operator's comments, key
+ * order, and formatting survive.
  *
  * `columns === undefined` removes the field rather than leaving a stale
  * value; an empty array is written verbatim, a strict "receive nothing"
@@ -1946,12 +1947,12 @@ export interface TermsUpdateWrite {
 }
 
 /**
- * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the
- * records that follow from it -- `expected_payload_columns` and
- * `expected_partner_deduplicate` -- in one write, so no record is left stating a
- * commitment the new terms do not back. Every other key, the connection block
- * included, keeps its values and its key order, and a line the write does
- * not change keeps its bytes as {@link editSensitiveYamlDocument} allows.
+ * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the records
+ * that follow from it -- `expected_payload_columns` and
+ * `expected_partner_deduplicate` -- in one write, so no record is left stating
+ * a commitment the new terms do not back. Every other key, the connection block
+ * included, keeps its values and its key order, and a line the write does not
+ * change keeps its bytes as {@link editSensitiveYamlDocument} allows.
  *
  * The edited document is read back through the same schema `alcove
  * exchange` loads it with before it is written; a document that would not

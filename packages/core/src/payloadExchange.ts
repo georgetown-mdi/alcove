@@ -397,18 +397,17 @@ export function termsAsTheRunStatedThem(
  * {@link reconcileReceivedPayload} abort when the omitted column arrives
  * anyway.
  *
- * An ABSENT `payload.send` is not checked: the guided and default paths
- * author no dictionary while metadata still transmits, and the terms exchange
- * states it from that same metadata ({@link termsStatingDeclaredPayloadSend}).
- * A PRESENT-but-empty dictionary IS
- * checked: it is an explicit "I disclose nothing," so any disclosed column is
- * an under-declaration -- except when `output.shareWithPartner` is false,
- * since `runExchange` then sends nothing regardless of what metadata
- * discloses and there is nothing left to control. The non-empty case is
- * never gated on `output`: the dictionary is exchanged, shown for consent,
- * and recorded whatever the output direction, so it is held to the disclosed
- * set even when the columns never move. `payload.receive` is out of scope:
- * metadata gates sending, not receiving; `validateCompatibility`
+ * An ABSENT `payload.send` is not checked: the guided and default paths author
+ * no dictionary while metadata still transmits, and the terms exchange states
+ * it from that same metadata ({@link termsStatingDeclaredPayloadSend}). A
+ * PRESENT-but-empty dictionary IS checked: it is an explicit "I disclose
+ * nothing," so any disclosed column is an under-declaration -- except when
+ * `output.shareWithPartner` is false, since `runExchange` then sends nothing
+ * regardless of what metadata discloses and there is nothing left to control.
+ * The non-empty case is never gated on `output`: the dictionary is exchanged,
+ * shown for consent, and recorded whatever the output direction, so it is held
+ * to the disclosed set even when the columns never move. `payload.receive` is
+ * out of scope: metadata gates sending, not receiving; `validateCompatibility`
  * cross-checks it instead.
  *
  * Enforced where terms leave a configuration without an exchange to state

@@ -271,8 +271,8 @@ export function spineProblems(
 }
 
 /** What holds the create on the review step, in the reading order of the screen
- * itself: the blocker no edit here clears, then the transport's own setup, the cards below it, and the spine's
- * outstanding problems last. */
+ * itself: the blocker no edit here clears, then the transport's own setup, the
+ * cards below it, and the spine's outstanding problems last. */
 export interface InviterCreateGates {
   /** Why an open configuration withholds the run, `undefined` where none does:
    * one on a channel the console does not conduct. Already a complete sentence

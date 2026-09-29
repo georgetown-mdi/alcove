@@ -286,11 +286,6 @@ describe("runHistoryEntries renders around the most recent run", () => {
     },
     {
       outcome: "failed" as const,
-      failureKind: "consent" as const,
-      label: "Failed",
-    },
-    {
-      outcome: "failed" as const,
       failureKind: "auth" as const,
       label: "Failed",
     },
@@ -428,7 +423,6 @@ describe("lastRunMayHaveSentPayload matches the run history's own line", () => {
     { outcome: "skipped" as const, failureKind: undefined },
     { outcome: "failed" as const, failureKind: "auth" as const },
     { outcome: "failed" as const, failureKind: "input" as const },
-    { outcome: "failed" as const, failureKind: "consent" as const },
     { outcome: "failed" as const, failureKind: "storage" as const },
     { outcome: "failed" as const, failureKind: "handed-off" as const },
     { outcome: "failed" as const, failureKind: "terms-shortfall" as const },

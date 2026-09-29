@@ -369,7 +369,6 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "consent",
       "handed-off",
       "cancelled",
     ];
@@ -1494,7 +1493,6 @@ describe("standingConditionFrom", () => {
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "consent",
       "handed-off",
       "cancelled",
     ];
@@ -2048,7 +2046,6 @@ describe("the rotation-in-flight marker", () => {
     "custody-unreadable": false,
     input: false,
     "terms-shortfall": false,
-    consent: false,
     "handed-off": false,
     "too-large": false,
     "terms-change": false,

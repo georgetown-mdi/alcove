@@ -786,10 +786,11 @@ const CONFIG_APPEARED_LATE_REMEDY =
  * so its connection, linkage, and operator content stand (the rotated key is
  * still saved by `runProtocol`). The acceptance's own machine-managed consent
  * records -- the received-payload commitment and the partner's declared
- * deduplicate -- are the exception, refreshed surgically in place. Otherwise the hook re-gates
- * the config path immediately before writing, matching the offline path's
- * `provisionConfigAndKey` re-gate, and reports a conflict as a non-fatal
- * `configWriteError` rather than aborting the already-completed exchange.
+ * deduplicate -- are the exception, refreshed surgically in place. Otherwise
+ * the hook re-gates the config path immediately before writing, matching the
+ * offline path's `provisionConfigAndKey` re-gate, and reports a conflict as a
+ * non-fatal `configWriteError` rather than aborting the already-completed
+ * exchange.
  */
 export async function runOnlineBootstrap(params: {
   connection: ProtocolConnectionConfig;
@@ -1038,10 +1039,10 @@ export async function runOnlineBootstrap(params: {
           // The two machine-managed consent records are the exception, each
           // refreshed surgically in place: leaving a prior acceptance's value
           // stale would false-abort the next recurring exchange against an
-          // honest partner. Each is gated on its own
-          // caller's input and caught independently, so one failure neither
-          // skips the other nor is fatal -- the kept config retains its prior
-          // state, and runProtocol treats a hook throw as non-fatal.
+          // honest partner. Each is gated on its own caller's input and caught
+          // independently, so one failure neither skips the other nor is fatal
+          // -- the kept config retains its prior state, and runProtocol treats
+          // a hook throw as non-fatal.
           //
           // The received commitment follows the ACCEPTANCE's decision, so its
           // gate is the presence of a commitment at all: consented columns of

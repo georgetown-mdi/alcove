@@ -67,14 +67,14 @@ export type MountedConfigurationState =
    * has nothing to run it over, so the transport stays where the review step
    * had it; `notApplied` names the settings the operator's own input file could
    * not supply and `notCovered` the settings whose own column set does not
-   * reach every column that file has, both settled once the held terms reach it.
-   * `notConducted` is the file's channel where the console conducts no
-   * exchange over it at all, derived once at the read: it withholds the run
-   * and replaces every notice about the run with the one naming the channel.
+   * reach every column that file has, both settled once the held terms reach
+   * it. `notConducted` is the file's channel where the console conducts no
+   * exchange over it at all, derived once at the read: it withholds the run and
+   * replaces every notice about the run with the one naming the channel.
    * `signingPaths` and `folderPaths` are the paths the file states that a
    * conversion replaces with the console's own, and `converted` is the
-   * operator's choice to convert: until then the hand-off states those paths
-   * as read, and a signed run is withheld while `signingPaths` names any
+   * operator's choice to convert: until then the hand-off states those paths as
+   * read, and a signed run is withheld while `signingPaths` names any
    * ({@link unconvertedSigningWithheldReason}). */
   | {
       status: "opened";

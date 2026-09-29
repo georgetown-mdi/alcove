@@ -1231,10 +1231,10 @@ flow](#eviction-recovery-is-the-import-flow)).
 same pick as the `alcove.yaml`. Its name starts with a dot, so the file chooser
 may hide it until hidden files are shown. The pair lands as an exchange that runs
 here, and the import says so before you open it, naming each setting of the file
-it keeps unchanged with no control here -- `metadata` and `standardization` among
-them -- in the file's own snake_case; an `alcove.yaml` chosen alone lands as the configuration only, and its
-page says that instead. Before the
-first run here, stop the scheduled command-line run of the same exchange: each
+it keeps unchanged with no control here -- `metadata` and `standardization`
+among them -- in the file's own snake_case; an `alcove.yaml` chosen alone lands
+as the configuration only, and its page says that instead. Before the first run
+here, stop the scheduled command-line run of the same exchange: each
 run on either side changes the shared secret, and the copy that falls behind can
 no longer connect to your partner. What the pair import takes and refuses:
 
@@ -1335,7 +1335,7 @@ terms is a new exchange, agreed with the partner. An import that is not edited
 exports back to the same configuration, and an edited one exports back with the
 edits and every other setting as the file stated it.
 
-The page states three more things where they apply:
+The page states two more things where they apply:
 
 - **The settings it keeps without showing them.** Every setting of the file
   other than the connection, the agreed terms, and the settings it edits --

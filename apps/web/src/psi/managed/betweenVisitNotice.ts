@@ -26,7 +26,6 @@ import { parseStoredInstant } from "./managedExchangeRecord";
 import { readManagedFailure } from "./managedFailureTiers";
 
 import {
-  CONSENT_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   REPEATED_MISS_TITLE,
@@ -56,7 +55,6 @@ export type BetweenVisitNoticeKind =
   | "partial-rotation"
   | "input"
   | "terms-shortfall"
-  | "consent"
   | "too-large"
   | "terms-change"
   | "unexplained";
@@ -110,7 +108,6 @@ const NOTICE_TITLES: Record<
   "partial-rotation": PARTIAL_ROTATION_FAILURE_TITLE,
   input: INPUT_FAILURE_TITLE,
   "terms-shortfall": TERMS_SHORTFALL_FAILURE_TITLE,
-  consent: CONSENT_FAILURE_TITLE,
   "terms-change": TERMS_CHANGE_FAILURE_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
 };
@@ -120,7 +117,6 @@ const NOTICE_TITLES: Record<
 const NOTIFIED_FAILURE_TIERS: ReadonlySet<ManagedFailureTier> = new Set([
   "input",
   "terms-shortfall",
-  "consent",
   "too-large",
   "terms-change",
   "unexplained",
@@ -281,18 +277,6 @@ function failureNotice(
             `see the change and accept or decline it; every later window stops ` +
             `the same way until you do.`,
       tag: noticeTag(record.id, "terms-change"),
-    };
-  if (tier === "consent")
-    return {
-      kind: "consent",
-      title: NOTICE_TITLES.consent,
-      body:
-        `${name} stopped before connecting because the columns its input file ` +
-        `would send are not the ones this exchange agreed to send, and nothing ` +
-        `left this device. Open this app and run it with the file whose ` +
-        `columns match what was agreed, or set the exchange up again with your ` +
-        `partner.`,
-      tag: noticeTag(record.id, "consent"),
     };
   if (tier === "too-large") {
     const owner = record.lastRun?.tooLargeSetOwner;

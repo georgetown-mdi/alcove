@@ -239,8 +239,8 @@ export function reasonTermsCannotStateIdentity(
  * The payload column lists that name those same columns hold it too -- the
  * invitation token's `disclosedPayloadColumns`, which a partner authors and an
  * acceptance writes into the operator's configuration, and the configuration's
- * own `expectedPayloadColumns` -- so a column name reaches a party's disk under this shape from
- * either direction.
+ * own `expectedPayloadColumns` -- so a column name reaches a party's disk
+ * under this shape from either direction.
  *
  * Applied at each FIELD, as the `version` semver regex below is, rather than as
  * a pass over the class: every field named above holds it in its own string

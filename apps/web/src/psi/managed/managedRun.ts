@@ -329,25 +329,22 @@ export function tooLargeBoundOf(
  * Everything else is this run's to stamp. Read before the `aborted` check,
  * since it is a deterministic local state an abort cannot produce:
  * {@link PartnerNoShowError} before the data exchange began records the benign
- * `missed` outcome ({@link missedRun}). No error here records `consent`, which
- * only a stored record may hold. A set too large to
- * send ({@link isSetTooLargeError}) records `too-large`, with the refusal's
+ * `missed` outcome ({@link missedRun}). A set too large to send
+ * ({@link isSetTooLargeError}) records `too-large`, with the refusal's
  * `setOwner` and the bound it names ({@link tooLargeBoundOf}), on either side
  * of the data exchange boundary: a round past the first refuses after data has
  * moved, and the same files refuse identically at every window. A
  * {@link TermsChangeRefusedError} records `terms-change`: it is raised at the
  * terms exchange, inside the data exchange but before any linkage key or data
  * moves, and the same partner terms refuse identically until the operator
- * decides on them. `aborted`
- * then records `cancelled`. A `security`-kind {@link ConnectionError} before
- * the data exchange began records `auth`.
+ * decides on them. `aborted` then records `cancelled`. A `security`-kind
+ * {@link ConnectionError} before the data exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
  * records `transport`.
  *
- * `terms-shortfall`, `auth`, and `missed` require
- * `!dataExchangeStarted`: each tells the operator nothing left this device.
- * Every outcome here is `failed` apart from `missed`; `desynced` is stamped
- * elsewhere.
+ * `terms-shortfall`, `auth`, and `missed` require `!dataExchangeStarted`: each
+ * tells the operator nothing left this device. Every outcome here is `failed`
+ * apart from `missed`; `desynced` is stamped elsewhere.
  */
 export function rerunFailureLastRun(
   error: unknown,

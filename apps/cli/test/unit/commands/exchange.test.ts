@@ -2613,11 +2613,11 @@ test("handler: an unnamed party that signs nothing runs unchanged", async () => 
 
 // --- handler: the local preparation precedes host-key trust ------------------
 // An exchange refused from local inputs alone must not have connected to the
-// server first: on an unpinned sftp config, the first-use host-key step is
-// what would connect. Preparation (its linkage-satisfiability gate), signing resolution (a missing or mismatched
-// identity file), and a config-only refusal (certificate mode naming no
-// identity) must all run ahead of it -- the tests below pin only that STEP
-// order.
+// server first: on an unpinned sftp config, the first-use host-key step is what
+// would connect. Preparation (its linkage-satisfiability gate), signing
+// resolution (a missing or mismatched identity file), and a config-only refusal
+// (certificate mode naming no identity) must all run ahead of it -- the tests
+// below pin only that STEP order.
 
 /** Write the sftp config, key file, and CSV the two ordering checks drive the
  * handler over; the default CSV satisfies the config's lone ssn key. */
@@ -2735,10 +2735,11 @@ test("handler: a first round too large for one message file exits 64 with no hos
 test("handler: certificate mode naming no identity file is refused before either", async () => {
   // A run the parsed configuration alone shows cannot finish, so it is refused
   // ahead of BOTH steps: the preparation, and the first-use host-key step,
-  // whose probe connects and writes an accepted pin into alcove.yaml. The config below is unpinned sftp and pins
-  // the partner's certificate, so the missing identity file is the only thing
-  // that makes it unrunnable; the host-key step is stubbed file-wide, so the
-  // config-file assertion adds that nothing else on the handler's path wrote it.
+  // whose probe connects and writes an accepted pin into alcove.yaml. The
+  // config below is unpinned sftp and pins the partner's certificate, so the
+  // missing identity file is the only thing that makes it unrunnable; the
+  // host-key step is stubbed file-wide, so the config-file assertion adds that
+  // nothing else on the handler's path wrote it.
   fs.writeFileSync(
     configFile,
     YAML.stringify({

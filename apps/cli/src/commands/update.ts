@@ -84,10 +84,9 @@ export async function handler(argv: Arguments): Promise<void> {
       assertConfigTermsSendable(terms, source);
       const sharedSecret = readPartnershipSecret(keyPath);
 
-      // The send set is stated from the configuration's metadata, as an
-      // invitation minted from it states it. Without metadata the columns are
-      // known only from the input file, which this command does not read, and
-      // the partner fills its receive list at the first exchange.
+      // Without metadata the columns are known only from the input file, which
+      // this command does not read, and the partner fills its receive list at
+      // the first exchange.
       const statedTerms =
         source.metadata !== undefined
           ? termsStatingDeclaredPayloadSend(terms, source.metadata)

@@ -544,14 +544,13 @@ export async function validateAccept(params: {
     };
     // Fail closed on a count-only invitation this party's own columns would
     // transmit a column under: the algorithm has no payload in either
-    // direction, so the marked columns are neither dropped to bring the run into
-    // the count-only shape nor included in an outbound-consent record. This is
-    // the one count-only shape rule no linkage-terms document holds -- the
-    // other four are refused as the invitation is decoded, and again by
-    // deriveAcceptedLinkageTerms above. Ahead of the prepare below, whose
-    // algorithm gate would report only that no count-only run path exists, and
-    // ahead of the consent surface, which states the same fact with no account of
-    // what to change.
+    // direction, so the marked columns are not dropped to bring the run into
+    // the count-only shape. This is the one count-only shape rule no
+    // linkage-terms document holds -- the other four are refused as the
+    // invitation is decoded, and again by deriveAcceptedLinkageTerms above.
+    // Ahead of the prepare below, whose algorithm gate would report only that
+    // no count-only run path exists, and ahead of the consent surface, which
+    // states the same fact with no account of what to change.
     assertCountOnlyTransmitsNoColumn(myTerms.algorithm, dataSpec.metadata);
     warnColumnsTheInvitationWillNotAccept({
       metadata: dataSpec.metadata,

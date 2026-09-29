@@ -87,10 +87,6 @@ export const TERMS_SHORTFALL_FAILURE_TITLE =
 export const TERMS_CHANGE_FAILURE_TITLE =
   "Your partner's linkage terms changed";
 
-/** The title over the benign disclosure-refusal failure tier. */
-export const CONSENT_FAILURE_TITLE =
-  "What this run would send is not what this exchange agreed to send";
-
 /** The bound one WebRTC message holds, as the too-large copy states it. */
 export const WEBRTC_MESSAGE_BOUND_LABEL = `${(
   MAX_WEBRTC_FRAME_BYTES /

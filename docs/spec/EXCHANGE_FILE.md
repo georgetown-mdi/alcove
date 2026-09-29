@@ -162,15 +162,17 @@ sharply:
 
 - **An unknown top-level key is rejected loudly.** `ExchangeSpecSchema` is a
   `z.strictObject`, so a key the older CLI's schema does not know -- whether a
-  newer web app's addition or an operator's typo -- is reported from `loadConfig` as
-  a load-time `UsageError` (CLI exit 64) naming the key, and the exchange never
-  starts. Two of the top-level keys are enforcement records whose absence is a
-  valid state (`expected_payload_columns`, `expected_partner_deduplicate`), so
-  stripping a misspelling of one would silently disable the control it names;
-  that hazard governs the whole top level rather than being spot-checked key by
-  key. A file holding `disclosed_payload_columns` or `outbound_payload_consent`
-  is refused on this rule, naming the key: the send side is stated in the agreed
-  terms instead ([The send side is in the agreed terms](#the-send-side-is-in-the-agreed-terms)).
+  newer web app's addition or an operator's typo -- is reported from
+  `loadConfig` as a load-time `UsageError` (CLI exit 64) naming the key, and the
+  exchange never starts. Two of the top-level keys are enforcement records whose
+  absence is a valid state (`expected_payload_columns`,
+  `expected_partner_deduplicate`), so stripping a misspelling of one would
+  silently disable the control it names; that hazard governs the whole top level
+  rather than being spot-checked key by key. A file holding
+  `disclosed_payload_columns` or `outbound_payload_consent` is refused on this
+  rule, naming the key: the send side is stated in the agreed terms instead
+  ([The send side is in the agreed
+  terms](#the-send-side-is-in-the-agreed-terms)).
 - **An unknown field inside a spec block is rejected loudly too.** The blocks
   themselves (`linkage_terms`, `metadata`, `standardization`, `connection`) strip
   unrecognized keys on parse, the `connection` union's webrtc member excepted
@@ -296,8 +298,10 @@ declaration and version policy are in
 [FILE_SYNC.md](FILE_SYNC.md#disclosed-columns-subset-on-the-token)). The local
 field is not exchanged, cross-checked against the partner, or folded into the
 agreed-terms hash. The send side has no local record: it is stated in the agreed
-terms ([The send side is in the agreed terms](#the-send-side-is-in-the-agreed-terms)). What an operator authors, and what each field means to them,
-is in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload).
+terms ([The send side is in the agreed
+terms](#the-send-side-is-in-the-agreed-terms)). What an operator authors, and
+what each field means to them, is in
+[EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload).
 
 The set of columns either of them describes is always
 `disclosedColumnNames(metadata)` over some party's metadata -- the names
@@ -308,16 +312,16 @@ of `MAX_NAME_LENGTH` each, the same bounds a `payload.send`/`receive` list
 holds.
 
 Both -- the top-level list and the token's `disclosedPayloadColumns` -- name a
-column at most once: a repeated name
-parses to one entry, the first occurrence standing and a later one naming it
-dropped, the collapse a `payload.send`/`receive` list takes. Names are compared
-code unit for code unit, with no Unicode normalization and no case folding -- the
-equality [CANONICAL_ENCODING.md](CANONICAL_ENCODING.md) makes normative for those
-terms lists, whose collapse changes the agreed-terms hash. Neither field here
-enters that hash, computed over the linkage terms alone. The count
-bound is applied to the AUTHORED count, ahead of the collapse, so a list padded
-past `MAX_PAYLOAD_ENTRIES` with one name repeated is refused rather than admitted
-for what it would collapse to.
+column at most once: a repeated name parses to one entry, the first occurrence
+standing and a later one naming it dropped, the collapse a
+`payload.send`/`receive` list takes. Names are compared code unit for code unit,
+with no Unicode normalization and no case folding -- the equality
+[CANONICAL_ENCODING.md](CANONICAL_ENCODING.md) makes normative for those terms
+lists, whose collapse changes the agreed-terms hash. Neither field here enters
+that hash, computed over the linkage terms alone. The count bound is applied to
+the AUTHORED count, ahead of the collapse, so a list padded past
+`MAX_PAYLOAD_ENTRIES` with one name repeated is refused rather than admitted for
+what it would collapse to.
 
 Collapsing rather than refusing keeps a hand-authored repeat -- which declares
 nothing the set does not already hold -- from reaching
@@ -340,7 +344,7 @@ is the whole disclosure control:
 
 Laziness relaxes only the declaration check, never what is disclosed.
 Transmission stays governed by each sender's own `isDisclosedToPartner` metadata
-and the send-side guards below, so a lazy receiver still receives only what the
+and the send-side guard below, so a lazy receiver still receives only what the
 sender's consented metadata transmits.
 
 ### Receive-side runtime enforcement (`reconcileReceivedPayload`)
@@ -372,20 +376,18 @@ How a party arrives at its set, by exchange mode:
 
 - **Invite/accept.** The inviter publishes its disclosed subset on the token,
   states it as `payload.send` in the token's terms, and leaves its own receive
-  side unset; its first run fills `payload.receive` from
-  the acceptor's declared send set ([An unset `payload.receive` is filled on the
-  first run](#an-unset-payloadreceive-is-filled-on-the-first-run)). The
-  acceptor locks in the subset the token declared -- known up
-  front, with
-  no observation needed -- and both an offline and an online accept persist it to
-  the written config so a later `alcove exchange` enforces what was consented to
-  at accept time. An acceptance that reuses a pre-existing config refreshes that
-  config's field surgically in place, leaving the operator's connection and
-  linkage blocks untouched: a partner that changes only what it discloses is
-  re-consented to on that acceptance, and a prior acceptance's set left standing
-  would false-abort the next exchange against an honest partner. An invitation
-  with no subset *removes* the field rather than leaving a set this
-  acceptance never showed.
+  side unset; its first run fills `payload.receive` from the acceptor's declared
+  send set ([An unset `payload.receive` is filled on the first
+  run](#an-unset-payloadreceive-is-filled-on-the-first-run)). The acceptor locks
+  in the subset the token declared -- known up front, with no observation needed
+  -- and both an offline and an online accept persist it to the written config
+  so a later `alcove exchange` enforces what was consented to at accept time. An
+  acceptance that reuses a pre-existing config refreshes that config's field
+  surgically in place, leaving the operator's connection and linkage blocks
+  untouched: a partner that changes only what it discloses is re-consented to on
+  that acceptance, and a prior acceptance's set left standing would false-abort
+  the next exchange against an honest partner. An invitation with no subset
+  *removes* the field rather than leaving a set this acceptance never showed.
 - **Zero-setup.** Neither party holds the other's metadata in advance, so the
   first exchange reconciles lazily and neither throws. A `--save` run fills
   `payload.receive` from the partner's declared send set and writes it into the

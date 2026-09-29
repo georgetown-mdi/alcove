@@ -13,7 +13,6 @@
 import { isSetTooLargeError, sanitizeErrorForDisplay } from "@alcove/core";
 
 import {
-  CONSENT_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
@@ -57,7 +56,6 @@ import type { ManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
 
 export {
-  CONSENT_FAILURE_TITLE,
   INPUT_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
   UNEXPLAINED_FAILURE_TITLE,
@@ -76,9 +74,6 @@ export {
  * - `"retry"` -- retryable in place (fix the input, or retry a transport drop).
  * - `"wait"` -- not this run's to act on (a run in progress elsewhere).
  * - `"confirm"` -- the Tier-2 out-of-band confirmation and the two-outcome gate.
- * - `"reconfirm"` -- what this exchange sends must be decided again: the run's
- *   own input decides the set, so retrying the connection or re-minting the
- *   secret does not change the outcome. Not `"retry"`.
  * - `"restate"` -- what this exchange matches on must be decided again, or the
  *   input replaced: the file cannot supply every agreed linkage key, and the
  *   same file refuses identically every time. Not `"retry"`.
@@ -88,14 +83,7 @@ export {
  *   time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
-  | "reinvite"
-  | "retry"
-  | "wait"
-  | "confirm"
-  | "reconfirm"
-  | "restate"
-  | "split"
-  | "none";
+  "reinvite" | "retry" | "wait" | "confirm" | "restate" | "split" | "none";
 
 /** The two readings of a record a live launch failure is classified against. They
  * differ because a failed run stamps its own `lastRun` before the host reloads, and
@@ -124,7 +112,6 @@ export interface ManagedRunFailureAlert {
     | "expired"
     | "input"
     | "terms-shortfall"
-    | "consent"
     | "too-large"
     | "terms-change"
     | "custody-unreadable"
@@ -465,26 +452,6 @@ function shortfallFailure(error: unknown): ManagedRunFailureAlert {
     : TERMS_SHORTFALL_FAILURE;
 }
 
-/** The benign disclosure-refusal state: a send-side gate refused before connecting
- * because what this run would send is not the set the exchange recorded agreeing to
- * send. Fixed and non-oracular, like the input state's: the refusal names the
- * drifted columns, and those are this party's own, but the copy states the
- * condition rather than echoing a list the operator reads faster from their own
- * file. It names re-confirming the disclosure, since the same input refuses
- * identically. */
-const CONSENT_FAILURE: ManagedRunFailureAlert = {
-  kind: "consent",
-  title: CONSENT_FAILURE_TITLE,
-  message:
-    "The columns your input file would send to your partner for matched " +
-    "records are not the ones this exchange agreed to send, so it stopped " +
-    "before connecting and nothing left this device. Running it again with the " +
-    "same file stops the same way - this is not a connection problem. Run it " +
-    "with the input file whose columns match what was agreed, or set the " +
-    "exchange up again with your partner to settle what it sends now.",
-  recovery: "reconfirm",
-};
-
 const TOO_LARGE_RETRY_NOTE =
   "Running it again with the same files stops the same way - this is not a " +
   "connection problem.";
@@ -659,8 +626,6 @@ export function managedRunTierFailure(
       return record.lastRun?.singleColumnInput === true
         ? SINGLE_COLUMN_SHORTFALL_FAILURE
         : TERMS_SHORTFALL_FAILURE;
-    case "consent":
-      return CONSENT_FAILURE;
     case "terms-change":
       return local?.termsProposal !== undefined
         ? TERMS_CHANGE_FAILURE
@@ -779,7 +744,6 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
 > = {
   "handed-off": "spent-state",
   "custody-unreadable": "alert-copy",
-  consent: "alert-copy",
   "terms-shortfall": "alert-copy",
   "too-large": "none",
   "terms-change": "none",
@@ -847,7 +811,6 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   expired: "withheld",
   input: "withheld",
   "terms-shortfall": "withheld",
-  consent: "withheld",
   "too-large": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",

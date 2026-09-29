@@ -60,8 +60,8 @@ const UNNAMED_CONFIGURATION_TITLE = "Imported configuration";
  * What it tells the operator is derived from the record, so the import lands on
  * it and every later visit shows it alike: why nothing here runs the exchange,
  * naming the channel where that is the reason, then the settings naming a file
- * by `@path` and a pending outbound payload consent, then the settings kept
- * unchanged without an editor ({@link ./managedConfigurationModel.ts}).
+ * by `@path`, then the settings kept unchanged without an editor
+ * ({@link ./managedConfigurationModel.ts}).
  *
  * The agreed terms are read-only, as they are for a browser-run exchange: they
  * are the partnership's, not this browser's, and exchanging on different ones is

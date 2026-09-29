@@ -111,11 +111,11 @@ function buildReinviteRotation(
 
 /**
  * Build the fresh invitation token a re-invite mints from the stored inviter
- * document: the document's linkage terms verbatim, a fresh webrtc endpoint from the
- * current location, the fresh setup secret, and the bounded setup expiry. The token
- * holds no credential -- the endpoint is credential-free by construction and
- * `encodeInvitation` re-validates it through the strict endpoint schema (see
- * {@link ./invitation.ts}).
+ * document: the document's linkage terms verbatim, a fresh webrtc endpoint from
+ * the current location, the fresh setup secret, and the bounded setup expiry.
+ * The token holds no credential -- the endpoint is credential-free by
+ * construction and `encodeInvitation` re-validates it through the strict
+ * endpoint schema (see {@link ./invitation.ts}).
  */
 function buildReinviteToken(
   record: ManagedExchangeRecord,

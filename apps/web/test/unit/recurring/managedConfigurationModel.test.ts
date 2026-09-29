@@ -26,8 +26,8 @@ import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 // What a configuration-only exchange's surface tells the operator, derived from
 // the stored record alone: why this browser does not run it, naming the channel
-// where that is the reason, the settings kept without an editor in the file's
-// own snake_case, and a pending outbound payload consent.
+// where that is the reason, and the settings kept without an editor in the
+// file's own snake_case.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 

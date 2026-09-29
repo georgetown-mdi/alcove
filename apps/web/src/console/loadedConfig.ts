@@ -104,9 +104,9 @@ export interface LoadedReceiptsChoices {
 
 /** The enforcement records a loaded configuration puts back on the job intent,
  * so a run composed here states what the file it came from stated
- * (docs/spec/EXCHANGE_FILE.md, "The records that must survive"). Each is held as
- * the file states it and composed back unchanged, since an absent one turns its
- * own enforcement off. */
+ * (docs/spec/EXCHANGE_FILE.md, "The records that must survive"). Each is held
+ * as the file states it and composed back unchanged, since an absent one turns
+ * its own enforcement off. */
 export interface LoadedEnforcementRecords {
   expectedPayloadColumns?: Array<string>;
   expectedPartnerDeduplicate?: boolean;

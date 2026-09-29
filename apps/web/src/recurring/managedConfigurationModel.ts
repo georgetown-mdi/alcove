@@ -5,7 +5,7 @@
  * from the stored record, so it is shown where the import lands and on every
  * later visit alike.
  *
- * Four things are said, each only where it holds:
+ * Three things are said, each only where it holds:
  *
  * - why nothing here runs it: the channel, where the document names one this
  *   app does not conduct, and each part it states that this app cannot run
@@ -14,9 +14,7 @@
  *   without showing or editing them (docs/spec/EXCHANGE_FILE.md, "What a
  *   consumer does with a setting it cannot honor");
  * - which settings name a file by `@path`, which this browser does not read
- *   and Alcove reads on the machine that runs the exported file;
- * - that the outbound payload consent it states is pending, which the command
- *   line meets at the first run that shares results with the partner.
+ *   and Alcove reads on the machine that runs the exported file.
  *
  * Every notice names a setting as the file spells it, in snake_case, and never
  * its value.

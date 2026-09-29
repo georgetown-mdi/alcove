@@ -42,10 +42,6 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   (recovery: a file covering every agreed key, or terms re-agreed with the
  *   partner; never a retry or a bare re-pick, since the same file refuses
  *   identically at the next window).
- * - `"consent"` -- a benign pre-run refusal by one of the send-side disclosure gates:
- *   what this run would send is not the set the exchange recorded agreeing to send
- *   (recovery: re-confirm the disclosure; never a retry, since the same input refuses
- *   identically at the next window).
  * - `"too-large"` -- the last run refused to send a set over the bound one WebRTC
  *   message holds, before connecting or at a round (recovery: split the input
  *   into smaller exchanges; never a retry, since the same files refuse
@@ -89,7 +85,6 @@ export type ManagedFailureTier =
   | "expired"
   | "input"
   | "terms-shortfall"
-  | "consent"
   | "too-large"
   | "terms-change"
   | "handed-off"
@@ -207,8 +202,8 @@ export function managedStandingConditionTier(
  * ({@link rotationInFlightBeforeLastRun}). Only a no-show is read that way: a
  * failed-closed handshake stays `"unexplained"` whatever the marker says.
  *
- * It does not displace a recorded benign cause: an input problem or a consent
- * refusal is this run's own actionable state, and the condition stands until
+ * It does not displace a recorded benign cause: an input problem or a linkage
+ * shortfall is this run's own actionable state, and the condition stands until
  * something clears it, so nothing is lost by showing that state first.
  */
 export function readManagedFailure(
@@ -278,10 +273,6 @@ function recordedFailureTier(
   // input tier offers is not its remedy -- the same file refuses identically, so
   // this tier's copy names a conforming file or terms re-agreed with the partner.
   if (lastRun.failureKind === "terms-shortfall") return "terms-shortfall";
-  // A recorded pre-run disclosure refusal: likewise its own benign tier, and kept
-  // out of the retryable transport bucket -- its remedy is re-confirming what this
-  // exchange sends, which no amount of reconnecting supplies.
-  if (lastRun.failureKind === "consent") return "consent";
   // A recorded refusal of a set too large for one WebRTC message: benign, and
   // held out of the transport bucket because reconnecting sends the same set.
   if (lastRun.failureKind === "too-large") return "too-large";

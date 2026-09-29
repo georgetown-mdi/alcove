@@ -217,13 +217,12 @@ export interface ManagedExchangeSchedule {
 export type ManagedExchangeRunOutcome =
   "succeeded" | "failed" | "desynced" | "missed" | "skipped";
 
-/** For a non-succeeded outcome, the kind of failure. Closed enum: the five benign
+/** For a non-succeeded outcome, the kind of failure. Closed enum: the four benign
  * pre-run problems -- an `"input"` problem (the file missing from the working
  * folder, or unreadable), a `"terms-shortfall"` refusal (the file cannot satisfy
- * every linkage key the standing terms declare), a `"consent"` refusal (this
- * run's outbound disclosure is not the set this exchange recorded agreeing to
- * send; a stored record may hold it, and no run records it), a `"handed-off"` refusal (an export gave this device's copy away, so
- * the run does not rotate a secret whose owner is elsewhere), and a
+ * every linkage key the standing terms declare), a `"handed-off"` refusal (an
+ * export gave this device's copy away, so the run does not rotate a secret
+ * whose owner is elsewhere), and a
  * `"custody-unreadable"` refusal (the sibling entry recording whether the copy
  * was handed off did not read, so the run does not rotate on custody it could
  * not establish) -- are detected before any connection and never routed through
@@ -241,7 +240,6 @@ export type ManagedExchangeFailureKind =
   | "custody-unreadable"
   | "input"
   | "terms-shortfall"
-  | "consent"
   | "handed-off"
   | "too-large"
   | "terms-change"
@@ -474,7 +472,6 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "custody-unreadable",
       "input",
       "terms-shortfall",
-      "consent",
       "handed-off",
       "too-large",
       "terms-change",

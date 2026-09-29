@@ -892,12 +892,12 @@ function certificateModeIdentityPath(identityFile: string | undefined): string {
  * the parsed configuration alone -- no disk read, no prompt, no connection.
  *
  * The exchange handler runs this as a pre-flight, ahead of both the dataset
- * preparation and the first-use host-key step whose probe opens a transport to the
- * server and whose accepted pin is written into the operator's `alcove.yaml`.
- * A run this refuses could never have finished, so none of that should have
- * happened on its way to being told so. {@link resolveSigningPersist} raises the
- * same refusal where it loads the identity, which is where a caller
- * outside the handler meets it.
+ * preparation and the first-use host-key step whose probe opens a transport to
+ * the server and whose accepted pin is written into the operator's
+ * `alcove.yaml`. A run this refuses could never have finished, so none of that
+ * should have happened on its way to being told so.
+ * {@link resolveSigningPersist} raises the same refusal where it loads the
+ * identity, which is where a caller outside the handler meets it.
  *
  * A no-op for every other mode and for a config with no `signing` block: neither
  * signs, so neither needs an identity.

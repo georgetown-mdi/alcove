@@ -15,10 +15,10 @@ import { writeDualSignedRecord } from "../../src/receiptFile";
 import { writeExchangeRecord } from "../../src/recordFile";
 import { openInputSource } from "../../src/util/dataIo";
 
-// Every message the record and receipt writers, the online-bootstrap summary and the CSV input reader compose
-// about the OPERATOR's own path marks that path, so the display sink shows it
-// as they typed it instead of escaping every separator and handing back a path
-// they cannot copy into a command
+// Every message the record and receipt writers, the online-bootstrap summary
+// and the CSV input reader compose about the OPERATOR's own path marks that
+// path, so the display sink shows it as they typed it instead of escaping every
+// separator and handing back a path they cannot copy into a command
 // (packages/core/src/utils/operatorSuppliedText.ts).
 //
 // Each case below drives one converted sink and reads what it produced: the
