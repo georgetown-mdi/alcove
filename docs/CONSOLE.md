@@ -62,7 +62,7 @@ docker run --rm \
   ghcr.io/georgetown-mdi/alcove:latest serve
 ```
 
-`JOB_CLI_BINARY` is pre-set in the image and needs no operator value. Setting `JOB_DATA_ROOT` turns the job API on; leave it unset and `serve` runs the web UI and peer-coordination server only. The `-p 127.0.0.1:3000:3000` publish binding is what keeps the unauthenticated API reachable only from the operator's own machine, and what widening it costs is in [Reachable only where you publish it](#reachable-only-where-you-publish-it).
+`JOB_CLI_BINARY` is pre-set in the image and needs no operator value. Setting `JOB_DATA_ROOT` turns the job API on; leave it unset and `serve` runs the web UI only. The `-p 127.0.0.1:3000:3000` publish binding is what keeps the unauthenticated API reachable only from the operator's own machine, and what widening it costs is in [Reachable only where you publish it](#reachable-only-where-you-publish-it).
 
 ## Reachable only where you publish it
 

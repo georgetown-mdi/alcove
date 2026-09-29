@@ -15,9 +15,10 @@ import {
 
 import type { ChildProcess } from "node:child_process";
 
-// On a deployment where the job API is not enabled, every path under /api
-// outside the broker's subtree answers one response, whatever the request's
-// spelling, method, or Accept header. Asserted against the real built server
+// On the hosted deployment every path under /api outside the broker's subtree
+// answers one response, whatever the request's spelling, method, or Accept
+// header; on the console deployment the broker's subtree and its signaling
+// upgrade answer that same response. Asserted against the real built server
 // because what would otherwise answer is the router's decision, not any
 // handler's: which spellings of the prefix it resolves to a route, which paths
 // it answers with a canonicalizing redirect rather than matching as written,
@@ -37,8 +38,8 @@ import type { ChildProcess } from "node:child_process";
 // is that the hosted build answers the one refusal for it and the console
 // build answers the job route. A third, doubly percent-encoded target is
 // written the same way to reach the guard's own dot resolution rather than the
-// URL parser's; its console answer is pinned rather than asserted as the job
-// route, since the router does not resolve that spelling to one.
+// URL parser's; as written it lands under the broker's subtree, so the console
+// refuses it too.
 
 /** The whole observable shape of a response. Date and the connection headers
  * are dropped: they vary per request rather than per path, and a probe reads
@@ -87,6 +88,33 @@ async function shapeOf(
   };
 }
 
+/** A foreign `Origin` and a rebound `Host`, the headers a page on another site
+ * or a DNS-rebinding page sends. */
+interface ForeignHeaders {
+  origin?: string;
+  host?: string;
+}
+
+const FOREIGN_ORIGIN = "http://evil.example";
+const FOREIGN_HOST = "evil.example";
+
+/** The header variants the broker's routes and its upgrade are driven with. */
+const FOREIGN_VARIANTS: ReadonlyArray<[string, ForeignHeaders]> = [
+  ["no foreign header", {}],
+  ["a foreign Origin", { origin: FOREIGN_ORIGIN }],
+  ["a rebound Host", { host: FOREIGN_HOST }],
+  ["both", { origin: FOREIGN_ORIGIN, host: FOREIGN_HOST }],
+];
+
+/** The `Host` line, and an `Origin` line when one is given, for a raw request. */
+function requestHeaderLines(base: string, foreign: ForeignHeaders): string {
+  const { hostname, port } = new URL(base);
+  const host = foreign.host ?? `${hostname}:${port}`;
+  const origin =
+    foreign.origin === undefined ? "" : `Origin: ${foreign.origin}\r\n`;
+  return `Host: ${host}\r\n${origin}`;
+}
+
 /** How long a raw-socket probe waits for the whole response before giving up. */
 const RAW_PROBE_TIMEOUT_MS = 10_000;
 
@@ -99,13 +127,14 @@ function rawShapeOf(
   base: string,
   target: string,
   accept: string,
+  foreign: ForeignHeaders = {},
 ): Promise<ResponseShape & { body: string }> {
   const { hostname, port } = new URL(base);
   return new Promise((resolve, reject) => {
     const chunks: Array<Buffer> = [];
     const socket = connect(Number(port), hostname, () => {
       socket.write(
-        `GET ${target} HTTP/1.1\r\nHost: ${hostname}:${port}\r\n` +
+        `GET ${target} HTTP/1.1\r\n${requestHeaderLines(base, foreign)}` +
           `Accept: ${accept}\r\nConnection: close\r\n\r\n`,
       );
     });
@@ -148,6 +177,77 @@ function parseRawResponse(raw: Buffer): ResponseShape & { body: string } {
     bodyLength: body.byteLength,
     body: body.toString("utf8"),
   };
+}
+
+/** What the server answers a signaling WebSocket upgrade: the status of its
+ * response head, and whether the broker's OPEN frame followed a `101`. */
+interface UpgradeAnswer {
+  status: number;
+  opened: boolean;
+}
+
+/** How long an upgrade probe waits for the OPEN frame after a `101`. */
+const UPGRADE_PROBE_TIMEOUT_MS = 5_000;
+
+let upgradeProbeSeq = 0;
+
+/** Dial the signaling upgrade with the broker's default key, the one a client
+ * uses, over a raw socket so `Host` and `Origin` are written as given. */
+function upgradeAnswerOf(
+  base: string,
+  foreign: ForeignHeaders,
+): Promise<UpgradeAnswer> {
+  const { hostname, port } = new URL(base);
+  const id = `namespace-probe-${(upgradeProbeSeq += 1)}`;
+  return new Promise((resolve, reject) => {
+    const chunks: Array<Buffer> = [];
+    let status: number | undefined;
+    const socket = connect(Number(port), hostname, () => {
+      socket.write(
+        `GET /api/peerjs?key=peerjs&id=${id}&token=tok&version=1.5.5 ` +
+          `HTTP/1.1\r\n${requestHeaderLines(base, foreign)}` +
+          "Connection: Upgrade\r\nUpgrade: websocket\r\n" +
+          "Sec-WebSocket-Version: 13\r\n" +
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+      );
+    });
+    const finish = (answer: UpgradeAnswer | Error) => {
+      clearTimeout(timer);
+      socket.destroy();
+      if (answer instanceof Error) reject(answer);
+      else resolve(answer);
+    };
+    const timer = setTimeout(() => {
+      finish(
+        status === undefined
+          ? new Error(`no answer to the upgrade for ${id}`)
+          : { status, opened: false },
+      );
+    }, UPGRADE_PROBE_TIMEOUT_MS);
+    socket.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+      const raw = Buffer.concat(chunks);
+      const separator = raw.indexOf("\r\n\r\n");
+      if (separator === -1) return;
+      status = Number(
+        raw.subarray(0, separator).toString("latin1").split(" ")[1],
+      );
+      if (status !== 101) {
+        finish({ status, opened: false });
+        return;
+      }
+      if (raw.subarray(separator + 4).includes('"type":"OPEN"'))
+        finish({ status, opened: true });
+    });
+    socket.on("error", (error) => finish(error));
+    socket.on("end", () => {
+      finish(
+        status === undefined
+          ? new Error(`no answer to the upgrade for ${id}`)
+          : { status, opened: false },
+      );
+    });
+  });
 }
 
 /** The one refusal: the job gate's own empty 404 (jobEmptyResponse in
@@ -290,14 +390,36 @@ const SLOT_FREE = '{"occupied":false}';
 
 /** The broker's own route, in the spellings a client writes it: the peer server
  * attaches its WebSocket upgrade listener on the first GET under this subtree
- * (src/peerServer.ts), so a refusal reaching it would stop public signaling
- * rather than harden anything. */
+ * (src/peerServer.ts), so a hosted refusal reaching it would stop public
+ * signaling rather than harden anything. */
 const BROKER_PATHS: ReadonlyArray<string> = [
   "/api/peerjs/id",
   "/api/peerjs/id/",
   "/API/peerjs/id",
   "/%61pi/peerjs/id",
 ];
+
+/** Each broker route, and the status the hosted build answers it with: the
+ * server description, a fresh id, and peer discovery, which is off. */
+const BROKER_ROUTES: ReadonlyArray<[path: string, hostedStatus: number]> = [
+  ["/api/peerjs", 200],
+  ["/api/peerjs/id", 200],
+  ["/api/peerjs/peerjs/peers", 401],
+];
+
+/** Every broker route under every foreign-header variant. */
+const BROKER_ROUTE_REQUESTS: ReadonlyArray<
+  [path: string, variant: string, foreign: ForeignHeaders, hostedStatus: number]
+> = BROKER_ROUTES.flatMap(([path, hostedStatus]) =>
+  FOREIGN_VARIANTS.map(
+    ([variant, foreign]): [string, string, ForeignHeaders, number] => [
+      path,
+      variant,
+      foreign,
+      hostedStatus,
+    ],
+  ),
+);
 
 describe.skipIf(!hasBuild)("the /api namespace's refusal", () => {
   let hosted: ChildProcess | undefined;
@@ -427,27 +549,65 @@ describe.skipIf(!hasBuild)("the /api namespace's refusal", () => {
       },
     );
 
-    test("a verbatim GET double-encoded dot segment on the console profile", async () => {
-      // Pins the router's own resolution of a double-encoded segment, whatever it answers today.
-      const answered = await rawShapeOf(
+    test("the one refusal for a verbatim GET double-encoded dot segment written under the broker's subtree", async () => {
+      const { body, ...shape } = await rawShapeOf(
         consoleBase,
         DOUBLE_ENCODED_DOT_TARGET,
         ACCEPT_VALUES[1][1],
       );
-      expect(answered.status).toBe(406);
-      expect(answered.body).toContain(
-        '{"error":"Only HTML requests are supported here"}',
-      );
+      expect(shape).toEqual(REFUSAL);
+      expect(body).toBe("");
     });
+  });
 
-    test("the broker answers GET /api/peerjs/id", async () => {
-      const broker = await shapeOf(
-        consoleBase,
-        "GET",
-        "/api/peerjs/id",
-        ACCEPT_VALUES[1][1],
-      );
-      expect(broker.status).toBe(200);
-    });
+  // The console serves no PeerJS route and no signaling upgrade, whatever the
+  // request's Origin or Host; the hosted build answers them as it always has.
+  describe("the broker's routes and signaling upgrade by profile", () => {
+    test.each(BROKER_ROUTE_REQUESTS)(
+      "the console answers the one refusal for GET %s with %s",
+      async (path, _variant, foreign) => {
+        const { body, ...shape } = await rawShapeOf(
+          consoleBase,
+          path,
+          ACCEPT_VALUES[1][1],
+          foreign,
+        );
+        expect(shape).toEqual(REFUSAL);
+        expect(body).toBe("");
+      },
+    );
+
+    test.each(BROKER_ROUTE_REQUESTS)(
+      "the hosted build answers GET %s with %s",
+      async (path, _variant, foreign, hostedStatus) => {
+        const answered = await rawShapeOf(
+          hostedBase,
+          path,
+          ACCEPT_VALUES[1][1],
+          foreign,
+        );
+        expect(answered.status).toBe(hostedStatus);
+      },
+    );
+
+    test.each(FOREIGN_VARIANTS)(
+      "the console refuses the signaling upgrade with %s",
+      async (_variant, foreign) => {
+        expect(await upgradeAnswerOf(consoleBase, foreign)).toEqual({
+          status: 404,
+          opened: false,
+        });
+      },
+    );
+
+    test.each(FOREIGN_VARIANTS)(
+      "the hosted build opens the signaling upgrade with %s",
+      async (_variant, foreign) => {
+        expect(await upgradeAnswerOf(hostedBase, foreign)).toEqual({
+          status: 101,
+          opened: true,
+        });
+      },
+    );
   });
 });

@@ -1,5 +1,7 @@
 import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
 
+import { readJobApiConfig } from "@jobs/gate";
+
 import { getServer as getHttpServer } from "./httpServer";
 import { signalingDiagnosticSink } from "./signalingDiagnostics";
 
@@ -8,6 +10,10 @@ import type { AddressInfo } from "node:net";
 import type { PeerServerInstance } from "@alcove/peerjs-broker/instance";
 
 function createPeerServer(): PeerServerInstance {
+  // The console profile serves no signaling, whatever request reaches here.
+  if (readJobApiConfig().consoleProfile)
+    throw new Error("the console profile serves no peer-coordination server");
+
   const server = getHttpServer()!;
 
   const addressInfo = server.address() as AddressInfo;

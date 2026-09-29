@@ -464,7 +464,7 @@ An exchange gives the container one reason to reach the network: the SFTP connec
 
 - **A shared-directory (filedrop) exchange needs no egress at all**, in either role. The rendezvous directory is a mount, and the host performs whatever network file access it stands for, so the container itself reaches nothing.
 - **An SFTP exchange needs TCP to the server's host and port**, plus name resolution for that host unless it is named by address. This is the same in both roles: the console drives the same CLI as a subprocess inside the same container, and the console's "read the fingerprint from the server" probe reaches that same endpoint.
-- **The console's own web and job-API traffic is inbound, not egress.** The browser connects in over the published loopback port, and the console serves its assets and its peer-coordination server from inside the container. `-p 127.0.0.1:3000:3000` governs who may reach in and stays exactly as it is (see [Running the console](#running-the-console)).
+- **The console's own web and job-API traffic is inbound, not egress.** The browser connects in over the published loopback port, and the console serves its assets from inside the container. `-p 127.0.0.1:3000:3000` governs who may reach in and stays exactly as it is (see [Running the console](#running-the-console)).
 
 #### No egress at all
 
