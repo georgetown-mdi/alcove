@@ -124,6 +124,8 @@ directory flush is unreachable.
 
 ## macOS durability
 
+The macOS statements in this section and the next (the `F_FULLFSYNC` caveat and the NFSv4 ACL behavior) were not run on macOS and are unverified as of 2026-09-29: the documentation audit that day ran on Linux only.
+
 Node's `fs` exposes `fsync` (`fsync(2)`), not the macOS `F_FULLFSYNC`, so on
 macOS the flush moves the data from the OS to the drive but does not force the
 drive to commit its volatile cache to stable media and does not stop the drive
@@ -209,10 +211,11 @@ directory is empty. The credentials file keeps the writer's own strip as well, s
 neither the inheritance nor the file's own ACL depends on the other being
 cleared.
 
-A refused strip's message does not name that directory: the fail-closed path
-removes it before the message is composed, so `reportedPath` there is
-`os.tmpdir()` -- the surviving parent that holds the inheritable ACE, not the
-removed `mkdtemp` directory -- and that is the path the generic `ls -le` /
+A refused strip's message does not name that directory: the probe passes
+`os.tmpdir()` as `reportedPath`, composing the message at the moment the strip
+throws, and the probe removes the `mkdtemp` directory afterwards, in its
+catch. The message therefore names the surviving parent that holds the
+inheritable ACE, not the directory that is about to be removed, and that is the path the generic `ls -le` /
 `chmod -N` remediation copy points the operator at. On a shared or system
 `TMPDIR` (`TMPDIR=/tmp`, say), that parent is not Alcove's own: running
 `chmod -N` against it would clear every principal's ACEs on a directory other
@@ -277,7 +280,7 @@ field being present rather than the value in it:
 | ------- | ------- |
 | `chmod` was spawned: it has an exit status (a numeric `status`, `0` included) or a termination signal (a `signal` string). A nonzero exit is one shape; the 5 s timeout is two more, since the kill leaves a signal and no status on a child that dies on it, but the exit status the child chose and no signal on one that ignores `SIGTERM` and finishes afterwards | "Could not clear extended ACLs on _file_", followed by the `ls -le` / `chmod -N` remediation |
 | The strip never ran, with neither a status nor a signal: no `/bin/chmod`, an exec the OS refused, or a `process.cwd()` that threw before the command line existed | "Could not run the extended-ACL strip on _file_; no content was written" |
-| Either shape above, at the `doctor probe` work-directory strip: `reportedPath` there is `os.tmpdir()`, not the `mkdtemp` directory the strip operand names, because a refused strip removes that directory before either message is composed | Names the operator's temp root (`os.tmpdir()`), the surviving ancestor that holds the inheritable ACE, in place of _file_ -- not the removed `mkdtemp` directory |
+| Either shape above, at the `doctor probe` work-directory strip: `reportedPath` there is `os.tmpdir()`, not the `mkdtemp` directory the strip operand names, because the probe passes the temp root as the reported path and removes the `mkdtemp` directory after the strip throws | Names the operator's temp root (`os.tmpdir()`), the surviving ancestor that holds the inheritable ACE, in place of _file_ -- not the removed `mkdtemp` directory |
 
 Those field shapes are captured from `execFileSync` in the CLI unit tests and
 fed to the classifier rather than modeled there, so a runtime that reshaped them
@@ -367,6 +370,8 @@ Each rejection states the remedy and that the write would otherwise fail after a
 successful key exchange, which is what the pre-flight exists to prevent.
 
 ## Windows write discipline and load check
+
+The Windows statements in this section (the `icacls` narrowing, the load-time check with PowerShell `Get-Acl`, and the `FlushFileBuffers` calls) were not run on Windows and are unverified as of 2026-09-29: the documentation audit that day ran on Linux only.
 
 The CLI enforces ACLs on write: it creates an empty placeholder file, narrows
 its ACL with `icacls /inheritance:r /grant:r` to grant Modify (`M`) to the

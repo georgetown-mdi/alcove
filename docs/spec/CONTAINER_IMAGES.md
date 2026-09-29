@@ -151,6 +151,8 @@ so a probe that has to install the package stops before it has tested anything.
 Installing it while the image is built moves that fetch onto the machine that
 publishes the image.
 
+Unverified as of 2026-09-29: the package counts, sizes, versions and the `apk` error text in this section and the next were measured on earlier image builds. A documentation audit on that date had no Docker and could not reach the image registries, and did not re-run them.
+
 It floats: the instruction names no version, so a rebuild takes whatever the
 mirror holds for the pinned base's Alpine release. Measured on the base digest
 pinned here (Alpine 3.24.2): `samba-client-4.23.8-r0` and 44 dependencies, 45
@@ -259,6 +261,8 @@ published snapshots, every snapshot from the packages' first appearance (between
 `2023.6.20250107` and `2023.7.20250428`) onward still resolves and still serves
 both certified NVRs, from a content-addressed blobstore.
 
+Unverified as of 2026-09-29: the snapshot sampling above, the count of ten NVRs below, their module hashes, the two certificate numbers and the per-architecture image labels were read from AWS's published packages and registry in earlier sessions. The 2026-09-29 audit could not reach those services and did not repeat the readings.
+
 The module-version pin is the one that cannot be skipped. Ten NVRs share the
 `openssl-fips-provider-latest` package name and hold ten different modules with
 ten different `fips.so` hashes, exactly one of them certified, so the package
@@ -340,7 +344,9 @@ the same name, at 4.17.12, so `image_smoke.yaml`'s `command -v smbclient`
 assertion holds against both images unchanged. It costs 53 packages on this
 base against Alpine's 45, including `systemd`, `dbus`, `pam`,
 `cryptsetup-libs`, `device-mapper` and `util-linux` -- a heavier closure, and
-one that includes an init system.
+one that includes an init system. The 4.17.12 version and the package counts are
+unverified as of 2026-09-29: they come from an earlier build and were not
+re-run.
 
 ## What certificate 5438 attests
 
@@ -750,6 +756,12 @@ closure their helper scripts were written against.
 > **Non-normative.** What follows measures images that were built, kept as the
 > evidence behind the rows above. Nothing here binds a build: a rebuild that
 > moves a figure moves the figure, not the spec.
+>
+> **Unverified as of 2026-09-29.** Every inventory in this section (package
+> counts, byte sizes, the `find` results for setuid and setgid files, the PAM
+> helper list, the per-component sizes) was measured on an earlier image build.
+> The 2026-09-29 documentation audit had no Docker and could not reach the image
+> registries, so none of it was re-run; a figure here may be out of date.
 
 ### The OS-layer attribution lists
 

@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-09-28"
+last_reviewed: "2026-09-29"
 ---
 
 # Alcove security
@@ -326,6 +326,8 @@ Separately, Alcove escapes untrusted partner- and server-controlled strings at e
 - **A private-key fallback uses the same mechanism.** It keeps the operator's own secret-bearing files (config, key file, signing identity, and imported terms documents) from echoing a credential into an error or log: a narrow pass strips PEM/OpenSSH private-key blocks at three renderings -- a rendered error, a diagnostic log line at either CLI sink or the browser console, and the machine-readable event stream -- so an unanticipated code path that interpolated key material into one of those is contained rather than trusted. It is defense in depth, not the primary control, which stays the secret-bearing parse chokepoint above.
 - **The private-key fallback's reach is bounded.** The pass runs over one rendered unit at a time and over strings only, and an operator-facing sink that writes the console directly instead of through the diagnostic logger runs no pass at all. The bounds are recorded with the escape format rather than implied here.
 
+The display boundary does not cover partner cell values written to the result CSV: those are data, not display. They are written with RFC 4180 quoting only, with no spreadsheet formula neutralization, so a partner value that begins with a formula character reaches a spreadsheet as the partner sent it.
+
 First-party web console sinks that can expose raw partner bytes are gated behind the per-session diagnostic flag, so a production console has none. The byte-level escape format is in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#display-sanitization-escape-format).
 
 ## Hosted at-rest threat model for managed exchanges
@@ -466,7 +468,7 @@ Alcove uses the identifying fields only to compute the intersection: it does not
 
 **Logging.** Alcove does not write PII to log output. Operational logging is limited to non-sensitive metadata: the runtime resource ceilings logged once per exchange (Node version, host memory, the V8 heap limit, and any container memory limit), exchange timing, transport errors, and protocol state transitions. Review log output before forwarding it to a third-party logging service.
 
-**Output.** The output each party writes pairs its own row identifier (a database identifier from its input, or the row index when it has none) with the matched partner records and the payload columns the partner disclosed. The identifying fields used for linkage are not part of it. Each party joins its identifier column back against its dataset to recover the matched rows, and handles the written output under its applicable data governance policies.
+**Output.** The output each party writes pairs its own row identifier (a database identifier from its input, or the row index when it has none) with the matched partner records and the payload columns the partner disclosed. The identifying fields used for linkage are not part of it, unless the operator sets [`include_own_columns: all`](EXCHANGE_REFERENCE.md#include_own_columns), which writes every column of the party's own input, linkage fields included; that is the operator's own data, chosen by opt-in. Each party joins its identifier column back against its dataset to recover the matched rows, and handles the written output under its applicable data governance policies.
 
 ## Regulatory compliance
 

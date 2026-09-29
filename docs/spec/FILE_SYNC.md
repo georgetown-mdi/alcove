@@ -192,7 +192,7 @@ The ack is a zero-length marker matched by name existence -- no body is read, an
 
 ### Phase 1 -- terminal rendezvous failure
 
-A rendezvous that fails terminally rolls back **this party's own rendezvous artifacts and nothing else**: its `<id>-hello.json`, the `<myId>-<peerId>-hello-ack.json` it wrote if it had already seen a peer hello, and its lock file on the lock path. The peer's hello and ack are left untouched -- they are the peer's to remove -- as are foreign files. This holds in **both** message-loop modes, and in retain mode it is the third of the three sites that can remove a file from the directory, alongside `cleanup()` (a no-op there) and the `--force-retain-sweep`-gated entry sweep ([I4b](#invariants)).
+A rendezvous that fails terminally rolls back **this party's own rendezvous artifacts and nothing else**: its `<id>-hello.json`, the `<myId>-<peerId>-hello-ack.json` it wrote if it had already seen a peer hello, and its lock file on the lock path. The peer's hello and ack are left untouched -- they are the peer's to remove -- as are foreign files, with two exceptions on the lock path: the abandoned-lock failure deletes the peer's hello (the second carve-out below), and a bilateral-flag or id-length refusal found at the lock deletes the peer-written lock, a transient rather than an advertisement, and leaves both hellos. This holds in **both** message-loop modes, and in retain mode it is the third of the three sites that can remove a file from the directory, alongside `cleanup()` (a no-op there) and the `--force-retain-sweep`-gated entry sweep ([I4b](#invariants)).
 
 Deleting them is correct in retain mode, where every other deletion is reserved for an explicit operator escalation, for three reasons:
 

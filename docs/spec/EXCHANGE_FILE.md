@@ -489,8 +489,13 @@ third per-party local field:
 any credential, terms, or data are sent, throwing a `UsageError` (CLI exit 64) on
 `pending`, or on a `confirmed` set the run no longer resolves. The comparison is
 by **membership** in both directions but **not by order**, since metadata order
-decides which order columns are transmitted in and not which are. Like the two
-fields above it is gated on `output.share_with_partner`.
+decides which order columns are transmitted in and not which are. This check is
+gated on `output.share_with_partner`: with the partner entitled to no result
+nothing crosses, and the assessment returns `not-required`. The
+`disclosed_payload_columns` check above is not gated that way --
+`assertDisclosureMatchesCommitment` runs whatever the entitlement, so an
+inviter whose partner is entitled to nothing is still refused (exit 64) on a
+metadata drift.
 
 Every fresh acceptance surface derives the record through one function,
 `deriveOutboundPayloadConsent`: `alcove accept` writes it into the configuration

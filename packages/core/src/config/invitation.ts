@@ -682,9 +682,8 @@ const InvitationTokenSchema: z.ZodType<InvitationToken> =
   InvitationTokenBodySchema
     // A retain declaration on a webrtc endpoint is refused rather than
     // displayed: `retain_files` is a file-sync option the webrtc channel does
-    // not have (ConnectionConfigSchema in connection.ts rejects it there for
-    // the same reason), so pairing the two states a mode no run of the token
-    // could be in. Refusing at the schema means a mint path cannot stamp the
+    // not have, so pairing the two states a mode no run of the token could be
+    // in. Refusing at the schema means a mint path cannot stamp the
     // pair by mistake and a decoder cannot show one for consent. A token with
     // no endpoint at all is unconstrained: the offline file-sync invite holds
     // the declaration with no locator beside it.

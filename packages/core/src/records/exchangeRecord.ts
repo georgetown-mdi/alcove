@@ -620,8 +620,7 @@ const retentionDispositionSchema = z
 // Shared by the parser and the builder so both agree on what `createdAt` may
 // be: an ISO 8601 datetime in UTC (ending in `Z`). `z.iso.datetime()` rejects
 // timezone offsets by default, holding the timestamp to a single canonical
-// form -- the signing phase signs over createdAt's canonical bytes, so one UTC
-// form avoids two records for the same instant differing only by offset (see
+// form, so two records for the same instant cannot differ only by offset (see
 // EXCHANGE_RECORD.md). Reused at build time (buildExchangeRecord) so a
 // malformed timestamp throws there rather than producing a record the parser
 // would later reject.

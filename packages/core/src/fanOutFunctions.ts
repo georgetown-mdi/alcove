@@ -38,8 +38,9 @@ import { elementValueWidthBound } from "./keyElementWidth.js";
  * `buildKeyStrings` passes every candidate through to the record's
  * candidate set. The width-bound drop below applies only to a listed
  * function's multiplicity; an unlisted function's multiplicity instead
- * flows through to the declared-width refusal
- * (`fanOutReachedMatchingRefusal`) rather than silently narrowing the match.
+ * flows through to the strategy: count-only refuses it and single-pass
+ * refuses one wider than the declared width, but the cascade does not, so it
+ * is latent while `split_on` is the only producer.
  *
  * Frozen, not merely `readonly`: `readonly` is erased at run time, and this
  * list decides drop versus refusal per compiled step, so a runtime mutation
