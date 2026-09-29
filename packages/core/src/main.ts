@@ -709,6 +709,7 @@ export type {
   ExchangeStageDefinition,
   FirstRoundCheckOptions,
   PartnerCertificateRefusalKind,
+  PayloadReceiveFillAnswer,
   PreparedExchange,
   RunExchangeOptions,
 } from "./exchange";

@@ -486,8 +486,24 @@ the receipt bindings, the partner-certificate pin, the matching cardinality,
 the count-only shape and the payload-disclosure directions -- and before the
 bootstrap frame and any linkage key or payload row moves
 (`onPayloadReceiveFilled`, `runExchange`). A run refused at the terms exchange
-records nothing. The run holds the payload it receives to the filled set. The
-application driving the exchange records the list in the document it runs
+records nothing. The run holds the payload it receives to the filled set.
+
+Where the party also holds no `expectedPayloadColumns` and the partner's stated
+`send` names at least one column, a caller may confirm the columns first
+(`onPayloadReceiveFill`, `runExchange`). The confirmation runs after the terms
+exchange and before the partner-certificate pin, so a decline records neither
+the pin nor the fill, and the refusals listed above still apply after the
+operator confirms. A decline sends the partner the abort reason
+`PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON`; the declining party sends none of its
+linkage keys or payload rows and records no fill. The partner, which passed
+the terms exchange before the confirmation began, may already have sent its
+first-round blinded set, which discloses nothing about its records. A
+confirmation that fails rather than answers sends a fixed reason naming this
+party's own failure instead, so the partner does not read it as a decline.
+The CLI confirms at a terminal and takes the columns without asking otherwise
+([CLI.md](../CLI.md#your-partners-first-payload-columns)).
+
+The application driving the exchange records the list in the document it runs
 from: the CLI in its `alcove.yaml` (`persistFilledPayloadReceive`), the web
 app in the saved recurring record. A failure to record it stops the run, with
 an abort frame to the partner, before anything is disclosed. A one-off run

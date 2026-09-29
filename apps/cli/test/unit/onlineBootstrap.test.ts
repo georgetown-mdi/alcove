@@ -2732,6 +2732,35 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
+  test("asks before a fill only when the operator is there to answer", async () => {
+    const asksBy: Array<[boolean | undefined, boolean]> = [];
+    for (const interactive of [undefined, false, true]) {
+      vi.mocked(runProtocol).mockImplementationOnce((async (
+        ...callArgs: unknown[]
+      ) => {
+        asksBy.push([
+          interactive,
+          optionsArg(callArgs).onPayloadReceiveFill !== undefined,
+        ]);
+        return {};
+      }) as never);
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+      try {
+        await runOnlineBootstrap({
+          ...onlineBootstrapParams(path.join(dir, "alcove.yaml")),
+          ...(interactive !== undefined ? { interactive } : {}),
+        });
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+    expect(asksBy).toEqual([
+      [undefined, false],
+      [false, false],
+      [true, true],
+    ]);
+  });
+
   test("stops the run when the filled receive list cannot be recorded", async () => {
     // The fill is recorded before any key or payload moves, so a run that
     // cannot record it stops there rather than receiving under a list the

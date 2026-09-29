@@ -221,6 +221,8 @@ The `config` rule keys on the type alone, where the web's alert classification a
 
 When the partner's linkage terms differ from this party's at the terms exchange and `alcove exchange` does not take them on -- the operator declined at the prompt, the run had no terminal on stdin, or the change reaches terms the run's input was prepared under -- the run ends with `category: "config"` and exits `EX_USAGE` (64), before any linkage key or data moves ([CLI.md](../CLI.md#when-your-partners-terms-change)). The terminal error is an `OperatorConfigError` whose message holds fixed text and this party's own paths: the configuration, its key file, and the proposal file the run wrote beside the configuration, inside the `alcove apply` command that applies it. The change itself -- the partner's column names and the other terms that differ -- is shown on the operator log before the event, escaped, and never in the event's `message`. The partner's run ends with a partner abort at the terms exchange, `category: "exchange"` and exit 76.
 
+An operator who declines the payload columns a partner declares on a run that lists none it receives ([CLI.md](../CLI.md#your-partners-first-payload-columns)) ends the run the same way, with no proposal written; `termsChange.received.added` names those columns.
+
 The event's `termsChange` object states the same change for a supervisor that reads fd 3 alone. It is present on this refusal and on a terms-exchange refusal core raised before the run could offer the change at all (the partner's terms would not make a valid document, or would still differ once taken on), which is `category: "exchange"` and exit 76:
 
 | Field | Type | Meaning |

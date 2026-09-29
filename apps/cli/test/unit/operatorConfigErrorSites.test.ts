@@ -380,6 +380,26 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "prose naming none of the partner's terms.",
   },
   {
+    file: "apps/cli/src/termsChange.ts",
+    anchor: "payloadReceiveFillConfirmation",
+    raises: "OperatorConfigError",
+    interpolates: [],
+    provenance:
+      "fixed prose: a zero-setup run without --save has no configuration to " +
+      "name, and the partner's declared column names are shown on the " +
+      "display before the question, never quoted in the message.",
+  },
+  {
+    file: "apps/cli/src/termsChange.ts",
+    anchor: "payloadReceiveFillConfirmation",
+    raises: "OperatorConfigError",
+    interpolates: ["configPath"],
+    provenance:
+      "`configPath` is the operator's own path, as above; the rest is fixed " +
+      "prose. The partner's declared column names are shown on the display " +
+      "before the question, never quoted in the message.",
+  },
+  {
     file: "apps/cli/src/signingIdentityDivergence.ts",
     anchor: "assertIdentityMatchesAgreedTerms",
     raises: "OperatorConfigError",

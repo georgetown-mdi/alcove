@@ -44,6 +44,7 @@ import {
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
+import { payloadReceiveFillConfirmation } from "../termsChange";
 import {
   applyConnectionCredentials,
   readConnectionCredentials,
@@ -60,6 +61,7 @@ import {
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
+import { stdinAnswersPrompts } from "../util/prompt";
 import { channelFromURL, connectionFromURL } from "../connectionFromUrl";
 import {
   addCommonBootstrapOptions,
@@ -856,6 +858,14 @@ export async function handler(argv: Arguments): Promise<void> {
             }
           : undefined,
         payloadReceiveFillNoticeDeferred: options.save,
+        // Without --save there is no configuration, so a yes records nothing.
+        onPayloadReceiveFill: payloadReceiveFillConfirmation({
+          configPath: options.save ? options.configFile : undefined,
+          configSavedAfterExchange: options.save,
+          interactive: stdinAnswersPrompts(input),
+          log,
+          logFile,
+        }),
         undeclaredColumnsWarned,
         fileSyncRuntime: {
           sweepExchangeFiles,

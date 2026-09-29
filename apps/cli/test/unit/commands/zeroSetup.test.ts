@@ -9,6 +9,7 @@ import {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import yargs, { type Arguments } from "yargs";
 import YAML from "yaml";
 import {
@@ -50,7 +51,7 @@ import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
 } from "../../../src/hostKeyTrust";
-import { streamOf, withStdin } from "../../stdinStream";
+import { answeringTtyStream, streamOf, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
 import { captureStdio } from "../../loggingTestSupport";
 import {
@@ -769,6 +770,118 @@ test("handler without --save fills nothing: the one-off run takes what the partn
   });
   expect(recorderPassed).toBe(false);
   expect(savedTerms).toBeUndefined();
+});
+
+// --- handler: the question before a one-off run takes the partner's columns --
+
+/** Drive a zero-setup run on `stdin`, without --save unless `save`, whose
+ * terms exchange offers the partner's declared send set to the question the
+ * handler passed, ending the run on a decline as core does. Reports whether it
+ * asked, the prompt output, and the files the run left beside its input. */
+async function oneOffRunConfirming(
+  stdin: Readable,
+  save = false,
+): Promise<{
+  asked: boolean;
+  stderr: string;
+  outcome: PromiseSettledResult<void>;
+  written: string[];
+}> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeroconfirm-"));
+  const exitSpy = captureProcessExit();
+  let asked = false;
+  try {
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(
+      input,
+      "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+    );
+    vi.mocked(runProtocol).mockImplementationOnce((async (
+      ...callArgs: unknown[]
+    ) => {
+      const confirm = optionsArg(callArgs).onPayloadReceiveFill;
+      if (confirm !== undefined) {
+        asked = true;
+        const answer = await confirm(["program"]);
+        if (!answer.accepted) throw answer.refusal;
+      }
+      return driveCompletedExchange(callArgs, { partnerSaveIntent: false });
+    }) as never);
+    const stdio = captureStdio();
+    let outcome: PromiseSettledResult<void>;
+    try {
+      [outcome] = await Promise.allSettled([
+        withStdin(stdin, () =>
+          handler({
+            _: ["sftp://userb@localhost:2222/drop", input],
+            $0: "alcove",
+            "config-file": path.join(dir, "alcove.yaml"),
+            "key-file": path.join(dir, ".alcove.key"),
+            identity: "Tester",
+            record: false,
+            save,
+            "log-level": "silent",
+          } as unknown as Arguments),
+        ),
+      ]);
+    } finally {
+      stdio.restore();
+    }
+    return {
+      asked,
+      stderr: stdio.stderrWrites.join(""),
+      outcome,
+      written: fs.readdirSync(dir).filter((name) => name !== "input.csv"),
+    };
+  } finally {
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("handler without --save at a terminal asks before taking the partner's columns, and a yes continues", async () => {
+  const { asked, stderr, outcome, written } = await oneOffRunConfirming(
+    answeringTtyStream("y"),
+  );
+  expect(asked).toBe(true);
+  expect(stderr).toContain("declare payload columns it sends you");
+  expect(stderr).toContain("program");
+  expect(stderr).not.toContain("alcove.yaml");
+  expect(outcome.status).toBe("fulfilled");
+  expect(written).toEqual([]);
+});
+
+test("handler without --save at a terminal ends the run on a no, exit 64, writing nothing", async () => {
+  const { asked, outcome, written } = await oneOffRunConfirming(
+    answeringTtyStream("n"),
+  );
+  expect(asked).toBe(true);
+  expect(outcome.status).toBe("rejected");
+  expect(((outcome as PromiseRejectedResult).reason as Error).message).toBe(
+    "exit:64",
+  );
+  expect(written).toEqual([]);
+});
+
+test("handler with --save at a terminal asks to record the columns in the configuration it saves when the exchange completes, and a no records nothing", async () => {
+  const { asked, stderr, outcome, written } = await oneOffRunConfirming(
+    answeringTtyStream("n"),
+    true,
+  );
+  expect(asked).toBe(true);
+  expect(stderr).toContain("declare payload columns it sends you:");
+  expect(stderr).not.toContain("lists none you receive");
+  expect(stderr).toContain("in the configuration this run saves to");
+  expect(stderr).toContain("when the exchange completes");
+  expect(outcome.status).toBe("rejected");
+  expect(written).not.toContain("alcove.yaml");
+});
+
+test("handler without --save and no terminal takes the partner's columns without asking", async () => {
+  const { asked, outcome, written } = await oneOffRunConfirming(streamOf(""));
+  expect(asked).toBe(false);
+  expect(outcome.status).toBe("fulfilled");
+  expect(written).toEqual([]);
 });
 
 // --- handler: the dataset preparation precedes host-key trust ----------------
