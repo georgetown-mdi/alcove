@@ -605,9 +605,9 @@ already defines:
   to send -- likewise blocks every later window, and for the same reason is never
   offered as retryable (see [What the setup consent covers across
   runs](#what-the-setup-consent-covers-across-runs)).
-- **This needs you: a file is too large to send.** A set of
-  values the run had to send was over the bound one WebRTC message holds, so
-  the run refused to send it; the same files build the same set at every window, so it is never
+- **This needs you: a file is too large to send.** A set of values the run had
+  to send was over the bound one WebRTC message holds, so the run refused to
+  send it; the same files build the same set at every window, so it is never
   offered as retryable (see [An input too large to
   send](#an-input-too-large-to-send)).
 - **This needs you: a run failed with no benign explanation.** A handshake that

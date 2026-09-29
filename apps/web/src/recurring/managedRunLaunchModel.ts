@@ -78,9 +78,8 @@ export {
  *   input replaced: the file cannot supply every agreed linkage key, and the
  *   same file refuses identically every time. Not `"retry"`.
  * - `"split"` -- the input must be split into smaller exchanges: a set this
- *   exchange sends is over a bound (one WebRTC message, or the distinct
- *   values one round holds), and the same files refuse identically every
- *   time. Not `"retry"`.
+ *   exchange sends is over the bound one WebRTC message holds, and the same
+ *   files refuse identically every time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
   "reinvite" | "retry" | "wait" | "confirm" | "restate" | "split" | "none";
