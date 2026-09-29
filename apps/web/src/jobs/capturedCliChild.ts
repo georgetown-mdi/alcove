@@ -62,16 +62,11 @@ type CapturedChildOutcome =
  *
  * `cwd` is omitted to inherit the server's working directory; a caller resolving
  * paths relative to it pins its own and creates it first.
- *
- * `stdin` is written to the child's standard input, which is then closed: the
- * answer to a question the child asks there, for a caller whose operator gave
- * that answer on the console. Omitted, the child's stdin is ignored.
  */
 export function runCapturedCliChild(args: {
   argv: Array<string>;
   cwd?: string;
   childEnv?: NodeJS.ProcessEnv;
-  stdin?: string;
   sigtermMs: number;
   sigkillGraceMs: number;
 }): Promise<CapturedChildOutcome> {
@@ -80,7 +75,7 @@ export function runCapturedCliChild(args: {
     try {
       child = spawn(process.execPath, args.argv, {
         ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
-        stdio: [args.stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe"],
         shell: false,
         env: { ...sanitizedChildEnv(), ...args.childEnv },
       });
@@ -88,13 +83,6 @@ export function runCapturedCliChild(args: {
       resolve({ kind: "spawnFailed" });
       return;
     }
-    if (args.stdin !== undefined && child.stdin !== null) {
-      // A child that exits before reading closes the pipe under the write; its
-      // exit code is what reports the run, so the write's own error is dropped.
-      child.stdin.on("error", () => {});
-      child.stdin.end(args.stdin);
-    }
-
     let stdout = "";
     let stdoutOverflow = false;
     const out = child.stdout;

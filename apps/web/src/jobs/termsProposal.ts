@@ -19,7 +19,8 @@ export const TERMS_PROPOSAL_FILE_NAME = "alcove.proposed-terms";
 
 /**
  * How applying a run's terms proposal to the mounted configuration ended:
- * - `applied`: `alcove apply` rewrote the mounted `alcove.yaml`.
+ * - `applied`: `alcove apply` exited 0, having rewritten the mounted
+ *   `alcove.yaml`.
  * - `refused`: it exited 64 and changed nothing -- the proposal failed the
  *   partnership check against the key file beside the configuration, or the
  *   configuration would not load with it.
@@ -28,8 +29,7 @@ export const TERMS_PROPOSAL_FILE_NAME = "alcove.proposed-terms";
  *   in the console before running -- so the change shown is against terms
  *   the file does not hold.
  * - `timeout`: the watchdog killed it.
- * - `error`: anything else, a run that exited 0 without rewriting the file
- *   included.
+ * - `error`: anything else.
  */
 export type TermsProposalApplyResult =
   | { kind: "applied" }
@@ -51,7 +51,8 @@ const APPLY_SIGKILL_GRACE_MS = 5_000;
  * The argv an apply drives: a fixed template plus three server-composed
  * absolute paths. Each flag is a single `--flag=value` token so a path cannot
  * be misparsed as a flag of its own, and the update is the `@path` form the
- * CLI reads the file through.
+ * CLI reads the file through. `--consent-to-terms` is the operator's Apply on
+ * the console, which showed the change against the run's configuration.
  *
  * @internal exported for testing
  */
@@ -64,6 +65,7 @@ export function termsApplyArgv(args: {
   return [
     args.binaryPath,
     "apply",
+    "--consent-to-terms",
     `--config-file=${args.configPath}`,
     `--key-file=${args.keyPath}`,
     `@${args.proposalPath}`,
@@ -95,16 +97,15 @@ function statedLinkageTerms(source: string): LinkageTerms | undefined {
 /**
  * Run `alcove apply` on the proposal a refused run left in `workdir`, against
  * the configuration and key file in the mounted data root, through the shared
- * spawn boundary ({@link runCapturedCliChild}). The CLI shows the change and
- * asks before it writes; the operator gave that answer on the console, so it
- * is written to the child's stdin. The CLI writes the configuration; this
- * driver writes nothing. The child's cwd is the data root, the directory a
- * command-line apply of the same files runs in.
+ * spawn boundary ({@link runCapturedCliChild}). The operator consented on
+ * the console, so the CLI runs with `--consent-to-terms`, asks nothing, and
+ * its exit code alone states the outcome. The CLI writes the configuration;
+ * this driver writes nothing. The child's cwd is the data root, the
+ * directory a command-line apply of the same files runs in.
  *
- * The CLI showed the change against the run's configuration in `workdir`,
- * so nothing runs unless that configuration's linkage terms are the mounted
- * file's. The CLI exits 0 whether it applied or was declined, so an exit 0
- * counts as applied only where the configuration's bytes changed.
+ * The console showed the change against the run's configuration in
+ * `workdir`, so nothing runs unless that configuration's linkage terms are
+ * the mounted file's.
  */
 export async function runTermsProposalApply(args: {
   binaryPath: string;
@@ -123,10 +124,10 @@ export async function runTermsProposalApply(args: {
   );
   if (configPath === null || runConfigPath === null || proposalPath === null)
     return { kind: "error" };
-  const before = readOrNull(configPath);
+  const mountedSource = readOrNull(configPath);
   const runSource = readOrNull(runConfigPath);
-  if (before === null || runSource === null) return { kind: "error" };
-  const mountedTerms = statedLinkageTerms(before);
+  if (mountedSource === null || runSource === null) return { kind: "error" };
+  const mountedTerms = statedLinkageTerms(mountedSource);
   const runTerms = statedLinkageTerms(runSource);
   if (mountedTerms === undefined || runTerms === undefined)
     return { kind: "error" };
@@ -140,17 +141,13 @@ export async function runTermsProposalApply(args: {
       proposalPath,
     }),
     cwd: args.dataRoot,
-    stdin: "y\n",
     ...(args.childEnv !== undefined ? { childEnv: args.childEnv } : {}),
     sigtermMs: args.sigtermMs ?? APPLY_SIGTERM_MS,
     sigkillGraceMs: args.sigkillGraceMs ?? APPLY_SIGKILL_GRACE_MS,
   });
   if (outcome.kind === "timedOut") return { kind: "timeout" };
   if (outcome.kind === "spawnFailed") return { kind: "error" };
+  if (outcome.code === 0) return { kind: "applied" };
   if (outcome.code === 64) return { kind: "refused" };
-  if (outcome.code !== 0) return { kind: "error" };
-  const after = readOrNull(configPath);
-  return after !== null && after !== before
-    ? { kind: "applied" }
-    : { kind: "error" };
+  return { kind: "error" };
 }

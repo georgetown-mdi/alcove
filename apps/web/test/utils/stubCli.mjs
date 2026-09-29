@@ -37,7 +37,7 @@
 //                     --config-file names, as `<name>.proposed-terms`, before
 //                     the fd-3 events, as the real CLI writes a partner's
 //                     changed terms before its refusal.
-//   STUB_APPLY_STDIN_FILE  When the `apply` subcommand is invoked, the answer it
+//   STUB_APPLY_STDIN_FILE  When the `apply` subcommand is invoked, whatever it
 //                     read from stdin is written to this path.
 //   STUB_APPLY_EXIT_CODE  When set, the `apply` subcommand exits with this code
 //                     and writes nothing.
@@ -215,12 +215,12 @@ if (process.argv[2] === "probe-host-key") {
   runExchangeStub();
 }
 
-// The `apply` subcommand the console's terms-proposal apply spawns: read the
-// answer from stdin as the real command's prompt does, and on a yes append a
-// line to the file --config-file names, standing in for the rewrite. An `@path`
-// update naming no file is the real command's usage exit. STUB_APPLY_EXIT_CODE,
-// when set, replaces the whole run with that exit -- its own variable, since
-// one child environment serves the exchange a test stages alongside it.
+// The `apply` subcommand the console's terms-proposal apply spawns: with
+// --consent-to-terms, append a line to the file --config-file names, standing
+// in for the rewrite. An `@path` update naming no file is the real command's usage exit.
+// STUB_APPLY_EXIT_CODE, when set, replaces the whole run with that exit -- its
+// own variable, since one child environment serves the exchange a test stages
+// alongside it.
 function runApplyStub() {
   const chunks = [];
   process.stdin.on("data", (chunk) => chunks.push(chunk));
@@ -238,7 +238,7 @@ function runApplyStub() {
       return;
     }
     const configFile = flagValue(process.argv, "--config-file");
-    if (answer.trim().toLowerCase() === "y" && configFile !== undefined)
+    if (process.argv.includes("--consent-to-terms") && configFile !== undefined)
       fs.appendFileSync(configFile, "# applied by the stub\n");
     exitAfterDelay(0);
   });
