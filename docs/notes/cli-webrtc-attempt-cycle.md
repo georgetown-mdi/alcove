@@ -59,18 +59,22 @@ proxy's per-connection cost, or the offer traffic of a ten-minute attempt.
 **Attempt length: 10 minutes.** The binding constraint is the relay
 credential's one-hour lifetime: a partner arriving at the end of an attempt
 must leave the connection time to form and the exchange time to run before the
-credential expires. Ten minutes leaves at least 50 (45 for a stretched last
-attempt, below). It also equals the default rendezvous budget and the
+credential expires. Ten minutes leaves about 47 (about 42 for a stretched last
+attempt, below), since the ID-taken retry window, the registration and the
+channel-open budget can all pass after the credential is minted. It also equals the default rendezvous budget and the
 browser's own wait, so a run at the default makes exactly one attempt and
 behaves as before, and it is the cadence the load figure above was scaled to.
-At that length the refresh timers and relay allocations a wait holds stay at
-one or two. Shorter attempts would multiply both, and the boundary cost below,
+At that length the refresh timers and relay allocations a wait holds are
+bounded by the attempt count: one or two while attempts run their full length,
+more when a partner restarts attempts sooner (below). Shorter attempts would multiply both, and the boundary cost below,
 for no gain the measurement showed.
 
 **The last attempt stretches by up to half.** A remainder under half an
 attempt is joined to the last one rather than given a registration of its own.
 The longest attempt is then 15 minutes, still a quarter of the credential's
-lifetime; a unit check holds that bound.
+lifetime; a unit check holds that bound. A partner met at the end of it has
+about 42 minutes of the credential left: three quarters of the lifetime less
+the ID-taken retry, registration and channel-open budgets.
 
 **The same derived id every attempt.** The measurement shows a clean close
 frees it at once, and a per-attempt id would need a protocol change both
@@ -92,7 +96,9 @@ CLI parties that costs one 30 s timer. With a browser inviter it is the
 connected-then-failed case above, since the browser takes that offer and never
 another. 30 s is above the broker's 5 to 6 s hold of an offer plus the time a
 partner takes to answer, and costs a partner who arrives in it at most that
-long before the next attempt offers.
+long before the next attempt offers. The period is the acceptor's alone: an
+inviter still answers an offer that arrives in it, and a partner that has sent
+its description by the bound gets the channel-open budget, below.
 
 **A partner already negotiating is not cut off.** The measured boundary cost
 also included an inviter that had answered and was torn down anyway, the
@@ -112,6 +118,15 @@ offer-following without rebuilding anything in place.
 
 ## What stays open
 
+- The rendezvous budget is checked only as an attempt starts. A last
+  registration begun just before it ends can complete up to the 30 s broker
+  registration timeout after it, so the wait can meet a partner whose offer
+  arrives that long past `peer_timeout_ms`.
+- A partner re-offering under new connection ids sets the attempt cadence,
+  with no floor under it: each restart costs one credential mint, one
+  registration and, when relayed, one relay allocation until it expires. The
+  offer-following it replaced was held to a minimum interval; the parties'
+  agreement is what bounds it now.
 - A broker socket that drops mid-attempt still ends the whole wait, as before;
   the attempt cycle could start the next attempt instead, which was not in
   this change's scope.
