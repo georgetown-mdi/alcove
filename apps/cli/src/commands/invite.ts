@@ -50,6 +50,8 @@ import { assertConfigTermsSendable } from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
 import { createProvisionedServer } from "../serverProvision";
+import { readConnectionCredentials } from "../util/atSignRefs";
+import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
 import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
 import { runOrExit } from "../util/exit";
 import {
@@ -457,6 +459,9 @@ type InviteReady =
       url: URL;
       output?: string;
       connection: InviterConnectionConfig;
+      /** The connection's `@path` credential references, read before anything
+       * is printed; the connection itself keeps the references. */
+      credentials: ResolvedConnectionCredentials;
       dataSpec: ResolvedDataSpec;
       prepared: PreparedExchange;
       invitation: string;
@@ -603,6 +608,10 @@ export async function validateInvite(params: {
       inviterConnectionFromURL(url, connectionOverridesFrom(options), ownRelay),
       "inviter",
     );
+    // A missing, unreadable, or empty credential file is a UsageError (exit 64)
+    // raised here, before the invitation is printed, so no invitation is left
+    // for a partner who cannot reach a server this party cannot log in to.
+    const credentials = readConnectionCredentials(connection);
     // The file-sync half of this connection's options, absent on webrtc (whose
     // options block is the shared timeouts alone). The diagnostics and the retain
     // declaration below all read file-sync facts, so each reads it through here
@@ -812,6 +821,7 @@ export async function validateInvite(params: {
       url,
       output,
       connection,
+      credentials,
       dataSpec,
       prepared,
       invitation,
@@ -1191,6 +1201,7 @@ export async function handler(argv: Arguments): Promise<void> {
         log.info("waiting for the partner to accept...");
         const { configWriteError } = await runOnlineBootstrap({
           connection: ready.connection,
+          credentials: ready.credentials,
           dataSpec: ready.dataSpec,
           prepared: ready.prepared,
           sharedSecret: ready.sharedSecret,

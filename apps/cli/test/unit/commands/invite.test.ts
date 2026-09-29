@@ -4159,3 +4159,152 @@ describe("handler: the --server-provision credential file on an online invite", 
     }
   });
 });
+
+describe("handler: an @path connection credential on an online invite", () => {
+  function credentialInviteArgv(
+    options: CommonBootstrapOptions,
+    input: string,
+    url: string,
+    flags: Record<string, string>,
+  ): Arguments {
+    return {
+      _: [],
+      $0: "alcove",
+      identity: "Agency A",
+      args: [url, input],
+      "config-file": options.configFile,
+      "key-file": options.keyFile,
+      "log-level": "silent",
+      record: false,
+      ...flags,
+    } as unknown as Arguments;
+  }
+
+  test.each([
+    ["server-password", "missing"],
+    ["server-password", "empty"],
+    ["server-private-key", "missing"],
+    ["server-private-key-passphrase", "empty"],
+  ])(
+    "a %s file that is %s exits 64 naming it, before the invitation is printed",
+    async (flag, kind) => {
+      const { input, options } = onlineFixture();
+      const secretFile = path.join(path.dirname(input), "credential.secret");
+      if (kind === "empty") fs.writeFileSync(secretFile, "");
+      const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+      runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const exit = vi
+        .spyOn(process, "exit")
+        .mockImplementation((() => undefined) as never);
+      const stdio = captureStdio();
+      try {
+        await inviteHandler(
+          credentialInviteArgv(options, input, "sftp://host/drop", {
+            // A passphrase is refused without a key to decrypt.
+            ...(flag === "server-private-key-passphrase"
+              ? { "server-private-key": "literal-key" }
+              : {}),
+            [flag]: `@${secretFile}`,
+            "log-level": "error",
+          }),
+        );
+        expect(exit).toHaveBeenCalledWith(64);
+        expect(stdio.stderrWrites.join("")).toContain("credential.secret");
+        expect(logSpy).not.toHaveBeenCalled();
+        expect(stdio.stdoutWrites.join("")).toBe("");
+        expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+        expect(fs.existsSync(options.keyFile)).toBe(false);
+        expect(fs.existsSync(options.configFile)).toBe(false);
+      } finally {
+        stdio.restore();
+        exit.mockRestore();
+        logSpy.mockRestore();
+        runOnlineBootstrapMock.mockReset();
+      }
+    },
+  );
+
+  test("a readable password file is read once, held aside, and the saved connection keeps the reference", async () => {
+    const { input, options } = onlineFixture();
+    const passwordFile = path.join(path.dirname(input), "server.password");
+    fs.writeFileSync(passwordFile, "file-password\n");
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    const printed: string[] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      printed.push(args.map(String).join(" "));
+    });
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      await inviteHandler(
+        credentialInviteArgv(options, input, "sftp://host/drop", {
+          "server-password": `@${passwordFile}`,
+        }),
+      );
+      expect(exit).not.toHaveBeenCalled();
+      expect(printed).toHaveLength(1);
+      const passed = runOnlineBootstrapMock.mock.calls[0][0];
+      expect(passed.credentials).toEqual({ password: "file-password" });
+      if (passed.connection.channel !== "sftp")
+        throw new Error("expected sftp");
+      expect(passed.connection.server.password).toBe(`@${passwordFile}`);
+    } finally {
+      exit.mockRestore();
+      logSpy.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+    }
+  });
+
+  test("a literal password is passed through as the value read", async () => {
+    const { input, options } = onlineFixture();
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      await inviteHandler(
+        credentialInviteArgv(options, input, "sftp://host/drop", {
+          "server-password": "literal-password",
+        }),
+      );
+      expect(exit).not.toHaveBeenCalled();
+      const passed = runOnlineBootstrapMock.mock.calls[0][0];
+      expect(passed.credentials).toEqual({ password: "literal-password" });
+      if (passed.connection.channel !== "sftp")
+        throw new Error("expected sftp");
+      expect(passed.connection.server.password).toBe("literal-password");
+    } finally {
+      exit.mockRestore();
+      logSpy.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+    }
+  });
+
+  test("a webrtc invitation, which drops the credential flag, reads no file", async () => {
+    const { input, options } = onlineFixture();
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      await inviteHandler(
+        credentialInviteArgv(options, input, "wss://peers.example.org/psi", {
+          "server-password": `@${path.join(path.dirname(input), "absent")}`,
+        }),
+      );
+      expect(exit).not.toHaveBeenCalled();
+      expect(runOnlineBootstrapMock.mock.calls[0][0].credentials).toEqual({});
+    } finally {
+      exit.mockRestore();
+      logSpy.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+    }
+  });
+});
