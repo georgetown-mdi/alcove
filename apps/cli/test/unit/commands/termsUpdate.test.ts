@@ -153,12 +153,13 @@ async function runUpdate(): Promise<string> {
 async function runApply(
   update: string,
   party: Party = partnership.b,
+  extra: Record<string, unknown> = {},
 ): Promise<{ stderr: string; exit: string | undefined }> {
   const exitSpy = captureProcessExit();
   const stdio = captureStdio();
   let exit: string | undefined;
   try {
-    await applyHandler(argv("apply", party, { args: [update] }));
+    await applyHandler(argv("apply", party, { args: [update], ...extra }));
   } catch (err) {
     exit = err instanceof Error ? err.message : String(err);
   } finally {
@@ -398,6 +399,37 @@ describe("alcove apply", () => {
     expect(stderr).toContain(
       "update declined; the configuration was not changed",
     );
+    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
+
+  test("--consent-to-terms applies the update without asking, reading no answer", async () => {
+    editAgencyA();
+    const update = await runUpdate();
+
+    const { exit, stderr } = await runApply(update, partnership.b, {
+      "consent-to-terms": true,
+    });
+    expect(exit).toBeUndefined();
+    expect(promptConfirmMock).not.toHaveBeenCalled();
+    expect(stderr).toContain("--consent-to-terms given");
+    const stated = await decodeTermsUpdate(update, partnership.secret);
+    expect(readSpec(partnership.b.config).linkageTerms).toEqual(
+      deriveAcceptedLinkageTerms(stated.linkageTerms, "Agency B", false),
+    );
+  });
+
+  test("--consent-to-terms still refuses an update made for another partnership", async () => {
+    const encoded = await encodeTermsUpdate(
+      { linkageTerms: partnership.aTerms },
+      generateSharedSecret(),
+    );
+    const before = fs.readFileSync(partnership.b.config, "utf8");
+
+    const { exit, stderr } = await runApply(encoded, partnership.b, {
+      "consent-to-terms": true,
+    });
+    expect(exit).toBe("exit:64");
+    expect(stderr).toContain("refused by the partnership check");
     expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
   });
 

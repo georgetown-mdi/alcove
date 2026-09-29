@@ -116,7 +116,7 @@ async function settledRun(manager: JobManager, id: string): Promise<JobRecord> {
 }
 
 describe("applying the terms proposal a run of the opened configuration stopped on", () => {
-  test("runs alcove apply against the mounted files, answering its prompt", async () => {
+  test("runs alcove apply with --consent-to-terms against the mounted files, writing nothing to its stdin", async () => {
     const root = mountedRoot();
     const answerFile = path.join(scratch("answer"), "stdin");
     const manager = managerFor(root, {
@@ -132,7 +132,7 @@ describe("applying the terms proposal a run of the opened configuration stopped 
 
     const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
     expect(await manager.applyTermsProposal(id)).toEqual({ kind: "applied" });
-    expect(fs.readFileSync(answerFile, "utf8")).toBe("y\n");
+    expect(fs.readFileSync(answerFile, "utf8")).toBe("");
     expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).not.toBe(
       before,
     );
@@ -154,6 +154,7 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     ).toEqual([
       "/app/cli.js",
       "apply",
+      "--consent-to-terms",
       "--config-file=/data/alcove.yaml",
       "--key-file=/data/.alcove.key",
       "@/data/job/alcove.proposed-terms",
@@ -241,24 +242,27 @@ describe("applying the terms proposal a run of the opened configuration stopped 
     expect(record.termsProposal).toBe("available");
   });
 
-  test("reports the CLI's refusal and leaves the proposal available", async () => {
-    const root = mountedRoot();
-    const manager = managerFor(root, { STUB_APPLY_EXIT_CODE: "64" });
-    manager.openMountedConfiguration();
-    const id = await manager.createJob(openedIntent());
-    const record = await settledRun(manager, id);
-    expect(await manager.applyTermsProposal(id)).toEqual({ kind: "refused" });
-    expect(record.termsProposal).toBe("available");
-  });
-
-  test("an apply that exits 0 without rewriting the configuration is not applied", async () => {
-    const root = mountedRoot();
-    const manager = managerFor(root, { STUB_APPLY_EXIT_CODE: "0" });
-    manager.openMountedConfiguration();
-    const id = await manager.createJob(openedIntent());
-    await settledRun(manager, id);
-    expect(await manager.applyTermsProposal(id)).toEqual({ kind: "error" });
-  });
+  test.each([
+    { code: "0", kind: "applied", proposal: "applied" },
+    { code: "64", kind: "refused", proposal: "available" },
+    { code: "1", kind: "error", proposal: "available" },
+    { code: "70", kind: "error", proposal: "available" },
+  ])(
+    "reads exit $code as $kind from the exit code alone, whatever the file holds",
+    async ({ code, kind, proposal }) => {
+      const root = mountedRoot();
+      const manager = managerFor(root, { STUB_APPLY_EXIT_CODE: code });
+      manager.openMountedConfiguration();
+      const id = await manager.createJob(openedIntent());
+      const record = await settledRun(manager, id);
+      const before = fs.readFileSync(path.join(root, "alcove.yaml"), "utf8");
+      expect(await manager.applyTermsProposal(id)).toEqual({ kind });
+      expect(fs.readFileSync(path.join(root, "alcove.yaml"), "utf8")).toBe(
+        before,
+      );
+      expect(record.termsProposal).toBe(proposal);
+    },
+  );
 });
 
 describe("the relayed terms change", () => {

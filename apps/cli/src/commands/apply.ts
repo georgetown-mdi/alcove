@@ -60,8 +60,8 @@ export function builder(cmd: Argv): Argv {
           "Apply a terms update your partner made with 'alcove update' to\n" +
           "this party's configuration. The update is checked against the\n" +
           "shared secret in the key file, its terms are shown, and nothing is\n" +
-          "written unless you confirm. The key file and the connection block\n" +
-          "are not changed.",
+          "written unless you confirm or pass --consent-to-terms. The key file\n" +
+          "and the connection block are not changed.",
       )
       .option("config-file", {
         type: "string",
@@ -70,6 +70,18 @@ export function builder(cmd: Argv): Argv {
       .option("key-file", {
         type: "string",
         describe: `this partnership's key file, read and not changed (default: ${DEFAULT_KEY_PATH})`,
+      })
+      // No short form, as on accept: skipping the confirmation takes an
+      // explicit token, and `unknown-options-as-args` would make a
+      // single-letter flag ambiguous with a `-`-leading update.
+      .option("consent-to-terms", {
+        type: "boolean",
+        default: false,
+        describe:
+          "consent in advance to the update's terms, skipping the interactive " +
+          "confirmation, so apply can run unattended or in a script. The " +
+          "update's checks against the key file still run; review its terms " +
+          "before using this.",
       }),
   );
 }
@@ -229,6 +241,7 @@ export async function handler(argv: Arguments): Promise<void> {
         (singleValue(argv, "config-file") as string | undefined) ??
         DEFAULT_CONFIG_PATH;
       const keyPath = keyFileFlag(argv);
+      const consentToTerms = argv["consent-to-terms"] === true;
 
       const existing = readPartnershipConfig(configPath);
       const identity = resolveTermsUpdateIdentity(
@@ -269,7 +282,7 @@ export async function handler(argv: Arguments): Promise<void> {
       const consentSurface = consentSurfaceSink({
         log,
         logFile,
-        toPromptStream: true,
+        toPromptStream: !consentToTerms,
       });
       displayChanges(consentSurface, configPath, existing, accepted);
       displayInvitation({
@@ -279,17 +292,24 @@ export async function handler(argv: Arguments): Promise<void> {
             ? disclosedColumnNames(existing.metadata)
             : undefined,
         emit: consentSurface,
-        promptFollows: true,
+        promptFollows: !consentToTerms,
         surface: "update",
       });
-      const confirmed = await promptConfirm(
-        `Apply this update to ${redactAndRenderOperatorSuppliedText(
-          operatorSuppliedText(configPath),
-        )}?`,
-      );
-      if (!confirmed) {
-        consentSurface("update declined; the configuration was not changed");
-        return;
+      if (consentToTerms) {
+        log.info(
+          "--consent-to-terms given: applying the update on advance consent " +
+            "without the confirmation prompt.",
+        );
+      } else {
+        const confirmed = await promptConfirm(
+          `Apply this update to ${redactAndRenderOperatorSuppliedText(
+            operatorSuppliedText(configPath),
+          )}?`,
+        );
+        if (!confirmed) {
+          consentSurface("update declined; the configuration was not changed");
+          return;
+        }
       }
 
       persistTermsUpdate(configPath, write);
