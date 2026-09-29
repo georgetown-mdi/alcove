@@ -194,8 +194,20 @@ export const ID_TAKEN_MESSAGE =
   "`role` field on each party's webrtc connection, one inviter and one " +
   "acceptor.";
 
+/**
+ * The broker's `ID-TAKEN` refusal, as its own class so a caller that
+ * registers again after its own earlier socket can tell this refusal apart:
+ * the broker holds the id of a socket that vanished without closing until its
+ * liveness timeout, and that is not a misconfiguration.
+ */
+export class BrokerIdTakenError extends ConnectionError {
+  constructor() {
+    super(ID_TAKEN_MESSAGE, "usage");
+  }
+}
+
 function idTakenError(): ConnectionError {
-  return new ConnectionError(ID_TAKEN_MESSAGE, "usage");
+  return new BrokerIdTakenError();
 }
 
 /** What a failed signaling socket reports when the certificate verified. */

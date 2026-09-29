@@ -72,7 +72,7 @@ import {
   iceServersFromConnection,
   relayCredentialForRun,
   relayCredentialNotice,
-  relayCredentialRenewal,
+  relayCredentialPerAttempt,
 } from "./connection/webrtc/weriftPeer";
 import { persistPartnerFingerprint } from "./config";
 import {
@@ -435,9 +435,9 @@ interface WebRtcDial {
  * @param runRelayCredential This run's minted TURN credential
  *   (`relayCredentialForRun`), for the TURN urls the connection's invitation
  *   relay names or its own `turn` entries that set no username or credential;
- *   unused when every selected TURN entry sets its own. When one is given, a
- *   fresh one is minted while the partner is absent
- *   (`relayCredentialRenewal`).
+ *   unused when every selected TURN entry sets its own. When one is given,
+ *   each connection attempt after the first mints its own
+ *   (`relayCredentialPerAttempt`).
  * @throws {UsageError} when the run holds no shared secret, when the connection
  *   names no role, when the server block cannot be resolved to a broker, or
  *   when the connection sets `ice_provision` (via `iceServersFromConnection`).
@@ -467,7 +467,7 @@ export function webRtcDialFrom(
       sharedSecret,
       iceServers: iceServersFromConnection(connection, runRelayCredential),
       ...(runRelayCredential !== undefined && {
-        iceServerRenewal: relayCredentialRenewal(connection, sharedSecret),
+        attemptIceServers: relayCredentialPerAttempt(connection, sharedSecret),
       }),
       ...(connection.iceTransportPolicy !== undefined && {
         iceTransportPolicy: connection.iceTransportPolicy,

@@ -124,3 +124,25 @@ test("close leaves the TURN refresh timer armed, at five sixths of the granted l
   await relay.awaitRequest(methods.REFRESH, 10_000);
   expect(Date.now() - closedAt).toBeGreaterThanOrEqual(EARLIEST_REFRESH_MS);
 }, 15_000);
+
+test("a closed allocation's refresh timer fires once and is not armed again", async () => {
+  // What bounds the timers a wait of many relayed connection attempts holds:
+  // each discarded attempt leaves one, retired when it fires, so a wait holds
+  // about five sixths of the granted lifetime divided by the attempt length.
+  const relay = scriptedRelay();
+  const turn = new TurnProtocol(
+    SERVER,
+    USERNAME,
+    PASSWORD,
+    REQUESTED_LIFETIME,
+    relay.transport,
+  );
+  await turn.connectionMade();
+  await turn.close();
+  await relay.awaitRequest(methods.REFRESH, 10_000);
+
+  // Armed again, it would fire within another five sixths of the grant.
+  await expect(
+    relay.awaitRequest(methods.REFRESH, 3 * GRANTED_LIFETIME * 1000),
+  ).rejects.toThrow(/no REFRESH within/);
+}, 20_000);

@@ -17,6 +17,7 @@ stands, from a direction still open to a decision taken and built.
 | [broker-runtime-closure.md](broker-runtime-closure.md) | Decided and built. |
 | [cascade-fan-out.md](cascade-fan-out.md) | Directed; the spec has landed, the realization is pending. |
 | [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | Decided and built; what each spawn type receives, the orchestrator-only share under two partitions, and the split taken against it. |
+| [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | Decided on the maintainer's ruling and built, after a real-broker measurement. |
 | [cli-webrtc-stack.md](cli-webrtc-stack.md) | Decided and built. |
 | [comment-history-narration-check.md](comment-history-narration-check.md) | Decided and built; the corpus measurement and the false-positive rate behind the check's phrase list. |
 | [connect-timeout-prior-art.md](connect-timeout-prior-art.md) | Decided and built; what curl and OpenSSH bound, measured, and the three decisions taken on it. |

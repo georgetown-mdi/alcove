@@ -142,7 +142,8 @@ const { BROKER_ADDRESS_REFUSED, ID_TAKEN_MESSAGE } =
   await import("../../../src/connection/webrtc/brokerClient");
 const { exitCodeForError } = await import("../../../src/util/exit");
 const {
-  RELAY_CREDENTIAL_RENEWAL_MS,
+  FINAL_ATTEMPT_STRETCH,
+  WEBRTC_ATTEMPT_MS,
   WEBRTC_BROKER_HOST_REFUSED,
   WEBRTC_BROKER_PATH_REFUSED,
 } = await import("../../../src/connection/webrtc/weriftPeer");
@@ -881,7 +882,7 @@ function mintedExpirySeconds(servers: Array<{ username?: string }>): number {
   return Number(turn.username?.split(":")[0]);
 }
 
-test("a minting run whose peer_timeout_ms outlasts the relay credential dials with a fresh one", async () => {
+test("a minting run dials each later connection attempt with a fresh credential", async () => {
   const startedAt = Date.now();
   const credential = await mintRunRelayCredential(SECRET, new Date(startedAt));
   const { options } = webRtcDialFrom(
@@ -895,69 +896,42 @@ test("a minting run whose peer_timeout_ms outlasts the relay credential dials wi
     SECRET,
     credential,
   );
-  const renewal = options.iceServerRenewal;
-  expect(renewal?.afterMs).toBe(RELAY_CREDENTIAL_RENEWAL_MS);
-  expect(RELAY_CREDENTIAL_RENEWAL_MS).toBeLessThan(
-    RELAY_CREDENTIAL_MAX_TTL_SECONDS * 1000,
-  );
-  expect(RELAY_CREDENTIAL_RENEWAL_MS).toBeLessThan(
-    options.rendezvousTimeoutMs ?? 0,
-  );
-  const renewedAt = startedAt + RELAY_CREDENTIAL_RENEWAL_MS;
-  vi.useFakeTimers({ toFake: ["Date"], now: renewedAt });
-  let renewed: Awaited<ReturnType<NonNullable<typeof renewal>["resolve"]>>;
+  const nextAttemptAt = startedAt + WEBRTC_ATTEMPT_MS;
+  vi.useFakeTimers({ toFake: ["Date"], now: nextAttemptAt });
+  let next: { iceServers: Array<{ username?: string }>; notice: string };
   try {
-    renewed = (await renewal?.resolve(RELAY_CREDENTIAL_RENEWAL_MS)) ?? {
+    next = (await options.attemptIceServers?.(WEBRTC_ATTEMPT_MS)) ?? {
       iceServers: [],
       notice: "",
     };
   } finally {
     vi.useRealTimers();
   }
-  const servers = renewed.iceServers;
-  expect(mintedExpirySeconds(servers)).toBe(
-    Math.floor(renewedAt / 1000) + RELAY_CREDENTIAL_MAX_TTL_SECONDS,
+  expect(mintedExpirySeconds(next.iceServers)).toBe(
+    Math.floor(nextAttemptAt / 1000) + RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   );
-  expect(mintedExpirySeconds(servers) * 1000).toBeGreaterThan(
+  expect(mintedExpirySeconds(next.iceServers) * 1000).toBeGreaterThan(
     credential.expiresAt.getTime(),
   );
-  expect(renewed.notice).toContain(
-    `expires at ${new Date(mintedExpirySeconds(servers) * 1000).toISOString()}`,
+  expect(next.notice).toContain(
+    `expires at ${new Date(mintedExpirySeconds(next.iceServers) * 1000).toISOString()}`,
   );
-  expect(renewed.notice).toContain(
-    `within ${RELAY_CREDENTIAL_RENEWAL_MS / 60_000} minutes`,
-  );
-  // Minting logs nothing: the notice is the negotiation's to log once the
-  // rebuilt connection replaces the old one.
+  expect(next.notice).toContain(`within ${WEBRTC_ATTEMPT_MS / 60_000} minutes`);
+  // Minting logs nothing: the notice is the wait's to log as the attempt starts.
   expect(
     mockState.logLines.some((line) =>
-      line.includes("restarts with a new relay credential"),
+      line.includes("starts with a new relay credential"),
     ),
   ).toBe(false);
 });
 
-test("a minting run whose peer_timeout_ms is under the credential lifetime ends its wait before a renewal", () => {
-  const { options } = webRtcDialFrom(
-    {
-      channel: "webrtc",
-      server: { host: "peers.example.org" },
-      role: "acceptor",
-      invitationRelay: MINTING_RELAY,
-      options: { peerTimeoutMs: 20 * 60 * 1000 },
-    },
-    SECRET,
-    {
-      username: "1767229200:alcove",
-      credential: "bWludGVk",
-      expiresAt: new Date("2026-01-01T01:00:00Z"),
-    },
-  );
-  expect(options.iceServerRenewal?.afterMs).toBeGreaterThan(
-    options.rendezvousTimeoutMs ?? Infinity,
+test("an attempt, the last one stretched included, ends well inside the relay credential's lifetime", () => {
+  expect(WEBRTC_ATTEMPT_MS * FINAL_ATTEMPT_STRETCH).toBeLessThanOrEqual(
+    (RELAY_CREDENTIAL_MAX_TTL_SECONDS * 1000) / 2,
   );
 });
 
-test("a run presenting no minted credential renews nothing", () => {
+test("a run presenting no minted credential mints nothing per attempt", () => {
   const { options } = webRtcDialFrom(
     {
       channel: "webrtc",
@@ -967,7 +941,7 @@ test("a run presenting no minted credential renews nothing", () => {
     },
     SECRET,
   );
-  expect(options).not.toHaveProperty("iceServerRenewal");
+  expect(options).not.toHaveProperty("attemptIceServers");
 });
 
 test("an unset options block leaves all three transport defaults in place", () => {
