@@ -4371,3 +4371,43 @@ describe("handler: an @path connection credential on an online invite", () => {
     }
   });
 });
+
+// --- a retired setting in the source config ----------------------------------
+
+test.each(["disclosed_payload_columns", "outbound_payload_consent"])(
+  "handler: a config holding %s mints no invitation, naming the key and the remedy",
+  async (key) => {
+    const { dir, configPath, keyPath } = withConfig(defaultTerms());
+    const written = YAML.parse(fs.readFileSync(configPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    fs.writeFileSync(configPath, YAML.stringify({ ...written, [key]: [] }));
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const stdio = captureStdio();
+    try {
+      await inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [],
+        "config-file": configPath,
+        "key-file": keyPath,
+        "log-level": "info",
+        record: false,
+      } as unknown as Arguments);
+      expect(exit).toHaveBeenCalledWith(64);
+      expect(stdio.stdoutWrites.join("")).toBe("");
+      expect(stdio.stderrWrites.join("")).toContain(
+        `the setting "${key}" is retired; delete it from the file`,
+      );
+      expect(fs.existsSync(keyPath)).toBe(false);
+    } finally {
+      stdio.restore();
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

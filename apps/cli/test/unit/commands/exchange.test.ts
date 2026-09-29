@@ -374,7 +374,7 @@ test("loadConfig refuses the placeholder SSH username before reading the key", (
 });
 
 test.each(["outbound_payload_consent", "disclosed_payload_columns"])(
-  "loadConfig refuses a configuration holding %s, naming the key",
+  "loadConfig refuses a configuration holding %s, naming the key and the remedy",
   (key) => {
     fs.writeFileSync(
       configFile,
@@ -383,7 +383,7 @@ test.each(["outbound_payload_consent", "disclosed_payload_columns"])(
     saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
     expect(() => loadConfig(baseOptions())).toThrow(UsageError);
     expect(() => loadConfig(baseOptions())).toThrow(
-      `Unrecognized key: "${key}"`,
+      `the setting "${key}" is retired; delete it from the file`,
     );
   },
 );

@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import {
   parseExchangeSpec,
   safeParseExchangeSpec,
+  retiredSettingIssue,
 } from "../../src/config/exchangeSpec";
 import {
   METADATA_NAME_SHAPE_MESSAGE,
@@ -276,18 +277,48 @@ test("a name-class character is rejected in the local payload column list", () =
   expect(JSON.stringify(result.error.issues)).toContain(NAME_SHAPE_MESSAGE);
 });
 
-test.each(["disclosed_payload_columns", "outbound_payload_consent"])(
-  "a configuration holding %s is refused, naming the key",
+test.each([
+  "disclosed_payload_columns",
+  "outbound_payload_consent",
+  "disclosedPayloadColumns",
+  "outboundPayloadConsent",
+])(
+  "a configuration holding %s is refused, naming the key and the remedy",
   (key) => {
-    expect(() =>
-      parseExchangeSpec({ ...minimalSpec, [key]: ["program"] }),
-    ).toThrow(key);
+    const refusal = `the setting "${key}" is retired; delete it from the file`;
+    let thrown: unknown;
+    try {
+      parseExchangeSpec({ ...minimalSpec, [key]: ["program"] });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ZodError);
+    expect((thrown as ZodError).issues.map(({ message }) => message)).toEqual([
+      refusal,
+    ]);
     const result = safeParseExchangeSpec({ ...minimalSpec, [key]: [] });
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(JSON.stringify(result.error.issues)).toContain(key);
+    expect(result.error.issues.map(({ message }) => message)).toEqual([
+      refusal,
+    ]);
   },
 );
+
+test("a configuration holding both retired settings is refused naming both", () => {
+  expect(
+    retiredSettingIssue({
+      ...minimalSpec,
+      disclosed_payload_columns: [],
+      outbound_payload_consent: {},
+    })?.message,
+  ).toBe(
+    'the settings "disclosed_payload_columns" and "outbound_payload_consent" ' +
+      "are retired; delete them from the file",
+  );
+  expect(retiredSettingIssue(minimalSpec)).toBeUndefined();
+  expect(retiredSettingIssue(["disclosed_payload_columns"])).toBeUndefined();
+});
 
 // --- Payload column-name duplicate normalization -----------------------------
 // The top-level list names each column once, the treatment the negotiated

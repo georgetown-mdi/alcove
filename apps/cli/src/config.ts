@@ -61,6 +61,7 @@ import {
   safeParseStandardizationTheReaderWrote,
   sanitizeForDisplay,
   parseExchangeSpec,
+  retiredSettingIssue,
   serializeExchangeDocument,
   snakeizeKey,
   snakeizeKeys,
@@ -2328,11 +2329,14 @@ export type NamedRuleSetRules = "from-the-named-set" | "as-written";
  * parsed and validated; the connection block is excluded by design, so a
  * still-placeholder one does not fail the read.
  *
- * Each of those three blocks is read through the entry point that refuses a
- * key its schema would drop rather than read, the rule `parseExchangeSpec`
- * holds over the whole file (docs/spec/EXCHANGE_FILE.md, "What a consumer does
- * with a setting it cannot honor"), so a file `alcove exchange` refuses is not
- * one `alcove invite` mints an invitation from.
+ * A retired top-level setting is refused first, with the refusal
+ * `parseExchangeSpec` raises ({@link retiredSettingIssue}), and each of those
+ * three blocks is read through the entry point that refuses a key its schema
+ * would drop rather than read, the rule `parseExchangeSpec` holds over the
+ * whole file (docs/spec/EXCHANGE_FILE.md, "What a consumer does with a setting
+ * it cannot honor"). So a file `alcove exchange` refuses for either of those
+ * reasons is not one `alcove invite` mints an invitation from; an unknown
+ * top-level key or a defect in another block is left to `alcove exchange`.
  *
  * Every other defect is a {@link UsageError}: a config present at the path
  * is treated as intentional, so a broken one is reported for the user to
@@ -2375,6 +2379,9 @@ export function readConfigLinkageSource(
       "is not a valid configuration object (expected a YAML mapping at the " +
         "top level)",
     );
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined)
+    throw configFileRefusal(configPath, "is not valid: " + retired.message);
   const obj = raw as Record<string, unknown>;
   const rawTerms = obj["linkage_terms"] ?? obj["linkageTerms"];
   if (rawTerms === undefined) return { status: "no-linkage-terms" };

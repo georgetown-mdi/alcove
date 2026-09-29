@@ -344,6 +344,7 @@ export {
   ExchangeSpecSchema,
   parseExchangeSpec,
   safeParseExchangeSpec,
+  retiredSettingIssue,
 } from "./config/exchangeSpec";
 export type { ExchangeSpec } from "./config/exchangeSpec";
 export {

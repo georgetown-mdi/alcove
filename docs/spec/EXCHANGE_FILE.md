@@ -168,11 +168,14 @@ sharply:
   absence is a valid state (`expected_payload_columns`,
   `expected_partner_deduplicate`), so stripping a misspelling of one would
   silently disable the control it names; that hazard governs the whole top level
-  rather than being spot-checked key by key. A file holding
-  `disclosed_payload_columns` or `outbound_payload_consent` is refused on this
-  rule, naming the key: the send side is stated in the agreed terms instead
-  ([The send side is in the agreed
-  terms](#the-send-side-is-in-the-agreed-terms)).
+  rather than being spot-checked key by key. A file holding the retired
+  `disclosed_payload_columns` or `outbound_payload_consent` is refused before
+  that rule applies, by every reader that parses the whole file and by
+  `alcove invite` and `alcove update`, which read only its terms, metadata, and
+  standardization, with a message naming the key and telling the operator to
+  delete it (`retiredSettingIssue` in `packages/core/src/config/exchangeSpec.ts`):
+  the send side is stated in the agreed terms instead ([The send side is in the
+  agreed terms](#the-send-side-is-in-the-agreed-terms)).
 - **An unknown field inside a spec block is rejected loudly too.** The blocks
   themselves (`linkage_terms`, `metadata`, `standardization`, `connection`) strip
   unrecognized keys on parse, the `connection` union's webrtc member excepted
