@@ -422,6 +422,11 @@ Ratified by the owner:
   in the AWS account, in every region, and every record and setting in the
   Cloudflare zone has one recorded owner -- an OpenTofu root, a document, or
   deletion -- and every root's plan against the live account is empty.
+- **Large exchanges** (board 9) -- Done is: a file-sync round past 2^24
+  distinct values and a CLI WebRTC round past one frame each complete at
+  the owner's target size, and every per-row structure from intake to
+  result file is measured at that size, with any remaining limit stated in
+  `docs/spec/`.
 
 Drafted, pending the owner's ratification:
 
