@@ -333,6 +333,19 @@ test.each([
   expect(() => serverProvisionFlag(argv(flags))).toThrow(fragment);
 });
 
+test("serverProvisionFlag: a non-string bearer is refused", () => {
+  let caught: unknown;
+  try {
+    serverProvisionFlag(argv({ "server-provision-bearer": 5 }));
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).toBeInstanceOf(UsageError);
+  expect((caught as Error).message).toContain(
+    "--server-provision-bearer must be a string",
+  );
+});
+
 test("connectionOverridesFrom: --server-provision reaches the server overrides", () => {
   const provision = { host: "wake.example.org" };
   expect(

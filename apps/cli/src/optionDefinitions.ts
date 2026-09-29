@@ -111,6 +111,18 @@ export function serverProvisionFlag(
   const bearer = singleValue(argv, "server-provision-bearer");
   const username = singleValue(argv, "server-provision-username");
   const password = singleValue(argv, "server-provision-password");
+  if (bearer !== undefined && typeof bearer !== "string")
+    throw new UsageError(
+      "--server-provision-bearer must be a string; got " + String(bearer),
+    );
+  if (username !== undefined && typeof username !== "string")
+    throw new UsageError(
+      "--server-provision-username must be a string; got " + String(username),
+    );
+  if (password !== undefined && typeof password !== "string")
+    throw new UsageError(
+      "--server-provision-password must be a string; got " + String(password),
+    );
   if (raw === undefined) {
     const stray = [
       ["--server-provision-bearer", bearer],
@@ -186,9 +198,9 @@ export function serverProvisionFlag(
   return {
     ...address,
     ...(bearer !== undefined
-      ? { auth: { bearer: String(bearer) } }
+      ? { auth: { bearer } }
       : username !== undefined
-        ? { auth: { username: String(username), password: String(password) } }
+        ? { auth: { username, password } }
         : {}),
   };
 }
