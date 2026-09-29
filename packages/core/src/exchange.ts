@@ -2333,9 +2333,9 @@ export interface RunExchangeOptions {
    */
   onPartnerCertificatePinned?: (fingerprint: string) => void;
   /**
-   * Called once, at the terms exchange, when this party's terms leave
-   * `payload.receive` unset and the partner can send it payload
-   * ({@link payloadReceiveFill}): the argument is the column names
+   * Called once, after the terms exchange's refusals have all passed, when
+   * this party's terms leave `payload.receive` unset and the partner can send
+   * it payload ({@link payloadReceiveFill}): the argument is the column names
    * the partner's terms declare in `payload.send`, which this run then holds
    * the received payload to. The caller records them as `payload.receive` in
    * the configuration it runs from, so the next run compares them strictly. A
@@ -2524,32 +2524,6 @@ export async function runExchange(
     throw err;
   }
 
-  // Fill an unset receive list from the partner's declared send set, before
-  // any key or payload moves, so the caller has recorded it before this run
-  // receives anything under it. The run holds the received payload to the
-  // filled set, as a later run holds it to the recorded list.
-  let filledPayloadReceive: string[] | undefined;
-  const payloadReceiveFillColumns = payloadReceiveFill(
-    linkageTerms,
-    partnerTerms,
-  );
-  if (
-    options.onPayloadReceiveFilled !== undefined &&
-    payloadReceiveFillColumns !== undefined
-  ) {
-    const columns = payloadReceiveFillColumns;
-    try {
-      await options.onPayloadReceiveFilled(columns);
-    } catch (err) {
-      // Best-effort abort before the throw, as the deduplicate refusal above
-      // sends one: the failure is this party's own, so the reason is a fixed
-      // literal naming no value.
-      await sendAbort(conn, [PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON]);
-      throw err;
-    }
-    filledPayloadReceive = columns;
-  }
-
   // A run that will sign a receipt needs both parties named and its own
   // certificate bound to the name it agreed terms under. Both are decided the
   // moment the partner's terms arrive, so both are held here, at the same point
@@ -2625,6 +2599,34 @@ export async function runExchange(
         "declare no column for",
     ]);
     throw err;
+  }
+
+  // Fill an unset receive list from the partner's declared send set after
+  // every terms-time refusal above, so a refused run records nothing, and
+  // before the bootstrap frame and any key or payload moves, so the caller has
+  // recorded it before this run receives anything under it. The run holds the
+  // received payload to the filled set, as a later run holds it to the
+  // recorded list.
+  let filledPayloadReceive: string[] | undefined;
+  const payloadReceiveFillColumns = payloadReceiveFill(
+    linkageTerms,
+    partnerTerms,
+  );
+  if (
+    options.onPayloadReceiveFilled !== undefined &&
+    payloadReceiveFillColumns !== undefined
+  ) {
+    const columns = payloadReceiveFillColumns;
+    try {
+      await options.onPayloadReceiveFilled(columns);
+    } catch (err) {
+      // Best-effort abort before the throw, as the deduplicate refusal above
+      // sends one: the failure is this party's own, so the reason is a fixed
+      // literal naming no value.
+      await sendAbort(conn, [PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON]);
+      throw err;
+    }
+    filledPayloadReceive = columns;
   }
 
   // Surface a present-but-malformed partner advertisement as a diagnostic. The

@@ -2695,6 +2695,44 @@ describe("runOnlineBootstrap", () => {
   });
 });
 
+describe("runOnlineBootstrap, when the acceptance hook wrote no configuration", () => {
+  test("stops the run at the fill rather than recording nothing", async () => {
+    // The acceptance hook's write fails (a file appeared at the path during
+    // the handshake), which runProtocol records and continues past. A run
+    // that then fills a receive list has nowhere to record it, so it stops
+    // before any data moves instead of holding the partner to a list no later
+    // run reads.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    const recorded: unknown[] = [];
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      fs.writeFileSync(configPath, "operator: file\n");
+      const onAuthenticated = optionsArg(callArgs).onAuthenticated as
+        (() => void | Promise<void>) | undefined;
+      try {
+        await onAuthenticated?.();
+      } catch (err) {
+        recorded.push(err);
+      }
+      await optionsArg(callArgs).recordPayloadReceiveFill?.(["dob"]);
+      return {};
+    }) as never);
+    try {
+      await expect(
+        runOnlineBootstrap(onlineBootstrapParams(configPath)),
+      ).rejects.toThrow(
+        /could not be recorded as linkage_terms\.payload\.receive, because .* was not written, so the run stopped before any data moved/,
+      );
+      expect(recorded).toHaveLength(1);
+      expect(fs.readFileSync(configPath, "utf8")).toBe("operator: file\n");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 /** Write the pre-existing config every reuse-refresh test below starts from: a
  *  loadable exchange config (so a recurring run's parseExchangeSpec reload is what
  *  the assertions read), plus a hand-authored comment and the stale commitment a

@@ -79,9 +79,9 @@ test("an unset receive list resolves to the partner's stated send set, by name, 
   expect(termsResolvingPayloadReceive(countOnly, partner)).toBe(countOnly);
 });
 
-test("the fill notice names each column escaped, or states that none were declared", () => {
+test("the fill notice names each column raw, for its sink to escape, or states that none were declared", () => {
   expect(payloadReceiveFilledNotice(["program", "a\u202eb"])).toContain(
-    '"program", "a\\u202eb"',
+    '"program", "a\u202eb"',
   );
   expect(payloadReceiveFilledNotice([])).toContain("no payload columns");
 });

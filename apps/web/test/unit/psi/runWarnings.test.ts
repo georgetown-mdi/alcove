@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  payloadReceiveFilledNotice,
 } from "@alcove/core";
 
 import {
@@ -32,6 +33,17 @@ describe("appendSanitizedRunWarning", () => {
     // Neither the raw control character nor the raw non-ASCII code point survives.
     expect(rendered).not.toContain("");
     expect(rendered).not.toContain("é");
+  });
+
+  test("escapes the partner's column names in the receive-list fill notice once", () => {
+    const [rendered] = appendSanitizedRunWarning(
+      [],
+      payloadReceiveFilledNotice(["back\\slash", "bell\u0007", "zip\u202e"]),
+    );
+
+    expect(rendered).toContain('"back\\\\slash", "bell\\x07", "zip\\u202e"');
+    expect(rendered).not.toContain("back\\\\\\slash");
+    for (const raw of ["\u0007", "\u202e"]) expect(rendered).not.toContain(raw);
   });
 
   test("a second pass would double a partner's backslash, so the renderer adds none", () => {

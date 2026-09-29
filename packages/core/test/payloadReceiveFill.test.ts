@@ -6,6 +6,10 @@ import { prepareForExchange, runExchange } from "../src/exchange";
 import { termsStatingDeclaredPayloadSend } from "../src/payloadExchange";
 import { computeTermsHash } from "../src/records/exchangeRecord";
 import {
+  computeCertificateFingerprint,
+  generateSigningIdentity,
+} from "../src/records/signingIdentity";
+import {
   createMessagePipe,
   type MessageConnection,
 } from "../src/connection/messageConnection";
@@ -144,24 +148,99 @@ const isTermsOrDecisionFrame = (m: unknown): boolean =>
   m !== null &&
   ("linkageTerms" in m || "decision" in m);
 
-test("an unset receive list is filled from the partner's stated send set before any round", async () => {
+const isBootstrapFrame = (m: unknown): boolean =>
+  typeof m === "object" && m !== null && "sharedSecret" in m;
+
+test("an unset receive list is filled from the partner's stated send set before the bootstrap frame", async () => {
   const filled: Array<Array<string>> = [];
   let onlyTermsSentWhenFilled = false;
-  const { inviterResult } = await settle(
+  const { acceptorResult, acceptorSent } = await settle(
+    { metadata: sendsNote, options: () => ({ saveIntent: true }) },
     {
       metadata: sendsNothing,
       options: (sent) => ({
+        saveIntent: true,
         onPayloadReceiveFilled: (columns) => {
           filled.push(columns);
           onlyTermsSentWhenFilled = sent.every(isTermsOrDecisionFrame);
         },
       }),
     },
-    { metadata: sendsNote },
   );
   expect(filled).toEqual([["note"]]);
   expect(onlyTermsSentWhenFilled).toBe(true);
-  expect(fulfilled(inviterResult).partnerPayload.columns).toEqual(["note"]);
+  expect(acceptorSent.some(isBootstrapFrame)).toBe(true);
+  expect(fulfilled(acceptorResult).partnerPayload.columns).toEqual(["note"]);
+});
+
+const inviterIdentity = await generateSigningIdentity("Inviter Co");
+const acceptorIdentity = await generateSigningIdentity("Acceptor Co");
+const elsewhereIdentity = await generateSigningIdentity("Elsewhere Co");
+const sessionKey = new Uint8Array(32).fill(7) as Uint8Array<ArrayBuffer>;
+
+test("a run refused at a terms-time check after the terms exchange records no fill", async () => {
+  const acceptorFingerprint = await computeCertificateFingerprint(
+    acceptorIdentity.certificate,
+  );
+  const refusals: Array<{
+    label: string;
+    inviterSigns: typeof inviterIdentity;
+    inviterPin: string;
+  }> = [
+    {
+      label: "the partner's certificate is not the pinned one",
+      inviterSigns: inviterIdentity,
+      inviterPin: await computeCertificateFingerprint(
+        elsewhereIdentity.certificate,
+      ),
+    },
+    {
+      label: "this party's certificate is bound to another name",
+      inviterSigns: elsewhereIdentity,
+      inviterPin: acceptorFingerprint,
+    },
+  ];
+  for (const { label, inviterSigns, inviterPin } of refusals) {
+    const filled: Array<Array<string>> = [];
+    const { inviterResult, inviterSent } = await settle(
+      {
+        metadata: sendsNothing,
+        options: () => ({
+          signingIdentity: inviterSigns,
+          partnerFingerprint: inviterPin,
+          sessionKey,
+          onPayloadReceiveFilled: (columns) => {
+            filled.push(columns);
+          },
+        }),
+      },
+      {
+        metadata: sendsNote,
+        options: () => ({ signingIdentity: acceptorIdentity, sessionKey }),
+      },
+    );
+    expect(inviterResult.status, label).toBe("rejected");
+    expect(filled, label).toEqual([]);
+    expect(inviterSent.every(isTermsOrDecisionFrame), label).toBe(true);
+  }
+});
+
+test("a partner declaring it receives nothing from a party that discloses records no fill", async () => {
+  const filled: Array<Array<string>> = [];
+  const { inviterResult, inviterSent } = await settle(
+    {
+      metadata: sendsNote,
+      options: () => ({
+        onPayloadReceiveFilled: (columns) => {
+          filled.push(columns);
+        },
+      }),
+    },
+    { metadata: sendsNothing, payload: { receive: [] } },
+  );
+  expect(inviterResult.status).toBe("rejected");
+  expect(filled).toEqual([]);
+  expect(inviterSent.every(isTermsOrDecisionFrame)).toBe(true);
 });
 
 test("the filled list is held strictly on the next run", async () => {

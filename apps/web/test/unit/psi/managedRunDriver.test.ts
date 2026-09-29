@@ -511,7 +511,7 @@ describe("runManagedExchangeInBrowser", () => {
       },
     );
     mockedRunExchange.mockImplementationOnce(async (...args) => {
-      await args[3].onPayloadReceiveFilled?.(["program"]);
+      await args[3].onPayloadReceiveFilled?.(["program", "back\\slash"]);
       return minimalExchangeResult({
         partnerTerms: getDefaultLinkageTerms("Managed re-run partner"),
       });
@@ -525,9 +525,13 @@ describe("runManagedExchangeInBrowser", () => {
 
     expect(
       vi.mocked(persistManagedExchangePayloadReceiveFill),
-    ).toHaveBeenCalledWith(RECORD.id, ["program"]);
+    ).toHaveBeenCalledWith(RECORD.id, ["program", "back\\slash"]);
     expect(order).toEqual(["recorded", "noticed"]);
-    expect(warnings).toEqual([payloadReceiveFilledNotice(["program"])]);
+    // Raw: the seat's sink escapes the line once.
+    expect(warnings).toEqual([
+      payloadReceiveFilledNotice(["program", "back\\slash"]),
+    ]);
+    expect(warnings[0]).toContain('"back\\slash"');
   });
 
   test("yields its outputs while the close is still draining", async () => {

@@ -35,6 +35,7 @@ import {
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   sanitizeErrorForDisplay,
+  sanitizeForDisplay,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
@@ -729,7 +730,11 @@ async function runExchangeStage(params: {
           ? undefined
           : async (columns: string[]) => {
               await recordPayloadReceiveFill(columns);
-              log.info(payloadReceiveFilledNotice(columns));
+              log.info(
+                sanitizeForDisplay(payloadReceiveFilledNotice(columns), {
+                  maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+                }),
+              );
             },
       // Advertise the observed SFTP host key for cross-party
       // reconciliation only when the exchange runs over the

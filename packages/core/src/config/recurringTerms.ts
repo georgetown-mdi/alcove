@@ -1,4 +1,3 @@
-import { sanitizeForDisplay } from "../utils/sanitizeForDisplay.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 
 /**
@@ -51,14 +50,14 @@ export function termsResolvingPayloadReceive(
 
 /**
  * The one line a front end shows or logs when a run fills `payload.receive`
- * from the partner's declared send set. The names are the partner's, so each
- * is escaped for display here; the line goes to a log or UI sink as it is.
+ * from the partner's declared send set. Composed raw: the names are the
+ * partner's, so the sink that shows or logs the line escapes it once.
  */
 export function payloadReceiveFilledNotice(columns: readonly string[]): string {
   const listed =
     columns.length === 0
       ? "no payload columns"
-      : `payload columns ${columns.map((name) => `"${sanitizeForDisplay(name)}"`).join(", ")}`;
+      : `payload columns ${columns.map((name) => `"${name}"`).join(", ")}`;
   return (
     `payload.receive was not set, so it is set from what the partner ` +
     `declares it sends: ${listed}. Later exchanges refuse a partner that ` +

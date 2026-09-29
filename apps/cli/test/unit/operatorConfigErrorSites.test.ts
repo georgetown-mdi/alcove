@@ -320,6 +320,16 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "into the document, never into the message.",
   },
   {
+    file: "apps/cli/src/onlineBootstrap.ts",
+    anchor: "runOnlineBootstrap",
+    raises: "OperatorConfigError",
+    interpolates: ["params.configPath"],
+    provenance:
+      "`params.configPath` is the path the operator passed to `alcove invite` " +
+      "or `alcove accept` (--config-file, else the default). The rest is fixed " +
+      "prose; the partner's column names are never quoted.",
+  },
+  {
     file: "apps/cli/src/config.ts",
     anchor: "persistPartnerFingerprint",
     raises: "OperatorConfigError",

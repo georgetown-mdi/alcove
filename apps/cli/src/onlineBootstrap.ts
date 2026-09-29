@@ -16,6 +16,7 @@ import {
   keepOperatorSuppliedText,
   LinkageStrategySchema,
   messageWithOperatorText,
+  OperatorConfigError,
   operatorSuppliedText,
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
@@ -1149,11 +1150,21 @@ export async function runOnlineBootstrap(params: {
         eventStream,
       },
       // Record a receive list the run fills into the configuration the hook
-      // above wrote or kept; a run whose configuration write failed has none
-      // to record into, and holds the partner to the list for this run only.
+      // above wrote or kept. A run whose configuration write failed has none
+      // to record into, so it stops before any data moves, as a failed record
+      // does.
       recordPayloadReceiveFill: (columns) => {
-        if (configWritten || params.reuseExistingConfig === true)
+        if (configWritten || params.reuseExistingConfig === true) {
           persistFilledPayloadReceive(params.configPath, columns);
+          return;
+        }
+        const message = messageWithOperatorText`the payload columns your partner declares it sends could not be recorded as linkage_terms.payload.receive, because ${operatorSuppliedText(
+          params.configPath,
+        )} was not written, so the run stopped before any data moved. Resolve the configuration write error reported above and run again.`;
+        throw keepOperatorSuppliedText(
+          new OperatorConfigError(message.text),
+          message,
+        );
       },
     });
 

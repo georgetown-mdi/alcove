@@ -552,9 +552,12 @@ to the partner's stated send set, the list the fill below records
 A recurring run whose terms leave `payload.receive` unset, and whose partner
 can send it payload (`payloadReceiveFillsOnFirstRun`,
 `packages/core/src/config/recurringTerms.ts`), fills the list from the
-partner's stated `send` at the terms exchange, before the bootstrap frame and
-before any linkage key or payload row moves (`onPayloadReceiveFilled`,
-`runExchange`). The run holds the payload it receives to the filled set. The
+partner's stated `send` once the terms exchange's refusals have all passed --
+the receipt bindings, the partner-certificate pin, the matching cardinality,
+the count-only shape and the payload-disclosure directions -- and before the
+bootstrap frame and any linkage key or payload row moves
+(`onPayloadReceiveFilled`, `runExchange`). A run refused at the terms exchange
+records nothing. The run holds the payload it receives to the filled set. The
 application driving the exchange records the list in the document it runs
 from: the CLI in its `alcove.yaml` (`persistFilledPayloadReceive`), the web
 app in the saved recurring record. A failure to record it stops the run, with
@@ -562,6 +565,12 @@ an abort frame to the partner, before anything is disclosed. A one-off run
 records nothing and leaves the direction lazy. The next run compares the
 recorded list strictly, so a later change to either side's payload is a terms
 mismatch at the handshake.
+
+Only a run conducted from a recurring document fills: a CLI run from its
+`alcove.yaml`, or a web managed run of a saved recurring exchange. An exchange
+the web app conducts from the invitation flow does not fill, even when the
+operator saves the record before that exchange ends; the saved record's first
+managed run fills it.
 
 An explicit `receive: []` states "receive nothing" and is not filled. A
 document CLI writes for an exchange with the list unset says, where the key

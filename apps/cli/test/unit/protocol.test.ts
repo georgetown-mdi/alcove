@@ -6977,7 +6977,7 @@ function mockExchangeObserving(columns: string[]): void {
   }) as never);
 }
 
-test("a receive list the exchange fills is recorded, then named on the log", async () => {
+test("a receive list the exchange fills is recorded, then named on the log escaped once", async () => {
   // The terms exchange hands the filled list to runProtocol's wrapper, which
   // records it through the caller before anything else moves and then logs
   // the columns taken, the line an unattended run leaves behind.
@@ -6986,7 +6986,11 @@ test("a receive list the exchange fills is recorded, then named on the log", asy
   vi.mocked(runExchange).mockImplementation((async (
     ...args: Parameters<typeof runExchange>
   ) => {
-    await args[3].onPayloadReceiveFilled?.(["dob", "zip\u202e"]);
+    await args[3].onPayloadReceiveFilled?.([
+      "back\\slash",
+      "bell\u0007",
+      "zip\u202e",
+    ]);
     return defaultRunExchange();
   }) as never);
   await Promise.all([
@@ -7021,13 +7025,15 @@ test("a receive list the exchange fills is recorded, then named on the log", asy
       loggerName: "test-b",
     }),
   ]);
-  expect(recorded).toEqual([["dob", "zip\u202e"]]);
+  expect(recorded).toEqual([["back\\slash", "bell\u0007", "zip\u202e"]]);
   expect(loggedAtRecord).toEqual([false]);
   const logged = mockState.infos.filter((line) =>
     line.includes("payload.receive was not set"),
   );
   expect(logged).toHaveLength(1);
-  expect(logged[0]).toContain('"dob", "zip\\u202e"');
+  expect(logged[0]).toContain('"back\\\\slash", "bell\\x07", "zip\\u202e"');
+  expect(logged[0]).not.toContain("back\\\\\\slash");
+  for (const raw of ["\u0007", "\u202e"]) expect(logged[0]).not.toContain(raw);
 }, 20_000);
 
 test("a loss reported from the pre-terminal hook precedes the terminal events and drops the on-disk claim", async () => {
