@@ -11,6 +11,7 @@
 // Shared test material.
 
 export {
+  AcceptedTermsShapeError,
   AuthenticationError,
   DirectoryListingBoundsError,
   FrameSizeExceededError,
