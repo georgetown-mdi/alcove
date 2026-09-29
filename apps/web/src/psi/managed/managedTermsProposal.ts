@@ -8,6 +8,7 @@ import { TermsChangeRefusedError } from "@alcove/core";
 
 import {
   clearManagedExchangeTermsProposal,
+  getManagedLocalState,
   recordManagedExchangeTermsProposal,
 } from "./managedLocalState";
 import { persistManagedExchangeTermsChange } from "./managedExchangeStore";
@@ -32,6 +33,20 @@ export class ManagedTermsChangeTakenOnError extends Error {
       options,
     );
     this.name = "ManagedTermsChangeTakenOnError";
+  }
+}
+
+/**
+ * The operator answered a terms proposal that is no longer the one stored for
+ * the exchange: another tab or a scheduled run applied, declined, or replaced
+ * it. Nothing is written.
+ */
+export class ManagedTermsProposalNotStoredError extends Error {
+  constructor() {
+    super(
+      "the terms change shown is no longer the one stored for this exchange",
+    );
+    this.name = "ManagedTermsProposalNotStoredError";
   }
 }
 
@@ -91,26 +106,33 @@ export async function keepManagedTermsProposal(
 }
 
 /**
- * Apply a kept proposal to the stored exchange, as `alcove apply` applies a
- * terms update, then drop it. Held under the run lock without waiting: a run
- * of this exchange in flight refuses the apply, rather than having its terms
- * rewritten under it.
+ * Apply the proposal stored for the exchange, as `alcove apply` applies a
+ * terms update, then drop it. `shownProposedAt` is the `proposedAt` of the
+ * proposal the operator reviewed; the stored one is read under the lock and
+ * applied only where it is that proposal. Held under the run lock without
+ * waiting: a run of this exchange in flight refuses the apply, rather than
+ * having its terms rewritten under it.
  *
  * @throws {ManagedExchangeLockUnavailableError} while a run of this exchange
  *   holds the lock; nothing is written.
+ * @throws {ManagedTermsProposalNotStoredError} where no proposal, or another
+ *   one, is stored; nothing is written.
  * @throws {UsageError} where the stored terms cannot take the partner's.
  * @throws {ZodError} if the resulting record is invalid; nothing is written.
  */
 export async function applyManagedTermsProposal(
   id: string,
-  proposal: ManagedTermsProposal,
+  shownProposedAt: string,
 ): Promise<ManagedExchangeRecord> {
   return withManagedExchangeLock(
     id,
     async () => {
+      const stored = (await getManagedLocalState(id))?.termsProposal;
+      if (stored?.proposedAt !== shownProposedAt)
+        throw new ManagedTermsProposalNotStoredError();
       const applied = await persistManagedExchangeTermsChange(id, {
         scope: "apply",
-        partnerTerms: proposal.partnerTerms,
+        partnerTerms: stored.partnerTerms,
       });
       await clearManagedExchangeTermsProposal(id);
       return applied;
@@ -137,6 +159,11 @@ export const TERMS_CHANGE_UNATTENDED_REASON =
   "about the change, so it stopped before any linkage key or data moved; " +
   "open this exchange to apply or decline the change";
 
+/** What an unattended refusal adds when the change could not be kept for the
+ * next visit. */
+export const TERMS_CHANGE_NOT_KEPT_REASON =
+  "the change could not be kept for your next visit";
+
 /**
  * The `onTermsChange` a managed run hands core. Attended, it asks
  * `decideTermsChange`: a yes records the partner's terms into the stored
@@ -144,7 +171,8 @@ export const TERMS_CHANGE_UNATTENDED_REASON =
  * attended run writes its configuration, or, where the change is one the run
  * cannot continue under, as `alcove apply` does, after which core refuses and
  * the next run holds the new terms. A no refuses and writes nothing.
- * Unattended, it keeps the change for the next visit and refuses. Each
+ * Unattended, it keeps the change for the next visit and refuses, the
+ * refusal stating a keep that failed rather than being replaced by it. Each
  * refusal is a `TermsChangeRefusedError` holding the delta, so the run's
  * bookkeeping records it as a terms change. `onTakenOn` is told once the
  * stored exchange holds the partner's terms.
@@ -157,9 +185,21 @@ export function managedTermsChangeHandler(
 ): (change: TermsChange) => Promise<void> {
   return async (change) => {
     if (decideTermsChange === undefined) {
-      await keepManagedTermsProposal(id, change, now());
+      const keepFailure = await keepManagedTermsProposal(
+        id,
+        change,
+        now(),
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
       throw new TermsChangeRefusedError(
-        TERMS_CHANGE_UNATTENDED_REASON,
+        keepFailure === undefined
+          ? TERMS_CHANGE_UNATTENDED_REASON
+          : `${TERMS_CHANGE_UNATTENDED_REASON}; ${TERMS_CHANGE_NOT_KEPT_REASON}: ` +
+              (keepFailure instanceof Error
+                ? keepFailure.message
+                : String(keepFailure)),
         change.delta,
       );
     }

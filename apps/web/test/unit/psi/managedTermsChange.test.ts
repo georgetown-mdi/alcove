@@ -11,7 +11,11 @@ import {
 
 import {
   ManagedTermsChangeTakenOnError,
+  ManagedTermsProposalNotStoredError,
   TERMS_CHANGE_DECLINED_REASON,
+  TERMS_CHANGE_NOT_KEPT_REASON,
+  TERMS_CHANGE_UNATTENDED_REASON,
+  applyManagedTermsProposal,
   managedTermsChangeHandler,
   managedTermsProposalDelta,
   managedTermsProposalFor,
@@ -23,6 +27,7 @@ import {
 } from "@psi/managed/managedExchangeRecord";
 import {
   clearManagedExchangeTermsProposal,
+  getManagedLocalState,
   recordManagedExchangeTermsProposal,
 } from "@psi/managed/managedLocalState";
 import { parseManagedLocalState } from "@psi/managed/managedLocalStateShape";
@@ -40,6 +45,12 @@ vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => ({
 vi.mock("@psi/managed/managedLocalState", () => ({
   recordManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
   clearManagedExchangeTermsProposal: vi.fn(() => Promise.resolve()),
+  getManagedLocalState: vi.fn(() => Promise.resolve(undefined)),
+}));
+vi.mock("@psi/managed/managedExchangeLock", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  withManagedExchangeLock: (_id: string, work: () => Promise<unknown>) =>
+    work(),
 }));
 
 const LINKAGE_COLUMNS = ["first_name", "last_name", "dob", "ssn"];
@@ -178,16 +189,78 @@ describe("the kept proposal", () => {
     );
   });
 
-  test("an unknown member is refused, as every sibling entry's is", () => {
+  test("one that does not validate is dropped and the markers beside it load", () => {
     const proposal = managedTermsProposalFor(
       changeFor(acceptorRecord()),
       new Date(),
     );
+    const markers = {
+      backup: { backedUpAt: "2026-09-01T00:00:00.000Z" },
+      spent: { spentAt: "2026-09-02T00:00:00.000Z" },
+      imported: { importedAt: "2026-08-31T00:00:00.000Z" },
+    };
+    for (const termsProposal of [
+      { ...proposal, smuggled: true },
+      { ...proposal, partnerTerms: { linkageKeys: "not terms" } },
+      "not a proposal",
+    ])
+      expect(parseManagedLocalState({ ...markers, termsProposal })).toEqual(
+        markers,
+      );
+  });
+
+  test("an unknown member beside it still refuses the entry", () => {
     expect(() =>
       parseManagedLocalState({
-        termsProposal: { ...proposal, smuggled: true },
+        backup: { backedUpAt: "2026-09-01T00:00:00.000Z" },
+        smuggled: true,
       }),
     ).toThrow();
+  });
+});
+
+describe("applying the stored proposal", () => {
+  const persist = vi.mocked(persistManagedExchangeTermsChange);
+  const clear = vi.mocked(clearManagedExchangeTermsProposal);
+  const read = vi.mocked(getManagedLocalState);
+  const stored = managedTermsProposalFor(
+    changeFor(acceptorRecord()),
+    new Date("2026-09-29T02:00:00.000Z"),
+  );
+  beforeEach(() => {
+    persist.mockClear();
+    clear.mockClear();
+    read.mockReset();
+  });
+
+  test("applies the partner terms the store holds", async () => {
+    read.mockResolvedValue({ termsProposal: stored });
+    await applyManagedTermsProposal("id", stored.proposedAt);
+    expect(persist).toHaveBeenCalledWith("id", {
+      scope: "apply",
+      partnerTerms: stored.partnerTerms,
+    });
+    expect(clear).toHaveBeenCalledWith("id");
+  });
+
+  test("refuses and writes nothing when no proposal is stored", async () => {
+    read.mockResolvedValue({});
+    await expect(
+      applyManagedTermsProposal("id", stored.proposedAt),
+    ).rejects.toBeInstanceOf(ManagedTermsProposalNotStoredError);
+    expect(persist).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  test("refuses and writes nothing when another proposal replaced the one shown", async () => {
+    read.mockResolvedValue({
+      termsProposal: { ...stored, proposedAt: "2026-09-30T02:00:00.000Z" },
+    });
+    await expect(
+      applyManagedTermsProposal("id", stored.proposedAt),
+    ).rejects.toBeInstanceOf(ManagedTermsProposalNotStoredError);
+    expect(persist).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
   });
 });
 
@@ -250,6 +323,19 @@ describe("the run's answer to a partner terms change", () => {
       managedTermsProposalFor(change, at),
     );
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  test("unattended, a change the store does not keep still refuses as a terms change, naming the store failure", async () => {
+    keep.mockRejectedValueOnce(new Error("the quota is exhausted"));
+    const refusal = managedTermsChangeHandler(
+      "id",
+      undefined,
+    )(changeFor(acceptorRecord()));
+    await expect(refusal).rejects.toBeInstanceOf(TermsChangeRefusedError);
+    await expect(refusal).rejects.toThrow(TERMS_CHANGE_UNATTENDED_REASON);
+    await expect(refusal).rejects.toThrow(
+      `${TERMS_CHANGE_NOT_KEPT_REASON}: the quota is exhausted`,
+    );
   });
 });
 

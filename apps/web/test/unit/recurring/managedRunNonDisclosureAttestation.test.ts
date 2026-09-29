@@ -132,6 +132,7 @@ function copyForTier(tier: ManagedFailureTier): {
   const failure = managedRunTierFailure(
     tier,
     record({ expires: "2026-07-01T00:00:00.000Z" }),
+    undefined,
   );
   return failure.kind === "handed-off"
     ? { alertCopy: "", spentState: MANAGED_RUN_HANDED_OFF_ATTESTATION }

@@ -271,10 +271,15 @@ function failureNotice(
       kind: "terms-change",
       title: NOTICE_TITLES["terms-change"],
       body:
-        `${name} stopped because your partner's linkage terms changed and a ` +
-        `scheduled run cannot ask you about the change. Open this app to ` +
-        `review the change and apply or decline it; every later window stops ` +
-        `the same way until you do.`,
+        local?.termsProposal !== undefined
+          ? `${name} stopped because your partner's linkage terms changed and a ` +
+            `scheduled run cannot ask you about the change. Open this app to ` +
+            `review the change and apply or decline it; every later window stops ` +
+            `the same way until you do.`
+          : `${name} stopped because your partner's linkage terms changed, and ` +
+            `the change was declined. Open this app and run the exchange to ` +
+            `see the change and accept or decline it; every later window stops ` +
+            `the same way until you do.`,
       tag: noticeTag(record.id, "terms-change"),
     };
   if (tier === "consent")

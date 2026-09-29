@@ -12,6 +12,8 @@ import {
 import type {
   EntityClusterSummary,
   ExchangeStageDefinition,
+  PartnerDeduplicateChange,
+  PayloadColumnsChange,
   ResolvedMatching,
 } from "@alcove/core";
 
@@ -306,17 +308,14 @@ export interface ErrorEvent extends EventBase {
 }
 
 /** One direction's changed payload columns, as the `error` event states them. */
-export interface ErrorEventColumnsChange {
-  added: string[];
-  removed: string[];
-}
+export type ErrorEventColumnsChange = PayloadColumnsChange;
 
 /** The `error` event's {@link ErrorEvent.termsChange}. */
 export interface ErrorEventTermsChange {
   proposalWritten: boolean;
   received?: ErrorEventColumnsChange;
   sent?: ErrorEventColumnsChange;
-  partnerDeduplicate?: { expected: boolean; presented: boolean };
+  partnerDeduplicate?: PartnerDeduplicateChange;
   otherTerms: string[];
 }
 
@@ -576,7 +575,7 @@ function termsChangeFieldOf(error: unknown): Pick<ErrorEvent, "termsChange"> {
   if (notTaken === undefined) return {};
   const { delta } = notTaken;
   const columns = (
-    change: { added: string[]; removed: string[] } | undefined,
+    change: PayloadColumnsChange | undefined,
   ): ErrorEventColumnsChange | undefined =>
     change === undefined
       ? undefined

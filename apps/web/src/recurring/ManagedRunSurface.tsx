@@ -336,13 +336,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // never lands here, because reaching it moves the surface to the spent state below.
   const [liveFailure, setLiveFailure] = useState<LiveManagedRunFailure>();
   const failure = liveFailure?.alert;
-  // The partner terms change a run in flight is asking about, and the answer
-  // it waits on.
   const [termsChangeQuestion, setTermsChangeQuestion] = useState<{
     change: TermsChange;
     answer: (accept: boolean) => void;
   }>();
-  // Where applying or declining a kept terms proposal stands.
   const [termsProposalBusy, setTermsProposalBusy] = useState(false);
   const [termsProposalFailure, setTermsProposalFailure] = useState<string>();
   // How many runs this visit has started, so each failure gets a number of its own.
@@ -743,10 +740,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // models the getter as a literal, hence the disable).
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
-        // What the run left beside the record: a terms change it kept, or
-        // one it answered.
         if (local !== undefined || reloaded !== undefined) setLocalState(local);
         if (error instanceof ManagedTermsChangeTakenOnError) {
+          if (reloaded !== undefined && runnableManagedExchange(reloaded))
+            setRecord(reloaded);
+          setRecordReads((reads) => reads + 1);
           setLiveFailure({ alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber });
           return;
         }
@@ -1129,17 +1127,16 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setParkedResultsReads((reads) => reads + 1);
   }
 
-  // Apply or decline the terms change a scheduled run kept, then read the store
-  // again, so the surface shows the terms the exchange now holds and the
-  // proposal is gone. A run in flight refuses the apply rather than having its
-  // terms rewritten under it.
+  // Read the store again after the answer, so the surface shows the terms the
+  // exchange now holds and the proposal is gone.
   async function settleTermsProposal(apply: boolean): Promise<void> {
     const proposal = localState?.termsProposal;
     if (record === undefined || proposal === undefined) return;
     setTermsProposalBusy(true);
     setTermsProposalFailure(undefined);
     try {
-      if (apply) await applyManagedTermsProposal(record.id, proposal);
+      if (apply)
+        await applyManagedTermsProposal(record.id, proposal.proposedAt);
       else await declineManagedTermsProposal(record.id);
       setLiveFailure(undefined);
       setRecordReads((reads) => reads + 1);

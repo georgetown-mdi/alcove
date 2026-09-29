@@ -8,6 +8,8 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
 import {
+  TERMS_CHANGE_DECLINED_FAILURE,
+  TERMS_CHANGE_FAILURE,
   classifyManagedRunFailure,
   managedReinviteRecoveryCopy,
   managedRunCausePlacement,
@@ -434,6 +436,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       record({
         lastRun: { ...failed("terms-shortfall"), singleColumnInput: true },
       }),
+      undefined,
     );
     if (!("message" in stamped))
       throw new Error("expected the shortfall alert state");
@@ -444,6 +447,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     const plain = managedRunTierFailure(
       "terms-shortfall",
       record({ lastRun: failed("terms-shortfall") }),
+      undefined,
     );
     if (!("message" in plain))
       throw new Error("expected the shortfall alert state");
@@ -1828,5 +1832,35 @@ describe("a rotation in flight across a crash", () => {
     );
     expect(failure.kind).toBe("partial-rotation");
     expect(failure.recovery).toBe("reinvite");
+  });
+});
+
+describe("managedRunFailureFromRecord: a partner terms change the run did not take on", () => {
+  const terms = record({ lastRun: failed("terms-change") });
+  const stored: ManagedLocalState = {
+    termsProposal: {
+      proposedAt: "2026-07-14T09:00:00.000Z",
+      partnerTerms: getDefaultLinkageTerms("Agency A"),
+      delta: { received: { added: ["county"], removed: [] }, otherTerms: [] },
+    },
+  };
+
+  test("with a proposal stored, the alert points at applying it and offers no retry", () => {
+    expect(managedRunFailureFromRecord(terms, stored, NOW)).toBe(
+      TERMS_CHANGE_FAILURE,
+    );
+    expect(TERMS_CHANGE_FAILURE.message).toMatch(/apply the change/);
+    expect(TERMS_CHANGE_FAILURE.recovery).toBe("none");
+  });
+
+  test("with none stored, the alert says the change was declined and offers the run again", () => {
+    expect(managedRunFailureFromRecord(terms, undefined, NOW)).toBe(
+      TERMS_CHANGE_DECLINED_FAILURE,
+    );
+    expect(TERMS_CHANGE_DECLINED_FAILURE.message).toMatch(
+      /the change was declined/,
+    );
+    expect(TERMS_CHANGE_DECLINED_FAILURE.message).not.toMatch(/apply/i);
+    expect(TERMS_CHANGE_DECLINED_FAILURE.recovery).toBe("retry");
   });
 });

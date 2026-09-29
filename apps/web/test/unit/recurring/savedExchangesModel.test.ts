@@ -593,3 +593,32 @@ describe("savedExchangeRow: a rotation in flight across a crash", () => {
     expect(row.status).not.toMatch(/attack|tamper|impersonat/i);
   });
 });
+
+describe("savedExchangeRow: a partner terms change the last run did not take on", () => {
+  const terms = record({
+    lastRun: {
+      at: "2026-07-10T09:00:00.000Z",
+      outcome: "failed",
+      failureKind: "terms-change",
+    },
+  });
+  const stored: ManagedLocalState = {
+    termsProposal: {
+      proposedAt: "2026-07-10T09:00:00.000Z",
+      partnerTerms: getDefaultLinkageTerms("Agency A"),
+      delta: { received: { added: ["county"], removed: [] }, otherTerms: [] },
+    },
+  };
+
+  test("with a proposal stored, points at applying or declining it", () => {
+    expect(savedExchangeRow(terms, stored, NOW).status).toMatch(
+      /apply or decline the change/,
+    );
+  });
+
+  test("with none stored, says the change was declined and names no apply", () => {
+    const { status } = savedExchangeRow(terms, undefined, NOW);
+    expect(status).toMatch(/declined, run again to review it/);
+    expect(status).not.toMatch(/apply/i);
+  });
+});

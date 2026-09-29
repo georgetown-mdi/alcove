@@ -375,9 +375,7 @@ export function runManagedExchangeInBrowser(
       // After the durable persist: run the PSI exchange, file the disclosure on
       // either exit, build the outputs, and tear down regardless of outcome.
       dataExchange: async (carried) => {
-        // Set from the terms-change callback; an object so the read after the
-        // exchange is not narrowed to the initial value.
-        const termsTakenOn = { current: false };
+        const termsTakenOnRef: { current: boolean } = { current: false };
         try {
           const result = await runExchange(
             carried.mc,
@@ -435,7 +433,7 @@ export function runManagedExchangeInBrowser(
                 record.id,
                 decideTermsChange,
                 () => {
-                  termsTakenOn.current = true;
+                  termsTakenOnRef.current = true;
                 },
               ),
             },
@@ -463,7 +461,8 @@ export function runManagedExchangeInBrowser(
           await fileTerminatedDisclosure(record.id, error, onWarning);
           // Core refuses a change it cannot continue under even once the
           // stored exchange took it on; that run's account is the new terms.
-          throw termsTakenOn.current && error instanceof TermsChangeRefusedError
+          throw termsTakenOnRef.current &&
+            error instanceof TermsChangeRefusedError
             ? new ManagedTermsChangeTakenOnError({ cause: error })
             : error;
         } finally {

@@ -42,6 +42,7 @@ import {
 } from "./managedExchangeStore";
 import {
   managedLocalStateSchema,
+  managedTermsProposalSchema,
   partitionReadableManagedLocalState,
 } from "./managedLocalStateShape";
 
@@ -306,9 +307,10 @@ export async function recordManagedExchangeTermsProposal(
   id: string,
   proposal: ManagedTermsProposal,
 ): Promise<void> {
+  const termsProposal = managedTermsProposalSchema.parse(proposal);
   await readModifyWriteLocalState(id, (current) => ({
     ...current,
-    termsProposal: proposal,
+    termsProposal,
   }));
 }
 
@@ -321,8 +323,7 @@ export async function clearManagedExchangeTermsProposal(
   id: string,
 ): Promise<void> {
   await readModifyWriteLocalState(id, (current) => {
-    if (current?.termsProposal === undefined) return current ?? null;
-    const { termsProposal: _cleared, ...rest } = current;
+    const { termsProposal: _cleared, ...rest } = current ?? {};
     return Object.keys(rest).length === 0 ? null : rest;
   });
 }

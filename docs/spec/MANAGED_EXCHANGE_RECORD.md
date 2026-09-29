@@ -611,9 +611,11 @@ A partner whose linkage terms changed since the last run is met at the terms exc
 
 - **Attended, accepted.** The record's `exchangeFile` takes the partner's terms in one field-scoped store write (`persistManagedExchangeTermsChange`, through `applyManagedExchangeTermsChange` in `managedExchangeRecord.ts`), awaited before the run continues, so before any key or payload moves. Where the run can continue (`TermsChange.continuable`), the write is the command line's attended one: `linkageTerms` becomes core's adopted terms, `expectedPayloadColumns` the partner's send set, and `outboundPayloadConsent` and `expectedPartnerDeduplicate` are left as they were. Where it cannot -- a change to terms the run was prepared under, or to the partner's `deduplicate` -- the write is the apply below, and core then refuses the run; the run's bookkeeping records nothing for it, since nothing about the exchange failed and the next run holds the new terms.
 - **Attended, declined.** Nothing is written. The run refuses with a `TermsChangeRefusedError` and records a `"terms-change"` failure.
-- **Unattended.** The run keeps the partner's terms as the record's `termsProposal` local sibling ([below](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)), replacing an earlier one, refuses with a `TermsChangeRefusedError`, and records a `"terms-change"` failure, which earns a [between-visit notification](#the-between-visit-notification-opt-in).
+- **Unattended.** The run keeps the partner's terms as the record's `termsProposal` local sibling ([below](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)), replacing an earlier one, refuses with a `TermsChangeRefusedError`, and records a `"terms-change"` failure, which earns a [between-visit notification](#the-between-visit-notification-opt-in). A proposal the store does not keep leaves the refusal standing, its message stating the store failure.
 
-**Applying a kept proposal.** The next visit shows the kept change with Apply and Decline. Apply takes the [run+rotate lock](#the-secret-is-a-linear-resource) without waiting -- a run in flight refuses it -- and makes the write `alcove apply` makes from a terms update ([CLI.md](../CLI.md#applying-an-update)): `linkageTerms` derived from the partner's terms as an acceptance derives them (`deriveAcceptedLinkageTerms`), keeping this party's `identity` and `deduplicate`; `expectedPayloadColumns` the partner's send set; `expectedPartnerDeduplicate` the partner's stated `deduplicate`; and `outboundPayloadConsent` derived afresh from the adopted output and this party's metadata. Where the record states `disclosedPayloadColumns`, both writes restate it from the metadata. A `lastRun` holding a `"terms-change"` failure is dropped in the same write, as a re-invite drops the failure it recovers: the change it refused is the one applied. The proposal is then removed. Decline removes the proposal and writes nothing else, so the next run refuses the same way until the partner's terms match the record's again.
+**Applying a kept proposal.** The next visit shows the kept change with Apply and Decline, both withheld while a run holds the exchange. Apply takes the [run+rotate lock](#the-secret-is-a-linear-resource) without waiting -- a run in flight refuses it -- reads the stored proposal under it, and applies that one only where its `proposedAt` is the one the operator reviewed; no proposal stored, or another one, refuses and writes nothing. It then makes the write `alcove apply` makes from a terms update ([CLI.md](../CLI.md#applying-an-update)): `linkageTerms` derived from the partner's terms as an acceptance derives them (`deriveAcceptedLinkageTerms`), keeping this party's `identity` and `deduplicate`; `expectedPayloadColumns` the partner's send set; `expectedPartnerDeduplicate` the partner's stated `deduplicate`; and `outboundPayloadConsent` derived afresh from the adopted output and this party's metadata. Where the record states `disclosedPayloadColumns`, both writes restate it from the metadata. A `lastRun` holding a `"terms-change"` failure is dropped in the same write, as a re-invite drops the failure it recovers: the change it refused is the one applied. The proposal is then removed. Decline removes the proposal and writes nothing else, so the next run refuses the same way until the partner's terms match the record's again.
+
+**What the surfaces show.** A `"terms-change"` failure is shown from two stored facts alone: the `lastRun` kind and whether a proposal is stored. With one, the run surface's alert, the saved-exchanges row, and the between-visit notification state that the partner's terms changed and point at Apply or Decline. Without one -- declined at the question or on the panel, not kept, or dropped as invalid -- they state that the change was declined and that the next run the operator starts asks about it again, and name no Apply.
 
 **Clearing.** A successful run removes any kept proposal, best-effort: terms agreed with the partner leave nothing a proposal could still take on, and one left behind is one the operator can still decline. So does an attended run that accepted the change.
 
@@ -1490,18 +1492,10 @@ and ignorable. This is a format-compatibility commitment, not a
 
 ### The backup marker, the spent state, and the import marker: local siblings, never in the artifact
 
-Three pieces of derived-backup, migration, and restore state live **beside** the
-record, in a separate origin-local store keyed by the record `id`, and are
-**neither record fields nor artifact contents**. A fourth sibling in the same
-entry, the **terms proposal** (`termsProposal`), is this device's pending
-decision on a partner's changed terms rather than a term of the partnership:
-`proposedAt` (ISO 8601 UTC), `partnerTerms` (the partner's linkage terms as
-they crossed the wire, validated by core's `LinkageTermsSchema`), and `delta`
-(core's `TermsDelta`, each part present where it differs). It holds the
-partner's column names, descriptions, and diagnostics raw, as the run received
-them, and the run surface escapes them where it shows them. Its members are
-strict like the entry's others, and it is written and removed as [A refused
-terms change](#a-refused-terms-change) states. The three:
+Four pieces of state live **beside** the record, in a separate origin-local
+store keyed by the record `id`, and are **neither record fields nor artifact
+contents**: three of derived-backup, migration, and restore state, and this
+device's pending decision on a partner's changed terms. The four:
 
 - **The backup marker** (`backedUpAt`, an ISO 8601 UTC instant) records when a
   backup was last taken. It is the input to the derived backup state the UI
@@ -1747,11 +1741,30 @@ terms change](#a-refused-terms-change) states. The three:
 
   It too is a **plain timestamp**, no secret material and no rotation epoch.
 
-All three are **local siblings by design**. The marker's currency input, this
-device's spent status, and this device's restore history must not travel in the
-export artifact: an imported copy is a fresh live owner, for which "the source
-last backed up on X", "the source was spent", or "the source was imported on X"
-is meaningless. And the record schema is not strict: a member it does not name
+- **The terms proposal** (`termsProposal`) is a partner's changed terms an
+  unattended run refused, pending the operator's decision on this device rather
+  than a term of the partnership: `proposedAt` (ISO 8601 UTC), `partnerTerms`
+  (the partner's linkage terms as they crossed the wire, validated by core's
+  `LinkageTermsSchema`), and `delta` (core's `TermsDelta`, each part present
+  where it differs). It holds the partner's column names, descriptions, and
+  diagnostics raw, as the run received them, and the run surface escapes them
+  where it shows them. It is written and removed as [A refused terms
+  change](#a-refused-terms-change) states.
+
+  Its members are strict like the entry's others, but it is validated on its
+  own: a stored proposal that does not validate -- corrupted, or holding terms
+  a later core no longer accepts -- is dropped on read and the entry loads
+  without it, so it never takes the three markers above down with it. A write
+  validates the proposal before storing it. A dropped proposal is the
+  no-proposal state the surfaces show ([A refused terms
+  change](#a-refused-terms-change)).
+
+All four are **local siblings by design**. The marker's currency input, this
+device's spent status, this device's restore history, and this device's
+pending decision must not travel in the export artifact: an imported copy is a
+fresh live owner, for which "the source last backed up on X", "the source was
+spent", "the source was imported on X", or "the source had a change to decide
+on" is meaningless. And the record schema is not strict: a member it does not name
 is dropped on read rather than rejected, and is gone at that build's next write.
 Holding any of them on the record would therefore force a new `schemaVersion`,
 so no older build drops it silently, or leak into the artifact. Keeping them siblings makes their non-inclusion **structural**: the
@@ -1978,7 +1991,7 @@ timestamp and closed enums by design and keeps only the most recent run, so it
 can hold no disclosure and no history; and an exchange record holds free text a
 partner authored, which that field set excludes. The accounting is
 therefore its own store, which also keeps it out of the export artifact
-structurally, exactly as the three markers above are kept out.
+structurally, exactly as the four local siblings above are kept out.
 
 **Shape.** One object per exchange: a `version`
 (`alcove-disclosure-accounting/v2`, its own reader-rejects-unknown literal) and

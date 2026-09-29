@@ -1,4 +1,5 @@
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { ManagedTermsProposalNotStoredError } from "@psi/managed/managedTermsProposal";
 
 /** The title over the question an attended run asks, and over the kept
  * proposal a scheduled run left. */
@@ -40,11 +41,20 @@ export const TERMS_PROPOSAL_TEXT =
 
 /**
  * What the panel says when applying or declining a kept proposal did not
- * complete: a run in flight holds the exchange, or the write failed.
+ * complete: a run in flight holds the exchange, the change shown is no longer
+ * the stored one, or the write failed.
  */
 export function termsProposalFailureText(error: unknown): string {
-  return error instanceof ManagedExchangeLockUnavailableError
-    ? "A run of this exchange is in progress. Apply the change once it finishes."
-    : "The change could not be saved to this exchange, and the exchange was " +
-        "not changed. Reload the page and try again, or re-invite your partner.";
+  if (error instanceof ManagedExchangeLockUnavailableError)
+    return "A run of this exchange is in progress. Apply the change once it finishes.";
+  if (error instanceof ManagedTermsProposalNotStoredError)
+    return (
+      "This change was already applied, declined, or replaced by a newer " +
+      "one, and the exchange was not changed. Reload the page to see what " +
+      "is waiting."
+    );
+  return (
+    "The change could not be saved to this exchange, and the exchange was " +
+    "not changed. Reload the page and try again, or re-invite your partner."
+  );
 }

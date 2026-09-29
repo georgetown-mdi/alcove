@@ -1787,8 +1787,10 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   the exchange it shows the change with **Apply**, which saves the terms to the
   exchange as `alcove apply` would, and **Decline**, which drops them and leaves
   the exchange as it was. After Apply, the next run exchanges under the new
-  terms; after Decline, runs stop the same way until your partner goes back to
-  the agreed terms. Apply waits while a run of the exchange is in progress.
+  terms; after Decline, scheduled runs stop the same way until your partner
+  goes back to the agreed terms, and the next run you start from this page
+  asks about the change again. Apply and Decline are not offered while a run
+  of the exchange is in progress.
 
 Your partner's run ends with a partner refusal whenever you decline or a
 scheduled run stops; it is not asked anything. How the kept change and the

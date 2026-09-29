@@ -383,13 +383,14 @@ const TERMS_SHORTFALL_FAILURE: ManagedRunFailureAlert = {
   recovery: "restate",
 };
 
-/** The benign terms-change state: the partner's linkage terms changed and the
- * run did not take them on -- the operator declined, or a scheduled run had
- * nobody to ask. Its copy claims nothing about what this run sent: the terms
- * exchange that meets the change runs past the data-exchange boundary this
- * model gates such claims on. Not the retry state -- the same terms refuse
- * identically -- and its way forward is the run surface's own terms-change
- * panel, so the alert offers no recovery of its own. */
+/** The benign terms-change state with a proposal stored for the exchange: the
+ * partner's linkage terms changed, the run did not take them on, and the
+ * change waits on this device for the operator's decision. Its copy claims
+ * nothing about what this run sent: the terms exchange that meets the change
+ * runs past the data-exchange boundary this model gates such claims on. Not
+ * the retry state -- the same terms refuse identically -- and its way forward
+ * is the run surface's own terms-change panel, so the alert offers no
+ * recovery of its own. */
 export const TERMS_CHANGE_FAILURE: ManagedRunFailureAlert = {
   kind: "terms-change",
   title: TERMS_CHANGE_FAILURE_TITLE,
@@ -399,6 +400,20 @@ export const TERMS_CHANGE_FAILURE: ManagedRunFailureAlert = {
     "until you apply the change to this exchange or your partner goes back " +
     "to the terms you agreed.",
   recovery: "none",
+};
+
+/** The benign terms-change state with no proposal stored: the operator
+ * declined the change, at the question or on the panel, or the proposal could
+ * not be kept. No change waits to be applied, and the next run the operator
+ * starts asks about the change again, so running again is the way forward. */
+export const TERMS_CHANGE_DECLINED_FAILURE: ManagedRunFailureAlert = {
+  kind: "terms-change",
+  title: TERMS_CHANGE_FAILURE_TITLE,
+  message:
+    "Your partner's linkage terms changed since this exchange last ran, and " +
+    "the change was declined, so this exchange was not changed. Run the " +
+    "exchange again to see the change and accept or decline it.",
+  recovery: "retry",
 };
 
 /** The state after the operator accepted the partner's changed terms that this
@@ -610,8 +625,9 @@ const UNEXPLAINED_FAILURE: ManagedRunFailureAlert = {
 /** The surface state for a derived failure tier. The expired tier reads
  * `record.expires` to name the lapsed instant; the shortfall tier reads the
  * stamp's own `singleColumnInput` to choose between the delimiter remedy and
- * the agreed-keys copy; the transport, missed, and none tiers map to the
- * generic transport copy.
+ * the agreed-keys copy; the terms-change tier reads whether `local` holds a
+ * terms proposal; the transport, missed, and none tiers map to the generic
+ * transport copy.
  *
  * The missed tier does not use the no-show copy: that copy attests nothing left
  * this device for THIS failure, while a recorded `"missed"` outcome belongs to
@@ -626,6 +642,7 @@ const UNEXPLAINED_FAILURE: ManagedRunFailureAlert = {
 export function managedRunTierFailure(
   tier: ManagedFailureTier,
   record: ManagedExchangeRecord,
+  local: ManagedLocalState | undefined,
 ): ManagedRunFailure {
   switch (tier) {
     case "expired":
@@ -645,7 +662,9 @@ export function managedRunTierFailure(
     case "consent":
       return CONSENT_FAILURE;
     case "terms-change":
-      return TERMS_CHANGE_FAILURE;
+      return local?.termsProposal !== undefined
+        ? TERMS_CHANGE_FAILURE
+        : TERMS_CHANGE_DECLINED_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(
         record.lastRun?.tooLargeSetOwner,
@@ -712,7 +731,7 @@ function missedFailure(
 ): ManagedRunFailure {
   const tier = deriveManagedFailureTier(atLaunch, local, now);
   if (MISSED_OUTRANKED_BY.includes(tier))
-    return managedRunTierFailure(tier, atLaunch);
+    return managedRunTierFailure(tier, atLaunch, local);
   if (importedSinceLastSuccess(local)) return IMPORTED_FAILURE;
   if (rotationInFlightUnansweredAtLaunch(atLaunch))
     return PARTIAL_ROTATION_FAILURE;
@@ -968,6 +987,7 @@ function classifyLaunchState(
   return managedRunTierFailure(
     dataExchangeStarted && attestsNonDisclosure(tier) ? "transport" : tier,
     afterRun,
+    local,
   );
 }
 
@@ -986,7 +1006,7 @@ export function managedRunFailureFromRecord(
 ): ManagedRunFailure | undefined {
   const tier = deriveManagedFailureTier(record, local, now);
   if (tier === "none" || tier === "missed") return undefined;
-  return managedRunTierFailure(tier, record);
+  return managedRunTierFailure(tier, record, local);
 }
 
 /** Whether a classified failure is retryable in place: the input and transport
