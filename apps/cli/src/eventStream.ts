@@ -22,6 +22,7 @@ import {
   renderFailureForOperator,
 } from "./util/exit";
 import { takeLogFileLossReport } from "./util/logging";
+import { termsChangeNotTakenOf } from "./termsChangeNotTaken";
 
 const log = getLogger("event-stream");
 
@@ -295,6 +296,28 @@ export interface ErrorEvent extends EventBase {
    * category withholds it here. Omitted rather than emitted `false`.
    */
   internalFault?: true;
+  /**
+   * Present when the run ended on a partner terms change it did not take on
+   * ({@link termsChangeNotTakenOf}): how the partner's terms differ, each
+   * partner-chosen name and diagnostic escaped, and whether the run wrote
+   * them beside the configuration for `alcove apply`.
+   */
+  termsChange?: ErrorEventTermsChange;
+}
+
+/** One direction's changed payload columns, as the `error` event states them. */
+export interface ErrorEventColumnsChange {
+  added: string[];
+  removed: string[];
+}
+
+/** The `error` event's {@link ErrorEvent.termsChange}. */
+export interface ErrorEventTermsChange {
+  proposalWritten: boolean;
+  received?: ErrorEventColumnsChange;
+  sent?: ErrorEventColumnsChange;
+  partnerDeduplicate?: { expected: boolean; presented: boolean };
+  otherTerms: string[];
 }
 
 export type StreamEvent =
@@ -538,6 +561,52 @@ export function buildErrorEvent(error: unknown, phase: ErrorPhase): ErrorEvent {
     ...(exitCodeForError(error) === INTERNAL_FAULT_EXIT_CODE
       ? { internalFault: true as const }
       : {}),
+    ...termsChangeFieldOf(error),
+  };
+}
+
+/**
+ * The {@link ErrorEvent.termsChange} field for `error`, as the fields to
+ * spread. Copied field by field, so nothing beyond the delta widens the line,
+ * and every partner-chosen string is escaped as stderr's display of the same
+ * change escapes it (`displayTermsChange`).
+ */
+function termsChangeFieldOf(error: unknown): Pick<ErrorEvent, "termsChange"> {
+  const notTaken = termsChangeNotTakenOf(error);
+  if (notTaken === undefined) return {};
+  const { delta } = notTaken;
+  const columns = (
+    change: { added: string[]; removed: string[] } | undefined,
+  ): ErrorEventColumnsChange | undefined =>
+    change === undefined
+      ? undefined
+      : {
+          added: change.added.map((name) => redactAndSanitizeForDisplay(name)),
+          removed: change.removed.map((name) =>
+            redactAndSanitizeForDisplay(name),
+          ),
+        };
+  const received = columns(delta.received);
+  const sent = columns(delta.sent);
+  return {
+    termsChange: {
+      proposalWritten: notTaken.proposalWritten,
+      ...(received !== undefined ? { received } : {}),
+      ...(sent !== undefined ? { sent } : {}),
+      ...(delta.partnerDeduplicate !== undefined
+        ? {
+            partnerDeduplicate: {
+              expected: delta.partnerDeduplicate.expected,
+              presented: delta.partnerDeduplicate.presented,
+            },
+          }
+        : {}),
+      otherTerms: delta.otherTerms.map((difference) =>
+        redactAndSanitizeForDisplay(difference, {
+          maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+        }),
+      ),
+    },
   };
 }
 

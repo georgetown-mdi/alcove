@@ -27,8 +27,10 @@ import type {
   Metadata,
   OutboundPayloadConsent,
   OwnColumnSelection,
+  PayloadColumnsChange,
   ResolvedMatching,
   Standardization,
+  TermsDelta,
 } from "@alcove/core";
 import type { ExchangeDriver, ExchangeDriverEvents } from "../exchangeDriver";
 import type {
@@ -317,6 +319,10 @@ export class JobIntentColumnNameError extends Error {
  * `internalFault` marker (docs/spec/CLI_EVENTS.md, "The internal-fault code"):
  * a fault in Alcove itself, which a retry reaches again. */
 export class RelayedTerminalError extends Error {
+  /** The partner terms change the run stopped on, where the event states one
+   * ({@link relayedTermsChangeOf}). */
+  termsChange: RelayedTermsChange | undefined = undefined;
+
   constructor(
     message: string,
     readonly internalFault = false,
@@ -324,6 +330,76 @@ export class RelayedTerminalError extends Error {
     super(message);
     this.name = "RelayedTerminalError";
   }
+}
+
+/**
+ * The partner terms change a relayed `error` event states
+ * (docs/spec/CLI_EVENTS.md, "A partner terms change the run did not take
+ * on"): whether the run wrote it as a proposal, and how the partner's terms
+ * differ. Every string in `delta` is display-safe: the CLI escaped it and the
+ * relay escaped it again.
+ */
+export interface RelayedTermsChange {
+  proposalWritten: boolean;
+  delta: TermsDelta;
+}
+
+function stringList(value: unknown): Array<string> | undefined {
+  return Array.isArray(value) &&
+    value.every((entry) => typeof entry === "string")
+    ? value
+    : undefined;
+}
+
+function columnsChangeOf(value: unknown): PayloadColumnsChange | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const { added, removed } = value as Record<string, unknown>;
+  const addedNames = stringList(added);
+  const removedNames = stringList(removed);
+  return addedNames !== undefined && removedNames !== undefined
+    ? { added: addedNames, removed: removedNames }
+    : undefined;
+}
+
+/** Read the `termsChange` off a relayed `error` event, or undefined where it
+ * has none or any part of it is not the shape the relay passes on. */
+export function relayedTermsChangeOf(
+  event: RelayEvent,
+): RelayedTermsChange | undefined {
+  const source = event.termsChange;
+  if (source === null || typeof source !== "object") return undefined;
+  const { proposalWritten, received, sent, partnerDeduplicate, otherTerms } =
+    source as Record<string, unknown>;
+  const otherTermsList = stringList(otherTerms);
+  if (typeof proposalWritten !== "boolean" || otherTermsList === undefined)
+    return undefined;
+  const receivedChange =
+    received === undefined ? undefined : columnsChangeOf(received);
+  const sentChange = sent === undefined ? undefined : columnsChangeOf(sent);
+  if (
+    (received !== undefined && receivedChange === undefined) ||
+    (sent !== undefined && sentChange === undefined)
+  )
+    return undefined;
+  let deduplicate: TermsDelta["partnerDeduplicate"];
+  if (partnerDeduplicate !== undefined) {
+    const { expected, presented } = (partnerDeduplicate ?? {}) as Record<
+      string,
+      unknown
+    >;
+    if (typeof expected !== "boolean" || typeof presented !== "boolean")
+      return undefined;
+    deduplicate = { expected, presented };
+  }
+  return {
+    proposalWritten,
+    delta: {
+      received: receivedChange,
+      sent: sentChange,
+      partnerDeduplicate: deduplicate,
+      otherTerms: otherTermsList,
+    },
+  };
 }
 
 /**
@@ -1145,9 +1221,12 @@ function errorMessageOf(event: RelayEvent): string {
 function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
   const message = errorMessageOf(event);
   const internalFault = event.internalFault === true;
-  return event.recoveryHint === true
-    ? new RelayedSelfExplainingError(message, internalFault)
-    : new RelayedTerminalError(message, internalFault);
+  const error =
+    event.recoveryHint === true
+      ? new RelayedSelfExplainingError(message, internalFault)
+      : new RelayedTerminalError(message, internalFault);
+  error.termsChange = relayedTermsChangeOf(event);
+  return error;
 }
 
 /** Build the {@link JobExchangeIntent} a run POSTs from the driver config: the

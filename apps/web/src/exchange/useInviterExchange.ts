@@ -79,6 +79,7 @@ import type { ExchangeRun, ExchangeSeat } from "./exchangeRun";
 import type {
   JobInputSource,
   JobRunStatus,
+  RelayedTermsChange,
   ServerJobExchangeDriverConfig,
   ServerJobExchangeTransport,
 } from "@psi/jobClient/serverJobExchangeDriver";
@@ -108,6 +109,9 @@ export interface RunFailure {
    * report, where this browser raised the failure itself and {@link message}
    * holds that account, and on the categories whose copy IS the report. */
   reportedCause?: string;
+  /** The partner terms change a console run stopped on, shown beside the
+   * alert's copy; absent on every other failure. */
+  termsChange?: RelayedTermsChange;
   /** Whether the alert offers "Try again" and the seat's retry runs
    * ({@link retryDispositionFor}). Every retry control reads this rather than
    * {@link category}. */
@@ -417,6 +421,17 @@ function failureContentFor(
         (singleColumnInput ? ` ${CSV_DELIMITER_SINGLE_COLUMN_REMEDY}` : ""),
     };
   }
+  // A run the partner's changed linkage terms stopped before any key moved.
+  // The console's own account (the relay replaced the CLI's, which names
+  // container paths), with the change beside it. Classified `config` whatever
+  // the event said: a retry meets the same terms and refuses the same way.
+  if (error instanceof RelayedTerminalError && error.termsChange !== undefined)
+    return {
+      category: "config",
+      title: "Your partner's linkage terms changed",
+      message: sanitizedFailureMessage(error),
+      termsChange: error.termsChange,
+    };
   if (category === "config") {
     // A prepare-time fault in the operator's OWN config, safe to show because
     // an OperatorConfigError's message names only local content (the

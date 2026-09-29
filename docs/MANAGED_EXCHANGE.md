@@ -1690,9 +1690,12 @@ design.
 
 A managed exchange runs again on an agreement made once. The linkage terms and
 the columns each side discloses are decided at setup and then **fixed for the
-partnership** -- they are not edited in place, and changing them means setting
-up a new exchange rather than altering this one (see [Where the schedule is
-agreed, and where it lives](#where-the-schedule-is-agreed-and-where-it-lives)).
+partnership** -- they are not edited in place, and changing them from this side
+means setting up a new exchange rather than altering this one (see [Where the
+schedule is agreed, and where it lives](#where-the-schedule-is-agreed-and-where-it-lives)).
+The one way they change is a change the partner makes, which this party
+accepts or declines when a run meets it (see [When your partner's terms
+change](#when-your-partners-terms-change)).
 A scheduled or unattended run therefore presents nothing new to review, because
 nothing about what is disclosed has changed: the same document, run against
 whatever the standing input file holds this period (see [The input file each
@@ -1758,6 +1761,38 @@ permits impersonation until the partnership rotates past it (see the
 that fails cannot by itself say whether the two sides drifted apart or someone
 is attacking the exchange (see [Telling a desync from an
 attack](#telling-a-desync-from-an-attack)).
+
+### When your partner's terms change
+
+A partner that changed its terms since your last run -- most often by adding or
+dropping a payload column in its input -- just runs. Your run meets the change
+at the terms exchange, after the handshake and before any linkage key or data
+moves, and shows it in the sections the command line shows: the columns your
+partner now sends you or no longer sends you, the columns you send that its
+terms do not receive (its decision, shown for your information), its changed
+`deduplicate`, and each other term that differs. What counts as a change and
+which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#when-your-partners-terms-change).
+
+- **A run you started from this page** asks: **Accept** saves your partner's
+  terms to this exchange and the same run continues under them. A change to
+  terms the run was prepared under -- the linkage fields, keys, algorithm,
+  strategy, or output direction -- or to your partner's `deduplicate` cannot
+  continue the run: Accept saves the terms and stops it, and the next run uses
+  them. **Decline** stops the run and leaves the exchange as it was. Your
+  partner's run waits for your answer within its own inactivity bound, so
+  answer promptly.
+- **A scheduled run** has nobody to ask. It stops before any linkage key or
+  data moves, keeps your partner's terms beside this exchange in this browser,
+  and, where you turned notifications on, tells you so. The next time you open
+  the exchange it shows the change with **Apply**, which saves the terms to the
+  exchange as `alcove apply` would, and **Decline**, which drops them and leaves
+  the exchange as it was. After Apply, the next run exchanges under the new
+  terms; after Decline, runs stop the same way until your partner goes back to
+  the agreed terms. Apply waits while a run of the exchange is in progress.
+
+Your partner's run ends with a partner refusal whenever you decline or a
+scheduled run stops; it is not asked anything. How the kept change and the
+run's bookkeeping are stored: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#a-refused-terms-change).
 
 What each run disclosed is accounted for **run by run**. Every successful run
 produces the same self-attested exchange record a one-shot exchange does -- this

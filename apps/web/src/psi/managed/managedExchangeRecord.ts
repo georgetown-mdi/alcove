@@ -22,8 +22,12 @@
 import {
   ExchangeSpecSchema,
   SHARED_SECRET_REGEX,
+  UsageError,
   assembleExchangeSpec,
   connectionFromLocator,
+  deriveAcceptedLinkageTerms,
+  deriveOutboundPayloadConsent,
+  disclosedColumnNames,
   maxCodeUnits,
 } from "@alcove/core";
 
@@ -36,6 +40,7 @@ import { deriveEditedExpiry } from "./managedTokenAgeEdit";
 import type {
   ConnectionConfig,
   ExchangeSpec,
+  LinkageTerms,
   OutboundPayloadConsent,
   OwnColumnSelection,
   WebRTCExchangeLocator,
@@ -228,7 +233,10 @@ export type ManagedExchangeRunOutcome =
  * desync/attack framing. A `"too-large"` refusal (a set this run had to send
  * was over the bound one WebRTC message holds, or had more distinct values
  * than one round holds) is benign the same way, but a round past the first
- * can meet it after data has moved. */
+ * can meet it after data has moved. A `"terms-change"` refusal (the partner's
+ * linkage terms changed and this run did not take them on) is met at the terms
+ * exchange, after the handshake and before any linkage key or data moves, and
+ * is benign too: its remedy is the operator's decision on the change. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -239,6 +247,7 @@ export type ManagedExchangeFailureKind =
   | "consent"
   | "handed-off"
   | "too-large"
+  | "terms-change"
   | "cancelled";
 
 /** Whose set a `"too-large"` refusal found over the bound: `"local"` for this
@@ -471,6 +480,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "consent",
       "handed-off",
       "too-large",
+      "terms-change",
       "cancelled",
     ])
     .optional(),
@@ -1042,6 +1052,97 @@ export function applyManagedExchangePayloadReceiveFill(
       },
     },
   });
+}
+
+/**
+ * How a record takes on a partner's changed linkage terms, mirroring the two
+ * writes the command line makes (docs/CLI.md, "When your partner's terms
+ * change"):
+ *
+ * - `run`: an attended run took the change on at the terms exchange and
+ *   continues under `adoptedTerms` (core's `TermsChange.adoptedTerms`). The
+ *   columns this party receives follow the partner's send set; this party's
+ *   outbound consent and the `deduplicate` it holds the partner to are left as
+ *   they were, since the change is to neither.
+ * - `apply`: the operator applied a change a run did not take on -- a stored
+ *   proposal, or one the run could not continue under. The terms are derived
+ *   from `partnerTerms` as an acceptance derives them, keeping this party's
+ *   identity and `deduplicate`; the partner is held to its stated
+ *   `deduplicate`, and this party's outbound consent is derived afresh from
+ *   the adopted output and its own metadata, as `alcove apply` writes them. A
+ *   `lastRun` recording a refused terms change is dropped: the change it
+ *   refused is the one applied, so a later visit has nothing left to answer.
+ */
+export type ManagedTermsChangeWrite =
+  | { scope: "run"; adoptedTerms: LinkageTerms; partnerTerms: LinkageTerms }
+  | { scope: "apply"; partnerTerms: LinkageTerms };
+
+/**
+ * Record a partner's changed linkage terms into the record's exchange file
+ * ({@link ManagedTermsChangeWrite}); the connection, secret, and bookkeeping
+ * are untouched. Where the record states its own disclosed set, it is
+ * restated from its metadata. The result is re-validated through the schema,
+ * and the input record is not mutated.
+ *
+ * @throws {UsageError} for an `apply` on a record whose terms name no
+ *   identity for this party, or name one the terms cannot hold.
+ * @throws {ZodError} if the resulting record is invalid.
+ */
+export function applyManagedExchangeTermsChange(
+  record: ManagedExchangeRecord,
+  write: ManagedTermsChangeWrite,
+): ManagedExchangeRecord {
+  const current = record.exchangeFile;
+  const partnerSend = write.partnerTerms.payload?.send?.map(({ name }) => name);
+  let exchangeFile: ExchangeSpec;
+  if (write.scope === "run") {
+    exchangeFile = { ...current, linkageTerms: write.adoptedTerms };
+  } else {
+    const identity = current.linkageTerms.identity;
+    if (identity === undefined)
+      throw new UsageError(
+        "this exchange's terms name no identity for this party, so your " +
+          "partner's terms cannot be applied to it. Re-invite your partner.",
+      );
+    const linkageTerms = deriveAcceptedLinkageTerms(
+      write.partnerTerms,
+      identity,
+      current.linkageTerms.deduplicate,
+    );
+    const consent =
+      deriveOutboundPayloadConsent(linkageTerms.output, current.metadata) ??
+      (linkageTerms.output.shareWithPartner
+        ? ({ status: "pending" } as const)
+        : undefined);
+    const { outboundPayloadConsent: _replaced, ...rest } = current;
+    exchangeFile = {
+      ...rest,
+      linkageTerms,
+      expectedPartnerDeduplicate: write.partnerTerms.deduplicate,
+      ...(consent !== undefined ? { outboundPayloadConsent: consent } : {}),
+    };
+  }
+  const { expectedPayloadColumns: _receive, ...withoutReceive } = exchangeFile;
+  exchangeFile = {
+    ...withoutReceive,
+    ...(partnerSend !== undefined
+      ? { expectedPayloadColumns: partnerSend }
+      : {}),
+  };
+  if (current.disclosedPayloadColumns !== undefined) {
+    const { disclosedPayloadColumns: _disclosed, ...rest } = exchangeFile;
+    exchangeFile =
+      current.metadata === undefined
+        ? rest
+        : {
+            ...rest,
+            disclosedPayloadColumns: disclosedColumnNames(current.metadata),
+          };
+  }
+  const next: ManagedExchangeRecord = { ...record, exchangeFile };
+  if (write.scope === "apply" && record.lastRun?.failureKind === "terms-change")
+    delete next.lastRun;
+  return parseManagedExchangeRecord(next);
 }
 
 /**

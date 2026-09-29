@@ -31,6 +31,7 @@ import {
   PARTIAL_ROTATION_FAILURE_TITLE,
   REPEATED_MISS_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
+  TERMS_CHANGE_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
   TOO_LARGE_REMEDY,
   TOO_LARGE_REMEDY_BY_OWNER,
@@ -57,6 +58,7 @@ export type BetweenVisitNoticeKind =
   | "terms-shortfall"
   | "consent"
   | "too-large"
+  | "terms-change"
   | "unexplained";
 
 /** One OS notification: what happened, what to do about it, and the tag that
@@ -92,7 +94,7 @@ export interface BetweenVisitNoticeInput {
   now: number;
 }
 
-/** The title over each moment. The five failure titles are the same constants
+/** The title over each moment. The six failure titles are the same constants
  * the next visit's own alert holds its title to
  * ({@link ../../recurring/managedRunLaunchModel.ts}), which
  * betweenVisitNotice.test.ts holds this surface's titles equal to; the
@@ -109,6 +111,7 @@ const NOTICE_TITLES: Record<
   input: INPUT_FAILURE_TITLE,
   "terms-shortfall": TERMS_SHORTFALL_FAILURE_TITLE,
   consent: CONSENT_FAILURE_TITLE,
+  "terms-change": TERMS_CHANGE_FAILURE_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
 };
 
@@ -119,6 +122,7 @@ const NOTIFIED_FAILURE_TIERS: ReadonlySet<ManagedFailureTier> = new Set([
   "terms-shortfall",
   "consent",
   "too-large",
+  "terms-change",
   "unexplained",
 ]);
 
@@ -262,6 +266,17 @@ function failureNotice(
       ),
     };
   }
+  if (tier === "terms-change")
+    return {
+      kind: "terms-change",
+      title: NOTICE_TITLES["terms-change"],
+      body:
+        `${name} stopped because your partner's linkage terms changed and a ` +
+        `scheduled run cannot ask you about the change. Open this app to ` +
+        `review the change and apply or decline it; every later window stops ` +
+        `the same way until you do.`,
+      tag: noticeTag(record.id, "terms-change"),
+    };
   if (tier === "consent")
     return {
       kind: "consent",

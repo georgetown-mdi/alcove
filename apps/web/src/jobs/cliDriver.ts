@@ -614,6 +614,11 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
     // derivation below is the only writer of that field. The ESCAPED key decides
     // this, since that is the key that would land.
     if (outKey === ERROR_MESSAGE_CHAIN_FIELD) continue;
+    if (type === "error" && key === "termsChange") {
+      const termsChange = relayedTermsChange(field);
+      if (termsChange !== undefined) sanitized[outKey] = termsChange;
+      continue;
+    }
     sanitized[outKey] =
       type === "warning" && key === "message" && typeof field === "string"
         ? sanitizeForDisplay(field, {
@@ -634,6 +639,81 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
         }
       : {};
   return { ...sanitized, ...chain, v: 1, type: type as RelayEventType };
+}
+
+/**
+ * The most names or diagnostics one list of a relayed terms change keeps. A
+ * terms document bounds its own lists well below this; the bound holds a
+ * subverted source to a size the console's page can lay out.
+ */
+export const RELAY_TERMS_CHANGE_LIST_CAP = 256;
+
+/** One column list of a relayed terms change: strings only, each escaped. */
+function relayedNames(
+  value: unknown,
+  maxLength?: number,
+): Array<string> | undefined {
+  if (!Array.isArray(value) || value.length > RELAY_TERMS_CHANGE_LIST_CAP)
+    return undefined;
+  if (!value.every((entry) => typeof entry === "string")) return undefined;
+  return value.map((entry: string) =>
+    sanitizeForDisplay(entry, maxLength !== undefined ? { maxLength } : {}),
+  );
+}
+
+/** One direction of a relayed terms change, or undefined when malformed. */
+function relayedColumnsChange(
+  value: unknown,
+): { added: Array<string>; removed: Array<string> } | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const { added, removed } = value as Record<string, unknown>;
+  const addedNames = relayedNames(added);
+  const removedNames = relayedNames(removed);
+  return addedNames !== undefined && removedNames !== undefined
+    ? { added: addedNames, removed: removedNames }
+    : undefined;
+}
+
+/**
+ * An `error` event's `termsChange` (docs/spec/CLI_EVENTS.md), rebuilt from
+ * its known fields only and each string escaped again at this boundary: a
+ * column name under the per-value cap, a diagnostic under the warning cap the
+ * CLI composed it under. Undefined -- the field dropped -- where any part is
+ * not the shape the CLI emits, so the console never shows half a change.
+ */
+function relayedTermsChange(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const source = value as Record<string, unknown>;
+  if (typeof source.proposalWritten !== "boolean") return undefined;
+  const otherTerms = relayedNames(
+    source.otherTerms,
+    WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  );
+  if (otherTerms === undefined) return undefined;
+  const out: Record<string, unknown> = {
+    proposalWritten: source.proposalWritten,
+    otherTerms,
+  };
+  for (const direction of ["received", "sent"] as const) {
+    if (source[direction] === undefined) continue;
+    const change = relayedColumnsChange(source[direction]);
+    if (change === undefined) return undefined;
+    out[direction] = change;
+  }
+  const deduplicate = source.partnerDeduplicate;
+  if (deduplicate !== undefined) {
+    const { expected, presented } = (deduplicate ?? {}) as Record<
+      string,
+      unknown
+    >;
+    if (typeof expected !== "boolean" || typeof presented !== "boolean")
+      return undefined;
+    out.partnerDeduplicate = { expected, presented };
+  }
+  return out;
 }
 
 /**

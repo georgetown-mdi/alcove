@@ -30,6 +30,7 @@ import {
   applyManagedExchangeRotationInFlight,
   applyManagedExchangeScheduleAdvance,
   applyManagedExchangeStandingConditionCleared,
+  applyManagedExchangeTermsChange,
   applyManagedExchangeWorkingDirectory,
   buildManagedExchangeRecord,
   clearHandedOffLastRun,
@@ -56,6 +57,7 @@ import type {
   ManagedExchangeRecord,
   ManagedExchangeRotation,
   ManagedExchangeScheduleAdvance,
+  ManagedTermsChangeWrite,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
@@ -1166,6 +1168,32 @@ export async function persistManagedExchangeReinvite(
       }),
     { ifAvailable: true },
   );
+}
+
+/**
+ * Record a partner's changed linkage terms into the stored record's exchange
+ * file ({@link applyManagedExchangeTermsChange}), inside one strict-durability
+ * readwrite transaction, so the write lands on the freshest stored record and
+ * cannot carry a stale secret back over a rotation. Takes no lock of its own:
+ * a run awaits it at the terms exchange under the lock it already holds, and
+ * an apply outside a run takes the lock around it.
+ *
+ * @throws {Error} if no record with `id` exists.
+ * @throws {UsageError} for an `apply` the record's own identity cannot take.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function persistManagedExchangeTermsChange(
+  id: string,
+  write: ManagedTermsChangeWrite,
+): Promise<ManagedExchangeRecord> {
+  return readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    return applyManagedExchangeTermsChange(
+      parseManagedExchangeRecord(stored),
+      write,
+    );
+  });
 }
 
 /**

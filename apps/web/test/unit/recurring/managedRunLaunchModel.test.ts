@@ -1527,6 +1527,7 @@ describe("the launch error a classified state shows", () => {
     "terms-shortfall": "withheld",
     consent: "withheld",
     "too-large": "withheld",
+    "terms-change": "withheld",
     "already-running": "withheld",
     missed: "withheld",
     storage: "withheld",

@@ -95,6 +95,7 @@ const TIER_EVIDENCE: Record<
   ],
   consent: [record({ lastRun: failed("consent") }), undefined],
   "too-large": [record({ lastRun: failed("too-large") }), undefined],
+  "terms-change": [record({ lastRun: failed("terms-change") }), undefined],
   "handed-off": [record({ lastRun: failed("handed-off") }), undefined],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),

@@ -23,6 +23,7 @@ import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   OutboundDisclosureRefusalError,
+  TermsChangeRefusedError,
   WebRtcFrameLimitError,
   isSetTooLargeError,
 } from "@alcove/core";
@@ -46,6 +47,7 @@ import {
 } from "./managedInputGuard";
 import { RotationPersistError, failedRun, missedRun } from "./managedRunRotate";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
+import { ManagedTermsChangeTakenOnError } from "./managedTermsProposal";
 import { recordManagedExchangeLastRun } from "./managedExchangeStore";
 
 import type { RoundSetLimitError } from "@alcove/core";
@@ -318,6 +320,9 @@ export function tooLargeBoundOf(
  * - {@link ManagedExchangeExpiredError} and
  *   {@link ManagedExchangeLockUnavailableError}: unrecorded -- no run began,
  *   and the record's own `expires` already holds the lapse.
+ * - {@link ManagedTermsChangeTakenOnError}: unrecorded -- the operator took on
+ *   the partner's changed terms, which the stored exchange now holds, so
+ *   nothing failed that a later visit has to answer.
  * - {@link ManagedExchangeNotRunnableError}: records `custody-unreadable` --
  *   the stored copy the run would rotate could not be used, refused before
  *   the input or any connection, and it refuses the same way at the next run.
@@ -330,7 +335,11 @@ export function tooLargeBoundOf(
  * send ({@link isSetTooLargeError}) records `too-large`, with the refusal's
  * `setOwner` and the bound it names ({@link tooLargeBoundOf}), on either side
  * of the data exchange boundary: a round past the first refuses after data has
- * moved, and the same files refuse identically at every window. `aborted`
+ * moved, and the same files refuse identically at every window. A
+ * {@link TermsChangeRefusedError} records `terms-change`: it is raised at the
+ * terms exchange, inside the data exchange but before any linkage key or data
+ * moves, and the same partner terms refuse identically until the operator
+ * decides on them. `aborted`
  * then records `cancelled`. A `security`-kind {@link ConnectionError} before
  * the data exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
@@ -353,7 +362,8 @@ export function rerunFailureLastRun(
     error instanceof ManagedExchangeLockUnavailableError ||
     error instanceof ManagedExchangeSpentError ||
     error instanceof ManagedInputError ||
-    error instanceof RotationPersistError
+    error instanceof RotationPersistError ||
+    error instanceof ManagedTermsChangeTakenOnError
   )
     return undefined;
   if (error instanceof ManagedExchangeNotRunnableError)
@@ -372,6 +382,8 @@ export function rerunFailureLastRun(
       ...(tooLargeBound === undefined ? {} : { tooLargeBound }),
     };
   }
+  if (error instanceof TermsChangeRefusedError)
+    return failedRun(at, "failed", "terms-change");
   if (aborted) return failedRun(at, "failed", "cancelled");
   if (
     error instanceof ConnectionError &&

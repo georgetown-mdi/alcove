@@ -27,6 +27,7 @@
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
+  TermsChangeRefusedError,
   assertFirstRoundFitsWebRtcFrame,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
@@ -51,6 +52,11 @@ import { noteUnfiledDisclosureRun } from "../unfiledDisclosureStore";
 import { openPeerMessageConnection } from "../transport/peerMessageConnection";
 import { waitForIncomingConnection } from "../transport/waitForConnection";
 
+import {
+  ManagedTermsChangeTakenOnError,
+  declineManagedTermsProposal,
+  managedTermsChangeHandler,
+} from "./managedTermsProposal";
 import { persistManagedExchangePayloadReceiveFill } from "./managedExchangeStore";
 import { prepareManagedRerunExchange } from "./managedPreparedExchange";
 import { runManagedRerun } from "./managedRun";
@@ -66,6 +72,7 @@ import type {
   HandshakeRole,
   MessageConnection,
   ResolvedMatching,
+  TermsChange,
 } from "@alcove/core";
 import type { DataConnection } from "peerjs";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -166,6 +173,13 @@ export interface ManagedRunDriverConfig {
    * produce ({@link ../resultSizeProjection.ts}). Optional: an attended run has the
    * operator present when its own result arrives and omits it. */
   onPairTableFactors?: (factors: PairTableFactors) => void;
+  /** Asks the operator whether to take on the partner's changed linkage terms
+   * the terms exchange met, before any linkage key or data moves: true takes
+   * them on, false declines. An attended run supplies it. Omitted -- a
+   * scheduled run, with nobody to ask -- the run refuses the change and keeps
+   * it for the next visit to apply or decline
+   * ({@link ./managedTermsProposal.ts}). */
+  decideTermsChange?: (change: TermsChange) => Promise<boolean>;
 }
 
 /**
@@ -195,6 +209,7 @@ export function runManagedExchangeInBrowser(
     onResolvedMatching,
     onPairTableFactors,
     peerWaitTimeoutMs,
+    decideTermsChange,
   } = config;
 
   // Two gates on the notices this run's close can raise. This run's own outputs
@@ -360,6 +375,9 @@ export function runManagedExchangeInBrowser(
       // After the durable persist: run the PSI exchange, file the disclosure on
       // either exit, build the outputs, and tear down regardless of outcome.
       dataExchange: async (carried) => {
+        // Set from the terms-change callback; an object so the read after the
+        // exchange is not narrowed to the initial value.
+        const termsTakenOn = { current: false };
         try {
           const result = await runExchange(
             carried.mc,
@@ -410,8 +428,22 @@ export function runManagedExchangeInBrowser(
                 );
                 emitRunNotice(payloadReceiveFilledNotice(columns));
               },
+              // The partner's changed terms, met before any key or payload
+              // moves: taken on or refused here, never left to the generic
+              // mismatch refusal.
+              onTermsChange: managedTermsChangeHandler(
+                record.id,
+                decideTermsChange,
+                () => {
+                  termsTakenOn.current = true;
+                },
+              ),
             },
           );
+          // Terms agreed with the partner leave nothing a kept proposal could
+          // still take on. Best-effort: a proposal left behind is one the
+          // operator can still decline.
+          await declineManagedTermsProposal(record.id).catch(() => undefined);
           // The disclosure has happened, so its record is appended BEFORE the
           // outputs are built and reported: nobody takes an unattended run's
           // completion download, an attended run's tab can close on it, and a
@@ -429,7 +461,11 @@ export function runManagedExchangeInBrowser(
           return outputs;
         } catch (error) {
           await fileTerminatedDisclosure(record.id, error, onWarning);
-          throw error;
+          // Core refuses a change it cannot continue under even once the
+          // stored exchange took it on; that run's account is the new terms.
+          throw termsTakenOn.current && error instanceof TermsChangeRefusedError
+            ? new ManagedTermsChangeTakenOnError({ cause: error })
+            : error;
         } finally {
           // Started, not awaited: the clean close inside it waits for the peer
           // to take the final frame, up to its ceiling. Awaiting it would

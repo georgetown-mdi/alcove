@@ -103,12 +103,23 @@ import styles from "@styles/app.module.css";
 import { useBeforeUnloadPrompt } from "@exchange/useUnloadGuard";
 
 import {
+  ManagedTermsChangeTakenOnError,
+  applyManagedTermsProposal,
+  declineManagedTermsProposal,
+} from "@psi/managed/managedTermsProposal";
+
+import {
   MANAGED_RUN_HANDED_OFF_ATTESTATION,
+  TERMS_CHANGE_TAKEN_ON_FAILURE,
   classifyManagedRunFailure,
   managedReinviteRecoveryCopy,
   managedRunReinvites,
   managedRunRetryable,
 } from "./managedRunLaunchModel";
+import { TermsChangeQuestion, TermsProposalPanel } from "./ManagedTermsChange";
+
+import { termsProposalFailureText } from "./managedTermsChangeModel";
+
 import {
   ManagedExchangeDetail,
   ParkedResultsView,
@@ -150,8 +161,8 @@ import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 
+import type { ResolvedMatching, TermsChange } from "@alcove/core";
 import type { Ref } from "react";
-import type { ResolvedMatching } from "@alcove/core";
 
 import type {
   ManagedExchangeLocalEdits,
@@ -325,6 +336,15 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // never lands here, because reaching it moves the surface to the spent state below.
   const [liveFailure, setLiveFailure] = useState<LiveManagedRunFailure>();
   const failure = liveFailure?.alert;
+  // The partner terms change a run in flight is asking about, and the answer
+  // it waits on.
+  const [termsChangeQuestion, setTermsChangeQuestion] = useState<{
+    change: TermsChange;
+    answer: (accept: boolean) => void;
+  }>();
+  // Where applying or declining a kept terms proposal stands.
+  const [termsProposalBusy, setTermsProposalBusy] = useState(false);
+  const [termsProposalFailure, setTermsProposalFailure] = useState<string>();
   // How many runs this visit has started, so each failure gets a number of its own.
   const runsStarted = useRef(0);
   // The run's non-fatal notices, in arrival order. The driver raises one only for
@@ -631,6 +651,23 @@ export function ManagedRunSurface({ id }: { id: string }) {
               appendSanitizedRunWarning(current, message),
             ),
           onResolvedMatching: setMatching,
+          // Asked in a dialog while the partner's run waits at the terms
+          // exchange. Tearing the run down answers no, so the exchange never
+          // waits on a question nobody can see.
+          decideTermsChange: (change) =>
+            new Promise<boolean>((resolve) => {
+              let answered = false;
+              const answer = (accept: boolean) => {
+                if (answered) return;
+                answered = true;
+                controller.signal.removeEventListener("abort", onAbort);
+                setTermsChangeQuestion(undefined);
+                resolve(accept);
+              };
+              const onAbort = () => answer(false);
+              controller.signal.addEventListener("abort", onAbort);
+              setTermsChangeQuestion({ change, answer });
+            }),
         });
         // The run can resolve after the surface unmounts; the getter can flip true
         // across the await even though the launch check above narrowed it (ESLint
@@ -706,6 +743,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // models the getter as a literal, hence the disable).
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
+        // What the run left beside the record: a terms change it kept, or
+        // one it answered.
+        if (local !== undefined || reloaded !== undefined) setLocalState(local);
+        if (error instanceof ManagedTermsChangeTakenOnError) {
+          setLiveFailure({ alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber });
+          return;
+        }
         const failed = classifyManagedRunFailure(
           error,
           { atLaunch: launched, afterRun: reloaded ?? launched },
@@ -1085,6 +1129,28 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setParkedResultsReads((reads) => reads + 1);
   }
 
+  // Apply or decline the terms change a scheduled run kept, then read the store
+  // again, so the surface shows the terms the exchange now holds and the
+  // proposal is gone. A run in flight refuses the apply rather than having its
+  // terms rewritten under it.
+  async function settleTermsProposal(apply: boolean): Promise<void> {
+    const proposal = localState?.termsProposal;
+    if (record === undefined || proposal === undefined) return;
+    setTermsProposalBusy(true);
+    setTermsProposalFailure(undefined);
+    try {
+      if (apply) await applyManagedTermsProposal(record.id, proposal);
+      else await declineManagedTermsProposal(record.id);
+      setLiveFailure(undefined);
+      setRecordReads((reads) => reads + 1);
+    } catch (error) {
+      whenDiagnostic(() => console.error(error));
+      setTermsProposalFailure(termsProposalFailureText(error));
+    } finally {
+      setTermsProposalBusy(false);
+    }
+  }
+
   // Load the record and its sibling state again after a re-take has cleared the
   // spent state, so what the surface shows is what the store holds rather than the
   // re-take's own answer: the load is the one place the run affordance, the backup
@@ -1389,6 +1455,22 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   )}
                 </FileButton>
               </div>
+            )}
+            {localState?.termsProposal !== undefined && (
+              <TermsProposalPanel
+                proposal={localState.termsProposal}
+                busy={termsProposalBusy}
+                disabled={running || runInFlight}
+                failure={termsProposalFailure}
+                onApply={() => void settleTermsProposal(true)}
+                onDecline={() => void settleTermsProposal(false)}
+              />
+            )}
+            {termsChangeQuestion !== undefined && (
+              <TermsChangeQuestion
+                change={termsChangeQuestion.change}
+                onAnswer={termsChangeQuestion.answer}
+              />
             )}
             <p>
               <Button

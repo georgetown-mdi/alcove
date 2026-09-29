@@ -170,6 +170,8 @@ function tierStatus(
         `file ${tooLargeFileProblem(tooLargeBound)} (${at}); ` +
         TOO_LARGE_ROW_REMEDY_BY_OWNER[tooLargeSetOwner]
       );
+    case "terms-change":
+      return `Your partner's terms changed (${at}); apply or decline the change`;
     case "handed-off":
       // The row already names the hand-off and its date beside this line, so the
       // status says what the run did rather than repeating the state.

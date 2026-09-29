@@ -16,6 +16,7 @@ import {
   parseExchangeSpec,
   prepareForExchange,
   runExchange,
+  TermsChangeRefusedError,
   termsStatingDeclaredPayloadSend,
   validateCompatibility,
 } from "@alcove/core";
@@ -37,7 +38,7 @@ vi.mock("../../src/util/prompt", async () => {
 
 import { handler as applyHandler } from "../../src/commands/apply";
 import { saveConfig } from "../../src/config";
-import { classifyTerminalError } from "../../src/eventStream";
+import { buildErrorEvent, classifyTerminalError } from "../../src/eventStream";
 import { saveKeyFile } from "../../src/keyFile";
 import { termsChangeHandler, termsProposalPath } from "../../src/termsChange";
 import { exitCodeForError } from "../../src/util/exit";
@@ -414,4 +415,45 @@ describe("a partner that changes its deduplicate", () => {
           ),
         ).toBe(true);
       });
+});
+
+describe("the event stream's error event", () => {
+  test("states the change a refused run wrote as a proposal", async () => {
+    const { error } = await settle(changeFor(setup.partnerTerms), false);
+    expect(buildErrorEvent(error, "prepare").termsChange).toEqual({
+      proposalWritten: true,
+      received: { added: ["county"], removed: [] },
+      otherTerms: [],
+    });
+  });
+
+  test("states a change declined at the prompt, with no proposal written", async () => {
+    promptConfirmMock.mockResolvedValue(false);
+    const { error } = await settle(changeFor(setup.partnerTerms), true);
+    expect(buildErrorEvent(error, "prepare").termsChange).toMatchObject({
+      proposalWritten: false,
+      received: { added: ["county"], removed: [] },
+    });
+  });
+
+  test("states a change core refused before anything was written, escaped", () => {
+    const refusal = new TermsChangeRefusedError("linkage terms differ", {
+      received: { added: ["a\u202eb"], removed: [] },
+      sent: undefined,
+      partnerDeduplicate: { expected: false, presented: true },
+      otherTerms: ["algorithm mismatch"],
+    });
+    expect(buildErrorEvent(refusal, "prepare").termsChange).toEqual({
+      proposalWritten: false,
+      received: { added: ["a\\u202eb"], removed: [] },
+      partnerDeduplicate: { expected: false, presented: true },
+      otherTerms: ["algorithm mismatch"],
+    });
+  });
+
+  test("has no terms change on any other failure", () => {
+    expect(
+      "termsChange" in buildErrorEvent(new OperatorConfigError("x"), "prepare"),
+    ).toBe(false);
+  });
 });

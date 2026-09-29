@@ -50,6 +50,10 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   message holds, before connecting or at a round (recovery: split the input
  *   into smaller exchanges; never a retry, since the same files refuse
  *   identically at the next window).
+ * - `"terms-change"` -- the last run met the partner's changed linkage terms at
+ *   the terms exchange and did not take them on, before any linkage key or data
+ *   moved (recovery: apply or decline the change; never a retry, since the same
+ *   terms refuse identically at the next window).
  * - `"handed-off"` -- the last run met a copy an export had handed off and refused
  *   before reading the input or connecting (recovery: none here; the exchange runs
  *   wherever the hand-off took it, and every later run on this device refuses the
@@ -87,6 +91,7 @@ export type ManagedFailureTier =
   | "terms-shortfall"
   | "consent"
   | "too-large"
+  | "terms-change"
   | "handed-off"
   | "custody-unreadable"
   | "missed"
@@ -280,6 +285,10 @@ function recordedFailureTier(
   // A recorded refusal of a set too large for one WebRTC message: benign, and
   // held out of the transport bucket because reconnecting sends the same set.
   if (lastRun.failureKind === "too-large") return "too-large";
+  // A recorded refusal of the partner's changed terms: benign, and out of the
+  // transport bucket because reconnecting meets the same terms; its remedy is
+  // the operator's decision on the change.
+  if (lastRun.failureKind === "terms-change") return "terms-change";
   // A recorded hand-off refusal: the copy this device held was given away, so the
   // failure is the single-owner invariant holding rather than anything to recover
   // from here -- and nothing about it is a desync or an attack.

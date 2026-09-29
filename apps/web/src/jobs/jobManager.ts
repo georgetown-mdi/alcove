@@ -75,6 +75,7 @@ import { checkedMountedKeyFilePath } from "./mountedKeyFile";
 import { formatFirstIssue } from "./schemaIssueMessage";
 import { probeSftpHostKey } from "./sftpProbe";
 import { removeSftpCredentialFile } from "./sftpScratch";
+import { runTermsProposalApply } from "./termsProposal";
 import { validateAuthoredSftpServer } from "./sftpServer";
 
 import type {
@@ -92,6 +93,7 @@ import type {
   JobSigningIdentityLocation,
   JobSigningPaths,
 } from "./intentSchemas";
+import type { TermsProposalApplyResult } from "./termsProposal";
 
 import type { ExchangeRecordOutcome, PartnerOriginText } from "@alcove/core";
 import type {
@@ -415,6 +417,23 @@ export interface JobRecord {
    * metadata), composed at creation from this run's intent and resources. Served
    * verbatim by `GET /api/jobs/:jobId/handoff`. */
   handoff: JobHandoff;
+  /**
+   * For a run of the opened configuration, what applying the terms proposal
+   * it may end on is checked against: the key file beside the configuration,
+   * and the bytes the open read, undefined where the console held no open.
+   * Null on every other run, whose configuration is composed per run and so
+   * has nothing on the mount to apply a proposal to.
+   */
+  termsProposalBasis: {
+    keyPath: string;
+    openedSource: string | undefined;
+  } | null;
+  /**
+   * Where the run's terms proposal stands: `available` once its terminal
+   * `error` event states it wrote one ({@link JobManager.applyTermsProposal}),
+   * `applied` once the mounted configuration took it on, `none` otherwise.
+   */
+  termsProposal: "none" | "available" | "applied";
 }
 
 /**
@@ -589,6 +608,12 @@ export class JobManager {
    * {@link SigningFingerprintBusyError} states.
    */
   private fingerprintInFlight = false;
+  /**
+   * Whether an apply child is running ({@link applyTermsProposal}). Claimed
+   * and cleared as {@link probeInFlight} is; independent of the exchange slot,
+   * whose failed run holds it until deleted.
+   */
+  private termsApplyInFlight = false;
   /**
    * The configuration the operator last opened off the mount, as that open
    * read it: what a run of the opened configuration composes its hand-off
@@ -1143,6 +1168,11 @@ export class JobManager {
       listeners: new Set(),
       cancelTimers: [],
       handoff,
+      termsProposalBasis:
+        mountedKeyPath !== undefined
+          ? { keyPath: mountedKeyPath, openedSource: opened?.source }
+          : null,
+      termsProposal: "none",
     };
     this.slot = {
       phase: "active",
@@ -1438,8 +1468,63 @@ export class JobManager {
     };
     record.events.push(entry);
     this.notifyListeners(record, entry);
+    if (
+      event.type === "error" &&
+      record.termsProposalBasis !== null &&
+      statesWrittenTermsProposal(event)
+    )
+      record.termsProposal = "available";
     if (event.type === "result" || event.type === "error")
       this.markTerminalEmitted(record, event.type);
+  }
+
+  /**
+   * Apply the terms proposal a run of the opened configuration ended on to the
+   * mounted configuration, by running the CLI's `alcove apply`
+   * ({@link runTermsProposalApply}); the console writes nothing itself.
+   *
+   * `unavailable` where no live job has the id or its run wrote no proposal
+   * this console can apply, or one was already applied; `busy` while an apply
+   * is running or the run's child has not exited; `configuration-changed`
+   * where the mounted `alcove.yaml` is no longer the one the run was opened
+   * from, so the change the operator was shown is not the one the file would
+   * take on.
+   */
+  async applyTermsProposal(
+    id: string,
+  ): Promise<
+    | TermsProposalApplyResult
+    | { kind: "unavailable" | "busy" | "configuration-changed" }
+  > {
+    const record = this.getJob(id);
+    const basis = record?.termsProposalBasis ?? null;
+    if (
+      record === undefined ||
+      basis === null ||
+      record.termsProposal !== "available"
+    )
+      return { kind: "unavailable" };
+    if (this.termsApplyInFlight || record.terminal === null)
+      return { kind: "busy" };
+    if (
+      basis.openedSource === undefined ||
+      !mountedConfigurationUnchanged(this.dataRoot, basis.openedSource)
+    )
+      return { kind: "configuration-changed" };
+    this.termsApplyInFlight = true;
+    try {
+      const result = await runTermsProposalApply({
+        binaryPath: this.binaryPath,
+        dataRoot: this.dataRoot,
+        workdir: record.workdir,
+        keyPath: basis.keyPath,
+        ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
+      });
+      if (result.kind === "applied") record.termsProposal = "applied";
+      return result;
+    } finally {
+      this.termsApplyInFlight = false;
+    }
   }
 
   /**
@@ -1965,8 +2050,62 @@ function workdirArtifactPath(workdir: string, name: string): string {
  */
 function relayedForConsole(record: JobRecord, event: RelayEvent): RelayEvent {
   if (event.type === "warning") return rewrittenPartnerPinNotice(record, event);
-  if (event.type === "error") return rewrittenPartnerPinFailure(record, event);
+  if (event.type === "error")
+    return rewrittenTermsProposalRefusal(
+      record,
+      rewrittenPartnerPinFailure(record, event),
+    );
   return event;
+}
+
+/**
+ * Whether a relayed `error` event states that its run wrote the partner's
+ * changed terms beside its configuration (`termsChange` in
+ * docs/spec/CLI_EVENTS.md).
+ */
+function statesWrittenTermsProposal(event: RelayEvent): boolean {
+  const termsChange = event.termsChange;
+  return (
+    event.category === "config" &&
+    termsChange !== null &&
+    typeof termsChange === "object" &&
+    (termsChange as { proposalWritten?: unknown }).proposalWritten === true
+  );
+}
+
+/** The console's account of a run of the opened configuration that stopped on
+ * a partner terms change and wrote it as a proposal. */
+export const TERMS_PROPOSAL_REFUSAL =
+  "Your partner's linkage terms changed since your last exchange, so this " +
+  "run stopped before any linkage key or data moved and your configuration " +
+  "was not changed. Review the change below. Apply it to the alcove.yaml in " +
+  "your working folder and run the exchange again, or start over to leave " +
+  "the configuration as it is.";
+
+/** The console's account of any other run that stopped on a partner terms
+ * change and wrote it as a proposal: its configuration is composed per run,
+ * so there is nothing on the mount to apply the change to. */
+export const TERMS_CHANGE_REFUSAL =
+  "Your partner's linkage terms differ from the terms this run was given, " +
+  "so it stopped before any linkage key or data moved. Review the change " +
+  "below, agree the terms with your partner, and start over.";
+
+/**
+ * Replace the CLI's refusal of a partner terms change it wrote as a proposal,
+ * whose wording names the container paths of the job's composed configuration
+ * and an `alcove apply` command for them, with the console's own account.
+ * Every other event passes through untouched.
+ */
+function rewrittenTermsProposalRefusal(
+  record: JobRecord,
+  event: RelayEvent,
+): RelayEvent {
+  if (!statesWrittenTermsProposal(event)) return event;
+  const message =
+    record.termsProposalBasis !== null
+      ? TERMS_PROPOSAL_REFUSAL
+      : TERMS_CHANGE_REFUSAL;
+  return { ...event, message, [ERROR_MESSAGE_CHAIN_FIELD]: [message] };
 }
 
 /**

@@ -83,6 +83,10 @@ export const INPUT_FAILURE_TITLE = "Your input file could not be used";
 export const TERMS_SHORTFALL_FAILURE_TITLE =
   "Your input file cannot match on everything this exchange agreed to";
 
+/** The title over the benign terms-change failure tier. */
+export const TERMS_CHANGE_FAILURE_TITLE =
+  "Your partner's linkage terms changed";
+
 /** The title over the benign disclosure-refusal failure tier. */
 export const CONSENT_FAILURE_TITLE =
   "What this run would send is not what this exchange agreed to send";
