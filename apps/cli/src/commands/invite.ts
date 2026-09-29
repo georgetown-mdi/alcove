@@ -3,6 +3,7 @@ import type { Argv, Arguments } from "yargs";
 import {
   getLogger,
   encodeInvitation,
+  assertDisclosedNamesCarriable,
   termsStatingDeclaredPayloadSend,
   CONNECTION_BLOCK_NOTICE,
   DEFAULT_PEER_TIMEOUT_MS,
@@ -479,9 +480,9 @@ type InviteReady =
   | {
       // Offline sourcing terms from a pre-existing config: the config supplies
       // the linkage terms (and its operator-authored content persists unchanged
-      // but for an unset payload.send), so the key file is written. When an input
-      // file was also supplied it has already been checked against the config's
-      // linkage fields here.
+      // but for an unset payload.send), so the key file is written. When an
+      // input file was also supplied it has already been checked against the
+      // config's linkage fields here.
       mode: "offlineFromConfig";
       configPath: string;
       linkageTerms: LinkageTerms;
@@ -747,9 +748,15 @@ export async function validateInvite(params: {
       builtDataSpec.metadata ??
       inferMetadata(rows.columns, rows.sanitizedColumnPositions);
 
-    // The terms and the saved config state the columns this party will
-    // transmit for matched records, over that same metadata, so the acceptor's
-    // mirrored payload.receive holds exactly what preparePayload transmits.
+    // Before the mint, so an over-long disclosed name is refused by position
+    // rather than as encodeInvitation's raw schema error.
+    assertDisclosedNamesCarriable(
+      disclosureMetadata,
+      builtDataSpec.linkageTerms.output,
+    );
+
+    // The acceptor's mirrored payload.receive holds exactly what
+    // preparePayload transmits.
     const dataSpec: ResolvedDataSpec = {
       ...builtDataSpec,
       linkageTerms: termsStatingDeclaredPayloadSend(
@@ -1056,9 +1063,11 @@ export async function validateInvite(params: {
     builtDataSpec.metadata ??
     inferMetadata(rows.columns, rows.sanitizedColumnPositions);
 
-  // The terms and the written config state the send set over that metadata,
-  // so the acceptor's mirrored payload.receive holds what preparePayload will
-  // actually transmit.
+  assertDisclosedNamesCarriable(
+    disclosureMetadata,
+    builtDataSpec.linkageTerms.output,
+  );
+
   const dataSpec: ResolvedDataSpec = {
     ...builtDataSpec,
     linkageTerms: termsStatingDeclaredPayloadSend(

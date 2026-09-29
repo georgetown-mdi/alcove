@@ -33,6 +33,15 @@ import type {
   Standardization,
 } from "@alcove/core";
 
+// Wrap inferMetadata as a passthrough spy: header inference discloses only
+// short alias names, so the over-long-name refusal at the mint is reached by
+// substituting the inferred metadata for one call.
+vi.mock("@alcove/core", async () => {
+  const actual =
+    await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
+  return { ...actual, inferMetadata: vi.fn(actual.inferMetadata) };
+});
+
 // Mock only runOnlineBootstrap, so the online-handler wiring can be asserted
 // without opening a connection or running a real exchange; every other
 // onlineBootstrap export (connectionFromEndpoint, logOnlineBootstrapOutcome, and
@@ -1012,6 +1021,41 @@ test("validateInvite: an over-long unrecognized column is not sent, so it does n
   });
   const token = await decodeInvitation(ready.invitation);
   expect(token.disclosedPayloadColumns).toEqual([]);
+});
+
+/** Make every inference in the next mint also disclose a column of `name`. */
+function inferDisclosingColumn(name: string): void {
+  const actual = vi.mocked(inferMetadata).getMockImplementation();
+  if (actual === undefined) throw new Error("inferMetadata is not wrapped");
+  vi.mocked(inferMetadata).mockImplementation((columns, positions) => [
+    ...actual(columns, positions),
+    { name, type: "other", role: "payload", isPayload: true },
+  ]);
+}
+
+describe.each([
+  { mode: "online" as const, url: new URL("sftp://host/drop") },
+  { mode: "offline" as const },
+])("validateInvite: $mode refuses an over-long disclosed column", (target) => {
+  afterEach(() => {
+    vi.mocked(inferMetadata).mockRestore();
+  });
+
+  test("by position, before the key file is written", async () => {
+    const { input, options } = fixtureWithTrailingColumn(OVERLONG_COLUMN);
+    inferDisclosingColumn(OVERLONG_COLUMN);
+    const refusal = validateInvite({
+      resolved: { ...target, input },
+      options,
+      acceptTimeout: 900,
+      log: silentLog,
+    });
+    await expect(refusal).rejects.toThrow(UsageError);
+    await expect(refusal).rejects.toThrow(
+      /metadata column 5 .* is sent to the partner, but its name is longer/,
+    );
+    expect(fs.existsSync(options.keyFile)).toBe(false);
+  });
 });
 
 // --- linkage strategy selection ----------------------------------------------
