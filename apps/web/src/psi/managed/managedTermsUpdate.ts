@@ -7,6 +7,7 @@
 
 import {
   TermsUpdateRefusedError,
+  UsageError,
   compareTerms,
   decodeTermsUpdate,
   encodeTermsUpdate,
@@ -15,6 +16,7 @@ import {
   termsUpdateFor,
   unnamedPartyIdentity,
 } from "@alcove/core";
+import { ZodError } from "zod";
 
 import {
   applyManagedExchangeTermsChange,
@@ -167,7 +169,7 @@ async function checkedTermsUpdate(
   record: RunnableManagedExchangeRecord,
   encoded: string,
   runInFlight: boolean,
-): Promise<ManagedTermsUpdateReading> {
+): Promise<{ update: TermsUpdate; delta: TermsDelta }> {
   const refusal = managedTermsUpdateRefusal(record, Date.now(), runInFlight);
   if (refusal !== null) throw new ManagedTermsUpdateNotAppliedError(refusal);
   let update: TermsUpdate;
@@ -182,12 +184,11 @@ async function checkedTermsUpdate(
   if (update.linkageTerms.identity === exchangeFile.linkageTerms.identity)
     throw new ManagedTermsUpdateNotAppliedError("own-terms");
   try {
-    applyManagedExchangeTermsChange(record, {
-      scope: "apply",
-      partnerTerms: update.linkageTerms,
-    });
-  } catch {
-    throw new ManagedTermsUpdateNotAppliedError("not-applicable");
+    applyManagedExchangeTermsChange(record, { scope: "update", update });
+  } catch (error) {
+    if (error instanceof UsageError || error instanceof ZodError)
+      throw new ManagedTermsUpdateNotAppliedError("not-applicable");
+    throw error;
   }
   const { delta } = compareTerms(
     exchangeFile.linkageTerms,
@@ -200,7 +201,7 @@ async function checkedTermsUpdate(
       partnerDeduplicate: exchangeFile.expectedPartnerDeduplicate,
     },
   );
-  return { encoded, partnerTerms: update.linkageTerms, delta };
+  return { update, delta };
 }
 
 /**
@@ -216,25 +217,25 @@ export async function readManagedTermsUpdate(
   record: RunnableManagedExchangeRecord,
   pasted: string,
 ): Promise<ManagedTermsUpdateReading> {
-  return checkedTermsUpdate(
+  const encoded = stripInvitationWhitespace(pasted);
+  const { update, delta } = await checkedTermsUpdate(
     record,
-    stripInvitationWhitespace(pasted),
+    encoded,
     await managedExchangeRunLockHeld(record.id),
   );
+  return { encoded, partnerTerms: update.linkageTerms, delta };
 }
 
 /**
- * Apply the partner's terms `shown` states to the stored exchange
- * (the `apply` scope of `applyManagedExchangeTermsChange`), then drop any
+ * Apply the partner's terms update `shown` holds to the stored exchange
+ * (the `update` scope of `applyManagedExchangeTermsChange`), then drop any
  * terms change a scheduled run kept, which this answers. The stored record is
  * read and checked again under the lock, and applied only where the change is
- * still the one shown. Held under the run lock without waiting: a run of this
- * exchange in flight refuses the apply.
+ * still the one shown.
  *
  * @throws {ManagedExchangeLockUnavailableError} while a run holds the lock.
  * @throws {ManagedTermsUpdateNotAppliedError} where it is refused.
  * @throws {ZodError} if the resulting record is invalid.
- * In every case nothing is written.
  */
 export async function applyManagedTermsUpdate(
   id: string,
@@ -250,8 +251,8 @@ export async function applyManagedTermsUpdate(
       if (JSON.stringify(current.delta) !== JSON.stringify(shown.delta))
         throw new ManagedTermsUpdateNotAppliedError("changed");
       const applied = await persistManagedExchangeTermsChange(id, {
-        scope: "apply",
-        partnerTerms: current.partnerTerms,
+        scope: "update",
+        update: current.update,
       });
       // Best-effort: a proposal left behind is one the operator can decline.
       await clearManagedExchangeTermsProposal(id).catch(() => undefined);

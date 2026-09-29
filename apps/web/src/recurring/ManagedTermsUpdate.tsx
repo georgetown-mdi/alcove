@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { Button, Checkbox, Group, Stack, Textarea } from "@mantine/core";
 
-import { isDisclosedToPartner } from "@alcove/core";
+import { isDisclosedToPartner, termsDeltaSections } from "@alcove/core";
 
 import {
   ManagedTermsUpdateRefusedError,
@@ -54,7 +54,6 @@ import {
 
 import type { ManagedTermsUpdateReading } from "@psi/managed/managedTermsUpdate";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
-import type { TermsDelta } from "@alcove/core";
 
 /**
  * Changing a saved exchange's terms between runs: the columns this party
@@ -262,19 +261,12 @@ function SendTermsUpdate({
   );
 }
 
-function deltaIsEmpty(delta: TermsDelta): boolean {
-  return (
-    delta.received === undefined &&
-    delta.sent === undefined &&
-    delta.partnerDeduplicate === undefined &&
-    delta.otherTerms.length === 0
-  );
-}
-
 /**
  * The partner's terms update: pasted, checked against this exchange, its
- * change shown, and saved on Accept. The partner's column names and terms
- * values arrive raw and are escaped where they are shown.
+ * change shown, and saved on Accept. A reading, and what a read or an Accept
+ * reports, stand only while the text they were for is the text in the box.
+ * The partner's column names and terms values arrive raw and are escaped
+ * where they are shown.
  */
 function ApplyTermsUpdate({
   record,
@@ -286,41 +278,52 @@ function ApplyTermsUpdate({
   const [pasted, setPasted] = useState("");
   const [reading, setReading] = useState<{
     record: RunnableManagedExchangeRecord;
+    pasted: string;
     update: ManagedTermsUpdateReading;
   }>();
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string>();
-  const shown = reading?.record === record ? reading.update : undefined;
+  const [reported, setReported] = useState<{
+    pasted: string;
+    message: string;
+  }>();
+  const shown =
+    reading?.record === record && reading.pasted === pasted
+      ? reading.update
+      : undefined;
+  const status = reported?.pasted === pasted ? reported.message : undefined;
 
   async function read(): Promise<void> {
+    const text = pasted;
     setBusy(true);
     setReading(undefined);
-    setStatus(undefined);
+    setReported(undefined);
     try {
       setReading({
         record,
-        update: await readManagedTermsUpdate(record, pasted),
+        pasted: text,
+        update: await readManagedTermsUpdate(record, text),
       });
     } catch (error) {
       whenDiagnostic(() => console.error(error));
-      setStatus(termsUpdateNotAppliedText(error));
+      setReported({ pasted: text, message: termsUpdateNotAppliedText(error) });
     } finally {
       setBusy(false);
     }
   }
 
   async function accept(update: ManagedTermsUpdateReading): Promise<void> {
+    const text = pasted;
     setBusy(true);
-    setStatus(undefined);
+    setReported(undefined);
     try {
       await applyManagedTermsUpdate(record.id, update);
       setReading(undefined);
       setPasted("");
-      setStatus(TERMS_UPDATE_APPLIED_TEXT);
+      setReported({ pasted: "", message: TERMS_UPDATE_APPLIED_TEXT });
       onApplied();
     } catch (error) {
       whenDiagnostic(() => console.error(error));
-      setStatus(termsUpdateNotAppliedText(error));
+      setReported({ pasted: text, message: termsUpdateNotAppliedText(error) });
     } finally {
       setBusy(false);
     }
@@ -329,7 +332,7 @@ function ApplyTermsUpdate({
   function decline(): void {
     setReading(undefined);
     setPasted("");
-    setStatus(undefined);
+    setReported(undefined);
   }
 
   return (
@@ -342,11 +345,7 @@ function ApplyTermsUpdate({
         minRows={2}
         maxRows={6}
         value={pasted}
-        onChange={(event) => {
-          setPasted(event.currentTarget.value);
-          setReading(undefined);
-          setStatus(undefined);
-        }}
+        onChange={(event) => setPasted(event.currentTarget.value)}
       />
       {shown === undefined ? (
         <Button
@@ -361,7 +360,7 @@ function ApplyTermsUpdate({
       ) : (
         <div>
           <p className={styles.small}>
-            {deltaIsEmpty(shown.delta)
+            {termsDeltaSections(shown.delta).length === 0
               ? TERMS_UPDATE_NO_CHANGE_TEXT
               : TERMS_UPDATE_CHANGE_TEXT}
           </p>

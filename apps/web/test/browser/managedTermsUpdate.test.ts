@@ -211,6 +211,32 @@ describe("applying a partner's terms update", () => {
     ).toEqual(["notes", "county"]);
   });
 
+  test("hides the change and Accept once the pasted text is edited", async () => {
+    const record = await storedAgencyB();
+    renderSection(record, false);
+    const input = page.getByLabelText(TERMS_UPDATE_INPUT_LABEL);
+
+    await userEvent.fill(input, CLI_TERMS_UPDATE);
+    await userEvent.click(
+      page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }),
+    );
+    await expect
+      .element(page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }))
+      .toBeInTheDocument();
+
+    await userEvent.fill(input, `${CLI_TERMS_UPDATE}x`);
+    await expect
+      .element(page.getByRole("button", { name: ACCEPT_TERMS_CHANGE_LABEL }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByText("Columns your partner now sends you"))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: READ_TERMS_UPDATE_LABEL }))
+      .toBeInTheDocument();
+    expect(await getManagedExchange(record.id)).toEqual(record);
+  });
+
   test("names what is wrong with a malformed update and changes nothing", async () => {
     const record = await storedAgencyB();
     renderSection(record, false);

@@ -6,8 +6,10 @@ import {
   decodeTermsUpdate,
   deriveAcceptedLinkageTerms,
   disclosedColumnNames,
+  encodeTermsUpdate,
   generateSharedSecret,
   inferMetadata,
+  termsUpdateFor,
   validateCompatibility,
 } from "@alcove/core";
 
@@ -40,6 +42,7 @@ import {
   CLI_TERMS_UPDATE_SECRET,
 } from "../../utils/cliTermsUpdateFixture";
 
+import type * as ManagedExchangeRecordModule from "@psi/managed/managedExchangeRecord";
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
 import type { LinkageTerms, Metadata } from "@alcove/core";
 import type {
@@ -71,6 +74,15 @@ vi.mock("@psi/managed/managedExchangeStore", async (importOriginal) => {
         storedBytes.set(id, JSON.stringify(next));
         return Promise.resolve(next);
       },
+    ),
+  };
+});
+vi.mock("@psi/managed/managedExchangeRecord", async (importOriginal) => {
+  const actual = await importOriginal<typeof ManagedExchangeRecordModule>();
+  return {
+    ...actual,
+    applyManagedExchangeTermsChange: vi.fn(
+      actual.applyManagedExchangeTermsChange,
     ),
   };
 });
@@ -392,6 +404,62 @@ describe("applying a partner's terms update", () => {
       partnerDeduplicate: undefined,
       otherTerms: [],
     });
+  });
+
+  test("records the columns received as alcove apply does for an update stating no disclosed columns", async () => {
+    const record = await agencyBRecord();
+    const madeWithoutMetadata = termsUpdateFor(
+      {
+        ...OWN_TERMS,
+        payload: { send: [{ name: "notes" }, { name: "county" }] },
+      },
+      undefined,
+    );
+    const encoded = await encodeTermsUpdate(
+      madeWithoutMetadata,
+      CLI_TERMS_UPDATE_SECRET,
+    );
+    const update = await decodeTermsUpdate(encoded, CLI_TERMS_UPDATE_SECRET);
+    expect(update.disclosedPayloadColumns).toBeUndefined();
+
+    const applied = await applyManagedTermsUpdate(
+      record.id,
+      await readManagedTermsUpdate(record, encoded),
+    );
+    expect(applied.exchangeFile.expectedPayloadColumns).toBe(
+      update.disclosedPayloadColumns,
+    );
+    expect(applied.exchangeFile.linkageTerms).toEqual(
+      deriveAcceptedLinkageTerms(
+        update.linkageTerms,
+        "Agency B",
+        record.exchangeFile.linkageTerms.deduplicate,
+      ),
+    );
+    expect(applied.exchangeFile.expectedPartnerDeduplicate).toBe(
+      update.linkageTerms.deduplicate,
+    );
+  });
+
+  test("refuses as not applicable where the apply write refuses the terms", async () => {
+    const record = await agencyBRecord();
+    vi.mocked(applyManagedExchangeTermsChange).mockImplementationOnce(() => {
+      throw new UsageError("these terms cannot be applied");
+    });
+    expect(
+      await refusalOf(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)),
+    ).toBe("not-applicable");
+  });
+
+  test("passes an unexpected error from the apply write through", async () => {
+    const record = await agencyBRecord();
+    const defect = new TypeError("a defect in the apply write");
+    vi.mocked(applyManagedExchangeTermsChange).mockImplementationOnce(() => {
+      throw defect;
+    });
+    await expect(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)).rejects.toBe(
+      defect,
+    );
   });
 
   const tampered = `${CLI_TERMS_UPDATE.slice(0, -2)}${
