@@ -1,5 +1,6 @@
 import type { Argv, Arguments } from "yargs";
 import fs from "node:fs";
+import { z } from "zod";
 
 import {
   keepOperatorSuppliedText,
@@ -7,6 +8,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   parseExchangeSpec,
+  retiredSettingIssue,
   getLogger,
   OperatorConfigError,
   PLACEHOLDER_SSH_USERNAME,
@@ -376,13 +378,22 @@ const MISSING_SIGNING_IDENTITY_REMEDY =
   "fingerprint --identity-file <that path>', or point signing.identity_file " +
   "at the file you already hold";
 
-/** @internal exported for testing */
-export function loadConfig(options: ExchangeOptions): {
-  connection: ProtocolConnectionConfig;
-  authentication: AuthPersist;
-} & ExchangeDataSpec {
-  const log = getLogger("exchange");
+/** The usage error for a configuration that fails exchange-spec validation. */
+function invalidExchangeSpecError(
+  configFile: string,
+  err: unknown,
+): UsageError {
+  const message = messageWithOperatorText`config file ${operatorSuppliedText(
+    configFile,
+  )} is not a valid exchange spec: ${describeConfigSchemaError(err)}`;
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
 
+/**
+ * Read the configuration at `configFile` and parse its YAML, ahead of any
+ * schema.
+ */
+function readConfigDocument(configFile: string): unknown {
   // Read, then parse through the sensitive-file chokepoint. The fs read can only
   // fail with an errno (ENOENT, EACCES, EISDIR) -- a path plus code, no config
   // content -- so it is reported; ENOENT gets the create-a-config guidance. The
@@ -391,11 +402,11 @@ export function loadConfig(options: ExchangeOptions): {
   // caller configuration is a UsageError (exit 64), not a transport failure (69).
   let source: string;
   try {
-    source = fs.readFileSync(options.configFile, "utf8");
+    source = fs.readFileSync(configFile, "utf8");
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       const message = messageWithOperatorText`config file ${operatorSuppliedText(
-        options.configFile,
+        configFile,
       )} does not exist; to create one, run 'alcove invite URL ...' first`;
       throw Object.assign(
         keepOperatorSuppliedText(new Error(message.text), message),
@@ -403,14 +414,43 @@ export function loadConfig(options: ExchangeOptions): {
       );
     }
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      options.configFile,
+      configFile,
     )} could not be read: ${err instanceof Error ? err.message : String(err)}`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-  const rawConfig = parseSensitiveYaml(
+  return parseSensitiveYaml(
     source,
-    messageWithOperatorText`config file ${operatorSuppliedText(options.configFile)}`,
+    messageWithOperatorText`config file ${operatorSuppliedText(configFile)}`,
   );
+}
+
+/**
+ * Refuse a configuration holding a retired setting with the refusal
+ * {@link loadConfig} raises, for a caller about to write a key file first: the
+ * operator deletes the setting as told and re-runs, so nothing may have been
+ * written. A configuration that cannot be read or parsed is left for
+ * {@link loadConfig} to report.
+ */
+function refuseRetiredSettingBeforeProvisioning(configFile: string): void {
+  let raw: unknown;
+  try {
+    raw = readConfigDocument(configFile);
+  } catch {
+    return;
+  }
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined)
+    throw invalidExchangeSpecError(configFile, new z.ZodError([retired]));
+}
+
+/** @internal exported for testing */
+export function loadConfig(options: ExchangeOptions): {
+  connection: ProtocolConnectionConfig;
+  authentication: AuthPersist;
+} & ExchangeDataSpec {
+  const log = getLogger("exchange");
+
+  const rawConfig = readConfigDocument(options.configFile);
 
   // Warn about and strip the runtime-injected fields from the top-level
   // `authentication` block (their values come only from the key file). Operator-
@@ -439,10 +479,7 @@ export function loadConfig(options: ExchangeOptions): {
   } catch (err) {
     // Well-formed YAML that fails schema validation is still invalid caller
     // configuration (exit 64), not a transport failure.
-    const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      options.configFile,
-    )} is not a valid exchange spec: ${describeConfigSchemaError(err)}`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
+    throw invalidExchangeSpecError(options.configFile, err);
   }
 
   // Resolve @-file references in the supported credential/opaque fields after
@@ -1026,6 +1063,7 @@ export async function handler(argv: Arguments): Promise<void> {
     // usage error (exit 64), raised before anything is written or connected.
     if (invitation !== undefined) {
       try {
+        refuseRetiredSettingBeforeProvisioning(options.configFile);
         await provisionKeyFileFromInvitation(invitation, options.keyFile);
       } catch (err) {
         exitWithError(log, err, exitCodeForError(err));

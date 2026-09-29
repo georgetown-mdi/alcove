@@ -2246,6 +2246,42 @@ test("handler: --invitation with a malformed code fails closed (exit 64), writin
   }
 });
 
+test.each(["outbound_payload_consent", "disclosed_payload_columns"])(
+  "handler: --invitation on a configuration holding %s exits 64 with the refusal and writes no key file",
+  async (key) => {
+    const encoded = await encodeInvitation(inviteToken());
+    fs.writeFileSync(
+      configFile,
+      YAML.stringify({ ...minimalFiledropConfig, [key]: ["notes"] }),
+    );
+    const input = path.join(dir, "in.csv");
+    fs.writeFileSync(input, "ssn\n123456789\n");
+
+    vi.mocked(runProtocol).mockReset();
+    const exitSpy = captureProcessExit();
+    try {
+      await expect(
+        handler({
+          _: [],
+          $0: "alcove",
+          input,
+          "config-file": configFile,
+          "key-file": keyFile,
+          invitation: encoded,
+          "log-level": "silent",
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
+      expect(mockState.errors.join("\n")).toContain(
+        `the setting "${key}" is retired; delete it from the file`,
+      );
+      expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+      expect(fs.existsSync(keyFile)).toBe(false);
+    } finally {
+      exitSpy.mockRestore();
+    }
+  },
+);
+
 // --- handler: the exit code each error boundary reports ----------------------
 // Each boundary below routes its caught error through the one exitCodeForError
 // (src/util/exit.ts): one error per class it distinguishes, planted at the
