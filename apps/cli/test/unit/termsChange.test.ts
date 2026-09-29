@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import YAML from "yaml";
+import PSI from "@openmined/psi.js";
 import {
   deriveAcceptedLinkageTerms,
   generateSharedSecret,
@@ -13,6 +14,8 @@ import {
   inferMetadata,
   OperatorConfigError,
   parseExchangeSpec,
+  prepareForExchange,
+  runExchange,
   termsStatingDeclaredPayloadSend,
   validateCompatibility,
 } from "@alcove/core";
@@ -20,6 +23,7 @@ import { createMessagePipe, exchangeTerms } from "@alcove/core/testing";
 import type {
   ExchangeSpec,
   LinkageTerms,
+  MessageConnection,
   Metadata,
   TermsChange,
 } from "@alcove/core";
@@ -166,10 +170,23 @@ describe("an attended run", () => {
     const after = readSpec(setup.config);
     expect(receivedColumns(after)).toEqual(["notes", "county"]);
     expect(after.expectedPayloadColumns).toEqual(["notes", "county"]);
+    expect(after.expectedPartnerDeduplicate).toBe(false);
     // What this party sends is not part of the change, so no consent to it is
     // recorded.
     expect(after.outboundPayloadConsent).toBeUndefined();
     expect(fs.existsSync(termsProposalPath(setup.config))).toBe(false);
+  });
+
+  test("confirming never rewrites the deduplicate the configuration holds the partner to", async () => {
+    promptConfirmMock.mockResolvedValue(true);
+    const { error } = await settle(
+      changeFor({ ...setup.partnerTerms, deduplicate: true }),
+      true,
+    );
+    expect(error).toBeUndefined();
+    const after = readSpec(setup.config);
+    expect(receivedColumns(after)).toEqual(["notes", "county"]);
+    expect(after.expectedPartnerDeduplicate).toBe(false);
   });
 
   test("declining ends the run and leaves the configuration as it was", async () => {
@@ -280,4 +297,121 @@ describe("an unattended run", () => {
     expect(partnerSide.status).toBe("fulfilled");
     expect(ownSide.status).toBe("fulfilled");
   });
+});
+
+// --- A partner's deduplicate met at the terms exchange ----------------------
+
+const psiLibrary = await PSI();
+
+function rowsFor(metadata: Metadata, prefix: string) {
+  return ["Carol", "Elizabeth", `${prefix}-only`].map((first, i) =>
+    Object.fromEntries(
+      metadata.map(({ name }) => [
+        name,
+        name === "first_name" ? first : `${prefix}-${name}-${i}`,
+      ]),
+    ),
+  );
+}
+
+// Agency B's run from its configuration, with the real handler, against
+// Agency A's run under `partnerTerms`; B's frames are captured.
+async function exchangeWithPartner(
+  partnerTerms: LinkageTerms,
+  interactive: boolean,
+) {
+  const [connA, connB] = createMessagePipe();
+  const bSent: unknown[] = [];
+  const capturingB: MessageConnection = {
+    send: (m: unknown) => {
+      bSent.push(m);
+      return connB.send(m);
+    },
+    receive: (timeoutMs?: number) => connB.receive(timeoutMs),
+    close: () => connB.close(),
+    setInboundFrameCap: connB.setInboundFrameCap?.bind(connB),
+  };
+  const spec = readSpec(setup.config);
+  const bMetadata = spec.metadata!;
+  const bPrepared = prepareForExchange(
+    spec,
+    "Agency B",
+    rowsFor(bMetadata, "b"),
+    bMetadata.map(({ name }) => name),
+  );
+  bPrepared.expectedPayloadColumns = spec.expectedPayloadColumns;
+  bPrepared.expectedPartnerDeduplicate = spec.expectedPartnerDeduplicate;
+  const aPrepared = prepareForExchange(
+    { metadata: setup.partnerMetadata, linkageTerms: partnerTerms },
+    "Agency A",
+    rowsFor(setup.partnerMetadata, "a"),
+    setup.partnerMetadata.map(({ name }) => name),
+  );
+  const stdio = captureStdio();
+  try {
+    const [, bOutcome] = await Promise.allSettled([
+      runExchange(connA, "initiator", aPrepared, { psiLibrary }),
+      runExchange(capturingB, "responder", bPrepared, {
+        psiLibrary,
+        onTermsChange: termsChangeHandler({
+          configPath: setup.config,
+          keyPath: setup.key,
+          existing: spec,
+          interactive,
+          log: getLogger("exchange"),
+          logFile: undefined,
+        }),
+      }),
+    ]);
+    return { bOutcome, bSent, stderr: stdio.stderrWrites.join("") };
+  } finally {
+    stdio.restore();
+  }
+}
+
+describe("a partner that changes its deduplicate", () => {
+  for (const interactive of [true, false])
+    for (const changesColumns of [false, true])
+      test(`is refused and written as a proposal (${interactive ? "attended" : "unattended"}, ${changesColumns ? "with" : "without"} a column change)`, async () => {
+        promptConfirmMock.mockResolvedValue(true);
+        const before = fs.readFileSync(setup.config, "utf8");
+        const partnerTerms: LinkageTerms = {
+          ...(changesColumns
+            ? setup.partnerTerms
+            : {
+                ...setup.partnerTerms,
+                payload: { send: [{ name: "notes" }] },
+              }),
+          deduplicate: true,
+        };
+        if (!changesColumns)
+          setup.partnerMetadata = setup.partnerMetadata.map((column) =>
+            column.name === "county"
+              ? { ...column, isPayload: false, role: "ignored" as const }
+              : column,
+          );
+        const { bOutcome, bSent, stderr } = await exchangeWithPartner(
+          partnerTerms,
+          interactive,
+        );
+        expect(bOutcome.status).toBe("rejected");
+        const error = (bOutcome as PromiseRejectedResult).reason as Error;
+        expect(error).toBeInstanceOf(OperatorConfigError);
+        expect(exitCodeForError(error)).toBe(64);
+        expect(error.message).toContain("deduplicate");
+        expect(error.message).toContain("alcove apply");
+        expect(promptConfirmMock).not.toHaveBeenCalled();
+        expect(stderr).toContain("your partner's deduplicate: false -> true");
+        expect(fs.existsSync(termsProposalPath(setup.config))).toBe(true);
+        expect(fs.readFileSync(setup.config, "utf8")).toBe(before);
+        expect(readSpec(setup.config).expectedPartnerDeduplicate).toBe(false);
+        expect(
+          bSent.every(
+            (m) =>
+              typeof m === "object" &&
+              m !== null &&
+              ("linkageTerms" in m || "decision" in m),
+          ),
+        ).toBe(true);
+      });
 });

@@ -97,6 +97,7 @@ export const WARNING_SOURCES = [
   "pairTableAdvisory",
   "signingWithoutRecord",
   "undeclaredColumns",
+  "payloadSendBeyondConfiguration",
   "terminatedRunRecord",
   "persistenceLoss",
   "logFileLoss",

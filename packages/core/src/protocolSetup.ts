@@ -11,7 +11,11 @@ import {
   termsAdoptingPartnerTerms,
   termsReceivingPartnerSend,
 } from "./linkageTermsNegotiation";
-import type { TermsComparison, TermsDelta } from "./linkageTermsNegotiation";
+import type {
+  TermsBaselines,
+  TermsComparison,
+  TermsDelta,
+} from "./linkageTermsNegotiation";
 import { SHARED_SECRET_REGEX } from "./config/connection";
 import { MAX_RECORD_COUNT } from "./connection/frameSize";
 import { randomBytes, toBase64Url } from "./utils/crypto";
@@ -326,7 +330,9 @@ export interface TermsChange {
    * Whether this run can continue under {@link adoptedTerms}. False where
    * they change a term this run was prepared under -- the linkage fields or
    * keys, the algorithm, the strategy, the output direction, or the version
-   * -- which takes a new run.
+   * -- which takes a new run, and where the partner's `deduplicate` differs
+   * from the value this party holds it to ({@link TermsDelta.partnerDeduplicate}),
+   * which only this party's own review of the change can take on.
    */
   continuable: boolean;
 }
@@ -339,6 +345,12 @@ export interface TermsChangeOptions {
    * `payload.receive`. Undefined compares `payload.receive` alone.
    */
   expectedReceive?: ReadonlyArray<string>;
+  /**
+   * The `deduplicate` this party holds the partner to. A partner stating
+   * another value is a change that cannot continue the run
+   * ({@link TermsChange.continuable}). Undefined holds the partner to none.
+   */
+  expectedPartnerDeduplicate?: boolean;
   /**
    * Called when the partner's terms differ from this party's in a way taking
    * on the partner's terms resolves, before this party's decision is sent and
@@ -568,9 +580,23 @@ async function reconcileProtocolVersion(
 /** The diagnostics a comparison refuses on: the partner decides what this
  * party sends, so the sent direction is not among them. */
 function refusalsOf(comparison: TermsComparison): string[] {
-  return comparison.receivedMessage === undefined
-    ? comparison.delta.otherTerms
-    : [...comparison.delta.otherTerms, comparison.receivedMessage];
+  return [
+    ...comparison.delta.otherTerms,
+    ...(comparison.partnerDeduplicateMessage === undefined
+      ? []
+      : [comparison.partnerDeduplicateMessage]),
+    ...(comparison.receivedMessage === undefined
+      ? []
+      : [comparison.receivedMessage]),
+  ];
+}
+
+/** The baselines {@link compareTerms} holds the partner to for `options`. */
+function baselinesOf(options: TermsChangeOptions | undefined): TermsBaselines {
+  return {
+    receive: options?.expectedReceive,
+    partnerDeduplicate: options?.expectedPartnerDeduplicate,
+  };
 }
 
 /**
@@ -605,7 +631,9 @@ async function settleTermsChange(params: {
     refusalsOf(compareTerms(adopted, partnerTerms)).length > 0
   )
     return refuse(refusals);
-  const continuable = adoptableWithoutPreparing(localTerms, adopted);
+  const continuable =
+    adoptableWithoutPreparing(localTerms, adopted) &&
+    comparison.delta.partnerDeduplicate === undefined;
   let terms: LinkageTerms;
   try {
     terms = await onTermsChange({
@@ -782,7 +810,7 @@ export async function exchangeTerms(
       comparison: compareTerms(
         localTerms,
         partnerTerms,
-        termsChange?.expectedReceive,
+        baselinesOf(termsChange),
       ),
     };
     if (refusalsOf(agreed.comparison).length > 0)
@@ -878,7 +906,7 @@ export async function exchangeTerms(
       comparison: compareTerms(
         localTerms,
         partnerTerms!,
-        termsChange?.expectedReceive,
+        baselinesOf(termsChange),
       ),
     };
     if (refusalsOf(agreed.comparison).length > 0)

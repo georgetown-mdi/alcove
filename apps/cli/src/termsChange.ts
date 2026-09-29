@@ -30,6 +30,7 @@ import {
   DEFAULT_CONFIG_PATH,
   persistTermsUpdate,
   termsUpdateInvalidTerm,
+  type TermsUpdateWrite,
 } from "./config";
 import { writeFileOwnerOnly } from "./fileUtils";
 import {
@@ -89,8 +90,9 @@ function directionLines(
 
 /**
  * Show how the partner's terms differ from the configuration's: the columns
- * the partner sends, the columns this party sends, and each other term. Every
- * name and value is the partner's and is escaped here.
+ * the partner sends, the columns this party sends, the partner's
+ * `deduplicate`, and each other term. Every name and value is the partner's
+ * and is escaped here.
  */
 export function displayTermsChange(
   emit: ConsentSurfaceSink,
@@ -111,6 +113,11 @@ export function displayTermsChange(
     removed:
       "columns you no longer send your partner (your partner decides on this)",
   });
+  const deduplicate = change.delta.partnerDeduplicate;
+  if (deduplicate !== undefined)
+    emit(
+      `  your partner's deduplicate: ${String(deduplicate.expected)} -> ${String(deduplicate.presented)}`,
+    );
   if (change.delta.otherTerms.length > 0) {
     emit("  other terms that differ:");
     for (const difference of change.delta.otherTerms)
@@ -130,7 +137,8 @@ const UNATTENDED_REFUSAL =
 const NOT_CONTINUABLE_REFUSAL =
   "your partner's linkage terms change the linkage fields, keys, algorithm, " +
   "strategy, output direction, or version, which this run was prepared " +
-  "under, so it stopped before any linkage key or data moved.";
+  "under, or your partner's deduplicate, which only alcove apply takes on, " +
+  "so it stopped before any linkage key or data moved.";
 
 /**
  * The refusal of a change this run did not take on, naming the operator's own
@@ -196,8 +204,9 @@ export function termsChangeHandler(params: {
     if (interactive && change.continuable) {
       const partnerSend = change.partnerTerms.payload?.send;
       // The change is to what the partner sends and the agreed terms; what
-      // this party sends stays under the consent record it already holds.
-      const write = {
+      // this party sends stays under the consent record it already holds, and
+      // the partner's deduplicate under the record the operator last applied.
+      const write: TermsUpdateWrite = {
         ...termsUpdateWrite(
           {
             linkageTerms: change.adoptedTerms,
@@ -207,6 +216,7 @@ export function termsChangeHandler(params: {
           },
           existing,
         ),
+        expectedPartnerDeduplicate: "unchanged",
         outboundPayloadConsent: existing.outboundPayloadConsent,
       };
       const invalidTerm = termsUpdateInvalidTerm(configPath, write);

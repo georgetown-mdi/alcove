@@ -1977,14 +1977,15 @@ export function persistExpectedPartnerDeduplicate(
 }
 
 /**
- * The fields {@link persistTermsUpdate} writes. `disclosedPayloadColumns` is
- * `"unchanged"` where the configuration's send-side commitment is left as it
- * stands; otherwise an undefined `columns` removes it.
+ * The fields {@link persistTermsUpdate} writes. `expectedPartnerDeduplicate`
+ * and `disclosedPayloadColumns` are `"unchanged"` where the configuration's
+ * record is left as it stands; otherwise an undefined `columns` removes the
+ * send-side commitment.
  */
 export interface TermsUpdateWrite {
   linkageTerms: LinkageTerms;
   expectedPayloadColumns: string[] | undefined;
-  expectedPartnerDeduplicate: boolean;
+  expectedPartnerDeduplicate: boolean | "unchanged";
   outboundPayloadConsent: OutboundPayloadConsent | undefined;
   disclosedPayloadColumns: "unchanged" | { columns: string[] | undefined };
 }
@@ -2097,10 +2098,11 @@ function termsUpdateDocument(
           ["expected_payload_columns"],
           doc.createNode(write.expectedPayloadColumns),
         );
-      doc.setIn(
-        ["expected_partner_deduplicate"],
-        write.expectedPartnerDeduplicate,
-      );
+      if (write.expectedPartnerDeduplicate !== "unchanged")
+        doc.setIn(
+          ["expected_partner_deduplicate"],
+          write.expectedPartnerDeduplicate,
+        );
       if (write.outboundPayloadConsent === undefined)
         doc.deleteIn(["outbound_payload_consent"]);
       else

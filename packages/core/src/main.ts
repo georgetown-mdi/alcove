@@ -394,6 +394,7 @@ export type {
   PartnerBoundTerms,
   PayloadColumnsChange,
   TermsDelta,
+  PartnerDeduplicateChange,
 } from "./linkageTermsNegotiation";
 export {
   TERMS_CHANGE_NOT_ACCEPTED_REASON,

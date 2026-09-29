@@ -585,7 +585,7 @@ Where there is no terminal to ask on -- an unattended or scheduled run, or one r
 
 A partner that changed its terms since your last exchange -- most often by adding or dropping a payload column in its input -- just runs. Your run meets the change at the terms exchange, before any linkage key or data moves, and shows it: the columns your partner now sends you or no longer sends you, the columns you send that its terms do not receive (its decision, shown for your information), and each other term that differs. A dropped column is decided exactly as an added one. What counts as a change, and which party decides which part of it: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#when-your-partners-terms-change).
 
-- **At a terminal**, the run asks whether to accept your partner's terms. Yes writes them into the configuration through the write [`alcove apply`](#applying-an-update) makes -- `linkage_terms` and the records that follow from them, except that `outbound_payload_consent` is left as it was, since the change is not to what you send -- and the same run continues under them. No ends the run before any key moves (exit 64), and the configuration is not changed. Terms your configuration would not load under are refused before you are asked (exit 64), naming the setting they would make invalid.
+- **At a terminal**, the run asks whether to accept your partner's terms. Yes writes them into the configuration through the write [`alcove apply`](#applying-an-update) makes -- `linkage_terms` and the records that follow from them, except that `outbound_payload_consent` is left as it was, since the change is not to what you send, and so is `expected_partner_deduplicate` -- and the same run continues under them. No ends the run before any key moves (exit 64), and the configuration is not changed. Terms your configuration would not load under are refused before you are asked (exit 64), naming the setting they would make invalid.
 - **Unattended** -- no terminal on stdin, or an `INPUT_FILE` of `-` -- the run refuses (exit 64) before any key or data moves. It writes your partner's terms beside the configuration as a terms update, `alcove.proposed-terms` beside `alcove.yaml` (named after the configuration file), and its error names the command that applies it:
 
   ```sh
@@ -593,7 +593,7 @@ A partner that changed its terms since your last exchange -- most often by addin
   ```
 
   with `--config-file` and `--key-file` added where you run from other paths. `alcove apply` shows the change and asks, as for any [terms update](#applying-an-update); once it is applied, run the exchange again.
-- **A change the run cannot continue under** -- to the linkage fields, keys, algorithm, strategy, output direction, or version, which your input was prepared under -- is refused and written as a proposal whether or not a terminal is attached.
+- **A change the run cannot continue under** -- to the linkage fields, keys, algorithm, strategy, output direction, or version, which your input was prepared under, or to your partner's `deduplicate`, which widens what your records disclose -- is refused (exit 64) and written as a proposal whether or not a terminal is attached. `alcove apply` shows a changed `deduplicate` among the changes it asks about.
 
 Your partner's run ends with a partner refusal (exit 76) when you decline or your run is unattended; it is not asked anything. To settle a change ahead of the next scheduled run instead, the party that made it sends an [`alcove update`](#changing-the-terms-of-an-established-partnership).
 

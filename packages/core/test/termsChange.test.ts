@@ -2,7 +2,11 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { prepareForExchange, runExchange } from "../src/exchange";
+import {
+  InvitationTermDivergenceError,
+  prepareForExchange,
+  runExchange,
+} from "../src/exchange";
 import {
   termsAdoptingPartnerTerms,
   termsReceivingPartnerSend,
@@ -66,6 +70,7 @@ interface Party {
   metadata: Metadata;
   payload?: Payload;
   terms?: Partial<LinkageTerms>;
+  expectedPartnerDeduplicate?: boolean;
   onTermsChange?: RunExchangeOptions["onTermsChange"];
 }
 
@@ -92,31 +97,30 @@ async function settle(changer: Party, partner: Party, changerResponds = false) {
     party: Party,
     conn: MessageConnection,
     role: "initiator" | "responder",
-  ) =>
-    runExchange(
-      conn,
-      role,
-      prepareForExchange(
-        {
-          metadata: party.metadata,
-          linkageTerms: {
-            ...baseTerms,
-            ...party.terms,
-            identity,
-            ...(party.payload !== undefined ? { payload: party.payload } : {}),
-          },
-        },
-        identity,
-        rows(identity),
-        ["first_name", "note", "extra"],
-      ),
+  ) => {
+    const prepared = prepareForExchange(
       {
-        psiLibrary,
-        ...(party.onTermsChange !== undefined
-          ? { onTermsChange: party.onTermsChange }
-          : {}),
+        metadata: party.metadata,
+        linkageTerms: {
+          ...baseTerms,
+          ...party.terms,
+          identity,
+          ...(party.payload !== undefined ? { payload: party.payload } : {}),
+        },
       },
+      identity,
+      rows(identity),
+      ["first_name", "note", "extra"],
     );
+    if (party.expectedPartnerDeduplicate !== undefined)
+      prepared.expectedPartnerDeduplicate = party.expectedPartnerDeduplicate;
+    return runExchange(conn, role, prepared, {
+      psiLibrary,
+      ...(party.onTermsChange !== undefined
+        ? { onTermsChange: party.onTermsChange }
+        : {}),
+    });
+  };
   const [changerResult, partnerResult] = await Promise.allSettled([
     run(
       "Changer Co",
@@ -169,6 +173,7 @@ test("the delta names a column the partner's terms add, in each direction", () =
   expect(delta).toStrictEqual({
     received: { added: ["extra"], removed: [] },
     sent: { added: [], removed: ["extra"] },
+    partnerDeduplicate: undefined,
     otherTerms: [],
   });
   expect(errors).toHaveLength(2);
@@ -186,6 +191,7 @@ test("the delta names a column the partner's terms remove, in each direction", (
   expect(validateCompatibility(local, partner).delta).toStrictEqual({
     received: { added: [], removed: ["extra"] },
     sent: { added: ["extra"], removed: [] },
+    partnerDeduplicate: undefined,
     otherTerms: [],
   });
 });
@@ -383,6 +389,53 @@ test("a change to the linkage keys cannot continue the run it was met in", async
   );
   expect(changes.map((change) => change.continuable)).toEqual([false]);
   expect(rejection(partnerResult)).toBeInstanceOf(TermsChangeRefusedError);
+  expect(partnerSent.every(isTermsOrDecisionFrame)).toBe(true);
+});
+
+for (const changerResponds of [false, true])
+  for (const changesColumns of [false, true])
+    test(`a changed partner deduplicate cannot continue the run it was met in (the changed party ${changerResponds ? "responds" : "initiates"}, ${changesColumns ? "with" : "without"} a column change)`, async () => {
+      const changes: TermsChange[] = [];
+      const { partnerResult, partnerSent } = await settle(
+        {
+          metadata: changesColumns ? sends("note", "extra") : sends("note"),
+          terms: { deduplicate: true },
+        },
+        {
+          metadata: sends("note"),
+          payload: { receive: columns("note") },
+          expectedPartnerDeduplicate: false,
+          onTermsChange: async (change) => {
+            changes.push(change);
+          },
+        },
+        changerResponds,
+      );
+      expect(changes).toHaveLength(1);
+      expect(changes[0]!.continuable).toBe(false);
+      expect(changes[0]!.delta.partnerDeduplicate).toStrictEqual({
+        expected: false,
+        presented: true,
+      });
+      expect(changes[0]!.delta.received).toStrictEqual(
+        changesColumns ? { added: ["extra"], removed: [] } : undefined,
+      );
+      expect(rejection(partnerResult)).toBeInstanceOf(TermsChangeRefusedError);
+      expect(partnerSent.every(isTermsOrDecisionFrame)).toBe(true);
+    });
+
+test("with no way to take a change on, a changed partner deduplicate is refused as the invitation binding refuses it", async () => {
+  const { partnerResult, partnerSent } = await settle(
+    { metadata: sends("note"), terms: { deduplicate: true } },
+    {
+      metadata: sends("note"),
+      payload: { receive: columns("note") },
+      expectedPartnerDeduplicate: false,
+    },
+  );
+  expect(rejection(partnerResult)).toBeInstanceOf(
+    InvitationTermDivergenceError,
+  );
   expect(partnerSent.every(isTermsOrDecisionFrame)).toBe(true);
 });
 

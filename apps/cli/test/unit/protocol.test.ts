@@ -385,6 +385,7 @@ import {
   UNNAMED_PARTNER_ACCOUNTING_NOTE,
   entryHelloResidueGuidance,
   undeclaredColumnsNotice,
+  payloadSendBeyondConfigurationNotice,
   fileSyncInactivityTimeoutMs,
   type RunProtocolResult,
   type SigningPersist,
@@ -4063,6 +4064,82 @@ test("a run with no undeclared input column names none", async () => {
       String(warning).includes("not sent to your partner"),
     ),
   ).toBe(false);
+});
+
+// --- A payload.send the metadata sends beyond ------------------------------
+
+function preparedSending(
+  listed: ReadonlyArray<string>,
+  sent: ReadonlyArray<string>,
+): PreparedExchange {
+  const terms = getDefaultLinkageTerms("Payload send fixture");
+  return {
+    ...minimalPrepared,
+    linkageTerms: {
+      ...terms,
+      payload: { send: listed.map((name) => ({ name })) },
+    },
+    metadata: sent.map((name) => ({
+      name,
+      type: "other" as const,
+      role: "payload" as const,
+      isPayload: true,
+    })),
+  };
+}
+
+async function runWithPrepared(prepared: PreparedExchange): Promise<void> {
+  mockFd3Open();
+  try {
+    await expect(
+      runProtocol({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: "" },
+        prepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test",
+        fileSyncRuntime: { eventStream: true },
+        signing: null,
+      }),
+    ).rejects.toThrow("key file path is empty");
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+}
+
+test("columns the metadata sends beyond payload.send are named on the log and the event stream before connecting", async () => {
+  const prepared = preparedSending(["notes"], ["notes", "county", "zip"]);
+  const notice = payloadSendBeyondConfigurationNotice(prepared);
+  expect(notice).toBe(
+    "This run tells your partner it sends 2 columns that payload.send in " +
+      "the configuration does not list, because the metadata sends them. " +
+      "To record them, add them to payload.send and send the change with " +
+      "alcove update. Columns: county, zip.",
+  );
+  await runWithPrepared(prepared);
+  expect(mockState.warnings).toContain(notice);
+  const warnings = takeFd3Lines().filter((l) => l.type === "warning");
+  expect(warnings.map((l) => l.source)).toEqual([
+    "payloadSendBeyondConfiguration",
+  ]);
+  expect(warnings[0].message).toBe(notice);
+});
+
+test("a payload.send that lists every column the metadata sends names none", async () => {
+  for (const prepared of [
+    preparedSending(["notes", "county"], ["county", "notes"]),
+    preparedSending(["notes", "county"], ["notes"]),
+    { ...minimalPrepared, metadata: preparedSending([], ["notes"]).metadata },
+  ])
+    expect(payloadSendBeyondConfigurationNotice(prepared)).toBeUndefined();
+  await runWithPrepared(preparedSending(["notes"], ["notes"]));
+  expect(
+    mockState.warnings.some((warning) =>
+      String(warning).includes("payload.send"),
+    ),
+  ).toBe(false);
+  expect(takeFd3Lines().filter((l) => l.type === "warning")).toEqual([]);
 });
 
 test("the warned run still completes", { timeout: 20_000 }, async () => {

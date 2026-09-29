@@ -2342,8 +2342,9 @@ export interface RunExchangeOptions {
    * Called at the terms exchange, before this party's decision is sent and so
    * before any linkage key or payload row moves, when the partner's terms
    * differ from this party's in a way taking them on resolves: the columns
-   * the partner sends against the columns this party receives, or, on the
-   * responder, any other agreed term. Resolving takes on
+   * the partner sends against the columns this party receives, the
+   * partner's `deduplicate` against {@link PreparedExchange.expectedPartnerDeduplicate},
+   * or, on the responder, any other agreed term. Resolving takes on
    * {@link TermsChange.adoptedTerms}, with this party's send set stated from
    * its metadata as always, and continues the run under them where the change
    * is {@link TermsChange.continuable}; the caller records them in the
@@ -2515,6 +2516,13 @@ export async function runExchange(
     willSignReceipt ? signingIdentity.certificate : undefined,
     {
       expectedReceive: receiveBaseline,
+      // A run that can take a change on meets a changed partner `deduplicate`
+      // as one it cannot continue under; without one, the invitation binding
+      // below refuses it.
+      expectedPartnerDeduplicate:
+        onTermsChange === undefined
+          ? undefined
+          : prepared.expectedPartnerDeduplicate,
       onTermsChange:
         onTermsChange === undefined
           ? undefined

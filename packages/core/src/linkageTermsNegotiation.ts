@@ -301,15 +301,29 @@ export interface PayloadColumnsChange {
 }
 
 /**
+ * The partner's `deduplicate` against the value this party holds it to.
+ */
+export interface PartnerDeduplicateChange {
+  /** The value this party holds the partner to. */
+  expected: boolean;
+  /** The value the partner's terms state. */
+  presented: boolean;
+}
+
+/**
  * How a partner's terms differ from this party's: `received` is the partner's
  * send set against the columns this party receives, `sent` this party's send
- * set against the columns the partner receives, and `otherTerms` a diagnostic
- * for each other term the two copies disagree on. A direction is undefined
- * where the two agree or the receiving party states no list.
+ * set against the columns the partner receives, `partnerDeduplicate` the
+ * partner's `deduplicate` against the value this party holds it to, and
+ * `otherTerms` a diagnostic for each other term the two copies disagree on. A
+ * direction is undefined where the two agree or the receiving party states no
+ * list; `partnerDeduplicate` is undefined where the two agree or this party
+ * holds the partner to no value.
  */
 export interface TermsDelta {
   received: PayloadColumnsChange | undefined;
   sent: PayloadColumnsChange | undefined;
+  partnerDeduplicate: PartnerDeduplicateChange | undefined;
   otherTerms: string[];
 }
 
@@ -323,13 +337,28 @@ interface CompatibilityResult {
 /**
  * {@link validateCompatibility}'s findings with each payload direction kept
  * apart from the other terms: `receivedMessage` and `sentMessage` are the
- * diagnostics for the two directions `delta` describes.
+ * diagnostics for the two directions `delta` describes, and
+ * `partnerDeduplicateMessage` the one for its `partnerDeduplicate`.
  */
 export interface TermsComparison {
   delta: TermsDelta;
   warnings: string[];
   receivedMessage: string | undefined;
   sentMessage: string | undefined;
+  partnerDeduplicateMessage: string | undefined;
+}
+
+/**
+ * What {@link compareTerms} holds the partner to in place of this party's own
+ * terms. `receive` is the column set this party holds its received payload
+ * to, compared against the partner's send set in place of
+ * `local.payload.receive`, whether or not that is stated.
+ * `partnerDeduplicate` is the `deduplicate` this party holds the partner to;
+ * undefined compares no `deduplicate`, since the term is each party's own.
+ */
+export interface TermsBaselines {
+  receive?: ReadonlyArray<string>;
+  partnerDeduplicate?: boolean;
 }
 
 function columnsChange(
@@ -373,14 +402,12 @@ export function validateCompatibility(
 
 /**
  * The comparison {@link validateCompatibility} reports, each payload direction
- * kept apart. `receiveBaseline`, when given, is the column set this party
- * holds its received payload to; it is compared against the partner's send
- * set in place of `local.payload.receive`, whether or not that is stated.
+ * kept apart, with the partner held to `baselines` where given.
  */
 export function compareTerms(
   local: LinkageTerms,
   partner: LinkageTerms,
-  receiveBaseline?: ReadonlyArray<string>,
+  baselines: TermsBaselines = {},
 ): TermsComparison {
   // Both accumulators hold CompatibilityMessageFragment rather than string, which
   // is the whole of the sweep below: a diagnostic reaches either list only
@@ -700,7 +727,7 @@ export function compareTerms(
         );
 
   const localReceive =
-    receiveBaseline ??
+    baselines.receive ??
     (local.payload?.receive === undefined
       ? undefined
       : namesOf(local.payload.receive));
@@ -718,15 +745,27 @@ export function compareTerms(
             compatibilityMessage`payload mismatch: local receive columns [${localShown}] do not match partner send columns [${partnerShown}]`,
         });
 
+  const expectedDeduplicate = baselines.partnerDeduplicate;
+  const partnerDeduplicate =
+    expectedDeduplicate === undefined ||
+    expectedDeduplicate === partner.deduplicate
+      ? undefined
+      : { expected: expectedDeduplicate, presented: partner.deduplicate };
+
   return {
     delta: {
       received: received?.change,
       sent: sent?.change,
+      partnerDeduplicate,
       otherTerms: errors,
     },
     warnings,
     receivedMessage: received?.message,
     sentMessage: sent?.message,
+    partnerDeduplicateMessage:
+      partnerDeduplicate === undefined
+        ? undefined
+        : compatibilityMessage`partner deduplicate mismatch: local expects ${bareTermsValue(String(partnerDeduplicate.expected))}, partner is ${bareTermsValue(String(partnerDeduplicate.presented))}`,
   };
 }
 
