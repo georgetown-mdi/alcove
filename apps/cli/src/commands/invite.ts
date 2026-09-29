@@ -459,8 +459,7 @@ type InviteReady =
       url: URL;
       output?: string;
       connection: InviterConnectionConfig;
-      /** The connection's `@path` credential references, read before anything
-       * is printed; the connection itself keeps the references. */
+      /** Values behind the connection's `@path` references; the connection keeps the references. */
       credentials: ResolvedConnectionCredentials;
       dataSpec: ResolvedDataSpec;
       prepared: PreparedExchange;
@@ -608,9 +607,8 @@ export async function validateInvite(params: {
       inviterConnectionFromURL(url, connectionOverridesFrom(options), ownRelay),
       "inviter",
     );
-    // A missing, unreadable, or empty credential file is a UsageError (exit 64)
-    // raised here, before the invitation is printed, so no invitation is left
-    // for a partner who cannot reach a server this party cannot log in to.
+    // Read before the invitation is printed: an unreadable file must not leave
+    // a printed invitation behind.
     const credentials = readConnectionCredentials(connection);
     // The file-sync half of this connection's options, absent on webrtc (whose
     // options block is the shared timeouts alone). The diagnostics and the retain

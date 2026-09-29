@@ -905,12 +905,7 @@ export async function runOnlineBootstrap(params: {
    * configuration saved below records.
    */
   provision?: ServerProvision;
-  /**
-   * The values of `connection`'s `@path` credential references, when the
-   * caller already read them (see {@link readConnectionCredentials}) so an
-   * unreadable file ended its command before it printed an invitation. Absent,
-   * they are read here.
-   */
+  /** Values behind `connection`'s `@path` references when the caller already read them; absent, read here. */
   credentials?: ResolvedConnectionCredentials;
 }): Promise<{ configWriteError?: unknown }> {
   // `connection` is already narrowed to the channels runProtocol supports
