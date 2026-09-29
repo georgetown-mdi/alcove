@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   descendants,
@@ -213,18 +213,21 @@ describe("the note shapes the check refuses", () => {
 });
 
 describe("the notes the shipped sources compose", () => {
-  const composed = scanTree(COMPOSING_TREE);
+  let composed;
+  beforeAll(async () => {
+    composed = await scanTree(COMPOSING_TREE);
+  });
 
-  it("reads the calls it is pointed at", async () => {
+  it("reads the calls it is pointed at", () => {
     expect(
-      (await composed).sites.length,
+      composed.sites.length,
       `the scan read no ${NOTE_FUNCTION} call in ${COMPOSING_TREE} at all, so it holds nothing`,
     ).toBeGreaterThan(0);
   });
 
-  it("composes every note from fixed text and escaped fragments", async () => {
+  it("composes every note from fixed text and escaped fragments", () => {
     expect(
-      (await composed).refusals,
+      composed.refusals,
       `each note is the call site's own literal text, with every interpolated fragment escaped by ${ESCAPE_FUNCTION} where it goes in: a note built any other way is exempted from the display cap on nothing but the caller's word`,
     ).toEqual([]);
   });

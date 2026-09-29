@@ -36,11 +36,7 @@ export function readSource(file) {
   return readFileSync(resolve(root, file), "utf8");
 }
 
-/**
- * Read repository-relative source files, in the order given. The reads are
- * issued together: a walk over a whole tree waits on hundreds of them, and a
- * loaded container answers them far sooner in parallel than one at a time.
- */
+/** Read repository-relative source files, in the order given, with the reads issued together. */
 export function readSources(files) {
   return Promise.all(
     files.map((file) => readFile(resolve(root, file), "utf8")),
