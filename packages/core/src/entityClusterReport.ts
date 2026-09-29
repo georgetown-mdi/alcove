@@ -24,9 +24,7 @@ export const ENTITY_CLUSTER_SHAPES_NAMED = 6;
  * signature of a key that named a group rather than a person, while a result
  * whose clusters are mostly `1 x 1` matched close to one-to-one and has nothing
  * to break up (docs/spec/PROTOCOL.md, Choosing linkage keys under closure).
- * The guide is suppressed for a 2 x 1 largest cluster only once either party
- * has more than twenty matched records, so a small test run may see it on an
- * ordinary result.
+ * A small test run may see the guide on an ordinary result.
  */
 export const ENTITY_CLUSTER_GUIDE_SHARE = 0.1;
 

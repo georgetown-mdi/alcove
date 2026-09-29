@@ -173,6 +173,8 @@ That route was taken, and it moves the environment question rather than closing 
 
 ### Two of the forty approve EdDSA, and none approves X25519
 
+The count of 40 active certificates and the two that approve EdDSA come from the CMVP registry as read when this note was written. They were unverified as of 2026-09-29: the registry is not reachable from the environment of that day's documentation audit, and the registry changes as certificates are added or retired.
+
 Reading all 40 policies for algorithm placement -- not only the three above -- gives an answer the OpenSSL Project's certificates alone would get wrong. **Two certificates have EdDSA in their approved-algorithm tables**, both FIPS 140-3:
 
 - **5116** (Ctrl IQ, Rocky Linux 9, module version `Rocky9.20250210`) -- `EDDSA KeyGen`, `SigGen` and `SigVer` against CAVP certificate A6328, FIPS 186-5, with Ed25519 and Ed448 named in the SSP tables and an EdDSA SigGen known-answer test at power-on.

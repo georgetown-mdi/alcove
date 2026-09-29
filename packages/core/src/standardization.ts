@@ -3445,8 +3445,8 @@ function readRowUnderPlan(
   // binds `split_on`. Multiplicity any other function realized is outside that
   // rule and stays fail-closed at both bounds below: it is never traded for a
   // completed run that matches fewer records than the terms describe, but
-  // passed to the strategy, which refuses it (fanOutReachedMatchingRefusal), or
-  // refused here when the row cannot be assembled at all.
+  // passed to the strategy (count-only and single-pass refuse it; the cascade
+  // does not), or refused here when the row cannot be assembled at all.
   const dropsOnExceedance = fansOut && !provenance.fromUnlistedFunction;
 
   // Bound the cross-product BEFORE materializing it: it multiplies each element's
@@ -3588,8 +3588,7 @@ function readRowUnderPlan(
  * - Singleton `Set<string>` -> the one string, unwrapped.
  * - Multi-value `Set<string>` -> the whole set, every candidate the record
  *   realized. Narrowing it here would match on less than the terms declare;
- *   single-pass matches the whole set, and the cascade refuses it
- *   ({@link fanOutReachedMatchingRefusal}) rather than narrowing.
+ *   both linkage strategies match the whole set.
  */
 export class StandardizedKeyIterable {
   [index: number]: KeyCandidates;

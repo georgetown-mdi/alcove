@@ -39,6 +39,8 @@ compliant implementation to **terminate with an error** on invalid Unicode data
 such as a lone surrogate, and Alcove refuses such a value rather than encoding
 it (see [Strings](#strings)).
 
+That equivalence rests on the `canonicalize` package's conformance to RFC 8785, which Alcove delegates to and has checked only against the test vectors committed in this repository. Its conformance beyond those vectors is unverified as of 2026-09-29.
+
 RFC 8785 builds both of its primitive serializations on ECMAScript
 ([ECMA-262](https://tc39.es/ecma262/)): number-to-string conversion
 (`Number.prototype.toString`, equivalently `JSON.stringify` of a number, cited

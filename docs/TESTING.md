@@ -900,8 +900,13 @@ level of its file. That takes a plugin in
 tests for each mutant by name, joining a `describe` title and a test title with
 a space, while Vitest 5 matches the name filter against the titles joined with
 ` > `. Without the plugin every nested test is filtered out of every mutant
-run: on `abortMarker.ts` the same 21 tests score 55% nested and 91% at the top
-level. The leg fails, naming the file and the mutated lines, when a mutant
+run: re-measured on 2026-09-29 with `ALCOVE_STRYKER_WORK_DIR=<dir> npm run
+test:mutation`, limited to `abortMarker.ts` by removing the other two files from
+`scoreFloors` for the run, `abortMarker.ts` scores 55.96% (61 of 109 mutants
+killed) when the 21 tests of `abortMarkerSubsystem.test.ts` sit in one
+`describe` and the plugin is off, and 91.74% (100 of 109) with the plugin on --
+the same as the file's tests at their real top level, where the plugin changes
+nothing. The leg fails, naming the file and the mutated lines, when a mutant
 survives with no tests completed against it: Stryker had tests selected for
 that mutant, so zero completed means the runner executed none, whatever the
 file's score reads.

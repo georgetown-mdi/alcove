@@ -26,6 +26,8 @@ When using a public coordination server, WebRTC additionally requires both parti
 
 ## Web invitation
 
+The statements in this section and the next about what the web pages show -- the tier ordering, which lines are always visible, and how a collapsed disclosure reads to assistive technology -- were checked against the code's structure, not in a browser or with assistive technology, and are unverified as of 2026-09-29.
+
 On the web, the inviting party composes an invitation from its own data file. The browser reads the file locally -- it is never uploaded -- and derives the invitation's linkage terms from the file's columns: the default terms, narrowed to the keys those columns can satisfy. Those derived terms are what the acceptor reviews and consents to, and the inviter's own half of the exchange runs on the same terms and the same parsed rows, so the two parties agree on what to link without the inviter re-deriving the terms or re-selecting the file.
 
 ### Quick path
