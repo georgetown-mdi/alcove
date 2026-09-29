@@ -34,8 +34,10 @@ import {
   redactAndDisplayPartyIdentity,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  termsStatingDeclaredPayloadSend,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
@@ -51,6 +53,7 @@ import type {
   RelayCredential,
   SFTPConnectionConfig,
   SigningIdentity,
+  TermsChange,
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
@@ -219,6 +222,48 @@ export function undeclaredColumnsNotice(
     "To send one, declare it in the configuration's metadata block with " +
       "is_payload: true; to leave one out without this notice, declare it " +
       "with role: ignored.",
+  );
+}
+
+const PAYLOAD_SEND_NOTICE_LISTED_COLUMNS = 10;
+
+/**
+ * The notice naming the columns this run states it sends that the
+ * configuration's authored `payload.send` does not list, or `undefined` when
+ * it lists every one or lists none. The run states its send set from its
+ * metadata (`termsStatingDeclaredPayloadSend`), so without this notice a
+ * column the configuration never listed reaches the partner unannounced on
+ * this side. The remedy precedes the names, so a sink that truncates the
+ * message cuts names rather than the remedy. Composed raw: the names are this
+ * party's metadata, escaped once at each sink.
+ */
+export function payloadSendBeyondConfigurationNotice(
+  prepared: Pick<PreparedExchange, "linkageTerms" | "metadata">,
+): string | undefined {
+  const authored = prepared.linkageTerms.payload?.send;
+  if (authored === undefined) return undefined;
+  const listed = new Set(authored.map(({ name }) => name));
+  const beyond = (
+    termsStatingDeclaredPayloadSend(prepared.linkageTerms, prepared.metadata)
+      .payload?.send ?? []
+  )
+    .map(({ name }) => name)
+    .filter((name) => !listed.has(name));
+  if (beyond.length === 0) return undefined;
+  const plural = beyond.length > 1;
+  const remaining = beyond.length - PAYLOAD_SEND_NOTICE_LISTED_COLUMNS;
+  const names =
+    beyond
+      .slice(0, PAYLOAD_SEND_NOTICE_LISTED_COLUMNS)
+      .map(redactPrivateKeyMaterial)
+      .join(", ") + (remaining > 0 ? `, and ${remaining} more` : "");
+  return (
+    `This run tells your partner it sends ${beyond.length} ` +
+    `column${plural ? "s" : ""} that payload.send in the configuration does ` +
+    `not list, because the metadata sends ${plural ? "them" : "it"}. To ` +
+    `record ${plural ? "them" : "it"}, add ${plural ? "them" : "it"} to ` +
+    `payload.send and send the change with alcove update. ` +
+    `${plural ? "Columns" : "Column"}: ${names}.`
   );
 }
 
@@ -630,6 +675,7 @@ async function runExchangeStage(params: {
   recordPayloadReceiveFill:
     ((columns: string[]) => void | Promise<void>) | undefined;
   payloadReceiveFillNoticeDeferred: boolean | undefined;
+  onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
   recordOutput: RecordOutput | undefined;
   stageTimer: { open: (id: string) => void; close: () => void };
   psiProgress: PsiProgressDisplay;
@@ -649,6 +695,7 @@ async function runExchangeStage(params: {
     signing,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    onTermsChange,
     recordOutput,
     stageTimer,
     psiProgress,
@@ -742,6 +789,7 @@ async function runExchangeStage(params: {
                 }),
               );
             },
+      ...(onTermsChange !== undefined ? { onTermsChange } : {}),
       // Advertise the observed SFTP host key for cross-party
       // reconciliation only when the exchange runs over the
       // authenticated, AEAD-wrapped channel (`secure` set): the value is
@@ -1992,6 +2040,15 @@ async function prepareTransport(
     log,
     emit,
   });
+  const payloadSendNotice = payloadSendBeyondConfigurationNotice(prepared);
+  if (payloadSendNotice !== undefined) {
+    log.warn(
+      redactAndSanitizeForDisplay(payloadSendNotice, {
+        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      }),
+    );
+    emit((e) => e.warning("payloadSendBeyondConfiguration", payloadSendNotice));
+  }
   const checked = await checkRunLocalInputs({
     connection,
     prepared,
@@ -2432,6 +2489,14 @@ export interface RunProtocolOptions {
    */
   payloadReceiveFillNoticeDeferred?: boolean;
   /**
+   * Settles partner terms that differ from this party's at the terms
+   * exchange (`onTermsChange` in `@alcove/core`): resolving takes them on and
+   * continues the run, a throw refuses. Called before any key or payload
+   * moves. Omit it on a run with no configuration to record into, which then
+   * refuses every difference.
+   */
+  onTermsChange?: (change: TermsChange) => Promise<void>;
+  /**
    * Whether a caller's own {@link preflightRun} call already emitted
    * {@link SIGNING_WITHOUT_RECORD_WARNING} for this run
    * ({@link PreflightRunResult.signingWithoutRecordWarned}), so
@@ -2536,6 +2601,7 @@ export async function runProtocol(
     signing = null,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    onTermsChange,
     signingWithoutRecordWarned = false,
     undeclaredColumnsWarned = false,
   } = options;
@@ -2866,6 +2932,7 @@ export async function runProtocol(
       signing,
       recordPayloadReceiveFill,
       payloadReceiveFillNoticeDeferred,
+      onTermsChange,
       recordOutput,
       stageTimer,
       psiProgress,

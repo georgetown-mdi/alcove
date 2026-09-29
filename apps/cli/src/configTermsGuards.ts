@@ -18,6 +18,9 @@ import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
  * it, and a terms update applied to it -- so neither party consents to terms
  * whose first run is refused.
  *
+ * A `payload.send` that differs from what the metadata transmits is not
+ * refused here: the run states the transmitted columns in its place.
+ *
  * The metadata and standardization checks run only where the configuration
  * holds an explicit block: without one the run infers it from the input file,
  * which none of these commands reads.
@@ -29,13 +32,7 @@ export function assertConfigTermsRunnable(
   local: { metadata?: Metadata; standardization?: Standardization },
 ): void {
   const { metadata, standardization } = local;
-  // Ahead of the payload-disclosure check, so a count-only configuration whose
-  // metadata transmits a column is told the specific rule it breaks.
   assertCountOnlyTransmitsNoColumn(terms.algorithm, metadata);
-  // A payload.send that misstates what the metadata transmits would put a
-  // dictionary on the partner's consent display that the run does not honor.
-  if (metadata !== undefined)
-    assertPayloadSendDisclosed(terms.payload, metadata, terms.output);
   if (standardization !== undefined)
     assertStandardizationMatchesTerms(standardization, terms);
   assertAlgorithmImplemented(terms.algorithm);
@@ -44,4 +41,22 @@ export function assertConfigTermsRunnable(
   // A step whose compile throws aborts the run only once the pipeline is
   // built, after the partner has agreed to the terms naming it.
   assertTransformsCompile(terms, standardization);
+}
+
+/**
+ * {@link assertConfigTermsRunnable}, for terms that leave the configuration
+ * in a document the partner consents to -- an offline invitation or a terms
+ * update -- and also refusing a `payload.send` that differs from what the
+ * metadata transmits: the document states `payload.send` as written, so the
+ * partner would consent to columns the run does not send.
+ *
+ * @throws {UsageError} naming the rule the terms break.
+ */
+export function assertConfigTermsSendable(
+  terms: LinkageTerms,
+  local: { metadata?: Metadata; standardization?: Standardization },
+): void {
+  assertConfigTermsRunnable(terms, local);
+  if (local.metadata !== undefined)
+    assertPayloadSendDisclosed(terms.payload, local.metadata, terms.output);
 }

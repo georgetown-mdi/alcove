@@ -390,7 +390,17 @@ export {
   partnerBoundTerms,
   validateCompatibility,
 } from "./linkageTermsNegotiation";
-export type { PartnerBoundTerms } from "./linkageTermsNegotiation";
+export type {
+  PartnerBoundTerms,
+  PayloadColumnsChange,
+  TermsDelta,
+  PartnerDeduplicateChange,
+} from "./linkageTermsNegotiation";
+export {
+  TERMS_CHANGE_NOT_ACCEPTED_REASON,
+  TermsChangeRefusedError,
+} from "./protocolSetup";
+export type { TermsChange } from "./protocolSetup";
 export type {
   CountOnlyShapeViolation,
   ResolvedMatching,

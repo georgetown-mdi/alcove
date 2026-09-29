@@ -49,6 +49,31 @@ export function termsResolvingPayloadReceive(
 }
 
 /**
+ * `terms` with a stated `payload.receive` that names other columns than
+ * `counterpartTerms` state in `payload.send` replaced by that send set, each
+ * column by name alone; any other `terms` is returned unchanged. A party whose
+ * terms these are and that proceeded past the terms exchange took that send
+ * set on (`TermsChangeOptions`, protocolSetup.ts), so the counterpart holds
+ * it to the set from there, as the party does itself.
+ */
+export function termsResolvingChangedPayloadReceive(
+  terms: LinkageTerms,
+  counterpartTerms: LinkageTerms,
+): LinkageTerms {
+  if (terms.algorithm === "psi-c" || !terms.output.expectsOutput) return terms;
+  const receive = terms.payload?.receive;
+  if (receive === undefined) return terms;
+  const sent = (counterpartTerms.payload?.send ?? []).map(({ name }) => name);
+  const received = new Set(receive.map(({ name }) => name));
+  if (received.size === sent.length && sent.every((name) => received.has(name)))
+    return terms;
+  return {
+    ...terms,
+    payload: { ...terms.payload, receive: sent.map((name) => ({ name })) },
+  };
+}
+
+/**
  * The one line a front end shows or logs when a run fills `payload.receive`
  * from the partner's declared send set. Composed raw: the names are the
  * partner's, so the sink that shows or logs the line escapes it once.

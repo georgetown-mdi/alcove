@@ -57,6 +57,7 @@ import { assertIdentityMatchesAgreedTerms } from "../signingIdentityDivergence";
 import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
 import { confirmOutboundPayloadConsent } from "../outboundPayloadConsent";
+import { termsChangeHandler } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
 import {
@@ -1278,6 +1279,16 @@ export async function handler(argv: Arguments): Promise<void> {
         signing,
         recordPayloadReceiveFill: (columns) =>
           persistFilledPayloadReceive(options.configFile, columns),
+        // A terminal on stdin answers the question; stdin carrying the input
+        // CSV cannot.
+        onTermsChange: termsChangeHandler({
+          configPath: options.configFile,
+          keyPath: authentication.keyFilePath,
+          existing: exchangeDataSpec,
+          interactive: process.stdin.isTTY === true && input !== "-",
+          log,
+          logFile,
+        }),
         signingWithoutRecordWarned,
         undeclaredColumnsWarned,
       });

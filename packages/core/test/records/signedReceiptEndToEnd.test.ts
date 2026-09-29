@@ -15,6 +15,7 @@ import {
   ConnectionError,
   createMessagePipe,
 } from "../../src/connection/messageConnection";
+import { misstatingPayloadSend } from "../utils/misstatedPayloadSend";
 import {
   OperatorConfigError,
   TransportPublishIndeterminateError,
@@ -1503,8 +1504,9 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
 
   test("a received payload outside the consented set terminates with a record too", async () => {
     // The route past the payload exchange that is not the swap. The initiator
-    // has locked in a column set the responder does not transmit, so
-    // reconcileReceivedPayload refuses AFTER both payloads have crossed: this
+    // has locked in a column set the responder does not transmit, and the
+    // responder's terms claim to send it, so reconcileReceivedPayload
+    // refuses AFTER both payloads have crossed: this
     // party's own data has been handed to the transport whatever came back, so the
     // disclosure is owed a record exactly as a terminated swap's is. Both sides
     // run unsigned, so the receipt step plays no part in producing it.
@@ -1519,7 +1521,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
         psiLibrary,
       }),
       runExchange(
-        connResponder,
+        misstatingPayloadSend(connResponder, [{ name: "a_column_never_sent" }]),
         "responder",
         preparedWithPayload("Responder Co", payloadServer),
         { psiLibrary },

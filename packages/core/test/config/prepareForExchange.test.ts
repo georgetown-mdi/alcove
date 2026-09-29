@@ -1311,16 +1311,6 @@ const refusalCases: Array<{
     messageRendered: true,
   },
   {
-    what: "a payload.send that is not what metadata discloses",
-    says: /payload\.send must name exactly the columns/,
-    spec: {
-      linkageTerms: { ...terms, payload: { send: [{ name: "note" }] } },
-      metadata,
-    },
-    errorClass: UsageError,
-    messageRendered: false,
-  },
-  {
     what: "a disclosed column whose name is too long to carry",
     says: /limit on a column name/,
     spec: {

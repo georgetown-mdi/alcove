@@ -295,9 +295,11 @@ in the same part of the display, and nothing on either surface compares them. Th
 comparison is real, but it is not the display's. An inviter declaring it will
 receive no payload column, against an input file whose metadata discloses some, is
 a disagreement `alcove accept` states during the input-versus-terms checking it
-already performs, before the terms display and the prompt, and one
-`assertPayloadSendDisclosed` refuses at prepare time, before this party connects,
-so the columns never cross rather than being rejected once they have arrived.
+already performs, before the terms display and the prompt, and one the inviting
+party meets as a terms change at the terms exchange
+([PROTOCOL.md](../spec/PROTOCOL.md#a-terms-change-at-the-terms-exchange)),
+refusing it unless it takes the columns on, so the columns never cross rather
+than being rejected once they have arrived.
 
 That refusal is keyed on direction, not on the declaration alone, which is what
 lets it sit beside the display without contradicting it. A refusal keyed on the
