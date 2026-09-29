@@ -23,8 +23,6 @@ import {
   readJobApiConfig,
 } from "@jobs/gate";
 
-import type { JobApiConfig } from "@jobs/gate";
-
 /** The path the app's server API routes are served under. */
 const API_PATH_ROOT = "/api";
 
@@ -117,7 +115,7 @@ function isHostedApiPath(spelling: string): boolean {
 }
 
 /**
- * Whether the request for `url` is refused under `readConfig`'s profile: on the
+ * Whether the request for `url` is refused under the current profile: on the
  * hosted profile, any spelling of its path lands under `/api` outside
  * {@link HOSTED_API_PREFIXES}; on the console profile, any spelling lands under
  * one of them, or under `/api` at all while the job API is not enabled.
@@ -125,20 +123,16 @@ function isHostedApiPath(spelling: string): boolean {
  * wider than the router's own resolution and never narrower -- a spelling the
  * router resolves to a route under `/api` is refused whether or not this agrees
  * with the router on which route that is. A path still decoding at the round
- * bound is refused on being under `/api` at all. The configuration is read only
- * for a path under `/api`.
+ * bound is refused on being under `/api` at all.
  */
-function isRefusedApiPath(
-  url: string,
-  readConfig: () => JobApiConfig,
-): boolean {
+function isRefusedApiPath(url: string): boolean {
   const { spellings, settled } = spellingsOf(new URL(url).pathname);
   const underApi = spellings.filter((spelling) =>
     isUnderPrefix(spelling, API_PATH_ROOT),
   );
   if (underApi.length === 0) return false;
   if (!settled) return true;
-  const config = readConfig();
+  const config = readJobApiConfig();
   if (config.consoleProfile)
     return !isJobApiEnabled(config) || underApi.some(isHostedApiPath);
   return underApi.some((spelling) => !isHostedApiPath(spelling));
@@ -155,8 +149,7 @@ export function withApiGuard(
   route: (request: Request) => Response | Promise<Response>,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
-    if (isRefusedApiPath(request.url, () => readJobApiConfig()))
-      return jobEmptyResponse(404);
+    if (isRefusedApiPath(request.url)) return jobEmptyResponse(404);
     return route(request);
   };
 }

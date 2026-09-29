@@ -15,16 +15,16 @@ import {
 // the console profile refuses, or the job gate answers it on a profile where
 // the job API is not enabled.
 //
-// The refusal (apps/web/src/utils/apiNamespace.ts) is what keeps a public
-// deployment from routing to anything under /api but the peer-coordination
-// broker, so the router's own answers -- the app document, its canonicalizing
-// redirect, the SSR path's JSON refusal -- are not observable there, and what
-// keeps the console from serving the broker at all. Its
-// allowlist is a hand-written list of prefixes, and a route added outside it is
-// served or refused by whatever the list happens to say, with nothing failing
-// either way: an added job-gated route is refused ahead of its own gate, which
-// is right, but an added ungated route is routed to on the public deployment,
-// which is not. This is that obligation as a check.
+// The refusal (apps/web/src/utils/apiNamespace.ts) keeps a public deployment
+// from routing to anything under /api but the peer-coordination broker, so the
+// router's own answers -- the app document, its canonicalizing redirect, the
+// SSR path's JSON refusal -- are not observable there. It also keeps the
+// console from serving the broker at all. Its allowlist is a hand-written list
+// of prefixes, and a route added outside it is served or refused by whatever
+// the list happens to say, with nothing failing either way: an added job-gated
+// route is refused ahead of its own gate, which is right, but an added ungated
+// route is routed to on the public deployment, which is not. This is that
+// obligation as a check.
 //
 // It is an INCLUSION check over the ROUTER'S OWN ACCOUNT of what it serves:
 // the entries come from the generated route tree
@@ -56,12 +56,10 @@ import {
 // states that bypass), so an asset under public/api would answer past the
 // refusal entirely. None may exist.
 //
-// The peer server (apps/web/src/peerServer.ts) attaches the signaling
-// WebSocket's upgrade listener to the whole HTTP server once any route runs it,
-// so every route module importing it must sit under the allowlist, which the
-// console refuses. That arm is syntactic too: it reads import specifiers, and
-// the peer server's own refusal on the console profile is
-// apps/web/test/unit/peerServer.test.ts's claim.
+// One arm holds every route module outside the allowlist to not importing the
+// peer server (apps/web/src/peerServer.ts). It reads a module's own static
+// import specifiers only; the peer server's refusal to start on the console
+// profile is apps/web/test/unit/peerServer.test.ts's claim.
 
 const SELF = "scripts/api-namespace-allowlist.test.mjs";
 
