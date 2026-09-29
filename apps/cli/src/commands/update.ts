@@ -1,11 +1,10 @@
 import type { Argv, Arguments } from "yargs";
 
 import {
-  disclosedColumnNames,
   encodeTermsUpdate,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
-  termsStatingDeclaredPayloadSend,
+  termsUpdateFor,
   UsageError,
 } from "@alcove/core";
 
@@ -87,18 +86,9 @@ export async function handler(argv: Arguments): Promise<void> {
       // Without metadata the columns are known only from the input file, which
       // this command does not read, and the partner fills its receive list at
       // the first exchange.
-      const statedTerms =
-        source.metadata !== undefined
-          ? termsStatingDeclaredPayloadSend(terms, source.metadata)
-          : terms;
-      const disclosedPayloadColumns =
-        source.metadata !== undefined
-          ? disclosedColumnNames(source.metadata)
-          : undefined;
-      const update = await encodeTermsUpdate(
-        { linkageTerms: statedTerms, disclosedPayloadColumns },
-        sharedSecret,
-      );
+      const composed = termsUpdateFor(terms, source.metadata);
+      const statedTerms = composed.linkageTerms;
+      const update = await encodeTermsUpdate(composed, sharedSecret);
 
       // Before the update is printed, so a failed write never follows
       // sending it.

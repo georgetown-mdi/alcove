@@ -6,8 +6,11 @@ import {
   TermsUpdateRefusedError,
   decodeTermsUpdate,
   encodeTermsUpdate,
+  termsUpdateFor,
   termsUpdatePartnership,
 } from "../src/config/termsUpdate";
+import { inferMetadata } from "../src/config/metadata";
+import type { Metadata } from "../src/config/metadata";
 import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
 import { fromBase64Url, toBase64Url } from "../src/utils/crypto";
 
@@ -169,5 +172,23 @@ describe("terms update", () => {
     )}`;
     const err = await refusal(forged, secret);
     expect(err.check).toBe("format");
+  });
+});
+
+describe("termsUpdateFor", () => {
+  const metadata: Metadata = [
+    ...inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
+    { name: "notes", type: "other", role: "payload", isPayload: true },
+    { name: "county", type: "other", role: "ignored", isPayload: false },
+  ];
+
+  test("states payload.send and the disclosed columns from the metadata", () => {
+    const update = termsUpdateFor(terms, metadata);
+    expect(update.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
+    expect(update.disclosedPayloadColumns).toEqual(["notes"]);
+  });
+
+  test("takes the terms as written and states no columns without metadata", () => {
+    expect(termsUpdateFor(terms, undefined)).toEqual({ linkageTerms: terms });
   });
 });

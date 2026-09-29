@@ -1522,6 +1522,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               onGrantWorkingFolder={grantWorkingFolder}
               onStopUsingWorkingFolder={stopUsingWorkingFolder}
               onReinviteToChangeTerms={() => reinviteNow("detail")}
+              onTermsChanged={() => setRecordReads((reads) => reads + 1)}
               canReinvite={canReinviteFromRecord(record)}
               compromiseResponse={compromiseResponse}
               runInFlight={runInFlight}

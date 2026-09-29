@@ -1,4 +1,8 @@
-import { UsageError } from "@alcove/core";
+import {
+  PLACEHOLDER_IDENTITY,
+  UsageError,
+  unnamedPartyIdentity,
+} from "@alcove/core";
 
 import { promptFreeText, writePromptLine } from "./util/prompt";
 
@@ -9,28 +13,7 @@ const IDENTITY_FLAG_HELP = '--identity "name, org, contact"';
 const PARTNER_READS_IT =
   "The identity is the name your partner reads in the agreed linkage terms";
 
-/**
- * The placeholder `alcove init` writes into a fresh template when given no
- * `--identity`, and the one value no resolver here accepts. It sits beside
- * the resolvers rather than the template writer, so the written and refused
- * values share one definition.
- *
- * It must be non-empty for the template to parse -- the linkage-terms schema
- * gives identity a one-character minimum -- so no other check catches it;
- * only this exact string distinguishes it from a name the operator chose.
- */
-export const PLACEHOLDER_IDENTITY = "REPLACE_WITH_YOUR_IDENTITY";
-
-/**
- * Whether a value is that placeholder standing where a name belongs.
- *
- * The comparison is whole-string against the trimmed value, so a label that
- * merely contains this text, or differs from it in case, is a name like any
- * other: only the string the template writes, alone on the field, is refused.
- */
-function isPlaceholderIdentity(identity: string): boolean {
-  return identity.trim() === PLACEHOLDER_IDENTITY;
-}
+export { PLACEHOLDER_IDENTITY };
 
 /**
  * The form a label an operator typed takes on its way into linkage terms:
@@ -142,7 +125,7 @@ export function configuredIdentityStillPlaceholder(configPath: string): string {
 export function resolveIdentity(identity: string | undefined): string {
   const chosen = normalizeSuppliedIdentity(identity);
   if (chosen.length === 0) throw new UsageError(IDENTITY_REQUIRED);
-  if (isPlaceholderIdentity(chosen))
+  if (unnamedPartyIdentity(chosen) === "placeholder")
     throw new UsageError(IDENTITY_STILL_PLACEHOLDER);
   return chosen;
 }
@@ -163,7 +146,7 @@ export function optionalIdentity(
 ): string | undefined {
   const chosen = normalizeSuppliedIdentity(identity);
   if (chosen.length === 0) return undefined;
-  if (isPlaceholderIdentity(chosen))
+  if (unnamedPartyIdentity(chosen) === "placeholder")
     throw new UsageError(IDENTITY_STILL_PLACEHOLDER);
   return chosen;
 }
@@ -322,9 +305,10 @@ function resolveConfiguredIdentity(
   configPath: string,
   required: (configPath: string) => string,
 ): string {
-  if (configuredIdentity === undefined || configuredIdentity.trim() === "")
+  const unnamed = unnamedPartyIdentity(configuredIdentity);
+  if (unnamed === "absent" || configuredIdentity === undefined)
     throw new UsageError(required(configPath));
-  if (isPlaceholderIdentity(configuredIdentity))
+  if (unnamed === "placeholder")
     throw new UsageError(configuredIdentityStillPlaceholder(configPath));
   return configuredIdentity;
 }

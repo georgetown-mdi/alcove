@@ -13,6 +13,7 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
   parseExchangeSpec,
+  termsUpdateFor,
 } from "@alcove/core";
 import type { ExchangeSpec, LinkageTerms, Metadata } from "@alcove/core";
 
@@ -193,6 +194,19 @@ describe("alcove update", () => {
     expect(update.disclosedPayloadColumns).toEqual(["notes", "county"]);
     expect(printed).not.toContain(partnership.secret);
     expect(fs.readFileSync(partnership.a.key, "utf8")).toBe(keyBefore);
+  });
+
+  test("prints the update core's shared composition encodes for the configuration", async () => {
+    editAgencyA();
+    const spec = readSpec(partnership.a.config);
+    const printed = await runUpdate();
+
+    expect(printed).toBe(
+      await encodeTermsUpdate(
+        termsUpdateFor(spec.linkageTerms, spec.metadata),
+        partnership.secret,
+      ),
+    );
   });
 
   test("writes the stated payload.send into a configuration that leaves it unset, keeping comments", async () => {

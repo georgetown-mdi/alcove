@@ -19,6 +19,9 @@ import {
   MAX_ENCODED_INVITATION_LENGTH,
 } from "./invitation.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
+import { disclosedColumnNames } from "./metadata.js";
+import type { Metadata } from "./metadata.js";
+import { termsStatingDeclaredPayloadSend } from "../payloadExchange.js";
 
 // --- Terms update ------------------------------------------------------------
 
@@ -43,6 +46,23 @@ export interface TermsUpdate {
    * Omitted where the sending party's configuration declares no metadata.
    */
   disclosedPayloadColumns?: string[];
+}
+
+/**
+ * The {@link TermsUpdate} a party's configuration makes: its linkage terms
+ * with `payload.send` stated from `metadata` as the terms exchange states it
+ * (`termsStatingDeclaredPayloadSend`), and the columns `metadata` discloses.
+ * Without metadata the terms are taken as written and no columns are stated.
+ */
+export function termsUpdateFor(
+  linkageTerms: LinkageTerms,
+  metadata: Metadata | undefined,
+): TermsUpdate {
+  if (metadata === undefined) return { linkageTerms };
+  return {
+    linkageTerms: termsStatingDeclaredPayloadSend(linkageTerms, metadata),
+    disclosedPayloadColumns: disclosedColumnNames(metadata),
+  };
 }
 
 /** The `kind` a terms update's body states. */
