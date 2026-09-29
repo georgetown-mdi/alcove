@@ -4,8 +4,14 @@ import dns from "node:dns";
 
 import { RTCPeerConnection } from "werift";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
+import logLibrary from "loglevel";
 
-import { ConnectionError, generateSharedSecret } from "@alcove/core";
+import {
+  ConnectionError,
+  generateSharedSecret,
+  setDiagnosticSink,
+  setLogLevel,
+} from "@alcove/core";
 
 import { openWebRtcMessageConnection } from "../../../src/connection/webrtc/webrtcMessageConnection";
 import {
@@ -21,6 +27,7 @@ import {
   packCloseSentinel,
   packValue,
 } from "../../../src/connection/webrtc/peerjsWire";
+import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import { startBrokerProcess } from "../../signaling/brokerProcess";
 
 import type { BrokerLocation } from "../../../src/connection/webrtc/brokerClient";
@@ -62,6 +69,8 @@ const BUILT_IN_STUN = ((uri: string) => {
 
 let broker: BrokerProcess;
 const openConnections: Array<MessageConnection> = [];
+
+snapshotDiagnosticSinkAndLevel();
 
 function location(): BrokerLocation {
   return {
@@ -135,6 +144,44 @@ test("two CLI peers exchange frames in both directions over a real channel", asy
     from: "inviter",
   });
 }, 120_000);
+
+test.each(["inviter", "acceptor"] as const)(
+  "a partner arriving after the %s's first connection attempt ended is met by a later one",
+  async (first) => {
+    // Short attempts, so the first party tears its first registration and
+    // peer connection down and registers the same id again before the
+    // second party starts: the real broker has to take that re-registration.
+    const attemptMs = 12_000;
+    const common = {
+      ...partyOptions(generateSharedSecret()),
+      attemptMs,
+      attemptOfferQuietMs: 4_000,
+    };
+    const second = first === "inviter" ? "acceptor" : "inviter";
+    const lines: Array<string> = [];
+    setDiagnosticSink((_method, _prefix, args) => {
+      lines.push(args.map((arg) => String(arg)).join(" "));
+    });
+    setLogLevel(logLibrary.levels.DEBUG);
+    const early = openWebRtcMessageConnection({ ...common, role: first });
+    early.catch(() => {
+      // Awaited below; this only keeps an early failure from going unhandled.
+    });
+    await new Promise((resolve) => setTimeout(resolve, attemptMs + 3_000));
+    expect(
+      lines.some((line) => line.includes("starting connection attempt 2")),
+    ).toBe(true);
+    const [waited, arrived] = await Promise.all([
+      early,
+      openWebRtcMessageConnection({ ...common, role: second }),
+    ]);
+    openConnections.push(waited, arrived);
+
+    await arrived.send({ step: "hello", from: second });
+    expect(await waited.receive()).toEqual({ step: "hello", from: second });
+  },
+  120_000,
+);
 
 test("a frame past the chunk threshold arrives byte-identical in both directions", async () => {
   const { inviter, acceptor } = await connectedPair();

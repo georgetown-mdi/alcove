@@ -11,7 +11,7 @@ import {
   iceServersFromConnection,
   relayCredentialForRun,
   relayCredentialNotice,
-  relayCredentialRenewalNotice,
+  relayCredentialAttemptNotice,
   turnEntryNeedsSecretMessage,
 } from "../../../src/connection/webrtc/weriftPeer";
 
@@ -256,14 +256,38 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
   expect(mixed).not.toContain("own.example");
 });
 
-test("a renewed credential's notice names the wait and the new expiry", () => {
-  expect(relayCredentialRenewalNotice(RUN_CREDENTIAL, 30 * 60_000 + 7)).toBe(
-    "the exchange partner has not connected within 30 minutes, so the " +
-      "connection attempt restarts with a new relay credential that " +
-      "expires at 2026-01-01T01:00:00.000Z",
+test("a later attempt's credential notice names the wait and the new expiry", () => {
+  expect(
+    relayCredentialAttemptNotice(
+      RUN_CREDENTIAL,
+      30 * 60_000 + 7,
+      "partner-not-connected",
+    ),
+  ).toBe(
+    "the exchange partner has not connected within 30 minutes, so a new " +
+      "connection attempt starts with a new relay credential that expires " +
+      "at 2026-01-01T01:00:00.000Z",
   );
-  expect(relayCredentialRenewalNotice(RUN_CREDENTIAL, 60 * 60_000)).toMatch(
-    /^the exchange partner has not connected within 60 minutes,/,
+  expect(
+    relayCredentialAttemptNotice(
+      RUN_CREDENTIAL,
+      60 * 60_000,
+      "partner-not-connected",
+    ),
+  ).toMatch(/^the exchange partner has not connected within 60 minutes,/);
+});
+
+test("an attempt that meets a partner's new connection says so rather than naming the wait", () => {
+  expect(
+    relayCredentialAttemptNotice(
+      RUN_CREDENTIAL,
+      30 * 60_000,
+      "partner-reconnected",
+    ),
+  ).toBe(
+    "the exchange partner started a new connection, so a new connection " +
+      "attempt starts to meet it with a new relay credential that expires " +
+      "at 2026-01-01T01:00:00.000Z",
   );
 });
 
