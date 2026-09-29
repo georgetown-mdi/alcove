@@ -5,6 +5,7 @@ import {
   JsonStructureBoundError,
   parseBoundedJson,
 } from "./utils/boundedJson.js";
+import { mergeUntouchedLines } from "./utils/mergeUntouchedLines.js";
 import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
@@ -121,15 +122,16 @@ export function parseSensitiveYaml(
 /**
  * Parse, edit, and re-serialize a YAML {@link Document} in one step, for an
  * in-place edit that preserves comments and key order (the host-key-pin write,
- * which must not rewrite the whole file). The live {@link Document} never leaves
- * this module: the caller's `edit` callback receives it to mutate (e.g. `setIn`)
- * and returns nothing, so a caller cannot accidentally `toJS()`/`toString()`/
- * `JSON.stringify` it back into an error elsewhere -- the one leak channel the
- * ESLint ban cannot see (a method call on a Document instance, not on the YAML
- * namespace). Guards the syntax-error channel (doc.errors, before the edit) and
- * the deferred-alias channel (the alias shows only when toString materializes
- * the document, after the edit). An error the `edit` callback itself throws
- * propagates unchanged.
+ * which must not rewrite the whole file). Lines the edit does not change keep
+ * their bytes from `source` where {@link keepUntouchedSourceLines} can restore
+ * them. The live {@link Document} never leaves this module: the caller's
+ * `edit` callback receives it to mutate (e.g. `setIn`) and returns nothing, so
+ * a caller cannot accidentally `toJS()`/`toString()`/`JSON.stringify` it back
+ * into an error elsewhere -- the one leak channel the ESLint ban cannot see (a
+ * method call on a Document instance, not on the YAML namespace). Guards the
+ * syntax-error channel (doc.errors, before the edit) and the deferred-alias
+ * channel (the alias shows only when toString materializes the document, after
+ * the edit). An error the `edit` callback itself throws propagates unchanged.
  */
 export function editSensitiveYamlDocument(
   source: string,
@@ -144,10 +146,32 @@ export function editSensitiveYamlDocument(
   }
   if (doc.errors.length > 0) throw yamlParseFailure(fileLabel);
   edit(doc);
+  let edited: string;
   try {
-    return doc.toString();
+    edited = doc.toString();
   } catch {
     throw labelledFailure(fileLabel, "could not be serialized as YAML");
+  }
+  return keepUntouchedSourceLines(source, edited);
+}
+
+/**
+ * `edited` with every line the edit left unchanged restored to its bytes in
+ * `source` ({@link mergeUntouchedLines}), where the result parses and renders
+ * back to exactly `edited`; otherwise `edited` unchanged. A failure here only
+ * gives up the restoration, so it is not reported.
+ */
+function keepUntouchedSourceLines(source: string, edited: string): string {
+  try {
+    const roundTrip = YAML.parseDocument(source, SAFE_YAML_OPTIONS).toString();
+    const merged = mergeUntouchedLines(source, roundTrip, edited);
+    if (merged === undefined) return edited;
+    const check = YAML.parseDocument(merged, SAFE_YAML_OPTIONS);
+    return check.errors.length === 0 && check.toString() === edited
+      ? merged
+      : edited;
+  } catch {
+    return edited;
   }
 }
 

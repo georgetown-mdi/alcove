@@ -1995,8 +1995,8 @@ export interface TermsUpdateWrite {
  * `expected_partner_deduplicate`, `outbound_payload_consent`, and
  * `disclosed_payload_columns` -- in one write, so no record is left stating a
  * commitment the new terms do not back. Every other key, the connection block
- * included, keeps its values and its key order; the YAML round-trip may move
- * an inline comment onto its own line and normalize spacing.
+ * included, keeps its values and its key order, and a line the write does
+ * not change keeps its bytes as {@link editSensitiveYamlDocument} allows.
  *
  * The edited document is read back through the same schema `alcove
  * exchange` loads it with before it is written; a document that would not

@@ -18,6 +18,12 @@ Command line arguments take precedence over values in the configuration file, al
 
 When a credential supplied as an `@`-file reference is written into a configuration file -- by a zero-setup run with `--save` or by the `invite`/`accept` provisioning commands -- the saved file records the original `@path` reference, not the resolved secret, so the secret is never copied into `alcove.yaml` and the file remains safe to commit; `alcove exchange` writes no credential, editing an existing `alcove.yaml` only to record a pin: the SFTP host key (see [SFTP host-key trust](#sftp-host-key-trust)) and the partner's signing certificate fingerprint (see [Signing identity and the agreed terms](#signing-identity-and-the-agreed-terms)), neither of which is secret. A credential supplied as a literal value is saved as-is. The stored reference is the string exactly as typed: a `~/`-relative reference such as `@~/.ssh/id_rsa` therefore stays valid when the configuration is moved to another machine, while a relative reference such as `@secrets/pw` is resolved against the working directory of whichever later command reads it -- use an absolute or `~/` reference if that command will run from a different directory. A saved `@path` is resolved when the configuration is loaded for the next exchange, before any network activity; if the referenced file has since been moved, deleted, made unreadable, or emptied, that load fails with a usage error naming the reference and no connection is attempted.
 
+A command that edits an existing `alcove.yaml` in place -- recording a pin, filling `linkage_terms.payload.receive` on a first run, writing the address of a server `invite` created, applying a terms update -- keeps every line it does not change exactly as written, spacing and comments included. The lines it adds or changes are written in the YAML writer's own style (`{ a: 1 }`, one space before a `#` comment), indented to match the lines around them. The exceptions:
+
+- A comment on the line of a key whose whole value is replaced is dropped with that value.
+- A line the writer lays out together with the change is rewritten with it: all of a flow collection written across several lines when the change falls inside it, or a comment the writer moves off its key's line when the change is right below.
+- The whole file is rewritten in the writer's style where the change cannot be placed within the file's own layout -- for example inside a sequence entry written with extra space after its dash -- or where the file is too large for the line comparison, a working cap set in the code and raised on request.
+
 The "safe to commit" property protects the author of a configuration, not whoever later runs it. Never run `alcove exchange` against a configuration from an untrusted source: treat one received from a partner or pulled from a shared repository as you would treat handing over the files it references.
 
 - **What the load reads.** Every `@path` credential reference in the configuration is read from your local disk, with your privileges, before the exchange runs.
@@ -531,7 +537,7 @@ Confirming rewrites the configuration in one write. It replaces `linkage_terms` 
 - `outbound_payload_consent`: your consent to the columns you send, shown above, or a pending record where your configuration has no `metadata` block to state them
 - `disclosed_payload_columns`: where one is recorded, restated from your `metadata`, or removed where your configuration has none
 
-The connection block and every other key keep their values and order (the rewrite may move an inline comment onto its own line), and the key file is not touched. Your next `alcove exchange` runs on the new terms.
+The connection block and every other key keep their values and order, every line the update does not change is kept as written except as [Configuration](#configuration) states, and the key file is not touched. Your next `alcove exchange` runs on the new terms.
 
 ## Recurring exchange
 
