@@ -86,7 +86,6 @@ function acceptorRecord(): ManagedExchangeRecord {
       metadata: OWN_METADATA,
       expectedPayloadColumns: ["notes"],
       expectedPartnerDeduplicate: false,
-      outboundPayloadConsent: { status: "pending" },
     }),
     side: "acceptor",
     sharedSecret: generateSharedSecret(),
@@ -121,9 +120,6 @@ describe("recording a partner's changed terms in the stored exchange", () => {
       "county",
     ]);
     expect(written.exchangeFile.expectedPartnerDeduplicate).toBe(false);
-    expect(written.exchangeFile.outboundPayloadConsent).toEqual({
-      status: "pending",
-    });
     expect(written.sharedSecret).toBe(record.sharedSecret);
     expect(written.exchangeFile.connection).toEqual(
       record.exchangeFile.connection,
@@ -156,43 +152,14 @@ describe("recording a partner's changed terms in the stored exchange", () => {
     expect(written.lastRun).toBeUndefined();
   });
 
-  test("an apply leaves a pending outbound consent and the disclosed set as stored", () => {
-    const base = acceptorRecord();
-    const record: ManagedExchangeRecord = {
-      ...base,
-      exchangeFile: { ...base.exchangeFile, disclosedPayloadColumns: [] },
-    };
-    const sharing: LinkageTerms = {
-      ...partnerTerms,
-      output: { ...partnerTerms.output, shareWithPartner: true },
-    };
-    const written = applyManagedExchangeTermsChange(record, {
+  test("an apply writes no send-side record", () => {
+    const written = applyManagedExchangeTermsChange(acceptorRecord(), {
       scope: "apply",
-      partnerTerms: sharing,
-    });
-    expect(written.exchangeFile.linkageTerms.output.shareWithPartner).toBe(
-      true,
-    );
-    expect(written.exchangeFile.outboundPayloadConsent).toEqual({
-      status: "pending",
-    });
-    expect(written.exchangeFile.disclosedPayloadColumns).toEqual([]);
-  });
-
-  test("an apply writes no outbound consent where none was stored", () => {
-    const base = acceptorRecord();
-    const { outboundPayloadConsent: _pending, ...withoutConsent } =
-      base.exchangeFile;
-    const written = applyManagedExchangeTermsChange(
-      { ...base, exchangeFile: withoutConsent },
-      {
-        scope: "apply",
-        partnerTerms: {
-          ...partnerTerms,
-          output: { ...partnerTerms.output, shareWithPartner: true },
-        },
+      partnerTerms: {
+        ...partnerTerms,
+        output: { ...partnerTerms.output, shareWithPartner: true },
       },
-    );
+    });
     expect(written.exchangeFile).not.toHaveProperty("outboundPayloadConsent");
     expect(written.exchangeFile).not.toHaveProperty("disclosedPayloadColumns");
   });
