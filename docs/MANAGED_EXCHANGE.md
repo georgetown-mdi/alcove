@@ -1709,21 +1709,18 @@ what is sent.
 What the standing input file discloses is the one part of that agreement a
 later period can move without anyone re-authoring anything: the set a run sends
 is resolved from the file's own columns, so a refreshed extract with a changed
-shape would send a set nobody agreed to. Two pre-connection gates hold it --
-the set this party committed to send when the exchange was established, and the
-set it confirmed for itself -- and a run whose resolved disclosure is not that
-set is **refused before connecting**, in either direction: sending less than
-was agreed is a mismatch no less than sending more.
-
-That refusal is its own benign state, recorded as such in the run bookkeeping
-(see [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)) and never
-routed through the desync/attack framing -- nothing connected, and nothing left
-the device. It is also the one benign failure a surface must **not** present as
-retryable: unlike a transport drop, a later attempt on the same file determines
-the same disclosure, so the remedy is the operator's -- run the exchange with
-the file whose columns were agreed, or set the exchange up again to decide a
-new disclosure with the partner. Presenting it as a connection blip with retry
-copy would leave a scheduled exchange failing every window with no step named.
+shape sends a different set than the one agreed. Nothing on this device checks
+that set against the agreed one before connecting, and no run is refused for it
+here. What is checked before connecting is the input itself: the file must be
+readable and must supply every linkage key the agreed terms declare. The change
+in the sent set is caught at the next step instead. The run states its
+`payload.send` from the file's columns at the terms exchange, so the partner's
+run meets a changed set as a change in this party's terms, after the handshake
+and before any linkage key or data moves (see [PROTOCOL.md](spec/PROTOCOL.md#a-terms-change-at-the-terms-exchange)).
+The partner accepts or declines it, as [When your partner's terms
+change](#when-your-partners-terms-change) describes; a scheduled partner run
+that does not take it on stops and records a `terms-change` failure, never a
+retry, and nothing is sent until the partner takes the change on.
 
 A re-invite reopens **the secret, not the agreement**. On the inviter's side
 nothing is re-authored: the fresh invitation is composed from the stored
