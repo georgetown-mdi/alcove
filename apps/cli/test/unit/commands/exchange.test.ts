@@ -14,6 +14,7 @@ import {
   assertFirstRoundFitsFileSyncFrame,
   assertFirstRoundFitsWebRtcFrame,
   assertSharedSecretReadyForHandshake,
+  computeTermsHash,
   csvDelimiterRefusal,
   encodeInvitation,
   generateSigningIdentity,
@@ -21,6 +22,7 @@ import {
   getLogger,
   prepareForExchange,
   sanitizeErrorForDisplay,
+  termsAsTheRunStatedThem,
 } from "@alcove/core";
 import type {
   InvitationToken,
@@ -28,7 +30,10 @@ import type {
   LinkageTerms,
   PreparedExchange,
 } from "@alcove/core";
-import { configWithNamedRuleSetRules } from "../../../src/config";
+import {
+  configWithNamedRuleSetRules,
+  readConfigLinkageSource,
+} from "../../../src/config";
 import {
   loadKeyFile,
   provisionKeyFileFromInvitation,
@@ -1688,6 +1693,57 @@ async function delimiterReachingTheRun(
   } as unknown as Arguments);
   return vi.mocked(runProtocol).mock.calls[0][0].csvDelimiter;
 }
+
+test("handler: a receive list the run fills is recorded in the configuration it ran from", async () => {
+  // The terms exchange fills an unset payload.receive from the partner's
+  // declared send set; the recorder the handler hands runProtocol writes it
+  // into this configuration, so the next run holds the partner to it.
+  await delimiterReachingTheRun("|", undefined);
+  const recorder =
+    vi.mocked(runProtocol).mock.calls[0][0].recordPayloadReceiveFill;
+  expect(recorder).toBeTypeOf("function");
+  await recorder?.(["program"]);
+  const written = YAML.parse(fs.readFileSync(configFile, "utf8")) as Record<
+    string,
+    { payload?: unknown }
+  >;
+  expect(written["linkage_terms"]?.payload).toEqual({
+    receive: [{ name: "program" }],
+  });
+  expect(written["linkageTerms"]).toBeUndefined();
+});
+
+test("handler: the configuration a fill wrote re-derives the run's agreed-terms hash", async () => {
+  // The run hashes this party's terms as it stated them on the wire, receive
+  // unset and send stated from the metadata inferred from the input header;
+  // verify-receipt later hashes the configuration the fill wrote, stating the
+  // send set from that same header.
+  await delimiterReachingTheRun("|", undefined);
+  const inputHeader = {
+    columns: ["ssn", "note"],
+    sanitizedColumnPositions: [],
+  };
+  const statedFromConfig = () => {
+    const read = readConfigLinkageSource(configFile);
+    if (read.status !== "loaded") throw new Error("no terms read back");
+    return termsAsTheRunStatedThem(read.source.linkageTerms, { inputHeader });
+  };
+  const partnerStated: LinkageTerms = {
+    ...getDefaultLinkageTerms("Partner Org"),
+    payload: { send: [{ name: "program", description: "enrolled program" }] },
+  };
+  const onTheWire = statedFromConfig();
+  expect(onTheWire.terms.payload?.receive).toBeUndefined();
+  const runHash = await computeTermsHash(onTheWire.terms, partnerStated);
+
+  await vi
+    .mocked(runProtocol)
+    .mock.calls[0][0].recordPayloadReceiveFill?.(["program"]);
+  const postFill = statedFromConfig();
+  expect(postFill.sendSetUnknown).toBe(false);
+  expect(postFill.terms.payload?.receive).toEqual([{ name: "program" }]);
+  expect(await computeTermsHash(postFill.terms, partnerStated)).toBe(runHash);
+});
 
 test("handler: the configuration's csv_delimiter governs a run with no flag", async () => {
   expect(await delimiterReachingTheRun("|", undefined)).toBe("|");

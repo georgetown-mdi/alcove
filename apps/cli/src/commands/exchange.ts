@@ -31,6 +31,7 @@ import {
   DEFAULT_CONFIG_PATH,
   describeConfigSchemaError,
   linkageTermsStandingOf,
+  persistFilledPayloadReceive,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { expandTilde } from "../fileUtils";
@@ -860,7 +861,8 @@ export async function prepareDataset(
   // expectedPayloadColumns, written by an offline acceptance; it falls back to
   // the negotiated payload.receive names for an authored recurring config that
   // holds only the data dictionary. An empty set means "receive nothing"
-  // strictly; an absent source reconciles lazily (a no-output party's "receive
+  // strictly; with neither, the run fills payload.receive from the partner's
+  // declared send set and holds this run to that (a no-output party's "receive
   // nothing" is enforced independently by runExchange regardless of this field).
   const expectedFromConfig =
     exchangeDataSpec.expectedPayloadColumns ??
@@ -1273,6 +1275,8 @@ export async function handler(argv: Arguments): Promise<void> {
           eventStream: openedEventStream,
         },
         signing,
+        recordPayloadReceiveFill: (columns) =>
+          persistFilledPayloadReceive(options.configFile, columns),
         signingWithoutRecordWarned,
         undeclaredColumnsWarned,
       });

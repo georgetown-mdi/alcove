@@ -80,99 +80,48 @@ test("buildSaveSpec includes the connection, terms and metadata, omitting standa
   ] satisfies PreparedExchange["metadata"];
   const prepared = preparedFrom(linkageTerms, metadata);
 
-  const { spec } = buildSaveSpec(connection, prepared);
+  const spec = buildSaveSpec(connection, prepared);
 
   expect(spec.connection).toBe(connection);
   expect(spec.linkageTerms).toBe(linkageTerms);
   expect(spec.metadata).toBe(metadata);
   expect(spec.standardization).toBeUndefined();
-  // No observation passed: nothing is committed, the recurring path stays lazy.
   expect(spec.expectedPayloadColumns).toBeUndefined();
 });
 
-test("buildSaveSpec records a non-empty observed received set as the commitment", () => {
-  // A zero-setup --save party fixes the payload columns it observed in the
-  // first exchange so a later `alcove exchange` fails closed on a divergence.
+test("buildSaveSpec records a filled receive list in the saved terms", () => {
+  // A zero-setup --save party fills its unset receive list from the partner's
+  // declared send set, so a later `alcove exchange` holds the partner to it.
   const prepared = preparedFrom(getDefaultLinkageTerms("Test Party"), []);
 
-  const { spec } = buildSaveSpec(
+  const spec = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     prepared,
     ["dob", "zip"],
   );
 
-  expect(spec.expectedPayloadColumns).toEqual(["dob", "zip"]);
+  expect(spec.linkageTerms.payload?.receive).toEqual([
+    { name: "dob" },
+    { name: "zip" },
+  ]);
+  expect(spec.expectedPayloadColumns).toBeUndefined();
 });
 
-test("buildSaveSpec leaves an empty observation lazy, not a strict receive-nothing", () => {
-  // The partner transmits an empty payload both when it discloses nothing AND on a
-  // zero-match first exchange; the two are indistinguishable here, so persisting []
-  // (strict "receive nothing") would false-abort a later matching run. An empty
-  // observation therefore records no commitment (absent field, reconciled lazily).
-  const prepared = preparedFrom(getDefaultLinkageTerms("Test Party"), []);
-
-  const { spec } = buildSaveSpec(
+test("buildSaveSpec records an empty fill as receive nothing", () => {
+  // The fill is the partner's declared set, not an observation of what
+  // arrived, so an empty one is what the partner declared it sends.
+  const spec = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
-    prepared,
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
     [],
   );
 
-  expect(spec.expectedPayloadColumns).toBeUndefined();
+  expect(spec.linkageTerms.payload?.receive).toEqual([]);
 });
 
-test("both-saved persists the observed received set to disk as expected_payload_columns", () => {
-  // End-to-end: the observed set flows through buildSaveSpec -> finalizeBootstrap
-  // -> saveConfig, and is serialized snake_case so a later load reconciles on it.
+test("a saved filled receive list reloads intact", () => {
   const { log } = capture();
-  const { spec } = buildSaveSpec(
-    { channel: "filedrop", path: "/mnt/share" },
-    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
-    ["dob", "zip"],
-  );
-  finalizeBootstrap({
-    save: true,
-    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
-    spec,
-    configFile,
-    keyFile,
-    log,
-  });
-  const written = YAML.parse(fs.readFileSync(configFile, "utf8"));
-  expect(written.expected_payload_columns).toEqual(["dob", "zip"]);
-});
-
-test("buildSaveSpec leaves an observation holding a text-direction character lazy, so the saved config reloads", () => {
-  // The payload wire admits a column name the reload's name shape refuses;
-  // saved, it would stop every later `alcove exchange` at load.
-  const { log } = capture();
-  const observed = ["dob", "zip\u202Eedoc"];
-  const { spec } = buildSaveSpec(
-    { channel: "filedrop", path: "/mnt/share" },
-    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
-    observed,
-  );
-  expect(spec.expectedPayloadColumns).toBeUndefined();
-  expect(() =>
-    parseExchangeSpec({ ...spec, expectedPayloadColumns: observed }),
-  ).toThrow();
-
-  finalizeBootstrap({
-    save: true,
-    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
-    spec,
-    configFile,
-    keyFile,
-    log,
-  });
-  const reloaded = parseExchangeSpec(
-    YAML.parse(fs.readFileSync(configFile, "utf8")),
-  );
-  expect(reloaded.expectedPayloadColumns).toBeUndefined();
-});
-
-test("a saved well-shaped observation reloads with expected_payload_columns intact", () => {
-  const { log } = capture();
-  const { spec } = buildSaveSpec(
+  const spec = buildSaveSpec(
     { channel: "filedrop", path: "/mnt/share" },
     preparedFrom(getDefaultLinkageTerms("Test Party"), []),
     ["dob", "zip"],
@@ -188,58 +137,13 @@ test("a saved well-shaped observation reloads with expected_payload_columns inta
   const reloaded = parseExchangeSpec(
     YAML.parse(fs.readFileSync(configFile, "utf8")),
   );
-  expect(reloaded.expectedPayloadColumns).toEqual(["dob", "zip"]);
-});
-
-test("a saved config holding a text-direction character in expected_payload_columns refuses to reload", () => {
-  // The on-disk shape the save path now declines to write: the same config
-  // as the round trip above, with the bad name written into the file directly.
-  const { log } = capture();
-  const { spec } = buildSaveSpec(
-    { channel: "filedrop", path: "/mnt/share" },
-    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
-    ["dob", "zip"],
-  );
-  finalizeBootstrap({
-    save: true,
-    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
-    spec,
-    configFile,
-    keyFile,
-    log,
-  });
-  const onDisk = YAML.parse(fs.readFileSync(configFile, "utf8"));
-  onDisk.expected_payload_columns = ["dob", "zip\u202Eedoc"];
-  fs.writeFileSync(configFile, YAML.stringify(onDisk));
-  expect(() =>
-    parseExchangeSpec(YAML.parse(fs.readFileSync(configFile, "utf8"))),
-  ).toThrow();
+  expect(reloaded.linkageTerms.payload?.receive).toEqual([
+    { name: "dob" },
+    { name: "zip" },
+  ]);
 });
 
 // --- both parties saved ------------------------------------------------------
-
-test("both-saved: warns once, after the write, that a withheld observation is not recorded", () => {
-  const configExistedAtWarning: boolean[] = [];
-  const { spec, withheldPayloadColumns } = buildSaveSpec(
-    { channel: "filedrop", path: "/mnt/share" },
-    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
-    ["dob", "zip\u202E"],
-  );
-  expect(withheldPayloadColumns).toBe("name-shape");
-  finalizeBootstrap({
-    save: true,
-    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
-    spec,
-    withheldPayloadColumns,
-    configFile,
-    keyFile,
-    log: {
-      info: () => undefined,
-      warn: () => configExistedAtWarning.push(fs.existsSync(configFile)),
-    },
-  });
-  expect(configExistedAtWarning).toEqual([true]);
-});
 
 test("both-saved: writes config and key, and reports the shared secret", () => {
   const { log, messages } = capture();
@@ -259,6 +163,72 @@ test("both-saved: writes config and key, and reports the shared secret", () => {
   );
 });
 
+// --- the fill notice logs only after the write it depends on ----------------
+
+test("both-saved: the fill notice logs only once the config write lands", () => {
+  // The columns are recorded in memory well before this call (at the terms
+  // exchange); the notice must not follow that record but the write this
+  // function itself performs, so a message logged before the config exists
+  // on disk would be a false claim.
+  const messages: string[] = [];
+  const configExistsAtLog: boolean[] = [];
+  const log = {
+    info: (m: string) => {
+      messages.push(m);
+      configExistsAtLog.push(fs.existsSync(configFile));
+    },
+    warn: () => {},
+  };
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip"],
+  );
+  finalizeBootstrap({
+    save: true,
+    bootstrap: { partnerSaveIntent: true, sharedSecret: SECRET },
+    spec,
+    configFile,
+    keyFile,
+    log,
+    filledPayloadReceive: ["dob", "zip"],
+  });
+
+  const noticeIndex = messages.findIndex((m) =>
+    m.includes("payload.receive was not set"),
+  );
+  expect(noticeIndex).toBeGreaterThanOrEqual(0);
+  expect(configExistsAtLog[noticeIndex]).toBe(true);
+});
+
+test("we-saved-partner-did-not: logs no fill notice when the save fails", () => {
+  const { log, messages } = capture();
+  // Simulate the same post-preflight conflict the TOCTOU tests below exercise,
+  // so the config-only branch's write throws before returning.
+  fs.writeFileSync(configFile, "preexisting: true\n");
+  const spec = buildSaveSpec(
+    { channel: "filedrop", path: "/mnt/share" },
+    preparedFrom(getDefaultLinkageTerms("Test Party"), []),
+    ["dob", "zip"],
+  );
+
+  expect(() =>
+    finalizeBootstrap({
+      save: true,
+      bootstrap: { partnerSaveIntent: false },
+      spec,
+      configFile,
+      keyFile,
+      log,
+      filledPayloadReceive: ["dob", "zip"],
+    }),
+  ).toThrow(UsageError);
+
+  expect(messages.some((m) => m.includes("payload.receive was not set"))).toBe(
+    false,
+  );
+});
+
 test("save persists an @path credential as the reference, never the secret contents", () => {
   // End-to-end at-rest check for the --save path: a connection whose password is
   // an @path reference is persisted verbatim, so the referenced file's contents
@@ -267,7 +237,7 @@ test("save persists an @path credential as the reference, never the secret conte
   const { log } = capture();
   const pwFile = path.join(dir, "pw");
   fs.writeFileSync(pwFile, "s3cret\n");
-  const { spec } = buildSaveSpec(
+  const spec = buildSaveSpec(
     {
       channel: "sftp",
       server: { host: "h", username: "u", password: `@${pwFile}` },

@@ -1,6 +1,7 @@
 import YAML from "yaml";
 
 import {
+  annotateUnsetPayloadReceive,
   commentBlock,
   commentKey,
   CONNECTION_BLOCK_DOC_URL,
@@ -221,15 +222,6 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
         "Delete linkage_fields and linkage_keys instead, keeping this block, to",
         "run the whole named set without writing its rules out -- every key in",
         "it, so your input file must supply the fields they all name.",
-      ],
-    },
-    {
-      path: ["linkage_terms", "payload", "receive"],
-      lines: [
-        "Payload columns you expect your partner to send for matched records; []",
-        "asks for none. 'alcove invite' requires this list, and your partner's",
-        "payload.send is set from it, so changing it later takes new terms agreed",
-        "with your partner. List each as - name: COLUMN.",
       ],
     },
     {
@@ -456,6 +448,7 @@ export function renderConfigTemplate(data: TemplateDataSpec): string {
   const doc = new YAML.Document(snakeizeKeys(spec));
   doc.commentBefore = commentBlock(HEADER_LINES);
   for (const { path, lines } of FIELD_DOCS) commentKey(doc, path, lines);
+  annotateUnsetPayloadReceive(doc, data.linkageTerms);
 
   const sections = [doc.toString().trimEnd()];
   // When no input file seeded metadata/standardization, document them (commented)

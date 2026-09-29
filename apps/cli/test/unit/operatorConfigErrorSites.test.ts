@@ -308,6 +308,29 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
   },
   {
     file: "apps/cli/src/config.ts",
+    anchor: "persistFilledPayloadReceive",
+    raises: "OperatorConfigError",
+    interpolates: ["String(err)", "configPath", "err.message"],
+    provenance:
+      "`configPath` is the operator's own path, as above. `err` is the failure " +
+      "of this party's own read, parse, edit or atomic replace of that file: " +
+      "a Node filesystem error over the local path, the sensitive-parse " +
+      "chokepoint's account of the operator's own document, or one of the " +
+      "fixed refusals the edit raises. The partner's column names are written " +
+      "into the document, never into the message.",
+  },
+  {
+    file: "apps/cli/src/onlineBootstrap.ts",
+    anchor: "runOnlineBootstrap",
+    raises: "OperatorConfigError",
+    interpolates: ["params.configPath"],
+    provenance:
+      "`params.configPath` is the path the operator passed to `alcove invite` " +
+      "or `alcove accept` (--config-file, else the default). The rest is fixed " +
+      "prose; the partner's column names are never quoted.",
+  },
+  {
+    file: "apps/cli/src/config.ts",
     anchor: "persistPartnerFingerprint",
     raises: "OperatorConfigError",
     interpolates: ["String(err)", "configPath", "err.message", "fingerprint"],

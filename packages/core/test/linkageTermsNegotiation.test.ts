@@ -16,7 +16,7 @@ import {
   safeParseLinkageTerms,
 } from "../src/config/linkageTermsSchema";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
-import { recurringTermsLackDeclaredReceive } from "../src/config/recurringTerms";
+import { payloadReceiveFillsOnFirstRun } from "../src/config/recurringTerms";
 import {
   assertPresentedDeduplicateMatchesInvitation,
   InvitationTermDivergenceError,
@@ -649,13 +649,13 @@ test("an explicit empty receive: [] is strict and aborts a partner that sends co
     payload: { send: [{ name: "disclosed_col" }] },
   };
   // The diagnostic names the empty-declaration meaning rather than printing an
-  // empty bracket pair, and points the operator at the lazy alternative.
+  // empty bracket pair, and points the operator at the unset alternative.
   expect(
     validateCompatibility(local, partner).errors.some(
       (e) =>
         e.includes("payload mismatch") &&
         e.includes("local declared an empty payload.receive") &&
-        e.includes("Omit payload.receive"),
+        e.includes("remove payload.receive"),
     ),
   ).toBe(true);
 });
@@ -1253,8 +1253,8 @@ test("deriveAcceptedLinkageTerms mirrors an explicit empty inviter receive to an
 });
 
 test("an acceptor of a recurring invitation holds payload.send in its agreed terms", () => {
-  // A recurring invitation states payload.receive, so the acceptor's send is
-  // part of the terms both parties bind, and a later change to the acceptor's
+  // An invitation stating payload.receive puts the acceptor's send inside
+  // the terms both parties bind, and a later change to the acceptor's
   // send is a terms mismatch rather than a payload the inviter takes lazily.
   const inviterTerms: LinkageTerms = {
     ...inviterBase,
@@ -1262,7 +1262,7 @@ test("an acceptor of a recurring invitation holds payload.send in its agreed ter
       receive: [{ name: "enrollment_date", description: "Date enrolled" }],
     },
   };
-  expect(recurringTermsLackDeclaredReceive(inviterTerms)).toBe(false);
+  expect(payloadReceiveFillsOnFirstRun(inviterTerms)).toBe(false);
   const derived = deriveAcceptedLinkageTerms(inviterTerms, "Accepting Org");
   expect(partnerBoundTerms(derived).payload?.send).toStrictEqual([
     { name: "enrollment_date", description: "Date enrolled" },

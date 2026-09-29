@@ -1,55 +1,66 @@
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 
 /**
- * The refusal an authoring path gives terms for a recurring exchange that
- * state no `payload.receive` ({@link recurringTermsLackDeclaredReceive}). A
- * fixed literal: the caller names the document it read.
+ * Whether a run under `terms` fills `payload.receive` from the partner's
+ * declared send set at the terms exchange: the list is unset, and the partner
+ * can send this party payload at all. A count-only (`psi-c`) document admits no
+ * payload in either direction, and a party that receives no result
+ * (`output.expectsOutput: false`) is sent none, so neither has a list to fill.
+ * An explicit empty list states "receive nothing" and is not filled.
  */
-export const RECURRING_RECEIVE_REQUIRED_MESSAGE =
-  "linkage_terms.payload.receive is required for a recurring exchange: list " +
-  "the payload columns you expect your partner to send for matched records, " +
-  "or write receive: [] to receive none";
-
-/**
- * Whether terms authored for a recurring exchange lack the `payload.receive`
- * list that exchange requires. The list is the inviter's half of the payload
- * mirror: an acceptor adopts it as its own `payload.send`
- * (`deriveAcceptedLinkageTerms`), so stating it fixes what the partner sends
- * inside the agreed terms, and a later change to either side's payload is a
- * terms mismatch at the handshake. An explicit empty list states "receive
- * nothing" and satisfies the rule.
- *
- * Terms under which the partner can send this party no payload need no list:
- * a count-only (`psi-c`) document, which admits no payload in either
- * direction, and a party that receives no result
- * (`output.expectsOutput: false`), whose `receive` the schema holds empty.
- */
-export function recurringTermsLackDeclaredReceive(
-  terms: LinkageTerms,
-): boolean {
+export function payloadReceiveFillsOnFirstRun(terms: LinkageTerms): boolean {
   if (terms.algorithm === "psi-c" || !terms.output.expectsOutput) return false;
   return terms.payload?.receive === undefined;
 }
 
 /**
- * `terms` stating `payload.receive: []` where they lack the list
- * ({@link recurringTermsLackDeclaredReceive}), and unchanged otherwise. The
- * default an authoring path with no control for the list applies to the terms
- * it writes.
+ * The column names an unset `payload.receive` in `terms` resolves to against
+ * the partner's terms as they crossed the wire: the partner's stated
+ * `payload.send`, or none when it states no list. Undefined when the list does
+ * not fill ({@link payloadReceiveFillsOnFirstRun}). The run records these
+ * names, and the agreed-terms hash covers the terms with them in place
+ * ({@link termsResolvingPayloadReceive}); both read them from here.
  */
-export function withReceiveNothingWhereUnstated(
+export function payloadReceiveFill(
   terms: LinkageTerms,
-): LinkageTerms {
-  if (!recurringTermsLackDeclaredReceive(terms)) return terms;
-  return { ...terms, payload: { ...terms.payload, receive: [] } };
+  partnerTerms: LinkageTerms,
+): string[] | undefined {
+  if (!payloadReceiveFillsOnFirstRun(terms)) return undefined;
+  return (partnerTerms.payload?.send ?? []).map((column) => column.name);
 }
 
 /**
- * Whether `terms` ask the partner for no payload columns through an explicit
- * empty `payload.receive`. False for terms exempt from the list, whose partner
- * sends none anyway ({@link recurringTermsLackDeclaredReceive}).
+ * `terms` with an unset `payload.receive` resolved to the partner's stated
+ * send set ({@link payloadReceiveFill}), each column by name alone, as the run
+ * records it; any other `terms` is returned unchanged. Both parties derive the
+ * same resolved pair from the two documents that crossed the wire, and a
+ * configuration the fill has written resolves to itself.
  */
-export function termsReceiveNothing(terms: LinkageTerms): boolean {
-  if (terms.algorithm === "psi-c" || !terms.output.expectsOutput) return false;
-  return terms.payload?.receive?.length === 0;
+export function termsResolvingPayloadReceive(
+  terms: LinkageTerms,
+  partnerTerms: LinkageTerms,
+): LinkageTerms {
+  const filled = payloadReceiveFill(terms, partnerTerms);
+  if (filled === undefined) return terms;
+  return {
+    ...terms,
+    payload: { ...terms.payload, receive: filled.map((name) => ({ name })) },
+  };
+}
+
+/**
+ * The one line a front end shows or logs when a run fills `payload.receive`
+ * from the partner's declared send set. Composed raw: the names are the
+ * partner's, so the sink that shows or logs the line escapes it once.
+ */
+export function payloadReceiveFilledNotice(columns: readonly string[]): string {
+  const listed =
+    columns.length === 0
+      ? "no payload columns"
+      : `payload columns ${columns.map((name) => `"${name}"`).join(", ")}`;
+  return (
+    `payload.receive was not set, so it is set from what the partner ` +
+    `declares it sends: ${listed}. Later exchanges refuse a partner that ` +
+    `sends a different list.`
+  );
 }

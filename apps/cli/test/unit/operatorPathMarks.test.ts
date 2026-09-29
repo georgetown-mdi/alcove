@@ -166,7 +166,7 @@ async function raised(act: () => unknown): Promise<unknown> {
 // --- the record and receipt writers ------------------------------------------
 
 const RECORD: ExchangeRecord = {
-  version: "alcove-exchange-record/v9",
+  version: "alcove-exchange-record/v10",
   outcome: "completed",
   certificateMismatchObserved: false,
   createdAt: "2026-01-02T03:04:05.000Z",

@@ -127,11 +127,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Y0hNjoWsYihKlsQuB_1i8zxLZaV9B_Ne8elrAcFa2JU",
+        "termsHash": "c4BAwVESZI_QbigiE6I2zrCfiq38iCs8l3Ady3tmGKA",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -269,11 +269,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "_P3-vJ534rx-Vp-KYaHWlIggS5ETUF0N9RBOzEUbJPg",
+        "termsHash": "nHyQc9FBW3c8d0CNtuf14-iPsTCMaacWlx0O_sU01Xg",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -408,11 +408,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Xz3-yyVSUHrV6SRKjs655LS4EmzAcnJMGt9A0vMSuGw",
+        "termsHash": "lWmD3k5nHf5lPHErdZBv-L72RlCDIy4aqXSpKwpCDHQ",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -554,11 +554,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Xz3-yyVSUHrV6SRKjs655LS4EmzAcnJMGt9A0vMSuGw",
+        "termsHash": "lWmD3k5nHf5lPHErdZBv-L72RlCDIy4aqXSpKwpCDHQ",
         "localIdentity": "Party B",
         "partnerIdentity": "Party A",
         "governance": {
@@ -728,11 +728,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "LRu4N9ruaJ_jXIVl-CEec281J0ancaXBv7ABdEvYiso",
+        "termsHash": "Ht9jrwGF4_PgBbeVPd3sDOgUqRiiVM5OOaN1M-LkgFQ",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -909,11 +909,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Dlo0YV5IGTD5HQFcEy6BzI0XYNIZj2rxOWRjHmcXCf8",
+        "termsHash": "aGSTX1eBtM0g0a4oh6zZ2CuGshPKMnibirM89aL3nyQ",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1088,11 +1088,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Y0hNjoWsYihKlsQuB_1i8zxLZaV9B_Ne8elrAcFa2JU",
+        "termsHash": "c4BAwVESZI_QbigiE6I2zrCfiq38iCs8l3Ady3tmGKA",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1250,11 +1250,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "zpG1ZbeuPGtfvAHWAe0RCjmmTx3YRUUHMhD0vUSv-H0",
+        "termsHash": "WALn9YJLKMxq-VOBNymCS4oVOlvZMz4yrfrkBQ6b7gQ",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1451,11 +1451,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "nW50UmM_mpjpmKIK99sWFQXnDSSk4A6-AK_eZottUZg",
+        "termsHash": "FduOzG5VWR1K-1mDMgptLSWog6H8eBMSHlYrRCc3SSE",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1657,11 +1657,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "GJdsMd99luiaZXcqpeHfQpF68bC3-6Yl_unR4Sdzp3I",
+        "termsHash": "3OHhRwEZ7tBpWeBAg2_pjQDfOpZZ5ysQnZ050rUbyNk",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -1801,11 +1801,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:05.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "eiYTX5OceQ99YQSY8P0cby7qsj-oYisZJuxOfNXLjxg",
+        "termsHash": "Pq0cdDH8LomwlO4PHsRev_wc1H-hwRrpV-U7FAHgTaY",
         "partnerIdentity": "Party B",
         "governance": {
           "algorithm": "psi",
@@ -1968,11 +1968,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:06.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": false,
-        "termsHash": "Y0hNjoWsYihKlsQuB_1i8zxLZaV9B_Ne8elrAcFa2JU",
+        "termsHash": "c4BAwVESZI_QbigiE6I2zrCfiq38iCs8l3Ady3tmGKA",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -2152,11 +2152,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-01-02T03:04:07.000Z",
         "outcome": "receipt-swap-terminated",
         "certificateMismatchObserved": true,
-        "termsHash": "Y0hNjoWsYihKlsQuB_1i8zxLZaV9B_Ne8elrAcFa2JU",
+        "termsHash": "c4BAwVESZI_QbigiE6I2zrCfiq38iCs8l3Ady3tmGKA",
         "localIdentity": "Party A",
         "partnerIdentity": "Party B",
         "governance": {
@@ -2349,11 +2349,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-02-03T14:20:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Xu57Of56MXBrKy0rIMARI_tmz1P0JqPBPwLtE9OOqlA",
+        "termsHash": "jZ2wboLtioLU1JK4GTLF_SQJO-OVblCuk37_DDpM5G8",
         "localIdentity": "County Clinic",
         "partnerIdentity": "State Registry",
         "governance": {
@@ -2549,11 +2549,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-02-03T14:20:01.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "Xu57Of56MXBrKy0rIMARI_tmz1P0JqPBPwLtE9OOqlA",
+        "termsHash": "jZ2wboLtioLU1JK4GTLF_SQJO-OVblCuk37_DDpM5G8",
         "localIdentity": "State Registry",
         "partnerIdentity": "County Clinic",
         "governance": {
@@ -2749,11 +2749,11 @@
         }
       },
       "record": {
-        "version": "alcove-exchange-record/v9",
+        "version": "alcove-exchange-record/v10",
         "createdAt": "2026-02-04T08:45:00.000Z",
         "outcome": "completed",
         "certificateMismatchObserved": false,
-        "termsHash": "C_5CHRhNbF2XZLDiaZzmQUWXC9oVqFHJVr5O-IFsILg",
+        "termsHash": "RB2lAixbta0-KRXemE1qt99mavNGVEO2_pALX9KI0U0",
         "localIdentity": "Shelter Network",
         "partnerIdentity": "Benefits Office",
         "governance": {

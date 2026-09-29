@@ -27,6 +27,7 @@ import {
   sanitizeForDisplay,
   SIGNED_RECEIPT_VERSION,
   signedRecordExpectations,
+  termsAsTheRunStatedThem,
   toRetainedResult,
   UsageError,
   verifyDualSignedRecord,
@@ -830,6 +831,52 @@ function configFileSource(
   return source.source;
 }
 
+/** What the command says when this party's payload send set cannot be
+ * stated, so the agreed-terms hash is recomputed without it. */
+export const SEND_SET_UNKNOWN_WARNING =
+  "the configuration leaves payload.send unset and has no metadata block, so " +
+  "the payload columns this party stated at the exchange are not known here " +
+  "and the agreed-terms hash will not match; name the exchange's input file " +
+  "with --input-file and --result-file, or add the metadata block the " +
+  "exchange ran with";
+
+/** What the command says when the partner's payload send set cannot be
+ * stated from the `--partner-terms` file. */
+export const PARTNER_SEND_SET_UNKNOWN_WARNING =
+  "the partner-terms file leaves payload.send unset and has no metadata " +
+  "block, so the payload columns the partner stated at the exchange are not " +
+  "known here and the agreed-terms hash will not match; add the metadata " +
+  "block the partner's exchange ran with to that file";
+
+/**
+ * This party's terms as its run stated them at the terms exchange, which the
+ * agreed-terms hash covers: an unset `payload.send` stands for the columns the
+ * configuration's metadata discloses, or, with no metadata block, the columns
+ * the run inferred from the input header. With neither, the terms are used as
+ * written and the command says the hash cannot match.
+ */
+function localTermsAsTheRunStatedThem(
+  source: ConfigLinkageSource,
+  inputMeta:
+    | { fields?: Array<string>; sanitizedColumnPositions: Array<number> }
+    | undefined,
+  log: { warn: (message: string) => void },
+): LinkageTerms {
+  const stated = termsAsTheRunStatedThem(source.linkageTerms, {
+    ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
+    ...(inputMeta !== undefined
+      ? {
+          inputHeader: {
+            columns: inputMeta.fields ?? [],
+            sanitizedColumnPositions: inputMeta.sanitizedColumnPositions,
+          },
+        }
+      : {}),
+  });
+  if (stated.sendSetUnknown) log.warn(SEND_SET_UNKNOWN_WARNING);
+  return stated.terms;
+}
+
 /**
  * The partner's linkage terms, from the file named by `--partner-terms`, which
  * stand in for the copy a dual-signed record holds. That file has the one
@@ -840,10 +887,14 @@ function configFileSource(
  *
  * Read as the partner wrote it: a rule set the document names is not resolved
  * into this build's rules, so the hash is computed over the partner's own
- * terms and a name this build does not ship stops nothing here.
+ * terms and a name this build does not ship stops nothing here. An unset
+ * `payload.send` is stated from the file's metadata block where it has one, as
+ * the partner's run stated it; with none, the terms are used as written and
+ * the command says the hash cannot match.
  */
 function partnerTermsFrom(
   partnerTermsFile: string | undefined,
+  log: { warn: (message: string) => void },
 ): LinkageTerms | undefined {
   if (partnerTermsFile === undefined) return undefined;
   const source = readConfigLinkageSource(
@@ -862,7 +913,14 @@ function partnerTermsFrom(
     )} defines no linkage_terms; pass the partner's exported linkage terms, or a configuration file that defines them`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
-  return source.source.linkageTerms;
+  const stated = termsAsTheRunStatedThem(
+    source.source.linkageTerms,
+    source.source.metadata !== undefined
+      ? { metadata: source.source.metadata }
+      : {},
+  );
+  if (stated.sendSetUnknown) log.warn(PARTNER_SEND_SET_UNKNOWN_WARNING);
+  return stated.terms;
 }
 
 /**
@@ -1172,14 +1230,25 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     const localSource = configFileSource(configFile, log);
-    const localTerms = localSource?.linkageTerms;
     // The flag governs this verification and the configuration's csv_delimiter
     // a verification given none, the precedence every command reading a CSV
     // applies: the files being verified are the ones that configuration's own
     // exchange wrote, and the paths named here need not be those files.
     // Nothing later reads by this value, so a difference is not reported.
     const csvDelimiter = csvDelimiterArg ?? localSource?.csvDelimiter;
-    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile);
+    const inputParse =
+      inputFile === undefined
+        ? undefined
+        : await loadCSVFile(
+            openInputSource(inputFile, { allowStdin: true }),
+            undefined,
+            csvDelimiter,
+          );
+    const localTerms =
+      localSource === undefined
+        ? undefined
+        : localTermsAsTheRunStatedThem(localSource, inputParse?.meta, log);
+    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile, log);
     const signedRecord =
       artifact.kind === "signed"
         ? artifact.signed
@@ -1223,12 +1292,7 @@ export async function handler(argv: Arguments): Promise<void> {
       const warnings: Displayable[] = [];
       let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
         {};
-      if (inputFile !== undefined && resultFile !== undefined) {
-        const inputParse = await loadCSVFile(
-          openInputSource(inputFile, { allowStdin: true }),
-          undefined,
-          csvDelimiter,
-        );
+      if (inputParse !== undefined && resultFile !== undefined) {
         const resultParse = await loadCSVFile(
           openInputSource(resultFile),
           undefined,

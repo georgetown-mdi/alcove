@@ -27,7 +27,7 @@ import {
 import { CsvDelimiterField } from "@components/CsvDelimiterField";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
-import { importLinkageTerms } from "@psi/linkageTermsIO";
+import { importLinkageTermsDocument } from "@psi/linkageTermsIO";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import styles from "@styles/app.module.css";
@@ -39,6 +39,7 @@ import {
   parseSignedRecordDocument,
   pinnedFingerprintProblem,
   signedVerdictViewModel,
+  statedTermsForVerification,
   verdictViewModel,
   verifySignedRecord,
 } from "./verifyReceiptModel";
@@ -48,11 +49,11 @@ import type {
   Displayable,
   DualSignedRecord,
   ExchangeRecord,
-  LinkageTerms,
   RecordVerificationReport,
   VerificationKeys,
 } from "@alcove/core";
 import type {
+  PastedTerms,
   SignedVerdictViewModel,
   VerdictRow,
   VerdictTone,
@@ -251,8 +252,8 @@ function ParseAlert({ title, message }: { title: string; message: string }) {
 }
 
 /** The linkage-terms re-supply idiom, paste-based, mirroring TermsImportExport:
- * a textarea whose Import validates through importLinkageTerms and reports a
- * value-free error inline. */
+ * a textarea whose Import validates through importLinkageTermsDocument and
+ * reports a value-free error inline. */
 function TermsInput({
   label,
   description,
@@ -261,20 +262,24 @@ function TermsInput({
 }: {
   label: string;
   description: string;
-  terms: LinkageTerms | undefined;
-  onTerms: (terms: LinkageTerms | undefined) => void;
+  terms: PastedTerms | undefined;
+  onTerms: (terms: PastedTerms | undefined) => void;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
   function handleImport() {
-    const result = importLinkageTerms(text);
+    const result = importLinkageTermsDocument(text);
     if (!result.success) {
       setError(result.error);
       onTerms(undefined);
       return;
     }
     setError(undefined);
-    onTerms(result.terms);
+    onTerms(
+      result.metadata === undefined
+        ? { terms: result.terms }
+        : { terms: result.terms, metadata: result.metadata },
+    );
   }
   return (
     <Stack gap="xs">
@@ -338,8 +343,8 @@ export function VerifyReceiptScreen() {
   const [delimiterChoice, setDelimiterChoice] = useState(
     INITIAL_CSV_DELIMITER_CHOICE,
   );
-  const [localTerms, setLocalTerms] = useState<LinkageTerms>();
-  const [partnerTerms, setPartnerTerms] = useState<LinkageTerms>();
+  const [localTerms, setLocalTerms] = useState<PastedTerms>();
+  const [partnerTerms, setPartnerTerms] = useState<PastedTerms>();
 
   // The signed leg (optional): the dual-signed record, and the two anchoring
   // values -- the partner's pinned fingerprint, typed, and this party's own
@@ -457,12 +462,12 @@ export function VerifyReceiptScreen() {
     set(file);
   }
 
-  function onLocalTerms(terms: LinkageTerms | undefined) {
+  function onLocalTerms(terms: PastedTerms | undefined) {
     invalidateVerdicts();
     setLocalTerms(terms);
   }
 
-  function onPartnerTerms(terms: LinkageTerms | undefined) {
+  function onPartnerTerms(terms: PastedTerms | undefined) {
     invalidateVerdicts();
     setPartnerTerms(terms);
   }
@@ -493,22 +498,37 @@ export function VerifyReceiptScreen() {
     setVerifyError(undefined);
     try {
       const parsedRecord = record?.record;
+      const readBy =
+        csvDelimiter !== undefined ? { delimiter: csvDelimiter } : {};
+      const inputParse =
+        inputCsv === undefined
+          ? undefined
+          : await loadCSVFileOffMainThread(inputCsv, readBy);
+      const stated = statedTermsForVerification(
+        localTerms,
+        partnerTerms,
+        inputParse === undefined
+          ? undefined
+          : {
+              columns: inputParse.meta.fields ?? [],
+              sanitizedColumnPositions:
+                inputParse.meta.sanitizedColumnPositions,
+            },
+      );
+      const localTermsForRun = stated.localTerms;
       // The dual-signed record holds the partner's terms, so a run with one
       // loaded checks the agreed-terms hash without them being pasted; what is
       // pasted wins over that copy.
       const partnerTermsForRun = partnerTermsForVerification(
-        partnerTerms,
+        stated.partnerTerms,
         signedRecord?.record,
       );
       let recordReport: RecordVerificationReport | undefined;
-      let recordWarnings: Array<Displayable> = [];
+      let recordWarnings: Array<Displayable> = stated.notes;
       if (parsedRecord !== undefined && keys?.keys !== undefined) {
         let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
           {};
-        if (inputCsv !== undefined && resultCsv !== undefined) {
-          const readBy =
-            csvDelimiter !== undefined ? { delimiter: csvDelimiter } : {};
-          const inputParse = await loadCSVFileOffMainThread(inputCsv, readBy);
+        if (inputParse !== undefined && resultCsv !== undefined) {
           const resultParse = await loadCSVFileOffMainThread(resultCsv, readBy);
           const result = toRetainedResult(resultParse);
           const ourIdColumn = deriveOurIdColumn(
@@ -522,11 +542,11 @@ export function VerifyReceiptScreen() {
             ourIdColumn,
           });
           data = reconstructed.data;
-          recordWarnings = reconstructed.warnings;
+          recordWarnings = [...recordWarnings, ...reconstructed.warnings];
         }
         recordReport = await verifyExchangeRecord(parsedRecord, keys.keys, {
           data,
-          localTerms,
+          localTerms: localTermsForRun,
           partnerTerms: partnerTermsForRun,
         });
         // A reproduction limitation is named only once the verdict shows it
@@ -547,12 +567,12 @@ export function VerifyReceiptScreen() {
           },
           {
             record: parsedRecord,
-            localTerms,
+            localTerms: localTermsForRun,
             partnerTerms: partnerTermsForRun,
           },
         );
         signedView = signedVerdictViewModel(report, {
-          localTerms: localTerms !== undefined,
+          localTerms: localTermsForRun !== undefined,
           partnerTerms: partnerTermsForRun !== undefined,
         });
       }
@@ -777,14 +797,14 @@ export function VerifyReceiptScreen() {
             <TermsInput
               key={`local-terms-${exchangeGeneration}`}
               label="Your linkage terms"
-              description="Paste your exchange config or exported linkage-terms document. Only its linkage_terms are read; nothing else in a config is."
+              description="Paste your exchange config or exported linkage-terms document. Its linkage_terms are read, and a config's metadata block names the payload columns you sent where payload.send is unset; with no metadata block, those are read from your input CSV's header."
               terms={localTerms}
               onTerms={onLocalTerms}
             />
             <TermsInput
               key={`partner-terms-${exchangeGeneration}`}
               label="Your partner's linkage terms"
-              description="Paste your partner's config or exported terms, read the same way. A loaded receipt holds them already; what you paste here is used in its place."
+              description="Paste your partner's config or exported terms, read the same way, except that an unset payload.send is taken from their metadata block alone. A loaded receipt holds them already; what you paste here is used in its place."
               terms={partnerTerms}
               onTerms={onPartnerTerms}
             />

@@ -8,11 +8,11 @@ import YAML from "yaml";
 import type { ConnectionConfig } from "@alcove/core";
 
 // Only runProtocol is mocked: the handshake "succeeds" through its
-// post-handshake and post-exchange hooks, with no connection opened.
-// Everything from argv to the file on disk is real, so the accept budget
-// reaches the file only through the connection the command builds and the
-// bootstrap writes twice -- asserting on just one write could miss a stale
-// value left by the other.
+// post-handshake hook and the terms exchange's receive-list fill, with no
+// connection opened. Everything from argv to the file on disk is real, so the
+// accept budget reaches the file only through the connection the command
+// builds and the bootstrap writes, then edits in place -- asserting on just one
+// write could miss a stale value left by the other.
 vi.mock("../../../src/protocol", async (importActual) => ({
   ...(await importActual<typeof import("../../../src/protocol")>()),
   runProtocol: vi.fn(),
@@ -20,10 +20,7 @@ vi.mock("../../../src/protocol", async (importActual) => ({
 
 import { handler as inviteHandler } from "../../../src/commands/invite";
 import { runProtocol } from "../../../src/protocol";
-import type {
-  FileSyncRuntimeOptions,
-  RunProtocolOptions,
-} from "../../../src/protocol";
+import type { RunProtocolOptions } from "../../../src/protocol";
 import { DEFAULT_ACCEPT_TIMEOUT_SECONDS } from "../../../src/onlineBootstrap";
 import { captureStdio } from "../../loggingTestSupport";
 
@@ -46,29 +43,28 @@ function onAuthenticatedArg(callArgs: unknown[]): () => void | Promise<void> {
   return hook as () => void | Promise<void>;
 }
 
-/** The runtime object's onOutputComplete hook. It drives the bootstrap's SECOND
- *  config write -- the post-exchange rewrite that re-serializes the whole
- *  connection block -- which is where a mutation of the persisted connection
- *  would show. */
-function outputCompleteHook(
+/** The receive-list recorder the bootstrap supplies: it edits the config the
+ *  acceptance hook wrote in place, which is where a mutation of the persisted
+ *  connection would show. */
+function receiveFillRecorder(
   callArgs: unknown[],
-): NonNullable<FileSyncRuntimeOptions["onOutputComplete"]> {
-  const hook = optionsArg(callArgs).fileSyncRuntime?.onOutputComplete;
-  expect(hook).toBeTypeOf("function");
-  return hook as NonNullable<FileSyncRuntimeOptions["onOutputComplete"]>;
+): NonNullable<RunProtocolOptions["recordPayloadReceiveFill"]> {
+  const recorder = optionsArg(callArgs).recordPayloadReceiveFill;
+  expect(recorder).toBeTypeOf("function");
+  return recorder as NonNullable<
+    RunProtocolOptions["recordPayloadReceiveFill"]
+  >;
 }
 
-/** A received-payload set for the mocked exchange to have observed, so the
- *  post-exchange rewrite is reached: it is skipped on an empty observation. */
-const OBSERVED_RECEIVED_COLUMNS = ["notes"];
+/** The partner's declared send set the mocked terms exchange fills from. */
+const FILLED_RECEIVE_COLUMNS = ["notes"];
 
 /**
  * Drive one online `alcove invite` to completion against the mocked exchange,
  * returning the FINAL configuration on disk (raw, as YAML.parse yields it --
  * not through the schema, which would fill in defaults the command never
- * wrote) and the connection the run itself was conducted over. Both of the
- * bootstrap's writes are driven, since only the second reflects a later
- * mutation of the persisted connection.
+ * wrote) and the connection the run itself was conducted over. Both the
+ * bootstrap's write and the fill's in-place edit are driven.
  */
 async function inviteOnline(
   url: string,
@@ -84,9 +80,7 @@ async function inviteOnline(
   const configFile = path.join(dir, "alcove.yaml");
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) => {
     await onAuthenticatedArg(callArgs)();
-    await outputCompleteHook(callArgs)({
-      observedReceivedPayloadColumns: OBSERVED_RECEIVED_COLUMNS,
-    });
+    await receiveFillRecorder(callArgs)(FILLED_RECEIVE_COLUMNS);
     return {};
   }) as never);
 
@@ -116,10 +110,13 @@ async function inviteOnline(
     string,
     unknown
   >;
-  // The observed set the rewrite exists to record, which only the second write
-  // could have put there: what every assertion below reads is therefore the
-  // re-serialized configuration, not the acceptance hook's first draft.
-  expect(saved["expected_payload_columns"]).toEqual(OBSERVED_RECEIVED_COLUMNS);
+  // The filled list, which only the in-place edit could have put there: what
+  // every assertion below reads is therefore the edited configuration, not
+  // the acceptance hook's first draft.
+  const terms = saved["linkage_terms"] as Record<string, unknown>;
+  expect(terms["payload"]).toEqual({
+    receive: FILLED_RECEIVE_COLUMNS.map((name) => ({ name })),
+  });
   return {
     saved,
     ran: vi.mocked(runProtocol).mock.lastCall?.[0]

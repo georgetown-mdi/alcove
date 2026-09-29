@@ -49,6 +49,8 @@ import {
   readSignedRecordFile,
   readVerifiableArtifact,
   readVerificationKeysFile,
+  PARTNER_SEND_SET_UNKNOWN_WARNING,
+  SEND_SET_UNKNOWN_WARNING,
   toRetainedResult,
 } from "../../../src/commands/verifyReceipt";
 import {
@@ -944,7 +946,20 @@ describe("readExchangeRecordFile / readVerificationKeysFile", () => {
     writeFileSync(recPath, JSON.stringify(bumped, null, 2));
     expect(() => readExchangeRecordFile(recPath)).toThrow(UsageError);
     expect(() => readExchangeRecordFile(recPath)).toThrow(
-      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v9/,
+      /unrecognized version \(alcove-exchange-record\/v1\); this build recognizes alcove-exchange-record\/v10/,
+    );
+  });
+
+  test("reject a record whose terms hash predates the resolved terms", async () => {
+    // A v9 record hashed the terms with an unset receive list unresolved:
+    // refused on its version rather than reported as a terms mismatch.
+    const dir = tmp();
+    const { record } = await buildExchangeRecord(baseInputs);
+    const previous = { ...record, version: "alcove-exchange-record/v9" };
+    const recPath = join(dir, "rec.json");
+    writeFileSync(recPath, JSON.stringify(previous, null, 2));
+    expect(() => readExchangeRecordFile(recPath)).toThrow(
+      /unrecognized version \(alcove-exchange-record\/v9\); this build recognizes alcove-exchange-record\/v10/,
     );
   });
 
@@ -1290,6 +1305,150 @@ describe("handler", () => {
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
 
+  describe("a first run that filled an unset payload.receive", () => {
+    // The terms each party stated at the exchange: this party's unset send set
+    // stated from its metadata, and both receive lists unset.
+    const wireLocalTerms = (send: string[]): LinkageTerms => ({
+      ...baseInputs.localTerms,
+      payload: { send: send.map((name) => ({ name })) },
+    });
+    const wirePartnerTerms: LinkageTerms = {
+      ...baseInputs.partnerTerms,
+      payload: { send: [{ name: "status" }] },
+    };
+    // This party's configuration as the fill left it: receive written, send
+    // still unset.
+    const postFillTerms = {
+      ...baseInputs.localTerms,
+      payload: { receive: [{ name: "status" }] },
+    };
+    const metadata = [
+      { name: "ssn", type: "ssn", role: "linkage", is_payload: false },
+      { name: "dose", type: "other", role: "payload", is_payload: true },
+    ];
+
+    async function firstRunRecord(
+      localSend: string[],
+    ): Promise<{ dir: string; path: string }> {
+      const dir = tmp();
+      const { record, keys } = await buildExchangeRecord({
+        ...baseInputs,
+        localTerms: wireLocalTerms(localSend),
+        partnerTerms: wirePartnerTerms,
+      });
+      const path = join(dir, "rec.json");
+      writeFileSync(path, serializeExchangeRecord(record));
+      writeFileSync(
+        join(dir, "rec.keys.json"),
+        serializeVerificationKeys(keys),
+      );
+      return { dir, path };
+    }
+    const partnerTermsFile = () =>
+      writeYaml(
+        YAML.stringify({ linkage_terms: wirePartnerTerms }),
+        "partner.yaml",
+      );
+
+    test("verifies against the post-fill configuration and its metadata", async () => {
+      const { path } = await firstRunRecord(["dose"]);
+      const { stdout, exits } = await runVerify({
+        record: path,
+        "config-file": writeYaml(
+          YAML.stringify({ linkage_terms: postFillTerms, metadata }),
+        ),
+        "partner-terms": partnerTermsFile(),
+      });
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    test("with no metadata block, states the send set from the input file's header", async () => {
+      // Metadata inferred from the header declares only the columns it
+      // recognizes, none of them payload, so the run stated an empty send set.
+      const { dir, path } = await firstRunRecord([]);
+      const inputPath = join(dir, "input.csv");
+      writeFileSync(inputPath, "ssn,dose\n123-45-6789,10mg\n");
+      const resultPath = join(dir, "result.csv");
+      writeFileSync(resultPath, "ssn,row_id,status\n");
+      const { stdout, exits } = await runVerify({
+        record: path,
+        "config-file": writeYaml(
+          YAML.stringify({ linkage_terms: postFillTerms }),
+        ),
+        "partner-terms": partnerTermsFile(),
+        "input-file": inputPath,
+        "result-file": resultPath,
+      });
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    test("with neither a metadata block nor an input file, says what the hash needs", async () => {
+      const { path } = await firstRunRecord(["dose"]);
+      const { stdout, stderr, exits } = await runVerify({
+        record: path,
+        "log-level": "warn",
+        "config-file": writeYaml(
+          YAML.stringify({ linkage_terms: postFillTerms }),
+        ),
+        "partner-terms": partnerTermsFile(),
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain(SEND_SET_UNKNOWN_WARNING);
+      expect(stdout).not.toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    // The partner's own configuration: send unset, stated at the exchange
+    // from the metadata block beside it.
+    const partnerConfigTerms = {
+      ...baseInputs.partnerTerms,
+      payload: {},
+    };
+    const partnerMetadata = [
+      { name: "ssn", type: "ssn", role: "linkage", is_payload: false },
+      { name: "status", type: "other", role: "payload", is_payload: true },
+    ];
+    const localConfigFile = () =>
+      writeYaml(YAML.stringify({ linkage_terms: postFillTerms, metadata }));
+
+    test("states the partner's unset send set from its file's metadata block", async () => {
+      const { path } = await firstRunRecord(["dose"]);
+      const { stdout, stderr, exits } = await runVerify({
+        record: path,
+        "log-level": "warn",
+        "config-file": localConfigFile(),
+        "partner-terms": writeYaml(
+          YAML.stringify({
+            linkage_terms: partnerConfigTerms,
+            metadata: partnerMetadata,
+          }),
+          "partner.yaml",
+        ),
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).not.toContain(PARTNER_SEND_SET_UNKNOWN_WARNING);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    test("a partner-terms file with no metadata block says what the hash needs", async () => {
+      const { path } = await firstRunRecord(["dose"]);
+      const { stdout, stderr, exits } = await runVerify({
+        record: path,
+        "log-level": "warn",
+        "config-file": localConfigFile(),
+        "partner-terms": writeYaml(
+          YAML.stringify({ linkage_terms: partnerConfigTerms }),
+          "partner.yaml",
+        ),
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain(PARTNER_SEND_SET_UNKNOWN_WARNING);
+      expect(stderr).not.toContain(SEND_SET_UNKNOWN_WARNING);
+      expect(stdout).toContain("agreed-terms hash: DOES NOT MATCH");
+    });
+  });
+
   test("a --config-file defining no linkage_terms says so beside the line it explains", async () => {
     // The terms half of that config supplied nothing, and the agreed-terms line
     // otherwise would be treated as though no config had been named at all.
@@ -1530,6 +1689,11 @@ describe("handler", () => {
         associationTable: [[0], [0]],
         resultSize: 1,
         partnerPayloadReceived: { columns: ["status"], rows: [["active"]] },
+        // The run stated the send set its metadata disclosed.
+        localTerms: {
+          ...baseInputs.localTerms,
+          payload: { send: [{ name: "dose" }] },
+        },
       });
     const dir = tmp();
     const inputPath = join(dir, "input.csv");
@@ -1544,7 +1708,18 @@ describe("handler", () => {
       "identity-file": identityPath,
       "partner-fingerprint": pin,
       "config-file": writeYaml(
-        YAML.stringify({ linkage_terms: baseInputs.localTerms }),
+        YAML.stringify({
+          linkage_terms: baseInputs.localTerms,
+          metadata: [
+            {
+              name: "pid",
+              type: "other",
+              role: "identifier",
+              is_payload: false,
+            },
+            { name: "dose", type: "other", role: "payload", is_payload: true },
+          ],
+        }),
       ),
     });
     expect(exits).toEqual([]);

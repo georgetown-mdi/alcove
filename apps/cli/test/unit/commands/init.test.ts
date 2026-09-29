@@ -31,11 +31,7 @@ import {
   resolveInitInput,
 } from "../../../src/commands/init";
 import { buildDataSpec, loadInputRows } from "../../../src/onlineBootstrap";
-import {
-  loadConfigLinkageSource,
-  warnOnLinkageRuleSetCitationDrift,
-} from "../../../src/config";
-import { assertRecurringConfigDeclaresReceive } from "../../../src/configTermsGuards";
+import { warnOnLinkageRuleSetCitationDrift } from "../../../src/config";
 import {
   IDENTITY_PROMPT_PREAMBLE,
   INIT_IDENTITY_QUESTION,
@@ -109,6 +105,17 @@ afterEach(() => {
 
 // --- renderConfigTemplate: a no-input template -------------------------------
 
+test("renderConfigTemplate: the receive list is left unset, with a note saying the first run fills it", async () => {
+  const template = renderConfigTemplate(
+    await buildTemplateData(undefined, "Org"),
+  );
+  const parsed = parseExchangeSpec(YAML.parse(template));
+  expect(parsed.linkageTerms.payload?.receive).toBeUndefined();
+  expect(template).toContain(
+    "# payload.receive is not set: the first exchange sets it to the payload",
+  );
+});
+
 test("renderConfigTemplate: every exchange-spec section is represented", async () => {
   const template = renderConfigTemplate(
     await buildTemplateData(undefined, "Org"),
@@ -153,37 +160,6 @@ test("renderConfigTemplate: defaults are pre-filled and the active body parses",
   // Default connection options are present and pre-filled.
   expect(template).toContain("server_connect_timeout_ms: 30000");
   expect(template).toContain("port: 22");
-});
-
-test("renderConfigTemplate: the template states the payload.receive an invitation requires", async () => {
-  // The file init writes is the source 'alcove invite' mints from, so it holds
-  // an explicit empty receive list the operator edits rather than omits.
-  const dir = scratchDir();
-  const configPath = path.join(dir, "alcove.yaml");
-  const template = renderConfigTemplate(
-    await buildTemplateData(undefined, "Org"),
-  );
-  expect(template).toContain("'alcove invite' requires this list");
-  fs.writeFileSync(configPath, template);
-  const source = loadConfigLinkageSource(configPath);
-  if (source === undefined) throw new Error("expected the written template");
-  expect(source.linkageTerms.payload?.receive).toEqual([]);
-  expect(() =>
-    assertRecurringConfigDeclaresReceive(source.linkageTerms, configPath),
-  ).not.toThrow();
-
-  // Terms that already state a receive list keep it.
-  const data = await buildTemplateData(undefined, "Org");
-  const stated = renderConfigTemplate({
-    ...data,
-    linkageTerms: {
-      ...data.linkageTerms,
-      payload: { receive: [{ name: "enrollment_date" }] },
-    },
-  });
-  expect(
-    parseExchangeSpec(YAML.parse(stated)).linkageTerms.payload?.receive,
-  ).toEqual([{ name: "enrollment_date" }]);
 });
 
 test("renderConfigTemplate: the delimiter init was given is written into the template", async () => {

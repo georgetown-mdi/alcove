@@ -6,6 +6,7 @@ import {
   MAX_IMPORT_CHARS,
   exportLinkageTerms,
   importLinkageTerms,
+  importLinkageTermsDocument,
 } from "../../../src/psi/linkageTermsIO.js";
 
 import type { LinkageTerms } from "@alcove/core";
@@ -242,5 +243,48 @@ describe("importLinkageTerms rejection", () => {
     const result = importLinkageTerms(huge);
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error).toMatch(/too large/i);
+  });
+});
+
+describe("importLinkageTermsDocument", () => {
+  const metadata = [
+    { name: "ssn", type: "ssn", role: "linkage", is_payload: false },
+    { name: "dose", type: "other", role: "payload", is_payload: true },
+  ];
+
+  test("returns a configuration's metadata block beside its terms", () => {
+    const result = importLinkageTermsDocument(
+      JSON.stringify({
+        linkage_terms: JSON.parse(exportLinkageTerms(TERMS, "json")),
+        metadata,
+      }),
+    );
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.terms).toEqual(TERMS);
+    expect(result.metadata?.map((column) => column.isPayload)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  test("a bare terms document returns no metadata", () => {
+    const result = importLinkageTermsDocument(
+      exportLinkageTerms(TERMS, "json"),
+    );
+    expect(result.success && result.metadata).toBeUndefined();
+  });
+
+  test("an invalid metadata block is refused without echoing it", () => {
+    const result = importLinkageTermsDocument(
+      JSON.stringify({
+        linkage_terms: JSON.parse(exportLinkageTerms(TERMS, "json")),
+        metadata: [{ name: "secret-value-xyz", role: "nonsense" }],
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toContain("metadata block");
+    expect(result.error).not.toContain("secret-value-xyz");
   });
 });

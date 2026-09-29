@@ -101,13 +101,10 @@ function writeWebRTCConfig(
       ...connection,
       server: connection.server ?? { host: "peers.example.org" },
     },
-    linkageTerms: {
-      ...getDefaultLinkageTerms(
-        "Agency A",
-        inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
-      ),
-      payload: { receive: [] },
-    },
+    linkageTerms: getDefaultLinkageTerms(
+      "Agency A",
+      inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
+    ),
   };
   saveConfig(configPath, spec);
   return configPath;

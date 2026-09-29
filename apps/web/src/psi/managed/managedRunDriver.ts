@@ -33,6 +33,7 @@ import {
   exchangeRecordOwedButUnbuilt,
   getLogger,
   loadPsiBackend,
+  payloadReceiveFilledNotice,
   projectPairTable,
   runExchange,
 } from "@alcove/core";
@@ -50,6 +51,7 @@ import { noteUnfiledDisclosureRun } from "../unfiledDisclosureStore";
 import { openPeerMessageConnection } from "../transport/peerMessageConnection";
 import { waitForIncomingConnection } from "../transport/waitForConnection";
 
+import { persistManagedExchangePayloadReceiveFill } from "./managedExchangeStore";
 import { prepareManagedRerunExchange } from "./managedPreparedExchange";
 import { runManagedRerun } from "./managedRun";
 
@@ -136,9 +138,10 @@ export interface ManagedRunDriverConfig {
    * instead ({@link ./managedRun.ts}, `rerunFailureLastRun`). Absent, both flows
    * keep their default budget. */
   peerWaitTimeoutMs?: number;
-  /** A non-fatal, operator-relevant notice raised mid-run, from six sources: the
-   * deduplicating cardinality and the pair-table projection the agreed terms
-   * resolved to ({@link describeResolvedRunShape}); the clean
+  /** A non-fatal, operator-relevant notice raised mid-run, from seven sources:
+   * the deduplicating cardinality and the pair-table projection the agreed terms
+   * resolved to ({@link describeResolvedRunShape}); the receive list the run
+   * filled from the partner's declared columns ({@link payloadReceiveFilledNotice}); the clean
    * close ending on an exit with no delivery signal ({@link CLOSE_OUTCOME_WARNINGS});
    * a disclosure that could not be filed, on the run that completed
    * ({@link DISCLOSURE_NOT_FILED_WARNING}) or the run that stopped after sending
@@ -395,6 +398,17 @@ export function runManagedExchangeInBrowser(
                   describeResolvedRunShape(runShape);
                 for (const notice of [cardinalityNotice, pairTableAdvisory])
                   if (notice !== undefined) emitRunNotice(notice);
+              },
+              // Record the receive list this run fills from the partner's
+              // declared send set into the stored terms before any key or
+              // payload moves, and say which columns were taken; a failed
+              // write stops the run.
+              onPayloadReceiveFilled: async (columns) => {
+                await persistManagedExchangePayloadReceiveFill(
+                  record.id,
+                  columns,
+                );
+                emitRunNotice(payloadReceiveFilledNotice(columns));
               },
             },
           );

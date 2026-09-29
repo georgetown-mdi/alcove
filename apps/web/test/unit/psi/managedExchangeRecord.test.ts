@@ -2,9 +2,11 @@ import {
   CSV_DELIMITER_DETECT,
   DEFAULT_LINKAGE_KEY_SET_NAME,
   assembleExchangeSpec,
+  computeTermsHash,
   connectionFromLocator,
   generateSharedSecret,
   getDefaultLinkageTerms,
+  termsAsTheRunStatedThem,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
 
@@ -18,6 +20,7 @@ import {
   applyManagedExchangeCompromiseResponse,
   applyManagedExchangeLastRun,
   applyManagedExchangeLocalEdits,
+  applyManagedExchangePayloadReceiveFill,
   applyManagedExchangeReinviteRotation,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
@@ -40,6 +43,11 @@ import {
 import { withTimeZone } from "../../utils/hostTimeZone";
 
 import type {
+  LinkageTerms,
+  Metadata,
+  WebRTCExchangeLocator,
+} from "@alcove/core";
+import type {
   ManagedExchangeFailureKind,
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
@@ -48,7 +56,6 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { WebRTCExchangeLocator } from "@alcove/core";
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -613,6 +620,72 @@ describe("applyManagedExchangeLocalEdits", () => {
     );
     expect(edited).not.toHaveProperty("tokenMaxAgeDays");
     expect(edited).not.toHaveProperty("expires");
+  });
+});
+
+describe("applyManagedExchangePayloadReceiveFill", () => {
+  test("records the filled list in the stored terms and nothing else", () => {
+    const record = runnableRecord({ schedule });
+    const filled = applyManagedExchangePayloadReceiveFill(record, [
+      "program",
+      "enrolled",
+    ]);
+    expect(filled.exchangeFile.linkageTerms.payload?.receive).toEqual([
+      { name: "program" },
+      { name: "enrolled" },
+    ]);
+    expect({
+      ...filled.exchangeFile.linkageTerms,
+      payload: undefined,
+    }).toEqual({ ...record.exchangeFile.linkageTerms, payload: undefined });
+    expect(filled.sharedSecret).toBe(record.sharedSecret);
+    expect(filled.schedule).toEqual(record.schedule);
+  });
+
+  test("the filled record's terms re-derive the first run's agreed-terms hash", async () => {
+    // The first run hashed this party's terms as stated on the wire: send
+    // stated from the stored metadata, receive unset. The record the fill
+    // wrote, stated the same way, hashes to that value.
+    const metadata: Metadata = [
+      { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+      { name: "visit", type: "other", role: "payload", isPayload: true },
+    ];
+    const record = runnableRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: webrtcLocator,
+        linkageTerms,
+        metadata,
+      }),
+    });
+    const partnerStated: LinkageTerms = {
+      ...getDefaultLinkageTerms("Partner Clinic"),
+      payload: { send: [{ name: "program", description: "enrolled" }] },
+    };
+    const statedTerms = (from: ManagedExchangeRecord) =>
+      termsAsTheRunStatedThem(from.exchangeFile.linkageTerms, {
+        metadata: from.exchangeFile.metadata,
+      }).terms;
+    const runHash = await computeTermsHash(statedTerms(record), partnerStated);
+    const filled = applyManagedExchangePayloadReceiveFill(record, ["program"]);
+    expect(statedTerms(filled).payload).toEqual({
+      send: [{ name: "visit" }],
+      receive: [{ name: "program" }],
+    });
+    expect(await computeTermsHash(statedTerms(filled), partnerStated)).toBe(
+      runHash,
+    );
+  });
+
+  test("refuses terms that already state the list", () => {
+    const record = runnableRecord({
+      exchangeFile: composeManagedExchangeFile({
+        connection: webrtcLocator,
+        linkageTerms: { ...linkageTerms, payload: { receive: [] } },
+      }),
+    });
+    expect(() =>
+      applyManagedExchangePayloadReceiveFill(record, ["program"]),
+    ).toThrow("already state payload.receive");
   });
 });
 

@@ -83,8 +83,10 @@ import {
   assertDisclosureMatchesCommitment,
   assertOutboundPayloadConsented,
   reconcileReceivedPayload,
+  termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
 import type { PayloadWireMessage } from "./payloadExchange.js";
+import { payloadReceiveFill } from "./config/recurringTerms.js";
 import {
   buildExchangeRecord,
   computeTermsHash,
@@ -347,8 +349,10 @@ export class PayloadDisclosureDivergenceError extends ConnectionError {
         "holds the sending party to sending none. The exchange is refused " +
         "before any association table or payload moves. To disclose those " +
         "columns, declare them in the sending party's payload.send and the " +
-        "receiving party's payload.receive, or omit payload.receive to take " +
-        "whatever the partner sends. To disclose none, set the sending " +
+        "receiving party's payload.receive, or remove the receiving party's " +
+        "payload.receive: a recurring exchange then sets it from the " +
+        "partner's declared columns on its next run and holds the partner " +
+        "to them after that. To disclose none, set the sending " +
         "party's input metadata to transmit no column (is_payload: false, " +
         "or role ignored).",
       "protocol",
@@ -835,6 +839,11 @@ export async function assertReceiptBindingsOrAbort(
 // sendAbort).
 const PARTNER_CERTIFICATE_UNRECORDED_ABORT_REASON =
   "a party could not record the fingerprint it pinned on this first contact";
+
+// The abort reason a caller that could not record the payload receive list the
+// first run filled sends; its own failure, like the pin's above.
+const PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON =
+  "a party could not record the payload columns it receives";
 
 /**
  * The five refusals the terms-time pin resolution raises, by the condition the
@@ -1428,8 +1437,11 @@ export function prepareForExchange(
   assertFanOutImplemented(linkageTerms, standardization);
 
   // Behind every refusal above, whose guidance is specific to its own fault;
-  // this one names whatever else the partner's parse would reject.
-  assertTermsPassPartnerParse(linkageTerms);
+  // this one names whatever else the partner's parse would reject. Checked in
+  // the form the terms exchange sends them, payload send set stated.
+  assertTermsPassPartnerParse(
+    termsStatingDeclaredPayloadSend(linkageTerms, metadata),
+  );
 
   // Pre-flight the single-pass dataset ceiling: a coarse, ONE-PARTY lower
   // bound. It sees only this party's own row count, never the partner's or
@@ -2321,6 +2333,19 @@ export interface RunExchangeOptions {
    */
   onPartnerCertificatePinned?: (fingerprint: string) => void;
   /**
+   * Called once, after the terms exchange's refusals have all passed, when
+   * this party's terms leave `payload.receive` unset and the partner can send
+   * it payload ({@link payloadReceiveFill}): the argument is the column names
+   * the partner's terms declare in `payload.send`, which this run then holds
+   * the received payload to. The caller records them as `payload.receive` in
+   * the configuration it runs from, so the next run compares them strictly. A
+   * throw, or a rejected promise, stops the run before the bootstrap frame and
+   * before any linkage key or payload row moves. The names are the partner's
+   * and reach the callback raw. Omitted by a one-off run, whose unset list
+   * accepts whatever the partner sends.
+   */
+  onPayloadReceiveFilled?: (columns: string[]) => void | Promise<void>;
+  /**
    * The 32-byte session key from the authenticated key exchange, needed to derive
    * the per-exchange replay binder that the signed receipt commits to. Present only
    * on the authenticated path (the CLI discards it otherwise; the web has no key
@@ -2353,7 +2378,14 @@ export async function runExchange(
   prepared: PreparedExchange,
   options: RunExchangeOptions,
 ): Promise<ExchangeResult> {
-  const { dataset, linkageTerms, rowCount, retentionDisposition } = prepared;
+  const { dataset, rowCount, retentionDisposition } = prepared;
+  // The terms this party sends, compares, and records the run under: an unset
+  // payload send set is stated from the metadata, so the partner holds this
+  // party to a declared set. See termsStatingDeclaredPayloadSend.
+  const linkageTerms = termsStatingDeclaredPayloadSend(
+    prepared.linkageTerms,
+    prepared.metadata,
+  );
 
   // Last line of defense for the disclosure-integrity guarantee: refuse an
   // algorithm with no run path before anything goes on the wire, so the
@@ -2567,6 +2599,34 @@ export async function runExchange(
         "declare no column for",
     ]);
     throw err;
+  }
+
+  // Fill an unset receive list from the partner's declared send set after
+  // every terms-time refusal above, so a refused run records nothing, and
+  // before the bootstrap frame and any key or payload moves, so the caller has
+  // recorded it before this run receives anything under it. The run holds the
+  // received payload to the filled set, as a later run holds it to the
+  // recorded list.
+  let filledPayloadReceive: string[] | undefined;
+  const payloadReceiveFillColumns = payloadReceiveFill(
+    linkageTerms,
+    partnerTerms,
+  );
+  if (
+    options.onPayloadReceiveFilled !== undefined &&
+    payloadReceiveFillColumns !== undefined
+  ) {
+    const columns = payloadReceiveFillColumns;
+    try {
+      await options.onPayloadReceiveFilled(columns);
+    } catch (err) {
+      // Best-effort abort before the throw, as the deduplicate refusal above
+      // sends one: the failure is this party's own, so the reason is a fixed
+      // literal naming no value.
+      await sendAbort(conn, [PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON]);
+      throw err;
+    }
+    filledPayloadReceive = columns;
   }
 
   // Surface a present-but-malformed partner advertisement as a diagnostic. The
@@ -2849,9 +2909,9 @@ export async function runExchange(
   //   send-gate above keeps a conforming partner from sending any; expecting the
   //   empty set here closes it fail-closed against a non-conforming one.
   // - An output party enforces the column set it consented to receive (a fresh
-  //   acceptor's disclosedPayloadColumns, or a persisted commitment); a lazy
-  //   one (expectedPayloadColumns undefined) takes whatever the sender's own
-  //   disclosure metadata transmits.
+  //   acceptor's disclosedPayloadColumns, or a persisted commitment), else the
+  //   set this run filled its unset receive list with; a lazy one (neither)
+  //   takes whatever the sender's own disclosure metadata transmits.
   //
   // The refusal is caught by the region's guard below rather than thrown straight
   // through: this party's own payload has left it through the transport whatever
@@ -2861,7 +2921,7 @@ export async function runExchange(
   const expectedReceive = countOnly
     ? []
     : linkageTerms.output.expectsOutput
-      ? prepared.expectedPayloadColumns
+      ? (prepared.expectedPayloadColumns ?? filledPayloadReceive)
       : [];
 
   // resultSize (the intersection size) is bound only when both parties are

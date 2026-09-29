@@ -23,6 +23,7 @@ import {
 } from "../config/linkageTermsSchema.js";
 import { checkLinkageRuleSetCitation } from "../defaults/builtInLinkageTerms.js";
 import { chainDetailCauses } from "../errors.js";
+import { termsResolvingPayloadReceive } from "../config/recurringTerms.js";
 import { boundedArray } from "../utils/boundedArray.js";
 import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
 import {
@@ -50,12 +51,14 @@ import type { Algorithm, AssociationTable } from "../types.js";
 /**
  * The one recognized format version for an {@link ExchangeRecord}. A reader
  * rejects an unrecognized version rather than migrating it. It moves with the
- * field set, so adding or removing an omittable field bumps it: what a
+ * field set and with the bytes a field is computed over, so adding or
+ * removing an omittable field, or changing what the terms hash covers, bumps
+ * it: what a
  * reader would otherwise misread an old record's silence as, and which
  * fields have moved it, are in docs/spec/EXCHANGE_RECORD.md ("Record
  * fields").
  */
-export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v9";
+export const EXCHANGE_RECORD_VERSION = "alcove-exchange-record/v10";
 
 /** The one recognized format version for v2 {@link VerificationKeys}. */
 export const EXCHANGE_KEYS_VERSION = "alcove-exchange-keys/v2";
@@ -90,7 +93,7 @@ const COMMITMENT_DOMAINS: Record<CommitmentName, string> = {
 
 // Domain-separation label for the agreed-terms hash, kept distinct from the
 // commitment domains above.
-const AGREED_TERMS_DOMAIN = "alcove-agreed-terms/v2";
+const AGREED_TERMS_DOMAIN = "alcove-agreed-terms/v3";
 
 // computeCommitment, verifyCommitmentOpening, and computeTermsHash are part of
 // the public API (re-exported via main.ts), not internal helpers: an
@@ -181,16 +184,24 @@ function agreedTermsValue(a: LinkageTerms, b: LinkageTerms): CanonicalValue {
 
 /**
  * Compute the agreed-terms hash: the base64url SHA-256 over the canonical
- * encoding of both parties' linkage terms in a fixed (canonical-sorted) order.
- * Both parties compute the same value for the same agreed terms, and a different
- * value when either side's terms differ.
+ * encoding of both parties' resolved linkage terms in a fixed (canonical-sorted)
+ * order. Each side's unset `payload.receive` is resolved to the other's stated
+ * send set first ({@link termsResolvingPayloadReceive}), so the hash is the same
+ * over the terms as they crossed the wire and over a configuration the
+ * first-run fill has since written. Both parties compute the same value for the
+ * same agreed terms, and a different value when either side's terms differ.
  */
 export async function computeTermsHash(
   localTerms: LinkageTerms,
   partnerTerms: LinkageTerms,
 ): Promise<string> {
   const digest = await sha256(
-    canonicalBytes(agreedTermsValue(localTerms, partnerTerms)),
+    canonicalBytes(
+      agreedTermsValue(
+        termsResolvingPayloadReceive(localTerms, partnerTerms),
+        termsResolvingPayloadReceive(partnerTerms, localTerms),
+      ),
+    ),
   );
   return toBase64Url(digest);
 }

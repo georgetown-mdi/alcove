@@ -11,7 +11,6 @@ import {
   CONNECTION_BLOCK_NOTICE,
   decodeInvitation,
   DEFAULT_LINKAGE_RULE_SET,
-  deriveAcceptedLinkageTerms,
   DEFAULT_PEER_TIMEOUT_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   disclosedColumnNames,
@@ -21,8 +20,6 @@ import {
   LinkageTermsUnsatisfiableError,
   MAX_NAME_LENGTH,
   OperatorConfigError,
-  partnerBoundTerms,
-  RECURRING_RECEIVE_REQUIRED_MESSAGE,
   sanitizeErrorForDisplay,
   StandardizationTermsError,
   UsageError,
@@ -68,7 +65,6 @@ import {
   offlineAbandonNotice,
   onlineWaitInvalidationNotice,
   persistedPeerBudgetNotice,
-  RECEIVES_NO_PAYLOAD_NOTICE,
   resolveInvitePositionals,
   validateInvite,
 } from "../../../src/commands/invite";
@@ -1103,66 +1099,6 @@ test("validateInvite: offline infer-from-input also applies the selected single-
   }
 });
 
-test("validateInvite: an online invitation from inferred terms receives no payload and says so", async () => {
-  const { input, options } = onlineFixture();
-  const log = getLogger("invite-receive-online-test");
-  log.setLevel("silent");
-  const infoSpy = vi.spyOn(log, "info");
-  try {
-    const ready = await validateInvite({
-      resolved: { mode: "online", url: new URL("sftp://host/drop"), input },
-      options,
-      acceptTimeout: 900,
-      log,
-    });
-    const token = await decodeInvitation(ready.invitation);
-    expect(token.linkageTerms.payload?.receive).toStrictEqual([]);
-    const info = infoSpy.mock.calls.map((c) => String(c[0]));
-    expect(info).toContain(RECEIVES_NO_PAYLOAD_NOTICE);
-  } finally {
-    infoSpy.mockRestore();
-  }
-});
-
-test("validateInvite: an offline invitation from inferred terms receives no payload, and its acceptor sends none", async () => {
-  const dir = fs.mkdtempSync(
-    path.join(tmpdir(), "alcove-invite-receive-offline-"),
-  );
-  tmpDirs.push(dir);
-  const input = writeCsv(dir, "first_name,last_name,dob,ssn");
-  const configFile = path.join(dir, "alcove.yaml");
-  const log = getLogger("invite-receive-offline-test");
-  log.setLevel("silent");
-  const infoSpy = vi.spyOn(log, "info");
-  try {
-    const ready = await validateInvite({
-      resolved: { mode: "offline", input },
-      options: testOptions({
-        configFile,
-        keyFile: path.join(dir, ".alcove.key"),
-      }),
-      acceptTimeout: 900,
-      log,
-    });
-    if (ready.mode !== "offline") throw new Error("expected offline");
-    // The terms written to the configuration and minted into the token are
-    // the same, so a later invite from that configuration passes its guard.
-    expect(ready.dataSpec.linkageTerms.payload?.receive).toStrictEqual([]);
-    const token = await decodeInvitation(ready.invitation);
-    expect(token.linkageTerms.payload?.receive).toStrictEqual([]);
-    expect(
-      partnerBoundTerms(
-        deriveAcceptedLinkageTerms(token.linkageTerms, "Accepting Org"),
-      ).payload?.send,
-    ).toStrictEqual([]);
-    expect(infoSpy.mock.calls.map((c) => String(c[0]))).toContain(
-      RECEIVES_NO_PAYLOAD_NOTICE,
-    );
-  } finally {
-    infoSpy.mockRestore();
-  }
-});
-
 test("validateInvite: --linkage-strategy is warned-ignored when terms come from a config", async () => {
   // Config-as-source: the config is authoritative, so the flag must not silently
   // override its linkage_strategy. The flag is named as ignored and the minted
@@ -1480,14 +1416,11 @@ test("validateInvite: an offline invitation has no endpoint (field stays optiona
 // Terms an inviter's config would hold after being generated from an input
 // with first/last name, dob, and ssn columns: passing that metadata drops the
 // default keys (and the ssn4 field) the input cannot satisfy, so the terms
-// reference exactly firstName, lastName, dateOfBirth, and ssn. The explicit
-// empty payload.receive is the list an invitation from a config requires.
+// reference exactly firstName, lastName, dateOfBirth, and ssn.
 function defaultTerms(): LinkageTerms {
-  return receivingNothing(
-    getDefaultLinkageTerms(
-      "Agency A",
-      inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
-    ),
+  return getDefaultLinkageTerms(
+    "Agency A",
+    inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
   );
 }
 
@@ -1498,10 +1431,6 @@ function metadataSendingNotes(): Metadata {
     ...inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
     { name: "notes", type: "other", role: "payload", isPayload: true },
   ];
-}
-
-function receivingNothing(terms: LinkageTerms): LinkageTerms {
-  return { ...terms, payload: { ...terms.payload, receive: [] } };
 }
 
 // A pre-existing config holding `terms` (and optionally an explicit
@@ -1588,7 +1517,6 @@ test("validateInvite: an invitation declares the rule set the config names", asy
         algorithm: "psi",
         output: { expects_output: true, share_with_partner: true },
         deduplicate: false,
-        payload: { receive: [] },
         linkage_rule_set: {
           field_set: { ...fieldSet },
           key_set: { ...keySet },
@@ -1628,11 +1556,9 @@ test("validateInvite: a reused config supplies the identity, so no flag is neede
   // it would refuse a re-invite over terms they already settled. A blank value
   // is the same case as no flag (the scripted `--identity "$ORG"` with ORG
   // unset): nothing was named, and nothing is reported.
-  const terms = receivingNothing(
-    getDefaultLinkageTerms(
-      "Agency Config",
-      inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
-    ),
+  const terms = getDefaultLinkageTerms(
+    "Agency Config",
+    inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
   );
   const log = getLogger("invite-identity-from-config-test");
   log.setLevel("silent");
@@ -1672,11 +1598,9 @@ test("validateInvite: --identity over a reused config is reported, not applied",
   // The flag cannot silently re-label terms the config is authoritative for, and
   // dropping it silently would leave the operator reading their own value in the
   // invitation. Named as ignored, like --linkage-strategy on the same path.
-  const terms = receivingNothing(
-    getDefaultLinkageTerms(
-      "Agency Config",
-      inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
-    ),
+  const terms = getDefaultLinkageTerms(
+    "Agency Config",
+    inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
   );
   const { dir, configPath, keyPath } = withConfig(terms);
   const log = getLogger("invite-identity-ignored-test");
@@ -1912,91 +1836,13 @@ test("validateInvite: a config holding no identity is refused, flag or not", asy
   }
 });
 
-test("validateInvite: a config stating no payload.receive is refused, minting nothing", async () => {
-  // The config governs the recurring exchange the invitation sets up, so it
-  // must state what this party receives; the partner adopts that list as its
-  // own payload.send.
-  const { payload: _dropped, ...terms } = defaultTerms();
-  const { dir, configPath, keyPath } = withConfig(terms);
-  try {
-    const refusal = await validateInvite({
-      resolved: { mode: "offline" },
-      options: testOptions({ configFile: configPath, keyFile: keyPath }),
-      acceptTimeout: 900,
-      log: silentLog,
-    }).then(
-      () => undefined,
-      (err: unknown) => err,
-    );
-    expect(refusal).toBeInstanceOf(UsageError);
-    const shown = sanitizeErrorForDisplay(refusal);
-    expect(shown).toContain(configPath);
-    expect(shown).toContain(RECURRING_RECEIVE_REQUIRED_MESSAGE);
-    expect(fs.existsSync(keyPath)).toBe(false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("validateInvite: a config stating payload.receive mints with the list on the token", async () => {
-  // An explicit empty list states "receive nothing"; a named column is
-  // carried to the partner the same way.
-  for (const receive of [[], [{ name: "enrollment_date" }]]) {
-    const terms: LinkageTerms = { ...defaultTerms(), payload: { receive } };
-    const { dir, configPath, keyPath } = withConfig(terms);
-    try {
-      const ready = await validateInvite({
-        resolved: { mode: "offline" },
-        options: testOptions({ configFile: configPath, keyFile: keyPath }),
-        acceptTimeout: 900,
-        log: silentLog,
-      });
-      const token = await decodeInvitation(ready.invitation);
-      expect(token.linkageTerms.payload?.receive).toStrictEqual(receive);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
-});
-
-test("validateInvite: a config under which the partner sends no payload needs no payload.receive", async () => {
-  // A count-only config admits no payload, and a party that receives no
-  // result is sent none, so neither has a list to state.
-  const { payload: _dropped, ...withoutPayload } = defaultTerms();
-  const countOnly: LinkageTerms = {
-    ...withoutPayload,
-    algorithm: "psi-c",
-    linkageKeys: withoutPayload.linkageKeys.slice(0, 1),
-  };
-  const noResult: LinkageTerms = {
-    ...withoutPayload,
-    output: { expectsOutput: false, shareWithPartner: true },
-  };
-  for (const terms of [countOnly, noResult]) {
-    const { dir, configPath, keyPath } = withConfig(terms);
-    try {
-      const ready = await validateInvite({
-        resolved: { mode: "offline" },
-        options: testOptions({ configFile: configPath, keyFile: keyPath }),
-        acceptTimeout: 900,
-        log: silentLog,
-      });
-      expect(ready.mode).toBe("offlineFromConfig");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
-});
-
 test("validateInvite: --identity over a reused config redacts a planted key marker", async () => {
   // A label containing a private-key BEGIN marker must not survive to the log
   // sink, whose dangling-marker redaction would otherwise swallow the rest of
   // the line -- the config label, path, and remedy -- behind it.
-  const terms = receivingNothing(
-    getDefaultLinkageTerms(
-      "Agency Config",
-      inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
-    ),
+  const terms = getDefaultLinkageTerms(
+    "Agency Config",
+    inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
   );
   const { dir, configPath, keyPath } = withConfig(terms);
   const log = getLogger("invite-identity-key-marker-test");
@@ -4058,11 +3904,9 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     const keyFile = path.join(root, ".alcove.key");
     saveConfig(configFile, {
       connection: { channel: "filedrop", path: "/mnt/share" },
-      linkageTerms: receivingNothing(
-        getDefaultLinkageTerms(
-          "Inviter Org",
-          inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
-        ),
+      linkageTerms: getDefaultLinkageTerms(
+        "Inviter Org",
+        inferMetadata(["first_name", "last_name", "dob", "ssn"], []),
       ),
       outboundPayloadConsent: { status: "pending" },
     });

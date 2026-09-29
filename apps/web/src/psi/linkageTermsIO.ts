@@ -8,12 +8,13 @@ import {
   parseSensitiveJson,
   parseSensitiveYaml,
   safeParseLinkageTerms,
+  safeParseMetadata,
   sanitizeForDisplay,
   snakeizeKey,
   snakeizeKeys,
 } from "@alcove/core";
 
-import type { LinkageTerms } from "@alcove/core";
+import type { LinkageTerms, Metadata } from "@alcove/core";
 import type { ZodError } from "zod";
 
 /**
@@ -53,6 +54,12 @@ interface LinkageTermsImportSuccess {
   terms: LinkageTerms;
 }
 
+/** Imported terms, with the `metadata` block of the configuration that
+ * wrapped them where it held one. */
+interface LinkageTermsDocumentImportSuccess extends LinkageTermsImportSuccess {
+  metadata?: Metadata;
+}
+
 /** A rejected import, with a readable, value-free reason for the editor to show
  * inline. The message never echoes a parsed value (an imported document is
  * untrusted free text), consistent with the no-echo parse-error contract the
@@ -64,6 +71,9 @@ interface LinkageTermsImportFailure {
 
 type LinkageTermsImportResult =
   LinkageTermsImportSuccess | LinkageTermsImportFailure;
+
+type LinkageTermsDocumentImportResult =
+  LinkageTermsDocumentImportSuccess | LinkageTermsImportFailure;
 
 /**
  * Serialize linkage terms to a snake_case `format` document. JSON is pretty-
@@ -110,6 +120,21 @@ function linkageTermsWithin(raw: unknown): unknown {
  * bounded by the `maxAliasCount` that `parseSensitiveYaml` sets.
  */
 export function importLinkageTerms(text: string): LinkageTermsImportResult {
+  const imported = importLinkageTermsDocument(text);
+  if (!imported.success) return imported;
+  return { success: true, terms: imported.terms };
+}
+
+/**
+ * {@link importLinkageTerms}, also returning the `metadata` block of an
+ * exchange configuration that wraps the terms, validated by
+ * {@link safeParseMetadata}: a receipt verifier needs it to state an unset
+ * `payload.send` as the run stated it. A terms document, or a configuration
+ * holding no such block, returns no metadata; an invalid block is refused.
+ */
+export function importLinkageTermsDocument(
+  text: string,
+): LinkageTermsDocumentImportResult {
   if (text.length > MAX_IMPORT_CHARS)
     return {
       success: false,
@@ -148,7 +173,31 @@ export function importLinkageTerms(text: string): LinkageTermsImportResult {
   if (!parsed.success)
     return { success: false, error: readableTermsError(parsed.error) };
 
-  return { success: true, terms: parsed.data };
+  const rawMetadata = metadataWithin(raw);
+  if (rawMetadata === undefined) return { success: true, terms: parsed.data };
+  const metadata = safeParseMetadata(rawMetadata);
+  if (!metadata.success)
+    return {
+      success: false,
+      error:
+        "The metadata block in this configuration is not valid. Check it " +
+        "against the configuration the exchange ran with.",
+    };
+  return { success: true, terms: parsed.data, metadata: metadata.data };
+}
+
+/** The `metadata` block of an exchange configuration that wraps its terms in
+ * `linkage_terms`; undefined for a bare terms document. */
+function metadataWithin(raw: unknown): unknown {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    return undefined;
+  const document = raw as Record<string, unknown>;
+  if (
+    document["linkage_terms"] === undefined &&
+    document["linkageTerms"] === undefined
+  )
+    return undefined;
+  return document["metadata"];
 }
 
 /**

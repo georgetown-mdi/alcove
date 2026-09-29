@@ -15,8 +15,9 @@
  * if the partner transmits a different set than was consented to -- the same
  * enforcement `prepareAcceptorExchange` applies from the invitation's disclosed
  * set. An absent persisted set falls back to the names the document's own
- * `payload.receive` lists, as the command line's recurring run does; a document
- * holding neither reconciles lazily.
+ * `payload.receive` lists, as the command line's recurring run does; for a
+ * document holding neither, the run fills `payload.receive` from the partner's
+ * declared send set and holds itself to that.
  *
  * The terms-side enforcement beside it is the acceptor's persisted
  * `expectedPartnerDeduplicate` -- the `deduplicate` the invitation declared for
@@ -91,7 +92,7 @@ export function prepareManagedRerunExchange(
   // The received-payload enforcement, as the command line's recurring run
   // applies it: the persisted commitment, else the names the document's own
   // payload.receive lists. An empty set is a strict "receive nothing"
-  // commitment, and a document holding neither reconciles lazily.
+  // commitment; a document holding neither is filled at the terms exchange.
   prepared.expectedPayloadColumns =
     exchangeFile.expectedPayloadColumns ??
     exchangeFile.linkageTerms.payload?.receive?.map((column) => column.name);

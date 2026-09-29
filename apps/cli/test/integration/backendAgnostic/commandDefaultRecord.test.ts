@@ -99,7 +99,7 @@ const PROVISION_ROWS = [
   },
 ];
 
-const RECORD_VERSION = "alcove-exchange-record/v9";
+const RECORD_VERSION = "alcove-exchange-record/v10";
 
 let work: string;
 let originalCwd: string;
@@ -239,12 +239,13 @@ test("exchange: a default-flag run writes the default audit record and keys file
   const outA = path.join(work, "a-out.csv");
   const outB = path.join(work, "b-out.csv");
 
-  // One config, shared read-only by both parties (exchange only reads it): the
-  // filedrop rendezvous plus the default linkage terms inferred from the input
-  // columns. pollIntervalMs:1 keeps the local filedrop round trip fast. Each
-  // party overrides the identity on the command line, so the baked identity is
-  // irrelevant. Key files are per-party (each rotates its own) and start from the
-  // same secret so the handshake succeeds.
+  // One config per party, since a run whose terms leave payload.receive unset
+  // writes the list into its own config: the filedrop rendezvous plus the
+  // default linkage terms inferred from the input columns. pollIntervalMs:1
+  // keeps the local filedrop round trip fast. Each party overrides the
+  // identity on the command line, so the baked identity is irrelevant. Key
+  // files are per-party (each rotates its own) and start from the same secret
+  // so the handshake succeeds.
   const prepared = prepareForExchange({}, "config", PROVISION_ROWS, CSV_FIELDS);
   const spec: ExchangeSpec = {
     connection: {
@@ -255,8 +256,10 @@ test("exchange: a default-flag run writes the default audit record and keys file
     linkageTerms: prepared.linkageTerms,
     metadata: prepared.metadata,
   };
-  const configFile = path.join(work, "alcove.yaml");
-  saveConfig(configFile, spec);
+  const configA = path.join(work, "a.yaml");
+  const configB = path.join(work, "b.yaml");
+  saveConfig(configA, spec);
+  saveConfig(configB, spec);
   const keyA = path.join(work, "a.key");
   const keyB = path.join(work, "b.key");
   saveKeyFile(keyA, { sharedSecret: INITIAL_SECRET });
@@ -271,7 +274,7 @@ test("exchange: a default-flag run writes the default audit record and keys file
       inputA,
       outA,
       "--config-file",
-      configFile,
+      configA,
       "--key-file",
       keyA,
       "--identity",
@@ -286,7 +289,7 @@ test("exchange: a default-flag run writes the default audit record and keys file
       inputB,
       outB,
       "--config-file",
-      configFile,
+      configB,
       "--key-file",
       keyB,
       "--identity",

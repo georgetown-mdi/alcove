@@ -10,11 +10,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import yargs, { type Arguments } from "yargs";
+import YAML from "yaml";
 import {
   assertFirstRoundFitsFileSyncFrame,
   CONSENT_FACTS,
   getLogger,
-  MAX_PAYLOAD_ENTRIES,
   prepareForExchange,
   RoundSetLimitError,
   sanitizeErrorForDisplay,
@@ -113,7 +113,6 @@ function optionsArg(callArgs: unknown[]): RunProtocolOptions {
 function runtimeOptionsArg(callArgs: unknown[]): {
   eventStream?: unknown;
   onOutputComplete?: (context: {
-    observedReceivedPayloadColumns: string[];
     bootstrap?: ExchangeBootstrapResult;
   }) => void | Promise<void>;
 } {
@@ -122,29 +121,29 @@ function runtimeOptionsArg(callArgs: unknown[]): {
   return runtime as {
     eventStream?: unknown;
     onOutputComplete?: (context: {
-      observedReceivedPayloadColumns: string[];
       bootstrap?: ExchangeBootstrapResult;
     }) => void | Promise<void>;
   };
 }
 
 /** Drive the completed-exchange half of runProtocol's contract from the mock:
- *  invoke the caller's pre-terminal onOutputComplete hook, then resolve the way
- *  the real function does. The zero-setup `--save` persistence rides that hook,
- *  so a mock that resolves without calling it drives a run that saves nothing --
- *  which is what the placement test below turns on. */
+ *  hand the receive-list recorder the partner's declared send set where
+ *  `filled` is given, as the terms exchange does, invoke the caller's
+ *  pre-terminal onOutputComplete hook, then resolve the way the real function
+ *  does. The zero-setup `--save` persistence rides that hook, so a mock that
+ *  resolves without calling it drives a run that saves nothing -- which is what
+ *  the placement test below turns on. */
 async function driveCompletedExchange(
   callArgs: unknown[],
   bootstrap: ExchangeBootstrapResult | undefined,
-  observedReceivedPayloadColumns: string[] = [],
+  filled?: string[],
 ): Promise<unknown> {
-  await runtimeOptionsArg(callArgs).onOutputComplete?.({
-    observedReceivedPayloadColumns,
-    bootstrap,
-  });
+  if (filled !== undefined)
+    await optionsArg(callArgs).recordPayloadReceiveFill?.(filled);
+  await runtimeOptionsArg(callArgs).onOutputComplete?.({ bootstrap });
   // The bootstrap outcome reaches the caller through the hook alone, so the
   // resolved result contains only what RunProtocolResult declares.
-  return { observedReceivedPayloadColumns };
+  return {};
 }
 
 // --- builder help overrides --------------------------------------------------
@@ -700,53 +699,33 @@ test("handler with --save persists the first-use pin into the written config", a
   }
 });
 
-// --- handler: the withheld-payload-columns warning --------------------------
-// An over-cap observed payload is left out of a --save config, and the operator
-// is told so -- but only once that config is on disk, and never on a run that
-// saved nothing.
+// --- handler: the receive list a --save run fills ----------------------------
 
-const WITHHELD_WARNING_PREFIX =
-  "the saved config does not record which payload columns your partner sent";
-
-/** Drive a zero-setup run whose partner sent more payload columns than a
- * config can store, and report each time the withheld-columns warning reached
- * stderr, with whether the config file existed at that moment. `beforeHook`
- * runs inside the exchange, after the pre-flight conflict check. */
-async function withheldWarningsFromRun(options: {
-  save: boolean;
-  beforeHook?: (configFile: string) => void;
-}): Promise<{ configExistedAtWarning: boolean[] }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerowithheld-"));
+/** Drive a zero-setup run whose terms exchange fills the receive list from
+ * the partner's declared send set, and report whether a recorder was passed
+ * and the saved configuration's linkage terms, if one was written. */
+async function filledReceiveFromRun(options: { save: boolean }): Promise<{
+  recorderPassed: boolean;
+  savedTerms: Record<string, unknown> | undefined;
+}> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerofill-"));
   const configFile = path.join(dir, "alcove.yaml");
-  const configExistedAtWarning: boolean[] = [];
-  const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
-    chunk: string | Uint8Array,
-  ) => {
-    if (String(chunk).includes(WITHHELD_WARNING_PREFIX))
-      configExistedAtWarning.push(fs.existsSync(configFile));
-    return true;
-  }) as never);
   const exitSpy = captureProcessExit();
-  const exitCodeBefore = process.exitCode;
+  let recorderPassed = false;
   try {
     const input = path.join(dir, "input.csv");
     fs.writeFileSync(
       input,
       "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
     );
-    const overCap = Array.from(
-      { length: MAX_PAYLOAD_ENTRIES + 1 },
-      (_, i) => `c${i}`,
-    );
     vi.mocked(runProtocol).mockImplementationOnce((async (
       ...callArgs: unknown[]
     ) => {
-      options.beforeHook?.(configFile);
-      return driveCompletedExchange(
-        callArgs,
-        { partnerSaveIntent: false },
-        overCap,
-      );
+      recorderPassed =
+        optionsArg(callArgs).recordPayloadReceiveFill !== undefined;
+      return driveCompletedExchange(callArgs, { partnerSaveIntent: false }, [
+        "program",
+      ]);
     }) as never);
 
     await handler({
@@ -757,40 +736,33 @@ async function withheldWarningsFromRun(options: {
       "key-file": path.join(dir, ".alcove.key"),
       identity: "Tester",
       record: false,
-      "log-level": "warn",
+      "log-level": "silent",
     } as unknown as Arguments);
-    return { configExistedAtWarning };
+    const savedTerms = fs.existsSync(configFile)
+      ? (YAML.parse(fs.readFileSync(configFile, "utf8"))
+          .linkage_terms as Record<string, unknown>)
+      : undefined;
+    return { recorderPassed, savedTerms };
   } finally {
-    process.exitCode = exitCodeBefore;
-    getLogger("alcove").setLevel("silent");
-    stderrSpy.mockRestore();
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
-test("handler with --save warns once, after the config is written, that the partner's columns were withheld", async () => {
-  const { configExistedAtWarning } = await withheldWarningsFromRun({
+test("handler with --save records the filled receive list in the saved terms", async () => {
+  const { recorderPassed, savedTerms } = await filledReceiveFromRun({
     save: true,
   });
-  expect(configExistedAtWarning).toEqual([true]);
+  expect(recorderPassed).toBe(true);
+  expect(savedTerms?.["payload"]).toEqual({ receive: [{ name: "program" }] });
 });
 
-test("handler without --save does not warn that the partner's columns were withheld", async () => {
-  const { configExistedAtWarning } = await withheldWarningsFromRun({
+test("handler without --save fills nothing: the one-off run takes what the partner sends", async () => {
+  const { recorderPassed, savedTerms } = await filledReceiveFromRun({
     save: false,
   });
-  expect(configExistedAtWarning).toEqual([]);
-});
-
-test("handler with --save does not warn that the partner's columns were withheld when the config write fails", async () => {
-  // A config that appears after the pre-flight check makes the save refuse;
-  // nothing was saved, so there is no saved config to warn about.
-  const { configExistedAtWarning } = await withheldWarningsFromRun({
-    save: true,
-    beforeHook: (configFile) => fs.writeFileSync(configFile, "operator's\n"),
-  });
-  expect(configExistedAtWarning).toEqual([]);
+  expect(recorderPassed).toBe(false);
+  expect(savedTerms).toBeUndefined();
 });
 
 // --- handler: the dataset preparation precedes host-key trust ----------------
@@ -1917,9 +1889,7 @@ test("handler --save: the save rides the pre-terminal hook, not the return from 
   // must leave nothing on disk. This is the one test the hook's invocation is
   // visible to; every other --save test would pass just as well on either path.
   const f = saveFailureFixture();
-  vi.mocked(runProtocol).mockImplementation((async () => ({
-    observedReceivedPayloadColumns: [],
-  })) as never);
+  vi.mocked(runProtocol).mockImplementation((async () => ({})) as never);
   try {
     await handler({
       _: ["sftp://userb@localhost:2222/drop", f.input],

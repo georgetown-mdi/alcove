@@ -12,6 +12,7 @@ import {
   getDefaultLinkageTerms,
   getLogger,
   loadPsiBackend,
+  payloadReceiveFilledNotice,
   runExchange,
 } from "@alcove/core";
 import {
@@ -45,6 +46,7 @@ import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
 import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
 import { openPeerMessageConnection } from "../../../src/psi/transport/peerMessageConnection.js";
+import { persistManagedExchangePayloadReceiveFill } from "../../../src/psi/managed/managedExchangeStore.js";
 
 import type { ManagedInputSource } from "../../../src/psi/managed/managedInputHandle.js";
 import type { RunnableManagedExchangeRecord } from "../../../src/psi/managed/managedExchangeRecord.js";
@@ -153,6 +155,13 @@ vi.mock("../../../src/psi/disclosureAccountingStore.js", () => ({
 vi.mock("../../../src/psi/unfiledDisclosureStore.js", () => ({
   noteUnfiledDisclosureRun: vi.fn(() => Promise.resolve("noted")),
 }));
+vi.mock(
+  "../../../src/psi/managed/managedExchangeStore.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    persistManagedExchangePayloadReceiveFill: vi.fn(() => Promise.resolve()),
+  }),
+);
 vi.mock("../../../src/psi/managed/managedPreparedExchange.js", () => ({
   prepareManagedRerunExchange: vi.fn(() =>
     minimalPreparedExchange({
@@ -488,6 +497,41 @@ describe("runManagedExchangeInBrowser", () => {
 
     expect(rejection).toBe(noShow);
     expect(peer.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test("records a receive list the terms exchange fills, then says which columns were taken", async () => {
+    const { mc } = makeParkedCloseMc();
+    mockedOpen.mockResolvedValue(mc);
+    acquireResources();
+    const order: Array<string> = [];
+    vi.mocked(persistManagedExchangePayloadReceiveFill).mockImplementationOnce(
+      () => {
+        order.push("recorded");
+        return Promise.resolve(RECORD);
+      },
+    );
+    mockedRunExchange.mockImplementationOnce(async (...args) => {
+      await args[3].onPayloadReceiveFilled?.(["program", "back\\slash"]);
+      return minimalExchangeResult({
+        partnerTerms: getDefaultLinkageTerms("Managed re-run partner"),
+      });
+    });
+    const warnings: Array<string> = [];
+
+    await runDriver(new AbortController().signal, (message) => {
+      order.push("noticed");
+      warnings.push(message);
+    });
+
+    expect(
+      vi.mocked(persistManagedExchangePayloadReceiveFill),
+    ).toHaveBeenCalledWith(RECORD.id, ["program", "back\\slash"]);
+    expect(order).toEqual(["recorded", "noticed"]);
+    // Raw: the seat's sink escapes the line once.
+    expect(warnings).toEqual([
+      payloadReceiveFilledNotice(["program", "back\\slash"]),
+    ]);
+    expect(warnings[0]).toContain('"back\\slash"');
   });
 
   test("yields its outputs while the close is still draining", async () => {

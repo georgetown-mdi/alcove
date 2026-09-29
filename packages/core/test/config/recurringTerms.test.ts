@@ -1,10 +1,15 @@
+import YAML from "yaml";
 import { expect, test } from "vitest";
 
 import {
-  recurringTermsLackDeclaredReceive,
-  termsReceiveNothing,
-  withReceiveNothingWhereUnstated,
+  payloadReceiveFilledNotice,
+  payloadReceiveFillsOnFirstRun,
+  termsResolvingPayloadReceive,
 } from "../../src/config/recurringTerms";
+import {
+  annotateUnsetPayloadReceive,
+  removeUnsetPayloadReceiveNote,
+} from "../../src/config/exchangeDocument";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 
 const terms: LinkageTerms = {
@@ -19,80 +24,112 @@ const terms: LinkageTerms = {
   linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
-test("terms with no payload.receive lack the list a recurring exchange requires", () => {
-  expect(recurringTermsLackDeclaredReceive(terms)).toBe(true);
+test("terms with no payload.receive fill it on the first run", () => {
+  expect(payloadReceiveFillsOnFirstRun(terms)).toBe(true);
   expect(
-    recurringTermsLackDeclaredReceive({
+    payloadReceiveFillsOnFirstRun({
       ...terms,
       payload: { send: [{ name: "enrollment_date" }] },
     }),
   ).toBe(true);
 });
 
-test("an explicit empty receive list states receive nothing and satisfies the rule", () => {
+test("a stated receive list, empty or not, is not filled", () => {
   expect(
-    recurringTermsLackDeclaredReceive({ ...terms, payload: { receive: [] } }),
+    payloadReceiveFillsOnFirstRun({ ...terms, payload: { receive: [] } }),
   ).toBe(false);
-});
-
-test("a non-empty receive list satisfies the rule", () => {
   expect(
-    recurringTermsLackDeclaredReceive({
+    payloadReceiveFillsOnFirstRun({
       ...terms,
       payload: { receive: [{ name: "enrollment_date" }] },
     }),
   ).toBe(false);
 });
 
-test("terms under which the partner sends this party no payload need no list", () => {
-  expect(
-    recurringTermsLackDeclaredReceive({ ...terms, algorithm: "psi-c" }),
-  ).toBe(false);
-  expect(
-    recurringTermsLackDeclaredReceive({
-      ...terms,
-      output: { expectsOutput: false, shareWithPartner: true },
-    }),
-  ).toBe(false);
-});
-
-test("the default states receive: [] only where the list is missing", () => {
-  const sending: LinkageTerms = {
-    ...terms,
-    payload: { send: [{ name: "enrollment_date" }] },
-  };
-  expect(withReceiveNothingWhereUnstated(sending).payload).toStrictEqual({
-    send: [{ name: "enrollment_date" }],
-    receive: [],
-  });
-  expect(withReceiveNothingWhereUnstated(terms).payload).toStrictEqual({
-    receive: [],
-  });
-  const stated: LinkageTerms = {
-    ...terms,
-    payload: { receive: [{ name: "case_manager" }] },
-  };
-  expect(withReceiveNothingWhereUnstated(stated)).toBe(stated);
-  const countOnly: LinkageTerms = { ...terms, algorithm: "psi-c" };
-  expect(withReceiveNothingWhereUnstated(countOnly)).toBe(countOnly);
-});
-
-test("terms receive nothing only under an explicit empty list the partner could send against", () => {
-  expect(termsReceiveNothing(withReceiveNothingWhereUnstated(terms))).toBe(
-    true,
+test("terms under which the partner sends this party no payload fill nothing", () => {
+  expect(payloadReceiveFillsOnFirstRun({ ...terms, algorithm: "psi-c" })).toBe(
+    false,
   );
-  expect(termsReceiveNothing(terms)).toBe(false);
   expect(
-    termsReceiveNothing({
-      ...terms,
-      payload: { receive: [{ name: "case_manager" }] },
-    }),
-  ).toBe(false);
-  expect(
-    termsReceiveNothing({
+    payloadReceiveFillsOnFirstRun({
       ...terms,
       output: { expectsOutput: false, shareWithPartner: true },
-      payload: { receive: [] },
     }),
   ).toBe(false);
+});
+
+test("an unset receive list resolves to the partner's stated send set, by name, and a resolved one to itself", () => {
+  const partner: LinkageTerms = {
+    ...terms,
+    identity: "Accepting Org",
+    payload: {
+      send: [{ name: "enrollment_date", description: "first enrolled" }],
+    },
+  };
+  const resolved = termsResolvingPayloadReceive(terms, partner);
+  expect(resolved.payload).toStrictEqual({
+    receive: [{ name: "enrollment_date" }],
+  });
+  expect(termsResolvingPayloadReceive(resolved, partner)).toBe(resolved);
+  expect(
+    termsResolvingPayloadReceive(terms, { ...partner, payload: undefined })
+      .payload,
+  ).toStrictEqual({ receive: [] });
+  const countOnly: LinkageTerms = { ...terms, algorithm: "psi-c" };
+  expect(termsResolvingPayloadReceive(countOnly, partner)).toBe(countOnly);
+});
+
+test("the fill notice names each column raw, for its sink to escape, or states that none were declared", () => {
+  expect(payloadReceiveFilledNotice(["program", "a\u202eb"])).toContain(
+    '"program", "a\u202eb"',
+  );
+  expect(payloadReceiveFilledNotice([])).toContain("no payload columns");
+});
+
+function documentFor(value: unknown): YAML.Document {
+  return new YAML.Document(value);
+}
+
+test("an unset receive list is stated at the end of linkage_terms, or of payload", () => {
+  const noPayload = documentFor({ linkage_terms: { version: "1.0.0" } });
+  annotateUnsetPayloadReceive(noPayload, terms);
+  expect(noPayload.toString()).toMatch(
+    /version: 1\.0\.0\n {2}# payload\.receive is not set: the first exchange/,
+  );
+
+  const withSend = documentFor({
+    linkage_terms: { payload: { send: [{ name: "x" }] } },
+  });
+  annotateUnsetPayloadReceive(withSend, {
+    ...terms,
+    payload: { send: [{ name: "x" }] },
+  });
+  expect(withSend.toString()).toMatch(
+    /- name: x\n {4}# receive is not set: the first exchange/,
+  );
+});
+
+test("no note where the terms state a receive list or the fill does not apply", () => {
+  for (const stated of [
+    { ...terms, payload: { receive: [] } },
+    { ...terms, algorithm: "psi-c" as const },
+  ]) {
+    const doc = documentFor({ linkage_terms: { version: "1.0.0" } });
+    annotateUnsetPayloadReceive(doc, stated);
+    expect(doc.toString()).not.toContain("#");
+  }
+});
+
+test("the note is removed once the list is set, and an operator's own comment is kept", () => {
+  const doc = documentFor({ linkage_terms: { version: "1.0.0" } });
+  annotateUnsetPayloadReceive(doc, terms);
+  const reparsed = YAML.parseDocument(doc.toString());
+  removeUnsetPayloadReceiveNote(reparsed);
+  expect(reparsed.toString()).not.toContain("payload.receive is not set");
+
+  const own = YAML.parseDocument(
+    "linkage_terms:\n  version: 1.0.0\n  # my own note\n",
+  );
+  removeUnsetPayloadReceiveNote(own);
+  expect(own.toString()).toContain("# my own note");
 });

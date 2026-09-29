@@ -126,7 +126,9 @@ afterEach(() => {
   fs.rmSync(work, { recursive: true, force: true });
 });
 
-/** The two inputs, the shared configuration, and a key file for each party. */
+/** The two inputs, and a configuration and a key file for each party: an
+ *  exchange whose terms leave payload.receive unset writes the list into its
+ *  own configuration, so the parties cannot share one file. */
 function writeExchangeFixture(): void {
   fs.writeFileSync(path.join(work, "a-input.csv"), PARTY_A_CSV);
   fs.writeFileSync(path.join(work, "b-input.csv"), PARTY_B_CSV);
@@ -141,7 +143,8 @@ function writeExchangeFixture(): void {
     metadata: prepared.metadata,
   };
   fs.mkdirSync(path.join(work, "drop"));
-  saveConfig(path.join(work, "alcove.yaml"), spec);
+  saveConfig(path.join(work, "a.yaml"), spec);
+  saveConfig(path.join(work, "b.yaml"), spec);
   saveKeyFile(path.join(work, "a.key"), { sharedSecret: INITIAL_SECRET });
   saveKeyFile(path.join(work, "b.key"), { sharedSecret: INITIAL_SECRET });
 }
@@ -157,7 +160,7 @@ function partyArgs(
     path.join(work, `${party}-input.csv`),
     path.join(work, `${party}-out.csv`),
     "--config-file",
-    path.join(work, "alcove.yaml"),
+    path.join(work, `${party}.yaml`),
     "--key-file",
     path.join(work, `${party}.key`),
     "--identity",

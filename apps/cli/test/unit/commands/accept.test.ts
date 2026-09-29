@@ -3366,9 +3366,6 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
         token.linkageTerms.deduplicate,
       );
       expect(passed.reuseExistingConfig).toBe(false);
-      // The acceptor observes nothing it must crystallize: its received set is the
-      // one the invitation declared, which it already has.
-      expect(passed.persistObservedReceivedPayload).toBeUndefined();
     } finally {
       exit.mockRestore();
       runOnlineBootstrapMock.mockReset();

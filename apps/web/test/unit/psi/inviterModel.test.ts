@@ -56,7 +56,6 @@ import {
 } from "@psi/transportChooser";
 
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
-import { OPENED_TERMS_RECEIVE_REQUIRED } from "@console/loadedConfig";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import { signingIdentityDivergence } from "@psi/receiptsModel";
 
@@ -488,7 +487,6 @@ describe("the create gate and the two sentences that state it", () => {
     "above to continue.";
   const clearGates: InviterCreateGates = {
     runWithheld: undefined,
-    openedTermsReceiveUnstated: undefined,
     outboundConsentUnconfirmed: undefined,
     offlineBlocked: false,
     connectionIncomplete: false,
@@ -515,15 +513,6 @@ describe("the create gate and the two sentences that state it", () => {
       gates: { ...clearGates, runWithheld: RUN_WITHHELD },
       statusLine: RUN_WITHHELD,
       announcement: RUN_WITHHELD,
-    },
-    {
-      gate: "openedTermsReceiveUnstated",
-      gates: {
-        ...clearGates,
-        openedTermsReceiveUnstated: OPENED_TERMS_RECEIVE_REQUIRED,
-      },
-      statusLine: OPENED_TERMS_RECEIVE_REQUIRED,
-      announcement: OPENED_TERMS_RECEIVE_REQUIRED,
     },
     {
       gate: "outboundConsentUnconfirmed",

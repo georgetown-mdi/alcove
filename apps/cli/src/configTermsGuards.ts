@@ -6,12 +6,6 @@ import {
   assertPayloadSendDisclosed,
   assertStandardizationMatchesTerms,
   assertTransformsCompile,
-  keepOperatorSuppliedText,
-  messageWithOperatorText,
-  operatorSuppliedText,
-  RECURRING_RECEIVE_REQUIRED_MESSAGE,
-  recurringTermsLackDeclaredReceive,
-  UsageError,
 } from "@alcove/core";
 import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
 
@@ -50,23 +44,4 @@ export function assertConfigTermsRunnable(
   // A step whose compile throws aborts the run only once the pipeline is
   // built, after the partner has agreed to the terms naming it.
   assertTransformsCompile(terms, standardization);
-}
-
-/**
- * Refuse a configuration's linkage terms as the source of an invitation when
- * they state no `payload.receive`: the configuration governs the recurring
- * exchange the invitation sets up, and that exchange requires the list
- * (`recurringTermsLackDeclaredReceive`).
- *
- * @throws {UsageError} naming the configuration and the field.
- */
-export function assertRecurringConfigDeclaresReceive(
-  terms: LinkageTerms,
-  configPath: string,
-): void {
-  if (!recurringTermsLackDeclaredReceive(terms)) return;
-  const message = messageWithOperatorText`config file ${operatorSuppliedText(
-    configPath,
-  )} cannot be the source of an invitation: ${RECURRING_RECEIVE_REQUIRED_MESSAGE}`;
-  throw keepOperatorSuppliedText(new UsageError(message.text), message);
 }

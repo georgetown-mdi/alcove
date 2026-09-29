@@ -15,17 +15,14 @@ import {
   inferDateFormat,
   keepOperatorSuppliedText,
   LinkageStrategySchema,
-  MAX_PAYLOAD_ENTRIES,
   messageWithOperatorText,
-  NAME_SHAPE_PATTERN,
+  OperatorConfigError,
   operatorSuppliedText,
   PLACEHOLDER_SFTP_HOST,
   PLACEHOLDER_SSH_USERNAME,
   redactAndRenderOperatorSuppliedText,
   safeParseConnectionConfig,
-  sanitizeErrorForDisplay,
   UsageError,
-  withReceiveNothingWhereUnstated,
 } from "@alcove/core";
 import type {
   BuiltInLinkageRuleSet,
@@ -44,11 +41,15 @@ import type {
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
-import { applyConnectionOverrides, saveConfig } from "./config";
+import {
+  applyConnectionOverrides,
+  persistFilledPayloadReceive,
+  saveConfig,
+} from "./config";
 import { detectFileConflicts, FileExistsError } from "./fileUtils";
 import { assertFileSyncFirstRoundFits } from "./fileSyncFirstRound";
 import { withFirstRoundCountDisplay } from "./psiProgressDisplay";
-import { openEventStream, reportPersistenceLoss } from "./eventStream";
+import { openEventStream } from "./eventStream";
 import { writeAcceptanceRecordReportingLoss } from "./acceptedTermsRecords";
 import {
   applyConnectionCredentials,
@@ -652,9 +653,6 @@ export function singlePassDisclosureNotice(): string {
  * Absent (or `cascade`) leaves the default strategy untouched, so omitting the
  * selection is byte-identical to before the flag existed.
  *
- * Terms this function authors state `payload.receive: []`, since no flag sets
- * the list an invitation requires (`withReceiveNothingWhereUnstated`).
- *
  * `ruleSet`, when given, is the built-in rule set the terms this function
  * authors are drawn from; it is the default set otherwise, and it is ignored
  * where `terms` are supplied, which were drawn from whatever their author drew
@@ -700,11 +698,9 @@ export function buildDataSpec(args: {
   const metadata = inferMetadata(rows.columns, rows.sanitizedColumnPositions);
   const linkageTerms =
     terms ??
-    withReceiveNothingWhereUnstated(
-      withLinkageStrategy(
-        linkageTermsFromRuleSet(ruleSet, identity, metadata),
-        linkageStrategy,
-      ),
+    withLinkageStrategy(
+      linkageTermsFromRuleSet(ruleSet, identity, metadata),
+      linkageStrategy,
     );
 
   const dobCol = linkageDateOfBirthColumn(metadata);
@@ -731,86 +727,6 @@ export function prepareForOnlineExchange(
     identity,
     rows.rawRows,
     rows.columns,
-  );
-}
-
-/**
- * The received-payload commitment to persist from an OBSERVED first exchange, or
- * `undefined` to persist nothing (leaving the field absent so the recurring path
- * reconciles lazily). A party that learns its received-payload set only by
- * observation -- the online inviter (unknown until the acceptor transmits it)
- * and a zero-setup `--save` party -- crystallizes that observed set into the
- * saved config's `expectedPayloadColumns` so a later recurring `alcove
- * exchange` fails closed on a divergent received payload
- * ({@link reconcileReceivedPayload}); the observe-by-first-exchange counterpart
- * to the acceptor's up-front token commitment.
- *
- * An empty observation is not persisted (stays lazy): an empty payload is
- * ambiguous between disclosing nothing and a zero-match exchange, and persisting
- * it as a "receive nothing" commitment would abort an otherwise-honest later run
- * that does match. A later non-empty observation is then accepted without
- * widening disclosure -- receiving is not disclosing. Only a non-empty,
- * unambiguous observation is crystallized.
- *
- * An observation of more than `MAX_PAYLOAD_ENTRIES` columns is also dropped
- * (stays lazy): persisting it would write a config this party can no longer
- * load, and truncating would diverge from the partner's full re-transmitted set
- * and false-abort the recurring run. The offline-accept/token path cannot hit
- * this cap: its disclosed-columns subset is already bounded at intake, unlike
- * this observe-on-save path's unbounded source.
- *
- * An observation holding a name outside {@link NAME_SHAPE_PATTERN} -- a control
- * or text-direction character -- is dropped (stays lazy) for the same reason:
- * the wire admits such a name, but the persisted list holds the linkage-terms
- * name shape on reload, so saving it would write a config this party can no
- * longer load.
- *
- * Either drop returns the reason as `withheld`, so a caller that writes the
- * config can tell the operator, after the write succeeds, through
- * {@link withheldPayloadColumnsWarning}.
- *
- * @internal exported for testing
- */
-export function observedReceivedColumnsForSave(
-  observed: string[] | undefined,
-): ObservedReceivedColumnsForSave {
-  if (observed === undefined || observed.length === 0) return {};
-  if (observed.length > MAX_PAYLOAD_ENTRIES) return { withheld: "over-cap" };
-  if (!observed.every((name) => NAME_SHAPE_PATTERN.test(name)))
-    return { withheld: "name-shape" };
-  return { columns: observed };
-}
-
-/** Why an observed received-payload set was left out of a saved config. */
-export type WithheldPayloadColumnsReason = "over-cap" | "name-shape";
-
-/**
- * The outcome of {@link observedReceivedColumnsForSave}: the columns to record,
- * or the reason a non-empty observation was withheld; both absent for an empty
- * observation.
- */
-export interface ObservedReceivedColumnsForSave {
-  columns?: string[];
-  withheld?: WithheldPayloadColumnsReason;
-}
-
-/**
- * The one warning line for a saved config that does not record the partner's
- * payload columns. Quotes no partner-supplied name. Emit it only after the
- * config write has succeeded.
- */
-export function withheldPayloadColumnsWarning(
-  reason: WithheldPayloadColumnsReason,
-): string {
-  const why =
-    reason === "over-cap"
-      ? `there were more than ${MAX_PAYLOAD_ENTRIES}, the most a config can store`
-      : "one name has a control or text-direction character, which a config " +
-        "cannot store";
-  return (
-    "the saved config does not record which payload columns your partner " +
-    `sent, because ${why}. Later 'alcove exchange' runs will accept whatever ` +
-    "columns arrive instead of refusing a changed set."
   );
 }
 
@@ -842,8 +758,7 @@ const CONFIG_APPEARED_LATE_REMEDY =
  * returned as `configWriteError` rather than claiming the config was saved.
  *
  * Every persistence this path can lose without losing the exchange -- that
- * config write, the reuse path's two consent-record refreshes, and the
- * post-exchange observed-payload crystallization -- reports through
+ * config write and the reuse path's consent-record refreshes -- reports through
  * {@link reportPersistenceLoss}: the human log states the cause, the
  * machine-interface stream sends a `warning`, and the process exits
  * `PERSISTENCE_LOSS_EXIT_CODE` rather than a clean 0 an unattended
@@ -913,38 +828,23 @@ export async function runOnlineBootstrap(params: {
    */
   reuseExistingConfig?: boolean;
   /**
-   * Crystallize the received-payload set this party OBSERVES during the exchange
-   * into the freshly-written config's `expectedPayloadColumns`, so a later
-   * recurring `alcove exchange` fails closed on a divergent payload. Passed by
-   * the online INVITER, whose received set is unknown until the acceptor
-   * transmits it (the lazy receive-side fill-to-disk this closes). The online
-   * ACCEPTOR does not pass it: it learns its received set up front from the
-   * invitation token and enforces that in memory for its single run. No-op unless
-   * a fresh config was actually written (never the reuse path). See the
-   * post-exchange second write below and {@link observedReceivedColumnsForSave}.
-   */
-  persistObservedReceivedPayload?: boolean;
-  /**
    * The online ACCEPTOR's received-payload commitment for THIS acceptance: the
    * set it consented to UP FRONT from the invitation token
    * (`token.disclosedPayloadColumns`), recorded as the config's
    * `expectedPayloadColumns` so a later recurring `alcove exchange` fails closed
    * on a divergent received payload (reconcileReceivedPayload) -- the online
-   * sibling of the offline-accept persistence. Unlike
-   * `persistObservedReceivedPayload` (the inviter's observe-then-persist, in a
-   * SECOND post-exchange write), this set is known BEFORE the exchange, so it
-   * rides the acceptance hook's FIRST write on a fresh config and a surgical
-   * in-place refresh of the kept config on the reuse path.
+   * sibling of the offline-accept persistence. This set is known BEFORE the
+   * exchange, so it rides the acceptance hook's FIRST write on a fresh config
+   * and a surgical in-place refresh of the kept config on the reuse path.
    *
    * The WRAPPER's presence -- not the columns inside it -- marks a caller that
    * owns this field. `consentedColumns: undefined` is an acceptance whose
    * invitation had no disclosed subset (an older or metadata-unknown mint): it
    * records no field on a fresh config and REMOVES a stale one under reuse,
    * leaving the recurring path to reconcile lazily. An absent parameter is a
-   * caller with no commitment of its own (the online INVITER, whose received set
-   * is learned by observation). An empty array is a real "receive nothing"
-   * commitment (a later non-empty payload aborts), mirroring the offline path --
-   * distinct from the observe path, which drops an ambiguous empty observation.
+   * caller with no commitment of its own (the online INVITER). An empty array
+   * is a real "receive nothing" commitment (a later non-empty payload aborts),
+   * mirroring the offline path.
    * The invitation bounds this set to `MAX_PAYLOAD_ENTRIES` at intake, so it
    * needs no cap check here.
    */
@@ -992,22 +892,6 @@ export async function runOnlineBootstrap(params: {
    */
   runOnlyPeerTimeoutSeconds?: number;
 }): Promise<{ configWriteError?: unknown }> {
-  // The two received-payload persistence inputs are mutually exclusive: the
-  // online ACCEPTOR passes receivedPayloadLockIn (known up front from the
-  // token), while the online INVITER and the zero-setup --save party pass
-  // persistObservedReceivedPayload (learned only by observation). Encoded as a
-  // check, not caller discipline, since both would let the observe-on-save
-  // second write clobber the acceptor's up-front commitment.
-  if (
-    params.persistObservedReceivedPayload &&
-    params.receivedPayloadLockIn !== undefined
-  )
-    throw new InternalConsistencyError(
-      "runOnlineBootstrap received both receivedPayloadLockIn (the acceptor's " +
-        "up-front token lock-in) and persistObservedReceivedPayload (the " +
-        "inviter's observe-on-save); these are mutually exclusive.",
-    );
-
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
   // own parameter rather than embedded in the connection config.
@@ -1151,8 +1035,8 @@ export async function runOnlineBootstrap(params: {
           // gate is the presence of a commitment at all: consented columns of
           // undefined is a subset-less invitation, which REMOVES a stale field
           // rather than leave a set this acceptance did not consent to, while a
-          // caller that owns no commitment (the inviter, which learns its
-          // received set by observation) never reaches this write.
+          // caller that owns no commitment (the inviter) never reaches this
+          // write.
           const lossReport = {
             log: {
               warn: (message: string) =>
@@ -1225,8 +1109,7 @@ export async function runOnlineBootstrap(params: {
           connection: params.connection,
           ...params.dataSpec,
           // The online ACCEPTOR's up-front token commitment rides this first
-          // write: the set is known before the exchange (unlike the inviter's
-          // observed set, written in the second write below). Folded on the
+          // write: the set is known before the exchange. Folded on the
           // consented columns with the same `!== undefined` discriminant the
           // offline-accept path uses -- an empty array is a real "receive
           // nothing" commitment, only an absent set stays lazy.
@@ -1262,87 +1145,26 @@ export async function runOnlineBootstrap(params: {
       // The online invite/accept run no file-sync entry-sweep (the sweep flags
       // are exchange/zero-setup only), so this holds the machine stream opened
       // above (undefined when the flag is off, which is runProtocol's own
-      // "no stream" state) and this bootstrap's own last write.
+      // "no stream" state).
       fileSyncRuntime: {
         eventStream,
-        // Crystallize the OBSERVED received-payload set into the freshly-written
-        // config so a later recurring `alcove exchange` fails closed on a
-        // divergent payload (reconcileReceivedPayload). A SECOND write, distinct
-        // from the acceptance hook's (which persists BEFORE the data exchange,
-        // when the received set is unknown). Rides runProtocol's pre-terminal
-        // hook, not a run after runProtocol returns, so the loss below is
-        // reported BEFORE the run's terminal event -- the last point a
-        // supervisor reading fd 3 will see it.
-        //
-        // Gated on: persistObservedReceivedPayload (only the inviter; the online
-        // accept path knows its set up front and does not pass this),
-        // configWritten (a fresh config the hook actually wrote -- never reuse,
-        // whose in-place refreshes leave it false, nor a failed hook), and a
-        // non-empty observation (observedReceivedColumnsForSave drops the
-        // ambiguous empty case).
-        //
-        // Unlike the acceptance hook's saveConfig, this write has no
-        // detectFileConflicts re-gate: it overwrites the config THIS run just
-        // wrote, so a conflict check would always self-fire. The "do not clobber
-        // the operator's config" gate already ran at that first write --
-        // configWritten is true only if it passed.
-        //
-        // Non-fatal: the config is already on disk from the acceptance hook, so a
-        // failure here only leaves the recurring path reconciling lazily -- its
-        // prior behavior -- and must not fail the already-completed exchange.
-        onOutputComplete: ({ observedReceivedPayloadColumns }) => {
-          // Nothing owed disk on either of these paths, so both report a
-          // complete persistence: the run has no write of this hook's to
-          // account for.
-          if (!params.persistObservedReceivedPayload || !configWritten)
-            return { persisted: true };
-          const { columns: observedLockIn, withheld } =
-            observedReceivedColumnsForSave(observedReceivedPayloadColumns);
-          // The acceptance hook already wrote the config, so the warning
-          // follows a completed write.
-          if (withheld !== undefined)
-            getLogger(params.loggerName).warn(
-              withheldPayloadColumnsWarning(withheld),
-            );
-          if (observedLockIn === undefined) return { persisted: true };
-          try {
-            saveConfig(params.configPath, {
-              connection: params.connection,
-              ...params.dataSpec,
-              expectedPayloadColumns: observedLockIn,
-              // Included in this second full-spec write too: it re-serializes
-              // the config the acceptance hook wrote, so omitting it would
-              // silently drop a recorded outbound consent and leave the next run
-              // ungated. No caller sets both today (this path is the inviter's),
-              // so it needs no guard.
-              ...(params.outboundPayloadConsent !== undefined
-                ? { outboundPayloadConsent: params.outboundPayloadConsent }
-                : {}),
-              // Included for the same reason as the outbound consent above:
-              // omitting it from this re-serialized write would drop a recorded
-              // terms-side binding and leave the next run holding the partner to
-              // nothing.
-              ...(params.expectedPartnerDeduplicate !== undefined
-                ? {
-                    expectedPartnerDeduplicate:
-                      params.expectedPartnerDeduplicate,
-                  }
-                : {}),
-            });
-            return { persisted: true };
-          } catch (err) {
-            const notice =
-              `the exchange succeeded and ${params.configPath} was written, but ` +
-              "recording the observed received-payload columns for fail-closed " +
-              "recurring enforcement failed; the next 'alcove exchange' will " +
-              "reconcile the received payload lazily";
-            getLogger(params.loggerName).warn(
-              `${notice}: ${sanitizeErrorForDisplay(err)}`,
-            );
-            reportPersistenceLoss(notice, eventStream);
-            return { persisted: false };
-          }
-        },
+      },
+      // Record a receive list the run fills into the configuration the hook
+      // above wrote or kept. A run whose configuration write failed has none
+      // to record into, so it stops before any data moves, as a failed record
+      // does.
+      recordPayloadReceiveFill: (columns) => {
+        if (configWritten || params.reuseExistingConfig === true) {
+          persistFilledPayloadReceive(params.configPath, columns);
+          return;
+        }
+        const message = messageWithOperatorText`the payload columns your partner declares it sends could not be recorded as linkage_terms.payload.receive, because ${operatorSuppliedText(
+          params.configPath,
+        )} was not written, so the run stopped before any data moved. Resolve the configuration write error reported above and run again.`;
+        throw keepOperatorSuppliedText(
+          new OperatorConfigError(message.text),
+          message,
+        );
       },
     });
 

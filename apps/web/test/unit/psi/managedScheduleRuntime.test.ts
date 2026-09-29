@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { describeResolvedRunShape, getLogger } from "@alcove/core";
+import {
+  describeResolvedRunShape,
+  getLogger,
+  payloadReceiveFilledNotice,
+} from "@alcove/core";
 
 import {
   DISCLOSURE_NOT_FILED_WARNING,
@@ -709,6 +713,27 @@ describe("the notices an unattended run can raise", () => {
       cardinalityNotice,
       pairTableAdvisory,
     ]);
+    warn.mockRestore();
+  });
+
+  test("the receive-list fill notice reaches the diagnostic log with the partner's column names escaped once", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    mockedRun.mockImplementation((config) => {
+      config.onWarning?.(
+        payloadReceiveFilledNotice(["back\\slash", "bell\u0007", "zip\u202e"]),
+      );
+      return Promise.resolve(completedRun());
+    });
+
+    await browserScheduleTickSeams(new AbortController().signal).runAttempt(
+      attempt(),
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = String(warn.mock.calls[0][1]);
+    expect(logged).toContain('"back\\\\slash", "bell\\x07", "zip\\u202e"');
+    expect(logged).not.toContain("back\\\\\\slash");
+    for (const raw of ["\u0007", "\u202e"]) expect(logged).not.toContain(raw);
     warn.mockRestore();
   });
 });
