@@ -14,7 +14,7 @@ import {
   persistOutboundPayloadConsent,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { assertConfigTermsRunnable } from "../configTermsGuards";
+import { assertConfigTermsSendable } from "../configTermsGuards";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
 import { resolveTermsUpdateIdentity } from "../partyIdentity";
@@ -81,7 +81,7 @@ export async function handler(argv: Arguments): Promise<void> {
         "author-fresh-terms",
       );
       resolveTermsUpdateIdentity(terms.identity, configPath);
-      assertConfigTermsRunnable(terms, source);
+      assertConfigTermsSendable(terms, source);
       const sharedSecret = readPartnershipSecret(keyPath);
 
       // Undefined where the configuration declares no metadata: the columns

@@ -46,7 +46,7 @@ import {
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
 import { writeTermsRecord } from "../acceptedTermsRecords";
-import { assertConfigTermsRunnable } from "../configTermsGuards";
+import { assertConfigTermsSendable } from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
 import { createProvisionedServer } from "../serverProvision";
@@ -957,9 +957,9 @@ export async function validateInvite(params: {
     }
 
     // Fail closed, before the token is minted, on terms this config's own
-    // exchange would refuse, so the partner is never handed an invitation it
-    // accepts only to have the first run refuse it.
-    assertConfigTermsRunnable(configTerms, configSource);
+    // exchange would refuse or whose payload.send it would not honor, so the
+    // partner never accepts an invitation the first run refuses or changes.
+    assertConfigTermsSendable(configTerms, configSource);
 
     // Include the disclosed-columns subset only when the config declares an
     // explicit metadata block: without one the run infers metadata from the

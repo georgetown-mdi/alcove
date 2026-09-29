@@ -184,6 +184,33 @@ describe("an attended run", () => {
     expect(fs.existsSync(termsProposalPath(setup.config))).toBe(false);
   });
 
+  test("terms the configuration could not load under are refused without asking", async () => {
+    saveConfig(setup.config, {
+      ...readSpec(setup.config),
+      includeOwnColumns: "disclosed",
+    });
+    const before = fs.readFileSync(setup.config, "utf8");
+    const change = changeFor(setup.partnerTerms);
+    const { payload: _payload, ...adopted } = change.adoptedTerms;
+    const { error } = await settle(
+      {
+        ...change,
+        adoptedTerms: {
+          ...adopted,
+          algorithm: "psi-c",
+          linkageKeys: adopted.linkageKeys.slice(0, 1),
+        },
+      },
+      true,
+    );
+    expect(promptConfirmMock).not.toHaveBeenCalled();
+    expect(error).toBeInstanceOf(OperatorConfigError);
+    expect((error as Error).message).toContain("include_own_columns");
+    expect(exitCodeForError(error)).toBe(64);
+    expect(classifyTerminalError(error, "prepare")).toBe("config");
+    expect(fs.readFileSync(setup.config, "utf8")).toBe(before);
+  });
+
   test("a change this run cannot continue under is written as a proposal without asking", async () => {
     const { error } = await settle(changeFor(setup.partnerTerms, false), true);
     expect(promptConfirmMock).not.toHaveBeenCalled();

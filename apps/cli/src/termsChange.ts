@@ -26,7 +26,11 @@ import type {
 } from "@alcove/core";
 
 import { termsUpdateWrite } from "./acceptedTermsRecords";
-import { DEFAULT_CONFIG_PATH, persistTermsUpdate } from "./config";
+import {
+  DEFAULT_CONFIG_PATH,
+  persistTermsUpdate,
+  termsUpdateInvalidTerm,
+} from "./config";
 import { writeFileOwnerOnly } from "./fileUtils";
 import {
   consentSurfaceSink,
@@ -103,9 +107,9 @@ export function displayTermsChange(
     removed: "columns your partner no longer sends you",
   });
   directionLines(emit, change.delta.sent, {
-    added: "columns you now send your partner (your partner accepts these)",
+    added: "columns you now send your partner (your partner decides on these)",
     removed:
-      "columns you no longer send your partner (your partner accepts this)",
+      "columns you no longer send your partner (your partner decides on this)",
   });
   if (change.delta.otherTerms.length > 0) {
     emit("  other terms that differ:");
@@ -151,9 +155,10 @@ function proposalRefusal(
  * The `onTermsChange` an `alcove exchange` run passes to core. Shows the
  * change, then:
  *
- * - `interactive` and the change can continue this run: asks, and on yes
- *   writes the partner's terms into `configPath` through the write
- *   `alcove apply` makes (`termsUpdateWrite`) and resolves, so the run
+ * - `interactive` and the change can continue this run: refuses without
+ *   asking where `configPath` would not load with the partner's terms
+ *   written into it; otherwise asks, and on yes writes them through the
+ *   write `alcove apply` makes (`termsUpdateWrite`) and resolves, so the run
  *   continues under them. A no refuses, and nothing is written.
  * - otherwise: writes the partner's terms as a terms update beside the
  *   configuration ({@link termsProposalPath}), authenticated under the
@@ -161,7 +166,8 @@ function proposalRefusal(
  *   command that applies it.
  *
  * Each refusal is an {@link OperatorConfigError} composed of this party's own
- * paths and fixed text: exit 64, event category `config`.
+ * paths, a configuration key, and fixed text: exit 64, event category
+ * `config`.
  */
 export function termsChangeHandler(params: {
   configPath: string;
@@ -188,6 +194,31 @@ export function termsChangeHandler(params: {
     );
 
     if (interactive && change.continuable) {
+      const partnerSend = change.partnerTerms.payload?.send;
+      // The change is to what the partner sends and the agreed terms; what
+      // this party sends stays under the consent record it already holds.
+      const write = {
+        ...termsUpdateWrite(
+          {
+            linkageTerms: change.adoptedTerms,
+            expectedPayloadColumns: partnerSend?.map(({ name }) => name),
+            expectedPartnerDeduplicate: change.partnerTerms.deduplicate,
+            invitationRelay: undefined,
+          },
+          existing,
+        ),
+        outboundPayloadConsent: existing.outboundPayloadConsent,
+      };
+      const invalidTerm = termsUpdateInvalidTerm(configPath, write);
+      if (invalidTerm !== undefined) {
+        const message = messageWithOperatorText`your partner's linkage terms would leave ${operatorSuppliedText(
+          configPath,
+        )} unable to load (its ${invalidTerm} term would be invalid), so the exchange stopped before any linkage key or data moved and the file was not changed. Ask your partner about the change.`;
+        throw keepOperatorSuppliedText(
+          new OperatorConfigError(message.text),
+          message,
+        );
+      }
       const accepted = await promptConfirm(
         `Accept your partner's terms, write them to ${shownConfig}, and continue this exchange?`,
       );
@@ -200,21 +231,7 @@ export function termsChangeHandler(params: {
           message,
         );
       }
-      const partnerSend = change.partnerTerms.payload?.send;
-      // The change is to what the partner sends and the agreed terms; what
-      // this party sends stays under the consent record it already holds.
-      persistTermsUpdate(configPath, {
-        ...termsUpdateWrite(
-          {
-            linkageTerms: change.adoptedTerms,
-            expectedPayloadColumns: partnerSend?.map(({ name }) => name),
-            expectedPartnerDeduplicate: change.partnerTerms.deduplicate,
-            invitationRelay: undefined,
-          },
-          existing,
-        ),
-        outboundPayloadConsent: existing.outboundPayloadConsent,
-      });
+      persistTermsUpdate(configPath, write);
       log.info(
         `wrote your partner's linkage terms to ${shownConfig}; the exchange continues under them.`,
       );

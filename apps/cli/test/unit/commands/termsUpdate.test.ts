@@ -199,6 +199,30 @@ describe("alcove update", () => {
     expect(fs.readFileSync(partnership.a.key, "utf8")).toBe(keyBefore);
   });
 
+  test("refuses a payload.send that differs from what the metadata transmits", async () => {
+    saveConfig(partnership.a.config, {
+      ...readSpec(partnership.a.config),
+      linkageTerms: {
+        ...partnership.aTerms,
+        payload: { send: [{ name: "notes" }] },
+      },
+      metadata: metadataWith("notes", "county"),
+    });
+    const exitSpy = captureProcessExit();
+    const stdio = captureStdio();
+    try {
+      await expect(
+        updateHandler(argv("update", partnership.a)),
+      ).rejects.toThrow("exit:64");
+    } finally {
+      stdio.restore();
+      exitSpy.mockRestore();
+    }
+    expect(stdio.stderrWrites.join("")).toContain(
+      "omits a column metadata does transmit",
+    );
+  });
+
   test("refuses without a key file, printing nothing", async () => {
     fs.rmSync(partnership.a.key);
     const exitSpy = captureProcessExit();
@@ -300,6 +324,21 @@ describe("alcove apply", () => {
     const lines = stderr.split("\n");
     expect(lines).toContain("  linkage terms: no change");
     expect(lines).toContain("  columns you will receive: change");
+  });
+
+  test("applies terms whose payload.send differs from what this party's metadata transmits", async () => {
+    saveConfig(partnership.a.config, {
+      ...readSpec(partnership.a.config),
+      linkageTerms: { ...partnership.aTerms, payload: { receive: [] } },
+    });
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue(true);
+
+    const { exit } = await runApply(update);
+    expect(exit).toBeUndefined();
+    const after = readSpec(partnership.b.config);
+    expect(after.linkageTerms.payload?.send).toEqual([]);
+    expect(after.metadata).toEqual(metadataWith("program"));
   });
 
   test("declining leaves the configuration byte-identical", async () => {

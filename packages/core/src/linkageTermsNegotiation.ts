@@ -754,12 +754,15 @@ export function termsAdoptingPartnerTerms(
       shareWithPartner: partner.output.expectsOutput,
     },
   };
-  if (partnerPayload !== undefined) {
+  // A partner sharing output with no stated send list sends nothing: an absent
+  // receive list here would accept whatever columns it sends.
+  const partnerSend: PayloadColumn[] | undefined =
+    partnerPayload?.send ?? (partner.output.shareWithPartner ? [] : undefined);
+  if (partnerPayload !== undefined || partnerSend !== undefined) {
     const mirrored: Payload = {};
-    if (partnerPayload.receive !== undefined)
+    if (partnerPayload?.receive !== undefined)
       mirrored.send = partnerPayload.receive;
-    if (partnerPayload.send !== undefined)
-      mirrored.receive = partnerPayload.send;
+    if (partnerSend !== undefined) mirrored.receive = partnerSend;
     adopted.payload = mirrored;
   }
   return LinkageTermsSchema.safeParse(adopted).success ? adopted : undefined;
@@ -768,18 +771,20 @@ export function termsAdoptingPartnerTerms(
 /**
  * This party's terms with its received payload set taken from the partner's
  * stated send set, each column by name alone, and nothing else changed.
+ * Undefined where the result is not a valid terms document.
  */
 export function termsReceivingPartnerSend(
   local: LinkageTerms,
   partner: LinkageTerms,
-): LinkageTerms {
-  return {
+): LinkageTerms | undefined {
+  const adopted: LinkageTerms = {
     ...local,
     payload: {
       ...local.payload,
       receive: (partner.payload?.send ?? []).map(({ name }) => ({ name })),
     },
   };
+  return LinkageTermsSchema.safeParse(adopted).success ? adopted : undefined;
 }
 
 // The terms whose difference a run already prepared can take on without

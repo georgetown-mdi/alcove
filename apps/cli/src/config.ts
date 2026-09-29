@@ -2011,7 +2011,70 @@ export function persistTermsUpdate(
   configPath: string,
   write: TermsUpdateWrite,
 ): void {
-  const serialized = editSensitiveYamlDocument(
+  const serialized = termsUpdateDocument(configPath, write);
+  const loadError = termsUpdateLoadError(configPath, serialized);
+  if (loadError !== undefined)
+    throw configFileRefusal(
+      configPath,
+      "was left unchanged: with the update applied it would not load " +
+        `(${describeConfigSchemaError(loadError)}).`,
+    );
+  writeFileOwnerOnly(configPath, serialized);
+}
+
+/**
+ * The term of the configuration at `configPath` that {@link persistTermsUpdate}
+ * would refuse `write` on, without writing anything: the top-level key, and
+ * under `linkage_terms` the field of the linkage terms, of the first schema
+ * issue. Undefined where the edited document loads.
+ *
+ * The top-level key is the operator's own or one this write sets, and the
+ * field is named only from a fixed list, so no partner-chosen text is named.
+ */
+export function termsUpdateInvalidTerm(
+  configPath: string,
+  write: TermsUpdateWrite,
+): string | undefined {
+  const loadError = termsUpdateLoadError(
+    configPath,
+    termsUpdateDocument(configPath, write),
+  );
+  if (loadError === undefined) return undefined;
+  const issues =
+    loadError !== null && typeof loadError === "object" && "issues" in loadError
+      ? (loadError as { issues?: ReadonlyArray<SchemaIssue> }).issues
+      : undefined;
+  const [top, field] = (issues?.[0]?.path ?? []).map((segment) =>
+    typeof segment === "string" ? snakeizeKey(segment) : undefined,
+  );
+  if (top === undefined) return "linkage_terms";
+  return top === "linkage_terms" &&
+    field !== undefined &&
+    (NAMED_LINKAGE_TERMS_FIELDS as ReadonlyArray<string>).includes(field)
+    ? `${top}.${field}`
+    : top;
+}
+
+const NAMED_LINKAGE_TERMS_FIELDS = [
+  "version",
+  "identity",
+  "date",
+  "algorithm",
+  "linkage_strategy",
+  "output",
+  "deduplicate",
+  "linkage_fields",
+  "linkage_keys",
+  "linkage_rule_set",
+  "payload",
+  "legal_agreement",
+] as const;
+
+function termsUpdateDocument(
+  configPath: string,
+  write: TermsUpdateWrite,
+): string {
+  return editSensitiveYamlDocument(
     fs.readFileSync(configPath, "utf8"),
     configFileLabel(configPath),
     (doc) => {
@@ -2052,6 +2115,9 @@ export function persistTermsUpdate(
       }
     },
   );
+}
+
+function termsUpdateLoadError(configPath: string, serialized: string): unknown {
   try {
     parseExchangeSpec(
       configWithNamedRuleSetRules(
@@ -2059,14 +2125,10 @@ export function persistTermsUpdate(
         configPath,
       ),
     );
+    return undefined;
   } catch (err) {
-    throw configFileRefusal(
-      configPath,
-      "was left unchanged: with the update applied it would not load " +
-        `(${describeConfigSchemaError(err)}).`,
-    );
+    return err;
   }
-  writeFileOwnerOnly(configPath, serialized);
 }
 
 /**

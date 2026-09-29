@@ -3,10 +3,15 @@ import { expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { prepareForExchange, runExchange } from "../src/exchange";
-import { validateCompatibility } from "../src/linkageTermsNegotiation";
+import {
+  termsAdoptingPartnerTerms,
+  termsReceivingPartnerSend,
+  validateCompatibility,
+} from "../src/linkageTermsNegotiation";
 import {
   TERMS_CHANGE_NOT_ACCEPTED_REASON,
   TermsChangeRefusedError,
+  exchangeTerms,
 } from "../src/protocolSetup";
 import { ProtocolRefusalError } from "../src/errors";
 import { createMessagePipe } from "../src/connection/messageConnection";
@@ -418,4 +423,57 @@ test("a receive commitment the partner's columns no longer match is met at the t
   ]);
   expect(fulfilled(partner).partnerPayload.columns).toEqual(["note", "extra"]);
   fulfilled(changer);
+});
+
+// --- Adopted terms that are not a valid document ----------------------------
+
+test("a partner that shares output and states no payload is adopted as sending nothing", () => {
+  const adopted = termsAdoptingPartnerTerms(
+    { ...baseTerms, identity: "Local" },
+    { ...baseTerms, identity: "Partner" },
+  );
+  expect(adopted?.payload?.receive).toStrictEqual([]);
+});
+
+test("a partner's send set this party's terms cannot receive is refused without offering the change", async () => {
+  const local: LinkageTerms = {
+    ...baseTerms,
+    identity: "Local",
+    output: { expectsOutput: false, shareWithPartner: true },
+    payload: { receive: [] },
+  };
+  const partner: LinkageTerms = {
+    ...baseTerms,
+    identity: "Partner",
+    output: { expectsOutput: true, shareWithPartner: false },
+    payload: { send: columns("stale_column") },
+  };
+  expect(termsReceivingPartnerSend(local, partner)).toBeUndefined();
+
+  const changes: TermsChange[] = [];
+  const [connLocal, connPartner] = createMessagePipe();
+  const [localResult] = await Promise.allSettled([
+    exchangeTerms(
+      connLocal,
+      "initiator",
+      local,
+      3,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        onTermsChange: async (change) => {
+          changes.push(change);
+          return change.adoptedTerms;
+        },
+      },
+    ),
+    exchangeTerms(connPartner, "responder", partner, 3),
+  ]);
+  expect(changes).toStrictEqual([]);
+  expect(localResult.status).toBe("rejected");
+  expect((localResult as PromiseRejectedResult).reason).toBeInstanceOf(
+    TermsChangeRefusedError,
+  );
 });
