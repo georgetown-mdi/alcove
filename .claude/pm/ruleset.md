@@ -423,10 +423,10 @@ Ratified by the owner:
   Cloudflare zone has one recorded owner -- an OpenTofu root, a document, or
   deletion -- and every root's plan against the live account is empty.
 - **Large exchanges** (board 9) -- Done is: a file-sync round past 2^24
-  distinct values and a CLI WebRTC round past one frame each complete at
-  the owner's target size, and every per-row structure from intake to
-  result file is measured at that size, with any remaining limit stated in
-  `docs/spec/`.
+  distinct values and a CLI WebRTC round past one frame each complete, with
+  the size reached and its time and memory recorded in `docs/spec/`, and
+  every per-row structure from intake to result file measured at that size,
+  with any remaining limit stated in `docs/spec/`.
 
 Drafted, pending the owner's ratification:
 
