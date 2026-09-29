@@ -526,7 +526,7 @@ An update that passes is a consent event, shown the way an [offline acceptance](
 
 1. **What changes.** A first block names the linkage-terms fields the update changes, then, on its own line, whether the columns you will receive from your partner change, listing them before and after.
 2. **The terms.** The same outline an acceptance shows follows, leading with the columns you will send. Your partner is shown as the inviting party.
-3. **The question.** You are asked to confirm. Declining leaves the configuration exactly as it was. Both exit 0.
+3. **The question.** You are asked to confirm. Declining leaves the configuration exactly as it was; confirming and declining both exit 0.
 
 `--consent-to-terms` records your consent to the update's terms in advance and skips the question, so `apply` can run unattended or in a script -- where there is no terminal, the question otherwise reads end-of-file and declines. The checks above still run and refuse as they do without it; an update that passes is applied and the command exits 0. Nothing is asked, so the change and the terms are diagnostic output on the routing you chose, as for [an acceptance without the prompt](#accepting-without-the-prompt). Review the update before using it. The [console](CONSOLE.md#when-your-partners-terms-change) runs `alcove apply` this way when you choose Apply, having shown you the change itself.
 

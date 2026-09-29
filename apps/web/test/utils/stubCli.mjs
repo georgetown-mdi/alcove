@@ -216,9 +216,8 @@ if (process.argv[2] === "probe-host-key") {
 }
 
 // The `apply` subcommand the console's terms-proposal apply spawns: with
-// --consent-to-terms, or a yes read from stdin as the real command's prompt
-// reads it, append a line to the file --config-file names, standing in for the
-// rewrite. An `@path` update naming no file is the real command's usage exit.
+// --consent-to-terms, append a line to the file --config-file names, standing
+// in for the rewrite. An `@path` update naming no file is the real command's usage exit.
 // STUB_APPLY_EXIT_CODE, when set, replaces the whole run with that exit -- its
 // own variable, since one child environment serves the exchange a test stages
 // alongside it.
@@ -239,10 +238,7 @@ function runApplyStub() {
       return;
     }
     const configFile = flagValue(process.argv, "--config-file");
-    const consented =
-      process.argv.includes("--consent-to-terms") ||
-      answer.trim().toLowerCase() === "y";
-    if (consented && configFile !== undefined)
+    if (process.argv.includes("--consent-to-terms") && configFile !== undefined)
       fs.appendFileSync(configFile, "# applied by the stub\n");
     exitAfterDelay(0);
   });
