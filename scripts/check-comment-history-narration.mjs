@@ -108,9 +108,9 @@ export const OVERRIDE_MARKER = "allow-history-narration";
  * The base candidates, in order; the first that resolves in the checkout is what
  * the range is measured from. `ALCOVE_NARRATION_BASE` -- a ref or a sha -- is
  * the primary base: static_checks.yaml sets it to the pull request event's base
- * sha, and a local run sets it for a branch cut from something other than
- * staging. An empty value is no value, so a run outside a pull request falls
- * through to the refs below.
+ * sha, or on a push to the tip the push replaced, and a local run sets it for a
+ * branch cut from something other than staging. An empty value is no value, so
+ * a run with neither falls through to the refs below.
  */
 export function baseCandidates(env) {
   const candidates = [];
