@@ -12,12 +12,13 @@ export const MAX_MAP_SHARD_ENTRIES = 2 ** 24;
  * filled one after another. A new key always goes into the last shard, so
  * visiting the shards in turn visits the entries in insertion order, as a
  * `Map` does. A lookup probes the shards in turn, one probe while the whole
- * map fits one shard. Entries are never deleted, which is what keeps every
- * shard but the last full.
+ * map fits one shard. A value is never `undefined`, which a lookup reads as
+ * absent. Entries are never deleted, which is what keeps every shard but the
+ * last full.
  *
  * @internal
  */
-export class ShardedMap<K, V> {
+export class ShardedMap<K, V extends NonNullable<unknown>> {
   private readonly shards: Array<Map<K, V>> = [new Map()];
   private readonly shardEntries: number;
 
@@ -32,12 +33,22 @@ export class ShardedMap<K, V> {
     return last * this.shardEntries + this.shards[last].size;
   }
 
-  /** The value held against `key`, or `undefined` where there is none. */
-  get(key: K): V | undefined {
+  /**
+   * The value already held against `key`; where there is none, holds `value`
+   * against it in the last shard, opening a new one when the last is full,
+   * and returns `undefined`. One probe of each shard either way.
+   */
+  setIfAbsent(key: K, value: V): V | undefined {
     for (const shard of this.shards) {
-      const value = shard.get(key);
-      if (value !== undefined) return value;
+      const held = shard.get(key);
+      if (held !== undefined) return held;
     }
+    let tail = this.shards[this.shards.length - 1];
+    if (tail.size === this.shardEntries) {
+      tail = new Map();
+      this.shards.push(tail);
+    }
+    tail.set(key, value);
     return undefined;
   }
 

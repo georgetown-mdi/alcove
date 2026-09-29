@@ -214,9 +214,8 @@ export function removeDuplicatesAndUndefineds(
 ): [Array<string>, Array<number>] {
   const firstRow = new ShardedMap<string, number>(shardEntries);
   forEachCandidate(dataWithDuplicatesAndUndefineds, (row, value) => {
-    const first = firstRow.get(value);
-    if (first === undefined) firstRow.set(value, row);
-    else if (first !== row && first !== HELD_BY_SEVERAL_ROWS)
+    const first = firstRow.setIfAbsent(value, row);
+    if (first !== undefined && first !== row && first !== HELD_BY_SEVERAL_ROWS)
       firstRow.set(value, HELD_BY_SEVERAL_ROWS);
   });
   const data: Array<string> = [];
@@ -262,11 +261,9 @@ export class RoundSetCounter {
   }
 
   private addValue(row: number, value: string): void {
-    const holder = this.rowOf.get(value);
-    if (holder === undefined) {
-      this.rowOf.set(value, row);
-      ++this.heldByOneRow;
-    } else if (holder !== row && holder !== HELD_BY_SEVERAL_ROWS) {
+    const holder = this.rowOf.setIfAbsent(value, row);
+    if (holder === undefined) ++this.heldByOneRow;
+    else if (holder !== row && holder !== HELD_BY_SEVERAL_ROWS) {
       this.rowOf.set(value, HELD_BY_SEVERAL_ROWS);
       --this.heldByOneRow;
     }
@@ -315,9 +312,8 @@ export function groupDuplicatesAndRemoveUndefineds(
   const laterRowsAt: Array<Array<number> | undefined> = [];
   forEachCandidate(dataWithDuplicatesAndUndefineds, (i, value) => {
     const row = permutation ? permutation[i] : i;
-    const position = positionOf.get(value);
+    const position = positionOf.setIfAbsent(value, data.length);
     if (position === undefined) {
-      positionOf.set(value, data.length);
       data.push(value);
       firstRowAt.push(row);
       laterRowsAt.push(undefined);

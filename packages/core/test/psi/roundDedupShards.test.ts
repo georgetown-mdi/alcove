@@ -16,9 +16,13 @@ import type { KeyCandidates } from "../../src/standardization";
 
 const SHARD = 2;
 
-test("a shard holds as many entries as one V8 Map", () => {
-  expect(MAX_MAP_SHARD_ENTRIES).toBe(2 ** 24);
-});
+function entriesOf<K, V extends NonNullable<unknown>>(
+  map: ShardedMap<K, V>,
+): Array<[K, V]> {
+  const entries: Array<[K, V]> = [];
+  map.forEach((value, key) => entries.push([key, value]));
+  return entries;
+}
 
 test("the sharded map keeps insertion order and updates a key in its own shard", () => {
   const map = new ShardedMap<string, number>(SHARD);
@@ -26,16 +30,30 @@ test("the sharded map keeps insertion order and updates a key in its own shard",
   map.set("a", 10);
   map.set("d", 30);
   expect(map.size).toBe(5);
-  expect(map.get("a")).toBe(10);
-  expect(map.get("e")).toBe(4);
-  expect(map.get("f")).toBeUndefined();
-  const entries: Array<[string, number]> = [];
-  map.forEach((value, key) => entries.push([key, value]));
-  expect(entries).toStrictEqual([
+  expect(entriesOf(map)).toStrictEqual([
     ["a", 10],
     ["b", 1],
     ["c", 2],
     ["d", 30],
+    ["e", 4],
+  ]);
+});
+
+test("setIfAbsent inserts a new key across a shard boundary and leaves a held key in place", () => {
+  const map = new ShardedMap<string, number>(SHARD);
+  for (const [i, key] of ["a", "b", "c"].entries())
+    expect(map.setIfAbsent(key, i)).toBeUndefined();
+  expect(map.setIfAbsent("a", 10)).toBe(0);
+  expect(map.setIfAbsent("c", 20)).toBe(2);
+  expect(map.setIfAbsent("d", 3)).toBeUndefined();
+  expect(map.setIfAbsent("e", 4)).toBeUndefined();
+  expect(map.setIfAbsent("b", 30)).toBe(1);
+  expect(map.size).toBe(5);
+  expect(entriesOf(map)).toStrictEqual([
+    ["a", 0],
+    ["b", 1],
+    ["c", 2],
+    ["d", 3],
     ["e", 4],
   ]);
 });
