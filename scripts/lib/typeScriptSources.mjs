@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -33,6 +34,17 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** Read a repository-relative source file as this checkout ships it. */
 export function readSource(file) {
   return readFileSync(resolve(root, file), "utf8");
+}
+
+/**
+ * Read repository-relative source files, in the order given. The reads are
+ * issued together: a walk over a whole tree waits on hundreds of them, and a
+ * loaded container answers them far sooner in parallel than one at a time.
+ */
+export function readSources(files) {
+  return Promise.all(
+    files.map((file) => readFile(resolve(root, file), "utf8")),
+  );
 }
 
 /**

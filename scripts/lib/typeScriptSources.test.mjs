@@ -7,6 +7,7 @@ import {
   parseFile,
   parseSource,
   readSource,
+  readSources,
   sourceModules,
 } from "./typeScriptSources.mjs";
 
@@ -80,6 +81,12 @@ describe("reading a repository-relative source", () => {
     const sourceFile = parseFile(SELF);
     expect(sourceFile.fileName).toBe(SELF);
     expect(sourceFile.getText()).toBe(readSource(SELF));
+  });
+
+  it("reads a list of files in the order given, each as it ships", async () => {
+    const files = sourceModules("apps/web/src/routes/api/jobs").reverse();
+    expect(files.length).toBeGreaterThan(1);
+    expect(await readSources(files)).toEqual(files.map(readSource));
   });
 
   it("lists a tree's TypeScript sources, nested ones included", () => {

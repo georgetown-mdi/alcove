@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   descendants,
   parseSource,
-  readSource,
+  readSources,
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
 
@@ -124,11 +124,13 @@ export function scanNoteCalls(file, sourceFile) {
 }
 
 /** The scan over a tree of shipped sources, skipping files that name no note. */
-function scanTree(tree) {
+async function scanTree(tree) {
+  const files = sourceModules(tree);
+  const texts = await readSources(files);
   const sites = [];
   const refusals = [];
-  for (const file of sourceModules(tree)) {
-    const text = readSource(file);
+  for (const [index, file] of files.entries()) {
+    const text = texts[index];
     if (!text.includes(NOTE_FUNCTION)) continue;
     const found = scanNoteCalls(file, parseSource(file, text));
     sites.push(...found.sites);
@@ -213,25 +215,25 @@ describe("the note shapes the check refuses", () => {
 describe("the notes the shipped sources compose", () => {
   const composed = scanTree(COMPOSING_TREE);
 
-  it("reads the calls it is pointed at", () => {
+  it("reads the calls it is pointed at", async () => {
     expect(
-      composed.sites.length,
+      (await composed).sites.length,
       `the scan read no ${NOTE_FUNCTION} call in ${COMPOSING_TREE} at all, so it holds nothing`,
     ).toBeGreaterThan(0);
   });
 
-  it("composes every note from fixed text and escaped fragments", () => {
+  it("composes every note from fixed text and escaped fragments", async () => {
     expect(
-      composed.refusals,
+      (await composed).refusals,
       `each note is the call site's own literal text, with every interpolated fragment escaped by ${ESCAPE_FUNCTION} where it goes in: a note built any other way is exempted from the display cap on nothing but the caller's word`,
     ).toEqual([]);
   });
 
   it.each(SOURCE_TREES.filter((tree) => tree !== COMPOSING_TREE))(
     "composes no note in %s",
-    (tree) => {
+    async (tree) => {
       expect(
-        scanTree(tree).sites,
+        (await scanTree(tree)).sites,
         `${NOTE_FUNCTION} is composed in ${COMPOSING_TREE}: a consumer is handed a Displayable and renders it`,
       ).toEqual([]);
     },
