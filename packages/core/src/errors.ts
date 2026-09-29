@@ -191,29 +191,24 @@ export class OperatorConfigError extends UsageError {
  * Holds `alcoveRecoveryHintEmitted`: a retry refuses identically, so the CLI's
  * generic retry advisory is suppressed. The start-of-exchange check raises it
  * too, with `setOwner` `"local"` and the failure as its `cause`, when it cannot
- * count this party's first-round set at all. `distinctValueLimit` is set when
- * the first-round set passed one round's distinct-value bound rather than the
- * message bound.
+ * count this party's first-round set at all.
  */
 export class WebRtcFrameLimitError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
-  readonly distinctValueLimit: number | undefined;
 
   constructor(
     message: string,
     readonly setOwner: "local" | "partner",
-    options?: ErrorOptions & { distinctValueLimit?: number },
+    options?: ErrorOptions,
   ) {
     super(message, options);
     this.name = "WebRtcFrameLimitError";
-    this.distinctValueLimit = options?.distinctValueLimit;
   }
 }
 
 /**
- * A linkage key round whose set of values is larger than one round can hold on
- * any channel: more distinct values than the round's deduplication holds, or,
- * on SFTP or a synced folder, more values than one message file holds
+ * A linkage key round whose set of values is larger than one round can hold
+ * on SFTP or a synced folder: more values than one message file holds
  * (docs/spec/FILE_SYNC.md, "Round set size limits"). The message names the
  * count, the bound, and the remedy, and is composed only from counts and
  * fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry refuses
@@ -221,26 +216,20 @@ export class WebRtcFrameLimitError extends UsageError {
  *
  * `setOwner` names whose set it was: `"local"` for this party's own, the
  * default, or `"partner"` for a reply that returns the partner's set
- * re-encrypted. `distinctValueLimit` is the deduplication bound the set
- * passed, when that is what refused it. {@link isSetTooLargeError} classifies
- * it with {@link WebRtcFrameLimitError}.
+ * re-encrypted. {@link isSetTooLargeError} classifies it with
+ * {@link WebRtcFrameLimitError}.
  */
 export class RoundSetLimitError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
   readonly setOwner: "local" | "partner";
-  readonly distinctValueLimit: number | undefined;
 
   constructor(
     message: string,
-    options?: ErrorOptions & {
-      distinctValueLimit?: number;
-      setOwner?: "local" | "partner";
-    },
+    options?: ErrorOptions & { setOwner?: "local" | "partner" },
   ) {
     super(message, options);
     this.name = "RoundSetLimitError";
     this.setOwner = options?.setOwner ?? "local";
-    this.distinctValueLimit = options?.distinctValueLimit;
   }
 }
 

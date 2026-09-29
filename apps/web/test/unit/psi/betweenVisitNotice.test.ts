@@ -460,11 +460,9 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
         titleFor({
           ...failed("too-large"),
           tooLargeSetOwner: "partner",
-          tooLargeBound: "round-distinct-values",
+          tooLargeBound: "webrtc-message",
         }),
-      ).toBe(
-        "Your partner's file has too many distinct values for one round of matching",
-      );
+      ).toBe("Your partner's file is too large for a browser exchange");
       expect(titleFor(failed("too-large"))).toBe(
         "A file in this exchange is too large to send",
       );
@@ -485,20 +483,19 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
       );
     });
 
-    test("one round's distinct-value bound, with its count", () => {
+    test("the WebRTC message bound, for the partner's set", () => {
       expect(
         bodyFor({
           ...failed("too-large"),
           tooLargeSetOwner: "partner",
-          tooLargeBound: "round-distinct-values",
+          tooLargeBound: "webrtc-message",
         }),
       ).toBe(
         "Riverbend quarterly stopped because the set of values built from your " +
-          "partner's input file had more distinct values than the " +
-          "16,777,216 one round of matching can hold, and every later " +
-          "window stops the same way. Ask your partner to split their " +
-          "input into smaller files, and set up one exchange with them for " +
-          "each.",
+          "partner's input file was over the 256 MiB one WebRTC message can " +
+          "hold, and every later window stops the same way. Ask your partner " +
+          "to split their input into smaller files, and set up one exchange " +
+          "with them for each.",
       );
     });
 

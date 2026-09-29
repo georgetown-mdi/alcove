@@ -22,13 +22,8 @@ import {
   assertFirstRoundFitsFileSyncFrame,
   fileSyncMaxRoundSetValues,
   fileSyncRoundOneSetTooLargeMessage,
-  fileSyncRoundOneTooManyDistinctMessage,
   prepareForExchange,
 } from "../../src/exchange";
-import {
-  MAX_ROUND_DISTINCT_VALUES,
-  roundDistinctValueLimitRefusal,
-} from "../../src/psi/link";
 import { serializeRequest, serializeSetup } from "../../src/psi/psiChunks";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
@@ -89,12 +84,11 @@ const boundFor = (values: number) =>
   PSI_SET_MAX_FRAMING_BYTES +
   values * PSI_ENCODED_ELEMENT_BYTES;
 
-test("the real bound holds fewer values than one round's deduplication", () => {
+test("the real bound is the most values one message file holds", () => {
   const ceiling = fileSyncMaxRoundSetValues();
   expect(ceiling).toBe(15_339_166);
   expect(boundFor(ceiling)).toBeLessThanOrEqual(MAX_FRAME_SIZE_BYTES);
   expect(boundFor(ceiling + 1)).toBeGreaterThan(MAX_FRAME_SIZE_BYTES);
-  expect(ceiling).toBeLessThan(MAX_ROUND_DISTINCT_VALUES);
   expect(fileSyncMaxRoundSetValues(boundFor(300))).toBe(300);
   expect(fileSyncMaxRoundSetValues(boundFor(300) - 1)).toBe(299);
 });
@@ -248,22 +242,15 @@ test("the check raises a refusal the count throws in both roles as it is", async
   ).toBe(refusal);
 });
 
-test("each refusal survives the display boundary whole at the real bound", () => {
+test("the refusal survives the display boundary whole at the real bound", () => {
   // The remedy is the last sentence, and the render boundary truncates a link,
   // so a message that grows past it loses the part the operator acts on.
-  for (const refusal of [
-    new RoundSetLimitError(
-      fileSyncRoundOneSetTooLargeMessage(MAX_ROUND_DISTINCT_VALUES * 10),
-    ),
-    new RoundSetLimitError(
-      fileSyncRoundOneTooManyDistinctMessage(MAX_ROUND_DISTINCT_VALUES),
-    ),
-    roundDistinctValueLimitRefusal(MAX_ROUND_DISTINCT_VALUES),
-  ]) {
-    const shown = sanitizeErrorForDisplay(refusal);
-    expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
-    expect(shown).toContain(
-      "Split the input into smaller files and run one exchange for each.",
-    );
-  }
+  const refusal = new RoundSetLimitError(
+    fileSyncRoundOneSetTooLargeMessage(fileSyncMaxRoundSetValues() * 10),
+  );
+  const shown = sanitizeErrorForDisplay(refusal);
+  expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
+  expect(shown).toContain(
+    "Split the input into smaller files and run one exchange for each.",
+  );
 });

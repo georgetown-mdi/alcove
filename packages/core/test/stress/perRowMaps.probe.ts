@@ -42,8 +42,7 @@ export interface ProbeResult {
 }
 
 // Rows per matched value on the side that keeps its duplicates, so a round's
-// distinct values stay under the round's own deduplication bound while its
-// records pass 2^24.
+// distinct values stay under 2^24 while its records pass it.
 const GROUP = 4;
 
 const ROUND_DONE = new Error("the first round finished");
