@@ -27,10 +27,12 @@ import {
   NO_ICE_SERVERS_WARNING,
   idTakenAfterRetryMessage,
   openWebRtcPeerSession,
+  relayCredentialAttemptNotice,
 } from "../../../src/connection/webrtc/weriftPeer";
 
 import type {
   AttemptIceServers,
+  AttemptStartReason,
   WebRtcPeerSession,
   WeriftPeerConfiguration,
 } from "../../../src/connection/webrtc/weriftPeer";
@@ -829,12 +831,13 @@ test("an absent partner fails at peer_timeout_ms while the silence budget is lon
   await expect(session).rejects.toThrow(/did not answer within 60s/);
 });
 
-test("the channel open fails at its fixed ceiling whatever both settings hold", async () => {
+test("the channel open ends its attempt at its fixed ceiling whatever both settings hold", async () => {
+  const lines = captureDiagnostics();
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
     shouldAdvanceTime: true,
   });
-  const { socket, session, inviterId } = await startRendezvous({
+  const { socket, sockets, session, inviterId } = await startRendezvous({
     role: "acceptor",
     dialBudgets: dialBudgetsFor({
       peerTimeoutMs: SEVEN_DAYS_MS,
@@ -847,13 +850,19 @@ test("the channel open fails at its fixed ceiling whatever both settings hold", 
     payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
   });
   await vi.advanceTimersByTimeAsync(DEFAULT_CHANNEL_OPEN_TIMEOUT_MS - 1_000);
-  expect(await settlementOf(session)).toBe("waiting");
+  expect(sockets).toHaveLength(1);
   await vi.advanceTimersByTimeAsync(2_000 + ICE_STATS_TIMEOUT_MS);
-  await expect(session).rejects.toThrow(
-    new RegExp(
-      `did not open within ${DEFAULT_CHANNEL_OPEN_TIMEOUT_MS / 1000}s`,
+  // A seven-day wait's first attempt is not its last, so the ceiling starts
+  // the next attempt rather than failing the wait.
+  await until(() => sockets.length === 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(
+    lines.some((line) =>
+      line.includes(
+        `did not open within ${DEFAULT_CHANNEL_OPEN_TIMEOUT_MS / 1000}s`,
+      ),
     ),
-  );
+  ).toBe(true);
 });
 
 // --- the listener's answer --------------------------------------------------
@@ -1881,9 +1890,33 @@ test("an inviter whose answered partner goes quiet starts a new attempt after th
   expect(peers[0].closeCalls).toBe(1);
 });
 
-test("an inviter offered a new connection after answering starts a new attempt", async () => {
+const ATTEMPT_RELAY = [
+  { urls: "turn:relay.example:3478", username: "minted", credential: "c2" },
+];
+const ATTEMPT_CREDENTIAL = {
+  username: "1767229200:alcove",
+  credential: "bWludGVk",
+  expiresAt: new Date("2026-01-01T01:00:00Z"),
+};
+
+test("an inviter offered a new connection after answering answers it in a new attempt", async () => {
+  const lines = captureDiagnostics();
+  const reasons: Array<AttemptStartReason> = [];
   const { socket, sockets, peers, session, acceptorId } = await startRendezvous(
-    { role: "inviter" },
+    {
+      role: "inviter",
+      attemptIceServers: (waitedMs, reason) => {
+        reasons.push(reason);
+        return Promise.resolve({
+          iceServers: ATTEMPT_RELAY,
+          notice: relayCredentialAttemptNotice(
+            ATTEMPT_CREDENTIAL,
+            waitedMs,
+            reason,
+          ),
+        });
+      },
+    },
   );
   offer(socket, acceptorId, "dc_first");
   await until(() => answeredConnectionIds(socket).length === 1);
@@ -1893,30 +1926,121 @@ test("an inviter offered a new connection after answering starts a new attempt",
   expect(socket.closeCalls).toBe(1);
   expect(peers[0].closeCalls).toBe(1);
 
-  offer(sockets[1], acceptorId, "dc_second");
+  // The broker delivered the new offer, so it holds nothing for the new
+  // registration: the new attempt answers the offer the last one received.
   await until(() => answeredConnectionIds(sockets[1]).length === 1);
   expect(answeredConnectionIds(sockets[1])).toEqual(["dc_second"]);
+  expect(peers[1].remoteDescriptions).toEqual([OFFER_SDP]);
   const channel = new FakeChannel("dc_second");
   peers[1].ondatachannel?.({ channel });
   channel.open();
   expect((await session).channel).toBe(channel);
+
+  expect(reasons).toEqual(["partner-reconnected"]);
+  expect(
+    lines.some((line) =>
+      line.includes("the exchange partner started a new connection"),
+    ),
+  ).toBe(true);
+  expect(lines.some((line) => line.includes("has not connected"))).toBe(false);
 });
 
-const ATTEMPT_RELAY = [
-  { urls: "turn:relay.example:3478", username: "minted", credential: "c2" },
-];
+test("a later attempt of an inviter whose partner never offered names the wait", async () => {
+  const lines = captureDiagnostics();
+  holdAttemptClock();
+  const { sockets } = await startRendezvous({
+    role: "inviter",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(
+    lines.some((line) =>
+      line.includes(
+        "the exchange partner has not connected; starting connection attempt 2",
+      ),
+    ),
+  ).toBe(true);
+  expect(lines.some((line) => line.includes("started a new connection"))).toBe(
+    false,
+  );
+});
+
+test("an attempt that another follows whose channel does not open after the partner's description starts the next", async () => {
+  const lines = captureDiagnostics();
+  holdAttemptClock();
+  const { socket, sockets, peers, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    channelOpenTimeoutMs: 10_000,
+  });
+  peers[0].stats = iceStats([
+    { type: "local-candidate", id: "L1", candidateType: "host" },
+  ]);
+  answer(socket, inviterId, offeredConnectionIds(socket)[0]);
+  await until(() => peers[0].remoteDescriptions.length === 1);
+  await vi.advanceTimersByTimeAsync(9_000);
+  expect(sockets).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(2_000);
+  await settleRegistration(sockets, 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(peers[0].closeCalls).toBe(1);
+  const warning = lines.find((line) =>
+    line.includes("did not open within 10s"),
+  );
+  expect(warning).toContain(
+    "local candidates gathered: no relay candidate gathered; 1 (host)",
+  );
+  expect(warning).toContain("starting a new connection attempt");
+
+  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
+  await until(() => peers[1].remoteDescriptions.length === 1);
+  peers[1].channels[0].open();
+  expect((await session).channel).toBe(peers[1].channels[0]);
+});
+
+test("the last attempt whose channel does not open after the partner's description fails the wait with the diagnosis", async () => {
+  holdAttemptClock();
+  const { sockets, peers, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: 2 * ONE_MINUTE_MS,
+    channelOpenTimeoutMs: 10_000,
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  peers[1].stats = iceStats([
+    { type: "local-candidate", id: "L1", candidateType: "host" },
+  ]);
+  answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
+  await until(() => peers[1].remoteDescriptions.length === 1);
+  await vi.advanceTimersByTimeAsync(11_000);
+  const rendered = await renderedFailure(session);
+  expect(rendered).toContain("did not open within 10s");
+  expect(rendered).toContain(
+    "local candidates gathered: no relay candidate gathered; 1 (host)",
+  );
+  expect(sockets).toHaveLength(2);
+});
 const ATTEMPT_NOTICE = "a new connection attempt starts with a new relay";
 
 test("each attempt after the first is built from freshly resolved ICE servers", async () => {
   const lines = captureDiagnostics();
   const waits: Array<number> = [];
-  const attemptIceServers = vi.fn((waitedMs: number) => {
-    waits.push(waitedMs);
-    return Promise.resolve({
-      iceServers: ATTEMPT_RELAY,
-      notice: ATTEMPT_NOTICE,
-    });
-  });
+  const attemptIceServers = vi.fn(
+    (waitedMs: number, reason: AttemptStartReason) => {
+      expect(reason).toBe("partner-not-connected");
+      waits.push(waitedMs);
+      return Promise.resolve({
+        iceServers: ATTEMPT_RELAY,
+        notice: ATTEMPT_NOTICE,
+      });
+    },
+  );
   holdAttemptClock();
   const { sockets, configurations } = await startRendezvous({
     role: "acceptor",

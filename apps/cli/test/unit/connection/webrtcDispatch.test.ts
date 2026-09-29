@@ -900,7 +900,10 @@ test("a minting run dials each later connection attempt with a fresh credential"
   vi.useFakeTimers({ toFake: ["Date"], now: nextAttemptAt });
   let next: { iceServers: Array<{ username?: string }>; notice: string };
   try {
-    next = (await options.attemptIceServers?.(WEBRTC_ATTEMPT_MS)) ?? {
+    next = (await options.attemptIceServers?.(
+      WEBRTC_ATTEMPT_MS,
+      "partner-not-connected",
+    )) ?? {
       iceServers: [],
       notice: "",
     };
@@ -925,9 +928,9 @@ test("a minting run dials each later connection attempt with a fresh credential"
   ).toBe(false);
 });
 
-test("an attempt, the last one stretched included, ends well inside the relay credential's lifetime", () => {
+test("an attempt, the last one stretched included, runs at most a quarter of the relay credential's lifetime", () => {
   expect(WEBRTC_ATTEMPT_MS * FINAL_ATTEMPT_STRETCH).toBeLessThanOrEqual(
-    (RELAY_CREDENTIAL_MAX_TTL_SECONDS * 1000) / 2,
+    (RELAY_CREDENTIAL_MAX_TTL_SECONDS * 1000) / 4,
   );
 });
 

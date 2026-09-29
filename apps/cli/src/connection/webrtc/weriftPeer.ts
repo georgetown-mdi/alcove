@@ -12,6 +12,7 @@ import {
   mintRunRelayCredential,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
   redactAndSanitizeForDisplay,
+  sanitizeErrorForDisplay,
   selectRunRelay,
 } from "@alcove/core";
 
@@ -385,12 +386,21 @@ export interface WebRtcPeerOptions {
 }
 
 /**
+ * Why a connection attempt after the first starts: the partner has not
+ * connected within the attempt before it, or the partner, having been
+ * answered, offered a new connection that this attempt meets.
+ */
+export type AttemptStartReason =
+  "partner-not-connected" | "partner-reconnected";
+
+/**
  * Resolves the ICE server list a connection attempt after the first is built
  * with, and the line logged when it starts. `waitedMs` is how long the run has
  * waited for its partner so far.
  */
 export type AttemptIceServers = (
   waitedMs: number,
+  reason: AttemptStartReason,
 ) => Promise<AttemptIceServerList>;
 
 /** A fresh ICE server list, and the line logged when an attempt starts with it. */
@@ -607,11 +617,11 @@ export function relayCredentialPerAttempt(
   sharedSecret: string,
   now: () => Date = () => new Date(),
 ): AttemptIceServers {
-  return async (waitedMs) => {
+  return async (waitedMs, reason) => {
     const credential = await mintRunRelayCredential(sharedSecret, now());
     return {
       iceServers: iceServersFromConnection(connection, credential),
-      notice: relayCredentialAttemptNotice(credential, waitedMs),
+      notice: relayCredentialAttemptNotice(credential, waitedMs, reason),
     };
   };
 }
@@ -623,11 +633,17 @@ export function relayCredentialPerAttempt(
 export function relayCredentialAttemptNotice(
   credential: RelayCredential,
   waitedMs: number,
+  reason: AttemptStartReason,
 ): string {
+  const why =
+    reason === "partner-reconnected"
+      ? "the exchange partner started a new connection, so a new connection " +
+        "attempt starts to meet it"
+      : "the exchange partner has not connected within " +
+        `${Math.round(waitedMs / 60_000)} minutes, so a new connection attempt ` +
+        "starts";
   return (
-    "the exchange partner has not connected within " +
-    `${Math.round(waitedMs / 60_000)} minutes, so a new connection attempt ` +
-    "starts with a new relay credential that expires at " +
+    `${why} with a new relay credential that expires at ` +
     credential.expiresAt.toISOString()
   );
 }
@@ -716,7 +732,7 @@ async function closePeer(peer: RTCPeerConnection): Promise<void> {
     await peer.close();
   } catch {
     // A peer connection already closed by a failure path throws on a second
-    // close; the caller is on a failure or replacement path either way.
+    // close, and the caller is tearing it down either way.
   }
 }
 
@@ -880,18 +896,22 @@ export async function openWebRtcPeerSession(
 
   const serversForAttempt = async (
     attempt: number,
+    reason: AttemptStartReason,
   ): Promise<Array<RTCIceServer> | undefined> => {
     if (attempt === 0) return iceServers;
     if (attemptIceServers === undefined) {
       log.debug(
-        "the exchange partner has not connected; starting connection " +
-          `attempt ${attempt + 1}`,
+        reason === "partner-reconnected"
+          ? "the exchange partner started a new connection; starting " +
+              `connection attempt ${attempt + 1} to meet it`
+          : "the exchange partner has not connected; starting connection " +
+              `attempt ${attempt + 1}`,
       );
       return iceServers;
     }
     let next: AttemptIceServerList;
     try {
-      next = await attemptIceServers(Date.now() - startedAt);
+      next = await attemptIceServers(Date.now() - startedAt, reason);
     } catch (err) {
       throw err instanceof ConnectionError
         ? err
@@ -958,8 +978,14 @@ export async function openWebRtcPeerSession(
 
   const runAttempt = async (
     attempt: number,
-  ): Promise<WebRtcPeerSession | undefined> => {
-    const servers = await serversForAttempt(attempt);
+    partnerRestart: PartnerRestart | undefined,
+  ): Promise<AttemptOutcome> => {
+    const servers = await serversForAttempt(
+      attempt,
+      partnerRestart === undefined
+        ? "partner-not-connected"
+        : "partner-reconnected",
+    );
     // The first build already warned about the same configured list.
     const peer = await buildPeer(servers, attempt === 0 ? undefined : () => {});
     const negotiation = new Negotiation({
@@ -970,6 +996,7 @@ export async function openWebRtcPeerSession(
       unreportedOfferResendMs,
       iceTransportPolicy,
       arrivalTimeout,
+      partnerRestart,
       signal,
     });
     let broker: BrokerClient | undefined;
@@ -991,7 +1018,7 @@ export async function openWebRtcPeerSession(
       });
       if (channel === ATTEMPT_UNMET) {
         await teardown();
-        return undefined;
+        return { partnerRestart: negotiation.partnerRestart };
       }
       assertSctpDrainSupported(peer);
       await logSelectedCandidatePair(peer, signal);
@@ -1003,14 +1030,16 @@ export async function openWebRtcPeerSession(
         onLost?.();
       };
       return {
-        channel,
-        isConnected: () => peer.connectionState === "connected",
-        outboundAcknowledged: () => sctpOutboundAcknowledged(peer),
-        outboundTransmitted: () => sctpOutboundTransmitted(peer),
-        onDisconnected: (handler) => {
-          onLost = handler;
+        session: {
+          channel,
+          isConnected: () => peer.connectionState === "connected",
+          outboundAcknowledged: () => sctpOutboundAcknowledged(peer),
+          outboundTransmitted: () => sctpOutboundTransmitted(peer),
+          onDisconnected: (handler) => {
+            onLost = handler;
+          },
+          close: teardown,
         },
-        close: teardown,
       };
     } catch (err) {
       await teardown();
@@ -1018,13 +1047,15 @@ export async function openWebRtcPeerSession(
     }
   };
 
+  let partnerRestart: PartnerRestart | undefined;
   for (let attempt = 0; ; attempt += 1) {
     if (attempt > 0) {
       if (signal?.aborted) throw cancelled();
       if (Date.now() >= deadline) throw arrivalTimeout();
     }
-    const session = await runAttempt(attempt);
-    if (session !== undefined) return session;
+    const outcome = await runAttempt(attempt, partnerRestart);
+    if ("session" in outcome) return outcome.session;
+    partnerRestart = outcome.partnerRestart;
   }
 }
 
@@ -1082,6 +1113,8 @@ interface NegotiationOptions {
   iceTransportPolicy?: IceTransportPolicy;
   /** The failure the wait's last attempt ends with when the partner never sent a description. */
   arrivalTimeout: () => ConnectionError;
+  /** The partner's new connection the attempt before this one ended on, which this one answers. */
+  partnerRestart?: PartnerRestart;
   signal?: AbortSignal;
 }
 
@@ -1096,6 +1129,20 @@ interface AttemptPlan {
 
 /** What {@link Negotiation.run} resolves with when an attempt ends with no partner. */
 const ATTEMPT_UNMET = Symbol("attempt unmet");
+
+/**
+ * The offer of a new connection a partner made to an inviter that had
+ * answered its last one. The broker delivered it, so it sends no `EXPIRE` and
+ * holds nothing for the next registration: the next attempt answers it.
+ */
+interface PartnerRestart {
+  offer: BrokerMessage;
+}
+
+/** How one connection attempt ended: the partner met, or the next attempt to start. */
+type AttemptOutcome =
+  | { session: WebRtcPeerSession }
+  | { partnerRestart: PartnerRestart | undefined };
 
 /**
  * Hold a remote candidate until a remote description can apply it. Bounded,
@@ -1149,6 +1196,10 @@ class Negotiation {
   private channelOpenTimer: ReturnType<typeof setTimeout> | undefined;
   /** Running once the attempt's bound passed with the partner engaged. */
   private engagedGraceTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Set by {@link run}; absent before it, when no timer can have fired. */
+  private plan: AttemptPlan | undefined;
+  /** The partner's new connection this attempt ended on, for the next to answer. */
+  partnerRestart: PartnerRestart | undefined;
   /** Set once the run has settled, after which nothing is left to time out. */
   private finished = false;
   private settle:
@@ -1229,20 +1280,45 @@ class Negotiation {
    */
   private async failWithIceDiagnosis(summary: string): Promise<void> {
     if (this.failure !== undefined) return;
+    this.fail(await this.iceDiagnosis(summary));
+  }
+
+  private async iceDiagnosis(summary: string): Promise<ConnectionError> {
     const report = await readIceStats(this.peer, this.options.signal);
-    this.fail(
-      new ConnectionError(
-        summary,
-        "transport",
-        report === undefined
-          ? undefined
-          : {
-              cause: chainDetailCauses(
-                iceFailureDetails(report, this.options.iceTransportPolicy),
-              ),
-            },
-      ),
+    return new ConnectionError(
+      summary,
+      "transport",
+      report === undefined
+        ? undefined
+        : {
+            cause: chainDetailCauses(
+              iceFailureDetails(report, this.options.iceTransportPolicy),
+            ),
+          },
     );
+  }
+
+  /**
+   * The channel has not opened within the channel-open budget of the
+   * partner's description. On the wait's last attempt that fails the wait;
+   * on any other the diagnosis is logged and the next attempt starts, so a
+   * long wait does not end on one negotiation that found no path.
+   */
+  private async channelOpenBudgetSpent(): Promise<void> {
+    const summary =
+      `the data channel did not open within ` +
+      `${budgetSeconds(this.options.channelOpenTimeoutMs)} after the ` +
+      "exchange partner's session description arrived";
+    if (this.plan?.finalAttempt !== false) {
+      await this.failWithIceDiagnosis(summary);
+      return;
+    }
+    const diagnosis = await this.iceDiagnosis(summary);
+    if (this.finished || this.failure !== undefined) return;
+    log.warn(
+      `${sanitizeErrorForDisplay(diagnosis)}; starting a new connection attempt`,
+    );
+    this.endUnmet();
   }
 
   /**
@@ -1254,7 +1330,8 @@ class Negotiation {
     plan: AttemptPlan,
   ): Promise<RTCDataChannel | typeof ATTEMPT_UNMET> {
     this.broker = broker;
-    const { role, signal } = this.options;
+    this.plan = plan;
+    const { role, signal, partnerRestart } = this.options;
     this.attachPeer();
 
     const opened = new Promise<RTCDataChannel | typeof ATTEMPT_UNMET>(
@@ -1292,6 +1369,8 @@ class Negotiation {
       );
 
     try {
+      if (partnerRestart !== undefined)
+        this.onBrokerMessage(partnerRestart.offer);
       if (role === "acceptor") await this.openAndOffer();
       // The rendezvous owns the signal from here: the broker client releases
       // its own abort listener the moment the registration is confirmed, so
@@ -1409,12 +1488,9 @@ class Negotiation {
       return;
     } else {
       // A new id means the dialer abandoned the connection this side
-      // answered and started another. This attempt ends; the next one meets
-      // the dialer's next offer.
-      log.debug(
-        "the exchange partner offered a new connection after this side " +
-          "answered its last one; starting a new connection attempt",
-      );
+      // answered and started another. This attempt ends and the next one
+      // answers this offer: a browser dialer never sends it again.
+      this.partnerRestart = { offer: message };
       this.endUnmet();
       return;
     }
@@ -1698,12 +1774,7 @@ class Negotiation {
     if (this.finished || this.channelOpenTimer !== undefined) return;
     if (this.channel === undefined || !this.remoteDescriptionSet) return;
     this.channelOpenTimer = setTimeout(
-      () =>
-        void this.failWithIceDiagnosis(
-          `the data channel did not open within ` +
-            `${budgetSeconds(this.options.channelOpenTimeoutMs)} after the ` +
-            "exchange partner's session description arrived",
-        ),
+      () => void this.channelOpenBudgetSpent(),
       this.options.channelOpenTimeoutMs,
     );
   }

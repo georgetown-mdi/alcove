@@ -98,11 +98,16 @@ long before the next attempt offers.
 also included an inviter that had answered and was torn down anyway, the
 failure then naming a partner who "did not offer". An attempt that reaches its
 bound with the partner's description in hand gets the channel-open budget
-instead.
+instead. A channel that does not open within that budget ends only the
+attempt, unless it is the last: a seven-day wait should not end on one
+negotiation that found no path.
 
 **An inviter offered a new connection id after answering starts a new
-attempt.** A new id means the acceptor abandoned the connection answered; the
-fresh attempt meets the acceptor's next offer. This takes the place of
+attempt, which answers that offer.** A new id means the acceptor abandoned the
+connection answered. The broker delivered the offer, so nothing reports it
+lost, and a browser acceptor never sends it again: its dial fails at its 30 s
+open timeout, leaving the operator at the browser to start over. The fresh
+attempt answers the offer the last one received. This takes the place of
 offer-following without rebuilding anything in place.
 
 ## What stays open
@@ -111,8 +116,9 @@ offer-following without rebuilding anything in place.
   the attempt cycle could start the next attempt instead, which was not in
   this change's scope.
 - An offer delivered to an attempt in its last milliseconds is lost without an
-  `EXPIRE`, since the id is registered again within about 40 ms; the
-  acceptor's unreported-offer re-send (30 s) recovers it.
+  `EXPIRE`, since the id is registered again within about 40 ms. A CLI
+  acceptor's unreported-offer re-send (30 s) recovers it; a browser
+  acceptor's dial fails at its 30 s open timeout instead.
 - Every relayed attempt leaves its allocation on the relay for its granted
   lifetime and one werift timer armed until it fires. A fired timer is not
   armed again (held by `webrtcTurnRefreshTimer.test.ts`), which is what keeps
