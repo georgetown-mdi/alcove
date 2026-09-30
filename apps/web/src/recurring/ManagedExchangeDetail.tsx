@@ -93,6 +93,7 @@ import {
 } from "./scheduleSurfacingModel";
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { LocalDocumentFields } from "./LocalDocumentFields";
+import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
@@ -215,7 +216,7 @@ export function ManagedExchangeDetail({
    * partner instead (the caller routes by {@link canReinvite}). */
   onReinviteToChangeTerms: () => void;
   /** Read the stored exchange again after {@link ManagedTermsUpdate} changed
-   * its terms. */
+   * its terms, or {@link ManagedRelayRegistration} its relay registration. */
   onTermsChanged: () => void;
   /** Whether this party can mint a re-invite (inviter-only); drives the terms
    * re-invite affordance's copy. */
@@ -272,6 +273,13 @@ export function ManagedExchangeDetail({
       />
       {runnableManagedExchange(record) && (
         <ManagedTermsUpdate
+          record={record}
+          runInFlight={runInFlight}
+          onChanged={onTermsChanged}
+        />
+      )}
+      {runnableManagedExchange(record) && (
+        <ManagedRelayRegistration
           record={record}
           runInFlight={runInFlight}
           onChanged={onTermsChanged}

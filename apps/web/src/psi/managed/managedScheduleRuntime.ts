@@ -363,13 +363,15 @@ async function runUnattendedAttempt(
         pairTableFactors = factors;
       },
       onWarning: (message) => {
-        // Nine notices reach this sink, not one kind: the close-outcome notice
+        // Ten notices reach this sink, not one kind: the close-outcome notice
         // speaks to an operator watching the run and is dropped. The rest --
         // the undeclared-columns notice (raised before the rendezvous opens),
         // the resolved-cardinality notice, pair-table advisory and receive-list
-        // fill notice (raised at core's post-terms, pre-round boundary), plus
-        // the four for a disclosure the accounting did not get, which an
-        // unattended run has no way to remedy -- go to the diagnostic log,
+        // fill notice (raised at core's post-terms, pre-round boundary), the
+        // four for a disclosure the accounting did not get, which an
+        // unattended run has no way to remedy, and a relay key registration
+        // the registrar did not confirm, which the record keeps as pending --
+        // go to the diagnostic log,
         // folded through the same display boundary a seat's surface uses so
         // each is escaped exactly once.
         if (droppableUnattendedNotice(message)) return;

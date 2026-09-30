@@ -1210,6 +1210,32 @@ because none of that ever left this browser. The schedule is the one thing to
 settle by hand: the cron entry or scheduled task that was meeting the agreed window
 is no longer the one meeting it, so remove it there.
 
+### When your relay runs a registrar
+
+A relay run from the reference deployment accepts only credentials minted from
+the relay key it holds for each exchange, and that key changes each time the
+shared secret rotates. When the relay in this browser's relay settings runs the
+Alcove relay registrar, enroll the exchange there once, under **Relay
+registration** on its page: the registrar's address, the exchange id to hold
+the key under, and the relay-owner token. The token is sent with that one
+request and kept nowhere. Leave it empty when the registrar already holds the
+exchange's current key, as after enrolling it from the command line.
+
+After that, each run that relays through this browser's own relay registers the
+key derived from the new secret, signed with the key being replaced, before it
+lets the exchange go. A run relaying through a relay your partner's invitation
+named registers nothing: the party that supplies a relay is the one that
+registers at it.
+
+A registration the registrar does not confirm is kept on the exchange and tried
+again before the next run connects. If the registrar still does not confirm, the
+run stops before contacting your partner and says why. Where the registrar
+refused, it no longer holds a key this browser has, and the remedy is to enroll
+the exchange again with the relay-owner token, choosing to replace the key it
+holds. A fresh invitation from here needs the same, since it replaces the secret
+without a registration. The field-level account:
+[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-pending-relay-registration).
+
 ### Bringing a command-line configuration back
 
 An `alcove.yaml` written for the command line imports here on its own, without
@@ -1239,7 +1265,10 @@ no longer connect to your partner. What the pair import takes and refuses:
 - **The key file Alcove wrote.** A file that is not JSON, holds no shared
   secret or one Alcove would not write, has an `expires` that is not a date and
   time, or holds any other field is refused, saying which, and nothing is
-  imported. The refusal never shows what the file holds.
+  imported. The refusal never shows what the file holds. A key file recording a
+  relay key registration the registrar has not confirmed imports, and the
+  exchange's first run here retries it once the exchange names its registrar
+  (see [When your relay runs a registrar](#when-your-relay-runs-a-registrar)).
 - **Only an exchange this browser runs.** An sftp or filedrop configuration, or
   one whose `signing` block asks for a receipt, is refused with its key file;
   import the `alcove.yaml` on its own to edit it here. A `signing` block with

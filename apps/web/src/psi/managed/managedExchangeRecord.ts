@@ -22,6 +22,7 @@
 
 import {
   ExchangeSpecSchema,
+  RelayRegistrarSchema,
   SHARED_SECRET_REGEX,
   UsageError,
   assembleExchangeSpec,
@@ -44,6 +45,7 @@ import type {
   ExchangeSpec,
   LinkageTerms,
   OwnColumnSelection,
+  RelayRegistrar,
   TermsUpdate,
   WebRTCExchangeLocator,
 } from "@alcove/core";
@@ -417,6 +419,18 @@ export interface ManagedExchangeRecord {
    * write that stores the rotated secret, so it outlives a run that stopped
    * between the two. Absent while no rotation is in flight. */
   rotationInFlightSince?: string;
+  /** The relay registrar this browser enrolled the exchange at: where a run
+   * that relays through this browser's own relay registers the relay key
+   * derived from each rotated secret. Holds no credential; the relay-owner
+   * token is asked for at enrollment and kept nowhere. Absent while the
+   * exchange is not enrolled. */
+  relayRegistrar?: RelayRegistrar;
+  /** ISO 8601 UTC instant the secret this record holds was rotated to, while
+   * the relay registrar has not confirmed that it holds the relay key derived
+   * from it: written by the rotation write itself and removed once the
+   * registrar confirms, so a record still holding it at the next run records a
+   * registration that run retries before it dials. */
+  relayRegistrationPendingSince?: string;
   /** The unanswered standing condition an `auth` or `storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
    * explicit clear-and-acknowledge, by a re-invite, or with the record itself --
@@ -551,10 +565,11 @@ const persistedExchangeFileSchema = z.preprocess(
 );
 
 /**
- * The `.alcove.key` fields: `sharedSecret`, `expires`, `rotationInFlightSince`.
- * The artifact's key half and the key file this app writes are the pair
- * without the marker ({@link ManagedExchangeKeyPair}), so a record's secret
- * half maps onto a valid `.alcove.key` and one read back maps onto a record.
+ * The `.alcove.key` fields: `sharedSecret`, `expires`, `rotationInFlightSince`,
+ * `relayRegistrationPendingSince`. The artifact's key half and the key file
+ * this app writes are the pair without the two markers
+ * ({@link ManagedExchangeKeyPair}), so a record's secret half maps onto a valid
+ * `.alcove.key` and one read back maps onto a record.
  */
 export interface ManagedExchangeKeyFields {
   /** The current rotated shared secret (base64url, 43 chars / 32 bytes). */
@@ -565,13 +580,16 @@ export interface ManagedExchangeKeyFields {
    * file reads; never carried onto a record, whose import is read through the
    * import marker instead. */
   rotationInFlightSince?: string;
+  /** A command-line key file's unconfirmed relay key registration. Carried
+   * onto the record an import builds, so its first run here retries it. */
+  relayRegistrationPendingSince?: string;
 }
 
-/** The key pair without the command-line marker: what the export artifact's
+/** The key pair without the command-line markers: what the export artifact's
  * key block and the key file this app writes hold. */
 export type ManagedExchangeKeyPair = Omit<
   ManagedExchangeKeyFields,
-  "rotationInFlightSince"
+  "rotationInFlightSince" | "relayRegistrationPendingSince"
 >;
 
 const keyPairShape = {
@@ -591,7 +609,8 @@ export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
 
 /**
  * The command-line key file's validator: the key pair plus the optional
- * rotation-in-flight marker the command line writes there. Shares the pair's
+ * rotation-in-flight and pending relay registration markers the command line
+ * writes there. Shares the pair's
  * field schemas so neither reader validates against a looser copy. Strict, so a
  * reader rejects an unknown key rather than silently accepting it.
  */
@@ -599,6 +618,7 @@ export const keyFileFieldsSchema: ZodType<ManagedExchangeKeyFields> = z
   .object({
     ...keyPairShape,
     rotationInFlightSince: z.iso.datetime().optional(),
+    relayRegistrationPendingSince: z.iso.datetime().optional(),
   })
   .strict();
 
@@ -641,6 +661,8 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     schedule: scheduleSchema.optional(),
     lastRun: lastRunSchema.optional(),
     rotationInFlightSince: z.iso.datetime().optional(),
+    relayRegistrar: RelayRegistrarSchema.optional(),
+    relayRegistrationPendingSince: z.iso.datetime().optional(),
     standingCondition: standingConditionFieldSchema,
   })
   .refine(
@@ -650,11 +672,14 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
         record.schedule === undefined &&
         record.lastRun === undefined &&
         record.rotationInFlightSince === undefined &&
+        record.relayRegistrar === undefined &&
+        record.relayRegistrationPendingSince === undefined &&
         record.workingDirectoryHandle === undefined),
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
-        "no expires, schedule, lastRun, rotationInFlightSince, or platform handle",
+        "no expires, schedule, lastRun, rotationInFlightSince, relayRegistrar, " +
+        "relayRegistrationPendingSince, or platform handle",
     },
   )
   .refine(
@@ -947,6 +972,9 @@ export interface NewManagedExchange {
    * `lastRun` is: an import that dropped one would be a way to clear a condition
    * only the operator, a re-invite, or a delete may clear. */
   standingCondition?: ManagedStandingCondition;
+  /** A command-line key file's unconfirmed relay key registration, set only by
+   * the import of one, so the first run here retries it. */
+  relayRegistrationPendingSince?: string;
 }
 
 /**
@@ -982,14 +1010,18 @@ export function buildManagedExchangeRecord(
     ...(fields.expires !== undefined ? { expires: fields.expires } : {}),
     ...(fields.schedule !== undefined ? { schedule: fields.schedule } : {}),
     ...(fields.lastRun !== undefined ? { lastRun: fields.lastRun } : {}),
+    ...(fields.relayRegistrationPendingSince !== undefined
+      ? { relayRegistrationPendingSince: fields.relayRegistrationPendingSince }
+      : {}),
     standingCondition: fields.standingCondition ?? NO_STANDING_CONDITION,
   };
   return parseManagedExchangeRecord(record);
 }
 
 /** The rotation fields a successful run advances on the stored record: the
- * rotated secret always, and the `expires` bound restamped from the max-age
- * policy (a string to set it, `null` to clear any standing bound). The only
+ * rotated secret always, the `expires` bound restamped from the max-age
+ * policy (a string to set it, `null` to clear any standing bound), and the
+ * pending relay registration. The only
  * fields {@link applyManagedExchangeRotation} touches, so a rotation write
  * cannot hold a stale secret or a stale document -- the persist-before-success
  * write is structurally incapable of it (see
@@ -999,12 +1031,16 @@ export interface ManagedExchangeRotation {
   sharedSecret: string;
   /** The restamped bound to set, or `null` to clear any standing bound. */
   expires: string | null;
+  /** The instant of the rotation, when a relay key registration of the rotated
+   * secret follows it; absent, the rotation stores no pending registration and
+   * drops any the record held. */
+  relayRegistrationPendingSince?: string;
 }
 
 /**
  * Apply a rotation to a record, producing a validated new record with only the
- * rotated secret and the `expires` bound changed and the rotation-in-flight
- * marker removed in the same write -- the document, the label, the schedule,
+ * rotated secret, the `expires` bound, and the pending relay registration
+ * changed and the rotation-in-flight marker removed in the same write -- the document, the label, the schedule,
  * the handle, and the run bookkeeping remain untouched. A
  * string `expires` sets the bound; `null` clears it (a policy dropped between runs
  * must not leave a stale bound armed). The result is re-validated through the
@@ -1024,6 +1060,73 @@ export function applyManagedExchangeRotation(
   if (rotation.expires === null) delete next.expires;
   else next.expires = rotation.expires;
   delete next.rotationInFlightSince;
+  if (rotation.relayRegistrationPendingSince === undefined)
+    delete next.relayRegistrationPendingSince;
+  else
+    next.relayRegistrationPendingSince = rotation.relayRegistrationPendingSince;
+  return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+/**
+ * Raised when an enrollment's confirmation is laid over a record whose secret
+ * moved while the registrar was being asked: the key it confirmed is not the
+ * one the record now holds, so nothing is stored.
+ */
+export class ManagedRelayRegistrarStaleError extends Error {
+  constructor() {
+    super(
+      "the exchange ran while the relay registrar was being asked, so the key " +
+        "it confirmed is no longer this exchange's; enroll it again",
+    );
+    this.name = "ManagedRelayRegistrarStaleError";
+  }
+}
+
+/**
+ * Set the relay registrar a record registers at, once the registrar has
+ * confirmed it holds the relay key derived from `confirmedSecret`, and drop
+ * any pending registration with it; or, with `registrar` undefined, stop
+ * registering, dropping the pending registration too, since nothing would
+ * retry it. The input record is not mutated.
+ *
+ * @throws {ManagedRelayRegistrarStaleError} if `confirmedSecret` is not the
+ *   secret the record holds.
+ * @throws {ZodError} if the result is not a valid record.
+ */
+export function applyManagedExchangeRelayRegistrar(
+  record: RunnableManagedExchangeRecord,
+  registrar: RelayRegistrar | undefined,
+  confirmedSecret?: string,
+): RunnableManagedExchangeRecord {
+  const next: ManagedExchangeRecord = { ...record };
+  delete next.relayRegistrationPendingSince;
+  if (registrar === undefined) delete next.relayRegistrar;
+  else {
+    if (confirmedSecret !== record.sharedSecret)
+      throw new ManagedRelayRegistrarStaleError();
+    next.relayRegistrar = registrar;
+  }
+  return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+/**
+ * Drop the pending relay key registration once the registrar confirmed it
+ * holds the key derived from `confirmedSecret`. A record holding another
+ * secret, or no pending registration, comes back unchanged, the same object.
+ *
+ * @throws {ZodError} if the result is not a valid record.
+ */
+export function applyManagedExchangeRelayRegistrationConfirmed(
+  record: RunnableManagedExchangeRecord,
+  confirmedSecret: string,
+): RunnableManagedExchangeRecord {
+  if (
+    record.sharedSecret !== confirmedSecret ||
+    record.relayRegistrationPendingSince === undefined
+  )
+    return record;
+  const next: ManagedExchangeRecord = { ...record };
+  delete next.relayRegistrationPendingSince;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
@@ -1234,6 +1337,10 @@ export function applyManagedExchangeReinviteRotation(
   else next.expires = rotation.expires;
   delete next.lastRun;
   delete next.rotationInFlightSince;
+  if (rotation.relayRegistrationPendingSince === undefined)
+    delete next.relayRegistrationPendingSince;
+  else
+    next.relayRegistrationPendingSince = rotation.relayRegistrationPendingSince;
   next.standingCondition = NO_STANDING_CONDITION;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
@@ -1264,8 +1371,10 @@ export function applyManagedExchangeRotationInFlight(
  * `expires` or policy clearing the stored one, and everything the pair has no
  * field for -- the `id`, label, schedule, `lastRun`, standing condition, and
  * platform grants -- stays as stored, so the revive clears no condition only
- * the operator, a re-invite, or a delete may clear. A rotation-in-flight marker
- * goes with the stored secret when the pair replaces it. The inputs are not
+ * the operator, a re-invite, or a delete may clear. The relay registrar the
+ * record enrolled at is kept too. A rotation-in-flight marker and a pending
+ * relay registration go with the stored secret when the pair replaces it, and
+ * the key file's own pending registration is carried. The inputs are not
  * mutated.
  *
  * @throws {ZodError} if the result is not a valid record.
@@ -1284,8 +1393,12 @@ export function applyManagedExchangeCommandLinePair(
   else next.expires = imported.expires;
   if (imported.tokenMaxAgeDays === undefined) delete next.tokenMaxAgeDays;
   else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
-  if (imported.sharedSecret !== stored.sharedSecret)
+  if (imported.sharedSecret !== stored.sharedSecret) {
     delete next.rotationInFlightSince;
+    delete next.relayRegistrationPendingSince;
+  }
+  if (imported.relayRegistrationPendingSince !== undefined)
+    next.relayRegistrationPendingSince = imported.relayRegistrationPendingSince;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 

@@ -26,6 +26,8 @@ import {
   applyManagedExchangeLocalEdits,
   applyManagedExchangePayloadReceiveFill,
   applyManagedExchangeReinviteRotation,
+  applyManagedExchangeRelayRegistrar,
+  applyManagedExchangeRelayRegistrationConfirmed,
   applyManagedExchangeRotation,
   applyManagedExchangeRotationInFlight,
   applyManagedExchangeScheduleAdvance,
@@ -49,6 +51,8 @@ import {
 import { findRecordsByTermsAndSide } from "./managedLiveCopyMatch";
 import { foldElapsedWindowsUnderResponse } from "./managedSchedule";
 import { parseManagedLocalState } from "./managedLocalStateShape";
+
+import type { RelayRegistrar } from "@alcove/core";
 
 import type {
   ManagedExchangeDiagnosticEssentials,
@@ -1035,7 +1039,8 @@ export async function updateManagedExchangeLocalFields(
 
 /**
  * Persist a rotation to the stored record: advance the rotated secret and the
- * `expires` bound and remove the rotation-in-flight marker, and nothing else,
+ * `expires` bound, remove the rotation-in-flight marker, and store or drop the
+ * pending relay key registration, and nothing else,
  * AND clear the record's backup marker -- both
  * in one strict-durability transaction spanning the record and sibling stores
  * ({@link readModifyWriteRotation}). The record write is field-scoped through
@@ -1154,6 +1159,7 @@ export async function persistManagedExchangeReinvite(
   id: string,
   rotation: ManagedExchangeRotation,
 ): Promise<RunnableManagedExchangeRecord> {
+  const rotatedAt = new Date().toISOString();
   return withManagedExchangeLock(
     id,
     () =>
@@ -1165,10 +1171,71 @@ export async function persistManagedExchangeReinvite(
         );
         if (standingCompromiseResponse(existing) !== undefined)
           throw new ManagedReinviteWithheldError(id);
-        return applyManagedExchangeReinviteRotation(existing, rotation);
+        // The registrar holds the key of the secret this replaces, and no
+        // registration is signed here, so the first run's retry reaches the
+        // registrar's answer and, on its refusal, the re-enrollment step.
+        return applyManagedExchangeReinviteRotation(
+          existing,
+          existing.relayRegistrar === undefined
+            ? rotation
+            : { ...rotation, relayRegistrationPendingSince: rotatedAt },
+        );
       }),
     { ifAvailable: true },
   );
+}
+
+/**
+ * Set or remove the relay registrar the stored record registers at
+ * ({@link applyManagedExchangeRelayRegistrar}), in one strict-durability
+ * transaction. Setting one is refused unless the record still holds
+ * `confirmedSecret`, the secret whose relay key the registrar confirmed.
+ *
+ * @throws {Error} if no record with `id` exists, or it holds a configuration
+ *   only.
+ * @throws {ManagedRelayRegistrarStaleError} if the record's secret is not
+ *   `confirmedSecret`; nothing is written.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function persistManagedExchangeRelayRegistrar(
+  id: string,
+  registrar: RelayRegistrar | undefined,
+  confirmedSecret?: string,
+): Promise<RunnableManagedExchangeRecord> {
+  const written = await readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    return applyManagedExchangeRelayRegistrar(
+      runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(stored)),
+      registrar,
+      confirmedSecret,
+    );
+  });
+  return runnableManagedExchangeOrRefuse(written);
+}
+
+/**
+ * Drop the stored record's pending relay key registration once the registrar
+ * confirmed the key derived from `confirmedSecret`
+ * ({@link applyManagedExchangeRelayRegistrationConfirmed}); a record that has
+ * rotated past that secret since keeps its marker.
+ *
+ * @throws {Error} if no record with `id` exists, or it holds a configuration
+ *   only.
+ * @throws {ZodError} if the stored value or the resulting record is invalid.
+ */
+export async function clearManagedExchangeRelayRegistrationPending(
+  id: string,
+  confirmedSecret: string,
+): Promise<void> {
+  await readModifyWriteRecord(id, (stored) => {
+    if (stored === undefined)
+      throw new Error(`no managed exchange with id ${id}`);
+    return applyManagedExchangeRelayRegistrationConfirmed(
+      runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(stored)),
+      confirmedSecret,
+    );
+  });
 }
 
 /**

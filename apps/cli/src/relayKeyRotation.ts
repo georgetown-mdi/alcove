@@ -1,16 +1,20 @@
 // The registration a run makes after its shared secret rotates, signed with
 // the relay key the registrar holds (docs/spec/PROTOCOL.md, "Registering the
 // rotated relay key"), and the retry of one the registrar did not confirm,
-// before the next run dials.
+// before the next run dials. The signed request and its retries are core's
+// `registerRelayKey`; this module holds the key file and exit-code halves.
 
 import {
   ConnectionError,
-  deriveRelayKey,
-  relayRegistrarAuthorization,
+  registerRelayKey,
   sanitizeErrorForDisplay,
   UsageError,
 } from "@alcove/core";
-import type { ConnectionConfig, RelayRegistrar } from "@alcove/core";
+import type {
+  ConnectionConfig,
+  RelayRegistrar,
+  RelayRegistrationEnvironment,
+} from "@alcove/core";
 
 import {
   clearRelayRegistrationPending,
@@ -20,21 +24,16 @@ import {
 import {
   relayRegistrarForRun,
   relayRegistrarLabel,
-  relayRegistrationBody,
   relayRegistrationNotice,
-  sendRelayRegistration,
-  type RelayRegistrarTransport,
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
 import { AUTHENTICATION_FAILED_EXIT_CODE } from "./util/exit";
 
-/**
- * The waits between attempts at a registration the registrar did not answer,
- * or answered as unavailable; one attempt more than there are waits.
- */
-export const RELAY_REGISTRATION_RETRY_DELAYS_MS: readonly number[] = [
-  2_000, 5_000,
-];
+export {
+  registerRelayKey,
+  RELAY_REGISTRATION_RETRY_DELAYS_MS,
+} from "@alcove/core";
+export type { RelayRegistrationEnvironment } from "@alcove/core";
 
 /** The step every lost-key outcome names. */
 export const RELAY_REENROLLMENT_STEP =
@@ -59,84 +58,6 @@ export function relayRegistrarUnusedNotice(
     "the relay your partner's invitation named (connection.invitation_relay), " +
     `so nothing is registered at ${relayRegistrarLabel(registrar)}.`
   );
-}
-
-/** The clock and waits a registration runs under: injectable for tests. */
-export interface RelayRegistrationEnvironment extends RelayRegistrarTransport {
-  now?: () => Date;
-  sleep?: (ms: number) => Promise<void>;
-  /** The waits between attempts; {@link RELAY_REGISTRATION_RETRY_DELAYS_MS}. */
-  retryDelaysMs?: readonly number[];
-}
-
-const defaultSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Register the relay key derived from `registeredSecret` for the exchange,
- * proving possession of the key derived from `signingSecret` -- the key the
- * registrar holds. A rotation signs with the pre-rotation secret; a renewal
- * registers and signs with the same one. Every registration sends
- * `maxAgeDays`, an integer or `null` for no lapse.
- *
- * An unanswered or unavailable attempt is retried after each of
- * `retryDelaysMs`; a proof outside the registrar's clock window is signed
- * again once at the registrar's own time. A refusal is final: this path holds
- * no relay-owner token and never falls back to one.
- */
-export async function registerRelayKey(
-  registration: {
-    registrar: RelayRegistrar;
-    signingSecret: string;
-    registeredSecret: string;
-    maxAgeDays: number | null;
-  },
-  env: RelayRegistrationEnvironment = {},
-): Promise<RelayRegistrationOutcome> {
-  const { registrar, maxAgeDays } = registration;
-  const now = env.now ?? (() => new Date());
-  const sleep = env.sleep ?? defaultSleep;
-  const delays = env.retryDelaysMs ?? RELAY_REGISTRATION_RETRY_DELAYS_MS;
-  const signingKey = await deriveRelayKey(registration.signingSecret);
-  const body = relayRegistrationBody(
-    await deriveRelayKey(registration.registeredSecret),
-    maxAgeDays,
-  );
-  let clockOffsetMs = 0;
-  let resignedForClock = false;
-  let attempt = 0;
-  for (;;) {
-    const authorization = await relayRegistrarAuthorization({
-      relayKey: signingKey,
-      method: "PUT",
-      exchangeId: registrar.exchangeId,
-      body,
-      now: new Date(now().getTime() + clockOffsetMs),
-    });
-    const answer = await sendRelayRegistration(
-      { registrar, method: "PUT", body, authorization },
-      env,
-    );
-    if (answer.kind === "clock-skew") {
-      if (resignedForClock)
-        return {
-          kind: "refused",
-          status: 401,
-          reason:
-            answer.reason ??
-            "the proof's time is outside the registrar's window",
-        };
-      resignedForClock = true;
-      clockOffsetMs = answer.serverTimeSeconds * 1000 - now().getTime();
-      continue;
-    }
-    if (answer.kind === "unavailable" && attempt < delays.length) {
-      await sleep(delays[attempt]!);
-      attempt++;
-      continue;
-    }
-    return answer;
-  }
 }
 
 function answerDetail(outcome: RelayRegistrationOutcome): string {

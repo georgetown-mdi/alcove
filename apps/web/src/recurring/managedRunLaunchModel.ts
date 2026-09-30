@@ -29,6 +29,7 @@ import {
   ManagedExchangeExpiredError,
   ManagedExchangeNotRunnableError,
   ManagedInputError,
+  ManagedRelayRegistrationError,
   benignRerunOutcome,
   tooLargeBoundOf,
 } from "@psi/managed/managedRun";
@@ -113,6 +114,7 @@ export interface ManagedRunFailureAlert {
     | "terms-shortfall"
     | "too-large"
     | "terms-change"
+    | "relay-registration"
     | "custody-unreadable"
     | "already-running"
     | "missed"
@@ -503,6 +505,24 @@ function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
   };
 }
 
+/** The state of a run that stopped before connecting because its relay's
+ * registrar did not confirm the registration the record held as pending. The
+ * error's own message names the registrar, its answer, and the next step: a
+ * retry where the registrar did not answer, owner-token re-enrollment where it
+ * refused. */
+function relayRegistrationFailure(error: unknown): ManagedRunFailureAlert {
+  return {
+    kind: "relay-registration",
+    title: "The relay registrar did not confirm this exchange's relay key",
+    message: sanitizeErrorForDisplay(error),
+    recovery:
+      error instanceof ManagedRelayRegistrationError &&
+      error.outcome.kind === "unavailable"
+        ? "retry"
+        : "none",
+  };
+}
+
 /** The Tier-1 recorded persist-failure state: the last run rotated the secret but
  * could not save it, which can leave the two parties on different secrets. Plain,
  * specific copy naming re-invite -- the record's own bookkeeping explains the
@@ -799,7 +819,8 @@ export type ManagedRunCausePlacement =
  * state withholds for the reason the seats withhold a failed-closed handshake's
  * message (docs/notes/reported-failure-cause.md). The too-large state's live
  * copy is the refusal's own message ({@link tooLargeFailure}), so a second
- * block would repeat it.
+ * block would repeat it, and so is the relay-registration state's
+ * ({@link relayRegistrationFailure}).
  */
 const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   ManagedRunFailureAlert["kind"],
@@ -811,6 +832,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   input: "withheld",
   "terms-shortfall": "withheld",
   "too-large": "withheld",
+  "relay-registration": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",
   missed: "withheld",
@@ -944,6 +966,7 @@ function classifyLaunchState(
   if (benign === "terms-shortfall") return shortfallFailure(error);
   if (benign === "missed") return missedFailure(records.atLaunch, local, now);
   if (benign === "too-large") return tooLargeFailure(error);
+  if (benign === "relay-registration") return relayRegistrationFailure(error);
   const { afterRun } = records;
   const tier = deriveManagedFailureTier(afterRun, local, now);
   return managedRunTierFailure(

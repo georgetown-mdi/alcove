@@ -184,6 +184,9 @@ export function decideRetake(
     ? applyManagedExchangeRotation(runnableManagedExchangeOrRefuse(stored), {
         sharedSecret: taken.sharedSecret,
         expires: taken.expires ?? null,
+        ...(taken.relayRegistrationPendingSince !== undefined && {
+          relayRegistrationPendingSince: taken.relayRegistrationPendingSince,
+        }),
       })
     : stored;
   return { kind: "retake", record: clearHandedOffLastRun(rotated), advanced };

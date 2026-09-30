@@ -1,7 +1,7 @@
 ---
 title: "Privacy Statement"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-09-29"
+last_reviewed: "2026-09-30"
 ---
 
 # Privacy statement
@@ -47,7 +47,7 @@ This is the deployment supported for production use.
   - **Under the window:** the web server request log and the coordination server's process output. The instance's own copies are rotated daily under a 90-day maximum age (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#log-retention-on-the-instance)), and the copies streamed to CloudWatch Logs expire under that log group's 90-day retention. The process's standard-error stream is not streamed, so the rotation alone bounds it.
   - **On a different clock, and not claimed under the window:** the health agent's log, which holds client addresses and request paths in its own namespace under a 7-day retention; the Elastic Beanstalk deployment logs in the deployment bucket, which hold build and deploy output rather than request lines or client addresses and carry no expiry rule; and Cloudflare's request logs, kept under Cloudflare's retention.
 - **What it does not do:** no accounts, no cookies, no analytics or third-party tracking scripts, and no script, style, or font loaded from a third-party host. The application makes no request to any host other than the supporting services named below.
-- **What it stores stays on your device.** A managed (recurring) exchange keeps its record -- the partnership label, the agreed column shape, the rendezvous locator, the schedule, the run outcomes, and the rotating shared secret -- in browser storage. None of it is sent to a server. Deleting the managed exchange removes it (see [docs/MANAGED_EXCHANGE.md](docs/MANAGED_EXCHANGE.md#deleting-a-managed-exchange)). The at-rest threat model for that stored secret is in [docs/SECURITY_DESIGN.md](docs/SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges).
+- **What it stores stays on your device.** A managed (recurring) exchange keeps its record -- the partnership label, the agreed column shape, the rendezvous locator, the schedule, the run outcomes, the rotating shared secret, and the address of any relay registrar you enroll it at -- in browser storage. None of it is sent to a server; an exchange you enroll at your relay's registrar sends that registrar the relay key derived from the current secret after each run, as the supporting-services table below describes. Deleting the managed exchange removes it (see [docs/MANAGED_EXCHANGE.md](docs/MANAGED_EXCHANGE.md#deleting-a-managed-exchange)). The at-rest threat model for that stored secret is in [docs/SECURITY_DESIGN.md](docs/SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges).
 
 ## What supporting services can observe
 
@@ -59,7 +59,7 @@ An exchange relies on services that are operated by one of the parties, by the p
 | Peer coordination (signaling) | The project, for the hosted web application; you, if you deploy the web application yourself; or a public third-party service if you point at one | Rendezvous identifiers, connection timing, and client IP addresses. Never data-channel content: the two browsers run an authenticated key exchange directly and the server relays only opaque setup messages. |
 | STUN | A third party. The hosted web application is configured by default with two public STUN servers, `stun.l.google.com:19302` (Google-operated) and `44.247.30.68:443` | The client IP address that queried it, and nothing further. STUN is used to discover a public address before the connection is established. |
 | TURN relay | Whoever you configure; commonly a commercial ICE service, or a relay one party operates and names in its browser's own settings or in the invitation | Each party's network address, whether or not any traffic is relayed: the browser reserves an address on the relay while gathering candidates, before it knows if the direct path will work. When traffic is relayed, also the traffic volume between the two endpoints. It forwards encrypted DTLS packets without terminating the session, so it cannot read content. |
-| TURN relay registrar | The party that operates the relay, when its configuration names the registrar (`connection.relay_registrar`); contacted by the CLI only | The exchange id the operator chose, the relay key derived from the exchange's current shared secret -- which the relay holds to accept credentials -- the client IP address, and the time of each registration. Never the shared secret or anything else about the exchange. |
+| TURN relay registrar | The party that operates the relay, when its configuration names the registrar (`connection.relay_registrar`) or a saved exchange in the web application is enrolled there; contacted by the CLI and by the web application's saved exchanges, never by a one-shot browser exchange | The exchange id the operator chose, the relay key derived from the exchange's current shared secret -- which the relay holds to accept credentials -- the client IP address, and the time of each registration. Never the shared secret or anything else about the exchange. |
 | Shared SFTP server or file drop | One of the two parties, or a third party both trust | The exchange's files. What those files reveal depends on the exchange -- see below. |
 
 The SFTP and file-drop case is the one that turns on how the exchange is set up:

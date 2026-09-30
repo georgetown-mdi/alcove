@@ -688,9 +688,9 @@ been confirmed at the relay registrar a run registers at
 - **Across applications.** The console's check of a mounted key file
   validates the field as the command line does, so it reads the file and
   refuses one whose field is not an ISO 8601 instant. The web application's
-  import of a command-line key file refuses one holding the field, naming the
-  unconfirmed registration and the command-line run or `alcove enroll-relay`
-  that confirms it.
+  import of a command-line key file carries the field onto the managed record
+  it installs, so that exchange's first browser run retries the registration
+  ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#the-pending-relay-registration)).
 
 ### `exchange --invitation` fail-closed ordering
 
