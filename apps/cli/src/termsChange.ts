@@ -11,13 +11,16 @@
 import path from "node:path";
 
 import {
+  DISPLAY_TRUNCATION_MARKER,
   encodeTermsUpdate,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   OperatorConfigError,
   operatorSuppliedText,
+  payloadReceiveFilledNotice,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
+  sanitizeForDisplay,
   termsDeltaSections,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
@@ -347,39 +350,58 @@ export function payloadReceiveFillConfirmation(params: {
  * partner declares, in place of {@link payloadReceiveFillConfirmation}'s
  * question: each column taken, and the configuration `recordedIn` it was
  * written to as `payload.receive`, or that it was written to none. The
- * column names are the partner's and are escaped here; the path is the
+ * column names are the partner's and are escaped here, cut short so the whole
+ * line stays within `WARNING_MESSAGE_MAX_DISPLAY_LENGTH`; the path is the
  * operator's.
  */
 export function payloadReceiveTakenNotice(
   columns: readonly string[],
   recordedIn: string | undefined,
 ): string {
-  const taken = columns
-    .map((name) => `"${redactAndSanitizeForDisplay(name)}"`)
-    .join(", ");
-  const heading = `this unattended run took the payload columns your partner declares it sends you, without asking: ${taken}`;
-  if (recordedIn === undefined)
-    return `${heading}. They were not written to any configuration.`;
-  const shownConfig = redactAndRenderOperatorSuppliedText(
-    operatorSuppliedText(recordedIn),
+  const heading =
+    "this unattended run took the payload columns your partner declares it sends you, without asking: ";
+  const tail =
+    recordedIn === undefined
+      ? ". They were not written to any configuration."
+      : `. They were written to ${redactAndRenderOperatorSuppliedText(
+          operatorSuppliedText(recordedIn),
+        )} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+  const taken = redactAndSanitizeForDisplay(
+    columns.map((name) => `"${name}"`).join(", "),
+    {
+      maxLength:
+        WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
+        heading.length -
+        tail.length -
+        DISPLAY_TRUNCATION_MARKER.length,
+    },
   );
-  return `${heading}. They were written to ${shownConfig} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+  return `${heading}${taken}${tail}`;
 }
 
 /**
- * The fill notice an unattended run writes once its receive list is recorded
- * in `configPath`, or `undefined` for an attended run, which asked instead.
- * `writePlainLine` is the command's unfiltered writer
- * (`ConfiguredLogging.writePlainLine`), so the line reaches stderr or the
- * `--log-file` at every `--log-level`.
+ * Report that this run filled `payload.receive` with `columns`, recorded in
+ * the configuration `recordedIn` or in none. An unattended run that took at
+ * least one column writes {@link payloadReceiveTakenNotice} through
+ * `unattendedWriter`, the command's unfiltered writer
+ * (`ConfiguredLogging.writePlainLine`), so the line shows at every
+ * `--log-level`; any other fill recorded in a configuration is logged at info.
  */
-export function unattendedPayloadReceiveFillNotice(params: {
-  configPath: string;
-  interactive: boolean;
-  writePlainLine: (line: string) => void;
-}): ((columns: readonly string[]) => void) | undefined {
-  const { configPath, interactive, writePlainLine } = params;
-  if (interactive) return undefined;
-  return (columns) =>
-    writePlainLine(payloadReceiveTakenNotice(columns, configPath));
+export function reportPayloadReceiveFill(params: {
+  columns: readonly string[];
+  recordedIn: string | undefined;
+  unattendedWriter: ((line: string) => void) | undefined;
+  log: { info: (message: string) => void };
+}): void {
+  const { columns, recordedIn, unattendedWriter, log } = params;
+  if (unattendedWriter !== undefined && columns.length > 0) {
+    unattendedWriter(payloadReceiveTakenNotice(columns, recordedIn));
+    return;
+  }
+  if (recordedIn !== undefined)
+    log.info(
+      sanitizeForDisplay(payloadReceiveFilledNotice(columns), {
+        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      }),
+    );
 }

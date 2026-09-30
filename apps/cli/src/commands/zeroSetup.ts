@@ -6,13 +6,10 @@ import {
   getLogger,
   InternalConsistencyError,
   operatorSuppliedText,
-  payloadReceiveFilledNotice,
   prepareForExchange,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
-  sanitizeForDisplay,
   UsageError,
-  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -46,7 +43,7 @@ import { optionalIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
 import {
   payloadReceiveFillConfirmation,
-  payloadReceiveTakenNotice,
+  reportPayloadReceiveFill,
 } from "../termsChange";
 import {
   applyConnectionCredentials,
@@ -442,17 +439,14 @@ export function finalizeBootstrap(params: {
    * The payload.receive columns this run filled from the partner's declared
    * send set, when it filled one -- already folded into
    * `spec.linkageTerms.payload.receive` ({@link buildSaveSpec}'s matching
-   * argument). Logged as {@link payloadReceiveFilledNotice} only once the
-   * write below that holds it actually lands, never before: a run whose save
-   * fails here reports that failure and no fill notice, since the recorded
-   * list never reached disk.
+   * argument). Reported through {@link reportPayloadReceiveFill} only once
+   * the write below that holds it lands, never before.
    */
   filledPayloadReceive?: string[];
   /**
    * Set on an unattended run: the command's unfiltered writer
-   * (`ConfiguredLogging.writePlainLine`), through which a non-empty fill's
-   * notice is written as {@link payloadReceiveTakenNotice} at every
-   * `--log-level`, in place of the info-level one.
+   * (`ConfiguredLogging.writePlainLine`), passed to
+   * {@link reportPayloadReceiveFill}.
    */
   unattendedFillNoticeWriter?: (line: string) => void;
 }): void {
@@ -467,21 +461,13 @@ export function finalizeBootstrap(params: {
     unattendedFillNoticeWriter,
   } = params;
   const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
-    if (filledPayloadReceive === undefined) return;
-    if (
-      unattendedFillNoticeWriter !== undefined &&
-      filledPayloadReceive.length > 0
-    ) {
-      unattendedFillNoticeWriter(
-        payloadReceiveTakenNotice(filledPayloadReceive, recordedIn),
-      );
-      return;
-    }
-    log.info(
-      sanitizeForDisplay(payloadReceiveFilledNotice(filledPayloadReceive), {
-        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-      }),
-    );
+    if (filledPayloadReceive !== undefined)
+      reportPayloadReceiveFill({
+        columns: filledPayloadReceive,
+        recordedIn,
+        unattendedWriter: unattendedFillNoticeWriter,
+        log,
+      });
   };
 
   // Invariant guard: a shared secret is established only when both parties pass
@@ -842,6 +828,7 @@ export async function handler(argv: Arguments): Promise<void> {
 
     let filledPayloadReceive: string[] | undefined;
     const interactive = stdinAnswersPrompts(input);
+    const unattendedWriter = interactive ? undefined : writePlainLine;
     try {
       // Cast: `liveConnection` is `ConnectionConfig` (which includes the webrtc
       // channel), so TypeScript cannot verify it fits `ProtocolConnectionConfig`
@@ -876,14 +863,19 @@ export async function handler(argv: Arguments): Promise<void> {
         // write itself happens later, in onOutputComplete once the whole
         // exchange has completed, so the fill notice is deferred to
         // finalizeBootstrap rather than logged here on the strength of this
-        // in-memory record alone. A run without --save writes nothing, so its
-        // unattended notice says so at once.
+        // in-memory record alone.
         recordPayloadReceiveFill: (columns) => {
           if (options.save) filledPayloadReceive = columns;
-          else if (!interactive && columns.length > 0)
-            writePlainLine(payloadReceiveTakenNotice(columns, undefined));
         },
-        payloadReceiveFillNoticeDeferred: true,
+        payloadReceiveFillNotice: (columns) => {
+          if (!options.save)
+            reportPayloadReceiveFill({
+              columns,
+              recordedIn: undefined,
+              unattendedWriter,
+              log,
+            });
+        },
         // Without --save there is no configuration, so a yes records nothing.
         onPayloadReceiveFill: payloadReceiveFillConfirmation({
           configPath: options.save ? options.configFile : undefined,
@@ -929,9 +921,7 @@ export async function handler(argv: Arguments): Promise<void> {
                 keyFile: options.keyFile,
                 log,
                 filledPayloadReceive,
-                unattendedFillNoticeWriter: interactive
-                  ? undefined
-                  : writePlainLine,
+                unattendedFillNoticeWriter: unattendedWriter,
               });
               return { persisted: true };
             } catch (err) {
@@ -951,17 +941,13 @@ export async function handler(argv: Arguments): Promise<void> {
                 keyFile: options.keyFile,
               });
               log.error(`${notice}: ${sanitizeErrorForDisplay(err)}`);
-              if (
-                !interactive &&
-                filledPayloadReceive !== undefined &&
-                filledPayloadReceive.length > 0
-              )
-                writePlainLine(
-                  payloadReceiveTakenNotice(
-                    filledPayloadReceive,
-                    configLeftOnDisk ? options.configFile : undefined,
-                  ),
-                );
+              if (filledPayloadReceive !== undefined)
+                reportPayloadReceiveFill({
+                  columns: filledPayloadReceive,
+                  recordedIn: configLeftOnDisk ? options.configFile : undefined,
+                  unattendedWriter,
+                  log,
+                });
               reportPersistenceLoss(notice, eventStreamEmitter);
               return { persisted: false };
             }

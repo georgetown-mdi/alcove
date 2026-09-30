@@ -134,8 +134,9 @@ function runtimeOptionsArg(callArgs: unknown[]): {
 }
 
 /** Drive the completed-exchange half of runProtocol's contract from the mock:
- *  hand the receive-list recorder the partner's declared send set where
- *  `filled` is given, as the terms exchange does, invoke the caller's
+ *  hand the receive-list recorder, then the fill notice, the partner's
+ *  declared send set where `filled` is given, as the terms exchange does,
+ *  invoke the caller's
  *  pre-terminal onOutputComplete hook, then resolve the way the real function
  *  does. The zero-setup `--save` persistence rides that hook, so a mock that
  *  resolves without calling it drives a run that saves nothing -- which is what
@@ -145,8 +146,10 @@ async function driveCompletedExchange(
   bootstrap: ExchangeBootstrapResult | undefined,
   filled?: string[],
 ): Promise<unknown> {
-  if (filled !== undefined)
+  if (filled !== undefined) {
     await optionsArg(callArgs).recordPayloadReceiveFill?.(filled);
+    optionsArg(callArgs).payloadReceiveFillNotice?.(filled);
+  }
   await runtimeOptionsArg(callArgs).onOutputComplete?.({ bootstrap });
   // The bootstrap outcome reaches the caller through the hook alone, so the
   // resolved result contains only what RunProtocolResult declares.

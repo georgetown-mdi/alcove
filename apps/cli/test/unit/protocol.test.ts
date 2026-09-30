@@ -7242,7 +7242,7 @@ test("a receive list the exchange fills is recorded, then named on the log escap
   for (const raw of ["\u0007", "\u202e"]) expect(logged[0]).not.toContain(raw);
 }, 20_000);
 
-test("an unattended run's fill notice replaces the info line for a non-empty fill, and an empty one keeps it", async () => {
+test("a caller's fill notice replaces the info line for every fill", async () => {
   const noticed: string[][] = [];
   for (const columns of [["dob"], []]) {
     vi.mocked(runExchange).mockImplementation((async (
@@ -7280,12 +7280,12 @@ test("an unattended run's fill notice replaces the info line for a non-empty fil
       }),
     ]);
   }
-  expect(noticed).toEqual([["dob"]]);
-  const logged = mockState.infos.filter((line) =>
-    line.includes("payload.receive was not set"),
-  );
-  expect(logged).toHaveLength(1);
-  expect(logged[0]).toContain("no payload columns");
+  expect(noticed).toEqual([["dob"], []]);
+  expect(
+    mockState.infos.filter((line) =>
+      line.includes("payload.receive was not set"),
+    ),
+  ).toEqual([]);
 }, 20_000);
 
 test("the question before a receive list is filled reaches the exchange, and a run passing none asks nothing", async () => {

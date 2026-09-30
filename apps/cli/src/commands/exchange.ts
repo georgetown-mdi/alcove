@@ -72,7 +72,7 @@ import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
 import {
   payloadReceiveFillConfirmation,
-  unattendedPayloadReceiveFillNotice,
+  reportPayloadReceiveFill,
   termsChangeHandler,
 } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
@@ -1372,11 +1372,13 @@ export async function handler(argv: Arguments): Promise<void> {
         signing,
         recordPayloadReceiveFill: (columns) =>
           persistFilledPayloadReceive(options.configFile, columns),
-        payloadReceiveFillNotice: unattendedPayloadReceiveFillNotice({
-          configPath: options.configFile,
-          interactive,
-          writePlainLine,
-        }),
+        payloadReceiveFillNotice: (columns) =>
+          reportPayloadReceiveFill({
+            columns,
+            recordedIn: options.configFile,
+            unattendedWriter: interactive ? undefined : writePlainLine,
+            log,
+          }),
         onPayloadReceiveFill: payloadReceiveFillConfirmation({
           configPath: options.configFile,
           interactive,

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import YAML from "yaml";
 import PSI from "@openmined/psi.js";
 import {
+  DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
   getLogger,
   inferMetadata,
@@ -13,6 +14,7 @@ import {
   parseExchangeSpec,
   prepareForExchange,
   runExchange,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 import { createMessagePipe } from "@alcove/core/testing";
 import type { ExchangeSpec, MessageConnection, Metadata } from "@alcove/core";
@@ -29,7 +31,7 @@ import { buildErrorEvent, classifyTerminalError } from "../../src/eventStream";
 import {
   payloadReceiveFillConfirmation,
   payloadReceiveTakenNotice,
-  unattendedPayloadReceiveFillNotice,
+  reportPayloadReceiveFill,
 } from "../../src/termsChange";
 import { exitCodeForError } from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
@@ -230,23 +232,46 @@ describe("the unattended fill notice", () => {
     );
   });
 
-  test("is written through the unfiltered writer only on an unattended run", () => {
-    const lines: string[] = [];
-    const writePlainLine = (line: string) => lines.push(line);
-    expect(
-      unattendedPayloadReceiveFillNotice({
-        configPath: "alcove.yaml",
-        interactive: true,
-        writePlainLine,
-      }),
-    ).toBeUndefined();
-    unattendedPayloadReceiveFillNotice({
-      configPath: "alcove.yaml",
-      interactive: false,
-      writePlainLine,
-    })?.(["notes"]);
-    expect(lines).toEqual([
-      payloadReceiveTakenNotice(["notes"], "alcove.yaml"),
+  test("cuts many long partner column names short, keeping the whole line within the warning cap and the configuration it names", () => {
+    const columns = Array.from(
+      { length: 200 },
+      (_, index) => `column_${String(index)}_${"x".repeat(200)}`,
+    );
+    const notice = payloadReceiveTakenNotice(columns, "/srv/alcove.yaml");
+    expect(notice.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    expect(notice).toContain(
+      `${DISPLAY_TRUNCATION_MARKER}. They were written to /srv/alcove.yaml as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
+    );
+  });
+
+  test("goes through the unfiltered writer on an unattended run that took a column, and a fill recorded in a configuration is otherwise logged at info", () => {
+    const outcomes = [
+      { columns: ["notes"], recordedIn: "alcove.yaml", unattended: true },
+      { columns: ["notes"], recordedIn: undefined, unattended: true },
+      { columns: [], recordedIn: "alcove.yaml", unattended: true },
+      { columns: [], recordedIn: undefined, unattended: true },
+      { columns: ["notes"], recordedIn: "alcove.yaml", unattended: false },
+      { columns: ["notes"], recordedIn: undefined, unattended: false },
+    ].map(({ columns, recordedIn, unattended }) => {
+      const written: string[] = [];
+      const logged: string[] = [];
+      reportPayloadReceiveFill({
+        columns,
+        recordedIn,
+        unattendedWriter: unattended ? (line) => written.push(line) : undefined,
+        log: { info: (message) => logged.push(message) },
+      });
+      return [written.length, logged.length];
+    });
+    expect(outcomes).toEqual([
+      [1, 0],
+      [1, 0],
+      [0, 1],
+      [0, 0],
+      [0, 1],
+      [0, 0],
     ]);
   });
 });

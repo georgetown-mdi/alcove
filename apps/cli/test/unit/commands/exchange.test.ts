@@ -1691,21 +1691,19 @@ test("handler: a receive list the run fills is recorded in the configuration it 
 
 /** Run the handler on `stdin` at `--log-level silent` into a `--log-file`,
  * with the terms exchange filling the receive list with `columns` as
- * runProtocol does: record, then the unattended notice where one was passed.
- * Returns the log file and whether the handler passed a notice. */
+ * runProtocol does: record, then the handler's fill notice. Returns the log
+ * file. */
 async function logOfFillingRun(
   stdin: ReturnType<typeof streamOf>,
   columns: string[],
-): Promise<{ log: string; noticePassed: boolean }> {
+): Promise<string> {
   fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
   const input = path.join(dir, "in.csv");
   fs.writeFileSync(input, "ssn,note\n123456789,hello\n");
   const logFile = path.join(dir, "run.log");
-  let noticePassed = false;
   vi.mocked(runProtocol).mockReset();
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
-    noticePassed = options.payloadReceiveFillNotice !== undefined;
     await options.recordPayloadReceiveFill?.(columns);
     options.payloadReceiveFillNotice?.(columns);
     return {};
@@ -1721,24 +1719,19 @@ async function logOfFillingRun(
       "log-file": logFile,
     } as unknown as Arguments),
   );
-  return { log: fs.readFileSync(logFile, "utf8"), noticePassed };
+  return fs.readFileSync(logFile, "utf8");
 }
 
 test("handler: an unattended fill writes one line naming each column and the configuration, at every log level", async () => {
-  const { log, noticePassed } = await logOfFillingRun(streamOf(""), [
-    "program",
-    "bell\u0007",
-  ]);
-  expect(noticePassed).toBe(true);
+  const log = await logOfFillingRun(streamOf(""), ["program", "bell\u0007"]);
   const lines = log.split("\n").filter((line) => line.includes("program"));
   expect(lines).toEqual([
     `this unattended run took the payload columns your partner declares it sends you, without asking: "program", "bell\\x07". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
   ]);
 });
 
-test("handler: an attended fill passes no unattended notice", async () => {
-  const { log, noticePassed } = await logOfFillingRun(ttyStream(), ["program"]);
-  expect(noticePassed).toBe(false);
+test("handler: an attended fill writes no unattended notice", async () => {
+  const log = await logOfFillingRun(ttyStream(), ["program"]);
   expect(log).not.toContain("unattended");
 });
 
