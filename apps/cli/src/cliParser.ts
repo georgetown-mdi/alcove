@@ -47,6 +47,10 @@ import {
   handler as verifyReceiptHandler,
 } from "./commands/verifyReceipt";
 import { builder as doctorBuilder } from "./commands/doctor";
+import {
+  builder as enrollRelayBuilder,
+  handler as enrollRelayHandler,
+} from "./commands/enrollRelay";
 
 /**
  * Read this package's own version from its co-located package.json, resolved
@@ -122,6 +126,12 @@ export function buildCli(argv: string[]): Argv {
         "Execute a recurring exchange",
         exchangeBuilder,
         exchangeHandler,
+      )
+      .command(
+        "enroll-relay",
+        "Enroll this exchange's relay key at its relay registrar (asks for the relay-owner token)",
+        enrollRelayBuilder,
+        enrollRelayHandler,
       )
       .command(
         "fingerprint",

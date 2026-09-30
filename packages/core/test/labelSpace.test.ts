@@ -45,9 +45,11 @@ const LABEL_FAMILIES: ReadonlyMap<string, readonly string[]> = new Map<
 
 // alcove- strings in core's source outside the label space: the key
 // exchange's protocol name (hashed into the transcript), document version
-// tags, and the record-layer domains of docs/spec/EXCHANGE_RECORD.md. Listed
+// tags, the record-layer domains of docs/spec/EXCHANGE_RECORD.md, and the
+// exchange-id prefix the relay registrar keeps for its own checks. Listed
 // exactly, so a new or changed one is placed here deliberately.
 const OTHER_ALCOVE_STRINGS: readonly string[] = [
+  "alcove-verify-",
   "alcove-kex-v3:NNpsk0_P256_SHA256",
   "alcove-signed-receipt/v4",
   "alcove-signing-cert/v3",

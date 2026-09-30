@@ -3,6 +3,7 @@
 // through one readline interface at a time.
 
 import readline from "node:readline/promises";
+import { Writable } from "node:stream";
 
 /**
  * The stream a confirmation prompt asks on -- stderr, so stdout stays reserved
@@ -64,6 +65,48 @@ export async function promptFreeText(question: string): Promise<string> {
     });
   } finally {
     rl.close();
+  }
+}
+
+/**
+ * Ask `question` on the prompt stream and resolve to the line typed, which is
+ * not echoed: for a credential typed at a terminal. EOF resolves to the empty
+ * string. Ctrl-C at the prompt ends the process as the signal would, once the
+ * terminal is restored. `streams` is for tests.
+ */
+export async function promptHiddenText(
+  question: string,
+  streams: {
+    input?: NodeJS.ReadableStream;
+    output?: NodeJS.WritableStream;
+  } = {},
+): Promise<string> {
+  const output = streams.output ?? promptStream;
+  const discardEcho = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  output.write(`${question} `);
+  const rl = readline.createInterface({
+    input: streams.input ?? process.stdin,
+    output: discardEcho,
+    terminal: true,
+  });
+  let interrupted = false;
+  try {
+    return await new Promise<string>((resolve) => {
+      rl.once("line", resolve);
+      rl.once("close", () => resolve(""));
+      rl.once("SIGINT", () => {
+        interrupted = true;
+        rl.close();
+      });
+    });
+  } finally {
+    rl.close();
+    output.write("\n");
+    if (interrupted) process.kill(process.pid, "SIGINT");
   }
 }
 

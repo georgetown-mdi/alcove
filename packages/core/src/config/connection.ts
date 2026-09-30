@@ -5,6 +5,7 @@ import { randomBytes, toBase64Url } from "../utils/crypto.js";
 import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { boundedArray } from "../utils/boundedArray.js";
+import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
 
 // --- HTTP service authentication ---------------------------------------------
 
@@ -1137,6 +1138,108 @@ const ConnectionRelayLocatorSchema = relayLocatorSchema(
     `${keys.join(", ")}; it holds only turn and stun url lists`,
 );
 
+// --- Relay registrar ---------------------------------------------------------
+
+/**
+ * The registrar of the relay this party's own `turn` entries name
+ * (infra/relay/README.md, The registrar): where a run registers the relay key
+ * derived from each rotated shared secret, and the exchange id the key is held
+ * under. It holds no credential: the relay-owner token is asked for when the
+ * exchange is enrolled and is never stored.
+ */
+export interface RelayRegistrar {
+  /** The registrar's `https://` address: a host and an optional port. */
+  url: string;
+  /** The exchange id the registrar holds this exchange's relay key under. */
+  exchangeId: string;
+}
+
+/** Upper bound on {@link RelayRegistrar.url}, in UTF-16 code units. */
+export const MAX_RELAY_REGISTRAR_URL_LENGTH = 1024;
+
+// The registrar refuses an id with this prefix from any caller but the relay's
+// own verify.sh (infra/relay/README.md, Per-exchange keys).
+const RELAY_VERIFY_EXCHANGE_ID_PREFIX = "alcove-verify-";
+
+const RELAY_REGISTRAR_URL_EXAMPLE = "https://relay.example.org:8443";
+
+// Why `url` cannot name a registrar, or undefined when it can. The url is never
+// repeated, since one holding a user may hold a password.
+function relayRegistrarUrlProblem(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return `is not a url; write it as ${RELAY_REGISTRAR_URL_EXAMPLE}`;
+  }
+  if (parsed.protocol !== "https:")
+    return `must be an https:// url, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`;
+  if (parsed.username !== "" || parsed.password !== "")
+    return (
+      "names a user before its host; the relay-owner token is asked for " +
+      "when you enroll the exchange and is never written to the configuration"
+    );
+  if (parsed.pathname !== "/" || parsed.search !== "" || parsed.hash !== "")
+    return (
+      "must name only a host and an optional port, with no path, query, or " +
+      `fragment, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`
+    );
+  return undefined;
+}
+
+const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
+  {
+    url: z
+      .string()
+      .trim()
+      .check(
+        maxCodeUnits(
+          MAX_RELAY_REGISTRAR_URL_LENGTH,
+          `relay_registrar.url is longer than ${MAX_RELAY_REGISTRAR_URL_LENGTH} characters`,
+        ),
+      )
+      .superRefine((url, ctx) => {
+        const problem = relayRegistrarUrlProblem(url);
+        if (problem !== undefined)
+          ctx.addIssue({
+            code: "custom",
+            message: `relay_registrar.url ${problem}`,
+          });
+      }),
+    exchangeId: z
+      .string()
+      .refine(isRelayRegistrarExchangeId, {
+        message:
+          "relay_registrar.exchange_id must be 1 to 128 of A-Z, a-z, 0-9, " +
+          "'.', '_' and '-', not starting with '-' and not holding a run of " +
+          "64 hex characters",
+      })
+      .refine((id) => !id.startsWith(RELAY_VERIFY_EXCHANGE_ID_PREFIX), {
+        message:
+          "relay_registrar.exchange_id must not start with " +
+          `${RELAY_VERIFY_EXCHANGE_ID_PREFIX}, which the relay keeps for its ` +
+          "own checks",
+      }),
+  },
+  {
+    error: (issue) =>
+      issue.code === "unrecognized_keys"
+        ? `relay_registrar has no ${issue.keys.length === 1 ? "key" : "keys"} ` +
+          `${issue.keys.join(", ")}; it holds only url and exchange_id`
+        : undefined,
+  },
+);
+
+/**
+ * Whether `turn` holds an entry whose credential a run mints from the shared
+ * secret: one that sets no username or credential.
+ */
+export function hasMintedTurnEntry(
+  turn: WebRTCConnectionConfig["turn"],
+): boolean {
+  return (turn ?? []).some((server) => server.credential === undefined);
+}
+
 // --- Connection config -------------------------------------------------------
 
 /**
@@ -1169,6 +1272,12 @@ export interface WebRTCConnectionConfig {
    * minted from the shared secret on each run.
    */
   invitationRelay?: RelayLocator;
+  /**
+   * The registrar of the relay this party's own {@link turn} entries name,
+   * where a run registers the relay key derived from each rotated shared
+   * secret. Requires a `turn` entry that sets no username or credential.
+   */
+  relayRegistrar?: RelayRegistrar;
   /**
    * Which candidate types ICE may use. `all` permits host, server-reflexive
    * and relay candidates; `relay` gathers relay candidates only, so every
@@ -1289,6 +1398,7 @@ const WebRTCConnectionConfigSchema = z.strictObject(
     stun: z.array(StunUrlSchema).optional(),
     turn: z.array(TurnServerSchema).optional(),
     invitationRelay: ConnectionRelayLocatorSchema.optional(),
+    relayRegistrar: RelayRegistrarSchema.optional(),
     iceTransportPolicy: z.enum(["all", "relay"]).optional(),
     iceProvision: IceProvisionSchema.optional(),
     options: SharedOptionsSchema.optional(),
@@ -1402,6 +1512,22 @@ export const ConnectionConfigSchema: z.ZodType<ConnectionConfig> = z
       message:
         "ice_transport_policy `relay` gathers relay candidates only, so it " +
         "requires at least one turn entry",
+    },
+  )
+  // The registrar holds the key this party's own minted turn entries sign
+  // with, so one named with no such entry registers a key no run presents.
+  .refine(
+    (conn) =>
+      !(
+        conn.channel === "webrtc" &&
+        conn.relayRegistrar !== undefined &&
+        !hasMintedTurnEntry(conn.turn)
+      ),
+    {
+      message:
+        "relay_registrar registers the key this party's own turn entries " +
+        "mint their credential from, so it requires a turn entry that sets " +
+        "no username or credential",
     },
   )
   // File-sync directory mode (filedrop and sftp). A directory is given either

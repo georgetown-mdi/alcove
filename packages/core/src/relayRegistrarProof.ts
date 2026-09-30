@@ -20,6 +20,18 @@ const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
 const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
 const EXCHANGE_ID_HEX_RUN = /[0-9A-Fa-f]{64}/;
 
+/**
+ * Whether `exchangeId` is an id the registrar takes in a request path and a
+ * proof can be made for: 1 to 128 of `[A-Za-z0-9._-]`, not starting with `-`,
+ * and holding no run of 64 hex characters.
+ */
+export function isRelayRegistrarExchangeId(exchangeId: string): boolean {
+  return (
+    EXCHANGE_ID_PATTERN.test(exchangeId) &&
+    !EXCHANGE_ID_HEX_RUN.test(exchangeId)
+  );
+}
+
 /** The registrar methods a proof authorizes: a rotation and a revocation. */
 export type RelayRegistrarProofMethod = "PUT" | "DELETE";
 
@@ -87,10 +99,7 @@ export async function relayRegistrarAuthorization({
       `relayRegistrarAuthorization: method ${JSON.stringify(method)} must be PUT or DELETE`,
     );
   }
-  if (
-    !EXCHANGE_ID_PATTERN.test(exchangeId) ||
-    EXCHANGE_ID_HEX_RUN.test(exchangeId)
-  ) {
+  if (!isRelayRegistrarExchangeId(exchangeId)) {
     throw new InternalConsistencyError(
       "relayRegistrarAuthorization: exchangeId must be 1 to 128 of " +
         "[A-Za-z0-9._-], not starting with '-' and not containing a run of " +

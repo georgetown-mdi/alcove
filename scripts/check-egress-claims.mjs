@@ -231,6 +231,12 @@ export const ALLOWLIST = [
       "the same example form in the refusal of a host-less stun entry, on the same basis",
   },
   {
+    url: "https://relay.example.org:8443",
+    match: "exact",
+    reason:
+      "the example form inside the connection schema's refusal of a malformed relay_registrar url; a reserved documentation domain shown to the operator, never dialed",
+  },
+  {
     url: "https://app.example.org/",
     match: "exact",
     reason:

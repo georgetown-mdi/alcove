@@ -871,6 +871,32 @@ connection:
       - "stun:relay.example.org:3478"
 ```
 
+### `connection.relay_registrar`
+
+*Type:* object  
+*Required:* no  
+*Applies to:* `webrtc`
+
+The registrar of the relay your own [`turn`](#connectionturn) entries name, when that relay runs the reference registrar ([infra/relay/README.md](../infra/relay/README.md#the-registrar)). The relay accepts credentials minted from the relay key it holds for the exchange. `alcove enroll-relay` enrolls the exchange at this registrar: it registers the key derived from the key file's current shared secret, lapsing after [`authentication.token_max_age_days`](#authenticationtoken_max_age_days) days, or never where that is unset.
+
+It holds no credential. The relay-owner token is asked for by `alcove enroll-relay` each time it runs ([CLI.md](CLI.md#registering-the-relay-key-at-your-relay)) and is never written to the configuration or the key file.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | The registrar's `https://` address: a host and an optional port, with no path, query, fragment, or user |
+| `exchange_id` | string | yes | The id the registrar holds this exchange's key under: 1 to 128 of `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, not starting with `-`, not starting with `alcove-verify-`, and holding no run of 64 hex characters. The registrar's refusals let anyone learn whether an id is enrolled, so choose one that reveals nothing about either party |
+
+It requires a `turn` entry that sets no `username` or `credential`. `alcove enroll-relay` refuses a configuration whose runs relay through the relay an invitation named ([`invitation_relay`](#connectioninvitation_relay)): the party that supplies a relay is the one that registers at it.
+
+```yaml
+connection:
+  turn:
+    - url: "turns:relay.example.org:443?transport=tcp"
+  relay_registrar:
+    url: "https://relay.example.org:8443"
+    exchange_id: "q3-linkage-7f2c"
+```
+
 ### `connection.ice_transport_policy`
 
 *Type:* enum (`all` | `relay`)  
@@ -1669,6 +1695,7 @@ The cells:
 | `connection.stun` | carried | not applicable | refused |
 | `connection.turn` | carried | not applicable | refused |
 | `connection.invitation_relay` | authored (recorded on accept) | not applicable | carried (recorded on accept; the browser relays through it on each re-run) |
+| `connection.relay_registrar` | carried | not applicable | refused |
 | `connection.ice_transport_policy` | carried | not applicable | refused |
 | `connection.ice_provision` | refused | not applicable | refused |
 | `connection.proxy` | not applicable | refused | not applicable |
