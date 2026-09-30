@@ -271,7 +271,7 @@ name determines nothing:
     3.2.2-1.amzn2023.0.1 -> 3.2.2-799901ad7ab41d45   <- the one certificate 5438 names
     3.2.2-1.amzn2023.0.2 -> 3.2.2-6a2d04a6952ab14a
     3.5.5-1.amzn2023.0.5 -> 3.5.5-f06cf76f53649b34
-    3.5.7-2.amzn2023.0.1 -> 3.5.7-89ade9f4d5e93a4c   <- stock in amazonlinux:2023
+    3.5.8-1.amzn2023.0.1 -> module version unmeasured as of 2026-09-30   <- stock in the amazonlinux:2023 20260918 rootfs
 
 The `-certified` name this image uses is a different package, which is what
 leaves `openssl-libs` free to float beside the pin, and the snapshot above
