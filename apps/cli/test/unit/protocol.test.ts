@@ -182,10 +182,6 @@ async function backdateDropDirRendezvousFile(dropDir: string): Promise<void> {
   }
 }
 
-// The rotated token's save, real except at one path a test names: the refusal
-// composed there follows a successful handshake, a moment no fault reachable
-// from the transport or the filesystem reproduces once the pre-flight has made
-// the parent writable.
 vi.mock("../../src/psiMemoryBudget", async (importActual) => {
   const actual =
     await importActual<typeof import("../../src/psiMemoryBudget")>();
@@ -197,6 +193,10 @@ vi.mock("../../src/psiMemoryBudget", async (importActual) => {
   };
 });
 
+// The rotated token's save, real except at one path a test names: the refusal
+// composed there follows a successful handshake, a moment no fault reachable
+// from the transport or the filesystem reproduces once the pre-flight has made
+// the parent writable.
 vi.mock("../../src/keyFile", async (importActual) => {
   const actual = await importActual<typeof import("../../src/keyFile")>();
   return {

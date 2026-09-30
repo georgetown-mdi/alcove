@@ -1772,15 +1772,15 @@ export function warnUndeclaredColumns(params: {
  * process has, and refuse the run when the need is over it -- or, under
  * `--allow-memory-shortfall`, warn on stderr and the machine-interface stream
  * and continue. Decided from local inputs alone, so it runs before any
- * network contact. Returns true, for the caller to pass back as
- * `memoryBudgetReported` so a later pass of the same run does not repeat it.
+ * network contact. A caller that runs it passes `memoryBudgetReported` to
+ * `runProtocol` so a later pass of the same run does not repeat it.
  */
 export function checkRunMemoryBudget(params: {
   prepared: Pick<PreparedExchange, "rowCount">;
   allowMemoryShortfall: boolean;
   log: ReturnType<typeof getLogger>;
   emit: (fn: (e: EventStreamEmitter) => void) => void;
-}): true {
+}): void {
   const { prepared, allowMemoryShortfall, log, emit } = params;
   checkPsiMemoryBudget({
     records: prepared.rowCount,
@@ -1792,7 +1792,6 @@ export function checkRunMemoryBudget(params: {
       emit((e) => e.warning("memoryShortfall", message));
     },
   });
-  return true;
 }
 
 /**
@@ -2552,9 +2551,6 @@ async function writeExchangeOutputs(params: {
   return everyArtifactOnDisk;
 }
 
-// How soon after a first SIGINT or SIGTERM a repeat counts as the same signal
-// delivered twice (see isRepeatedDelivery in runProtocol) rather than a second
-// interrupt, which ends the process at once.
 const REPEATED_SIGNAL_DELIVERY_MS = 500;
 
 /**
@@ -2883,18 +2879,22 @@ export async function runProtocol(
   // Aborted only from a signal handler; ordinary teardown is doCleanup's own
   // closes.
   const interrupted = new AbortController();
-  // When this process was restarted for the PSI heap, a terminal's Ctrl-C (or
-  // a supervisor signalling the process group) reaches both it and its parent,
-  // which forwards the signal: a repeat this soon after the first is that one
-  // interrupt delivered twice, and must not cut the first one's cleanup short.
-  let firstSignalAt: number | undefined;
-  function isRepeatedDelivery(): boolean {
+  // In a process restarted for the PSI heap, a terminal's Ctrl-C (or a
+  // supervisor signalling the process group) reaches both it and its parent,
+  // which forwards the signal: the same signal again within
+  // REPEATED_SIGNAL_DELIVERY_MS is that one interrupt delivered twice, and must
+  // not cut the first one's cleanup short. Elsewhere a repeat ends the process.
+  const dedupeSignals = restartedForPsiHeap();
+  const firstDeliveryAt = new Map<NodeJS.Signals, number>();
+  function isRepeatedDelivery(signal: NodeJS.Signals): boolean {
+    if (!dedupeSignals) return false;
     const now = performance.now();
-    if (firstSignalAt === undefined) {
-      firstSignalAt = now;
+    const first = firstDeliveryAt.get(signal);
+    if (first === undefined) {
+      firstDeliveryAt.set(signal, now);
       return false;
     }
-    return now - firstSignalAt < REPEATED_SIGNAL_DELIVERY_MS;
+    return now - first < REPEATED_SIGNAL_DELIVERY_MS;
   }
   async function doCleanup() {
     if (cleaned) return;
@@ -2972,7 +2972,7 @@ export async function runProtocol(
     }
   }
   async function onSigint(): Promise<void> {
-    if (isRepeatedDelivery()) return;
+    if (isRepeatedDelivery("SIGINT")) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGINT";
@@ -3000,7 +3000,7 @@ export async function runProtocol(
     }
   }
   async function onSigterm(): Promise<void> {
-    if (isRepeatedDelivery()) return;
+    if (isRepeatedDelivery("SIGTERM")) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGTERM";

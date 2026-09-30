@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   needsPsiHeapRestart,
+  PARENT_WATCH_INTERVAL_MS,
   psiHeapRestartArgs,
   PSI_HEAP_RESTART_MARKER,
 } from "../../src/psiHeapRestart";
@@ -233,6 +234,53 @@ describe.skipIf(process.platform === "win32")("the restart", () => {
       });
       expect(stdout).toContain("caught SIGTERM");
       expect([code, signal]).toEqual([143, null]);
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it(
+    "ends the restarted process with SIGTERM once its parent is killed",
+    async () => {
+      const parent = spawn(process.execPath, ["--import=tsx", PROBE], {
+        cwd: CLI_ROOT,
+        env: probeEnv({ PROBE_MODE: "await-signal" }),
+        stdio: ["ignore", "pipe", "inherit"],
+      });
+      let stdout = "";
+      let killedAt: number | undefined;
+      parent.stdout.setEncoding("utf8");
+      parent.stdout.on("data", (chunk: string) => {
+        stdout += chunk;
+        if (killedAt === undefined && stdout.includes("ready\n")) {
+          killedAt = performance.now();
+          parent.kill("SIGKILL");
+        }
+      });
+      // The restarted process holds the pipe too, so it closes only once that
+      // process has exited as well. Bounded, so the kill below still runs on a
+      // restarted process that outlives its parent.
+      const closed = new Promise<boolean>((resolve) => {
+        parent.stdout.on("close", () => resolve(true));
+        setTimeout(() => resolve(false), CASE_TIMEOUT_MS - 10_000).unref();
+      });
+      try {
+        expect(await closed).toBe(true);
+        expect(killedAt).toBeDefined();
+        expect(performance.now() - (killedAt ?? 0)).toBeLessThan(
+          PARENT_WATCH_INTERVAL_MS + 5_000,
+        );
+        expect(stdout).toContain("caught SIGTERM");
+        expect(stdout).toContain("exited 143");
+      } finally {
+        const line = stdout.split("\n").find((l) => l.startsWith("{"));
+        if (line !== undefined) {
+          try {
+            process.kill((JSON.parse(line) as ProbeReport).pid, "SIGKILL");
+          } catch {
+            // Already gone.
+          }
+        }
+      }
     },
     CASE_TIMEOUT_MS,
   );

@@ -454,15 +454,15 @@ What the container needs to reach while it runs, and how to hold it to that, is 
 
 #### Giving a run more memory
 
-The image starts the CLI with a heap limit of about 20 GB (`NODE_OPTIONS=--max-old-space-size=19075`), sized for a matching round over 16,777,216 records a side; how it is derived is in [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs). The limit is reserved only as it is used, so it costs a small run nothing. What bounds a run is the memory the container has: before it connects, each exchange logs the memory its input needs and the memory it has, the least of that heap limit, the host's memory, and the container's `--memory` limit, and stops with exit 64 when the need is over it.
+The image starts the CLI with `NODE_OPTIONS=--max-old-space-size=19075`, the heap limit [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs) sizes, along with the memory a run needs. Before it connects, each exchange logs the memory its input needs and the memory it has, the least of that heap limit, the host's memory, and the container's `--memory` limit, and stops with exit 64 when the need is over it.
 
-- **Raise or remove `--memory`** to give the run what it needs, at about 1.2 KB for each record in its input plus 0.27 GB:
+- **Raise or remove `--memory`** to give the run what it needs:
 
   ```sh
   docker run --rm --memory 16g -v "$PWD":/work ghcr.io/georgetown-mdi/alcove exchange input.csv
   ```
 
-- **Raise the heap limit** past 16,777,216 records with your own `NODE_OPTIONS`, which the image places after its own and so takes precedence: `--env NODE_OPTIONS=--max-old-space-size=30000`.
+- **Raise the heap limit** with your own `NODE_OPTIONS`, which the image places after its own and so takes precedence: `--env NODE_OPTIONS=--max-old-space-size=30000`.
 - **Run anyway** with `--allow-memory-shortfall`, which turns the refusal into a warning; a run that then runs out of memory is killed (exit 137 under a `--memory` limit, 134 when the heap limit is reached).
 
 The details are in [CLI.md](CLI.md#memory-for-a-large-exchange).

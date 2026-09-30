@@ -806,7 +806,7 @@ export async function handler(argv: Arguments): Promise<void> {
         },
       });
       try {
-        memoryBudgetReported = checkRunMemoryBudget({
+        checkRunMemoryBudget({
           prepared,
           allowMemoryShortfall: allowMemoryShortfall === true,
           log,
@@ -814,6 +814,7 @@ export async function handler(argv: Arguments): Promise<void> {
             if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
           },
         });
+        memoryBudgetReported = true;
       } catch (err) {
         emitPrepareRefusal(eventStreamEmitter, prepared.rowCount, err);
         throw err;

@@ -7,11 +7,8 @@ import { sanitizeErrorForDisplay } from "@alcove/core";
 import { EVENT_STREAM_FD } from "./eventStream";
 import { PSI_HEAP_CEILING_FLAG, PSI_HEAP_CEILING_MIB } from "./psiMemoryBudget";
 
-// The installed CLI's main thread starts at Node's default heap limit, and
-// preparing an input near the 2^24-element target runs out of heap there. A
-// command that runs an exchange therefore runs itself again, once, under the
-// PSI heap ceiling. The mechanism: docs/spec/FILE_SYNC.md, "Memory a PSI round
-// needs".
+// Preparing an input near the 2^24-element target runs out of Node's default
+// heap: docs/spec/FILE_SYNC.md, "Memory a PSI round needs".
 
 /**
  * The environment variable the restarted process finds set, which stops it
@@ -20,6 +17,9 @@ import { PSI_HEAP_CEILING_FLAG, PSI_HEAP_CEILING_MIB } from "./psiMemoryBudget";
 export const PSI_HEAP_RESTART_MARKER = "ALCOVE_PSI_HEAP_RESTARTED";
 
 const FORWARDED_SIGNALS = ["SIGINT", "SIGTERM"] as const;
+
+/** How often the restarted process checks that its parent is still alive. */
+export const PARENT_WATCH_INTERVAL_MS = 2_000;
 
 let restartAllowed = false;
 
@@ -66,21 +66,41 @@ export function psiHeapRestartArgs(
 }
 
 /**
+ * In the restarted process, send this process SIGTERM once its parent has
+ * died: a parent ended by SIGKILL forwards no signal, and the child is then
+ * re-parented, so its `ppid` changes. Windows does not re-parent, so the
+ * watch does not run there.
+ */
+function watchParent(): void {
+  if (process.platform === "win32") return;
+  const parent = process.ppid;
+  const timer = setInterval(() => {
+    if (process.ppid === parent) return;
+    clearInterval(timer);
+    process.kill(process.pid, "SIGTERM");
+  }, PARENT_WATCH_INTERVAL_MS);
+  timer.unref();
+}
+
+/**
  * Run this command again in a child Node process under the PSI heap ceiling
  * when {@link needsPsiHeapRestart} holds and the entry point allowed it
  * ({@link allowPsiHeapRestart}), and end this process as the child
  * ends: its exit code, or the signal that terminated it. Resolves at once when
  * no restart is needed and never resolves otherwise. SIGINT and SIGTERM
  * reaching this process are passed to the child. `passEventStreamFd` hands the
- * child this process's fd 3, the `--event-stream` descriptor.
+ * child this process's fd 3, the `--event-stream` descriptor. In the restarted
+ * process it resolves at once and starts {@link watchParent}.
  */
 export function restartUnderPsiHeapCeiling(options: {
   passEventStreamFd: boolean;
 }): Promise<void> {
-  if (
-    !restartAllowed ||
-    !needsPsiHeapRestart(getHeapStatistics().heap_size_limit)
-  )
+  if (!restartAllowed) return Promise.resolve();
+  if (restartedForPsiHeap()) {
+    watchParent();
+    return Promise.resolve();
+  }
+  if (!needsPsiHeapRestart(getHeapStatistics().heap_size_limit))
     return Promise.resolve();
   const stdio: StdioOptions = options.passEventStreamFd
     ? ["inherit", "inherit", "inherit", EVENT_STREAM_FD]

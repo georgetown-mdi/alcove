@@ -1200,7 +1200,7 @@ Every exchange-running command (the zero-setup exchange, `alcove exchange`, and 
 memory: the PSI engine runs under a heap limit of 20.00 GB; a round over this run's 1,000,000 records needs about 1.45 GB, and this process has 20.00 GB (host memory 25.42 GB, no container memory limit)
 ```
 
-The need is about 1.2 KB for each record in your input plus 0.27 GB. What the run has is the least of the matching's heap limit (20.00 GB, sized for 16,777,216 records), the machine's memory, and the container's memory limit when one is set. The figures behind these numbers are in [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs).
+What the run has is the least of the matching's heap limit, the machine's memory, and the container's memory limit when one is set. How the heap limit is sized, Node's default limit, and how the need is computed and what it leaves out are in [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs).
 
 **When the need is over what the run has**, the run stops with exit 64 before any network contact, naming both figures. Running out of memory partway through fails the exchange for both parties, so the refusal comes first. To go ahead:
 
@@ -1208,18 +1208,16 @@ The need is about 1.2 KB for each record in your input plus 0.27 GB. What the ru
 - **Split the input** into smaller files and run one exchange for each.
 - **Pass `--allow-memory-shortfall`** to run anyway. The line is still logged, and a warning naming the shortfall goes to `stderr` and, with `--event-stream`, to the event stream under `memoryShortfall`. The run may then run out of memory and end with exit 134.
 
-**An installed `alcove`** (rather than the container image) starts at Node's default heap limit of about 4.4 GB, which an input of 16,777,216 records does not fit. So each exchange-running command starts itself again once, before it reads any file, as a second `node` process with `--max-old-space-size=19075`, and exits with that process's exit code. `Ctrl-C` and a `SIGTERM` sent to the first process reach the second. Other commands, such as `doctor` and `verify-receipt`, do not.
+**An installed `alcove`** (rather than the container image) starts at Node's default heap limit, which a large input does not fit. So each exchange-running command starts itself again once, before it reads any file, as a second `node` process with a larger heap limit, and exits with that process's exit code. `Ctrl-C` and a `SIGTERM` sent to the first process reach the second. Other commands, such as `doctor` and `verify-receipt`, do not.
 
 - **To see it**, read the memory line: it ends the heap limit with `(raised by restarting this process with --max-old-space-size=19075)`. The `runtime:` line at `-v` states the main thread's limit, and `ps` lists two `node` processes for the run.
-- **To start at the limit instead**, and skip the second process, set it yourself; a larger value raises the matching's limit too. The container image does this (see [DEPLOYMENT.md](DEPLOYMENT.md#giving-a-run-more-memory)):
+- **To start at the larger limit instead**, and skip the second process, set it yourself; a larger value raises the matching's limit too. The container image does this (see [DEPLOYMENT.md](DEPLOYMENT.md#giving-a-run-more-memory)):
 
   ```sh
   NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv output.csv
   ```
 
 - **If the second process cannot start**, the command exits 64 and names the `NODE_OPTIONS` setting above.
-
-The check counts your records, not your partner's, and not the several values a record sends under a key that fans out (`split_on`, candidate sets), so a run it passes can still run short when either party's set is much larger than your record count.
 
 ## Logging
 

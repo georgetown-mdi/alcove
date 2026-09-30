@@ -16,7 +16,7 @@ import { startPsiWorkerThread } from "../src/psiWorkerHost";
  *
  * - `exit` (the default): exit with `PROBE_EXIT_CODE`.
  * - `die-by-signal`: end itself with SIGTERM.
- * - `await-signal`: wait for SIGTERM, then exit 143.
+ * - `await-signal`: wait for SIGTERM, then exit 143, reporting the code.
  *
  * `PROBE_WORKER_ENTRY` names a worker that posts its heap limit back, started
  * as the PSI worker is. `PROBE_EXEC_PATH` replaces `process.execPath` before
@@ -75,6 +75,7 @@ async function main(): Promise<void> {
       report("caught SIGTERM");
       process.exit(143);
     });
+    process.on("exit", (code) => report(`exited ${code}`));
     report("ready");
     setInterval(() => {}, 60_000);
     return;
