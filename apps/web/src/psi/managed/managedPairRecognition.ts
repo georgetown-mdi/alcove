@@ -162,8 +162,8 @@ export function decideCommandLinePairTarget(
  *   it is not this exchange's pair, and nothing is written.
  * - `"retake"` -- `record` is what the store writes back: `taken`'s secret
  *   and `expires` applied as a rotation where its secret differs from the
- *   stored one (`advanced`), its pending relay registration applied as the
- *   pair import applies it ({@link applyCommandLineRelayRegistration}), and
+ *   stored one (`advanced`), its pending relay registration applied
+ *   ({@link applyCommandLineRelayRegistration}), and
  *   a `lastRun` recording the hand-off's refusal dropped. Nothing else about
  *   the record moves.
  *

@@ -1544,9 +1544,12 @@ function sameRelayRegistrar(a: RelayRegistrar, b: RelayRegistrar): boolean {
 /**
  * Set the pending relay registration a command-line pair states on `record`,
  * by the rule the pair import applies
- * ({@link applyManagedExchangeCommandLinePair}), keeping its registrar. The
- * same record comes back where the registration does not change. The inputs
- * are not mutated.
+ * ({@link applyManagedExchangeCommandLinePair}), keeping its registrar, with
+ * one difference: a key file's marker keeps a reason `record` holds rather
+ * than dropping it. The reason says the kept registrar holds the key of a
+ * replaced secret, and a key file still holding a marker shows the command
+ * line registered nothing there. The same record comes back where the
+ * registration does not change. The inputs are not mutated.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
@@ -1554,7 +1557,15 @@ export function applyCommandLineRelayRegistration(
   record: ManagedExchangeRecord,
   pair: RunnableManagedExchangeRecord,
 ): ManagedExchangeRecord {
-  const pending = pendingRelayRegistrationFromCommandLine(record, pair);
+  const fromPair = pendingRelayRegistrationFromCommandLine(record, pair);
+  const pending =
+    pair.relayRegistrationPendingSince !== undefined &&
+    record.relayRegistrationPendingReason !== undefined
+      ? {
+          since: pair.relayRegistrationPendingSince,
+          reason: record.relayRegistrationPendingReason,
+        }
+      : fromPair;
   if (
     pending?.since === record.relayRegistrationPendingSince &&
     pending?.reason === record.relayRegistrationPendingReason

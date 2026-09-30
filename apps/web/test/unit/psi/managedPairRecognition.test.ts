@@ -439,6 +439,44 @@ describe("what a re-take checks and writes", () => {
     );
   });
 
+  const reinvitedRegistrar = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+
+  test.each([
+    ["the stored registrar", reinvitedRegistrar],
+    [
+      "another registrar",
+      { url: "https://other-relay.example.org", exchangeId: "riverbend-q3" },
+    ],
+    ["no registrar", undefined],
+  ])(
+    "a pair naming %s with the key file's marker takes the marker and keeps the stored re-invite reason",
+    (_case, named) => {
+      const reinvited = runnableManagedExchangeOrRefuse({
+        ...runnable(),
+        relayRegistrar: reinvitedRegistrar,
+        relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
+        relayRegistrationPendingReason: "reinvite",
+      });
+
+      const decided = decideRetake(reinvited, {
+        ...runnable(),
+        ...(named === undefined ? {} : { relayRegistrar: named }),
+        relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+      });
+
+      if (decided.kind !== "retake") throw new Error("expected a re-take");
+      expect(decided.advanced).toBe(true);
+      expect(decided.record.relayRegistrar).toEqual(reinvitedRegistrar);
+      expect(decided.record.relayRegistrationPendingSince).toBe(
+        "2026-09-01T00:00:00.000Z",
+      );
+      expect(decided.record.relayRegistrationPendingReason).toBe("reinvite");
+    },
+  );
+
   test("no pair, or one holding the stored secret, leaves the record as it was", () => {
     const stored = runnable();
 

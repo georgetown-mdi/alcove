@@ -1426,7 +1426,8 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   the command line confirmed a registration, since the configuration had no
   registrar configured, so its absence keeps the stored marker, on a record
   naming a registrar or none. The hand-off re-take reads the key file by the
-  same rule, whether or not its secret differs, and keeps the stored
+  same rule, whether or not its secret differs, except that a key file's
+  marker keeps a stored reason (**The reason**, above), and keeps the stored
   registrar (`decideRetake`), so a command line that confirmed its
   registration and rotated leaves no marker for the next run here to retry.
   Because the re-take keeps the stored registrar, a key file holding no marker
