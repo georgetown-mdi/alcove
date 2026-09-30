@@ -79,7 +79,7 @@ export const hostileTerms: LinkageTerms = {
   linkageStrategy: "cascade",
   // Both parties receive: a summary states no arriving column set for an
   // invitation that shares no result, which would leave the payload send names
-  // and the token's disclosed subset out of the walk with nothing to escape.
+  // out of the walk with nothing to escape.
   output: { expectsOutput: true, shareWithPartner: true },
   deduplicate: false,
   linkageFields: [
@@ -152,7 +152,7 @@ export const hostileTerms: LinkageTerms = {
  */
 type HostileSource = Pick<
   InvitationToken,
-  "linkageTerms" | "expires" | "disclosedPayloadColumns" | "connectionEndpoint"
+  "linkageTerms" | "expires" | "connectionEndpoint"
 >;
 
 /**

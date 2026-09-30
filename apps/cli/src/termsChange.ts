@@ -205,13 +205,11 @@ export function termsChangeHandler(params: {
     );
 
     if (interactive && change.continuable) {
-      const partnerSend = change.partnerTerms.payload?.send;
       // The partner's deduplicate stays under the record the operator last
       // applied.
       const write: TermsUpdateWrite = {
         ...termsUpdateWrite({
           linkageTerms: change.adoptedTerms,
-          expectedPayloadColumns: partnerSend?.map(({ name }) => name),
           expectedPartnerDeduplicate: change.partnerTerms.deduplicate,
           invitationRelay: undefined,
         }),
@@ -253,14 +251,8 @@ export function termsChangeHandler(params: {
     }
 
     const proposalPath = termsProposalPath(configPath);
-    const partnerSend = change.partnerTerms.payload?.send;
     const proposal = await encodeTermsUpdate(
-      {
-        linkageTerms: change.partnerTerms,
-        ...(partnerSend !== undefined
-          ? { disclosedPayloadColumns: partnerSend.map(({ name }) => name) }
-          : {}),
-      },
+      { linkageTerms: change.partnerTerms },
       readPartnershipSecret(keyPath),
     );
     writeFileOwnerOnly(proposalPath, `${proposal}\n`);

@@ -28,7 +28,6 @@ import {
 import {
   JOB_FILE_NAMES,
   MAX_CSV_DELIMITER_LENGTH,
-  MAX_EXPECTED_PAYLOAD_COLUMNS,
   MAX_IDENTITY_LENGTH,
   MAX_INPUT_CSV_LENGTH,
   MAX_METADATA_COLUMNS,
@@ -138,25 +137,6 @@ describe("jobExchangeIntentSchema validates metadata and standardization", () =>
       ...validIntent({ metadata: editedMetadata }),
       path: "/etc/passwd",
     };
-    expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(false);
-  });
-
-  test("accepts expectedPayloadColumns, including an empty array", () => {
-    expect(
-      jobExchangeIntentSchema.safeParse(
-        validIntent({ expectedPayloadColumns: ["program_code"] }),
-      ).success,
-    ).toBe(true);
-    // An empty array is a valid, meaningful value (strict "receive nothing").
-    expect(
-      jobExchangeIntentSchema.safeParse(
-        validIntent({ expectedPayloadColumns: [] }),
-      ).success,
-    ).toBe(true);
-  });
-
-  test("rejects a non-string-array expectedPayloadColumns", () => {
-    const intent = { ...validIntent(), expectedPayloadColumns: [1, 2] };
     expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(false);
   });
 
@@ -310,23 +290,6 @@ describe("jobExchangeIntentSchema bounds the intent's sizes", () => {
       expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(true);
     });
 
-    test(`[${arm.name}] rejects too many expectedPayloadColumns`, () => {
-      const intent = arm.build({
-        expectedPayloadColumns: Array.from(
-          { length: MAX_EXPECTED_PAYLOAD_COLUMNS + 1 },
-          (_, i) => `c${i}`,
-        ),
-      });
-      expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(false);
-    });
-
-    test(`[${arm.name}] rejects an over-length expectedPayloadColumns entry`, () => {
-      const intent = arm.build({
-        expectedPayloadColumns: ["a".repeat(MAX_NAME_LENGTH + 1)],
-      });
-      expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(false);
-    });
-
     test(`[${arm.name}] rejects too many metadata columns`, () => {
       const intent = arm.build({
         metadata: Array.from({ length: MAX_METADATA_COLUMNS + 1 }, (_, i) => ({
@@ -400,10 +363,6 @@ describe("jobExchangeIntentSchema bounds the intent's sizes", () => {
 
     test(`[${arm.name}] accepts a realistically large well-formed intent`, () => {
       const intent = arm.build({
-        expectedPayloadColumns: Array.from(
-          { length: 64 },
-          (_, i) => `program_${i}`,
-        ),
         metadata: [
           {
             name: "ssn",
@@ -466,33 +425,6 @@ describe("composeConfigDocument forwards the operator's data-prep edits", () => 
     const doc = parseYaml(yaml) as Record<string, unknown>;
     expect(doc.metadata).toBeUndefined();
     expect(doc.standardization).toBeUndefined();
-  });
-});
-
-describe("composeConfigDocument forwards the received-payload commitment", () => {
-  // The acceptor's expectedPayloadColumns must reach the config as
-  // expected_payload_columns so the CLI enforces the received set explicitly
-  // rather than falling back (fail open) to linkageTerms.payload.receive.
-  test("forwards a non-empty expectedPayloadColumns as expected_payload_columns", () => {
-    const intent = validIntent({ expectedPayloadColumns: ["program_code"] });
-    const yaml = composeConfigDocument(intent, "/srv/jobs/abc/exchange");
-    const doc = parseYaml(yaml) as { expected_payload_columns?: unknown };
-    expect(doc.expected_payload_columns).toEqual(["program_code"]);
-  });
-
-  test("an empty expectedPayloadColumns SURVIVES into the config (strict), not dropped", () => {
-    // The empty-vs-undefined distinction: an empty array is a strict "receive
-    // nothing" and must lock in, not collapse to an omitted (lazy) field.
-    const intent = validIntent({ expectedPayloadColumns: [] });
-    const yaml = composeConfigDocument(intent, "/srv/jobs/abc/exchange");
-    const doc = parseYaml(yaml) as { expected_payload_columns?: unknown };
-    expect(doc.expected_payload_columns).toEqual([]);
-  });
-
-  test("omits expected_payload_columns when the intent leaves it undefined (lazy)", () => {
-    const yaml = composeConfigDocument(validIntent(), "/srv/jobs/abc/exchange");
-    const doc = parseYaml(yaml) as Record<string, unknown>;
-    expect(doc.expected_payload_columns).toBeUndefined();
   });
 });
 
@@ -1207,7 +1139,6 @@ describe("composeSftpConfigDocument", () => {
     const intentFields = {
       metadata: editedMetadata,
       standardization: editedStandardization,
-      expectedPayloadColumns: ["program_code"],
     };
     const sftpDoc = parseYaml(
       composeSftpConfigDocument(
@@ -1221,9 +1152,6 @@ describe("composeSftpConfigDocument", () => {
     expect(sftpDoc.linkage_terms).toEqual(filedropDoc.linkage_terms);
     expect(sftpDoc.metadata).toEqual(filedropDoc.metadata);
     expect(sftpDoc.standardization).toEqual(filedropDoc.standardization);
-    expect(sftpDoc.expected_payload_columns).toEqual(
-      filedropDoc.expected_payload_columns,
-    );
   });
 
   test("never assembles an authentication block", () => {
@@ -1547,12 +1475,11 @@ describe("jobZeroSetupIntentSchema is injection-closed and strict", () => {
     }
   });
 
-  test("rejects linkageTerms, metadata, standardization, the two commitments, side", () => {
+  test("rejects linkageTerms, metadata, standardization, the commitment, side", () => {
     for (const smuggled of [
       { linkageTerms: validLinkageTerms() },
       { metadata: editedMetadata },
       { standardization: editedStandardization },
-      { expectedPayloadColumns: ["program_code"] },
       { expectedPartnerDeduplicate: false },
       { side: "acceptor" },
     ]) {

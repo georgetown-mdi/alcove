@@ -618,7 +618,6 @@ describe.skipIf(!cliIsBuilt)(
       expect(applied.linkageTerms.payload?.receive).toEqual([
         { name: "county" },
       ]);
-      expect(applied.expectedPayloadColumns).toEqual(["county"]);
 
       // The seat reopens the configuration before the next run, which then
       // runs on the terms the file took on.

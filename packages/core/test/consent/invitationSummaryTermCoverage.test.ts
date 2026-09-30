@@ -8,11 +8,7 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema.js";
 /**
  * The consent summary built from a set of linkage terms, as a comparable string.
  *
- * The token fields around the terms are held constant so only the terms move. In
- * particular `disclosedPayloadColumns` is left absent: it is a token field the
- * inviter derives from its own metadata rather than a linkage term, and
- * supplying one would answer the question about it instead of about the authored
- * `payload.send` the terms declare.
+ * The token fields around the terms are held constant so only the terms move.
  */
 function renderSummary(linkageTerms: LinkageTerms): string {
   return JSON.stringify(summarizeInvitation({ linkageTerms }));

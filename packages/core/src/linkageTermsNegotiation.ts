@@ -349,31 +349,12 @@ export interface TermsComparison {
 }
 
 /**
- * What {@link compareTerms} holds the partner to in place of this party's own
- * terms. `receive` is the column set this party holds its received payload
- * to, compared against the partner's send set in place of
- * `local.payload.receive`, whether or not that is stated.
+ * What {@link compareTerms} holds the partner to beside the two documents:
  * `partnerDeduplicate` is the `deduplicate` this party holds the partner to;
  * undefined compares no `deduplicate`, since the term is each party's own.
  */
 export interface TermsBaselines {
-  receive?: ReadonlyArray<string>;
   partnerDeduplicate?: boolean;
-}
-
-/**
- * The column set a party holds its received payload to at the terms exchange
- * ({@link TermsBaselines.receive}): the columns its document records it
- * receives, where its terms receive a payload at all -- not count-only, and
- * expecting output. Undefined compares `payload.receive` alone.
- */
-export function receivedPayloadBaseline(
-  terms: LinkageTerms,
-  expectedPayloadColumns: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> | undefined {
-  return terms.algorithm !== "psi-c" && terms.output.expectsOutput
-    ? expectedPayloadColumns
-    : undefined;
 }
 
 function columnsChange(
@@ -742,10 +723,9 @@ export function compareTerms(
         );
 
   const localReceive =
-    baselines.receive ??
-    (local.payload?.receive === undefined
+    local.payload?.receive === undefined
       ? undefined
-      : namesOf(local.payload.receive));
+      : namesOf(local.payload.receive);
   const received =
     localReceive === undefined
       ? undefined

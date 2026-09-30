@@ -659,13 +659,13 @@ describe("refusing what this app cannot hold", () => {
     const message = refusal(
       stringifyYaml({
         ...(snakeizeKeys(commandLineDocument()) as Record<string, unknown>),
-        expected_payload_columns: ["partner_program"],
-        expectedPayloadColumns: ["other_program"],
+        retention_disposition: "partner_program",
+        retentionDisposition: "other_program",
       }),
     );
 
-    expect(message).toContain("expected_payload_columns");
-    expect(message).toContain("expectedPayloadColumns");
+    expect(message).toContain("retention_disposition");
+    expect(message).toContain("retentionDisposition");
     expect(message).not.toContain("partner_program");
   });
 
@@ -794,15 +794,11 @@ describe("import then export", () => {
           },
           { name: "program", type: "other", role: "payload", isPayload: true },
         ],
-        expectedPayloadColumns: ["partner_program"],
         expectedPartnerDeduplicate: true,
       }),
     });
     const record = readManagedCommandLineConfiguration(exported);
 
-    expect(record.exchangeFile.expectedPayloadColumns).toEqual([
-      "partner_program",
-    ]);
     expect(record.exchangeFile.expectedPartnerDeduplicate).toBe(true);
 
     const reexported = parseExchangeSpec(
@@ -811,7 +807,6 @@ describe("import then export", () => {
         "re-export",
       ),
     );
-    expect(reexported.expectedPayloadColumns).toEqual(["partner_program"]);
     expect(reexported.expectedPartnerDeduplicate).toBe(true);
   });
 });
@@ -829,7 +824,6 @@ describe("import, edit, and export on every channel", () => {
       },
       { name: "program", type: "other", role: "payload", isPayload: true },
     ],
-    expectedPayloadColumns: ["partner_program"],
     expectedPartnerDeduplicate: true,
     includeOwnColumns: "all",
     csvDelimiter: ";",

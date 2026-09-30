@@ -137,7 +137,7 @@ const cliMintedEndpoints = [
 
 // The invitation body in the key order InvitationTokenSchema's parse result
 // serializes: top-level version, linkageTerms, sharedSecret, expires,
-// connectionEndpoint, disclosedPayloadColumns, and inside a linkage field
+// connectionEndpoint, and inside a linkage field
 // `type` before `name`. Restated here rather than read from the schema, so a
 // reordering of either would show up as a vector mismatch instead of being
 // followed silently.
@@ -157,7 +157,6 @@ const canonicalToken = {
   sharedSecret,
   expires: "2999-01-01T00:00:00.000Z",
   connectionEndpoint,
-  disclosedPayloadColumns: ["given_name"],
 };
 
 const canonicalJson = JSON.stringify(canonicalToken);

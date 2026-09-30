@@ -669,7 +669,6 @@ function writeInput(): string {
 /** An invitation the acceptor can decode, optionally seeding a connection. */
 async function encodedInvitation(
   connectionEndpoint?: ConnectionEndpoint,
-  disclosedPayloadColumns?: string[],
 ): Promise<string> {
   return encodeInvitation({
     version: "1",
@@ -677,7 +676,6 @@ async function encodedInvitation(
     sharedSecret: generateSharedSecret(),
     expires: FUTURE(),
     connectionEndpoint,
-    disclosedPayloadColumns,
   });
 }
 
@@ -769,29 +767,6 @@ const COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
         }),
       );
       return { filePath, lines: [sanitizeErrorForDisplay(thrown)] };
-    },
-  },
-  {
-    name: "accept: a kept config whose recorded received set this acceptance clears",
-    says: ["recorded in"],
-    drive: async () => {
-      const filePath = backslashedPath("alcove.yaml");
-      saveConfig(filePath, {
-        connection: { channel: "filedrop", path: "/mnt/share" },
-        linkageTerms: sampleTerms("Acceptor Org"),
-        expectedPayloadColumns: ["diagnosis"],
-      });
-      const log = silentLogger("accept-marks-cleared");
-      const warn = vi.spyOn(log, "warn");
-      await validateAccept({
-        resolved: { mode: "offline", invitation: await encodedInvitation() },
-        options: bootstrapOptions({ configFile: filePath }),
-        log,
-      });
-      return {
-        filePath,
-        lines: warn.mock.calls.map((call) => String(call[0])),
-      };
     },
   },
   {
@@ -1178,6 +1153,35 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
           argvOf({
             identity: "Agency A",
             args: [input],
+            "config-file": filePath,
+            "key-file": backslashedPath(".alcove.key"),
+          }),
+        ),
+      );
+      return { filePath, lines };
+    },
+  },
+  {
+    name: "invite: a kept config whose payload.send the mint rewrote",
+    says: ["linkage_terms.payload.send in", "rewritten to match"],
+    drive: async () => {
+      const filePath = backslashedPath("alcove.yaml");
+      saveConfig(filePath, {
+        connection: { channel: "filedrop", path: "/mnt/share" },
+        linkageTerms: {
+          ...sampleTerms("Agency A"),
+          payload: { send: [{ name: "secret" }] },
+        },
+        metadata: [
+          ...inferMetadata(LINKAGE_COLUMNS, []),
+          { name: "notes", type: "other", role: "payload", isPayload: true },
+        ],
+      });
+      const lines = await stderrLinesOf(() =>
+        inviteHandler(
+          argvOf({
+            identity: "Agency A",
+            args: [],
             "config-file": filePath,
             "key-file": backslashedPath(".alcove.key"),
           }),

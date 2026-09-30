@@ -12,15 +12,12 @@ import type { AcceptorDataEdits } from "@psi/acceptInvitation";
  * confirm-columns edits threaded in ({@link acceptorExchangeDataSpec}), then
  * `prepareForExchange` binds it to the acquired CSV's rows and columns.
  *
- * The payload commitment is the security-relevant part: `expectedPayloadColumns`
- * is set to the invitation's `disclosedPayloadColumns` -- the set the consent
- * screen showed -- so an inviter transmitting a different column set than it
- * disclosed aborts the exchange ({@link reconcileReceivedPayload}). An omitted
- * disclosed set (an older or metadata-unknown mint) stays undefined, and the
- * acceptor reconciles lazily; whenever it is present (including the empty set)
- * it is committed.
+ * The columns this party receives are the adopted terms' `payload.receive`,
+ * mirrored from the invitation's `payload.send` -- the set the consent screen
+ * showed -- which the terms exchange compares against the send set the inviter
+ * states there.
  *
- * The terms-side commitment beside it is `expectedPartnerDeduplicate`, the value
+ * The terms-side commitment is `expectedPartnerDeduplicate`, the value
  * the invitation declared for the inviter's own side: the consent screen stated
  * it, and nothing in the agreed terms compares the two -- so an inviter
  * presenting a different value at the terms exchange aborts the run before any
@@ -37,7 +34,6 @@ export function prepareAcceptorExchange({
   edits,
   rawRows,
   columns,
-  disclosedPayloadColumns,
   deduplicate,
 }: {
   linkageTerms: LinkageTerms;
@@ -45,7 +41,6 @@ export function prepareAcceptorExchange({
   edits: AcceptorDataEdits;
   rawRows: Array<CSVRow>;
   columns: Array<string>;
-  disclosedPayloadColumns: Array<string> | undefined;
   /** Whether several of THIS party's records may match one of the partner's, as
    * the accepting operator set it at the seat. */
   deduplicate: boolean;
@@ -56,7 +51,6 @@ export function prepareAcceptorExchange({
     rawRows,
     columns,
   );
-  prepared.expectedPayloadColumns = disclosedPayloadColumns;
   prepared.expectedPartnerDeduplicate = linkageTerms.deduplicate;
   return prepared;
 }

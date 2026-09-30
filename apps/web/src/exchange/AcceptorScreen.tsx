@@ -1095,11 +1095,10 @@ export function AcceptorScreen() {
   // and the secret held in the invitation link, so the same partnership can run
   // again later. The connection composes from the INVITATION's endpoint, since
   // the acceptor's rendezvous is the inviter's signaling location, not this
-  // browser's. expectedPayloadColumns and expectedPartnerDeduplicate persist the
-  // token's consent so a managed re-run fails closed on a diverging partner (see
-  // docs/spec/MANAGED_EXCHANGE_RECORD.md and
-  // docs/spec/EXCHANGE_FILE.md#payload-disclosure-consent). Declining is simply
-  // not pressing Manage.
+  // browser's. expectedPartnerDeduplicate persists the token's declared
+  // `deduplicate` so a managed re-run fails closed on a diverging partner (see
+  // docs/spec/MANAGED_EXCHANGE_RECORD.md). Declining is simply not pressing
+  // Manage.
   async function manageExchange(choices: ManageOfferChoices) {
     if (decode.status !== "ready" || launched === undefined) return;
     const { token: invitationToken, endpoint } = decode.invitation;
@@ -1118,12 +1117,6 @@ export function AcceptorScreen() {
               ),
               metadata: launched.edits.metadata,
               standardization: launched.edits.standardization,
-              ...(invitationToken.disclosedPayloadColumns !== undefined
-                ? {
-                    expectedPayloadColumns:
-                      invitationToken.disclosedPayloadColumns,
-                  }
-                : {}),
               expectedPartnerDeduplicate:
                 invitationToken.linkageTerms.deduplicate,
               ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
@@ -1192,9 +1185,6 @@ export function AcceptorScreen() {
             <InvitationTerms
               linkageTerms={decode.invitation.token.linkageTerms}
               expires={decode.invitation.token.expires}
-              disclosedPayloadColumns={
-                decode.invitation.token.disclosedPayloadColumns
-              }
               inviterRetainsFiles={decode.invitation.token.inviterRetainsFiles}
               connectionEndpoint={decode.invitation.token.connectionEndpoint}
               acceptorDeduplicate={{

@@ -102,13 +102,6 @@ export interface ServerJobExchangeDriverConfig {
   /** This party's authored standardization pipeline, paired with {@link metadata}.
    * Forwarded only when present. */
   standardization?: Standardization;
-  /** The acceptor's received-payload commitment (partner-namespace column
-   * names), mirrored from the invitation's disclosed set. Included in the
-   * intent so the CLI enforces it explicitly rather than falling back to the
-   * lazy `payload.receive`, which fails open when the token discloses columns
-   * but has no `payload.send`. Forwarded whenever present, including an empty
-   * array (a strict "receive nothing"); an omitted field reconciles lazily. */
-  expectedPayloadColumns?: Array<string>;
   /** The acceptor's terms-side commitment: the `deduplicate` the invitation
    * declared for the INVITER's own side. Included in the intent so the
    * composed config binds it and the CLI refuses a partner presenting any
@@ -1226,7 +1219,6 @@ export function intentFor(
     inputSource,
     metadata,
     standardization,
-    expectedPayloadColumns,
     expectedPartnerDeduplicate,
     includeOwnColumns,
     csvDelimiter,
@@ -1245,7 +1237,6 @@ export function intentFor(
       : { inputFile: { name: inputSource.name } }),
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
-    ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
       : {}),
@@ -1271,8 +1262,7 @@ export function intentFor(
  * analog of {@link ServerJobExchangeDriverConfig} for the CLI's positional
  * `$0`/zero-setup command: it has none of the exchange mode's credential or
  * terms material (no `sharedSecret`, `linkageTerms`, `metadata`,
- * `standardization`, `expectedPayloadColumns`, or
- * `expectedPartnerDeduplicate`), because both parties infer terms from their
+ * `standardization`, or `expectedPartnerDeduplicate`), because both parties infer terms from their
  * own files and there is no application-layer encryption to key. It supplies
  * only the channel, input source, tuning subset, and the zero-setup intent's
  * four optional bounded selectors. */

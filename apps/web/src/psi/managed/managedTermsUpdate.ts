@@ -11,7 +11,6 @@ import {
   compareTerms,
   decodeTermsUpdate,
   encodeTermsUpdate,
-  receivedPayloadBaseline,
   stripInvitationWhitespace,
   termsUpdateFor,
   unnamedPartyIdentity,
@@ -194,10 +193,6 @@ async function checkedTermsUpdate(
     exchangeFile.linkageTerms,
     update.linkageTerms,
     {
-      receive: receivedPayloadBaseline(
-        exchangeFile.linkageTerms,
-        exchangeFile.expectedPayloadColumns,
-      ),
       partnerDeduplicate: exchangeFile.expectedPartnerDeduplicate,
     },
   );

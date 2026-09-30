@@ -155,18 +155,23 @@ describe("a signing block whose mode is none", () => {
 describe("the settings held without an editor", () => {
   test("are named in the file's snake_case, never their values", () => {
     const record = configuration("sftp", {
-      expectedPayloadColumns: ["program_code"],
+      metadata: [
+        {
+          name: "program_code",
+          type: "other",
+          role: "payload",
+          isPayload: true,
+        },
+      ],
       expectedPartnerDeduplicate: true,
     });
 
     expect(heldSettings(record)).toEqual([
       "expected_partner_deduplicate",
-      "expected_payload_columns",
+      "metadata",
     ]);
     const notice = heldSettingsNotice(record);
-    expect(notice).toContain(
-      "expected_partner_deduplicate, expected_payload_columns",
-    );
+    expect(notice).toContain("expected_partner_deduplicate, metadata");
     expect(notice).not.toContain("program_code");
   });
 

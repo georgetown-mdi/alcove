@@ -106,13 +106,6 @@ function transportForEndpointChannel(
  * inviter-perspective `token.linkageTerms`, which would run the acceptor under
  * the wrong identity and output direction.
  *
- * `expectedPayloadColumns` is set explicitly from the invitation's
- * `disclosedPayloadColumns`, mirroring {@link prepareAcceptorExchange}: the CLI
- * takes this over the `linkageTerms.payload.receive` fallback, which is
- * undefined for a token that discloses columns but has no `payload.send` -- a
- * shape a malicious inviter can craft, and one where the fallback would fail
- * OPEN (silently ingesting extra partner columns) while the browser aborts.
- *
  * The confirm-columns `edits` are threaded into the config so the CLI honors
  * them rather than inferring metadata from the CSV column names.
  *
@@ -175,15 +168,6 @@ export function acceptorServerJobConfig({
     inputSource,
     metadata: edits.metadata,
     standardization: edits.standardization,
-    // The received-payload enforcement, mirrored from the invitation's disclosed set
-    // exactly as the browser accept path does (prepareAcceptorExchange ->
-    // prepared.expectedPayloadColumns). Passed through AS-IS: undefined when the
-    // token omits it (lazy), an empty array when the disclosed set is empty
-    // (strict "receive nothing"). Without it the CLI falls back to
-    // linkageTerms.payload.receive, which is undefined for a token that discloses
-    // columns but has no payload.send -- a shape that would then fail OPEN,
-    // silently ingesting extra partner columns where the browser aborts.
-    expectedPayloadColumns: token.disclosedPayloadColumns,
     // The terms-side enforcement, mirrored from the invitation's declared
     // `deduplicate` for the INVITER's own side exactly as the browser accept path
     // does (prepareAcceptorExchange -> prepared.expectedPartnerDeduplicate). The
@@ -275,8 +259,7 @@ async function resolveJobInputSource(
  *  - It DIALS the inviter's derived id ({@link dialAsAcceptor}), which tears down
  *    its own peer on failure, so no redundant destroy here.
  *  - The prepared exchange adopts the invitation's terms with the committed name
- *    and the confirm-columns edits, and locks in the received-payload columns to
- *    the invitation's disclosed set ({@link prepareAcceptorExchange}).
+ *    and the confirm-columns edits ({@link prepareAcceptorExchange}).
  *
  * On a console build accepting a filedrop or SFTP invitation the console runs
  * the exchange through the job API instead ({@link acceptorServerJobConfig} ->
@@ -440,16 +423,14 @@ export function useAcceptorExchange({
       ).then((selection) => selection.library);
 
       // The exchange runs on the invitation's terms (adopted with this party's
-      // identity), with the confirm-columns edits threaded in locally and the
-      // received-payload columns locked to the disclosed set -- the same spec
-      // assembly and enforcement the browser accept path performs.
+      // identity), with the confirm-columns edits threaded in locally -- the
+      // same spec assembly the browser accept path performs.
       const prepared = prepareAcceptorExchange({
         linkageTerms: token.linkageTerms,
         acceptorName,
         edits,
         rawRows,
         columns,
-        disclosedPayloadColumns: token.disclosedPayloadColumns,
         deduplicate,
       });
       await assertFirstRoundFitsWebRtcFrame(prepared, {

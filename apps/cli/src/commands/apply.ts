@@ -206,8 +206,10 @@ function displayChanges(
       ? "  linkage terms: no change"
       : `  linkage terms: ${fields.join(", ")} change (the new terms follow)`,
   );
-  const before = existing.expectedPayloadColumns;
-  const after = accepted.expectedPayloadColumns;
+  const before = existing.linkageTerms.payload?.receive?.map(
+    ({ name }) => name,
+  );
+  const after = accepted.linkageTerms.payload?.receive?.map(({ name }) => name);
   if (sameColumns(before, after)) {
     emit("  columns you will receive: no change");
     return;

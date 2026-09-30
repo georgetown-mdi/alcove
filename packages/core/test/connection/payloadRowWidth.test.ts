@@ -72,10 +72,10 @@ function prepared(
     rows,
     columns,
   );
-  // No payload block and no persisted commitment: the receive side is lazy, so
-  // reconcileReceivedPayload takes whatever arrives and the wire schema is the
-  // only thing standing between a forged frame and the record.
-  expect(exchange.expectedPayloadColumns).toBeUndefined();
+  // No payload block: the receive side is lazy, so the run takes whatever
+  // arrives and the wire schema is the only thing standing between a forged
+  // frame and the record.
+  expect(exchange.linkageTerms.payload).toBeUndefined();
   return exchange;
 }
 

@@ -340,12 +340,6 @@ export interface TermsChange {
 /** How {@link exchangeTerms} treats partner terms that differ from its own. */
 export interface TermsChangeOptions {
   /**
-   * The payload columns this party holds its received payload to, compared
-   * against the partner's send set in place of this party's own
-   * `payload.receive`. Undefined compares `payload.receive` alone.
-   */
-  expectedReceive?: ReadonlyArray<string>;
-  /**
    * The `deduplicate` this party holds the partner to. A partner stating
    * another value is a change that cannot continue the run
    * ({@link TermsChange.continuable}). Undefined holds the partner to none.
@@ -370,8 +364,6 @@ export interface TermsExchangeResult {
    * through {@link TermsChangeOptions.onTermsChange}.
    */
   localTerms: LinkageTerms;
-  /** Whether {@link localTerms} are the partner's terms taken on. */
-  termsChanged: boolean;
   /**
    * Non-fatal observations from this terms exchange, for the caller to
    * report at the run boundary (runExchange hands each to its `onWarning`,
@@ -593,10 +585,7 @@ function refusalsOf(comparison: TermsComparison): string[] {
 
 /** The baselines {@link compareTerms} holds the partner to for `options`. */
 function baselinesOf(options: TermsChangeOptions | undefined): TermsBaselines {
-  return {
-    receive: options?.expectedReceive,
-    partnerDeduplicate: options?.expectedPartnerDeduplicate,
-  };
+  return { partnerDeduplicate: options?.expectedPartnerDeduplicate };
 }
 
 /**
@@ -832,7 +821,6 @@ export async function exchangeTerms(
     return {
       partnerTerms,
       localTerms: agreed.terms,
-      termsChanged: agreed.terms !== localTerms,
       warnings: agreed.comparison.warnings,
       partnerRecordCount: msg.recordCount,
       partnerSaveIntent: msg.save === true,
@@ -937,7 +925,6 @@ export async function exchangeTerms(
     return {
       partnerTerms: partnerTerms!,
       localTerms: agreed.terms,
-      termsChanged: agreed.terms !== localTerms,
       warnings: agreed.comparison.warnings,
       partnerRecordCount,
       partnerSaveIntent,

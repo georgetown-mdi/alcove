@@ -9,8 +9,8 @@ a party composes in the web application and hands to the CLI. It covers what the
 artifact is (the shared CLI config schema, not a parallel format) and the
 mint-layer guarantees layered on top of it. It also covers the versioning and
 compatibility policy between a continuously-deployed web app and a pinned CLI,
-the payload-disclosure commitments its fields hold and the run-time gates that
-enforce them, the channel-binding semantics an accepting tool must honor, and the
+how the agreed terms hold each party's payload columns and the run-time gates
+that enforce them, the channel-binding semantics an accepting tool must honor, and the
 path the shared secret takes (never the file), and the terms update that
 changes an established partnership's terms without it. It is the implementation-level
 complement to the
@@ -66,15 +66,9 @@ CLI would later reject.
 
 The schema is the shared contract; the mint layer adds three guarantees a
 hand-authored config is not obligated to meet. They are guarantees about what a
-minted file cannot contain; the commitments it does hold, and what enforces
-them, are in [Payload-disclosure consent](#payload-disclosure-consent) below.
-
-One of the keys assembly attaches to a minted file is such a commitment --
-`expected_payload_columns` -- and the mint guarantees nothing about its content.
-It is written exactly as the calling surface supplied it and omitted where it
-supplied none, so an absent key states that the caller held no commitment rather
-than that the mint dropped one, which is the absent-is-lazy reading the consent
-section makes normative.
+minted file cannot contain; how its terms hold each party's payload columns, and
+what enforces them, is in [Payload-disclosure consent](#payload-disclosure-consent)
+below.
 
 - **No `authentication` block.** The mint layer never assembles the top-level
   `authentication` block at all. The schema makes that block optional and gives
@@ -164,18 +158,18 @@ sharply:
   `z.strictObject`, so a key the older CLI's schema does not know -- whether a
   newer web app's addition or an operator's typo -- is reported from
   `loadConfig` as a load-time `UsageError` (CLI exit 64) naming the key, and the
-  exchange never starts. Two of the top-level keys are enforcement records whose
-  absence is a valid state (`expected_payload_columns`,
-  `expected_partner_deduplicate`), so stripping a misspelling of one would
-  silently disable the control it names; that hazard governs the whole top level
-  rather than being spot-checked key by key. A file holding the retired
-  `disclosed_payload_columns` or `outbound_payload_consent` is refused before
-  that rule applies, by every reader that parses the whole file and by
-  `alcove invite` and `alcove update`, which read only its terms, metadata, and
-  standardization, with a message naming the key and telling the operator to
-  delete it (`retiredSettingIssue` in `packages/core/src/config/exchangeSpec.ts`):
-  the send side is stated in the agreed terms instead ([The send side is in the
-  agreed terms](#the-send-side-is-in-the-agreed-terms)).
+  exchange never starts. One top-level key is an enforcement record whose
+  absence is a valid state (`expected_partner_deduplicate`), so stripping a
+  misspelling of it would silently disable the control it names; that hazard
+  governs the whole top level rather than being spot-checked key by key. A file
+  holding the retired `disclosed_payload_columns`, `expected_payload_columns`,
+  or `outbound_payload_consent` is refused before that rule applies, by every
+  reader that parses the whole file and by `alcove invite` and `alcove update`,
+  which read only its terms, metadata, and standardization, with a message
+  naming the key and telling the operator to delete it (`retiredSettingIssue`
+  in `packages/core/src/config/exchangeSpec.ts`): both payload directions are
+  stated in the agreed terms instead
+  ([Payload-disclosure consent](#payload-disclosure-consent)).
 - **An unknown field inside a spec block is rejected loudly too.** The blocks
   themselves (`linkage_terms`, `metadata`, `standardization`, `connection`) strip
   unrecognized keys on parse, the `connection` union's webrtc member excepted
@@ -265,18 +259,16 @@ one setting under two spellings of its key -- the snake_case the file writes and
 the camelCase the parse works in -- is refused on the same rule, by the case
 conversion ahead of the schema, which would otherwise keep only one of the two.
 
-### The records that must survive
+### The record that must survive
 
-Two per-party records are fail-closed: their ABSENCE is a valid state that turns
-the control off, so a consumer that loses one silently disables an enforcement the
-operator wrote.
+One per-party record is fail-closed: `expected_partner_deduplicate`, the
+terms-side enforcement record ([Terms-binding consent](#terms-binding-consent)).
+Its ABSENCE is a valid state that turns the control off, so a consumer that loses
+it silently disables an enforcement the operator wrote.
 
-- `expected_payload_columns` -- the receive-side enforcement record.
-- `expected_partner_deduplicate` -- the terms-side enforcement record.
-
-A consumer that would drop one of these refuses the load instead. It has no
-"hold it unchanged" option to fall back on: holding a record it cannot enforce is
-the same failure, one exchange later.
+A consumer that would drop it refuses the load instead. It has no "hold it
+unchanged" option to fall back on: holding a record it cannot enforce is the same
+failure, one exchange later.
 
 ### How a setting is named
 
@@ -293,142 +285,55 @@ both.
 
 ## Payload-disclosure consent
 
-Two fields hold a party's receive-side payload-disclosure commitments, and both
-are enforced at run time rather than merely recorded. One is a top-level key of
-the artifact -- `expected_payload_columns`, a sibling of `linkage_terms` -- and
-the other, `disclosedPayloadColumns`, rides the invitation token (its wire
-declaration and version policy are in
-[FILE_SYNC.md](FILE_SYNC.md#disclosed-columns-subset-on-the-token)). The local
-field is not exchanged, cross-checked against the partner, or folded into the
-agreed-terms hash. The send side has no local record: it is stated in the agreed
-terms ([The send side is in the agreed
-terms](#the-send-side-is-in-the-agreed-terms)). What an operator authors, and
-what each field means to them, is in
-[EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload).
+Both payload directions are agreed terms. `linkage_terms.payload.send` names the
+columns a party sends and `payload.receive` the columns it receives, and the
+terms exchange compares each party's `receive` against the send set the other
+party's run states, before any key or data moves
+([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload),
+[PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)). No local record
+beside the terms holds either set, and the invitation token and the terms update
+state the columns only in their terms.
 
-The set of columns either of them describes is always
-`disclosedColumnNames(metadata)` over some party's metadata -- the names
-`isDisclosedToPartner` selects and `preparePayload` transmits -- never a
-separately authored dictionary. That is what keeps a consented set from drifting
-from the bytes that flow. Each field is bounded to `MAX_PAYLOAD_ENTRIES` entries
-of `MAX_NAME_LENGTH` each, the same bounds a `payload.send`/`receive` list
-holds.
+The set a party's run states as its send is `disclosedColumnNames(metadata)` --
+the names `isDisclosedToPartner` selects and `preparePayload` transmits -- never
+a separately authored list, so the set compared at the terms exchange is the set
+the payload step sends. A received payload is not compared against
+`payload.receive` again after it crosses. The one check after the payload
+exchange is for a party that receives no payload at all
+([The no-output send gate](#the-no-output-send-gate)).
 
-Both -- the top-level list and the token's `disclosedPayloadColumns` -- name a
-column at most once: a repeated name parses to one entry, the first occurrence
-standing and a later one naming it dropped, the collapse a
-`payload.send`/`receive` list takes. Names are compared code unit for code unit,
-with no Unicode normalization and no case folding -- the equality
-[CANONICAL_ENCODING.md](CANONICAL_ENCODING.md) makes normative for those terms
-lists, whose collapse changes the agreed-terms hash. Neither field here enters
-that hash, computed over the linkage terms alone. The count bound is applied to
-the AUTHORED count, ahead of the collapse, so a list padded past
-`MAX_PAYLOAD_ENTRIES` with one name repeated is refused rather than admitted for
-what it would collapse to.
+### Absent, empty, present
 
-Collapsing rather than refusing keeps a hand-authored repeat -- which declares
-nothing the set does not already hold -- from reaching
-`reconcileReceivedPayload` as a partner-attributed `protocol` abort long after
-the config holding it loaded cleanly.
+The three states of `payload.receive` are distinct, and the distinction is the
+disclosure control:
 
-### Absent, empty, present: one rule for every field
-
-The three states are distinct at every one of these fields, and the distinction
-is the whole disclosure control:
-
-- **Absent** is lazy: no commitment is on record, so nothing is compared. A
-  first-contact party, a config predating the field, and a guided or default
-  path that authored no dictionary are all here.
+- **Absent** compares nothing. A recurring run fills it on its first run ([An
+  unset `payload.receive` is filled on the first
+  run](#an-unset-payloadreceive-is-filled-on-the-first-run)); a one-off run takes
+  what the partner sends.
 - **Present and empty** is strict, and is *not* the absent case. `[]` asserts
-  "nothing", and any later non-empty set violates it.
-- **Present and non-empty** is strict in both directions: a narrowed set fails
-  exactly as a widened one does, because the exchange record and the partner's
-  consent surface state the confirmed set.
+  "nothing", and a partner stating any column is refused at the terms exchange.
+- **Present and non-empty** is strict in both directions: a narrowed set is
+  refused exactly as a widened one is, because the exchange record and the
+  partner's consent surface state the agreed set.
 
 Laziness relaxes only the declaration check, never what is disclosed.
-Transmission stays governed by each sender's own `isDisclosedToPartner` metadata
-and the send-side guard below, so a lazy receiver still receives only what the
-sender's consented metadata transmits.
+Transmission stays governed by each sender's own `isDisclosedToPartner` metadata,
+so a lazy receiver still receives only what the sender's metadata transmits.
 
-### Receive-side runtime enforcement (`reconcileReceivedPayload`)
+How a party arrives at its list, by exchange mode:
 
-A party holding a locked-in expected set verifies, after the payload exchange and
-before the result is returned or written, that the partner transmitted exactly
-that set. A mismatch aborts the exchange as a `ConnectionError` of kind
-`protocol` (CLI exit 76): the partner promised one disclosure and delivered
-another. The check runs where the exchange record is already owed, so an aborted
-run still writes a record, marked terminated (see
-[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#when-a-record-is-owed)). Because it
-runs after the payload exchange, it stops the exchange from completing rather
-than stopping the columns from crossing.
-
-The locked-in set is the acceptor's `disclosedPayloadColumns` (consented
-at review time, threaded to `runExchange` as `prepared.expectedPayloadColumns`),
-or the config's own top-level `expected_payload_columns`, falling back to the
-negotiated `payload.receive` names for an authored recurring config. The
-top-level field is distinct from `payload.receive` so it does not
-trip the compatibility mirror; the fallback is safe because that mirror equals
-the partner's declared `send`, which in turn equals what the partner transmits.
-
-Two cases are **not** a mismatch: an absent expected set (the lazy
-path), and an empty *received* set. The partner sends nothing both when it
-discloses nothing and when no row matched, which can never exceed any consent,
-and which is also what lets a correctly gated no-output party pass.
-
-How a party arrives at its set, by exchange mode:
-
-- **Invite/accept.** The inviter publishes its disclosed subset on the token,
-  states it as `payload.send` in the token's terms, and leaves its own receive
-  side unset; its first run fills `payload.receive` from the acceptor's declared
-  send set ([An unset `payload.receive` is filled on the first
-  run](#an-unset-payloadreceive-is-filled-on-the-first-run)). The acceptor locks
-  in the subset the token declared -- known up front, with no observation needed
-  -- and both an offline and an online accept persist it to the written config
-  so a later `alcove exchange` enforces what was consented to at accept time. An
-  acceptance that reuses a pre-existing config refreshes that config's field
-  surgically in place, leaving the operator's connection and linkage blocks
-  untouched: a partner that changes only what it discloses is re-consented to on
-  that acceptance, and a prior acceptance's set left standing would false-abort
-  the next exchange against an honest partner. An invitation with no subset
-  *removes* the field rather than leaving a set this acceptance never showed.
+- **Invite/accept.** Every mint states the inviter's `payload.send` from its
+  metadata ([The send side is in the agreed
+  terms](#the-send-side-is-in-the-agreed-terms)), and the acceptance mirrors it
+  into the acceptor's `payload.receive` (`deriveAcceptedLinkageTerms`), so the
+  list the acceptor consented to is the one every later run compares. An
+  inviter whose own `payload.receive` is unset fills it on its first run.
 - **Zero-setup.** Neither party holds the other's metadata in advance, so the
-  first exchange reconciles lazily and neither throws. A `--save` run fills
-  `payload.receive` from the partner's declared send set and writes it into the
-  config it saves.
-- **Recurring.** Both parties' persisted configs hold the commitment, so each
-  enforces its own -- the runtime, actual-bytes counterpart to
-  `validateCompatibility`'s terms-level send/receive mirror.
-
-### Send-side mint-boundary guard (`assertPayloadSendDisclosed`)
-
-The receive-side commitment's counterpart, holding a *present* `payload.send` to
-exactly the disclosed set and rejecting both over- and under-declaration, so the
-dictionary shown for consent matches the bytes that flow. It runs where terms
-leave a configuration with no exchange to state them -- an invitation minted
-from it, and a terms update made or applied -- since those reach the partner's
-consent screen as written. An exchange does not run it: `runExchange` states
-the disclosed set as `payload.send` (`termsStatingDeclaredPayloadSend`), and a
-partner whose held list differs meets that as a terms change at the terms
-exchange, before any key or data moves
-([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)).
-
-The empty case is where this guard is a disclosure control rather than an
-accuracy one: an acceptor's `send` is `deriveAcceptedLinkageTerms`'s mirror of
-the inviter's `payload.receive`, so an empty one holds the partner's
-declaration that it will take nothing, held against metadata that may be
-*inferred* -- where the `id` or `identifier` column defaults to
-`is_payload: true` ([Type inference from column names](DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)). That empty-send enforcement, and only it, is gated on this
-party's own `output.share_with_partner`: with the partner entitled to no result
-nothing crosses whatever the metadata discloses, leaving a disclosure control
-nothing to control. A non-empty `send` is checked in both directions regardless
-of entitlement, because that dictionary is exchanged, consented to, and recorded
-whatever moves.
-
-The gate reads a **local** declaration -- it runs before `validateCompatibility`
-has mirrored the partner's `expectsOutput` -- so it determines the coherence of this
-party's own configuration, while the `runExchange` send gate, reading the
-partner's authenticated terms, stays the fail-closed control over what actually
-leaves.
+  first exchange compares nothing. A `--save` run fills `payload.receive` from
+  the partner's declared send set and writes it into the config it saves.
+- **Recurring.** Both parties' configurations hold both lists, and each run's
+  terms exchange compares them.
 
 ### The send side is in the agreed terms
 
@@ -436,7 +341,9 @@ No local record holds a party's send set. Every mint -- `alcove invite` online,
 offline from an input file, or from a configuration, and `alcove update` --
 states `payload.send` as the columns its metadata discloses
 (`termsStatingDeclaredPayloadSend`), and writes the list into the configuration
-it writes or reuses where that configuration leaves it unset. An acceptor's
+it writes or reuses where that configuration leaves it unset or names other
+columns ([A stated `payload.send` that differs from the
+metadata](#a-stated-payloadsend-that-differs-from-the-metadata)). An acceptor's
 mirrored `payload.receive` (`deriveAcceptedLinkageTerms`) therefore holds the
 inviter's send set inside the agreed terms, which the agreed-terms hash covers.
 A mint from a configuration with no `metadata` block states nothing, since the
@@ -448,6 +355,25 @@ exchange, an acceptor included, so a send set that changed on either side meets
 the partner as a terms change before any key or data moves
 ([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)).
 
+### A stated `payload.send` that differs from the metadata
+
+Every mint -- `alcove invite`, `alcove update`, the web re-invite and the web
+terms update -- and every run states `payload.send` as the columns the metadata
+discloses (`termsStatingDeclaredPayloadSend`) in place of a present list naming
+other columns, keeping a description authored for a column in both. `alcove
+invite` and `alcove update` rewrite the configuration's list to the stated one
+before printing, with a warning naming the file; the web re-invite and terms
+update state it from the stored document's metadata. A partner holding the
+earlier list meets the difference as a terms change at the terms exchange
+([PROTOCOL.md](PROTOCOL.md#a-terms-change-at-the-terms-exchange)).
+
+The web app's first mint (`generateInvitation`) refuses the pair instead
+(`assertPayloadSendDisclosed`), as a check on the terms its own editor composed,
+which derives `payload.send` from the same metadata. That check holds a present
+`payload.send` to exactly the disclosed set in both directions; its empty case is
+gated on this party's own `output.share_with_partner`, since with the partner
+entitled to no result nothing crosses whatever the metadata discloses.
+
 ### The no-output send gate
 
 The payload channel is gated on output entitlement, closing the one-sided
@@ -456,19 +382,23 @@ disclosure analyzed in
 transmits payload only to a partner whose agreed terms entitle it to the result
 (`output.expects_output`), so a non-receiving helper -- which learns no matched
 records -- is sent no payload. The receive side fails closed as a safety check: a
-party with `expects_output: false` expects the empty set and aborts with the
-`protocol` error above if it is sent any payload regardless. This is enforced in
+party with `expects_output: false`, and either party to a count-only run, aborts
+as a `ConnectionError` of kind `protocol` (CLI exit 76) if it is sent any payload
+column regardless (`assertNoPayloadReceived`). The check runs after the payload
+exchange, where the exchange record is already owed, so an aborted run still
+writes a record, marked terminated (see
+[EXCHANGE_RECORD.md](EXCHANGE_RECORD.md#when-a-record-is-owed)). This is enforced in
 the protocol, alongside the schema rule forbidding a no-output party from
 declaring `payload.receive` columns; it is left neither to the data dictionary
 nor to operator discipline.
 
 ### An unset `payload.receive` is filled on the first run
 
-A party whose linkage terms leave `payload.send` unset states, in the terms it
-sends at every terms exchange, the columns its metadata discloses
-(`termsStatingDeclaredPayloadSend`, `packages/core/src/payloadExchange.ts`); a
-present `send`, an explicit empty list included, is sent as authored. A
-count-only (`psi-c`) document and a party with `output.share_with_partner:
+A party states, in the terms it sends at every terms exchange, the columns its
+metadata discloses (`termsStatingDeclaredPayloadSend`,
+`packages/core/src/payloadExchange.ts`), whether its terms leave `payload.send`
+unset or name other columns in it; a present `send` naming exactly those
+columns, an explicit empty list included, is sent as authored. A count-only (`psi-c`) document and a party with `output.share_with_partner:
 false` state nothing, since no payload moves to the partner under either. The
 stated form is the one `validateCompatibility` compares and the agreed-terms
 hash covers, so a verifier recomputing the hash from a configuration states it
@@ -486,10 +416,10 @@ the receipt bindings, the partner-certificate pin, the matching cardinality,
 the count-only shape and the payload-disclosure directions -- and before the
 bootstrap frame and any linkage key or payload row moves
 (`onPayloadReceiveFilled`, `runExchange`). A run refused at the terms exchange
-records nothing. The run holds the payload it receives to the filled set.
+records nothing.
 
-Where the party also holds no `expectedPayloadColumns` and the partner's stated
-`send` names at least one column, a caller may confirm the columns first
+Where the partner's stated `send` names at least one column, a caller may
+confirm the columns first
 (`onPayloadReceiveFill`, `runExchange`). The confirmation runs after the terms
 exchange and before the partner-certificate pin, so a decline records neither
 the pin nor the fill, and the refusals listed above still apply after the
@@ -528,10 +458,9 @@ list removes that comment.
 One top-level key states a commitment about the partner's *terms* rather than
 its payload: `expected_partner_deduplicate`, a sibling of `linkage_terms` and a
 boolean. It records the [`deduplicate`](PROTOCOL.md#deduplicating-cardinalities-many-to-x-matching)
-an accepted invitation declared for the *inviting* party's own side. Like the
-payload records above it is per-party and local -- never exchanged,
-cross-checked, or folded into the agreed-terms hash -- and like them it is
-enforced at run time rather than merely recorded.
+an accepted invitation declared for the *inviting* party's own side. It is
+per-party and local -- never exchanged, cross-checked, or folded into the
+agreed-terms hash -- and it is enforced at run time rather than merely recorded.
 
 `runExchange` holds the value the partner presents at the terms exchange to it
 (`assertPresentedDeduplicateMatchesInvitation`, `packages/core/src/exchange.ts`)
@@ -581,13 +510,12 @@ The two artifacts state the sending party's terms the same way, and differ in wh
 | | Invitation token | Terms update |
 | --- | --- | --- |
 | Linkage terms | the inviter's, validated by the same camelizing schema | the sender's, validated by the same schema |
-| Disclosed columns | `disclosedPayloadColumns` | `disclosedPayloadColumns`, same bounds, same two cross-field refusals against `payload.send` |
 | Shared secret | the setup secret | none |
 | Connection endpoint | optional locator | none |
 | Expiry | optional | none |
 | Integrity | a 4-byte checksum against transcription errors only | HMAC-SHA-256 under a key derived from the shared secret |
 
-A terms update therefore cannot establish or re-establish a partnership: without the secret its holder cannot authenticate a key exchange, and without an endpoint it names no rendezvous. It is not confidential in the way an invitation is. Its reader learns the linkage terms and the disclosed column names, not a credential.
+A terms update therefore cannot establish or re-establish a partnership: without the secret its holder cannot authenticate a key exchange, and without an endpoint it names no rendezvous. It is not confidential in the way an invitation is. Its reader learns the linkage terms, the payload column names among them, not a credential.
 
 The applying party derives its own terms from the update with `deriveAcceptedLinkageTerms`, exactly as an acceptance derives them from an invitation, with one difference: its own `deduplicate` is passed through from the configuration it already holds, where an acceptance takes `false`.
 
@@ -595,7 +523,7 @@ The applying party derives its own terms from the update with `deriveAcceptedLin
 
 The encoded update is `BODY.MAC`, two base64url strings joined by `.`. Alcove writes both unpadded; the decoder also accepts trailing `=` padding, which does not change the decoded bytes, so the MAC below is unaffected:
 
-- `BODY` encodes the UTF-8 bytes of a JSON object with exactly the keys `kind` (the string `terms-update`), `version` (`"1"`), `partnership`, `linkageTerms`, and optionally `disclosedPayloadColumns`. The object is strict: any other key is refused.
+- `BODY` encodes the UTF-8 bytes of a JSON object with exactly the keys `kind` (the string `terms-update`), `version` (`"1"`), `partnership`, and `linkageTerms`. The object is strict: any other key is refused, including the `disclosedPayloadColumns` an earlier build wrote.
 - `MAC` encodes `HMAC-SHA-256(mac_key, BODY bytes)`, 32 bytes, computed over the exact bytes `BODY` encodes, so no canonical re-serialization is involved.
 
 The whole string is bounded by the invitation's encoded-length bound (`MAX_ENCODED_INVITATION_LENGTH`), checked before any decoding.
@@ -621,10 +549,7 @@ The CLI then refuses, before any display, an update whose terms name the applyin
 
 ### What applying writes
 
-Applying rewrites `linkage_terms` and every record that follows from it in one atomic write (`persistTermsUpdate`, `apps/cli/src/config.ts`), after reading the edited document back through `parseExchangeSpec`; a document that would not load is refused and the file left unchanged:
-
-- `expected_payload_columns` takes the update's disclosed columns, and is removed where the update states none.
-- `expected_partner_deduplicate` takes the update's `deduplicate`.
+Applying rewrites `linkage_terms`, and `expected_partner_deduplicate` to the update's `deduplicate`, in one atomic write (`persistTermsUpdate`, `apps/cli/src/config.ts`), after reading the edited document back through `parseExchangeSpec`; a document that would not load is refused and the file left unchanged. The columns this party receives are the update's `payload.send`, mirrored into `payload.receive` by `deriveAcceptedLinkageTerms`.
 
 Minting an update states `payload.send` on the rule an invitation minted from the same configuration follows ([The send side is in the agreed terms](#the-send-side-is-in-the-agreed-terms)). Neither command writes the key file or any key of the connection block.
 

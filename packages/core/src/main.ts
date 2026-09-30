@@ -386,7 +386,6 @@ export {
   compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,
-  receivedPayloadBaseline,
   validateCompatibility,
 } from "./linkageTermsNegotiation";
 export type {
@@ -817,7 +816,7 @@ export {
   assertPayloadSendDisclosed,
   buildOutputTable,
   preparePayload,
-  reconcileReceivedPayload,
+  assertNoPayloadReceived,
   termsStatingDeclaredPayloadSend,
   termsAsTheRunStatedThem,
   toCommittedPayload,

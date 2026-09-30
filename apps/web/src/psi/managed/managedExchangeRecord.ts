@@ -858,8 +858,6 @@ export interface ManagedExchangeFileComposition {
   metadata?: ExchangeSpec["metadata"];
   /** This party's per-party standardization, when authored. */
   standardization?: ExchangeSpec["standardization"];
-  /** This party's receive-side commitment. */
-  expectedPayloadColumns?: Array<string>;
   /** The `deduplicate` an accepted invitation declared for the partner's own
    * side -- this party's terms-side commitment. Absent for a party that accepted
    * no invitation, which has no declaration to bind. */
@@ -1052,21 +1050,20 @@ export function applyManagedExchangePayloadReceiveFill(
  * change", and `alcove apply`):
  *
  * - `run`: an attended run took the change on at the terms exchange and
- *   continues under `adoptedTerms` (core's `TermsChange.adoptedTerms`). The
- *   columns this party receives follow the partner's send set; the
- *   `deduplicate` this party holds the partner to is left as it was, since the
- *   change is not to it.
+ *   continues under `adoptedTerms` (core's `TermsChange.adoptedTerms`), whose
+ *   `payload.receive` follows the partner's send set; the `deduplicate` this
+ *   party holds the partner to is left as it was, since the change is not to
+ *   it.
  * - `apply`: the operator applied a change a run did not take on -- a stored
  *   proposal, or one the run could not continue under. The terms are derived
  *   from `partnerTerms` as an acceptance derives them, keeping this party's
- *   identity and `deduplicate`, and the partner is held to its stated
+ *   identity and `deduplicate` and mirroring the partner's `payload.send` into
+ *   this party's `payload.receive`, and the partner is held to its stated
  *   `deduplicate`. A `lastRun` recording a refused
  *   terms change is dropped: the change it refused is the one applied, so a
  *   later visit has nothing left to answer.
  * - `update`: the operator applied a partner's terms update, as `alcove
- *   apply` writes one: as `apply` with the update's `linkageTerms`, except
- *   that the columns this party receives are the update's
- *   `disclosedPayloadColumns`, and none are recorded where it states none.
+ *   apply` writes one: as `apply` with the update's `linkageTerms`.
  */
 export type ManagedTermsChangeWrite =
   | { scope: "run"; adoptedTerms: LinkageTerms; partnerTerms: LinkageTerms }
@@ -1090,10 +1087,6 @@ export function applyManagedExchangeTermsChange(
   const current = record.exchangeFile;
   const partnerTerms =
     write.scope === "update" ? write.update.linkageTerms : write.partnerTerms;
-  const received =
-    write.scope === "update"
-      ? write.update.disclosedPayloadColumns
-      : partnerTerms.payload?.send?.map(({ name }) => name);
   let exchangeFile: ExchangeSpec;
   if (write.scope === "run") {
     exchangeFile = { ...current, linkageTerms: write.adoptedTerms };
@@ -1115,11 +1108,6 @@ export function applyManagedExchangeTermsChange(
       expectedPartnerDeduplicate: partnerTerms.deduplicate,
     };
   }
-  const { expectedPayloadColumns: _receive, ...withoutReceive } = exchangeFile;
-  exchangeFile = {
-    ...withoutReceive,
-    ...(received !== undefined ? { expectedPayloadColumns: received } : {}),
-  };
   const next: ManagedExchangeRecord = { ...record, exchangeFile };
   if (write.scope !== "run" && record.lastRun?.failureKind === "terms-change")
     delete next.lastRun;

@@ -7,7 +7,6 @@ import {
   termsStatingDeclaredPayloadSend,
   CONNECTION_BLOCK_NOTICE,
   DEFAULT_PEER_TIMEOUT_MS,
-  disclosedColumnNames,
   inferMetadata,
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
@@ -30,7 +29,6 @@ import type {
   ExchangeSpec,
   LinkageStrategy,
   LinkageTerms,
-  Metadata,
   Payload,
   PreparedExchange,
   ProvisionedServerAddress,
@@ -45,9 +43,10 @@ import {
   loadConfigWebRTCConnection,
   persistProvisionedServerAddress,
   persistStatedPayloadSend,
+  replacedPayloadSendWarning,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { assertConfigTermsSendable } from "../configTermsGuards";
+import { assertConfigTermsRunnable } from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
 import { createProvisionedServer } from "../serverProvision";
@@ -385,22 +384,6 @@ export function resolveInvitePositionals(
 }
 
 /**
- * The disclosed-columns subset the invitation includes: the columns the
- * acceptor will receive for matched records, from this party's metadata via
- * the same `isDisclosedToPartner` predicate `preparePayload` transmits on.
- * Undefined when the metadata is unknown at mint (a config-as-source invite
- * whose config declares no metadata block); otherwise the set is included
- * verbatim, including the empty set, which locks the acceptor to receiving
- * nothing. See the InvitationToken field.
- */
-function disclosedColumnsFor(
-  metadata: Metadata | undefined,
-): string[] | undefined {
-  if (metadata === undefined) return undefined;
-  return disclosedColumnNames(metadata);
-}
-
-/**
  * Mint-time wording for the shared linkage pre-flight
  * ({@link checkLinkageSatisfiability}): core grades the terms, this function
  * supplies the copy for {@link LinkagePreflightMessaging}. `configPath` names
@@ -481,16 +464,19 @@ type InviteReady =
   | {
       // Offline sourcing terms from a pre-existing config: the config supplies
       // the linkage terms (and its operator-authored content persists unchanged
-      // but for an unset payload.send), so the key file is written. When an
+      // but for payload.send), so the key file is written. When an
       // input file was also supplied it has already been checked against the
       // config's linkage fields here.
       mode: "offlineFromConfig";
       configPath: string;
       linkageTerms: LinkageTerms;
       // The payload.send this mint stated from the config's metadata where the
-      // config leaves it unset, written into the reused config so its later
-      // runs state what the partner mirrored. See persistStatedPayloadSend.
+      // config leaves it unset or names other columns, written into the reused
+      // config so its later runs state what the partner mirrored. See
+      // persistStatedPayloadSend.
       statedPayloadSend?: NonNullable<Payload["send"]>;
+      // Whether statedPayloadSend replaces a payload.send the config held.
+      payloadSendReplaced?: boolean;
       // The address a create-mode server.provision endpoint returned, written
       // into the reused config's connection.server with the key file.
       provisionedAddress?: ProvisionedServerAddress;
@@ -765,7 +751,6 @@ export async function validateInvite(params: {
         disclosureMetadata,
       ),
     };
-    const disclosedPayloadColumns = disclosedColumnsFor(disclosureMetadata);
 
     const expires = expiresFromNow(lifetimeSeconds);
     const sharedSecret = generateSharedSecret();
@@ -786,9 +771,6 @@ export async function validateInvite(params: {
         turn: "--turn",
         stun: "--stun",
       }),
-      // The acceptor's consent screen and runtime enforcement derive from the
-      // wire's own disclosure predicate.
-      disclosedPayloadColumns,
       // Declare retain mode where this invite's own connection runs it, so the
       // acceptor is told before consenting that the exchange leaves a permanent
       // transcript. Read from the post-override connection, so `--retain-files`
@@ -955,9 +937,9 @@ export async function validateInvite(params: {
     }
 
     // Fail closed, before the token is minted, on terms this config's own
-    // exchange would refuse or whose payload.send it would not honor, so the
-    // partner never accepts an invitation the first run refuses or changes.
-    assertConfigTermsSendable(configTerms, configSource);
+    // exchange would refuse, so the partner never accepts an invitation the
+    // first run refuses.
+    assertConfigTermsRunnable(configTerms, configSource);
 
     // State the send set only when the config declares an explicit metadata
     // block: without one the run infers metadata from the exchange input (which
@@ -967,7 +949,6 @@ export async function validateInvite(params: {
       configSource.metadata !== undefined
         ? termsStatingDeclaredPayloadSend(configTerms, configSource.metadata)
         : configTerms;
-    const disclosedPayloadColumns = disclosedColumnsFor(configSource.metadata);
 
     // A webrtc config names the coordination server and relay this invitation's
     // exchange runs on, so the acceptor is seeded from them as the online path's
@@ -1009,7 +990,6 @@ export async function validateInvite(params: {
       linkageTerms: mintTerms,
       sharedSecret,
       expires,
-      disclosedPayloadColumns,
       ...(connectionEndpoint !== undefined ? { connectionEndpoint } : {}),
       // The config is the connection this invitation's exchange runs on, so its
       // retain mode is the one to declare. Taken as the single boolean the reader
@@ -1024,7 +1004,10 @@ export async function validateInvite(params: {
       configPath: options.configFile,
       linkageTerms: mintTerms,
       ...(mintTerms !== configTerms && mintTerms.payload?.send !== undefined
-        ? { statedPayloadSend: mintTerms.payload.send }
+        ? {
+            statedPayloadSend: mintTerms.payload.send,
+            payloadSendReplaced: configTerms.payload?.send !== undefined,
+          }
         : {}),
       ...(provisionedAddress !== undefined ? { provisionedAddress } : {}),
       invitation,
@@ -1076,7 +1059,6 @@ export async function validateInvite(params: {
       disclosureMetadata,
     ),
   };
-  const disclosedPayloadColumns = disclosedColumnsFor(disclosureMetadata);
 
   const expires = expiresFromNow(lifetimeSeconds);
   const sharedSecret = generateSharedSecret();
@@ -1089,7 +1071,6 @@ export async function validateInvite(params: {
     linkageTerms: dataSpec.linkageTerms,
     sharedSecret,
     expires,
-    disclosedPayloadColumns,
   });
 
   return { mode: "offline", dataSpec, invitation, expires, sharedSecret };
@@ -1244,11 +1225,16 @@ export async function handler(argv: Arguments): Promise<void> {
             reuseExistingConfig: true,
             refreshReusedConfig: (keptConfigPath) => {
               // Before the token print, so a failure never follows disclosure.
-              if (ready.statedPayloadSend !== undefined)
+              if (ready.statedPayloadSend !== undefined) {
+                if (ready.payloadSendReplaced === true)
+                  log.warn(
+                    replacedPayloadSendWarning(keptConfigPath, "invitation"),
+                  );
                 persistStatedPayloadSend(
                   keptConfigPath,
                   ready.statedPayloadSend,
                 );
+              }
               // The server this invitation names is the one later runs of
               // this config connect to.
               if (ready.provisionedAddress !== undefined)

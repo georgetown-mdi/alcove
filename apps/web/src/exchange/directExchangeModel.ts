@@ -8,10 +8,7 @@ import {
   overlongDisclosedColumnPositions,
 } from "@alcove/core";
 
-import {
-  disclosedColumnNames,
-  payloadSendForMetadata,
-} from "@psi/metadataEditing";
+import { payloadSendForMetadata } from "@psi/metadataEditing";
 
 import { linkageRefusalFor } from "@psi/linkageRefusal";
 
@@ -226,8 +223,8 @@ export function directServerBlockedReason(
 
 /** The browser-side preview of the terms this file is EXPECTED to produce at run
  * time, computed from its columns exactly as the CLI's zero-setup command does
- * (`inferMetadata` -> `getDefaultLinkageTerms`), plus the disclosed payload set the
- * inferred metadata sends and the linkage-terms refusal, if any. Read-only display
+ * (`inferMetadata` -> `getDefaultLinkageTerms`), plus the linkage-terms refusal,
+ * if any. Read-only display
  * -- the CLI re-infers over the real file at run time, and a file edited between
  * preview and run desyncs, caught by the runtime two-party terms check. */
 interface DirectTermsPreview {
@@ -238,9 +235,6 @@ interface DirectTermsPreview {
   linkageTerms: LinkageTerms;
   /** The inferred column metadata the terms derive from. */
   metadata: Metadata;
-  /** The columns the inferred metadata discloses to the partner for matched
-   * records -- what this file contributes on the wire. */
-  disclosedPayloadColumns: Array<string>;
   /** The 1-based positions of the disclosed columns whose name is too long to
    * hold ({@link overlongDisclosedColumnPositions}); non-empty means the run
    * would be refused at prepare time, so the confirm screen refuses it here
@@ -295,7 +289,6 @@ export function previewInferredTerms(
   return {
     linkageTerms,
     metadata,
-    disclosedPayloadColumns: disclosedColumnNames(metadata),
     overlongDisclosedColumns: overlongDisclosedColumnPositions(metadata),
     ...(refusal !== undefined && { refusal }),
   };

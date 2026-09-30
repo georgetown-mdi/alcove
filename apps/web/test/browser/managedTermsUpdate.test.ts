@@ -172,7 +172,6 @@ describe("applying a partner's terms update", () => {
             "Agency B",
           ),
           metadata: inferMetadata(LINKAGE_COLUMNS, []),
-          expectedPayloadColumns: ["notes"],
           expectedPartnerDeduplicate: false,
         }),
         side: "acceptor",
@@ -206,8 +205,9 @@ describe("applying a partner's terms update", () => {
       .toBeInTheDocument();
     expect(onChanged).toHaveBeenCalledOnce();
     expect(
-      (await getManagedExchange(record.id))?.exchangeFile
-        .expectedPayloadColumns,
+      (
+        await getManagedExchange(record.id)
+      )?.exchangeFile.linkageTerms.payload?.receive?.map(({ name }) => name),
     ).toEqual(["notes", "county"]);
   });
 

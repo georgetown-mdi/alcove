@@ -58,7 +58,6 @@ describe("prepareAcceptorExchange", () => {
       edits: baseEdits,
       rawRows,
       columns,
-      disclosedPayloadColumns: ["program_code"],
     });
     // The acceptor's identity replaces the inviter's; the adopted fields and keys
     // are the invitation's exactly.
@@ -87,12 +86,11 @@ describe("prepareAcceptorExchange", () => {
       edits: baseEdits,
       rawRows,
       columns,
-      disclosedPayloadColumns: ["program_code"],
     });
     expect(prepared.linkageTerms.deduplicate).toBe(false);
   });
 
-  test("commits the received-payload columns to the disclosed set exactly", () => {
+  test("receives the invitation's declared send as its own payload.receive", () => {
     const prepared = prepareAcceptorExchange({
       deduplicate: false,
       linkageTerms: inviterTerms,
@@ -100,13 +98,11 @@ describe("prepareAcceptorExchange", () => {
       edits: baseEdits,
       rawRows,
       columns,
-      disclosedPayloadColumns: ["program_code", "enrollment_date"],
     });
-    // The consent-screen disclosed set is the exact commitment, so an inviter that
-    // transmits a different column set aborts (reconcileReceivedPayload).
-    expect(prepared.expectedPayloadColumns).toEqual([
-      "program_code",
-      "enrollment_date",
+    // The consent screen's send set is the list the terms exchange compares
+    // against the send set the inviter states there.
+    expect(prepared.linkageTerms.payload?.receive).toEqual([
+      { name: "program_code" },
     ]);
   });
 
@@ -124,41 +120,10 @@ describe("prepareAcceptorExchange", () => {
         edits: baseEdits,
         rawRows,
         columns,
-        disclosedPayloadColumns: undefined,
       });
       expect(prepared.linkageTerms.deduplicate).toBe(false);
       expect(prepared.expectedPartnerDeduplicate).toBe(declared);
     }
-  });
-
-  test("the empty disclosed set commits to 'receive nothing' (not lazy)", () => {
-    const prepared = prepareAcceptorExchange({
-      deduplicate: false,
-      linkageTerms: inviterTerms,
-      acceptorName: "Sam Alvarez",
-      edits: baseEdits,
-      rawRows,
-      columns,
-      disclosedPayloadColumns: [],
-    });
-    // An empty set is a commitment, not the lazy case: a later non-empty payload
-    // aborts. So the prepared value is the empty array, never undefined.
-    expect(prepared.expectedPayloadColumns).toEqual([]);
-  });
-
-  test("an omitted disclosed set stays lazy (undefined)", () => {
-    const prepared = prepareAcceptorExchange({
-      deduplicate: false,
-      linkageTerms: inviterTerms,
-      acceptorName: "Sam Alvarez",
-      edits: baseEdits,
-      rawRows,
-      columns,
-      disclosedPayloadColumns: undefined,
-    });
-    // Only an omitted field is lazy: the acceptor reconciles from the first
-    // transmission.
-    expect(prepared.expectedPayloadColumns).toBeUndefined();
   });
 
   test("threads the confirm-columns edits into the prepared metadata", () => {
@@ -183,7 +148,6 @@ describe("prepareAcceptorExchange", () => {
       edits: editsFor(edited),
       rawRows,
       columns,
-      disclosedPayloadColumns: ["program_code"],
     });
     expect(
       prepared.metadata.find((column) => column.name === "last_name")?.role,
@@ -204,7 +168,6 @@ describe("the accepting party's own deduplicate in the prepared exchange", () =>
         edits: baseEdits,
         rawRows,
         columns,
-        disclosedPayloadColumns: ["program_code"],
       });
       // Presented, not derived away: the terms this party hands the partner at
       // the terms exchange hold the value the operator set.

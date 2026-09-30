@@ -39,7 +39,7 @@ import {
 
 import { CONTROLS_ONLY_HEADER_PROFILE } from "../../utils/unnamedColumnProfiles";
 
-import type { LinkageStrategy } from "@alcove/core";
+import type { LinkageStrategy, LinkageTerms } from "@alcove/core";
 
 import type {
   DirectFileState,
@@ -64,6 +64,11 @@ const LINKAGE_STRATEGIES: ReadonlyArray<LinkageStrategy> = [
   "cascade",
   "single-pass",
 ];
+
+/** The column names a preview's terms state this party sends. */
+function sentColumns(preview: { linkageTerms: LinkageTerms }): Array<string> {
+  return preview.linkageTerms.payload?.send?.map((entry) => entry.name) ?? [];
+}
 
 describe("previewInferredTerms", () => {
   test("linkage keys and fields match core inference for the same columns", () => {
@@ -99,14 +104,11 @@ describe("previewInferredTerms", () => {
     );
     const disclosed = disclosedColumnNames(inferMetadata(columns, []));
 
-    expect(preview.disclosedPayloadColumns).toEqual(disclosed);
-    expect(preview.disclosedPayloadColumns).toEqual(["id"]);
-    expect(preview.disclosedPayloadColumns).not.toContain("program_code");
     // payload.send is authored from the disclosed set so the terms panel's "columns
     // sent" display is accurate rather than empty (the default terms hold no payload).
-    expect(
-      preview.linkageTerms.payload?.send?.map((entry) => entry.name),
-    ).toEqual(preview.disclosedPayloadColumns);
+    expect(sentColumns(preview)).toEqual(disclosed);
+    expect(sentColumns(preview)).toEqual(["id"]);
+    expect(sentColumns(preview)).not.toContain("program_code");
   });
 
   test("an unrecognized header past the ceiling is not sent, so it leaves the run gate open", () => {
@@ -120,7 +122,7 @@ describe("previewInferredTerms", () => {
       DIRECT_DEDUPLICATE_DEFAULT,
     );
     expect(preview.overlongDisclosedColumns).toEqual([]);
-    expect(preview.disclosedPayloadColumns).not.toContain(past);
+    expect(sentColumns(preview)).not.toContain(past);
   });
 
   test("an unrecognized header at the ceiling is not sent and leaves the run gate open", () => {
@@ -131,7 +133,7 @@ describe("previewInferredTerms", () => {
       DIRECT_LINKAGE_STRATEGY_DEFAULT,
       DIRECT_DEDUPLICATE_DEFAULT,
     );
-    expect(preview.disclosedPayloadColumns).not.toContain(atCeiling);
+    expect(sentColumns(preview)).not.toContain(atCeiling);
     expect(preview.overlongDisclosedColumns).toEqual([]);
   });
 
@@ -261,9 +263,7 @@ describe("the direct-exchange linkage strategy", () => {
     expect(singlePass.linkageTerms.linkageFields).toEqual(
       cascade.linkageTerms.linkageFields,
     );
-    expect(singlePass.disclosedPayloadColumns).toEqual(
-      cascade.disclosedPayloadColumns,
-    );
+    expect(sentColumns(singlePass)).toEqual(sentColumns(cascade));
   });
 
   test("only a non-default choice reaches the intent", () => {
@@ -308,9 +308,7 @@ describe("the direct-exchange deduplicate control", () => {
     expect(grouped.linkageTerms.linkageFields).toEqual(
       plain.linkageTerms.linkageFields,
     );
-    expect(grouped.disclosedPayloadColumns).toEqual(
-      plain.disclosedPayloadColumns,
-    );
+    expect(sentColumns(grouped)).toEqual(sentColumns(plain));
     expect(grouped.refusal).toBeUndefined();
   });
 

@@ -313,7 +313,6 @@ describe("applying a partner's terms update", () => {
             "Agency B",
           ),
           metadata: inferMetadata(CLI_TERMS_UPDATE_LINKAGE_COLUMNS, []),
-          expectedPayloadColumns: ["notes"],
           expectedPartnerDeduplicate: false,
         }),
         side: "acceptor",
@@ -380,10 +379,11 @@ describe("applying a partner's terms update", () => {
 
     const applied = await applyManagedTermsUpdate(record.id, reading);
     expect(storedRecord(record.id)).toEqual(applied);
-    expect(applied.exchangeFile.expectedPayloadColumns).toEqual([
-      "notes",
-      "county",
-    ]);
+    expect(
+      applied.exchangeFile.linkageTerms.payload?.receive?.map(
+        ({ name }) => name,
+      ),
+    ).toEqual(["notes", "county"]);
     expect(applied.exchangeFile.linkageTerms.identity).toBe("Agency B");
     expect(applied.sharedSecret).toBe(record.sharedSecret);
     expect(clearManagedExchangeTermsProposal).toHaveBeenCalledWith(record.id);
@@ -406,7 +406,7 @@ describe("applying a partner's terms update", () => {
     });
   });
 
-  test("records the columns received as alcove apply does for an update stating no disclosed columns", async () => {
+  test("applies an update made without metadata as alcove apply does", async () => {
     const record = await agencyBRecord();
     const madeWithoutMetadata = termsUpdateFor(
       {
@@ -420,14 +420,10 @@ describe("applying a partner's terms update", () => {
       CLI_TERMS_UPDATE_SECRET,
     );
     const update = await decodeTermsUpdate(encoded, CLI_TERMS_UPDATE_SECRET);
-    expect(update.disclosedPayloadColumns).toBeUndefined();
 
     const applied = await applyManagedTermsUpdate(
       record.id,
       await readManagedTermsUpdate(record, encoded),
-    );
-    expect(applied.exchangeFile.expectedPayloadColumns).toBe(
-      update.disclosedPayloadColumns,
     );
     expect(applied.exchangeFile.linkageTerms).toEqual(
       deriveAcceptedLinkageTerms(

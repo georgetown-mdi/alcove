@@ -6,7 +6,6 @@ import { MAX_NAME_LENGTH, MAX_TEXT_LENGTH } from "@alcove/core";
 
 import { JobIntentUncomposableError, JobManager } from "@jobs/jobManager";
 import {
-  MAX_EXPECTED_PAYLOAD_COLUMNS,
   MAX_METADATA_COLUMNS,
   MAX_METADATA_DESCRIPTION_LENGTH,
   MAX_STANDARDIZATION_STEPS,
@@ -93,10 +92,6 @@ function widestIntent(steps: number) {
   return validSftpIntent({
     metadata: maxMetadata(),
     standardization: maxStandardization(steps),
-    expectedPayloadColumns: Array.from(
-      { length: MAX_EXPECTED_PAYLOAD_COLUMNS },
-      (_unused, index) => paddedName("received", index),
-    ),
     retentionDisposition: "r".repeat(MAX_TEXT_LENGTH),
   });
 }
@@ -108,7 +103,6 @@ describe("the hand-off cap covers the create intent's schema maxima", () => {
         (MAX_NAME_LENGTH +
           MAX_METADATA_DESCRIPTION_LENGTH +
           ENTRY_OVERHEAD_BYTES) +
-      MAX_EXPECTED_PAYLOAD_COLUMNS * (MAX_NAME_LENGTH + ENTRY_OVERHEAD_BYTES) +
       MAX_STANDARDIZATION_TRANSFORMATIONS *
         (2 * MAX_NAME_LENGTH + ENTRY_OVERHEAD_BYTES);
     expect(MAX_JOB_HANDOFF_RESPONSE_BYTES).toBeGreaterThan(derived);

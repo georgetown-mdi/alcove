@@ -17,7 +17,6 @@ import {
   MAX_RECONNECT_ATTEMPTS,
   operatorSuppliedSpans,
   parseExchangeSpec,
-  reconcileReceivedPayload,
   RoundSetLimitError,
   safeParseConnectionConfig,
   setDiagnosticSink,
@@ -31,7 +30,6 @@ import {
 import type {
   ConnectionConfig,
   ConnectionEndpoint,
-  PartnerPayload,
   SFTPConnectionConfig,
   WebRTCConnectionConfig,
 } from "@alcove/core";
@@ -2703,7 +2701,6 @@ describe("runOnlineBootstrap", () => {
         { name: "dob" },
         { name: "zip" },
       ]);
-      expect(written.expected_payload_columns).toBeUndefined();
       expect(
         parseExchangeSpec(written).linkageTerms.payload?.receive,
       ).toHaveLength(2);
@@ -2823,21 +2820,14 @@ describe("runOnlineBootstrap, when the acceptance hook wrote no configuration", 
 
 /** Write the pre-existing config every reuse-refresh test below starts from: a
  *  loadable exchange config (so a recurring run's parseExchangeSpec reload is what
- *  the assertions read), plus a hand-authored comment and the stale commitment a
- *  prior acceptance recorded. The surgical write must overwrite or remove that
- *  commitment and leave the operator's comment and every other key alone. */
-function writeReusedConfigWithStaleLockIn(configPath: string): void {
+ *  the assertions read), plus a hand-authored comment. The surgical write must
+ *  leave the operator's comment and every other key alone. */
+function writeReusedConfig(configPath: string): void {
   saveConfig(configPath, {
     connection: { channel: "filedrop", path: "/tmp/alcove-drop" },
     linkageTerms: getDefaultLinkageTerms("Acceptor Org"),
   });
-  // The note trails the commitment rather than heading it: a comment written
-  // immediately above a key is that key's own, and the document model removes it
-  // along with the key when a subset-less acceptance removes the field.
-  fs.appendFileSync(
-    configPath,
-    "expected_payload_columns:\n  - old_col\n# operator note\n",
-  );
+  fs.appendFileSync(configPath, "# operator note\n");
 }
 
 describe("runOnlineBootstrap", () => {
@@ -2876,32 +2866,11 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
-  // --- runOnlineBootstrap: up-front token received-payload commitment (accept) -
-
-  test("persists the acceptor's up-front token received set into the fresh config", async () => {
-    // The online ACCEPTOR knows the columns it consented to receive up front from the
-    // token, so the set rides the acceptance hook's FIRST write. A later
-    // `alcove exchange` then locks it in and fails closed on a divergent payload.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        receivedPayloadLockIn: { consentedColumns: ["diagnosis", "notes"] },
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.expected_payload_columns).toEqual(["diagnosis", "notes"]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test("persists the acceptance's declared deduplicate into the fresh config", async () => {
-    // The terms-side twin of the commitment above, known at the same moment (the
-    // consent surface stated it) and included in the same first write. Without it a
-    // config born of an ONLINE acceptance runs its later recurring exchanges with
-    // nothing to hold the partner's presented cardinality to.
+    // Known before the exchange (the consent surface stated it), so it rides the
+    // acceptance hook's first write. Without it a config born of an ONLINE
+    // acceptance runs its later recurring exchanges with nothing to hold the
+    // partner's presented cardinality to.
     for (const declared of [false, true]) {
       mockSuccessfulExchange(undefined);
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
@@ -2940,77 +2909,6 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
-  test("persists an empty token set as a strict receive-nothing commitment", async () => {
-    // Unlike the observe path (which drops an ambiguous empty observation), an empty
-    // DISCLOSED subset held by the token is a real "receive nothing" commitment the
-    // operator consented to: a later non-empty payload must abort, so the empty set is
-    // written rather than left lazy.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        receivedPayloadLockIn: { consentedColumns: [] },
-      });
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.expected_payload_columns).toEqual([]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("omits the received commitment when the acceptor passes no token set", async () => {
-    // A subset-less invitation (an older or metadata-unknown mint) has no disclosed
-    // set, so the acceptor passes undefined and the fresh config records no
-    // commitment -- the recurring exchange reconciles lazily.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    try {
-      await runOnlineBootstrap(onlineBootstrapParams(configPath));
-      const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
-      expect(written.expected_payload_columns).toBeUndefined();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  // --- runOnlineBootstrap: reuse-path received-payload commitment refresh -------
-
-  test("refreshes a stale received commitment surgically on a reused config", async () => {
-    // The reuse path writes no fresh config, but the operator has just consented to
-    // THIS acceptance's disclosed set; leaving the prior acceptance's set standing
-    // would false-abort the next recurring exchange. The write is surgical: the
-    // operator's comment and other keys survive it.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    writeReusedConfigWithStaleLockIn(configPath);
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        reuseExistingConfig: true,
-        receivedPayloadLockIn: { consentedColumns: ["diagnosis", "notes"] },
-      });
-      const raw = fs.readFileSync(configPath, "utf8");
-      // The operator's comment and the rest of their config survive the write.
-      expect(raw).toContain("# operator note");
-      expect(raw).not.toContain("old_col");
-      const reloaded = parseExchangeSpec(YAML.parse(raw));
-      expect(reloaded.connection).toEqual({
-        channel: "filedrop",
-        path: "/tmp/alcove-drop",
-      });
-      expect(reloaded.linkageTerms).toEqual(
-        getDefaultLinkageTerms("Acceptor Org"),
-      );
-      expect(reloaded.expectedPayloadColumns).toEqual(["diagnosis", "notes"]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test("refreshes a stale declaration surgically on a reused config", async () => {
     // The reuse path writes no fresh config, so the declaration this acceptance
     // consented to reaches the kept config only through the surgical write. A prior
@@ -3019,7 +2917,7 @@ describe("runOnlineBootstrap", () => {
     mockSuccessfulExchange(undefined);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
-    writeReusedConfigWithStaleLockIn(configPath);
+    writeReusedConfig(configPath);
     fs.appendFileSync(configPath, "expected_partner_deduplicate: true\n");
     try {
       await runOnlineBootstrap({
@@ -3041,121 +2939,15 @@ describe("runOnlineBootstrap", () => {
   });
 });
 
-test("the refreshed reuse-path commitment fixes the false-abort a stale one would have caused", async () => {
-  // The end-to-end failure this closes. The kept config holds the partner's OLD
-  // disclosed set; the partner now discloses a new set, so a recurring exchange's
-  // reconcileReceivedPayload would abort an honest exchange. After the online
-  // re-accept the config holds the NEW set and the same reconcile passes --
-  // asserting the stale set would have thrown proves the refresh changed the
-  // outcome rather than the payload simply matching either way.
-  mockSuccessfulExchange(undefined);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  writeReusedConfigWithStaleLockIn(configPath);
-  try {
-    const staleLockIn = parseExchangeSpec(
-      YAML.parse(fs.readFileSync(configPath, "utf8")),
-    ).expectedPayloadColumns;
-    expect(staleLockIn).toEqual(["old_col"]);
-    await runOnlineBootstrap({
-      ...onlineBootstrapParams(configPath),
-      reuseExistingConfig: true,
-      receivedPayloadLockIn: { consentedColumns: ["diagnosis", "notes"] },
-    });
-    // Reload exactly as a recurring `alcove exchange` would, from the on-disk file.
-    const refreshedLockIn = parseExchangeSpec(
-      YAML.parse(fs.readFileSync(configPath, "utf8")),
-    ).expectedPayloadColumns;
-    // What the partner now transmits: its new disclosed set.
-    const partnerPayload: PartnerPayload = {
-      columns: ["diagnosis", "notes"],
-      rowIndices: [],
-      rows: [],
-    };
-    expect(() =>
-      reconcileReceivedPayload(partnerPayload, refreshedLockIn),
-    ).not.toThrow();
-    expect(() => reconcileReceivedPayload(partnerPayload, staleLockIn)).toThrow(
-      /payload disclosure mismatch/,
-    );
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 describe("runOnlineBootstrap", () => {
-  test("removes a reused config's commitment for a subset-less invitation", async () => {
-    // An acceptance whose invitation held no disclosed subset (an older or
-    // metadata-unknown mint) consented to no set: the prior commitment is cleared so the
-    // recurring exchange reconciles lazily, rather than enforcing a set this
-    // acceptance never showed.
+  test("leaves a reused config's record alone for a caller that owns none", async () => {
+    // A caller with no declaration of its own -- the online inviter -- must not
+    // have the record its config holds rewritten by the reuse refresh.
     mockSuccessfulExchange(undefined);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
-    writeReusedConfigWithStaleLockIn(configPath);
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        reuseExistingConfig: true,
-        receivedPayloadLockIn: { consentedColumns: undefined },
-      });
-      const raw = fs.readFileSync(configPath, "utf8");
-      expect(raw).toContain("# operator note");
-      expect(raw).not.toContain("expected_payload_columns");
-      expect(raw).not.toContain("old_col");
-      const reloaded = parseExchangeSpec(YAML.parse(raw));
-      expect(reloaded.linkageTerms).toEqual(
-        getDefaultLinkageTerms("Acceptor Org"),
-      );
-      expect(reloaded.expectedPayloadColumns).toBeUndefined();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("writes an empty reuse-path consented set verbatim", async () => {
-    // An empty disclosed subset is a real consent ("receive nothing"), distinct from
-    // absent: it replaces the stale set as an empty list, so a later non-empty payload
-    // aborts while an empty one still passes.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    writeReusedConfigWithStaleLockIn(configPath);
-    try {
-      await runOnlineBootstrap({
-        ...onlineBootstrapParams(configPath),
-        reuseExistingConfig: true,
-        receivedPayloadLockIn: { consentedColumns: [] },
-      });
-      const raw = fs.readFileSync(configPath, "utf8");
-      expect(raw).not.toContain("old_col");
-      const lockIn = parseExchangeSpec(YAML.parse(raw)).expectedPayloadColumns;
-      expect(lockIn).toEqual([]);
-      const received = (columns: string[]): PartnerPayload => ({
-        columns,
-        rowIndices: [],
-        rows: [],
-      });
-      expect(() =>
-        reconcileReceivedPayload(received(["diagnosis"]), lockIn),
-      ).toThrow(/payload disclosure mismatch/);
-      expect(() =>
-        reconcileReceivedPayload(received([]), lockIn),
-      ).not.toThrow();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("leaves a reused config's commitment alone for a caller that owns none", async () => {
-    // The wrapper's PRESENCE is what marks the caller that owns this field. A caller
-    // with no commitment of its own -- the online inviter -- must not have its
-    // recorded set removed by the reuse refresh, which would silently reopen the
-    // fail-closed enforcement its own config holds.
-    mockSuccessfulExchange(undefined);
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-    const configPath = path.join(dir, "alcove.yaml");
-    writeReusedConfigWithStaleLockIn(configPath);
+    writeReusedConfig(configPath);
+    fs.appendFileSync(configPath, "expected_partner_deduplicate: true\n");
     const before = fs.readFileSync(configPath, "utf8");
     try {
       await runOnlineBootstrap({
@@ -3168,13 +2960,13 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
-  test("keeps a failed reuse-path commitment refresh non-fatal and reported", async () => {
+  test("keeps a failed reuse-path record refresh non-fatal and reported", async () => {
     // The kept config stands whatever happens to the surgical refresh: here the
-    // config path is a directory, so both refreshes' reads throw. The completed
+    // config path is a directory, so the refresh's read throws. The completed
     // exchange is not undone -- nothing rethrows and no configWriteError is
-    // reported (that channel is for the fresh-config write) -- and each failure
-    // is reported separately, proving the writes are caught independently.
-    // getLogger("bootstrap-test") is silenced above, so the warns do not print.
+    // reported (that channel is for the fresh-config write) -- and the failure
+    // is reported. getLogger("bootstrap-test") is silenced above, so the warn
+    // does not print.
     mockSuccessfulExchange(undefined);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
@@ -3184,15 +2976,11 @@ describe("runOnlineBootstrap", () => {
       const { configWriteError } = await runOnlineBootstrap({
         ...onlineBootstrapParams(configPath),
         reuseExistingConfig: true,
-        receivedPayloadLockIn: { consentedColumns: ["diagnosis"] },
         expectedPartnerDeduplicate: true,
       });
       expect(configWriteError).toBeUndefined();
       expect(fs.statSync(configPath).isDirectory()).toBe(true);
       const warned = warn.mock.calls.map((call) => String(call[0]));
-      expect(
-        warned.filter((m) => m.includes("consented to receive")),
-      ).toHaveLength(1);
       expect(
         warned.filter((m) => m.includes("recording the duplicate matching")),
       ).toHaveLength(1);
@@ -3202,40 +2990,30 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
-  test("reports both lost reuse-path refreshes on fd 3 and in the exit code", async () => {
-    // The unattended half of the two surgical refreshes: the kept configuration
+  test("reports a lost reuse-path refresh on fd 3 and in the exit code", async () => {
+    // The unattended half of the surgical refresh: the kept configuration
     // stands, the exchange completed and must not be re-run, but the consent
-    // records the operator just consented to are not in it. Each failure puts its
-    // own `warning` on the machine-interface stream -- two lines, which is also
-    // what proves the two writes stay independently caught once they report -- and
-    // the run has the persistence-loss exit code rather than a clean 0.
+    // record the operator just consented to is not in it. The failure puts a
+    // `warning` on the machine-interface stream, and the run has the
+    // persistence-loss exit code rather than a clean 0.
     mockSuccessfulExchange(undefined);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
     const configPath = path.join(dir, "alcove.yaml");
-    fs.mkdirSync(configPath); // a directory: both refreshes' reads throw
+    fs.mkdirSync(configPath); // a directory: the refresh's read throws
     try {
       const { value, lines } = await captureFd3(() =>
         runOnlineBootstrap({
           ...onlineBootstrapParams(configPath),
           eventStream: true,
           reuseExistingConfig: true,
-          receivedPayloadLockIn: { consentedColumns: ["diagnosis"] },
           expectedPartnerDeduplicate: true,
         }),
       );
       expect(value.configWriteError).toBeUndefined();
       expect(process.exitCode).toBe(73);
       const messages = lines.map((l) => String(l.message));
-      expect(lines.map((l) => l.type)).toEqual(["warning", "warning"]);
-      // Both refreshes lose the same kind of write, so both take its source and
-      // the exit code it pairs with.
-      expect(lines.map((l) => l.source)).toEqual([
-        "persistenceLoss",
-        "persistenceLoss",
-      ]);
-      expect(
-        messages.filter((m) => m.includes("consented to receive")),
-      ).toHaveLength(1);
+      expect(lines.map((l) => l.type)).toEqual(["warning"]);
+      expect(lines.map((l) => l.source)).toEqual(["persistenceLoss"]);
       expect(
         messages.filter((m) => m.includes("recording the duplicate matching")),
       ).toHaveLength(1);
@@ -3243,78 +3021,6 @@ describe("runOnlineBootstrap", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
-});
-
-test("the persisted empty online-accept commitment aborts a later non-empty payload", async () => {
-  // The write-side test above proves an empty token set survives to disk as []; this
-  // closes the loop at ENFORCEMENT time: a recurring exchange reloads that strict
-  // "receive nothing" commitment and reconcileReceivedPayload aborts if the partner
-  // then transmits any column, while an empty received payload still passes.
-  mockSuccessfulExchange(undefined);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  try {
-    await runOnlineBootstrap({
-      ...onlineBootstrapParams(configPath),
-      receivedPayloadLockIn: { consentedColumns: [] },
-    });
-    const reloaded = parseExchangeSpec(
-      YAML.parse(fs.readFileSync(configPath, "utf8")),
-    );
-    const lockIn = reloaded.expectedPayloadColumns;
-    expect(lockIn).toEqual([]);
-    const received = (columns: string[]): PartnerPayload => ({
-      columns,
-      rowIndices: [],
-      rows: [],
-    });
-    // Any transmitted column diverges from the strict empty commitment and aborts.
-    expect(() =>
-      reconcileReceivedPayload(received(["diagnosis"]), lockIn),
-    ).toThrow(/payload disclosure mismatch/);
-    // An empty received payload matches the empty commitment and passes.
-    expect(() => reconcileReceivedPayload(received([]), lockIn)).not.toThrow();
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("the persisted online-accept commitment drives fail-closed recurring enforcement", async () => {
-  // End to end: the online accept writes expected_payload_columns from the token; a
-  // later `alcove exchange` reloads that config (parseExchangeSpec) and locks the
-  // set into reconcileReceivedPayload, which PASSES on a matching received payload
-  // and ABORTS on a divergent one -- the same guarantee the offline-accept and
-  // up-front-locked cases give.
-  mockSuccessfulExchange(undefined);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
-  const configPath = path.join(dir, "alcove.yaml");
-  try {
-    await runOnlineBootstrap({
-      ...onlineBootstrapParams(configPath),
-      receivedPayloadLockIn: { consentedColumns: ["diagnosis", "notes"] },
-    });
-    // Reload exactly as a recurring `alcove exchange` would, from the on-disk file.
-    const reloaded = parseExchangeSpec(
-      YAML.parse(fs.readFileSync(configPath, "utf8")),
-    );
-    const lockIn = reloaded.expectedPayloadColumns;
-    expect(lockIn).toEqual(["diagnosis", "notes"]);
-    const received = (columns: string[]): PartnerPayload => ({
-      columns,
-      rowIndices: [],
-      rows: [],
-    });
-    // Matching payload (order-insensitive) reconciles cleanly.
-    expect(() =>
-      reconcileReceivedPayload(received(["notes", "diagnosis"]), lockIn),
-    ).not.toThrow();
-    // A divergent payload aborts the exchange, fail-closed.
-    expect(() =>
-      reconcileReceivedPayload(received(["diagnosis", "ssn"]), lockIn),
-    ).toThrow(/payload disclosure mismatch/);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 describe("runOnlineBootstrap", () => {

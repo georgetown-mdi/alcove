@@ -18,7 +18,6 @@ import {
   NAME_SHAPE_MESSAGE,
   safeParseLinkageTermsTheReaderWrote,
 } from "../../src/config/linkageTermsSchema";
-import { reconcileReceivedPayload } from "../../src/payloadExchange";
 import { unreadKeyIssues } from "../../src/config/unreadKeys";
 import { camelizeKeys } from "../../src/utils/camelizeKeys";
 
@@ -63,24 +62,6 @@ test("metadata and standardization are optional", () => {
   expect(result.success).toBe(true);
 });
 
-test("expectedPayloadColumns: the local commitment field round-trips, including the empty set", () => {
-  // The offline-accept commitment: a top-level, per-party field (camelCase
-  // parsed, snake_case on disk). A non-empty list and the empty set are both
-  // valid -- the empty set is the strict "receive nothing" commitment -- while
-  // the field stays optional (absent = lazy).
-  expect(
-    parseExchangeSpec({
-      ...minimalSpec,
-      expected_payload_columns: ["notes", "member_id"],
-    }).expectedPayloadColumns,
-  ).toEqual(["notes", "member_id"]);
-  expect(
-    parseExchangeSpec({ ...minimalSpec, expected_payload_columns: [] })
-      .expectedPayloadColumns,
-  ).toEqual([]);
-  expect(parseExchangeSpec(minimalSpec).expectedPayloadColumns).toBeUndefined();
-});
-
 test("expectedPartnerDeduplicate: the terms-side commitment round-trips both booleans", () => {
   // The acceptance's terms-side binding: a top-level, per-party field (camelCase
   // parsed, snake_case on disk). `false` is a real declaration -- the one a
@@ -107,16 +88,6 @@ test("expectedPartnerDeduplicate: a non-boolean is rejected", () => {
   const result = safeParseExchangeSpec({
     ...minimalSpec,
     expected_partner_deduplicate: "false",
-  });
-  expect(result.success).toBe(false);
-});
-
-test("expectedPayloadColumns: an empty column name is rejected", () => {
-  // Names are partner-controlled; the per-entry min(1) floor rejects an empty name,
-  // matching the payload/metadata name floors.
-  const result = safeParseExchangeSpec({
-    ...minimalSpec,
-    expected_payload_columns: [""],
   });
   expect(result.success).toBe(false);
 });
@@ -259,28 +230,12 @@ test("a control character in a metadata name is rejected through this spec path"
   );
 });
 
-test("a name-class character is rejected in the local payload column list", () => {
-  // expected_payload_columns lists column names rather than terms, so it holds
-  // the same shape a terms payload name does. It is written from a partner's
-  // invitation, so this is what keeps the class out of the file. U+202E RLO,
-  // written as an escape.
-  const hostile = "risk\u202escore";
-  const result = safeParseExchangeSpec({
-    ...minimalSpec,
-    expected_payload_columns: [hostile],
-  });
-  expect(result.success).toBe(false);
-  if (result.success) return;
-  expect(result.error.issues.map((issue) => issue.path.join("."))).toContain(
-    "expectedPayloadColumns.0",
-  );
-  expect(JSON.stringify(result.error.issues)).toContain(NAME_SHAPE_MESSAGE);
-});
-
 test.each([
   "disclosed_payload_columns",
+  "expected_payload_columns",
   "outbound_payload_consent",
   "disclosedPayloadColumns",
+  "expectedPayloadColumns",
   "outboundPayloadConsent",
 ])(
   "a configuration holding %s is refused, naming the key and the remedy",
@@ -320,50 +275,19 @@ test("a configuration holding both retired settings is refused naming both", () 
   expect(retiredSettingIssue(["disclosed_payload_columns"])).toBeUndefined();
 });
 
-// --- Payload column-name duplicate normalization -----------------------------
-// The top-level list names each column once, the treatment the negotiated
-// payload dictionary already applies. It is hand-authorable in a recurring
-// config and compared against a set of columns holding each name once, so a
-// repeat left standing refuses the run for the operator's own typo.
-
-test("expectedPayloadColumns: a column named twice parses to one entry", () => {
-  expect(
-    parseExchangeSpec({
-      ...minimalSpec,
-      expected_payload_columns: ["notes", "member_id", "notes"],
-    }).expectedPayloadColumns,
-  ).toEqual(["notes", "member_id"]);
-});
+// --- Payload column-list count ----------------------------------------------
 
 test("a payload column list over the maximum count is refused by its authored count, not normalized under it", () => {
   // The count gate stands ahead of the collapse on the list: a list padded
   // with one name repeated is refused for the count it was authored with rather
   // than admitted for the single entry it would collapse to.
-  const padded = Array.from({ length: MAX_PAYLOAD_ENTRIES + 1 }, () => "dose");
-  const result = safeParseExchangeSpec({
-    ...minimalSpec,
-    expected_payload_columns: padded,
-  });
+  const padded = Array.from({ length: MAX_PAYLOAD_ENTRIES + 1 }, () => ({
+    name: "dose",
+  }));
+  const result = safeParseExchangeSpec(sendingColumns(padded));
   expect(result.success).toBe(false);
   if (result.success) return;
   expect(JSON.stringify(result.error.issues)).toContain("must not exceed");
-});
-
-test("expectedPayloadColumns: a repeat does not reach payload reconciliation as a mismatch", () => {
-  // The parsed list is what reconcileReceivedPayload compares the partner's
-  // transmitted columns against, element-wise over the sorted names. The second
-  // assertion is the uncollapsed control: a doubled entry reaching that
-  // comparison is a length mismatch, aborting with a protocol error that
-  // attributes the operator's own typo to the partner.
-  const declared = parseExchangeSpec({
-    ...minimalSpec,
-    expected_payload_columns: ["notes", "notes"],
-  }).expectedPayloadColumns;
-  const received = { columns: ["notes"], rowIndices: [0], rows: [["a note"]] };
-  expect(() => reconcileReceivedPayload(received, declared)).not.toThrow();
-  expect(() => reconcileReceivedPayload(received, ["notes", "notes"])).toThrow(
-    /payload disclosure mismatch/,
-  );
 });
 
 // --- parse vs safeParse ------------------------------------------------------
@@ -779,7 +703,6 @@ test("every key of a document that parses survives into the parse result", () =>
     ],
     standardization: [{ output: "last_name", input: "LAST_NAME", steps: [] }],
     retention_disposition: "Filed with the program office for seven years.",
-    expected_payload_columns: ["partner_program"],
     expected_partner_deduplicate: true,
     include_own_columns: "all",
     csv_delimiter: "|",
@@ -852,15 +775,15 @@ test("both spellings of one key are refused, naming each as the file writes it",
   // survive").
   const result = safeParseExchangeSpec({
     ...minimalSpec,
-    expected_payload_columns: ["partner_program"],
-    expectedPayloadColumns: ["other"],
+    expected_partner_deduplicate: true,
+    expectedPartnerDeduplicate: false,
   });
   expect(result.success).toBe(false);
   const issue = result.error?.issues[0];
   expect(issue?.path).toEqual([]);
-  expect(issue?.message).toContain('"expected_payload_columns"');
-  expect(issue?.message).toContain('"expectedPayloadColumns"');
-  expect(issue?.message).not.toContain("partner_program");
+  expect(issue?.message).toContain('"expected_partner_deduplicate"');
+  expect(issue?.message).toContain('"expectedPartnerDeduplicate"');
+  expect(issue?.message).not.toContain("true");
 });
 
 test("both spellings of one key are refused inside a block too", () => {

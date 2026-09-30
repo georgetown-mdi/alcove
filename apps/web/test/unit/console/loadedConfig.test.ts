@@ -279,12 +279,10 @@ describe("the authoring state a loaded document seeds", () => {
   test("the enforcement records reach the intent fields verbatim", () => {
     const state = authoringStateFromDocument(
       disclosed({
-        expectedPayloadColumns: ["partner_notes"],
         expectedPartnerDeduplicate: false,
       }),
     );
     expect(state.records).toEqual({
-      expectedPayloadColumns: ["partner_notes"],
       expectedPartnerDeduplicate: false,
     });
   });

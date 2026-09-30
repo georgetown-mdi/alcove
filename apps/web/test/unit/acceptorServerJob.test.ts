@@ -41,7 +41,6 @@ const token: InvitationToken = {
   version: "1",
   linkageTerms: inviterTerms,
   sharedSecret: "a".repeat(43),
-  disclosedPayloadColumns: ["program_code"],
 };
 
 // The acceptor's OWN authored column metadata (its own CSV namespace). `secret`
@@ -120,20 +119,15 @@ describe("acceptorServerJobConfig", () => {
     });
   });
 
-  test("mirrors the payload so `receive` is the inviter's disclosed `send`", () => {
+  test("mirrors the payload so `receive` is the inviter's declared `send`", () => {
     const config = configFor();
 
-    // The derive-mirror puts the inviter's disclosed send into the acceptor's
-    // payload.receive -- the SAME set the browser path commits to from
-    // disclosedPayloadColumns. On this fixture (payload.send aligned with
-    // disclosedPayloadColumns) it also equals the explicit expectedPayloadColumns
-    // commitment below; the divergence describe exercises the shape where it does not.
+    // The derive-mirror puts the inviter's declared send into the acceptor's
+    // payload.receive, which the terms exchange compares against the send set
+    // the inviter states there.
     expect(config.linkageTerms.payload?.receive).toEqual([
       { name: "program_code" },
     ]);
-    expect(config.linkageTerms.payload?.receive?.map((c) => c.name)).toEqual(
-      token.disclosedPayloadColumns,
-    );
   });
 
   test("has the acceptor's inline CSV source and the token's shared secret verbatim", () => {
@@ -182,11 +176,11 @@ describe("acceptorServerJobConfig", () => {
     });
     expect(config.transport).toEqual({ channel: "sftp" });
     // Everything below the transport discriminant is channel-independent: the
-    // derived own-perspective terms and the received-payload commitment are identical.
+    // derived own-perspective terms are identical.
     expect(config.linkageTerms.identity).toBe("Accepting Org");
-    expect(config.expectedPayloadColumns).toEqual(
-      token.disclosedPayloadColumns,
-    );
+    expect(config.linkageTerms.payload?.receive).toEqual([
+      { name: "program_code" },
+    ]);
   });
 
   test("has the operator's authored metadata and standardization edits", () => {
@@ -208,82 +202,14 @@ describe("acceptorServerJobConfig", () => {
     expect(disclosed).not.toContain("secret");
   });
 
-  test("sets the received-payload commitment from the disclosed set", () => {
-    const config = configFor();
-    expect(config.expectedPayloadColumns).toEqual(
-      token.disclosedPayloadColumns,
-    );
-  });
-
   test("states the acceptor side", () => {
     expect(configFor().side).toBe("acceptor");
   });
 });
 
-// The received-payload commitment the console acceptor must set EXPLICITLY, mirroring
-// the browser accept path (acceptorExchange.ts sets prepared.expectedPayloadColumns
-// from disclosedPayloadColumns). Without it the CLI falls back to
-// linkageTerms.payload.receive, which is undefined for a token that discloses
-// columns but has no payload.send -- a fail-OPEN shape a malicious inviter can
-// craft. These cases pin the empty-vs-absent distinction end to end.
-describe("acceptorServerJobConfig received-payload commitment", () => {
-  // The inviter perspective a malicious inviter can craft: it advertises no
-  // payload.send at all, yet the token discloses a column. The derive-mirror then
-  // produces no payload.receive, so the CLI's fallback would be undefined and
-  // reconcile lazily (fail open) unless expectedPayloadColumns is set explicitly.
-  const noSendTerms: LinkageTerms = {
-    ...inviterTerms,
-    payload: undefined,
-  };
-
-  function tokenWith(disclosed: Array<string> | undefined): InvitationToken {
-    return {
-      version: "1",
-      linkageTerms: noSendTerms,
-      sharedSecret: "a".repeat(43),
-      ...(disclosed !== undefined
-        ? { disclosedPayloadColumns: disclosed }
-        : {}),
-    };
-  }
-
-  function configFrom(disclosed: Array<string> | undefined) {
-    return acceptorServerJobConfig({
-      deduplicate: false,
-      token: tokenWith(disclosed),
-      acceptorName: "Accepting Org",
-      edits,
-      inputSource: { kind: "inline", csv: inputCsv },
-      transport: { channel: "filedrop" },
-    });
-  }
-
-  test("the commitment holds even when the token omits payload.send (the fail-open shape)", () => {
-    const config = configFrom(["program_code"]);
-    // The derive-mirror yields no payload.receive here, so the CLI fallback would be
-    // undefined; the explicit commitment is what enforces the received set.
-    expect(config.linkageTerms.payload?.receive).toBeUndefined();
-    expect(config.expectedPayloadColumns).toEqual(["program_code"]);
-  });
-
-  test("an empty disclosed set commits strictly (receive nothing), not lazily", () => {
-    const config = configFrom([]);
-    // An empty array must SURVIVE as an empty array -- a strict "receive nothing" --
-    // not be collapsed to undefined (which would reconcile lazily / fail open).
-    expect(config.expectedPayloadColumns).toEqual([]);
-    expect(config.expectedPayloadColumns).not.toBeUndefined();
-  });
-
-  test("an absent disclosed set leaves the commitment undefined (lazy)", () => {
-    const config = configFrom(undefined);
-    expect(config.expectedPayloadColumns).toBeUndefined();
-  });
-});
-
-// The terms-side commitment the console acceptor must hold for the same reason as
-// the received-payload one, and more sharply: the console runs `alcove
-// exchange` at a separate invocation, so a binding the browser held only in
-// memory would bind nothing there. The value is the invitation's declaration for
+// The terms-side commitment the console acceptor must hold: the console runs
+// `alcove exchange` at a separate invocation, so a binding the browser held only
+// in memory would bind nothing there. The value is the invitation's declaration for
 // the INVITER's side, never read off the acceptor's derived mirror.
 describe("acceptorServerJobConfig terms-side commitment", () => {
   function configWithDeclared(declared: boolean) {

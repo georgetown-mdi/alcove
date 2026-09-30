@@ -297,7 +297,7 @@ describe("a configuration on a channel the console does not conduct", () => {
 
   test("the channel notice stands in place of every notice about a run", () => {
     const { state } = mountedConfigurationRead(
-      openedWebrtc({ expectedPayloadColumns: ["own_notes"] }),
+      openedWebrtc({ expectedPartnerDeduplicate: true }),
     );
     const notices = mountedConfigurationNotices(state, {});
     expect(notices).toEqual([channelNotConductedNotice("webrtc")]);
@@ -391,7 +391,6 @@ describe("a configuration on a channel the console does not conduct", () => {
 
 describe("a record this flow has no control for opens and is named", () => {
   test.each([
-    ["expectedPayloadColumns", "expected_payload_columns", ["program_code"]],
     ["expectedPartnerDeduplicate", "expected_partner_deduplicate", true],
   ] as const)(
     "%s is held and named as the file spells it",
@@ -407,11 +406,10 @@ describe("a record this flow has no control for opens and is named", () => {
     },
   );
 
-  test("both are named beside the settings the route itself held", () => {
+  test("it is named beside the settings the route itself held", () => {
     const read = mountedConfigurationRead(
       opened(
         {
-          expectedPayloadColumns: [],
           expectedPartnerDeduplicate: false,
         },
         [UNCOMPOSED_SETTING],
@@ -422,7 +420,6 @@ describe("a record this flow has no control for opens and is named", () => {
     expect(read.state.carriedThrough).toEqual([
       UNCOMPOSED_SETTING,
       "expected_partner_deduplicate",
-      "expected_payload_columns",
     ]);
   });
 });
@@ -442,21 +439,18 @@ describe("the notices name the settings and say what happens to them", () => {
   });
 
   test("a record the run states is not named as unapplied", () => {
-    const notice = carriedThroughNotice([
-      "expected_payload_columns",
-      "expected_partner_deduplicate",
-    ]);
-    expect(notice).toContain("keeps each unchanged");
+    const notice = carriedThroughNotice(["expected_partner_deduplicate"]);
+    expect(notice).toContain("keeps it unchanged");
     expect(notice).not.toContain("does not apply");
   });
 
   test("several held settings are all named", () => {
     const notice = carriedThroughNotice([
       UNCOMPOSED_SETTING,
-      "expected_payload_columns",
+      "expected_partner_deduplicate",
     ]);
     expect(notice).toContain(UNCOMPOSED_SETTING);
-    expect(notice).toContain("expected_payload_columns");
+    expect(notice).toContain("expected_partner_deduplicate");
     expect(notice).toContain("keeps each unchanged");
     expect(notice).toContain(`does not apply ${UNCOMPOSED_SETTING}`);
   });

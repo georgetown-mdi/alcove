@@ -786,8 +786,8 @@ const CONFIG_APPEARED_LATE_REMEDY =
  * already reconciled a pre-existing config against the invitation and the URL,
  * so its connection, linkage, and operator content stand (the rotated key is
  * still saved by `runProtocol`). The acceptance's own machine-managed consent
- * records -- the received-payload commitment and the partner's declared
- * deduplicate -- are the exception, refreshed surgically in place. Otherwise
+ * record -- the partner's declared deduplicate -- is the exception, refreshed
+ * surgically in place. Otherwise
  * the hook re-gates the config path immediately before writing, matching the
  * offline path's `provisionConfigAndKey` re-gate, and reports a conflict as a
  * non-fatal `configWriteError` rather than aborting the already-completed
@@ -835,37 +835,15 @@ export async function runOnlineBootstrap(params: {
    */
   reuseExistingConfig?: boolean;
   /**
-   * The online ACCEPTOR's received-payload commitment for THIS acceptance: the
-   * set it consented to UP FRONT from the invitation token
-   * (`token.disclosedPayloadColumns`), recorded as the config's
-   * `expectedPayloadColumns` so a later recurring `alcove exchange` fails closed
-   * on a divergent received payload (reconcileReceivedPayload) -- the online
-   * sibling of the offline-accept persistence. This set is known BEFORE the
-   * exchange, so it rides the acceptance hook's FIRST write on a fresh config
-   * and a surgical in-place refresh of the kept config on the reuse path.
-   *
-   * The WRAPPER's presence -- not the columns inside it -- marks a caller that
-   * owns this field. `consentedColumns: undefined` is an acceptance whose
-   * invitation had no disclosed subset (an older or metadata-unknown mint): it
-   * records no field on a fresh config and REMOVES a stale one under reuse,
-   * leaving the recurring path to reconcile lazily. An absent parameter is a
-   * caller with no commitment of its own (the online INVITER). An empty array
-   * is a real "receive nothing" commitment (a later non-empty payload aborts),
-   * mirroring the offline path.
-   * The invitation bounds this set to `MAX_PAYLOAD_ENTRIES` at intake, so it
-   * needs no cap check here.
-   */
-  receivedPayloadLockIn?: { consentedColumns: string[] | undefined };
-  /**
    * The online ACCEPTOR's terms-side commitment for THIS acceptance: the
    * `deduplicate` the invitation declared for the INVITING party's own side
    * (`token.linkageTerms.deduplicate`), recorded as the config's
    * `expectedPartnerDeduplicate` so a later recurring `alcove exchange` refuses a
    * partner presenting any other value at the terms exchange
    * (assertPresentedDeduplicateMatchesInvitation) -- the online sibling of the
-   * offline-accept persistence, and the terms-side twin of
-   * `receivedPayloadLockIn` above. Rides the same first write on a fresh config
-   * and the same surgical in-place refresh of the kept config on the reuse path.
+   * offline-accept persistence. Known before the exchange, so it rides the
+   * acceptance hook's first write on a fresh config and a surgical in-place
+   * refresh of the kept config on the reuse path.
    *
    * `undefined` is a caller with no declaration to bind -- the online INVITER,
    * which accepted nothing -- and persists no field, leaving whatever the config
@@ -1045,40 +1023,12 @@ export async function runOnlineBootstrap(params: {
           // kept untouched. The rotated key is saved by runProtocol above; no
           // fresh config is written here, so `configWritten` stays false.
           //
-          // The two machine-managed consent records are the exception, each
-          // refreshed surgically in place: leaving a prior acceptance's value
-          // stale would false-abort the next recurring exchange against an
-          // honest partner. Each is gated on its own caller's input and caught
-          // independently, so one failure neither skips the other nor is fatal
-          // -- the kept config retains its prior state, and runProtocol treats
-          // a hook throw as non-fatal.
-          //
-          // The received commitment follows the ACCEPTANCE's decision, so its
-          // gate is the presence of a commitment at all: consented columns of
-          // undefined is a subset-less invitation, which REMOVES a stale field
-          // rather than leave a set this acceptance did not consent to, while a
-          // caller that owns no commitment (the inviter) never reaches this
-          // write.
-          const lossReport = {
-            log: {
-              warn: (message: string) =>
-                getLogger(params.loggerName).warn(message),
-            },
-            eventStream,
-          };
-          if (params.receivedPayloadLockIn !== undefined)
-            writeAcceptanceRecordReportingLoss(
-              params.configPath,
-              {
-                record: "expected_payload_columns",
-                columns: params.receivedPayloadLockIn.consentedColumns,
-              },
-              lossReport,
-            );
-          // The terms-side commitment is refreshed on the same gate as the
-          // received one: its presence marks an acceptance, whose declaration
-          // the operator has just consented to, while the inviter never reaches
-          // this write.
+          // The machine-managed consent record is the exception, refreshed
+          // surgically in place: leaving a prior acceptance's value stale would
+          // false-abort the next recurring exchange against an honest partner.
+          // A lost write is not fatal -- the kept config retains its prior
+          // state. Its presence marks an acceptance, whose declaration the
+          // operator has just consented to; the inviter never reaches it.
           if (params.expectedPartnerDeduplicate !== undefined)
             writeAcceptanceRecordReportingLoss(
               params.configPath,
@@ -1086,7 +1036,13 @@ export async function runOnlineBootstrap(params: {
                 record: "expected_partner_deduplicate",
                 declared: params.expectedPartnerDeduplicate,
               },
-              lossReport,
+              {
+                log: {
+                  warn: (message: string) =>
+                    getLogger(params.loggerName).warn(message),
+                },
+                eventStream,
+              },
             );
           // Unlike the offline path and the non-reuse branch below, there is no
           // config re-gate here: runProtocol already rotated and saved the key
@@ -1115,20 +1071,9 @@ export async function runOnlineBootstrap(params: {
         const firstConfig: ExchangeSpec = {
           connection: params.connection,
           ...params.dataSpec,
-          // The online ACCEPTOR's up-front token commitment rides this first
-          // write: the set is known before the exchange. Folded on the
-          // consented columns with the same `!== undefined` discriminant the
-          // offline-accept path uses -- an empty array is a real "receive
-          // nothing" commitment, only an absent set stays lazy.
-          ...(params.receivedPayloadLockIn?.consentedColumns !== undefined
-            ? {
-                expectedPayloadColumns:
-                  params.receivedPayloadLockIn.consentedColumns,
-              }
-            : {}),
-          // The acceptance's terms-side commitment, from that same moment: the
-          // invitation declared the inviter's cardinality side and the consent
-          // surface stated it, so a later recurring run refuses a partner
+          // The acceptance's terms-side commitment, known before the exchange:
+          // the invitation declared the inviter's cardinality side and the
+          // consent surface stated it, so a later recurring run refuses a partner
           // presenting anything else. Absent for the inviter, which accepted no
           // declaration.
           ...(params.expectedPartnerDeduplicate !== undefined

@@ -19,6 +19,7 @@ import { receiveCountReport } from "../../src/protocolSetup";
 import { verifyCommitmentOpening } from "../../src/records/exchangeRecord";
 import { UsageError } from "../../src/errors";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
+import { withHostilePayload } from "../utils/hostilePayload";
 import {
   ConnectionError,
   createMessagePipe,
@@ -89,28 +90,6 @@ function recording(
     send: (data) => {
       sent.push(data);
       return conn.send(data);
-    },
-    receive: (timeoutMs?: number) => conn.receive(timeoutMs),
-    close: () => conn.close(),
-  };
-}
-
-// Swaps this party's outbound no-data payload frame ({hasData: false}, the
-// only frame a genuine count-only run builds, since associationTable stays
-// undefined under countOnly) for a hostile non-empty one; every other frame
-// is untouched. Models a partner that reaches the wire directly instead of
-// through prepareForExchange/runExchange, bypassing the send-gate.
-function withHostilePayload(
-  conn: MessageConnection,
-  hostilePayload: unknown,
-): MessageConnection {
-  return {
-    send: (data) => {
-      const outgoing =
-        typeof data === "object" && data !== null && "hasData" in data
-          ? hostilePayload
-          : data;
-      return conn.send(outgoing);
     },
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),
     close: () => conn.close(),
@@ -615,7 +594,7 @@ test("a count-only run refuses an inbound payload column from a non-conforming p
   // (docs/spec/EXCHANGE_RECORD.md, Count-only records) regardless of what a
   // partner transmits. The outbound leg is closed structurally
   // (associationTable stays undefined under countOnly); this pins the inbound
-  // leg through the run's expectedReceive enforcement instead.
+  // leg through the run's refusal of any payload for a party receiving none.
   const [connInitiator, connResponder] = createMessagePipe();
   const hostilePayload = {
     hasData: true,
@@ -639,7 +618,7 @@ test("a count-only run refuses an inbound payload column from a non-conforming p
   ]);
 
   // The initiator is the party that receives the hostile frame, so it is the one
-  // that aborts through reconcileReceivedPayload's existing refusal.
+  // that aborts through assertNoPayloadReceived.
   expect(initiatorOutcome.status).toBe("rejected");
   const refusal =
     initiatorOutcome.status === "rejected"

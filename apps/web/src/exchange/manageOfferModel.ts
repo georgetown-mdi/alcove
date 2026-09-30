@@ -124,17 +124,6 @@ export interface ManagedExchangeDocumentParts {
   /** This party's per-party standardization, when authored. */
   standardization?: Standardization;
   /**
-   * This party's RECEIVE-side enforcement -- the acceptor supplies the
-   * invitation token's `disclosedPayloadColumns` (the partner's committed send
-   * set, in the partner's namespace), so a managed re-run fails CLOSED if the
-   * partner transmits a different set than was consented to at accept, exactly
-   * as the CLI accept persists it (docs/spec/FILE_SYNC.md, "Runtime lock-in").
-   * Empty means a strict "receive nothing" enforcement; absent means lazy (no set
-   * on the token). The inviter omits it: its received set is unknowable at mint,
-   * crystallized only by observing the first exchange.
-   */
-  expectedPayloadColumns?: Array<string>;
-  /**
    * This party's TERMS-side enforcement -- the acceptor supplies the invitation
    * token's `linkageTerms.deduplicate` (the value the invitation declared for the
    * INVITER's own side, and the one the consent screen stated), so a managed
@@ -170,11 +159,10 @@ export interface ManagedExchangeDocumentParts {
 
 /**
  * Compose this party's persisted exchange-file document from its own document
- * parts and the credential-free webrtc locator. The receive-side records
- * (`expectedPayloadColumns` and `expectedPartnerDeduplicate`) are
- * caller-supplied and held verbatim, never re-derived, so the persisted record
- * cannot disagree with the token's. An empty array is a strict record and is
- * preserved; only an absent field is omitted.
+ * parts and the credential-free webrtc locator. The terms-side record
+ * (`expectedPartnerDeduplicate`) is caller-supplied and held verbatim, never
+ * re-derived, so the persisted record cannot disagree with the token's. `false`
+ * is a real record and is preserved; only an absent field is omitted.
  *
  * Exported so the composition rules stay the tested boundary, even though
  * {@link buildManagedDeposit} is its only caller.
@@ -192,9 +180,6 @@ export function composeManagedDocument(
     ...(parts.metadata !== undefined ? { metadata: parts.metadata } : {}),
     ...(parts.standardization !== undefined
       ? { standardization: parts.standardization }
-      : {}),
-    ...(parts.expectedPayloadColumns !== undefined
-      ? { expectedPayloadColumns: parts.expectedPayloadColumns }
       : {}),
     ...(parts.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: parts.expectedPartnerDeduplicate }

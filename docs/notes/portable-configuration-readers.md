@@ -65,7 +65,7 @@ than against the result as a whole.
 
 The comparison runs between the camelized document and the parse result, so a key
 the camelize pre-pass itself dropped would be missing from neither side. A document
-writing one setting as both `expected_payload_columns` and `expectedPayloadColumns`
+writing one setting as both `expected_partner_deduplicate` and `expectedPartnerDeduplicate`
 states two keys that are read as one name, so the pre-pass refuses them itself,
 naming both as the file writes them (`KeyFoldCollisionError`, stated as a schema
 issue by `keyFoldCollisionIssue`). The same refusal holds on every path that folds
@@ -89,8 +89,8 @@ under `connection.options` the connection's own channel does not read
 read and webrtc's does not); and `provider_options` on a channel whose schema
 declares none (filedrop). One more divergence is in the naming rather than the
 outcome: a schema refusal named its field by the camelCase path the parsed shape
-uses, so `expected_payload_columns` reached the operator as
-`expectedPayloadColumns`. `describeConfigSchemaError` renders each path
+uses, so `expected_partner_deduplicate` reached the operator as
+`expectedPartnerDeduplicate`. `describeConfigSchemaError` renders each path
 segment in snake_case mechanically, so a block authored in camelCase (a
 `linkageTerms:` block, say) is still reported as `linkage_terms`; only the
 refused KEY is named as the file spells it, for both config-file call sites,
@@ -119,7 +119,7 @@ applies the same comparison
 (`safeParseLinkageTermsTheReaderWrote` and the `TheReaderWrote` siblings for the
 other two), so for those three blocks one file is accepted by both commands or
 refused by both, and refused naming the same key. A misspelled top-level key
-outside those three (`expected_payload_columns`, say) is not covered by this
+outside those three (`expected_partner_deduplicate`, say) is not covered by this
 comparison: `alcove invite`'s read still accepts it, and only `alcove
 exchange`'s full load refuses it, so the file still fails closed at exchange
 time rather than earlier.

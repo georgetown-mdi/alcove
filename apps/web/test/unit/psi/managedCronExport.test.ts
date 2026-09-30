@@ -690,7 +690,6 @@ describe("the exportable top-level document fields", () => {
           { name: "SSN", type: "ssn", role: "linkage", isPayload: false },
         ],
         standardization: [{ output: "ssn", input: "SSN" }],
-        expectedPayloadColumns: ["enrollment"],
         expectedPartnerDeduplicate: true,
       }),
     });

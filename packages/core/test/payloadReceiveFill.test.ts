@@ -62,7 +62,6 @@ const acceptorRows = [
 interface Party {
   metadata: Metadata;
   payload?: Payload;
-  expectedPayloadColumns?: string[];
   // The run options beside the library, given the frames this party has sent
   // so far so a callback can read what had moved when it was called.
   options?: (sent: Array<unknown>) => Partial<RunExchangeOptions>;
@@ -85,12 +84,8 @@ async function settle(inviter: Party, acceptor: Party) {
     close: () => conn.close(),
     setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
   });
-  const prepare = (
-    identity: string,
-    party: Party,
-    rows: typeof inviterRows,
-  ) => ({
-    ...prepareForExchange(
+  const prepare = (identity: string, party: Party, rows: typeof inviterRows) =>
+    prepareForExchange(
       {
         metadata: party.metadata,
         linkageTerms: {
@@ -102,11 +97,7 @@ async function settle(inviter: Party, acceptor: Party) {
       identity,
       rows,
       ["first_name", "note"],
-    ),
-    ...(party.expectedPayloadColumns !== undefined
-      ? { expectedPayloadColumns: party.expectedPayloadColumns }
-      : {}),
-  });
+    );
   const [inviterResult, acceptorResult] = await Promise.allSettled([
     runExchange(
       capturing(connInviter, inviterSent),
@@ -467,17 +458,6 @@ test("no send set is offered to a party holding a receive list, or from a partne
       return { accepted: true };
     },
   });
-  const held = await settle(
-    {
-      metadata: sendsNothing,
-      expectedPayloadColumns: ["note"],
-      options: offering,
-    },
-    { metadata: sendsNote },
-  );
-  expect(fulfilled(held.inviterResult).partnerPayload.columns).toEqual([
-    "note",
-  ]);
   const stated = await settle(
     {
       metadata: sendsNothing,
@@ -486,7 +466,9 @@ test("no send set is offered to a party holding a receive list, or from a partne
     },
     { metadata: sendsNote },
   );
-  fulfilled(stated.inviterResult);
+  expect(fulfilled(stated.inviterResult).partnerPayload.columns).toEqual([
+    "note",
+  ]);
   const none = await settle(
     { metadata: sendsNothing, options: offering },
     { metadata: sendsNothing },

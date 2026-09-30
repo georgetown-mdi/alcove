@@ -91,7 +91,6 @@ function establish(): Setup {
     connection: { channel: "filedrop", path: "/mnt/b" },
     linkageTerms: bTerms,
     metadata: metadataWith(),
-    expectedPayloadColumns: ["notes"],
     expectedPartnerDeduplicate: false,
   });
   const secret = generateSharedSecret();
@@ -169,7 +168,6 @@ describe("an attended run", () => {
     expect(stderr).toContain("county");
     const after = readSpec(setup.config);
     expect(receivedColumns(after)).toEqual(["notes", "county"]);
-    expect(after.expectedPayloadColumns).toEqual(["notes", "county"]);
     expect(after.expectedPartnerDeduplicate).toBe(false);
     expect(fs.existsSync(termsProposalPath(setup.config))).toBe(false);
   });
@@ -267,7 +265,6 @@ describe("an unattended run", () => {
     }
     const applied = readSpec(setup.config);
     expect(receivedColumns(applied)).toEqual(["notes", "county"]);
-    expect(applied.expectedPayloadColumns).toEqual(["notes", "county"]);
 
     // A re-run agrees terms with the partner with nothing left to take on.
     const [connA, connB] = createMessagePipe();
@@ -285,10 +282,6 @@ describe("an unattended run", () => {
         undefined,
         undefined,
         true,
-        undefined,
-        {
-          expectedReceive: applied.expectedPayloadColumns,
-        },
       ),
     ]);
     expect(partnerSide.status).toBe("fulfilled");
@@ -336,7 +329,6 @@ async function exchangeWithPartner(
     rowsFor(bMetadata, "b"),
     bMetadata.map(({ name }) => name),
   );
-  bPrepared.expectedPayloadColumns = spec.expectedPayloadColumns;
   bPrepared.expectedPartnerDeduplicate = spec.expectedPartnerDeduplicate;
   const aPrepared = prepareForExchange(
     { metadata: setup.partnerMetadata, linkageTerms: partnerTerms },

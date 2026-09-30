@@ -9,7 +9,8 @@
  *
  * Re-invite is an INVITER-role act. The invitation holds the linkage terms in the
  * inviter's own namespace, which the partner's accept mirrors into its perspective
- * (core's `deriveAcceptedLinkageTerms`) and locks its receive set against. Only the
+ * (core's `deriveAcceptedLinkageTerms`), its `payload.send` becoming the partner's
+ * `payload.receive`. Only the
  * `side: "inviter"` party holds those terms verbatim; the acceptor's stored document
  * is its own MIRRORED perspective (identity replaced, payload mirrored) and cannot be
  * reversed to the original inviter terms, so the acceptor does not re-mint -- its
@@ -18,11 +19,11 @@
  * from the existing configuration by the inviting party.
  *
  * What the freshly minted invitation must include so the partner's accept
- * still locks in correctly, sourced from the stored inviter document:
+ * records the same terms, sourced from the stored inviter document:
  *
  * - `linkageTerms` -- the document's terms (the inviter's own perspective), so the
  *   partner adopts the same set it did originally, with `payload.send` stated from
- *   the document's metadata where it holds one, beside the disclosed columns.
+ *   the document's metadata where it holds one.
  * - `connectionEndpoint` -- built FRESH from this app's current signaling location,
  *   not the document's stored `server` locator: the inviter derives its rendezvous
  *   from `window.location` on the re-run path, so the stored locator is inert (see
@@ -48,7 +49,6 @@
 import {
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
-  disclosedColumnNames,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
@@ -116,8 +116,8 @@ function buildReinviteRotation(
  * Build the fresh invitation token a re-invite mints from the stored inviter
  * document: the document's linkage terms, a fresh webrtc endpoint from the
  * current location, the fresh setup secret, and the bounded setup expiry.
- * Where the document holds metadata, `payload.send` and the disclosed columns
- * are stated from it, as a first mint states them; without metadata the terms
+ * Where the document holds metadata, `payload.send` is stated from it, as a
+ * first mint states it; without metadata the terms
  * are sent as stored. The token holds no credential -- the endpoint is
  * credential-free by construction and `encodeInvitation` re-validates it
  * through the strict endpoint schema (see {@link ./invitation.ts}).
@@ -139,9 +139,6 @@ function buildReinviteToken(
     sharedSecret: freshSecret,
     expires: tokenExpires,
     connectionEndpoint: invitationWebrtcEndpoint(location, ownRelay),
-    ...(metadata !== undefined
-      ? { disclosedPayloadColumns: disclosedColumnNames(metadata) }
-      : {}),
   };
 }
 

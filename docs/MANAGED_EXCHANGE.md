@@ -1730,18 +1730,19 @@ retry, and nothing is sent until the partner takes the change on.
 
 A re-invite reopens **the secret, not the agreement**. On the inviter's side
 nothing is re-authored: the fresh invitation is composed from the stored
-document alone, reusing its linkage terms and its committed set of disclosed
-columns verbatim, and the setup secret is the only part newly minted --
+document alone, reusing its linkage terms, with the columns it sends stated
+from its stored metadata as a first invitation states them, and the setup
+secret is the only part newly minted --
 alongside a rendezvous locator rebuilt from where the app is running and the
 invitation's own fresh setup lifetime (see [Recovery: fast
 re-invite](#recovery-fast-re-invite)). The accepting side is not a no-op,
 though. Only the inviter can re-mint from a stored document, so the partner's
 route is to accept a fresh invitation: it walks the accept flow again and
 re-enters its own local fields -- its name, its metadata, its standardization
--- none of which are terms the two parties agreed. Its receive commitment lands
-on the same set it originally agreed to because the re-invite reused that set,
-not because anything checks the new invitation against the old; no such
-comparison exists, so an acceptor reviews a fresh invitation on its own merits,
+-- none of which are terms the two parties agreed. The columns it receives land
+on the set it originally agreed to where the inviter's stored metadata still
+sends that set, not because anything checks the new invitation against the old;
+no such comparison exists, so an acceptor reviews a fresh invitation on its own merits,
 exactly as at setup.
 
 What a re-run is authenticated against is **continuity of the shared secret**,

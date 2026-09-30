@@ -7,7 +7,6 @@ import {
   assertTransformsCompile,
   assessLinkageSatisfiability,
   decideLinkageTermsVerdict,
-  disclosedColumnNames,
   encodeInvitation,
   endpointRequiresRetainedFiles,
   generateSharedSecret,
@@ -616,15 +615,9 @@ export async function generateInvitation(params: {
   // the columns can satisfy). Both state payload.send from the disclosing
   // metadata below. standardization is left to CSV inference downstream in
   // both cases.
-  //
-  // disclosedPayloadColumns is the disclosed set the token holds. Always
-  // set, including the EMPTY set when nothing is disclosed -- an empty set
-  // is a constraint (it locks the acceptor in to "receive nothing"), not the
-  // absent/lazy case.
-  let disclosedPayloadColumns: Array<string>;
   let linkageTerms: LinkageTerms;
-  // The metadata whose marks decide what is disclosed, kept beside the derived set
-  // so the mint-boundary bound below reads the same columns the send does.
+  // The metadata whose marks decide what is disclosed, so the mint-boundary
+  // bound below reads the same columns the send does.
   let disclosureMetadata: Metadata;
   if (params.linkageTerms !== undefined) {
     linkageTerms = params.linkageTerms;
@@ -663,7 +656,6 @@ export async function generateInvitation(params: {
       );
     disclosureMetadata =
       params.metadata ?? inferMetadata(columns, sanitizedPositions);
-    disclosedPayloadColumns = disclosedColumnNames(disclosureMetadata);
   } else {
     const metadata = inferMetadata(columns, sanitizedPositions);
     disclosureMetadata = metadata;
@@ -683,8 +675,6 @@ export async function generateInvitation(params: {
     );
     if (refusal !== undefined)
       throw new InvitationFileError({ kind: "unlinkable", refusal });
-
-    disclosedPayloadColumns = disclosedColumnNames(metadata);
   }
 
   // State terms.payload.send from the metadata that decides what is disclosed,
@@ -767,7 +757,6 @@ export async function generateInvitation(params: {
     sharedSecret,
     expires,
     connectionEndpoint: resolveConnectionEndpoint(connectionEndpoint, location),
-    disclosedPayloadColumns,
     ...(declaresRetainedFiles ? { inviterRetainsFiles: true } : {}),
   };
 

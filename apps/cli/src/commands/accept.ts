@@ -39,7 +39,6 @@ import {
 import {
   deriveAcceptedInvitationTerms,
   diffKeptLinkageTerms,
-  receivedCommitmentRemovalWarning,
   refreshAcceptanceRecords,
   type AcceptedInvitationTerms,
 } from "../acceptedTermsRecords";
@@ -521,7 +520,6 @@ export async function validateAccept(params: {
       configPath: options.configFile,
       existing: keptConfig,
       myTerms,
-      consentedPayloadColumns: accepted.expectedPayloadColumns,
       target: connection,
       log,
     });
@@ -561,12 +559,6 @@ export async function validateAccept(params: {
     });
 
     const prepared = await prepareForOnlineExchange(dataSpec, myIdentity, rows);
-    // Bind the columns the invitation declared the inviter will send, so the
-    // exchange aborts if the payload actually received does not match what the
-    // operator consented to (see reconcileReceivedPayload). Absent on an
-    // invitation that had no disclosed subset (an older or metadata-unknown
-    // mint path), which this party then reconciles lazily instead.
-    prepared.expectedPayloadColumns = accepted.expectedPayloadColumns;
     // Bind the inviting party's own side of the cardinality to what this
     // acceptance consented to: the invitation declared it, the consent surface
     // stated it, and nothing in the agreed terms compares the two sides -- so a
@@ -604,7 +596,6 @@ export async function validateAccept(params: {
     configPath: options.configFile,
     existing: keptConfig,
     myTerms,
-    consentedPayloadColumns: accepted.expectedPayloadColumns,
     log,
   });
   const { connection: endpointConnection, seeded } = connectionFromEndpoint(
@@ -722,10 +713,9 @@ export async function validateAccept(params: {
       () => {},
     );
     const prepared = await prepareForOnlineExchange(dataSpec, myIdentity, rows);
-    // The same two bindings the URL-driven mode sets on its prepared exchange,
-    // for the same single run: the columns the invitation declared its party
-    // will send, and the cardinality side it declared for itself.
-    prepared.expectedPayloadColumns = accepted.expectedPayloadColumns;
+    // The same binding the URL-driven mode sets on its prepared exchange, for
+    // the same single run: the cardinality side the invitation declared for
+    // its own party.
     prepared.expectedPartnerDeduplicate = accepted.expectedPartnerDeduplicate;
     return {
       mode: "endpointRun",
@@ -929,11 +919,6 @@ function keptConfigurationRelayNote(
  * so it is kept and only the key file is written. Throws a {@link UsageError} --
  * before the prompt and before any network activity -- when it disagrees,
  * showing the user exactly what to resolve.
- *
- * Both accept-reuse paths -- offline, and online ahead of any network activity --
- * reach the received-payload warning below through this one call, so a single
- * wording covers both and lands before the confirmation prompt, where the
- * operator can still decline what it reports.
  */
 function reconcileAcceptConfig(params: {
   configPath: string;
@@ -945,24 +930,10 @@ function reconcileAcceptConfig(params: {
    */
   existing: ExchangeSpec | undefined;
   myTerms: LinkageTerms;
-  /**
-   * The disclosed subset this acceptance consents to, from the invitation token.
-   * Compared against the kept config's recorded commitment only to warn about a
-   * removal; what is persisted is decided by the caller's own write (see
-   * {@link refreshAcceptanceRecords}).
-   */
-  consentedPayloadColumns: string[] | undefined;
   target?: RunnableConnectionConfig;
   log: ReturnType<typeof getLogger>;
 }): { reuse: boolean } {
-  const {
-    configPath,
-    existing,
-    myTerms,
-    consentedPayloadColumns,
-    target,
-    log,
-  } = params;
+  const { configPath, existing, myTerms, target, log } = params;
   if (existing === undefined) return { reuse: false };
   // A `target` connection is present only online, which is what decides the
   // source(s) every message here names.
@@ -1010,18 +981,6 @@ function reconcileAcceptConfig(params: {
         `the saved config is left unchanged:\n` +
         conn.warnings.map((w) => `  - ${w}`).join("\n"),
     );
-
-  // A kept config's recorded received-set commitment is REMOVED when
-  // re-accepted from an invitation with no disclosed subset -- the contract
-  // leaves no set standing that this acceptance did not show -- so the next run
-  // reconciles the received payload lazily instead. The warning puts that
-  // removal in front of the operator before they confirm.
-  const commitmentRemoval = receivedCommitmentRemovalWarning({
-    configPath,
-    recorded: existing.expectedPayloadColumns,
-    consented: consentedPayloadColumns,
-  });
-  if (commitmentRemoval !== undefined) log.warn(commitmentRemoval);
 
   log.info(
     conn.warnings.length === 0
@@ -1248,26 +1207,11 @@ export async function handler(argv: Arguments): Promise<void> {
           // Asked where the acceptance was: at a terminal, and not under
           // --consent-to-terms, which declares the run unattended.
           interactive: process.stdin.isTTY === true && !consentToTerms,
-          // Persist the consented received-column commitment so the later
-          // `alcove exchange` enforces it via reconcileReceivedPayload, the
-          // online sibling of the offline path's expectedPayloadColumns write
-          // below. The set is known up front from the token, so it rides the
-          // acceptance hook's first write on a fresh config and refreshes the
-          // kept config's field surgically on reuse, since the operator has just
-          // re-consented and a stale prior set would false-abort the next
-          // recurring exchange. Consented columns of undefined -- an invitation
-          // with no disclosed subset -- record no commitment and remove a stale
-          // one, leaving the exchange to reconcile lazily.
-          receivedPayloadLockIn: {
-            consentedColumns: ready.accepted.expectedPayloadColumns,
-          },
-          // Record the invitation's declared cardinality side in the same write,
-          // and refresh it in place under reuse, so a later `alcove exchange`
-          // from this configuration refuses a partner presenting a value this
-          // acceptance did not consent to. The in-memory binding set on `prepared`
-          // covers only this single run. Unlike the received-column commitment it
-          // has no "holds nothing" case: `deduplicate` is mandatory in the
-          // linkage terms every invitation states.
+          // Record the invitation's declared cardinality side in the acceptance
+          // hook's first write, and refresh it in place under reuse, so a later
+          // `alcove exchange` from this configuration refuses a partner
+          // presenting a value this acceptance did not consent to. The
+          // in-memory binding set on `prepared` covers only this single run.
           expectedPartnerDeduplicate: ready.accepted.expectedPartnerDeduplicate,
         });
         // The summary only; the exit code a failed persistence implies was set
@@ -1284,23 +1228,11 @@ export async function handler(argv: Arguments): Promise<void> {
       const spec: ExchangeSpec = {
         connection: ready.connection,
         ...ready.dataSpec,
-        // Persist the consented received-column commitment so the later `alcove
-        // exchange` enforces it. Offline accept's enforcement happens at a separate
-        // invocation, so it must be written here; the online path persists the same
-        // set into its own fresh config (via runOnlineBootstrap above) in addition to
-        // enforcing it in memory for its single run. Recorded in the inviter's
-        // namespace, distinct from payload.receive. Omitted -- and reconciled lazily
-        // -- when the invitation had no disclosed subset (an older or
-        // metadata-unknown mint).
-        ...(ready.accepted.expectedPayloadColumns !== undefined
-          ? { expectedPayloadColumns: ready.accepted.expectedPayloadColumns }
-          : {}),
         // Persist the invitation's declared cardinality side so the later
         // `alcove exchange` holds the partner's presented value to it
-        // (assertPresentedDeduplicateMatchesInvitation). The terms-side twin of
-        // the received-column commitment above, needed here for the same reason:
-        // offline accept's enforcement happens at a separate invocation, so a
-        // declaration held only in memory would bind nothing. The invitation's
+        // (assertPresentedDeduplicateMatchesInvitation): offline accept's
+        // enforcement happens at a separate invocation, so a declaration held
+        // only in memory would bind nothing. The invitation's
         // linkage terms hold the INVITER's own side; this party's own value is
         // the mirror's false and rides `linkageTerms` in the spread above.
         expectedPartnerDeduplicate: ready.accepted.expectedPartnerDeduplicate,
@@ -1324,12 +1256,11 @@ export async function handler(argv: Arguments): Promise<void> {
           refreshReusedConfig: (keptConfigPath) => {
             // The operator has just re-consented to THIS invitation's terms (the
             // prompt above, or --consent-to-terms, gates every write here), so
-            // the machine-managed consent records are rewritten while the
+            // the machine-managed consent record is rewritten while the
             // connection and linkage blocks are kept: a prior value would
             // false-abort the next recurring exchange or bind it to terms nobody
             // consented to.
             refreshAcceptanceRecords(keptConfigPath, {
-              expectedPayloadColumns: ready.accepted.expectedPayloadColumns,
               expectedPartnerDeduplicate:
                 ready.accepted.expectedPartnerDeduplicate,
             });

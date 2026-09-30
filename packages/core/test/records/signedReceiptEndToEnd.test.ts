@@ -15,7 +15,7 @@ import {
   ConnectionError,
   createMessagePipe,
 } from "../../src/connection/messageConnection";
-import { misstatingPayloadSend } from "../utils/misstatedPayloadSend";
+import { withHostilePayload } from "../utils/hostilePayload";
 import {
   OperatorConfigError,
   TransportPublishIndeterminateError,
@@ -1088,7 +1088,7 @@ describe("the partner terms the receipt retains", () => {
 
 // A second pair of datasets holding a payload column, for the routes that need
 // one to have crossed. The suite's main fixtures link on first_name alone, and a
-// party that transmits nothing gives the received-payload check nothing to refuse.
+// party that transmits nothing leaves no payload to have crossed.
 const payloadServer = [
   { first_name: "Carol", note: "s-c" },
   { first_name: "Elizabeth", note: "s-e" },
@@ -1105,11 +1105,15 @@ const firstNameAndSentNote: Metadata = [
 ];
 
 /** The suite's `prepared`, with `note` declared as a transmitted payload column. */
-function preparedWithPayload(identity: string, rows: typeof payloadServer) {
+function preparedWithPayload(
+  identity: string,
+  rows: typeof payloadServer,
+  output: Output = both,
+) {
   return prepareForExchange(
     {
       metadata: firstNameAndSentNote,
-      linkageTerms: { ...firstNameTerms, identity, output: both },
+      linkageTerms: { ...firstNameTerms, identity, output },
     },
     identity,
     rows,
@@ -1502,28 +1506,36 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     await unnamed;
   });
 
-  test("a received payload outside the consented set terminates with a record too", async () => {
+  test("a received payload for a party that receives none terminates with a record too", async () => {
     // The route past the payload exchange that is not the swap. The initiator
-    // has locked in a column set the responder does not transmit, and the
-    // responder's terms claim to send it, so reconcileReceivedPayload
-    // refuses AFTER both payloads have crossed: this
-    // party's own data has been handed to the transport whatever came back, so the
-    // disclosure is owed a record exactly as a terminated swap's is. Both sides
-    // run unsigned, so the receipt step plays no part in producing it.
+    // is entitled to no result, and the responder puts a payload column on the
+    // wire regardless, so the initiator refuses it AFTER both payloads have
+    // crossed: this party's own data has been handed to the transport whatever
+    // came back, so the disclosure is owed a record exactly as a terminated
+    // swap's is. Both sides run unsigned, so the receipt step plays no part in
+    // producing it.
     const initiatorPrepared = preparedWithPayload(
       "Initiator Co",
       payloadClient,
+      { expectsOutput: false, shareWithPartner: true },
     );
-    initiatorPrepared.expectedPayloadColumns = ["a_column_never_sent"];
     const [connInitiator, connResponder] = createMessagePipe();
     const [initiatorSettled, responderSettled] = await Promise.allSettled([
       runExchange(connInitiator, "initiator", initiatorPrepared, {
         psiLibrary,
       }),
       runExchange(
-        misstatingPayloadSend(connResponder, [{ name: "a_column_never_sent" }]),
+        withHostilePayload(connResponder, {
+          hasData: true,
+          columns: ["note"],
+          rowIndices: [0],
+          rows: [["s-c"]],
+        }),
         "responder",
-        preparedWithPayload("Responder Co", payloadServer),
+        preparedWithPayload("Responder Co", payloadServer, {
+          expectsOutput: true,
+          shareWithPartner: false,
+        }),
         { psiLibrary },
       ),
     ]);
@@ -1532,6 +1544,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const failure = (initiatorSettled as PromiseRejectedResult).reason;
     expect(failure).toBeInstanceOf(ConnectionError);
     expect((failure as ConnectionError).kind).toBe("protocol");
+    expect((failure as Error).message).toContain("no payload at all");
 
     const kept = exchangeRecordFromFailure(failure);
     expect(kept?.record.outcome).toBe("receipt-swap-terminated");
@@ -1539,18 +1552,14 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     // An unsigned run presents and pins no certificate, and the refusal is
     // about the columns that arrived, so nothing was observed about either.
     expect(kept?.record.certificateMismatchObserved).toBe(false);
-    // The record attests both directions of the disclosure, the refused inbound
-    // payload included: what arrived is part of what happened.
     expect(kept?.record.governance.payloadSent).toEqual([{ name: "note" }]);
-    expect(kept?.record.governance.payloadReceived).toEqual([{ name: "note" }]);
-    expect(kept?.record.commitments.associationTable).toBeDefined();
     // This run derived no binder, so it holds none -- the presence rule is "the
     // run derived one", and the outcome beside it is what says no receipt exists.
     expect(kept?.record.receiptBinder).toBeUndefined();
     expect(exchangeRecordOwedButUnbuilt(failure)).toBe(false);
 
-    // The refusal is local to the party that locked in: the responder, which
-    // locked in nothing, completes its own half and records that.
+    // The refusal is local to the party receiving the hostile frame: the
+    // responder completes its own half and records that.
     expect(responderSettled.status).toBe("fulfilled");
     const responder = (
       responderSettled as PromiseFulfilledResult<ExchangeResult>

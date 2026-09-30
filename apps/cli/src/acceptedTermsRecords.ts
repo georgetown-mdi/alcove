@@ -1,12 +1,12 @@
 /**
  * The terms an acceptance adopts from an invitation, the comparison of those
  * terms against a configuration that already exists, and the fail-closed
- * records an acceptance writes into that configuration:
- * `expected_payload_columns` and `expected_partner_deduplicate`.
+ * record an acceptance writes into that configuration:
+ * `expected_partner_deduplicate`.
  *
  * Every entry point takes what it needs as arguments, so any command that
  * records consent to an invitation's terms drives the same derivation and the
- * same writes. A record these writes lose disables a check a later
+ * same write. A lost write of that record disables a check a later
  * `alcove exchange` makes, with no signal at run time, so a caller either
  * lets the write throw or takes {@link writeAcceptanceRecordReportingLoss},
  * which sets the persistence-loss exit code.
@@ -14,9 +14,6 @@
 
 import {
   deriveAcceptedLinkageTerms,
-  redactAndRenderOperatorSuppliedText,
-  redactAndSanitizeForDisplay,
-  operatorSuppliedText,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
 import type {
@@ -31,7 +28,6 @@ import {
   linkageTermsStandingOf,
   type TermsUpdateWrite,
   persistExpectedPartnerDeduplicate,
-  persistExpectedPayloadColumns,
   warnOnLinkageRuleSetCitationDrift,
   type CitationDriftAlternative,
   type ReconcileDiff,
@@ -46,12 +42,6 @@ export interface AcceptedInvitationTerms {
    * mirrored (see `deriveAcceptedLinkageTerms` in core).
    */
   linkageTerms: LinkageTerms;
-  /**
-   * The columns the invitation declared the inviting party sends, recorded as
-   * `expected_payload_columns`. Undefined where the invitation declared no
-   * disclosed subset, which records no commitment.
-   */
-  expectedPayloadColumns: string[] | undefined;
   /**
    * The `deduplicate` the invitation declared for the inviting party's own
    * side, recorded as `expected_partner_deduplicate`.
@@ -71,10 +61,7 @@ export interface AcceptedInvitationTerms {
  * update keeps the value the configuration already holds.
  */
 export function deriveAcceptedInvitationTerms(
-  token: Pick<
-    InvitationToken,
-    "linkageTerms" | "disclosedPayloadColumns" | "connectionEndpoint"
-  >,
+  token: Pick<InvitationToken, "linkageTerms" | "connectionEndpoint">,
   identity: string,
   ownDeduplicate = false,
 ): AcceptedInvitationTerms {
@@ -84,7 +71,6 @@ export function deriveAcceptedInvitationTerms(
       identity,
       ownDeduplicate,
     ),
-    expectedPayloadColumns: token.disclosedPayloadColumns,
     expectedPartnerDeduplicate: token.linkageTerms.deduplicate,
     invitationRelay:
       token.connectionEndpoint?.channel === "webrtc"
@@ -126,45 +112,11 @@ export function diffKeptLinkageTerms(params: {
   return conflicts;
 }
 
-/**
- * The warning an acceptance owes before it removes a recorded
- * `expected_payload_columns` because its invitation declares no disclosed
- * subset, or `undefined` where nothing is removed. Each column name is the
- * partner's, so it is redacted, escaped, and listed one per line.
- */
-export function receivedCommitmentRemovalWarning(params: {
-  configPath: string;
-  recorded: string[] | undefined;
-  consented: string[] | undefined;
-}): string | undefined {
-  const { configPath, recorded, consented } = params;
-  if (recorded === undefined || consented !== undefined) return undefined;
-  return (
-    `this invitation declares no disclosed columns, so accepting it clears ` +
-    `the list of columns you previously agreed to receive, recorded in ` +
-    `${redactAndRenderOperatorSuppliedText(
-      operatorSuppliedText(configPath),
-    )}. That list holds the partner's payload to ` +
-    (recorded.length === 0
-      ? "no columns at all (a strict receive-nothing consent)."
-      : "exactly these columns:\n" +
-        recorded
-          .map((column) => `  - ${redactAndSanitizeForDisplay(column)}`)
-          .join("\n")) +
-    `\nWithout it the next 'alcove exchange' from this configuration ` +
-    `accepts whatever columns the partner transmits. To keep the check, ask ` +
-    `the inviting party for an invitation that declares the columns it sends.`
-  );
-}
-
-/**
- * One fail-closed record written in place into an existing configuration.
- * An undefined value removes the field, except `expected_partner_deduplicate`,
- * which always has a value.
- */
-export type TermsRecordWrite =
-  | { record: "expected_payload_columns"; columns: string[] | undefined }
-  | { record: "expected_partner_deduplicate"; declared: boolean };
+/** One fail-closed record written in place into an existing configuration. */
+export type TermsRecordWrite = {
+  record: "expected_partner_deduplicate";
+  declared: boolean;
+};
 
 /**
  * Write one record into the configuration at `configPath`, keeping the rest
@@ -175,31 +127,17 @@ export function writeTermsRecord(
   configPath: string,
   write: TermsRecordWrite,
 ): void {
-  switch (write.record) {
-    case "expected_payload_columns":
-      persistExpectedPayloadColumns(configPath, write.columns);
-      return;
-    case "expected_partner_deduplicate":
-      persistExpectedPartnerDeduplicate(configPath, write.declared);
-      return;
-  }
+  persistExpectedPartnerDeduplicate(configPath, write.declared);
 }
 
 /**
- * Refresh an acceptance's two records in a configuration it keeps, in order,
- * stopping at the first write that throws.
+ * Refresh an acceptance's record in a configuration it keeps. Throws where
+ * the write fails.
  */
 export function refreshAcceptanceRecords(
   configPath: string,
-  records: {
-    expectedPayloadColumns: string[] | undefined;
-    expectedPartnerDeduplicate: boolean;
-  },
+  records: { expectedPartnerDeduplicate: boolean },
 ): void {
-  writeTermsRecord(configPath, {
-    record: "expected_payload_columns",
-    columns: records.expectedPayloadColumns,
-  });
   writeTermsRecord(configPath, {
     record: "expected_partner_deduplicate",
     declared: records.expectedPartnerDeduplicate,
@@ -207,33 +145,18 @@ export function refreshAcceptanceRecords(
 }
 
 /**
- * What a lost write of each acceptance record leaves in force, for a run that
+ * What a lost write of the acceptance record leaves in force, for a run that
  * continues past the loss with the configuration it kept.
  */
-function acceptanceRecordLossNotice(
-  configPath: string,
-  record: TermsRecordWrite["record"],
-): string {
-  switch (record) {
-    case "expected_payload_columns":
-      return (
-        `the exchange continues and the existing configuration at ` +
-        `${configPath} stands, but recording the columns you ` +
-        `consented to receive in it failed; the next 'alcove ` +
-        `exchange' holds the received payload to the set that ` +
-        `configuration already records, and checks it against no ` +
-        `consented set if it records none`
-      );
-    case "expected_partner_deduplicate":
-      return (
-        `the exchange continues and the existing configuration at ` +
-        `${configPath} stands, but recording the duplicate ` +
-        `matching your partner declared in it failed; the next ` +
-        `'alcove exchange' holds your partner to the value that ` +
-        `configuration already records, and to no value if it records ` +
-        `none`
-      );
-  }
+function acceptanceRecordLossNotice(configPath: string): string {
+  return (
+    `the exchange continues and the existing configuration at ` +
+    `${configPath} stands, but recording the duplicate ` +
+    `matching your partner declared in it failed; the next ` +
+    `'alcove exchange' holds your partner to the value that ` +
+    `configuration already records, and to no value if it records ` +
+    `none`
+  );
 }
 
 /**
@@ -254,7 +177,7 @@ export function writeAcceptanceRecordReportingLoss(
     writeTermsRecord(configPath, write);
     return true;
   } catch (err) {
-    const notice = acceptanceRecordLossNotice(configPath, write.record);
+    const notice = acceptanceRecordLossNotice(configPath);
     report.log.warn(`${notice}: ${sanitizeErrorForDisplay(err)}`);
     reportPersistenceLoss(notice, report.eventStream);
     return false;
@@ -264,15 +187,14 @@ export function writeAcceptanceRecordReportingLoss(
 /**
  * What applying a verified terms update writes into the configuration it
  * changes (see `persistTermsUpdate`): the terms that update adopts, and the
- * acceptance records an acceptance of the same terms would write -- the
- * partner's disclosed columns and declared `deduplicate`.
+ * acceptance record an acceptance of the same terms would write -- the
+ * partner's declared `deduplicate`.
  */
 export function termsUpdateWrite(
   accepted: AcceptedInvitationTerms,
 ): TermsUpdateWrite {
   return {
     linkageTerms: accepted.linkageTerms,
-    expectedPayloadColumns: accepted.expectedPayloadColumns,
     expectedPartnerDeduplicate: accepted.expectedPartnerDeduplicate,
   };
 }

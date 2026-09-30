@@ -865,22 +865,7 @@ export async function prepareDataset(
     sanitizedColumnPositions,
   );
   warnOnValueConstraints(prepared, log);
-  // Recurring / offline-accept enforcement: a committed config has its received
-  // payload verified against the pinned column set at runtime (see
-  // reconcileReceivedPayload), so a partner that transmits a different set
-  // aborts the exchange. The canonical source is the top-level
-  // expectedPayloadColumns, written by an offline acceptance; it falls back to
-  // the negotiated payload.receive names for an authored recurring config that
-  // holds only the data dictionary. An empty set means "receive nothing"
-  // strictly; with neither, the run fills payload.receive from the partner's
-  // declared send set and holds this run to that (a no-output party's "receive
-  // nothing" is enforced independently by runExchange regardless of this field).
-  const expectedFromConfig =
-    exchangeDataSpec.expectedPayloadColumns ??
-    exchangeDataSpec.linkageTerms?.payload?.receive?.map((c) => c.name);
-  if (expectedFromConfig !== undefined)
-    prepared.expectedPayloadColumns = expectedFromConfig;
-  // The terms-side half of the same acceptance's enforcement: the `deduplicate`
+  // The terms-side enforcement of an acceptance: the `deduplicate`
   // the invitation declared for the inviting party's own side, written by the
   // accept paths into the config this run loads. Restored so the partner's
   // presented value is held to it at the terms exchange, before any key or

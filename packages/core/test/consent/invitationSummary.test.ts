@@ -19,7 +19,10 @@ import {
 import { resolveLinkageCardinality } from "../../src/exchange.js";
 import { termsDeclareCandidateSet } from "../../src/fanOutFunctions.js";
 import { deriveAcceptedLinkageTerms } from "../../src/linkageTermsNegotiation.js";
-import { assertPayloadSendDisclosed } from "../../src/payloadExchange.js";
+import {
+  assertPayloadSendDisclosed,
+  termsStatingDeclaredPayloadSend,
+} from "../../src/payloadExchange.js";
 import { withholdsSenderAssociationTable } from "../../src/psi/link.js";
 import { resolveRole } from "../../src/protocolSetup.js";
 import {
@@ -56,53 +59,22 @@ const DISCLOSING_METADATA: Metadata = [
 ];
 
 describe("the consent summary's payload block", () => {
-  test("derives the received set from the held subset with no payload.send authored", () => {
-    // A CLI-style invitation: the terms author no payload block, but the token
-    // holds the disclosed-columns subset. The acceptor's consent display must
-    // derive the columns-it-will-receive from that subset -- the same predicate
-    // the wire transmits on -- not from the (absent) payload.send. This is the
-    // under-declaration gap the dedicated field closes, and the no-drift
-    // invariant: the displayed set equals the transmitted set over one metadata.
+  test("derives the received set from the payload.send a mint states", () => {
+    // A mint states payload.send from the metadata the wire transmits on, so
+    // the displayed set equals the transmitted set over one metadata.
     const metadata = DISCLOSING_METADATA;
-    const disclosed = disclosedColumnNames(metadata);
-    const terms = getDefaultLinkageTerms("Inviter", metadata);
-    expect(terms.payload).toBeUndefined();
-    const summary = summarizeInvitation({
-      linkageTerms: terms,
-      disclosedPayloadColumns: disclosed,
-    });
-    expect(summary.payload?.send).toEqual(disclosed);
-  });
-
-  test("records which source the displayed send set came from", () => {
-    // Both sources are declarations, and only one of them is a commitment: an
-    // acceptance writes the held subset as what it will receive and reconciles
-    // against it, while an authored send with no held subset leaves nothing to
-    // reconcile against. A surface classifying the received-columns line reads
-    // this narrower flag, so it is pinned apart from sendDeclared.
-    const metadata = DISCLOSING_METADATA;
-    const terms = getDefaultLinkageTerms("Inviter", metadata);
-    const authoredSend = { payload: { send: [{ name: "notes" }] } };
-    const authored = summarizeInvitation({
-      linkageTerms: { ...terms, ...authoredSend },
-    });
-    expect(authored.payload).toMatchObject({
-      send: ["notes"],
-      sendDeclared: true,
-      sendFromCarriedSubset: false,
-    });
-    const carried = summarizeInvitation({
-      linkageTerms: { ...terms, ...authoredSend },
-      disclosedPayloadColumns: disclosedColumnNames(metadata),
-    });
-    expect(carried.payload).toMatchObject({
+    const terms = termsStatingDeclaredPayloadSend(
+      getDefaultLinkageTerms("Inviter", metadata),
+      metadata,
+    );
+    const summary = summarizeInvitation({ linkageTerms: terms });
+    expect(summary.payload).toMatchObject({
       send: disclosedColumnNames(metadata),
       sendDeclared: true,
-      sendFromCarriedSubset: true,
     });
   });
 
-  test("shows no received columns when nothing is held or authored", () => {
+  test("shows no received columns when nothing is declared", () => {
     const terms = getDefaultLinkageTerms(
       "Inviter",
       inferMetadata(LINKAGE_ONLY_COLUMNS, []),
@@ -111,37 +83,31 @@ describe("the consent summary's payload block", () => {
     expect(summary.payload).toBeUndefined();
   });
 
-  test("shows an empty held subset as a declared 'receive nothing'", () => {
-    // The web inviter always includes the disclosed subset, possibly empty. An
-    // empty held set is the strict "receive nothing" commitment (a later
-    // non-empty payload aborts), NOT the lazy case -- so the section is
+  test("shows an empty payload.send as a declared 'receive nothing'", () => {
+    // An empty send is the strict "receive nothing" the acceptance mirrors
+    // into its own payload.receive, NOT the lazy case -- so the section is
     // rendered with an empty, DECLARED send (the renderer shows "(none)"),
-    // distinct from a lazy/absent set which suppresses the section. This
-    // keeps the consent surfaces and the runtime enforcement aligned.
+    // distinct from an absent send, which suppresses the section.
     const terms = getDefaultLinkageTerms(
       "Inviter",
       inferMetadata(LINKAGE_ONLY_COLUMNS, []),
     );
     const summary = summarizeInvitation({
-      linkageTerms: terms,
-      disclosedPayloadColumns: [],
+      linkageTerms: { ...terms, payload: { send: [] } },
     });
     expect(summary.payload).toEqual({
       send: [],
       sendDeclared: true,
-      sendFromCarriedSubset: true,
       receive: [],
       receiveDeclared: false,
     });
   });
 
   test("shows no send set at all when this party is entitled to no result", () => {
-    // A mint stamps its disclosed subset whatever the output direction, and the
-    // token schema admits that subset beside an empty `payload.send` where the
-    // result is not shared. `runExchange` builds a party's payload only where
-    // the partner is entitled to one, so no column crosses here: the summary
-    // states no arriving set rather than one a surface would count beside its
-    // own "you receive no result" line.
+    // `runExchange` builds a party's payload only where the partner is
+    // entitled to one, so no column crosses here whatever the send states: the
+    // summary states no arriving set rather than one a surface would count
+    // beside its own "you receive no result" line.
     const metadata = DISCLOSING_METADATA;
     expect(disclosedColumnNames(metadata).length).toBeGreaterThan(0);
     const terms = getDefaultLinkageTerms("Inviter", metadata);
@@ -149,9 +115,8 @@ describe("the consent summary's payload block", () => {
       linkageTerms: {
         ...terms,
         output: { expectsOutput: true, shareWithPartner: false },
-        payload: { send: [] },
+        payload: { send: [{ name: "notes" }] },
       },
-      disclosedPayloadColumns: disclosedColumnNames(metadata),
     });
     expect(summary.inviterSharesResult).toBe(false);
     expect(summary.payload).toBeUndefined();
@@ -174,7 +139,6 @@ describe("the consent summary's payload block", () => {
     expect(summary.payload).toEqual({
       send: [],
       sendDeclared: false,
-      sendFromCarriedSubset: false,
       receive: [],
       receiveDeclared: true,
     });

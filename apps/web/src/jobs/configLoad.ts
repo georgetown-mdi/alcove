@@ -182,7 +182,6 @@ export interface DisclosedExchangeDocument {
   linkageTerms: ExchangeSpec["linkageTerms"];
   metadata?: ExchangeSpec["metadata"];
   standardization?: ExchangeSpec["standardization"];
-  expectedPayloadColumns?: Array<string>;
   expectedPartnerDeduplicate?: boolean;
   includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
   csvDelimiter?: string;
@@ -234,7 +233,6 @@ function probeIntentFields(): JobExchangeIntentBase {
     standardization: [
       { output: "probe_field", input: "probe_column", steps: [] },
     ],
-    expectedPayloadColumns: [],
     expectedPartnerDeduplicate: false,
     includeOwnColumns: "all",
     csvDelimiter: "|",
@@ -505,7 +503,6 @@ function assertHeldSettingsSurvive(document: ExchangeSpec): void {
  * still emits each is measured, never assumed.
  */
 const RECORDS_THAT_MUST_SURVIVE: ReadonlyArray<string> = [
-  "expected_payload_columns",
   "expected_partner_deduplicate",
 ];
 
@@ -772,9 +769,6 @@ export function disclosedDocument(
     ...(document.metadata !== undefined ? { metadata: document.metadata } : {}),
     ...(document.standardization !== undefined
       ? { standardization: document.standardization }
-      : {}),
-    ...(document.expectedPayloadColumns !== undefined
-      ? { expectedPayloadColumns: document.expectedPayloadColumns }
       : {}),
     ...(document.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: document.expectedPartnerDeduplicate }

@@ -228,42 +228,22 @@ interface InvitationPayloadSummary {
    * apart from the lazy case. */
   send: Array<Displayable>;
   /**
-   * Whether the send set is a definite DECLARATION -- the held disclosed
-   * subset (possibly empty), or an authored `payload.send` -- rather than the
-   * lazy case (the inviter sends whatever its own metadata discloses, nothing
-   * declared up front). When true and {@link send} is empty, the acceptor is
-   * committed to "receive nothing" (a later non-empty payload aborts), so the
-   * renderer states that explicitly ("(none)") instead of omitting the line;
-   * when false, the send side is lazy and stays unshown. The narrower
-   * {@link sendFromCarriedSubset} says whether an acceptance can hold the
-   * inviter to this declaration.
+   * Whether the send set is a definite DECLARATION -- an authored
+   * `payload.send`, present even when empty -- rather than the lazy case (the
+   * inviter sends whatever its own metadata discloses, nothing declared up
+   * front). An acceptance mirrors a declared send into its own
+   * `payload.receive`, which every run's terms exchange compares against the
+   * set the inviter's run states. When true and {@link send} is empty, the
+   * acceptor is committed to "receive nothing", so the renderer states that
+   * explicitly ("(none)") instead of omitting the line; when false, the send
+   * side is lazy and stays unshown.
    *
    * False as well where `output.shareWithPartner` is clear, however the
-   * invitation declares or stamps its send: no column is transmitted to a
-   * party entitled to no result, so there is no arriving set to state and
-   * the receipt fact (`viewerReceivesNoResult`) is what says so.
+   * invitation declares its send: no column is transmitted to a party
+   * entitled to no result, so there is no arriving set to state and the
+   * receipt fact (`viewerReceivesNoResult`) is what says so.
    */
   sendDeclared: boolean;
-  /**
-   * Whether {@link send} is the disclosed subset the invitation HELD -- the
-   * inviter's own transmission predicate run over its own metadata -- rather
-   * than the authored `payload.send` fallback used when no subset was
-   * held. Strictly narrower than {@link sendDeclared}: a held subset is
-   * always a declaration, but an authored send is a declaration with no
-   * subset behind it.
-   *
-   * Enforcement turns on this narrower condition: an acceptance commits to
-   * the HELD subset as what it will receive and reconciles the received
-   * payload against it. Where none was held, there is no set to
-   * reconcile against, so an online run accepts whatever the inviter
-   * transmits. A surface classifying the received-columns fact reads this
-   * flag, not {@link sendDeclared}.
-   *
-   * Clear wherever {@link sendDeclared} is, including the no-result shape
-   * above: a subset stamped on an invitation that transmits nothing is not
-   * the source of any displayed set.
-   */
-  sendFromCarriedSubset: boolean;
   /** Columns the inviter requests from the acceptor for matched records (what
    * the acceptor sends), each sanitized for display. Empty when the
    * declared set is empty; read {@link receiveDeclared} to tell that apart
@@ -274,7 +254,8 @@ interface InvitationPayloadSummary {
    * `payload.receive`, present even when empty) rather than the lazy case (no
    * `receive` authored: the inviter takes whatever the acceptor's metadata
    * discloses). When true and {@link receive} is empty, the inviter asserts
-   * "the acceptor sends nothing" (a later non-empty payload aborts), so the
+   * "the acceptor sends nothing" (an acceptor stating a column is refused at
+   * the terms exchange), so the
    * renderer states that explicitly ("(none)") instead of omitting the line;
    * when false, the receive side is lazy and stays unshown. Mirrors
    * {@link sendDeclared} for the opposite direction.
@@ -1487,15 +1468,12 @@ function acceptTakesPartnerDeduplicate(terms: LinkageTerms): boolean {
 
 /**
  * Build a display-ready {@link InvitationSummary} from an invitation's
- * linkage terms, optional expiry, and optional held disclosed-columns
- * subset. The parameter is a structural subset of {@link InvitationToken}
- * (`linkageTerms`, `expires`, `disclosedPayloadColumns`,
- * `connectionEndpoint`, `inviterRetainsFiles`), so a full decoded token is
- * accepted as-is, and so is the terms/expiry pair the exchange screen holds
- * without a token. The "columns your partner will send" line derives from
- * the held `disclosedPayloadColumns` when present (the wire's own
- * disclosure predicate), falling back to the authored `payload.send`
- * otherwise; the retained-files line derives from the declaration or the
+ * linkage terms and optional expiry. The parameter is a structural subset of
+ * {@link InvitationToken} (`linkageTerms`, `expires`, `connectionEndpoint`,
+ * `inviterRetainsFiles`), so a full decoded token is accepted as-is, and so is
+ * the terms/expiry pair the exchange screen holds without a token. The
+ * "columns your partner will send" line derives from the terms'
+ * `payload.send`; the retained-files line derives from the declaration or the
  * endpoint's split-directory shape (see
  * {@link InvitationSummary.disclosesRetainedFiles}). Pure and
  * side-effect-free: it sanitizes every partner-controlled string, so it is
@@ -1504,11 +1482,7 @@ function acceptTakesPartnerDeduplicate(terms: LinkageTerms): boolean {
 export function summarizeInvitation(
   source: Pick<
     InvitationToken,
-    | "linkageTerms"
-    | "expires"
-    | "disclosedPayloadColumns"
-    | "connectionEndpoint"
-    | "inviterRetainsFiles"
+    "linkageTerms" | "expires" | "connectionEndpoint" | "inviterRetainsFiles"
   >,
 ): InvitationSummary {
   const terms = source.linkageTerms;
@@ -1691,45 +1665,28 @@ export function summarizeInvitation(
     };
   }
 
-  // The columns the acceptor will RECEIVE derive from the held
-  // disclosedPayloadColumns -- the inviter's own isDisclosedToPartner
-  // predicate output, exactly the set preparePayload transmits -- so the
-  // displayed and consented set cannot drift from the bytes that flow.
-  // Falls back to the authored payload.send names for an invitation that
-  // held no disclosed subset (an older or metadata-unknown mint) and for
-  // the inviter's own pre-mint "proposing" preview, which has authored its
-  // send but holds no token field yet. `receive` (what the inviter requests
-  // FROM the acceptor) has no transmission predicate to derive from and
-  // stays the authored list.
+  // The columns the acceptor will RECEIVE are the inviter's `payload.send`,
+  // which a mint that holds its metadata states from the columns its payload
+  // step transmits.
+  // `receive` (what the inviter requests FROM the acceptor) stays the authored
+  // list.
   //
-  // Both sources are read only where the inviting party shares the result:
+  // The send is read only where the inviting party shares the result:
   // `runExchange` builds a party's payload just when the PARTNER is entitled
   // to one, so an invitation handing the accepting party no result transmits
-  // no column whatever its metadata discloses. A mint still stamps its
-  // disclosed subset there, beside a `payload.send` the token schema lets
-  // stand empty for exactly that reason (config/invitation.ts), and reading
-  // it would put a count of arriving columns on a screen that also states no
-  // result arrives.
-  //
-  // sendDeclared, sendFromCarriedSubset, and receiveDeclared are documented
-  // on InvitationPayloadSummary; the section below renders whenever the
-  // send OR the receive is declared.
-  const carriedSubset = terms.output.shareWithPartner
-    ? source.disclosedPayloadColumns
-    : undefined;
-  const authoredSend = terms.output.shareWithPartner
+  // no column whatever its metadata discloses, and a count of arriving columns
+  // would sit on a screen that also states no result arrives.
+  const sendDeclared =
+    terms.output.shareWithPartner && terms.payload?.send !== undefined;
+  const receiveDeclared = terms.payload?.receive !== undefined;
+  const send = sendDeclared
     ? (terms.payload?.send ?? []).map((column) => column.name)
     : [];
-  const sendFromCarriedSubset = carriedSubset !== undefined;
-  const sendDeclared = sendFromCarriedSubset || authoredSend.length > 0;
-  const receiveDeclared = terms.payload?.receive !== undefined;
-  const send = carriedSubset ?? authoredSend;
   const receive = (terms.payload?.receive ?? []).map((column) => column.name);
   if (sendDeclared || receiveDeclared) {
     summary.payload = {
       send: send.map((name) => redactAndSanitizeForDisplay(name)),
       sendDeclared,
-      sendFromCarriedSubset,
       receive: receive.map((name) => redactAndSanitizeForDisplay(name)),
       receiveDeclared,
     };

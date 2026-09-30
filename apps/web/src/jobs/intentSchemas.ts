@@ -566,9 +566,6 @@ export type JobExchangeSide = "inviter" | "acceptor";
  *   is, but still compiles and runs under core's linear-time RE2 engine
  *   (RE2JS), so an oversized or non-conformant one is a compile/size cost,
  *   not a ReDoS hole or an injection escape.
- * - `expectedPayloadColumns` is the acceptor's received-payload enforcement:
- *   a list of partner-namespace column names, no path/host/credential. See
- *   the field doc for the empty-vs-absent semantics.
  * - `expectedPartnerDeduplicate` is the acceptor's terms-side enforcement: a
  *   schema boolean, contributing one YAML `true`/`false` and no free text.
  * - `includeOwnColumns` is this party's local output-composition setting: a
@@ -626,20 +623,6 @@ export interface JobExchangeIntentBase {
   inputFile?: JobInputFileReference;
   metadata?: Metadata;
   standardization?: Standardization;
-  /**
-   * The acceptor's RECEIVE-side enforcement: the partner-namespace columns
-   * this party will enforce it receives (the invitation's disclosed set).
-   * Mirrors the browser acceptor's `prepared.expectedPayloadColumns`, so an
-   * inviter that sends extra columns aborts the exchange rather than having
-   * them silently ingested. Column names only -- never a path, host, or
-   * credential.
-   *
-   * The empty-vs-absent distinction is critical: an empty array is a strict
-   * "receive nothing" (a non-empty partner payload then aborts), while an
-   * omitted field reconciles lazily. It is forwarded (below) whenever
-   * present, including an empty array, so the strict form is preserved.
-   */
-  expectedPayloadColumns?: Array<string>;
   /**
    * The acceptor's TERMS-side enforcement: the `deduplicate` the invitation
    * declared for the INVITING party's own side. Mirrors the browser
@@ -769,8 +752,8 @@ export type JobZeroSetupLinkageStrategy = "cascade" | "single-pass";
  * CLI's positional `$0` form against the same server, terms inferred from
  * each party's input file, with no application-layer encryption to key. It
  * therefore holds none of the exchange mode's `sharedSecret`,
- * `linkageTerms`, `metadata`, `standardization`, `expectedPayloadColumns`,
- * or `expectedPartnerDeduplicate` -- only an input source, the tuning
+ * `linkageTerms`, `metadata`, `standardization`, or
+ * `expectedPartnerDeduplicate` -- only an input source, the tuning
  * `options` subset, the `eventStream` toggle, the per-run controls
  * ({@link jobRunControlFields}), and four optional, bounded selectors:
  *
@@ -874,13 +857,6 @@ export function isJobChannel(channel: string): channel is JobChannel {
  * ({@link MAX_JOB_BODY_BYTES}) is the true memory bound.
  */
 export const MAX_INPUT_CSV_LENGTH = MAX_CSV_FILE_BYTES;
-
-/**
- * Upper bound on the COUNT of `expectedPayloadColumns` entries. A real received
- * set is a handful to a few dozen partner-namespace column names; 4096 is far
- * above any legitimate one yet refuses an unbounded array.
- */
-export const MAX_EXPECTED_PAYLOAD_COLUMNS = 4096;
 
 /**
  * Upper bound on the COUNT of `metadata` columns. A real input has tens of
@@ -1091,10 +1067,6 @@ const jobExchangeIntentCommonFields = {
   inputFile: jobInputFileReferenceSchema.optional(),
   metadata: boundedMetadataSchema.optional(),
   standardization: boundedStandardizationSchema.optional(),
-  expectedPayloadColumns: z
-    .array(z.string().check(maxCodeUnits(MAX_NAME_LENGTH)))
-    .max(MAX_EXPECTED_PAYLOAD_COLUMNS)
-    .optional(),
   expectedPartnerDeduplicate: z.boolean().optional(),
   includeOwnColumns: OwnColumnSelectionSchema.optional(),
   csvDelimiter: jobCsvDelimiterSchema.optional(),
@@ -1267,7 +1239,7 @@ export const jobExchangeIntentSchema: z.ZodType<JobExchangeIntent> = z
 
 // The zero-setup common fields hold NONE of the exchange mode's credential
 // or terms material -- no sharedSecret, linkageTerms, metadata,
-// standardization, expectedPayloadColumns, or expectedPartnerDeduplicate --
+// standardization, or expectedPartnerDeduplicate --
 // only an input source, the tuning options, the event toggle, and the four
 // bounded selectors. `inputCsv` reuses the exchange mode's cap.
 const jobZeroSetupIntentCommonFields = {

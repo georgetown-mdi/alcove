@@ -211,7 +211,6 @@ async function runBrowserPeer(invitation: string): Promise<BrowserOutcome> {
     edits,
     rawRows,
     columns,
-    disclosedPayloadColumns: accepted.token.disclosedPayloadColumns,
     // The value an accept with no control of its own derives.
     deduplicate: false,
   });

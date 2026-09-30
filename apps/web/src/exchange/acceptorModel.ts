@@ -221,7 +221,7 @@ export function acceptorLedgerRows(
 ): Array<AcceptorLedgerRow> {
   const summary = summarizeInvitation(token);
   // What the acceptor receives for matched records is the inviter's send set
-  // (summary.payload.send), which derives from disclosedPayloadColumns on the token.
+  // (summary.payload.send), read from the token's payload.send.
   const received = summary.payload?.send ?? [];
   const disclosure =
     metadata === undefined ? undefined : disclosedColumnNames(metadata);

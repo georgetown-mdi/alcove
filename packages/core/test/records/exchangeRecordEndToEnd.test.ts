@@ -5,14 +5,10 @@ import PSI from "@openmined/psi.js";
 import { prepareForExchange, runExchange } from "../../src/exchange";
 import { verifyCommitmentOpening } from "../../src/records/exchangeRecord";
 import { toCommittedPayload } from "../../src/payloadExchange";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import { StandardizedDataset } from "../../src/standardization";
 import { LinkageTermsUnsatisfiableError, UsageError } from "../../src/errors";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
-import { misstatingPayloadSend } from "../utils/misstatedPayloadSend";
 
 import type { Algorithm } from "../../src/types";
 import type { BuiltExchangeRecord } from "../../src/records/exchangeRecord";
@@ -677,47 +673,44 @@ test("single-output: the no-output helper is sent no payload (one-sided disclosu
   ).toBeDefined();
 });
 
-// --- Acceptor payload enforcement (live) -------------------------------------
+// --- Received payload columns (live) -----------------------------------------
 
-// The responder's metadata declares `note` as payload, so for the matched rows
-// it transmits exactly ["note"]. These two tests pin the
-// runtime enforcement end to end: when the initiator has committed to an
-// expected received-column set (a fresh acceptor's disclosedPayloadColumns, or
-// a recurring party's payload.receive, both threaded as prepared.expectedPayload-
-// Columns), runExchange enforces it after the payload exchange.
+// The responder's metadata declares `note` as payload, so its run states
+// exactly ["note"] as its send at the terms exchange. A receive list naming
+// other columns is refused there, before any key or payload moves, so neither
+// party holds a received payload to record.
 
 const bothOut: Output = { expectsOutput: true, shareWithPartner: true };
 
-test("enforcement: a received payload diverging from the consented set aborts the exchange", async () => {
+test("a receive list the partner's stated send differs from is refused at the terms exchange", async () => {
   const initiatorPrepared = prepared("Initiator Co", bothOut, clientRows);
-  // The initiator consented to receive a column the responder will never
-  // send, and the responder's terms claim to send it, so only the received
-  // payload shows the divergence.
-  initiatorPrepared.expectedPayloadColumns = ["a_column_not_sent"];
+  initiatorPrepared.linkageTerms = {
+    ...initiatorPrepared.linkageTerms,
+    payload: { receive: [{ name: "a_column_not_sent" }] },
+  };
   const [connInitiator, connResponder] = createMessagePipe();
   const [initResult, respResult] = await Promise.allSettled([
     runExchange(connInitiator, "initiator", initiatorPrepared, { psiLibrary }),
     runExchange(
-      misstatingPayloadSend(connResponder, [{ name: "a_column_not_sent" }]),
+      connResponder,
       "responder",
       prepared("Responder Co", bothOut, serverRows),
       { psiLibrary },
     ),
   ]);
-  // The committed party aborts as a protocol error; the lazy responder, which
-  // committed to nothing, completes its own half (the abort is local to the
-  // receiver and fires after the payload exchange itself finished).
   expect(initResult.status).toBe("rejected");
-  const reason = (initResult as PromiseRejectedResult).reason;
-  expect(reason).toBeInstanceOf(ConnectionError);
-  expect((reason as ConnectionError).kind).toBe("protocol");
-  expect(respResult.status).toBe("fulfilled");
+  expect(String((initResult as PromiseRejectedResult).reason)).toMatch(
+    /payload mismatch: local receive columns/,
+  );
+  expect(respResult.status).toBe("rejected");
 });
 
-test("enforcement: a received payload matching the consented set completes", async () => {
+test("a receive list matching the partner's stated send completes", async () => {
   const initiatorPrepared = prepared("Initiator Co", bothOut, clientRows);
-  // Exactly what the responder's metadata discloses for the matched rows.
-  initiatorPrepared.expectedPayloadColumns = ["note"];
+  initiatorPrepared.linkageTerms = {
+    ...initiatorPrepared.linkageTerms,
+    payload: { receive: [{ name: "note" }] },
+  };
   const [connInitiator, connResponder] = createMessagePipe();
   const [initiator] = await Promise.all([
     runExchange(connInitiator, "initiator", initiatorPrepared, { psiLibrary }),

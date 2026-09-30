@@ -567,7 +567,7 @@ function failureContentFor(
  * mount states and this console has no control for. An invitation authored here
  * states none of its own, so they ride to the intent as the file stated them
  * and the composed configuration states them back (docs/spec/EXCHANGE_FILE.md,
- * "The records that must survive").
+ * "The record that must survive").
  *
  * Pure and exported so the derivation is the tested boundary, pinned without
  * running the hook.
