@@ -849,6 +849,14 @@ export type {
   RelayCredential,
   RunRelaySelection,
 } from "./relayCredential";
+export {
+  RELAY_REGISTRAR_PROOF_SCHEME,
+  relayRegistrarAuthorization,
+} from "./relayRegistrarProof";
+export type {
+  RelayRegistrarProofMethod,
+  RelayRegistrarProofOptions,
+} from "./relayRegistrarProof";
 // The shared chokepoint for parsing config/credential documents that may hold
 // secrets, so a parse error never leaks source bytes. Consumed by the CLI (file
 // reads, via its thin re-export) and the web app (an imported linkage-terms
