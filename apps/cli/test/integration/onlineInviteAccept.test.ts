@@ -288,6 +288,7 @@ async function runOnlineRoundTrip(params: {
       output: inviteReady.output,
       verbosity: 0,
       loggerName: "invite",
+      writePlainLine: () => {},
       recordOutput: resolveRecordOutput({
         enabled: inviteOptions.record,
         recordFile: inviteOptions.recordFile,
@@ -304,6 +305,7 @@ async function runOnlineRoundTrip(params: {
       output: acceptReady.output,
       verbosity: 0,
       loggerName: "accept",
+      writePlainLine: () => {},
       recordOutput: resolveRecordOutput({
         enabled: acceptOptions.record,
         recordFile: acceptOptions.recordFile,
@@ -541,6 +543,7 @@ test("filedrop: an expired invitation aborts the accept and the inviter's handsh
       output: inviteReady.output,
       verbosity: 0,
       loggerName: "invite",
+      writePlainLine: () => {},
     }),
   ).rejects.toThrow(/expired/i);
   expectNoPersistedFiles(inviteOptions);
@@ -669,6 +672,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
           output: inviteReady.output,
           verbosity: 0,
           loggerName: "invite",
+          writePlainLine: () => {},
           recordOutput: resolveRecordOutput({
             enabled: inviteOptions.record,
             recordFile: inviteOptions.recordFile,
@@ -685,6 +689,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
           output: acceptReady.output,
           verbosity: 0,
           loggerName: "accept",
+          writePlainLine: () => {},
           recordOutput: resolveRecordOutput({
             enabled: acceptOptions.record,
             recordFile: acceptOptions.recordFile,
@@ -921,6 +926,7 @@ describe("sftp", () => {
                   output: inviteReady.output,
                   verbosity: 0,
                   loggerName: "fu-invite",
+                  writePlainLine: () => {},
                 }),
                 runOnlineBootstrap({
                   connection: acceptReady.connection,
@@ -933,6 +939,7 @@ describe("sftp", () => {
                   output: acceptReady.output,
                   verbosity: 0,
                   loggerName: "fu-accept",
+                  writePlainLine: () => {},
                   reuseExistingConfig: acceptReady.reuseExistingConfig,
                 }),
               ]),
@@ -1063,6 +1070,7 @@ describe("sftp", () => {
           output: acceptReady.output,
           verbosity: 0,
           loggerName: "accept",
+          writePlainLine: () => {},
           reuseExistingConfig: acceptReady.reuseExistingConfig,
         }),
       ).rejects.toThrow(/host_key_fingerprint|interactive/i);

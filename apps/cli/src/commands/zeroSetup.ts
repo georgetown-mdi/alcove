@@ -44,7 +44,10 @@ import {
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
-import { payloadReceiveFillConfirmation } from "../termsChange";
+import {
+  payloadReceiveFillConfirmation,
+  payloadReceiveTakenNotice,
+} from "../termsChange";
 import {
   applyConnectionCredentials,
   readConnectionCredentials,
@@ -445,6 +448,13 @@ export function finalizeBootstrap(params: {
    * list never reached disk.
    */
   filledPayloadReceive?: string[];
+  /**
+   * Set on an unattended run: the command's unfiltered writer
+   * (`ConfiguredLogging.writePlainLine`), through which a non-empty fill's
+   * notice is written as {@link payloadReceiveTakenNotice} at every
+   * `--log-level`, in place of the info-level one.
+   */
+  unattendedFillNoticeWriter?: (line: string) => void;
 }): void {
   const {
     save,
@@ -454,9 +464,19 @@ export function finalizeBootstrap(params: {
     keyFile,
     log,
     filledPayloadReceive,
+    unattendedFillNoticeWriter,
   } = params;
-  const logPayloadReceiveFilledNotice = (): void => {
+  const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
     if (filledPayloadReceive === undefined) return;
+    if (
+      unattendedFillNoticeWriter !== undefined &&
+      filledPayloadReceive.length > 0
+    ) {
+      unattendedFillNoticeWriter(
+        payloadReceiveTakenNotice(filledPayloadReceive, recordedIn),
+      );
+      return;
+    }
     log.info(
       sanitizeForDisplay(payloadReceiveFilledNotice(filledPayloadReceive), {
         maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -499,7 +519,7 @@ export function finalizeBootstrap(params: {
           `private. Run 'alcove exchange' for future exchanges with this ` +
           `partner.`,
       );
-      logPayloadReceiveFilledNotice();
+      logPayloadReceiveFilledNotice(configPath);
       return;
     }
     // We saved but the partner did not: there is no secret, so persist the
@@ -527,7 +547,7 @@ export function finalizeBootstrap(params: {
         `a recurring exchange, run 'alcove invite' and share the invitation ` +
         `with your partner.`,
     );
-    logPayloadReceiveFilledNotice();
+    logPayloadReceiveFilledNotice(configFile);
     return;
   }
 
@@ -624,7 +644,11 @@ export async function handler(argv: Arguments): Promise<void> {
   // sink): the file sink when --log-file is given, otherwise the default stderr
   // sink. A missing parent directory (configureLogFile) is a UsageError reported
   // on stderr and mapped to exit 64 by parseOrExit here.
-  const { log, close: closeLogging } = parseOrExit(() =>
+  const {
+    log,
+    writePlainLine,
+    close: closeLogging,
+  } = parseOrExit(() =>
     configureLogging({ logLevel, logFile, name: "alcove" }),
   );
 
@@ -817,6 +841,7 @@ export async function handler(argv: Arguments): Promise<void> {
     announceRetainMode(connection, log);
 
     let filledPayloadReceive: string[] | undefined;
+    const interactive = stdinAnswersPrompts(input);
     try {
       // Cast: `liveConnection` is `ConnectionConfig` (which includes the webrtc
       // channel), so TypeScript cannot verify it fits `ProtocolConnectionConfig`
@@ -851,18 +876,19 @@ export async function handler(argv: Arguments): Promise<void> {
         // write itself happens later, in onOutputComplete once the whole
         // exchange has completed, so the fill notice is deferred to
         // finalizeBootstrap rather than logged here on the strength of this
-        // in-memory record alone.
-        recordPayloadReceiveFill: options.save
-          ? (columns) => {
-              filledPayloadReceive = columns;
-            }
-          : undefined,
-        payloadReceiveFillNoticeDeferred: options.save,
+        // in-memory record alone. A run without --save writes nothing, so its
+        // unattended notice says so at once.
+        recordPayloadReceiveFill: (columns) => {
+          if (options.save) filledPayloadReceive = columns;
+          else if (!interactive && columns.length > 0)
+            writePlainLine(payloadReceiveTakenNotice(columns, undefined));
+        },
+        payloadReceiveFillNoticeDeferred: true,
         // Without --save there is no configuration, so a yes records nothing.
         onPayloadReceiveFill: payloadReceiveFillConfirmation({
           configPath: options.save ? options.configFile : undefined,
           configSavedAfterExchange: options.save,
-          interactive: stdinAnswersPrompts(input),
+          interactive,
           log,
           logFile,
         }),
@@ -903,6 +929,9 @@ export async function handler(argv: Arguments): Promise<void> {
                 keyFile: options.keyFile,
                 log,
                 filledPayloadReceive,
+                unattendedFillNoticeWriter: interactive
+                  ? undefined
+                  : writePlainLine,
               });
               return { persisted: true };
             } catch (err) {
@@ -913,14 +942,26 @@ export async function handler(argv: Arguments): Promise<void> {
               // The post-preflight config conflict takes the same report rather
               // than exit 64: there is nothing about the invocation to correct,
               // and 64 would invite that same re-run.
+              const configLeftOnDisk = provisionLeftConfigOnDisk(err);
               const notice = unsavedBootstrapNotice({
                 save: options.save,
                 sharedSecret: bootstrap?.sharedSecret,
-                configLeftOnDisk: provisionLeftConfigOnDisk(err),
+                configLeftOnDisk,
                 configFile: options.configFile,
                 keyFile: options.keyFile,
               });
               log.error(`${notice}: ${sanitizeErrorForDisplay(err)}`);
+              if (
+                !interactive &&
+                filledPayloadReceive !== undefined &&
+                filledPayloadReceive.length > 0
+              )
+                writePlainLine(
+                  payloadReceiveTakenNotice(
+                    filledPayloadReceive,
+                    configLeftOnDisk ? options.configFile : undefined,
+                  ),
+                );
               reportPersistenceLoss(notice, eventStreamEmitter);
               return { persisted: false };
             }

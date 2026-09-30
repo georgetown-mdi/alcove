@@ -2332,6 +2332,7 @@ function onlineBootstrapParams(
     verbosity: -1,
     loggerName: "bootstrap-test",
     recordOutput: undefined,
+    writePlainLine: () => {},
   };
 }
 
@@ -2755,6 +2756,38 @@ describe("runOnlineBootstrap", () => {
       [undefined, false],
       [false, false],
       [true, true],
+    ]);
+  });
+
+  test("an unattended fill writes its notice through the command's unfiltered writer, naming the configuration", async () => {
+    const written: Array<[boolean | undefined, string[]]> = [];
+    for (const interactive of [undefined, true]) {
+      const lines: string[] = [];
+      vi.mocked(runProtocol).mockImplementationOnce((async (
+        ...callArgs: unknown[]
+      ) => {
+        optionsArg(callArgs).payloadReceiveFillNotice?.(["dob"]);
+        return {};
+      }) as never);
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+      const configPath = path.join(dir, "alcove.yaml");
+      try {
+        await runOnlineBootstrap({
+          ...onlineBootstrapParams(configPath),
+          ...(interactive !== undefined ? { interactive } : {}),
+          writePlainLine: (line) => lines.push(line),
+        });
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+      expect(lines.every((line) => line.includes(configPath))).toBe(true);
+      written.push([interactive, lines]);
+    }
+    expect(
+      written.map(([interactive, lines]) => [interactive, lines.length]),
+    ).toEqual([
+      [undefined, 1],
+      [true, 0],
     ]);
   });
 

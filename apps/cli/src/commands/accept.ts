@@ -1036,7 +1036,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // stderr sink so stdout holds only result data (the exchange CSV when no
       // OUTPUT_FILE positional is given). A missing parent directory is a
       // UsageError -> exit 64, mapped here by the enclosing runOrExit.
-      const { log, close } = configureLogging({
+      const { log, writePlainLine, close } = configureLogging({
         logLevel: options.logLevel,
         logFile: options.logFile,
         name: "accept",
@@ -1207,6 +1207,7 @@ export async function handler(argv: Arguments): Promise<void> {
           // Asked where the acceptance was: at a terminal, and not under
           // --consent-to-terms, which declares the run unattended.
           interactive: process.stdin.isTTY === true && !consentToTerms,
+          writePlainLine,
           // Record the invitation's declared cardinality side in the acceptance
           // hook's first write, and refresh it in place under reuse, so a later
           // `alcove exchange` from this configuration refuses a partner

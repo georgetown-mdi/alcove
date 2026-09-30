@@ -71,7 +71,10 @@ import {
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
 import type { RecordOutput } from "./recordFile";
 import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
-import { payloadReceiveFillConfirmation } from "./termsChange";
+import {
+  payloadReceiveFillConfirmation,
+  unattendedPayloadReceiveFillNotice,
+} from "./termsChange";
 
 /**
  * The exchange-data portion of a spec: linkage terms (always present once
@@ -881,6 +884,12 @@ export async function runOnlineBootstrap(params: {
    * asking.
    */
   interactive?: boolean;
+  /**
+   * The command's unfiltered writer (`ConfiguredLogging.writePlainLine`),
+   * which an unattended run's fill notice goes through so it reaches stderr
+   * or the `--log-file` at every `--log-level`.
+   */
+  writePlainLine: (line: string) => void;
 }): Promise<{ configWriteError?: unknown }> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
@@ -1109,6 +1118,11 @@ export async function runOnlineBootstrap(params: {
           message,
         );
       },
+      payloadReceiveFillNotice: unattendedPayloadReceiveFillNotice({
+        configPath: params.configPath,
+        interactive: params.interactive === true,
+        writePlainLine: params.writePlainLine,
+      }),
       onPayloadReceiveFill: payloadReceiveFillConfirmation({
         configPath: params.configPath,
         interactive: params.interactive === true,

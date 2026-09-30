@@ -689,6 +689,7 @@ async function runExchangeStage(params: {
   recordPayloadReceiveFill:
     ((columns: string[]) => void | Promise<void>) | undefined;
   payloadReceiveFillNoticeDeferred: boolean | undefined;
+  payloadReceiveFillNotice: ((columns: string[]) => void) | undefined;
   onPayloadReceiveFill:
     ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined;
   onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
@@ -711,6 +712,7 @@ async function runExchangeStage(params: {
     signing,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    payloadReceiveFillNotice,
     onPayloadReceiveFill,
     onTermsChange,
     recordOutput,
@@ -800,6 +802,13 @@ async function runExchangeStage(params: {
           : async (columns: string[]) => {
               await recordPayloadReceiveFill(columns);
               if (payloadReceiveFillNoticeDeferred) return;
+              if (
+                payloadReceiveFillNotice !== undefined &&
+                columns.length > 0
+              ) {
+                payloadReceiveFillNotice(columns);
+                return;
+              }
               log.info(
                 sanitizeForDisplay(payloadReceiveFilledNotice(columns), {
                   maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -2524,15 +2533,22 @@ export interface RunProtocolOptions {
   recordPayloadReceiveFill?: (columns: string[]) => void | Promise<void>;
   /**
    * Set when `recordPayloadReceiveFill` only holds the filled columns for a
-   * write the caller makes later (zero-setup `--save`, which persists after
-   * the whole exchange completes, not at the terms exchange this hook runs
-   * at): `runProtocol` then records the fill without logging
-   * {@link payloadReceiveFilledNotice} itself, leaving that to the caller once
-   * its own deferred write actually lands. Omit it (or pass false) for a
+   * write the caller makes later, or for none (zero-setup, which with `--save`
+   * persists after the whole exchange completes, not at the terms exchange
+   * this hook runs at): `runProtocol` then records the fill without logging
+   * {@link payloadReceiveFilledNotice} itself, leaving the notice to the
+   * caller. Omit it (or pass false) for a
    * caller whose `recordPayloadReceiveFill` performs, or fails, the write
    * before returning -- the notice then belongs here, immediately after.
    */
   payloadReceiveFillNoticeDeferred?: boolean;
+  /**
+   * Set on an unattended run: writes the line naming the columns a
+   * non-empty fill took, in place of the info-level
+   * {@link payloadReceiveFilledNotice}, once `recordPayloadReceiveFill` has
+   * recorded them. Not called when `payloadReceiveFillNoticeDeferred` is set.
+   */
+  payloadReceiveFillNotice?: (columns: string[]) => void;
   /**
    * Asks whether to take the payload columns the partner's terms declare it
    * sends, on a run holding no list of the columns it receives
@@ -2657,6 +2673,7 @@ export async function runProtocol(
     signing = null,
     recordPayloadReceiveFill,
     payloadReceiveFillNoticeDeferred,
+    payloadReceiveFillNotice,
     onPayloadReceiveFill,
     onTermsChange,
     signingWithoutRecordWarned = false,
@@ -2989,6 +3006,7 @@ export async function runProtocol(
       signing,
       recordPayloadReceiveFill,
       payloadReceiveFillNoticeDeferred,
+      payloadReceiveFillNotice,
       onPayloadReceiveFill,
       onTermsChange,
       recordOutput,

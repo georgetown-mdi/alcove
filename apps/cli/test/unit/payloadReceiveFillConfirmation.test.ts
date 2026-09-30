@@ -26,7 +26,11 @@ vi.mock("../../src/util/prompt", async () => {
 
 import { persistFilledPayloadReceive, saveConfig } from "../../src/config";
 import { buildErrorEvent, classifyTerminalError } from "../../src/eventStream";
-import { payloadReceiveFillConfirmation } from "../../src/termsChange";
+import {
+  payloadReceiveFillConfirmation,
+  payloadReceiveTakenNotice,
+  unattendedPayloadReceiveFillNotice,
+} from "../../src/termsChange";
 import { exitCodeForError } from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
 import { captureStdio } from "../loggingTestSupport";
@@ -199,5 +203,50 @@ describe("an unattended first run", () => {
     expect(aOutcome.status).toBe("fulfilled");
     expect(bOutcome.status).toBe("fulfilled");
     expect(receivedColumns(readSpec())).toEqual(["notes", "county"]);
+  });
+});
+
+describe("the unattended fill notice", () => {
+  test("names each column escaped once and the configuration written to", () => {
+    expect(
+      payloadReceiveTakenNotice(
+        ["back\\slash", "bell\u0007", "zip\u202e"],
+        "/srv/alcove.yaml",
+      ),
+    ).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "back\\\\slash", "bell\\x07", ' +
+        '"zip\\u202e". They were written to /srv/alcove.yaml as ' +
+        "linkage_terms.payload.receive, and later exchanges refuse a " +
+        "partner that sends a different list.",
+    );
+  });
+
+  test("says the columns were written nowhere when there is no configuration", () => {
+    expect(payloadReceiveTakenNotice(["notes"], undefined)).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "notes". They were not written to ' +
+        "any configuration.",
+    );
+  });
+
+  test("is written through the unfiltered writer only on an unattended run", () => {
+    const lines: string[] = [];
+    const writePlainLine = (line: string) => lines.push(line);
+    expect(
+      unattendedPayloadReceiveFillNotice({
+        configPath: "alcove.yaml",
+        interactive: true,
+        writePlainLine,
+      }),
+    ).toBeUndefined();
+    unattendedPayloadReceiveFillNotice({
+      configPath: "alcove.yaml",
+      interactive: false,
+      writePlainLine,
+    })?.(["notes"]);
+    expect(lines).toEqual([
+      payloadReceiveTakenNotice(["notes"], "alcove.yaml"),
+    ]);
   });
 });
