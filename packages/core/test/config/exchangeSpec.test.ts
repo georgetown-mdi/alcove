@@ -6,6 +6,7 @@ import {
   safeParseExchangeSpec,
   retiredSettingIssue,
 } from "../../src/config/exchangeSpec";
+import { UNALLOCATED_SERVER_HOST_MESSAGE } from "../../src/config/connection";
 import {
   METADATA_NAME_SHAPE_MESSAGE,
   safeParseMetadataTheReaderWrote,
@@ -51,6 +52,31 @@ test("parses a minimal valid ExchangeSpec", () => {
   expect(result.connection.channel).toBe("webrtc");
   expect(result.metadata).toBeUndefined();
   expect(result.standardization).toBeUndefined();
+});
+
+test("a file whose create-mode server has no host is refused at connection.server.host", () => {
+  let raised: unknown;
+  try {
+    parseExchangeSpec({
+      linkageTerms: minimalLinkageTerms,
+      connection: {
+        channel: "sftp",
+        server: {
+          username: "alice",
+          provision: { mode: "create", host: "api.example.org" },
+        },
+      },
+    });
+  } catch (err) {
+    raised = err;
+  }
+  expect(raised).toBeInstanceOf(ZodError);
+  expect((raised as ZodError).issues).toEqual([
+    expect.objectContaining({
+      path: ["connection", "server", "host"],
+      message: UNALLOCATED_SERVER_HOST_MESSAGE,
+    }),
+  ]);
 });
 
 test("metadata and standardization are optional", () => {

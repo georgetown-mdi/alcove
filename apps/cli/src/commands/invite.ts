@@ -15,13 +15,16 @@ import {
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   MAX_RELAY_LOCATOR_URL_LENGTH,
+  hostForAuthority,
   provisionEndpointLabel,
   safeParseConnectionConfig,
   serverProvisionOf,
+  statesServerHost,
   withProvisionedServerAddress,
   MAX_RELAY_LOCATOR_URLS,
   StunUrlSchema,
   TurnUrlSchema,
+  InternalConsistencyError,
   UsageError,
 } from "@alcove/core";
 import type {
@@ -46,6 +49,10 @@ import {
   persistStatedPayloadSend,
   replacedPayloadSendWarning,
   warnOnLinkageRuleSetCitationDrift,
+} from "../config";
+import type {
+  SFTPConnectionAwaitingAddress,
+  WebRTCConnectionAwaitingAddress,
 } from "../config";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
@@ -299,14 +306,17 @@ function offlineWebRTCEndpoint(
  * The connection with the server address a create-mode endpoint returned in
  * place of its own, refused when the result is not a connection the schema
  * accepts (an sftp `path` beside an `inbound_path`, say). The refusal names the
- * endpoint and the schema's reasons, never the address.
+ * endpoint, the schema's reasons, and the created server's host, which nothing
+ * else records once the invite stops; never the returned path, which may hold
+ * a token.
  */
 function connectionAtProvisionedAddress(
-  connection: SFTPConnectionConfig | WebRTCConnectionConfig,
+  connection: SFTPConnectionAwaitingAddress | WebRTCConnectionAwaitingAddress,
   address: ProvisionedServerAddress,
 ): SFTPConnectionConfig | WebRTCConnectionConfig {
-  const merged = withProvisionedServerAddress(connection, address);
-  const result = safeParseConnectionConfig(merged);
+  const result = safeParseConnectionConfig(
+    withProvisionedServerAddress(connection, address),
+  );
   if (!result.success) {
     const provision = serverProvisionOf(connection);
     const label =
@@ -317,10 +327,32 @@ function connectionAtProvisionedAddress(
       `${label} returned a server address this configuration's ` +
         "connection block cannot use: " +
         result.error.issues.map((issue) => issue.message).join("; ") +
-        "; change connection.server or the endpoint so the two agree.",
+        "; change connection.server or the endpoint so the two agree. The " +
+        `endpoint created a server at ${hostForAuthority(address.host)}, which this ` +
+        "configuration does not record; remove it through the endpoint's " +
+        "operator if nothing else will use it.",
     );
   }
-  return merged;
+  if (result.data.channel === "filedrop")
+    throw new InternalConsistencyError(
+      "a provisioned connection parsed as a filedrop connection",
+    );
+  return result.data;
+}
+
+/**
+ * The connection a configuration names when no create-mode endpoint was
+ * called: its server states `host`, since only a create-mode block may leave
+ * it out and such a block always calls the endpoint.
+ */
+function connectionStatingHost(
+  connection: SFTPConnectionAwaitingAddress | WebRTCConnectionAwaitingAddress,
+): SFTPConnectionConfig | WebRTCConnectionConfig {
+  if (statesServerHost(connection)) return connection;
+  throw new InternalConsistencyError(
+    "a connection with no server host reached the invitation without a " +
+      "create-mode provisioning call",
+  );
 }
 
 /**
@@ -965,9 +997,11 @@ export async function validateInvite(params: {
         ? await createProvisionedServer(configConnection, log)
         : undefined;
     const connection =
-      configConnection !== undefined && provisionedAddress !== undefined
-        ? connectionAtProvisionedAddress(configConnection, provisionedAddress)
-        : configConnection;
+      configConnection === undefined
+        ? undefined
+        : provisionedAddress !== undefined
+          ? connectionAtProvisionedAddress(configConnection, provisionedAddress)
+          : connectionStatingHost(configConnection);
     const connectionEndpoint =
       connection?.channel === "webrtc"
         ? offlineWebRTCEndpoint(connection)

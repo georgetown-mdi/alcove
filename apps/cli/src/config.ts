@@ -5,6 +5,7 @@ import type {
   BuiltInLinkageRuleSet,
   CompatibilityMessageFragment,
   ConnectionConfig,
+  ConnectionConfigAwaitingAddress,
   ExchangeSpec,
   LinkageRuleSetReference,
   LinkageSetIdentity,
@@ -14,10 +15,8 @@ import type {
   ProvisionedServerAddress,
   RelayLocator,
   ServerProvision,
-  SFTPConnectionConfig,
   SigningConfig,
   Standardization,
-  WebRTCConnectionConfig,
 } from "@alcove/core";
 import {
   bareTermsValue,
@@ -55,6 +54,7 @@ import {
   resolveLinkageRuleSetCitation,
   ruleSetCitation,
   safeParseConnectionConfig,
+  safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,
   safeParseLinkageTermsTheReaderWrote,
   safeParseMetadataTheReaderWrote,
@@ -2506,6 +2506,18 @@ function readRetainFilesDeclaration(config: Record<string, unknown>): boolean {
   return entry["retain_files"] === true || entry["retainFiles"] === true;
 }
 
+/** A webrtc connection block whose create-mode server may still lack `host`. */
+export type WebRTCConnectionAwaitingAddress = Extract<
+  ConnectionConfigAwaitingAddress,
+  { channel: "webrtc" }
+>;
+
+/** An sftp connection block whose create-mode server may still lack `host`. */
+export type SFTPConnectionAwaitingAddress = Extract<
+  ConnectionConfigAwaitingAddress,
+  { channel: "sftp" }
+>;
+
 /**
  * The connection block of the config at `configPath` when it declares
  * `channel: webrtc`, validated through the connection schema, or `undefined`
@@ -2521,7 +2533,7 @@ function readRetainFilesDeclaration(config: Record<string, unknown>): boolean {
  */
 export function loadConfigWebRTCConnection(
   configPath: string,
-): WebRTCConnectionConfig | undefined {
+): WebRTCConnectionAwaitingAddress | undefined {
   const connection = loadConfigConnectionBlock(
     configPath,
     (block) => block["channel"] === "webrtc",
@@ -2542,7 +2554,7 @@ export function loadConfigWebRTCConnection(
  */
 export function loadConfigProvisionedSFTPConnection(
   configPath: string,
-): SFTPConnectionConfig | undefined {
+): SFTPConnectionAwaitingAddress | undefined {
   const connection = loadConfigConnectionBlock(configPath, (block) => {
     if (block["channel"] !== "sftp") return false;
     const server = block["server"];
@@ -2558,7 +2570,7 @@ export function loadConfigProvisionedSFTPConnection(
 function loadConfigConnectionBlock(
   configPath: string,
   wanted: (block: Record<string, unknown>) => boolean,
-): ConnectionConfig | undefined {
+): ConnectionConfigAwaitingAddress | undefined {
   let source: string;
   try {
     source = fs.readFileSync(configPath, "utf8");
@@ -2576,7 +2588,7 @@ function loadConfigConnectionBlock(
   if (connection === null || typeof connection !== "object") return undefined;
   const block = connection as Record<string, unknown>;
   if (!wanted(block)) return undefined;
-  const result = safeParseConnectionConfig(connection);
+  const result = safeParseConnectionConfigAwaitingAddress(connection);
   if (!result.success)
     throw configFileRefusal(
       configPath,

@@ -11,15 +11,19 @@ import {
   getDefaultLinkageTerms,
   getLogger,
   inferMetadata,
+  sanitizeErrorForDisplay,
+  UNALLOCATED_SERVER_HOST_MESSAGE,
   UsageError,
 } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
+import { loadConfig } from "../../../src/commands/exchange";
 import {
   handler as inviteHandler,
   validateInvite,
 } from "../../../src/commands/invite";
 import { saveConfig } from "../../../src/config";
+import { saveKeyFile } from "../../../src/keyFile";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
 import { captureProcessExit } from "../../exitCapture";
 
@@ -112,6 +116,15 @@ const webrtcCreate: ExchangeSpec["connection"] = {
     provision: { mode: "create", host: "api.example.org", path: "/create" },
   },
 };
+
+/** Remove the placeholder `host` a fixture's server states, leaving the
+ * create-mode block to supply it. */
+function omitServerHost(configPath: string): void {
+  const text = fs.readFileSync(configPath, "utf8");
+  const without = text.replace(/^ {4}host: pending\n/m, "");
+  expect(without).not.toBe(text);
+  fs.writeFileSync(configPath, without);
+}
 
 /** Stub the global fetch, answering `status` with `body`. */
 function stubFetch(body: string | null, status = 200) {
@@ -234,33 +247,94 @@ test("an unknown mode in an sftp configuration is refused before any call", asyn
   expect(fetch).not.toHaveBeenCalled();
 });
 
-test("a returned path the sftp block cannot hold beside its split directories is refused", async () => {
-  const dir = scratch();
-  writeConfig(dir, {
-    channel: "sftp",
-    server: {
-      ...(sftpCreate.channel === "sftp" ? sftpCreate.server : { host: "" }),
-      inboundPath: "/in",
-      outboundPath: "/out",
-    },
-    options: {
-      retainFiles: true,
-      timestampInFilename: true,
-      locklessRendezvous: true,
-    },
-  });
-  stubFetch(JSON.stringify({ host: "sftp-7.example.org", path: "/drop" }));
-  const err = await validateInvite({
-    resolved: { mode: "offline" },
-    options: optionsIn(dir),
-    acceptTimeout: 900,
-    log: quietLog(),
-  }).catch((raised: unknown) => raised);
-  expect(err).toBeInstanceOf(UsageError);
-  expect((err as Error).message).toContain(
-    "the provisioning endpoint at api.example.org:443 returned a server address",
-  );
-});
+test.each([
+  ["a host name", "sftp-7.example.org", "sftp-7.example.org"],
+  ["an IPv6 address", "2001:db8::7", "[2001:db8::7]"],
+])(
+  "a returned path the sftp block cannot hold beside its split directories is refused, naming the created host (%s)",
+  async (_kind, returnedHost, shownHost) => {
+    const dir = scratch();
+    writeConfig(dir, {
+      channel: "sftp",
+      server: {
+        ...(sftpCreate.channel === "sftp" ? sftpCreate.server : { host: "" }),
+        inboundPath: "/in",
+        outboundPath: "/out",
+      },
+      options: {
+        retainFiles: true,
+        timestampInFilename: true,
+        locklessRendezvous: true,
+      },
+    });
+    stubFetch(JSON.stringify({ host: returnedHost, path: "/drop-t0ken-2468" }));
+    const err = await validateInvite({
+      resolved: { mode: "offline" },
+      options: optionsIn(dir),
+      acceptTimeout: 900,
+      log: quietLog(),
+    }).catch((raised: unknown) => raised);
+    expect(err).toBeInstanceOf(UsageError);
+    const shown = sanitizeErrorForDisplay(err);
+    expect(shown).toContain(
+      "the provisioning endpoint at api.example.org:443 returned a server address",
+    );
+    expect(shown).toContain(
+      `The endpoint created a server at ${shownHost}, which this ` +
+        "configuration does not record",
+    );
+    expect(shown).not.toContain("t0ken");
+    expect(shown).not.toContain("/drop");
+  },
+);
+
+test.each([
+  ["sftp", sftpCreate, { host: "sftp-7.example.org", path: "/drop" }],
+  ["webrtc", webrtcCreate, { host: "peers-4.example.org", path: "/psi" }],
+] as Array<[string, ExchangeSpec["connection"], Record<string, string>]>)(
+  "handler: a %s create-mode configuration stating no host is refused by a run until the invite writes the returned one",
+  async (_, connection, answer) => {
+    const dir = scratch();
+    const configPath = writeConfig(dir, connection);
+    omitServerHost(configPath);
+    const options = optionsIn(dir);
+    saveKeyFile(options.keyFile, {
+      sharedSecret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    let refusal: unknown;
+    try {
+      loadConfig({ configFile: options.configFile, keyFile: options.keyFile });
+    } catch (err) {
+      refusal = err;
+    }
+    expect(refusal).toBeInstanceOf(UsageError);
+    expect((refusal as Error).message).toContain(
+      `connection.server.host: ${UNALLOCATED_SERVER_HOST_MESSAGE}`,
+    );
+    fs.rmSync(options.keyFile);
+
+    stubFetch(JSON.stringify(answer));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const exitSpy = captureProcessExit();
+    try {
+      await inviteHandler(inviteArgv(dir));
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+    const written = YAML.parse(fs.readFileSync(configPath, "utf8"));
+    expect(written.connection.server).toMatchObject(answer);
+    expect(written.connection.server.provision.mode).toBe("create");
+    const loaded = loadConfig({
+      configFile: options.configFile,
+      keyFile: options.keyFile,
+    });
+    if (loaded.connection.channel === "filedrop")
+      throw new Error("expected a connection with a server");
+    expect(loaded.connection.server.host).toBe(answer.host);
+  },
+);
 
 function inviteArgv(dir: string): Arguments {
   return {

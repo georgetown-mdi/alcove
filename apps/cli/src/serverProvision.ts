@@ -10,6 +10,7 @@ import {
 } from "@alcove/core";
 import type {
   ConnectionConfig,
+  ConnectionConfigAwaitingAddress,
   ProvisionedServerAddress,
   ServerProvision,
 } from "@alcove/core";
@@ -95,7 +96,7 @@ export async function wakeProvisionedServer(
  * {@link requestProvisionedServerAddress} raises.
  */
 export async function createProvisionedServer(
-  connection: ConnectionConfig,
+  connection: ConnectionConfigAwaitingAddress,
   log: { info: (message: string) => void },
 ): Promise<ProvisionedServerAddress | undefined> {
   const stated = serverProvisionOf(connection);

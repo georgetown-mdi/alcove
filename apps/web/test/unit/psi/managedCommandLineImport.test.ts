@@ -592,6 +592,59 @@ describe("refusing what this app cannot hold", () => {
     expect(message).toContain("import it again");
   });
 
+  test("an sftp create-mode server with no host is refused with the invite step, echoing nothing", () => {
+    const document = sftpDocumentWithServerLine({
+      path: "/relay-path-from-file/",
+      provision: {
+        mode: "create",
+        host: "provisioner-from-file.example.org",
+        path: "/provision-path-from-file",
+      },
+    });
+    const { host: _host, ...server } = document.connection.server;
+    const message = refusal(
+      configText({
+        ...document,
+        connection: { ...document.connection, server },
+      }),
+    );
+
+    expect(message).toBe(
+      "This configuration creates its server when you run alcove invite, " +
+        "which writes the server address into the file. Import it after " +
+        "alcove invite has written the address.",
+    );
+    expect(message).not.toMatch(/from-file/);
+  });
+
+  test("a webrtc create-mode server with no host is refused naming server.provision, not the invite step", () => {
+    const document = commandLineDocument();
+    const message = refusal(
+      configText({
+        ...document,
+        connection: {
+          ...document.connection,
+          server: {
+            port: 3000,
+            path: "/relay-path-from-file/",
+            provision: {
+              mode: "create",
+              host: "provisioner-from-file.example.org",
+              path: "/provision-path-from-file",
+            },
+          },
+        },
+      }),
+    );
+
+    expect(message).toContain(
+      "Remove these lines from the connection and import it again: " +
+        "server.provision.",
+    );
+    expect(message).not.toContain("alcove invite");
+    expect(message).not.toMatch(/from-file|3000/);
+  });
+
   test.each([
     "expected_payload_columns",
     "disclosed_payload_columns",
