@@ -208,10 +208,10 @@ it pins beyond that, and the second OS-package inventory that comes with it.
 
 | Pin | Value | How it is held |
 | --- | --- | --- |
-| Release snapshot | `--releasever=2023.12.20260817` on every `dnf` transaction | Shape-checked as a dated snapshot in `scripts/dockerfile-freeze.test.mjs`; compared against the base rootfs's own `system-release` version, asserted in the build |
+| Release snapshot | `--releasever=2023.12.20260918` on every `dnf` transaction | Shape-checked as a dated snapshot in `scripts/dockerfile-freeze.test.mjs`; compared against the base rootfs's own `system-release` version, asserted in the build |
 | Provider package and version | `openssl-fips-provider-certified` at `3.2.2-1.amzn2023` | `rpm -qf` on the installed `fips.so`, asserted in the build |
 | Module version string | `3.2.2-799901ad7ab41d45` | `openssl list -providers` read back, asserted in the build |
-| Base image | `amazonlinux:2023@sha256:181f98c48832fe926f8ca3b6ffeafcce128e96e77b93d08fbe9a9bc9403ce284`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
+| Base image | `amazonlinux:2023@sha256:5b29412077a463b4a3a8fbc99a8cdf4b929f38a3ecc8dac10328d8f36b0099b8`, the multi-arch index digest | Named in the `FROM` instead of the tag; the literal held in `scripts/dockerfile-freeze.test.mjs` |
 | Node runtime tarball, `x64` | `982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee` | `sha256sum -c` against the literal committed in the fetching `RUN`; the literal held in `scripts/dockerfile-freeze.test.mjs` |
 | Node runtime tarball, `arm64` | `afc7a004018485092ac8985b817b0d5684472bd9472e0b57d2ab88737e50090d` | as above |
 
@@ -271,7 +271,7 @@ name determines nothing:
     3.2.2-1.amzn2023.0.1 -> 3.2.2-799901ad7ab41d45   <- the one certificate 5438 names
     3.2.2-1.amzn2023.0.2 -> 3.2.2-6a2d04a6952ab14a
     3.5.5-1.amzn2023.0.5 -> 3.5.5-f06cf76f53649b34
-    3.5.7-2.amzn2023.0.1 -> 3.5.7-89ade9f4d5e93a4c   <- stock in amazonlinux:2023
+    3.5.8-1.amzn2023.0.1 -> module version unmeasured as of 2026-09-30   <- stock in the amazonlinux:2023 20260918 rootfs
 
 The `-certified` name this image uses is a different package, which is what
 leaves `openssl-libs` free to float beside the pin, and the snapshot above
@@ -292,7 +292,7 @@ names no package this image installs. Its installation, administrator-guidance
 and end-of-life sections (11.1, 11.2 and 11.4, p. 65) all name
 `openssl-3.2.2-1.amzn2023.0.1`, an NVR of the distribution's `openssl` package
 rather than of either `-certified` package -- and one this image does not carry
-under that name either, its `openssl` being `3.5.7-2.amzn2023.0.1`. What the
+under that name either, its `openssl` being `3.5.8-1.amzn2023.0.1`. What the
 policy is consistent about is the module version string, given in section 11.2
 (p. 65) as the value the Crypto Officer reads back and in all six rows of
 Tables 2 and 3 (p. 8), which is the value the build's second assertion
@@ -304,10 +304,10 @@ coupled: a base far newer than the pinned snapshot can put that snapshot's
 packages in conflict with what the base already holds. The digest in the table
 above closes that. It is the multi-arch index digest, which is what a
 multi-platform build can resolve -- a platform-specific manifest digest names one
-architecture and fails on the other -- and it was resolved on 2026-09-09 with
+architecture and fails on the other -- and it was resolved on 2026-09-30 with
 `docker buildx imagetools inspect amazonlinux:2023`, both of whose per-arch
-manifests state `org.opencontainers.image.created: 2026-08-20`. The rootfs at
-that digest reports `PRETTY_NAME="Amazon Linux 2023.12.20260817"` on `amd64` and
+manifests state `org.opencontainers.image.created: 2026-09-28`. The rootfs at
+that digest reports `PRETTY_NAME="Amazon Linux 2023.12.20260918"` on `amd64` and
 `arm64` alike, which is the release `AL2023_RELEASEVER` names, so the base and
 the packages are the same snapshot rather than two compatible ones.
 
@@ -757,11 +757,15 @@ closure their helper scripts were written against.
 > evidence behind the rows above. Nothing here binds a build: a rebuild that
 > moves a figure moves the figure, not the spec.
 >
-> **Unverified as of 2026-09-29.** Every inventory in this section (package
-> counts, byte sizes, the `find` results for setuid and setgid files, the PAM
-> helper list, the per-component sizes) was measured on an earlier image build.
-> The 2026-09-29 documentation audit had no Docker and could not reach the image
-> registries, so none of it was re-run; a figure here may be out of date.
+> **Unverified as of 2026-09-29, except the FIPS variant's closure figures.**
+> Every inventory in this section (package counts, byte sizes, the `find`
+> results for setuid and setgid files, the PAM helper list, the per-component
+> sizes) was measured on an earlier image build. The 2026-09-29 documentation
+> audit had no Docker and could not reach the image registries, so none of it was
+> re-run; a figure here may be out of date. The FIPS variant's attribution list,
+> package count, image size and GPL-3.0/LGPL-3.0 count were re-measured on
+> 2026-09-30 at the base pinned above, on `amd64` (emulated) with `arm64` built
+> beside it.
 
 ### The OS-layer attribution lists
 
@@ -792,7 +796,7 @@ tag.
   version and license on both architectures; the listing is what the generator
   parses.
 - FIPS variant: `rpm -qa --qf "%{NAME}\t...\t%{LICENSE}\n"`, RPM 4.16.1.3 with
-  dbpath `/var/lib/rpm`, on Amazon Linux 2023.12.20260817. The variant's
+  dbpath `/var/lib/rpm`, on Amazon Linux 2023.12.20260918. The variant's
   fips-only OpenSSL configuration does not reach rpm, which reads its database
   in C; what it breaks is dnf's own Python, which hashes with blake2s.
 - Neither Dockerfile names its final stage, so a `--target` query cannot reach
@@ -805,7 +809,7 @@ tag.
   architectures of an image disagree on.
 
 **What was measured.** Both images built without a layer cache at both
-architectures, the FIPS variant on 2026-09-11 and the default image on
+architectures, the FIPS variant on 2026-09-30 and the default image on
 2026-09-24. A first attempt with a warm cache reported an
 architecture difference that was a stale layer rather than a property of the
 image, so a re-measurement builds with `--no-cache` or it measures the cache.
@@ -859,7 +863,7 @@ image, so a re-measurement builds with `--no-cache` or it measures the cache.
   resolves against whatever the Alpine mirror holds at build time, so its list
   can go stale with nothing in this repository changing, and the remedy is to
   regenerate it. The FIPS variant has no such exposure: its dnf transactions pin
-  `--releasever=2023.12.20260817`.
+  `--releasever=2023.12.20260918`.
 - The drift check fails on a package added or removed and on a license string
   that moved; a version that moved it reports without failing. That install
   resolves its dependency versions against the live index, which moves patch
@@ -955,16 +959,17 @@ derived from the other's.
 
 ### The FIPS reference build's inventory
 
-The shipped `Dockerfile.fips` build at the pins above, re-measured 2026-09-10,
-installs
-**165 OS packages** and weighs 653,417,246 bytes (653 MB) on `x86_64` and
-801,950,571 bytes (802 MB) on `aarch64`. Of those 165, **37 hold a GPL-3.0 or
+The shipped `Dockerfile.fips` build at the pins above, re-measured 2026-09-30
+on builds without a layer cache (`x86_64` emulated on an `arm64` host,
+`aarch64` native), installs
+**165 OS packages** and weighs 658,650,027 bytes (659 MB) on `x86_64` and
+807,119,724 bytes (807 MB) on `aarch64`. Of those 165, **37 hold a GPL-3.0 or
 LGPL-3.0 term** -- the reference build's 39 (enumerated below) minus `binutils`
 and its `elfutils-debuginfod-client` dependency, both of which hold a v3 term
-and neither of which the shipped build installs. That licence breadth is
-carried forward rather than re-derived at this pin: the closure's package names
-are the same apart from the provider swap, and both provider packages are
-Apache-2.0.
+and neither of which the shipped build installs. At this pin the 37 is counted
+from the rows of
+[`NOTICE-os-packages-fips.tsv`](../../NOTICE-os-packages-fips.tsv) whose license
+holds a GPL-3.0 or LGPL-3.0 term.
 
 The table below is the older one-off reference build `Dockerfile.fips` was
 derived from, measured on `aarch64` against the Alpine image built the same day.
