@@ -488,7 +488,7 @@ describe("laying a pair over the stored record it revives", () => {
     );
   });
 
-  test("a revive whose pair holds another secret and no pending registration keeps the stored one only where the record names a registrar", () => {
+  test("a revive whose pair holds another secret and no pending registration keeps the stored one, whether or not the record names a registrar", () => {
     const pending = runnableManagedExchangeOrRefuse({
       ...runnableManagedExchangeOrRefuse(
         buildManagedExchangeRecord(newExchange()),
@@ -506,8 +506,40 @@ describe("laying a pair over the stored record it revives", () => {
     expect(kept.sharedSecret).toBe(noPending.sharedSecret);
     expect(kept.relayRegistrationPendingSince).toBe(MARKED_AT);
     expect(
-      applyManagedExchangeCommandLinePair(pending, noPending),
-    ).not.toHaveProperty("relayRegistrationPendingSince");
+      applyManagedExchangeCommandLinePair(pending, noPending)
+        .relayRegistrationPendingSince,
+    ).toBe(MARKED_AT);
+  });
+
+  test("a revive whose key file states a pending registration drops the stored one's re-invite reason", () => {
+    const reinvited = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: MARKED_AT,
+      relayRegistrationPendingReason: "reinvite",
+    });
+    const noPending = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange({ label: "" })),
+    );
+    expect(
+      applyManagedExchangeCommandLinePair(reinvited, noPending)
+        .relayRegistrationPendingReason,
+    ).toBe("reinvite");
+    const pendingPair = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(
+        newExchange({
+          label: "",
+          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    const revived = applyManagedExchangeCommandLinePair(reinvited, pendingPair);
+    expect(revived.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+    expect(revived).not.toHaveProperty("relayRegistrationPendingReason");
   });
 
   test("a revive whose pair holds the stored secret keeps the stored pending registration unless the key file states one", () => {

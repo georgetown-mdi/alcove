@@ -14,6 +14,7 @@
 
 import {
   channelThisAppDoesNotRun,
+  managedExchangeRelaysThroughPartner,
   raisedStandingCondition,
   runnableManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
@@ -136,22 +137,39 @@ export interface SavedExchangeRow {
 }
 
 /**
- * The line a record enrolled at a relay registrar shows while the registrar
- * has not confirmed the key of its current secret, or `undefined`: since when,
- * what the next run does about it, and the step if the registrar refuses.
+ * The line a record shows while no registrar has confirmed the relay key of
+ * its current secret, or `undefined`: since when, and the step that registers
+ * it. An enrolled record whose registration a run can still confirm names the
+ * retry before the next run, and the step if the registrar refuses; one whose
+ * re-invite's registration was not confirmed, and one naming no registrar,
+ * name enrollment. A record relaying through its partner's relay shows none.
  */
 export function relayRegistrationPendingLine(
   record: ManagedExchangeRecord,
 ): string | undefined {
   const pendingSince = record.relayRegistrationPendingSince;
-  if (record.relayRegistrar === undefined || pendingSince === undefined)
+  if (pendingSince === undefined || managedExchangeRelaysThroughPartner(record))
     return undefined;
+  const since = dateTimeLabel(new Date(pendingSince));
+  if (record.relayRegistrar === undefined)
+    return (
+      `Relay key registration unconfirmed since ${since}: no registrar has ` +
+      "confirmed the relay key of this exchange's current secret. Enroll the " +
+      "exchange under Relay registration to register it."
+    );
+  if (record.relayRegistrationPendingReason === "reinvite")
+    return (
+      `Relay key registration unconfirmed since ${since}: the registrar did ` +
+      "not confirm the key of the secret the re-invite made, and no run can " +
+      "register it. Enroll the exchange again with the relay-owner token " +
+      "under Relay registration, choosing to replace the key the registrar " +
+      "holds."
+    );
   return (
-    `Relay key registration pending since ` +
-    `${dateTimeLabel(new Date(pendingSince))}; the next run through this ` +
-    "browser's relay retries it before connecting. If the registrar refuses " +
-    "it, enroll the exchange again with the relay-owner token under Relay " +
-    "registration."
+    `Relay key registration pending since ${since}; the next run through ` +
+    "this browser's relay retries it before connecting. If the registrar " +
+    "refuses it, enroll the exchange again with the relay-owner token under " +
+    "Relay registration."
   );
 }
 

@@ -644,13 +644,54 @@ describe("the pending relay key registration", () => {
     ).not.toHaveProperty("relayRegistrationLine");
   });
 
-  test("a confirmed registration, or a record enrolled nowhere, shows nothing", () => {
+  test("a re-invite's unconfirmed registration names owner-token re-enrollment and no retry", () => {
+    const line = relayRegistrationPendingLine(
+      record({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      }),
+    );
+    expect(line).toMatch(/^Relay key registration unconfirmed since /);
+    expect(line).toContain("no run can register it");
+    expect(line).toContain(
+      "Enroll the exchange again with the relay-owner token under Relay " +
+        "registration, choosing to replace the key the registrar holds",
+    );
+    expect(line).not.toContain("retries");
+  });
+
+  test("a record naming no registrar with a pending registration names enrollment, and the list row shows it", () => {
+    const imported = record({ relayRegistrationPendingSince: PENDING_SINCE });
+    const line = relayRegistrationPendingLine(imported);
+    expect(line).toMatch(/^Relay key registration unconfirmed since /);
+    expect(line).toContain(
+      "Enroll the exchange under Relay registration to register it.",
+    );
+    expect(line).not.toContain("retries");
+    expect(
+      savedExchangeRow(imported, undefined, NOW).relayRegistrationLine,
+    ).toBe(line);
+  });
+
+  test("a confirmed registration, or an exchange relaying through its partner's relay, shows nothing", () => {
     expect(
       relayRegistrationPendingLine(record({ relayRegistrar: REGISTRAR })),
     ).toBeUndefined();
     expect(
       relayRegistrationPendingLine(
-        record({ relayRegistrationPendingSince: PENDING_SINCE }),
+        record({
+          relayRegistrar: REGISTRAR,
+          relayRegistrationPendingSince: PENDING_SINCE,
+          exchangeFile: composeManagedExchangeFile({
+            connection: {
+              channel: "webrtc",
+              host: "signaling.example.org",
+              relay: { turn: ["turns:partner.example.org:443"] },
+            },
+            linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+          }),
+        }),
       ),
     ).toBeUndefined();
     expect(savedExchangeRow(record(), undefined, NOW)).not.toHaveProperty(

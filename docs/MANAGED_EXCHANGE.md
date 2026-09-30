@@ -1223,19 +1223,22 @@ exchange's current key, as after enrolling it from the command line.
 
 After that, each run that relays through this browser's own relay registers the
 key derived from the new secret, signed with the key being replaced, before it
-lets the exchange go. A run relaying through a relay your partner's invitation
-named registers nothing: the party that supplies a relay is the one that
-registers at it. Such a run still leaves the registration pending, since the
-registrar then holds the key of a secret this exchange no longer has.
+lets the exchange go. A fresh invitation from here does the same for the secret
+it replaces, before it shows you the invitation. An exchange accepted from an
+invitation that named your partner's relay cannot be enrolled here: your
+partner, who supplies that relay, registers at it, and the Relay registration
+section says so in place of the form.
 
 A registration the registrar does not confirm is kept on the exchange and tried
 again before the next run connects. If the registrar still does not confirm, the
 run stops before contacting your partner and says why. Where the registrar
 refused, it no longer holds a key this browser has, and the remedy is to enroll
 the exchange again with the relay-owner token, choosing to replace the key it
-holds. A fresh invitation from here needs the same, since it replaces the secret
-without a registration. While a registration is pending, the recurring list and
-the exchange's page say since when and what to do. The field-level account:
+holds. A fresh invitation whose registration was not confirmed needs the same,
+and no run tries it again: the key the registrar holds is derived from the
+secret the invitation replaced, which is not kept. While a registration is
+pending, the recurring list and the Relay registration section of the
+exchange's page say since when and what to do. The field-level account:
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-pending-relay-registration).
 
 ### Bringing a command-line configuration back
@@ -1269,8 +1272,9 @@ no longer connect to your partner. What the pair import takes and refuses:
   time, or holds any other field is refused, saying which, and nothing is
   imported. The refusal never shows what the file holds. A key file recording a
   relay key registration the registrar has not confirmed imports, and the
-  exchange's first run here retries it once the exchange names its registrar
-  (see [When your relay runs a registrar](#when-your-relay-runs-a-registrar)).
+  recurring list and the exchange's page say so until you enroll the exchange
+  under Relay registration, which registers its current key (see [When your
+  relay runs a registrar](#when-your-relay-runs-a-registrar)).
 - **Only an exchange this browser runs.** An sftp or filedrop configuration, or
   one whose `signing` block asks for a receipt, is refused with its key file;
   import the `alcove.yaml` on its own to edit it here. A `signing` block with

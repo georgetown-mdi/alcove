@@ -72,9 +72,9 @@ no-parallel-format contract in [EXCHANGE_FILE.md](EXCHANGE_FILE.md) exists to
 prevent. `camelCase` on the TypeScript side; the persisted key names below are
 the normative field names.
 
-The five bookkeeping fields, `schedule`, `lastRun`, `standingCondition`,
-`rotationInFlightSince`, and `relayRegistrationPendingSince`, hold **no free
-text**: every field of each is a timestamp, an integer duration, a closed enum,
+The six bookkeeping fields, `schedule`, `lastRun`, `standingCondition`,
+`rotationInFlightSince`, `relayRegistrationPendingSince`, and
+`relayRegistrationPendingReason`, hold **no free text**: every field of each is a timestamp, an integer duration, a closed enum,
 or a marker admitted only as `true`, so none can accumulate narrative, a match
 result, a count, or a row value. The constraint is the type, not a prose
 promise.
@@ -110,6 +110,7 @@ are the standing definition of the managed exchange.
 | `rotationInFlightSince` | string (ISO 8601, UTC `Z`) or absent | The instant a run began a key exchange that has not saved its rotated secret: written durably after the partner connects and before the key exchange starts, and removed by the rotation write that stores the rotated secret, so a record still holding it outside a run records a key exchange that stopped between the two. What writes and reads it: [The rotation-in-flight marker](#the-rotation-in-flight-marker). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line key file this app writes. |
 | `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written only once the registrar has confirmed it holds the relay key derived from the record's current secret, and removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line files this app writes. |
 | `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line key file this app writes. |
+| `relayRegistrationPendingReason` | `"reinvite"` or absent | Why no run can confirm the registration `relayRegistrationPendingSince` records, held only beside it: `"reinvite"` when a re-invite replaced the secret and the registrar did not confirm the fresh secret's key, so the key it holds is derived from a secret the record no longer holds. Absent beside the marker, a registration signed under the current key can confirm it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Never in the export artifact or the command-line key file this app writes. |
 | `standingCondition` | object | The unanswered **standing condition**: evidence that this device's secret may no longer be the partnership's, raised by a run and not answered since. It holds one of two forms, neither with free text: a raised condition, `since` (ISO 8601 UTC, the instant of the run that raised it) and `kind` (`"auth"` \| `"storage"`), the two `failureKind`s whose remedy is out-of-band rather than an act on this device; or `{"kind": "none"}` while none stands. A raised condition additionally holds the operator's `response` where one has been given -- `kind` (`"compromise"`) and `at` (ISO 8601 UTC, the instant they answered) -- nested inside the condition it answers rather than beside it, so the acts that clear the condition clear the response with it (see [The standing condition](#the-standing-condition)). The field is **required**, so a reader never has to tell a record holding none from one written without the field: a record stored under `alcove-managed-exchange/v1`, which has no such field, is rejected whole and re-established by re-invite, as is one under `alcove-managed-exchange/v2`, whose condition cannot hold a response (see [Versioning](#versioning-an-app-upgrade-can-invalidate-a-stored-record)). It stands BESIDE `lastRun` rather than inside it because `lastRun` holds one run: the next run's stamp replaces it, so a no-show or a later success would otherwise carry the evidence off with the entry that held it and the operator would never again be asked for the confirmation the design requires (see [A standing condition outlives the run that raised it](../MANAGED_EXCHANGE.md#a-standing-condition-outlives-the-run-that-raised-it)). What raises and clears it is [The standing condition](#the-standing-condition). |
 
 Everything in this table except `sharedSecret` is non-secret but not
@@ -1353,32 +1354,52 @@ derived from the rotated secret at the registrar the record names
 not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 
 - **Written** by the rotation write that stores the rotated secret, in the same
-  strict-durability transaction, whenever the record names a registrar --
-  whether or not the run registers, since a run relaying elsewhere leaves the
-  registrar holding the key of a secret the record no longer holds; so no
-  moment exists at which the record holds the rotated secret without it. A
-  re-invite's rotation writes it too where the record names a registrar, since
-  no registration is signed for the fresh secret. A rotation write on a
-  record naming no registrar stores one only when it carries it in from a
-  command-line key file (**Carried in**, below).
-- **What it holds.** An instant only. The pre-rotation secret the registration
-  is signed with is the run's own copy of the record read inside the run+rotate
-  lock, held until the run ends, and no key derived from either secret is
-  written.
+  strict-durability transaction, whenever the record names a registrar and the
+  invitation it was accepted from names no TURN url -- whether or not the run
+  registers, since a run relaying elsewhere leaves the registrar holding the
+  key of a secret the record no longer holds; so no moment exists at which the
+  record holds the rotated secret without it. A record whose invitation names a
+  TURN url relays through the partner's relay, which the partner registers at,
+  so its rotation writes store none. A rotation write on a record naming no
+  registrar stores one only when it carries it in from a command-line key file
+  (**Carried in**, below).
+- **Written by a re-invite** on a record that names a registrar and whose
+  invitation names no TURN url: the re-invite's rotation write stores the
+  marker with `relayRegistrationPendingReason` `"reinvite"`. Still under the
+  run+rotate lock the write took, the re-invite then registers the key derived
+  from the fresh secret, signed under the key of the secret it replaced, from
+  its own copy of the record it read in that transaction
+  (`registerReinvitedManagedRelayKey`). A confirmed registration removes both
+  fields; any other answer leaves them.
+- **What it holds.** An instant, and the reason beside it. The pre-rotation
+  secret a registration is signed with is the run's own copy of the record
+  read inside the run+rotate lock, or the re-invite's copy of the record it
+  replaced, held until that step ends, and no key derived from either secret
+  is written.
+- **The reason.** A rotation write that sets or keeps the marker keeps the
+  reason the record held, since no rotation recovers the key the registrar
+  holds. Every write that removes the marker removes the reason, and a key
+  file's marker carried in replaces both.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
   rotated since unchanged; by an enrollment; by stopping registration; and,
-  on a record naming no registrar, by a rotation write or a revive from a
-  command-line pair whose secret differs from the stored one that carries none
-  in. No other write removes it: on a record naming a registrar, a rotation
-  write or such a revive sets or keeps it.
+  on a record naming no registrar, by a rotation write that carries none in.
+  No other write removes it: on a record naming a registrar, a rotation write
+  sets or keeps it, and a revive keeps it on any record.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
-  partner: it registers the current key again, signed under that key. The
-  exchange's page and the recurring list show it with the next step. A registrar that does not confirm stops the run with its
-  answer, the registrar, and the next step; nothing rotated and no `lastRun` is
-  written. A refusal names owner-token re-enrollment, since the key the
-  registrar holds is not one this browser has.
+  partner. With no reason, it registers the current key again, signed under
+  that key. With the reason `"reinvite"`, it sends nothing, since no key this
+  browser holds can sign the registration, and stops the run with the
+  owner-token re-enrollment step. A registrar that does not confirm stops the
+  run with its answer, the registrar, and the next step; nothing rotated and no
+  `lastRun` is written. A refusal names owner-token re-enrollment, since the
+  key the registrar holds is not one this browser has.
+- **Shown** by the exchange's page, in its Relay registration section, and the
+  recurring list, with since when and the step that registers the key: the
+  retry before the next run where a run can still confirm it, owner-token
+  re-enrollment for the reason `"reinvite"`, and enrollment on a record naming
+  no registrar. A record whose invitation names a TURN url shows none.
 - **Carried in** from a command-line key file holding the CLI's own field
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), by the
   pair import and the hand-off re-take, so the exchange's first run here
@@ -1386,19 +1407,18 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   (`applyManagedExchangeCommandLinePair`), and the key file's marker replaces
   the stored one. A key file holding none does not show that the command line
   confirmed a registration, since it does not say whether the command line
-  had a registrar configured, so its absence keeps the stored marker -- except
-  where the pair's secret differs on a record naming no registrar, which
-  drops it as the re-take does. The re-take of a pair
-  whose secret differs is a rotation write (`decideRetake`): the key file's
+  had a registrar configured, so its absence keeps the stored marker, on a
+  record naming a registrar or none. The re-take of a pair whose secret
+  differs is a rotation write (`decideRetake`): the key file's
   marker when it holds one, else the stored one where the record names a
   registrar. A marker carried in is kept on a record that names no registrar
-  -- a fresh import names none -- where no run retries it and no page shows
-  it; an enrollment then removes it, having registered the current key with
-  the token.
+  -- a fresh import names none -- where no run retries it; the page and the
+  list name enrollment, which removes it, having registered the current key
+  with the token.
 - **Not carried out**: the export artifact and the command-line files this app
-  writes hold neither field, so an exchange moved by either is enrolled again
-  where it runs next -- without the token where the registrar already holds its
-  current key.
+  writes hold none of the three fields, so an exchange moved by either is
+  enrolled again where it runs next -- without the token where the registrar
+  already holds its current key.
 
 ## Derived, never stored
 

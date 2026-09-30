@@ -95,7 +95,6 @@ import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { LocalDocumentFields } from "./LocalDocumentFields";
 import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
-import { relayRegistrationPendingLine } from "./savedExchangesModel";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
 
@@ -980,13 +979,9 @@ function RunHistory({
   resultSizeWarning: string | undefined;
 }) {
   const entries = runHistoryEntries(record);
-  const relayRegistrationLine = relayRegistrationPendingLine(record);
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Run history</h2>
-      {relayRegistrationLine !== undefined && (
-        <p className={styles.small}>{relayRegistrationLine}</p>
-      )}
       {resultSizeWarning !== undefined && (
         <Alert
           color="yellow"

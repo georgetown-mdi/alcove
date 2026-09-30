@@ -3,22 +3,26 @@
  * "Registering the rotated relay key"): which runs register, the retry before
  * a run connects of a registration the registrar did not confirm, the signed
  * registration of the rotated key after a run, and the enrollment made with
- * the relay-owner token. The requests and their answers are core's
+ * the relay-owner token, and the registration a re-invite makes of its fresh
+ * secret's key. The requests and their answers are core's
  * (`relayRegistrarClient.ts`), shared with the command line.
  *
  * Where each credential lives. The pre-rotation secret a registration is
  * signed with is the run's own copy of the record it read inside the
- * run+rotate lock, and nothing derived from it is written. The relay-owner
+ * run+rotate lock, or the re-invite's copy of the record it replaced, and
+ * nothing derived from it is written. The relay-owner
  * token is an argument of {@link enrollManagedRelayRegistrar}, sent in one
  * request and passed to no store.
  */
 
 import {
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   enrollRelayKey,
   getLogger,
   registerRelayKey,
   relayRegistrarLabel,
   relayRegistrationNotice,
+  sanitizeForDisplay,
 } from "@alcove/core";
 
 import { readOwnRelaySetting, relayForRun } from "../transport/ownRelaySetting";
@@ -28,7 +32,10 @@ import {
   getManagedExchange,
   persistManagedExchangeRelayRegistrar,
 } from "./managedExchangeStore";
-import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
+import {
+  managedExchangeRelaysThroughPartner,
+  runnableManagedExchangeOrRefuse,
+} from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type {
@@ -70,11 +77,11 @@ export function managedRelayRegistrarForRun(
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): RelayRegistrar | undefined {
   const registrar = record.relayRegistrar;
-  if (registrar === undefined) return undefined;
+  if (registrar === undefined || managedExchangeRelaysThroughPartner(record))
+    return undefined;
   const connection = record.exchangeFile.connection;
   const invitationRelay =
     connection.channel === "webrtc" ? connection.invitationRelay : undefined;
-  if ((invitationRelay?.turn ?? []).length > 0) return undefined;
   const relay = relayForRun(invitationRelay, readOwn);
   return relay !== undefined && relay.turn.length > 0 ? registrar : undefined;
 }
@@ -87,46 +94,75 @@ function failureDetail(outcome: RelayRegistrationFailure): string {
     : status || reason;
 }
 
+const REGISTRAR_REFUSES_RUNS =
+  "Until the registrar holds this exchange's current key, the relay refuses " +
+  "this exchange's runs";
+
+/** Where a registration that did not land was made: after a run rotated the
+ * secret, in the retry before a run connects, or after a re-invite replaced
+ * the secret. */
+export type ManagedRelayRegistrationStage = "rotation" | "pending" | "reinvite";
+
+const FAILED_REGISTRATION: Record<
+  ManagedRelayRegistrationStage,
+  (label: string) => string
+> = {
+  rotation: (label) =>
+    `The exchange's shared secret rotated, and ${label} did not register ` +
+    "the relay key derived from the new secret",
+  pending: (label) =>
+    "This exchange records a relay key registration that was not " +
+    `confirmed, and ${label} did not confirm it before this run connected`,
+  reinvite: (label) =>
+    "The re-invite replaced the exchange's shared secret, and " +
+    `${label} did not register the relay key derived from the new secret`,
+};
+
+const KEPT_AFTER_FAILED_REGISTRATION: Record<
+  ManagedRelayRegistrationStage,
+  string
+> = {
+  rotation: "The run's results stand and the rotated shared secret is kept.",
+  pending:
+    "Nothing was sent to your partner, and the shared secret is unchanged.",
+  reinvite: "The new invitation stands.",
+};
+
+const UNAVAILABLE_NEXT_STEP: Record<ManagedRelayRegistrationStage, string> = {
+  rotation:
+    "The next run retries the registration before it connects; if the " +
+    `registrar then refuses it, ${MANAGED_RELAY_REENROLLMENT_STEP}.`,
+  pending: "Run the exchange again once the registrar answers.",
+  reinvite:
+    "The key the registrar holds is derived from the replaced secret, which " +
+    `is not kept, so no run can register the new key; ` +
+    `${MANAGED_RELAY_REENROLLMENT_STEP}.`,
+};
+
 /**
  * The message a registration that did not land states, for the `stage` it
- * was made at: `rotation`, after a run rotated the secret, or `pending`, the
- * retry before a run connects. It names the registrar and the next step; a
- * refusal names owner-token re-enrollment, since the key the registrar holds
- * is not one this browser has.
+ * was made at. It names the registrar and the next step; a refusal names
+ * owner-token re-enrollment, since the key the registrar holds is not one
+ * this browser has.
  */
 export function managedRelayRegistrationFailureMessage(
   registrar: RelayRegistrar,
   outcome: RelayRegistrationFailure,
-  stage: "rotation" | "pending",
+  stage: ManagedRelayRegistrationStage,
 ): string {
   const label = relayRegistrarLabel(registrar);
   const detail = failureDetail(outcome);
-  const what =
-    stage === "rotation"
-      ? `The exchange's shared secret rotated, and ${label} did not register ` +
-        "the relay key derived from the new secret"
-      : "This exchange records a relay key registration that was not " +
-        `confirmed, and ${label} did not confirm it before this run connected`;
-  const kept =
-    stage === "pending"
-      ? "Nothing was sent to your partner, and the shared secret is unchanged."
-      : "The run's results stand and the rotated shared secret is kept.";
+  const what = FAILED_REGISTRATION[stage](label);
+  const kept = KEPT_AFTER_FAILED_REGISTRATION[stage];
   switch (outcome.kind) {
     case "refused":
       return (
-        `${what} (${detail}): the registrar does not hold the key this run ` +
-        `signed with. ${kept} Until the registrar holds this exchange's ` +
-        `current key, the relay refuses this exchange's runs; ` +
+        `${what} (${detail}): the registrar does not hold the key the ` +
+        `registration was signed with. ${kept} ${REGISTRAR_REFUSES_RUNS}; ` +
         `${MANAGED_RELAY_REENROLLMENT_STEP}.`
       );
     case "unavailable":
-      return (
-        `${what}: ${detail}. ${kept} ` +
-        (stage === "pending"
-          ? "Run the exchange again once the registrar answers."
-          : "The next run retries the registration before it connects; if " +
-            `the registrar then refuses it, ${MANAGED_RELAY_REENROLLMENT_STEP}.`)
-      );
+      return `${what}: ${detail}. ${kept} ${UNAVAILABLE_NEXT_STEP[stage]}`;
     case "rejected":
       return (
         `${what}: it refused the request (${detail}). ${kept} Check the ` +
@@ -137,19 +173,50 @@ export function managedRelayRegistrationFailureMessage(
 }
 
 /**
+ * The message of a run stopped before connecting because a re-invite's
+ * registration was not confirmed: the registrar holds the key of the secret
+ * the re-invite replaced, so only owner-token re-enrollment registers the
+ * current one.
+ */
+export function managedRelayReinviteKeyLostMessage(
+  registrar: RelayRegistrar,
+): string {
+  return (
+    "This exchange's re-invite replaced its shared secret, and " +
+    `${relayRegistrarLabel(registrar)} did not confirm the relay key derived ` +
+    "from the new one. The key the registrar holds is derived from the " +
+    "replaced secret, which is not kept, so no run can register the current " +
+    `key. ${KEPT_AFTER_FAILED_REGISTRATION.pending} ` +
+    `${REGISTRAR_REFUSES_RUNS}; ${MANAGED_RELAY_REENROLLMENT_STEP}.`
+  );
+}
+
+/** Why a run stopped before connecting over its relay key registration: the
+ * registrar's answer to the retry, or `key-lost`, a re-invite's registration
+ * that was not confirmed, for which no retry is sent. */
+export type ManagedRelayRegistrationStop =
+  RelayRegistrationFailure | { kind: "key-lost" };
+
+/**
  * Raised before a run connects when the pending registration it retried was
- * not confirmed. The run stopped before any contact with the partner, so the
+ * not confirmed, or when a re-invite's registration was not, which no run can
+ * confirm. The run stopped before any contact with the partner, so the
  * shared secret is unchanged and the record still holds the pending
  * registration.
  */
 export class ManagedRelayRegistrationError extends Error {
   /** The registrar that did not confirm. */
   readonly registrar: RelayRegistrar;
-  /** How it answered. */
-  readonly outcome: RelayRegistrationFailure;
-  constructor(registrar: RelayRegistrar, outcome: RelayRegistrationFailure) {
+  /** How it answered, or `key-lost` when nothing was asked. */
+  readonly outcome: ManagedRelayRegistrationStop;
+  constructor(
+    registrar: RelayRegistrar,
+    outcome: ManagedRelayRegistrationStop,
+  ) {
     super(
-      managedRelayRegistrationFailureMessage(registrar, outcome, "pending"),
+      outcome.kind === "key-lost"
+        ? managedRelayReinviteKeyLostMessage(registrar)
+        : managedRelayRegistrationFailureMessage(registrar, outcome, "pending"),
     );
     this.name = "ManagedRelayRegistrationError";
     this.registrar = registrar;
@@ -159,7 +226,11 @@ export class ManagedRelayRegistrationError extends Error {
 
 /** The store writes a registration makes: injectable for tests. */
 export interface ManagedRelayRegistrationStore {
-  clearPending: (id: string, confirmedSecret: string) => Promise<void>;
+  /** Drops the pending registration and returns the stored record. */
+  clearPending: (
+    id: string,
+    confirmedSecret: string,
+  ) => Promise<RunnableManagedExchangeRecord>;
 }
 
 const defaultRegistrationStore: ManagedRelayRegistrationStore = {
@@ -173,9 +244,12 @@ const defaultRegistrationStore: ManagedRelayRegistrationStore = {
  * this is a renewal signed with the current key, which the registrar takes
  * only if it already holds that key -- a rotation whose answer was lost. A
  * confirmed renewal drops the pending registration from the record.
- * `env.signal` cancels the renewal and its retries.
+ * `env.signal` cancels the renewal and its retries. A registration pending for
+ * the reason `"reinvite"` sends nothing: the key the registrar holds is
+ * derived from a secret the re-invite replaced, so no renewal can confirm it.
  *
- * @throws {ManagedRelayRegistrationError} if the registrar did not confirm.
+ * @throws {ManagedRelayRegistrationError} if the registrar did not confirm,
+ *   or the registration is pending for the reason `"reinvite"`.
  * @throws the reason `env.signal` aborted with, when it cancelled the renewal;
  *   the registration stays pending.
  */
@@ -186,6 +260,8 @@ export async function retryPendingManagedRelayRegistration(
   store: ManagedRelayRegistrationStore = defaultRegistrationStore,
 ): Promise<void> {
   if (current.relayRegistrationPendingSince === undefined) return;
+  if (current.relayRegistrationPendingReason === "reinvite")
+    throw new ManagedRelayRegistrationError(registrar, { kind: "key-lost" });
   log.info(
     "retrying a relay key registration not confirmed since " +
       `${current.relayRegistrationPendingSince} at ${relayRegistrarLabel(registrar)}`,
@@ -293,6 +369,62 @@ export async function registerRotatedManagedRelayKey(
     );
   }
   return { kind: "registered" };
+}
+
+/**
+ * After a re-invite replaced the secret of an enrolled exchange, under the
+ * lock the re-invite write took: register the relay key derived from the
+ * fresh secret `written` holds, signed with the key derived from the secret
+ * `replaced` held, which the registrar holds. A confirmed registration drops
+ * the pending registration the re-invite write stored and returns the record
+ * as stored; any other outcome is logged with the registrar's answer and
+ * returns `written`, whose pending registration's reason names the
+ * re-enrollment step. Never throws for the registration: the re-invite
+ * stands either way.
+ */
+export async function registerReinvitedManagedRelayKey(
+  replaced: RunnableManagedExchangeRecord,
+  written: RunnableManagedExchangeRecord,
+  env: RelayRegistrationEnvironment = {},
+  store: ManagedRelayRegistrationStore = defaultRegistrationStore,
+): Promise<RunnableManagedExchangeRecord> {
+  const registrar = written.relayRegistrar;
+  if (registrar === undefined) return written;
+  let outcome: RelayRegistrationOutcome;
+  try {
+    outcome = await registerRelayKey(
+      {
+        registrar,
+        signingSecret: replaced.sharedSecret,
+        registeredSecret: written.sharedSecret,
+        maxAgeDays: written.tokenMaxAgeDays ?? null,
+      },
+      env,
+    );
+  } catch (error) {
+    log.error("registering the re-invited relay key failed:", error);
+    return written;
+  }
+  if (outcome.kind !== "registered") {
+    log.warn(
+      sanitizeForDisplay(
+        managedRelayRegistrationFailureMessage(registrar, outcome, "reinvite"),
+        { maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH },
+      ),
+    );
+    return written;
+  }
+  log.info(relayRegistrationNotice(registrar, outcome));
+  try {
+    return await store.clearPending(written.id, written.sharedSecret);
+  } catch (error) {
+    log.warn(
+      "the registrar confirmed the re-invited relay key, and the record " +
+        "still records it as unconfirmed:",
+      error,
+    );
+    return written;
+  }
 }
 
 /** How {@link enrollManagedRelayRegistrar} ended. */
@@ -412,28 +544,58 @@ export async function stopManagedRelayRegistration(
   return deps.withLock(id, () => deps.removeRegistrar(id));
 }
 
-// The field name the schema's exchange-id messages open with, which names the
-// command line's configuration key.
-const EXCHANGE_ID_MESSAGE_PREFIX = "relay_registrar.exchange_id ";
+type RelayRegistrarIssues = ReadonlyArray<{
+  path: ReadonlyArray<PropertyKey>;
+  message: string;
+}>;
+
+// The problems of one field of a registrar that failed its schema, in the
+// schema's own words with its opening -- the command line's configuration
+// key -- replaced by the field's name on the enrollment form.
+function relayRegistrarFieldProblems(
+  issues: RelayRegistrarIssues,
+  field: "url" | "exchangeId",
+  schemaPrefix: string,
+  formName: string,
+): Array<string> {
+  return issues
+    .filter((issue) => issue.path[0] === field)
+    .map((issue) => {
+      const rule = issue.message.startsWith(schemaPrefix)
+        ? issue.message.slice(schemaPrefix.length)
+        : issue.message;
+      return `${formName} ${rule}.`;
+    });
+}
 
 /**
  * The exchange-id problems of a registrar that failed its schema, in the
  * schema's own words with the field named as the enrollment form names it.
  */
 export function relayRegistrarExchangeIdProblems(
-  issues: ReadonlyArray<{
-    path: ReadonlyArray<PropertyKey>;
-    message: string;
-  }>,
+  issues: RelayRegistrarIssues,
 ): Array<string> {
-  return issues
-    .filter((issue) => issue.path[0] === "exchangeId")
-    .map((issue) => {
-      const rule = issue.message.startsWith(EXCHANGE_ID_MESSAGE_PREFIX)
-        ? issue.message.slice(EXCHANGE_ID_MESSAGE_PREFIX.length)
-        : issue.message;
-      return `The exchange id ${rule}.`;
-    });
+  return relayRegistrarFieldProblems(
+    issues,
+    "exchangeId",
+    "relay_registrar.exchange_id ",
+    "The exchange id",
+  );
+}
+
+/**
+ * The address problems of a registrar that failed its schema, in the schema's
+ * own words with the field named as the enrollment form names it.
+ */
+export function relayRegistrarUrlProblems(
+  issues: RelayRegistrarIssues,
+): Array<string> {
+  return relayRegistrarFieldProblems(
+    issues,
+    "url",
+    "relay_registrar.url ",
+    "The registrar address",
+  );
 }
 
 /** The message a failed enrollment states: the registrar's answer and what to

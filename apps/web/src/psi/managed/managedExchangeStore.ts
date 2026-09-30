@@ -38,6 +38,7 @@ import {
   buildManagedExchangeRecord,
   clearHandedOffLastRun,
   diagnoseManagedExchangeRecord,
+  managedExchangeRelaysThroughPartner,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
   runnableManagedExchangeOrRefuse,
@@ -1135,6 +1136,13 @@ export class ManagedReinviteWithheldError extends Error {
  * check is over a record read before the answer may have been written (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, the response's rules).
  *
+ * On a record whose relay registrar holds the key of the secret this replaces
+ * ({@link reinviteLosesRegistrarKey}), the write stores the registration as
+ * pending for the reason `"reinvite"`, and `registerReinvitedKey`, still under
+ * the lock, is handed the record as read and as written: the replaced secret
+ * is held by that call alone, to sign the registration of the fresh one. What
+ * it returns is what this returns.
+ *
  * A run in flight is excluded rather than checked, exactly as the hand-off spend
  * and the re-take exclude it: this step takes the record's run+rotate lock
  * ({@link ./managedExchangeLock.ts}) with `ifAvailable` before the transaction
@@ -1157,11 +1165,16 @@ export class ManagedReinviteWithheldError extends Error {
 export async function persistManagedExchangeReinvite(
   id: string,
   rotation: ManagedExchangeRotation,
+  registerReinvitedKey?: (
+    replaced: RunnableManagedExchangeRecord,
+    written: RunnableManagedExchangeRecord,
+  ) => Promise<RunnableManagedExchangeRecord>,
 ): Promise<RunnableManagedExchangeRecord> {
   return withManagedExchangeLock(
     id,
-    () =>
-      readModifyWriteRotation(id, (stored) => {
+    async () => {
+      const read: { replaced?: RunnableManagedExchangeRecord } = {};
+      const written = await readModifyWriteRotation(id, (stored) => {
         if (stored === undefined)
           throw new Error(`no managed exchange with id ${id}`);
         const existing = runnableManagedExchangeOrRefuse(
@@ -1169,20 +1182,40 @@ export async function persistManagedExchangeReinvite(
         );
         if (standingCompromiseResponse(existing) !== undefined)
           throw new ManagedReinviteWithheldError(id);
-        // The registrar holds the key of the secret this replaces, and no
-        // registration is signed here, so the first run's retry reaches the
-        // registrar's answer and, on its refusal, the re-enrollment step.
+        read.replaced = existing;
         return applyManagedExchangeReinviteRotation(
           existing,
-          existing.relayRegistrar === undefined
-            ? rotation
-            : {
+          reinviteLosesRegistrarKey(existing)
+            ? {
                 ...rotation,
                 relayRegistrationPendingSince: new Date().toISOString(),
-              },
+                relayRegistrationPendingReason: "reinvite",
+              }
+            : rotation,
         );
-      }),
+      });
+      const { replaced } = read;
+      return replaced !== undefined &&
+        registerReinvitedKey !== undefined &&
+        reinviteLosesRegistrarKey(replaced)
+        ? registerReinvitedKey(replaced, written)
+        : written;
+    },
     { ifAvailable: true },
+  );
+}
+
+/**
+ * Whether a re-invite of `record` replaces the secret whose relay key its
+ * registrar holds: the record names a registrar, and its runs relay through
+ * this browser's relay rather than one the invitation named.
+ */
+function reinviteLosesRegistrarKey(
+  record: RunnableManagedExchangeRecord,
+): boolean {
+  return (
+    record.relayRegistrar !== undefined &&
+    !managedExchangeRelaysThroughPartner(record)
   );
 }
 
@@ -1219,7 +1252,7 @@ export async function persistManagedExchangeRelayRegistrar(
  * Drop the stored record's pending relay key registration once the registrar
  * confirmed the key derived from `confirmedSecret`
  * ({@link applyManagedExchangeRelayRegistrationConfirmed}); a record that has
- * rotated past that secret since keeps its marker.
+ * rotated past that secret since keeps its marker. Returns the stored record.
  *
  * @throws {Error} if no record with `id` exists, or it holds a configuration
  *   only.
@@ -1228,8 +1261,8 @@ export async function persistManagedExchangeRelayRegistrar(
 export async function clearManagedExchangeRelayRegistrationPending(
   id: string,
   confirmedSecret: string,
-): Promise<void> {
-  await readModifyWriteRecord(id, (stored) => {
+): Promise<RunnableManagedExchangeRecord> {
+  const written = await readModifyWriteRecord(id, (stored) => {
     if (stored === undefined)
       throw new Error(`no managed exchange with id ${id}`);
     return applyManagedExchangeRelayRegistrationConfirmed(
@@ -1237,6 +1270,7 @@ export async function clearManagedExchangeRelayRegistrationPending(
       confirmedSecret,
     );
   });
+  return runnableManagedExchangeOrRefuse(written);
 }
 
 /**

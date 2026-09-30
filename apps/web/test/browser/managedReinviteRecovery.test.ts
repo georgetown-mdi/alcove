@@ -2,8 +2,19 @@
 /// <reference types="vite/client" />
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
+import {
+  deriveRelayKey,
+  generateSharedSecret,
+  getDefaultLinkageTerms,
+  relayRegistrarAuthorization,
+} from "@alcove/core";
 
+import {
+  MANAGED_RELAY_REENROLLMENT_STEP,
+  ManagedRelayRegistrationError,
+  registerReinvitedManagedRelayKey,
+  retryPendingManagedRelayRegistration,
+} from "@psi/managed/managedRelayRegistration";
 import {
   ManagedExchangeLockUnavailableError,
   withManagedExchangeLock,
@@ -15,6 +26,7 @@ import {
   createManagedExchange,
   getManagedExchange,
   persistManagedExchangeReinvite,
+  persistManagedExchangeRelayRegistrar,
   recordManagedExchangeCompromiseResponse,
   recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
@@ -30,9 +42,10 @@ import {
 import { failedRun } from "@psi/managed/managedRunRotate";
 import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
+import { relayRegistrationPendingLine } from "@recurring/savedExchangesModel";
 
+import type { RelayRegistrar, WebRTCExchangeLocator } from "@alcove/core";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
-import type { WebRTCExchangeLocator } from "@alcove/core";
 
 // The fast re-invite recovery, driven against the real store: a re-invite rotates the
 // stored secret, drops the consumed failure bookkeeping, clears the restore markers,
@@ -263,5 +276,132 @@ describe("a re-invite while a run holds the run+rotate lock", () => {
     expect((await getManagedExchange(record.id))?.sharedSecret).toBe(
       rotated.sharedSecret,
     );
+  });
+});
+
+describe("a re-invite of an exchange enrolled at a relay registrar", () => {
+  const REGISTRAR: RelayRegistrar = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+
+  /** A fetch answering each request with the next status, recording each
+   * request's body and proof; past the last answer, it is unreachable. */
+  function registrarAnswering(statuses: Array<number>) {
+    const sent: Array<{ body: string; authorization: string | null }> = [];
+    const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+      sent.push({
+        body: typeof init?.body === "string" ? init.body : "",
+        authorization: new Headers(init?.headers).get("Authorization"),
+      });
+      const status = statuses.shift();
+      if (status === undefined)
+        return Promise.reject(new TypeError("unreachable"));
+      return Promise.resolve(
+        new Response(JSON.stringify({ maxAgeDays: null, lapsesAt: null }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as typeof globalThis.fetch;
+    return { fetch, sent };
+  }
+
+  async function enrolledRecord() {
+    const created = await createManagedExchange(newExchange());
+    return persistManagedExchangeRelayRegistrar(
+      created.id,
+      REGISTRAR,
+      created.sharedSecret,
+    );
+  }
+
+  test("registers the fresh secret's key signed with the replaced one's, and stores no pending registration", async () => {
+    const enrolled = await enrolledRecord();
+    const registrar = registrarAnswering([200]);
+    const now = new Date();
+
+    const rotated = await persistManagedExchangeReinvite(
+      enrolled.id,
+      { sharedSecret: generateSharedSecret(), expires: null },
+      (replaced, written) =>
+        registerReinvitedManagedRelayKey(replaced, written, {
+          fetch: registrar.fetch,
+          now: () => now,
+        }),
+    );
+
+    expect(registrar.sent).toHaveLength(1);
+    const [request] = registrar.sent;
+    expect(JSON.parse(request.body)).toEqual({
+      key: await deriveRelayKey(rotated.sharedSecret),
+      maxAgeDays: null,
+    });
+    expect(request.authorization).toBe(
+      await relayRegistrarAuthorization({
+        relayKey: await deriveRelayKey(enrolled.sharedSecret),
+        method: "PUT",
+        exchangeId: REGISTRAR.exchangeId,
+        body: request.body,
+        now,
+      }),
+    );
+    const stored = await getManagedExchange(enrolled.id);
+    expect(stored?.sharedSecret).toBe(rotated.sharedSecret);
+    expect(stored).not.toHaveProperty("relayRegistrationPendingSince");
+    expect(stored).not.toHaveProperty("relayRegistrationPendingReason");
+    expect(relayRegistrationPendingLine(stored!)).toBeUndefined();
+  });
+
+  test("with the registrar unavailable, the record states the re-enrollment step and the next run stops on it without a request", async () => {
+    const enrolled = await enrolledRecord();
+    const registrar = registrarAnswering([]);
+
+    const rotated = await persistManagedExchangeReinvite(
+      enrolled.id,
+      { sharedSecret: generateSharedSecret(), expires: null },
+      (replaced, written) =>
+        registerReinvitedManagedRelayKey(replaced, written, {
+          fetch: registrar.fetch,
+          sleep: () => Promise.resolve(),
+        }),
+    );
+
+    expect(registrar.sent.length).toBeGreaterThan(0);
+    const stored = runnableManagedExchangeOrRefuse(
+      (await getManagedExchange(enrolled.id))!,
+    );
+    expect(stored.sharedSecret).toBe(rotated.sharedSecret);
+    expect(stored.relayRegistrationPendingReason).toBe("reinvite");
+    expect(relayRegistrationPendingLine(stored)).toContain(
+      "Enroll the exchange again with the relay-owner token",
+    );
+
+    const nextRun = registrarAnswering([200]);
+    await expect(
+      retryPendingManagedRelayRegistration(stored, REGISTRAR, {
+        fetch: nextRun.fetch,
+      }),
+    ).rejects.toSatisfy(
+      (error) =>
+        error instanceof ManagedRelayRegistrationError &&
+        error.message.includes(MANAGED_RELAY_REENROLLMENT_STEP),
+    );
+    expect(nextRun.sent).toEqual([]);
+  });
+
+  test("a re-invite of an exchange enrolled nowhere sends nothing", async () => {
+    const created = await createManagedExchange(newExchange());
+    let asked = false;
+    const rotated = await persistManagedExchangeReinvite(
+      created.id,
+      { sharedSecret: generateSharedSecret(), expires: null },
+      (_replaced, written) => {
+        asked = true;
+        return Promise.resolve(written);
+      },
+    );
+    expect(asked).toBe(false);
+    expect(rotated).not.toHaveProperty("relayRegistrationPendingSince");
   });
 });

@@ -24,8 +24,11 @@ import {
   ManagedRelayRegistrationError,
   enrollManagedRelayRegistrar,
   managedRelayRegistrarForRun,
+  managedRelayReinviteKeyLostMessage,
+  registerReinvitedManagedRelayKey,
   registerRotatedManagedRelayKey,
   relayRegistrarExchangeIdProblems,
+  relayRegistrarUrlProblems,
   retryPendingManagedRelayRegistration,
   stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
@@ -41,6 +44,7 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { ManagedRelayRegistrationStore } from "@psi/managed/managedRelayRegistration";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RelayRegistrar } from "@alcove/core";
 
@@ -149,8 +153,7 @@ const REGISTERED: [number, unknown] = [
   { maxAgeDays: null, lapsesAt: null },
 ];
 
-function recordingStore(): {
-  clearPending: (id: string, secret: string) => Promise<void>;
+function recordingStore(): ManagedRelayRegistrationStore & {
   cleared: Array<[string, string]>;
 } {
   const cleared: Array<[string, string]> = [];
@@ -158,7 +161,7 @@ function recordingStore(): {
     cleared,
     clearPending: (id, secret) => {
       cleared.push([id, secret]);
-      return Promise.resolve();
+      return Promise.resolve(record({ id, sharedSecret: secret }));
     },
   };
 }
@@ -166,6 +169,17 @@ function recordingStore(): {
 const ownRelay =
   (turn: Array<string>): (() => OwnRelayRead) =>
   () => ({ kind: "set", relay: { turn, stun: [] } });
+
+/** An exchange accepted from an invitation that named the partner's relay. */
+const partnerRelayedExchange = () =>
+  composeManagedExchangeFile({
+    connection: {
+      channel: "webrtc",
+      host: "signaling.example.org",
+      relay: { turn: ["turns:partner.example.org:443"] },
+    },
+    linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+  });
 
 describe("which runs register", () => {
   test("a run relaying through this browser's own relay registers at the enrolled registrar", () => {
@@ -239,6 +253,42 @@ describe("the rotation write", () => {
         relayRegistrationPendingSince: NOW.toISOString(),
       },
     );
+  });
+
+  test("stores none on an exchange relaying through its partner's relay, which is never enrolled here", async () => {
+    stubGrantingWebLocks();
+    storedRecord.value = record({
+      relayRegistrar: REGISTRAR,
+      side: "acceptor",
+      exchangeFile: partnerRelayedExchange(),
+    });
+    await runManagedRerun(storedRecord.value, {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: () =>
+        Promise.resolve({
+          rotatedSecret: generateSharedSecret(),
+          handshake: "carried",
+        }),
+      dataExchange: () => Promise.resolve("exchanged"),
+    });
+    const rotation = vi.mocked(persistManagedExchangeRotation).mock
+      .calls[0]?.[1];
+    expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
+  });
+
+  test("keeps a re-invite's reason beside the marker it sets, since no rotation recovers the key the registrar holds", () => {
+    const stored = record({
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: PENDING_SINCE,
+      relayRegistrationPendingReason: "reinvite",
+    });
+    const rotated = applyManagedExchangeRotation(stored, {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+      relayRegistrationPendingSince: NOW.toISOString(),
+    });
+    expect(rotated.relayRegistrationPendingSince).toBe(NOW.toISOString());
+    expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
   });
 
   test("stores none on a record that names no registrar", async () => {
@@ -468,6 +518,129 @@ describe("the retry before a run connects", () => {
   });
 });
 
+describe("the registration a re-invite makes", () => {
+  function reinvited(): {
+    replaced: RunnableManagedExchangeRecord;
+    written: RunnableManagedExchangeRecord;
+  } {
+    const replaced = record({ relayRegistrar: REGISTRAR, tokenMaxAgeDays: 30 });
+    const written = applyManagedExchangeReinviteRotation(replaced, {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+      relayRegistrationPendingSince: NOW.toISOString(),
+      relayRegistrationPendingReason: "reinvite",
+    });
+    return { replaced, written };
+  }
+
+  test("registers the fresh secret's key signed with the replaced secret's, and a confirmation drops the pending registration", async () => {
+    const { replaced, written } = reinvited();
+    const registrar = fakeRegistrar([REGISTERED]);
+    const store = recordingStore();
+
+    const result = await registerReinvitedManagedRelayKey(
+      replaced,
+      written,
+      { fetch: registrar.fetch, now: () => NOW },
+      store,
+    );
+
+    const [request] = registrar.sent;
+    expect(request.url).toBe(REQUEST_URL);
+    expect(request.method).toBe("PUT");
+    expect(JSON.parse(request.body)).toEqual({
+      key: await deriveRelayKey(written.sharedSecret),
+      maxAgeDays: 30,
+    });
+    expect(request.authorization).toBe(
+      await relayRegistrarAuthorization({
+        relayKey: await deriveRelayKey(replaced.sharedSecret),
+        method: "PUT",
+        exchangeId: REGISTRAR.exchangeId,
+        body: request.body,
+        now: NOW,
+      }),
+    );
+    expect(store.cleared).toEqual([
+      ["record-under-test", written.sharedSecret],
+    ]);
+    expect(result.sharedSecret).toBe(written.sharedSecret);
+  });
+
+  test("an unanswered registration leaves the re-invite's reason, and the next run sends nothing and names owner-token re-enrollment", async () => {
+    const { replaced, written } = reinvited();
+    const registrar = fakeRegistrar([]);
+    const store = recordingStore();
+
+    const result = await registerReinvitedManagedRelayKey(
+      replaced,
+      written,
+      { fetch: registrar.fetch, sleep: () => Promise.resolve() },
+      store,
+    );
+
+    expect(registrar.sent).toHaveLength(3);
+    expect(store.cleared).toEqual([]);
+    expect(result).toBe(written);
+    expect(result.relayRegistrationPendingReason).toBe("reinvite");
+
+    const nextRun = fakeRegistrar([REGISTERED]);
+    const error = await retryPendingManagedRelayRegistration(
+      result,
+      REGISTRAR,
+      { fetch: nextRun.fetch },
+      store,
+    ).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(nextRun.sent).toEqual([]);
+    expect(error).toBeInstanceOf(ManagedRelayRegistrationError);
+    expect((error as ManagedRelayRegistrationError).outcome.kind).toBe(
+      "key-lost",
+    );
+    const message = (error as Error).message;
+    expect(message).toBe(managedRelayReinviteKeyLostMessage(REGISTRAR));
+    expect(message).toContain("Nothing was sent to your partner");
+    expect(message).toContain(MANAGED_RELAY_REENROLLMENT_STEP);
+    expect(rerunFailureLastRun(error, NOW.getTime(), false, false)).toBe(
+      undefined,
+    );
+    expect(benignRerunOutcome(error, false)).toBe("relay-registration");
+  });
+
+  test("a refused registration leaves the pending registration and its reason", async () => {
+    const { replaced, written } = reinvited();
+    const registrar = fakeRegistrar([[409, { error: "another key is held" }]]);
+    const store = recordingStore();
+
+    const result = await registerReinvitedManagedRelayKey(
+      replaced,
+      written,
+      { fetch: registrar.fetch },
+      store,
+    );
+
+    expect(registrar.sent).toHaveLength(1);
+    expect(store.cleared).toEqual([]);
+    expect(result.relayRegistrationPendingSince).toBe(NOW.toISOString());
+    expect(result.relayRegistrationPendingReason).toBe("reinvite");
+  });
+
+  test("a re-invite's rotation keeps the reason it is given beside the marker", () => {
+    expect(reinvited().written.relayRegistrationPendingReason).toBe("reinvite");
+  });
+
+  test("a reason without the marker is not a valid record", () => {
+    expect(() =>
+      record({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingReason: "reinvite",
+      }),
+    ).toThrow(/relayRegistrationPendingReason/);
+  });
+});
+
 describe("a cancelled run's registration", () => {
   /** A registrar that never answers: each request waits until its signal
    * aborts and rejects with the signal's reason, as a real fetch does. */
@@ -612,6 +785,27 @@ describe("stopping registration", () => {
       }),
     ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
     expect(removeRegistrar).not.toHaveBeenCalled();
+  });
+});
+
+describe("the enrollment form's address problems", () => {
+  test.each([
+    ["relay.example.org", "is not a url"],
+    ["http://relay.example.org", "must be an https:// url"],
+    ["https://relay.example.org/register", "no path, query, or fragment"],
+  ])("%s is refused in the schema's own words", (url, rule) => {
+    const parsed = RelayRegistrarSchema.safeParse({
+      url,
+      exchangeId: REGISTRAR.exchangeId,
+    });
+    expect(parsed.success).toBe(false);
+    const problems = relayRegistrarUrlProblems(
+      parsed.success ? [] : parsed.error.issues,
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^The registrar address /);
+    expect(problems[0]).toContain(rule);
+    expect(problems[0]).not.toContain("relay_registrar");
   });
 });
 

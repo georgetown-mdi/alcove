@@ -1501,6 +1501,55 @@ describe("managed exchange detail run history", () => {
   });
 });
 
+describe("managed exchange detail relay registration", () => {
+  test("a pending registration is stated once, in the Relay registration section", async () => {
+    app.render(
+      createElement(ManagedExchangeDetail, {
+        record: {
+          ...record("inviter", {
+            relayRegistrationPendingSince: "2026-07-01T09:00:00.000Z",
+          }),
+          relayRegistrar: {
+            url: "https://relay.example.org:8443",
+            exchangeId: "riverbend-q3",
+          },
+        },
+        parkedResultsRead: { kind: "none" },
+        accountingRead: { kind: "none" },
+        onResetAccounting: () => Promise.resolve(),
+        onRetryAccountingRead: () => undefined,
+        onRetryParkedResultsRead: () => undefined,
+        onClearParkedResults: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
+        onSaveLocalFields: () => Promise.resolve(),
+        onTermsChanged: () => undefined,
+        onRelayRegistrationChanged: () => undefined,
+        onReinviteToChangeTerms: () => undefined,
+        canReinvite: true,
+        reinviting: false,
+        reinviteFailed: false,
+        compromiseResponse: false,
+        runInFlight: false,
+        runHoldsReinvite: false,
+        unfiledDisclosureRead: { kind: "none" },
+        unrecordedRunFlagged: false,
+        onUnrecordedRunFlagShown: () => undefined,
+        onFileUnfiledDisclosures: () => Promise.resolve(),
+      }),
+    );
+
+    const pending = page.getByText("Relay key registration pending since", {
+      exact: false,
+    });
+    await expect.element(pending).toBeInTheDocument();
+    expect(pending.elements()).toHaveLength(1);
+    expect(pending.element().textContent).toMatch(
+      /^Enrolled at the relay registrar at /,
+    );
+  });
+});
+
 describe("managed exchange detail accounting of disclosures", () => {
   test("frames the accounting as self-attested and unsigned, never a signed receipt", async () => {
     app.render(

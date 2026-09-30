@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import {
   Alert,
@@ -22,9 +22,11 @@ import {
   enrollManagedRelayRegistrar,
   managedRelayEnrollmentFailureMessage,
   relayRegistrarExchangeIdProblems,
+  relayRegistrarUrlProblems,
   stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
+import { managedExchangeRelaysThroughPartner } from "@psi/managed/managedExchangeRecord";
 
 import styles from "@styles/app.module.css";
 
@@ -47,9 +49,22 @@ const TOKEN_TEXT =
   "is not kept. Leave it empty when the registrar already holds this " +
   "exchange's current key, as after enrolling it from the command line.";
 
-const URL_PROBLEM =
-  "Enter the registrar's address as https:// followed by its host and an " +
-  "optional port, with no path.";
+/** Why an exchange relaying through its partner's relay offers no
+ * enrollment. */
+export const PARTNER_RELAY_TEXT =
+  "This exchange relays through the relay your partner's invitation named, " +
+  "and your partner registers its key there, so it cannot be enrolled here.";
+
+const STOPPED_TEXT =
+  "Runs of this exchange no longer register a relay key. The registrar " +
+  "keeps the key it holds until its registration lapses.";
+
+/** What stopping registration means for the next run through this browser's
+ * relay, in the words of the relay settings' notice. */
+export const STOPPED_OWN_RELAY_TEXT =
+  "The shared secret changes after every run that completes its handshake, " +
+  "so from the next such run the relay refuses this exchange unless its key " +
+  "is registered with the relay again after each run.";
 
 const EXCHANGE_ID_PRIVACY =
   "The registrar's answers let anyone learn whether an id is enrolled, so " +
@@ -90,26 +105,34 @@ export function ManagedRelayRegistration({
   const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>();
-  const [problems, setProblems] = useState<Array<string>>([]);
+  const [urlProblems, setUrlProblems] = useState<Array<string>>([]);
+  const [exchangeIdProblems, setExchangeIdProblems] = useState<Array<string>>(
+    [],
+  );
+  const partnerRelayTextId = useId();
 
   const enrolled = record.relayRegistrar;
   const pendingLine = relayRegistrationPendingLine(record);
+  const relaysThroughPartner = managedExchangeRelaysThroughPartner(record);
+
+  const changeOwnerToken = (value: string) => {
+    setOwnerToken(value);
+    if (value === "") setReplace(false);
+  };
 
   const enroll = async () => {
     const parsed = RelayRegistrarSchema.safeParse({ url, exchangeId });
     if (!parsed.success) {
       const { issues } = parsed.error;
-      const exchangeIdProblems = relayRegistrarExchangeIdProblems(issues);
-      setProblems([
-        ...(issues.some((issue) => issue.path[0] === "url")
-          ? [URL_PROBLEM]
-          : []),
-        ...exchangeIdProblems,
-        ...(exchangeIdProblems.length > 0 ? [EXCHANGE_ID_PRIVACY] : []),
-      ]);
+      const idProblems = relayRegistrarExchangeIdProblems(issues);
+      setUrlProblems(relayRegistrarUrlProblems(issues));
+      setExchangeIdProblems(
+        idProblems.length > 0 ? [...idProblems, EXCHANGE_ID_PRIVACY] : [],
+      );
       return;
     }
-    setProblems([]);
+    setUrlProblems([]);
+    setExchangeIdProblems([]);
     setOutcome(undefined);
     setBusy(true);
     const token = ownerToken === "" ? undefined : ownerToken;
@@ -143,7 +166,7 @@ export function ManagedRelayRegistration({
         message: failureText(error),
       });
     } finally {
-      setOwnerToken("");
+      changeOwnerToken("");
       setBusy(false);
     }
   };
@@ -166,14 +189,24 @@ export function ManagedRelayRegistration({
     }
   };
 
+  const stopButton = enrolled !== undefined && (
+    <Button variant="default" onClick={() => void stop()} disabled={busy}>
+      Stop registering
+    </Button>
+  );
+
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>{RELAY_REGISTRATION_TITLE}</h2>
       <p className={styles.small}>{RELAY_REGISTRATION_TEXT}</p>
-      {enrolled !== undefined && (
+      {(enrolled !== undefined || pendingLine !== undefined) && (
         <p className={styles.small}>
-          {`Enrolled at ${relayRegistrarLabel(enrolled)}.`}
-          {pendingLine !== undefined && ` ${pendingLine}`}
+          {[
+            ...(enrolled !== undefined
+              ? [`Enrolled at ${relayRegistrarLabel(enrolled)}.`]
+              : []),
+            ...(pendingLine !== undefined ? [pendingLine] : []),
+          ].join(" ")}
         </p>
       )}
       {runInFlight ? (
@@ -181,25 +214,45 @@ export function ManagedRelayRegistration({
           A run of this exchange is under way. Change its relay registration
           once the run ends.
         </p>
+      ) : relaysThroughPartner ? (
+        <Stack gap="xs">
+          <p id={partnerRelayTextId} className={styles.small}>
+            {PARTNER_RELAY_TEXT}
+          </p>
+          <Group gap="sm">
+            <Button disabled aria-describedby={partnerRelayTextId}>
+              Enroll
+            </Button>
+            {stopButton}
+          </Group>
+        </Stack>
       ) : (
         <Stack gap="xs">
           <TextInput
             label="Registrar address"
             value={url}
             onChange={(event) => setUrl(event.currentTarget.value)}
+            error={urlProblems.length > 0 ? urlProblems.join(" ") : undefined}
+            errorProps={{ role: "alert" }}
             disabled={busy}
           />
           <TextInput
             label="Exchange id at the registrar"
             value={exchangeId}
             onChange={(event) => setExchangeId(event.currentTarget.value)}
+            error={
+              exchangeIdProblems.length > 0
+                ? exchangeIdProblems.join(" ")
+                : undefined
+            }
+            errorProps={{ role: "alert" }}
             disabled={busy}
           />
           <PasswordInput
             label="Relay-owner token"
             description={TOKEN_TEXT}
             value={ownerToken}
-            onChange={(event) => setOwnerToken(event.currentTarget.value)}
+            onChange={(event) => changeOwnerToken(event.currentTarget.value)}
             autoComplete="off"
             disabled={busy}
           />
@@ -209,24 +262,11 @@ export function ManagedRelayRegistration({
             onChange={(event) => setReplace(event.currentTarget.checked)}
             disabled={busy || ownerToken === ""}
           />
-          {problems.map((problem) => (
-            <p key={problem} className={styles.small}>
-              {problem}
-            </p>
-          ))}
           <Group gap="sm">
             <Button onClick={() => void enroll()} loading={busy}>
               Enroll
             </Button>
-            {enrolled !== undefined && (
-              <Button
-                variant="default"
-                onClick={() => void stop()}
-                disabled={busy}
-              >
-                Stop registering
-              </Button>
-            )}
+            {stopButton}
           </Group>
         </Stack>
       )}
@@ -237,8 +277,9 @@ export function ManagedRelayRegistration({
       )}
       {outcome?.kind === "removed" && (
         <p className={styles.small}>
-          Runs of this exchange no longer register a relay key. The registrar
-          keeps the key it holds until its registration lapses.
+          {relaysThroughPartner
+            ? STOPPED_TEXT
+            : `${STOPPED_TEXT} ${STOPPED_OWN_RELAY_TEXT}`}
         </p>
       )}
       {outcome?.kind === "failed" && (

@@ -431,6 +431,13 @@ export interface ManagedExchangeRecord {
    * registrar confirms, so a record still holding it at the next run records a
    * registration that run retries before it dials. */
   relayRegistrationPendingSince?: string;
+  /** Why the registration {@link relayRegistrationPendingSince} records cannot
+   * be confirmed by a run, held only beside it: `"reinvite"` when a re-invite
+   * replaced the secret and the registrar did not confirm the fresh secret's
+   * key, so the key it holds is derived from a secret this record no longer
+   * holds. Absent beside the marker, a registration signed under the current
+   * key can confirm it. */
+  relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
   /** The unanswered standing condition an `auth` or `storage` failure raised, or
    * {@link NO_STANDING_CONDITION} while none stands. Cleared by the operator's
    * explicit clear-and-acknowledge, by a re-invite, or with the record itself --
@@ -663,8 +670,19 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     rotationInFlightSince: z.iso.datetime().optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),
     relayRegistrationPendingSince: z.iso.datetime().optional(),
+    relayRegistrationPendingReason: z.literal("reinvite").optional(),
     standingCondition: standingConditionFieldSchema,
   })
+  .refine(
+    (record) =>
+      record.relayRegistrationPendingReason === undefined ||
+      record.relayRegistrationPendingSince !== undefined,
+    {
+      message:
+        "relayRegistrationPendingReason is held only beside " +
+        "relayRegistrationPendingSince",
+    },
+  )
   .refine(
     (record) =>
       record.sharedSecret !== undefined ||
@@ -1035,22 +1053,42 @@ export interface ManagedExchangeRotation {
    * registrar keeps the pending registration it held and one naming none
    * stores none ({@link pendingRelayRegistrationAfterRotation}). */
   relayRegistrationPendingSince?: string;
+  /** Why the pending registration cannot be confirmed by a run, stored with
+   * {@link relayRegistrationPendingSince}: a re-invite's. */
+  relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
+}
+
+/** Why a pending relay registration cannot be confirmed by a run
+ * ({@link ManagedExchangeRecord.relayRegistrationPendingReason}). */
+export type ManagedRelayRegistrationPendingReason = "reinvite";
+
+/** A record's pending relay registration: the marker and its reason. */
+interface PendingRelayRegistration {
+  since: string;
+  reason?: ManagedRelayRegistrationPendingReason;
 }
 
 /**
  * The pending relay registration a rotation write leaves: the one the
  * rotation states; else, on a record that names a registrar, the one the
- * record held, since a rotation confirms nothing; else none.
+ * record held, since a rotation confirms nothing; else none. A reason the
+ * record held is kept with the marker, since no rotation recovers the key the
+ * registrar holds.
  */
 function pendingRelayRegistrationAfterRotation(
   record: RunnableManagedExchangeRecord,
   rotation: ManagedExchangeRotation,
-): string | undefined {
-  if (rotation.relayRegistrationPendingSince !== undefined)
-    return rotation.relayRegistrationPendingSince;
-  return record.relayRegistrar === undefined
-    ? undefined
-    : record.relayRegistrationPendingSince;
+): PendingRelayRegistration | undefined {
+  const since =
+    rotation.relayRegistrationPendingSince ??
+    (record.relayRegistrar === undefined
+      ? undefined
+      : record.relayRegistrationPendingSince);
+  if (since === undefined) return undefined;
+  const reason =
+    rotation.relayRegistrationPendingReason ??
+    record.relayRegistrationPendingReason;
+  return reason === undefined ? { since } : { since, reason };
 }
 
 /**
@@ -1085,10 +1123,14 @@ export function applyManagedExchangeRotation(
 
 function setPendingRelayRegistration(
   next: ManagedExchangeRecord,
-  pendingSince: string | undefined,
+  pending: PendingRelayRegistration | undefined,
 ): void {
-  if (pendingSince === undefined) delete next.relayRegistrationPendingSince;
-  else next.relayRegistrationPendingSince = pendingSince;
+  delete next.relayRegistrationPendingSince;
+  delete next.relayRegistrationPendingReason;
+  if (pending === undefined) return;
+  next.relayRegistrationPendingSince = pending.since;
+  if (pending.reason !== undefined)
+    next.relayRegistrationPendingReason = pending.reason;
 }
 
 /**
@@ -1123,7 +1165,7 @@ export function applyManagedExchangeRelayRegistrar(
   confirmedSecret?: string,
 ): RunnableManagedExchangeRecord {
   const next: ManagedExchangeRecord = { ...record };
-  delete next.relayRegistrationPendingSince;
+  setPendingRelayRegistration(next, undefined);
   if (registrar === undefined) delete next.relayRegistrar;
   else {
     if (confirmedSecret !== record.sharedSecret)
@@ -1131,6 +1173,21 @@ export function applyManagedExchangeRelayRegistrar(
     next.relayRegistrar = registrar;
   }
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+/**
+ * Whether the invitation `record` was accepted from names a TURN relay. Its
+ * runs then relay through the partner's relay, which the partner registers
+ * at, so this browser registers nothing for it.
+ */
+export function managedExchangeRelaysThroughPartner(
+  record: Pick<ManagedExchangeRecord, "exchangeFile">,
+): boolean {
+  const connection = record.exchangeFile.connection;
+  return (
+    connection.channel === "webrtc" &&
+    (connection.invitationRelay?.turn ?? []).length > 0
+  );
 }
 
 /**
@@ -1150,7 +1207,7 @@ export function applyManagedExchangeRelayRegistrationConfirmed(
   )
     return record;
   const next: ManagedExchangeRecord = { ...record };
-  delete next.relayRegistrationPendingSince;
+  setPendingRelayRegistration(next, undefined);
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
@@ -1398,9 +1455,8 @@ export function applyManagedExchangeRotationInFlight(
  * the operator, a re-invite, or a delete may clear. The relay registrar the
  * record enrolled at is kept too. A rotation-in-flight marker goes with the
  * stored secret when the pair replaces it. The key file's own pending
- * registration is carried; absent, the stored one is kept, except where the
- * pair replaces the secret of a record naming no registrar, as a re-take's
- * rotation does. The inputs are not mutated.
+ * registration replaces the stored one; absent, the stored one is kept. The
+ * inputs are not mutated.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
@@ -1418,13 +1474,12 @@ export function applyManagedExchangeCommandLinePair(
   else next.expires = imported.expires;
   if (imported.tokenMaxAgeDays === undefined) delete next.tokenMaxAgeDays;
   else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
-  if (imported.sharedSecret !== stored.sharedSecret) {
+  if (imported.sharedSecret !== stored.sharedSecret)
     delete next.rotationInFlightSince;
-    if (stored.relayRegistrar === undefined)
-      delete next.relayRegistrationPendingSince;
-  }
   if (imported.relayRegistrationPendingSince !== undefined)
-    next.relayRegistrationPendingSince = imported.relayRegistrationPendingSince;
+    setPendingRelayRegistration(next, {
+      since: imported.relayRegistrationPendingSince,
+    });
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
