@@ -2132,6 +2132,41 @@ describe.skipIf(runningAsRoot)(
       expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
     });
 
+    const enrollVerifyRun = async (port) => {
+      const enrolled = await call(port, "POST", "/exchanges/alcove-verify-x", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_A),
+        headers: { "Alcove-Relay-Verify-Run": "1" },
+      });
+      expect(enrolled.status, enrolled.text).toBe(200);
+    };
+
+    it("rotates a verify.sh id under a proof sent with the verify-run header", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enrollVerifyRun(port);
+      const rotated = await proven(port, "PUT", "alcove-verify-x", KEY_A, {
+        body: keyBody(KEY_B),
+        headers: { "Alcove-Relay-Verify-Run": "1" },
+      });
+      expect(rotated.status, rotated.text).toBe(200);
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_B]);
+    });
+
+    it("refuses to rotate a verify.sh id under a proof sent without the verify-run header", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enrollVerifyRun(port);
+      const refused = await proven(port, "PUT", "alcove-verify-x", KEY_A, {
+        body: keyBody(KEY_B),
+      });
+      expect(refused.status).toBe(400);
+      expect(JSON.parse(refused.text).error).toContain(
+        "may not start with 'alcove-verify-'",
+      );
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
+    });
+
     it("refuses a proof signed for another request", async () => {
       const host = fixtureHost();
       const { port } = await startRegistrar(host);

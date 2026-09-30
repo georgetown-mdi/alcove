@@ -123,6 +123,10 @@ describe("relayRegistrarAuthorization", () => {
     ["a method it does not sign", { method: "POST" }],
     ["an exchange id holding a newline", { exchangeId: "exchange-1\nPUT" }],
     ["an exchange id starting with '-'", { exchangeId: "-exchange" }],
+    [
+      "an exchange id holding a run of 64 hex characters",
+      { exchangeId: `exchange-${"a".repeat(64)}` },
+    ],
     ["an invalid date", { now: new Date(Number.NaN) }],
     ["a date before the epoch", { now: new Date(-1000) }],
   ])("refuses %s", async (_, override) => {
@@ -138,5 +142,17 @@ describe("relayRegistrarAuthorization", () => {
     ).rejects.toThrow(
       /relayRegistrarAuthorization|deriveRelayRegistrarProofKey/,
     );
+  });
+
+  test("accepts an exchange id holding a run of 63 hex characters", async () => {
+    await expect(
+      relayRegistrarAuthorization({
+        relayKey: shared.relay_key,
+        method: "PUT",
+        exchangeId: `exchange-${"a".repeat(63)}`,
+        body: "",
+        now: new Date(),
+      }),
+    ).resolves.toMatch(/^Alcove-Relay-Proof /);
   });
 });

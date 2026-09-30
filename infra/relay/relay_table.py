@@ -274,13 +274,13 @@ def _held_key_proven(conn, exchange_id, proves_possession):
     return mapped
 
 
-def rotate(conn, realm, exchange_id, key, max_age_days, now, proves_possession):
+def rotate(conn, realm, exchange_id, key, max_age_days, now, proves_possession, allow_verify_id=False):
     """register(), for a caller proving it holds the exchange's current key.
     `proves_possession(current_key)` runs under the table's write lock and the
     write happens only if it returns True, so a proof made under a replaced key
     is refused and two rotations from one key cannot both succeed. Registering
     the key the exchange already holds renews it. Returns the registration."""
-    check_registration(exchange_id, key, max_age_days)
+    check_registration(exchange_id, key, max_age_days, allow_verify_id)
     if not realm:
         raise Refused("ALCOVE_RELAY_REALM is unset")
     now = int(now)

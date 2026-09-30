@@ -102,8 +102,6 @@ valid_max_age_days = relay_table.valid_max_age_days
 
 
 def proof_key(relay_key):
-    """HKDF-SHA-256 of the relay key's 32 decoded bytes: zero salt, the proof
-    key label, one 32-byte block."""
     extracted = hmac.new(b"\x00" * 32, bytes.fromhex(relay_key), hashlib.sha256).digest()
     return hmac.new(extracted, PROOF_KEY_LABEL.encode("ascii") + b"\x01", hashlib.sha256).digest()
 
@@ -223,8 +221,6 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         return None
 
     def fresh(self, proof):
-        """Whether the proof's timestamp is within the window of this host's
-        clock; a stale one is answered 401 with the clock's time."""
         now = int(time.time())
         if abs(now - proof.timestamp) <= PROOF_WINDOW_SECONDS:
             return True
@@ -395,7 +391,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return credential.made_under(current, "PUT", exchange_id, raw)
 
         written = self.write_table(
-            lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, time.time(), holds)
+            lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, time.time(), holds, True)
         )
         if written is not None:
             self.answer_registration("register (proof)", written)

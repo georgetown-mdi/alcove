@@ -13,10 +13,12 @@ const PROOF_MESSAGE_LABEL = "alcove-relay-registrar-v2:request";
 const PROOF_KEY_BYTES = 32;
 
 const RELAY_KEY_PATTERN = /^[0-9a-f]{64}$/;
-// The registrar's exchange-id alphabet (EXCHANGE_ID in
-// infra/relay/relay_table.py), which admits no newline, the signed message's
-// field separator.
+// The registrar's exchange-id rule (valid_exchange_id in
+// infra/relay/relay_table.py): the EXCHANGE_ID alphabet, which admits no
+// newline, the signed message's field separator, and no HEX_RUN of 64 hex
+// characters.
 const EXCHANGE_ID_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,127}$/;
+const EXCHANGE_ID_HEX_RUN = /[0-9A-Fa-f]{64}/;
 
 /** The registrar methods a proof authorizes: a rotation and a revocation. */
 export type RelayRegistrarProofMethod = "PUT" | "DELETE";
@@ -70,8 +72,8 @@ export async function deriveRelayRegistrarProofKey(
  * "The registrar request proof".
  *
  * @throws {Error} if `relayKey` is not 64 lowercase hex characters, `method`
- *   is not `PUT` or `DELETE`, `exchangeId` is outside the registrar's id
- *   alphabet, or `now` is not a valid date at or after the Unix epoch.
+ *   is not `PUT` or `DELETE`, `exchangeId` is an id the registrar refuses, or
+ *   `now` is not a valid date at or after the Unix epoch.
  */
 export async function relayRegistrarAuthorization({
   relayKey,
@@ -85,10 +87,14 @@ export async function relayRegistrarAuthorization({
       `relayRegistrarAuthorization: method ${JSON.stringify(method)} must be PUT or DELETE`,
     );
   }
-  if (!EXCHANGE_ID_PATTERN.test(exchangeId)) {
+  if (
+    !EXCHANGE_ID_PATTERN.test(exchangeId) ||
+    EXCHANGE_ID_HEX_RUN.test(exchangeId)
+  ) {
     throw new InternalConsistencyError(
       "relayRegistrarAuthorization: exchangeId must be 1 to 128 of " +
-        "[A-Za-z0-9._-], not starting with '-'",
+        "[A-Za-z0-9._-], not starting with '-' and not containing a run of " +
+        "64 hex characters",
     );
   }
   const nowMs = now.getTime();
