@@ -15,13 +15,14 @@ import type { ExchangeSpec, InvitationToken, LinkageTerms } from "@alcove/core";
 import {
   deriveAcceptedInvitationTerms,
   diffKeptLinkageTerms,
-  refreshAcceptanceRecords,
   termsUpdateWrite,
   writeAcceptanceRecordReportingLoss,
-  writeTermsRecord,
-  type TermsRecordWrite,
 } from "../../src/acceptedTermsRecords";
-import { persistTermsUpdate, saveConfig } from "../../src/config";
+import {
+  persistExpectedPartnerDeduplicate,
+  persistTermsUpdate,
+  saveConfig,
+} from "../../src/config";
 import {
   PERSISTENCE_LOSS_EXIT_CODE,
   type EventStreamEmitter,
@@ -179,53 +180,15 @@ test("diffKeptLinkageTerms warns on a soft mismatch without a conflict", () => {
   expect(log.lines.length).toBeGreaterThan(0);
 });
 
-// --- writeTermsRecord and refreshAcceptanceRecords ----------------------------
+// --- persistExpectedPartnerDeduplicate on a kept configuration --------------
 
-test("writeTermsRecord writes and overwrites the record in place", () => {
-  writeKeptConfig();
-  writeTermsRecord(configPath, {
-    record: "expected_partner_deduplicate",
-    declared: true,
-  });
-  expect(readKeptConfig().expected_partner_deduplicate).toBe(true);
-  writeTermsRecord(configPath, {
-    record: "expected_partner_deduplicate",
-    declared: false,
-  });
-  expect(readKeptConfig().expected_partner_deduplicate).toBe(false);
-});
-
-test("writeTermsRecord throws where the configuration cannot be read", () => {
-  expect(() =>
-    writeTermsRecord(configPath, {
-      record: "expected_partner_deduplicate",
-      declared: false,
-    }),
-  ).toThrow();
-  expect(fs.existsSync(configPath)).toBe(false);
-});
-
-test("refreshAcceptanceRecords writes a record a config parses back", () => {
-  writeKeptConfig();
-  refreshAcceptanceRecords(configPath, { expectedPartnerDeduplicate: true });
-  expect(parseExchangeSpec(readKeptConfig()).expectedPartnerDeduplicate).toBe(
-    true,
-  );
-});
-
-test("refreshAcceptanceRecords rewrites a camelCase record under one spelling", () => {
+test("persistExpectedPartnerDeduplicate rewrites a camelCase record under one spelling", () => {
   writeCamelCaseKeptConfig();
-  refreshAcceptanceRecords(configPath, { expectedPartnerDeduplicate: false });
+  persistExpectedPartnerDeduplicate(configPath, false);
   const raw = readKeptConfig();
   expect(raw).not.toHaveProperty("expectedPartnerDeduplicate");
   expect(raw["expected_partner_deduplicate"]).toBe(false);
   expect(parseExchangeSpec(raw).expectedPartnerDeduplicate).toBe(false);
-});
-
-test("refreshAcceptanceRecords throws where the configuration cannot be read", () => {
-  expect(() =>
-    refreshAcceptanceRecords(configPath, { expectedPartnerDeduplicate: false }),
-  ).toThrow();
 });
 
 // --- writeAcceptanceRecordReportingLoss --------------------------------------
@@ -234,11 +197,10 @@ test("writeAcceptanceRecordReportingLoss writes without reporting a loss", () =>
   writeKeptConfig();
   const log = recordingLog();
   const warning = vi.fn();
-  const written = writeAcceptanceRecordReportingLoss(
-    configPath,
-    { record: "expected_partner_deduplicate", declared: true },
-    { log, eventStream: { warning } as unknown as EventStreamEmitter },
-  );
+  const written = writeAcceptanceRecordReportingLoss(configPath, true, {
+    log,
+    eventStream: { warning } as unknown as EventStreamEmitter,
+  });
   expect(written).toBe(true);
   expect(readKeptConfig().expected_partner_deduplicate).toBe(true);
   expect(log.lines).toEqual([]);
@@ -246,37 +208,25 @@ test("writeAcceptanceRecordReportingLoss writes without reporting a loss", () =>
   expect(process.exitCode).toBe(exitCodeBeforeTest);
 });
 
-const LOST_WRITE_CASES: Array<{
-  write: TermsRecordWrite;
-  clause: string;
-}> = [
-  {
-    write: { record: "expected_partner_deduplicate", declared: false },
-    clause: "recording the duplicate matching your partner declared",
-  },
-];
-
-test.each(LOST_WRITE_CASES)(
-  "writeAcceptanceRecordReportingLoss reports a lost $write.record write",
-  ({ write, clause }) => {
-    const log = recordingLog();
-    const warning = vi.fn();
-    const written = writeAcceptanceRecordReportingLoss(configPath, write, {
-      log,
-      eventStream: { warning } as unknown as EventStreamEmitter,
-    });
-    expect(written).toBe(false);
-    expect(process.exitCode).toBe(PERSISTENCE_LOSS_EXIT_CODE);
-    expect(warning).toHaveBeenCalledTimes(1);
-    const [source, notice] = warning.mock.calls[0] as [string, string];
-    expect(source).toBe("persistenceLoss");
-    expect(notice).toContain(clause);
-    expect(notice).not.toContain("ENOENT");
-    expect(log.lines).toHaveLength(1);
-    expect(log.lines[0]).toContain(`${notice}: `);
-    expect(log.lines[0]).toContain("ENOENT");
-  },
-);
+test("writeAcceptanceRecordReportingLoss reports a lost write", () => {
+  const clause = "recording the duplicate matching your partner declared";
+  const log = recordingLog();
+  const warning = vi.fn();
+  const written = writeAcceptanceRecordReportingLoss(configPath, false, {
+    log,
+    eventStream: { warning } as unknown as EventStreamEmitter,
+  });
+  expect(written).toBe(false);
+  expect(process.exitCode).toBe(PERSISTENCE_LOSS_EXIT_CODE);
+  expect(warning).toHaveBeenCalledTimes(1);
+  const [source, notice] = warning.mock.calls[0] as [string, string];
+  expect(source).toBe("persistenceLoss");
+  expect(notice).toContain(clause);
+  expect(notice).not.toContain("ENOENT");
+  expect(log.lines).toHaveLength(1);
+  expect(log.lines[0]).toContain(`${notice}: `);
+  expect(log.lines[0]).toContain("ENOENT");
+});
 
 // --- termsUpdateWrite and persistTermsUpdate ---------------------------------
 

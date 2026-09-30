@@ -1182,18 +1182,15 @@ export interface Payload {
  * naming a column stands, with its own description, and a later entry repeating
  * that name is dropped. A column's identity is its `name` -- the thing disclosed
  * -- so two entries naming it are one declaration written twice however their
- * descriptions differ. `nameOf` reads that name, since a list of the same
- * columns is written as entries here and as bare names on an invitation token.
- * Names are compared by code unit, the equality docs/spec/CANONICAL_ENCODING.md
- * makes normative for a third party reproducing the agreed-terms hash.
+ * descriptions differ. Names are compared by code unit, the equality
+ * docs/spec/CANONICAL_ENCODING.md makes normative for a third party reproducing
+ * the agreed-terms hash.
  */
-export const columnsNamedOnce = <Entry>(
-  columns: readonly Entry[],
-  nameOf: (column: Entry) => string,
-): Entry[] => {
+export const columnsNamedOnce = (
+  columns: readonly PayloadColumn[],
+): PayloadColumn[] => {
   const kept = new Set<string>();
-  return columns.filter((column) => {
-    const name = nameOf(column);
+  return columns.filter(({ name }) => {
     if (kept.has(name)) return false;
     kept.add(name);
     return true;
@@ -1209,7 +1206,7 @@ export const columnsNamedOnce = <Entry>(
  */
 const payloadColumnList = (message: string): z.ZodType<PayloadColumn[]> =>
   boundedArray(PayloadColumnSchema, MAX_PAYLOAD_ENTRIES, message).transform(
-    (columns) => columnsNamedOnce(columns, (column) => column.name),
+    columnsNamedOnce,
   );
 
 const PayloadSchema: z.ZodType<Payload> = z.object({

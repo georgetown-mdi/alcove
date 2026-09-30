@@ -1032,10 +1032,7 @@ export async function runOnlineBootstrap(params: {
           if (params.expectedPartnerDeduplicate !== undefined)
             writeAcceptanceRecordReportingLoss(
               params.configPath,
-              {
-                record: "expected_partner_deduplicate",
-                declared: params.expectedPartnerDeduplicate,
-              },
+              params.expectedPartnerDeduplicate,
               {
                 log: {
                   warn: (message: string) =>

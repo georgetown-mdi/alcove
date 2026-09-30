@@ -97,15 +97,13 @@ rather than stating one of its own.
 WHICH facts a surface marks is still the surface's own. The received-columns
 basis is marked on the CLI's line and not on the web's payload block, which shows
 the set with no basis beside it. The two surfaces do not disagree there -- one of
-them declines to state the fact rather than stating it differently -- and the
-silence understates, which is the safe direction.
+them declines to state the basis rather than stating a different one.
 
 That silence is deliberate rather than pending. The clause the web's line held
-before -- that any payload column would abort the exchange -- overstates on the
-line it sat on: the commitment holds only where the invitation includes the column
-set, so an empty set reads truer bare than qualified by a promise that does not
-cover it. A fact's classification binds the surface that states the fact, not
-every surface that shows the value.
+before -- that any payload column would abort the exchange -- overstates: nothing
+compares the received columns against the set once they cross. A fact's
+classification binds the surface that states the fact, not every surface that
+shows the value.
 
 That the classification is a KEYED TABLE, rather than a field on
 `InvitationSummary`, follows from two properties a per-field flag cannot hold.
@@ -167,19 +165,22 @@ transmits ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-send-side-is-in-the-a
 An acceptance mirrors it into the acceptor's `payload.receive`, and every run's
 terms exchange compares that list against the send set the inviting party's run
 states, before any key or data moves, on the offline and the online path alike.
-So the line takes one basis, `enforced` (`inboundPayloadColumns`), and a declared
-empty set renders `(none)`: it becomes the acceptor's strict `receive: []`.
+A declared empty set renders `(none)`: it becomes the acceptor's strict
+`receive: []`.
 
-Why one basis rather than two: a line whose source the inviting party can pick --
-between a set the acceptance records and enforces and one it does not -- needs a
-basis per source, or a partner could earn `enforced` without the check behind it.
-With the send set inside the agreed terms on every path, the declaration the line
-shows is itself what the run compares, and there is nothing to split
-([payload-as-agreed-terms.md](payload-as-agreed-terms.md)).
+The line takes one basis, `trust-contingent` (`inboundPayloadColumns`). The terms
+exchange settles which set the partner's run states, and refuses on a mismatch,
+but what then crosses is held to that set only by the partner's own build: the
+received payload is not compared against the list after it crosses, and the one
+check there, refusing any column sent to a party receiving none, runs only for a
+count-only party or one entitled to no result. A partner whose software states
+one set and sends another is not stopped, which is the `trust-contingent`
+definition, and `enforced` would claim a run that aborts on the violation.
 
-What `enforced` does not claim: the received payload is not compared against the
-list after it crosses. The fact holds for a partner whose software states the set
-its payload step sends, as Alcove's does, since both read the same metadata.
+Why one basis rather than two: a line whose source the inviting party can pick
+needs a basis per source. With the send set inside the agreed terms on every
+path, the declaration the line shows is itself what the run compares, and there
+is nothing to split ([payload-as-agreed-terms.md](payload-as-agreed-terms.md)).
 
 ## The outbound-send line, and what it stands behind
 

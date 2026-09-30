@@ -392,8 +392,8 @@ interface ExchangeRecordGovernance {
  *   and the run then terminated without this party holding a receipt for it.
  *   The signed-receipt swap is the step it most often terminates in, but the
  *   value covers the whole region after the hand-off -- a partner reply that
- *   never arrives, and a received payload refused against what this party
- *   consented to receive, both terminate the run before the swap and record
+ *   never arrives, and a received payload naming a column for a party that
+ *   receives none, both terminate the run before the swap and record
  *   the same value, and a hand-off the transport could neither confirm nor
  *   retract records it too, without being a proven disclosure
  *   (docs/spec/EXCHANGE_RECORD.md, the indeterminate-publish rule). The

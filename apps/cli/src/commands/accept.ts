@@ -31,6 +31,7 @@ import {
   configWithNamedRuleSetRules,
   csvDelimiterForRun,
   describeConfigSchemaError,
+  persistExpectedPartnerDeduplicate,
   persistInvitationRelay,
   reconcileConflictError,
   type InvitationRelayRefresh,
@@ -39,7 +40,6 @@ import {
 import {
   deriveAcceptedInvitationTerms,
   diffKeptLinkageTerms,
-  refreshAcceptanceRecords,
   type AcceptedInvitationTerms,
 } from "../acceptedTermsRecords";
 import { detectFileConflicts } from "../fileUtils";
@@ -1260,10 +1260,10 @@ export async function handler(argv: Arguments): Promise<void> {
             // connection and linkage blocks are kept: a prior value would
             // false-abort the next recurring exchange or bind it to terms nobody
             // consented to.
-            refreshAcceptanceRecords(keptConfigPath, {
-              expectedPartnerDeduplicate:
-                ready.accepted.expectedPartnerDeduplicate,
-            });
+            persistExpectedPartnerDeduplicate(
+              keptConfigPath,
+              ready.accepted.expectedPartnerDeduplicate,
+            );
             // The relay the terms review just showed is the one the kept
             // configuration's runs use: `invitation_relay` is refreshed from
             // this invitation, and the operator's own `turn`/`stun` are left

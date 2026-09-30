@@ -2277,12 +2277,12 @@ export interface RunExchangeOptions {
    * pinned and before any linkage key or payload row moves, when this party
    * holds no list of the columns it receives -- its terms leave
    * `payload.receive` unset -- and the partner's terms declare at least one
-   * column it
-   * sends this party: the argument is those column names, which
+   * column it sends this party: the argument is those column names, which
    * {@link onPayloadReceiveFilled} would then record. An accepted answer takes
-   * them. A decline sends the partner {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON} and
-   * the run ends on its `refusal`; a throw sends a fixed abort naming this
-   * party's own failure and propagates. Either records neither the pin nor the
+   * them. A decline sends the partner
+   * {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON} and the run ends on its
+   * `refusal`; a throw sends a fixed abort naming this party's own failure and
+   * propagates. Either records neither the pin nor the
    * fill. Refusals held after it still apply. Asked whether or not
    * {@link onPayloadReceiveFilled} is set; that recorder without this
    * confirmation fills silently. The names are the partner's and reach the
@@ -2295,8 +2295,8 @@ export interface RunExchangeOptions {
    * Called once, after the terms exchange's refusals have all passed, when
    * this party's terms leave `payload.receive` unset and the partner can send
    * it payload ({@link payloadReceiveFill}): the argument is the column names
-   * the partner's terms declare in `payload.send`, which this run then holds
-   * the received payload to. The caller records them as `payload.receive` in
+   * the partner's terms declare in `payload.send`, which this run takes on as
+   * its receive list. The caller records them as `payload.receive` in
    * the configuration it runs from, so the next run compares them strictly. A
    * throw, or a rejected promise, stops the run before the bootstrap frame and
    * before any linkage key or payload row moves. The names are the partner's

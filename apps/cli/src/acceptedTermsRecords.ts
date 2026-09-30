@@ -112,38 +112,6 @@ export function diffKeptLinkageTerms(params: {
   return conflicts;
 }
 
-/** One fail-closed record written in place into an existing configuration. */
-export type TermsRecordWrite = {
-  record: "expected_partner_deduplicate";
-  declared: boolean;
-};
-
-/**
- * Write one record into the configuration at `configPath`, keeping the rest
- * of the file as it is. Throws where the file cannot be read, parsed, or
- * written.
- */
-export function writeTermsRecord(
-  configPath: string,
-  write: TermsRecordWrite,
-): void {
-  persistExpectedPartnerDeduplicate(configPath, write.declared);
-}
-
-/**
- * Refresh an acceptance's record in a configuration it keeps. Throws where
- * the write fails.
- */
-export function refreshAcceptanceRecords(
-  configPath: string,
-  records: { expectedPartnerDeduplicate: boolean },
-): void {
-  writeTermsRecord(configPath, {
-    record: "expected_partner_deduplicate",
-    declared: records.expectedPartnerDeduplicate,
-  });
-}
-
 /**
  * What a lost write of the acceptance record leaves in force, for a run that
  * continues past the loss with the configuration it kept.
@@ -160,21 +128,21 @@ function acceptanceRecordLossNotice(configPath: string): string {
 }
 
 /**
- * Write one acceptance record without letting a failure stop the caller: a
+ * Write the acceptance record without letting a failure stop the caller: a
  * lost write is logged with its cause, reported on the event
  * stream, and sets the persistence-loss exit code. Returns whether the record
  * was written.
  */
 export function writeAcceptanceRecordReportingLoss(
   configPath: string,
-  write: TermsRecordWrite,
+  expectedPartnerDeduplicate: boolean,
   report: {
     log: { warn: (message: string) => void };
     eventStream: EventStreamEmitter | undefined;
   },
 ): boolean {
   try {
-    writeTermsRecord(configPath, write);
+    persistExpectedPartnerDeduplicate(configPath, expectedPartnerDeduplicate);
     return true;
   } catch (err) {
     const notice = acceptanceRecordLossNotice(configPath);

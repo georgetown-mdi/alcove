@@ -658,9 +658,8 @@ export function compareTerms(
   //   strict; a one-off run leaves it absent.
   //
   // Laziness relaxes only this cross-party DECLARATION check; it never
-  // widens what a party sends -- transmission is governed by each party's
-  // own metadata (`isDisclosedToPartner`) and `assertPayloadSendDisclosed`,
-  // unchanged. The gate is symmetric: each direction keys on the same
+  // widens what a party sends, which each party's own metadata governs
+  // (`isDisclosedToPartner`). The gate is symmetric: each direction keys on the same
   // receiver's declared `receive`, so the two parties (which call this with
   // swapped arguments) compute identical verdicts. The equality is
   // byte-exact and element-wise -- compared per sorted column, NOT by a

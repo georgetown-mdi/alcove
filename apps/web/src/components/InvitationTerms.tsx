@@ -538,9 +538,10 @@ export function InvitationTerms({
   // "proposing": the inviter's own send is shown as chips there instead.
   const sendCount = summary.payload?.send.length ?? 0;
   // Direction-first, and a DECLARATION (definite): summary.payload.send is the
-  // inviter's stated send set, which the terms exchange holds it to, so the copy states
-  // "you will receive", the certain counterpart to the egress line's conditional
-  // "requests". Mirrors the "Result sharing" block's "You will receive ..." framing.
+  // inviter's agreed send set, which each terms exchange compares against the set
+  // the inviter's run states, so the copy states "you will receive" where the
+  // egress line states a request. Mirrors the "Result sharing" block's "You will
+  // receive ..." framing.
   const ingressNotice =
     perspective !== "proposing" && sendCount > 0
       ? `You will receive ${dataColumns(sendCount)} from your partner.`

@@ -562,7 +562,7 @@ Every list holds NAMES only, as the FILE spells them: snake_case under the path 
 
 ### What it discloses
 
-The projection holds the connection's `host`, `port`, remote directory (`path`, or the `inbound_path`/`outbound_path` pair), `username`, `host_key_fingerprint`, `keyboard_interactive`, and a `credentialMethod` naming WHICH credential the file states; the connection's tuning `options`; the linkage terms, metadata, and standardization; `csv_delimiter`, `include_own_columns`, `retention_disposition`, `expected_payload_columns`, and `expected_partner_deduplicate`; the `signing` block's `mode` and `partner_fingerprint`; and `authentication.token_max_age_days`, as `tokenMaxAgeDays`.
+The projection holds the connection's `host`, `port`, remote directory (`path`, or the `inbound_path`/`outbound_path` pair), `username`, `host_key_fingerprint`, `keyboard_interactive`, and a `credentialMethod` naming WHICH credential the file states; the connection's tuning `options`; the linkage terms, metadata, and standardization; `csv_delimiter`, `include_own_columns`, `retention_disposition`, and `expected_partner_deduplicate`; the `signing` block's `mode` and `partner_fingerprint`; and `authentication.token_max_age_days`, as `tokenMaxAgeDays`.
 
 It holds none of: a `password`, `private_key`, or `private_key_passphrase` value, an `@path` reference among them; `authentication.shared_secret` or `authentication.expires`, which the load refuses; `signing.identity_file` or `signing.receipt_output`; or any absolute path of the console's own.
 

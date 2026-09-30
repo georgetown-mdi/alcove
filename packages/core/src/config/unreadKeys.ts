@@ -128,12 +128,10 @@ export function keyFoldCollisionIssue(
 
 /**
  * The name the one-entry-per-column collapse (`columnsNamedOnce`) compares an
- * entry on: a payload dictionary entry's `name`, or the string itself in a list
- * written as bare column names. `undefined` for anything else, which is an array
- * this alignment cannot read.
+ * entry on: a payload dictionary entry's `name`. `undefined` for anything else,
+ * which is an array this alignment cannot read.
  */
 function collapsedEntryName(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
   if (isKeyedObject(value) && typeof value.name === "string") return value.name;
   return undefined;
 }

@@ -1819,8 +1819,8 @@ export function persistFilledPayloadReceive(
  * Write `linkage_terms.payload.send` into an existing `alcove.yaml`: the
  * columns an invitation or terms update minted from the configuration states
  * this party sends, from its `metadata`, where the terms left the list unset
- * or named other columns. Edits the file in place through the YAML document model, as
- * {@link persistFilledPayloadReceive} does, and rewrites it with the
+ * or named other columns. Edits the file in place through the YAML document
+ * model, as {@link persistFilledPayloadReceive} does, and rewrites it with the
  * owner-only permissions {@link saveConfig} uses.
  *
  * @throws when the file cannot be read, parsed, or written, or holds no
@@ -1874,11 +1874,11 @@ export function replacedPayloadSendWarning(
 
 /**
  * Write or overwrite the top-level `expected_partner_deduplicate` in an
- * existing `alcove.yaml`: the TERMS-side consent commitment, the
- * `deduplicate` the accepted invitation declared for the inviting party's
- * own side, which a later `alcove exchange` holds the partner's presented
- * value to ({@link assertPresentedDeduplicateMatchesInvitation} in core),
- * refusing a contradiction before any key or payload moves.
+ * existing `alcove.yaml`: the consent commitment to the `deduplicate` the
+ * accepted invitation declared for the inviting party's own side, which a
+ * later `alcove exchange` holds the partner's presented value to
+ * ({@link assertPresentedDeduplicateMatchesInvitation} in core), refusing a
+ * contradiction before any key or payload moves.
  *
  * Written by both accept-reuse paths (offline, and the online hook's reuse
  * branch), editing the file in place through the YAML document model so the
@@ -1925,9 +1925,10 @@ export interface TermsUpdateWrite {
 /**
  * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the record
  * that follows from it -- `expected_partner_deduplicate` -- in one write, so
- * the record does not state a commitment the new terms do not back. Every other key, the connection block
- * included, keeps its values and its key order, and a line the write does not
- * change keeps its bytes as {@link editSensitiveYamlDocument} allows.
+ * the record does not state a commitment the new terms do not back. Every
+ * other key, the connection block included, keeps its values and its key
+ * order, and a line the write does not change keeps its bytes as
+ * {@link editSensitiveYamlDocument} allows.
  *
  * The edited document is read back through the same schema `alcove
  * exchange` loads it with before it is written; a document that would not
