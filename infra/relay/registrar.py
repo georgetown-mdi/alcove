@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""The relay's registrar: register and revoke an exchange's relay key over HTTPS.
+"""The relay's registrar: enroll, rotate, and revoke an exchange's relay key over HTTPS.
 
+    POST   /exchanges/<exchange-id>   {"key": "<key-hex64>", "maxAgeDays": <n> | null}
     PUT    /exchanges/<exchange-id>   {"key": "<key-hex64>", "maxAgeDays": <n> | null}
     DELETE /exchanges/<exchange-id>
 
-Every request but a CORS preflight must carry "Authorization: Bearer <token>",
-the relay-owner token; any other request is answered 401 before its body is
-parsed. Authentication reads that header and nothing else, and no answer allows
-credentials, so a browser's cookies never authenticate a call. A registration or
-revocation is one transaction through relay_table.py beside this file, the
-secrets table's one write path. infra/relay/README.md, The registrar, is the
-contract.
+Every request but a CORS preflight holds one of two credentials in its
+Authorization header: "Bearer <token>", the relay-owner token, which enrolls
+(POST) and is the operator's recovery route on PUT and DELETE; or
+"Alcove-Relay-Proof ts=<unix-seconds>,mac=<hex64>", a proof of holding the key
+the exchange has registered, which rotates (PUT) and revokes (DELETE). Any other
+request is answered 401 before its body is parsed. Authentication reads that
+header and nothing else, and no answer allows credentials, so a browser's
+cookies never authenticate a call. A write is one transaction through
+relay_table.py beside this file, the secrets table's one write path.
+infra/relay/README.md, The registrar, is the contract, and
+docs/spec/PROTOCOL.md, The registrar request proof, the proof's format.
 
 Runs as the relay image's account, which owns the table, and reads the token and
 certificate from the credentials systemd hands the unit.
@@ -18,10 +23,12 @@ certificate from the credentials systemd hands the unit.
 Python 3.9 standard library only: the version Amazon Linux 2023 ships.
 """
 
+import hashlib
 import hmac
 import http.server
 import json
 import os
+import re
 import socketserver
 import ssl
 import sys
@@ -57,6 +64,15 @@ BODY_REFUSAL = 'the request body must be {"key": "<key-hex64>", "maxAgeDays": <d
 # The header verify.sh sends to register its own ids under the reserved prefix.
 # A browser cannot send it: the preflight does not allow it.
 VERIFY_RUN_HEADER = "Alcove-Relay-Verify-Run"
+# docs/spec/PROTOCOL.md, The registrar request proof.
+PROOF_SCHEME = "Alcove-Relay-Proof"
+PROOF_KEY_LABEL = "alcove-relay-registrar-v2:proof-key"
+PROOF_MESSAGE_LABEL = "alcove-relay-registrar-v2:request"
+PROOF_WINDOW_SECONDS = 300
+PROOF_PARAMETERS = re.compile(r"ts=(0|[1-9][0-9]{0,11}),mac=([0-9a-f]{64})")
+PROOF_FORMAT_REFUSAL = "send the proof as Authorization: %s ts=<unix-seconds>,mac=<64 lowercase hex>" % PROOF_SCHEME
+CHALLENGE = 'Bearer realm="alcove-relay-registrar", %s realm="alcove-relay-registrar"' % PROOF_SCHEME
+TOKEN = "token"
 # The journal names a request's method only from this list.
 KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "TRACE", "CONNECT"))
 
@@ -83,6 +99,36 @@ def read_token():
 valid_exchange_id = relay_table.valid_exchange_id
 valid_key = relay_table.valid_key
 valid_max_age_days = relay_table.valid_max_age_days
+
+
+def proof_key(relay_key):
+    """HKDF-SHA-256 of the relay key's 32 decoded bytes: zero salt, the proof
+    key label, one 32-byte block."""
+    extracted = hmac.new(b"\x00" * 32, bytes.fromhex(relay_key), hashlib.sha256).digest()
+    return hmac.new(extracted, PROOF_KEY_LABEL.encode("ascii") + b"\x01", hashlib.sha256).digest()
+
+
+def proof_message(method, exchange_id, body, timestamp):
+    fields = (PROOF_MESSAGE_LABEL, method, exchange_id, hashlib.sha256(body).hexdigest(), str(timestamp))
+    return "\n".join(fields).encode("ascii")
+
+
+def proof_mac(relay_key, method, exchange_id, body, timestamp):
+    """The lowercase-hex MAC of a request proving `relay_key`."""
+    message = proof_message(method, exchange_id, body, timestamp)
+    return hmac.new(proof_key(relay_key), message, hashlib.sha256).hexdigest()
+
+
+class Proof:
+    """A well-formed proof header, checked against no key yet."""
+
+    def __init__(self, timestamp, mac):
+        self.timestamp = timestamp
+        self.mac = mac
+
+    def made_under(self, relay_key, method, exchange_id, body):
+        expected = proof_mac(relay_key, method, exchange_id, body, self.timestamp)
+        return hmac.compare_digest(expected.encode("ascii"), self.mac.encode("ascii"))
 
 
 class RegistrarHandler(http.server.BaseHTTPRequestHandler):
@@ -152,17 +198,44 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
     def refuse(self, status, message, extra_headers=()):
         self.send_json(status, {"error": message}, self.discard_body() + tuple(extra_headers))
 
-    def authorized(self):
+    def credential(self):
+        """TOKEN for the relay-owner token, or the Proof the header holds,
+        checked against no key yet. Anything else is answered 401 here, and
+        None returned."""
         header = self.headers.get("Authorization", "")
         scheme, _, presented = header.partition(" ")
         if scheme.lower() == "bearer" and hmac.compare_digest(
             presented.strip().encode("utf-8", "replace"), self.server.token
         ):
-            return True
+            return TOKEN
+        if scheme.lower() == PROOF_SCHEME.lower():
+            match = PROOF_PARAMETERS.fullmatch(presented.strip())
+            if match is not None:
+                return Proof(int(match.group(1)), match.group(2))
+            self.refuse(401, PROOF_FORMAT_REFUSAL, (("WWW-Authenticate", CHALLENGE),))
+            return None
         self.refuse(
             401,
-            "missing or wrong relay-owner token; send Authorization: Bearer <token>",
-            (("WWW-Authenticate", 'Bearer realm="alcove-relay-registrar"'),),
+            "missing or wrong credential; enroll with Authorization: Bearer <relay-owner token>, and rotate "
+            "or revoke with Authorization: %s ts=<unix-seconds>,mac=<hex64>" % PROOF_SCHEME,
+            (("WWW-Authenticate", CHALLENGE),),
+        )
+        return None
+
+    def fresh(self, proof):
+        """Whether the proof's timestamp is within the window of this host's
+        clock; a stale one is answered 401 with the clock's time."""
+        now = int(time.time())
+        if abs(now - proof.timestamp) <= PROOF_WINDOW_SECONDS:
+            return True
+        self.send_json(
+            401,
+            {
+                "error": "the proof's timestamp is more than %d s from the registrar's clock; sign the "
+                "request again with ts near serverTime" % PROOF_WINDOW_SECONDS,
+                "serverTime": now,
+            },
+            self.discard_body() + (("WWW-Authenticate", CHALLENGE),),
         )
         return False
 
@@ -175,8 +248,10 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return None
         return exchange_id
 
-    def read_body(self):
+    def read_body(self, empty_when_unsized=False):
         length = self.headers.get("Content-Length")
+        if length is None and empty_when_unsized and "Transfer-Encoding" not in self.headers:
+            return b""
         if length is None or not length.isdigit():
             self.refuse(411, "send the request body with a Content-Length")
             return None
@@ -208,7 +283,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         closing = self.discard_body()
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "PUT, DELETE")
+        self.send_header("Access-Control-Allow-Methods", "POST, PUT, DELETE")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.send_header("Access-Control-Max-Age", "600")
         self.send_header("Content-Length", "0")
@@ -216,45 +291,46 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
 
-    def do_PUT(self):
-        if not self.authorized():
-            return
+    def target(self, verb):
+        """The request's exchange id once it is well formed; otherwise the
+        request is answered here and None returned."""
         exchange_id = self.exchange_id()
         if exchange_id is None:
-            self.refuse(404, "register at PUT %s<exchange-id>" % PREFIX)
-            return
+            self.refuse(404, "%s at %s %s<exchange-id>" % (verb, self.command, PREFIX))
+            return None
         if not valid_exchange_id(exchange_id):
             self.refuse(400, ID_REFUSAL)
-            return
+            return None
+        return exchange_id
+
+    def read_registration(self, exchange_id):
+        """(raw body, key, maxAgeDays) of a well-formed registration body;
+        otherwise the request is answered here and None returned."""
         if relay_table.is_verify_id(exchange_id) and self.headers.get(VERIFY_RUN_HEADER) != "1":
             self.refuse(400, VERIFY_ID_REFUSAL)
-            return
+            return None
         raw = self.read_body()
         if raw is None:
-            return
+            return None
         try:
             body = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
             self.send_json(400, {"error": "the request body is not JSON"})
-            return
+            return None
         if not isinstance(body, dict) or set(body) != {"key", "maxAgeDays"}:
             self.send_json(400, {"error": BODY_REFUSAL})
-            return
-        key = body["key"]
-        max_age_days = body["maxAgeDays"]
-        if not valid_key(key):
+            return None
+        if not valid_key(body["key"]):
             self.send_json(400, {"error": KEY_REFUSAL})
-            return
-        if not valid_max_age_days(max_age_days):
+            return None
+        if not valid_max_age_days(body["maxAgeDays"]):
             self.send_json(400, {"error": MAX_AGE_REFUSAL})
-            return
-        registration = self.write_table(
-            lambda conn: relay_table.register(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
-        )
-        if registration is None:
-            return
+            return None
+        return raw, body["key"], body["maxAgeDays"]
+
+    def answer_registration(self, journal, registration):
         message = relay_table.describe_registration(registration)
-        sys.stderr.write("register: %s\n" % message)
+        sys.stderr.write("%s: %s\n" % (journal, message))
         lapses_at = registration["lapses_at"]
         self.send_json(
             200,
@@ -265,28 +341,99 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             },
         )
 
-    def do_DELETE(self):
-        if not self.authorized():
+    def do_POST(self):
+        credential = self.credential()
+        if credential is None:
             return
-        exchange_id = self.exchange_id()
+        if credential is not TOKEN:
+            self.refuse(
+                401,
+                "enroll with Authorization: Bearer <relay-owner token>; a proof rotates or revokes an "
+                "enrolled exchange",
+                (("WWW-Authenticate", CHALLENGE),),
+            )
+            return
+        exchange_id = self.target("enroll")
         if exchange_id is None:
-            self.refuse(404, "revoke at DELETE %s<exchange-id>" % PREFIX)
             return
-        if not valid_exchange_id(exchange_id):
-            self.refuse(400, ID_REFUSAL)
+        registration = self.read_registration(exchange_id)
+        if registration is None:
             return
-        closing = self.discard_body()
-        revocation = self.write_table(lambda conn: relay_table.revoke(conn, exchange_id), closing)
+        _, key, max_age_days = registration
+        enrollment = self.write_table(
+            lambda conn: relay_table.enroll(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
+        )
+        if enrollment is not None:
+            self.answer_registration("enroll", enrollment)
+
+    def do_PUT(self):
+        credential = self.credential()
+        if credential is None or (credential is not TOKEN and not self.fresh(credential)):
+            return
+        exchange_id = self.target("register")
+        if exchange_id is None:
+            return
+        registration = self.read_registration(exchange_id)
+        if registration is None:
+            return
+        raw, key, max_age_days = registration
+        if credential is TOKEN:
+            written = self.write_table(
+                lambda conn: relay_table.register(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
+            )
+            if written is not None:
+                self.answer_registration("register (relay-owner token)", written)
+            return
+
+        def holds(current):
+            # A body naming the held key shows possession of it as fully as a
+            # MAC under it: that is a renewal, which the second party to
+            # register a rotated key makes under the key its partner has
+            # already replaced.
+            if hmac.compare_digest(key.encode("ascii"), current.encode("ascii")):
+                return True
+            return credential.made_under(current, "PUT", exchange_id, raw)
+
+        written = self.write_table(
+            lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, time.time(), holds)
+        )
+        if written is not None:
+            self.answer_registration("register (proof)", written)
+
+    def do_DELETE(self):
+        credential = self.credential()
+        if credential is None or (credential is not TOKEN and not self.fresh(credential)):
+            return
+        exchange_id = self.target("revoke")
+        if exchange_id is None:
+            return
+        if credential is TOKEN:
+            closing = self.discard_body()
+            revocation = self.write_table(lambda conn: relay_table.revoke(conn, exchange_id), closing)
+            journal = "revoke (relay-owner token)"
+        else:
+            closing = ()
+            raw = self.read_body(empty_when_unsized=True)
+            if raw is None:
+                return
+            revocation = self.write_table(
+                lambda conn: relay_table.revoke_with_proof(
+                    conn, exchange_id, lambda current: credential.made_under(current, "DELETE", exchange_id, raw)
+                )
+            )
+            journal = "revoke (proof)"
         if revocation is None:
             return
         message = relay_table.describe_revocation(revocation)
-        sys.stderr.write("revoke: %s\n" % message)
+        sys.stderr.write("%s: %s\n" % (journal, message))
         self.send_json(200, {"message": message}, closing)
 
     def refuse_method(self):
         # Reached through send_error's 501 for every method with no do_ handler.
-        if self.authorized():
-            self.refuse(405, "use PUT or DELETE on %s<exchange-id>" % PREFIX, (("Allow", "PUT, DELETE"),))
+        if self.credential() is not None:
+            self.refuse(
+                405, "use POST, PUT or DELETE on %s<exchange-id>" % PREFIX, (("Allow", "POST, PUT, DELETE"),)
+            )
 
 
 class RegistrarServer(http.server.ThreadingHTTPServer):

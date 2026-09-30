@@ -233,23 +233,31 @@ def register(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=F
 
 
 def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=False):
-    """Adds the key's row and maps an exchange this relay does not yet hold,
-    refusing an id already mapped. Returns the registration."""
+    """Adds the key's row and maps an exchange this relay does not yet hold.
+    Enrolling an exchange again with the key it holds changes nothing and
+    returns its registration as held; any other key for an id already mapped
+    is refused. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
     if not realm:
         raise Refused("ALCOVE_RELAY_REALM is unset")
     now = int(now)
 
     def body():
-        if _mapped(conn, exchange_id) is not None:
-            raise Refused(
-                "exchange-id %s is already enrolled on this relay; rotate its key, or revoke it and enroll it again"
-                % exchange_id
-            )
-        return _write_key(conn, realm, exchange_id, key, max_age_days, now, None)
+        held = conn.execute(
+            "SELECT realm, key, registered_at, max_age_days FROM alcove_exchange WHERE exchange_id = ?",
+            (exchange_id,),
+        ).fetchone()
+        if held is None:
+            outcome = _write_key(conn, realm, exchange_id, key, max_age_days, now, None)
+            return _registration(outcome, realm, exchange_id, max_age_days, now)
+        if (held[0], held[1]) == (realm, key):
+            return _registration("unchanged", realm, exchange_id, held[3], held[2])
+        raise Refused(
+            "exchange-id %s is already enrolled on this relay with another key; rotate its key under a proof "
+            "of the key it holds, or revoke it and enroll it again" % exchange_id
+        )
 
-    outcome = _transaction(conn, body)
-    return _registration(outcome, realm, exchange_id, max_age_days, now)
+    return _transaction(conn, body)
 
 
 def _held_key_proven(conn, exchange_id, proves_possession):
@@ -290,6 +298,7 @@ def describe_registration(registration):
         "registered": "registered exchange %s (realm %s)",
         "replaced": "registered exchange %s (realm %s), replacing its prior key",
         "renewed": "renewed exchange %s (realm %s), which already had this key registered",
+        "unchanged": "exchange %s (realm %s) is already enrolled with this key; nothing changed",
     }[registration["outcome"]] % (registration["exchange_id"], registration["realm"])
     if registration["max_age_days"] is None:
         return head + "; it has no lapse and stays registered until revoked or replaced"

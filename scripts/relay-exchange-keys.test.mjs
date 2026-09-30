@@ -1,3 +1,4 @@
+import { relayRegistrarAuthorization } from "@alcove/core";
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -1067,21 +1068,31 @@ def attempt(write):
         return {"refused": str(error)}
 `;
 
-    it("enrolls an exchange and refuses an id already enrolled, changing nothing", () => {
+    it("enrolls an exchange once, accepts the same key again unchanged, and refuses another key", () => {
       const host = fixtureHost();
       const result = python(
         `${MODULE}${HOLDS}
 first = relay_table.enroll(conn, "${REALM}", "exchange-1", "${KEY_A}", 30, 0)
-again = attempt(lambda: relay_table.enroll(conn, "${REALM}", "exchange-1", "${KEY_B}", None, 5))
+same = relay_table.enroll(conn, "${REALM}", "exchange-1", "${KEY_A}", None, 5)
+other = attempt(lambda: relay_table.enroll(conn, "${REALM}", "exchange-1", "${KEY_B}", None, 5))
 taken = attempt(lambda: relay_table.enroll(conn, "${REALM}", "exchange-2", "${KEY_A}", None, 5))
-print(json.dumps([first["outcome"], again, taken]))`,
+print(json.dumps([first["outcome"], same, relay_table.describe_registration(same), other, taken]))`,
         [host.turndb],
       );
-      expect(result[0]).toBe("registered");
-      expect(result[1].refused).toContain(
-        "exchange-id exchange-1 is already enrolled on this relay",
+      const [first, same, described, other, taken] = result;
+      expect(first).toBe("registered");
+      expect(same).toMatchObject({
+        outcome: "unchanged",
+        registered_at: 0,
+        max_age_days: 30,
+      });
+      expect(described).toContain(
+        "exchange exchange-1 (realm relay.example) is already enrolled with this key; nothing changed",
       );
-      expect(result[2].refused).toContain(
+      expect(other.refused).toContain(
+        "exchange-id exchange-1 is already enrolled on this relay with another key",
+      );
+      expect(taken.refused).toContain(
         "the key is already registered for exchange exchange-1",
       );
       expect(JSON.stringify(result)).not.toMatch(HEX64);
@@ -1469,7 +1480,7 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
     const response = await call(port, "OPTIONS", "/exchanges/exchange-1");
     expect(response.status).toBe(204);
     expect(response.headers["access-control-allow-methods"]).toBe(
-      "PUT, DELETE",
+      "POST, PUT, DELETE",
     );
     expect(response.headers["access-control-allow-headers"]).toBe(
       "Authorization, Content-Type",
@@ -1518,8 +1529,12 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
     expect(host.rows()).toEqual([listed(KEY_LISTED)]);
 
     await vi.waitFor(() => {
-      expect(log.stderr).toMatch(/register: registered exchange exchange-1/);
-      expect(log.stderr).toMatch(/revoke: revoked exchange exchange-1/);
+      expect(log.stderr).toMatch(
+        /register \(relay-owner token\): registered exchange exchange-1/,
+      );
+      expect(log.stderr).toMatch(
+        /revoke \(relay-owner token\): revoked exchange exchange-1/,
+      );
     });
     for (const text of [first.text, second.text, revoked.text, log.stderr]) {
       expect(text).not.toMatch(HEX64);
@@ -1912,6 +1927,492 @@ registrar.RegistrarServer(("127.0.0.1", 0), registrar.RegistrarHandler).server_c
   });
 });
 
+// The vector block under docs/spec/PROTOCOL.md's "The registrar request
+// proof": a group of shared fields, then one group per request.
+const protocolVectors = () => {
+  const text = readFileSync(
+    resolve(here, "..", "docs/spec/PROTOCOL.md"),
+    "utf8",
+  );
+  const section = text.slice(text.indexOf("\n### The registrar request proof"));
+  const open = section.indexOf("\n```text\n");
+  const block = section.slice(open + 9, section.indexOf("\n```", open + 9));
+  const [shared, ...requests] = block.split("\n\n").map((group) =>
+    Object.fromEntries(
+      group.split("\n").map((line) => {
+        const match = /^([a-z0-9_]+) +=(?: (.*))?$/.exec(line);
+        if (match === null) throw new Error(`unparsed vector line: ${line}`);
+        return [match[1], match[2] ?? ""];
+      }),
+    ),
+  );
+  return { shared, requests };
+};
+
+describe("registrar.py proof verifier", () => {
+  it("derives and checks PROTOCOL.md's vectors, and no other key's or request's proof", () => {
+    const { shared, requests } = protocolVectors();
+    expect(requests.map(({ method }) => method)).toEqual(["PUT", "DELETE"]);
+    const result = python(
+      `import json, sys
+import registrar
+shared, requests = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+key, exchange_id, ts = shared["relay_key"], shared["exchange_id"], int(shared["ts"])
+out = {"proof_key": registrar.proof_key(key).hex(), "requests": []}
+for request in requests:
+    body = request["body"].encode("utf-8")
+    scheme, _, parameters = request["authorization"].partition(" ")
+    match = registrar.PROOF_PARAMETERS.fullmatch(parameters)
+    proof = registrar.Proof(int(match.group(1)), match.group(2))
+    other_method = "DELETE" if request["method"] == "PUT" else "PUT"
+    out["requests"].append({
+        "scheme": scheme,
+        "body_sha256": registrar.hashlib.sha256(body).hexdigest(),
+        "mac": registrar.proof_mac(key, request["method"], exchange_id, body, ts),
+        "verifies": proof.made_under(key, request["method"], exchange_id, body),
+        "under_other_key": proof.made_under("0" * 64, request["method"], exchange_id, body),
+        "for_other_method": proof.made_under(key, other_method, exchange_id, body),
+        "for_other_id": proof.made_under(key, request["method"], "exchange-2", body),
+        "for_other_body": proof.made_under(key, request["method"], exchange_id, body + b" "),
+    })
+print(json.dumps(out))`,
+      [JSON.stringify(shared), JSON.stringify(requests)],
+      { PYTHONDONTWRITEBYTECODE: "1" },
+    );
+    expect(result.proof_key).toBe(shared.proof_key);
+    for (const [i, request] of requests.entries()) {
+      expect(result.requests[i]).toEqual({
+        scheme: "Alcove-Relay-Proof",
+        body_sha256: request.body_sha256,
+        mac: request.mac,
+        verifies: true,
+        under_other_key: false,
+        for_other_method: false,
+        for_other_id: false,
+        for_other_body: false,
+      });
+    }
+  });
+});
+
+// The routine rotation and revocation, each signed by core's helper and sent
+// with no relay-owner token.
+const proven = async (
+  port,
+  method,
+  exchangeId,
+  relayKey,
+  { body = "", now = new Date(), headers = {} } = {},
+) =>
+  call(port, method, `/exchanges/${exchangeId}`, {
+    body: body === "" ? undefined : body,
+    headers: {
+      Authorization: await relayRegistrarAuthorization({
+        relayKey,
+        method,
+        exchangeId,
+        body,
+        now,
+      }),
+      ...headers,
+    },
+  });
+
+const enroll = async (port, exchangeId, key, maxAgeDays = "null") =>
+  call(port, "POST", `/exchanges/${exchangeId}`, {
+    token: REGISTRAR_TOKEN,
+    body: keyBody(key, maxAgeDays),
+  });
+
+describe.skipIf(runningAsRoot)(
+  "registrar.py enrollment and proofs",
+  { timeout: 60000 },
+  () => {
+    it("enrolls under the token, accepts the same key again unchanged, and refuses another key", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startRegistrar(host);
+      const first = await enroll(port, "exchange-1", KEY_A, "30");
+      expect(first.status, first.text).toBe(200);
+      expect(JSON.parse(first.text).message).toContain(
+        "registered exchange exchange-1",
+      );
+      const before = host.mapping();
+      const same = await enroll(port, "exchange-1", KEY_A, "null");
+      expect(same.status, same.text).toBe(200);
+      expect(JSON.parse(same.text)).toMatchObject({
+        maxAgeDays: 30,
+        message: expect.stringContaining(
+          "already enrolled with this key; nothing changed",
+        ),
+      });
+      const other = await enroll(port, "exchange-1", KEY_B);
+      expect(other.status).toBe(409);
+      expect(JSON.parse(other.text).error).toContain(
+        "already enrolled on this relay with another key",
+      );
+      expect(host.mapping()).toEqual(before);
+      expect(host.rows()).toEqual([listed(KEY_LISTED), listed(KEY_A)].sort());
+      await vi.waitFor(() =>
+        expect(log.stderr).toMatch(/enroll: registered exchange exchange-1/),
+      );
+      for (const text of [first.text, same.text, other.text, log.stderr]) {
+        expect(text).not.toMatch(HEX64);
+      }
+    });
+
+    it("refuses to enroll under a proof", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      const response = await call(port, "POST", "/exchanges/exchange-1", {
+        body: keyBody(KEY_A),
+        headers: {
+          Authorization: await relayRegistrarAuthorization({
+            relayKey: KEY_A,
+            method: "PUT",
+            exchangeId: "exchange-1",
+            body: keyBody(KEY_A),
+            now: new Date(),
+          }),
+        },
+      });
+      expect(response.status).toBe(401);
+      expect(JSON.parse(response.text).error).toContain(
+        "enroll with Authorization: Bearer",
+      );
+      expect(host.mapping()).toEqual([]);
+    });
+
+    it("rotates and revokes under proofs alone, never the token", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const rotated = await proven(port, "PUT", "exchange-1", KEY_A, {
+        body: keyBody(KEY_B, "7"),
+      });
+      expect(rotated.status, rotated.text).toBe(200);
+      expect(JSON.parse(rotated.text)).toMatchObject({
+        maxAgeDays: 7,
+        message: expect.stringContaining("replacing its prior key"),
+      });
+      expect(host.mapping()).toMatchObject([{ key: KEY_B, days: 7 }]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED), listed(KEY_B)].sort());
+      const revoked = await proven(port, "DELETE", "exchange-1", KEY_B);
+      expect(revoked.status, revoked.text).toBe(200);
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+      await vi.waitFor(() => {
+        expect(log.stderr).toMatch(/register \(proof\): registered exchange/);
+        expect(log.stderr).toMatch(/revoke \(proof\): revoked exchange/);
+      });
+      expect(log.stderr).not.toMatch(HEX64);
+    });
+
+    it("refuses a proof under a key the exchange does not hold, and a forged one", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const refusals = [
+        await proven(port, "PUT", "exchange-1", KEY_C, {
+          body: keyBody(KEY_B),
+        }),
+        await proven(port, "DELETE", "exchange-1", KEY_C),
+        await call(port, "PUT", "/exchanges/exchange-1", {
+          body: keyBody(KEY_B),
+          headers: {
+            Authorization: `Alcove-Relay-Proof ts=${nowSeconds()},mac=${"0".repeat(64)}`,
+          },
+        }),
+      ];
+      for (const refused of refusals) {
+        expect(refused.status).toBe(409);
+        expect(JSON.parse(refused.text).error).toBe(
+          "the request's proof does not verify against the key exchange exchange-1 holds on this relay",
+        );
+      }
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
+    });
+
+    it("refuses a proof signed for another request", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const signedFor = async (method, exchangeId, body) =>
+        relayRegistrarAuthorization({
+          relayKey: KEY_A,
+          method,
+          exchangeId,
+          body,
+          now: new Date(),
+        });
+      const cases = [
+        // A rotation's proof presented with another body.
+        [
+          "PUT",
+          "exchange-1",
+          keyBody(KEY_B, "30"),
+          await signedFor("PUT", "exchange-1", keyBody(KEY_B, "null")),
+        ],
+        // A rotation's proof presented as a revocation.
+        [
+          "DELETE",
+          "exchange-1",
+          undefined,
+          await signedFor("PUT", "exchange-1", ""),
+        ],
+      ];
+      for (const [method, exchangeId, body, authorization] of cases) {
+        const response = await call(port, method, `/exchanges/${exchangeId}`, {
+          body,
+          headers: { Authorization: authorization },
+        });
+        expect(response.status, `${method} ${exchangeId}`).toBe(409);
+      }
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
+    });
+
+    it.each([
+      ["301 s behind", -301],
+      ["301 s ahead of", 301],
+    ])(
+      "refuses a proof %s the registrar's clock with 401 and its time",
+      async (_, offsetSeconds) => {
+        const host = fixtureHost();
+        const { port } = await startRegistrar(host);
+        await enroll(port, "exchange-1", KEY_A);
+        const now = new Date(Date.now() + offsetSeconds * 1000);
+        for (const response of [
+          await proven(port, "PUT", "exchange-1", KEY_A, {
+            body: keyBody(KEY_B),
+            now,
+          }),
+          await proven(port, "DELETE", "exchange-1", KEY_A, { now }),
+        ]) {
+          expect(response.status).toBe(401);
+          const answer = JSON.parse(response.text);
+          expect(answer.error).toContain(
+            "more than 300 s from the registrar's clock",
+          );
+          expect(Math.abs(answer.serverTime - nowSeconds())).toBeLessThan(30);
+          expect(response.headers["www-authenticate"]).toContain(
+            "Alcove-Relay-Proof",
+          );
+        }
+        expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
+      },
+    );
+
+    it("accepts a proof inside the window on either side", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const behind = await proven(port, "PUT", "exchange-1", KEY_A, {
+        body: keyBody(KEY_B),
+        now: new Date(Date.now() - 280 * 1000),
+      });
+      expect(behind.status, behind.text).toBe(200);
+      const ahead = await proven(port, "PUT", "exchange-1", KEY_B, {
+        body: keyBody(KEY_C),
+        now: new Date(Date.now() + 280 * 1000),
+      });
+      expect(ahead.status, ahead.text).toBe(200);
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_C]);
+    });
+
+    it.each([
+      ["no mac", `Alcove-Relay-Proof ts=${1767225600}`],
+      ["an uppercase mac", `Alcove-Relay-Proof ts=1,mac=${"A".repeat(64)}`],
+      ["a leading-zero ts", `Alcove-Relay-Proof ts=01,mac=${"a".repeat(64)}`],
+      [
+        "a space after the comma",
+        `Alcove-Relay-Proof ts=1, mac=${"a".repeat(64)}`,
+      ],
+      [
+        "the token beside a proof",
+        `Alcove-Relay-Proof ts=1,mac=${"a".repeat(64)},token=${REGISTRAR_TOKEN}`,
+      ],
+    ])("refuses a proof header with %s, 401", async (_, authorization) => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const response = await call(port, "PUT", "/exchanges/exchange-1", {
+        body: keyBody(KEY_B),
+        headers: { Authorization: authorization },
+      });
+      expect(response.status).toBe(401);
+      expect(JSON.parse(response.text).error).toContain(
+        "send the proof as Authorization: Alcove-Relay-Proof",
+      );
+      expect(response.text).not.toContain(REGISTRAR_TOKEN);
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
+    });
+
+    it("matches the proof scheme without regard to case", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const authorization = await relayRegistrarAuthorization({
+        relayKey: KEY_A,
+        method: "DELETE",
+        exchangeId: "exchange-1",
+        body: "",
+        now: new Date(),
+      });
+      const response = await call(port, "DELETE", "/exchanges/exchange-1", {
+        headers: {
+          Authorization: authorization.replace(
+            "Alcove-Relay-Proof",
+            "alcove-relay-proof",
+          ),
+        },
+      });
+      expect(response.status, response.text).toBe(200);
+    });
+
+    it("refuses a proven write to an exchange not enrolled", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      for (const response of [
+        await proven(port, "PUT", "exchange-1", KEY_A, {
+          body: keyBody(KEY_A),
+        }),
+        await proven(port, "DELETE", "exchange-1", KEY_A),
+      ]) {
+        expect(response.status).toBe(409);
+        expect(JSON.parse(response.text).error).toBe(
+          "exchange-id exchange-1 is not enrolled on this relay; enroll it with the relay-owner token",
+        );
+      }
+      expect(host.mapping()).toEqual([]);
+    });
+
+    it("renews the row when the second party registers the key its partner already did", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      // Both parties rotate from KEY_A to KEY_B and each registers KEY_B under
+      // a proof made with KEY_A, the key it held.
+      const first = await proven(port, "PUT", "exchange-1", KEY_A, {
+        body: keyBody(KEY_B, "30"),
+      });
+      expect(first.status, first.text).toBe(200);
+      host.stamp("exchange-1", 100);
+      const second = await proven(port, "PUT", "exchange-1", KEY_A, {
+        body: keyBody(KEY_B, "30"),
+      });
+      expect(second.status, second.text).toBe(200);
+      expect(JSON.parse(second.text).message).toContain(
+        "renewed exchange exchange-1",
+      );
+      const [row] = host.mapping();
+      expect(row).toMatchObject({ key: KEY_B, days: 30 });
+      expect(row.at).toBeGreaterThan(100);
+      // A renewal under a proof made with the held key is the same write.
+      const third = await proven(port, "PUT", "exchange-1", KEY_B, {
+        body: keyBody(KEY_B, "30"),
+      });
+      expect(third.status, third.text).toBe(200);
+    });
+
+    it("refuses a rotation replayed after the key has moved on, and a replayed revocation", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const body = keyBody(KEY_B);
+      const captured = await relayRegistrarAuthorization({
+        relayKey: KEY_A,
+        method: "PUT",
+        exchangeId: "exchange-1",
+        body,
+        now: new Date(),
+      });
+      const replay = () =>
+        call(port, "PUT", "/exchanges/exchange-1", {
+          body,
+          headers: { Authorization: captured },
+        });
+      expect((await replay()).status).toBe(200);
+      const onward = await proven(port, "PUT", "exchange-1", KEY_B, {
+        body: keyBody(KEY_C),
+      });
+      expect(onward.status, onward.text).toBe(200);
+      expect((await replay()).status).toBe(409);
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_C]);
+
+      const revocation = await relayRegistrarAuthorization({
+        relayKey: KEY_C,
+        method: "DELETE",
+        exchangeId: "exchange-1",
+        body: "",
+        now: new Date(),
+      });
+      const revoke = () =>
+        call(port, "DELETE", "/exchanges/exchange-1", {
+          headers: { Authorization: revocation },
+        });
+      expect((await revoke()).status).toBe(200);
+      await enroll(port, "exchange-1", KEY_A);
+      expect((await revoke()).status).toBe(409);
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_A]);
+    });
+
+    it("lets only one of two concurrent rotations proven under one key land", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const racing = await Promise.all(
+        [KEY_B, KEY_C].map((key) =>
+          proven(port, "PUT", "exchange-1", KEY_A, { body: keyBody(key) }),
+        ),
+      );
+      const statuses = racing.map(({ status }) => status);
+      expect([...statuses].sort()).toEqual([200, 409]);
+      const winner = statuses[0] === 200 ? KEY_B : KEY_C;
+      expect(host.mapping().map(({ key }) => key)).toEqual([winner]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED), listed(winner)].sort());
+    });
+
+    it("hashes a proven revocation's body, so one signed empty is refused with a body", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const withBody = await call(port, "DELETE", "/exchanges/exchange-1", {
+        body: "{}",
+        headers: {
+          Authorization: await relayRegistrarAuthorization({
+            relayKey: KEY_A,
+            method: "DELETE",
+            exchangeId: "exchange-1",
+            body: "",
+            now: new Date(),
+          }),
+        },
+      });
+      expect(withBody.status).toBe(409);
+      const signedBody = await proven(port, "DELETE", "exchange-1", KEY_A, {
+        body: "{}",
+      });
+      expect(signedBody.status, signedBody.text).toBe(200);
+    });
+
+    it("keeps the token's register and revoke as the operator's recovery route", async () => {
+      const host = fixtureHost();
+      const { port } = await startRegistrar(host);
+      await enroll(port, "exchange-1", KEY_A);
+      const replaced = await call(port, "PUT", "/exchanges/exchange-1", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_B),
+      });
+      expect(replaced.status, replaced.text).toBe(200);
+      expect(host.mapping().map(({ key }) => key)).toEqual([KEY_B]);
+      const revoked = await call(port, "DELETE", "/exchanges/exchange-1", {
+        token: REGISTRAR_TOKEN,
+      });
+      expect(revoked.status, revoked.text).toBe(200);
+      expect(host.mapping()).toEqual([]);
+    });
+  },
+);
+
 // The CORS invariant: the registrar authenticates on the Authorization header
 // alone, and no answer allows credentials, so a browser's ambient cookies or
 // client certificate can never authenticate a cross-origin call.
@@ -1954,8 +2455,8 @@ for function in ast.walk(tree):
 print(json.dumps(reads))`,
       [join(relay, "registrar.py")],
     );
-    expect(reads.filter(([fn]) => fn === "authorized")).toEqual([
-      ["authorized", "Authorization"],
+    expect(reads.filter(([fn]) => fn === "credential")).toEqual([
+      ["credential", "Authorization"],
     ]);
     for (const [, header] of reads) {
       expect(typeof header === "string" && /^[A-Za-z-]+$/.test(header)).toBe(
