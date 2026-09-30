@@ -685,9 +685,10 @@ been confirmed at the relay registrar a run registers at
 - **What supersedes it.** A run that does not register -- its connection names
   no registrar, or it relays through the invitation's relay -- leaves the
   field, and its own rotation write, which stores none, drops it.
-- **Across applications.** The console's check of a mounted key file strips an
-  unknown field, so it reads the file. The web application's import of a
-  command-line key file refuses one holding the field, naming the
+- **Across applications.** The console's check of a mounted key file
+  validates the field as the command line does, so it reads the file and
+  refuses one whose field is not an ISO 8601 instant. The web application's
+  import of a command-line key file refuses one holding the field, naming the
   unconfirmed registration and the command-line run or `alcove enroll-relay`
   that confirms it.
 

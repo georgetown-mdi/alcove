@@ -10,6 +10,7 @@ import {
   selectRunRelay,
 } from "@alcove/core";
 import type { ConnectionConfig, RelayRegistrar } from "@alcove/core";
+import { z } from "zod";
 
 /** How long one registrar request may take before it counts as unanswered. */
 export const RELAY_REGISTRAR_REQUEST_TIMEOUT_MS = 15_000;
@@ -20,6 +21,46 @@ const MAX_REGISTRAR_ANSWER_BYTES = 4096;
 
 // How much of the registrar's own `error` text a message repeats.
 const MAX_REGISTRAR_REASON_LENGTH = 300;
+
+/** What stands in a message for the credential a request carried. */
+export const REMOVED_CREDENTIAL_TEXT = "[credential removed]";
+
+const MALFORMED_LAPSE_REASON =
+  "its answer states a lapse time that is not a UTC timestamp, so the " +
+  "registration is not taken as confirmed";
+
+// The registrar writes `lapsesAt` as `YYYY-MM-DDTHH:MM:SSZ`
+// (infra/relay/README.md, The registrar).
+const LAPSES_AT_SCHEMA = z.iso.datetime();
+
+/**
+ * `text` with every occurrence of the `Authorization` value a request carried,
+ * and of its credential after the scheme, replaced by
+ * {@link REMOVED_CREDENTIAL_TEXT}: as sent, URL-encoded, and base64-encoded,
+ * so a registrar or proxy that echoes the header repeats no credential.
+ */
+function withCredentialRemoved(text: string, authorization: string): string {
+  const space = authorization.indexOf(" ");
+  const values =
+    space === -1
+      ? [authorization]
+      : [authorization, authorization.slice(space + 1)];
+  const forms = new Set<string>();
+  for (const value of values) {
+    const base64 = Buffer.from(value, "utf8").toString("base64");
+    for (const form of [
+      value,
+      encodeURIComponent(value),
+      base64,
+      base64.replace(/=+$/, ""),
+    ])
+      if (form.length > 0) forms.add(form);
+  }
+  let removed = text;
+  for (const form of [...forms].sort((a, b) => b.length - a.length))
+    removed = removed.split(form).join(REMOVED_CREDENTIAL_TEXT);
+  return removed;
+}
 
 /**
  * The registrar a run registers its rotated relay key at: the connection's
@@ -94,11 +135,14 @@ interface RegistrarAnswerBody {
   serverTime?: number;
   maxAgeDays?: number | null;
   lapsesAt?: string | null;
+  /** The answer carried a `lapsesAt` other than `null` or a UTC timestamp. */
+  malformedLapse?: true;
 }
 
 async function readAnswerBody(
   response: Response,
   signal: AbortSignal,
+  authorization: string,
 ): Promise<RegistrarAnswerBody> {
   let read: Awaited<ReturnType<typeof readBoundedJsonBody>>;
   try {
@@ -115,7 +159,10 @@ async function readAnswerBody(
   const fields = value as Record<string, unknown>;
   const body: RegistrarAnswerBody = {};
   if (typeof fields["error"] === "string")
-    body.error = fields["error"].slice(0, MAX_REGISTRAR_REASON_LENGTH);
+    body.error = withCredentialRemoved(fields["error"], authorization).slice(
+      0,
+      MAX_REGISTRAR_REASON_LENGTH,
+    );
   if (
     typeof fields["serverTime"] === "number" &&
     Number.isSafeInteger(fields["serverTime"]) &&
@@ -126,8 +173,9 @@ async function readAnswerBody(
   if (maxAgeDays === null || Number.isSafeInteger(maxAgeDays))
     body.maxAgeDays = maxAgeDays as number | null;
   const lapsesAt = fields["lapsesAt"];
-  if (lapsesAt === null || typeof lapsesAt === "string")
-    body.lapsesAt = lapsesAt;
+  if (lapsesAt === null || LAPSES_AT_SCHEMA.safeParse(lapsesAt).success)
+    body.lapsesAt = lapsesAt as string | null;
+  else if (lapsesAt !== undefined) body.malformedLapse = true;
   return body;
 }
 
@@ -135,7 +183,9 @@ async function readAnswerBody(
  * Send one registration -- `POST` to enroll, `PUT` to rotate or renew -- and
  * classify the answer. Never throws for a network failure or a status: each
  * is an answer kind. Redirects are not followed, so the credential reaches no
- * second host.
+ * second host, and no reason repeats the credential. A success whose
+ * `lapsesAt` is neither `null` nor a UTC timestamp is `unavailable`, with a
+ * fixed reason.
  */
 export async function sendRelayRegistration(
   request: {
@@ -167,7 +217,10 @@ export async function sendRelayRegistration(
       reason:
         err instanceof Error && err.name === "TimeoutError"
           ? `no answer within ${timeoutMs} ms`
-          : `it could not be reached (${err instanceof Error ? err.message : String(err)})`,
+          : `it could not be reached (${withCredentialRemoved(
+              err instanceof Error ? err.message : String(err),
+              request.authorization,
+            )})`,
     };
   }
   const status = response.status;
@@ -179,7 +232,9 @@ export async function sendRelayRegistration(
       reason: "it answered with a redirect, which is not followed",
     };
   }
-  const body = await readAnswerBody(response, signal);
+  const body = await readAnswerBody(response, signal, request.authorization);
+  if (status >= 200 && status < 300 && body.malformedLapse === true)
+    return { kind: "unavailable", status, reason: MALFORMED_LAPSE_REASON };
   if (status >= 200 && status < 300)
     return {
       kind: "registered",

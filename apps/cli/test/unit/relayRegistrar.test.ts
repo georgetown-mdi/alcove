@@ -3,11 +3,14 @@ import { describe, expect, test } from "vitest";
 import type { ConnectionConfig, RelayRegistrar } from "@alcove/core";
 
 import {
+  REMOVED_CREDENTIAL_TEXT,
   relayRegistrarForRun,
   sendRelayRegistration,
 } from "../../src/relayRegistrar";
 import { promptHiddenText } from "../../src/util/prompt";
 import { fakeRegistrar, jsonResponse } from "./relayRegistrarFake";
+
+const AUTHORIZATION = "Bearer test-owner-token";
 
 const REGISTRAR: RelayRegistrar = {
   url: "https://relay.example.org:8443",
@@ -114,7 +117,12 @@ describe("sendRelayRegistration", () => {
   ])("classifies an answer (%#)", async (response, expected) => {
     const registrar = fakeRegistrar([response]);
     const answer = await sendRelayRegistration(
-      { registrar: REGISTRAR, method: "PUT", body: "{}", authorization: "x" },
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: AUTHORIZATION,
+      },
       { fetch: registrar.fetch },
     );
     expect(answer).toMatchObject(expected);
@@ -122,12 +130,61 @@ describe("sendRelayRegistration", () => {
 
   test("a network failure is an unavailable answer, not a throw", async () => {
     const answer = await sendRelayRegistration(
-      { registrar: REGISTRAR, method: "PUT", body: "{}", authorization: "x" },
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: AUTHORIZATION,
+      },
       {
         fetch: () => Promise.reject(new TypeError("fetch failed")),
       },
     );
     expect(answer.kind).toBe("unavailable");
+  });
+
+  test("a success whose lapsesAt holds control bytes is refused with a fixed reason", async () => {
+    const lapsesAt = "2026-01-31T00:00:00Z\u001b[2K\u0007\nforged line";
+    const registrar = fakeRegistrar([
+      jsonResponse(200, { maxAgeDays: 30, lapsesAt }),
+    ]);
+    const answer = await sendRelayRegistration(
+      {
+        registrar: REGISTRAR,
+        method: "PUT",
+        body: "{}",
+        authorization: AUTHORIZATION,
+      },
+      { fetch: registrar.fetch },
+    );
+    expect(answer).toEqual({
+      kind: "unavailable",
+      status: 200,
+      reason:
+        "its answer states a lapse time that is not a UTC timestamp, so " +
+        "the registration is not taken as confirmed",
+    });
+  });
+
+  test("a reason echoing the credential repeats it in no encoding", async () => {
+    const token = "owner/token+with=signs";
+    const authorization = `Bearer ${token}`;
+    const echoed = [
+      authorization,
+      encodeURIComponent(token),
+      Buffer.from(authorization).toString("base64"),
+      Buffer.from(token).toString("base64").replace(/=+$/, ""),
+    ].join(" | ");
+    const registrar = fakeRegistrar([jsonResponse(401, { error: echoed })]);
+    const answer = await sendRelayRegistration(
+      { registrar: REGISTRAR, method: "POST", body: "{}", authorization },
+      { fetch: registrar.fetch },
+    );
+    expect(answer).toEqual({
+      kind: "refused",
+      status: 401,
+      reason: Array(4).fill(REMOVED_CREDENTIAL_TEXT).join(" | "),
+    });
   });
 });
 

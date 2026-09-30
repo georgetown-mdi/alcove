@@ -8,7 +8,12 @@ import { deriveRelayKey } from "@alcove/core";
 
 import { enrollRelay, readFirstLine } from "../../../src/commands/enrollRelay";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
-import { exitCodeForError } from "../../../src/util/exit";
+import { REMOVED_CREDENTIAL_TEXT } from "../../../src/relayRegistrar";
+import {
+  exitCodeForError,
+  exitWithError,
+  renderFailureForOperator,
+} from "../../../src/util/exit";
 import { fakeRegistrar, jsonResponse } from "../relayRegistrarFake";
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM";
@@ -176,6 +181,82 @@ test.each([
     expect(failure.message).not.toContain(OWNER_TOKEN);
   },
 );
+
+/** The line `exitWithError`, the handler's failure path, logs for `failure`. */
+function loggedFailureLine(failure: unknown): string {
+  const lines: string[] = [];
+  const exit = vi
+    .spyOn(process, "exit")
+    .mockImplementation((() => undefined) as never);
+  try {
+    exitWithError({ error: (m) => lines.push(m) }, failure, 1);
+  } finally {
+    exit.mockRestore();
+  }
+  expect(lines).toHaveLength(1);
+  return lines[0]!;
+}
+
+test("a registrar answer echoing the token is shown and logged with the token removed", async () => {
+  fs.writeFileSync(configFile, YAML.stringify(webrtcConfig()));
+  saveKeyFile(keyFile, { sharedSecret: SECRET });
+  const registrar = fakeRegistrar([
+    jsonResponse(401, {
+      error:
+        `bad credential in Authorization: Bearer ${OWNER_TOKEN} ` +
+        `(${Buffer.from(OWNER_TOKEN).toString("base64")})`,
+    }),
+  ]);
+  const failure = (await enrollRelay({
+    configFile,
+    keyFile,
+    replace: false,
+    readOwnerToken: async () => OWNER_TOKEN,
+    transport: { fetch: registrar.fetch },
+  }).catch((err: unknown) => err)) as Error;
+  expect(exitCodeForError(failure)).toBe(77);
+  const base64Token = Buffer.from(OWNER_TOKEN).toString("base64");
+  for (const text of [
+    failure.message,
+    renderFailureForOperator(failure),
+    loggedFailureLine(failure),
+  ]) {
+    expect(text).toContain(REMOVED_CREDENTIAL_TEXT);
+    expect(text).not.toContain(OWNER_TOKEN);
+    expect(text).not.toContain(base64Token);
+  }
+});
+
+test("an enrollment answer whose lapsesAt holds control bytes is refused, and none of them is shown", async () => {
+  fs.writeFileSync(configFile, YAML.stringify(webrtcConfig()));
+  saveKeyFile(keyFile, {
+    sharedSecret: SECRET,
+    relayRegistrationPendingSince: "2026-01-01T00:00:00.000Z",
+  });
+  const registrar = fakeRegistrar([
+    jsonResponse(200, {
+      maxAgeDays: 45,
+      lapsesAt: "2026-02-15T00:00:00Z\u001b[2K\u0007\nforged line",
+    }),
+  ]);
+  const failure = (await enrollRelay({
+    configFile,
+    keyFile,
+    replace: false,
+    readOwnerToken: async () => OWNER_TOKEN,
+    transport: { fetch: registrar.fetch },
+  }).catch((err: unknown) => err)) as Error;
+  expect(failure).toBeInstanceOf(Error);
+  expect(failure.message).toContain("not a UTC timestamp");
+  for (const text of [failure.message, loggedFailureLine(failure)]) {
+    expect(text).not.toMatch(/[\u0000-\u001f\u007f]/);
+    expect(text).not.toContain("forged");
+    expect(text).not.toContain("2026-02-15");
+  }
+  expect(loadKeyFile(keyFile)?.relayRegistrationPendingSince).toBe(
+    "2026-01-01T00:00:00.000Z",
+  );
+});
 
 test("a piped token is read at its newline while the pipe stays open", async () => {
   const pipe = new PassThrough();
