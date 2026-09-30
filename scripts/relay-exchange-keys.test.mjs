@@ -29,9 +29,10 @@ import { enrollRelayKey } from "../apps/cli/src/relayRegistrar.ts";
 
 // The relay's secrets-table module, the key scripts and the sweep that call
 // it, the registrar service and the CLI's client of it, verify.sh's registrar
-// probe and cleanup, and the configuration render, driven against a fixture host whose turndb is a real
-// SQLite file holding coturn's turn_secret table. The table's shape here is
-// the one relay-turn-secret-schema.test.mjs holds against the pinned image;
+// probe and cleanup, and the configuration render, driven against a fixture
+// host whose turndb is a real SQLite file holding coturn's turn_secret table.
+// The table's shape here is the one relay-turn-secret-schema.test.mjs holds
+// against the pinned image;
 // what coturn does with the rows is verify.sh's to drive against a running
 // relay.
 
