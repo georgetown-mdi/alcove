@@ -17,6 +17,7 @@ import {
   EXPIRES_ON,
   findLegacyNames,
   isExpired,
+  LEGACY_NAME,
 } from "./check-no-legacy-names.mjs";
 import { CHECKS } from "./run-checks.mjs";
 
@@ -116,6 +117,40 @@ describe("findLegacyNames", () => {
       { path: "README.md", line: 1, text: "# PSI Link" },
       { path: "notes.md", line: 1, text: "the psi link app" },
     ]);
+  });
+
+  it("catches the spaced form at the end of a line and before punctuation", () => {
+    const root = fixtureTree({ "a.md": "Built on PSI Link\nPSI link.\n" });
+    expect(findLegacyNames(root)).toEqual([
+      { path: "a.md", line: 1, text: "Built on PSI Link" },
+      { path: "a.md", line: 2, text: "PSI link." },
+    ]);
+  });
+
+  it("matches the same lines through git grep and through JavaScript", () => {
+    const lines = [
+      "PSI Link",
+      "the psi link app",
+      "psi link.",
+      "psi link_x",
+      "PSI linkage",
+      "PSI link2",
+      "PSILINK_VERSION",
+      "Alcove",
+    ];
+    const root = fixtureTree({ "lines.txt": `${lines.join("\n")}\n` });
+    const viaGit = findLegacyNames(root).map((site) => site.text);
+    expect(viaGit).toEqual(lines.filter((line) => LEGACY_NAME.test(line)));
+    expect(viaGit).toEqual([
+      "PSI Link",
+      "the psi link app",
+      "psi link.",
+      "PSILINK_VERSION",
+    ]);
+  });
+
+  it("holds no escape outside POSIX ERE, which BSD git grep would not match", () => {
+    expect(LEGACY_NAME.source).not.toMatch(/\\[A-Za-z]/);
   });
 
   it("reports a tracked path that holds the name", () => {

@@ -40,8 +40,13 @@ import { obligationRoot } from "./lib/deferredObligation.mjs";
 /** The last date, UTC, on which the check scans rather than fails as expired. */
 export const EXPIRES_ON = "2026-12-24";
 
-/** The names, matched anywhere in a line or path, in any case. */
-export const LEGACY_NAME = /jspsi|psilink|psi-link|psi link\b/i;
+/**
+ * The names, matched anywhere in a line or path, in any case. `git grep -E`
+ * also runs this source, so it keeps to POSIX ERE that JavaScript reads the
+ * same way: BSD regex, as in macOS git, has no `\b`, so the spaced form ends
+ * at a non-word character or the end of the line instead.
+ */
+export const LEGACY_NAME = /jspsi|psilink|psi-link|psi link([^A-Za-z0-9_]|$)/i;
 
 /** Extensions read as binary and not scanned. */
 export const BINARY_EXTENSIONS = [".png", ".ico", ".tgz"];
