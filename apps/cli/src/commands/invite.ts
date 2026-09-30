@@ -4,6 +4,7 @@ import {
   getLogger,
   encodeInvitation,
   assertDisclosedNamesCarriable,
+  assertTermsRunnable,
   termsStatingDeclaredPayloadSend,
   CONNECTION_BLOCK_NOTICE,
   DEFAULT_PEER_TIMEOUT_MS,
@@ -46,7 +47,6 @@ import {
   replacedPayloadSendWarning,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { assertConfigTermsRunnable } from "../configTermsGuards";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
 import { createProvisionedServer } from "../serverProvision";
@@ -939,7 +939,7 @@ export async function validateInvite(params: {
     // Fail closed, before the token is minted, on terms this config's own
     // exchange would refuse, so the partner never accepts an invitation the
     // first run refuses.
-    assertConfigTermsRunnable(configTerms, configSource);
+    assertTermsRunnable(configTerms, configSource);
 
     // State the send set only when the config declares an explicit metadata
     // block: without one the run infers metadata from the exchange input (which

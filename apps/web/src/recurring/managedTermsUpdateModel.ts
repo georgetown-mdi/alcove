@@ -1,3 +1,5 @@
+import { sanitizeErrorForDisplay } from "@alcove/core";
+
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedTermsUpdateNotAppliedError } from "@psi/managed/managedTermsUpdate";
 
@@ -132,6 +134,9 @@ export const TERMS_UPDATE_NOT_APPLIED_TEXT = {
     "This terms update changes terms this exchange cannot take on here, " +
     `such as the columns used to match. ${NOTHING_CHANGED} Ask your ` +
     "partner about the change, or set up a new exchange on the new terms.",
+  "not-runnable":
+    "A run on the terms in this update would stop before it sent anything. " +
+    `${NOTHING_CHANGED} Ask your partner about the change.`,
   changed:
     "This exchange changed after the update was checked. " +
     `${NOTHING_CHANGED} Check the update again to see the change as it ` +
@@ -141,11 +146,15 @@ export const TERMS_UPDATE_NOT_APPLIED_TEXT = {
 /**
  * What the apply control says when a terms update was not applied: the
  * reason it was refused, a run in flight holding the exchange, or a write
- * that failed.
+ * that failed. A `not-runnable` refusal adds core's message naming the rule
+ * the terms break, the one `alcove apply` prints for the same update.
  */
 export function termsUpdateNotAppliedText(error: unknown): string {
   if (error instanceof ManagedTermsUpdateNotAppliedError)
-    return TERMS_UPDATE_NOT_APPLIED_TEXT[error.refusal];
+    return error.refusal === "not-runnable" && error.cause !== undefined
+      ? `${TERMS_UPDATE_NOT_APPLIED_TEXT["not-runnable"]} The rule the ` +
+          `terms break: ${sanitizeErrorForDisplay(error.cause)}`
+      : TERMS_UPDATE_NOT_APPLIED_TEXT[error.refusal];
   if (error instanceof ManagedExchangeLockUnavailableError)
     return TERMS_UPDATE_WITHHELD_TEXT["run-in-flight"];
   return (

@@ -1,6 +1,7 @@
 import type { Argv, Arguments } from "yargs";
 
 import {
+  assertTermsRunnable,
   decodeTermsUpdate,
   disclosedColumnNames,
   keepOperatorSuppliedText,
@@ -24,7 +25,6 @@ import {
   diffLinkageTerms,
   persistTermsUpdate,
 } from "../config";
-import { assertConfigTermsRunnable } from "../configTermsGuards";
 import {
   consentSurfaceSink,
   displayInvitation,
@@ -278,7 +278,7 @@ export async function handler(argv: Arguments): Promise<void> {
         identity,
         existing.linkageTerms.deduplicate,
       );
-      assertConfigTermsRunnable(accepted.linkageTerms, existing);
+      assertTermsRunnable(accepted.linkageTerms, existing);
       const write = termsUpdateWrite(accepted);
 
       const consentSurface = consentSurfaceSink({
