@@ -14,6 +14,7 @@
 
 import {
   channelThisAppDoesNotRun,
+  managedExchangeRelaysThroughPartner,
   raisedStandingCondition,
   runnableManagedExchange,
 } from "@psi/managed/managedExchangeRecord";
@@ -130,6 +131,46 @@ export interface SavedExchangeRow {
    * spent (see {@link scheduleLines}). Absent otherwise, so a row for an exchange
    * nobody scheduled says nothing about scheduling. */
   schedule?: SavedExchangeScheduleLines;
+  /** The pending relay key registration, for a record that is not spent
+   * ({@link relayRegistrationPendingLine}). */
+  relayRegistrationLine?: string;
+}
+
+/**
+ * The line a record shows while no registrar has confirmed the relay key of
+ * its current secret, or `undefined`: since when, and the step that registers
+ * it. An enrolled record whose registration a run can still confirm names the
+ * retry before the next run, and the step if the registrar refuses; one whose
+ * re-invite's registration was not confirmed, and one naming no registrar,
+ * name enrollment. A record relaying through its partner's relay shows none.
+ */
+export function relayRegistrationPendingLine(
+  record: ManagedExchangeRecord,
+): string | undefined {
+  const pendingSince = record.relayRegistrationPendingSince;
+  if (pendingSince === undefined || managedExchangeRelaysThroughPartner(record))
+    return undefined;
+  const since = dateTimeLabel(new Date(pendingSince));
+  if (record.relayRegistrar === undefined)
+    return (
+      `Relay key registration unconfirmed since ${since}: no registrar has ` +
+      "confirmed the relay key of this exchange's current secret. Enroll the " +
+      "exchange under Relay registration to register it."
+    );
+  if (record.relayRegistrationPendingReason === "reinvite")
+    return (
+      `Relay key registration unconfirmed since ${since}: the registrar did ` +
+      "not confirm the key of the secret the re-invite made, and no run can " +
+      "register it. Enroll the exchange again with the relay-owner token " +
+      "under Relay registration, choosing to replace the key the registrar " +
+      "holds."
+    );
+  return (
+    `Relay key registration pending since ${since}; the next run through ` +
+    "this browser's relay retries it before connecting. If the registrar " +
+    "refuses it, enroll the exchange again with the relay-owner token under " +
+    "Relay registration."
+  );
 }
 
 /** The too-large line's remedy gist by whose set was over the bound: the row's
@@ -325,11 +366,16 @@ export function savedExchangeRow(
       backup: { kind: "not-applicable" },
       configurationOnly: true,
     };
+  const relayRegistrationLine =
+    local?.spent === undefined
+      ? relayRegistrationPendingLine(record)
+      : undefined;
   return {
     id: record.id,
     label: record.label,
     sideLabel: SIDE_LABEL[record.side],
     status: lastRunStatus(record, local, now),
+    ...(relayRegistrationLine !== undefined && { relayRegistrationLine }),
     expired: managedExchangeLapsed(record, now),
     backup: backupFor(local),
     configurationOnly: false,

@@ -475,20 +475,15 @@ const KEY_FILE_PROBLEMS = {
     "its rotationInFlightSince is not a date and time in the form Alcove " +
     "writes, so the file was written by hand or damaged; write the file " +
     "again from the command line, or remove that field",
-  relayRegistrationPending:
-    "it records a relay key registration the relay registrar has not " +
-    "confirmed yet; run the exchange once more from the command line, which " +
-    "confirms it before it connects, or confirm it there with " +
-    "alcove enroll-relay",
+  malformedRelayRegistrationPending:
+    "its relayRegistrationPendingSince is not a date and time in the form " +
+    "Alcove writes, so the file was written by hand or damaged; write the " +
+    "file again from the command line, or remove that field",
   unknownField: "it holds a field this app does not read",
 } as const;
 
 /** A problem {@link KEY_FILE_PROBLEMS} names. */
 type KeyFileProblem = keyof typeof KEY_FILE_PROBLEMS;
-
-/** The field the command line writes while a relay key registration it made
- * is unconfirmed (`apps/cli/src/keyFile.ts`); this app does not register. */
-const RELAY_REGISTRATION_PENDING_FIELD = "relayRegistrationPendingSince";
 
 /** The order the problems of one file are named in. */
 const KEY_FILE_PROBLEM_ORDER: ReadonlyArray<KeyFileProblem> = [
@@ -496,32 +491,28 @@ const KEY_FILE_PROBLEM_ORDER: ReadonlyArray<KeyFileProblem> = [
   "malformedSecret",
   "malformedExpires",
   "malformedRotationInFlight",
-  "relayRegistrationPending",
+  "malformedRelayRegistrationPending",
   "unknownField",
 ];
 
-/** Which problems a failed key-pair parse shows, read off each issue's code,
- * top-level field name, and unrecognized key names only -- never an issue
- * message, which may be composed from the value. An issue matching none of
- * them names the whole shape. */
+/** Which problems a failed key-pair parse shows, read off each issue's code
+ * and top-level field name only -- never an issue message, which may be
+ * composed from the value. An issue matching none of them names the whole
+ * shape. */
 function keyPairProblems(
   error: ZodError,
   parsed: object,
 ): Array<KeyFileProblem> {
   const found = new Set<KeyFileProblem>();
   for (const issue of error.issues) {
-    if (issue.code === "unrecognized_keys") {
-      for (const key of issue.keys)
-        found.add(
-          key === RELAY_REGISTRATION_PENDING_FIELD
-            ? "relayRegistrationPending"
-            : "unknownField",
-        );
-    } else if (issue.path[0] === "sharedSecret")
+    if (issue.code === "unrecognized_keys") found.add("unknownField");
+    else if (issue.path[0] === "sharedSecret")
       found.add("sharedSecret" in parsed ? "malformedSecret" : "missingSecret");
     else if (issue.path[0] === "expires") found.add("malformedExpires");
     else if (issue.path[0] === "rotationInFlightSince")
       found.add("malformedRotationInFlight");
+    else if (issue.path[0] === "relayRegistrationPendingSince")
+      found.add("malformedRelayRegistrationPending");
     else found.add("notObject");
   }
   if (found.has("notObject")) return ["notObject"];
@@ -576,7 +567,8 @@ export function readManagedCommandLineKeyFile(
  * {@link readManagedCommandLineConfiguration} reads it, the key file read by
  * {@link readManagedCommandLineKeyFile}, and the pair set on the record as its
  * `sharedSecret` and `expires` -- the one record field the store keeps a secret
- * in. Pure: nothing is stored here.
+ * in. A pending relay key registration the key file records is carried onto the
+ * record, so the first run here retries it. Pure: nothing is stored here.
  *
  * A configuration this app does not run -- another channel, or a part it
  * cannot run -- is refused with its key file rather than installed without it:
@@ -617,6 +609,9 @@ export function readManagedCommandLinePair(
       ...fields,
       sharedSecret: key.sharedSecret,
       ...(key.expires !== undefined ? { expires: key.expires } : {}),
+      ...(key.relayRegistrationPendingSince !== undefined
+        ? { relayRegistrationPendingSince: key.relayRegistrationPendingSince }
+        : {}),
     }),
   );
 }

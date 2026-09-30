@@ -146,6 +146,21 @@ describe("reading a .alcove.key", () => {
     ).toEqual({ sharedSecret });
   });
 
+  test("a relay key registration the registrar has not confirmed is read", () => {
+    const sharedSecret = generateSharedSecret();
+    expect(
+      readManagedCommandLineKeyFile(
+        commandLineKeyText({
+          sharedSecret,
+          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    ).toEqual({
+      sharedSecret,
+      relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+    });
+  });
+
   test("the key file the app's own export writes is read back", () => {
     const { record, key } = exportedPair({
       expires: "2026-12-31T00:00:00.000Z",
@@ -208,12 +223,12 @@ describe("reading a .alcove.key", () => {
       "it holds a field this app does not read",
     ],
     [
-      "a registration the relay registrar has not confirmed",
+      "a pending relay registration that is not a date and time",
       commandLineKeyText({
         sharedSecret: generateSharedSecret(),
-        relayRegistrationPendingSince: "2026-01-01T00:00:00.000Z",
+        relayRegistrationPendingSince: nearMiss,
       }),
-      "run the exchange once more from the command line",
+      "its relayRegistrationPendingSince is not a date and time",
     ],
     [
       "a file over the cap",
@@ -282,6 +297,22 @@ describe("reading a configuration with its key file", () => {
     // The secret lands in the record's own secret field and nowhere else in it.
     const { sharedSecret: _secret, ...rest } = imported;
     expect(JSON.stringify(rest)).not.toContain(record.sharedSecret);
+  });
+
+  test("a pending relay registration in the key file is carried onto the record", () => {
+    const { record, configuration } = exportedPair();
+    const imported = readManagedCommandLinePair(
+      configuration,
+      commandLineKeyText({
+        sharedSecret: record.sharedSecret,
+        relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+      }),
+    );
+    expect(imported.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+    expect(imported.relayRegistrar).toBeUndefined();
+    expect(imported.sharedSecret).toBe(record.sharedSecret);
   });
 
   test("the configuration alone still builds an editable record that does not run", () => {
@@ -426,6 +457,140 @@ describe("laying a pair over the stored record it revives", () => {
       applyManagedExchangeCommandLinePair(stored, imported)
         .rotationInFlightSince,
     ).toBe(MARKED_AT);
+  });
+
+  const REGISTRAR = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+
+  test("a revive keeps the enrolled registrar and takes the pair's pending registration", () => {
+    const stored = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange()),
+    );
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...stored,
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: MARKED_AT,
+    });
+    const imported = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(
+        newExchange({
+          label: "",
+          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    const revived = applyManagedExchangeCommandLinePair(enrolled, imported);
+    expect(revived.relayRegistrar).toEqual(REGISTRAR);
+    expect(revived.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+  });
+
+  test("a revive whose pair holds another secret and no pending registration keeps the stored one, whether or not the record names a registrar", () => {
+    const pending = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrationPendingSince: MARKED_AT,
+    });
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...pending,
+      relayRegistrar: REGISTRAR,
+    });
+    const noPending = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange({ label: "" })),
+    );
+    const kept = applyManagedExchangeCommandLinePair(enrolled, noPending);
+    expect(kept.sharedSecret).toBe(noPending.sharedSecret);
+    expect(kept.relayRegistrationPendingSince).toBe(MARKED_AT);
+    expect(
+      applyManagedExchangeCommandLinePair(pending, noPending)
+        .relayRegistrationPendingSince,
+    ).toBe(MARKED_AT);
+  });
+
+  test("a revive whose key file states a pending registration drops the stored one's re-invite reason", () => {
+    const reinvited = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: MARKED_AT,
+      relayRegistrationPendingReason: "reinvite",
+    });
+    const noPending = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange({ label: "" })),
+    );
+    expect(
+      applyManagedExchangeCommandLinePair(reinvited, noPending)
+        .relayRegistrationPendingReason,
+    ).toBe("reinvite");
+    const pendingPair = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(
+        newExchange({
+          label: "",
+          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    const revived = applyManagedExchangeCommandLinePair(reinvited, pendingPair);
+    expect(revived.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+    expect(revived).not.toHaveProperty("relayRegistrationPendingReason");
+  });
+
+  test("a revive whose pair holds the stored secret keeps the stored pending registration unless the key file states one", () => {
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: MARKED_AT,
+    });
+    const samePair = (pendingSince?: string) =>
+      runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(
+          newExchange({
+            label: "",
+            sharedSecret: enrolled.sharedSecret,
+            ...(pendingSince !== undefined && {
+              relayRegistrationPendingSince: pendingSince,
+            }),
+          }),
+        ),
+      );
+    expect(
+      applyManagedExchangeCommandLinePair(enrolled, samePair())
+        .relayRegistrationPendingSince,
+    ).toBe(MARKED_AT);
+    expect(
+      applyManagedExchangeCommandLinePair(
+        enrolled,
+        samePair("2026-09-01T00:00:00.000Z"),
+      ).relayRegistrationPendingSince,
+    ).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  test("a revive onto a record naming no registrar keeps the key file's pending registration", () => {
+    const stored = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange()),
+    );
+    const imported = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(
+        newExchange({
+          label: "",
+          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    const revived = applyManagedExchangeCommandLinePair(stored, imported);
+    expect(revived.relayRegistrar).toBeUndefined();
+    expect(revived.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
   });
 
   test("a pair holding another secret drops the rotation-in-flight marker", () => {

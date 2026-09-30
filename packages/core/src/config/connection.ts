@@ -1235,7 +1235,11 @@ function relayRegistrarUrlProblem(url: string): string | undefined {
   return undefined;
 }
 
-const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
+/**
+ * The validator of a {@link RelayRegistrar}: an `https://` url naming only a
+ * host and an optional port, and an exchange id the registrar takes.
+ */
+export const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
   {
     url: z
       .string()

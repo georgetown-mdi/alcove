@@ -10,7 +10,9 @@
  * the secret and the record's own `expires`), drops the stale `lastRun`, and clears
  * the backup and import markers in the same cross-store transaction. The write is
  * awaited before the operator forwards the invitation, so this party's own re-run
- * listens on the rendezvous the fresh secret derives.
+ * listens on the rendezvous the fresh secret derives. On an exchange enrolled at a
+ * relay registrar, the same step registers the fresh secret's relay key, signed with
+ * the replaced secret's ({@link registerReinvitedManagedRelayKey}).
  */
 
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
@@ -20,6 +22,7 @@ import { relayForRun } from "../transport/ownRelaySetting";
 
 import { composeManagedReinvite } from "./managedReinvite";
 import { persistManagedExchangeReinvite } from "./managedExchangeStore";
+import { registerReinvitedManagedRelayKey } from "./managedRelayRegistration";
 
 import type { ManagedReinvite } from "./managedReinvite";
 import type { RelayUrls } from "../transport/ownRelaySetting";
@@ -36,6 +39,8 @@ interface ManagedReinviteDriverDeps {
   encode: typeof encodeInvitation;
   /** Persist the fresh secret onto the record (the re-invite rotation write). */
   persistRotation: typeof persistManagedExchangeReinvite;
+  /** Register the fresh secret's relay key at the record's registrar. */
+  registerRelayKey: typeof registerReinvitedManagedRelayKey;
   /** The moment the setup lifetime and the record's max-age stamp count from. */
   now: () => number;
   /** Read the relay the invitation names: the one this inviter's own run
@@ -48,6 +53,8 @@ const defaultDeps: ManagedReinviteDriverDeps = {
   generateSecret: generateSharedSecret,
   encode: encodeInvitation,
   persistRotation: persistManagedExchangeReinvite,
+  registerRelayKey: (replaced, written) =>
+    registerReinvitedManagedRelayKey(replaced, written),
   now: () => Date.now(),
   ownRelay: () => relayForRun(),
 };
@@ -90,6 +97,10 @@ export async function reinviteManagedExchange(
     now: deps.now,
     ownRelay: deps.ownRelay(),
   });
-  const persisted = await deps.persistRotation(record.id, reinvite.rotation);
+  const persisted = await deps.persistRotation(
+    record.id,
+    reinvite.rotation,
+    deps.registerRelayKey,
+  );
   return { reinvite, record: persisted };
 }

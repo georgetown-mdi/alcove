@@ -44,6 +44,7 @@ import {
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
+import { ManagedRelayRegistrationError } from "@psi/managed/managedRelayRegistration";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 
 import {
@@ -159,6 +160,38 @@ function classifyAgainstOneRecord(
 }
 
 describe("classifyManagedRunFailure: pre-connection benign states from the error", () => {
+  test("a relay key registration the registrar did not confirm states the registrar's account", () => {
+    const registrar = {
+      url: "https://relay.example.org:8443",
+      exchangeId: "riverbend-q3",
+    };
+    const refused = classifyAgainstOneRecord(
+      new ManagedRelayRegistrationError(registrar, {
+        kind: "refused",
+        status: 409,
+      }),
+      record(),
+      undefined,
+      Date.now(),
+      false,
+    );
+    expect(refused.kind).toBe("relay-registration");
+    expect(refused.recovery).toBe("none");
+    expect(refused.message).toContain("relay.example.org:8443");
+    expect(refused.message).toContain("relay-owner token");
+    const unanswered = classifyAgainstOneRecord(
+      new ManagedRelayRegistrationError(registrar, {
+        kind: "unavailable",
+        reason: "no answer within 15000 ms",
+      }),
+      record(),
+      undefined,
+      Date.now(),
+      false,
+    );
+    expect(unanswered.recovery).toBe("retry");
+  });
+
   test("a lapsed secret is the benign expiry state with re-invite copy naming the lapse", () => {
     const failure = classifyAgainstOneRecord(
       new ManagedExchangeExpiredError("2026-07-01T00:00:00.000Z"),
@@ -1463,6 +1496,7 @@ describe("the launch error a classified state shows", () => {
     input: "withheld",
     "terms-shortfall": "withheld",
     "too-large": "withheld",
+    "relay-registration": "withheld",
     "terms-change": "withheld",
     "already-running": "withheld",
     missed: "withheld",

@@ -8,7 +8,11 @@ import {
   sendRelayRegistration,
 } from "../../src/relayRegistrar";
 import { promptHiddenText } from "../../src/util/prompt";
-import { fakeRegistrar, jsonResponse } from "./relayRegistrarFake";
+import {
+  fakeRegistrar,
+  jsonResponse,
+  registrationAnswer,
+} from "./relayRegistrarFake";
 
 const AUTHORIZATION = "Bearer test-owner-token";
 
@@ -51,7 +55,7 @@ describe("relayRegistrarForRun", () => {
 
 describe("sendRelayRegistration", () => {
   test("sends the request to the exchange's path without following redirects", async () => {
-    const registrar = fakeRegistrar([jsonResponse(200, {})]);
+    const registrar = fakeRegistrar([registrationAnswer()]);
     await sendRelayRegistration(
       {
         registrar: REGISTRAR,
@@ -71,7 +75,7 @@ describe("sendRelayRegistration", () => {
   });
 
   test("puts an id of every admitted character class in the path unchanged", async () => {
-    const registrar = fakeRegistrar([jsonResponse(200, {})]);
+    const registrar = fakeRegistrar([registrationAnswer()]);
     await sendRelayRegistration(
       {
         registrar: { ...REGISTRAR, exchangeId: "_Acme.weekly-2026.v9" },

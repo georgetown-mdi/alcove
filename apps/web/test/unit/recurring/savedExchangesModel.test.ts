@@ -7,6 +7,7 @@ import {
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  relayRegistrationPendingLine,
   savedExchangeRow,
   savedExchangeRows,
 } from "@recurring/savedExchangesModel";
@@ -600,5 +601,101 @@ describe("savedExchangeRow: a partner terms change the last run did not take on"
     const { status } = savedExchangeRow(terms, undefined, NOW);
     expect(status).toMatch(/declined, run again to review it/);
     expect(status).not.toMatch(/apply/i);
+  });
+});
+
+describe("the pending relay key registration", () => {
+  const REGISTRAR = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+  const PENDING_SINCE = "2026-07-13T08:00:00.000Z";
+
+  test("an enrolled record with a pending registration names since when and the remedy", () => {
+    const line = relayRegistrationPendingLine(
+      record({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+      }),
+    );
+    expect(line).toMatch(/^Relay key registration pending since /);
+    expect(line).toContain("retries it before connecting");
+    expect(line).toContain(
+      "enroll the exchange again with the relay-owner token",
+    );
+  });
+
+  test("the list row shows it, and a row for a spent copy does not", () => {
+    const pending = record({
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: PENDING_SINCE,
+    });
+    expect(
+      savedExchangeRow(pending, undefined, NOW).relayRegistrationLine,
+    ).toBe(relayRegistrationPendingLine(pending));
+    expect(
+      savedExchangeRow(
+        pending,
+        {
+          spent: { spentAt: "2026-07-01T10:00:00.000Z" },
+        },
+        NOW,
+      ),
+    ).not.toHaveProperty("relayRegistrationLine");
+  });
+
+  test("a re-invite's unconfirmed registration names owner-token re-enrollment and no retry", () => {
+    const line = relayRegistrationPendingLine(
+      record({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      }),
+    );
+    expect(line).toMatch(/^Relay key registration unconfirmed since /);
+    expect(line).toContain("no run can register it");
+    expect(line).toContain(
+      "Enroll the exchange again with the relay-owner token under Relay " +
+        "registration, choosing to replace the key the registrar holds",
+    );
+    expect(line).not.toContain("retries");
+  });
+
+  test("a record naming no registrar with a pending registration names enrollment, and the list row shows it", () => {
+    const imported = record({ relayRegistrationPendingSince: PENDING_SINCE });
+    const line = relayRegistrationPendingLine(imported);
+    expect(line).toMatch(/^Relay key registration unconfirmed since /);
+    expect(line).toContain(
+      "Enroll the exchange under Relay registration to register it.",
+    );
+    expect(line).not.toContain("retries");
+    expect(
+      savedExchangeRow(imported, undefined, NOW).relayRegistrationLine,
+    ).toBe(line);
+  });
+
+  test("a confirmed registration, or an exchange relaying through its partner's relay, shows nothing", () => {
+    expect(
+      relayRegistrationPendingLine(record({ relayRegistrar: REGISTRAR })),
+    ).toBeUndefined();
+    expect(
+      relayRegistrationPendingLine(
+        record({
+          relayRegistrar: REGISTRAR,
+          relayRegistrationPendingSince: PENDING_SINCE,
+          exchangeFile: composeManagedExchangeFile({
+            connection: {
+              channel: "webrtc",
+              host: "signaling.example.org",
+              relay: { turn: ["turns:partner.example.org:443"] },
+            },
+            linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+          }),
+        }),
+      ),
+    ).toBeUndefined();
+    expect(savedExchangeRow(record(), undefined, NOW)).not.toHaveProperty(
+      "relayRegistrationLine",
+    );
   });
 });

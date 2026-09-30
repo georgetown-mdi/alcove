@@ -14,7 +14,11 @@ import {
   exitWithError,
   renderFailureForOperator,
 } from "../../../src/util/exit";
-import { fakeRegistrar, jsonResponse } from "../relayRegistrarFake";
+import {
+  fakeRegistrar,
+  jsonResponse,
+  registrationAnswer,
+} from "../relayRegistrarFake";
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM";
 const OWNER_TOKEN = "0123456789abcdef-owner-token";
@@ -110,7 +114,7 @@ test("asks for the token once, sends it in one enrollment, and stores it nowhere
 test("--replace-relay-key sends the token on PUT, the operator's recovery route", async () => {
   fs.writeFileSync(configFile, YAML.stringify(webrtcConfig()));
   saveKeyFile(keyFile, { sharedSecret: SECRET });
-  const registrar = fakeRegistrar([jsonResponse(200, {})]);
+  const registrar = fakeRegistrar([registrationAnswer()]);
   await enrollRelay({
     configFile,
     keyFile,

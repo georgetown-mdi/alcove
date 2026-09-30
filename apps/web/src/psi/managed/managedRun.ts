@@ -46,6 +46,7 @@ import {
 } from "./managedInputGuard";
 import { RotationPersistError, failedRun, missedRun } from "./managedRunRotate";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
+import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
 import { ManagedTermsChangeTakenOnError } from "./managedTermsProposal";
 import { recordManagedExchangeLastRun } from "./managedExchangeStore";
 
@@ -316,6 +317,9 @@ export function tooLargeBoundOf(
  * - {@link ManagedExchangeExpiredError} and
  *   {@link ManagedExchangeLockUnavailableError}: unrecorded -- no run began,
  *   and the record's own `expires` already holds the lapse.
+ * - {@link ManagedRelayRegistrationError}: unrecorded -- the run stopped
+ *   before connecting, and the record's pending registration already holds
+ *   what failed.
  * - {@link ManagedTermsChangeTakenOnError}: unrecorded -- the operator took on
  *   the partner's changed terms, which the stored exchange now holds, so
  *   nothing failed that a later visit has to answer.
@@ -356,6 +360,7 @@ export function rerunFailureLastRun(
     error instanceof ManagedExchangeSpentError ||
     error instanceof ManagedInputError ||
     error instanceof RotationPersistError ||
+    error instanceof ManagedRelayRegistrationError ||
     error instanceof ManagedTermsChangeTakenOnError
   )
     return undefined;
@@ -387,8 +392,9 @@ export function rerunFailureLastRun(
 
 /** The benign outcomes a surface classifies without attack framing. The first
  * six are read before any connection is attempted; `"missed"` is read after a
- * connection attempt found no partner, and `"too-large"` before connecting or
- * at any round. */
+ * connection attempt found no partner, `"too-large"` before connecting or
+ * at any round, and `"relay-registration"` before connecting, once the
+ * registrar did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
   | "handed-off"
@@ -397,7 +403,8 @@ type BenignRerunOutcome =
   | "terms-shortfall"
   | "already-running"
   | "missed"
-  | "too-large";
+  | "too-large"
+  | "relay-registration";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
  * for a failure that is not one of these states (a handshake failure, a storage
@@ -463,10 +470,12 @@ export function benignRerunOutcome(
   if (error instanceof PartnerNoShowError && !dataExchangeStarted)
     return "missed";
   if (isSetTooLargeError(error)) return "too-large";
+  if (error instanceof ManagedRelayRegistrationError)
+    return "relay-registration";
   return undefined;
 }
 
 export { ManagedExchangeExpiredError, ManagedInputError };
 export { ManagedExchangeLockUnavailableError, RotationPersistError };
 export { ManagedExchangeCustodyUnreadableError, ManagedExchangeSpentError };
-export { ManagedExchangeNotRunnableError };
+export { ManagedExchangeNotRunnableError, ManagedRelayRegistrationError };

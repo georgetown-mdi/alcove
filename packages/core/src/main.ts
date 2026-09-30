@@ -295,6 +295,7 @@ export {
   MAX_RELAY_REGISTRAR_URL_LENGTH,
   MAX_TIMEOUT_SECONDS,
   MAX_TOKEN_MAX_AGE_DAYS,
+  RelayRegistrarSchema,
   SERVER_PROVISION_MODES,
   SHARED_SECRET_REGEX,
   StunUrlSchema,
@@ -866,6 +867,23 @@ export type {
   RelayRegistrarProofMethod,
   RelayRegistrarProofOptions,
 } from "./relayRegistrarProof";
+export {
+  enrollRelayKey,
+  registerRelayKey,
+  RELAY_REGISTRAR_REQUEST_TIMEOUT_MS,
+  RELAY_REGISTRATION_RETRY_DELAYS_MS,
+  relayRegistrarLabel,
+  relayRegistrationBody,
+  relayRegistrationNotice,
+  REMOVED_CREDENTIAL_TEXT,
+  sendRelayRegistration,
+} from "./relayRegistrarClient";
+export type {
+  RelayRegistrarAnswer,
+  RelayRegistrarTransport,
+  RelayRegistrationEnvironment,
+  RelayRegistrationOutcome,
+} from "./relayRegistrarClient";
 // The shared chokepoint for parsing config/credential documents that may hold
 // secrets, so a parse error never leaks source bytes. Consumed by the CLI (file
 // reads, via its thin re-export) and the web app (an imported linkage-terms

@@ -28,6 +28,7 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
   TermsChangeRefusedError,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   assertFirstRoundFitsWebRtcFrame,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
@@ -37,6 +38,7 @@ import {
   payloadReceiveFilledNotice,
   projectPairTable,
   runExchange,
+  sanitizeForDisplay,
 } from "@alcove/core";
 
 import { buildRunOutputs } from "../runOutputs";
@@ -63,6 +65,12 @@ import { runManagedRerun } from "./managedRun";
 
 import { beginManagedRendezvous } from "./managedRendezvous";
 
+import {
+  managedRelayRegistrarForRun,
+  registerRotatedManagedRelayKey,
+  retryPendingManagedRelayRegistration,
+} from "./managedRelayRegistration";
+
 import { acquireValidatedManagedInput } from "./managedInputHandle";
 
 import type {
@@ -71,6 +79,7 @@ import type {
   ExchangeResult,
   HandshakeRole,
   MessageConnection,
+  RelayRegistrar,
   ResolvedMatching,
   TermsChange,
 } from "@alcove/core";
@@ -107,6 +116,16 @@ interface ManagedRerunCarried {
   prepared: ReturnType<typeof prepareManagedRerunExchange>;
   exchangeRole: HandshakeRole;
   csvDelimiter: RunnableManagedExchangeRecord["exchangeFile"]["csvDelimiter"];
+  /** The relay key registration this run owes its relay's registrar once the
+   * data exchange ends, when it relays through this browser's own relay: the
+   * record's pre-rotation secret, held for the run only, signs the
+   * registration of the rotated one. */
+  relayRegistration?: {
+    registrar: RelayRegistrar;
+    preRotationSecret: string;
+    rotatedSecret: string;
+    maxAgeDays: number | null;
+  };
 }
 
 /** How a re-run reads its input this run, and how it is attended. `source` is the
@@ -248,6 +267,9 @@ export function runManagedExchangeInBrowser(
   };
   signal.addEventListener("abort", cutRunOnCancel);
 
+  // The registrar this run registers at, decided before it connects.
+  let runRegistrar: RelayRegistrar | undefined;
+
   return runManagedRerun<ManagedRerunInput, ManagedRerunCarried, RunOutputs>(
     record,
     {
@@ -274,6 +296,15 @@ export function runManagedExchangeInBrowser(
       // partner, and yield the rotated secret plus the held exchange resources.
       handshake: async (input, markRotationInFlight, current) => {
         const exchangeRole = HANDSHAKE_ROLE_FOR_SIDE[current.side];
+        // A registration the registrar did not confirm is retried after every
+        // local refusal and before any contact with the partner, so a relay
+        // holding a key this run cannot mint under stops the run while the
+        // shared secret is still unchanged.
+        runRegistrar = managedRelayRegistrarForRun(current);
+        if (runRegistrar !== undefined)
+          await retryPendingManagedRelayRegistration(current, runRegistrar, {
+            signal,
+          });
         const psiPromise = loadPsiBackend(
           { loadWasm: () => PSI() as Promise<PSILibrary> },
           { isNode: false },
@@ -359,6 +390,14 @@ export function runManagedExchangeInBrowser(
             prepared: input.prepared,
             exchangeRole,
             csvDelimiter: current.exchangeFile.csvDelimiter,
+            ...(runRegistrar !== undefined && {
+              relayRegistration: {
+                registrar: runRegistrar,
+                preRotationSecret: current.sharedSecret,
+                rotatedSecret: auth.rotatedSecret,
+                maxAgeDays: current.tokenMaxAgeDays ?? null,
+              },
+            }),
           };
           return { rotatedSecret: auth.rotatedSecret, handshake: carried };
         } catch (error) {
@@ -374,6 +413,8 @@ export function runManagedExchangeInBrowser(
       },
       // After the durable persist: run the PSI exchange, file the disclosure on
       // either exit, build the outputs, and tear down regardless of outcome.
+      // The rotated relay key is registered on either exit too, while the run
+      // still holds the lock and the pre-rotation secret.
       dataExchange: async (carried) => {
         const termsTakenOnRef: { current: boolean } = { current: false };
         try {
@@ -472,6 +513,7 @@ export function runManagedExchangeInBrowser(
           // them -- for a duration the partner picks, so the drain runs on its
           // own while the outputs go to the caller.
           void teardown(carried.peer, carried.conn, carried.mc);
+          await registerRotatedKey(carried);
         }
       },
     },
@@ -484,6 +526,31 @@ export function runManagedExchangeInBrowser(
   ).finally(() => {
     signal.removeEventListener("abort", cutRunOnCancel);
   });
+
+  /** Register the rotated relay key a run owes its registrar; the run's
+   * cancel ends the retries, never the attempt it meets. Never throws: a
+   * failure is logged and raised as a notice, unescaped since each notice
+   * sink escapes what it shows. A cancelled run drops the notice, so the
+   * record's pending registration, which the next run retries, is what the
+   * exchange's page states afterwards. */
+  async function registerRotatedKey(
+    carried: ManagedRerunCarried,
+  ): Promise<void> {
+    if (carried.relayRegistration === undefined) return;
+    const result = await registerRotatedManagedRelayKey(
+      { id: record.id, ...carried.relayRegistration },
+      { cancel: signal },
+    );
+    if (result.kind === "failed") {
+      log.error(
+        "managed re-run:",
+        sanitizeForDisplay(result.message, {
+          maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+        }),
+      );
+      emitRunNotice(result.message);
+    }
+  }
 }
 
 /** The notice a run raises when its disclosure could not be filed: the exchange

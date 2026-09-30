@@ -16,6 +16,21 @@ export function jsonResponse(status: number, body: unknown): Response {
 }
 
 /**
+ * The registrar's 200 to an enrollment or registration, in the shape
+ * infra/relay/registrar.py writes it.
+ */
+export function registrationAnswer(
+  maxAgeDays: number | null = null,
+  lapsesAt: string | null = null,
+): Response {
+  return jsonResponse(200, {
+    message: "exchange-1 registered",
+    maxAgeDays,
+    lapsesAt,
+  });
+}
+
+/**
  * A fetch standing in for a relay registrar: answers each request with the
  * next of `answers` and records what was sent. A request past the last answer
  * fails the way an unreachable host does.

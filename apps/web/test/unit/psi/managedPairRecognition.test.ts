@@ -291,6 +291,46 @@ describe("what a re-take checks and writes", () => {
     expect(decided.record.label).toBe(stored.label);
   });
 
+  test("a pair holding a pending relay registration carries it, on a record naming no registrar too", () => {
+    const stored = runnable();
+    const decided = decideRetake(stored, {
+      ...runnable(),
+      relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+    });
+
+    if (decided.kind !== "retake") throw new Error("expected a re-take");
+    expect(decided.record.relayRegistrar).toBeUndefined();
+    expect(decided.record.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+  });
+
+  test("a pair holding no pending relay registration keeps the stored one, whether or not the record names a registrar", () => {
+    const pending = {
+      ...runnable(),
+      relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
+    };
+    const enrolled = {
+      ...pending,
+      relayRegistrar: {
+        url: "https://relay.example.org:8443",
+        exchangeId: "riverbend-q3",
+      },
+    };
+
+    const kept = decideRetake(enrolled, runnable());
+    const keptUnenrolled = decideRetake(pending, runnable());
+
+    if (kept.kind !== "retake" || keptUnenrolled.kind !== "retake")
+      throw new Error("expected a re-take");
+    expect(kept.record.relayRegistrationPendingSince).toBe(
+      "2026-08-01T00:00:00.000Z",
+    );
+    expect(keptUnenrolled.record.relayRegistrationPendingSince).toBe(
+      "2026-08-01T00:00:00.000Z",
+    );
+  });
+
   test("no pair, or one holding the stored secret, leaves the record as it was", () => {
     const stored = runnable();
 

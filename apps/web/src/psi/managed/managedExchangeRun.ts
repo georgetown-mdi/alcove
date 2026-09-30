@@ -67,8 +67,11 @@ import {
   persistManagedExchangeRotation,
   recordManagedExchangeLastRun,
 } from "./managedExchangeStore";
+import {
+  managedExchangeRelaysThroughPartner,
+  runnableManagedExchangeOrRefuse,
+} from "./managedExchangeRecord";
 import { getManagedLocalState } from "./managedLocalState";
-import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { withManagedExchangeLock } from "./managedExchangeLock";
 
 import type {
@@ -292,7 +295,14 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
             current,
           ),
         persist: (writeBack: RotationWriteBack) =>
-          persistRotation(record.id, writeBack),
+          persistRotation(
+            record.id,
+            writeBack,
+            current.relayRegistrar !== undefined &&
+              !managedExchangeRelaysThroughPartner(current)
+              ? new Date(now()).toISOString()
+              : undefined,
+          ),
         tokenMaxAgeDays: current.tokenMaxAgeDays,
         now,
       }).catch(async (error: unknown) => {
@@ -405,10 +415,14 @@ async function recordRefusal(
 async function persistRotation(
   id: string,
   writeBack: RotationWriteBack,
+  relayRegistrationPendingSince: string | undefined,
 ): Promise<void> {
   await persistManagedExchangeRotation(id, {
     sharedSecret: writeBack.sharedSecret,
     expires: writeBack.expires,
+    ...(relayRegistrationPendingSince !== undefined && {
+      relayRegistrationPendingSince,
+    }),
   });
 }
 
