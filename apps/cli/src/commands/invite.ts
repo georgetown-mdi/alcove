@@ -1214,6 +1214,7 @@ export async function handler(argv: Arguments): Promise<void> {
             recordFile: options.recordFile,
           }),
           eventStream: options.eventStream,
+          allowMemoryShortfall: options.allowMemoryShortfall,
           // The wait for the partner to arrive runs on --accept-timeout; the
           // configuration saved at acceptance does not, so an unattended
           // recurring run is never handed a budget sized for one operator

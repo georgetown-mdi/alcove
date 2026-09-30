@@ -14,4 +14,10 @@ if [ "$1" = "serve" ]; then
   exec node /app/apps/web/.output/server/index.mjs "$@"
 fi
 
+# The PSI engine's heap ceiling, PSI_HEAP_CEILING_MIB in
+# apps/cli/src/psiMemoryBudget.ts, which a unit test holds equal to this value;
+# it reaches the CLI's main thread and its PSI worker alike. Set through
+# NODE_OPTIONS, ahead of any the container was started with, because a flag on
+# the command line would override an operator's own --max-old-space-size.
+export NODE_OPTIONS="--max-old-space-size=19075${NODE_OPTIONS:+ $NODE_OPTIONS}"
 exec node --expose-gc /app/apps/cli/dist/index.js "$@"

@@ -66,7 +66,7 @@ export function formatRuntimeEnv(snapshot: RuntimeEnvSnapshot): string {
     constrainedMemBytes > 0 && constrainedMemBytes < hostMemBytes;
   return (
     `runtime: Node ${nodeVersion}; host memory ${gib(hostMemBytes)}; ` +
-    `V8 heap limit ${gib(heapLimitBytes)}` +
+    `main thread V8 heap limit ${gib(heapLimitBytes)}` +
     (hasContainerLimit
       ? `; container memory limit ${gib(constrainedMemBytes)}`
       : "")

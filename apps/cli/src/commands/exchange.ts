@@ -252,6 +252,7 @@ type ExchangeOptions = Omit<
   | "sweepExchangeFiles"
   | "forceRetainSweep"
   | "eventStream"
+  | "allowMemoryShortfall"
   | "invitation"
   | "record"
   | "recordFile"
@@ -1036,6 +1037,7 @@ export async function handler(argv: Arguments): Promise<void> {
     sweepExchangeFiles,
     forceRetainSweep,
     eventStream,
+    allowMemoryShortfall,
     invitation,
     ...options
   } = parsed;
@@ -1265,17 +1267,20 @@ export async function handler(argv: Arguments): Promise<void> {
     // of them come before the wake call and the host-key probe, the run's
     // first network contact: an unpinned SFTP host on a non-interactive run,
     // then runProtocol's own local checks (the --event-stream fd-3 preflight,
-    // the shared secret, the key-file path, the first round's size, and the
-    // webrtc rendezvous), which runProtocol runs again.
+    // the shared secret, the key-file path, the first round's size, the memory
+    // the round needs, and the webrtc rendezvous), which runProtocol runs
+    // again.
     let openedEventStream: EventStreamEmitter | undefined;
     let signingWithoutRecordWarned = false;
     let undeclaredColumnsWarned = false;
+    let memoryBudgetReported = false;
     try {
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
       ({
         eventStream: openedEventStream,
         signingWithoutRecordWarned,
         undeclaredColumnsWarned,
+        memoryBudgetReported,
       } = await preflightRun({
         connection,
         auth: authentication,
@@ -1286,6 +1291,7 @@ export async function handler(argv: Arguments): Promise<void> {
         loggerName: "exchange",
         logFile,
         eventStream,
+        allowMemoryShortfall,
       }));
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
@@ -1394,6 +1400,8 @@ export async function handler(argv: Arguments): Promise<void> {
         }),
         signingWithoutRecordWarned,
         undeclaredColumnsWarned,
+        allowMemoryShortfall,
+        memoryBudgetReported,
       });
     } catch (err) {
       // Capture rather than exit here so the expiry advisory below can run on the

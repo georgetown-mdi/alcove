@@ -833,6 +833,11 @@ export async function runOnlineBootstrap(params: {
    */
   eventStream?: boolean;
   /**
+   * `--allow-memory-shortfall`: warn rather than refuse a run whose PSI round
+   * needs more memory than the process has (protocol.checkRunMemoryBudget).
+   */
+  allowMemoryShortfall?: boolean;
+  /**
    * Keep a pre-existing, already-reconciled config: skip the config write, and
    * refresh only the acceptance's machine-managed consent records in place.
    */
@@ -931,22 +936,25 @@ export async function runOnlineBootstrap(params: {
   // the emitter but does not hand it to a hook, so reporting a loss means
   // holding the object here and passing it in. preflightRun opens it and makes
   // runProtocol's own local checks -- the fd-3 preflight, the shared secret and
-  // its key-file path, the first round's size, and the webrtc rendezvous -- so
-  // each, like the non-interactive host-key refusal after it, comes before the
-  // wake call and the host-key probe, as in `alcove exchange`.
+  // its key-file path, the first round's size, the memory the round needs, and
+  // the webrtc rendezvous -- so each, like the non-interactive host-key refusal
+  // after it, comes before the wake call and the host-key probe, as in
+  // `alcove exchange`.
   const hostKeyPersistence: HostKeyPersistence = params.reuseExistingConfig
     ? { mode: "write-now", configPath: params.configPath }
     : { mode: "save-with-config", configPath: params.configPath };
-  const { eventStream, undeclaredColumnsWarned } = await preflightRun({
-    connection: params.connection,
-    auth,
-    prepared: params.prepared,
-    recordOutput: params.recordOutput,
-    verbosity: params.verbosity,
-    loggerName: params.loggerName,
-    logFile: params.logFile,
-    eventStream: params.eventStream,
-  });
+  const { eventStream, undeclaredColumnsWarned, memoryBudgetReported } =
+    await preflightRun({
+      connection: params.connection,
+      auth,
+      prepared: params.prepared,
+      recordOutput: params.recordOutput,
+      verbosity: params.verbosity,
+      loggerName: params.loggerName,
+      logFile: params.logFile,
+      eventStream: params.eventStream,
+      allowMemoryShortfall: params.allowMemoryShortfall,
+    });
   assertHostKeyTrustCanBeEstablished(params.connection, hostKeyPersistence);
 
   await wakeServerThrough(provision, getLogger(params.loggerName));
@@ -1006,6 +1014,7 @@ export async function runOnlineBootstrap(params: {
       logFile: params.logFile,
       recordOutput: params.recordOutput,
       undeclaredColumnsWarned,
+      memoryBudgetReported,
       // Persist the configuration exactly at acceptance: runProtocol invokes this
       // once, after the rotated token is saved to the key file and before the
       // data exchange begins. Writing here (rather than after runProtocol

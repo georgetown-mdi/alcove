@@ -341,6 +341,73 @@ A linkage key round sends its whole set of values as one PSI message, and one bo
 
 **Measured run past the `Map` limit.** In the development container (10 cores, 23 GB, Node 26.10, default heap), with other workloads running beside it, deduplicating 2^24 + 1 distinct short values takes about 26 s dropping duplicates and 24 s grouping them, and counting them about 12 s dropping and 16 s keeping; the file's peak RSS, input included, is about 4.1 GB. `packages/core/test/stress/roundDedupPastMapLimit.stress.test.ts` holds these cases and the raw `Map` limit in the opt-in stress tier (`npm run test:stress -w packages/core`), about 90 s; the unit tier pins the shards at a lowered bound. `fileSyncFrameCeiling.stress.test.ts` in the same tier seals a server setup of 15,339,166 values with the real cipher and holds its message file within `MAX_FRAME_SIZE_BYTES`, about 15 s.
 
+## Memory a PSI round needs
+
+A command-line party runs its PSI set operations in a `worker_threads` worker (`apps/cli/src/psiWorkerHost.ts`). At Node's default heap limit that worker runs out of heap well below the file-sync message-file bound above, so the CLI runs it under a heap ceiling sized from measured per-element costs, and refuses, before any network contact, a run whose input needs more memory than the process has. The constants and the check are in `apps/cli/src/psiMemoryBudget.ts`.
+
+### The measured costs
+
+Measured 2026-09-30 in the development container: aarch64 Linux, 10 CPUs, 23 GB of memory, Node v26.10.0, the native PSI engine in the CLI's own worker, one phase per process. Each figure is the least-squares slope of peak process RSS (the last row: peak worker V8 heap) against the set size `n`, above the process's own baseline. The runs past 5,242,880 elements ran with the heap raised.
+
+| Operation | Bytes per element | Intercept | Runs |
+| --- | --- | --- | --- |
+| Joiner, full round (setup of `n`, response of `n`) | 1,176 | 209 MB | 4, from 2^20 to 2^23 |
+| Starter, request received and response built | 983 | 80 MB | 4, from 2^20 to 2^23 |
+| Setup decoded and held | 378 | 45 MB | 6, from 2^20 to 2^24 |
+| Worker V8 heap, joiner full round | 709 | 298 MB | 3 |
+
+The process holds 62 MB before it reads any frame. These are the PSI set operations alone: an exchange also holds its dataset, the round's value maps and the result, so the figures are a lower bound on a whole run.
+
+**Node's default heap limit binds first.** On this build `v8.getHeapStatistics().heap_size_limit` is 4,395,630,592 bytes, the same in a worker as on the main thread. At that limit the largest symmetric round that completed was 5,242,880 elements a side; at 6,291,456 both the starter's request and the joiner's match failed with `ERR_WORKER_OUT_OF_MEMORY`.
+
+### The budget
+
+A round over `n` elements a side needs `271,000,000 + 1,176 * n` bytes: the joiner's full-round cost, the costlier role, plus the 209 MB intercept and the 62 MB baseline (`psiRoundMemoryNeedBytes`).
+
+The heap ceiling is that need at 2^24 = 16,777,216 elements a side: **20,001,006,016 bytes** (`PSI_HEAP_CEILING_BYTES`), passed to V8 as `--max-old-space-size=19075` (`PSI_HEAP_CEILING_MIB`, the byte figure in MiB rounded up). The ceiling sits above the largest first round the file-sync channels admit (15,339,166 values, [Round set size limits](#round-set-size-limits)) and the WebRTC channel admits (7,643,790). V8 reserves heap as it is used, so a ceiling above the host's memory costs nothing by itself; the check below is what guards a small host.
+
+### How the ceiling reaches the engine
+
+- **An installed CLI** calls `v8.setFlagsFromString("--max-old-space-size=19075")` immediately before it starts the PSI worker, unless the process already runs under a larger limit (`raisePsiWorkerHeapLimit`). A worker created after the call is created with that limit; the main thread keeps the one it started with. A unit test starts a worker through the production call and reads the worker's own `heap_size_limit`.
+- **The container images** export `NODE_OPTIONS=--max-old-space-size=19075` in `docker-entrypoint.sh` before starting the CLI, which the FIPS variant's entrypoint also runs. It raises the main thread and the worker alike, and an operator's own `NODE_OPTIONS` follows it in the variable, so a larger value given with `docker run --env NODE_OPTIONS=...` takes precedence. A unit test runs the real entrypoint under the real shell with a stand-in `node` that reports both threads' limits.
+
+Two other routes do not reach the worker on Node v26.10.0, driven in real Node:
+
+- `resourceLimits.maxOldGenerationSizeMb` on the `Worker` leaves the worker's `heap_size_limit` at 4,395,630,592.
+- `execArgv: ["--max-old-space-size=..."]` on the `Worker` is refused with `ERR_WORKER_INVALID_EXEC_ARGV`.
+
+### The pre-contact check
+
+Every exchange-running command (`alcove exchange`, zero-setup, and the online `invite` and `accept`) logs one line before any network contact stating the heap limit the PSI engine runs under, the memory a round over this party's input needs, and the memory the process has (`checkRunMemoryBudget`, `apps/cli/src/protocol.ts`). It runs with the other refusals decided from local input, after the first-round size check.
+
+- **The need** is `psiRoundMemoryNeedBytes` of this party's own record count, known before contact.
+- **What the process has** is the least of three figures: the heap limit of the thread that runs the engine (the raised worker limit, or the process's own when no bundled worker is present), the host's total memory (`os.totalmem()`), and the container's memory limit as Node reports it (`process.constrainedMemory()`, the cgroup limit), counted only when it is below the host's memory.
+- **A need over it is refused** as a usage error (exit 64) naming both figures, which of the three limits it, and the remedies: more memory, a smaller input, or `--allow-memory-shortfall`.
+- **`--allow-memory-shortfall`** turns the refusal into a warning, on stderr and on the event stream under `memoryShortfall` ([CLI_EVENTS.md](CLI_EVENTS.md#warning-sources)). The statement line is logged either way.
+
+The need for a small input is the 271 MB fixed part plus about 1.2 KB a record: a thousand records need 0.27 GB, which a unit test holds passing against a 512 MB container limit.
+
+### Limits
+
+- **The partner's count is not checked.** A partner's set size arrives with the terms, after contact. A joiner's response is the size of its own set, but a joiner decoding a much larger setup than its own input needs more than this party's count predicts, and the run can run out of memory after contact.
+- **Records, not elements.** The need is taken from the records this party holds. A key whose transforms produce several candidates a record, or a `split_on` fan-out, sends more elements than records, which the check does not count.
+- **Total, not free, memory.** The host figure is the host's total memory, so two parties on one host, or other workloads beside the run, share memory the check counts once.
+- **An installed CLI's main thread keeps Node's default heap.** The ceiling reaches the worker only. The main thread holds the dataset, the round's value maps and the result, and at 2^24 records it does not fit the default limit (Measured runs, below). Setting `NODE_OPTIONS=--max-old-space-size=19075` in the environment an installed CLI starts in raises it, as the container images do.
+- **The cgroup reading is Node's.** `process.constrainedMemory()` answering Docker's `--memory` under cgroup v2 is to be confirmed on a Docker host (Measured runs, below); cgroup v1 is not measured.
+
+### Measured runs at 2^24
+
+On 2026-09-30 two `alcove` zero-setup parties ran over a file-drop directory in the development container above, each with a 16,777,216-row input of four columns (an id, a synthetic SSN, a last name and a date of birth; 623 MB each), half of each input shared with the other:
+
+- **Installed CLI, default main-thread heap.** Both parties ran out of heap on the main thread while preparing the input, before the pre-contact check and before any network contact: exit 134 after 204 s, peak RSS 4.50 GB each.
+- **With `NODE_OPTIONS=--max-old-space-size=19075`, the images' setting.** Both parties were still preparing their input on the main thread after 30 minutes, each on one core at 100%, at 6.78 GB and 6.11 GB RSS, and the attempt was stopped there, before the pre-contact check and before any network contact.
+
+A symmetric round at this size needs about 20 GB for the joiner and 17 GB for the starter at the measured costs, more than this host holds for two parties, so a run to completion needs a larger host. Its time and peak memory are recorded here once measured:
+
+| Set size a side | Host | Wall time | Peak memory, party A | Peak memory, party B | Outcome |
+| --- | --- | --- | --- | --- | --- |
+| not yet measured | | | | | |
+
 ## Bilateral configuration: detect and fail, never negotiate
 
 `lockless_rendezvous` and `retain_files` are bilateral agreements with no negotiation step. The deliberate stance is **mismatch detection and clear failure, not capability negotiation**: a party advertises its own flags in its hello (`HelloEnvelope`, the two required fields) and fails fast with a both-sides-named error when the peer's differ. It never adapts to the peer's mode. This boundary is intentional and critical -- advertising flags is one step toward negotiation, and the design explicitly stops there. Do not let mismatch detection grow into capability negotiation without revisiting this decision.
