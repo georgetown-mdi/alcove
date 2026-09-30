@@ -27,7 +27,13 @@ vi.mock("../../src/util/prompt", async () => {
 });
 
 import { persistFilledPayloadReceive, saveConfig } from "../../src/config";
-import { buildErrorEvent, classifyTerminalError } from "../../src/eventStream";
+import {
+  buildErrorEvent,
+  buildPayloadReceiveTakenEvent,
+  classifyTerminalError,
+  type EventStreamEmitter,
+  type WarningEvent,
+} from "../../src/eventStream";
 import {
   payloadReceiveFillConfirmation,
   payloadReceiveTakenNotice,
@@ -267,7 +273,7 @@ describe("the unattended fill notice", () => {
     );
   });
 
-  test("goes through the unfiltered writer on an unattended run that took a column, and a fill recorded in a configuration is otherwise logged at info", () => {
+  test("goes through the unfiltered writer and the event stream on an unattended run that took a column, and a fill recorded in a configuration is otherwise logged at info", () => {
     const outcomes = [
       { columns: ["notes"], recordedIn: "alcove.yaml", unattended: true },
       { columns: ["notes"], recordedIn: undefined, unattended: true },
@@ -278,21 +284,108 @@ describe("the unattended fill notice", () => {
     ].map(({ columns, recordedIn, unattended }) => {
       const written: string[] = [];
       const logged: string[] = [];
+      const { emitter, emitted } = recordingEmitter();
       reportPayloadReceiveFill({
         columns,
         recordedIn,
         unattendedWriter: unattended ? (line) => written.push(line) : undefined,
+        eventStream: emitter,
         log: { info: (message) => logged.push(message) },
       });
-      return [written.length, logged.length];
+      return [written.length, emitted.length, logged.length];
     });
     expect(outcomes).toEqual([
-      [1, 0],
-      [1, 0],
-      [0, 1],
-      [0, 0],
-      [0, 1],
-      [0, 0],
+      [1, 1, 0],
+      [1, 1, 0],
+      [0, 0, 1],
+      [0, 0, 0],
+      [0, 0, 1],
+      [0, 0, 0],
     ]);
+  });
+});
+
+/** An emitter recording each event this module can build, and nothing else. */
+function recordingEmitter(): {
+  emitter: EventStreamEmitter;
+  emitted: WarningEvent[];
+} {
+  const emitted: WarningEvent[] = [];
+  const unexpected = (): void => {
+    throw new Error("the fill emitted an event other than its warning");
+  };
+  const emitter: EventStreamEmitter = {
+    stages: unexpected,
+    stage: unexpected,
+    stageEnd: unexpected,
+    warning: unexpected,
+    payloadReceiveTaken: (message, shownColumns, columnCount) =>
+      emitted.push(
+        buildPayloadReceiveTakenEvent(message, shownColumns, columnCount),
+      ),
+    logFileLoss: unexpected,
+    metrics: unexpected,
+    result: unexpected,
+    error: unexpected,
+  };
+  return { emitter, emitted };
+}
+
+/** The one event an unattended fill of `columns` into `recordedIn` emits. */
+function takenEvent(
+  columns: string[],
+  recordedIn: string | undefined,
+): WarningEvent {
+  const { emitter, emitted } = recordingEmitter();
+  reportPayloadReceiveFill({
+    columns,
+    recordedIn,
+    unattendedWriter: () => undefined,
+    eventStream: emitter,
+    log: { info: () => undefined },
+  });
+  expect(emitted).toHaveLength(1);
+  return emitted[0];
+}
+
+describe("the unattended fill event", () => {
+  test("holds the notice, each column escaped once, and how many were taken", () => {
+    expect(
+      takenEvent(["bell\u0007", 'x", "injected'], "/srv/alcove.yaml"),
+    ).toEqual({
+      v: 1,
+      type: "warning",
+      source: "payloadReceiveTaken",
+      message: payloadReceiveTakenNotice(
+        ["bell\u0007", 'x", "injected'],
+        "/srv/alcove.yaml",
+      ),
+      columns: ["bell\\x07", 'x", "injected'],
+      columnCount: 2,
+    });
+  });
+
+  test("escapes the configuration path in the message as every event field is escaped", () => {
+    const { message } = takenEvent(["notes"], "/srv/caf\u00e9/alcove.yaml");
+    expect(message).toContain("/srv/caf\\xe9/alcove.yaml");
+  });
+
+  test("lists only the columns the cut message names, and counts every column taken", () => {
+    const columns = Array.from(
+      { length: 200 },
+      (_, index) => `column_${String(index)}_${"x".repeat(200)}`,
+    );
+    const event = takenEvent(columns, "/srv/alcove.yaml");
+    expect(event.message.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    expect(event.columnCount).toBe(200);
+    expect(event.columns?.length).toBeLessThan(200);
+    expect(event.columns).toEqual(columns.slice(0, event.columns?.length));
+    for (const name of event.columns ?? [])
+      expect(event.message).toContain(`"${name}"`);
+    expect(event.message).not.toContain(
+      `"${columns[event.columns?.length ?? 0]}"`,
+    );
   });
 });

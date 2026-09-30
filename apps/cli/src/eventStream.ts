@@ -10,6 +10,7 @@ import {
   redactAndSanitizeForDisplay,
 } from "@alcove/core";
 import type {
+  Displayable,
   EntityClusterSummary,
   ExchangeStageDefinition,
   PartnerDeduplicateChange,
@@ -101,6 +102,7 @@ export const WARNING_SOURCES = [
   "signingWithoutRecord",
   "undeclaredColumns",
   "payloadSendBeyondConfiguration",
+  "payloadReceiveTaken",
   "terminatedRunRecord",
   "persistenceLoss",
   "logFileLoss",
@@ -191,6 +193,17 @@ export interface WarningEvent extends EventBase {
    * under `source: "logFileLoss"` ({@link reportLogFileLoss}).
    */
   lostLines?: number;
+  /**
+   * The partner's column names the message holds, each escaped on its own;
+   * present only under `source: "payloadReceiveTaken"`
+   * ({@link buildPayloadReceiveTakenEvent}).
+   */
+  columns?: string[];
+  /**
+   * How many columns the run took, more than `columns` holds where the
+   * message was cut; present only beside `columns`.
+   */
+  columnCount?: number;
 }
 
 /**
@@ -435,6 +448,28 @@ export function buildWarningEvent(
     message: redactAndSanitizeForDisplay(message, {
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
+  };
+}
+
+/**
+ * Build the warning an unattended run raises when it takes the payload columns
+ * its partner declares without asking. `message` is the notice the operator
+ * log shows, already escaped name by name, so it takes no second pass here.
+ * `shownColumns` are the names that notice holds, escaped here each on its
+ * own under the per-value cap; `columnCount` is how many were taken.
+ */
+export function buildPayloadReceiveTakenEvent(
+  message: Displayable,
+  shownColumns: readonly string[],
+  columnCount: number,
+): WarningEvent {
+  return {
+    v: EVENT_STREAM_VERSION,
+    type: "warning",
+    source: "payloadReceiveTaken",
+    message,
+    columns: shownColumns.map((name) => redactAndSanitizeForDisplay(name)),
+    columnCount: toCount(columnCount),
   };
 }
 
@@ -706,6 +741,11 @@ export interface EventStreamEmitter {
   stage(id: string, label: string): void;
   stageEnd(id: string, durationMs: number): void;
   warning(source: WarningSource, message: string): void;
+  payloadReceiveTaken(
+    message: Displayable,
+    shownColumns: readonly string[],
+    columnCount: number,
+  ): void;
   logFileLoss(message: string, lostLines: number): void;
   metrics(
     recordsProcessed: number,
@@ -738,6 +778,10 @@ function createEventStreamEmitter(): EventStreamEmitter {
       writer.emit(buildStageEndEvent(id, durationMs)),
     warning: (source, message) =>
       writer.emit(buildWarningEvent(source, message)),
+    payloadReceiveTaken: (message, shownColumns, columnCount) =>
+      writer.emit(
+        buildPayloadReceiveTakenEvent(message, shownColumns, columnCount),
+      ),
     logFileLoss: (message, lostLines) =>
       writer.emit({ ...buildWarningEvent("logFileLoss", message), lostLines }),
     metrics: (recordsProcessed, transportRetries, reconnects) =>

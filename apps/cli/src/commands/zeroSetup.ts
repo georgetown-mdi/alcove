@@ -449,6 +449,8 @@ export function finalizeBootstrap(params: {
    * {@link reportPayloadReceiveFill}.
    */
   unattendedFillNoticeWriter?: (line: string) => void;
+  /** The run's event stream, passed to {@link reportPayloadReceiveFill}. */
+  eventStream?: EventStreamEmitter;
 }): void {
   const {
     save,
@@ -459,6 +461,7 @@ export function finalizeBootstrap(params: {
     log,
     filledPayloadReceive,
     unattendedFillNoticeWriter,
+    eventStream,
   } = params;
   const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
     if (filledPayloadReceive !== undefined)
@@ -466,6 +469,7 @@ export function finalizeBootstrap(params: {
         columns: filledPayloadReceive,
         recordedIn,
         unattendedWriter: unattendedFillNoticeWriter,
+        eventStream,
         log,
       });
   };
@@ -873,6 +877,7 @@ export async function handler(argv: Arguments): Promise<void> {
               columns,
               recordedIn: undefined,
               unattendedWriter,
+              eventStream: eventStreamEmitter,
               log,
             });
         },
@@ -922,6 +927,7 @@ export async function handler(argv: Arguments): Promise<void> {
                 log,
                 filledPayloadReceive,
                 unattendedFillNoticeWriter: unattendedWriter,
+                eventStream: eventStreamEmitter,
               });
               return { persisted: true };
             } catch (err) {
@@ -946,6 +952,7 @@ export async function handler(argv: Arguments): Promise<void> {
                   columns: filledPayloadReceive,
                   recordedIn: configLeftOnDisk ? options.configFile : undefined,
                   unattendedWriter,
+                  eventStream: eventStreamEmitter,
                   log,
                 });
               reportPersistenceLoss(notice, eventStreamEmitter);

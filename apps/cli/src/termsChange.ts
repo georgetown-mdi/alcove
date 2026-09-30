@@ -25,6 +25,7 @@ import {
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 import type {
+  Displayable,
   getLogger,
   PayloadReceiveFillAnswer,
   TermsChange,
@@ -38,6 +39,7 @@ import {
   termsUpdateInvalidTerm,
   type TermsUpdateWrite,
 } from "./config";
+import type { EventStreamEmitter } from "./eventStream";
 import { writeFileOwnerOnly } from "./fileUtils";
 import {
   consentSurfaceSink,
@@ -345,6 +347,51 @@ export function payloadReceiveFillConfirmation(params: {
   };
 }
 
+const PAYLOAD_RECEIVE_TAKEN_HEADING =
+  "this unattended run took the payload columns your partner declares it sends you, without asking: ";
+
+/** An unattended fill notice, and how many of its columns it names. */
+interface PayloadReceiveTaken {
+  notice: Displayable;
+  shownColumns: number;
+}
+
+/**
+ * {@link payloadReceiveTakenNotice} naming the configuration it was written
+ * to as `shownConfig`, already rendered for its sink.
+ */
+function composePayloadReceiveTaken(
+  columns: readonly string[],
+  shownConfig: Displayable | undefined,
+): PayloadReceiveTaken {
+  const tail =
+    shownConfig === undefined
+      ? ". They were not written to any configuration."
+      : `. They were written to ${shownConfig} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+  const budget =
+    WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
+    PAYLOAD_RECEIVE_TAKEN_HEADING.length -
+    tail.length -
+    DISPLAY_TRUNCATION_MARKER.length;
+  let taken = "";
+  let shownColumns = 0;
+  for (const name of columns) {
+    const quoted = `"${redactAndSanitizeForDisplay(name).replaceAll('"', '\\"')}"`;
+    const next = taken === "" ? quoted : `${taken}, ${quoted}`;
+    if (next.length > budget) {
+      taken += DISPLAY_TRUNCATION_MARKER;
+      break;
+    }
+    taken = next;
+    shownColumns += 1;
+  }
+  // Every part is fixed copy or a value already rendered for display, and
+  // quoting a name adds only printable ASCII to it.
+  const notice =
+    `${PAYLOAD_RECEIVE_TAKEN_HEADING}${taken}${tail}` as Displayable;
+  return { notice, shownColumns };
+}
+
 /**
  * The line an unattended run writes when it takes the payload columns its
  * partner declares, in place of {@link payloadReceiveFillConfirmation}'s
@@ -360,31 +407,13 @@ export function payloadReceiveFillConfirmation(params: {
 export function payloadReceiveTakenNotice(
   columns: readonly string[],
   recordedIn: string | undefined,
-): string {
-  const heading =
-    "this unattended run took the payload columns your partner declares it sends you, without asking: ";
-  const tail =
+): Displayable {
+  return composePayloadReceiveTaken(
+    columns,
     recordedIn === undefined
-      ? ". They were not written to any configuration."
-      : `. They were written to ${redactAndRenderOperatorSuppliedText(
-          operatorSuppliedText(recordedIn),
-        )} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
-  const budget =
-    WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
-    heading.length -
-    tail.length -
-    DISPLAY_TRUNCATION_MARKER.length;
-  let taken = "";
-  for (const name of columns) {
-    const quoted = `"${redactAndSanitizeForDisplay(name).replaceAll('"', '\\"')}"`;
-    const next = taken === "" ? quoted : `${taken}, ${quoted}`;
-    if (next.length > budget) {
-      taken += DISPLAY_TRUNCATION_MARKER;
-      break;
-    }
-    taken = next;
-  }
-  return `${heading}${taken}${tail}`;
+      ? undefined
+      : redactAndRenderOperatorSuppliedText(operatorSuppliedText(recordedIn)),
+  ).notice;
 }
 
 /**
@@ -393,17 +422,33 @@ export function payloadReceiveTakenNotice(
  * least one column writes {@link payloadReceiveTakenNotice} through
  * `unattendedWriter`, the command's unfiltered writer
  * (`ConfiguredLogging.writePlainLine`), so the line shows at every
- * `--log-level`; any other fill recorded in a configuration is logged at info.
+ * `--log-level`, and emits the same notice on `eventStream` as a
+ * `payloadReceiveTaken` warning, its path escaped as every event field is;
+ * any other fill recorded in a configuration is logged at info.
  */
 export function reportPayloadReceiveFill(params: {
   columns: readonly string[];
   recordedIn: string | undefined;
   unattendedWriter: ((line: string) => void) | undefined;
+  eventStream: EventStreamEmitter | undefined;
   log: { info: (message: string) => void };
 }): void {
-  const { columns, recordedIn, unattendedWriter, log } = params;
+  const { columns, recordedIn, unattendedWriter, eventStream, log } = params;
   if (unattendedWriter !== undefined && columns.length > 0) {
     unattendedWriter(payloadReceiveTakenNotice(columns, recordedIn));
+    if (eventStream !== undefined) {
+      const { notice, shownColumns } = composePayloadReceiveTaken(
+        columns,
+        recordedIn === undefined
+          ? undefined
+          : redactAndSanitizeForDisplay(recordedIn),
+      );
+      eventStream.payloadReceiveTaken(
+        notice,
+        columns.slice(0, shownColumns),
+        columns.length,
+      );
+    }
     return;
   }
   if (recordedIn !== undefined)

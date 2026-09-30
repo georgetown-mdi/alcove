@@ -1124,6 +1124,7 @@ export async function runOnlineBootstrap(params: {
           recordedIn: params.configPath,
           unattendedWriter:
             params.interactive === true ? undefined : params.writePlainLine,
+          eventStream,
           log: getLogger(params.loggerName),
         }),
       onPayloadReceiveFill: payloadReceiveFillConfirmation({

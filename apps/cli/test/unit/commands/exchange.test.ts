@@ -46,6 +46,7 @@ import {
 import { preflightKeyFilePath } from "../../../src/keyFilePreflight";
 import { runProtocol } from "../../../src/protocol";
 import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
+import { captureFd3 } from "../../eventStreamTestSupport";
 import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
@@ -1692,10 +1693,11 @@ test("handler: a receive list the run fills is recorded in the configuration it 
 /** Run the handler on `stdin` at `--log-level silent` into a `--log-file`,
  * with the terms exchange filling the receive list with `columns` as
  * runProtocol does: record, then the handler's fill notice. Returns the log
- * file. */
+ * file. `eventStream` passes `--event-stream`. */
 async function logOfFillingRun(
   stdin: ReturnType<typeof streamOf>,
   columns: string[],
+  eventStream = false,
 ): Promise<string> {
   fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
@@ -1717,6 +1719,7 @@ async function logOfFillingRun(
       "key-file": keyFile,
       "log-level": "silent",
       "log-file": logFile,
+      ...(eventStream ? { "event-stream": true } : {}),
     } as unknown as Arguments),
   );
   return fs.readFileSync(logFile, "utf8");
@@ -1727,6 +1730,25 @@ test("handler: an unattended fill writes one line naming each column and the con
   const lines = log.split("\n").filter((line) => line.includes("program"));
   expect(lines).toEqual([
     `this unattended run took the payload columns your partner declares it sends you, without asking: "program", "bell\\x07". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
+  ]);
+});
+
+test("handler: an unattended fill emits the line it writes as one payloadReceiveTaken warning on the event stream", async () => {
+  const { value: log, lines } = await captureFd3(() =>
+    logOfFillingRun(streamOf(""), ["program", "bell\u0007"], true),
+  );
+  const notice = log.split("\n").find((line) => line.includes("program"));
+  expect(
+    lines.filter((line) => line["source"] === "payloadReceiveTaken"),
+  ).toEqual([
+    {
+      v: 1,
+      type: "warning",
+      source: "payloadReceiveTaken",
+      message: notice,
+      columns: ["program", "bell\\x07"],
+      columnCount: 2,
+    },
   ]);
 });
 

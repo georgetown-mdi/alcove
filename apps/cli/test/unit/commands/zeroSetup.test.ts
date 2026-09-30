@@ -711,15 +711,17 @@ test("handler with --save persists the first-use pin into the written config", a
 
 // --- handler: the receive list a --save run fills ----------------------------
 
-/** Drive an unattended zero-setup run at `--log-level silent` whose terms
- * exchange fills the receive list from the partner's declared send set, and
- * report whether a recorder was passed, the saved configuration's linkage
- * terms, if one was written, and what reached stderr. */
+/** Drive an unattended zero-setup run at `--log-level silent` under
+ * `--event-stream` whose terms exchange fills the receive list from the
+ * partner's declared send set, and report whether a recorder was passed, the
+ * saved configuration's linkage terms, if one was written, what reached
+ * stderr, and the `payloadReceiveTaken` events on fd 3. */
 async function filledReceiveFromRun(options: { save: boolean }): Promise<{
   recorderPassed: boolean;
   savedTerms: Record<string, unknown> | undefined;
   configFile: string;
   stderr: string;
+  takenEvents: Array<Record<string, unknown>>;
 }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerofill-"));
   const configFile = path.join(dir, "alcove.yaml");
@@ -742,17 +744,20 @@ async function filledReceiveFromRun(options: { save: boolean }): Promise<{
       ]);
     }) as never);
 
-    await withStdin(streamOf(""), () =>
-      handler({
-        _: ["sftp://userb@localhost:2222/drop", input],
-        $0: "alcove",
-        save: options.save,
-        "config-file": configFile,
-        "key-file": path.join(dir, ".alcove.key"),
-        identity: "Tester",
-        record: false,
-        "log-level": "silent",
-      } as unknown as Arguments),
+    const { lines } = await captureFd3(() =>
+      withStdin(streamOf(""), () =>
+        handler({
+          _: ["sftp://userb@localhost:2222/drop", input],
+          $0: "alcove",
+          save: options.save,
+          "event-stream": true,
+          "config-file": configFile,
+          "key-file": path.join(dir, ".alcove.key"),
+          identity: "Tester",
+          record: false,
+          "log-level": "silent",
+        } as unknown as Arguments),
+      ),
     );
     const savedTerms = fs.existsSync(configFile)
       ? (YAML.parse(fs.readFileSync(configFile, "utf8"))
@@ -763,6 +768,9 @@ async function filledReceiveFromRun(options: { save: boolean }): Promise<{
       savedTerms,
       configFile,
       stderr: stdio.stderrWrites.join(""),
+      takenEvents: lines.filter(
+        (line) => line["source"] === "payloadReceiveTaken",
+      ),
     };
   } finally {
     stdio.restore();
@@ -771,26 +779,47 @@ async function filledReceiveFromRun(options: { save: boolean }): Promise<{
   }
 }
 
-test("handler with --save records the filled receive list in the saved terms, and an unattended run names it at every log level", async () => {
-  const { recorderPassed, savedTerms, configFile, stderr } =
+test("handler with --save records the filled receive list in the saved terms, and an unattended run names it at every log level and on the event stream", async () => {
+  const { recorderPassed, savedTerms, configFile, stderr, takenEvents } =
     await filledReceiveFromRun({ save: true });
+  const notice = `this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
   expect(recorderPassed).toBe(true);
   expect(savedTerms?.["payload"]).toEqual({ receive: [{ name: "program" }] });
   expect(stderr.split("\n").filter((line) => line.includes("program"))).toEqual(
-    [
-      `this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
-    ],
+    [notice],
   );
+  expect(takenEvents).toEqual([
+    {
+      v: 1,
+      type: "warning",
+      source: "payloadReceiveTaken",
+      message: notice,
+      columns: ["program"],
+      columnCount: 1,
+    },
+  ]);
 });
 
-test("handler without --save writes no receive list, and an unattended run says so at every log level", async () => {
-  const { savedTerms, stderr } = await filledReceiveFromRun({ save: false });
+test("handler without --save writes no receive list, and an unattended run says so at every log level and on the event stream", async () => {
+  const { savedTerms, stderr, takenEvents } = await filledReceiveFromRun({
+    save: false,
+  });
+  const notice =
+    'this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.';
   expect(savedTerms).toBeUndefined();
   expect(stderr.split("\n").filter((line) => line.includes("program"))).toEqual(
-    [
-      'this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.',
-    ],
+    [notice],
   );
+  expect(takenEvents).toEqual([
+    {
+      v: 1,
+      type: "warning",
+      source: "payloadReceiveTaken",
+      message: notice,
+      columns: ["program"],
+      columnCount: 1,
+    },
+  ]);
 });
 
 // --- handler: the question before a one-off run takes the partner's columns --
@@ -1842,24 +1871,29 @@ test("handler --save: a save that cannot reach disk warns on fd 3 and exits 73, 
     // The run itself did not fail, so no error boundary exited it: 69 and 64
     // both reach the process through exitWithError.
     expect(f.exitSpy).not.toHaveBeenCalled();
-    expect(lines.map((l) => l.type)).toEqual(["warning"]);
-    expect(lines.map((l) => l.source)).toEqual(["persistenceLoss"]);
+    expect(lines.map((l) => l.type)).toEqual(["warning", "warning"]);
+    expect(lines.map((l) => l.source)).toEqual([
+      "payloadReceiveTaken",
+      "persistenceLoss",
+    ]);
+    const loss = String(lines[1].message);
     // Both artifacts this branch was asked to write are named, and the operator
     // is steered to invite rather than to a re-run.
-    expect(String(lines[0].message)).toContain(
-      pathAsDisplayed(f.unwritableConfigFile),
-    );
-    expect(String(lines[0].message)).toContain(pathAsDisplayed(f.keyFile));
-    expect(String(lines[0].message)).toContain("do not re-run");
+    expect(loss).toContain(pathAsDisplayed(f.unwritableConfigFile));
+    expect(loss).toContain(pathAsDisplayed(f.keyFile));
+    expect(loss).toContain("do not re-run");
     // The cause stays on the human log: the emitter escapes its message exactly
     // once, so pre-rendered error text would reach a supervisor double-escaped.
-    expect(String(lines[0].message)).not.toContain("ENOENT");
+    expect(loss).not.toContain("ENOENT");
     expect(stderr).toContain("ENOENT");
     // Nothing was half-written at the key path either.
     expect(fs.existsSync(f.keyFile)).toBe(false);
     // The unattended fill notice outlives --log-level error and says the
     // columns it took were recorded nowhere.
     expect(stderr).toContain(
+      'without asking: "program". They were not written to any configuration.',
+    );
+    expect(String(lines[0].message)).toContain(
       'without asking: "program". They were not written to any configuration.',
     );
     // The run's own events and this loss ride one stream: runProtocol received
@@ -1917,9 +1951,15 @@ test("handler --save: a failed key save whose rollback also fails names the conf
     const stderr = f.stderr();
     expect(exitCode).toBe(PERSISTENCE_LOSS_EXIT_CODE);
     expect(f.exitSpy).not.toHaveBeenCalled();
-    expect(lines.map((l) => l.type)).toEqual(["warning"]);
+    expect(lines.map((l) => l.source)).toEqual([
+      "payloadReceiveTaken",
+      "persistenceLoss",
+    ]);
+    expect(String(lines[0].message)).toContain(
+      `without asking: "program". They were written to ${pathAsDisplayed(f.configFile)} as linkage_terms.payload.receive`,
+    );
     // The claim made about each file, against what is actually on disk.
-    const notice = String(lines[0].message);
+    const notice = String(lines[1].message);
     expect(notice).toContain(
       `the key file at ${pathAsDisplayed(f.unwritableKeyFile)} did not reach ` +
         "disk",
