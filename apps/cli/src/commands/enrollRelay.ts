@@ -25,11 +25,6 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptHiddenText } from "../util/prompt";
 import { loadConfig } from "./exchange";
 
-// `alcove enroll-relay` is the one command that takes the relay-owner token:
-// it asks for it, sends it in the one enrollment request, and keeps it
-// nowhere. Every later registration is signed with the exchange's own relay
-// key by `alcove exchange`, which never asks for the token.
-
 export function builder(cmd: Argv): Argv {
   const beforeLogging = cmd
     .usage("Usage: $0 enroll-relay [options]")
@@ -52,7 +47,6 @@ export function builder(cmd: Argv): Argv {
   return addLoggingOptions(beforeLogging);
 }
 
-/** Upper bound on a relay-owner token as typed, in characters. */
 const MAX_OWNER_TOKEN_LENGTH = 1024;
 
 // Visible ASCII only: the token travels in an HTTP header.
@@ -180,17 +174,23 @@ export async function enrollRelay(
 const MAX_PIPED_TOKEN_BYTES = 4096;
 
 /**
- * The first line of standard input, for a token piped rather than typed. Read
- * to at most {@link MAX_PIPED_TOKEN_BYTES}; a longer input is refused.
+ * The first line of `input`, for a token piped rather than typed. Returns as
+ * soon as a newline arrives, so a caller that keeps the pipe open is not
+ * waited on; an input with no newline in its first
+ * {@link MAX_PIPED_TOKEN_BYTES} bytes is refused.
+ *
+ * @internal exported for testing
  */
-async function readFirstLineOfStdin(): Promise<string> {
+export async function readFirstLine(
+  input: AsyncIterable<unknown>,
+): Promise<string> {
   const chunks: Buffer[] = [];
   let length = 0;
-  for await (const chunk of process.stdin) {
+  for await (const chunk of input) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
     chunks.push(buffer);
     length += buffer.length;
-    if (length > MAX_PIPED_TOKEN_BYTES) break;
+    if (buffer.includes(0x0a) || length > MAX_PIPED_TOKEN_BYTES) break;
   }
   const text = Buffer.concat(chunks).toString("utf8");
   const newline = text.indexOf("\n");
@@ -224,7 +224,7 @@ export async function handler(argv: Arguments): Promise<void> {
       readOwnerToken: (question) =>
         process.stdin.isTTY === true
           ? promptHiddenText(question)
-          : readFirstLineOfStdin(),
+          : readFirstLine(process.stdin),
     });
     log.info(notice);
   } catch (err) {

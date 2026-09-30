@@ -223,7 +223,7 @@ test("after the run, the rotated key is registered signed with the pre-rotation 
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     expect(options.auth?.relayRegistrationFollows).toBe(true);
     rotateLikeTheKeyExchange(options);
-    await options.fileSyncRuntime?.onOutputComplete?.({ bootstrap: undefined });
+    await options.fileSyncRuntime?.onRemoteFollowUp?.();
     return {};
   });
   await runHandler();
@@ -239,7 +239,7 @@ test("a refused registration after a completed run reports 73, keeps the rotated
   useRegistrar([jsonResponse(409, { error: "not enrolled" })]);
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     rotateLikeTheKeyExchange(options);
-    await options.fileSyncRuntime?.onOutputComplete?.({ bootstrap: undefined });
+    await options.fileSyncRuntime?.onRemoteFollowUp?.();
     return {};
   });
   await runHandler();
@@ -280,6 +280,7 @@ test("a run relaying through the invitation's relay registers nothing", async ()
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     expect(options.auth?.relayRegistrationFollows).toBeUndefined();
     expect(options.fileSyncRuntime?.onOutputComplete).toBeUndefined();
+    expect(options.fileSyncRuntime?.onRemoteFollowUp).toBeUndefined();
     rotateLikeTheKeyExchange(options);
     return {};
   });

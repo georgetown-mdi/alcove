@@ -67,6 +67,22 @@ describe("sendRelayRegistration", () => {
     });
   });
 
+  test("puts an id of every admitted character class in the path unchanged", async () => {
+    const registrar = fakeRegistrar([jsonResponse(200, {})]);
+    await sendRelayRegistration(
+      {
+        registrar: { ...REGISTRAR, exchangeId: "_Acme.weekly-2026.v9" },
+        method: "PUT",
+        body: "{}",
+        authorization: "Alcove-Relay-Proof ts=1,mac=x",
+      },
+      { fetch: registrar.fetch },
+    );
+    expect(registrar.requests[0]?.url).toBe(
+      "https://relay.example.org:8443/exchanges/_Acme.weekly-2026.v9",
+    );
+  });
+
   test.each([
     [
       jsonResponse(200, { maxAgeDays: 30, lapsesAt: "2026-01-31T00:00:00Z" }),

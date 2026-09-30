@@ -1,7 +1,7 @@
 // The CLI's calls to a relay registrar (infra/relay/README.md, The registrar):
 // which registrar a run registers at, one registration request and how its
 // answer is classified, and the enrollment `alcove enroll-relay` makes with
-// the relay-owner token. Nothing here stores the token or a relay key.
+// the relay-owner token.
 
 import {
   deriveRelayKey,
@@ -50,7 +50,7 @@ export function relayRegistrarLabel(registrar: RelayRegistrar): string {
 }
 
 function registrarRequestUrl(registrar: RelayRegistrar): string {
-  return `${new URL(registrar.url).origin}/exchanges/${registrar.exchangeId}`;
+  return `${new URL(registrar.url).origin}/exchanges/${encodeURIComponent(registrar.exchangeId)}`;
 }
 
 /** The body of a registration: the key and the lapse the row takes. */

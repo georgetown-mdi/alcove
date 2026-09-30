@@ -687,7 +687,9 @@ been confirmed at the relay registrar a run registers at
   field, and its own rotation write, which stores none, drops it.
 - **Across applications.** The console's check of a mounted key file strips an
   unknown field, so it reads the file. The web application's import of a
-  command-line key file refuses one holding the field as an unknown field.
+  command-line key file refuses one holding the field, naming the
+  unconfirmed registration and the command-line run or `alcove enroll-relay`
+  that confirms it.
 
 ### `exchange --invitation` fail-closed ordering
 

@@ -1,8 +1,7 @@
 // The registration a run makes after its shared secret rotates, signed with
 // the relay key the registrar holds (docs/spec/PROTOCOL.md, "Registering the
 // rotated relay key"), and the retry of one the registrar did not confirm,
-// before the next run dials. Neither path holds the relay-owner token, and no
-// refusal leads to one.
+// before the next run dials.
 
 import {
   ConnectionError,

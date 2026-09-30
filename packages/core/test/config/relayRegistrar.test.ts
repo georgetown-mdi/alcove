@@ -72,6 +72,17 @@ test.each([
   ).toBe(false);
 });
 
+test.each([["."], [".."]])(
+  "the exchange id %s is refused as a directory name",
+  (exchangeId) => {
+    expect(
+      messages(
+        webrtc({ url: "https://relay.example.org", exchange_id: exchangeId }),
+      ),
+    ).toContain("relay_registrar.exchange_id must not be '.' or '..'");
+  },
+);
+
 test("a registrar key other than url and exchange_id is refused, not stripped", () => {
   expect(
     messages(

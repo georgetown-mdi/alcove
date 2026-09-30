@@ -701,7 +701,7 @@ connection:
 
 **When a registration does not go through.** The key the registrar holds is replaced only by a request signed with that key, and a run keeps the key it signs with in memory only, until it exits. The rotated secret is kept whatever the registrar answers, and the key file records the registration as unconfirmed:
 
-- **The run that rotated** retries a registrar that does not answer, twice, over about seven seconds. A registration still not confirmed after a completed exchange exits 73: the exchange must not be re-run, and the error names the registrar and the next step.
+- **The run that rotated** retries a registrar that does not answer, on the schedule in [PROTOCOL.md, Registering the rotated relay key](spec/PROTOCOL.md#registering-the-rotated-relay-key) (its Retries item). A registration still not confirmed after a completed exchange exits 73: the exchange must not be re-run, and the error names the registrar and the next step.
 - **The next run** confirms the registration before it contacts your partner. When the registrar already holds the current key -- the registration landed and its answer was lost -- the run goes ahead. When the registrar does not answer, the run exits 69 with the shared secret unchanged; run it again later.
 - **When the registrar holds a key no run has any more** -- a registration that never landed, or a run stopped between its rotation and its registration -- the next run exits 77 before it contacts your partner, naming the registrar and the exchange id. Run `alcove enroll-relay --replace-relay-key` with the relay-owner token, then run the exchange again. Your partner does nothing: the shared secret is unchanged.
 

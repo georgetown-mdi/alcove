@@ -196,7 +196,7 @@ describe("what the pair import says", () => {
     }
     expect(refusal).toBeInstanceOf(ManagedKeyFileRefusedError);
     const reason = pairImportFailureReason(refusal);
-    expect(reason).toContain("holds a field other than");
+    expect(reason).toContain("holds a field this app does not read");
     expect(reason).not.toContain(sharedSecret);
   });
 

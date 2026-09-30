@@ -53,6 +53,7 @@ import {
   registerRotatedRelayKey,
   relayRegistrarUnusedNotice,
   retryPendingRelayRegistration,
+  type RotatedRelayKeyResult,
 } from "../relayKeyRotation";
 import {
   loadKeyFile,
@@ -1085,11 +1086,8 @@ export async function handler(argv: Arguments): Promise<void> {
       ...exchangeDataSpec
     } = configResult;
 
-    // The relay registrar this run registers its rotated relay key at, when
-    // it relays through this party's own relay. The pre-rotation secret the
-    // registration is signed with is loadedAuthentication.sharedSecret, held
-    // in memory for this run only; the rotation write records the
-    // registration as pending until the registrar confirms it.
+    // The registration signs with authentication.sharedSecret, the secret
+    // loaded before the run: the rotation rewrites the key file, not this object.
     const relayRegistrar = relayRegistrarForRun(connection);
     const unusedRegistrarNotice = relayRegistrarUnusedNotice(connection);
     if (unusedRegistrarNotice !== undefined) log.info(unusedRegistrarNotice);
@@ -1103,12 +1101,25 @@ export async function handler(argv: Arguments): Promise<void> {
       if (relayRegistrar === undefined || relayRegistrationAttempted)
         return false;
       relayRegistrationAttempted = true;
-      const result = await registerRotatedRelayKey({
-        registrar: relayRegistrar,
-        preRotationSecret: authentication.sharedSecret,
-        keyFilePath: authentication.keyFilePath,
-        maxAgeDays: relayMaxAgeDays,
-      });
+      let result: RotatedRelayKeyResult;
+      try {
+        result = await registerRotatedRelayKey({
+          registrar: relayRegistrar,
+          preRotationSecret: authentication.sharedSecret,
+          keyFilePath: authentication.keyFilePath,
+          maxAgeDays: relayMaxAgeDays,
+        });
+      } catch (err) {
+        result = {
+          kind: "failed",
+          error: new Error(
+            "the relay key derived from the rotated shared secret could not " +
+              `be registered at ${relayRegistrarLabel(relayRegistrar)}; the ` +
+              "next run retries the registration before it dials",
+            { cause: err },
+          ),
+        };
+      }
       return logRotatedRelayKey(result, relayRegistrar, log);
     };
 
@@ -1340,7 +1351,7 @@ export async function handler(argv: Arguments): Promise<void> {
           forceRetainSweep,
           eventStream: openedEventStream,
           ...(relayRegistrar !== undefined && {
-            onOutputComplete: async () => {
+            onRemoteFollowUp: async () => {
               if (await registerRotatedKey())
                 reportPersistenceLoss(
                   "the relay registrar did not register the relay key " +
@@ -1350,7 +1361,6 @@ export async function handler(argv: Arguments): Promise<void> {
                     "and the next step",
                   openedEventStream,
                 );
-              return { persisted: true };
             },
           }),
         },
@@ -1384,13 +1394,7 @@ export async function handler(argv: Arguments): Promise<void> {
     // A run that failed after its key exchange rotated the shared secret still
     // registers the rotated key while the pre-rotation key is in memory; its
     // exit code stays the exchange's own.
-    if (exchangeError !== undefined) {
-      try {
-        await registerRotatedKey();
-      } catch (err) {
-        log.error(sanitizeErrorForDisplay(err));
-      }
-    }
+    if (exchangeError !== undefined) await registerRotatedKey();
 
     // Emit the token-expiry advisory when the token was expiring soon at load and
     // the exchange did not refresh it (a successful rotation stamps a fresh,

@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import YAML from "yaml";
 import { deriveRelayKey } from "@alcove/core";
 
-import { enrollRelay } from "../../../src/commands/enrollRelay";
+import { enrollRelay, readFirstLine } from "../../../src/commands/enrollRelay";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
 import { exitCodeForError } from "../../../src/util/exit";
 import { fakeRegistrar, jsonResponse } from "../relayRegistrarFake";
@@ -175,3 +176,18 @@ test.each([
     expect(failure.message).not.toContain(OWNER_TOKEN);
   },
 );
+
+test("a piped token is read at its newline while the pipe stays open", async () => {
+  const pipe = new PassThrough();
+  pipe.write(`${OWNER_TOKEN}
+later input`);
+  await expect(readFirstLine(pipe)).resolves.toBe(OWNER_TOKEN);
+});
+
+test("a piped input with no newline in its first 4096 bytes is refused", async () => {
+  const pipe = new PassThrough();
+  pipe.write("x".repeat(5000));
+  await expect(readFirstLine(pipe)).rejects.toThrow(
+    "standard input holds no relay-owner token on its first line",
+  );
+});

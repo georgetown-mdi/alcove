@@ -557,6 +557,14 @@ export interface FileSyncRuntimeOptions {
   onOutputComplete?: (
     context: OutputCompleteContext,
   ) => OutputCompleteResult | Promise<OutputCompleteResult>;
+  /**
+   * The caller's post-exchange step that writes nothing to this party's disk
+   * (the relay key registration), run after {@link onOutputComplete} on the
+   * same fully-completed path and before the terminal events. It reports its
+   * own failures; the frame never reports it as a local persistence loss, and
+   * a run whose result failed leaves it to the caller.
+   */
+  onRemoteFollowUp?: () => void | Promise<void>;
 }
 
 /** What a {@link FileSyncRuntimeOptions.onOutputComplete} hook reports back. */
@@ -2173,6 +2181,7 @@ async function writeExchangeOutputs(params: {
   log: ReturnType<typeof getLogger>;
   eventStream: EventStreamEmitter | undefined;
   onOutputComplete: FileSyncRuntimeOptions["onOutputComplete"];
+  onRemoteFollowUp: FileSyncRuntimeOptions["onRemoteFollowUp"];
 }): Promise<boolean> {
   const {
     outcome,
@@ -2185,6 +2194,7 @@ async function writeExchangeOutputs(params: {
     log,
     eventStream,
     onOutputComplete,
+    onRemoteFollowUp,
   } = params;
   const {
     associationTable,
@@ -2433,6 +2443,24 @@ async function writeExchangeOutputs(params: {
         eventStream,
       );
       everyArtifactOnDisk = false;
+    }
+  }
+
+  if (onRemoteFollowUp !== undefined) {
+    try {
+      await onRemoteFollowUp();
+    } catch (followUpErr) {
+      log.error(
+        "a post-exchange step failed after the exchange and its results " +
+          "completed: " +
+          sanitizeErrorForDisplay(followUpErr),
+      );
+      reportPersistenceLoss(
+        "a post-exchange step did not complete; the exchange and its " +
+          "results succeeded and must not be re-run, and the error logged " +
+          "beside this notice names the step",
+        eventStream,
+      );
     }
   }
 
@@ -3011,6 +3039,7 @@ export async function runProtocol(
       log,
       eventStream,
       onOutputComplete: fileSyncRuntime.onOutputComplete,
+      onRemoteFollowUp: fileSyncRuntime.onRemoteFollowUp,
     });
 
     // onAuthenticatedError is set only when a post-handshake hook failed

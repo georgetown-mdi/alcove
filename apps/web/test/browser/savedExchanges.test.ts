@@ -1226,12 +1226,9 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
 
     await expect
       .element(
-        page.getByText(
-          "it holds a field other than sharedSecret, expires, and",
-          {
-            exact: false,
-          },
-        ),
+        page.getByText("it holds a field this app does not read", {
+          exact: false,
+        }),
       )
       .toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(sharedSecret);

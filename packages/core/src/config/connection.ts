@@ -1214,6 +1214,11 @@ const RelayRegistrarSchema: z.ZodType<RelayRegistrar> = z.strictObject(
           "'.', '_' and '-', not starting with '-' and not holding a run of " +
           "64 hex characters",
       })
+      .refine((id) => id !== "." && id !== "..", {
+        message:
+          "relay_registrar.exchange_id must not be '.' or '..', which name a " +
+          "directory in the registrar's request path rather than an exchange",
+      })
       .refine((id) => !id.startsWith(RELAY_VERIFY_EXCHANGE_ID_PREFIX), {
         message:
           "relay_registrar.exchange_id must not start with " +
