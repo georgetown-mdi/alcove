@@ -32,6 +32,7 @@ import {
   assertFanOutImplemented,
   assertLinkageTermsSatisfiable,
   assertStandardizationMatchesTerms,
+  assertTransformsCompile,
 } from "./linkageSatisfiability.js";
 import { columnValues, inferDateFormatWithCounts } from "./utils/date.js";
 import {
@@ -117,6 +118,7 @@ import {
   webrtcFrameExceedsBound,
 } from "./connection/webrtcOutboundBound.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
+import type { Standardization } from "./config/standardizationSchema.js";
 import {
   reasonTermsCannotStateIdentity,
   safeParseLinkageTerms,
@@ -267,6 +269,43 @@ export function assertAlgorithmImplemented(algorithm: Algorithm): void {
       "before any identifier is revealed. Set the linkage-terms algorithm to " +
       "one of those, or wait for support before running.",
   );
+}
+
+/**
+ * Refuse linkage terms that a run holding them, beside this party's own
+ * `metadata` and `standardization`, would refuse before it sends anything.
+ * Run where terms enter or leave a party's document without a run to check
+ * them -- an offline invitation minted from it, a terms update made from it,
+ * and a partner's terms update applied to it -- so neither party consents to
+ * terms whose first run is refused. The command line and the web app both
+ * call it, so the two refuse the same updates with the same messages.
+ *
+ * A `payload.send` that differs from what the metadata transmits is not
+ * refused here: the run, the invitation, and the terms update each state the
+ * transmitted columns in its place.
+ *
+ * The metadata and standardization checks run only where the document holds
+ * an explicit block: without one the run infers it from the input file, which
+ * none of these callers reads.
+ *
+ * @throws {UsageError} naming the rule the terms break; every message holds
+ *   only fixed text, build-defined step labels and counts, and the names this
+ *   party's own standardization declares.
+ */
+export function assertTermsRunnable(
+  terms: LinkageTerms,
+  local: { metadata?: Metadata; standardization?: Standardization },
+): void {
+  const { metadata, standardization } = local;
+  assertCountOnlyTransmitsNoColumn(terms.algorithm, metadata);
+  if (standardization !== undefined)
+    assertStandardizationMatchesTerms(standardization, terms);
+  assertAlgorithmImplemented(terms.algorithm);
+  assertDeduplicateImplemented(terms);
+  assertFanOutImplemented(terms, standardization);
+  // A step whose compile throws aborts the run only once the pipeline is
+  // built, after the partner has agreed to the terms naming it.
+  assertTransformsCompile(terms, standardization);
 }
 
 /**

@@ -694,6 +694,7 @@ export {
   assertFirstRoundFitsWebRtcFrame,
   assertLocalCertificateAuthorizesAgreedIdentity,
   assertSigningModeImplemented,
+  assertTermsRunnable,
   countIsPartnerReported,
   describeExchangeStages,
   exchangeDisclosedWithoutPartnerPayload,

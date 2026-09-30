@@ -37,6 +37,11 @@ import {
 import { clearManagedExchangeTermsProposal } from "@psi/managed/managedLocalState";
 
 import {
+  TERMS_UPDATE_NOT_APPLIED_TEXT,
+  termsUpdateNotAppliedText,
+} from "@recurring/managedTermsUpdateModel";
+
+import {
   CLI_TERMS_UPDATE,
   CLI_TERMS_UPDATE_LINKAGE_COLUMNS,
   CLI_TERMS_UPDATE_SECRET,
@@ -44,7 +49,7 @@ import {
 
 import type * as ManagedExchangeRecordModule from "@psi/managed/managedExchangeRecord";
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
-import type { LinkageTerms, Metadata } from "@alcove/core";
+import type { ExchangeSpec, LinkageTerms, Metadata } from "@alcove/core";
 import type {
   ManagedExchangeRecord,
   ManagedTermsChangeWrite,
@@ -435,6 +440,111 @@ describe("applying a partner's terms update", () => {
     expect(applied.exchangeFile.expectedPartnerDeduplicate).toBe(
       update.linkageTerms.deduplicate,
     );
+  });
+
+  /** An update from Agency A stating `terms`, under the exchange's secret. */
+  async function updateStating(terms: LinkageTerms): Promise<string> {
+    return encodeTermsUpdate(
+      termsUpdateFor(terms, undefined),
+      CLI_TERMS_UPDATE_SECRET,
+    );
+  }
+
+  /** Agency B's stored exchange, with its document's own blocks replaced. */
+  async function agencyBRecordHolding(
+    own: Pick<ExchangeSpec, "metadata" | "standardization">,
+  ): Promise<RunnableManagedExchangeRecord> {
+    const agencyB = await agencyBRecord();
+    const record = runnableManagedExchangeOrRefuse({
+      ...agencyB,
+      exchangeFile: { ...agencyB.exchangeFile, ...own },
+    });
+    storedBytes.set(record.id, JSON.stringify(record));
+    return record;
+  }
+
+  /** Agency B cleans its own first names before matching on them. */
+  const FIRST_NAME_STANDARDIZATION = [
+    { output: "first_name", input: "first_name" },
+  ];
+
+  test.each<{
+    rule: string;
+    own: () => Pick<ExchangeSpec, "metadata" | "standardization">;
+    partnerTerms: () => LinkageTerms;
+    cause: RegExp;
+  }>([
+    {
+      rule: "count-only transmitting a column",
+      own: () => ({
+        metadata: [
+          ...inferMetadata(CLI_TERMS_UPDATE_LINKAGE_COLUMNS, []),
+          { name: "county", type: "other", role: "payload", isPayload: true },
+        ],
+      }),
+      partnerTerms: () => ({
+        ...OWN_TERMS,
+        algorithm: "psi-c",
+        linkageKeys: OWN_TERMS.linkageKeys.slice(0, 1),
+        output: { expectsOutput: false, shareWithPartner: false },
+      }),
+      cause: /count-only/,
+    },
+    {
+      rule: "standardization not matching the terms",
+      own: () => ({ standardization: FIRST_NAME_STANDARDIZATION }),
+      partnerTerms: () => ({
+        ...OWN_TERMS,
+        linkageFields: OWN_TERMS.linkageFields.filter(
+          ({ name }) => name !== "first_name",
+        ),
+        linkageKeys: OWN_TERMS.linkageKeys.slice(0, 1),
+      }),
+      cause: /standardization output "first_name" does not match/,
+    },
+  ])(
+    "refuses at Check an update a run would refuse ($rule), naming the rule, and writes nothing",
+    async ({ own, partnerTerms, cause }) => {
+      const record = await agencyBRecordHolding(own());
+      const before = storedBytes.get(record.id);
+      const update = await updateStating(partnerTerms());
+
+      const error: unknown = await readManagedTermsUpdate(record, update).then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(ManagedTermsUpdateNotAppliedError);
+      const refused = error as ManagedTermsUpdateNotAppliedError;
+      expect(refused.refusal).toBe("not-runnable");
+      expect(refused.cause).toBeInstanceOf(UsageError);
+      const rule = (refused.cause as UsageError).message;
+      expect(rule).toMatch(cause);
+      expect(termsUpdateNotAppliedText(error)).toBe(
+        `${TERMS_UPDATE_NOT_APPLIED_TEXT["not-runnable"]} The rule the terms ` +
+          `break: ${rule}`,
+      );
+      expect(
+        await refusalOf(
+          applyManagedTermsUpdate(record.id, unreadUpdate(update)),
+        ),
+      ).toBe("not-runnable");
+      expect(storedBytes.get(record.id)).toBe(before);
+    },
+  );
+
+  test("applies an update a run holding this party's own standardization accepts", async () => {
+    const record = await agencyBRecordHolding({
+      standardization: FIRST_NAME_STANDARDIZATION,
+    });
+    const applied = await applyManagedTermsUpdate(
+      record.id,
+      await readManagedTermsUpdate(record, CLI_TERMS_UPDATE),
+    );
+    expect(storedRecord(record.id)).toEqual(applied);
+    expect(applied.exchangeFile.standardization).toEqual(
+      FIRST_NAME_STANDARDIZATION,
+    );
+    expect(applied.exchangeFile.linkageTerms.identity).toBe("Agency B");
   });
 
   test("refuses as not applicable where the apply write refuses the terms", async () => {

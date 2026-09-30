@@ -1,6 +1,7 @@
 import type { Argv, Arguments } from "yargs";
 
 import {
+  assertTermsRunnable,
   encodeTermsUpdate,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
@@ -14,7 +15,6 @@ import {
   replacedPayloadSendWarning,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { assertConfigTermsRunnable } from "../configTermsGuards";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
 import { resolveTermsUpdateIdentity } from "../partyIdentity";
@@ -81,7 +81,7 @@ export async function handler(argv: Arguments): Promise<void> {
         "author-fresh-terms",
       );
       resolveTermsUpdateIdentity(terms.identity, configPath);
-      assertConfigTermsRunnable(terms, source);
+      assertTermsRunnable(terms, source);
       const sharedSecret = readPartnershipSecret(keyPath);
 
       // Without metadata the columns are known only from the input file, which

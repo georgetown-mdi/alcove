@@ -1788,14 +1788,14 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
   here, and refused, naming what is wrong, when it is not a whole terms
   update, when it was made for a different exchange or under a secret a run
   has since replaced, when its content was changed after it was made, when it
-  was made from your own terms rather than your partner's, or when it changes
-  terms this exchange cannot take on here, such as the columns used to match.
-  The checks `alcove apply` makes on whether a configuration can run under the
-  new terms (a count-only run sending no column, standardization matching the
-  terms, an implemented algorithm and fan-out, transforms that compile) are
-  not made here; a run under terms this exchange cannot run stops before it
-  sends anything. An update that passes shows its change in the sections a run
-  shows (see
+  was made from your own terms rather than your partner's, when it changes
+  terms this exchange cannot take on here, such as the columns used to match,
+  or when a run under the new terms would stop before it sent anything. That
+  last check is the one `alcove apply` makes -- a count-only run sending no
+  column, standardization matching the terms, an implemented algorithm,
+  deduplication and fan-out, transforms that compile -- and the refusal names
+  the rule in the words `alcove apply` uses. An update that passes shows its
+  change in the sections a run shows (see
   [When your partner's terms change](#when-your-partners-terms-change)).
   **Accept** saves your partner's terms to the stored exchange, and the next
   run uses them; **Decline** leaves the exchange as it is. A refused update

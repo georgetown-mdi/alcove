@@ -8,6 +8,7 @@
 import {
   TermsUpdateRefusedError,
   UsageError,
+  assertTermsRunnable,
   compareTerms,
   decodeTermsUpdate,
   encodeTermsUpdate,
@@ -135,6 +136,9 @@ export async function makeManagedTermsUpdate(
  *   it, so it was made from this exchange's own terms (`alcove apply`'s
  *   identity check).
  * - `not-applicable`: the stored exchange cannot hold its terms.
+ * - `not-runnable`: the stored exchange can hold its terms, but a run under
+ *   them would refuse before it sends anything (core's `assertTermsRunnable`,
+ *   the check `alcove apply` makes); the error's `cause` names the rule.
  * - `changed`: the stored exchange changed after the update was read, so the
  *   change shown is not the one applying it would make.
  */
@@ -143,13 +147,20 @@ export type ManagedTermsUpdateApplyRefusal =
   | TermsUpdateCheck
   | "own-terms"
   | "not-applicable"
+  | "not-runnable"
   | "changed";
 
 /** Raised when a partner's terms update is refused, naming the reason;
  * nothing is written. */
 export class ManagedTermsUpdateNotAppliedError extends Error {
-  constructor(readonly refusal: ManagedTermsUpdateApplyRefusal) {
-    super(`the terms update was not applied to this exchange: ${refusal}`);
+  constructor(
+    readonly refusal: ManagedTermsUpdateApplyRefusal,
+    options?: { cause: unknown },
+  ) {
+    super(
+      `the terms update was not applied to this exchange: ${refusal}`,
+      options,
+    );
     this.name = "ManagedTermsUpdateNotAppliedError";
   }
 }
@@ -182,11 +193,27 @@ async function checkedTermsUpdate(
   const { exchangeFile } = record;
   if (update.linkageTerms.identity === exchangeFile.linkageTerms.identity)
     throw new ManagedTermsUpdateNotAppliedError("own-terms");
+  let applied: ManagedExchangeRecord;
   try {
-    applyManagedExchangeTermsChange(record, { scope: "update", update });
+    applied = applyManagedExchangeTermsChange(record, {
+      scope: "update",
+      update,
+    });
   } catch (error) {
     if (error instanceof UsageError || error instanceof ZodError)
       throw new ManagedTermsUpdateNotAppliedError("not-applicable");
+    throw error;
+  }
+  try {
+    assertTermsRunnable(
+      applied.exchangeFile.linkageTerms,
+      applied.exchangeFile,
+    );
+  } catch (error) {
+    if (error instanceof UsageError)
+      throw new ManagedTermsUpdateNotAppliedError("not-runnable", {
+        cause: error,
+      });
     throw error;
   }
   const { delta } = compareTerms(
@@ -203,8 +230,8 @@ async function checkedTermsUpdate(
  * Read a partner's terms update for `record`, as `alcove apply` checks one:
  * refused as {@link managedTermsUpdateRefusal} decides, with a run in flight
  * read from the run lock; decoded under the record's shared secret; refused
- * where it names this party's own identity or the exchange cannot hold its
- * terms. Nothing is written.
+ * where it names this party's own identity, the exchange cannot hold its
+ * terms, or a run under them would refuse. Nothing is written.
  *
  * @throws {ManagedTermsUpdateNotAppliedError} where it is refused.
  */
