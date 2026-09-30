@@ -232,6 +232,27 @@ describe("the unattended fill notice", () => {
     );
   });
 
+  test("shows a double quote inside a column name escaped, so the name stays one quoted column", () => {
+    expect(payloadReceiveTakenNotice(['x", "injected'], undefined)).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "x\\", \\"injected". They were not ' +
+        "written to any configuration.",
+    );
+  });
+
+  test("redacts a dangling private-key marker within its own column name, keeping the names after it", () => {
+    expect(
+      payloadReceiveTakenNotice(
+        ["-----BEGIN OPENSSH PRIVATE KEY-----abc", "after"],
+        undefined,
+      ),
+    ).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "[redacted private key]", "after". ' +
+        "They were not written to any configuration.",
+    );
+  });
+
   test("cuts many long partner column names short, keeping the whole line within the warning cap and the configuration it names", () => {
     const columns = Array.from(
       { length: 200 },

@@ -350,9 +350,12 @@ export function payloadReceiveFillConfirmation(params: {
  * partner declares, in place of {@link payloadReceiveFillConfirmation}'s
  * question: each column taken, and the configuration `recordedIn` it was
  * written to as `payload.receive`, or that it was written to none. The
- * column names are the partner's and are escaped here, cut short so the whole
- * line stays within `WARNING_MESSAGE_MAX_DISPLAY_LENGTH`; the path is the
- * operator's.
+ * column names are the partner's: each is redacted and escaped on its own, so
+ * a dangling private-key marker in one name cannot consume the names after
+ * it, and a double quote inside a name is shown as `\"` so it cannot fake the
+ * end of the quoted name. The list is cut at a name boundary, never inside an
+ * escape, so the whole line stays within `WARNING_MESSAGE_MAX_DISPLAY_LENGTH`;
+ * the path is the operator's.
  */
 export function payloadReceiveTakenNotice(
   columns: readonly string[],
@@ -366,16 +369,21 @@ export function payloadReceiveTakenNotice(
       : `. They were written to ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(recordedIn),
         )} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
-  const taken = redactAndSanitizeForDisplay(
-    columns.map((name) => `"${name}"`).join(", "),
-    {
-      maxLength:
-        WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
-        heading.length -
-        tail.length -
-        DISPLAY_TRUNCATION_MARKER.length,
-    },
-  );
+  const budget =
+    WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
+    heading.length -
+    tail.length -
+    DISPLAY_TRUNCATION_MARKER.length;
+  let taken = "";
+  for (const name of columns) {
+    const quoted = `"${redactAndSanitizeForDisplay(name).replaceAll('"', '\\"')}"`;
+    const next = taken === "" ? quoted : `${taken}, ${quoted}`;
+    if (next.length > budget) {
+      taken += DISPLAY_TRUNCATION_MARKER;
+      break;
+    }
+    taken = next;
+  }
   return `${heading}${taken}${tail}`;
 }
 
