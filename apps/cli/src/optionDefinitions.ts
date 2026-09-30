@@ -452,6 +452,15 @@ export function addCommonBootstrapOptions(
         "https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
         "spec/CLI_EVENTS.md",
     })
+    .option("allow-memory-shortfall", {
+      type: "boolean",
+      describe:
+        "run an exchange whose PSI round needs more memory than this process " +
+        "has, with a warning, instead of refusing it before connecting. The " +
+        "run may then run out of memory partway through. On invite and " +
+        "accept it applies to every form that runs an exchange and has no " +
+        "effect on one that only writes files",
+    })
     .option("lockless-rendezvous", {
       type: "boolean",
       describe:
@@ -569,6 +578,11 @@ export interface CommonBootstrapOptions {
   // Opt-in NDJSON machine-interface stream on fd 3 (see eventStream.ts). A
   // boolean toggle; when absent nothing is ever written to fd 3.
   eventStream: boolean;
+  /**
+   * `--allow-memory-shortfall`: warn rather than refuse a run whose PSI round
+   * needs more memory than the process has.
+   */
+  allowMemoryShortfall?: boolean;
   logLevel: logLibrary.LogLevelNumbers;
   logFile?: string;
   verbosity: number;
@@ -649,6 +663,7 @@ export function parseCommonBootstrapArgs(
     // Boolean toggle: a repeat is valid (last-one-wins), so read it directly.
     // yargs yields true only when --event-stream is passed; default off.
     eventStream: argv["event-stream"] === true,
+    allowMemoryShortfall: argv["allow-memory-shortfall"] === true,
     logLevel,
     logFile: singleValue(argv, "log-file") as string | undefined,
     verbosity: (argv["verbose"] as number | undefined) ?? 0,

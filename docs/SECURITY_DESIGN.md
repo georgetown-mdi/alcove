@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-09-29"
+last_reviewed: "2026-09-30"
 ---
 
 # Alcove security
@@ -466,7 +466,7 @@ Alcove uses the identifying fields only to compute the intersection: it does not
 
 **Third parties.** No PII is transmitted to any third party. The peer-coordination server used by the web application's WebRTC channel sees only connection metadata (peer IDs) and has no visibility into data-channel traffic (see [Channel security](#channel-security)). The hosted web application is served through Cloudflare, which terminates its public TLS session and sees the delivery metadata it forwards -- client addresses, requested paths, and the application's own pages and signaling traffic -- rather than exchange content. SFTP and file-drop channels use operator-managed infrastructure.
 
-**Logging.** Alcove does not write PII to log output. Operational logging is limited to non-sensitive metadata: the runtime resource ceilings logged once per exchange (Node version, host memory, the V8 heap limit, and any container memory limit), exchange timing, transport errors, and protocol state transitions. Review log output before forwarding it to a third-party logging service.
+**Logging.** Alcove does not write PII to log output. Operational logging is limited to non-sensitive metadata: the runtime resource ceilings logged once per exchange (Node version, host memory, the V8 heap limits, and any container memory limit) and the memory this party's record count needs, exchange timing, transport errors, and protocol state transitions. Review log output before forwarding it to a third-party logging service.
 
 **Output.** The output each party writes pairs its own row identifier (a database identifier from its input, or the row index when it has none) with the matched partner records and the payload columns the partner disclosed. The identifying fields used for linkage are not part of it, unless the operator sets [`include_own_columns: all`](EXCHANGE_REFERENCE.md#include_own_columns), which writes every column of the party's own input, linkage fields included; that is the operator's own data, chosen by opt-in. Each party joins its identifier column back against its dataset to recover the matched rows, and handles the written output under its applicable data governance policies.
 

@@ -110,6 +110,7 @@ export const WARNING_SOURCES = [
   "terminatedRunRecord",
   "persistenceLoss",
   "logFileLoss",
+  "memoryShortfall",
 ] as const;
 
 /** One {@link WARNING_SOURCES} value; see that list. */

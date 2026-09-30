@@ -14,6 +14,8 @@ import {
 } from "@alcove/core";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
+import { raisePsiWorkerHeapLimit } from "./psiMemoryBudget";
+
 // The host side of the CLI's PSI worker: it spawns the
 // worker_threads worker that runs the masking off the event-loop-owning thread and
 // exposes it as a PsiEngine, so a long round does not starve the SFTP heartbeat or
@@ -31,6 +33,29 @@ function resolveWorkerEntry(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Whether {@link createPsiEngine} runs the PSI engine in a worker (the shipped
+ * CLI) rather than on this thread (dev, tests): the worker runs under the
+ * raised heap limit ({@link raisePsiWorkerHeapLimit}), this thread under the
+ * process's own.
+ */
+export function psiEngineRunsInWorker(): boolean {
+  return resolveWorkerEntry() !== undefined;
+}
+
+/**
+ * Start the PSI worker thread at `entry`, seeded with `init`, under the raised
+ * heap limit.
+ * @internal
+ */
+export function startPsiWorkerThread(
+  entry: string,
+  init: PsiWorkerInit,
+): Worker {
+  raisePsiWorkerHeapLimit();
+  return new Worker(entry, { workerData: init });
 }
 
 /**
@@ -122,7 +147,7 @@ function spawnWorkerPsiEngine(
   // The worker exposes gc() for the single-pass memory relief itself, at startup
   // (see psiWorker.worker.ts): --expose-gc cannot be passed through a worker's
   // execArgv (Node rejects it), so nothing gc-related is set here.
-  const worker = new Worker(entry, { workerData: init });
+  const worker = startPsiWorkerThread(entry, init);
   // The worker is not unref'd: while crypto is in flight the process must stay
   // alive, exactly as the synchronous masking kept it. dispose() (driven by the
   // exchange's teardown finally) calls terminate(), which releases the process

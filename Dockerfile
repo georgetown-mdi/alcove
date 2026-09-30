@@ -250,6 +250,7 @@ WORKDIR /work
 # allocation peak at the phase boundaries (relieveTransientMemory in
 # packages/core/src/link.ts), lowering the receiver's peak RSS; a no-op for every
 # other command. Node consumes the flag, so it does not reach the CLI's argv. The
-# entrypoint script applies this flag to the CLI role and dispatches `serve` to
-# the web server; see docker-entrypoint.sh.
+# entrypoint script applies this flag, and the PSI engine's heap ceiling
+# (docs/spec/FILE_SYNC.md, "Memory a PSI round needs"), to the CLI role and
+# dispatches `serve` to the web server; see docker-entrypoint.sh.
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

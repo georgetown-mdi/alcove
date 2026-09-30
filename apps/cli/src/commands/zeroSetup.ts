@@ -58,6 +58,7 @@ import {
   startModeProvisionAsRead,
   wakeServerThrough,
 } from "../serverProvision";
+import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -82,6 +83,8 @@ import {
 } from "../onlineBootstrap";
 import {
   runProtocol,
+  checkRunMemoryBudget,
+  emitPrepareRefusal,
   warnUndeclaredColumns,
   WEBRTC_RENDEZVOUS_SECRET_REQUIRED,
   type ProtocolConnectionConfig,
@@ -609,6 +612,11 @@ function unsavedBootstrapNotice(params: {
 }
 
 export async function handler(argv: Arguments): Promise<void> {
+  // A URL and an input file: fewer is a usage error, which needs no restart.
+  if (argv._.length >= 2)
+    await restartUnderPsiHeapCeiling({
+      passEventStreamFd: argv["event-stream"] === true,
+    });
   // parseArgs resolves the log level and reads every option, so it runs before
   // the logger exists. parseOrExit reports its usage errors -- a repeated
   // single-value flag or an unrecognized log-level -- on stderr and exits 64,
@@ -622,6 +630,7 @@ export async function handler(argv: Arguments): Promise<void> {
     sweepExchangeFiles,
     forceRetainSweep,
     eventStream,
+    allowMemoryShortfall,
     linkageStrategy,
     deduplicate,
     csvDelimiter,
@@ -748,6 +757,7 @@ export async function handler(argv: Arguments): Promise<void> {
     let prepared: PreparedExchange;
     let eventStreamEmitter: EventStreamEmitter | undefined;
     let undeclaredColumnsWarned: boolean;
+    let memoryBudgetReported: boolean;
     try {
       connection = createConnection(server, options);
       // The quick path asks nothing and requires nothing: `--identity` rides
@@ -798,6 +808,20 @@ export async function handler(argv: Arguments): Promise<void> {
           if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
         },
       });
+      try {
+        checkRunMemoryBudget({
+          prepared,
+          allowMemoryShortfall: allowMemoryShortfall === true,
+          log,
+          emit: (fn) => {
+            if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
+          },
+        });
+        memoryBudgetReported = true;
+      } catch (err) {
+        emitPrepareRefusal(eventStreamEmitter, prepared.rowCount, err);
+        throw err;
+      }
       // Establish first-use SSH host-key trust on the ORIGINAL `connection`
       // (before the clone below), so the pin reaches both the live connect and,
       // under --save, the persisted config. A pinned connection is a no-op; an
@@ -889,6 +913,7 @@ export async function handler(argv: Arguments): Promise<void> {
           logFile,
         }),
         undeclaredColumnsWarned,
+        memoryBudgetReported,
         fileSyncRuntime: {
           sweepExchangeFiles,
           forceRetainSweep,

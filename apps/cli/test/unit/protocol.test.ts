@@ -46,6 +46,18 @@ const mockState = vi.hoisted(() => ({
   // that reads the notice a run states about its own files. Every other test
   // gets the real close and its real outcome.
   expireTeardown: false,
+  // The memory figures the run's budget check reads, for the cases that drive
+  // a shortfall; every other test reads this process's own.
+  memoryReadings: undefined as
+    | {
+        engineHeapLimitBytes: number;
+        engineInWorker: boolean;
+        mainThreadHeapLimitBytes: number;
+        hostBytes: number;
+        containerLimitBytes: number | undefined;
+        heapRaisedByRestart: boolean;
+      }
+    | undefined,
 }));
 
 // Keep FileSyncConnection and authenticateConnection real so the key exchange runs over a
@@ -171,6 +183,17 @@ async function backdateDropDirRendezvousFile(dropDir: string): Promise<void> {
     await new Promise<void>((r) => setTimeout(r, 5));
   }
 }
+
+vi.mock("../../src/psiMemoryBudget", async (importActual) => {
+  const actual =
+    await importActual<typeof import("../../src/psiMemoryBudget")>();
+  return {
+    ...actual,
+    readMemory: (engineInWorker: boolean, heapRaisedByRestart: boolean) =>
+      mockState.memoryReadings ??
+      actual.readMemory(engineInWorker, heapRaisedByRestart),
+  };
+});
 
 // The rotated token's save, real except at one path a test names: the refusal
 // composed there follows a successful handshake, a moment no fault reachable
@@ -503,6 +526,7 @@ beforeEach(() => {
   mockState.teardownGate = undefined;
   mockState.keyFileBeforeRotation = {};
   mockState.expireTeardown = false;
+  mockState.memoryReadings = undefined;
   fs.mkdirSync(dropDir);
 
   fd3Chunks = [];
@@ -4337,6 +4361,120 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
   expect(lines[1].source).toBe("undeclaredColumns");
   expect(lines[1].message).toBe(notice);
   expect(String(lines[3].message)).toContain("expired");
+});
+
+// A container limit of 1 GB, against which a million records -- about 1.45 GB
+// at the measured per-element cost -- are short.
+const SHORT_MEMORY = {
+  engineHeapLimitBytes: 20e9,
+  engineInWorker: true,
+  mainThreadHeapLimitBytes: 20e9,
+  hostBytes: 32e9,
+  containerLimitBytes: 1e9,
+  heapRaisedByRestart: false,
+};
+const SHORT_MEMORY_RECORDS = 1_000_000;
+
+test("preflightRun refuses a run short of memory before any file is written", async () => {
+  mockState.memoryReadings = SHORT_MEMORY;
+  mockFd3Open();
+  try {
+    await expect(
+      preflightRun({
+        connection: { channel: "filedrop", path: dropDir },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
+        prepared: { ...minimalPrepared, rowCount: SHORT_MEMORY_RECORDS },
+        verbosity: -1,
+        loggerName: "test",
+        eventStream: true,
+      }),
+    ).rejects.toThrow(
+      /needs about 1\.45 GB of memory .* has 1\.00 GB \(its container's memory limit\).*--allow-memory-shortfall/,
+    );
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+  expect(fs.readdirSync(dropDir)).toEqual([]);
+  expect(mockState.infos.filter((m) => m.startsWith("memory: "))).toHaveLength(
+    1,
+  );
+  const lines = takeFd3Lines();
+  expect(lines.map((l) => l.type)).toEqual(["metrics", "error"]);
+  expect(String(lines[1].message)).toContain("--allow-memory-shortfall");
+});
+
+test("--allow-memory-shortfall turns the refusal into a warning on both channels", async () => {
+  mockState.memoryReadings = SHORT_MEMORY;
+  mockFd3Open();
+  let result: Awaited<ReturnType<typeof preflightRun>>;
+  try {
+    result = await preflightRun({
+      connection: { channel: "filedrop", path: dropDir },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
+      prepared: { ...minimalPrepared, rowCount: SHORT_MEMORY_RECORDS },
+      verbosity: -1,
+      loggerName: "test",
+      eventStream: true,
+      allowMemoryShortfall: true,
+    });
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+  }
+  expect(result.memoryBudgetReported).toBe(true);
+  const warning = mockState.warnings.find((m) =>
+    m.startsWith("running with --allow-memory-shortfall: "),
+  );
+  expect(warning).toMatch(/needs about 1\.45 GB .* has 1\.00 GB/);
+  expect(mockState.infos.filter((m) => m.startsWith("memory: "))).toHaveLength(
+    1,
+  );
+  const lines = takeFd3Lines();
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toMatchObject({
+    type: "warning",
+    source: "memoryShortfall",
+    message: warning,
+  });
+});
+
+test("runProtocol with no preflight refuses a run short of memory before any file is written", async () => {
+  mockState.memoryReadings = SHORT_MEMORY;
+  await expect(
+    runProtocol({
+      connection: { channel: "filedrop", path: dropDir },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
+      prepared: { ...minimalPrepared, rowCount: SHORT_MEMORY_RECORDS },
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test",
+      recordOutput: undefined,
+    }),
+  ).rejects.toThrow(/--allow-memory-shortfall/);
+  expect(fs.readdirSync(dropDir)).toEqual([]);
+});
+
+test("a run whose preflight reported its memory does not report it again", async () => {
+  mockState.memoryReadings = SHORT_MEMORY;
+  // memoryBudgetReported stands for a preflight that already decided the
+  // run, so runProtocol neither logs the statement nor refuses a second time;
+  // the run then fails for want of a partner, not for memory.
+  await expect(
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: { pollIntervalMs: 1, peerTimeoutMs: 50 },
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
+      prepared: { ...minimalPrepared, rowCount: SHORT_MEMORY_RECORDS },
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test",
+      recordOutput: undefined,
+      memoryBudgetReported: true,
+    }),
+  ).rejects.not.toThrow(/--allow-memory-shortfall/);
+  expect(mockState.infos.filter((m) => m.startsWith("memory: "))).toEqual([]);
 });
 
 /**

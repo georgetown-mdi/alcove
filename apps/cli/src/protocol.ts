@@ -91,7 +91,9 @@ import {
   withFirstRoundCountDisplay,
   type PsiProgressDisplay,
 } from "./psiProgressDisplay";
-import { createPsiEngine } from "./psiWorkerHost";
+import { restartedForPsiHeap } from "./psiHeapRestart";
+import { checkPsiMemoryBudget, readMemory } from "./psiMemoryBudget";
+import { createPsiEngine, psiEngineRunsInWorker } from "./psiWorkerHost";
 import { writeExchangeRecord, type RecordOutput } from "./recordFile";
 import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
 import {
@@ -1766,11 +1768,39 @@ export function warnUndeclaredColumns(params: {
 }
 
 /**
+ * Log the memory a PSI round over this party's input needs against what the
+ * process has, and refuse the run when the need is over it -- or, under
+ * `--allow-memory-shortfall`, warn on stderr and the machine-interface stream
+ * and continue. Decided from local inputs alone, so it runs before any
+ * network contact. A caller that runs it passes `memoryBudgetReported` to
+ * `runProtocol` so a later pass of the same run does not repeat it.
+ */
+export function checkRunMemoryBudget(params: {
+  prepared: Pick<PreparedExchange, "rowCount">;
+  allowMemoryShortfall: boolean;
+  log: ReturnType<typeof getLogger>;
+  emit: (fn: (e: EventStreamEmitter) => void) => void;
+}): void {
+  const { prepared, allowMemoryShortfall, log, emit } = params;
+  checkPsiMemoryBudget({
+    records: prepared.rowCount,
+    allowShortfall: allowMemoryShortfall,
+    readings: readMemory(psiEngineRunsInWorker(), restartedForPsiHeap()),
+    log,
+    onShortfallWarning: (message) => {
+      log.warn(message);
+      emit((e) => e.warning("memoryShortfall", message));
+    },
+  });
+}
+
+/**
  * The run's refusals decided from local inputs alone: the shared secret's
  * readiness and its key-file path, the first round's size against one message
- * on the channel, and on webrtc the rendezvous resolution. None of them
- * contacts the network, so {@link preflightRun} runs them ahead of a
- * command's own first network contact as well.
+ * on the channel, the memory the round needs ({@link checkRunMemoryBudget},
+ * skipped when `memoryBudgetReported`), and on webrtc the rendezvous
+ * resolution. None of them contacts the network, so {@link preflightRun}
+ * runs them ahead of a command's own first network contact as well.
  */
 async function checkRunLocalInputs(params: {
   connection: ProtocolConnectionConfig;
@@ -1778,9 +1808,22 @@ async function checkRunLocalInputs(params: {
   auth: AuthPersist | null;
   verbosity: number;
   logFile: string | undefined;
+  allowMemoryShortfall: boolean;
+  memoryBudgetReported: boolean;
   log: ReturnType<typeof getLogger>;
+  emit: (fn: (e: EventStreamEmitter) => void) => void;
 }): Promise<RunLocalInputs> {
-  const { connection, prepared, auth, verbosity, logFile, log } = params;
+  const {
+    connection,
+    prepared,
+    auth,
+    verbosity,
+    logFile,
+    allowMemoryShortfall,
+    memoryBudgetReported,
+    log,
+    emit,
+  } = params;
   let trimmedKeyFilePath: string | undefined;
   if (auth) {
     // Fail fast on the locally-knowable secret preconditions -- a malformed
@@ -1805,6 +1848,8 @@ async function checkRunLocalInputs(params: {
   await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
     assertFirstRoundFits(connection, prepared, report),
   );
+  if (!memoryBudgetReported)
+    checkRunMemoryBudget({ prepared, allowMemoryShortfall, log, emit });
   if (connection.channel !== "webrtc") return { trimmedKeyFilePath };
   // Resolve the rendezvous -- broker location, ICE servers, role, and the
   // secret both ids derive from -- here rather than at the dial, so a
@@ -1844,6 +1889,21 @@ function emitRunMetrics(
   );
 }
 
+/**
+ * Report a refusal raised before the run's first network contact on the
+ * machine-interface stream, as {@link preflightRun} does its own: the counter
+ * summary, then the terminal `error` event in the "prepare" phase. For a
+ * command that opens the stream itself and runs no `preflightRun`.
+ */
+export function emitPrepareRefusal(
+  eventStream: EventStreamEmitter | undefined,
+  rowCount: number,
+  err: unknown,
+): void {
+  emitRunMetrics(eventStream, rowCount, undefined);
+  eventStream?.error(err, "prepare");
+}
+
 /** What {@link preflightRun} resolves with. */
 export interface PreflightRunResult {
   /** The opened machine-interface stream; `undefined` when not requested. */
@@ -1862,6 +1922,13 @@ export interface PreflightRunResult {
    * repeat it.
    */
   undeclaredColumnsWarned: boolean;
+  /**
+   * Whether this preflight already logged the run's memory statement
+   * ({@link checkRunMemoryBudget}). The caller passes it back to
+   * `runProtocol` (`memoryBudgetReported`) so `prepareTransport`'s own pass
+   * does not repeat it.
+   */
+  memoryBudgetReported: boolean;
 }
 
 /**
@@ -1893,6 +1960,8 @@ export async function preflightRun(options: {
   loggerName: string;
   logFile?: string;
   eventStream: boolean | undefined;
+  /** `--allow-memory-shortfall`: warn rather than refuse a memory shortfall. */
+  allowMemoryShortfall?: boolean;
 }): Promise<PreflightRunResult> {
   const {
     connection,
@@ -1903,6 +1972,7 @@ export async function preflightRun(options: {
     verbosity,
     loggerName,
     logFile,
+    allowMemoryShortfall = false,
   } = options;
   const eventStream = openEventStream(options.eventStream);
   const emit = (fn: (e: EventStreamEmitter) => void): void => {
@@ -1929,14 +1999,21 @@ export async function preflightRun(options: {
       auth,
       verbosity,
       logFile,
+      allowMemoryShortfall,
+      memoryBudgetReported: false,
       log,
+      emit,
     });
   } catch (err) {
-    emitRunMetrics(eventStream, prepared.rowCount, undefined);
-    eventStream?.error(err, "prepare");
+    emitPrepareRefusal(eventStream, prepared.rowCount, err);
     throw err;
   }
-  return { eventStream, signingWithoutRecordWarned, undeclaredColumnsWarned };
+  return {
+    eventStream,
+    signingWithoutRecordWarned,
+    undeclaredColumnsWarned,
+    memoryBudgetReported: true,
+  };
 }
 
 /**
@@ -1973,6 +2050,8 @@ async function prepareTransport(
     recordOutput: RecordOutput | undefined;
     signingWithoutRecordWarned: boolean;
     undeclaredColumnsWarned: boolean;
+    allowMemoryShortfall: boolean;
+    memoryBudgetReported: boolean;
     verbosity: number;
     logFile: string | undefined;
     fileSyncRuntime: FileSyncRuntimeOptions;
@@ -1990,6 +2069,8 @@ async function prepareTransport(
     recordOutput,
     signingWithoutRecordWarned,
     undeclaredColumnsWarned,
+    allowMemoryShortfall,
+    memoryBudgetReported,
     verbosity,
     logFile,
     fileSyncRuntime,
@@ -2080,7 +2161,10 @@ async function prepareTransport(
     auth,
     verbosity,
     logFile,
+    allowMemoryShortfall,
+    memoryBudgetReported,
     log,
+    emit,
   });
   build.trimmedKeyFilePath = checked.trimmedKeyFilePath;
   if (connection.channel === "webrtc") {
@@ -2467,6 +2551,8 @@ async function writeExchangeOutputs(params: {
   return everyArtifactOnDisk;
 }
 
+const REPEATED_SIGNAL_DELIVERY_MS = 500;
+
 /**
  * The one argument {@link runProtocol} takes. Every field it needs is named
  * here rather than passed by position, so a caller supplying only some of the
@@ -2563,6 +2649,19 @@ export interface RunProtocolOptions {
    * repeat it. Omit when the caller did neither.
    */
   undeclaredColumnsWarned?: boolean;
+  /**
+   * `--allow-memory-shortfall`: warn rather than refuse a run whose PSI round
+   * needs more memory than the process has ({@link checkRunMemoryBudget}).
+   */
+  allowMemoryShortfall?: boolean;
+  /**
+   * Whether the caller already ran {@link checkRunMemoryBudget} for this run,
+   * through {@link preflightRun}
+   * ({@link PreflightRunResult.memoryBudgetReported}) or its own call, so
+   * `runProtocol`'s own pass does not repeat it. Omit when the caller did
+   * neither.
+   */
+  memoryBudgetReported?: boolean;
 }
 
 /**
@@ -2656,6 +2755,8 @@ export async function runProtocol(
     onTermsChange,
     signingWithoutRecordWarned = false,
     undeclaredColumnsWarned = false,
+    allowMemoryShortfall = false,
+    memoryBudgetReported = false,
   } = options;
   const log = getLogger(loggerName);
 
@@ -2731,6 +2832,8 @@ export async function runProtocol(
       recordOutput,
       signingWithoutRecordWarned,
       undeclaredColumnsWarned,
+      allowMemoryShortfall,
+      memoryBudgetReported,
       verbosity,
       logFile,
       fileSyncRuntime,
@@ -2776,6 +2879,23 @@ export async function runProtocol(
   // Aborted only from a signal handler; ordinary teardown is doCleanup's own
   // closes.
   const interrupted = new AbortController();
+  // In a process restarted for the PSI heap, a terminal's Ctrl-C (or a
+  // supervisor signalling the process group) reaches both it and its parent,
+  // which forwards the signal: the same signal again within
+  // REPEATED_SIGNAL_DELIVERY_MS is that one interrupt delivered twice, and must
+  // not cut the first one's cleanup short. Elsewhere a repeat ends the process.
+  const dedupeSignals = restartedForPsiHeap();
+  const firstDeliveryAt = new Map<NodeJS.Signals, number>();
+  function isRepeatedDelivery(signal: NodeJS.Signals): boolean {
+    if (!dedupeSignals) return false;
+    const now = performance.now();
+    const first = firstDeliveryAt.get(signal);
+    if (first === undefined) {
+      firstDeliveryAt.set(signal, now);
+      return false;
+    }
+    return now - first < REPEATED_SIGNAL_DELIVERY_MS;
+  }
   async function doCleanup() {
     if (cleaned) return;
     cleaned = true;
@@ -2852,6 +2972,7 @@ export async function runProtocol(
     }
   }
   async function onSigint(): Promise<void> {
+    if (isRepeatedDelivery("SIGINT")) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGINT";
@@ -2879,6 +3000,7 @@ export async function runProtocol(
     }
   }
   async function onSigterm(): Promise<void> {
+    if (isRepeatedDelivery("SIGTERM")) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGTERM";
