@@ -1049,9 +1049,9 @@ export interface ManagedExchangeRotation {
   /** The restamped bound to set, or `null` to clear any standing bound. */
   expires: string | null;
   /** The pending relay registration to store: the instant of the rotation,
-   * on a record that names a relay registrar. Absent, a record naming a
-   * registrar keeps the pending registration it held and one naming none
-   * stores none ({@link pendingRelayRegistrationAfterRotation}). */
+   * on a record that names a relay registrar. Absent, the record keeps the
+   * pending registration it held
+   * ({@link pendingRelayRegistrationAfterRotation}). */
   relayRegistrationPendingSince?: string;
   /** Why the pending registration cannot be confirmed by a run, stored with
    * {@link relayRegistrationPendingSince}: a re-invite's. */
@@ -1070,10 +1070,10 @@ interface PendingRelayRegistration {
 
 /**
  * The pending relay registration a rotation write leaves: the one the
- * rotation states; else, on a record that names a registrar, the one the
- * record held, since a rotation confirms nothing; else none. A reason the
- * record held is kept with the marker, since no rotation recovers the key the
- * registrar holds.
+ * rotation states, else the one the record held, since a rotation confirms
+ * nothing -- on a record naming no registrar only an enrollment does. A
+ * reason the record held is kept with the marker, since no rotation recovers
+ * the key the registrar holds.
  */
 function pendingRelayRegistrationAfterRotation(
   record: RunnableManagedExchangeRecord,
@@ -1081,9 +1081,7 @@ function pendingRelayRegistrationAfterRotation(
 ): PendingRelayRegistration | undefined {
   const since =
     rotation.relayRegistrationPendingSince ??
-    (record.relayRegistrar === undefined
-      ? undefined
-      : record.relayRegistrationPendingSince);
+    record.relayRegistrationPendingSince;
   if (since === undefined) return undefined;
   const reason =
     rotation.relayRegistrationPendingReason ??

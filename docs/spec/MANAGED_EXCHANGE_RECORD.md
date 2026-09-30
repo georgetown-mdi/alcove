@@ -1382,10 +1382,9 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   file's marker carried in replaces both.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
-  rotated since unchanged; by an enrollment; by stopping registration; and,
-  on a record naming no registrar, by a rotation write that carries none in.
-  No other write removes it: on a record naming a registrar, a rotation write
-  sets or keeps it, and a revive keeps it on any record.
+  rotated since unchanged; by an enrollment; and by stopping registration.
+  No other write removes it: a rotation write sets or keeps it, and a revive
+  keeps it, on a record naming a registrar or none.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
   partner. With no reason, it registers the current key again, signed under
@@ -1410,8 +1409,7 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   had a registrar configured, so its absence keeps the stored marker, on a
   record naming a registrar or none. The re-take of a pair whose secret
   differs is a rotation write (`decideRetake`): the key file's
-  marker when it holds one, else the stored one where the record names a
-  registrar. A marker carried in is kept on a record that names no registrar
+  marker when it holds one, else the stored one. A marker carried in is kept on a record that names no registrar
   -- a fresh import names none -- where no run retries it; the page and the
   list name enrollment, which removes it, having registered the current key
   with the token.

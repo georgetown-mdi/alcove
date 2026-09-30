@@ -338,14 +338,20 @@ describe("the rotation write", () => {
     ).toBe(PENDING_SINCE);
   });
 
-  test("a rotation of a record naming no registrar stores no pending registration", () => {
-    const stored = record({ relayRegistrationPendingSince: PENDING_SINCE });
-    expect(
-      applyManagedExchangeRotation(stored, {
-        sharedSecret: generateSharedSecret(),
-        expires: null,
-      }),
-    ).not.toHaveProperty("relayRegistrationPendingSince");
+  test("a rotation that states none keeps the pending registration and its reason on a record naming no registrar", () => {
+    const stored = record({
+      relayRegistrationPendingSince: PENDING_SINCE,
+      relayRegistrationPendingReason: "reinvite",
+    });
+    const rotation = { sharedSecret: generateSharedSecret(), expires: null };
+    for (const rotated of [
+      applyManagedExchangeRotation(stored, rotation),
+      applyManagedExchangeReinviteRotation(stored, rotation),
+    ]) {
+      expect(rotated.relayRegistrar).toBeUndefined();
+      expect(rotated.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+      expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
+    }
   });
 });
 

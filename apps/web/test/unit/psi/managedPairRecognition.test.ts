@@ -305,7 +305,7 @@ describe("what a re-take checks and writes", () => {
     );
   });
 
-  test("a pair holding no pending relay registration keeps the stored one only where the record names a registrar", () => {
+  test("a pair holding no pending relay registration keeps the stored one, whether or not the record names a registrar", () => {
     const pending = {
       ...runnable(),
       relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
@@ -319,14 +319,16 @@ describe("what a re-take checks and writes", () => {
     };
 
     const kept = decideRetake(enrolled, runnable());
-    const dropped = decideRetake(pending, runnable());
+    const keptUnenrolled = decideRetake(pending, runnable());
 
-    if (kept.kind !== "retake" || dropped.kind !== "retake")
+    if (kept.kind !== "retake" || keptUnenrolled.kind !== "retake")
       throw new Error("expected a re-take");
     expect(kept.record.relayRegistrationPendingSince).toBe(
       "2026-08-01T00:00:00.000Z",
     );
-    expect(dropped.record).not.toHaveProperty("relayRegistrationPendingSince");
+    expect(keptUnenrolled.record.relayRegistrationPendingSince).toBe(
+      "2026-08-01T00:00:00.000Z",
+    );
   });
 
   test("no pair, or one holding the stored secret, leaves the record as it was", () => {
