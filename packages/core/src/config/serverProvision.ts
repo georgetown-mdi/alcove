@@ -28,11 +28,10 @@ import {
   MAX_ENDPOINT_PATH_LENGTH,
 } from "./invitation.js";
 import type {
-  ConnectionConfig,
-  SFTPConnectionConfig,
+  ConnectionConfigAwaitingAddress,
+  FileDropConnectionConfig,
   ServerProvision,
   ServerProvisionMode,
-  WebRTCConnectionConfig,
 } from "./connection.js";
 
 /** The port a provisioning endpoint is reached on when `port` is unset. */
@@ -141,7 +140,7 @@ export interface CallProvisionEndpointOptions {
  * none or its channel has no primary server.
  */
 export function serverProvisionOf(
-  connection: ConnectionConfig,
+  connection: ConnectionConfigAwaitingAddress,
 ): ServerProvision | undefined {
   switch (connection.channel) {
     case "sftp":
@@ -461,12 +460,12 @@ export async function requestProvisionedServerAddress(
 
 /**
  * The connection with the address a create-mode endpoint returned in place of
- * its own: `host` always, `port` and `path` when the answer states them. The
- * `provision` block is kept, the record the next invitation creates a server
- * from.
+ * its own, or in the place a configuration left empty for it: `host` always,
+ * `port` and `path` when the answer states them. The `provision` block is
+ * kept, the record the next invitation creates a server from.
  */
 export function withProvisionedServerAddress<
-  C extends SFTPConnectionConfig | WebRTCConnectionConfig,
+  C extends Exclude<ConnectionConfigAwaitingAddress, FileDropConnectionConfig>,
 >(connection: C, address: ProvisionedServerAddress): C {
   return {
     ...connection,

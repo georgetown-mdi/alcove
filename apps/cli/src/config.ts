@@ -5,6 +5,7 @@ import type {
   BuiltInLinkageRuleSet,
   CompatibilityMessageFragment,
   ConnectionConfig,
+  ConnectionConfigAwaitingAddress,
   ExchangeSpec,
   LinkageRuleSetReference,
   LinkageSetIdentity,
@@ -14,10 +15,8 @@ import type {
   ProvisionedServerAddress,
   RelayLocator,
   ServerProvision,
-  SFTPConnectionConfig,
   SigningConfig,
   Standardization,
-  WebRTCConnectionConfig,
 } from "@alcove/core";
 import {
   bareTermsValue,
@@ -55,6 +54,7 @@ import {
   resolveLinkageRuleSetCitation,
   ruleSetCitation,
   safeParseConnectionConfig,
+  safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,
   safeParseLinkageTermsTheReaderWrote,
   safeParseMetadataTheReaderWrote,
@@ -2506,6 +2506,18 @@ function readRetainFilesDeclaration(config: Record<string, unknown>): boolean {
   return entry["retain_files"] === true || entry["retainFiles"] === true;
 }
 
+/** A webrtc connection block whose create-mode server may still lack `host`. */
+export type WebRTCConnectionAwaitingAddress = Extract<
+  ConnectionConfigAwaitingAddress,
+  { channel: "webrtc" }
+>;
+
+/** An sftp connection block whose create-mode server may still lack `host`. */
+export type SFTPConnectionAwaitingAddress = Extract<
+  ConnectionConfigAwaitingAddress,
+  { channel: "sftp" }
+>;
+
 /**
  * The connection block of the config at `configPath` when it declares
  * `channel: webrtc`, validated through the connection schema, or `undefined`
@@ -2513,7 +2525,8 @@ function readRetainFilesDeclaration(config: Record<string, unknown>): boolean {
  * connection's coordination server and relay in its invitation. Every other
  * channel's block stays unread, so a placeholder one still mints (see
  * {@link ConfigLinkageSource.retainsFiles}). No `@path` reference is
- * resolved; the invitation takes no credential.
+ * resolved; the invitation takes no credential. A create-mode server may
+ * leave `host` out, which the invite fills from the provisioning endpoint.
  *
  * A webrtc block that fails the schema is a {@link UsageError}: an invitation
  * minted without it would name no coordination server or relay while the
@@ -2521,7 +2534,7 @@ function readRetainFilesDeclaration(config: Record<string, unknown>): boolean {
  */
 export function loadConfigWebRTCConnection(
   configPath: string,
-): WebRTCConnectionConfig | undefined {
+): WebRTCConnectionAwaitingAddress | undefined {
   const connection = loadConfigConnectionBlock(
     configPath,
     (block) => block["channel"] === "webrtc",
@@ -2535,14 +2548,15 @@ export function loadConfigWebRTCConnection(
  * the connection schema, or `undefined` otherwise: an offline `invite` sends a
  * create-mode block's call and names the server it returns in its invitation.
  * An sftp block stating no `provision` stays unread, so a placeholder one still
- * mints. No `@path` reference is resolved.
+ * mints. No `@path` reference is resolved. A create-mode server may leave
+ * `host` out, which the invite fills from the provisioning endpoint.
  *
  * A block that fails the schema is a {@link UsageError}, so a misspelled
  * `mode` is refused rather than minting an invitation that names no server.
  */
 export function loadConfigProvisionedSFTPConnection(
   configPath: string,
-): SFTPConnectionConfig | undefined {
+): SFTPConnectionAwaitingAddress | undefined {
   const connection = loadConfigConnectionBlock(configPath, (block) => {
     if (block["channel"] !== "sftp") return false;
     const server = block["server"];
@@ -2558,7 +2572,7 @@ export function loadConfigProvisionedSFTPConnection(
 function loadConfigConnectionBlock(
   configPath: string,
   wanted: (block: Record<string, unknown>) => boolean,
-): ConnectionConfig | undefined {
+): ConnectionConfigAwaitingAddress | undefined {
   let source: string;
   try {
     source = fs.readFileSync(configPath, "utf8");
@@ -2576,7 +2590,7 @@ function loadConfigConnectionBlock(
   if (connection === null || typeof connection !== "object") return undefined;
   const block = connection as Record<string, unknown>;
   if (!wanted(block)) return undefined;
-  const result = safeParseConnectionConfig(connection);
+  const result = safeParseConnectionConfigAwaitingAddress(connection);
   if (!result.success)
     throw configFileRefusal(
       configPath,

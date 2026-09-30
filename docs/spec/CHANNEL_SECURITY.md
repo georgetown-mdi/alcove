@@ -232,11 +232,15 @@ parsed value must be an object with exactly these keys, any other key refused:
 | `path` | string | no | 1 to `MAX_ENDPOINT_PATH_LENGTH` (4096) UTF-16 code units |
 
 The bounds are the invitation endpoint's own, so an accepted address always
-fits the invitation. The address then replaces `server.host`, and `port` and
-`path` when present, and the result must still pass the connection schema (an
-sftp `path` beside an `inbound_path` does not). A refusal names the endpoint by
-host and port and names the schema field at fault, never a key or value the
-body chose.
+fits the invitation. The address then replaces `server.host`, or fills it
+where a create-mode configuration left it out, and `port` and `path` when
+present, and the result must still pass the connection schema (an sftp `path`
+beside an `inbound_path` does not). A refusal of the body names the endpoint
+by host and port and names the schema field at fault, never a key or value the
+body chose. A refusal by the connection schema, once the body has passed the
+schema above, also names the returned `host` -- the one lead to a server the
+endpoint made and no configuration records -- composed raw into the error and
+escaped where it is displayed, and never the returned `path`.
 
 **Status-to-exit-code classification.** Only the response status is read,
 except for the create-mode body above:
@@ -251,7 +255,8 @@ except for the create-mode body above:
 
 Every failure message names the endpoint by host and port alone
 (`provisionEndpointLabel`) -- never the path, which may hold a token, and
-never the credential.
+never the credential -- apart from the created server's host in the
+connection-schema refusal above.
 
 **When the call runs.** `alcove exchange` sends a start-mode call once
 (`wakeProvisionedServer`), after every refusal decided from local inputs alone
@@ -268,7 +273,13 @@ pinned host key and whose key exchange and terms agreement involve the
 partner. `runProtocol` repeats its local checks before it connects, so an
 input that changes after the call, such as a shared secret expiring in the
 interval, is refused after it. A create-mode block sends nothing at exchange
-time: the run connects to the static fields the invite wrote.
+time: the run connects to the static fields the invite wrote. A create-mode
+`server` stating no `host` has had no invite write one, and the connection
+schema refuses it wherever a configuration is read to connect
+(`UNALLOCATED_SERVER_HOST_MESSAGE`, `packages/core/src/config/connection.ts`),
+so `alcove exchange` and `alcove accept` stop at the configuration load; only
+the invite's own read of the connection block
+(`safeParseConnectionConfigAwaitingAddress`) admits it.
 
 An online `alcove invite` or `alcove accept`, and a zero-setup run, send the
 same start-mode call (`wakeServerThrough`) from the block `--server-provision`

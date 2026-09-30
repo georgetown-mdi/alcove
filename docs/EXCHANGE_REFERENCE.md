@@ -662,7 +662,7 @@ The primary server for the exchange. For WebRTC this is the PeerJS peer coordina
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `host` | string | yes | Hostname or IP address |
+| `host` | string | yes, except beside a create-mode `provision` | Hostname or IP address; a create-mode `server` may leave it out for `alcove invite` to fill (see [On-demand server provisioning](#on-demand-server-provisioning)) |
 | `port` | integer | no | Port number. Alcove passes it on only when set and applies no default of its own, so an unset port takes the default of the underlying SFTP or PeerJS library; the usual defaults (443 for HTTPS/WSS, 22 for SFTP) are unverified against those libraries as of 2026-09-29 |
 | `path` | string | no | URL path for WebRTC signaling; remote working directory (shared mode) for SFTP |
 | `inbound_path` | string | SFTP only | Inbound (peer-written) remote directory for a split-directory exchange; see [`connection.inbound_path` / `connection.outbound_path`](#connectioninbound_path--connectionoutbound_path). Set with `outbound_path`; mutually exclusive with `path`; requires retain mode |
@@ -735,7 +735,6 @@ connection:
 connection:
   channel: sftp
   server:
-    host: pending # replaced by the address the endpoint returns
     username: alice
     private_key: "@~/.ssh/id_ed25519"
     provision:
@@ -746,7 +745,7 @@ connection:
         bearer: "@/run/secrets/provision.key"
 ```
 
-A `server` block requires `host` in both modes, so a create-mode configuration holds a placeholder host until its first invitation replaces it.
+A create-mode `server` may leave `host` out, as above: the first `alcove invite` from the configuration writes the address the endpoint returns. Until then the configuration has no server to connect to, so `alcove exchange` and `alcove accept` refuse it, naming `connection.server.host` and `alcove invite` as the step that fills it. A start-mode `server`, and one with no `provision`, requires `host`.
 
 ##### How `alcove exchange` calls a start-mode endpoint
 
@@ -763,6 +762,11 @@ An offline `alcove invite` from a configuration whose `server` states a create-m
 ```
 
 The invitation names that address, and the invite writes `host` into the configuration's `connection.server`, and `port` and `path` when the answer states them, keeping every other field and the `provision` block. An answer the endpoint's status refuses, or one that is too large, not JSON, or holds a field out of range or any other field, stops the invite before it prints an invitation or writes the key file; the answer's limits and the exit codes are in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#server-provisioning-endpoint-call). An invitation over SFTP names no host-key fingerprint, so the accepting party confirms the new server's key on first use ([SFTP host-key trust](CLI.md#sftp-host-key-trust)). The invite leaves a `host_key_fingerprint` already in the configuration in place, so a created server presenting a different key fails that pin at the next run; remove it to confirm the new key on first use.
+
+An invite that stops after the call may leave a server the endpoint created and no configuration names; Alcove does not delete it:
+
+- When the endpoint's answer is a usable address that this configuration's `server` block cannot hold -- a returned `path` beside `inbound_path`, for example -- the refusal names the created server's host (never the returned path, which may hold a token).
+- When the answer itself is refused -- by its status, or as too large, not JSON, or holding a field out of range or any other field -- or does not arrive in time, Alcove has no address it can show. The endpoint's own logs are the lead for finding the server and removing it.
 
 ### `connection.role`
 

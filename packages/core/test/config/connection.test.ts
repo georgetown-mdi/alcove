@@ -9,11 +9,14 @@ import {
   SHARED_SECRET_REGEX,
   StunUrlSchema,
   TurnUrlSchema,
+  UNALLOCATED_SERVER_HOST_MESSAGE,
   generateSharedSecret,
   parseConnectionConfig,
   relayLocatorSchema,
   safeParseConnectionConfig,
+  safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,
+  statesServerHost,
   withRetainModeImplications,
 } from "../../src/config/connection";
 import {
@@ -825,6 +828,87 @@ test("a provision block's unknown mode is refused naming the value", () => {
       "or create (make a new server when inviting)",
   );
 });
+
+// --- A create-mode server block may leave host out ---------------------------
+
+const createModeProvision = { mode: "create", host: "api.example.org" };
+
+test.each([
+  ["sftp", { channel: "sftp", server: { provision: createModeProvision } }],
+  ["webrtc", { channel: "webrtc", server: { provision: createModeProvision } }],
+] as const)(
+  "a %s create-mode server with no host is read by the invite and refused by a connecting reader",
+  (_, connection) => {
+    const awaiting = safeParseConnectionConfigAwaitingAddress(connection);
+    expect(awaiting.success).toBe(true);
+    if (!awaiting.success) return;
+    expect(statesServerHost(awaiting.data)).toBe(false);
+    if (awaiting.data.channel === "filedrop") return;
+    expect(awaiting.data.server.host).toBeUndefined();
+
+    const connecting = safeParseConnectionConfig(connection);
+    expect(connecting.success).toBe(false);
+    if (connecting.success) return;
+    expect(connecting.error.issues).toHaveLength(1);
+    expect(connecting.error.issues[0]).toMatchObject({
+      code: "custom",
+      path: ["server", "host"],
+      message: UNALLOCATED_SERVER_HOST_MESSAGE,
+    });
+  },
+);
+
+test("a create-mode server with no host still has its other fields checked", () => {
+  const result = safeParseConnectionConfigAwaitingAddress({
+    channel: "sftp",
+    server: {
+      provision: createModeProvision,
+      password: "a",
+      privateKey: "b",
+    },
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  expect(result.error.issues.map((issue) => issue.message)).toEqual([
+    "at most one primary authentication method may be specified " +
+      "(password or privateKey)",
+  ]);
+});
+
+test.each([
+  ["sftp with no provision block", { channel: "sftp", server: {} }],
+  ["webrtc with no provision block", { channel: "webrtc", server: {} }],
+  [
+    "sftp with a start-mode provision block",
+    {
+      channel: "sftp",
+      server: { provision: { mode: "start", host: "api.example.org" } },
+    },
+  ],
+  [
+    "webrtc with a provision block stating no mode",
+    { channel: "webrtc", server: { provision: { host: "api.example.org" } } },
+  ],
+] as const)(
+  "%s and no host is refused by both readers as a missing field",
+  (_, connection) => {
+    for (const result of [
+      safeParseConnectionConfig(connection),
+      safeParseConnectionConfigAwaitingAddress(connection),
+    ]) {
+      expect(result.success).toBe(false);
+      if (result.success) continue;
+      expect(result.error.issues).toEqual([
+        expect.objectContaining({
+          code: "invalid_type",
+          expected: "string",
+          path: ["server", "host"],
+          message: "Invalid input: expected string, received undefined",
+        }),
+      ]);
+    }
+  },
+);
 
 // --- SFTPServer: at most one primary auth method -----------------------------
 

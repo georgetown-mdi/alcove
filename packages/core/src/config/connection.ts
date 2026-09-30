@@ -82,6 +82,51 @@ const ServerProvisionSchema: z.ZodType<ServerProvision> = z.strictObject({
   auth: HttpAuthSchema.optional(),
 });
 
+/**
+ * A server block as a configuration may state it: `host` may be left out when
+ * a create-mode `provision` block will supply it at `alcove invite`.
+ */
+export type ServerAwaitingAddress<S extends { host: string }> = Omit<
+  S,
+  "host"
+> & { host?: string };
+
+function statesCreateModeProvision(server: object): boolean {
+  const provision: unknown = (server as { provision?: unknown }).provision;
+  return (
+    typeof provision === "object" &&
+    provision !== null &&
+    (provision as { mode?: unknown }).mode === "create"
+  );
+}
+
+/**
+ * The `host` requirement of a server block, applied as a check so that a
+ * create-mode block may leave `host` out; any other block missing it gets the
+ * issue a required field raises. Runs beside the fields' own issues, as a
+ * missing required field's does, and stops the block's later checks.
+ */
+function serverHostRequirement<S extends { host?: string }>(
+  server: S,
+  ctx: z.core.$RefinementCtx<S>,
+): void {
+  if (server.host !== undefined || statesCreateModeProvision(server)) return;
+  ctx.addIssue({
+    code: "invalid_type",
+    expected: "string",
+    input: undefined,
+    path: ["host"],
+    continue: false,
+  });
+}
+
+const SERVER_HOST_REQUIREMENT_WHEN = {
+  when: (payload: z.core.ParsePayload) =>
+    typeof payload.value === "object" &&
+    payload.value !== null &&
+    !Array.isArray(payload.value),
+};
+
 // --- Servers -----------------------------------------------------------------
 
 /** PeerJS peer-coordination server for a WebRTC exchange. */
@@ -105,15 +150,17 @@ interface WebRTCServer {
   provision?: ServerProvision;
 }
 
-const WebRTCServerSchema: z.ZodType<WebRTCServer> = z.object({
-  host: z.string().min(1),
-  port: z.int().min(0).max(65535).optional(),
-  path: z.string().optional(),
-  username: z.string().optional(),
-  key: z.string().optional(),
-  secure: z.boolean().optional(),
-  provision: ServerProvisionSchema.optional(),
-});
+const WebRTCServerSchema: z.ZodType<ServerAwaitingAddress<WebRTCServer>> = z
+  .object({
+    host: z.string().min(1).optional(),
+    port: z.int().min(0).max(65535).optional(),
+    path: z.string().optional(),
+    username: z.string().optional(),
+    key: z.string().optional(),
+    secure: z.boolean().optional(),
+    provision: ServerProvisionSchema.optional(),
+  })
+  .superRefine(serverHostRequirement, SERVER_HOST_REQUIREMENT_WHEN);
 
 /**
  * Regex matching a valid SSH host-key fingerprint in OpenSSH SHA256 format: the
@@ -185,9 +232,9 @@ interface SFTPServer {
 // host_key_fingerprint instead of an OpenSSH SHA256 fingerprint.
 const SIGNING_FINGERPRINT_SHAPE = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 
-const SFTPServerSchema: z.ZodType<SFTPServer> = z
+const SFTPServerSchema: z.ZodType<ServerAwaitingAddress<SFTPServer>> = z
   .object({
-    host: z.string().min(1),
+    host: z.string().min(1).optional(),
     port: z.int().min(0).max(65535).optional(),
     path: z.string().optional(),
     inboundPath: z.string().min(1).optional(),
@@ -211,6 +258,7 @@ const SFTPServerSchema: z.ZodType<SFTPServer> = z
     knownHosts: z.string().optional(),
     provision: ServerProvisionSchema.optional(),
   })
+  .superRefine(serverHostRequirement, SERVER_HOST_REQUIREMENT_WHEN)
   .refine(
     (s) =>
       [s.password, s.privateKey].filter((v) => v !== undefined).length <= 1,
@@ -1368,6 +1416,39 @@ export interface FileDropConnectionConfig {
 export type ConnectionConfig =
   WebRTCConnectionConfig | SFTPConnectionConfig | FileDropConnectionConfig;
 
+/**
+ * A connection as a configuration may state it before `alcove invite` has run:
+ * an sftp or webrtc server whose create-mode `provision` block has not yet
+ * supplied its `host`. Only the invite that supplies the host reads this
+ * shape; a command that connects reads {@link ConnectionConfig}.
+ */
+export type ConnectionConfigAwaitingAddress =
+  | (Omit<WebRTCConnectionConfig, "server"> & {
+      server: ServerAwaitingAddress<WebRTCServer>;
+    })
+  | (Omit<SFTPConnectionConfig, "server"> & {
+      server: ServerAwaitingAddress<SFTPServer>;
+    })
+  | FileDropConnectionConfig;
+
+/** Whether the connection names its server's host, or has no server. */
+export function statesServerHost(
+  connection: ConnectionConfigAwaitingAddress,
+): connection is ConnectionConfig {
+  return (
+    connection.channel === "filedrop" || connection.server.host !== undefined
+  );
+}
+
+/**
+ * The refusal of a create-mode server block with no `host`, by any reader that
+ * needs the address, rendered after the `connection.server.host` path.
+ */
+export const UNALLOCATED_SERVER_HOST_MESSAGE =
+  "the server this configuration's create-mode server.provision block " +
+  "makes has no address yet; run 'alcove invite' with this configuration, " +
+  "which creates the server and writes its address here";
+
 // These intermediate schemas are intentionally left without z.ZodType<T>
 // annotations: z.discriminatedUnion requires a concrete ZodObject, and the
 // explicit annotation would widen the type to ZodType<T>, breaking it.
@@ -1456,7 +1537,7 @@ const FileDropConnectionConfigSchema = z.object({
  * Shared so filedrop (top-level path) and sftp (path under `server`) are
  * validated by one set of rules.
  */
-function fileSyncPathMode(conn: ConnectionConfig):
+function fileSyncPathMode(conn: ConnectionConfigAwaitingAddress):
   | {
       path?: string;
       inboundPath?: string;
@@ -1481,7 +1562,7 @@ function fileSyncPathMode(conn: ConnectionConfig):
   return undefined;
 }
 
-export const ConnectionConfigSchema: z.ZodType<ConnectionConfig> = z
+const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
   .discriminatedUnion("channel", [
     WebRTCConnectionConfigSchema,
     SFTPConnectionConfigSchema,
@@ -1612,6 +1693,22 @@ export const ConnectionConfigSchema: z.ZodType<ConnectionConfig> = z
     },
   );
 
+/**
+ * A connection block's schema for a command that connects: a create-mode
+ * server block with no `host` is refused with
+ * {@link UNALLOCATED_SERVER_HOST_MESSAGE}.
+ */
+export const ConnectionConfigSchema: z.ZodType<ConnectionConfig> =
+  AwaitingAddressSchema.transform((connection, ctx) => {
+    if (statesServerHost(connection)) return connection;
+    ctx.addIssue({
+      code: "custom",
+      path: ["server", "host"],
+      message: UNALLOCATED_SERVER_HOST_MESSAGE,
+    });
+    return z.NEVER;
+  });
+
 // --- Parse -------------------------------------------------------------------
 
 /**
@@ -1636,6 +1733,15 @@ export function parseConnectionConfig(raw: unknown): ConnectionConfig {
  */
 export function safeParseConnectionConfig(raw: unknown) {
   return safeParseCamelized(ConnectionConfigSchema, raw);
+}
+
+/**
+ * Non-throwing parse of a connection block that may leave a create-mode
+ * server's `host` out, for `alcove invite`, which supplies it; every other
+ * rule of {@link safeParseConnectionConfig} holds.
+ */
+export function safeParseConnectionConfigAwaitingAddress(raw: unknown) {
+  return safeParseCamelized(AwaitingAddressSchema, raw);
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
   setDiagnosticSink,
+  UNALLOCATED_SERVER_HOST_MESSAGE,
   UsageError,
 } from "@alcove/core";
 import {
@@ -2394,6 +2395,37 @@ describe("reconciling a pre-existing config", () => {
       // The error names the differing field and points at the config file.
       await expect(run()).rejects.toThrow(/algorithm/);
       await expect(run()).rejects.toThrow(options.configFile);
+    } finally {
+      fs.rmSync(options.configFile, { force: true });
+    }
+  });
+
+  test("validateAccept: a pre-existing create-mode config stating no server host is refused, naming the invite that writes it", async () => {
+    const options = testOptions();
+    writeExistingConfig(options.configFile, {
+      connection: {
+        channel: "sftp",
+        server: {
+          host: "pending",
+          username: "alice",
+          provision: { mode: "create", host: "api.example.org" },
+        },
+      },
+    });
+    const document = YAML.parse(fs.readFileSync(options.configFile, "utf8"));
+    delete document.connection.server.host;
+    fs.writeFileSync(options.configFile, YAML.stringify(document));
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      const err = await validateAccept({
+        resolved: { mode: "offline", invitation: encoded },
+        options,
+        log: silentLog,
+      }).catch((raised: unknown) => raised);
+      expect(err).toBeInstanceOf(UsageError);
+      expect((err as Error).message).toContain(
+        `connection.server.host: ${UNALLOCATED_SERVER_HOST_MESSAGE}`,
+      );
     } finally {
       fs.rmSync(options.configFile, { force: true });
     }
