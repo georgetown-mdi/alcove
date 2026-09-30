@@ -646,10 +646,8 @@ export function compareTerms(
   //   these columns": the partner's `send` must match it byte-for-byte or
   //   the exchange aborts. An explicit empty `receive: []` is strict BY
   //   INTENT -- "the partner sends nothing" -- distinct from an absent
-  //   `receive`, matching the received-payload runtime enforcement (an
-  //   empty committed set is likewise strict; only `undefined` is lazy) and
-  //   the web consent display, which renders a declared-empty receive as a
-  //   "(none)" commitment, not lazy.
+  //   `receive`, as the web consent display shows: a declared-empty receive
+  //   renders as a "(none)" commitment, not lazy.
   // - `receive` ABSENT means "take whatever I'm given": that direction is
   //   skipped here. This is what lets the invite/accept flow reconcile
   //   without the inviter knowing the acceptor's schema. A recurring run then

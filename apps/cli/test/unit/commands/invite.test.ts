@@ -2462,11 +2462,8 @@ test("validateInvite: offline config-source refuses a count-only config whose me
 
 test("validateInvite: an explicit empty payload pair still names the count-only rule, not the generic disclosure one", async () => {
   // The shape rules permit an explicit `payload: {send: [], receive: []}`, so
-  // this document passes the terms-shape refine. But
-  // assertPayloadSendDisclosed's own empty-send fast path requires
-  // output.shareWithPartner: false, and these terms have shareWithPartner:
-  // true (the default), so metadata marking a column disclosed falls through
-  // to the generic disclosure message unless the count-only check runs first.
+  // this document passes the terms-shape refine; the operator must still see
+  // the count-only rule's own message here, not a generic disclosure one.
   const metadata = metadataSendingNotes();
   expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
   const terms: LinkageTerms = {
