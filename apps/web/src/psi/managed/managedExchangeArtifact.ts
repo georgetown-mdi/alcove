@@ -244,7 +244,9 @@ const artifactLocalSchema: ZodType<ManagedExchangeArtifactLocal> = z
 /** The whole-artifact validator: reader-rejects-unknown at the top level and on
  * the key and local blocks, with the embedded document parsed separately (it is
  * YAML text, validated through {@link parseExchangeSpec} in
- * {@link parseManagedExchangeArtifact}). */
+ * {@link parseManagedExchangeArtifact}). A pending registration's reason is held
+ * only beside the key block's marker and the local block's registrar, as the
+ * record holds it, so a backup holding it alone is refused whole. */
 const artifactSchema: ZodType<ManagedExchangeArtifact> = z
   .object({
     artifactVersion: z.literal(MANAGED_EXCHANGE_ARTIFACT_VERSION),
@@ -252,7 +254,18 @@ const artifactSchema: ZodType<ManagedExchangeArtifact> = z
     key: keyPairFieldsSchema,
     local: artifactLocalSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (artifact) =>
+      artifact.local.relayRegistrationPendingReason === undefined ||
+      (artifact.key.relayRegistrationPendingSince !== undefined &&
+        artifact.local.relayRegistrar !== undefined),
+    {
+      message:
+        "local.relayRegistrationPendingReason is held only beside " +
+        "key.relayRegistrationPendingSince and local.relayRegistrar",
+    },
+  );
 
 /** Raised when a backup file holds the previous artifact format
  * ({@link MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION}). The strict schema refuses

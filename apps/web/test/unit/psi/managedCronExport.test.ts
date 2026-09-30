@@ -799,6 +799,21 @@ describe("the relay key registration", () => {
     );
   });
 
+  test("a re-invite's pending registration naming no registrar is refused", () => {
+    // The record schema refuses this shape; the refusal must not rely on it.
+    const record: RunnableManagedExchangeRecord = {
+      ...managedRecord(),
+      relayRegistrationPendingSince: PENDING_SINCE,
+      relayRegistrationPendingReason: "reinvite",
+    };
+    expect(() =>
+      composeManagedCronExport(record, ownRelay([OWN_TURN])),
+    ).toThrow(
+      "This exchange's re-invite replaced its shared secret, and the relay " +
+        "registrar has not confirmed the relay key derived from the new one",
+    );
+  });
+
   test.each<[string, () => OwnRelayRead]>([
     ["no relay setting", () => ({ kind: "none" })],
     [

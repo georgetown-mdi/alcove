@@ -65,22 +65,20 @@ export const PAIR_IMPORTED_NOTICE: ManagedImportGrantNotice = {
 };
 
 /** The line naming the `connection.turn` urls a pair import did not keep,
- * each escaped for display, or `undefined` where this browser's own TURN urls
- * are the same ones. */
+ * each once and escaped for display, or `undefined` where this browser's own
+ * TURN urls are the same set. */
 function droppedTurnUrlsSentence(
   droppedTurnUrls: ReadonlyArray<string>,
   ownTurn: ReadonlyArray<string>,
 ): string | undefined {
-  if (droppedTurnUrls.length === 0) return undefined;
+  const dropped = new Set(droppedTurnUrls);
+  if (dropped.size === 0) return undefined;
   const own = new Set(ownTurn);
-  if (
-    droppedTurnUrls.length === own.size &&
-    droppedTurnUrls.every((url) => own.has(url))
-  )
+  if (dropped.size === own.size && [...dropped].every((url) => own.has(url)))
     return undefined;
   return (
     "This configuration's connection.turn urls were not kept: " +
-    droppedTurnUrls.map((url) => sanitizeForDisplay(url)).join(", ") +
+    [...dropped].map((url) => sanitizeForDisplay(url)).join(", ") +
     ". A run in this browser relays through the TURN urls on this " +
     "browser's Relay server page instead, and a command-line export writes " +
     "those. To keep using the file's relay, enter its urls there."

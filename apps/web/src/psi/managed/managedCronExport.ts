@@ -265,17 +265,18 @@ function exportedConnection(
 function assertNoReinviteRegistrationPending(
   record: RunnableManagedExchangeRecord,
 ): void {
-  if (
-    record.relayRegistrationPendingReason === "reinvite" &&
-    record.relayRegistrar !== undefined
-  )
-    throw new Error(
-      "This exchange's re-invite replaced its shared secret, and " +
-        `${relayRegistrarLabel(record.relayRegistrar)} has not confirmed the ` +
-        "relay key derived from the new one, so a command-line run could not " +
-        `register it either. First ${MANAGED_RELAY_REENROLLMENT_STEP}, then ` +
-        "export again.",
-    );
+  if (record.relayRegistrationPendingReason !== "reinvite") return;
+  const registrar =
+    record.relayRegistrar === undefined
+      ? "the relay registrar"
+      : relayRegistrarLabel(record.relayRegistrar);
+  throw new Error(
+    "This exchange's re-invite replaced its shared secret, and " +
+      `${registrar} has not confirmed the relay key derived from the new ` +
+      "one, so a command-line run could not " +
+      `register it either. First ${MANAGED_RELAY_REENROLLMENT_STEP}, then ` +
+      "export again.",
+  );
 }
 
 /**

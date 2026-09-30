@@ -359,6 +359,64 @@ describe("what a re-take checks and writes", () => {
     expect(decided.record).not.toHaveProperty("relayRegistrationPendingReason");
   });
 
+  test.each([
+    [
+      "another registrar",
+      { url: "https://other-relay.example.org", exchangeId: "riverbend-q3" },
+    ],
+    [
+      "another exchange id at the same registrar",
+      { url: "https://relay.example.org:8443", exchangeId: "riverbend-q4" },
+    ],
+  ])(
+    "a pair naming %s with no marker keeps the stored marker and reason",
+    (_case, repointed) => {
+      const enrolled = runnableManagedExchangeOrRefuse({
+        ...runnable(),
+        relayRegistrar: {
+          url: "https://relay.example.org:8443",
+          exchangeId: "riverbend-q3",
+        },
+        relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
+        relayRegistrationPendingReason: "reinvite",
+      });
+
+      const decided = decideRetake(enrolled, {
+        ...runnable(),
+        relayRegistrar: repointed,
+      });
+
+      if (decided.kind !== "retake") throw new Error("expected a re-take");
+      expect(decided.record.relayRegistrar).toEqual(enrolled.relayRegistrar);
+      expect(decided.record.relayRegistrationPendingSince).toBe(
+        "2026-08-01T00:00:00.000Z",
+      );
+      expect(decided.record.relayRegistrationPendingReason).toBe("reinvite");
+    },
+  );
+
+  test("a pair naming the stored registrar's origin in another form with no marker clears the stored marker", () => {
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...runnable(),
+      relayRegistrar: {
+        url: "https://relay.example.org",
+        exchangeId: "riverbend-q3",
+      },
+      relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
+    });
+
+    const decided = decideRetake(enrolled, {
+      ...runnable(),
+      relayRegistrar: {
+        url: "https://RELAY.example.org:443",
+        exchangeId: "riverbend-q3",
+      },
+    });
+
+    if (decided.kind !== "retake") throw new Error("expected a re-take");
+    expect(decided.record).not.toHaveProperty("relayRegistrationPendingSince");
+  });
+
   test("a pair naming the registrar with the key file's marker sets that marker", () => {
     const registrar = {
       url: "https://relay.example.org:8443",

@@ -338,8 +338,21 @@ describe("the rotation write", () => {
     ).toBe(PENDING_SINCE);
   });
 
-  test("a rotation that states none keeps the pending registration and its reason on a record naming no registrar", () => {
+  test("a rotation that states none keeps the pending registration on a record naming no registrar", () => {
+    const stored = record({ relayRegistrationPendingSince: PENDING_SINCE });
+    const rotation = { sharedSecret: generateSharedSecret(), expires: null };
+    for (const rotated of [
+      applyManagedExchangeRotation(stored, rotation),
+      applyManagedExchangeReinviteRotation(stored, rotation),
+    ]) {
+      expect(rotated.relayRegistrar).toBeUndefined();
+      expect(rotated.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    }
+  });
+
+  test("a rotation that states none keeps the pending registration's reason", () => {
     const stored = record({
+      relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: PENDING_SINCE,
       relayRegistrationPendingReason: "reinvite",
     });
@@ -348,10 +361,21 @@ describe("the rotation write", () => {
       applyManagedExchangeRotation(stored, rotation),
       applyManagedExchangeReinviteRotation(stored, rotation),
     ]) {
-      expect(rotated.relayRegistrar).toBeUndefined();
       expect(rotated.relayRegistrationPendingSince).toBe(PENDING_SINCE);
       expect(rotated.relayRegistrationPendingReason).toBe("reinvite");
     }
+  });
+
+  test("a record holding a pending registration's reason without a registrar is refused", () => {
+    expect(() =>
+      record({
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      }),
+    ).toThrow(
+      "relayRegistrationPendingReason is held only beside " +
+        "relayRegistrationPendingSince and relayRegistrar",
+    );
   });
 });
 

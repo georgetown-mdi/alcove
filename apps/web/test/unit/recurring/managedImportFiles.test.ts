@@ -234,6 +234,26 @@ describe("what the pair import says", () => {
       ).toEqual(PAIR_IMPORTED_NOTICE);
     });
 
+    test("compares a repeated url as one member of the set", () => {
+      const secondOwnTurn = "turn:relay.example.org:3478";
+      expect(
+        pairImportedNotice(enrolled(), [ownTurn, ownTurn], ownRelay([ownTurn])),
+      ).toEqual(PAIR_IMPORTED_NOTICE);
+      expect(
+        pairImportedNotice(
+          enrolled(),
+          [ownTurn, ownTurn],
+          ownRelay([ownTurn, secondOwnTurn]),
+        ).consequences,
+      ).toEqual([
+        "This configuration's connection.turn urls were not kept: " +
+          `${ownTurn}. A run in this browser relays through the TURN urls ` +
+          "on this browser's Relay server page instead, and a command-line " +
+          "export writes those. To keep using the file's relay, enter its " +
+          "urls there.",
+      ]);
+    });
+
     test.each<[string, () => OwnRelayRead]>([
       ["no relay setting", () => ({ kind: "none" })],
       [

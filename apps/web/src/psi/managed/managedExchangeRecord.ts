@@ -641,7 +641,10 @@ export const keyFileFieldsSchema: ZodType<ManagedExchangeKeyFields> = z
  * no-input-content invariant is a property of the type (a handle is a pointer),
  * not a runtime check.
  *
- * The first refine holds the configuration-only shape together: a record with
+ * The first refine holds a pending registration's reason only beside the
+ * marker it explains and the registrar that marker waits on.
+ *
+ * The next holds the configuration-only shape together: a record with
  * no `sharedSecret` runs nothing here, so it may hold nothing a run or a secret
  * produces. Every such field is bound to the secret's presence at the schema, so
  * a record whose shape withholds the run cannot also hold a lapse instant for a
@@ -678,11 +681,12 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
   .refine(
     (record) =>
       record.relayRegistrationPendingReason === undefined ||
-      record.relayRegistrationPendingSince !== undefined,
+      (record.relayRegistrationPendingSince !== undefined &&
+        record.relayRegistrar !== undefined),
     {
       message:
         "relayRegistrationPendingReason is held only beside " +
-        "relayRegistrationPendingSince",
+        "relayRegistrationPendingSince and relayRegistrar",
     },
   )
   .refine(
@@ -1494,17 +1498,18 @@ export function applyManagedExchangeCommandLinePair(
     next.relayRegistrar = imported.relayRegistrar;
   setPendingRelayRegistration(
     next,
-    pendingRelayRegistrationFromCommandLine(stored, imported),
+    pendingRelayRegistrationFromCommandLine(next, imported),
   );
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }
 
 /**
- * The pending relay registration a command-line pair leaves on `stored`. A
- * pair naming a registrar states the whole registration: the key file's
- * marker, or its absence where the command line confirmed. A key file beside
- * a configuration naming none was never asked to register, so its marker
- * replaces the stored one only where it holds one.
+ * The pending relay registration a command-line pair leaves on `stored`,
+ * whose registrar is the one the record keeps. A key file's marker replaces
+ * the stored one. Its absence clears the stored one only beside a
+ * configuration naming the record's registrar, which the command line then
+ * confirmed at; beside one naming none, or another, the stored registrar
+ * confirmed nothing, so the stored marker and reason stay.
  */
 function pendingRelayRegistrationFromCommandLine(
   stored: ManagedExchangeRecord,
@@ -1512,7 +1517,12 @@ function pendingRelayRegistrationFromCommandLine(
 ): PendingRelayRegistration | undefined {
   if (pair.relayRegistrationPendingSince !== undefined)
     return { since: pair.relayRegistrationPendingSince };
-  if (pair.relayRegistrar !== undefined) return undefined;
+  if (
+    pair.relayRegistrar !== undefined &&
+    stored.relayRegistrar !== undefined &&
+    sameRelayRegistrar(pair.relayRegistrar, stored.relayRegistrar)
+  )
+    return undefined;
   if (stored.relayRegistrationPendingSince === undefined) return undefined;
   return stored.relayRegistrationPendingReason === undefined
     ? { since: stored.relayRegistrationPendingSince }
@@ -1520,6 +1530,15 @@ function pendingRelayRegistrationFromCommandLine(
         since: stored.relayRegistrationPendingSince,
         reason: stored.relayRegistrationPendingReason,
       };
+}
+
+/** Whether two registrars name the one a registration is sent to: the same
+ * url origin and the same exchange id. */
+function sameRelayRegistrar(a: RelayRegistrar, b: RelayRegistrar): boolean {
+  return (
+    new URL(a.url).origin === new URL(b.url).origin &&
+    a.exchangeId === b.exchangeId
+  );
 }
 
 /**

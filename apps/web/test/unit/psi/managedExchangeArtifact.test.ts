@@ -767,6 +767,26 @@ describe("the relay key registration", () => {
     ).toThrow(ZodError);
   });
 
+  test("a backup holding a re-invite's pending registration without its registrar is refused whole", () => {
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(
+          enrolledRecord({
+            relayRegistrationPendingSince: PENDING_SINCE,
+            relayRegistrationPendingReason: "reinvite",
+          }),
+        ),
+      ),
+    );
+    delete artifact.local.relayRegistrar;
+    expect(() =>
+      parseManagedExchangeArtifact(JSON.stringify(artifact)),
+    ).toThrow(
+      "local.relayRegistrationPendingReason is held only beside " +
+        "key.relayRegistrationPendingSince and local.relayRegistrar",
+    );
+  });
+
   test("a backup naming a registrar the record schema refuses is refused", () => {
     const artifact = JSON.parse(
       serializeManagedExchangeArtifact(
