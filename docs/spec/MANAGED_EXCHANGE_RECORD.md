@@ -1367,12 +1367,11 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   written.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
-  rotated since unchanged; by an enrollment; by stopping registration; by a
-  revive from a command-line pair whose secret differs from the stored one,
-  which takes the key file's field in its place (**Carried in**, below); and
-  by a rotation write on a record naming no registrar that carries none in.
-  No other write removes it: a rotation write on a record naming a registrar
-  sets or keeps it.
+  rotated since unchanged; by an enrollment; by stopping registration; and,
+  on a record naming no registrar, by a rotation write or a revive from a
+  command-line pair whose secret differs from the stored one that carries none
+  in. No other write removes it: on a record naming a registrar, a rotation
+  write or such a revive sets or keeps it.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
   partner: it registers the current key again, signed under that key. The
@@ -1384,11 +1383,12 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), by the
   pair import and the hand-off re-take, so the exchange's first run here
   retries it. A revive keeps the registrar the stored record was enrolled at
-  (`applyManagedExchangeCommandLinePair`): where the pair's secret differs,
-  the key file decides, so the stored marker is dropped and the key file's is
-  taken, and a key file holding none means the command line confirmed its
-  registration or made none; where the secrets match, the key file's marker
-  replaces the stored one and its absence keeps it. The re-take of a pair
+  (`applyManagedExchangeCommandLinePair`), and the key file's marker replaces
+  the stored one. A key file holding none does not show that the command line
+  confirmed a registration, since it does not say whether the command line
+  had a registrar configured, so its absence keeps the stored marker -- except
+  where the pair's secret differs on a record naming no registrar, which
+  drops it as the re-take does. The re-take of a pair
   whose secret differs is a rotation write (`decideRetake`): the key file's
   marker when it holds one, else the stored one where the record names a
   registrar. A marker carried in is kept on a record that names no registrar

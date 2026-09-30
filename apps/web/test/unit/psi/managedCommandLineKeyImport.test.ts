@@ -486,11 +486,27 @@ describe("laying a pair over the stored record it revives", () => {
     expect(revived.relayRegistrationPendingSince).toBe(
       "2026-09-01T00:00:00.000Z",
     );
+  });
+
+  test("a revive whose pair holds another secret and no pending registration keeps the stored one only where the record names a registrar", () => {
+    const pending = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrationPendingSince: MARKED_AT,
+    });
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...pending,
+      relayRegistrar: REGISTRAR,
+    });
     const noPending = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(newExchange({ label: "" })),
     );
+    const kept = applyManagedExchangeCommandLinePair(enrolled, noPending);
+    expect(kept.sharedSecret).toBe(noPending.sharedSecret);
+    expect(kept.relayRegistrationPendingSince).toBe(MARKED_AT);
     expect(
-      applyManagedExchangeCommandLinePair(enrolled, noPending),
+      applyManagedExchangeCommandLinePair(pending, noPending),
     ).not.toHaveProperty("relayRegistrationPendingSince");
   });
 

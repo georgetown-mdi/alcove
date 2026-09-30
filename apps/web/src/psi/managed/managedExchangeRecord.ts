@@ -1396,10 +1396,11 @@ export function applyManagedExchangeRotationInFlight(
  * field for -- the `id`, label, schedule, `lastRun`, standing condition, and
  * platform grants -- stays as stored, so the revive clears no condition only
  * the operator, a re-invite, or a delete may clear. The relay registrar the
- * record enrolled at is kept too. A rotation-in-flight marker and a pending
- * relay registration go with the stored secret when the pair replaces it, and
- * the key file's own pending registration is carried. The inputs are not
- * mutated.
+ * record enrolled at is kept too. A rotation-in-flight marker goes with the
+ * stored secret when the pair replaces it. The key file's own pending
+ * registration is carried; absent, the stored one is kept, except where the
+ * pair replaces the secret of a record naming no registrar, as a re-take's
+ * rotation does. The inputs are not mutated.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
@@ -1419,7 +1420,8 @@ export function applyManagedExchangeCommandLinePair(
   else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
   if (imported.sharedSecret !== stored.sharedSecret) {
     delete next.rotationInFlightSince;
-    delete next.relayRegistrationPendingSince;
+    if (stored.relayRegistrar === undefined)
+      delete next.relayRegistrationPendingSince;
   }
   if (imported.relayRegistrationPendingSince !== undefined)
     next.relayRegistrationPendingSince = imported.relayRegistrationPendingSince;
