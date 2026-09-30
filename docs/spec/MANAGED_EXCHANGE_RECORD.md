@@ -1378,8 +1378,11 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   is written.
 - **The reason.** A rotation write that sets or keeps the marker keeps the
   reason the record held, since no rotation recovers the key the registrar
-  holds. Every write that removes the marker removes the reason, and a key
-  file's marker carried in replaces both.
+  holds. Every write that removes the marker removes the reason. A key
+  file's marker carried in by a pair revive replaces both; one carried in by
+  the hand-off re-take replaces the marker and keeps a stored reason, since
+  the re-take is a rotation write. Either way the next run asks for
+  re-enrollment rather than a renewal while a reason stands.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
   rotated since unchanged; by an enrollment; and by stopping registration.
