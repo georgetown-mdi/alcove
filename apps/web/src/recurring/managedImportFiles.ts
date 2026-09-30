@@ -8,10 +8,16 @@
  * chosen alone.
  */
 
+import { relayRegistrarLabel, sanitizeForDisplay } from "@alcove/core";
+
+import { managedExchangeRelaysThroughPartner } from "@psi/managed/managedExchangeRecord";
+import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
+
 import { heldSettingsSentence } from "./managedConfigurationModel";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedImportGrantNotice } from "./managedImportGrantNotice";
+import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 /** The file extension that marks a chosen file as the key file. */
 const KEY_FILE_EXTENSION = ".key";
@@ -58,17 +64,67 @@ export const PAIR_IMPORTED_NOTICE: ManagedImportGrantNotice = {
   consequences: [],
 };
 
+/** The line naming the `connection.turn` urls a pair import did not keep,
+ * each once and escaped for display, or `undefined` where this browser's own
+ * TURN urls are the same set. */
+function droppedTurnUrlsSentence(
+  droppedTurnUrls: ReadonlyArray<string>,
+  ownTurn: ReadonlyArray<string>,
+): string | undefined {
+  const dropped = new Set(droppedTurnUrls);
+  if (dropped.size === 0) return undefined;
+  const own = new Set(ownTurn);
+  if (dropped.size === own.size && [...dropped].every((url) => own.has(url)))
+    return undefined;
+  return (
+    "This configuration's connection.turn urls were not kept: " +
+    [...dropped].map((url) => sanitizeForDisplay(url)).join(", ") +
+    ". A run in this browser relays through the TURN urls on this " +
+    "browser's Relay server page instead, and a command-line export writes " +
+    "those. To keep using the file's relay, enter its urls there."
+  );
+}
+
+/** The line saying a pair naming a relay registrar registers nothing from
+ * this browser until its Relay server page names a TURN url, or `undefined`
+ * where it names one or the record registers nothing here anyway. */
+function noOwnTurnSentence(
+  record: ManagedExchangeRecord,
+  own: OwnRelayRead,
+): string | undefined {
+  const registrar = record.relayRegistrar;
+  if (registrar === undefined || managedExchangeRelaysThroughPartner(record))
+    return undefined;
+  if (own.kind === "set" && own.relay.turn.length > 0) return undefined;
+  const at = sanitizeForDisplay(relayRegistrarLabel(registrar));
+  return own.kind === "unreadable"
+    ? `Nothing is registered at ${at} until this browser's relay setting ` +
+        "is saved again: it could not be read. Enter your relay's TURN url " +
+        "on the Relay server page and save."
+    : `Nothing is registered at ${at} until this browser's Relay server ` +
+        "page names a TURN url. Enter your relay's TURN url there.";
+}
+
 /** The notice a landed pair import shows: {@link PAIR_IMPORTED_NOTICE}, and a
- * line naming the settings the imported document states that this app keeps
- * unchanged without a control, where it states any. */
+ * line each for the settings the imported document states that this app
+ * keeps unchanged without a control, the `connection.turn` urls it did not
+ * keep, and a relay registrar this browser's relay settings give no TURN url
+ * to register for. */
 export function pairImportedNotice(
   record: ManagedExchangeRecord,
+  droppedTurnUrls: ReadonlyArray<string> = [],
+  readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedImportGrantNotice {
-  const held = heldSettingsSentence(record);
-  return {
-    ...PAIR_IMPORTED_NOTICE,
-    consequences: held === undefined ? [] : [held],
-  };
+  const own = readOwn();
+  const lines = [
+    heldSettingsSentence(record),
+    droppedTurnUrlsSentence(
+      droppedTurnUrls,
+      own.kind === "set" ? own.relay.turn : [],
+    ),
+    noOwnTurnSentence(record, own),
+  ].filter((line) => line !== undefined);
+  return { ...PAIR_IMPORTED_NOTICE, consequences: lines };
 }
 
 /** Whether a file's name marks it as the key file. */

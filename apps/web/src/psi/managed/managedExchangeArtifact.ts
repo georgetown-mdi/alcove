@@ -15,11 +15,13 @@
  *   written by core's `serializeExchangeDocument` -- the writer Alcove's own
  *   `saveConfig` uses, so the embedded half is the file the CLI would write;
  * - `key` is the `.alcove.key` pair -- `sharedSecret` and, when a bound is in
- *   force, `expires` -- so the secret half maps onto a valid key file;
- * - `local` holds the browser-only fields the two CLI artifacts do not
- *   (`label`, `side`, `schedule`, `lastRun`, `standingCondition`,
- *   `tokenMaxAgeDays`, and a marker saying the source held a working folder),
- *   cleanly separable and ignorable by the CLI toolchain.
+ *   force, `expires`, and any pending relay key registration -- so the secret
+ *   half maps onto a valid key file;
+ * - `local` holds the record fields the two CLI artifacts do not (`label`,
+ *   `side`, `schedule`, `lastRun`, `standingCondition`, `tokenMaxAgeDays`, the
+ *   relay registrar and the reason a pending registration has, and a marker
+ *   saying the source held a working folder), cleanly separable and ignorable
+ *   by the CLI toolchain.
  *
  * The working-folder handle is absent by design (a device- and profile-local
  * platform object with no file serialization), so the folder is granted again
@@ -39,6 +41,7 @@
  */
 
 import {
+  RelayRegistrarSchema,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -61,16 +64,17 @@ import {
 } from "./managedExchangeRecord";
 import { refuseDocumentNotHeld } from "./managedCommandLineImport";
 
+import type { ExchangeSpec, RelayRegistrar } from "@alcove/core";
 import type {
   ManagedExchangeKeyPair,
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
   ManagedExchangeSchedule,
   ManagedExchangeSide,
+  ManagedRelayRegistrationPendingReason,
   ManagedStandingCondition,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
-import type { ExchangeSpec } from "@alcove/core";
 import type { ZodType } from "zod";
 
 /** The MIME type the artifact downloads as; it is a JSON document. */
@@ -81,8 +85,8 @@ export const MANAGED_EXCHANGE_ARTIFACT_MIME = "application/json";
  * linkage-terms import's fixed pre-parse cap. */
 export const MAX_ARTIFACT_IMPORT_BYTES = 1_000_000;
 
-/** The browser-only fields the artifact holds alongside the two CLI halves --
- * the fields the CLI's config-plus-key pair does not have. Cleanly separable and
+/** The record fields the artifact holds alongside the two CLI halves -- the
+ * fields the CLI's config-plus-key pair does not have. Cleanly separable and
  * ignorable by the CLI toolchain. */
 interface ManagedExchangeArtifactLocal {
   /** The operator's display label. */
@@ -100,6 +104,11 @@ interface ManagedExchangeArtifactLocal {
   standingCondition?: ManagedStandingCondition;
   /** The max-token-age policy, when the operator opted in. */
   tokenMaxAgeDays?: number;
+  /** The relay registrar the source record registered at. */
+  relayRegistrar?: RelayRegistrar;
+  /** Why no run can confirm the pending relay registration the key block
+   * holds, where the source record held a reason beside it. */
+  relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
   /** Read and never written: an artifact from a build that held a separate
    * input-file pointer sets it, and an import reads it as a held working folder,
    * since the folder is what the operator takes again here. */
@@ -136,11 +145,12 @@ interface ManagedExchangeArtifact {
 }
 
 /**
- * Derive the `.alcove.key` pair from a record: the current shared secret and,
- * when a bound is in force, the `expires` it lapses at. The one place a record's
- * secret half becomes the key file's fields, shared by the artifact's `key` block
- * and the CLI cron export's key file so neither can grow a field the other lacks.
- * An absent bound is an omitted key, never an explicit `undefined` a serialize
+ * Derive the `.alcove.key` pair from a record: the current shared secret, the
+ * `expires` it lapses at when a bound is in force, and the pending relay key
+ * registration when one is recorded. The one place a record's secret half
+ * becomes the key file's fields, shared by the artifact's `key` block and the
+ * CLI cron export's key file so neither can grow a field the other lacks. An
+ * absent field is an omitted key, never an explicit `undefined` a serialize
  * step would render.
  */
 export function keyFileFieldsFromRecord(
@@ -149,6 +159,9 @@ export function keyFileFieldsFromRecord(
   return {
     sharedSecret: record.sharedSecret,
     ...(record.expires !== undefined ? { expires: record.expires } : {}),
+    ...(record.relayRegistrationPendingSince !== undefined
+      ? { relayRegistrationPendingSince: record.relayRegistrationPendingSince }
+      : {}),
   };
 }
 
@@ -178,6 +191,15 @@ export function encodeManagedExchangeArtifact(
       ...(record.tokenMaxAgeDays !== undefined
         ? { tokenMaxAgeDays: record.tokenMaxAgeDays }
         : {}),
+      ...(record.relayRegistrar !== undefined
+        ? { relayRegistrar: record.relayRegistrar }
+        : {}),
+      ...(record.relayRegistrationPendingReason !== undefined
+        ? {
+            relayRegistrationPendingReason:
+              record.relayRegistrationPendingReason,
+          }
+        : {}),
       ...(record.workingDirectoryHandle !== undefined
         ? { heldOutputFolder: true }
         : {}),
@@ -197,11 +219,11 @@ export function serializeManagedExchangeArtifact(
 }
 
 /** The local block's validator: reader-rejects-unknown (strict), reusing the
- * canonical `schedule`, `lastRun`, `standingCondition`, and `tokenMaxAgeDays`
- * schemas from the record
- * module so the artifact cannot be laxer than the record it reconstructs -- a
- * tampered artifact with `intervalDays: 0` is rejected here exactly as a stored
- * record would be, not merely at the reconstructed record's later re-validation.
+ * schemas the record validates `schedule`, `lastRun`, `standingCondition`,
+ * `tokenMaxAgeDays`, and the relay registrar with, so the artifact cannot be
+ * laxer than the record it reconstructs -- a tampered artifact with
+ * `intervalDays: 0` is rejected here exactly as a stored record would be, not
+ * merely at the reconstructed record's later re-validation.
  * The condition's own schema is strict too, so a member nested inside it is
  * refused rather than dropped from the reconstructed record. */
 const artifactLocalSchema: ZodType<ManagedExchangeArtifactLocal> = z
@@ -212,6 +234,8 @@ const artifactLocalSchema: ZodType<ManagedExchangeArtifactLocal> = z
     lastRun: lastRunSchema.optional(),
     standingCondition: standingConditionSchema.optional(),
     tokenMaxAgeDays: tokenMaxAgeDaysSchema.optional(),
+    relayRegistrar: RelayRegistrarSchema.optional(),
+    relayRegistrationPendingReason: z.literal("reinvite").optional(),
     heldInputFile: z.boolean().optional(),
     heldOutputFolder: z.boolean().optional(),
   })
@@ -220,7 +244,9 @@ const artifactLocalSchema: ZodType<ManagedExchangeArtifactLocal> = z
 /** The whole-artifact validator: reader-rejects-unknown at the top level and on
  * the key and local blocks, with the embedded document parsed separately (it is
  * YAML text, validated through {@link parseExchangeSpec} in
- * {@link parseManagedExchangeArtifact}). */
+ * {@link parseManagedExchangeArtifact}). A pending registration's reason is held
+ * only beside the key block's marker and the local block's registrar, as the
+ * record holds it, so a backup holding it alone is refused whole. */
 const artifactSchema: ZodType<ManagedExchangeArtifact> = z
   .object({
     artifactVersion: z.literal(MANAGED_EXCHANGE_ARTIFACT_VERSION),
@@ -228,7 +254,18 @@ const artifactSchema: ZodType<ManagedExchangeArtifact> = z
     key: keyPairFieldsSchema,
     local: artifactLocalSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (artifact) =>
+      artifact.local.relayRegistrationPendingReason === undefined ||
+      (artifact.key.relayRegistrationPendingSince !== undefined &&
+        artifact.local.relayRegistrar !== undefined),
+    {
+      message:
+        "local.relayRegistrationPendingReason is held only beside " +
+        "key.relayRegistrationPendingSince and local.relayRegistrar",
+    },
+  );
 
 /** Raised when a backup file holds the previous artifact format
  * ({@link MANAGED_EXCHANGE_PREVIOUS_ARTIFACT_VERSION}). The strict schema refuses
@@ -281,12 +318,14 @@ export function parseManagedExchangeArtifact(
 /**
  * Reconstruct a runnable record from a validated artifact: a take-over that
  * installs the one owner. The embedded document is parsed back through
- * {@link parseSensitiveYaml} and {@link parseExchangeSpec}, the secret and
- * `expires` come from the key pair, and the local fields pass through
- * unchanged. Built through {@link buildManagedExchangeRecord} -- a fresh `id`, the v4
- * `schemaVersion`, re-validated through the record schema -- so a malformed
- * document or secret is rejected and nothing is installed. Holds no
- * working-folder handle: the operator grants the folder again.
+ * {@link parseSensitiveYaml} and {@link parseExchangeSpec}, the secret,
+ * `expires`, and any pending relay registration come from the key pair, and
+ * the local fields pass through unchanged, so the first run of a restored
+ * record retries a pending registration before it connects. Built through
+ * {@link buildManagedExchangeRecord} -- a fresh `id`, the v4 `schemaVersion`,
+ * re-validated through the record schema -- so a malformed document or secret
+ * is rejected and nothing is installed. Holds no working-folder handle: the
+ * operator grants the folder again.
  *
  * @throws {UsageError} if the embedded document is not parseable YAML.
  * @throws {ZodError} if the embedded document or the reconstructed record is invalid.
@@ -321,6 +360,21 @@ export function reconstructRecordFromArtifact(
       : {}),
     ...(artifact.local.standingCondition !== undefined
       ? { standingCondition: artifact.local.standingCondition }
+      : {}),
+    ...(artifact.local.relayRegistrar !== undefined
+      ? { relayRegistrar: artifact.local.relayRegistrar }
+      : {}),
+    ...(artifact.key.relayRegistrationPendingSince !== undefined
+      ? {
+          relayRegistrationPendingSince:
+            artifact.key.relayRegistrationPendingSince,
+        }
+      : {}),
+    ...(artifact.local.relayRegistrationPendingReason !== undefined
+      ? {
+          relayRegistrationPendingReason:
+            artifact.local.relayRegistrationPendingReason,
+        }
       : {}),
   });
 }

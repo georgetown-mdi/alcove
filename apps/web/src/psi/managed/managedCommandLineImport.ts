@@ -17,10 +17,11 @@
  * fields as the file spells them: the operator writes this file by hand, so what
  * stops it is a line they can fix.
  *
- * Two fields of the document are LOCAL fields of the record rather than document
- * fields, and each is read out of the document and dropped from it -- exactly
- * the two the export injects on the way out ({@link ./managedCronExport.ts}), so
- * an unedited import and re-export yield the same document:
+ * Three fields of the document are LOCAL fields of the record rather than
+ * document fields, and each is read out of the document and dropped from it --
+ * exactly the three the export injects on the way out
+ * ({@link ./managedCronExport.ts}), so an unedited import and re-export yield
+ * the same document:
  *
  * - A webrtc `connection.role` becomes the record's `side`. The document a
  *   stored record holds has none (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a
@@ -31,6 +32,13 @@
  * - `authentication.token_max_age_days` becomes the record's `tokenMaxAgeDays`.
  *   A stored document holds no `authentication` block at all, so the block is
  *   read for that one policy and dropped.
+ * - A webrtc `connection.relay_registrar` becomes the record's
+ *   `relayRegistrar`, on a pair import only: a configuration-only record
+ *   registers nothing, so a file naming one without its key file is refused.
+ *   The `connection.turn` entries beside it are dropped with it where each
+ *   has its credential minted from the shared secret: they name the relay the
+ *   registrar serves, and a run here relays through this browser's own relay
+ *   settings, which the export writes back in their place.
  *
  * A configuration on any channel imports, and so does one stating a part this
  * app cannot run -- a `signing` block asking for a receipt, held unchanged for
@@ -86,7 +94,11 @@ import {
   serverFieldsNotHeld,
 } from "./managedCommandLineDocument";
 
-import type { ConnectionConfig, ExchangeSpec } from "@alcove/core";
+import type {
+  ConnectionConfig,
+  ExchangeSpec,
+  RelayRegistrar,
+} from "@alcove/core";
 import type {
   ManagedExchangeKeyFields,
   ManagedExchangeRecord,
@@ -246,7 +258,11 @@ function importedConnection(
   const connection = document.connection;
   const outside = [
     ...new Set([
-      ...connectionFieldsNotHeld(withoutRole(connection)),
+      ...connectionFieldsNotHeld(
+        source === "backup"
+          ? withoutRole(connection)
+          : withoutLocalConnectionFields(connection),
+      ),
       ...serverFieldsNotHeld(
         connection.channel,
         documentValueAt(raw, ["connection", "server"]),
@@ -283,13 +299,57 @@ function importedConnection(
   return connection;
 }
 
-/** The connection without the webrtc `role` this import consumes, so the
- * locator allowlist measures only the fields that stay in the stored document.
- * No other channel has a `role`. */
+function everyTurnEntryMinted(
+  turn: ReadonlyArray<{ username?: string; credential?: string }>,
+): boolean {
+  return turn.every(
+    (entry) => entry.username === undefined && entry.credential === undefined,
+  );
+}
+
+/** The connection without the webrtc `role`, which the allowlist measures
+ * apart from the fields that stay in the stored document. No other channel
+ * has a `role`. */
 function withoutRole(connection: ConnectionConfig): ConnectionConfig {
   if (connection.channel !== "webrtc") return connection;
   const { role: _role, ...rest } = connection;
   return rest;
+}
+
+/** A `turn` entry stating a credential stays, so the allowlist refuses it. */
+function withoutLocalConnectionFields(
+  connection: ConnectionConfig,
+): ConnectionConfig {
+  const rest = withoutRole(connection);
+  if (rest.channel !== "webrtc" || rest.relayRegistrar === undefined)
+    return rest;
+  const { relayRegistrar: _relayRegistrar, turn, ...held } = rest;
+  return turn === undefined || everyTurnEntryMinted(turn)
+    ? held
+    : { ...held, turn };
+}
+
+/** The `turn` urls a pair import drops beside a relay registrar
+ * ({@link withoutLocalConnectionFields}): a run here relays through this
+ * browser's own relay settings instead. */
+function turnUrlsBesideRegistrar(connection: ConnectionConfig): Array<string> {
+  if (
+    connection.channel !== "webrtc" ||
+    connection.relayRegistrar === undefined
+  )
+    return [];
+  const turn = connection.turn ?? [];
+  return everyTurnEntryMinted(turn) ? turn.map(({ url }) => url) : [];
+}
+
+/** The relay registrar a webrtc connection names, which becomes the record's
+ * own field. */
+function importedRelayRegistrar(
+  connection: ConnectionConfig,
+): RelayRegistrar | undefined {
+  return connection.channel === "webrtc"
+    ? connection.relayRegistrar
+    : undefined;
 }
 
 /**
@@ -342,10 +402,10 @@ function importedTokenMaxAgeDays(document: ExchangeSpec): number | undefined {
 }
 
 /**
- * The document a configuration-only record stores: the parsed file with the two
- * local fields taken out of it -- no webrtc `role` on the connection, no
- * `authentication` block -- re-validated so what is stored is a schema parse
- * result rather than an edited object.
+ * The document a record stores: the parsed file with the local fields taken
+ * out of it -- no webrtc `role` or `relay_registrar` with its minted `turn`
+ * entries on the connection, no `authentication` block -- re-validated so what
+ * is stored is a schema parse result rather than an edited object.
  *
  * @throws {ManagedConfigurationRefusedError} if the document without those
  *   fields is not a valid exchange file.
@@ -355,7 +415,10 @@ function storedDocument(
   connection: ConnectionConfig,
 ): ExchangeSpec {
   const { authentication: _authentication, ...rest } = document;
-  return importedDocument({ ...rest, connection: withoutRole(connection) });
+  return importedDocument({
+    ...rest,
+    connection: withoutLocalConnectionFields(connection),
+  });
 }
 
 /** Refuse a document holding a top-level field this app does not keep. */
@@ -405,18 +468,32 @@ export function refuseDocumentNotHeld(
  * file read on its own terms ({@link readManagedCommandLineKeyFile}).
  */
 function commandLineExchangeFields(source: string): NewManagedExchange {
+  return commandLineExchange(source).fields;
+}
+
+/** {@link commandLineExchangeFields}, with the `turn` urls the file names
+ * beside a relay registrar, which the record does not keep. */
+function commandLineExchange(source: string): {
+  fields: NewManagedExchange;
+  droppedTurnUrls: Array<string>;
+} {
   const raw = parseSensitiveYaml(source, "command-line exchange configuration");
   const document = importedDocument(raw);
   const connection = importedConnection(document, raw, "command line");
   const side = importedSide(connection);
   const tokenMaxAgeDays = importedTokenMaxAgeDays(document);
+  const relayRegistrar = importedRelayRegistrar(connection);
   const exchangeFile = storedDocument(document, connection);
   refuseFieldsOutsideComposableDocument(exchangeFile, "command line");
   return {
-    label: IMPORTED_CONFIGURATION_LABEL,
-    exchangeFile,
-    ...(side !== undefined ? { side } : {}),
-    ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
+    fields: {
+      label: IMPORTED_CONFIGURATION_LABEL,
+      exchangeFile,
+      ...(side !== undefined ? { side } : {}),
+      ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
+      ...(relayRegistrar !== undefined ? { relayRegistrar } : {}),
+    },
+    droppedTurnUrls: turnUrlsBesideRegistrar(connection),
   };
 }
 
@@ -431,14 +508,24 @@ function commandLineExchangeFields(source: string): NewManagedExchange {
  * @throws {UsageError} if the bytes are not parseable YAML.
  * @throws {ManagedConfigurationRefusedError} if the document is not a valid
  *   exchange file, or is one this app cannot hold (a field outside what it
- *   composes, a secret, or a webrtc connection naming no role).
+ *   composes, a secret, a webrtc connection naming no role, or a relay
+ *   registrar, which only a record that runs here holds).
  * @throws {ZodError} if the record built from the document is not a valid
  *   record.
  */
 export function readManagedCommandLineConfiguration(
   source: string,
 ): ManagedExchangeRecord {
-  return buildManagedExchangeRecord(commandLineExchangeFields(source));
+  const fields = commandLineExchangeFields(source);
+  if (fields.relayRegistrar !== undefined)
+    throw new ManagedConfigurationRefusedError(
+      "This configuration registers its relay key at a relay registrar " +
+        "(connection.relay_registrar), which this app does only for an " +
+        "exchange it runs. Choose the .alcove.key beside it as well to run " +
+        "the exchange here, or remove connection.relay_registrar and " +
+        "connection.turn and import it again.",
+    );
+  return buildManagedExchangeRecord(fields);
 }
 
 /**
@@ -567,8 +654,9 @@ export function readManagedCommandLineKeyFile(
  * {@link readManagedCommandLineConfiguration} reads it, the key file read by
  * {@link readManagedCommandLineKeyFile}, and the pair set on the record as its
  * `sharedSecret` and `expires` -- the one record field the store keeps a secret
- * in. A pending relay key registration the key file records is carried onto the
- * record, so the first run here retries it. Pure: nothing is stored here.
+ * in. The relay registrar the configuration names, and a pending relay key
+ * registration the key file records, are set on the record, so the first run
+ * here retries the registration. Pure: nothing is stored here.
  *
  * A configuration this app does not run -- another channel, or a part it
  * cannot run -- is refused with its key file rather than installed without it:
@@ -585,7 +673,29 @@ export function readManagedCommandLinePair(
   configurationSource: string,
   keySource: string,
 ): RunnableManagedExchangeRecord {
-  const fields = commandLineExchangeFields(configurationSource);
+  return readManagedCommandLinePairImport(configurationSource, keySource)
+    .record;
+}
+
+/** A command-line pair read into a record
+ * ({@link readManagedCommandLinePair}), with the `connection.turn` urls the
+ * configuration names beside a relay registrar, which the record does not
+ * keep: a run here relays through this browser's own relay settings. */
+export interface ManagedCommandLinePairRead {
+  record: RunnableManagedExchangeRecord;
+  /** The dropped urls, as the file states them; empty where it names no
+   * registrar or no `turn` entry. */
+  droppedTurnUrls: Array<string>;
+}
+
+/** {@link readManagedCommandLinePair}, also returning the `turn` urls the
+ * record does not keep, so the import can name them. Throws what that
+ * function throws. */
+export function readManagedCommandLinePairImport(
+  configurationSource: string,
+  keySource: string,
+): ManagedCommandLinePairRead {
+  const { fields, droppedTurnUrls } = commandLineExchange(configurationSource);
   const channel = channelThisAppDoesNotRun(fields.exchangeFile);
   if (channel !== undefined)
     throw new ManagedConfigurationRefusedError(
@@ -604,7 +714,7 @@ export function readManagedCommandLinePair(
         "run the exchange with Alcove.",
     );
   const key = readManagedCommandLineKeyFile(keySource);
-  return runnableManagedExchangeOrRefuse(
+  const record = runnableManagedExchangeOrRefuse(
     buildManagedExchangeRecord({
       ...fields,
       sharedSecret: key.sharedSecret,
@@ -614,4 +724,5 @@ export function readManagedCommandLinePair(
         : {}),
     }),
   );
+  return { record, droppedTurnUrls };
 }

@@ -108,9 +108,9 @@ are the standing definition of the managed exchange.
 | `schedule` | object or absent | The partnership-agreed run schedule the unattended path executes: the agreed recurrence and run window -- the schedule is partnership-level agreement, coordinated out-of-band exactly as the terms are -- plus the retry bookkeeping for a missed window (the next planned attempt). Absent for an exchange run attended-only. The field-by-field layout is in [The `schedule` object](#the-schedule-object). |
 | `lastRun` | object or absent | Run bookkeeping the backup state and the tiered desync UX read (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md)): `at` (ISO 8601 UTC), `outcome` (`"succeeded"` \| `"failed"` \| `"desynced"` \| `"missed"` \| `"skipped"`), and, for a non-succeeded outcome, an optional `failureKind` (`"auth"` \| `"transport"` \| `"storage"` \| `"custody-unreadable"` \| `"input"` \| `"terms-shortfall"` \| `"handed-off"` \| `"too-large"` \| `"terms-change"` \| `"cancelled"`). A `"terms-change"` failure records a partner's changed linkage terms the run did not take on, refused at the terms exchange before any linkage key or data moved; its remedy is the operator's decision on the change, never a retry ([A refused terms change](#a-refused-terms-change)). A `"missed"` outcome records a no-show: the wait for the other party's runner spent its whole budget with nobody arriving, so no handshake ran. A scheduled run reaches it when an agreed window passes without a completed handshake; an attended run reaches it when its own wait for the partner expires. It has no `failureKind` -- the outcome is the whole account, and it is held apart from `"transport"` (a connection that was made and broke, whose remedy is retrying the connection) and from `"cancelled"` (the operator stopped the run). It is benign, retried at the next window or whenever the operator runs the exchange again, and never routed through the desync/attack framing (see [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#a-missed-window-is-neither-desync-nor-attack)). A `"skipped"` outcome records an agreed window the scheduled runner declined to open because the operator's [compromise response](#the-operators-response-to-it) stood on the record: nothing connected and nothing rotated, so it is neither a run nor a no-show, it has no `failureKind`, and it leaves the miss count where it stood (see [A due window under the operator's compromise response](#a-due-window-under-the-operators-compromise-response)). An `"input"` failure records a benign pre-run acquisition problem -- the handle's file missing, moved, or unreadable at run start -- detected before any connection, likewise never routed through that framing; putting the file back clears it, so its surface offers the run again. A `"terms-shortfall"` failure records the other benign pre-run input state, held apart from it because its remedy is not another attempt: the file was read and cannot satisfy every linkage key the standing terms declare, so the run is refused before connecting (by the run-start input guard, or by the run boundary's own `assertLinkageTermsSatisfiable` inside the pre-connection prepare), and the same file refuses identically at the next window. Its remedy is a file covering every agreed key, or terms re-agreed with the partner out of band -- never a retry or a bare re-pick. A `"terms-shortfall"` entry additionally holds `singleColumnInput`, admitted only as `true` and omitted rather than written `false`, when the file the run-start input guard read came out as ONE column -- the shape a file separated by something other than this record's `csvDelimiter` comes out as. The reading is what tells the delimiter remedy apart from a real shortfall of the agreed keys, and by the next visit the launch error that held it is gone, so the next visit's summary and the between-visit notification read it off the entry: where it is set both state the delimiter remedy, and where it is absent both state the agreed-keys copy. A `"handed-off"` failure records the third pre-connection refusal: the run found this device's copy [spent](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact) by an export and refused inside the run+rotate lock, before reading the input file and before connecting, rather than rotating a secret whose owner is now elsewhere. It is the single-owner invariant holding rather than a fault, so it too stays outside the desync/attack framing, and it is the record's own account of a run -- attended or scheduled -- that met a hand-off nobody was present to answer for. A `"custody-unreadable"` failure records the fourth, and it is that same refusal failing to read the entry it decides on: the sibling entry did not validate, or its store did not answer, so the run stopped in the same place rather than rotating on custody it could not establish. The same kind records the record itself failing the runnable check at the run's read inside that lock -- gone, not a valid record, or holding a configuration only -- which stops the run at the same point and rotates nothing. It is held apart from `"storage"` because the two leave different states behind -- a `"storage"` failure rotated a secret it could not save, which can leave the two parties holding different ones and is recovered by re-inviting, while this refusal precedes the handshake and rotates nothing, so nothing here is a desync and a fresh secret would replace one nothing moved. A `"too-large"` failure records a refusal to send a PSI set over the bound one WebRTC message holds ([PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)): the pre-connection first-round check, or a round's own check on the frame it built, which sends the partner an abort in the set's place. It is benign and outside the desync/attack framing, but unlike the five above it can follow the handshake and earlier rounds, so it states nothing about what this run sent. The entry holds no size, as no entry holds a count: the next visit and the between-visit notification state the bound and the remedy, and only a live launch shows the refusal's own message, with the size. A `"too-large"` entry additionally holds `tooLargeSetOwner` (`"local"` \| `"partner"`), the refusal's own reading of whose set was over the bound: `"local"` for this party's own set, `"partner"` for the partner's set a round had to send back re-encrypted. It names the one remedy both surfaces state -- split your input into smaller exchanges, or ask the partner to split theirs -- and the notification's tag differs by side. An entry without it states both remedies. A `"too-large"` entry also holds `tooLargeBound` (`"webrtc-message"`), which bound the refusal found the set over: the bytes one WebRTC message holds. Both surfaces name that bound and its figure; an entry without it names no bound. `"terms-shortfall"`, `"too-large"`, `"handed-off"`, and `"custody-unreadable"` are the failure kinds a surface must **not** present as retryable: the same input falls the same way short of the same keys and builds the same too-large set, a handed-off copy refuses identically at every later run, and a run reads the same unreadable entry every time, so the remedy is the operator's, not another attempt's. A record written before a value was added to either enum still reads -- an entry with `"input"` for a shortfall loads and tiers as the generic input state; the converse is the reader-rejects-unknown rule's consequence, an artifact with an outcome or kind this reader does not know being refused whole rather than read with the value dropped. Widening either enum therefore leaves `schemaVersion` where it is: the version moves for a member an older build would read past and lose state by, not for a value it refuses, and not for `singleColumnInput`, `tooLargeSetOwner`, or `tooLargeBound`, whose absence is the copy every build states (the agreed-keys copy, both too-large remedies, and a too-large set with no bound named): a build that does not know one gives worse advice rather than reading a state wrongly. A **re-invite clears `lastRun`** in the same rotation transaction that advances the fresh secret: the re-invite is the recovery for the failure the entry recorded, so leaving it would re-derive a consumed tier at the next visit -- and once the import marker is cleared alongside, a stale `"auth"` failure would re-derive as the attack tier rather than the benign import one. A successful run instead advances `lastRun` to `"succeeded"`; two recoveries drop it: the re-invite, and an apply of a partner's terms change, which drops a `"terms-change"` entry for the same reason ([A refused terms change](#a-refused-terms-change)). Which of two runs' entries the store keeps is [Recording a run outcome](#recording-a-run-outcome). |
 | `rotationInFlightSince` | string (ISO 8601, UTC `Z`) or absent | The instant a run began a key exchange that has not saved its rotated secret: written durably after the partner connects and before the key exchange starts, and removed by the rotation write that stores the rotated secret, so a record still holding it outside a run records a key exchange that stopped between the two. What writes and reads it: [The rotation-in-flight marker](#the-rotation-in-flight-marker). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line key file this app writes. |
-| `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written only once the registrar has confirmed it holds the relay key derived from the record's current secret, and removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line files this app writes. |
-| `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record), and never in the export artifact or the command-line key file this app writes. |
-| `relayRegistrationPendingReason` | `"reinvite"` or absent | Why no run can confirm the registration `relayRegistrationPendingSince` records, held only beside it: `"reinvite"` when a re-invite replaced the secret and the registrar did not confirm the fresh secret's key, so the key it holds is derived from a secret the record no longer holds. Absent beside the marker, a registration signed under the current key can confirm it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Never in the export artifact or the command-line key file this app writes. |
+| `relayRegistrar` | object or absent | The relay registrar this browser enrolled the exchange at: `url`, the registrar's `https://` address, and `exchangeId`, the id it holds the exchange's relay key under, validated as the command line's [`connection.relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) is. It holds no credential: the relay-owner token is asked for at enrollment and written nowhere. Written by an enrollment once the registrar has confirmed it holds the relay key derived from the record's current secret; by a pair import whose configuration names a registrar; and by a backup restore holding one. A pair import or restore writes it whether or not that registrar confirmed the current key, and the key file's or backup's `relayRegistrationPendingSince` beside it records a registration it has not confirmed. Removed when the operator stops registering. A run registers there only when it relays through this browser's own relay ([PROTOCOL.md](PROTOCOL.md#registering-the-rotated-relay-key)). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact holds it in its `local` block, and the command-line export writes it as `connection.relay_registrar` ([What the exports write](#what-the-exports-write)). |
+| `relayRegistrationPendingSince` | string (ISO 8601, UTC `Z`) or absent | The instant the secret the record holds was rotated to, while the relay registrar has not confirmed that it holds the relay key derived from it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). Absent in a [configuration-only record](#the-configuration-only-record). The export artifact's `key` block and the command-line key file this app writes hold it under the same name ([What the exports write](#what-the-exports-write)). |
+| `relayRegistrationPendingReason` | `"reinvite"` or absent | Why no run can confirm the registration `relayRegistrationPendingSince` records, held only beside it and `relayRegistrar`, so a record or backup holding it without either is refused whole: `"reinvite"` when a re-invite replaced the secret and the registrar did not confirm the fresh secret's key, so the key it holds is derived from a secret the record no longer holds. Absent beside the marker, a registration signed under the current key can confirm it. What writes and reads it: [The pending relay registration](#the-pending-relay-registration). The export artifact holds it in its `local` block; it has no key-file form, so the command-line export refuses a record holding it ([What the exports write](#what-the-exports-write)). |
 | `standingCondition` | object | The unanswered **standing condition**: evidence that this device's secret may no longer be the partnership's, raised by a run and not answered since. It holds one of two forms, neither with free text: a raised condition, `since` (ISO 8601 UTC, the instant of the run that raised it) and `kind` (`"auth"` \| `"storage"`), the two `failureKind`s whose remedy is out-of-band rather than an act on this device; or `{"kind": "none"}` while none stands. A raised condition additionally holds the operator's `response` where one has been given -- `kind` (`"compromise"`) and `at` (ISO 8601 UTC, the instant they answered) -- nested inside the condition it answers rather than beside it, so the acts that clear the condition clear the response with it (see [The standing condition](#the-standing-condition)). The field is **required**, so a reader never has to tell a record holding none from one written without the field: a record stored under `alcove-managed-exchange/v1`, which has no such field, is rejected whole and re-established by re-invite, as is one under `alcove-managed-exchange/v2`, whose condition cannot hold a response (see [Versioning](#versioning-an-app-upgrade-can-invalidate-a-stored-record)). It stands BESIDE `lastRun` rather than inside it because `lastRun` holds one run: the next run's stamp replaces it, so a no-show or a later success would otherwise carry the evidence off with the entry that held it and the operator would never again be asked for the confirmation the design requires (see [A standing condition outlives the run that raised it](../MANAGED_EXCHANGE.md#a-standing-condition-outlives-the-run-that-raised-it)). What raises and clears it is [The standing condition](#the-standing-condition). |
 
 Everything in this table except `sharedSecret` is non-secret but not
@@ -238,8 +238,9 @@ The key file is validated on its own -- the configuration's schema parse never
 sees it -- through the sensitive-JSON chokepoint and the strict key-file schema
 the [hand-off re-take](#taking-a-command-line-hand-off-back) also reads
 (`keyFileFieldsSchema`), under the re-take's size cap, applied before the file
-is read. The export artifact's key half is read against the two-field key-pair
-schema (`keyPairFieldsSchema`) instead, which admits no marker.
+is read. The export artifact's key half is read against the key-pair schema
+(`keyPairFieldsSchema`) instead, which admits the pending relay registration
+and no rotation-in-flight marker.
 
 **What it refuses**, with nothing written:
 
@@ -406,6 +407,14 @@ credential among them is held only as an `@path` reference, never as a value:
 The command-line import and export apply one rule, measured off the locator arms
 plus the sftp held set (`apps/web/src/psi/managed/managedCommandLineDocument.ts`),
 so neither leg holds a field the other would refuse.
+
+Beyond the allowlist, the command-line export writes a webrtc record's relay
+registrar as `connection.relay_registrar`, with the `turn` entries the command
+line requires beside it, and the pair import reads both out of the document
+into the record rather than storing them there
+([What the exports write](#what-the-exports-write)). The stored
+document holds neither, and the backup import measures its document without
+that exception, since the artifact holds the registrar in its own block.
 
 #### Role: a local `side` field, not the document
 
@@ -1385,9 +1394,12 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   re-enrollment rather than a renewal while a reason stands.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
-  rotated since unchanged; by an enrollment; and by stopping registration.
-  No other write removes it: a rotation write sets or keeps it, and a revive
-  keeps it, on a record naming a registrar or none.
+  rotated since unchanged; by an enrollment; by stopping registration; and by
+  the revive or hand-off re-take of a pair whose configuration names the
+  record's registrar and whose key file holds no marker (**Carried in**,
+  below). No other write removes it: a
+  rotation write sets or keeps it, and any other revive keeps it, on a record
+  naming a registrar or none.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
   partner. With no reason, it registers the current key again, signed under
@@ -1405,21 +1417,84 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 - **Carried in** from a command-line key file holding the CLI's own field
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), by the
   pair import and the hand-off re-take, so the exchange's first run here
-  retries it. A revive keeps the registrar the stored record was enrolled at
-  (`applyManagedExchangeCommandLinePair`), and the key file's marker replaces
-  the stored one. A key file holding none does not show that the command line
-  confirmed a registration, since it does not say whether the command line
-  had a registrar configured, so its absence keeps the stored marker, on a
-  record naming a registrar or none. The re-take of a pair whose secret
-  differs is a rotation write (`decideRetake`): the key file's
-  marker when it holds one, else the stored one. A marker carried in is kept on a record that names no registrar
-  -- a fresh import names none -- where no run retries it; the page and the
-  list name enrollment, which removes it, having registered the current key
-  with the token.
-- **Not carried out**: the export artifact and the command-line files this app
-  writes hold none of the three fields, so an exchange moved by either is
-  enrolled again where it runs next -- without the token where the registrar
-  already holds its current key.
+  retries it. A pair whose configuration names a registrar states the whole
+  registration: a revive takes its registrar, and the key file's marker or its
+  absence, in place of the stored registrar, marker, and reason
+  (`applyManagedExchangeCommandLinePair`). A pair naming no registrar keeps the
+  registrar the stored record was enrolled at, and the key file's marker
+  replaces the stored one; a key file holding none there does not show that
+  the command line confirmed a registration, since the configuration had no
+  registrar configured, so its absence keeps the stored marker, on a record
+  naming a registrar or none. The hand-off re-take reads the key file by the
+  same rule, whether or not its secret differs, except that a key file's
+  marker keeps a stored reason (**The reason**, above), and keeps the stored
+  registrar (`decideRetake`), so a command line that confirmed its
+  registration and rotated leaves no marker for the next run here to retry.
+  Because the re-take keeps the stored registrar, a key file holding no marker
+  clears the stored marker only beside a configuration naming that same
+  registrar: the same `url` origin and the same `exchangeId`. Beside a
+  configuration naming another registrar, the stored registrar confirmed
+  nothing, so the stored marker and reason stay. A pair import compares
+  against the registrar it takes from that pair, so there a pair naming a
+  registrar always names the record's.
+  A marker carried in is kept on a record that names no registrar, where no
+  run retries it; the page and the list name enrollment, which removes it,
+  having registered the current key with the token.
+- **Written out** by both exports, as the next section states.
+
+### What the exports write
+
+The three fields leave the browser with the exchange, so a restored, migrated,
+or handed-off exchange keeps registering the key each rotation derives, and
+the first run where it lands retries a pending registration before it dials.
+The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
+(`managedExchangeArtifact.ts`), `composeManagedCronExport`
+(`managedCronExport.ts`), `readManagedCommandLinePair`
+(`managedCommandLineImport.ts`).
+
+- **The export artifact** holds `relayRegistrationPendingSince` in its `key`
+  block, under the key file's own name, and `relayRegistrar` and
+  `relayRegistrationPendingReason` in `local`. A restore and a migration
+  reconstruct all three, a fresh install and a revive in place alike, and the
+  record schema refuses a reason without the marker. The `artifactVersion`
+  literal does not move for them: an older build's strict schemas refuse the
+  file whole.
+- **The command-line export** writes the registrar as
+  `connection.relay_registrar`, and the marker as the key file's
+  `relayRegistrationPendingSince`, which the command line's next run retries
+  before it dials, a renewal signed under the current key
+  ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)). The
+  command line registers only for a relay its own `turn` entries name with a
+  credential minted from the shared secret, and refuses a `relay_registrar`
+  without one, so the export writes this browser's own TURN urls from its
+  relay settings as those entries, a url each. It writes no STUN url. With no
+  own TURN url set, the export is refused, naming the two ways past it: set
+  the relay's TURN url in the relay settings, or stop registering. A relay
+  setting this build cannot read is refused apart, naming setting it again.
+  The panel's preview and its download compose from one read of the relay
+  settings, so the files name the urls the panel showed.
+- **A re-invite's pending registration refuses the command-line export.** The
+  reason has no key-file form, and the plain marker would not do: the
+  registrar holds the key of the secret the re-invite replaced, which is not
+  kept, so the command line's renewal under the current key would be refused
+  at its first run, ending it with exit 77. The refusal names the registrar
+  and owner-token re-enrollment under Relay registration, which confirms the
+  current key and removes the reason, so the export that follows holds no
+  marker.
+- **The pair import** reads `connection.relay_registrar` into the record's
+  `relayRegistrar`, and drops the `turn` entries beside it where each has its
+  credential minted: a run here relays through this browser's own relay
+  settings, which the export writes back in their place. A `turn` entry
+  stating a credential is refused, as it is without a registrar. The key
+  file's marker becomes `relayRegistrationPendingSince`, and a fresh install
+  keeps both. The import warns rather than refuses: its notice names the
+  dropped urls where this browser's own TURN urls differ, and, where this
+  browser names no TURN url, says the registrar registers nothing until the
+  Relay server page names one.
+- **An `alcove.yaml` chosen alone naming a registrar is refused**: a
+  configuration-only record registers nothing and holds no registrar. The
+  refusal names choosing the key file too, or removing
+  `connection.relay_registrar` and `connection.turn`.
 
 ## Derived, never stored
 
@@ -1486,10 +1561,13 @@ is refused on the literal rather than migrated, the superseded
 (below). `exchangeDocument` embeds the exchange-file document as a
 valid `alcove.yaml` (the snake_case YAML the CLI loads, serialized through the
 same discipline the mint layer applies to a validated spec). `key` is the
-`.alcove.key` pair (`sharedSecret` and, when a bound is in force, `expires`).
-And `local` holds the browser-only fields the two CLI artifacts do not (`label`,
-`side`, `schedule`, `lastRun`, `standingCondition`, `tokenMaxAgeDays`, and the
-two held-grant markers above). The [standing
+`.alcove.key` pair (`sharedSecret`, `expires` when a bound is in force, and
+`relayRegistrationPendingSince` when a relay key registration is pending).
+And `local` holds the record fields the two CLI artifacts do not (`label`,
+`side`, `schedule`, `lastRun`, `standingCondition`, `tokenMaxAgeDays`,
+`relayRegistrar`, `relayRegistrationPendingReason`, and the two held-grant
+markers above; the relay fields: [What the exports
+write](#what-the-exports-write)). The [standing
 condition](#the-standing-condition) travels, the operator's `response` to it
 included, because an export that dropped either would be a fourth way to clear
 one, and only the operator's acknowledgement, a re-invite, and a delete may. The
@@ -1506,9 +1584,10 @@ either imports with the answer or is refused entire. The artifact's own
   because the CLI loads it as YAML through `camelizeKeys`.
 - **What an older reader does with an optional `local` key.** The
   `artifactVersion` literal does not move for any of the optional keys in
-  `local` -- `standingCondition` and the held-grant marker `heldOutputFolder`,
-  each written only where there is something to write, and the read-only
-  `heldInputFile` --
+  `local` -- `standingCondition`, `relayRegistrar`,
+  `relayRegistrationPendingReason`, and the held-grant marker
+  `heldOutputFolder`, each written only where there is something to write, and
+  the read-only `heldInputFile` --
   so the format does not version for them. That does not make an artifact
   holding one readable everywhere. A build whose `local` schema does not know
   the key refuses the artifact whole, because the strict reader-rejects-unknown
@@ -1546,14 +1625,15 @@ either imports with the answer or is refused entire. The artifact's own
   shown for a record that is in the operator's own custody. It cannot make a
   record run that would otherwise refuse, and it cannot stop a refusal the spent
   entry earns.
-- **CLI-separable format.** The record is the CLI's config-plus-key pair kept as
-one browser object, and its export stays consumable by the CLI toolchain rather
-than becoming a third format. The embedded `exchangeDocument` is a valid
-`alcove.yaml`. The `key` block's `sharedSecret` and `expires` pair maps onto a
-valid `.alcove.key`, and can be lifted out verbatim, since the field names
-already match the key file's. The `local` block's fields are cleanly separable
-and ignorable. This is a format-compatibility commitment, not a
-  claim the embedded exchange runs there: the composed webrtc connection holds
+- **CLI-separable format.** The record is the CLI's config-plus-key pair kept
+  as one browser object, and its export stays consumable by the CLI toolchain
+  rather than becoming a third format. The embedded `exchangeDocument` is a
+  valid `alcove.yaml`. The `key` block's `sharedSecret`, `expires`, and
+  `relayRegistrationPendingSince` map onto a valid `.alcove.key`, and can be
+  lifted out verbatim, since the field names already match the key file's.
+  The `local` block's fields are cleanly separable and ignorable. This is a
+  format-compatibility commitment, not a claim the embedded exchange runs
+  there: the composed webrtc connection holds
   no `role`, the field the CLI derives its rendezvous peer id from and refuses a
   webrtc run without (see [Role: a local `side` field](#role-a-local-side-field-not-the-document)).
 - **Plaintext, custody-protected.** The artifact is a plaintext credential file,

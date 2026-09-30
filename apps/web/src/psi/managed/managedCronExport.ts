@@ -5,7 +5,9 @@
  * a host scheduler move a managed exchange onto the CLI
  * (docs/MANAGED_EXCHANGE.md, "Who this is for").
  *
- * This module is the pure half -- no download, no store write, no spend.
+ * This module is the pure half -- no download, no store write, no spend; the
+ * one thing it reads beyond the record is this browser's relay settings,
+ * through an injected reader.
  *
  * - It SPLITS the export artifact rather than serializing a second format.
  *   The config text is core's {@link serializeExchangeDocument}, the writer
@@ -41,6 +43,14 @@
  *   record holds is written back as read too, and so is one whose mode is
  *   `none` on a record that runs here; the record schema refuses any other
  *   mode beside a secret, so no artifact installs one.
+ * - It WRITES the relay key registration a record holds: the registrar as
+ *   `connection.relay_registrar`, with this browser's own TURN urls as the
+ *   `connection.turn` entries whose credential each run mints -- the relay a
+ *   run here registers for, and one the command line requires beside a
+ *   registrar -- and a pending registration as the key file's own marker,
+ *   which the command line's next run retries before it dials. A registrar
+ *   with no own TURN url to write, and a registration a re-invite left
+ *   pending, which no run can confirm, are refused.
  *
  * The key file is a plaintext credential under the CLI key file's own trust
  * model: custody and storage permissions, never a passphrase (the spec's
@@ -49,23 +59,36 @@
  * and any `expires` ride the key file alone.
  */
 
-import { ExchangeSpecSchema, serializeExchangeDocument } from "@alcove/core";
+import {
+  ExchangeSpecSchema,
+  relayRegistrarLabel,
+  serializeExchangeDocument,
+} from "@alcove/core";
+
+import { readOwnRelaySetting } from "../transport/ownRelaySetting";
 
 import {
   connectionFieldsNotHeld,
   fieldsOutsideComposableDocument,
   literalCredentialFields,
 } from "./managedCommandLineDocument";
+import { MANAGED_RELAY_REENROLLMENT_STEP } from "./managedRelayRegistration";
 import { keyFileFieldsFromRecord } from "./managedExchangeArtifact";
 
 import { MANAGED_INPUT_FILE_NAME } from "./managedInputHandle";
 
-import type { ConnectionConfig, ExchangeSpec } from "@alcove/core";
+import type {
+  ConnectionConfig,
+  ExchangeSpec,
+  RelayRegistrar,
+  WebRTCConnectionConfig,
+} from "@alcove/core";
 import type {
   ManagedExchangeKeyPair,
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 /** The config file name `alcove exchange` reads at its default config path
  * (`DEFAULT_CONFIG_PATH`, `apps/cli/src/config.ts`), so a run in the folder
@@ -130,8 +153,9 @@ export interface ManagedCommandLineConfig {
  * line: the two files and the invocation.
  */
 export interface ManagedCronExport extends ManagedCommandLineConfig {
-  /** The `.alcove.key` half: the shared secret and any `expires`. A plaintext
-   * credential -- this is the file the handover's custody rules are about. */
+  /** The `.alcove.key` half: the shared secret, any `expires`, and any
+   * pending relay key registration. A plaintext credential -- this is the file
+   * the handover's custody rules are about. */
   key: ManagedCronExportFile;
 }
 
@@ -166,14 +190,56 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
 }
 
 /**
+ * The connection fields that register the relay key at `registrar`: the
+ * registrar, and this browser's own TURN urls as entries whose credential
+ * each run mints, which the command line requires beside a registrar and
+ * registers only for. With no own TURN url, or a relay setting this build
+ * cannot read, the export is refused rather than written without the
+ * registrar, whose absence would leave the relay holding the key of a secret
+ * the first command-line run rotates past.
+ */
+function relayRegistrationConnectionFields(
+  registrar: RelayRegistrar,
+  readOwn: () => OwnRelayRead,
+): Pick<WebRTCConnectionConfig, "turn" | "relayRegistrar"> {
+  const own = readOwn();
+  const registers =
+    `This exchange registers its relay key at ${relayRegistrarLabel(registrar)}, ` +
+    "and the command line registers it only for a TURN relay named in " +
+    "the configuration, ";
+  if (own.kind === "unreadable")
+    throw new Error(
+      registers +
+        "but this browser's relay setting could not be read. Set it again " +
+        "on the Relay server page, then export again.",
+    );
+  const turn = own.kind === "set" ? own.relay.turn : [];
+  if (turn.length === 0)
+    throw new Error(
+      registers +
+        "but this browser's relay settings name no TURN url to write there. " +
+        "Add your relay's TURN url on the Relay server page, or stop " +
+        "registering under Relay registration on this exchange's page, then " +
+        "export again.",
+    );
+  return {
+    turn: turn.map((url) => ({ url })),
+    relayRegistrar: registrar,
+  };
+}
+
+/**
  * The connection the export writes: the stored one, with a webrtc `role` set
- * from the record's `side`. A webrtc record always holds a side (the record
- * schema binds the two), so a missing one is refused rather than exported
- * roleless for the CLI to refuse at the operator's first scheduled run.
+ * from the record's `side` and, on a record naming a relay registrar, the
+ * fields that register there ({@link relayRegistrationConnectionFields}). A
+ * webrtc record always holds a side (the record schema binds the two), so a
+ * missing one is refused rather than exported roleless for the CLI to refuse
+ * at the operator's first scheduled run.
  */
 function exportedConnection(
   connection: ConnectionConfig,
   record: ManagedExchangeRecord,
+  readOwn: () => OwnRelayRead,
 ): ConnectionConfig {
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
@@ -181,7 +247,36 @@ function exportedConnection(
       "a managed webrtc exchange is exported with the side it runs as; the " +
         "stored record holds none",
     );
-  return { ...connection, role: record.side };
+  return {
+    ...connection,
+    role: record.side,
+    ...(record.relayRegistrar !== undefined
+      ? relayRegistrationConnectionFields(record.relayRegistrar, readOwn)
+      : {}),
+  };
+}
+
+/**
+ * Refuse a record whose relay key registration a re-invite left pending: the
+ * registrar holds the key of the secret the re-invite replaced, which is not
+ * kept, so the command line's retry of the key file's marker, signed with the
+ * current key, would be refused at its first run.
+ */
+function assertNoReinviteRegistrationPending(
+  record: RunnableManagedExchangeRecord,
+): void {
+  if (record.relayRegistrationPendingReason !== "reinvite") return;
+  const registrar =
+    record.relayRegistrar === undefined
+      ? "the relay registrar"
+      : relayRegistrarLabel(record.relayRegistrar);
+  throw new Error(
+    "This exchange's re-invite replaced its shared secret, and " +
+      `${registrar} has not confirmed the relay key derived from the new ` +
+      "one, so a command-line run could not " +
+      `register it either. First ${MANAGED_RELAY_REENROLLMENT_STEP}, then ` +
+      "export again.",
+  );
 }
 
 /**
@@ -223,7 +318,8 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
 /**
  * Compose the exchange-file document the export holds: the stored document
  * with a webrtc `role` set from the record's `side` and, when the record holds
- * a max-age policy, an `authentication` block holding it. Returns the schema's
+ * a max-age policy, an `authentication` block holding it, and on a record
+ * naming a relay registrar, the fields that register there. Returns the schema's
  * parse result rather than the assembled input, matching
  * `assembleExchangeSpec`'s discipline, so a value the exchange-file schema
  * would not accept fails here rather than at the operator's first scheduled
@@ -231,18 +327,20 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
  *
  * @throws {Error} if the stored connection holds a field or a literal
  *   credential the app does not hold, a webrtc record holds no side, the
- *   stored document holds an `authentication` block, or it holds a top-level
- *   field the app does not compose.
+ *   stored document holds an `authentication` block, it holds a top-level
+ *   field the app does not compose, or the record names a relay registrar and
+ *   this browser's relay settings name no TURN url.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 function composeCronExportDocument(
   record: ManagedExchangeRecord,
+  readOwn: () => OwnRelayRead,
 ): ExchangeSpec {
   const connection = heldConnectionOrRefuse(record.exchangeFile);
   assertNoStoredAuthentication(record.exchangeFile);
   const document = ExchangeSpecSchema.parse({
     ...record.exchangeFile,
-    connection: exportedConnection(connection, record),
+    connection: exportedConnection(connection, record, readOwn),
     ...(record.tokenMaxAgeDays !== undefined
       ? { authentication: { tokenMaxAgeDays: record.tokenMaxAgeDays } }
       : {}),
@@ -263,26 +361,30 @@ function serializeKeyFile(fields: ManagedExchangeKeyPair): string {
 
 /**
  * Compose a managed record's configuration half: the `alcove.yaml` file and
- * the command that runs it. Pure, and available to every stored record --
- * including a configuration-only one, whose key file stayed with the machine
- * that runs it and which has no key half to compose.
+ * the command that runs it. Writes nothing, and is available to every stored
+ * record -- including a configuration-only one, whose key file stayed with the
+ * machine that runs it and which has no key half to compose.
  *
  * The emitted command is `alcove exchange`'s real invocation --
  * `[options] INPUT_FILE [OUTPUT_FILE]`, with the config and key read at their
  * defaults (`apps/cli/src/commands/exchange.ts`).
  *
  * @throws {Error} if the record's stored connection holds a field or a
- *   literal credential the app does not hold, or its stored document holds an
- *   `authentication` block or a top-level field the app does not compose.
+ *   literal credential the app does not hold, its stored document holds an
+ *   `authentication` block or a top-level field the app does not compose, or
+ *   it names a relay registrar and `readOwn` names no TURN url.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 export function composeManagedCronExportConfig(
   record: ManagedExchangeRecord,
+  readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedCommandLineConfig {
   return {
     config: {
       fileName: CRON_EXPORT_CONFIG_FILE_NAME,
-      text: serializeExchangeDocument(composeCronExportDocument(record)),
+      text: serializeExchangeDocument(
+        composeCronExportDocument(record, readOwn),
+      ),
       mimeType: CRON_EXPORT_CONFIG_MIME,
     },
     command:
@@ -293,20 +395,24 @@ export function composeManagedCronExportConfig(
 
 /**
  * Compose a managed record into the CLI's two files and the command that runs
- * them: the configuration half above, plus the key file. Pure: the record is
- * read, never written, and no marker, spend, or download is involved. The
- * record type is the runnable one, so the key half cannot be asked of a record
- * that holds no secret.
+ * them: the configuration half above, plus the key file. The record is read,
+ * never written, and no marker, spend, or download is involved; `readOwn`
+ * reads this browser's relay settings. The record type is the runnable one,
+ * so the key half cannot be asked of a record that holds no secret.
  *
  * @throws {Error} if the record's stored connection holds a field or a
- *   literal credential the app does not hold, or its stored document holds an
- *   `authentication` block or a top-level field the app does not compose.
+ *   literal credential the app does not hold, its stored document holds an
+ *   `authentication` block or a top-level field the app does not compose, it
+ *   names a relay registrar and `readOwn` names no TURN url, or a re-invite
+ *   left its relay key registration pending.
  * @throws {ZodError} if the composed document fails exchange-file validation.
  */
 export function composeManagedCronExport(
   record: RunnableManagedExchangeRecord,
+  readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedCronExport {
-  const { config, command } = composeManagedCronExportConfig(record);
+  assertNoReinviteRegistrationPending(record);
+  const { config, command } = composeManagedCronExportConfig(record, readOwn);
   return {
     config,
     key: {

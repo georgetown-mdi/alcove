@@ -24,6 +24,7 @@ import {
   ManagedImportSideMismatchError,
   ManagedImportStoredCopyError,
   importManagedCommandLinePair,
+  managedInstallFields,
 } from "@psi/managed/managedExchangeImport";
 import {
   applyManagedExchangeCommandLinePair,
@@ -49,6 +50,7 @@ import type {
   ManagedRetakeOutcome,
 } from "@psi/managed/managedExchangeStore";
 import type { ManagedPairImportDeps } from "@psi/managed/managedExchangeImport";
+import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 // The key leg of the command-line import: an alcove.yaml read with the
 // .alcove.key beside it installs a runnable record, the key file is validated
@@ -75,7 +77,10 @@ function newExchange(
 }
 
 /** The two files the app's own command-line export writes for a record. */
-function exportedPair(overrides: Partial<NewManagedExchange> = {}): {
+function exportedPair(
+  overrides: Partial<NewManagedExchange> = {},
+  readOwn?: () => OwnRelayRead,
+): {
   record: RunnableManagedExchangeRecord;
   configuration: string;
   key: string;
@@ -83,7 +88,7 @@ function exportedPair(overrides: Partial<NewManagedExchange> = {}): {
   const record = runnableManagedExchangeOrRefuse(
     buildManagedExchangeRecord(newExchange(overrides)),
   );
-  const exported = composeManagedCronExport(record);
+  const exported = composeManagedCronExport(record, readOwn);
   return {
     record,
     configuration: exported.config.text,
@@ -892,5 +897,167 @@ describe("the secret reaches no log line and no request", () => {
     );
     expect(everythingLogged()).not.toContain(record.sharedSecret);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("the relay key registration across the command-line files", () => {
+  const REGISTRAR = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+  const OTHER_REGISTRAR = {
+    url: "https://relay.example.net",
+    exchangeId: "riverbend-other",
+  };
+  const PENDING_SINCE = "2026-09-29T12:00:00.000Z";
+  const OWN_TURN = "turns:relay.example.org:443?transport=tcp";
+  const ownRelay = (): OwnRelayRead => ({
+    kind: "set",
+    relay: { turn: [OWN_TURN], stun: [] },
+  });
+
+  test.each([
+    ["no pending registration", {}],
+    [
+      "a pending registration",
+      { relayRegistrationPendingSince: PENDING_SINCE },
+    ],
+  ])(
+    "an exported pair with %s reads back with its registrar and marker",
+    (_case, pending) => {
+      const { record, configuration, key } = exportedPair(
+        { relayRegistrar: REGISTRAR, ...pending },
+        ownRelay,
+      );
+      const imported = readManagedCommandLinePair(configuration, key);
+      expect(imported.relayRegistrar).toEqual(REGISTRAR);
+      expect(imported.relayRegistrationPendingSince).toBe(
+        record.relayRegistrationPendingSince,
+      );
+      expect(imported).not.toHaveProperty("relayRegistrationPendingReason");
+      // The registrar and the minted TURN entries beside it leave the stored
+      // document, so a re-export writes the same file.
+      expect(imported.exchangeFile).toEqual(record.exchangeFile);
+      expect(composeManagedCronExport(imported, ownRelay).config.text).toBe(
+        configuration,
+      );
+    },
+  );
+
+  test("a fresh install of an imported pair keeps its registrar and marker", async () => {
+    const { configuration, key } = exportedPair(
+      {
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+      },
+      ownRelay,
+    );
+    const deps = recordingDeps();
+    deps.install = (record) =>
+      Promise.resolve(buildManagedExchangeRecord(managedInstallFields(record)));
+    const { record: installed } = await importManagedCommandLinePair(
+      configuration,
+      key,
+      deps,
+    );
+    expect(installed.relayRegistrar).toEqual(REGISTRAR);
+    expect(installed.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+  });
+
+  test("a pair import returns the TURN urls its configuration names beside the registrar", async () => {
+    const { configuration, key } = exportedPair(
+      { relayRegistrar: REGISTRAR },
+      ownRelay,
+    );
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      recordingDeps(),
+    );
+    expect(result.droppedTurnUrls).toEqual([OWN_TURN]);
+  });
+
+  test("a pair import naming no registrar returns no dropped TURN url", async () => {
+    const { configuration, key } = exportedPair();
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      recordingDeps(),
+    );
+    expect(result).not.toHaveProperty("droppedTurnUrls");
+  });
+
+  test("the configuration alone naming a registrar is refused, naming both ways past it", () => {
+    const { configuration } = exportedPair(
+      { relayRegistrar: REGISTRAR },
+      ownRelay,
+    );
+    const error = thrownBy(() =>
+      readManagedCommandLineConfiguration(configuration),
+    );
+    expect(error).toBeInstanceOf(ManagedConfigurationRefusedError);
+    expect((error as Error).message).toBe(
+      "This configuration registers its relay key at a relay registrar " +
+        "(connection.relay_registrar), which this app does only for an " +
+        "exchange it runs. Choose the .alcove.key beside it as well to run " +
+        "the exchange here, or remove connection.relay_registrar and " +
+        "connection.turn and import it again.",
+    );
+  });
+
+  test("a TURN entry stating a credential beside the registrar is refused, naming turn", () => {
+    const { configuration, key } = exportedPair(
+      { relayRegistrar: REGISTRAR },
+      ownRelay,
+    );
+    const credential = "turn-credential-not-in-any-message";
+    const edited = configuration.replace(
+      `  turn:\n    - url: ${OWN_TURN}\n`,
+      `  turn:\n    - url: ${OWN_TURN}\n` +
+        "    - url: turn:relay.example.org:3478\n" +
+        "      username: operator\n" +
+        `      credential: ${credential}\n`,
+    );
+    expect(edited).not.toBe(configuration);
+    const error = thrownBy(() => readManagedCommandLinePair(edited, key));
+    expect(error).toBeInstanceOf(ManagedConfigurationRefusedError);
+    expect((error as Error).message).toContain(": turn.");
+    expect(errorText(error)).not.toContain(credential);
+  });
+
+  test("a revive from a pair naming a registrar takes its registrar and its marker or none", () => {
+    const stored = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrar: OTHER_REGISTRAR,
+      relayRegistrationPendingSince: "2026-07-13T09:00:00.000Z",
+      relayRegistrationPendingReason: "reinvite",
+    });
+    const pair = (pendingSince?: string) =>
+      runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(
+          newExchange({
+            label: "",
+            relayRegistrar: REGISTRAR,
+            ...(pendingSince !== undefined && {
+              relayRegistrationPendingSince: pendingSince,
+            }),
+          }),
+        ),
+      );
+
+    const confirmed = applyManagedExchangeCommandLinePair(stored, pair());
+    expect(confirmed.relayRegistrar).toEqual(REGISTRAR);
+    expect(confirmed).not.toHaveProperty("relayRegistrationPendingSince");
+    expect(confirmed).not.toHaveProperty("relayRegistrationPendingReason");
+
+    const pending = applyManagedExchangeCommandLinePair(
+      stored,
+      pair(PENDING_SINCE),
+    );
+    expect(pending.relayRegistrar).toEqual(REGISTRAR);
+    expect(pending.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    expect(pending).not.toHaveProperty("relayRegistrationPendingReason");
   });
 });

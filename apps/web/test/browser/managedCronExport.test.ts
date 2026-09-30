@@ -502,6 +502,7 @@ describe("a record this app could not have composed", () => {
         readRecord: getManagedExchange,
         download: (fileName) => downloaded.push(fileName),
         spendIfCurrent: spendManagedExchangeIfCurrent,
+        readOwn: () => ({ kind: "none" }),
       }),
     ).rejects.toThrow(/Remove: turn/);
 

@@ -1241,6 +1241,15 @@ pending, the recurring list and the Relay registration section of the
 exchange's page say since when and what to do. The field-level account:
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-pending-relay-registration).
 
+The enrollment travels with the exchange. A backup file holds the registrar
+and any pending registration, so a restore or a move to another device keeps
+registering. The command-line export writes the registrar into `alcove.yaml`,
+with the TURN urls from this browser's relay settings that the command line
+registers for, and a pending registration into `.alcove.key`, which the first
+command-line run tries again before it dials. It refuses while a fresh
+invitation's registration is pending, since no command-line run can confirm
+that one: enroll the exchange again first.
+
 ### Bringing a command-line configuration back
 
 An `alcove.yaml` written for the command line imports here on its own, without
@@ -1271,10 +1280,13 @@ no longer connect to your partner. What the pair import takes and refuses:
   secret or one Alcove would not write, has an `expires` that is not a date and
   time, or holds any other field is refused, saying which, and nothing is
   imported. The refusal never shows what the file holds. A key file recording a
-  relay key registration the registrar has not confirmed imports, and the
-  recurring list and the exchange's page say so until you enroll the exchange
-  under Relay registration, which registers its current key (see [When your
-  relay runs a registrar](#when-your-relay-runs-a-registrar)).
+  relay key registration the registrar has not confirmed imports. Where the
+  `alcove.yaml` names the registrar, the exchange's first run here tries the
+  registration again before it connects; where it names none, the recurring
+  list and the exchange's page say so until you enroll the exchange under
+  Relay registration, which registers its current key (see [When your relay
+  runs a registrar](#when-your-relay-runs-a-registrar)). An `alcove.yaml`
+  naming a registrar imports only with its key file.
 - **Only an exchange this browser runs.** An sftp or filedrop configuration, or
   one whose `signing` block asks for a receipt, is refused with its key file;
   import the `alcove.yaml` on its own to edit it here. A `signing` block with

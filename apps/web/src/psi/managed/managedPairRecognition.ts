@@ -18,6 +18,7 @@ import {
   findRecordsByTermsAndSide,
 } from "./managedLiveCopyMatch";
 import {
+  applyCommandLineRelayRegistration,
   applyManagedExchangeRotation,
   clearHandedOffLastRun,
   runnableManagedExchange,
@@ -161,8 +162,10 @@ export function decideCommandLinePairTarget(
  *   it is not this exchange's pair, and nothing is written.
  * - `"retake"` -- `record` is what the store writes back: `taken`'s secret
  *   and `expires` applied as a rotation where its secret differs from the
- *   stored one (`advanced`), and a `lastRun` recording the hand-off's refusal
- *   dropped. Nothing else about the record moves.
+ *   stored one (`advanced`), its pending relay registration applied
+ *   ({@link applyCommandLineRelayRegistration}), and
+ *   a `lastRun` recording the hand-off's refusal dropped. Nothing else about
+ *   the record moves.
  *
  * @throws {Error} if `stored` holds a configuration only and `taken` would
  *   install a secret on it.
@@ -184,10 +187,15 @@ export function decideRetake(
     ? applyManagedExchangeRotation(runnableManagedExchangeOrRefuse(stored), {
         sharedSecret: taken.sharedSecret,
         expires: taken.expires ?? null,
-        ...(taken.relayRegistrationPendingSince !== undefined && {
-          relayRegistrationPendingSince: taken.relayRegistrationPendingSince,
-        }),
       })
     : stored;
-  return { kind: "retake", record: clearHandedOffLastRun(rotated), advanced };
+  const registered =
+    taken === undefined
+      ? rotated
+      : applyCommandLineRelayRegistration(rotated, taken);
+  return {
+    kind: "retake",
+    record: clearHandedOffLastRun(registered),
+    advanced,
+  };
 }

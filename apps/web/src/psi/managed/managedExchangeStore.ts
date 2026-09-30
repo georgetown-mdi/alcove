@@ -850,7 +850,9 @@ export type ManagedRetakeOutcome =
  * needs reading in. A `taken` whose secret has moved past the stored one is applied
  * through {@link applyManagedExchangeRotation}, the same field-scoped write a run's
  * own rotation takes, and clears the backup marker with it: the secret has advanced,
- * so any earlier export of this exchange no longer holds it.
+ * so any earlier export of this exchange no longer holds it. A `taken` sets the
+ * pending relay registration as the pair import does, whether or not its secret
+ * moved.
  *
  * Either way the entry is left marked imported -- as of `at` where a key file
  * installed a secret, and as of the hand-off instant where none was chosen. Nothing

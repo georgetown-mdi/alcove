@@ -13,6 +13,7 @@ import {
   getManagedExchange,
   spendManagedExchangeIfCurrent,
 } from "@psi/managed/managedExchangeStore";
+import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { CopyableCode } from "@components/CopyableCode";
 import styles from "@styles/app.module.css";
@@ -97,7 +98,15 @@ export function ManagedCronExportPanel({
   // downloaded, or the record is gone from this browser entirely. Its own state,
   // not `failed`, because none of the three is an error tier.
   const [refusal, setRefusal] = useState<ManagedHandoffRefusal>();
-  const state = useMemo(() => managedCronExportPanelState(record), [record]);
+  // One read of the relay settings serves the panel and the download, so the
+  // files name the TURN urls the panel composed with.
+  const { ownRelay, state } = useMemo(() => {
+    const read = readOwnRelaySetting();
+    return {
+      ownRelay: read,
+      state: managedCronExportPanelState(record, () => read),
+    };
+  }, [record]);
 
   // A run holds the hand-off back: the polled reading, or the spend's own refusal
   // at a click the poll's last reading was too old to hold back.
@@ -114,7 +123,10 @@ export function ManagedCronExportPanel({
     setBusy(true);
     setFailed(false);
     setRefusal(undefined);
-    void dispatchManagedCronExport(record.id, cronExportDeps)
+    void dispatchManagedCronExport(record.id, {
+      ...cronExportDeps,
+      readOwn: () => ownRelay,
+    })
       .then(setDispatch)
       .catch(() => setFailed(true))
       .finally(() => setBusy(false));

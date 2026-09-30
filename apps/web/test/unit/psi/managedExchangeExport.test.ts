@@ -31,6 +31,7 @@ import type {
   ManagedSpentHandoff,
 } from "@psi/managed/managedLocalState";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 // The three export intents, tested in Node with injected dependencies. Every
 // export reads the record fresh rather than trusting a caller's copy. The
@@ -410,6 +411,7 @@ describe("dispatchManagedCronExport", () => {
         order.push("download");
         downloaded.push({ fileName, content, mimeType });
       },
+      readOwn: () => ({ kind: "none" }),
       // The store's spend, modelled as the migration's is: one step excludes a run
       // in flight, compares the stored secret, and writes the spent state under its
       // hand-off.
@@ -450,6 +452,27 @@ describe("dispatchManagedCronExport", () => {
     expect(dispatch.composed.command).toBe(
       "alcove exchange input.csv results.csv",
     );
+  });
+
+  test("composes against the relay settings read it is given, the one the panel composed with", async () => {
+    const ownTurn = "turns:relay.example.org:443?transport=tcp";
+    const rec = {
+      ...record(),
+      relayRegistrar: {
+        url: "https://relay.example.org:8443",
+        exchangeId: "riverbend-q3",
+      },
+    };
+    const panelRead: OwnRelayRead = {
+      kind: "set",
+      relay: { turn: [ownTurn], stun: [] },
+    };
+    const deps = { ...cronDeps(rec), readOwn: () => panelRead };
+
+    const dispatch = await dispatchManagedCronExport(rec.id, deps);
+
+    expect(dispatch.composed.config.text).toContain(`url: ${ownTurn}`);
+    expect(deps.downloaded[0].content).toBe(dispatch.composed.config.text);
   });
 
   test("reads first, then downloads", async () => {

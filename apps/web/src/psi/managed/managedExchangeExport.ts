@@ -49,6 +49,7 @@ import type {
   ManagedSpentHandoff,
 } from "./managedLocalStateShape";
 import type { ManagedCronExport } from "./managedCronExport";
+import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 /** The download filename `alcove-managed-backup-<date>.json`, the date the local
  * calendar day of `at`, mirroring the exchange-file filename discipline so repeated
@@ -300,6 +301,9 @@ export interface ManagedCronExportDeps {
     spentAt: string,
     handoff: ManagedSpentHandoff,
   ) => Promise<ManagedSpendOutcome>;
+  /** This browser's relay settings as the panel's own composition read them,
+   * so the files downloaded name the TURN urls the panel showed. */
+  readOwn: () => OwnRelayRead;
 }
 
 /** A dispatched command-line export awaiting the operator's "the files are saved"
@@ -356,7 +360,7 @@ export async function dispatchManagedCronExport(
   if (stored === undefined)
     throw new Error(`no managed exchange with id ${id}`);
   const record = runnableManagedExchangeOrRefuse(stored);
-  const composed = composeManagedCronExport(record);
+  const composed = composeManagedCronExport(record, deps.readOwn);
   for (const file of [composed.config, composed.key])
     deps.download(file.fileName, file.text, file.mimeType);
   return {
