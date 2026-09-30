@@ -2525,8 +2525,7 @@ export type SFTPConnectionAwaitingAddress = Extract<
  * connection's coordination server and relay in its invitation. Every other
  * channel's block stays unread, so a placeholder one still mints (see
  * {@link ConfigLinkageSource.retainsFiles}). No `@path` reference is
- * resolved; the invitation takes no credential. A create-mode server may
- * leave `host` out, which the invite fills from the provisioning endpoint.
+ * resolved; the invitation takes no credential.
  *
  * A webrtc block that fails the schema is a {@link UsageError}: an invitation
  * minted without it would name no coordination server or relay while the
@@ -2548,8 +2547,7 @@ export function loadConfigWebRTCConnection(
  * the connection schema, or `undefined` otherwise: an offline `invite` sends a
  * create-mode block's call and names the server it returns in its invitation.
  * An sftp block stating no `provision` stays unread, so a placeholder one still
- * mints. No `@path` reference is resolved. A create-mode server may leave
- * `host` out, which the invite fills from the provisioning endpoint.
+ * mints. No `@path` reference is resolved.
  *
  * A block that fails the schema is a {@link UsageError}, so a misspelled
  * `mode` is refused rather than minting an invitation that names no server.

@@ -247,41 +247,46 @@ test("an unknown mode in an sftp configuration is refused before any call", asyn
   expect(fetch).not.toHaveBeenCalled();
 });
 
-test("a returned path the sftp block cannot hold beside its split directories is refused, naming the created host", async () => {
-  const dir = scratch();
-  writeConfig(dir, {
-    channel: "sftp",
-    server: {
-      ...(sftpCreate.channel === "sftp" ? sftpCreate.server : { host: "" }),
-      inboundPath: "/in",
-      outboundPath: "/out",
-    },
-    options: {
-      retainFiles: true,
-      timestampInFilename: true,
-      locklessRendezvous: true,
-    },
-  });
-  stubFetch(
-    JSON.stringify({ host: "sftp-7.example.org", path: "/drop-t0ken-2468" }),
-  );
-  const err = await validateInvite({
-    resolved: { mode: "offline" },
-    options: optionsIn(dir),
-    acceptTimeout: 900,
-    log: quietLog(),
-  }).catch((raised: unknown) => raised);
-  expect(err).toBeInstanceOf(UsageError);
-  const shown = sanitizeErrorForDisplay(err);
-  expect(shown).toContain(
-    "the provisioning endpoint at api.example.org:443 returned a server address",
-  );
-  expect(shown).toContain(
-    "The endpoint created a server at sftp-7.example.org, which this " +
-      "configuration does not record",
-  );
-  expect(shown).not.toContain("t0ken");
-});
+test.each([
+  ["a host name", "sftp-7.example.org", "sftp-7.example.org"],
+  ["an IPv6 address", "2001:db8::7", "[2001:db8::7]"],
+])(
+  "a returned path the sftp block cannot hold beside its split directories is refused, naming the created host (%s)",
+  async (_kind, returnedHost, shownHost) => {
+    const dir = scratch();
+    writeConfig(dir, {
+      channel: "sftp",
+      server: {
+        ...(sftpCreate.channel === "sftp" ? sftpCreate.server : { host: "" }),
+        inboundPath: "/in",
+        outboundPath: "/out",
+      },
+      options: {
+        retainFiles: true,
+        timestampInFilename: true,
+        locklessRendezvous: true,
+      },
+    });
+    stubFetch(JSON.stringify({ host: returnedHost, path: "/drop-t0ken-2468" }));
+    const err = await validateInvite({
+      resolved: { mode: "offline" },
+      options: optionsIn(dir),
+      acceptTimeout: 900,
+      log: quietLog(),
+    }).catch((raised: unknown) => raised);
+    expect(err).toBeInstanceOf(UsageError);
+    const shown = sanitizeErrorForDisplay(err);
+    expect(shown).toContain(
+      "the provisioning endpoint at api.example.org:443 returned a server address",
+    );
+    expect(shown).toContain(
+      `The endpoint created a server at ${shownHost}, which this ` +
+        "configuration does not record",
+    );
+    expect(shown).not.toContain("t0ken");
+    expect(shown).not.toContain("/drop");
+  },
+);
 
 test.each([
   ["sftp", sftpCreate, { host: "sftp-7.example.org", path: "/drop" }],

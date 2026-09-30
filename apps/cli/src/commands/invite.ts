@@ -15,6 +15,7 @@ import {
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
   MAX_RELAY_LOCATOR_URL_LENGTH,
+  hostForAuthority,
   provisionEndpointLabel,
   safeParseConnectionConfig,
   serverProvisionOf,
@@ -327,7 +328,7 @@ function connectionAtProvisionedAddress(
         "connection block cannot use: " +
         result.error.issues.map((issue) => issue.message).join("; ") +
         "; change connection.server or the endpoint so the two agree. The " +
-        `endpoint created a server at ${address.host}, which this ` +
+        `endpoint created a server at ${hostForAuthority(address.host)}, which this ` +
         "configuration does not record; remove it through the endpoint's " +
         "operator if nothing else will use it.",
     );

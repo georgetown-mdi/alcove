@@ -164,7 +164,11 @@ export function provisionModeOf(
   return provision.mode ?? "start";
 }
 
-function hostForAuthority(host: string): string {
+/**
+ * A host as a URL authority or a message names it: a bare IPv6 literal in
+ * brackets, any other host unchanged.
+ */
+export function hostForAuthority(host: string): string {
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 

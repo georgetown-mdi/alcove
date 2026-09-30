@@ -469,6 +469,7 @@ export {
   MAX_PROVISION_RESPONSE_BYTES,
   PROVISION_REQUEST_TIMEOUT_MS,
   callProvisionEndpoint,
+  hostForAuthority,
   provisionEndpointLabel,
   provisionModeOf,
   provisionRequest,
