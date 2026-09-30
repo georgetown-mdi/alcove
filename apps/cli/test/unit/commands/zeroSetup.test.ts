@@ -134,8 +134,9 @@ function runtimeOptionsArg(callArgs: unknown[]): {
 }
 
 /** Drive the completed-exchange half of runProtocol's contract from the mock:
- *  hand the receive-list recorder the partner's declared send set where
- *  `filled` is given, as the terms exchange does, invoke the caller's
+ *  hand the receive-list recorder, then the fill notice, the partner's
+ *  declared send set where `filled` is given, as the terms exchange does,
+ *  invoke the caller's
  *  pre-terminal onOutputComplete hook, then resolve the way the real function
  *  does. The zero-setup `--save` persistence rides that hook, so a mock that
  *  resolves without calling it drives a run that saves nothing -- which is what
@@ -145,8 +146,10 @@ async function driveCompletedExchange(
   bootstrap: ExchangeBootstrapResult | undefined,
   filled?: string[],
 ): Promise<unknown> {
-  if (filled !== undefined)
+  if (filled !== undefined) {
     await optionsArg(callArgs).recordPayloadReceiveFill?.(filled);
+    optionsArg(callArgs).payloadReceiveFillNotice?.(filled);
+  }
   await runtimeOptionsArg(callArgs).onOutputComplete?.({ bootstrap });
   // The bootstrap outcome reaches the caller through the hook alone, so the
   // resolved result contains only what RunProtocolResult declares.
@@ -708,17 +711,21 @@ test("handler with --save persists the first-use pin into the written config", a
 
 // --- handler: the receive list a --save run fills ----------------------------
 
-/** Drive a zero-setup run whose terms exchange fills the receive list from
- * the partner's declared send set, and report whether a recorder was passed
- * and the saved configuration's linkage terms, if one was written. */
+/** Drive an unattended zero-setup run at `--log-level silent` whose terms
+ * exchange fills the receive list from the partner's declared send set, and
+ * report whether a recorder was passed, the saved configuration's linkage
+ * terms, if one was written, and what reached stderr. */
 async function filledReceiveFromRun(options: { save: boolean }): Promise<{
   recorderPassed: boolean;
   savedTerms: Record<string, unknown> | undefined;
+  configFile: string;
+  stderr: string;
 }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerofill-"));
   const configFile = path.join(dir, "alcove.yaml");
   const exitSpy = captureProcessExit();
   let recorderPassed = false;
+  const stdio = captureStdio();
   try {
     const input = path.join(dir, "input.csv");
     fs.writeFileSync(
@@ -735,41 +742,55 @@ async function filledReceiveFromRun(options: { save: boolean }): Promise<{
       ]);
     }) as never);
 
-    await handler({
-      _: ["sftp://userb@localhost:2222/drop", input],
-      $0: "alcove",
-      save: options.save,
-      "config-file": configFile,
-      "key-file": path.join(dir, ".alcove.key"),
-      identity: "Tester",
-      record: false,
-      "log-level": "silent",
-    } as unknown as Arguments);
+    await withStdin(streamOf(""), () =>
+      handler({
+        _: ["sftp://userb@localhost:2222/drop", input],
+        $0: "alcove",
+        save: options.save,
+        "config-file": configFile,
+        "key-file": path.join(dir, ".alcove.key"),
+        identity: "Tester",
+        record: false,
+        "log-level": "silent",
+      } as unknown as Arguments),
+    );
     const savedTerms = fs.existsSync(configFile)
       ? (YAML.parse(fs.readFileSync(configFile, "utf8"))
           .linkage_terms as Record<string, unknown>)
       : undefined;
-    return { recorderPassed, savedTerms };
+    return {
+      recorderPassed,
+      savedTerms,
+      configFile,
+      stderr: stdio.stderrWrites.join(""),
+    };
   } finally {
+    stdio.restore();
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
-test("handler with --save records the filled receive list in the saved terms", async () => {
-  const { recorderPassed, savedTerms } = await filledReceiveFromRun({
-    save: true,
-  });
+test("handler with --save records the filled receive list in the saved terms, and an unattended run names it at every log level", async () => {
+  const { recorderPassed, savedTerms, configFile, stderr } =
+    await filledReceiveFromRun({ save: true });
   expect(recorderPassed).toBe(true);
   expect(savedTerms?.["payload"]).toEqual({ receive: [{ name: "program" }] });
+  expect(stderr.split("\n").filter((line) => line.includes("program"))).toEqual(
+    [
+      `this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
+    ],
+  );
 });
 
-test("handler without --save fills nothing: the one-off run takes what the partner sends", async () => {
-  const { recorderPassed, savedTerms } = await filledReceiveFromRun({
-    save: false,
-  });
-  expect(recorderPassed).toBe(false);
+test("handler without --save writes no receive list, and an unattended run says so at every log level", async () => {
+  const { savedTerms, stderr } = await filledReceiveFromRun({ save: false });
   expect(savedTerms).toBeUndefined();
+  expect(stderr.split("\n").filter((line) => line.includes("program"))).toEqual(
+    [
+      'this unattended run took the payload columns your partner declares it sends you, without asking: "program". They were not written to any configuration.',
+    ],
+  );
 });
 
 // --- handler: the question before a one-off run takes the partner's columns --
@@ -805,7 +826,9 @@ async function oneOffRunConfirming(
         const answer = await confirm(["program"]);
         if (!answer.accepted) throw answer.refusal;
       }
-      return driveCompletedExchange(callArgs, { partnerSaveIntent: false });
+      return driveCompletedExchange(callArgs, { partnerSaveIntent: false }, [
+        "program",
+      ]);
     }) as never);
     const stdio = captureStdio();
     let outcome: PromiseSettledResult<void>;
@@ -847,6 +870,7 @@ test("handler without --save at a terminal asks before taking the partner's colu
   expect(stderr).toContain("declare payload columns it sends you");
   expect(stderr).toContain("program");
   expect(stderr).not.toContain("alcove.yaml");
+  expect(stderr).not.toContain("unattended");
   expect(outcome.status).toBe("fulfilled");
   expect(written).toEqual([]);
 });
@@ -878,8 +902,11 @@ test("handler with --save at a terminal asks to record the columns in the config
 });
 
 test("handler without --save and no terminal takes the partner's columns without asking", async () => {
-  const { asked, outcome, written } = await oneOffRunConfirming(streamOf(""));
+  const { asked, stderr, outcome, written } = await oneOffRunConfirming(
+    streamOf(""),
+  );
   expect(asked).toBe(false);
+  expect(stderr).toContain("They were not written to any configuration.");
   expect(outcome.status).toBe("fulfilled");
   expect(written).toEqual([]);
 });
@@ -1789,10 +1816,11 @@ test("handler --save: a save that cannot reach disk warns on fd 3 and exits 73, 
   const f = saveFailureFixture();
   getLogger("alcove").setLevel("error");
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) =>
-    driveCompletedExchange(callArgs, {
-      partnerSaveIntent: true,
-      sharedSecret: SECRET,
-    })) as never);
+    driveCompletedExchange(
+      callArgs,
+      { partnerSaveIntent: true, sharedSecret: SECRET },
+      ["program"],
+    )) as never);
   try {
     const { lines } = await captureFd3(() =>
       handler({
@@ -1829,6 +1857,11 @@ test("handler --save: a save that cannot reach disk warns on fd 3 and exits 73, 
     expect(stderr).toContain("ENOENT");
     // Nothing was half-written at the key path either.
     expect(fs.existsSync(f.keyFile)).toBe(false);
+    // The unattended fill notice outlives --log-level error and says the
+    // columns it took were recorded nowhere.
+    expect(stderr).toContain(
+      'without asking: "program". They were not written to any configuration.',
+    );
     // The run's own events and this loss ride one stream: runProtocol received
     // the emitter this command opened, not the raw flag.
     expect(
@@ -1861,10 +1894,11 @@ test("handler --save: a failed key save whose rollback also fails names the conf
     return realRmSync(target, options);
   }) as typeof fs.rmSync);
   vi.mocked(runProtocol).mockImplementation((async (...callArgs: unknown[]) =>
-    driveCompletedExchange(callArgs, {
-      partnerSaveIntent: true,
-      sharedSecret: SECRET,
-    })) as never);
+    driveCompletedExchange(
+      callArgs,
+      { partnerSaveIntent: true, sharedSecret: SECRET },
+      ["program"],
+    )) as never);
   try {
     const { lines } = await captureFd3(() =>
       handler({
@@ -1896,6 +1930,9 @@ test("handler --save: a failed key save whose rollback also fails names the conf
     );
     expect(fs.existsSync(f.configFile)).toBe(true);
     expect(fs.existsSync(f.unwritableKeyFile)).toBe(false);
+    expect(stderr).toContain(
+      `without asking: "program". They were written to ${f.configFile} as linkage_terms.payload.receive`,
+    );
     // Still the same class of loss: no re-run, and the cause stays on the human
     // log rather than reaching the supervisor double-escaped.
     expect(notice).toContain("do not re-run");

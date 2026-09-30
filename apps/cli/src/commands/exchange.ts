@@ -72,6 +72,7 @@ import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
 import {
   payloadReceiveFillConfirmation,
+  reportPayloadReceiveFill,
   termsChangeHandler,
 } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
@@ -1044,7 +1045,11 @@ export async function handler(argv: Arguments): Promise<void> {
   // sink): the file sink when --log-file is given, otherwise the default stderr
   // sink. A missing parent directory (configureLogFile) is a UsageError reported
   // on stderr and mapped to exit 64 by parseOrExit here.
-  const { log, close: closeLogging } = parseOrExit(() =>
+  const {
+    log,
+    writePlainLine,
+    close: closeLogging,
+  } = parseOrExit(() =>
     configureLogging({ logLevel, logFile, name: "exchange" }),
   );
 
@@ -1367,6 +1372,13 @@ export async function handler(argv: Arguments): Promise<void> {
         signing,
         recordPayloadReceiveFill: (columns) =>
           persistFilledPayloadReceive(options.configFile, columns),
+        payloadReceiveFillNotice: (columns) =>
+          reportPayloadReceiveFill({
+            columns,
+            recordedIn: options.configFile,
+            unattendedWriter: interactive ? undefined : writePlainLine,
+            log,
+          }),
         onPayloadReceiveFill: payloadReceiveFillConfirmation({
           configPath: options.configFile,
           interactive,

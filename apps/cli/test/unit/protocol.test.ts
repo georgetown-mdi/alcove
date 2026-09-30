@@ -7242,6 +7242,52 @@ test("a receive list the exchange fills is recorded, then named on the log escap
   for (const raw of ["\u0007", "\u202e"]) expect(logged[0]).not.toContain(raw);
 }, 20_000);
 
+test("a caller's fill notice replaces the info line for every fill", async () => {
+  const noticed: string[][] = [];
+  for (const columns of [["dob"], []]) {
+    vi.mocked(runExchange).mockImplementation((async (
+      ...args: Parameters<typeof runExchange>
+    ) => {
+      await args[3].onPayloadReceiveFilled?.(columns);
+      return defaultRunExchange();
+    }) as never);
+    await Promise.all([
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-a",
+        recordPayloadReceiveFill: () => {},
+        payloadReceiveFillNotice: (taken) => noticed.push(taken),
+      }),
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-b",
+      }),
+    ]);
+  }
+  expect(noticed).toEqual([["dob"], []]);
+  expect(
+    mockState.infos.filter((line) =>
+      line.includes("payload.receive was not set"),
+    ),
+  ).toEqual([]);
+}, 20_000);
+
 test("the question before a receive list is filled reaches the exchange, and a run passing none asks nothing", async () => {
   const asked: string[][] = [];
   const offered: boolean[] = [];

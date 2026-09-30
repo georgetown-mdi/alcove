@@ -1099,7 +1099,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // stderr sink so stdout contains only the invitation token. A missing parent
       // directory is a UsageError -> exit 64, mapped here by the enclosing
       // runOrExit.
-      const { log, close } = configureLogging({
+      const { log, writePlainLine, close } = configureLogging({
         logLevel: options.logLevel,
         logFile: options.logFile,
         name: "invite",
@@ -1187,6 +1187,7 @@ export async function handler(argv: Arguments): Promise<void> {
           runOnlyPeerTimeoutSeconds: acceptTimeout,
           provision: options.serverProvisionRead,
           interactive: stdinAnswersPrompts(resolved.input),
+          writePlainLine,
         });
         // The summary only; the exit code a failed persistence implies was set
         // where that persistence was lost, so nothing here can raise or lower it.

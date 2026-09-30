@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import YAML from "yaml";
 import PSI from "@openmined/psi.js";
 import {
+  DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
   getLogger,
   inferMetadata,
@@ -13,6 +14,7 @@ import {
   parseExchangeSpec,
   prepareForExchange,
   runExchange,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 import { createMessagePipe } from "@alcove/core/testing";
 import type { ExchangeSpec, MessageConnection, Metadata } from "@alcove/core";
@@ -26,7 +28,11 @@ vi.mock("../../src/util/prompt", async () => {
 
 import { persistFilledPayloadReceive, saveConfig } from "../../src/config";
 import { buildErrorEvent, classifyTerminalError } from "../../src/eventStream";
-import { payloadReceiveFillConfirmation } from "../../src/termsChange";
+import {
+  payloadReceiveFillConfirmation,
+  payloadReceiveTakenNotice,
+  reportPayloadReceiveFill,
+} from "../../src/termsChange";
 import { exitCodeForError } from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
 import { captureStdio } from "../loggingTestSupport";
@@ -199,5 +205,94 @@ describe("an unattended first run", () => {
     expect(aOutcome.status).toBe("fulfilled");
     expect(bOutcome.status).toBe("fulfilled");
     expect(receivedColumns(readSpec())).toEqual(["notes", "county"]);
+  });
+});
+
+describe("the unattended fill notice", () => {
+  test("names each column escaped once and the configuration written to", () => {
+    expect(
+      payloadReceiveTakenNotice(
+        ["back\\slash", "bell\u0007", "zip\u202e"],
+        "/srv/alcove.yaml",
+      ),
+    ).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "back\\\\slash", "bell\\x07", ' +
+        '"zip\\u202e". They were written to /srv/alcove.yaml as ' +
+        "linkage_terms.payload.receive, and later exchanges refuse a " +
+        "partner that sends a different list.",
+    );
+  });
+
+  test("says the columns were written nowhere when there is no configuration", () => {
+    expect(payloadReceiveTakenNotice(["notes"], undefined)).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "notes". They were not written to ' +
+        "any configuration.",
+    );
+  });
+
+  test("shows a double quote inside a column name escaped, so the name stays one quoted column", () => {
+    expect(payloadReceiveTakenNotice(['x", "injected'], undefined)).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "x\\", \\"injected". They were not ' +
+        "written to any configuration.",
+    );
+  });
+
+  test("redacts a dangling private-key marker within its own column name, keeping the names after it", () => {
+    expect(
+      payloadReceiveTakenNotice(
+        ["-----BEGIN OPENSSH PRIVATE KEY-----abc", "after"],
+        undefined,
+      ),
+    ).toBe(
+      "this unattended run took the payload columns your partner declares " +
+        'it sends you, without asking: "[redacted private key]", "after". ' +
+        "They were not written to any configuration.",
+    );
+  });
+
+  test("cuts many long partner column names short, keeping the whole line within the warning cap and the configuration it names", () => {
+    const columns = Array.from(
+      { length: 200 },
+      (_, index) => `column_${String(index)}_${"x".repeat(200)}`,
+    );
+    const notice = payloadReceiveTakenNotice(columns, "/srv/alcove.yaml");
+    expect(notice.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+    expect(notice).toContain(
+      `${DISPLAY_TRUNCATION_MARKER}. They were written to /srv/alcove.yaml as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
+    );
+  });
+
+  test("goes through the unfiltered writer on an unattended run that took a column, and a fill recorded in a configuration is otherwise logged at info", () => {
+    const outcomes = [
+      { columns: ["notes"], recordedIn: "alcove.yaml", unattended: true },
+      { columns: ["notes"], recordedIn: undefined, unattended: true },
+      { columns: [], recordedIn: "alcove.yaml", unattended: true },
+      { columns: [], recordedIn: undefined, unattended: true },
+      { columns: ["notes"], recordedIn: "alcove.yaml", unattended: false },
+      { columns: ["notes"], recordedIn: undefined, unattended: false },
+    ].map(({ columns, recordedIn, unattended }) => {
+      const written: string[] = [];
+      const logged: string[] = [];
+      reportPayloadReceiveFill({
+        columns,
+        recordedIn,
+        unattendedWriter: unattended ? (line) => written.push(line) : undefined,
+        log: { info: (message) => logged.push(message) },
+      });
+      return [written.length, logged.length];
+    });
+    expect(outcomes).toEqual([
+      [1, 0],
+      [1, 0],
+      [0, 1],
+      [0, 0],
+      [0, 1],
+      [0, 0],
+    ]);
   });
 });

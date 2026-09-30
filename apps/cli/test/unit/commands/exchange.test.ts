@@ -1689,6 +1689,52 @@ test("handler: a receive list the run fills is recorded in the configuration it 
   expect(written["linkageTerms"]).toBeUndefined();
 });
 
+/** Run the handler on `stdin` at `--log-level silent` into a `--log-file`,
+ * with the terms exchange filling the receive list with `columns` as
+ * runProtocol does: record, then the handler's fill notice. Returns the log
+ * file. */
+async function logOfFillingRun(
+  stdin: ReturnType<typeof streamOf>,
+  columns: string[],
+): Promise<string> {
+  fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn,note\n123456789,hello\n");
+  const logFile = path.join(dir, "run.log");
+  vi.mocked(runProtocol).mockReset();
+  vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
+    await options.recordPayloadReceiveFill?.(columns);
+    options.payloadReceiveFillNotice?.(columns);
+    return {};
+  });
+  await withStdin(stdin, () =>
+    handler({
+      _: [],
+      $0: "alcove",
+      input,
+      "config-file": configFile,
+      "key-file": keyFile,
+      "log-level": "silent",
+      "log-file": logFile,
+    } as unknown as Arguments),
+  );
+  return fs.readFileSync(logFile, "utf8");
+}
+
+test("handler: an unattended fill writes one line naming each column and the configuration, at every log level", async () => {
+  const log = await logOfFillingRun(streamOf(""), ["program", "bell\u0007"]);
+  const lines = log.split("\n").filter((line) => line.includes("program"));
+  expect(lines).toEqual([
+    `this unattended run took the payload columns your partner declares it sends you, without asking: "program", "bell\\x07". They were written to ${configFile} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`,
+  ]);
+});
+
+test("handler: an attended fill writes no unattended notice", async () => {
+  const log = await logOfFillingRun(ttyStream(), ["program"]);
+  expect(log).not.toContain("unattended");
+});
+
 test("handler: the configuration a fill wrote re-derives the run's agreed-terms hash", async () => {
   // The run hashes this party's terms as it stated them on the wire, receive
   // unset and send stated from the metadata inferred from the input header;

@@ -6,13 +6,10 @@ import {
   getLogger,
   InternalConsistencyError,
   operatorSuppliedText,
-  payloadReceiveFilledNotice,
   prepareForExchange,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
-  sanitizeForDisplay,
   UsageError,
-  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -44,7 +41,10 @@ import {
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import { resolveRecordOutput } from "../recordFile";
-import { payloadReceiveFillConfirmation } from "../termsChange";
+import {
+  payloadReceiveFillConfirmation,
+  reportPayloadReceiveFill,
+} from "../termsChange";
 import {
   applyConnectionCredentials,
   readConnectionCredentials,
@@ -439,12 +439,16 @@ export function finalizeBootstrap(params: {
    * The payload.receive columns this run filled from the partner's declared
    * send set, when it filled one -- already folded into
    * `spec.linkageTerms.payload.receive` ({@link buildSaveSpec}'s matching
-   * argument). Logged as {@link payloadReceiveFilledNotice} only once the
-   * write below that holds it actually lands, never before: a run whose save
-   * fails here reports that failure and no fill notice, since the recorded
-   * list never reached disk.
+   * argument). Reported through {@link reportPayloadReceiveFill} only once
+   * the write below that holds it lands, never before.
    */
   filledPayloadReceive?: string[];
+  /**
+   * Set on an unattended run: the command's unfiltered writer
+   * (`ConfiguredLogging.writePlainLine`), passed to
+   * {@link reportPayloadReceiveFill}.
+   */
+  unattendedFillNoticeWriter?: (line: string) => void;
 }): void {
   const {
     save,
@@ -454,14 +458,16 @@ export function finalizeBootstrap(params: {
     keyFile,
     log,
     filledPayloadReceive,
+    unattendedFillNoticeWriter,
   } = params;
-  const logPayloadReceiveFilledNotice = (): void => {
-    if (filledPayloadReceive === undefined) return;
-    log.info(
-      sanitizeForDisplay(payloadReceiveFilledNotice(filledPayloadReceive), {
-        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-      }),
-    );
+  const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
+    if (filledPayloadReceive !== undefined)
+      reportPayloadReceiveFill({
+        columns: filledPayloadReceive,
+        recordedIn,
+        unattendedWriter: unattendedFillNoticeWriter,
+        log,
+      });
   };
 
   // Invariant guard: a shared secret is established only when both parties pass
@@ -499,7 +505,7 @@ export function finalizeBootstrap(params: {
           `private. Run 'alcove exchange' for future exchanges with this ` +
           `partner.`,
       );
-      logPayloadReceiveFilledNotice();
+      logPayloadReceiveFilledNotice(configPath);
       return;
     }
     // We saved but the partner did not: there is no secret, so persist the
@@ -527,7 +533,7 @@ export function finalizeBootstrap(params: {
         `a recurring exchange, run 'alcove invite' and share the invitation ` +
         `with your partner.`,
     );
-    logPayloadReceiveFilledNotice();
+    logPayloadReceiveFilledNotice(configFile);
     return;
   }
 
@@ -624,7 +630,11 @@ export async function handler(argv: Arguments): Promise<void> {
   // sink): the file sink when --log-file is given, otherwise the default stderr
   // sink. A missing parent directory (configureLogFile) is a UsageError reported
   // on stderr and mapped to exit 64 by parseOrExit here.
-  const { log, close: closeLogging } = parseOrExit(() =>
+  const {
+    log,
+    writePlainLine,
+    close: closeLogging,
+  } = parseOrExit(() =>
     configureLogging({ logLevel, logFile, name: "alcove" }),
   );
 
@@ -817,6 +827,8 @@ export async function handler(argv: Arguments): Promise<void> {
     announceRetainMode(connection, log);
 
     let filledPayloadReceive: string[] | undefined;
+    const interactive = stdinAnswersPrompts(input);
+    const unattendedWriter = interactive ? undefined : writePlainLine;
     try {
       // Cast: `liveConnection` is `ConnectionConfig` (which includes the webrtc
       // channel), so TypeScript cannot verify it fits `ProtocolConnectionConfig`
@@ -852,17 +864,23 @@ export async function handler(argv: Arguments): Promise<void> {
         // exchange has completed, so the fill notice is deferred to
         // finalizeBootstrap rather than logged here on the strength of this
         // in-memory record alone.
-        recordPayloadReceiveFill: options.save
-          ? (columns) => {
-              filledPayloadReceive = columns;
-            }
-          : undefined,
-        payloadReceiveFillNoticeDeferred: options.save,
+        recordPayloadReceiveFill: (columns) => {
+          if (options.save) filledPayloadReceive = columns;
+        },
+        payloadReceiveFillNotice: (columns) => {
+          if (!options.save)
+            reportPayloadReceiveFill({
+              columns,
+              recordedIn: undefined,
+              unattendedWriter,
+              log,
+            });
+        },
         // Without --save there is no configuration, so a yes records nothing.
         onPayloadReceiveFill: payloadReceiveFillConfirmation({
           configPath: options.save ? options.configFile : undefined,
           configSavedAfterExchange: options.save,
-          interactive: stdinAnswersPrompts(input),
+          interactive,
           log,
           logFile,
         }),
@@ -903,6 +921,7 @@ export async function handler(argv: Arguments): Promise<void> {
                 keyFile: options.keyFile,
                 log,
                 filledPayloadReceive,
+                unattendedFillNoticeWriter: unattendedWriter,
               });
               return { persisted: true };
             } catch (err) {
@@ -913,14 +932,22 @@ export async function handler(argv: Arguments): Promise<void> {
               // The post-preflight config conflict takes the same report rather
               // than exit 64: there is nothing about the invocation to correct,
               // and 64 would invite that same re-run.
+              const configLeftOnDisk = provisionLeftConfigOnDisk(err);
               const notice = unsavedBootstrapNotice({
                 save: options.save,
                 sharedSecret: bootstrap?.sharedSecret,
-                configLeftOnDisk: provisionLeftConfigOnDisk(err),
+                configLeftOnDisk,
                 configFile: options.configFile,
                 keyFile: options.keyFile,
               });
               log.error(`${notice}: ${sanitizeErrorForDisplay(err)}`);
+              if (filledPayloadReceive !== undefined)
+                reportPayloadReceiveFill({
+                  columns: filledPayloadReceive,
+                  recordedIn: configLeftOnDisk ? options.configFile : undefined,
+                  unattendedWriter,
+                  log,
+                });
               reportPersistenceLoss(notice, eventStreamEmitter);
               return { persisted: false };
             }
