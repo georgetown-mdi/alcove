@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import {
   getDefaultLinkageTerms,
@@ -18,6 +18,7 @@ import {
 import {
   ConfigurationLoadRefusedError,
   mountedConfigurationDocument,
+  readMountedConfiguration,
 } from "@jobs/configLoad";
 import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
@@ -267,6 +268,51 @@ describe("a webrtc configuration handed back with edits", () => {
       "alcove.yaml",
       PREVIOUS_CONFIGURATION_FILE_NAME,
     ]);
+  });
+});
+
+describe("a webrtc configuration naming a relay registrar", () => {
+  const RELAY_REGISTRAR = {
+    url: "https://registrar.example.org:8443",
+    exchange_id: "county-health-intake",
+  };
+
+  function registrarDocument(): Record<string, unknown> {
+    const document = webrtcDocument();
+    return {
+      ...document,
+      connection: {
+        ...(document.connection as Record<string, unknown>),
+        turn: [
+          ...(document.connection as { turn: Array<unknown> }).turn,
+          { url: "turns:relay.example.org:5349" },
+        ],
+        relay_registrar: RELAY_REGISTRAR,
+      },
+    };
+  }
+
+  test("keeps the block through load, edit, and save, for the command line", () => {
+    const dir = mountHolding(registrarDocument());
+    expect(readMountedConfiguration(mountedText(dir)).relayRegistrarNamed).toBe(
+      true,
+    );
+    const opened = readBack(dir);
+    handBackMountedConfiguration(dir, {
+      ...unchangedHandBack(opened),
+      linkageTerms: { ...opened.linkageTerms, identity: "County Health West" },
+      csvDelimiter: ";",
+    });
+    const saved = readBack(dir);
+    expect(saved.linkageTerms.identity).toBe("County Health West");
+    expect(saved.connection).toEqual(opened.connection);
+    const written = parseYaml(mountedText(dir)) as {
+      connection: { relay_registrar?: unknown };
+    };
+    expect(written.connection.relay_registrar).toEqual(RELAY_REGISTRAR);
+    expect(readMountedConfiguration(mountedText(dir)).relayRegistrarNamed).toBe(
+      true,
+    );
   });
 });
 

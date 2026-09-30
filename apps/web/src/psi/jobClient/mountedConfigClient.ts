@@ -26,7 +26,8 @@ export type MountedConfigurationAnswer =
   | { kind: "absent" }
   /** The configuration, with the settings the console holds without an editor,
    * the credential fields it cannot pre-fill, and the signing and shared-folder
-   * paths it states, each named as the file spells them. */
+   * paths it states, each named as the file spells them, and whether it names
+   * a relay registrar. */
   | {
       kind: "opened";
       document: DisclosedExchangeDocument;
@@ -34,6 +35,7 @@ export type MountedConfigurationAnswer =
       warnings: Array<string>;
       signingPathSettings?: Array<string>;
       folderPathSettings?: Array<string>;
+      relayRegistrarNamed?: true;
     }
   /** The console refused the file, in its own words: the route's text names the
    * settings to fix as the file spells them. */
@@ -111,12 +113,14 @@ export async function fetchMountedConfiguration(
     const warnings = namesOf(body.warnings);
     const signingPathSettings = namesOf(body.signingPathSettings);
     const folderPathSettings = namesOf(body.folderPathSettings);
+    const { relayRegistrarNamed } = body;
     if (
       document === null ||
       carriedThrough === null ||
       warnings === null ||
       signingPathSettings === null ||
-      folderPathSettings === null
+      folderPathSettings === null ||
+      (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true)
     )
       return { kind: "unavailable" };
     return {
@@ -126,6 +130,9 @@ export async function fetchMountedConfiguration(
       warnings,
       signingPathSettings,
       folderPathSettings,
+      ...(relayRegistrarNamed === true
+        ? { relayRegistrarNamed: true as const }
+        : {}),
     };
   } catch {
     return { kind: "unavailable" };

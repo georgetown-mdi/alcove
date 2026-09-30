@@ -12,6 +12,7 @@ import {
   CONVERT_CONFIGURATION_LABEL,
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
+  RELAY_ENROLLMENT_NOTICE,
   carriedThroughNotice,
   channelNotConductedNotice,
   columnsNotCoveredNotice,
@@ -304,6 +305,33 @@ describe("a configuration on a channel the console does not conduct", () => {
     expect(notices[0]).toContain("runs over webrtc");
     expect(notices[0]).toMatch(/save them to alcove\.yaml/);
     expect(notices[0]).toMatch(/connection is kept exactly as your file/);
+  });
+
+  test("one naming a relay registrar adds the enrollment step", () => {
+    const answer = openedWebrtc();
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    const { state } = mountedConfigurationRead({
+      ...answer,
+      relayRegistrarNamed: true,
+    });
+    expect(state).toMatchObject({ relayEnrollment: true });
+    expect(mountedConfigurationNotices(state, {})).toEqual([
+      channelNotConductedNotice("webrtc"),
+      RELAY_ENROLLMENT_NOTICE,
+    ]);
+    expect(RELAY_ENROLLMENT_NOTICE).toMatch(/enroll it once/);
+    expect(RELAY_ENROLLMENT_NOTICE).toContain("alcove enroll-relay");
+    expect(RELAY_ENROLLMENT_NOTICE).toMatch(
+      /standard input when there is no terminal/,
+    );
+  });
+
+  test("one naming no relay registrar adds nothing about it", () => {
+    const { state } = mountedConfigurationRead(openedWebrtc());
+    expect(state).not.toHaveProperty("relayEnrollment");
+    expect(mountedConfigurationNotices(state, {})).not.toContain(
+      RELAY_ENROLLMENT_NOTICE,
+    );
   });
 
   test("a save leaves the state its answer names", () => {

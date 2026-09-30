@@ -75,7 +75,8 @@ export type MountedConfigurationState =
    * conversion replaces with the console's own, and `converted` is the
    * operator's choice to convert: until then the hand-off states those paths as
    * read, and a signed run is withheld while `signingPaths` names any
-   * ({@link unconvertedSigningWithheldReason}). */
+   * ({@link unconvertedSigningWithheldReason}). `relayEnrollment` is a file
+   * naming `connection.relay_registrar` ({@link RELAY_ENROLLMENT_NOTICE}). */
   | {
       status: "opened";
       carriedThrough: Array<string>;
@@ -83,6 +84,7 @@ export type MountedConfigurationState =
       signingPaths?: Array<string>;
       folderPaths?: Array<string>;
       converted?: true;
+      relayEnrollment?: true;
       notConducted?: UnconductedChannel;
       transportUnavailable?: UnofferedChannel;
       notApplied?: Array<string>;
@@ -167,6 +169,14 @@ export function channelNotConductedNotice(channel: UnconductedChannel): string {
     `with Alcove on the command line, which conducts ${channel} exchanges.`
   );
 }
+
+/** What the operator is told beside the load about a configuration naming
+ * `connection.relay_registrar`. */
+export const RELAY_ENROLLMENT_NOTICE =
+  "Before this exchange's first run, enroll it once: run alcove " +
+  "enroll-relay in the folder holding alcove.yaml and its .alcove.key. It " +
+  "asks for the relay-owner token, or reads it from the first line of " +
+  "standard input when there is no terminal.";
 
 /**
  * Why the review step withholds its run control, or undefined where nothing
@@ -657,21 +667,25 @@ export function mountedConfigurationOfferable(
 }
 
 /** The whole of what an opened configuration puts beside the control, in the
- * order it renders: what this console cannot run at all, then the carry-through
- * notice, since it is about the run itself, then the credential the operator
- * has to supply, and last what their input file could not supply. `run` is what
- * the carry-through notice is narrowed by, absent until a file is read. A
+ * order it renders: what this console cannot run at all, then the relay
+ * enrollment the command line needs first, then the carry-through notice,
+ * since it is about the run itself, then the credential the operator has to
+ * supply, and last what their input file could not supply. `run` is what the
+ * carry-through notice is narrowed by, absent until a file is read. A
  * configuration the console does not conduct puts the notice naming its channel
- * in place of every one about a run here, and keeps the two about what the
- * steps below hold. */
+ * in place of every one about a run here, and keeps the relay enrollment and
+ * the two about what the steps below hold. */
 export function mountedConfigurationNotices(
   state: MountedConfigurationState,
   run?: RunDisclosure,
 ): Array<string> {
   if (state.status !== "opened") return [];
+  const relayEnrollment =
+    state.relayEnrollment === true ? RELAY_ENROLLMENT_NOTICE : undefined;
   if (state.notConducted !== undefined)
     return [
       channelNotConductedNotice(state.notConducted),
+      relayEnrollment,
       termsNotAppliedNotice(state.notApplied ?? []),
       columnsNotCoveredNotice(state.notCovered ?? []),
     ].filter((notice): notice is string => notice !== undefined);
@@ -679,6 +693,7 @@ export function mountedConfigurationNotices(
     state.transportUnavailable === undefined
       ? undefined
       : TRANSPORT_UNAVAILABLE_NOTICE[state.transportUnavailable],
+    relayEnrollment,
     carriedThroughNotice(carriedThroughStated(state.carriedThrough, run)),
     credentialWarningNotice(state.warnings),
     termsNotAppliedNotice(state.notApplied ?? []),
@@ -752,6 +767,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
           ...(answer.folderPathSettings !== undefined &&
           answer.folderPathSettings.length > 0
             ? { folderPaths: answer.folderPathSettings }
+            : {}),
+          ...(answer.relayRegistrarNamed === true
+            ? { relayEnrollment: true as const }
             : {}),
           ...(isJobChannel(loaded.channel)
             ? {}

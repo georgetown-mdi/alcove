@@ -454,6 +454,32 @@ describe("a configuration on a channel the console does not conduct", () => {
     expect(response.warnings).toEqual([]);
   });
 
+  test("names a relay registrar by the fact alone", () => {
+    const response = loadDocument(
+      webrtcDocument({
+        connection: {
+          ...(webrtcDocument().connection as Record<string, unknown>),
+          turn: [{ url: "turns:relay.example.org:5349" }],
+          relay_registrar: {
+            url: "https://registrar.example.org:8443",
+            exchange_id: "county-health-intake",
+          },
+        },
+      }),
+    );
+    expect(response.relayRegistrarNamed).toBe(true);
+    const body = JSON.stringify(response);
+    expect(body).not.toContain("registrar.example.org");
+    expect(body).not.toContain("county-health-intake");
+  });
+
+  test("names no relay registrar where the file states none", () => {
+    expect(loadDocument(webrtcDocument()).relayRegistrarNamed).toBeUndefined();
+    expect(
+      loadDocument(savedSftpDocument()).relayRegistrarNamed,
+    ).toBeUndefined();
+  });
+
   test("reaches the authoring state with no connection form", () => {
     const { document } = loadDocument(webrtcDocument());
     if (document === undefined) throw new Error("the load opened nothing");
