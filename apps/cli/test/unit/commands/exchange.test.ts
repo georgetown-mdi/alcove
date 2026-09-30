@@ -1746,7 +1746,7 @@ test("handler: an unattended fill emits the line it writes as one payloadReceive
       type: "warning",
       source: "payloadReceiveTaken",
       message: notice,
-      columns: ["program", "bell\\x07"],
+      columns: ["program", "bell\u0007"],
       columnCount: 2,
     },
   ]);

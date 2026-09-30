@@ -4,10 +4,14 @@ import {
   ConnectionError,
   OperatorConfigError,
   UsageError,
+  DEFAULT_MAX_DISPLAY_LENGTH,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  boundRawFragmentForFit,
   causeChainSome,
+  clipToRenderedCost,
   getLogger,
   redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
 } from "@alcove/core";
 import type {
   Displayable,
@@ -194,9 +198,10 @@ export interface WarningEvent extends EventBase {
    */
   lostLines?: number;
   /**
-   * The partner's column names the message holds, each escaped on its own;
-   * present only under `source: "payloadReceiveTaken"`
-   * ({@link buildPayloadReceiveTakenEvent}).
+   * The partner's column names the message holds, as the partner declared
+   * them: redacted and fitted to the per-value budget but not escaped, so a
+   * consumer escapes a name where it shows it. Present only under
+   * `source: "payloadReceiveTaken"` ({@link buildPayloadReceiveTakenEvent}).
    */
   columns?: string[];
   /**
@@ -453,10 +458,10 @@ export function buildWarningEvent(
 
 /**
  * Build the warning an unattended run raises when it takes the payload columns
- * its partner declares without asking. `message` is the notice the operator
- * log shows, already escaped name by name, so it takes no second pass here.
- * `shownColumns` are the names that notice holds, escaped here each on its
- * own under the per-value cap; `columnCount` is how many were taken.
+ * its partner declares without asking. `message` is the notice, already
+ * escaped name by name, so it takes no second pass here. `shownColumns` are
+ * the names that notice holds, each left unescaped for the consumer's own
+ * display escape; `columnCount` is how many were taken.
  */
 export function buildPayloadReceiveTakenEvent(
   message: Displayable,
@@ -468,7 +473,14 @@ export function buildPayloadReceiveTakenEvent(
     type: "warning",
     source: "payloadReceiveTaken",
     message,
-    columns: shownColumns.map((name) => redactAndSanitizeForDisplay(name)),
+    columns: shownColumns.map((name) =>
+      clipToRenderedCost(
+        redactPrivateKeyMaterial(
+          boundRawFragmentForFit(name, DEFAULT_MAX_DISPLAY_LENGTH),
+        ),
+        DEFAULT_MAX_DISPLAY_LENGTH,
+      ),
+    ),
     columnCount: toCount(columnCount),
   };
 }

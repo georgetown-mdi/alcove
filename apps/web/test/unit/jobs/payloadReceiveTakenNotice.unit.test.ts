@@ -1,8 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { DEFAULT_MAX_DISPLAY_LENGTH } from "@alcove/core";
 
+import {
+  RELAY_TERMS_CHANGE_LIST_CAP,
+  validateAndSanitizeEvent,
+} from "@jobs/cliDriver";
+import {
+  createFetchJobApiClient,
+  createServerJobReattachDriver,
+} from "@psi/jobClient/serverJobExchangeDriver";
 import {
   payloadReceiveTakenConsoleNotice,
   relayedTakenColumns,
@@ -10,6 +19,8 @@ import {
 import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
+
+import { Route as EventsRoute } from "../../../src/routes/api/jobs/$jobId/events";
 
 import {
   STUB_CLI_PATH,
@@ -32,10 +43,17 @@ import type { RelayEvent } from "@jobs/cliDriver";
 const dirs: Array<string> = [];
 const managers: Array<JobManager> = [];
 
+beforeEach(() => {
+  vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
+});
+
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
   for (const dir of dirs.splice(0))
     fs.rmSync(dir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
+    undefined;
 });
 
 function scratchDir(label: string): string {
@@ -45,29 +63,38 @@ function scratchDir(label: string): string {
   return dir;
 }
 
-/** The CLI's fill warning as it writes it on fd 3: its message names the
- * configuration (the token the stub replaces with its --config-file value),
- * and its column list holds each name as the CLI escaped it. */
-const CLI_TAKEN_EVENT = {
-  v: 1,
-  type: "warning",
-  source: "payloadReceiveTaken",
-  message:
-    "this unattended run took the payload columns your partner declares it " +
-    'sends you, without asking: "program", "county". They were written to ' +
-    `${STUB_CONFIG_FILE_TOKEN} as linkage_terms.payload.receive, and later ` +
-    "exchanges refuse a partner that sends a different list.",
-  columns: ["program", "county"],
-  columnCount: 3,
-};
+/** The CLI's fill warning as it writes it on fd 3 for `columns`: its message
+ * names the configuration (the token the stub replaces with its --config-file
+ * value), and its column list holds each name unescaped. */
+function cliTakenEvent(
+  columns: Array<string>,
+  columnCount: number,
+): Record<string, unknown> {
+  return {
+    v: 1,
+    type: "warning",
+    source: "payloadReceiveTaken",
+    message:
+      "this unattended run took the payload columns your partner declares it " +
+      'sends you, without asking: "program", "county". They were written to ' +
+      `${STUB_CONFIG_FILE_TOKEN} as linkage_terms.payload.receive, and later ` +
+      "exchanges refuse a partner that sends a different list.",
+    columns,
+    columnCount,
+  };
+}
 
-/** One job of `intent` driven to its terminal event, its child emitting the
- * fill warning and a result. */
+const CLI_TAKEN_EVENT = cliTakenEvent(["program", "county"], 3);
+
+/** One job of `intent` driven to its terminal event, its child emitting
+ * `takenEvent` and a result. */
 async function runTakingJob(
   label: string,
   intent: JobCreateIntent,
-): Promise<{ dataRoot: string; record: JobRecord }> {
+  takenEvent: Record<string, unknown> = CLI_TAKEN_EVENT,
+): Promise<{ dataRoot: string; record: JobRecord; id: string }> {
   const dataRoot = scratchDir(`${label}-root`);
+  vi.stubEnv("JOB_DATA_ROOT", dataRoot);
   const manager = new JobManager({
     dataRoot,
     binaryPath: STUB_CLI_PATH,
@@ -75,12 +102,14 @@ async function runTakingJob(
     childEnv: {
       STUB_EXIT_CODE: "0",
       STUB_FD3_EVENTS: JSON.stringify([
-        CLI_TAKEN_EVENT,
+        takenEvent,
         { v: 1, type: "result", resultWritten: true },
       ]),
     },
   });
   managers.push(manager);
+  (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
+    manager;
   const id = await manager.createJob(intent);
   const record = manager.getJob(id)!;
   const deadline = Date.now() + 5000;
@@ -89,7 +118,7 @@ async function runTakingJob(
       throw new Error("timed out waiting for terminal");
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return { dataRoot, record };
+  return { dataRoot, record, id };
 }
 
 /** The single warning among the events a record buffered. */
@@ -141,20 +170,80 @@ describe("the relayed fill notice states no container path", () => {
   });
 });
 
+/** The job's whole SSE body, read off the real route. */
+async function sseBody(id: string): Promise<string> {
+  const handlers = EventsRoute.options.server?.handlers as Record<
+    string,
+    (ctx: { request: Request; params: Record<string, string> }) => unknown
+  >;
+  const response = (await handlers.GET({
+    request: new Request(`http://localhost/api/jobs/${id}/events`, {
+      headers: { host: "localhost" },
+    }),
+    params: { jobId: id },
+  })) as Response;
+  expect(response.status).toBe(200);
+  return response.text();
+}
+
+/** What the run view shows for an SSE body: each warning the real browser-side
+ * client delivers to the seat, folded through the run view's warning sink. */
+async function runViewWarnings(
+  id: string,
+  body: string,
+): Promise<Array<string>> {
+  const fetchImpl: typeof fetch = (input) =>
+    Promise.resolve(
+      String(input).endsWith("/events")
+        ? new Response(body, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          })
+        : new Response(null, { status: 404 }),
+    );
+  let shown: Array<string> = [];
+  await createServerJobReattachDriver(
+    id,
+    createFetchJobApiClient(fetchImpl),
+  ).run({
+    signal: new AbortController().signal,
+    onStages: () => undefined,
+    onStage: () => undefined,
+    onResult: () => undefined,
+    onError: () => undefined,
+    onWarning: (message) => {
+      shown = appendSanitizedRunWarning(shown, message);
+    },
+  });
+  return shown;
+}
+
+/** The quoted names a list of `"name", "name"` holds, a doubled quote read as
+ * one quote inside a name. */
+function quotedNames(list: string): Array<string> {
+  const names: Array<string> = [];
+  const quoted = /"((?:[^"]|"")*)"(?:, |$)/gy;
+  let match: RegExpExecArray | null;
+  while ((match = quoted.exec(list)) !== null)
+    names.push(match[1].replaceAll('""', '"'));
+  return names;
+}
+
 describe("the fill notice on the run view", () => {
-  test("shows each partner column name quoted and escaped once, at the run view's warning sink", () => {
-    const [shown] = appendSanitizedRunWarning(
-      [],
-      payloadReceiveTakenConsoleNotice("exchange", {
-        columns: ["bell\u0007", "café", 'x", "y'],
-        columnCount: 3,
-      }),
+  test("shows each partner column name escaped once, from the CLI's event through the relay to the run view", async () => {
+    const { id } = await runTakingJob(
+      "taken-e2e",
+      validIntent(),
+      cliTakenEvent(["caf\u00e9", "a\\b", 'x", "y'], 3),
     );
-    expect(shown).toContain(
-      'The columns taken: "bell\\x07", "caf\\xe9", "x\\\\", \\\\"y".',
+    const shown = (await runViewWarnings(id, await sseBody(id))).filter(
+      (warning) => warning.includes("The columns taken"),
     );
-    expect(shown).not.toContain("\u0007");
-    expect(shown).not.toContain("é");
+    expect(shown).toHaveLength(1);
+    const list = /The columns taken: (.*)\.$/.exec(shown[0])?.[1];
+    expect(list).toBe('"caf\\xe9", "a\\\\b", "x"", ""y"');
+    expect(quotedNames(list ?? "")).toEqual(["caf\\xe9", "a\\\\b", 'x", "y']);
+    expect(shown[0]).not.toContain("\u00e9");
   });
 
   test("a column list that is not the CLI's shape leaves the names out rather than the notice", () => {
@@ -174,5 +263,46 @@ describe("the fill notice on the run view", () => {
         "The columns taken",
       );
     }
+  });
+});
+
+describe("the relay's column list", () => {
+  test("passes the names through unescaped, for the run view's single escape", () => {
+    const event = validateAndSanitizeEvent(
+      cliTakenEvent(["caf\u00e9", "a\\b", "bell\u0007"], 3),
+    );
+    expect(event?.columns).toEqual(["caf\u00e9", "a\\b", "bell\u0007"]);
+  });
+
+  test("keeps the first names up to the cap and counts the rest in the notice", () => {
+    const columns = Array.from(
+      { length: RELAY_TERMS_CHANGE_LIST_CAP + 5 },
+      (_, index) => `c${String(index)}`,
+    );
+    const event = validateAndSanitizeEvent(
+      cliTakenEvent(columns, columns.length),
+    );
+    expect(event?.columns).toEqual(
+      columns.slice(0, RELAY_TERMS_CHANGE_LIST_CAP),
+    );
+    expect(
+      payloadReceiveTakenConsoleNotice("exchange", relayedTakenColumns(event!)),
+    ).toMatch(/"c255", and 5 more\.$/);
+  });
+
+  test("fits a name past the per-value budget rather than relaying it whole", () => {
+    const event = validateAndSanitizeEvent(
+      cliTakenEvent(["x".repeat(100_000)], 1),
+    );
+    const [name] = event?.columns as Array<string>;
+    expect(name.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
+  });
+
+  test("escapes a columns field on any other warning as it does every field", () => {
+    const event = validateAndSanitizeEvent({
+      ...cliTakenEvent(["caf\u00e9"], 1),
+      source: "undeclaredColumns",
+    });
+    expect(event?.columns).toEqual(["caf\\xe9"]);
   });
 });

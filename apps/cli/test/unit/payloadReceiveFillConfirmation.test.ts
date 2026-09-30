@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import YAML from "yaml";
 import PSI from "@openmined/psi.js";
 import {
+  DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   getDefaultLinkageTerms,
   getLogger,
@@ -349,7 +350,7 @@ function takenEvent(
 }
 
 describe("the unattended fill event", () => {
-  test("holds the notice, each column escaped once, and how many were taken", () => {
+  test("holds the notice, each column unescaped, and how many were taken", () => {
     expect(
       takenEvent(["bell\u0007", 'x", "injected'], "/srv/alcove.yaml"),
     ).toEqual({
@@ -360,7 +361,7 @@ describe("the unattended fill event", () => {
         ["bell\u0007", 'x", "injected'],
         "/srv/alcove.yaml",
       ),
-      columns: ["bell\\x07", 'x", "injected'],
+      columns: ["bell\u0007", 'x", "injected'],
       columnCount: 2,
     });
   });
@@ -368,6 +369,22 @@ describe("the unattended fill event", () => {
   test("escapes the configuration path in the message as every event field is escaped", () => {
     const { message } = takenEvent(["notes"], "/srv/caf\u00e9/alcove.yaml");
     expect(message).toContain("/srv/caf\\xe9/alcove.yaml");
+  });
+
+  test("differs from the log line only in the escaped configuration path", () => {
+    const recordedIn = "/srv/caf\u00e9/alcove.yaml";
+    const { message } = takenEvent(["notes"], recordedIn);
+    expect(message).toBe(
+      payloadReceiveTakenNotice(["notes"], recordedIn).replace(
+        recordedIn,
+        "/srv/caf\\xe9/alcove.yaml",
+      ),
+    );
+  });
+
+  test("fits a column name past the per-value budget rather than carrying it whole", () => {
+    const [name] = takenEvent(["x".repeat(100_000)], undefined).columns ?? [];
+    expect(name.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
   });
 
   test("lists only the columns the cut message names, and counts every column taken", () => {

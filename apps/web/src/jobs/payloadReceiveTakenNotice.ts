@@ -1,17 +1,7 @@
+import { sanitizeForDisplay } from "@alcove/core";
+
 import type { JobHandoff } from "./handoff";
 import type { RelayEvent } from "./cliDriver";
-
-/**
- * What the console says when a run it drove took the payload columns its
- * partner declares without asking, as every console run does where its terms
- * list none it receives: the CLI child has no terminal to ask at.
- *
- * The CLI's own message names the configuration file it wrote the columns
- * into, a path inside this container, and says later exchanges hold the
- * partner to them, which is true of that per-run file and of nothing the
- * operator keeps. The console's notice is rebuilt from the event's `columns`
- * field instead of parsed out of that sentence.
- */
 
 /** The CLI warning source an unattended fill rides (docs/spec/CLI_EVENTS.md). */
 export const PAYLOAD_RECEIVE_TAKEN_SOURCE = "payloadReceiveTaken";
@@ -25,7 +15,8 @@ export interface TakenColumns {
 /**
  * The columns a relayed `payloadReceiveTaken` warning names, or undefined
  * where its `columns` is not a list of strings or its `columnCount` is not a
- * whole number at least that long.
+ * whole number at least that long. The names are as the relay passed them,
+ * unescaped (`relayedTakenColumnNames` in `./cliDriver.ts`).
  */
 export function relayedTakenColumns(
   event: RelayEvent,
@@ -46,9 +37,9 @@ export function relayedTakenColumns(
  * The console's notice for a run of `mode` that took `taken`. Composed raw:
  * the column names are the partner's, and the run view's warning sink escapes
  * the whole message once as it shows it. A double quote inside a name is
- * written `\"` so the name cannot fake the end of its quotes. The names come
- * last, so a message cut at the sink's budget loses names rather than the
- * step the operator has to take.
+ * doubled, so the name cannot fake the end of its quotes and the sink's escape
+ * leaves the doubling as it is. The names come last, so a message cut at the
+ * sink's budget loses names rather than the step the operator has to take.
  */
 export function payloadReceiveTakenConsoleNotice(
   mode: JobHandoff["mode"],
@@ -68,7 +59,7 @@ export function payloadReceiveTakenConsoleNotice(
         "linkage_terms.payload.receive.";
   if (taken === undefined || taken.columns.length === 0) return lead;
   const names = taken.columns
-    .map((name) => `"${name.replaceAll('"', '\\"')}"`)
+    .map((name) => `"${name.replaceAll('"', '""')}"`)
     .join(", ");
   const more = taken.columnCount - taken.columns.length;
   return `${lead} The columns taken: ${names}${more > 0 ? `, and ${String(more)} more` : ""}.`;
@@ -77,7 +68,8 @@ export function payloadReceiveTakenConsoleNotice(
 /**
  * `event` with the console's notice in place of the CLI's where it is a
  * `payloadReceiveTaken` warning from a run of `mode`; any other event
- * unchanged.
+ * unchanged. The served `columns` is escaped here, the one pass that field
+ * takes; a list not in the CLI's shape is dropped.
  */
 export function withConsolePayloadReceiveTakenNotice(
   event: RelayEvent,
@@ -85,8 +77,13 @@ export function withConsolePayloadReceiveTakenNotice(
 ): RelayEvent {
   if (event.type !== "warning" || event.source !== PAYLOAD_RECEIVE_TAKEN_SOURCE)
     return event;
+  const { columns: _relayed, ...rest } = event;
+  const taken = relayedTakenColumns(event);
   return {
-    ...event,
-    message: payloadReceiveTakenConsoleNotice(mode, relayedTakenColumns(event)),
+    ...rest,
+    message: payloadReceiveTakenConsoleNotice(mode, taken),
+    ...(taken !== undefined
+      ? { columns: taken.columns.map((name) => sanitizeForDisplay(name)) }
+      : {}),
   };
 }

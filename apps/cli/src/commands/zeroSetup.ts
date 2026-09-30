@@ -449,7 +449,6 @@ export function finalizeBootstrap(params: {
    * {@link reportPayloadReceiveFill}.
    */
   unattendedFillNoticeWriter?: (line: string) => void;
-  /** The run's event stream, passed to {@link reportPayloadReceiveFill}. */
   eventStream?: EventStreamEmitter;
 }): void {
   const {

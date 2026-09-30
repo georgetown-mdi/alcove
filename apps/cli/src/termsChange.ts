@@ -350,28 +350,45 @@ export function payloadReceiveFillConfirmation(params: {
 const PAYLOAD_RECEIVE_TAKEN_HEADING =
   "this unattended run took the payload columns your partner declares it sends you, without asking: ";
 
-/** An unattended fill notice, and how many of its columns it names. */
+/**
+ * An unattended fill notice as the operator log shows it (`line`) and as the
+ * event stream carries it (`eventMessage`), and how many columns both name.
+ */
 interface PayloadReceiveTaken {
-  notice: Displayable;
+  line: Displayable;
+  eventMessage: Displayable;
   shownColumns: number;
 }
 
+/** The sentence after the column list, naming `shownConfig` or none. */
+function payloadReceiveTakenTail(shownConfig: Displayable | undefined): string {
+  return shownConfig === undefined
+    ? ". They were not written to any configuration."
+    : `. They were written to ${shownConfig} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+}
+
 /**
- * {@link payloadReceiveTakenNotice} naming the configuration it was written
- * to as `shownConfig`, already rendered for its sink.
+ * The column list is composed once, cut to the budget the longer of the two
+ * tails leaves, so the log line and the event message name the same columns.
  */
 function composePayloadReceiveTaken(
   columns: readonly string[],
-  shownConfig: Displayable | undefined,
+  recordedIn: string | undefined,
 ): PayloadReceiveTaken {
-  const tail =
-    shownConfig === undefined
-      ? ". They were not written to any configuration."
-      : `. They were written to ${shownConfig} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+  const lineTail = payloadReceiveTakenTail(
+    recordedIn === undefined
+      ? undefined
+      : redactAndRenderOperatorSuppliedText(operatorSuppliedText(recordedIn)),
+  );
+  const eventTail = payloadReceiveTakenTail(
+    recordedIn === undefined
+      ? undefined
+      : redactAndSanitizeForDisplay(recordedIn),
+  );
   const budget =
     WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
     PAYLOAD_RECEIVE_TAKEN_HEADING.length -
-    tail.length -
+    Math.max(lineTail.length, eventTail.length) -
     DISPLAY_TRUNCATION_MARKER.length;
   let taken = "";
   let shownColumns = 0;
@@ -387,9 +404,12 @@ function composePayloadReceiveTaken(
   }
   // Every part is fixed copy or a value already rendered for display, and
   // quoting a name adds only printable ASCII to it.
-  const notice =
-    `${PAYLOAD_RECEIVE_TAKEN_HEADING}${taken}${tail}` as Displayable;
-  return { notice, shownColumns };
+  return {
+    line: `${PAYLOAD_RECEIVE_TAKEN_HEADING}${taken}${lineTail}` as Displayable,
+    eventMessage:
+      `${PAYLOAD_RECEIVE_TAKEN_HEADING}${taken}${eventTail}` as Displayable,
+    shownColumns,
+  };
 }
 
 /**
@@ -408,12 +428,7 @@ export function payloadReceiveTakenNotice(
   columns: readonly string[],
   recordedIn: string | undefined,
 ): Displayable {
-  return composePayloadReceiveTaken(
-    columns,
-    recordedIn === undefined
-      ? undefined
-      : redactAndRenderOperatorSuppliedText(operatorSuppliedText(recordedIn)),
-  ).notice;
+  return composePayloadReceiveTaken(columns, recordedIn).line;
 }
 
 /**
@@ -422,9 +437,10 @@ export function payloadReceiveTakenNotice(
  * least one column writes {@link payloadReceiveTakenNotice} through
  * `unattendedWriter`, the command's unfiltered writer
  * (`ConfiguredLogging.writePlainLine`), so the line shows at every
- * `--log-level`, and emits the same notice on `eventStream` as a
- * `payloadReceiveTaken` warning, its path escaped as every event field is;
- * any other fill recorded in a configuration is logged at info.
+ * `--log-level`, and emits the notice on `eventStream` as a
+ * `payloadReceiveTaken` warning whose message differs from that line only in
+ * escaping the path, as every event field is; any other fill recorded in a
+ * configuration is logged at info.
  */
 export function reportPayloadReceiveFill(params: {
   columns: readonly string[];
@@ -435,20 +451,16 @@ export function reportPayloadReceiveFill(params: {
 }): void {
   const { columns, recordedIn, unattendedWriter, eventStream, log } = params;
   if (unattendedWriter !== undefined && columns.length > 0) {
-    unattendedWriter(payloadReceiveTakenNotice(columns, recordedIn));
-    if (eventStream !== undefined) {
-      const { notice, shownColumns } = composePayloadReceiveTaken(
-        columns,
-        recordedIn === undefined
-          ? undefined
-          : redactAndSanitizeForDisplay(recordedIn),
-      );
-      eventStream.payloadReceiveTaken(
-        notice,
-        columns.slice(0, shownColumns),
-        columns.length,
-      );
-    }
+    const { line, eventMessage, shownColumns } = composePayloadReceiveTaken(
+      columns,
+      recordedIn,
+    );
+    unattendedWriter(line);
+    eventStream?.payloadReceiveTaken(
+      eventMessage,
+      columns.slice(0, shownColumns),
+      columns.length,
+    );
     return;
   }
   if (recordedIn !== undefined)
