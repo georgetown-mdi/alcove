@@ -342,10 +342,13 @@ token, overwrite the file and
     proof made under a key since replaced is answered 409. A `PUT` naming the
     key the exchange already holds renews it, whichever key its proof was made
     under, so the second party to register a rotated key renews the row rather
-    than failing.
+    than failing; the renewal restarts the lapse and takes `maxAgeDays` from
+    the body.
   - **A revocation** under a proof deletes the row only if the proof verifies
     under the key the exchange holds. A proof for an exchange not enrolled is
-    answered 409.
+    answered 409. The two 409 messages tell a caller holding no key whether an
+    id is enrolled, so choose exchange ids that reveal nothing about the
+    parties.
 
   `maxAgeDays` is required: a whole number of days, or `null` for a row that
   never lapses. A body that leaves it out is refused, so a re-registration
