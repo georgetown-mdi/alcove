@@ -12,8 +12,11 @@ import {
   getLogger,
   inferMetadata,
   OperatorConfigError,
+  operatorSuppliedText,
   parseExchangeSpec,
   prepareForExchange,
+  redactAndRenderOperatorSuppliedText,
+  redactAndSanitizeForDisplay,
   runExchange,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
@@ -348,6 +351,104 @@ function takenEvent(
   expect(emitted).toHaveLength(1);
   return emitted[0];
 }
+
+const TAKEN_HEADING =
+  "this unattended run took the payload columns your partner declares it sends you, without asking: ";
+
+/**
+ * The stderr line the unattended fill writes, sized as the line alone sizes
+ * it: the list is cut to the budget its own tail leaves, the configuration
+ * path rendered as the operator typed it.
+ */
+function lineSizedByItsOwnTail(columns: string[], recordedIn: string): string {
+  const tail = `. They were written to ${redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(recordedIn),
+  )} as linkage_terms.payload.receive, and later exchanges refuse a partner that sends a different list.`;
+  const budget =
+    WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
+    TAKEN_HEADING.length -
+    tail.length -
+    DISPLAY_TRUNCATION_MARKER.length;
+  let taken = "";
+  for (const name of columns) {
+    const quoted = `"${redactAndSanitizeForDisplay(name).replaceAll('"', '\\"')}"`;
+    const next = taken === "" ? quoted : `${taken}, ${quoted}`;
+    if (next.length > budget) {
+      taken += DISPLAY_TRUNCATION_MARKER;
+      break;
+    }
+    taken = next;
+  }
+  return `${TAKEN_HEADING}${taken}${tail}`;
+}
+
+describe("the unattended fill line beside an event stream", () => {
+  const recordedIn = "/srv/caf\u00e9\\d\u00e4ta/alcove.yaml";
+
+  /** The line and the event one unattended fill of `columns` writes. */
+  function lineAndEvent(columns: string[]): {
+    line: string;
+    event: WarningEvent;
+  } {
+    const written: string[] = [];
+    const { emitter, emitted } = recordingEmitter();
+    reportPayloadReceiveFill({
+      columns,
+      recordedIn,
+      unattendedWriter: (line) => written.push(line),
+      eventStream: emitter,
+      log: { info: () => undefined },
+    });
+    expect(written).toHaveLength(1);
+    expect(emitted).toHaveLength(1);
+    return { line: written[0], event: emitted[0] };
+  }
+
+  test("cuts the stderr list against its own tail, not the escaped path's", () => {
+    const lineTail = lineSizedByItsOwnTail([], recordedIn).slice(
+      TAKEN_HEADING.length,
+    );
+    const lineBudget =
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH -
+      TAKEN_HEADING.length -
+      lineTail.length -
+      DISPLAY_TRUNCATION_MARKER.length;
+    // Whole names fill the budget the line's tail leaves exactly, the last
+    // one short enough to pass the per-name budget untouched.
+    const names: string[] = [];
+    let listedLength = -", ".length;
+    while (lineBudget - listedLength > 200) {
+      const name = `column_${String(names.length).padStart(3, "0")}_xxxxxxxx`;
+      names.push(name);
+      listedLength += `, "${name}"`.length;
+    }
+    const filler = "f".repeat(lineBudget - listedLength - `, ""`.length);
+    const columns = [...names, filler, "one_past_the_budget"];
+
+    const { line, event } = lineAndEvent(columns);
+    expect(line).toBe(lineSizedByItsOwnTail(columns, recordedIn));
+    expect(line).toContain(`"${filler}"${DISPLAY_TRUNCATION_MARKER}`);
+    expect(event.columns).toEqual(names);
+    expect(event.message.length).toBeLessThanOrEqual(
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    );
+  });
+
+  test("writes the line its own tail sizes at every column count near the budget", () => {
+    const cut: boolean[] = [];
+    for (let count = 120; count <= 200; count += 1) {
+      const columns = Array.from(
+        { length: count },
+        (_, index) => `name_${String(index)}_${"y".repeat(10 + (index % 7))}`,
+      );
+      const { line } = lineAndEvent(columns);
+      expect(line).toBe(lineSizedByItsOwnTail(columns, recordedIn));
+      cut.push(line.includes(DISPLAY_TRUNCATION_MARKER));
+    }
+    expect(cut).toContain(true);
+    expect(cut).toContain(false);
+  });
+});
 
 describe("the unattended fill event", () => {
   test("holds the notice, each column unescaped, and how many were taken", () => {

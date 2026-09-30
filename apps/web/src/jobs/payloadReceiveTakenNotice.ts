@@ -1,4 +1,7 @@
-import { sanitizeForDisplay } from "@alcove/core";
+import {
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  sanitizeForDisplay,
+} from "@alcove/core";
 
 import type { JobHandoff } from "./handoff";
 import type { RelayEvent } from "./cliDriver";
@@ -33,13 +36,23 @@ export function relayedTakenColumns(
   return { columns, columnCount };
 }
 
+/** Whether `message` fits the run view's warning budget once its sink
+ * (`appendSanitizedRunWarning` in `@psi/runWarnings`) escapes it. */
+function fitsRunViewWarning(message: string): boolean {
+  return (
+    sanitizeForDisplay(message, { maxLength: Number.POSITIVE_INFINITY })
+      .length <= WARNING_MESSAGE_MAX_DISPLAY_LENGTH
+  );
+}
+
 /**
  * The console's notice for a run of `mode` that took `taken`. Composed raw:
  * the column names are the partner's, and the run view's warning sink escapes
  * the whole message once as it shows it. A double quote inside a name is
  * doubled, so the name cannot fake the end of its quotes and the sink's escape
- * leaves the doubling as it is. The names come last, so a message cut at the
- * sink's budget loses names rather than the step the operator has to take.
+ * leaves the doubling as it is. Whole names are cut from the end of the list
+ * until the escaped notice fits the sink's budget, and the names not shown are
+ * counted.
  */
 export function payloadReceiveTakenConsoleNotice(
   mode: JobHandoff["mode"],
@@ -58,11 +71,25 @@ export function payloadReceiveTakenConsoleNotice(
         "partner that sends a different list, add them there under " +
         "linkage_terms.payload.receive.";
   if (taken === undefined || taken.columns.length === 0) return lead;
-  const names = taken.columns
-    .map((name) => `"${name.replaceAll('"', '""')}"`)
-    .join(", ");
-  const more = taken.columnCount - taken.columns.length;
-  return `${lead} The columns taken: ${names}${more > 0 ? `, and ${String(more)} more` : ""}.`;
+  const quoted = taken.columns.map((name) => `"${name.replaceAll('"', '""')}"`);
+  const noticeShowing = (shown: number): string => {
+    const more = taken.columnCount - shown;
+    const names = quoted.slice(0, shown).join(", ");
+    return `${lead} The columns taken: ${names}${more > 0 ? `, and ${String(more)} more` : ""}.`;
+  };
+  if (fitsRunViewWarning(noticeShowing(quoted.length)))
+    return noticeShowing(quoted.length);
+  // Below the whole list each added name outgrows the count's lost digit, so
+  // the escaped length rises with `shown` and a bisection finds the most that
+  // fit.
+  let fewest = 1;
+  let most = quoted.length - 1;
+  while (fewest < most) {
+    const middle = Math.ceil((fewest + most) / 2);
+    if (fitsRunViewWarning(noticeShowing(middle))) fewest = middle;
+    else most = middle - 1;
+  }
+  return noticeShowing(fewest);
 }
 
 /**

@@ -1,8 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  DEFAULT_MAX_DISPLAY_LENGTH,
+  DISPLAY_TRUNCATION_MARKER,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  sanitizeForDisplay,
+} from "@alcove/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { DEFAULT_MAX_DISPLAY_LENGTH } from "@alcove/core";
 
 import {
   RELAY_TERMS_CHANGE_LIST_CAP,
@@ -262,6 +267,93 @@ describe("the fill notice on the run view", () => {
       expect(payloadReceiveTakenConsoleNotice("exchange", taken)).not.toContain(
         "The columns taken",
       );
+    }
+  });
+});
+
+/** Partner names whose quoted list fills the CLI's whole warning budget, one
+ * in five holding a character the run view escapes. */
+function namesFillingTheCliBudget(): Array<string> {
+  const names: Array<string> = [];
+  let listed = 0;
+  while (listed < WARNING_MESSAGE_MAX_DISPLAY_LENGTH - 300) {
+    const name = `column_${String(names.length)}${names.length % 5 === 0 ? "_caf\u00e9" : "_xxxx"}`;
+    names.push(name);
+    listed += `, "${name}"`.length;
+  }
+  return names;
+}
+
+/** Expect the run view's `shown` notice to list a prefix of `names` whole,
+ * escaped once, and to count the rest of `columnCount`, uncut by the sink. */
+function expectWholeNamesAndCount(
+  shown: string,
+  names: Array<string>,
+  columnCount: number,
+): void {
+  expect(shown.length).toBeLessThanOrEqual(WARNING_MESSAGE_MAX_DISPLAY_LENGTH);
+  expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);
+  const match = /The columns taken: (.*), and (\d+) more\.$/.exec(shown);
+  expect(match).not.toBeNull();
+  const listed = quotedNames(match?.[1] ?? "");
+  expect(listed.length).toBeGreaterThan(0);
+  expect(listed).toEqual(
+    names
+      .slice(0, listed.length)
+      .map((name) =>
+        sanitizeForDisplay(name, { maxLength: Number.POSITIVE_INFINITY }),
+      ),
+  );
+  expect(Number(match?.[2])).toBe(columnCount - listed.length);
+}
+
+describe("the fill notice at the run view's budget", () => {
+  for (const [mode, intent] of [
+    ["exchange", validIntent],
+    ["zeroSetup", validZeroSetupIntent],
+  ] as const)
+    test(`in ${mode} mode, shows whole names and the count for the CLI's full list`, async () => {
+      const names = namesFillingTheCliBudget();
+      const columnCount = names.length + 40;
+      const { id } = await runTakingJob(
+        `taken-full-${mode}`,
+        intent(),
+        cliTakenEvent(names, columnCount),
+      );
+      const shown = (await runViewWarnings(id, await sseBody(id))).filter(
+        (warning) => warning.includes("The columns taken"),
+      );
+      expect(shown).toHaveLength(1);
+      expectWholeNamesAndCount(shown[0], names, columnCount);
+    });
+
+  test("never splits a name at the cut, whatever its length", () => {
+    const cliNames = namesFillingTheCliBudget();
+    const names = [...cliNames, ...cliNames.map((name) => `${name}_more`)];
+    for (const mode of ["exchange", "zeroSetup"] as const) {
+      const lastShown =
+        quotedNames(
+          /The columns taken: (.*), and \d+ more\.$/.exec(
+            payloadReceiveTakenConsoleNotice(mode, {
+              columns: names,
+              columnCount: names.length,
+            }),
+          )?.[1] ?? "",
+        ).length - 1;
+      expect(lastShown).toBeGreaterThan(0);
+      for (let width = 1; width <= 60; width += 1) {
+        const columns = names.map((name, index) =>
+          index === lastShown ? `${name}_${"\u00e9".repeat(width)}` : name,
+        );
+        const [shown] = appendSanitizedRunWarning(
+          [],
+          payloadReceiveTakenConsoleNotice(mode, {
+            columns,
+            columnCount: columns.length,
+          }),
+        );
+        expectWholeNamesAndCount(shown, columns, columns.length);
+      }
     }
   });
 });
