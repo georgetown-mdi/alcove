@@ -6,7 +6,9 @@ import {
   BROKER_ADDRESS_REFUSED,
   BROKER_AUTHORITY_REFUSED,
   BROKER_MESSAGE,
+  BrokerSocketDroppedError,
   INVITATION_BROKER_ADDRESS_REFUSED,
+  SIGNALING_SOCKET_FAILED_MESSAGE,
   assertDialsConfiguredBroker,
   connectToBroker,
   dialedBrokerHostAndPort,
@@ -582,6 +584,21 @@ test("a dropped socket reports a transport failure once", async () => {
   // webrtcSignalingTls.test.ts); the drop behind it reports nothing.
   expect(closes).toHaveLength(1);
   expect(closes[0]?.kind).toBe("transport");
+});
+
+test("a socket error after registration is a dropped-socket failure", async () => {
+  const { socket, closes } = await register();
+  socket.fail();
+  expect(closes).toHaveLength(1);
+  expect(closes[0]).toBeInstanceOf(BrokerSocketDroppedError);
+  expect(closes[0]?.message).toBe(SIGNALING_SOCKET_FAILED_MESSAGE);
+});
+
+test("a socket close after registration is a dropped-socket failure", async () => {
+  const { socket, closes } = await register();
+  socket.drop();
+  expect(closes).toHaveLength(1);
+  expect(closes[0]).toBeInstanceOf(BrokerSocketDroppedError);
 });
 
 test("a local close is silent and idempotent", async () => {

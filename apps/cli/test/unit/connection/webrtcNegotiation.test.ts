@@ -111,6 +111,12 @@ class ScriptedSocket {
     this.emit("close", {});
   }
 
+  /** Fail the socket after it opened, as a network error does. */
+  fail(): void {
+    this.readyState = 3;
+    this.emit("error", {});
+  }
+
   /** The frames of one type the client sent, in order. */
   ofType(type: string): Array<Record<string, unknown>> {
     return this.sent.filter((frame) => frame.type === type);
@@ -1856,6 +1862,56 @@ test("a broker socket dropped before the partner arrives starts the next attempt
   await settleRegistration(sockets, 3);
   await until(() => sockets[2].ofType(BROKER_MESSAGE.offer).length === 1);
   answer(sockets[2], inviterId, offeredConnectionIds(sockets[2])[0]);
+  await until(() => peers[1].remoteDescriptions.length === 1);
+  peers[1].channels[0].open();
+  expect((await session).channel).toBe(peers[1].channels[0]);
+});
+
+test("a broker socket dropped as registration completes starts the next attempt", async () => {
+  captureDiagnostics();
+  holdAttemptClock();
+  const { socket, sockets, peers, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    confirmRegistration: false,
+  });
+  // Both run in one synchronous step, so the drop lands before the attempt's
+  // run loop has started.
+  socket.register();
+  socket.drop();
+  await settleRegistration(sockets, 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(peers[0].closeCalls).toBe(1);
+
+  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
+  await until(() => peers[1].remoteDescriptions.length === 1);
+  peers[1].channels[0].open();
+  expect((await session).channel).toBe(peers[1].channels[0]);
+});
+
+test("a broker socket error before the partner arrives starts the next attempt", async () => {
+  const lines = captureDiagnostics();
+  holdAttemptClock();
+  const { socket, sockets, peers, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS / 2);
+  socket.fail();
+  await settleRegistration(sockets, 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(peers[0].closeCalls).toBe(1);
+  expect(
+    lines.find((line) =>
+      line.includes("the connection to the signaling server failed"),
+    ),
+  ).toContain("starting a new connection attempt");
+
+  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
   await until(() => peers[1].remoteDescriptions.length === 1);
   peers[1].channels[0].open();
   expect((await session).channel).toBe(peers[1].channels[0]);
