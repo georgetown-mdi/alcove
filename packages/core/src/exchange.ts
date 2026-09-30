@@ -277,8 +277,7 @@ export function assertAlgorithmImplemented(algorithm: Algorithm): void {
  * Run where terms enter or leave a party's document without a run to check
  * them -- an offline invitation minted from it, a terms update made from it,
  * and a partner's terms update applied to it -- so neither party consents to
- * terms whose first run is refused. The command line and the web app both
- * call it, so the two refuse the same updates with the same messages.
+ * terms whose first run is refused.
  *
  * A `payload.send` that differs from what the metadata transmits is not
  * refused here: the run, the invitation, and the terms update each state the
@@ -288,9 +287,7 @@ export function assertAlgorithmImplemented(algorithm: Algorithm): void {
  * an explicit block: without one the run infers it from the input file, which
  * none of these callers reads.
  *
- * @throws {UsageError} naming the rule the terms break; every message holds
- *   only fixed text, build-defined step labels and counts, and the names this
- *   party's own standardization declares.
+ * @throws {UsageError} naming the rule the terms break.
  */
 export function assertTermsRunnable(
   terms: LinkageTerms,
