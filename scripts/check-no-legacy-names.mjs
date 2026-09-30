@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Legacy product name check, run by static_checks.yaml through check:all.
 //
-// Alcove's earlier name was psilink, its repository's jspsi and its container
-// image's psi-link. This check fails on any tracked text file that
-// holds one of those three names, matched case-insensitively, naming the file
-// and line, and on any tracked path that holds one. Its job is to stop the old
-// name returning while branches cut before the rename are merged: such a merge
-// reintroduces it with no conflict to show. docs/notes/rename-to-alcove.md
-// records the rename.
+// Alcove's earlier name was psilink, spelled "PSI Link" in prose, its
+// repository's jspsi and its container image's psi-link. This check fails on
+// any tracked text file that holds one of those names, matched
+// case-insensitively, naming the file and line, and on any tracked path that
+// holds one. Its job is to stop the old name returning while branches cut
+// before the rename are merged: such a merge reintroduces it with no conflict
+// to show. docs/notes/rename-to-alcove.md records the rename.
 //
 // WHAT IT READS: `git ls-files` of the tree it runs in (this repository, or the
 // tree `--root` names), and each listed file's contents from the working tree.
@@ -20,8 +20,8 @@
 //     added. package-lock.json is tracked and is scanned.
 //   - Files skipped as binary by extension (BINARY_EXTENSIONS). A binary file
 //     of any other extension is scanned as text.
-//   - The name spelled some other way: split by a space or a line break, or
-//     encoded.
+//   - The name spelled some other way: split by a line break, or encoded. A
+//     space is caught, but only before a word break, so "PSI linkage" passes.
 //   - Git history, branch names, and everything outside the tree: the project
 //     boards, a clone's directory name, a shell's environment.
 //
@@ -40,8 +40,8 @@ import { obligationRoot } from "./lib/deferredObligation.mjs";
 /** The last date, UTC, on which the check scans rather than fails as expired. */
 export const EXPIRES_ON = "2026-12-24";
 
-/** The three names, matched anywhere in a line or path, in any case. */
-export const LEGACY_NAME = /jspsi|psilink|psi-link/i;
+/** The names, matched anywhere in a line or path, in any case. */
+export const LEGACY_NAME = /jspsi|psilink|psi-link|psi link\b/i;
 
 /** Extensions read as binary and not scanned. */
 export const BINARY_EXTENSIONS = [".png", ".ico", ".tgz"];
