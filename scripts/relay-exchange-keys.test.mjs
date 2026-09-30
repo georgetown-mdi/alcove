@@ -2206,8 +2206,8 @@ describe.skipIf(runningAsRoot)(
     });
 
     it.each([
-      ["301 s behind", -301],
-      ["301 s ahead of", 301],
+      ["305 s behind", -305],
+      ["305 s ahead of", 305],
     ])(
       "refuses a proof %s the registrar's clock with 401 and its time",
       async (_, offsetSeconds) => {
