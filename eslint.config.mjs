@@ -138,6 +138,7 @@ export const DISPLAYABLE_PRODUCERS = [
   "displayPartyIdentity",
   "redactAndDisplayPartyIdentity",
   "renderDialedBroker",
+  "payloadReceiveTakenNotice",
 ];
 const DISPLAYABLE_PRODUCER_PATTERN = DISPLAYABLE_PRODUCERS.join("|");
 const DISPLAYABLE_VALUE = [

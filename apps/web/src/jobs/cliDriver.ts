@@ -4,16 +4,22 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 import {
+  DEFAULT_MAX_DISPLAY_LENGTH,
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  boundRawFragmentForFit,
+  clipToRenderedCost,
   createPrivateKeyStreamRedactor,
   parseBoundedJson,
   partnerOriginText,
+  redactPrivateKeyMaterial,
   sanitizeErrorChainLinks,
   sanitizeForDisplay,
 } from "@alcove/core";
 
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
+
+import { PAYLOAD_RECEIVE_TAKEN_SOURCE } from "./payloadReceiveTakenNotice";
 
 import type { ChildProcess } from "node:child_process";
 import type { PartnerOriginText } from "@alcove/core";
@@ -595,6 +601,11 @@ const RELAY_EVENT_TYPES = new Set<RelayEventType>([
  * The chain field is the relay's own on every event type: a same-named key from
  * the source is dropped, then reassigned from this pass's own derivation, so no
  * source ever hands the seat a whole chain directly.
+ *
+ * A `payloadReceiveTaken` warning's `columns` is the one field left unescaped
+ * ({@link relayedTakenColumnNames}): the console composes its notice from those
+ * names for the run view's single escape, and escapes the served field itself
+ * (`withConsolePayloadReceiveTakenNotice` in `./payloadReceiveTakenNotice.ts`).
  */
 export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -617,6 +628,15 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
     if (type === "error" && key === "termsChange") {
       const termsChange = relayedTermsChange(field);
       if (termsChange !== undefined) sanitized[outKey] = termsChange;
+      continue;
+    }
+    if (
+      type === "warning" &&
+      key === "columns" &&
+      record.source === PAYLOAD_RECEIVE_TAKEN_SOURCE
+    ) {
+      const names = relayedTakenColumnNames(field);
+      if (names !== undefined) sanitized[outKey] = names;
       continue;
     }
     sanitized[outKey] =
@@ -642,9 +662,10 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
 }
 
 /**
- * The most names or diagnostics one list of a relayed terms change keeps. A
- * terms document bounds its own lists well below this; the bound holds a
- * subverted source to a size the console's page can lay out.
+ * The most names or diagnostics one list of a relayed terms change keeps, and
+ * the most column names a relayed `payloadReceiveTaken` warning keeps. A terms
+ * document bounds its own lists well below this; the bound holds a subverted
+ * source to a size the console's page can lay out.
  */
 export const RELAY_TERMS_CHANGE_LIST_CAP = 256;
 
@@ -658,6 +679,27 @@ function relayedNames(
   if (!value.every((entry) => typeof entry === "string")) return undefined;
   return value.map((entry: string) =>
     sanitizeForDisplay(entry, maxLength !== undefined ? { maxLength } : {}),
+  );
+}
+
+/**
+ * The column list of a relayed `payloadReceiveTaken` warning: its first
+ * {@link RELAY_TERMS_CHANGE_LIST_CAP} names, each cut, redacted and fitted to
+ * the per-value budget but not escaped. Cut rather than dropped past the cap,
+ * since the event's `columnCount` still counts the rest; undefined -- the
+ * field dropped -- where the kept names are not all strings.
+ */
+function relayedTakenColumnNames(value: unknown): Array<string> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const kept: Array<unknown> = value.slice(0, RELAY_TERMS_CHANGE_LIST_CAP);
+  if (!kept.every((entry) => typeof entry === "string")) return undefined;
+  return kept.map((entry: string) =>
+    clipToRenderedCost(
+      redactPrivateKeyMaterial(
+        boundRawFragmentForFit(entry, DEFAULT_MAX_DISPLAY_LENGTH),
+      ),
+      DEFAULT_MAX_DISPLAY_LENGTH,
+    ),
   );
 }
 

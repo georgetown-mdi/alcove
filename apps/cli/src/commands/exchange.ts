@@ -1377,6 +1377,7 @@ export async function handler(argv: Arguments): Promise<void> {
             columns,
             recordedIn: options.configFile,
             unattendedWriter: interactive ? undefined : writePlainLine,
+            eventStream: openedEventStream,
             log,
           }),
         onPayloadReceiveFill: payloadReceiveFillConfirmation({

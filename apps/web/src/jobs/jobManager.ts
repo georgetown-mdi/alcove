@@ -77,6 +77,7 @@ import { probeSftpHostKey } from "./sftpProbe";
 import { removeSftpCredentialFile } from "./sftpScratch";
 import { runTermsProposalApply } from "./termsProposal";
 import { validateAuthoredSftpServer } from "./sftpServer";
+import { withConsolePayloadReceiveTakenNotice } from "./payloadReceiveTakenNotice";
 
 import type {
   CliDriverHandle,
@@ -2045,12 +2046,16 @@ function workdirArtifactPath(workdir: string, name: string): string {
 
 /**
  * The event the browser is served in place of the one the child emitted: the
- * first-contact pin messages, whose CLI wording names the configuration file
- * the pin is written into, a path inside this container. Every other event
- * passes through untouched.
+ * first-contact pin messages and the notice of payload columns taken without
+ * asking, whose CLI wording names the configuration file written, a path
+ * inside this container. Every other event passes through untouched.
  */
 function relayedForConsole(record: JobRecord, event: RelayEvent): RelayEvent {
-  if (event.type === "warning") return rewrittenPartnerPinNotice(record, event);
+  if (event.type === "warning")
+    return withConsolePayloadReceiveTakenNotice(
+      rewrittenPartnerPinNotice(record, event),
+      record.handoff.mode,
+    );
   if (event.type === "error")
     return rewrittenTermsProposalRefusal(
       record,
