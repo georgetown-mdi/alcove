@@ -27,14 +27,16 @@ export const MAX_MOUNTED_KEY_FILE_BYTES = 10_000;
  * The key-file shape, as the CLI's own reader holds it (`KeyFileSchema` in
  * `apps/cli/src/keyFile.ts`, which this workspace cannot import): a shared
  * secret of the canonical shape, an optional ISO 8601 expiry, and the optional
- * ISO 8601 instant of a key exchange that has not saved its rotation. Unknown keys
- * are stripped rather than refused, as there, so the console refuses exactly
- * the files the run itself would refuse.
+ * ISO 8601 instants of a key exchange that has not saved its rotation and of a
+ * relay key registration the registrar has not confirmed. Unknown keys are
+ * stripped rather than refused, as there, so the console refuses exactly the
+ * files the run itself would refuse.
  */
 const mountedKeyFileSchema = z.object({
   sharedSecret: z.string().regex(SHARED_SECRET_REGEX),
   expires: z.iso.datetime().optional(),
   rotationInFlightSince: z.iso.datetime().optional(),
+  relayRegistrationPendingSince: z.iso.datetime().optional(),
 });
 
 /** Which of the two faults a refused mounted key file is. */

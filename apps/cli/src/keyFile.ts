@@ -39,6 +39,14 @@ export interface KeyFile {
    * records a rotation that may have completed on the partner's side only.
    */
   rotationInFlightSince?: string;
+  /**
+   * ISO 8601 datetime the secret this file holds was rotated to, when a relay
+   * registrar has not yet confirmed that it holds the relay key derived from
+   * that secret. Written by the rotation itself and dropped once the registrar
+   * confirms, so a file still holding it at the next run records a
+   * registration that run retries before it dials.
+   */
+  relayRegistrationPendingSince?: string;
 }
 
 const SHARED_SECRET_FORMAT_MESSAGE =
@@ -56,6 +64,7 @@ const KeyFileSchema: z.ZodType<KeyFile> = z.object({
     ),
   expires: z.iso.datetime().optional(),
   rotationInFlightSince: z.iso.datetime().optional(),
+  relayRegistrationPendingSince: z.iso.datetime().optional(),
 });
 
 /**
@@ -257,6 +266,23 @@ export function clearRotationInFlight(
   if (current.rotationInFlightSince === undefined) return;
   const { rotationInFlightSince: _cleared, ...unmarked } = current;
   saveKeyFile(keyFilePath, unmarked);
+}
+
+/**
+ * Remove the pending relay registration from the key file at `keyFilePath`
+ * once the registrar has confirmed it holds the relay key derived from
+ * `sharedSecret`. Nothing is written when the file holds no pending
+ * registration or a secret other than `sharedSecret`.
+ */
+export function clearRelayRegistrationPending(
+  keyFilePath: string,
+  sharedSecret: string,
+): void {
+  const current = loadKeyFile(keyFilePath, { warnOnPermissive: false });
+  if (current === undefined || current.sharedSecret !== sharedSecret) return;
+  if (current.relayRegistrationPendingSince === undefined) return;
+  const { relayRegistrationPendingSince: _cleared, ...confirmed } = current;
+  saveKeyFile(keyFilePath, confirmed);
 }
 
 /**

@@ -292,6 +292,7 @@ export {
   MAX_RECONNECT_ATTEMPTS,
   MAX_RELAY_LOCATOR_URL_LENGTH,
   MAX_RELAY_LOCATOR_URLS,
+  MAX_RELAY_REGISTRAR_URL_LENGTH,
   MAX_TIMEOUT_SECONDS,
   MAX_TOKEN_MAX_AGE_DAYS,
   SERVER_PROVISION_MODES,
@@ -299,6 +300,7 @@ export {
   StunUrlSchema,
   TurnUrlSchema,
   generateSharedSecret,
+  hasMintedTurnEntry,
   safeParseConnectionConfig,
   safeParseFileSyncOptions,
   withRetainModeImplications,
@@ -310,6 +312,7 @@ export type {
   FileSyncOptions,
   HttpAuth,
   RelayLocator,
+  RelayRegistrar,
   ServerProvision,
   ServerProvisionMode,
   SFTPConnectionConfig,
@@ -850,6 +853,7 @@ export type {
   RunRelaySelection,
 } from "./relayCredential";
 export {
+  isRelayRegistrarExchangeId,
   RELAY_REGISTRAR_PROOF_SCHEME,
   relayRegistrarAuthorization,
 } from "./relayRegistrarProof";

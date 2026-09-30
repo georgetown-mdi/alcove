@@ -205,8 +205,15 @@ describe("reading a .alcove.key", () => {
         sharedSecret: generateSharedSecret(),
         [nearMiss]: nearMiss,
       }),
-      "it holds a field other than sharedSecret, expires, and " +
-        "rotationInFlightSince",
+      "it holds a field this app does not read",
+    ],
+    [
+      "a registration the relay registrar has not confirmed",
+      commandLineKeyText({
+        sharedSecret: generateSharedSecret(),
+        relayRegistrationPendingSince: "2026-01-01T00:00:00.000Z",
+      }),
+      "run the exchange once more from the command line",
     ],
     [
       "a file over the cap",
@@ -234,7 +241,9 @@ describe("reading a .alcove.key", () => {
       ),
     );
     expect((error as Error).message).toContain("its expires is not");
-    expect((error as Error).message).toContain("holds a field other than");
+    expect((error as Error).message).toContain(
+      "holds a field this app does not read",
+    );
     expect(errorText(error)).not.toContain(sharedSecret);
   });
 

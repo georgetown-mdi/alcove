@@ -1,7 +1,7 @@
 ---
 title: "Privacy Statement"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-09-17"
+last_reviewed: "2026-09-29"
 ---
 
 # Privacy statement
@@ -30,7 +30,7 @@ The answers below differ by deployment. Read the section matching what you are d
 This is the deployment supported for production use.
 
 - **What the project operates: nothing.** The container runs on your machine or in your infrastructure. No component of it reports to the project.
-- **What it connects to:** only the SFTP server or shared directory you configure for the exchange. The container makes no other network connection.
+- **What it connects to:** only the SFTP server or shared directory you configure for the exchange, or for a WebRTC exchange the coordination server, STUN and TURN servers, and relay registrar its configuration names (see [What supporting services can observe](#what-supporting-services-can-observe)). The container makes no other network connection.
 - **The local console** is served by that same container to your own machine over loopback and is not reachable beyond that host. It is a local interface to the CLI, not a hosted service. Its browser interface can also run a browser-to-browser exchange rather than an SFTP or shared-directory one; that path contacts the supporting services named below, exactly as the web application does.
 - **What the project can observe about your exchanges: nothing.** It receives no data, no metadata, and no record that an exchange occurred.
 - **Distribution is the one third-party touch.** Pulling the container image from a public registry tells that registry's operator that the pull happened, as with any container image. The project does not operate the registry and receives only whatever aggregate pull counts the registry publishes to image owners.
@@ -59,6 +59,7 @@ An exchange relies on services that are operated by one of the parties, by the p
 | Peer coordination (signaling) | The project, for the hosted web application; you, if you deploy the web application yourself; or a public third-party service if you point at one | Rendezvous identifiers, connection timing, and client IP addresses. Never data-channel content: the two browsers run an authenticated key exchange directly and the server relays only opaque setup messages. |
 | STUN | A third party. The hosted web application is configured by default with two public STUN servers, `stun.l.google.com:19302` (Google-operated) and `44.247.30.68:443` | The client IP address that queried it, and nothing further. STUN is used to discover a public address before the connection is established. |
 | TURN relay | Whoever you configure; commonly a commercial ICE service, or a relay one party operates and names in its browser's own settings or in the invitation | Each party's network address, whether or not any traffic is relayed: the browser reserves an address on the relay while gathering candidates, before it knows if the direct path will work. When traffic is relayed, also the traffic volume between the two endpoints. It forwards encrypted DTLS packets without terminating the session, so it cannot read content. |
+| TURN relay registrar | The party that operates the relay, when its configuration names the registrar (`connection.relay_registrar`); contacted by the CLI only | The exchange id the operator chose, the relay key derived from the exchange's current shared secret -- which the relay holds to accept credentials -- the client IP address, and the time of each registration. Never the shared secret or anything else about the exchange. |
 | Shared SFTP server or file drop | One of the two parties, or a third party both trust | The exchange's files. What those files reveal depends on the exchange -- see below. |
 
 The SFTP and file-drop case is the one that turns on how the exchange is set up:

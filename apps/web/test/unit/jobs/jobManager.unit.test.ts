@@ -2870,6 +2870,20 @@ describe("the key file beside the opened configuration", () => {
     expect(spawned[0].keyPath).toBe(path.join(root, ".alcove.key"));
   });
 
+  test("a key file recording a pending relay registration is one the run accepts", async () => {
+    // The CLI writes relayRegistrationPendingSince after a rotation its relay
+    // registrar has not confirmed, and reads it as an ISO 8601 instant.
+    const root = mountWith(
+      JSON.stringify({
+        sharedSecret: MOUNTED_SHARED_SECRET,
+        relayRegistrationPendingSince: "2029-12-01T00:00:00.000Z",
+      }),
+    );
+    const { manager, spawned } = capturingManager(root);
+    await manager.createJob(openedIntent());
+    expect(spawned[0].keyPath).toBe(path.join(root, ".alcove.key"));
+  });
+
   test("an exchange authored here still mints its own key file", async () => {
     const root = mountWith(
       JSON.stringify({ sharedSecret: MOUNTED_SHARED_SECRET }),
@@ -2900,6 +2914,13 @@ describe("the key file beside the opened configuration", () => {
       JSON.stringify({
         sharedSecret: MOUNTED_SHARED_SECRET,
         rotationInFlightSince: "soon",
+      }),
+    ],
+    [
+      "invalid",
+      JSON.stringify({
+        sharedSecret: MOUNTED_SHARED_SECRET,
+        relayRegistrationPendingSince: "soon",
       }),
     ],
   ] as const)(

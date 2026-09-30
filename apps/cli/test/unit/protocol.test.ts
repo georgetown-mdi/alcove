@@ -1900,6 +1900,81 @@ test("a partner-shaped output-phase fault reports the post-exchange persistence 
   ).toBe(true);
 }, 20_000);
 
+test("a result-delivery failure on a relay-registering run does not report a local persistence loss", async () => {
+  // The relay key registration writes nothing to this party's disk, so the
+  // skipped-persistence notice a failed result raises for a local write does
+  // not apply to it; the exchange command registers on its failure path.
+  const { buildOutputTable: coreBuildOutputTable } =
+    await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
+  vi.mocked(buildOutputTable).mockImplementation(() =>
+    coreBuildOutputTable([[0], [7]], [], [], {
+      columns: ["dob"],
+      rowIndices: [5],
+      rows: [["1990-01-02"]],
+    }),
+  );
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  const onRemoteFollowUp = vi.fn();
+
+  mockFd3Open();
+  let outcome: PromiseSettledResult<unknown>;
+  try {
+    [outcome] = await Promise.allSettled([
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: {
+          sharedSecret: TOKEN_A,
+          keyFilePath: keyFileA,
+          relayRegistrationFollows: true,
+        },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-a",
+        fileSyncRuntime: { eventStream: true, onRemoteFollowUp },
+      }),
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileB },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-b",
+      }),
+    ]);
+  } finally {
+    vi.mocked(fs.fstatSync).mockRestore();
+    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+  }
+
+  expect(outcome.status).toBe("rejected");
+  expect(exitCodeForError((outcome as PromiseRejectedResult).reason)).toBe(76);
+  expect(onRemoteFollowUp).not.toHaveBeenCalled();
+  expect(loadKeyFile(keyFileA)?.relayRegistrationPendingSince).toBeDefined();
+
+  const lines = takeFd3Lines();
+  expect(lines[lines.length - 1].type).toBe("error");
+  expect(
+    lines.filter(
+      (line) => line.type === "warning" && line.source === "persistenceLoss",
+    ),
+  ).toEqual([]);
+  expect(
+    mockState.errors.some((line) => line.includes("did not reach disk")),
+  ).toBe(false);
+}, 20_000);
+
 test("a partner payload missing a matched row still leaves the record and the receipt", async () => {
   // runExchange completed and returned its audit and the dual-signed receipt,
   // so the disclosure happened; the partner payload then fails the real core
@@ -3130,6 +3205,60 @@ test("a token_max_age_days policy stamps expires onto both rotated key files", a
   expect(expiresA).toBeLessThanOrEqual(after + THIRTY_DAYS_MS);
   expect(expiresB).toBeGreaterThanOrEqual(before + THIRTY_DAYS_MS);
   expect(expiresB).toBeLessThanOrEqual(after + THIRTY_DAYS_MS);
+}, 20_000);
+
+test("a run that registers its relay key records the registration as pending in the rotation write", async () => {
+  // The pending record is written by the same write that stores the rotated
+  // secret, so no moment exists at which the key file holds the rotated secret
+  // without it; the post-exchange hook already sees it on disk.
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  let seenAtOutputComplete: unknown;
+
+  await Promise.all([
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: {
+        sharedSecret: TOKEN_A,
+        keyFilePath: keyFileA,
+        relayRegistrationFollows: true,
+      },
+      prepared: minimalPrepared,
+      output: path.join(tmpDir, "out-a.csv"),
+      verbosity: -1,
+      loggerName: "test-a",
+      fileSyncRuntime: {
+        onOutputComplete: () => {
+          seenAtOutputComplete = loadKeyFile(keyFileA);
+          return { persisted: true };
+        },
+      },
+    }),
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileB },
+      prepared: minimalPrepared,
+      output: path.join(tmpDir, "out-b.csv"),
+      verbosity: -1,
+      loggerName: "test-b",
+    }),
+  ]);
+
+  const rotatedA = loadKeyFile(keyFileA);
+  expect(rotatedA?.sharedSecret).not.toBe(TOKEN_A);
+  expect(rotatedA?.relayRegistrationPendingSince).toBeDefined();
+  expect(seenAtOutputComplete).toEqual(rotatedA);
+  expect(loadKeyFile(keyFileB)?.relayRegistrationPendingSince).toBeUndefined();
 }, 20_000);
 
 // --- Abort-marker echo suppression via runProtocol ---------------------------
