@@ -58,6 +58,7 @@ import {
   startModeProvisionAsRead,
   wakeServerThrough,
 } from "../serverProvision";
+import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -608,6 +609,11 @@ function unsavedBootstrapNotice(params: {
 }
 
 export async function handler(argv: Arguments): Promise<void> {
+  // A URL and an input file: fewer is a usage error, which needs no restart.
+  if (argv._.length >= 2)
+    await restartUnderPsiHeapCeiling({
+      passEventStreamFd: argv["event-stream"] === true,
+    });
   // parseArgs resolves the log level and reads every option, so it runs before
   // the logger exists. parseOrExit reports its usage errors -- a repeated
   // single-value flag or an unrecognized log-level -- on stderr and exits 64,

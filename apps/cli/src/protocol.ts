@@ -91,6 +91,7 @@ import {
   withFirstRoundCountDisplay,
   type PsiProgressDisplay,
 } from "./psiProgressDisplay";
+import { restartedForPsiHeap } from "./psiHeapRestart";
 import { checkPsiMemoryBudget, readMemory } from "./psiMemoryBudget";
 import { createPsiEngine, psiEngineRunsInWorker } from "./psiWorkerHost";
 import { writeExchangeRecord, type RecordOutput } from "./recordFile";
@@ -1784,7 +1785,7 @@ export function checkRunMemoryBudget(params: {
   checkPsiMemoryBudget({
     records: prepared.rowCount,
     allowShortfall: allowMemoryShortfall,
-    readings: readMemory(psiEngineRunsInWorker()),
+    readings: readMemory(psiEngineRunsInWorker(), restartedForPsiHeap()),
     log,
     onShortfallWarning: (message) => {
       log.warn(message);
@@ -2551,6 +2552,11 @@ async function writeExchangeOutputs(params: {
   return everyArtifactOnDisk;
 }
 
+// How soon after a first SIGINT or SIGTERM a repeat counts as the same signal
+// delivered twice (see isRepeatedDelivery in runProtocol) rather than a second
+// interrupt, which ends the process at once.
+const REPEATED_SIGNAL_DELIVERY_MS = 500;
+
 /**
  * The one argument {@link runProtocol} takes. Every field it needs is named
  * here rather than passed by position, so a caller supplying only some of the
@@ -2877,6 +2883,19 @@ export async function runProtocol(
   // Aborted only from a signal handler; ordinary teardown is doCleanup's own
   // closes.
   const interrupted = new AbortController();
+  // When this process was restarted for the PSI heap, a terminal's Ctrl-C (or
+  // a supervisor signalling the process group) reaches both it and its parent,
+  // which forwards the signal: a repeat this soon after the first is that one
+  // interrupt delivered twice, and must not cut the first one's cleanup short.
+  let firstSignalAt: number | undefined;
+  function isRepeatedDelivery(): boolean {
+    const now = performance.now();
+    if (firstSignalAt === undefined) {
+      firstSignalAt = now;
+      return false;
+    }
+    return now - firstSignalAt < REPEATED_SIGNAL_DELIVERY_MS;
+  }
   async function doCleanup() {
     if (cleaned) return;
     cleaned = true;
@@ -2953,6 +2972,7 @@ export async function runProtocol(
     }
   }
   async function onSigint(): Promise<void> {
+    if (isRepeatedDelivery()) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGINT";
@@ -2980,6 +3000,7 @@ export async function runProtocol(
     }
   }
   async function onSigterm(): Promise<void> {
+    if (isRepeatedDelivery()) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGTERM";

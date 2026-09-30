@@ -15,6 +15,7 @@ import {
   PSI_ROUND_BYTES_PER_ELEMENT,
   PSI_ROUND_FIXED_BYTES,
   PSI_TARGET_ELEMENTS,
+  psiMemoryStatement,
   psiRoundMemoryNeedBytes,
   readMemory,
   type MemoryReadings,
@@ -64,6 +65,7 @@ describe("the budget", () => {
       engineHeapLimitBytes: 20e9,
       hostBytes: 64e9,
       containerLimitBytes: 8e9,
+      heapRaisedByRestart: false,
     };
     expect(assessPsiMemory(10, readings)).toMatchObject({
       availableBytes: 8e9,
@@ -91,33 +93,34 @@ describe("the readings", () => {
   };
 
   it("takes the raised limit when the engine runs in a worker", () => {
-    expect(readMemory(true, snapshot)).toEqual({
+    expect(readMemory(true, false, snapshot)).toEqual({
       engineHeapLimitBytes: PSI_HEAP_CEILING_MIB * 2 ** 20,
       hostBytes: 25e9,
       containerLimitBytes: undefined,
+      heapRaisedByRestart: false,
     });
   });
 
   it("takes the process's own limit when the engine runs on this thread", () => {
-    expect(readMemory(false, snapshot).engineHeapLimitBytes).toBe(
+    expect(readMemory(false, false, snapshot).engineHeapLimitBytes).toBe(
       4_395_630_592,
     );
   });
 
   it("keeps a larger limit the process was started with", () => {
     expect(
-      readMemory(true, { ...snapshot, heapLimitBytes: 40e9 })
+      readMemory(true, false, { ...snapshot, heapLimitBytes: 40e9 })
         .engineHeapLimitBytes,
     ).toBe(40e9);
   });
 
   it("counts a container limit only below the host's memory", () => {
     expect(
-      readMemory(true, { ...snapshot, constrainedMemBytes: 8e9 })
+      readMemory(true, false, { ...snapshot, constrainedMemBytes: 8e9 })
         .containerLimitBytes,
     ).toBe(8e9);
     expect(
-      readMemory(true, { ...snapshot, constrainedMemBytes: 0 })
+      readMemory(true, false, { ...snapshot, constrainedMemBytes: 0 })
         .containerLimitBytes,
     ).toBeUndefined();
   });
@@ -128,6 +131,7 @@ describe("the check", () => {
     engineHeapLimitBytes: 4_395_630_592,
     hostBytes: 2e9,
     containerLimitBytes: 512e6,
+    heapRaisedByRestart: false,
   };
 
   function run(records: number, allowShortfall: boolean) {
@@ -158,6 +162,16 @@ describe("the check", () => {
         "over this run's 1,000 records needs about 0.27 GB, and this process " +
         "has 0.51 GB (host memory 2.00 GB, container memory limit 0.51 GB)",
     ]);
+  });
+
+  it("names the restart that raised the heap limit", () => {
+    const statement = psiMemoryStatement(
+      assessPsiMemory(1_000, { ...smallHost, heapRaisedByRestart: true }),
+    );
+    expect(statement).toContain(
+      "heap limit of 4.40 GB (raised by restarting this process with " +
+        "--max-old-space-size=19075); a round",
+    );
   });
 
   it("refuses a run short of memory, naming both figures and the override", () => {

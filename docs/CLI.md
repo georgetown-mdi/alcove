@@ -1208,13 +1208,16 @@ The need is about 1.2 KB for each record in your input plus 0.27 GB. What the ru
 - **Split the input** into smaller files and run one exchange for each.
 - **Pass `--allow-memory-shortfall`** to run anyway. The line is still logged, and a warning naming the shortfall goes to `stderr` and, with `--event-stream`, to the event stream under `memoryShortfall`. The run may then run out of memory and end with exit 134.
 
-**An installed `alcove`** (rather than the container image) raises the heap of the matching's worker thread only; its main thread, which reads and prepares the input, keeps Node's default of about 4.4 GB, which an input of 16,777,216 records does not fit. For an input in the millions of records, start it with the same limit the image sets:
+**An installed `alcove`** (rather than the container image) starts at Node's default heap limit of about 4.4 GB, which an input of 16,777,216 records does not fit. So each exchange-running command starts itself again once, before it reads any file, as a second `node` process with `--max-old-space-size=19075`, and exits with that process's exit code. `Ctrl-C` and a `SIGTERM` sent to the first process reach the second. Other commands, such as `doctor` and `verify-receipt`, do not.
 
-```sh
-NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv output.csv
-```
+- **To see it**, read the memory line: it ends the heap limit with `(raised by restarting this process with --max-old-space-size=19075)`. The `runtime:` line at `-v` states the main thread's limit, and `ps` lists two `node` processes for the run.
+- **To start at the limit instead**, and skip the second process, set it yourself; a larger value raises the matching's limit too. The container image does this (see [DEPLOYMENT.md](DEPLOYMENT.md#giving-a-run-more-memory)):
 
-A larger value there raises the matching's limit too. The container image sets this itself (see [DEPLOYMENT.md](DEPLOYMENT.md#giving-a-run-more-memory)).
+  ```sh
+  NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv output.csv
+  ```
+
+- **If the second process cannot start**, the command exits 64 and names the `NODE_OPTIONS` setting above.
 
 The check counts your records, not your partner's, and not the several values a record sends under a key that fans out (`split_on`, candidate sets), so a run it passes can still run short when either party's set is much larger than your record count.
 

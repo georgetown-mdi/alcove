@@ -50,6 +50,9 @@ export const PSI_HEAP_CEILING_BYTES =
  */
 export const PSI_HEAP_CEILING_MIB = Math.ceil(PSI_HEAP_CEILING_BYTES / 2 ** 20);
 
+/** The V8 flag that sets a heap limit of {@link PSI_HEAP_CEILING_MIB}. */
+export const PSI_HEAP_CEILING_FLAG = `--max-old-space-size=${PSI_HEAP_CEILING_MIB}`;
+
 /**
  * Raise the V8 old-generation limit that PSI workers started after this call
  * get to {@link PSI_HEAP_CEILING_MIB}, unless this process already runs under
@@ -60,7 +63,7 @@ export const PSI_HEAP_CEILING_MIB = Math.ceil(PSI_HEAP_CEILING_BYTES / 2 ** 20);
 export function raisePsiWorkerHeapLimit(): void {
   if (getHeapStatistics().heap_size_limit >= PSI_HEAP_CEILING_MIB * 2 ** 20)
     return;
-  setFlagsFromString(`--max-old-space-size=${PSI_HEAP_CEILING_MIB}`);
+  setFlagsFromString(PSI_HEAP_CEILING_FLAG);
 }
 
 /** The memory figures a run's budget is checked against, in bytes. */
@@ -71,6 +74,11 @@ export interface MemoryReadings {
   hostBytes: number;
   /** The container's memory limit, or `undefined` when none is set. */
   containerLimitBytes: number | undefined;
+  /**
+   * Whether this process is the CLI restarted under
+   * {@link PSI_HEAP_CEILING_FLAG} (psiHeapRestart.ts).
+   */
+  heapRaisedByRestart: boolean;
 }
 
 /**
@@ -79,10 +87,11 @@ export interface MemoryReadings {
  * worker, which {@link raisePsiWorkerHeapLimit} raises, or on this thread,
  * which keeps the process's own limit. The container limit is Node's
  * `process.constrainedMemory()`, the cgroup memory limit, counted only when
- * it is below the host's memory.
+ * it is below the host's memory. `heapRaisedByRestart` is passed through.
  */
 export function readMemory(
   engineInWorker: boolean,
+  heapRaisedByRestart: boolean,
   snapshot: RuntimeEnvSnapshot = readRuntimeEnv(),
 ): MemoryReadings {
   const { heapLimitBytes, hostMemBytes, constrainedMemBytes } = snapshot;
@@ -95,6 +104,7 @@ export function readMemory(
       constrainedMemBytes > 0 && constrainedMemBytes < hostMemBytes
         ? constrainedMemBytes
         : undefined,
+    heapRaisedByRestart,
   };
 }
 
@@ -152,9 +162,12 @@ export function psiMemoryStatement(assessment: PsiMemoryAssessment): string {
     readings.containerLimitBytes === undefined
       ? "no container memory limit"
       : `container memory limit ${gigabytes(readings.containerLimitBytes)}`;
+  const raisedBy = readings.heapRaisedByRestart
+    ? ` (raised by restarting this process with ${PSI_HEAP_CEILING_FLAG})`
+    : "";
   return (
     `memory: the PSI engine runs under a heap limit of ` +
-    `${gigabytes(readings.engineHeapLimitBytes)}; a round over this run's ` +
+    `${gigabytes(readings.engineHeapLimitBytes)}${raisedBy}; a round over this run's ` +
     `${assessment.records.toLocaleString("en-US")} records needs about ` +
     `${gigabytes(assessment.needBytes)}, and this process has ` +
     `${gigabytes(assessment.availableBytes)} (host memory ` +

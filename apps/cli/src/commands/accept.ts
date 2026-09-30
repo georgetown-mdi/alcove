@@ -58,6 +58,7 @@ import {
   renderDialedBroker,
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
+import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -1021,6 +1022,11 @@ const ACCEPT_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
 // --- Handler -----------------------------------------------------------------
 
 export async function handler(argv: Arguments): Promise<void> {
+  const positionals = (argv["args"] as Array<unknown> | undefined) ?? [];
+  if (looksLikeUrl(String(positionals[0])))
+    await restartUnderPsiHeapCeiling({
+      passEventStreamFd: argv["event-stream"] === true,
+    });
   let closeLogging: (() => void) | undefined;
   try {
     await runOrExit("accept", async () => {

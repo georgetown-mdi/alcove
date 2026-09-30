@@ -244,3 +244,45 @@ test("an interrupt drops the live progress line before it logs anything", async 
   expect(closed).toBeGreaterThanOrEqual(0);
   expect(firstInterruptLine).toBeGreaterThan(closed);
 });
+
+test("the same interrupt delivered twice runs one cleanup", async () => {
+  // A terminal's Ctrl-C reaches both a process restarted for its heap limit
+  // and the parent that restarted it, which passes the signal on: the second
+  // delivery lands while the first one's cleanup runs, and must not end the
+  // process ahead of that cleanup.
+  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const keyFile = path.join(tmpDir, "interrupted-twice.key");
+  const run = runProtocol({
+    connection: {
+      channel: "filedrop",
+      path: dropDir,
+      options: { pollIntervalMs: 1, peerTimeoutMs: 5_000 },
+    },
+    auth: { sharedSecret: TOKEN_A, keyFilePath: keyFile },
+    prepared: minimalPrepared,
+    output: undefined,
+    verbosity: -1,
+    loggerName: "test-c",
+  });
+  const settled = Promise.allSettled([run]);
+  try {
+    await vi.waitFor(
+      () => expect(fs.readdirSync(dropDir).length).toBeGreaterThan(0),
+      { timeout: 5_000 },
+    );
+    process.emit("SIGINT");
+    process.emit("SIGINT");
+    expect(exitSpy).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(130), {
+      timeout: 5_000,
+    });
+    await settled;
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+  } finally {
+    exitSpy.mockRestore();
+  }
+
+  expect(
+    runEvents.ordered.filter((line) => line === "info: caught SIGINT, exiting"),
+  ).toHaveLength(1);
+});
