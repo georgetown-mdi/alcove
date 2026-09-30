@@ -210,9 +210,7 @@ export interface LoadedConfigurationResponse {
   /** The shared-folder paths the file states, as it spells them
    * ({@link folderPathSettings}). Absent where no file was opened. */
   folderPathSettings?: Array<string>;
-  /** `true` where the file names `connection.relay_registrar`
-   * ({@link namesRelayRegistrar}), and absent otherwise. The block's own
-   * settings are not sent. */
+  /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
 }
 
@@ -724,12 +722,6 @@ export function folderPathSettings(document: ExchangeSpec): Array<string> {
   ];
 }
 
-/**
- * Whether the document's connection names a `relay_registrar`, whose exchange
- * `alcove enroll-relay` enrolls once before its first run. Only the fact
- * reaches the browser: the block itself is held with the rest of the webrtc
- * connection and written back as the file states it.
- */
 function namesRelayRegistrar(document: ExchangeSpec): boolean {
   const { connection } = document;
   return (

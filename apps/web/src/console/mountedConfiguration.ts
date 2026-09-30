@@ -173,10 +173,11 @@ export function channelNotConductedNotice(channel: UnconductedChannel): string {
 /** What the operator is told beside the load about a configuration naming
  * `connection.relay_registrar`. */
 export const RELAY_ENROLLMENT_NOTICE =
-  "Before this exchange's first run, enroll it once: run alcove " +
-  "enroll-relay in the folder holding alcove.yaml and its .alcove.key. It " +
-  "asks for the relay-owner token, or reads it from the first line of " +
-  "standard input when there is no terminal.";
+  "If this exchange is not yet enrolled at your relay, enroll it before its " +
+  "first run: after alcove invite or alcove accept has written its " +
+  ".alcove.key, run alcove enroll-relay in the folder holding alcove.yaml " +
+  "and that key file. The command asks for the relay-owner token, or reads " +
+  "it from the first line of standard input when there is no terminal.";
 
 /**
  * Why the review step withholds its run control, or undefined where nothing
@@ -667,35 +668,30 @@ export function mountedConfigurationOfferable(
 }
 
 /** The whole of what an opened configuration puts beside the control, in the
- * order it renders: what this console cannot run at all, then the relay
- * enrollment the command line needs first, then the carry-through notice,
- * since it is about the run itself, then the credential the operator has to
- * supply, and last what their input file could not supply. `run` is what the
- * carry-through notice is narrowed by, absent until a file is read. A
- * configuration the console does not conduct puts the notice naming its channel
- * in place of every one about a run here, and keeps the relay enrollment and
- * the two about what the steps below hold. */
+ * order it renders: what this console cannot run at all, then the carry-through
+ * notice, since it is about the run itself, then the credential the operator
+ * has to supply, then the relay enrollment step, and last what their input
+ * file could not supply. `run` is what the carry-through notice is narrowed by,
+ * absent until a file is read. A configuration the console does not conduct
+ * puts the notice naming its channel in place of every one about a run here. */
 export function mountedConfigurationNotices(
   state: MountedConfigurationState,
   run?: RunDisclosure,
 ): Array<string> {
   if (state.status !== "opened") return [];
-  const relayEnrollment =
-    state.relayEnrollment === true ? RELAY_ENROLLMENT_NOTICE : undefined;
-  if (state.notConducted !== undefined)
-    return [
-      channelNotConductedNotice(state.notConducted),
-      relayEnrollment,
-      termsNotAppliedNotice(state.notApplied ?? []),
-      columnsNotCoveredNotice(state.notCovered ?? []),
-    ].filter((notice): notice is string => notice !== undefined);
+  const aboutTheRun =
+    state.notConducted !== undefined
+      ? [channelNotConductedNotice(state.notConducted)]
+      : [
+          state.transportUnavailable === undefined
+            ? undefined
+            : TRANSPORT_UNAVAILABLE_NOTICE[state.transportUnavailable],
+          carriedThroughNotice(carriedThroughStated(state.carriedThrough, run)),
+          credentialWarningNotice(state.warnings),
+        ];
   return [
-    state.transportUnavailable === undefined
-      ? undefined
-      : TRANSPORT_UNAVAILABLE_NOTICE[state.transportUnavailable],
-    relayEnrollment,
-    carriedThroughNotice(carriedThroughStated(state.carriedThrough, run)),
-    credentialWarningNotice(state.warnings),
+    ...aboutTheRun,
+    state.relayEnrollment === true ? RELAY_ENROLLMENT_NOTICE : undefined,
     termsNotAppliedNotice(state.notApplied ?? []),
     columnsNotCoveredNotice(state.notCovered ?? []),
   ].filter((notice): notice is string => notice !== undefined);

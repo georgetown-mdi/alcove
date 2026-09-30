@@ -557,7 +557,7 @@ The file is read through the shared sensitive-YAML chokepoint (bounded parse, pa
 - `carriedThrough` names the settings the document states that a run composed here does not adopt -- the settings this surface holds without an editor, which the portable-configuration rule requires a consumer to state ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#what-a-consumer-does-with-a-setting-it-cannot-honor)).
 - `warnings` names the credential fields whose value the console cannot pre-fill.
 - `signingPathSettings` and `folderPathSettings`, present for a document that opens, name the paths the document states that [a conversion](#converting-an-opened-configuration) replaces: `signing.identity_file` and `signing.receipt_output` on an `sftp` or `filedrop` document, and a `filedrop` document's `connection.path`, `connection.inbound_path`, and `connection.outbound_path`. Both are empty for a `webrtc` document, which the console does not run.
-- `relayRegistrarNamed: true` is present for a `webrtc` document naming `connection.relay_registrar`, and absent otherwise. The browser shows the `alcove enroll-relay` step for it ([CONSOLE.md](../CONSOLE.md#opening-a-configuration-from-your-folder)); the block's `url` and `exchange_id` are not sent.
+- `relayRegistrarNamed: true` is present for a `webrtc` document naming `connection.relay_registrar`, and absent otherwise. The block's `url` and `exchange_id` are not sent.
 
 Every list holds NAMES only, as the FILE spells them: snake_case under the path of the block holding them (`connection.server.password`, `signing.receipt_output`). A setting's value can be a credential, and it enters neither list nor any refusal.
 

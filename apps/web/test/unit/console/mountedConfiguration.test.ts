@@ -319,7 +319,8 @@ describe("a configuration on a channel the console does not conduct", () => {
       channelNotConductedNotice("webrtc"),
       RELAY_ENROLLMENT_NOTICE,
     ]);
-    expect(RELAY_ENROLLMENT_NOTICE).toMatch(/enroll it once/);
+    expect(RELAY_ENROLLMENT_NOTICE).toMatch(/^If this exchange is not yet/);
+    expect(RELAY_ENROLLMENT_NOTICE).toContain("alcove invite or alcove accept");
     expect(RELAY_ENROLLMENT_NOTICE).toContain("alcove enroll-relay");
     expect(RELAY_ENROLLMENT_NOTICE).toMatch(
       /standard input when there is no terminal/,

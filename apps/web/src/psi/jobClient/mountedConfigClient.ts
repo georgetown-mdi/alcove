@@ -26,8 +26,7 @@ export type MountedConfigurationAnswer =
   | { kind: "absent" }
   /** The configuration, with the settings the console holds without an editor,
    * the credential fields it cannot pre-fill, and the signing and shared-folder
-   * paths it states, each named as the file spells them, and whether it names
-   * a relay registrar. */
+   * paths it states, each named as the file spells them. */
   | {
       kind: "opened";
       document: DisclosedExchangeDocument;
