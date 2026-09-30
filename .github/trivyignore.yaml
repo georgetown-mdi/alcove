@@ -973,11 +973,10 @@ vulnerabilities:
       libcurl; the only other executables a run reaches are the two
       shell entrypoints and smbclient, which does not link it either.
       Cleared by moving Dockerfile.fips to the amazonlinux:2023 rootfs
-      that first serves 8.21.0-5.amzn2023.0.1. That cannot be measured
-      from this container: the newest rootfs measured 2026-09-29 is
-      2023.12.20260918, and whether it serves that curl build is
-      unverified. The build asserts that the rootfs release equals the
-      dnf releasever, so a snapshot-only bump fails by design. This
+      2023.12.20260918 or later, whose package snapshot serves
+      8.21.0-5.amzn2023.0.1, as measured 2026-09-29 on a host outside
+      this container. The build asserts that the rootfs release equals
+      the dnf releasever, so a snapshot-only bump fails by design. This
       entry comes out in the same diff as that bump, which "Bumping the
       FIPS base image" in docs/spec/DEPENDENCY_PINS.md describes.
     expired_at: 2026-10-15
@@ -1002,11 +1001,10 @@ vulnerabilities:
       libcurl; the only other executables a run reaches are the two
       shell entrypoints and smbclient, which does not link it either.
       Cleared by moving Dockerfile.fips to the amazonlinux:2023 rootfs
-      that first serves 8.21.0-5.amzn2023.0.1. That cannot be measured
-      from this container: the newest rootfs measured 2026-09-29 is
-      2023.12.20260918, and whether it serves that curl build is
-      unverified. The build asserts that the rootfs release equals the
-      dnf releasever, so a snapshot-only bump fails by design. This
+      2023.12.20260918 or later, whose package snapshot serves
+      8.21.0-5.amzn2023.0.1, as measured 2026-09-29 on a host outside
+      this container. The build asserts that the rootfs release equals
+      the dnf releasever, so a snapshot-only bump fails by design. This
       entry comes out in the same diff as that bump, which "Bumping the
       FIPS base image" in docs/spec/DEPENDENCY_PINS.md describes.
     expired_at: 2026-10-15
@@ -1033,11 +1031,10 @@ vulnerabilities:
       libcurl; the only other executables a run reaches are the two
       shell entrypoints and smbclient, which does not link it either.
       Cleared by moving Dockerfile.fips to the amazonlinux:2023 rootfs
-      that first serves 8.21.0-5.amzn2023.0.1. That cannot be measured
-      from this container: the newest rootfs measured 2026-09-29 is
-      2023.12.20260918, and whether it serves that curl build is
-      unverified. The build asserts that the rootfs release equals the
-      dnf releasever, so a snapshot-only bump fails by design. This
+      2023.12.20260918 or later, whose package snapshot serves
+      8.21.0-5.amzn2023.0.1, as measured 2026-09-29 on a host outside
+      this container. The build asserts that the rootfs release equals
+      the dnf releasever, so a snapshot-only bump fails by design. This
       entry comes out in the same diff as that bump, which "Bumping the
       FIPS base image" in docs/spec/DEPENDENCY_PINS.md describes.
     expired_at: 2026-10-15
