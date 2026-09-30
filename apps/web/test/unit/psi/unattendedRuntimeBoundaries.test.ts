@@ -1,8 +1,9 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { readdirSync } from "node:fs";
 
 import ts from "typescript";
 
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import {
   appShellUpdateReady,
@@ -287,6 +288,18 @@ function webSourceFiles(within = ""): Array<string> {
   );
 }
 
+/** Every source file under {@link WEB_SOURCE_ROOT}, keyed by its relative path
+ * in listing order, read once for every scan below. */
+let webSources: ReadonlyMap<string, string>;
+
+beforeAll(async () => {
+  const files = webSourceFiles();
+  const texts = await Promise.all(
+    files.map((file) => readFile(new URL(file, WEB_SOURCE_ROOT), "utf8")),
+  );
+  webSources = new Map(files.map((file, index) => [file, texts[index]]));
+});
+
 /** The name a function-like node is known by, where it has one: a declaration's
  * own name, or the variable or property an unnamed function is assigned to. */
 function functionName(node: ts.Node): string | undefined {
@@ -359,11 +372,10 @@ function symbolSites(file: string, source: string, symbol: string) {
 /** Every place the app source names `symbol` (see {@link symbolSites}). Only a
  * module whose text holds the name can name it, so only those are parsed. */
 function appSymbolSites(symbol: string): Array<string> {
-  return webSourceFiles()
-    .flatMap((file) => {
-      const source = readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8");
-      return source.includes(symbol) ? symbolSites(file, source, symbol) : [];
-    })
+  return [...webSources]
+    .flatMap(([file, source]) =>
+      source.includes(symbol) ? symbolSites(file, source, symbol) : [],
+    )
     .sort();
 }
 
@@ -402,7 +414,7 @@ describe("writing a run's results into the granted folder", () => {
         ...appSymbolSites(FOLDER_WRITE),
       ].map((site) => site.slice(0, site.indexOf(":"))),
     );
-    const modules = webSourceFiles();
+    const modules = [...webSources.keys()];
     for (const surface of ONE_OFF_EXCHANGE_SURFACES) {
       // Each is a real module, so the check cannot pass over a renamed one.
       expect(modules).toContain(surface);
@@ -524,9 +536,9 @@ function disallowedAccesses(accessed: Array<PropertyKey>): Array<string> {
 /** Every call site in the app source that reaches into a folder's entries, as
  * `module: method(arguments)`. */
 function folderEntryCalls(): Array<string> {
-  return webSourceFiles().flatMap((file) =>
+  return [...webSources].flatMap(([file, source]) =>
     [
-      ...readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8").matchAll(
+      ...source.matchAll(
         /\.(getFileHandle|getDirectoryHandle|removeEntry)\(([^,)]*)/g,
       ),
     ].map((call) => `${file}: ${call[1]}(${call[2].trim()})`),
@@ -647,10 +659,8 @@ function directoryIterationSites(source: string): Array<string> {
 
 /** Every directory-iteration site in the app source, as `module: site`. */
 function directoryIterationCalls(): Array<string> {
-  return webSourceFiles().flatMap((file) =>
-    directoryIterationSites(
-      readFileSync(new URL(file, WEB_SOURCE_ROOT), "utf8"),
-    ).map((site) => `${file}: ${site}`),
+  return [...webSources].flatMap(([file, source]) =>
+    directoryIterationSites(source).map((site) => `${file}: ${site}`),
   );
 }
 
