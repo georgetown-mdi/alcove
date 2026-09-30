@@ -1,5 +1,6 @@
-import { relayRegistrarAuthorization } from "@alcove/core";
+import { deriveRelayKey, relayRegistrarAuthorization } from "@alcove/core";
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -9,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { request } from "node:https";
-import { connect } from "node:tls";
+import { connect, getCACertificates, setDefaultCACertificates } from "node:tls";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,9 +24,12 @@ import {
   vi,
 } from "vitest";
 
+import { registerRelayKey } from "../apps/cli/src/relayKeyRotation.ts";
+import { enrollRelayKey } from "../apps/cli/src/relayRegistrar.ts";
+
 // The relay's secrets-table module, the key scripts and the sweep that call
-// it, the registrar service, verify.sh's registrar probe and cleanup, and the
-// configuration render, driven against a fixture host whose turndb is a real
+// it, the registrar service and the CLI's client of it, verify.sh's registrar
+// probe and cleanup, and the configuration render, driven against a fixture host whose turndb is a real
 // SQLite file holding coturn's turn_secret table. The table's shape here is
 // the one relay-turn-secret-schema.test.mjs holds against the pinned image;
 // what coturn does with the rows is verify.sh's to drive against a running
@@ -1264,7 +1268,7 @@ beforeAll(() => {
       "-subj",
       "/CN=relay.example",
       "-addext",
-      "subjectAltName=DNS:relay.example",
+      "subjectAltName=DNS:relay.example,IP:127.0.0.1",
       "-keyout",
       join(certDir, "privkey.pem"),
       "-out",
@@ -2444,6 +2448,105 @@ describe.skipIf(runningAsRoot)(
       });
       expect(revoked.status, revoked.text).toBe(200);
       expect(host.mapping()).toEqual([]);
+    });
+  },
+);
+
+// The CLI's registrar client, whose unit tests answer from a fake, sent to the
+// real registrar. The client reaches it by address, as a configured
+// relay_registrar.url does, and trusts the fixture certificate through the
+// process's default CA list, since the client takes no CA of its own.
+describe.skipIf(runningAsRoot)(
+  "the CLI registrar client against registrar.py",
+  { timeout: 60000 },
+  () => {
+    let defaultCertificates;
+
+    beforeAll(() => {
+      defaultCertificates = getCACertificates("default");
+      setDefaultCACertificates([
+        ...defaultCertificates,
+        readFileSync(join(certDir, "fullchain.pem"), "utf8"),
+      ]);
+    });
+
+    afterAll(() => {
+      setDefaultCACertificates(defaultCertificates);
+    });
+
+    const sharedSecret = () => randomBytes(32).toString("base64url");
+
+    it("enrolls, rotates under a proof, and is refused a rotation signed with the replaced key", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startRegistrar(host);
+      const registrar = {
+        url: `https://127.0.0.1:${port}`,
+        exchangeId: "exchange-1",
+      };
+      const enrolledSecret = sharedSecret();
+      const rotatedSecret = sharedSecret();
+      const enrolledKey = await deriveRelayKey(enrolledSecret);
+      const rotatedKey = await deriveRelayKey(rotatedSecret);
+      const noRetries = { retryDelaysMs: [] };
+
+      const enrolled = await enrollRelayKey({
+        registrar,
+        sharedSecret: enrolledSecret,
+        maxAgeDays: 30,
+        ownerToken: REGISTRAR_TOKEN,
+        replace: false,
+      });
+      expect(enrolled, log.stderr).toMatchObject({
+        kind: "registered",
+        maxAgeDays: 30,
+        lapsesAt: expect.stringMatching(/Z$/),
+      });
+      expect(host.mapping()).toMatchObject([
+        { id: "exchange-1", key: enrolledKey, days: 30 },
+      ]);
+
+      const rotated = await registerRelayKey(
+        {
+          registrar,
+          signingSecret: enrolledSecret,
+          registeredSecret: rotatedSecret,
+          maxAgeDays: null,
+        },
+        noRetries,
+      );
+      expect(rotated, log.stderr).toEqual({
+        kind: "registered",
+        maxAgeDays: null,
+        lapsesAt: null,
+      });
+      expect(host.mapping()).toMatchObject([
+        { id: "exchange-1", key: rotatedKey, days: null },
+      ]);
+      expect(host.rows()).toEqual(
+        [listed(KEY_LISTED), listed(rotatedKey)].sort(),
+      );
+
+      const stale = await registerRelayKey(
+        {
+          registrar,
+          signingSecret: enrolledSecret,
+          registeredSecret: sharedSecret(),
+          maxAgeDays: 30,
+        },
+        noRetries,
+      );
+      expect(stale).toEqual({
+        kind: "refused",
+        status: 409,
+        reason:
+          "the request's proof does not verify against the key exchange exchange-1 holds on this relay",
+      });
+      expect(host.mapping()).toMatchObject([
+        { id: "exchange-1", key: rotatedKey, days: null },
+      ]);
+      expect(host.rows()).toEqual(
+        [listed(KEY_LISTED), listed(rotatedKey)].sort(),
+      );
     });
   },
 );
