@@ -68,6 +68,7 @@ import {
   documentValueAt,
   namedFieldList,
   refusedDocumentFields,
+  refusesUnallocatedServerHost,
   retiredSettingsRefusal,
 } from "../exchangeDocumentRefusal";
 
@@ -141,17 +142,25 @@ function schemaRefusal(
         "import it again.",
     );
   const fields = refusedDocumentFields(error, document);
-  if (fields.length === 0)
+  const awaitingServerAddress = refusesUnallocatedServerHost(error);
+  if (fields.length === 0 && !awaitingServerAddress)
     return new ManagedConfigurationRefusedError(
       "This file is not an Alcove exchange configuration. Check that you " +
         "chose the alcove.yaml this exchange runs under, and import it again.",
     );
+  const unallocatedServerHostRemedy =
+    "This configuration creates its server when you run alcove invite, " +
+    "which writes the server address into the file. Import it after " +
+    "alcove invite has written the address.";
+  if (fields.length === 0)
+    return new ManagedConfigurationRefusedError(unallocatedServerHostRemedy);
   return new ManagedConfigurationRefusedError(
     "This file is not a valid Alcove configuration. " +
       (fields.length === 1 ? "Fix this setting" : "Fix these settings") +
       " in the file and import it again: " +
       namedFieldList(fields) +
-      ".",
+      "." +
+      (awaitingServerAddress ? ` ${unallocatedServerHostRemedy}` : ""),
   );
 }
 

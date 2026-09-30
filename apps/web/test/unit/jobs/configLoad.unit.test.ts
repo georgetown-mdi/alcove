@@ -503,6 +503,30 @@ describe("what the load refuses", () => {
     expect(message).not.toContain("70000");
   });
 
+  test("a create-mode server with no host, with the invite step and no file value", () => {
+    const document = savedSftpDocument();
+    (document.connection as Record<string, unknown>) = {
+      channel: "sftp",
+      server: {
+        port: 2222,
+        path: "/exchange-from-file",
+        username: "county-from-file",
+        provision: {
+          mode: "create",
+          host: "provisioner-from-file.example.org",
+          path: "/provision-path-from-file",
+        },
+      },
+    };
+    const message = refusal(document);
+    expect(message).toBe(
+      "The alcove.yaml in your working folder creates its server when you " +
+        "run alcove invite, which writes the server address into the file. " +
+        "Run alcove invite with this configuration first, then open it again.",
+    );
+    expect(message).not.toMatch(/from-file|2222/);
+  });
+
   test("a key no schema block reads, spelled as the file wrote it", () => {
     const message = refusal(savedSftpDocument({ retian_disposition: "typo" }));
     expect(message).toContain("retian_disposition");

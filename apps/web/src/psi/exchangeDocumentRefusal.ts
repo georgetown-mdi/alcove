@@ -22,7 +22,11 @@
  * console owns the mount and takes credentials and paths.
  */
 
-import { retiredSettingIssue, snakeizeKey } from "@alcove/core";
+import {
+  UNALLOCATED_SERVER_HOST_MESSAGE,
+  retiredSettingIssue,
+  snakeizeKey,
+} from "@alcove/core";
 
 import type { ZodError } from "zod";
 
@@ -125,17 +129,42 @@ function refusedFields(
   return field === "" ? [] : [field];
 }
 
+/** Whether one Zod issue is core's refusal of a create-mode server block with
+ * no `host` ({@link UNALLOCATED_SERVER_HOST_MESSAGE}). */
+function isUnallocatedServerHostIssue(
+  issue: ZodError["issues"][number],
+): boolean {
+  return (
+    issue.code === "custom" && issue.message === UNALLOCATED_SERVER_HOST_MESSAGE
+  );
+}
+
 /**
- * Every field a schema refusal names, each once and in issue order. Empty for a
- * document the schema rejected at its root, which names no line to fix -- the
- * caller's own sentence says so.
+ * Whether a schema refusal holds core's refusal of a create-mode server block
+ * with no `host`. That field is not a line to fix by hand -- `alcove invite`
+ * creates the server and writes its address -- so each reader states that step
+ * in its own fixed sentence, and {@link refusedDocumentFields} does not name it.
+ */
+export function refusesUnallocatedServerHost(error: ZodError): boolean {
+  return error.issues.some(isUnallocatedServerHostIssue);
+}
+
+/**
+ * Every field a schema refusal names, each once and in issue order, leaving out
+ * a create-mode server's missing `host` ({@link refusesUnallocatedServerHost}).
+ * Empty for a document the schema rejected at its root, which names no line to
+ * fix -- the caller's own sentence says so.
  */
 export function refusedDocumentFields(
   error: ZodError,
   document: unknown,
 ): Array<string> {
   return [
-    ...new Set(error.issues.flatMap((issue) => refusedFields(issue, document))),
+    ...new Set(
+      error.issues
+        .filter((issue) => !isUnallocatedServerHostIssue(issue))
+        .flatMap((issue) => refusedFields(issue, document)),
+    ),
   ];
 }
 

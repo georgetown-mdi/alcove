@@ -54,6 +54,7 @@ import {
 import {
   namedFieldList,
   refusedDocumentFields,
+  refusesUnallocatedServerHost,
   retiredSettingsRefusal,
 } from "@psi/exchangeDocumentRefusal";
 
@@ -563,6 +564,13 @@ function parsedDocument(raw: unknown): ExchangeSpec {
         `configuration: ${retired}, then open it again.`,
     );
   const fields = refusedDocumentFields(parsed.error, raw);
+  const awaitingServerAddress = refusesUnallocatedServerHost(parsed.error);
+  const unallocatedServerHostRemedy =
+    "The alcove.yaml in your working folder creates its server when you run " +
+    "alcove invite, which writes the server address into the file. Run " +
+    "alcove invite with this configuration first, then open it again.";
+  if (fields.length === 0 && awaitingServerAddress)
+    throw new ConfigurationLoadRefusedError(unallocatedServerHostRemedy);
   throw new ConfigurationLoadRefusedError(
     fields.length === 0
       ? "The alcove.yaml in your working folder is not an Alcove exchange " +
@@ -572,7 +580,8 @@ function parsedDocument(raw: unknown): ExchangeSpec {
           (fields.length === 1 ? "Fix this setting" : "Fix these settings") +
           " in the file, then open it again: " +
           namedFieldList(fields) +
-          ".",
+          "." +
+          (awaitingServerAddress ? ` ${unallocatedServerHostRemedy}` : ""),
   );
 }
 
