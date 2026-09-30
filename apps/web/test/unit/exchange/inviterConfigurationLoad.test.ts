@@ -629,7 +629,7 @@ describe("the open configuration holds across the files it is derived over", () 
   });
 
   test("closing it leaves the file's own inference and no records", () => {
-    const records = { expectedPayloadColumns: ["partner_program"] };
+    const records = { expectedPartnerDeduplicate: true };
     const applied = withFileRead(
       loadedInto(
         INVITER_SCREEN_INITIAL,
@@ -664,7 +664,7 @@ describe("the open configuration holds across the files it is derived over", () 
           transport: { channel: "sftp" },
           loadedEnforcementRecords: closed.loadedEnforcementRecords,
         }),
-      ).expectedPayloadColumns,
+      ).expectedPartnerDeduplicate,
     ).toBeUndefined();
   });
 });
@@ -712,12 +712,12 @@ describe("a sealed draft takes no configuration", () => {
   });
 
   test("a close landing after the mint keeps the records on the run", () => {
-    // The records are what put the receive-side enforcement back on the
+    // The records are what put the terms-side enforcement back on the
     // intent, so dropping them after the mint would compose a run with nothing
     // left for core to enforce.
     const open = loadedInto(
       INVITER_SCREEN_INITIAL,
-      sftpDocument({ expectedPayloadColumns: ["partner_program"] }),
+      sftpDocument({ expectedPartnerDeduplicate: true }),
     );
     const minted: InviterScreenState = {
       ...open,
@@ -728,7 +728,7 @@ describe("a sealed draft takes no configuration", () => {
     });
     expect(closed).toBe(minted);
     expect(closed.loadedEnforcementRecords).toEqual({
-      expectedPayloadColumns: ["partner_program"],
+      expectedPartnerDeduplicate: true,
     });
     expect(closed.loadedConfiguration).toBeDefined();
   });
@@ -839,17 +839,16 @@ describe("a run started from a loaded configuration composes what a hand-authore
   });
 });
 
-// The two records whose absence turns an enforcement off. The console has no
-// control for either, so an opened document's values ride the authoring
-// state into the intent the run submits, and the configuration composed for that
-// run states each one as the file did.
+// The record whose absence turns an enforcement off. The console has no
+// control for it, so an opened document's value rides the authoring state into
+// the intent the run submits, and the configuration composed for that run
+// states it as the file did.
 describe("the records the console cannot edit reach the run unchanged", () => {
   const records = {
-    expectedPayloadColumns: ["partner_program"],
     expectedPartnerDeduplicate: false,
   };
 
-  /** The intent a document stating both submits when it is opened and
+  /** The intent a document stating it submits when it is opened and
    * started with nothing touched. */
   function intentFromUntouchedLoad() {
     const state = loadedInto(INVITER_SCREEN_INITIAL, sftpDocument(records));
@@ -866,27 +865,22 @@ describe("the records the console cannot edit reach the run unchanged", () => {
     );
   }
 
-  test("the intent states both with the file's values", () => {
+  test("the intent states it with the file's value", () => {
     expect(intentFromUntouchedLoad()).toMatchObject(records);
   });
 
-  test("the composed configuration states both", () => {
+  test("the composed configuration states it", () => {
     const intent = intentFromUntouchedLoad();
     if (intent.channel !== "sftp") throw new Error("expected an sftp intent");
     const spec = composeSftpConfigSpec(intent, testSftpServerEntry());
-    expect(spec.expectedPayloadColumns).toEqual(records.expectedPayloadColumns);
     expect(spec.expectedPartnerDeduplicate).toBe(false);
   });
 
-  test("the notice beside the load names each one", () => {
+  test("the notice beside the load names it", () => {
     const state = loadedInto(INVITER_SCREEN_INITIAL, sftpDocument(records));
     const notices = noticesOf(state);
     expect(notices).toHaveLength(1);
-    for (const field of [
-      "expected_payload_columns",
-      "expected_partner_deduplicate",
-    ])
-      expect(notices[0]).toContain(field);
+    expect(notices[0]).toContain("expected_partner_deduplicate");
   });
 });
 

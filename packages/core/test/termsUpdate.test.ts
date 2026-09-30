@@ -43,15 +43,12 @@ function reencode(content: unknown, mac: string): string {
 }
 
 describe("terms update", () => {
-  test("round-trips the terms and disclosed columns under the secret it was made with", async () => {
+  test("round-trips the terms under the secret it was made with", async () => {
     const secret = generateSharedSecret();
-    const encoded = await encodeTermsUpdate(
-      { linkageTerms: terms, disclosedPayloadColumns: ["program", "county"] },
-      secret,
-    );
-    const decoded = await decodeTermsUpdate(encoded, secret);
-    expect(decoded.linkageTerms).toEqual(terms);
-    expect(decoded.disclosedPayloadColumns).toEqual(["program", "county"]);
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    expect(await decodeTermsUpdate(encoded, secret)).toEqual({
+      linkageTerms: terms,
+    });
   });
 
   test("holds no shared secret, credential, or connection endpoint", async () => {
@@ -90,12 +87,9 @@ describe("terms update", () => {
 
   test("an altered body is refused by the MAC check", async () => {
     const secret = generateSharedSecret();
-    const encoded = await encodeTermsUpdate(
-      { linkageTerms: terms, disclosedPayloadColumns: ["program"] },
-      secret,
-    );
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
     const content = body(encoded);
-    content["disclosedPayloadColumns"] = ["program", "ssn"];
+    content["linkageTerms"] = { ...terms, identity: "Someone Else" };
     const err = await refusal(
       reencode(content, encoded.split(".")[1] as string),
       secret,
@@ -182,13 +176,17 @@ describe("termsUpdateFor", () => {
     { name: "county", type: "other", role: "ignored", isPayload: false },
   ];
 
-  test("states payload.send and the disclosed columns from the metadata", () => {
+  test("states payload.send from the metadata", () => {
     const update = termsUpdateFor(terms, metadata);
-    expect(update.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
-    expect(update.disclosedPayloadColumns).toEqual(["notes"]);
+    expect(update).toEqual({
+      linkageTerms: {
+        ...terms,
+        payload: { ...terms.payload, send: [{ name: "notes" }] },
+      },
+    });
   });
 
-  test("takes the terms as written and states no columns without metadata", () => {
+  test("takes the terms as written without metadata", () => {
     expect(termsUpdateFor(terms, undefined)).toEqual({ linkageTerms: terms });
   });
 });

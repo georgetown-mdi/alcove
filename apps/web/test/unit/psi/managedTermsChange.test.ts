@@ -84,7 +84,6 @@ function acceptorRecord(): ManagedExchangeRecord {
       },
       linkageTerms: deriveAcceptedLinkageTerms(aTerms, "Agency B"),
       metadata: OWN_METADATA,
-      expectedPayloadColumns: ["notes"],
       expectedPartnerDeduplicate: false,
     }),
     side: "acceptor",
@@ -115,10 +114,7 @@ describe("recording a partner's changed terms in the stored exchange", () => {
       partnerTerms,
     });
     expect(written.exchangeFile.linkageTerms).toEqual(change.adoptedTerms);
-    expect(written.exchangeFile.expectedPayloadColumns).toEqual([
-      "notes",
-      "county",
-    ]);
+    expect(received(written)).toEqual(["notes", "county"]);
     expect(written.exchangeFile.expectedPartnerDeduplicate).toBe(false);
     expect(written.sharedSecret).toBe(record.sharedSecret);
     expect(written.exchangeFile.connection).toEqual(
@@ -144,10 +140,6 @@ describe("recording a partner's changed terms in the stored exchange", () => {
     expect(written.exchangeFile.linkageTerms.deduplicate).toBe(
       record.exchangeFile.linkageTerms.deduplicate,
     );
-    expect(written.exchangeFile.expectedPayloadColumns).toEqual([
-      "notes",
-      "county",
-    ]);
     expect(written.exchangeFile.expectedPartnerDeduplicate).toBe(true);
     expect(written.lastRun).toBeUndefined();
   });

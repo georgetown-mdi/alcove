@@ -237,17 +237,21 @@ async function encodeAcceptToken(
   return encodeInvitation(token);
 }
 
-// A token holding a future expiry and a disclosed payload subset (the columns
-// the inviter will send the acceptor, so the settled ledger's received row names
+// A token holding a future expiry and a declared payload send (the columns the
+// inviter will send the acceptor, so the settled ledger's received row names
 // them), for the run tests that assert the captured `expires`, the settled
 // ledger, and jumping past the deadline to swap Try again for start-over.
 async function encodeRunToken(): Promise<string> {
   const token: InvitationToken = {
     version: "1",
-    linkageTerms: acceptorTerms,
+    linkageTerms: {
+      ...acceptorTerms,
+      payload: {
+        send: [{ name: "enrollment_date" }, { name: "program_code" }],
+      },
+    },
     sharedSecret: generateSharedSecret(),
     expires: new Date(Date.now() + 3600 * 1000).toISOString(),
-    disclosedPayloadColumns: ["enrollment_date", "program_code"],
     connectionEndpoint: {
       channel: "webrtc",
       host: "127.0.0.1",
@@ -515,12 +519,14 @@ describe("acceptor screen: decode gate", () => {
   // nor the character itself survives.
   const MARKER = "MARKERWORD";
 
-  test("a disclosed payload column holding the name class renders no partner byte", async () => {
+  test("a sent payload column holding the name class renders no partner byte", async () => {
     window.location.hash = await encodeRaw({
       version: "1",
-      linkageTerms: acceptorTerms,
+      linkageTerms: {
+        ...acceptorTerms,
+        payload: { send: [{ name: `risk\u202e${MARKER}` }] },
+      },
       sharedSecret: generateSharedSecret(),
-      disclosedPayloadColumns: [`risk\u202e${MARKER}`],
       connectionEndpoint: {
         channel: "webrtc",
         host: "127.0.0.1",
@@ -534,7 +540,7 @@ describe("acceptor screen: decode gate", () => {
       .element(page.getByText("Cannot accept this invitation"))
       .toBeInTheDocument();
     const text = document.body.textContent;
-    expect(text).toContain("disclosedPayloadColumns.0:");
+    expect(text).toContain("payload.send.0.name:");
     expect(text).not.toContain(MARKER);
     expect(text).toMatch(/^[\x20-\x7e\n]*$/);
   });
@@ -1883,9 +1889,8 @@ describe("acceptor columns step: the columns the invitation will not accept", ()
 describe("acceptor screen: run and completion", () => {
   // Consent, name, a fully-covered file, then Start the exchange -- the columns
   // step's launch, which auto-starts the run. The run token has a future expiry
-  // and an empty disclosed set (the commitment the hook threads in). Returns
-  // once the captured lifecycle exists so callers can drive its callbacks right
-  // away.
+  // and a declared payload send. Returns once the captured lifecycle exists so
+  // callers can drive its callbacks right away.
   async function reachRun(hash?: string) {
     window.location.hash = hash ?? (await encodeRunToken());
     app.render(createElement(AcceptorScreen));

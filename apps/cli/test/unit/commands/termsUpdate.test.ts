@@ -66,9 +66,9 @@ function metadataWith(...sent: string[]): Metadata {
 
 /**
  * An established partnership: Agency A's metadata discloses `notes` and its
- * terms leave `payload.send` unset, Agency B's configuration records the
- * `notes` it receives and discloses `program`, and both key files hold one
- * secret.
+ * terms leave `payload.send` unset, Agency B's `payload.receive` lists the
+ * `notes` it receives and its metadata discloses `program`, and both key files
+ * hold one secret.
  */
 function establishPartnership(): Partnership {
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-terms-update-"));
@@ -83,12 +83,14 @@ function establishPartnership(): Partnership {
     linkageTerms: aTerms,
     metadata: metadataWith("notes"),
   });
-  const bTerms = deriveAcceptedLinkageTerms(aTerms, "Agency B");
+  const bTerms = deriveAcceptedLinkageTerms(
+    { ...aTerms, payload: { send: [{ name: "notes" }] } },
+    "Agency B",
+  );
   saveConfig(b.config, {
     connection: { channel: "filedrop", path: "/mnt/b" },
     linkageTerms: bTerms,
     metadata: metadataWith("program"),
-    expectedPayloadColumns: ["notes"],
     expectedPartnerDeduplicate: false,
   });
   const secret = generateSharedSecret();
@@ -130,8 +132,12 @@ function argv(
   } as unknown as Arguments;
 }
 
-/** Run `alcove update` for Agency A, returning the printed update. */
-async function runUpdate(): Promise<string> {
+/** Run `alcove update` for Agency A, returning the printed update and what
+ *  the run wrote to stderr. */
+async function runUpdateWithStderr(): Promise<{
+  printed: string;
+  stderr: string;
+}> {
   const printedLines: string[] = [];
   const logSpy = vi
     .spyOn(console, "log")
@@ -147,8 +153,17 @@ async function runUpdate(): Promise<string> {
   }
   const printed = printedLines.join("\n").trim();
   expect(printed).not.toBe("");
-  return printed;
+  return { printed, stderr: stdio.stderrWrites.join("") };
 }
+
+/** Run `alcove update` for Agency A, returning the printed update. */
+async function runUpdate(): Promise<string> {
+  return (await runUpdateWithStderr()).printed;
+}
+
+/** The distinctive clause of the warning `alcove update` logs when it
+ *  replaces a present payload.send. */
+const REPLACED_SEND_CLAUSE = "named other columns than its metadata sends";
 
 /** Run `alcove apply` for Agency B; returns stderr and the exit code. */
 async function runApply(
@@ -191,7 +206,6 @@ describe("alcove update", () => {
       ...edited,
       payload: { send: [{ name: "notes" }, { name: "county" }] },
     });
-    expect(update.disclosedPayloadColumns).toEqual(["notes", "county"]);
     expect(printed).not.toContain(partnership.secret);
     expect(fs.readFileSync(partnership.a.key, "utf8")).toBe(keyBefore);
   });
@@ -215,12 +229,14 @@ describe("alcove update", () => {
       "# operator-authored note\n" +
         fs.readFileSync(partnership.a.config, "utf8"),
     );
-    const printed = await runUpdate();
+    const { printed, stderr } = await runUpdateWithStderr();
 
     const update = await decodeTermsUpdate(printed, partnership.secret);
     expect(update.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
     const raw = fs.readFileSync(partnership.a.config, "utf8");
     expect(raw).toContain("# operator-authored note");
+    // Filling an unset payload.send replaces nothing the operator wrote.
+    expect(stderr).not.toContain(REPLACED_SEND_CLAUSE);
     expect(readSpec(partnership.a.config).linkageTerms).toEqual(
       update.linkageTerms,
     );
@@ -252,11 +268,10 @@ describe("alcove update", () => {
 
     const update = await decodeTermsUpdate(printed, partnership.secret);
     expect(update.linkageTerms.payload?.send).toBeUndefined();
-    expect(update.disclosedPayloadColumns).toBeUndefined();
     expect(fs.readFileSync(partnership.a.config, "utf8")).toBe(before);
   });
 
-  test("refuses a payload.send that differs from what the metadata transmits", async () => {
+  test("states the metadata's columns over a payload.send naming others, rewrites it, and warns", async () => {
     saveConfig(partnership.a.config, {
       ...readSpec(partnership.a.config),
       linkageTerms: {
@@ -265,19 +280,20 @@ describe("alcove update", () => {
       },
       metadata: metadataWith("notes", "county"),
     });
-    const exitSpy = captureProcessExit();
-    const stdio = captureStdio();
-    try {
-      await expect(
-        updateHandler(argv("update", partnership.a)),
-      ).rejects.toThrow("exit:64");
-    } finally {
-      stdio.restore();
-      exitSpy.mockRestore();
-    }
-    expect(stdio.stderrWrites.join("")).toContain(
-      "omits a column metadata does transmit",
+    const { printed, stderr } = await runUpdateWithStderr();
+
+    const update = await decodeTermsUpdate(printed, partnership.secret);
+    const stated = [{ name: "notes" }, { name: "county" }];
+    expect(update.linkageTerms.payload?.send).toEqual(stated);
+    expect(readSpec(partnership.a.config).linkageTerms.payload?.send).toEqual(
+      stated,
     );
+    expect(stderr).toContain(
+      `linkage_terms.payload.send in ${partnership.a.config} ${REPLACED_SEND_CLAUSE}`,
+    );
+    expect(stderr).toContain("change is_payload or role");
+    expect(stderr).toContain("generate the terms update again");
+    expect(stderr.split(REPLACED_SEND_CLAUSE)).toHaveLength(2);
   });
 
   test("refuses without a key file, printing nothing", async () => {
@@ -305,7 +321,7 @@ describe("alcove update", () => {
 });
 
 describe("alcove apply", () => {
-  test("rewrites the linkage terms and refreshes every record in one write", async () => {
+  test("rewrites the linkage terms and refreshes the record in one write", async () => {
     const edited = editAgencyA();
     const update = await runUpdate();
     promptConfirmMock.mockResolvedValue(true);
@@ -323,7 +339,6 @@ describe("alcove apply", () => {
       { name: "notes" },
       { name: "county" },
     ]);
-    expect(after.expectedPayloadColumns).toEqual(["notes", "county"]);
     expect(after.expectedPartnerDeduplicate).toBe(edited.deduplicate);
   });
 
@@ -449,14 +464,14 @@ describe("alcove apply", () => {
 
   test("an update altered after it was made is refused by the MAC check before anything is shown", async () => {
     const encoded = await encodeTermsUpdate(
-      { linkageTerms: partnership.aTerms, disclosedPayloadColumns: ["notes"] },
+      { linkageTerms: partnership.aTerms },
       partnership.secret,
     );
     const [body, mac] = encoded.split(".") as [string, string];
     const content = JSON.parse(
       Buffer.from(body, "base64url").toString("utf8"),
-    ) as Record<string, unknown>;
-    content["disclosedPayloadColumns"] = ["notes", "ssn"];
+    ) as { linkageTerms: Record<string, unknown> };
+    content.linkageTerms["deduplicate"] = !partnership.aTerms.deduplicate;
     const tampered = `${Buffer.from(JSON.stringify(content)).toString(
       "base64url",
     )}.${mac}`;
@@ -507,7 +522,11 @@ describe("a configuration holding a retired setting", () => {
     fs.writeFileSync(configPath, YAML.stringify({ ...doc, [key]: ["notes"] }));
   }
 
-  test.each(["disclosed_payload_columns", "outbound_payload_consent"])(
+  test.each([
+    "disclosed_payload_columns",
+    "outbound_payload_consent",
+    "expected_payload_columns",
+  ])(
     "alcove update refuses one holding %s before printing anything, naming the key and the remedy",
     async (key) => {
       addRetiredSetting(partnership.a.config, key);
@@ -537,7 +556,11 @@ describe("a configuration holding a retired setting", () => {
     },
   );
 
-  test.each(["disclosed_payload_columns", "outbound_payload_consent"])(
+  test.each([
+    "disclosed_payload_columns",
+    "outbound_payload_consent",
+    "expected_payload_columns",
+  ])(
     "alcove apply refuses one holding %s, naming the key and the remedy",
     async (key) => {
       editAgencyA();

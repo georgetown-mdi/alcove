@@ -50,11 +50,6 @@ import type {
  * composed metadata rather than falling back to `inferMetadata`, so a column the
  * operator marked ignored (or non-payload) is not silently disclosed.
  *
- * `expectedPayloadColumns`, when present, is forwarded as the config's
- * `expected_payload_columns` (the CLI prefers it over the `payload.receive`
- * fallback); an empty array is forwarded verbatim -- it means "receive
- * nothing" -- and only an omitted field reconciles lazily.
- *
  * `expectedPartnerDeduplicate`, when present, is forwarded as the config's
  * `expected_partner_deduplicate`: the CLI holds the inviter's presented
  * `deduplicate` to the value its invitation declared and refuses a
@@ -112,7 +107,6 @@ export function composeFiledropConfigSpec(
   const {
     metadata,
     standardization,
-    expectedPayloadColumns,
     expectedPartnerDeduplicate,
     retentionDisposition,
     includeOwnColumns,
@@ -134,7 +128,6 @@ export function composeFiledropConfigSpec(
     linkageTerms: intent.linkageTerms,
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
-    ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
       : {}),
@@ -162,9 +155,9 @@ export function composeFiledropConfigSpec(
  * entry's `@path` credential strings land in the YAML verbatim -- references
  * the CLI child resolves at exchange time, so no secret byte transits this
  * process. The client's `linkageTerms`, `metadata`, `standardization`,
- * `expectedPayloadColumns`, `expectedPartnerDeduplicate`, `signing`,
- * `retention_disposition`, `include_own_columns`, and `csv_delimiter` are
- * composed as they are on the filedrop path; `options` is the same
+ * `expectedPartnerDeduplicate`, `signing`, `retention_disposition`,
+ * `include_own_columns`, and `csv_delimiter` are composed as they are on the
+ * filedrop path; `options` is the same
  * numeric/boolean/enum subset, plus the `connectionPerPoll` dialing mode
  * this channel alone admits.
  *
@@ -185,7 +178,6 @@ export function composeSftpConfigSpec(
   const {
     metadata,
     standardization,
-    expectedPayloadColumns,
     expectedPartnerDeduplicate,
     retentionDisposition,
     includeOwnColumns,
@@ -202,7 +194,6 @@ export function composeSftpConfigSpec(
     linkageTerms: intent.linkageTerms,
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
-    ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
       : {}),

@@ -155,7 +155,6 @@ function maximalExchangeIntent(): JobSftpExchangeIntent {
     sharedSecret: DISTINCT_SECRET,
     metadata: MAXIMAL_METADATA,
     standardization: MAXIMAL_STANDARDIZATION,
-    expectedPayloadColumns: ["partner_notes"],
     expectedPartnerDeduplicate: false,
     side: "acceptor",
     options: MAXIMAL_OPTIONS,
@@ -222,10 +221,6 @@ const EXCHANGE_INTENT_ROUTES: Record<
   },
   metadata: { carries: "configKey", key: "metadata" },
   standardization: { carries: "configKey", key: "standardization" },
-  expectedPayloadColumns: {
-    carries: "configKey",
-    key: "expected_payload_columns",
-  },
   expectedPartnerDeduplicate: {
     carries: "configKey",
     key: "expected_partner_deduplicate",
@@ -506,7 +501,6 @@ describe("the composed config stays one format with one validator", () => {
     expect(spec.linkageTerms).toEqual(intent.linkageTerms);
     expect(spec.metadata).toEqual(MAXIMAL_METADATA);
     expect(spec.standardization).toEqual(MAXIMAL_STANDARDIZATION);
-    expect(spec.expectedPayloadColumns).toEqual(["partner_notes"]);
     expect(spec.expectedPartnerDeduplicate).toBe(false);
     expect(spec.retentionDisposition).toBe(intent.retentionDisposition);
     expect(spec.signing?.mode).toBe("certificate");

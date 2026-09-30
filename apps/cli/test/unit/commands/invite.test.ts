@@ -925,7 +925,7 @@ test("validateInvite: online states the disclosed columns in the token and its t
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.disclosedPayloadColumns).toEqual(
+  expect(token.linkageTerms.payload?.send?.map(({ name }) => name)).toEqual(
     disclosedColumnNames(
       inferMetadata(
         ["first_name", "last_name", "dob", "ssn", "notes", "id"],
@@ -933,7 +933,6 @@ test("validateInvite: online states the disclosed columns in the token and its t
       ),
     ),
   );
-  expect(token.disclosedPayloadColumns).toEqual(["id"]);
   expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
   expect(
     deriveAcceptedLinkageTerms(token.linkageTerms, "Agency B").payload?.receive,
@@ -957,17 +956,16 @@ test("validateInvite: offline infer-from-input states the disclosed columns in t
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.disclosedPayloadColumns).toEqual(["id"]);
   expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
   if (ready.mode !== "offline") throw new Error("expected offline mode");
   expect(ready.dataSpec.linkageTerms).toEqual(token.linkageTerms);
 });
 
-test("validateInvite: an all-linkage input has an empty disclosed subset", async () => {
+test("validateInvite: an all-linkage input states an empty send set", async () => {
   // onlineFixture's CSV is first_name,last_name,dob,ssn -- all linkage columns, so
-  // nothing is disclosed. The metadata is known (inferred from the input), so the
-  // field is written as the EMPTY set, locking the acceptor in to "receive nothing"
-  // (a later non-empty payload aborts) rather than reconciling lazily.
+  // nothing is disclosed. The metadata is known (inferred from the input), so
+  // payload.send is stated as the EMPTY set, which the acceptor mirrors as
+  // receiving nothing.
   const { input, options } = onlineFixture();
   const ready = await validateInvite({
     resolved: { mode: "online", url: new URL("sftp://host/drop"), input },
@@ -976,7 +974,6 @@ test("validateInvite: an all-linkage input has an empty disclosed subset", async
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.disclosedPayloadColumns).toEqual([]);
   expect(token.linkageTerms.payload?.send).toEqual([]);
 });
 
@@ -1020,7 +1017,7 @@ test("validateInvite: an over-long unrecognized column is not sent, so it does n
     log: silentLog,
   });
   const token = await decodeInvitation(ready.invitation);
-  expect(token.disclosedPayloadColumns).toEqual([]);
+  expect(token.linkageTerms.payload?.send).toEqual([]);
 });
 
 /** Make every inference in the next mint also disclose a column of `name`. */
@@ -2003,12 +2000,13 @@ test("validateInvite: config-as-source states the metadata's disclosed columns a
     expect(ready.mode).toBe("offlineFromConfig");
     if (ready.mode !== "offlineFromConfig") return;
     const token = await decodeInvitation(ready.invitation);
-    expect(token.disclosedPayloadColumns).toEqual(
+    expect(token.linkageTerms.payload?.send?.map(({ name }) => name)).toEqual(
       disclosedColumnNames(metadata),
     );
     expect(token.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
     expect(ready.linkageTerms).toEqual(token.linkageTerms);
     expect(ready.statedPayloadSend).toEqual([{ name: "notes" }]);
+    expect(ready.payloadSendReplaced).toBe(false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -2029,7 +2027,6 @@ test("validateInvite: config-as-source with no metadata block states no send set
     if (ready.mode !== "offlineFromConfig") return;
     expect(ready.statedPayloadSend).toBeUndefined();
     const token = await decodeInvitation(ready.invitation);
-    expect(token.disclosedPayloadColumns).toBeUndefined();
     expect(token.linkageTerms.payload?.send).toBeUndefined();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -2210,34 +2207,33 @@ test("validateInvite: a config declaring no linkage key never reaches the mint g
   }
 });
 
-test("validateInvite: a config whose payload.send over-declares is rejected before minting", async () => {
-  // An explicit metadata block gates `secret` off (role: ignored), but the
-  // hand-authored payload.send still lists it. The over-declaration must be
-  // caught at the mint boundary, before the token or the partner's consent
-  // screen can show a column whose values never flow.
+test("validateInvite: a config whose payload.send names other columns states the metadata's columns", async () => {
+  // The metadata block sends `notes` and gates `secret` off (role: ignored),
+  // while the hand-authored payload.send lists `secret`. The invitation states
+  // what the metadata sends, and the handler is given it to write over the
+  // file's payload.send.
   const terms: LinkageTerms = {
     ...defaultTerms(),
     payload: { send: [{ name: "secret" }] },
   };
   const metadata: Metadata = [
-    {
-      name: "first_name",
-      type: "first_name",
-      role: "linkage",
-      isPayload: false,
-    },
+    ...metadataSendingNotes(),
     { name: "secret", type: "other", role: "ignored", isPayload: true },
   ];
   const { dir, configPath, keyPath } = withConfig(terms, undefined, metadata);
   try {
-    const promise = validateInvite({
+    const ready = await validateInvite({
       resolved: { mode: "offline" },
       options: testOptions({ configFile: configPath, keyFile: keyPath }),
       acceptTimeout: 900,
       log: silentLog,
     });
-    await expect(promise).rejects.toBeInstanceOf(UsageError);
-    await expect(promise).rejects.toThrow(/secret/);
+    expect(ready.mode).toBe("offlineFromConfig");
+    if (ready.mode !== "offlineFromConfig") return;
+    const token = await decodeInvitation(ready.invitation);
+    expect(token.linkageTerms.payload?.send).toEqual([{ name: "notes" }]);
+    expect(ready.statedPayloadSend).toEqual([{ name: "notes" }]);
+    expect(ready.payloadSendReplaced).toBe(true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -2466,11 +2462,8 @@ test("validateInvite: offline config-source refuses a count-only config whose me
 
 test("validateInvite: an explicit empty payload pair still names the count-only rule, not the generic disclosure one", async () => {
   // The shape rules permit an explicit `payload: {send: [], receive: []}`, so
-  // this document passes the terms-shape refine. But
-  // assertPayloadSendDisclosed's own empty-send fast path requires
-  // output.shareWithPartner: false, and these terms have shareWithPartner:
-  // true (the default), so metadata marking a column disclosed falls through
-  // to the generic disclosure message unless the count-only check runs first.
+  // this document passes the terms-shape refine; the operator must still see
+  // the count-only rule's own message here, not a generic disclosure one.
   const metadata = metadataSendingNotes();
   expect(disclosedColumnNames(metadata)).toEqual(["notes"]);
   const terms: LinkageTerms = {
@@ -3331,15 +3324,17 @@ test("handler: a mistyped --flag exits 64 naming it, before any side effect", as
 // --- handler: offline-from-config writes the stated payload.send ------------
 
 /** Run the offline invite handler on the config at `configPath`, expecting no
- *  usage-error exit, and return the config's text afterwards. */
-async function inviteFromConfig(
+ *  usage-error exit, and return the config's text afterwards with the warnings
+ *  the run wrote to stderr. */
+async function inviteFromConfigWithWarnings(
   configPath: string,
   keyPath: string,
-): Promise<string> {
+): Promise<{ raw: string; warnings: string }> {
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
+  const stdio = captureStdio();
   try {
     await inviteHandler({
       _: [],
@@ -3348,17 +3343,33 @@ async function inviteFromConfig(
       args: [],
       "config-file": configPath,
       "key-file": keyPath,
-      "log-level": "silent",
+      "log-level": "warn",
       record: false,
     } as unknown as Arguments);
     expect(exit).not.toHaveBeenCalledWith(64);
     expect(fs.existsSync(keyPath)).toBe(true);
-    return fs.readFileSync(configPath, "utf8");
+    return {
+      raw: fs.readFileSync(configPath, "utf8"),
+      warnings: stdio.stderrWrites.join(""),
+    };
   } finally {
+    stdio.restore();
     logSpy.mockRestore();
     exit.mockRestore();
   }
 }
+
+/** {@link inviteFromConfigWithWarnings}, returning the config's text alone. */
+async function inviteFromConfig(
+  configPath: string,
+  keyPath: string,
+): Promise<string> {
+  return (await inviteFromConfigWithWarnings(configPath, keyPath)).raw;
+}
+
+/** The distinctive clause of the warning a mint logs when it replaces a
+ *  present payload.send. */
+const REPLACED_SEND_CLAUSE = "named other columns than its metadata sends";
 
 function payloadSendOf(configText: string): unknown {
   const parsed = YAML.parse(configText) as {
@@ -3378,9 +3389,40 @@ test("handler: offline-from-config writes the stated payload.send into the reuse
       configPath,
       "# operator-authored note\n" + fs.readFileSync(configPath, "utf8"),
     );
-    const raw = await inviteFromConfig(configPath, keyPath);
+    const { raw, warnings } = await inviteFromConfigWithWarnings(
+      configPath,
+      keyPath,
+    );
     expect(raw).toContain("# operator-authored note");
     expect(payloadSendOf(raw)).toEqual([{ name: "notes" }]);
+    // Filling an unset payload.send replaces nothing the operator wrote.
+    expect(warnings).not.toContain(REPLACED_SEND_CLAUSE);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("handler: offline-from-config rewrites a payload.send naming other columns and warns", async () => {
+  const { dir, configPath, keyPath } = withConfig(
+    { ...defaultTerms(), payload: { send: [{ name: "secret" }] } },
+    undefined,
+    [
+      ...metadataSendingNotes(),
+      { name: "secret", type: "other", role: "ignored", isPayload: true },
+    ],
+  );
+  try {
+    const { raw, warnings } = await inviteFromConfigWithWarnings(
+      configPath,
+      keyPath,
+    );
+    expect(payloadSendOf(raw)).toEqual([{ name: "notes" }]);
+    expect(warnings).toContain(
+      `linkage_terms.payload.send in ${configPath} ${REPLACED_SEND_CLAUSE}`,
+    );
+    expect(warnings).toContain("change is_payload or role");
+    expect(warnings).toContain("generate the invitation again");
+    expect(warnings.split(REPLACED_SEND_CLAUSE)).toHaveLength(2);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -4374,7 +4416,11 @@ describe("handler: an @path connection credential on an online invite", () => {
 
 // --- a retired setting in the source config ----------------------------------
 
-test.each(["disclosed_payload_columns", "outbound_payload_consent"])(
+test.each([
+  "disclosed_payload_columns",
+  "outbound_payload_consent",
+  "expected_payload_columns",
+])(
   "handler: a config holding %s mints no invitation, naming the key and the remedy",
   async (key) => {
     const { dir, configPath, keyPath } = withConfig(defaultTerms());

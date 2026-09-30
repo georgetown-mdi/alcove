@@ -460,10 +460,7 @@ export function configurationSaveShown(
  */
 const RECORDS_WITH_NO_CONTROL: ReadonlyArray<
   [keyof LoadedAuthoringState["records"], string]
-> = [
-  ["expectedPayloadColumns", "expected_payload_columns"],
-  ["expectedPartnerDeduplicate", "expected_partner_deduplicate"],
-];
+> = [["expectedPartnerDeduplicate", "expected_partner_deduplicate"]];
 
 /** What the operator is told about a configuration whose channel this console
  * has nothing to run it over: the review step keeps the transport it already

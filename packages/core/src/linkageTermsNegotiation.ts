@@ -349,31 +349,12 @@ export interface TermsComparison {
 }
 
 /**
- * What {@link compareTerms} holds the partner to in place of this party's own
- * terms. `receive` is the column set this party holds its received payload
- * to, compared against the partner's send set in place of
- * `local.payload.receive`, whether or not that is stated.
+ * What {@link compareTerms} holds the partner to beside the two documents:
  * `partnerDeduplicate` is the `deduplicate` this party holds the partner to;
  * undefined compares no `deduplicate`, since the term is each party's own.
  */
 export interface TermsBaselines {
-  receive?: ReadonlyArray<string>;
   partnerDeduplicate?: boolean;
-}
-
-/**
- * The column set a party holds its received payload to at the terms exchange
- * ({@link TermsBaselines.receive}): the columns its document records it
- * receives, where its terms receive a payload at all -- not count-only, and
- * expecting output. Undefined compares `payload.receive` alone.
- */
-export function receivedPayloadBaseline(
-  terms: LinkageTerms,
-  expectedPayloadColumns: ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> | undefined {
-  return terms.algorithm !== "psi-c" && terms.output.expectsOutput
-    ? expectedPayloadColumns
-    : undefined;
 }
 
 function columnsChange(
@@ -665,10 +646,8 @@ export function compareTerms(
   //   these columns": the partner's `send` must match it byte-for-byte or
   //   the exchange aborts. An explicit empty `receive: []` is strict BY
   //   INTENT -- "the partner sends nothing" -- distinct from an absent
-  //   `receive`, matching the received-payload runtime enforcement (an
-  //   empty committed set is likewise strict; only `undefined` is lazy) and
-  //   the web consent display, which renders a declared-empty receive as a
-  //   "(none)" commitment, not lazy.
+  //   `receive`, as the web consent display shows: a declared-empty receive
+  //   renders as a "(none)" commitment, not lazy.
   // - `receive` ABSENT means "take whatever I'm given": that direction is
   //   skipped here. This is what lets the invite/accept flow reconcile
   //   without the inviter knowing the acceptor's schema. A recurring run then
@@ -677,9 +656,8 @@ export function compareTerms(
   //   strict; a one-off run leaves it absent.
   //
   // Laziness relaxes only this cross-party DECLARATION check; it never
-  // widens what a party sends -- transmission is governed by each party's
-  // own metadata (`isDisclosedToPartner`) and `assertPayloadSendDisclosed`,
-  // unchanged. The gate is symmetric: each direction keys on the same
+  // widens what a party sends, which each party's own metadata governs
+  // (`isDisclosedToPartner`). The gate is symmetric: each direction keys on the same
   // receiver's declared `receive`, so the two parties (which call this with
   // swapped arguments) compute identical verdicts. The equality is
   // byte-exact and element-wise -- compared per sorted column, NOT by a
@@ -742,10 +720,9 @@ export function compareTerms(
         );
 
   const localReceive =
-    baselines.receive ??
-    (local.payload?.receive === undefined
+    local.payload?.receive === undefined
       ? undefined
-      : namesOf(local.payload.receive));
+      : namesOf(local.payload.receive);
   const received =
     localReceive === undefined
       ? undefined

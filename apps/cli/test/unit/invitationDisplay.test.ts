@@ -130,8 +130,8 @@ function outboundSendEntries(lines: ReadonlyArray<string>): Array<string> {
   return entriesUnder(lines, `  ${OUTBOUND_SEND_LABEL}:`);
 }
 
-// The headings the two declared payload directions render under when the inviter
-// authored them, spelled out rather than derived, for the reason the labels above
+// The headings the two declared payload directions render under, spelled out
+// rather than derived, for the reason the labels above
 // are: a marker that silently changed vocabulary must redden the assertion. Only
 // the direction's declared total is a parameter, so looking a heading up by exact
 // text asserts the rendered total as well as the wording.
@@ -217,42 +217,40 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     expect(joined).toContain("\\u202e");
   });
 
-  test("displayInvitation: the held disclosed subset shows names, '(none)' when empty, and nothing when absent", () => {
-    // The acceptor's "columns you will receive" line. A present subset is shown
-    // (an empty one as "(none)", since the empty set is a real "receive nothing"
-    // commitment); an absent subset (an older or metadata-unknown mint, reconciled
-    // lazily) shows no line at all.
+  test("displayInvitation: the declared send shows names, '(none)' when empty, and nothing when unset", () => {
+    // The acceptor's "columns you will receive" line is the inviter's
+    // payload.send. A declared send is shown (an empty one as "(none)", since
+    // the acceptance mirrors it as receiving nothing); an unset send, which the
+    // inviter's run states from its metadata, shows no line at all.
     const log = getLogger("accept-display-receive-test");
     log.setLevel("silent");
-    const lines = (token: InvitationToken): string =>
-      renderDisplayInvitation(log, token);
     const base = sampleToken(FUTURE());
-    const named = lines({
-      ...base,
-      disclosedPayloadColumns: ["diagnosis", "notes"],
-    });
-    expect(named).toContain("columns you will receive (enforced, 2 declared):");
+    const lines = (send: LinkageTerms["payload"]): string =>
+      renderDisplayInvitation(log, {
+        ...base,
+        linkageTerms: { ...base.linkageTerms, payload: send },
+      });
+    const named = lines({ send: [{ name: "diagnosis" }, { name: "notes" }] });
+    expect(named).toContain(
+      "columns you will receive (your partner's word, 2 declared):",
+    );
     expect(named).toContain("\n    - diagnosis");
     expect(named).toContain("\n    - notes");
     // The empty set is a bare "(none)", with nothing after it: the line renders only
-    // for a declared direction (the absent case below prints no line at all), so the
+    // for a declared direction (the unset case below prints no line at all), so the
     // reader of a "(none)" is already looking at an explicit declaration, and the
     // enforcement register is what the label's marker holds. What the declaration
     // commits its party to is stated at length in docs/CLI.md, not on the prompt.
-    expect(
-      lines({ ...base, disclosedPayloadColumns: [] }).split("\n"),
-    ).toContain("  columns you will receive (enforced, 0 declared): (none)");
-    expect(
-      lines({ ...base, disclosedPayloadColumns: undefined }),
-    ).not.toContain("columns you will receive");
+    expect(lines({ send: [] }).split("\n")).toContain(
+      "  columns you will receive (your partner's word, 0 declared): (none)",
+    );
+    expect(lines(undefined)).not.toContain("columns you will receive");
   });
 
   test("displayInvitation: an invitation giving this party no result counts no received columns", () => {
-    // The mint-reachable pair: the result is not shared, the terms declare an
-    // empty send, and the token still holds the subset a mint stamps whatever
-    // the output direction. No column crosses to a party entitled to no result,
-    // so the prompt states the non-receipt once and puts no count of arriving
-    // columns two lines under it.
+    // The result is not shared while the terms still name a send column. No
+    // column crosses to a party entitled to no result, so the prompt states the
+    // non-receipt once and puts no count of arriving columns two lines under it.
     const log = getLogger("accept-display-no-result-test");
     log.setLevel("silent");
     const base = sampleToken(FUTURE());
@@ -261,9 +259,8 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       linkageTerms: {
         ...base.linkageTerms,
         output: { expectsOutput: true, shareWithPartner: false },
-        payload: { send: [] },
+        payload: { send: [{ name: "diagnosis" }] },
       },
-      disclosedPayloadColumns: ["diagnosis"],
     });
     expect(joined).toContain("you will receive the result (enforced): no");
     expect(joined).not.toContain("columns you will receive");
@@ -494,59 +491,6 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
       undefined,
     );
     expect(truthfulLines.join("\n")).not.toContain("linkage rule set");
-  });
-
-  test("displayInvitation: the received-columns marker follows what the invitation held, not what it declared", () => {
-    // The same line has two sources and they do not rest on the same thing. The
-    // held subset is the set an acceptance locks in and reconciles the received
-    // payload against; an authored payload.send with no held subset locks in
-    // nothing, so an inviter that declares one set and transmits another is not
-    // stopped on the online run. Marking that case "enforced" would announce a check
-    // that does not run, so the marker is keyed on what was held.
-    const log = getLogger("accept-display-receive-basis-test");
-    log.setLevel("silent");
-    const base = sampleToken(FUTURE());
-    // One terms document for both renderings, authoring the columns the held
-    // subset also names, so the only difference between the two is whether the token
-    // holds the subset.
-    const linkageTerms: LinkageTerms = {
-      ...base.linkageTerms,
-      payload: { send: [{ name: "diagnosis" }, { name: "notes" }] },
-    };
-    const authored = renderDisplayInvitation(log, { ...base, linkageTerms });
-    const carried = renderDisplayInvitation(log, {
-      ...base,
-      linkageTerms,
-      disclosedPayloadColumns: ["diagnosis", "notes"],
-    });
-    expect(authored).toContain(
-      "columns you will receive (your partner's word, 2 declared):",
-    );
-    expect(authored).toContain("\n    - diagnosis");
-    expect(authored).toContain("\n    - notes");
-    expect(authored).not.toContain("columns you will receive (enforced,");
-    expect(carried).toContain(
-      "columns you will receive (enforced, 2 declared):",
-    );
-    expect(carried).not.toContain(
-      "columns you will receive (your partner's word,",
-    );
-    // The marker is the whole of the difference: the same columns are listed either
-    // way, so nothing else about the surface moves with the basis.
-    expect(
-      authored.replace(
-        "columns you will receive (your partner's word, 2 declared)",
-        "columns you will receive (enforced, 2 declared)",
-      ),
-    ).toBe(carried);
-    // An authored EMPTY send is not a declaration at all -- it holds no subset and
-    // prints no line -- so a rendered "(none)" is always the held, enforced case.
-    expect(
-      renderDisplayInvitation(log, {
-        ...base,
-        linkageTerms: { ...base.linkageTerms, payload: { send: [] } },
-      }),
-    ).not.toContain("columns you will receive");
   });
 
   test("displayInvitation: the inviter's request-from-acceptor receive shows names, '(none)' when empty, and nothing when absent", () => {
@@ -1026,12 +970,9 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     const log = getLogger("accept-display-coverage-test");
     log.setLevel("silent");
     // One token, reused across every rendering, so only the terms move -- minting
-    // a fresh one per render would vary the displayed `expires` too. Its
-    // `disclosedPayloadColumns` is left absent: it is a token field
-    // the inviter derives from its own metadata, not a linkage term, and supplying
-    // one would answer the question about it rather than about `payload.send`. The
-    // acceptor's own outbound-send set is held at the not-yet-known case for the
-    // same reason.
+    // a fresh one per render would vary the displayed `expires` too. The
+    // acceptor's own outbound-send set is held at the not-yet-known case: it is
+    // not a linkage term.
     const token = sampleToken(FUTURE());
     const render = (linkageTerms: LinkageTerms): string =>
       renderDisplayInvitation(log, { ...token, linkageTerms });
@@ -2083,14 +2024,13 @@ describe("displayInvitation: linkage-key detail, heading order, and the repeated
       {
         ...sampleToken(FUTURE()),
         linkageTerms: CONSENT_PROBE_TERMS,
-        disclosedPayloadColumns: ["risk_score"],
       },
       ["diagnosis"],
     ).split("\n");
 
     expect(lines).toContain(`  ${OUTBOUND_SEND_LABEL}:`);
     expect(lines).toContain(
-      "  columns you will receive (enforced, 1 declared):",
+      "  columns you will receive (your partner's word, 1 declared):",
     );
     expect(lines).toContain(
       "  columns the inviting party requests from you " +

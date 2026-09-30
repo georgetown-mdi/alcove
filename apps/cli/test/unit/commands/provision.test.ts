@@ -9,7 +9,10 @@ import {
   provisionConfigAndKey,
   provisionLeftConfigOnDisk,
 } from "../../../src/commands/provision";
-import { persistExpectedPayloadColumns, saveConfig } from "../../../src/config";
+import {
+  persistExpectedPartnerDeduplicate,
+  saveConfig,
+} from "../../../src/config";
 import { loadKeyFile } from "../../../src/keyFile";
 
 // 43-char base64url token satisfying the sharedSecret format constraint.
@@ -460,7 +463,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
         {
           reuseExistingConfig: true,
           refreshReusedConfig: (kept) =>
-            persistExpectedPayloadColumns(kept, ["diagnosis"]),
+            persistExpectedPartnerDeduplicate(kept, true),
         },
       );
     fs.chmodSync(confDir, 0o555);
@@ -473,7 +476,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     provision();
     expect(loadKeyFile(keyPath)?.sharedSecret).toBe(TOKEN);
     expect(fs.readFileSync(keptConfig, "utf8")).toContain(
-      "expected_payload_columns",
+      "expected_partner_deduplicate",
     );
   },
 );

@@ -43,7 +43,6 @@ import {
   reconcileDiffValue,
   loadConfigLinkageSource,
   persistExpectedPartnerDeduplicate,
-  persistExpectedPayloadColumns,
   persistFilledPayloadReceive,
   persistHostKeyFingerprint,
   persistInvitationRelay,
@@ -1657,132 +1656,6 @@ describe("persistStatedPayloadSend", () => {
   );
 });
 
-// --- persistExpectedPayloadColumns -------------------------------------------
-
-describe("persistExpectedPayloadColumns", () => {
-  test("adds the field and preserves comments and other fields", () => {
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      [
-        "# hand-authored config",
-        "connection:",
-        "  channel: sftp",
-        "  server:",
-        "    host: sftp.example.org # the drop",
-        "",
-      ].join("\n"),
-    );
-    persistExpectedPayloadColumns(configPath, ["diagnosis", "notes"]);
-    const raw = fs.readFileSync(configPath, "utf8");
-    // Operator comments and other fields survive the surgical write.
-    expect(raw).toContain("# hand-authored config");
-    expect(raw).toContain("host: sftp.example.org # the drop");
-    const parsed = YAML.parse(raw) as {
-      expected_payload_columns: string[];
-    };
-    expect(parsed.expected_payload_columns).toEqual(["diagnosis", "notes"]);
-  });
-
-  test("refreshes a stale value (the accept-reuse fix)", () => {
-    // A config with an OLD consented set, re-accepted over a changed disclosed
-    // subset: the field must be overwritten to the newly-consented set, never left
-    // stale (else the next recurring exchange false-aborts against a set the partner
-    // no longer discloses).
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      [
-        "connection:",
-        "  channel: sftp",
-        "  server:",
-        "    host: h",
-        "expected_payload_columns:",
-        "  - old_col",
-        "",
-      ].join("\n"),
-    );
-    persistExpectedPayloadColumns(configPath, ["new_col"]);
-    const raw = fs.readFileSync(configPath, "utf8");
-    expect(raw).not.toContain("old_col");
-    const parsed = YAML.parse(raw) as { expected_payload_columns: string[] };
-    expect(parsed.expected_payload_columns).toEqual(["new_col"]);
-  });
-
-  test("removes the field when the consented set is undefined", () => {
-    // A re-accept whose invitation had no disclosed subset records no consented
-    // set, so a previously-recorded commitment must be cleared, not retained stale --
-    // the exchange then reconciles lazily.
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      [
-        "connection:",
-        "  channel: sftp",
-        "  server:",
-        "    host: h",
-        "expected_payload_columns:",
-        "  - old_col",
-        "",
-      ].join("\n"),
-    );
-    persistExpectedPayloadColumns(configPath, undefined);
-    const raw = fs.readFileSync(configPath, "utf8");
-    expect(raw).not.toContain("expected_payload_columns");
-    expect(raw).not.toContain("old_col");
-    // The rest of the config is intact.
-    const parsed = YAML.parse(raw) as {
-      connection: { channel: string };
-      expected_payload_columns?: string[];
-    };
-    expect(parsed.connection.channel).toBe("sftp");
-    expect(parsed.expected_payload_columns).toBeUndefined();
-  });
-
-  test("writes an empty array verbatim (strict receive-nothing)", () => {
-    // Empty is a real consent ("receive nothing"), distinct from absent; it must be
-    // written, not dropped.
-    const configPath = path.join(dir, "alcove.yaml");
-    fs.writeFileSync(
-      configPath,
-      "connection:\n  channel: sftp\n  server:\n    host: h\n",
-    );
-    persistExpectedPayloadColumns(configPath, []);
-    const raw = fs.readFileSync(configPath, "utf8");
-    const parsed = YAML.parse(raw) as { expected_payload_columns: string[] };
-    expect(parsed.expected_payload_columns).toEqual([]);
-  });
-
-  test.skipIf(process.platform === "win32")(
-    "writes the config owner-read-only (0600)",
-    () => {
-      const configPath = path.join(dir, "alcove.yaml");
-      fs.writeFileSync(
-        configPath,
-        "connection:\n  channel: sftp\n  server:\n    host: h\n",
-      );
-      persistExpectedPayloadColumns(configPath, ["diagnosis"]);
-      expect(fs.statSync(configPath).mode & 0o777).toBe(0o600);
-    },
-  );
-
-  test("refuses two non-snake_case spellings, naming both", () => {
-    const configPath = path.join(dir, "alcove.yaml");
-    const original = configWithLinkageTerms({
-      connection: SFTP_CONNECTION_FIELDS,
-      expectedPayloadColumns: ["diagnosis"],
-      expected_payloadColumns: ["zip"],
-    });
-    fs.writeFileSync(configPath, original);
-    expect(() =>
-      persistExpectedPayloadColumns(configPath, ["diagnosis"]),
-    ).toThrow(
-      /has keys "expectedPayloadColumns" and "expected_payloadColumns", which are read as one setting/,
-    );
-    expect(fs.readFileSync(configPath, "utf8")).toBe(original);
-  });
-});
-
 // --- persistInvitationRelay ---------------------------------------------------
 
 describe("persistInvitationRelay", () => {
@@ -1946,13 +1819,27 @@ describe("persistExpectedPartnerDeduplicate", () => {
       expect(fs.statSync(configPath).mode & 0o777).toBe(0o600);
     },
   );
+
+  test("refuses two non-snake_case spellings, naming both", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    const original = configWithLinkageTerms({
+      connection: SFTP_CONNECTION_FIELDS,
+      expectedPartnerDeduplicate: true,
+      expected_partnerDeduplicate: false,
+    });
+    fs.writeFileSync(configPath, original);
+    expect(() => persistExpectedPartnerDeduplicate(configPath, true)).toThrow(
+      /has keys "expectedPartnerDeduplicate" and "expected_partnerDeduplicate", which are read as one setting/,
+    );
+    expect(fs.readFileSync(configPath, "utf8")).toBe(original);
+  });
 });
 
 // The malformed content each case writes before calling its persist*
 // function: a block-mapping conflict under the key the function edits for
 // persistHostKeyFingerprint and persistPartnerFingerprint (each parses only
 // that nested path), and an unbalanced flow sequence -- caught earlier, by the
-// document-wide YAML parse -- for the other three.
+// document-wide YAML parse -- for the other two.
 const MALFORMED_CONFIG_CASES: Array<
   [
     label: string,
@@ -1977,12 +1864,6 @@ const MALFORMED_CONFIG_CASES: Array<
     "persistStatedPayloadSend",
     "connection: [unbalanced\n",
     (configPath) => persistStatedPayloadSend(configPath, [{ name: "notes" }]),
-    true,
-  ],
-  [
-    "persistExpectedPayloadColumns",
-    "connection: [unbalanced\n",
-    (configPath) => persistExpectedPayloadColumns(configPath, ["diagnosis"]),
     true,
   ],
   [
@@ -4977,7 +4858,6 @@ test("a setting this build does not edit survives a load, an edit, and a save", 
     ],
     standardization: [{ output: "last_name", input: "LAST_NAME", steps: [] }],
     retention_disposition: "Filed with the program office for seven years.",
-    expected_payload_columns: ["partner_program"],
     expected_partner_deduplicate: true,
     csv_delimiter: "|",
   };
@@ -4999,7 +4879,6 @@ test("a setting this build does not edit survives a load, an edit, and a save", 
   expect(saved.standardization).toEqual(loaded.standardization);
   expect(saved.metadata).toEqual(loaded.metadata);
   expect(saved.csvDelimiter).toBe("|");
-  expect(saved.expectedPayloadColumns).toEqual(["partner_program"]);
   expect(saved.expectedPartnerDeduplicate).toBe(true);
 });
 
@@ -6138,13 +6017,6 @@ const CONFIG_REFUSALS: ReadonlyArray<
     (configPath) => {
       fs.writeFileSync(configPath, UNPARSEABLE_YAML);
       persistStatedPayloadSend(configPath, [{ name: "notes" }]);
-    },
-  ],
-  [
-    "an expected-columns write to a configuration that cannot be parsed",
-    (configPath) => {
-      fs.writeFileSync(configPath, UNPARSEABLE_YAML);
-      persistExpectedPayloadColumns(configPath, ["notes"]);
     },
   ],
   [

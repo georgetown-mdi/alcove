@@ -86,7 +86,6 @@ test("buildSaveSpec includes the connection, terms and metadata, omitting standa
   expect(spec.linkageTerms).toBe(linkageTerms);
   expect(spec.metadata).toBe(metadata);
   expect(spec.standardization).toBeUndefined();
-  expect(spec.expectedPayloadColumns).toBeUndefined();
 });
 
 test("buildSaveSpec records a filled receive list in the saved terms", () => {
@@ -104,7 +103,6 @@ test("buildSaveSpec records a filled receive list in the saved terms", () => {
     { name: "dob" },
     { name: "zip" },
   ]);
-  expect(spec.expectedPayloadColumns).toBeUndefined();
 });
 
 test("buildSaveSpec records an empty fill as receive nothing", () => {

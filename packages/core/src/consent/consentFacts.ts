@@ -62,11 +62,9 @@ export interface ConsentFact {
  * Keyed by fact rather than by `LinkageTerms` field, because a fact can be a
  * derived value (the acceptor's own outbound columns), or one of two mutually
  * exclusive cases of a single line: the two `output` receipts, whose bases and
- * caveats differ by value, and the acceptor's received columns, whose basis
- * differs by where the displayed set came from -- the disclosed subset the
- * invitation held, or the inviter's authored declaration. A renderer looks a
- * fact up here for both the basis marker and the caveat; one that spells either
- * out inline has re-created the divergence this removes.
+ * caveats differ by value. A renderer looks a fact up here for both the basis
+ * marker and the caveat; one that spells either out inline has re-created the
+ * divergence this removes.
  */
 export const CONSENT_FACTS = {
   outboundSend: {
@@ -582,27 +580,18 @@ export const CONSENT_FACTS = {
       "record and with each other, so records sharing no matched value are " +
       "disclosed to both parties as one group.",
   },
-  inboundPayloadColumnsCarried: {
-    basis: "enforced",
-    reason:
-      "The disclosed subset the invitation carried, which the acceptance locks " +
-      "in as what it will receive: its own side reconciles the received payload " +
-      "against that set and aborts on any other.",
-  },
-  inboundPayloadColumnsAuthored: {
+  inboundPayloadColumns: {
     basis: "trust-contingent",
     reason:
-      "The inviting party's authored payload send list, displayed where the " +
-      "invitation carried no disclosed subset. There is no set for the " +
-      "acceptance to lock in, and an absent expectation is the lazy " +
-      "reconciliation path, so an inviter that declares one set and transmits " +
-      "another is not stopped on the online run -- which is what separates this " +
-      "from the carried case above, off the same displayed list. Deliberately " +
-      "understated for the offline path, where the acceptance's mirrored " +
-      "payload receive list does become the lock-in a later exchange reconciles " +
-      "against: one display serves both paths and is rendered before either is " +
-      "settled, and of the two possible errors only overstating enforcement " +
-      "misleads an operator about what will be stopped.",
+      "The inviting party's declared payload send, which the acceptance " +
+      "mirrors into its own payload receive list. Every run's terms exchange " +
+      "compares that list against the send set the inviting party's run " +
+      "states, before any key or payload moves, and refuses the run on a " +
+      "difference unless this party takes the change on as its new terms. " +
+      "What then crosses is held to that set only by the inviting party's own " +
+      "build, which sends the columns it stated: this party does not compare " +
+      "the received payload against the list, so a partner whose software " +
+      "states one set and sends another is not stopped.",
   },
   requestedPayloadColumns: {
     basis: "trust-contingent",

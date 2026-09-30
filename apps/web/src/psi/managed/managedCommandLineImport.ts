@@ -68,6 +68,7 @@ import {
   documentValueAt,
   namedFieldList,
   refusedDocumentFields,
+  retiredSettingsRefusal,
 } from "../exchangeDocumentRefusal";
 
 import {
@@ -124,14 +125,21 @@ export class ManagedConfigurationRefusedError extends Error {
 
 /**
  * What a schema refusal tells the operator: which lines of their own file to
- * fix. Only field names are named ({@link refusedDocumentFields}) -- never an
+ * fix. Only field names are named ({@link refusedDocumentFields}) -- never a Zod
  * issue message, which a built-in Zod code can compose out of the offending
- * value.
+ * value. A retired setting is refused in core's own sentence, which names keys
+ * alone ({@link retiredSettingsRefusal}).
  */
 function schemaRefusal(
   error: ZodError,
   document: unknown,
 ): ManagedConfigurationRefusedError {
+  const retired = retiredSettingsRefusal(document);
+  if (retired !== undefined)
+    return new ManagedConfigurationRefusedError(
+      `This file is not a valid Alcove configuration: ${retired}, then ` +
+        "import it again.",
+    );
   const fields = refusedDocumentFields(error, document);
   if (fields.length === 0)
     return new ManagedConfigurationRefusedError(

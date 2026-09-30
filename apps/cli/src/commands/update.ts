@@ -11,9 +11,10 @@ import {
 import {
   DEFAULT_CONFIG_PATH,
   persistStatedPayloadSend,
+  replacedPayloadSendWarning,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { assertConfigTermsSendable } from "../configTermsGuards";
+import { assertConfigTermsRunnable } from "../configTermsGuards";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
 import { resolveTermsUpdateIdentity } from "../partyIdentity";
@@ -80,7 +81,7 @@ export async function handler(argv: Arguments): Promise<void> {
         "author-fresh-terms",
       );
       resolveTermsUpdateIdentity(terms.identity, configPath);
-      assertConfigTermsSendable(terms, source);
+      assertConfigTermsRunnable(terms, source);
       const sharedSecret = readPartnershipSecret(keyPath);
 
       // Without metadata the columns are known only from the input file, which
@@ -92,8 +93,11 @@ export async function handler(argv: Arguments): Promise<void> {
 
       // Before the update is printed, so a failed write never follows
       // sending it.
-      if (statedTerms !== terms && statedTerms.payload?.send !== undefined)
+      if (statedTerms !== terms && statedTerms.payload?.send !== undefined) {
+        if (terms.payload?.send !== undefined)
+          log.warn(replacedPayloadSendWarning(configPath, "terms update"));
         persistStatedPayloadSend(configPath, statedTerms.payload.send);
+      }
 
       log.info(
         "Send this terms update to your partner. It holds your linkage " +

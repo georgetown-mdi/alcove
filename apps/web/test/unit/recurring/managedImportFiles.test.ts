@@ -143,10 +143,6 @@ describe("what the pair import says", () => {
         ],
       },
     ],
-    [
-      "expected_payload_columns",
-      { expectedPayloadColumns: ["partner_program"] },
-    ],
     ["expected_partner_deduplicate", { expectedPartnerDeduplicate: true }],
   ] as const)(
     "a landed pair whose file states %s names it as kept unchanged",
@@ -164,7 +160,14 @@ describe("what the pair import says", () => {
   test("a landed pair names every such setting its file states, never a value", () => {
     const notice = pairImportedNotice(
       importedPair({
-        expectedPayloadColumns: ["program"],
+        metadata: [
+          {
+            name: "program",
+            type: "other",
+            role: "payload",
+            isPayload: true,
+          },
+        ],
         expectedPartnerDeduplicate: true,
       }),
     );
@@ -172,7 +175,7 @@ describe("what the pair import says", () => {
     expect(notice.consequences).toHaveLength(1);
     expect(notice.consequences[0]).toContain(
       "settings this app keeps unchanged but does not show or edit: " +
-        "expected_partner_deduplicate, expected_payload_columns.",
+        "expected_partner_deduplicate, metadata.",
     );
     expect(notice.consequences[0]).not.toContain("program");
   });

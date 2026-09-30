@@ -29,8 +29,8 @@ import type { InvitationToken } from "@alcove/core";
 // Fast re-invite from a stored record, tested in Node: the fresh invitation is
 // composed from the record's OWN document (terms + committed send set), mints only a
 // fresh secret, and its endpoint comes from the current location -- so the partner's
-// accept re-derives its perspective and re-locks the same disclosed set, and the
-// operator re-authors nothing. Only the inviter side re-mints.
+// accept re-derives its perspective, receiving the same send set, and the operator
+// re-authors nothing. Only the inviter side re-mints.
 
 // `encodeInvitation` re-checks the token's `expires` against the real wall clock, so
 // NOW must be ahead of it for the setup lifetime to encode; anchored to the actual run
@@ -161,7 +161,7 @@ describe("composeManagedReinvite", () => {
     );
   });
 
-  test("a document with no metadata re-mints its terms as stored and no disclosed set", async () => {
+  test("a document with no metadata re-mints its terms as stored", async () => {
     const record = inviterRecord({
       exchangeFile: composeManagedExchangeFile({
         connection: { channel: "webrtc", host: "signaling.example.org" },
@@ -171,7 +171,7 @@ describe("composeManagedReinvite", () => {
     const token = await decodeInvitation(
       (await composeManagedReinvite(record, location, seams)).encoded,
     );
-    expect(token.disclosedPayloadColumns).toBeUndefined();
+    expect(token.linkageTerms.payload).toBeUndefined();
   });
 
   test("a document whose metadata discloses nothing states an empty send, so the acceptor receives nothing", async () => {
@@ -188,7 +188,6 @@ describe("composeManagedReinvite", () => {
       (await composeManagedReinvite(record, location, seams)).encoded,
     );
     expect(token.linkageTerms.payload?.send).toEqual([]);
-    expect(token.disclosedPayloadColumns).toEqual([]);
     expect(
       deriveAcceptedLinkageTerms(token.linkageTerms, "Partner Org").payload
         ?.receive,
@@ -207,7 +206,6 @@ describe("composeManagedReinvite", () => {
       (await composeManagedReinvite(record, location, seams)).encoded,
     );
     expect(token.linkageTerms.payload?.send).toEqual([{ name: "id" }]);
-    expect(token.disclosedPayloadColumns).toEqual(["id"]);
     expect(
       deriveAcceptedLinkageTerms(token.linkageTerms, "Partner Org").payload
         ?.receive,

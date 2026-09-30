@@ -54,7 +54,6 @@ import {
 } from "./protocolSetup.js";
 import type { TermsChange } from "./protocolSetup.js";
 import { reconcileHostKeyFingerprints } from "./hostKeyReconciliation.js";
-import { receivedPayloadBaseline } from "./linkageTermsNegotiation.js";
 import {
   RoundSetCounter,
   requireSingleCandidate,
@@ -80,7 +79,7 @@ import {
   exchangePayloads,
   toCommittedPayload,
   assertDisclosedNamesCarriable,
-  reconcileReceivedPayload,
+  assertNoPayloadReceived,
   termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
 import type { PayloadWireMessage } from "./payloadExchange.js";
@@ -186,17 +185,6 @@ export interface PreparedExchange {
    * and never folded into the agreed-terms hash.
    */
   retentionDisposition?: string;
-  /**
-   * The payload columns this party has locked in to receive: an accepted
-   * invitation's `disclosedPayloadColumns`, or a persisted
-   * `expectedPayloadColumns` (falling back to `payload.receive`). When set,
-   * {@link runExchange} requires the partner's transmitted columns to match
-   * it exactly ({@link reconcileReceivedPayload}); undefined accepts
-   * whatever the sender transmits. Set by the caller, not
-   * {@link prepareForExchange}. A party with `expectsOutput: false` always
-   * receives none, regardless of this field.
-   */
-  expectedPayloadColumns?: string[];
   /**
    * The `deduplicate` an accepted invitation declared for the partner's
    * side. When set, {@link runExchange} refuses a partner terms value that
@@ -336,7 +324,7 @@ export function resolveCountOnlyRun(
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: the
  * assertion is held against a pair of documents both parties agreed, so the
  * contradiction is a process disclosing against the terms it agreed under --
- * the classification {@link reconcileReceivedPayload} gives the same pair
+ * the classification {@link assertNoPayloadReceived} gives the same pair
  * when the column arrives (CLI exit 76, not 64). The constructor takes no
  * argument and holds the message itself, so no call site can compose a value
  * read off either agreed document into what the operator is shown.
@@ -1500,17 +1488,13 @@ export function prepareForExchange(
     // A local output-composition setting, passed through untouched from the
     // local config to the result formatter; absent when the config omits it.
     includeOwnColumns: exchangeDataSpec.includeOwnColumns,
-    // The two invitation commitments -- expectedPayloadColumns (the
-    // received-payload set) and expectedPartnerDeduplicate (the partner's
-    // declared cardinality side) -- are NOT threaded here, unlike
-    // retentionDisposition above. The caller sets each on the returned
+    // The invitation commitment expectedPartnerDeduplicate (the partner's
+    // declared cardinality side) is NOT threaded here, unlike
+    // retentionDisposition above. The caller sets it on the returned
     // PreparedExchange after this returns: the accept path's source is the
-    // invitation token (not this dataSpec), and the recurring path applies a
-    // fallback for the payload set (config expectedPayloadColumns, else
-    // payload.receive). A caller that wants a commitment must set it
-    // explicitly; see PreparedExchange.expectedPayloadColumns and
-    // PreparedExchange.expectedPartnerDeduplicate. (Both ride ExchangeDataSpec
-    // only so the exchange command can read them off the parsed config.)
+    // invitation token, not this dataSpec. See
+    // PreparedExchange.expectedPartnerDeduplicate. (It rides ExchangeDataSpec
+    // only so the exchange command can read it off the parsed config.)
     // Passed on so the run boundary can hold the certificate-mode refusals
     // this step cannot settle: whether the run signs in band is decided by
     // what runExchange is given, not by the config alone.
@@ -2292,13 +2276,13 @@ export interface RunExchangeOptions {
    * Called once, at the terms exchange, before the partner's certificate is
    * pinned and before any linkage key or payload row moves, when this party
    * holds no list of the columns it receives -- its terms leave
-   * `payload.receive` unset and {@link PreparedExchange.expectedPayloadColumns}
-   * is undefined -- and the partner's terms declare at least one column it
-   * sends this party: the argument is those column names, which
+   * `payload.receive` unset -- and the partner's terms declare at least one
+   * column it sends this party: the argument is those column names, which
    * {@link onPayloadReceiveFilled} would then record. An accepted answer takes
-   * them. A decline sends the partner {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON} and
-   * the run ends on its `refusal`; a throw sends a fixed abort naming this
-   * party's own failure and propagates. Either records neither the pin nor the
+   * them. A decline sends the partner
+   * {@link PAYLOAD_RECEIVE_NOT_ACCEPTED_REASON} and the run ends on its
+   * `refusal`; a throw sends a fixed abort naming this party's own failure and
+   * propagates. Either records neither the pin nor the
    * fill. Refusals held after it still apply. Asked whether or not
    * {@link onPayloadReceiveFilled} is set; that recorder without this
    * confirmation fills silently. The names are the partner's and reach the
@@ -2311,8 +2295,8 @@ export interface RunExchangeOptions {
    * Called once, after the terms exchange's refusals have all passed, when
    * this party's terms leave `payload.receive` unset and the partner can send
    * it payload ({@link payloadReceiveFill}): the argument is the column names
-   * the partner's terms declare in `payload.send`, which this run then holds
-   * the received payload to. The caller records them as `payload.receive` in
+   * the partner's terms declare in `payload.send`, which this run takes on as
+   * its receive list. The caller records them as `payload.receive` in
    * the configuration it runs from, so the next run compares them strictly. A
    * throw, or a rejected promise, stops the run before the bootstrap frame and
    * before any linkage key or payload row moves. The names are the partner's
@@ -2462,20 +2446,12 @@ export async function runExchange(
   // before anything goes on the wire. See assertDeclaredWidthMatchesStrategy.
   assertDeclaredWidthMatchesStrategy(linkageTerms, effectiveKeyCount);
 
-  // The column set this party holds its received payload to, compared at the
-  // terms exchange against what the partner's terms send, so a partner whose
-  // columns changed is met there rather than at the received-payload check.
-  const receiveBaseline = receivedPayloadBaseline(
-    linkageTerms,
-    prepared.expectedPayloadColumns,
-  );
   const { onTermsChange } = options;
 
   onStage(CONFIRMING_PROTOCOL_STAGE_ID);
   const {
     partnerTerms: partnerTermsAsSent,
     localTerms: agreedLocalTerms,
-    termsChanged,
     warnings,
     partnerRecordCount,
     partnerSaveIntent,
@@ -2497,7 +2473,6 @@ export async function runExchange(
     // certificate on the wire.
     willSignReceipt ? signingIdentity.certificate : undefined,
     {
-      expectedReceive: receiveBaseline,
       // A run that can take a change on meets a changed partner `deduplicate`
       // as one it cannot continue under; without one, the invitation binding
       // below refuses it.
@@ -2564,7 +2539,6 @@ export async function runExchange(
   );
   if (
     options.onPayloadReceiveFill !== undefined &&
-    prepared.expectedPayloadColumns === undefined &&
     payloadReceiveFillColumns !== undefined &&
     payloadReceiveFillColumns.length > 0
   ) {
@@ -2661,10 +2635,7 @@ export async function runExchange(
   // Record the fill after every terms-time refusal, so a refused run records
   // nothing though the confirmation above may already have asked, and before
   // the bootstrap frame and any key or payload moves, so the caller has
-  // recorded it before this run receives anything under it. The run holds the
-  // received payload to the filled set, as a later run holds it to the
-  // recorded list.
-  let filledPayloadReceive: string[] | undefined;
+  // recorded it before this run receives anything under it.
   if (
     options.onPayloadReceiveFilled !== undefined &&
     payloadReceiveFillColumns !== undefined
@@ -2679,7 +2650,6 @@ export async function runExchange(
       await sendAbort(conn, [PAYLOAD_RECEIVE_UNRECORDED_ABORT_REASON]);
       throw err;
     }
-    filledPayloadReceive = columns;
   }
 
   // Surface a present-but-malformed partner advertisement as a diagnostic. The
@@ -2950,36 +2920,19 @@ export async function runExchange(
       ? preparePayload(prepared.rawRows, prepared.metadata, associationTable)
       : { hasData: false };
 
-  // Received-payload enforcement, fail-closed before the result is returned (so a
-  // mismatched payload is never shown or written as a result):
-  // - A count-only run locks in the empty column set unconditionally: psi-c
-  //   refuses payload in either direction and its record's payload commitments
-  //   are fixed present-and-empty (docs/spec/EXCHANGE_RECORD.md, Count-only
-  //   (psi-c) records), so a transmitted column can never be lazily accepted
-  //   here regardless of expectsOutput or any commitment the prepare step
-  //   holds.
-  // - A no-output party (expectsOutput:false) must receive NO payload. The
-  //   send-gate above keeps a conforming partner from sending any; expecting the
-  //   empty set here closes it fail-closed against a non-conforming one.
-  // - An output party enforces the column set it consented to receive (a fresh
-  //   acceptor's disclosedPayloadColumns, or a persisted commitment), else the
-  //   set this run filled its unset receive list with; a lazy one (neither)
-  //   takes whatever the sender's own disclosure metadata transmits. A party
-  //   that took on the partner's terms at the terms exchange enforces the
-  //   receive list it took on.
+  // A party that receives no payload refuses one, fail-closed before the result
+  // is returned: a count-only run, whose record's payload commitments are fixed
+  // present-and-empty (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c)
+  // records), and a no-output party, which the send gate above keeps a
+  // conforming partner from sending any. The columns an output party receives
+  // were compared at the terms exchange and are not compared again here.
   //
   // The refusal is caught by the region's guard below rather than thrown straight
   // through: this party's own payload has left it through the transport whatever
   // the partner sent back, so the record of that outbound disclosure is owed. The
   // throw also leaves the rest of the guarded region unrun, so no further frame
   // goes to a partner that broke the disclosure contract.
-  const expectedReceive = countOnly
-    ? []
-    : linkageTerms.output.expectsOutput
-      ? termsChanged
-        ? linkageTerms.payload?.receive?.map(({ name }) => name)
-        : (prepared.expectedPayloadColumns ?? filledPayloadReceive)
-      : [];
+  const receivesNoPayload = countOnly || !linkageTerms.output.expectsOutput;
 
   // resultSize (the intersection size) is bound only when both parties are
   // entitled to output; heldResult gates both the record's committed table and what
@@ -3045,7 +2998,7 @@ export async function runExchange(
       },
     );
     partnerPayloadReceived = true;
-    reconcileReceivedPayload(partnerPayload, expectedReceive);
+    if (receivesNoPayload) assertNoPayloadReceived(partnerPayload);
     // Signed-receipt step: at the conclusion of a disclosing exchange, both
     // parties sign the SAME canonical receipt content (the agreed-terms hash and
     // the two directional payload MACs, plus a session-derived binder) and swap

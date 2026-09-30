@@ -10,8 +10,10 @@
  * is named").
  *
  * Only NAMES leave here. A setting's value can be a credential, an address, or a
- * path, so no issue message and no document value ever enters a refusal: a
- * built-in Zod code composes the offending value into its own message.
+ * path, so no Zod issue message and no document value ever enters a refusal: a
+ * built-in Zod code composes the offending value into its own message. The one
+ * sentence taken whole is core's retired-setting refusal, composed from key
+ * names alone ({@link retiredSettingsRefusal}).
  *
  * The two readers word their own sentences around this list. What an operator
  * does about a stored field they cannot see differs from what they do about a
@@ -20,7 +22,7 @@
  * console owns the mount and takes credentials and paths.
  */
 
-import { snakeizeKey } from "@alcove/core";
+import { retiredSettingIssue, snakeizeKey } from "@alcove/core";
 
 import type { ZodError } from "zod";
 
@@ -147,4 +149,15 @@ export function namedFieldList(fields: ReadonlyArray<string>): string {
   return beyond > 0
     ? `${named.join(", ")}, and ${beyond} more`
     : named.join(", ");
+}
+
+/**
+ * Core's refusal of a document holding a retired top-level setting, which names
+ * each such key as the file writes it and says to delete it -- the sentence the
+ * command line states for the same file -- or undefined when it holds none. The
+ * schema refuses such a document at its root, where
+ * {@link refusedDocumentFields} names no field.
+ */
+export function retiredSettingsRefusal(document: unknown): string | undefined {
+  return retiredSettingIssue(document)?.message;
 }

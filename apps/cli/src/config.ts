@@ -1753,53 +1753,6 @@ function partnerFingerprintRecorded(
 }
 
 /**
- * Write, overwrite, or remove the top-level `expected_payload_columns` in an
- * existing `alcove.yaml`: the RECEIVE-side consent commitment (the
- * PARTNER's column namespace) that a later recurring `alcove exchange`
- * holds the received payload to ({@link reconcileReceivedPayload} in core).
- *
- * Used by both accept-reuse paths (offline, and the online hook's reuse
- * branch). Like {@link persistHostKeyFingerprint}, this edits the file in
- * place through the YAML document model so the operator's comments, key
- * order, and formatting survive.
- *
- * `columns === undefined` removes the field rather than leaving a stale
- * value; an empty array is written verbatim, a strict "receive nothing"
- * consent distinct from absent.
- *
- * Rewritten with the same owner-only permissions {@link saveConfig} uses.
- * Throws if the file cannot be read or parsed, since the caller just
- * reconciled it and a silent failure would leave the operator believing the
- * commitment was refreshed.
- */
-export function persistExpectedPayloadColumns(
-  configPath: string,
-  columns: string[] | undefined,
-): void {
-  // Parse, edit, and re-serialize through the sensitive-file chokepoint (see
-  // persistHostKeyFingerprint), preserving the operator's comments and key order
-  // on this surgical one-field write.
-  const serialized = editSensitiveYamlDocument(
-    fs.readFileSync(configPath, "utf8"),
-    configFileLabel(configPath),
-    (doc) => {
-      normalizeKeyPathSpelling(configPath, doc, ["expected_payload_columns"]);
-      if (columns === undefined) {
-        // No consented subset on record for this acceptance: remove any stale
-        // field rather than leave a value the latest consent no longer backs.
-        doc.deleteIn(["expected_payload_columns"]);
-        return;
-      }
-      // createNode turns the JS array into a proper YAML sequence node (a bare
-      // value is not reliably wrapped by setIn across versions); setIn creates or
-      // overwrites the single top-level key, leaving everything else untouched.
-      doc.setIn(["expected_payload_columns"], doc.createNode(columns));
-    },
-  );
-  writeFileOwnerOnly(configPath, serialized);
-}
-
-/**
  * Write `linkage_terms.payload.receive` into an existing `alcove.yaml`: the
  * payload columns a run whose terms left the list unset took from the
  * partner's declared send set, which the next run holds the partner to. Edits
@@ -1865,9 +1818,9 @@ export function persistFilledPayloadReceive(
 /**
  * Write `linkage_terms.payload.send` into an existing `alcove.yaml`: the
  * columns an invitation or terms update minted from the configuration states
- * this party sends, from its `metadata`, where the terms left the list unset.
- * Edits the file in place through the YAML document model, as
- * {@link persistFilledPayloadReceive} does, and rewrites it with the
+ * this party sends, from its `metadata`, where the terms left the list unset
+ * or named other columns. Edits the file in place through the YAML document
+ * model, as {@link persistFilledPayloadReceive} does, and rewrites it with the
  * owner-only permissions {@link saveConfig} uses.
  *
  * @throws when the file cannot be read, parsed, or written, or holds no
@@ -1898,15 +1851,38 @@ export function persistStatedPayloadSend(
 }
 
 /**
+ * The warning an invitation or terms update minted from the configuration at
+ * `configPath` logs before {@link persistStatedPayloadSend} replaces a present
+ * `linkage_terms.payload.send` that named other columns than the metadata
+ * sends.
+ */
+export function replacedPayloadSendWarning(
+  configPath: string,
+  document: "invitation" | "terms update",
+): string {
+  const shownConfig = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(configPath),
+  );
+  return (
+    `linkage_terms.payload.send in ${shownConfig} named other columns than ` +
+    `its metadata sends. The ${document} states the columns the metadata ` +
+    `sends, and payload.send in ${shownConfig} is rewritten to match. To ` +
+    `send other columns, change is_payload or role in the metadata block of ` +
+    `${shownConfig} and generate the ${document} again.`
+  );
+}
+
+/**
  * Write or overwrite the top-level `expected_partner_deduplicate` in an
- * existing `alcove.yaml`: the TERMS-side consent commitment, the
- * `deduplicate` the accepted invitation declared for the inviting party's
- * own side, which a later `alcove exchange` holds the partner's presented
- * value to ({@link assertPresentedDeduplicateMatchesInvitation} in core),
- * refusing a contradiction before any key or payload moves.
+ * existing `alcove.yaml`: the consent commitment to the `deduplicate` the
+ * accepted invitation declared for the inviting party's own side, which a
+ * later `alcove exchange` holds the partner's presented value to
+ * ({@link assertPresentedDeduplicateMatchesInvitation} in core), refusing a
+ * contradiction before any key or payload moves.
  *
- * The terms-side twin of {@link persistExpectedPayloadColumns}, written by
- * the same accept-reuse paths, editing the file in place the same way.
+ * Written by both accept-reuse paths (offline, and the online hook's reuse
+ * branch), editing the file in place through the YAML document model so the
+ * operator's comments, key order, and formatting survive.
  *
  * Takes a plain `boolean`: `deduplicate` is mandatory on the linkage-terms
  * schema, so an acceptance always has a declaration to record and there is
@@ -1943,17 +1919,16 @@ export function persistExpectedPartnerDeduplicate(
  */
 export interface TermsUpdateWrite {
   linkageTerms: LinkageTerms;
-  expectedPayloadColumns: string[] | undefined;
   expectedPartnerDeduplicate: boolean | "unchanged";
 }
 
 /**
- * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the records
- * that follow from it -- `expected_payload_columns` and
- * `expected_partner_deduplicate` -- in one write, so no record is left stating
- * a commitment the new terms do not back. Every other key, the connection block
- * included, keeps its values and its key order, and a line the write does not
- * change keeps its bytes as {@link editSensitiveYamlDocument} allows.
+ * Replace `linkage_terms` in an existing `alcove.yaml` and refresh the record
+ * that follows from it -- `expected_partner_deduplicate` -- in one write, so
+ * the record does not state a commitment the new terms do not back. Every
+ * other key, the connection block included, keeps its values and its key
+ * order, and a line the write does not change keeps its bytes as
+ * {@link editSensitiveYamlDocument} allows.
  *
  * The edited document is read back through the same schema `alcove
  * exchange` loads it with before it is written; a document that would not
@@ -2035,23 +2010,12 @@ function termsUpdateDocument(
     fs.readFileSync(configPath, "utf8"),
     configFileLabel(configPath),
     (doc) => {
-      for (const record of [
-        "linkage_terms",
-        "expected_payload_columns",
-        "expected_partner_deduplicate",
-      ])
+      for (const record of ["linkage_terms", "expected_partner_deduplicate"])
         normalizeKeyPathSpelling(configPath, doc, [record]);
       doc.setIn(
         ["linkage_terms"],
         doc.createNode(snakeizeKeys(write.linkageTerms)),
       );
-      if (write.expectedPayloadColumns === undefined)
-        doc.deleteIn(["expected_payload_columns"]);
-      else
-        doc.setIn(
-          ["expected_payload_columns"],
-          doc.createNode(write.expectedPayloadColumns),
-        );
       if (write.expectedPartnerDeduplicate !== "unchanged")
         doc.setIn(
           ["expected_partner_deduplicate"],

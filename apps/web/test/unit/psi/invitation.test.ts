@@ -715,7 +715,9 @@ describe("generateInvitation", () => {
   test("mints a sent column name exactly at the length ceiling", async () => {
     const { encoded } = await mintSending(AT_CEILING);
     const token = await decodeInvitation(encoded);
-    expect(token.disclosedPayloadColumns).toEqual([AT_CEILING]);
+    expect(token.linkageTerms.payload?.send?.map(({ name }) => name)).toEqual([
+      AT_CEILING,
+    ]);
   });
 
   test("counts the ceiling in UTF-16 code units, as the wire and record bounds do", async () => {
@@ -752,7 +754,7 @@ describe("generateInvitation", () => {
       metadata,
     });
     const token = await decodeInvitation(encoded);
-    expect(token.disclosedPayloadColumns).toEqual([]);
+    expect(token.linkageTerms.payload?.send).toEqual([]);
   });
 
   test("fails closed when authored terms over-declare payload.send at the mint", async () => {
@@ -1043,33 +1045,6 @@ describe("generateInvitation", () => {
     expect(summary.payload?.receive).toEqual([]);
   });
 
-  test("quick path holds the disclosed-columns subset on the token", async () => {
-    const disclosed = disclosedColumnNames(
-      inferMetadata(DISCLOSING_COLUMNS, []),
-    );
-    const result = await generateInvitation({
-      inviterName: "Org",
-      file: csvStream(DISCLOSING_CSV),
-      location,
-    });
-    const token = await decodeInvitation(result.encoded);
-    // The dedicated wire field holds exactly what preparePayload transmits.
-    expect(token.disclosedPayloadColumns).toEqual(disclosed);
-  });
-
-  test("quick path holds an empty disclosed subset when the file discloses nothing", async () => {
-    // The web inviter always knows its metadata, so the field is always present --
-    // here the EMPTY set, which locks the acceptor in to "receive nothing" (a later
-    // non-empty payload aborts) rather than reconciling lazily.
-    const result = await generateInvitation({
-      inviterName: "Org",
-      file: csvStream(ALL_COLUMNS_CSV),
-      location,
-    });
-    const token = await decodeInvitation(result.encoded);
-    expect(token.disclosedPayloadColumns).toEqual([]);
-  });
-
   test("quick path states an empty send when the file discloses no column, so the acceptor receives nothing", async () => {
     // ALL_COLUMNS_CSV is all linkage-typed columns: the inferred metadata
     // discloses nothing.
@@ -1112,7 +1087,6 @@ describe("generateInvitation", () => {
       payload: { send: [] },
     });
     expect(linkageTerms).toStrictEqual(token.linkageTerms);
-    expect(token.disclosedPayloadColumns).toEqual([]);
     expect(
       deriveAcceptedLinkageTerms(token.linkageTerms, "Acceptor").payload
         ?.receive,
@@ -1135,7 +1109,6 @@ describe("generateInvitation", () => {
     expect(token.linkageTerms.payload?.send?.map(({ name }) => name)).toEqual(
       disclosed,
     );
-    expect(token.disclosedPayloadColumns).toEqual(disclosed);
   });
 
   test("the quick path's authored payload reconciles with a lazy acceptor", async () => {

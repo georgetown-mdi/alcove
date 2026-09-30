@@ -1462,7 +1462,7 @@ describe("filing a stopped run's disclosure", () => {
   test("files one entry when the partner's payload arrived and the run refused it", async () => {
     // The third input into the record-owed region, past the two the cancel and the
     // drop reach: the partner's payload arrived and this party's consent check
-    // refused it (core's reconcileReceivedPayload, a protocol ConnectionError).
+    // refused it (core's assertNoPayloadReceived, a protocol ConnectionError).
     // The record commits to what arrived before the refusal, so the entry is written
     // exactly once and holds those column names.
     const { mc } = makeParkedCloseMc();
@@ -1471,7 +1471,7 @@ describe("filing a stopped run's disclosure", () => {
     mockedRunExchange.mockRejectedValueOnce(
       new ConnectionError(
         "payload disclosure mismatch: the partner transmitted columns [ward] " +
-          "but this party expected to receive only [clinic].",
+          "but this party expected to receive no payload at all.",
         "protocol",
       ),
     );

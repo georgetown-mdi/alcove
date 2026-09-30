@@ -6,7 +6,7 @@ import {
   exchangePayloads,
   buildOutputTable,
   assertPayloadSendDisclosed,
-  reconcileReceivedPayload,
+  assertNoPayloadReceived,
   termsStatingDeclaredPayloadSend,
 } from "../src/payloadExchange";
 import { prepareForExchange } from "../src/exchange";
@@ -792,7 +792,7 @@ test("disclosedColumnNames excludes a role: ignored column even with isPayload:t
   expect(disclosedColumnNames(metaWithIgnored)).toEqual(["diagnosis"]);
 });
 
-// --- reconcileReceivedPayload (runtime enforcement) --------------------------
+// --- assertNoPayloadReceived (runtime enforcement) ---------------------------
 
 const received = (columns: string[]): PartnerPayload => ({
   columns,
@@ -800,44 +800,15 @@ const received = (columns: string[]): PartnerPayload => ({
   rows: columns.length > 0 ? [columns.map(() => "x")] : [],
 });
 
-test("reconcileReceivedPayload: lazy (no declared set) accepts any payload", () => {
-  expect(() =>
-    reconcileReceivedPayload(received(["a", "b"]), undefined),
-  ).not.toThrow();
+test("assertNoPayloadReceived: an empty received set passes", () => {
+  // The no-output party correctly received nothing; also the zero-match case.
+  expect(() => assertNoPayloadReceived(received([]))).not.toThrow();
 });
 
-test("reconcileReceivedPayload: a present empty declared set is strict (receive nothing)", () => {
-  // An empty expected set is NOT lazy -- it means "receive nothing." A party not
-  // entitled to output (runExchange passes []) and an inviter that disclosed nothing
-  // (the mint holds []) both commit to the empty set, and a non-empty received
-  // payload against it aborts. Only an absent (undefined) declared set is lazy.
-  expect(() => reconcileReceivedPayload(received(["a", "b"]), [])).toThrow(
-    ConnectionError,
-  );
-  // An empty received set against the empty declared set passes (the no-output
-  // party correctly received nothing; also the zero-match case).
-  expect(() => reconcileReceivedPayload(received([]), [])).not.toThrow();
-});
-
-test("reconcileReceivedPayload: an empty received set is accepted against any declared set", () => {
-  // The partner sent no payload (no transmittable columns, or no matched rows),
-  // which can never exceed consent -- so it is accepted even when a non-empty set
-  // was locked in.
-  expect(() =>
-    reconcileReceivedPayload(received([]), ["a", "b"]),
-  ).not.toThrow();
-});
-
-test("reconcileReceivedPayload: an exact match (any order) does not throw", () => {
-  expect(() =>
-    reconcileReceivedPayload(received(["b", "a"]), ["a", "b"]),
-  ).not.toThrow();
-});
-
-test("reconcileReceivedPayload: a divergent received set aborts as a protocol error", () => {
+test("assertNoPayloadReceived: a received column aborts as a protocol error", () => {
   const err = (() => {
     try {
-      reconcileReceivedPayload(received(["a", "secret"]), ["a", "b"]);
+      assertNoPayloadReceived(received(["a", "secret"]));
     } catch (e) {
       return e;
     }
@@ -848,24 +819,13 @@ test("reconcileReceivedPayload: a divergent received set aborts as a protocol er
   expect((err as ConnectionError).message).toMatch(
     /payload disclosure mismatch/,
   );
+  expect((err as ConnectionError).message).toContain("no payload at all");
 });
 
-test("reconcileReceivedPayload: receiving fewer columns than declared also aborts", () => {
-  expect(() => reconcileReceivedPayload(received(["a"]), ["a", "b"])).toThrow(
-    ConnectionError,
-  );
-});
-
-test("reconcileReceivedPayload: receiving more columns than declared aborts (over-delivery)", () => {
-  expect(() =>
-    reconcileReceivedPayload(received(["a", "b", "c"]), ["a", "b"]),
-  ).toThrow(ConnectionError);
-});
-
-function renderReconcileRefusal(receivedName: string): string {
+function renderNoPayloadRefusal(receivedName: string): string {
   const err = (() => {
     try {
-      reconcileReceivedPayload(received(["a", receivedName]), ["a", "b"]);
+      assertNoPayloadReceived(received(["a", receivedName]));
     } catch (e) {
       return e;
     }
@@ -874,12 +834,12 @@ function renderReconcileRefusal(receivedName: string): string {
   return sanitizeErrorForDisplay(err);
 }
 
-test("reconcileReceivedPayload: a marker in a received name leaves the cause", () => {
+test("assertNoPayloadReceived: a marker in a received name leaves the cause", () => {
   // The partner names the columns and the message states its cause behind
   // them, so each name is redacted where it is composed: the display sink
   // redacts a whole link forward from a dangling BEGIN, and an unredacted
   // marker there deletes the abort explanation.
-  const rendered = renderReconcileRefusal(
+  const rendered = renderNoPayloadRefusal(
     "-----BEGIN OPENSSH PRIVATE KEY-----",
   );
   expect(rendered).toContain("payload disclosure mismatch");
@@ -887,11 +847,11 @@ test("reconcileReceivedPayload: a marker in a received name leaves the cause", (
   expect(rendered).toContain("does not match what");
 });
 
-test("reconcileReceivedPayload: a lone END marker in a name deletes nothing", () => {
+test("assertNoPayloadReceived: a lone END marker in a name deletes nothing", () => {
   // The redaction reaches forward only, so a name that is nothing but an
   // END marker is ordinary text: it renders whole and takes no neighbour.
   const marker = "-----END OPENSSH PRIVATE KEY-----";
-  const rendered = renderReconcileRefusal(marker);
+  const rendered = renderNoPayloadRefusal(marker);
   expect(rendered).toContain("payload disclosure mismatch");
   expect(rendered).toContain(marker);
   expect(rendered).toContain("does not match what");

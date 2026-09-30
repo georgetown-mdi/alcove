@@ -7,9 +7,8 @@ import { prepareManagedRerunExchange } from "@psi/managed/managedPreparedExchang
 import type { CSVRow } from "@alcove/core";
 
 // The re-run's prepared-exchange assembly, tested in Node: the persisted document's
-// own-perspective terms bind to this run's rows, and the received-payload commitment
-// is threaded from the record's persisted `expectedPayloadColumns` exactly as the
-// accept path threads it from the invitation's disclosed set.
+// own-perspective terms bind to this run's rows, and the terms-side commitment is
+// threaded from the record's persisted `expectedPartnerDeduplicate`.
 
 const columns = ["first_name", "last_name", "date_of_birth"];
 const rows: Array<CSVRow> = [
@@ -22,11 +21,10 @@ const rows: Array<CSVRow> = [
 const standingTerms = (identity: string) =>
   getDefaultLinkageTerms(identity, inferMetadata(columns, []));
 
-function exchangeFile(expectedPayloadColumns?: Array<string>) {
+function exchangeFile() {
   return composeManagedExchangeFile({
     connection: { channel: "webrtc", host: "signaling.example.org" },
     linkageTerms: standingTerms("County Health Dept"),
-    ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
   });
 }
 
@@ -37,47 +35,16 @@ describe("prepareManagedRerunExchange", () => {
     expect(prepared.rowCount).toBe(1);
   });
 
-  test("threads the persisted expected-payload commitment onto the prepared exchange", () => {
-    const prepared = prepareManagedRerunExchange(
-      exchangeFile(["shared_id"]),
-      rows,
-      columns,
-    );
-    // The received-payload commitment is the record's persisted set, passed as-is (the
-    // same explicit commitment the accept path applies from the disclosed set).
-    expect(prepared.expectedPayloadColumns).toEqual(["shared_id"]);
-  });
-
-  test("a record with no commitment holds the terms' payload.receive names", () => {
-    // An authored command-line document holding the data dictionary alone: the
-    // command line's recurring run enforces these names, so the web run does too.
+  test("runs under the terms' own payload.receive", () => {
+    // The list the terms exchange compares against the partner's stated send.
     const terms = standingTerms("County Health Dept");
+    const receive = [{ name: "shared_id" }, { name: "zip" }];
     const document = composeManagedExchangeFile({
       connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: {
-        ...terms,
-        payload: { receive: [{ name: "shared_id" }, { name: "zip" }] },
-      },
-    });
-    expect(document.expectedPayloadColumns).toBeUndefined();
-    const prepared = prepareManagedRerunExchange(document, rows, columns);
-    expect(prepared.expectedPayloadColumns).toEqual(["shared_id", "zip"]);
-  });
-
-  test("the persisted commitment wins over payload.receive", () => {
-    const terms = standingTerms("County Health Dept");
-    const document = composeManagedExchangeFile({
-      connection: { channel: "webrtc", host: "signaling.example.org" },
-      linkageTerms: { ...terms, payload: { receive: [{ name: "shared_id" }] } },
-      expectedPayloadColumns: [],
+      linkageTerms: { ...terms, payload: { receive } },
     });
     const prepared = prepareManagedRerunExchange(document, rows, columns);
-    expect(prepared.expectedPayloadColumns).toEqual([]);
-  });
-
-  test("a record with no commitment leaves it undefined (lazy reconciliation)", () => {
-    const prepared = prepareManagedRerunExchange(exchangeFile(), rows, columns);
-    expect(prepared.expectedPayloadColumns).toBeUndefined();
+    expect(prepared.linkageTerms.payload?.receive).toEqual(receive);
   });
 
   test("threads the persisted terms-side commitment onto the prepared exchange", () => {

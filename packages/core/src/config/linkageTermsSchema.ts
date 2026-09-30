@@ -234,13 +234,7 @@ export function reasonTermsCannotStateIdentity(
  * The operator's own explicit metadata block takes the same shape on its
  * column `name` (config/metadata.ts), under a message naming that block: a
  * declared column name is a name rather than a data value, and each disclosed
- * one reaches the partner in the invitation's payload column list.
- *
- * The payload column lists that name those same columns hold it too -- the
- * invitation token's `disclosedPayloadColumns`, which a partner authors and an
- * acceptance writes into the operator's configuration, and the configuration's
- * own `expectedPayloadColumns` -- so a column name reaches a party's disk
- * under this shape from either direction.
+ * one reaches the partner in the invitation's `payload.send`.
  *
  * Applied at each FIELD, as the `version` semver regex below is, rather than as
  * a pass over the class: every field named above holds it in its own string
@@ -474,11 +468,6 @@ const recordedFreeTextValue = (schema: z.ZodString) =>
  * -- what the caller declares is the whole shape the field has -- rather than a
  * check layered over the class from above, and it is written once so the name
  * fields cannot drift apart.
- *
- * The payload column lists outside this document name the same columns and take
- * the same shape through this helper: the invitation token's
- * `disclosedPayloadColumns` (config/invitation.ts) and the exchange spec's
- * `expectedPayloadColumns` (config/exchangeSpec.ts).
  */
 export const nameValue = (schema: z.ZodString) =>
   schema.regex(NAME_SHAPE_PATTERN, NAME_SHAPE_MESSAGE);
@@ -1193,18 +1182,15 @@ export interface Payload {
  * naming a column stands, with its own description, and a later entry repeating
  * that name is dropped. A column's identity is its `name` -- the thing disclosed
  * -- so two entries naming it are one declaration written twice however their
- * descriptions differ. `nameOf` reads that name, since a list of the same
- * columns is written as entries here and as bare names on an invitation token.
- * Names are compared by code unit, the equality docs/spec/CANONICAL_ENCODING.md
- * makes normative for a third party reproducing the agreed-terms hash.
+ * descriptions differ. Names are compared by code unit, the equality
+ * docs/spec/CANONICAL_ENCODING.md makes normative for a third party reproducing
+ * the agreed-terms hash.
  */
-export const columnsNamedOnce = <Entry>(
-  columns: readonly Entry[],
-  nameOf: (column: Entry) => string,
-): Entry[] => {
+export const columnsNamedOnce = (
+  columns: readonly PayloadColumn[],
+): PayloadColumn[] => {
   const kept = new Set<string>();
-  return columns.filter((column) => {
-    const name = nameOf(column);
+  return columns.filter(({ name }) => {
     if (kept.has(name)) return false;
     kept.add(name);
     return true;
@@ -1220,7 +1206,7 @@ export const columnsNamedOnce = <Entry>(
  */
 const payloadColumnList = (message: string): z.ZodType<PayloadColumn[]> =>
   boundedArray(PayloadColumnSchema, MAX_PAYLOAD_ENTRIES, message).transform(
-    (columns) => columnsNamedOnce(columns, (column) => column.name),
+    columnsNamedOnce,
   );
 
 const PayloadSchema: z.ZodType<Payload> = z.object({

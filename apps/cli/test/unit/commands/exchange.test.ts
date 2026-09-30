@@ -94,8 +94,8 @@ vi.mock("@alcove/core", async (importActual) => {
     // (warnOnValueConstraints) reads, so the sweep is a no-op here.
     // A FRESH object per call (not a shared mockReturnValue ref), matching the real
     // prepareForExchange: prepareDataset mutates the returned object (it sets
-    // expectedPayloadColumns from a committed payload.receive), so a shared ref
-    // would leak that field between tests.
+    // expectedPartnerDeduplicate from the configuration), so a shared ref would
+    // leak that field between tests.
     // Spy-wrapped so a test can plant the refusal the check raises on an input
     // whose first round is too large, which the stubbed preparation cannot hold.
     assertFirstRoundFitsFileSyncFrame: vi.fn(
@@ -373,7 +373,12 @@ test("loadConfig refuses the placeholder SSH username before reading the key", (
   );
 });
 
-test.each(["outbound_payload_consent", "disclosed_payload_columns"])(
+test.each([
+  "outbound_payload_consent",
+  "disclosed_payload_columns",
+  "expected_payload_columns",
+  "expectedPayloadColumns",
+])(
   "loadConfig refuses a configuration holding %s, naming the key and the remedy",
   (key) => {
     fs.writeFileSync(
@@ -708,37 +713,6 @@ test("a schema-invalid config renders readably, not as a raw ZodError blob", () 
   // The raw multi-line ZodError JSON blob does not: no newlines, no JSON keys.
   expect(message).not.toContain("\n");
   expect(message).not.toContain('"code"');
-});
-
-test("a name-class character in expected_payload_columns is refused at config load", () => {
-  // The list is written from the disclosed set an accepted invitation holds, so
-  // the same shape holds it where the configuration is read as well as where the
-  // token is decoded: a config hand-edited to name a column with one of these
-  // characters fails to load (exit 64) naming the field, rather than running and
-  // writing that name into a result or a record. U+202E RLO, written as an
-  // escape so a fixture about invisible characters is readable.
-  fs.writeFileSync(
-    configFile,
-    YAML.stringify({
-      ...minimalFiledropConfig,
-      expected_payload_columns: ["risk\u202escore"],
-    }),
-  );
-  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
-  expect(() => loadConfig(baseOptions())).toThrow(UsageError);
-  let message = "";
-  try {
-    loadConfig(baseOptions());
-  } catch (err) {
-    message = (err as Error).message;
-  }
-  expect(message).toContain("is not a valid exchange spec");
-  expect(message).toContain("expected_payload_columns.0");
-  expect(message).toContain(
-    "must not contain a control or text-direction character",
-  );
-  // The refusal locates the field and reports none of the operator's name.
-  expect(message).not.toContain("risk");
 });
 
 test("throws a UsageError at config load when a preserved @path credential file is missing", () => {
@@ -2246,7 +2220,11 @@ test("handler: --invitation with a malformed code fails closed (exit 64), writin
   }
 });
 
-test.each(["outbound_payload_consent", "disclosed_payload_columns"])(
+test.each([
+  "outbound_payload_consent",
+  "disclosed_payload_columns",
+  "expected_payload_columns",
+])(
   "handler: --invitation on a configuration holding %s exits 64 with the refusal and writes no key file",
   async (key) => {
     const encoded = await encodeInvitation(inviteToken());
@@ -3589,70 +3567,6 @@ test("prepareDataset: an explicit metadata type that retypes the column away blo
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
   );
-});
-
-// --- prepareDataset: recurring payload commitment ----------------------------
-
-test("prepareDataset: a committed payload.receive fixes the expected received columns", async () => {
-  // A recurring config that declares what it expects to receive fixes that set
-  // as prepared.expectedPayloadColumns; runExchange then verifies the partner's
-  // transmitted payload matches it exactly (the recurring half of the commitment).
-  const input = writeInput("last_name,dob\nLovelace,1815-12-10\n");
-  const terms: LinkageTerms = {
-    ...nameDobTerms,
-    payload: { receive: [{ name: "diagnosis" }, { name: "notes" }] },
-  };
-  const prepared = await prepareDataset(
-    { linkageTerms: terms },
-    "Test Party",
-    input,
-    undefined,
-  );
-  expect(prepared.expectedPayloadColumns).toEqual(["diagnosis", "notes"]);
-});
-
-test("prepareDataset: a config without payload.receive fixes nothing (lazy)", async () => {
-  const input = writeInput("last_name,dob\nLovelace,1815-12-10\n");
-  const prepared = await prepareDataset(
-    { linkageTerms: nameDobTerms },
-    "Test Party",
-    input,
-    undefined,
-  );
-  expect(prepared.expectedPayloadColumns).toBeUndefined();
-});
-
-test("prepareDataset: the top-level expectedPayloadColumns is the canonical commitment source", async () => {
-  // The local expectedPayloadColumns field (written by an offline accept from the
-  // invitation's disclosedPayloadColumns) is the canonical commitment and takes
-  // precedence over the negotiated payload.receive. Distinct from payload.receive
-  // so it does not trip the validateCompatibility mirror against an inviter that
-  // advertised no payload.send.
-  const input = writeInput("last_name,dob\nLovelace,1815-12-10\n");
-  const terms: LinkageTerms = {
-    ...nameDobTerms,
-    payload: { receive: [{ name: "ignored_by_precedence" }] },
-  };
-  const prepared = await prepareDataset(
-    { linkageTerms: terms, expectedPayloadColumns: ["diagnosis", "notes"] },
-    "Test Party",
-    input,
-    undefined,
-  );
-  expect(prepared.expectedPayloadColumns).toEqual(["diagnosis", "notes"]);
-});
-
-test("prepareDataset: an empty expectedPayloadColumns fixes the strict empty set", async () => {
-  // An offline accept of an invitation that disclosed nothing persists the empty
-  // set; it is a strict "receive nothing" commitment, not the absent/lazy case.
-  const input = writeInput("last_name,dob\nLovelace,1815-12-10\n");
-  const prepared = await prepareDataset(
-    { linkageTerms: nameDobTerms, expectedPayloadColumns: [] },
-    "Test Party",
-    input,
-    undefined,
-  );
-  expect(prepared.expectedPayloadColumns).toEqual([]);
 });
 
 // --- prepareDataset: recurring terms commitment ------------------------------

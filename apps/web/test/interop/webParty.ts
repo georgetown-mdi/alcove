@@ -90,7 +90,6 @@ export async function acceptAsWebParty(params: {
       edits,
       rawRows,
       columns,
-      disclosedPayloadColumns: decoded.disclosedPayloadColumns,
       // The interop party leaves this seat's own side closed, the value an
       // accept with no control derives.
       deduplicate: false,

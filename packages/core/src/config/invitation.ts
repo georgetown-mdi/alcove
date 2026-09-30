@@ -1,12 +1,8 @@
 import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import {
-  columnsNamedOnce,
   LinkageTermsSchema,
-  MAX_NAME_LENGTH,
   MAX_PARAMS_ENTRIES,
-  MAX_PAYLOAD_ENTRIES,
-  nameValue,
 } from "./linkageTermsSchema.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
 import { camelizeKeys } from "../utils/camelizeKeys.js";
@@ -21,7 +17,6 @@ import type { RelayLocator } from "./connection.js";
 import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { parseBoundedJson } from "../utils/boundedJson.js";
 import { fromBase64Url } from "../utils/crypto.js";
-import { boundedArray } from "../utils/boundedArray.js";
 import { UsageError } from "../errors.js";
 
 // --- Connection endpoint -----------------------------------------------------
@@ -482,39 +477,6 @@ export interface InvitationToken {
    */
   connectionEndpoint?: ConnectionEndpoint;
   /**
-   * The inviter's disclosed-columns subset: exactly the column names the
-   * acceptor will RECEIVE for matched records -- the set
-   * `disclosedColumnNames(metadata)`/`isDisclosedToPartner` gathers and
-   * `preparePayload` transmits. Included so the acceptor's consent display and
-   * its runtime enforcement derive from the wire's own transmission predicate,
-   * not a separately-authored `terms.payload.send` dictionary each mint path
-   * must remember to write; the displayed/consented set then cannot diverge
-   * from the bytes that flow.
-   *
-   * Names are in the INVITER's column namespace; the acceptor reasons about
-   * them as "what I will receive", not its own `payload.send` (that is the
-   * inviter's `receive` mirrored into the acceptor's namespace; see
-   * `deriveAcceptedLinkageTerms`). Only the consent-relevant disclosed subset
-   * is included -- linkage/identifier/ignored columns that are not transmitted
-   * do not leave the inviter's machine.
-   *
-   * Optional: omitted only on a mint path that does not know its metadata, in
-   * which case the acceptor reconciles lazily from the first transmission. When
-   * metadata is known, the subset is included verbatim, including the empty set
-   * when nothing is disclosed -- that locks in "receive nothing," so a later
-   * non-empty payload aborts. Any present value (empty or not) locks in the
-   * acceptor's expectation: a received payload with a different column set
-   * aborts as a protocol error. Only an omitted field is lazy. See
-   * {@link reconcileReceivedPayload}.
-   *
-   * The subset and the terms' own `payload.send` state one disclosure, so
-   * {@link InvitationTokenSchema} refuses the two pairings that state it two
-   * ways, at encode and decode alike: a named subset beside an empty `send`
-   * where the terms share the result with the partner, and an empty subset
-   * beside a `send` naming a column.
-   */
-  disclosedPayloadColumns?: string[];
-  /**
    * The inviting party's declaration that its exchange runs in retain mode --
    * `connection.options.retain_files`, under which no exchange file is deleted
    * as a protocol step and the rendezvous location becomes a permanent
@@ -597,17 +559,6 @@ export const InvitationLinkageTermsSchema: z.ZodType<LinkageTerms> =
     LinkageTermsSchema,
   );
 
-/**
- * A disclosed-columns list as an invitation or a terms update states it: the
- * bounds and name shape the field comments on {@link InvitationTokenBodySchema}
- * describe, with a repeated name kept once.
- */
-export const DisclosedPayloadColumnsSchema: z.ZodType<string[]> = boundedArray(
-  nameValue(z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH))),
-  MAX_PAYLOAD_ENTRIES,
-  `disclosedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
-).transform((names) => columnsNamedOnce(names, (name) => name));
-
 const InvitationTokenBodySchema = z.object({
   version: z.literal("1"),
   // InvitationLinkageTermsSchema, not the bare LinkageTermsSchema: it camelizes
@@ -626,57 +577,14 @@ const InvitationTokenBodySchema = z.object({
     ),
   expires: z.iso.datetime().optional(),
   connectionEndpoint: ConnectionEndpointSchema.optional(),
-  // The inviter's disclosed-columns subset (see the interface field). Each name
-  // is bounded to MAX_NAME_LENGTH and the count to MAX_PAYLOAD_ENTRIES, the
-  // same caps a `payload.send`/`receive` list has, since this names the same
-  // disclosed set; the whole token is already structurally bounded by
-  // parseBoundedJson at decode, so boundedArray here is defense-in-depth. Names
-  // are partner-controlled and are routed through sanitizeForDisplay wherever
-  // they reach a consent surface or a diagnostic.
-  //
-  // Each name also holds NAME_SHAPE_PATTERN (`nameValue`), as the terms' own
-  // payload column names do. An acceptance writes this list into the operator's
-  // configuration as `expected_payload_columns`, where it is read by the
-  // operator's editor and by tooling that is not Alcove, so a partner's
-  // control or text-direction character is refused at decode rather than
-  // escaped at a display sink it never reaches.
-  //
-  // The `.min(1)` floor rejects an empty name, matching the metadata/payload
-  // name floors -- an honest inviter derives these from metadata whose names
-  // are already non-empty. No array-level minimum: an empty array is meaningful
-  // -- the strict "receive nothing" commitment when an inviter that knows its
-  // metadata discloses no payload column, which reconcileReceivedPayload
-  // enforces (a later non-empty payload aborts) -- so it must not be rejected
-  // at decode. Only an omitted field reconciles lazily.
-  //
-  // A name the list holds twice is kept once (`columnsNamedOnce`, the collapse
-  // the payload dictionary applies), after the count cap so a padded list is
-  // still refused for its authored count. The acceptor consents to the column
-  // once and writes it once as `expectedPayloadColumns`, which
-  // reconcileReceivedPayload compares against the set the partner transmits.
-  disclosedPayloadColumns: DisclosedPayloadColumnsSchema.optional(),
   // The inviter's retain-mode declaration (see the interface field). A plain
   // optional boolean at the top level, so an older decoder's non-strict z.object
   // ignores it rather than rejecting the token -- the backward-compatible shape
-  // the `version` policy above describes, the same one disclosedPayloadColumns
-  // took. No default is applied: absence must stay distinguishable from a
-  // declared value, since it means "nothing declared" rather than "delete mode".
+  // the `version` policy above describes. No default is applied: absence must
+  // stay distinguishable from a declared value, since it means "nothing
+  // declared" rather than "delete mode".
   inviterRetainsFiles: z.boolean().optional(),
 });
-
-/**
- * Whether the terms declare a `payload.send` and leave it empty: the explicit
- * "this party discloses no column". An absent `send` binds nothing, so it is
- * neither this nor {@link declaresPayloadSendColumn}.
- */
-export function declaresEmptyPayloadSend(terms: LinkageTerms): boolean {
-  return terms.payload?.send !== undefined && terms.payload.send.length === 0;
-}
-
-/** Whether the terms declare a `payload.send` naming at least one column. */
-export function declaresPayloadSendColumn(terms: LinkageTerms): boolean {
-  return (terms.payload?.send?.length ?? 0) > 0;
-}
 
 const InvitationTokenSchema: z.ZodType<InvitationToken> =
   InvitationTokenBodySchema
@@ -718,48 +626,6 @@ const InvitationTokenSchema: z.ZodType<InvitationToken> =
           "carrying the inbound_path/outbound_path pair; a split directory " +
           "requires retain mode of every connection built from it",
         path: ["inviterRetainsFiles"],
-      },
-    )
-    // The terms' `payload.send` and the token's disclosed subset state one
-    // disclosure from two places, and the acceptance surfaces read each: the
-    // "columns you will receive" line from the subset, the withheld-table
-    // facts from the declaration (consent/invitationSummary.ts). A token whose
-    // two disagree states a disclosure no run of it could make, so it is
-    // refused here rather than left to each surface to read one side of.
-    //
-    // Gated on `shareWithPartner`, as assertPayloadSendDisclosed's own empty
-    // case is: with the partner entitled to no result the run transmits no
-    // column whatever the metadata discloses, so a mint stamps the subset
-    // beside an empty declaration there and contradicts nothing.
-    .refine(
-      (token) =>
-        !token.linkageTerms.output.shareWithPartner ||
-        !declaresEmptyPayloadSend(token.linkageTerms) ||
-        (token.disclosedPayloadColumns?.length ?? 0) === 0,
-      {
-        message:
-          "disclosedPayloadColumns names a column while the linkage terms " +
-          "declare an empty payload.send; the invitation states both that " +
-          "the inviting party sends that column and that it discloses none. " +
-          "Ask the party that sent the invitation for a corrected one",
-        path: ["disclosedPayloadColumns"],
-      },
-    )
-    // The same contradiction reversed, and ungated: a `payload.send` naming a
-    // column must name exactly what metadata discloses whichever way the
-    // result runs, so no mint can pair one with a subset declared empty.
-    .refine(
-      (token) =>
-        !declaresPayloadSendColumn(token.linkageTerms) ||
-        token.disclosedPayloadColumns === undefined ||
-        token.disclosedPayloadColumns.length > 0,
-      {
-        message:
-          "disclosedPayloadColumns is empty while the linkage terms declare " +
-          "a payload.send naming a column; the invitation states both that " +
-          "the inviting party discloses that column and that it sends none. " +
-          "Ask the party that sent the invitation for a corrected one",
-        path: ["disclosedPayloadColumns"],
       },
     );
 

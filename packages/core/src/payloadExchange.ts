@@ -386,16 +386,14 @@ export function termsAsTheRunStatedThem(
  *
  * `payload.send` is the operator-authored data dictionary: exchanged with the
  * partner, shown on the consent screen, written into the exchange record's
- * `payloadSent`, and mirrored by a recurring partner into its recorded
- * received-payload expectation. What actually leaves the machine is decided
+ * `payloadSent`, and mirrored into the partner's `payload.receive`. What
+ * actually leaves the machine is decided
  * independently by each column's metadata via {@link isDisclosedToPartner}
  * (`isPayload && role !== "ignored"`), the set {@link preparePayload}
  * transmits -- so a dictionary can drift from what metadata sends in either
  * direction: OVER-declaration (a name metadata does not transmit) claims more
  * than was sent; UNDER-declaration (a column metadata transmits but the
- * dictionary omits) claims less, and can make a recurring partner's
- * {@link reconcileReceivedPayload} abort when the omitted column arrives
- * anyway.
+ * dictionary omits) claims less.
  *
  * An ABSENT `payload.send` is not checked: the guided and default paths author
  * no dictionary while metadata still transmits, and the terms exchange states
@@ -410,13 +408,11 @@ export function termsAsTheRunStatedThem(
  * out of scope: metadata gates sending, not receiving; `validateCompatibility`
  * cross-checks it instead.
  *
- * Enforced where terms leave a configuration without an exchange to state
- * them -- the invitation-mint boundary (CLI `validateInvite`, web
- * `generateInvitation`) and the CLI's terms update -- since the dictionary
- * reaches the partner's consent screen in the token as written. An exchange
- * does not refuse the drift: it states the disclosed set
- * ({@link termsStatingDeclaredPayloadSend}), and the partner sees the change
- * at the terms exchange.
+ * Enforced at the web app's first mint (`generateInvitation`), against terms
+ * its own editor composed. Every other mint, like an exchange, does not refuse
+ * the drift: it states the disclosed set
+ * ({@link termsStatingDeclaredPayloadSend}), and a partner holding the earlier
+ * set sees the change at the terms exchange.
  * Offending names are partner-controlled on the accept side, so the messages
  * below compose through {@link compatibilityMessage}
  * (`config/compatibilityMessage.ts`), as `validateCompatibility`'s
@@ -562,75 +558,28 @@ export function assertDisclosedNamesCarriable(
 }
 
 /**
- * Enforce, at runtime, that a received payload discloses no column the
- * receiving party did not consent to receive.
+ * Refuse a received payload that names any column, for a party that receives
+ * no payload: a count-only run, or a party whose terms entitle it to no
+ * result. The send gate keeps a conforming partner from sending either one a
+ * column, so this is the fail-closed safety check against one that does. An
+ * empty received set passes.
  *
- * `declared` is the column set this party LOCKED IN as what it will receive
- * -- the inviter's `disclosedPayloadColumns` held on the invitation (the
- * set the acceptor consented to on its review screen), a recurring party's
- * persisted expectation, or the EMPTY set for a party not entitled to the
- * result (which must receive no payload at all). `assertPayloadSendDisclosed`
- * is the mint-boundary, forward (send-side) counterpart of this guard: that
- * one keeps a party from over-DECLARING what it sends; this one keeps a party
- * from over-DELIVERING past what the other consented to receive. The party
- * must deliver exactly the locked-in set, or the exchange aborts.
- *
- * The match is byte-exact and element-wise over the sorted column names (NOT
- * a delimiter-joined string, so a partner-controlled name containing the
- * separator cannot make two distinct sets compare equal), mirroring
- * {@link validateCompatibility}'s payload mirror.
- *
- * A PRESENT `declared` -- INCLUDING the empty set -- is enforced strictly: an
- * empty `declared` means "receive nothing," so a non-empty received set
- * against it aborts -- the fail-closed path for a party not entitled to the
- * result (the caller passes `[]` when its own `expectsOutput` is false) and
- * for an inviter that disclosed nothing (the mint holds `[]`, not an
- * omitted field). Only an ABSENT (undefined) `declared` is lazy -- empty is
- * NOT absent.
- *
- * Two cases are NOT a mismatch:
- * - `declared` ABSENT (undefined): the LAZY reconciliation path, where the
- *   party did not lock in an expectation and takes whatever it is given
- *   (zero-setup, and an output party's own receive side, left blank and
- *   filled lazily). This never widens disclosure -- transmission stays
- *   governed by the SENDER's own `isDisclosedToPartner` metadata and
- *   `assertPayloadSendDisclosed`; receiving is not disclosing. A
- *   present-but-empty array is NOT this case.
- * - An EMPTY received column set (the partner sent no payload data): cannot
- *   exceed any consent, so it is accepted even against a non-empty
- *   `declared`. This also lets a correctly-gated no-output party (declared
- *   empty, received empty) pass, and avoids a false abort on a zero-match
- *   exchange. The values riding with the columns are held to the names by
- *   the wire schema, which admits no row a column does not name, so an
- *   empty received set holds nothing to consent to.
- *
- * @throws {ConnectionError} of kind `"protocol"` when `declared` is present
- *   and the received non-empty column set is not exactly it. A protocol
- *   error because the peer violated the disclosure contract; the receiving
- *   party's callers surface it as a failed exchange. The offending names are
+ * @throws {ConnectionError} of kind `"protocol"` when the received set names a
+ *   column: the partner broke the agreed terms. The names are
  *   partner-controlled and interpolated raw, escaped once where the error is
  *   rendered -- and redacted of private-key material where they are
  *   composed, since the message states its cause behind them and the
  *   dangling-BEGIN rule reaches to the end of the rendered link.
  */
-export function reconcileReceivedPayload(
-  received: PartnerPayload,
-  declared: string[] | undefined,
-): void {
-  if (declared === undefined) return;
+export function assertNoPayloadReceived(received: PartnerPayload): void {
   if (received.columns.length === 0) return;
-  const got = [...received.columns].sort();
-  const want = [...declared].sort();
-  const matches =
-    got.length === want.length && got.every((name, i) => name === want[i]);
-  if (matches) return;
-  const gotShown = got.map(redactPrivateKeyMaterial).join(", ");
-  const wantShown = want.map(redactPrivateKeyMaterial).join(", ");
-  const wantDescription =
-    want.length === 0 ? `no payload at all` : `only [${wantShown}]`;
+  const gotShown = [...received.columns]
+    .sort()
+    .map(redactPrivateKeyMaterial)
+    .join(", ");
   throw new ConnectionError(
     `payload disclosure mismatch: the partner transmitted columns ` +
-      `[${gotShown}] but this party expected to receive ${wantDescription}. ` +
+      `[${gotShown}] but this party expected to receive no payload at all. ` +
       `The exchange is aborted because the payload received does not match what ` +
       `was consented to.`,
     "protocol",

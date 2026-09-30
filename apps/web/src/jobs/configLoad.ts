@@ -54,6 +54,7 @@ import {
 import {
   namedFieldList,
   refusedDocumentFields,
+  retiredSettingsRefusal,
 } from "@psi/exchangeDocumentRefusal";
 
 import { JOB_FILE_NAMES, isJobChannel } from "./intentSchemas";
@@ -182,7 +183,6 @@ export interface DisclosedExchangeDocument {
   linkageTerms: ExchangeSpec["linkageTerms"];
   metadata?: ExchangeSpec["metadata"];
   standardization?: ExchangeSpec["standardization"];
-  expectedPayloadColumns?: Array<string>;
   expectedPartnerDeduplicate?: boolean;
   includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
   csvDelimiter?: string;
@@ -234,7 +234,6 @@ function probeIntentFields(): JobExchangeIntentBase {
     standardization: [
       { output: "probe_field", input: "probe_column", steps: [] },
     ],
-    expectedPayloadColumns: [],
     expectedPartnerDeduplicate: false,
     includeOwnColumns: "all",
     csvDelimiter: "|",
@@ -505,7 +504,6 @@ function assertHeldSettingsSurvive(document: ExchangeSpec): void {
  * still emits each is measured, never assumed.
  */
 const RECORDS_THAT_MUST_SURVIVE: ReadonlyArray<string> = [
-  "expected_payload_columns",
   "expected_partner_deduplicate",
 ];
 
@@ -558,6 +556,12 @@ function parsedYaml(source: string): unknown {
 function parsedDocument(raw: unknown): ExchangeSpec {
   const parsed = safeParseExchangeSpec(raw);
   if (parsed.success) return parsed.data;
+  const retired = retiredSettingsRefusal(raw);
+  if (retired !== undefined)
+    throw new ConfigurationLoadRefusedError(
+      "The alcove.yaml in your working folder is not a valid Alcove " +
+        `configuration: ${retired}, then open it again.`,
+    );
   const fields = refusedDocumentFields(parsed.error, raw);
   throw new ConfigurationLoadRefusedError(
     fields.length === 0
@@ -772,9 +776,6 @@ export function disclosedDocument(
     ...(document.metadata !== undefined ? { metadata: document.metadata } : {}),
     ...(document.standardization !== undefined
       ? { standardization: document.standardization }
-      : {}),
-    ...(document.expectedPayloadColumns !== undefined
-      ? { expectedPayloadColumns: document.expectedPayloadColumns }
       : {}),
     ...(document.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: document.expectedPartnerDeduplicate }

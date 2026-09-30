@@ -12,14 +12,10 @@ import {
 } from "../utils/crypto.js";
 import { SHARED_SECRET_REGEX } from "./connection.js";
 import {
-  declaresEmptyPayloadSend,
-  declaresPayloadSendColumn,
-  DisclosedPayloadColumnsSchema,
   InvitationLinkageTermsSchema,
   MAX_ENCODED_INVITATION_LENGTH,
 } from "./invitation.js";
 import type { LinkageTerms } from "./linkageTermsSchema.js";
-import { disclosedColumnNames } from "./metadata.js";
 import type { Metadata } from "./metadata.js";
 import { termsStatingDeclaredPayloadSend } from "../payloadExchange.js";
 
@@ -28,7 +24,7 @@ import { termsStatingDeclaredPayloadSend } from "../payloadExchange.js";
 /**
  * A change to an established partnership's linkage terms, sent by the party
  * that made it to the party that applies it. It holds the sending party's
- * linkage terms and disclosed columns and nothing else: no shared secret, no
+ * linkage terms and nothing else: no shared secret, no
  * credential, no connection endpoint, and no expiry. It is authenticated under
  * the shared secret both parties already hold (docs/spec/EXCHANGE_FILE.md,
  * "Terms update").
@@ -40,19 +36,13 @@ export interface TermsUpdate {
    * `deriveAcceptedLinkageTerms`, as an acceptance does.
    */
   linkageTerms: LinkageTerms;
-  /**
-   * The columns the sending party transmits for matched records, in its own
-   * namespace, as an invitation's `disclosedPayloadColumns` states them.
-   * Omitted where the sending party's configuration declares no metadata.
-   */
-  disclosedPayloadColumns?: string[];
 }
 
 /**
  * The {@link TermsUpdate} a party's configuration makes: its linkage terms
  * with `payload.send` stated from `metadata` as the terms exchange states it
- * (`termsStatingDeclaredPayloadSend`), and the columns `metadata` discloses.
- * Without metadata the terms are taken as written and no columns are stated.
+ * (`termsStatingDeclaredPayloadSend`). Without metadata the terms are taken as
+ * written.
  */
 export function termsUpdateFor(
   linkageTerms: LinkageTerms,
@@ -61,7 +51,6 @@ export function termsUpdateFor(
   if (metadata === undefined) return { linkageTerms };
   return {
     linkageTerms: termsStatingDeclaredPayloadSend(linkageTerms, metadata),
-    disclosedPayloadColumns: disclosedColumnNames(metadata),
   };
 }
 
@@ -90,43 +79,17 @@ const MAC_BYTES = 32;
 
 /**
  * Bound on an encoded terms update, checked before any decoding work. A
- * terms update holds what an invitation's terms and disclosed columns hold,
- * less the secret and endpoint, so the invitation's bound covers it.
+ * terms update holds an invitation's terms, less the secret and endpoint, so
+ * the invitation's bound covers it.
  */
 export const MAX_ENCODED_TERMS_UPDATE_LENGTH = MAX_ENCODED_INVITATION_LENGTH;
 
-const TermsUpdateBodySchema = z
-  .strictObject({
-    kind: z.literal(TERMS_UPDATE_KIND),
-    version: z.literal("1"),
-    partnership: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
-    linkageTerms: InvitationLinkageTermsSchema,
-    disclosedPayloadColumns: DisclosedPayloadColumnsSchema.optional(),
-  })
-  .refine(
-    (body) =>
-      !body.linkageTerms.output.shareWithPartner ||
-      !declaresEmptyPayloadSend(body.linkageTerms) ||
-      (body.disclosedPayloadColumns?.length ?? 0) === 0,
-    {
-      message:
-        "disclosedPayloadColumns names a column while the linkage terms " +
-        "declare an empty payload.send",
-      path: ["disclosedPayloadColumns"],
-    },
-  )
-  .refine(
-    (body) =>
-      !declaresPayloadSendColumn(body.linkageTerms) ||
-      body.disclosedPayloadColumns === undefined ||
-      body.disclosedPayloadColumns.length > 0,
-    {
-      message:
-        "disclosedPayloadColumns is empty while the linkage terms declare a " +
-        "payload.send naming a column",
-      path: ["disclosedPayloadColumns"],
-    },
-  );
+const TermsUpdateBodySchema = z.strictObject({
+  kind: z.literal(TERMS_UPDATE_KIND),
+  version: z.literal("1"),
+  partnership: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
+  linkageTerms: InvitationLinkageTermsSchema,
+});
 
 /**
  * Which check refused a terms update:
@@ -216,9 +179,6 @@ export async function encodeTermsUpdate(
     version: "1",
     partnership: await termsUpdatePartnership(sharedSecret),
     linkageTerms: update.linkageTerms,
-    ...(update.disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns: update.disclosedPayloadColumns }
-      : {}),
   });
   const bytes = enc.encode(JSON.stringify(body));
   const encoded = `${toBase64Url(bytes)}.${toBase64Url(
@@ -323,10 +283,5 @@ export async function decodeTermsUpdate(
       "this terms update names a different partnership than the shared " +
         "secret it was authenticated under",
     );
-  return {
-    linkageTerms: parsed.linkageTerms,
-    ...(parsed.disclosedPayloadColumns !== undefined
-      ? { disclosedPayloadColumns: parsed.disclosedPayloadColumns }
-      : {}),
-  };
+  return { linkageTerms: parsed.linkageTerms };
 }

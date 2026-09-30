@@ -97,15 +97,13 @@ rather than stating one of its own.
 WHICH facts a surface marks is still the surface's own. The received-columns
 basis is marked on the CLI's line and not on the web's payload block, which shows
 the set with no basis beside it. The two surfaces do not disagree there -- one of
-them declines to state the fact rather than stating it differently -- and the
-silence understates, which is the safe direction.
+them declines to state the basis rather than stating a different one.
 
 That silence is deliberate rather than pending. The clause the web's line held
-before -- that any payload column would abort the exchange -- overstates on the
-line it sat on: the commitment holds only where the invitation includes the column
-set, so an empty set reads truer bare than qualified by a promise that does not
-cover it. A fact's classification binds the surface that states the fact, not
-every surface that shows the value.
+before -- that any payload column would abort the exchange -- overstates: nothing
+compares the received columns against the set once they cross. A fact's
+classification binds the surface that states the fact, not every surface that
+shows the value.
 
 That the classification is a KEYED TABLE, rather than a field on
 `InvitationSummary`, follows from two properties a per-field flag cannot hold.
@@ -148,79 +146,41 @@ on both surfaces, with nothing after it.
 
 The display distinguishes an explicit empty declaration from an absent one
 structurally rather than in words. The line renders only for a DECLARED
-direction; a direction the invitation leaves open prints no line at all and is
-reconciled against the sender's own disclosure when the exchange runs. A reader
+direction; a direction the invitation leaves open prints no line at all, and its
+list is filled from the sender's stated columns on the first run. A reader
 meeting `(none)` is therefore already looking at an explicit declaration, and a
 clause saying so restates what the structure holds.
 
-What such a clause adds beyond that restatement is worse than redundant. Payloads
-are exchanged before either side reconciles what it received, so a violated
-declaration aborts the exchange only after the values have crossed the wire -- an
-enforcement that does not do what "would abort the exchange" sounds like at a
-consent prompt, where an acceptor is deciding what it is willing to have leave the
-machine.
-
 So the line states what crosses, and whether the exchange holds that fact or the
 inviting party merely declared it is the basis marker's job -- the division of
-labour the classification above sets up. The enforcement mechanics, which party aborts
-and that the abort follows transmission, are the operator's to know and are
-stated in [CLI.md](../CLI.md#offline-acceptance), which has room to state them.
+labour the classification above sets up. The enforcement mechanics, which party
+refuses and at which point of the run, are the operator's to know and are stated
+in [CLI.md](../CLI.md#offline-acceptance), which has room to state them.
 
-## One line, two bases: carried against declared
+## The received-columns line: one source, one basis
 
-The received-columns line has two sources. Where the invitation carries the
-disclosed subset, the line IS that subset -- the inviter's own transmission
-predicate run over its own metadata, so the displayed set cannot drift from the
-bytes that flow. Where it carries none -- an older or metadata-unknown mint, or the
-inviter's own pre-mint preview of terms it has authored but not yet minted -- the
-line falls back to the `payload.send` the inviter wrote.
+The received-columns line has one source: the inviting party's `payload.send`,
+which every mint that holds its metadata states from the columns its payload step
+transmits ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#the-send-side-is-in-the-agreed-terms)).
+An acceptance mirrors it into the acceptor's `payload.receive`, and every run's
+terms exchange compares that list against the send set the inviting party's run
+states, before any key or data moves, on the offline and the online path alike.
+A declared empty set renders `(none)`: it becomes the acceptor's strict
+`receive: []`.
 
-Both are declarations; only one of them is enforced. An acceptance records the
-CARRIED subset as what it will receive and the received payload is reconciled
-against it, while the authored fallback records nothing -- and an absent
-expectation is the lazy reconciliation path, whose absent-versus-empty semantics
-are the spec's and are stated normatively with the payload step. A marker keyed on
-"the invitation declared something" therefore puts `enforced` on a line where an
-inviter may declare one set, transmit another, and not be stopped. Worse, which
-source the line comes from is the INVITING party's choice, so a surface keyed on
-the declaration lets a partner earn the `enforced` marker without earning the
-check behind it.
+The line takes one basis, `trust-contingent` (`inboundPayloadColumns`). The terms
+exchange settles which set the partner's run states, and refuses on a mismatch,
+but what then crosses is held to that set only by the partner's own build: the
+received payload is not compared against the list after it crosses, and the one
+check there, refusing any column sent to a party receiving none, runs only for a
+count-only party or one entitled to no result. A partner whose software states
+one set and sends another is not stopped, which is the `trust-contingent`
+definition, and `enforced` would claim a run that aborts on the violation.
 
-So the fact splits in two, one entry per basis, selected on the provenance the
-summary already knows. This is the second line to hold two classifications at
-once, and it does so on a different axis than the first: the partner's result
-receipt splits by the fact's VALUE, this one by where the displayed set came from.
-The keyed table absorbs both without a conditional-basis mechanism, which is the
-property that made a table the right shape to begin with.
-
-The `(none)` reading above is unaffected. An authored `payload.send` that is empty
-is not a declaration the display recognizes at all -- it prints no line, exactly as
-a lazy direction does -- so a rendered `(none)` is always the carried case, and
-always the strict commitment.
-
-## What the marker understates, on purpose
-
-The classification keys on the invitation, and the invitation is the same on both
-acceptance paths. The enforcement is not. An offline acceptance writes a
-configuration whose terms mirror the inviter's `payload.send` into this party's own
-`payload.receive`, and the later `alcove exchange` falls back to that mirror as
-its received-column commitment where no carried subset was recorded. The
-authored-declaration case is therefore enforced on that path, and the line marks it
-as the partner's word regardless.
-
-That understatement is deliberate. The display is rendered at consent time, before
-the run that follows is decided, and one marking serves both paths, so one of the
-two is wrong in one of the two cases. Only one of those errors costs the operator
-anything. An operator told Alcove will stop a violation it will not stop plans
-around a check that never runs -- the failure this classification exists to
-prevent, and the same error as reading a cooperative undertaking as a
-cryptographic guarantee. An operator told Alcove will not stop something it does
-stop has lost a reassurance and nothing else.
-
-Making the display path-aware is not the way to close it: the path is a
-property of what the operator does next, not of the invitation they are being
-asked to consent to, and a marker that changed with the subcommand would be
-stating two different bases for one unchanged fact.
+Why one basis rather than two: a line whose source the inviting party can pick
+needs a basis per source. With the send set inside the agreed terms on every
+path, the declaration the line shows is itself what the run compares, and there
+is nothing to split ([payload-as-agreed-terms.md](payload-as-agreed-terms.md)).
 
 ## The outbound-send line, and what it stands behind
 
@@ -616,13 +576,9 @@ the protocol suppresses the frame on. One label carries both, since what the lin
 answers -- what the partner learns about its own records -- is the same question
 either way.
 
-The payload declaration the second condition rests on cannot disagree with the
-disclosed subset the same token holds, whoever authored it: the token schema
-refuses both pairings that would state one disclosure two ways, at decode as
-well as at the mint
-([FILE_SYNC.md](../spec/FILE_SYNC.md#disclosed-columns-subset-on-the-token)).
-So a surface reading the declaration for this line and the subset for the
-receive line beside it cannot be made to state both at once.
+The payload declaration the second condition rests on is the same
+`payload.send` the receive line beside it reads, so the two lines cannot state
+two disclosures.
 
 ## A fact that outlives the run, and the negative it does not state
 
@@ -692,11 +648,11 @@ the proposed-versus-applied semantics -- the whole judgment above -- as a second
 implementation the representation check cannot tell apart from the first.
 
 **Reclassify the inviter's authored payload declaration as consent-irrelevant,
-on the grounds that the received-columns line is better derived from the token's
-carried disclosure predicate.** The assumption is right and the summary already acts
-on it: the line derives from the carried `disclosedPayloadColumns` where the
-invitation carries one, falling back to the authored declaration otherwise. That
-makes reclassification unnecessary, and it would have cost measurement -- an
+on the grounds that the received-columns line is better derived from the
+inviter's disclosure predicate.** The assumption is right, and the mint acts on
+it: every mint that holds its metadata states `payload.send` from that predicate,
+so the declaration the line reads is the predicate's output. That makes
+reclassification unnecessary, and it would have cost measurement -- an
 excluded field gets no probe at all, so the surfaces would stop being measured on
 a field they do represent.
 

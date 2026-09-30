@@ -2,7 +2,6 @@ import {
   MAX_TEXT_LENGTH,
   connectionFromLocator,
   deriveAcceptedLinkageTerms,
-  disclosedColumnNames,
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
@@ -67,10 +66,6 @@ const inviterTerms = getDefaultLinkageTerms(
   "County Health Dept",
   inviterMetadata,
 );
-
-// The set the token publishes -- generateInvitation derives it from this same
-// metadata, so the fixture mirrors the mint (["program_code"] here).
-const tokenDisclosedColumns = disclosedColumnNames(inviterMetadata);
 
 function depositInputs(
   overrides: Partial<ManagedDepositInputs> = {},
@@ -156,41 +151,6 @@ describe("composeManagedDocument", () => {
     expect(JSON.stringify(doc)).not.toContain('"key"');
   });
 
-  test("holds a caller-supplied receive set verbatim, never re-derived", () => {
-    const doc = composeManagedDocument(
-      {
-        side: "inviter",
-        linkageTerms: inviterTerms,
-        metadata: inviterMetadata,
-        expectedPayloadColumns: ["partner_col"],
-      },
-      webrtcLocatorFromEndpoint(inviterEndpoint),
-    );
-    expect(doc.expectedPayloadColumns).toEqual(["partner_col"]);
-  });
-
-  test("preserves an EMPTY commitment (strict), distinct from an absent one (lazy)", () => {
-    const strict = composeManagedDocument(
-      {
-        side: "inviter",
-        linkageTerms: inviterTerms,
-        expectedPayloadColumns: [],
-      },
-      webrtcLocatorFromEndpoint(inviterEndpoint),
-    );
-    expect(strict.expectedPayloadColumns).toEqual([]);
-
-    const lazy = composeManagedDocument(
-      {
-        side: "inviter",
-        linkageTerms: inviterTerms,
-        metadata: inviterMetadata,
-      },
-      webrtcLocatorFromEndpoint(inviterEndpoint),
-    );
-    expect(lazy).not.toHaveProperty("expectedPayloadColumns");
-  });
-
   test("holds the caller's terms-side commitment verbatim, absent when none binds", () => {
     // The declaration is the token's, never re-derived from the terms composed
     // beside it: an acceptor's own `deduplicate` is the mirror's false whatever
@@ -238,9 +198,6 @@ describe("buildManagedDeposit (inviter)", () => {
     expect(deposit.exchangeFile.connection.channel).toBe("webrtc");
     expect(deposit.exchangeFile.authentication).toBeUndefined();
     expect(deposit.label).toBe("Riverbend quarterly");
-    // The received set is unknowable at mint, so no receive commitment is
-    // persisted.
-    expect(deposit.exchangeFile).not.toHaveProperty("expectedPayloadColumns");
   });
 
   test("holds no folder grant and no schedule: both are taken on the exchange's page", () => {
@@ -284,19 +241,13 @@ describe("buildManagedDeposit (acceptor)", () => {
   // The acceptor's own perspective: identity replaced, output/payload mirrored.
   const acceptorTerms = deriveAcceptedLinkageTerms(inviterTerms, "Clinic A");
 
-  function acceptorDeposit(
-    tokenSet: Array<string> | undefined,
-    declaredDeduplicate?: boolean,
-  ) {
+  function acceptorDeposit(declaredDeduplicate?: boolean) {
     return buildManagedDeposit(
       {
         documentParts: {
           side: "acceptor",
           linkageTerms: acceptorTerms,
           metadata: acceptorMetadata,
-          ...(tokenSet !== undefined
-            ? { expectedPayloadColumns: tokenSet }
-            : {}),
           ...(declaredDeduplicate !== undefined
             ? { expectedPartnerDeduplicate: declaredDeduplicate }
             : {}),
@@ -310,7 +261,7 @@ describe("buildManagedDeposit (acceptor)", () => {
   }
 
   test("deposits side acceptor composing from the invitation endpoint and derived terms", () => {
-    const deposit = acceptorDeposit(tokenDisclosedColumns);
+    const deposit = acceptorDeposit();
     expect(deposit.side).toBe("acceptor");
     // The connection block is composed from the INVITATION's endpoint.
     expect(deposit.exchangeFile.connection).toEqual(
@@ -320,29 +271,12 @@ describe("buildManagedDeposit (acceptor)", () => {
     expect(deposit.exchangeFile.authentication).toBeUndefined();
   });
 
-  test("commits the token's disclosed set as expectedPayloadColumns", () => {
-    const deposit = acceptorDeposit(tokenDisclosedColumns);
-    expect(deposit.exchangeFile.expectedPayloadColumns).toEqual(
-      tokenDisclosedColumns,
-    );
-  });
-
-  test("an EMPTY token set persists as a strict receive-nothing commitment", () => {
-    const deposit = acceptorDeposit([]);
-    expect(deposit.exchangeFile.expectedPayloadColumns).toEqual([]);
-  });
-
-  test("a token with no set leaves the commitment absent (lazy)", () => {
-    const deposit = acceptorDeposit(undefined);
-    expect(deposit.exchangeFile).not.toHaveProperty("expectedPayloadColumns");
-  });
-
   test("commits the token's declared deduplicate for later re-runs", () => {
     // A managed re-run runs from this document alone, with no token in hand, so
     // the declaration the acceptance consented to has to be in it or every re-run
     // after the one-shot runs unbound.
     for (const declared of [false, true]) {
-      const deposit = acceptorDeposit(tokenDisclosedColumns, declared);
+      const deposit = acceptorDeposit(declared);
       expect(deposit.exchangeFile.expectedPartnerDeduplicate).toBe(declared);
     }
   });

@@ -22,7 +22,6 @@ import {
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_LINKAGE_ENTRIES,
-  MAX_PAYLOAD_ENTRIES,
   MAX_DATE_FORMAT_LENGTH,
   MAX_TRANSFORM_PARAM_LENGTH,
   NAME_SHAPE_MESSAGE,
@@ -384,50 +383,6 @@ test("decodeInvitation reads a payload column named twice as one entry", async (
   ]);
 });
 
-test("decodeInvitation reads a disclosed column named twice as one entry, and the consent summary shows it once", async () => {
-  // The held disclosed subset is what the acceptor consents to and then
-  // enforces: summarizeInvitation prefers it over the authored payload.send,
-  // and an acceptance writes it verbatim as expectedPayloadColumns. A partner
-  // token naming a column twice there must therefore collapse at decode, or the
-  // acceptor consents to a two-item list and expects a set the partner's own
-  // transmission cannot match.
-  // Terms that share the result with the accepting party: the summary reads the
-  // subset only where a column is transmitted at all, so the base terms' own
-  // one-sided direction would answer a different question than this one.
-  const token = {
-    ...baseToken,
-    linkageTerms: {
-      ...baseTerms,
-      output: { expectsOutput: true, shareWithPartner: true },
-      payload: { send: [{ name: "dose", description: "Dose administered" }] },
-    },
-    disclosedPayloadColumns: ["dose", "dose"],
-  };
-  const decoded = await decodeInvitation(await encodeRaw(token));
-  expect(decoded.disclosedPayloadColumns).toEqual(["dose"]);
-  const summary = summarizeInvitation(decoded);
-  expect(summary.payload).toMatchObject({
-    send: ["dose"],
-    sendFromCarriedSubset: true,
-  });
-});
-
-test("decodeInvitation refuses an over-count disclosed list by its authored count, not the count it collapses to", async () => {
-  // The count cap stands ahead of the collapse, as it does on the payload
-  // lists: a list padded with one name repeated is refused for the count it was
-  // authored with rather than admitted for the single entry it would leave.
-  const token = {
-    ...baseToken,
-    disclosedPayloadColumns: Array.from(
-      { length: MAX_PAYLOAD_ENTRIES + 1 },
-      () => "dose",
-    ),
-  };
-  await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-    /disclosedPayloadColumns must not exceed/,
-  );
-});
-
 test("decodeInvitation screens a snake_case parse_date inputFormat for length (the fold precedes the screen)", async () => {
   // The per-step length screen reads the camelCase `inputFormat`. Because the
   // decode fold runs BEFORE validation, a snake_case `input_format` over the
@@ -593,139 +548,26 @@ test("decodeInvitation refuses a bidi override in a name", async () => {
   );
 });
 
-test("decodeInvitation refuses a name-class character in the disclosed set", async () => {
-  // The token's disclosed column list names the columns the acceptor will
-  // receive, and an acceptance writes it into that operator's configuration as
-  // `expected_payload_columns` -- a file read by the operator's editor and by
-  // tooling that is not Alcove, where no display escaping of ours stands. So
-  // the list holds the same name shape the terms' own payload names do, at
-  // decode, before the token reaches a consent surface. A tab, a C1 control,
-  // and a bidi override, written as escapes.
-  for (const hostile of ["\u0009", "\u0085", "\u202e"]) {
-    // An ASCII marker beside the character: the refusal must report neither.
-    const token = {
-      ...baseToken,
-      disclosedPayloadColumns: [`zqmark${hostile}`],
-    };
-    const encoded = await encodeRaw(token);
-    await expect(decodeInvitation(encoded)).rejects.toThrow(NAME_SHAPE_MESSAGE);
-    let caught: unknown;
-    try {
-      await decodeInvitation(encoded);
-    } catch (err) {
-      caught = err;
-    }
-    const rendered = describeDecodeError(caught);
-    expect(rendered).toContain("disclosedPayloadColumns.0");
-    expect(rendered).not.toContain("zqmark");
-    expect(rendered).not.toContain(hostile);
-  }
-});
-
-test("decodeInvitation keeps an ordinary disclosed column name", async () => {
-  // Non-vacuous: the shape refuses the class above and nothing else, so a list
-  // of ordinary names still decodes, and the empty list -- the strict "receive
-  // nothing" commitment -- is still distinguishable from an omitted field.
-  const decoded = await decodeInvitation(
-    await encodeRaw({
-      ...baseToken,
-      disclosedPayloadColumns: ["risk_score", "notes"],
-    }),
-  );
-  expect(decoded.disclosedPayloadColumns).toEqual(["risk_score", "notes"]);
-  const empty = await decodeInvitation(
-    await encodeRaw({ ...baseToken, disclosedPayloadColumns: [] }),
-  );
-  expect(empty.disclosedPayloadColumns).toEqual([]);
-});
-
-// The terms shape whose acceptance surfaces read the disclosed subset and the
-// `payload.send` declaration at once: a single-pass `psi` invitation handing
-// the result to the accepting party alone, where the empty declaration is what
-// selects the withheld-table fact (withholdsInviterAssociationTable).
+// A single-pass `psi` invitation handing the result to the accepting party
+// alone, where an empty `payload.send` is what selects the withheld-table fact
+// (withholdsInviterAssociationTable).
 const helperInviterTerms = {
   ...baseTerms,
   linkageStrategy: "single-pass" as const,
   output: { expectsOutput: false, shareWithPartner: true },
 };
 
-test.each([
-  { half: "encodeInvitation", run: encodeInvitation },
-  {
-    half: "decodeInvitation",
-    run: async (token: InvitationToken) =>
-      decodeInvitation(await encodeRaw(token)),
-  },
-])(
-  "$half refuses a disclosed column beside an empty payload.send",
-  async ({ run }) => {
-    // The two state one disclosure -- what the inviting party transmits for a
-    // matched record -- so a token naming a column in the subset while
-    // declaring it discloses none states a disclosure no run of it could make,
-    // and the acceptance surfaces would read one side each: the receive line
-    // from the subset, the withheld-table fact from the declaration.
-    const token: InvitationToken = {
+test("an empty payload.send decodes and selects the withheld table", async () => {
+  const decoded = await decodeInvitation(
+    await encodeRaw({
       ...baseToken,
       linkageTerms: { ...helperInviterTerms, payload: { send: [] } },
-      disclosedPayloadColumns: ["risk_score"],
-    };
-    await expect(run(token)).rejects.toThrow(
-      /disclosedPayloadColumns names a column while the linkage terms declare an empty payload.send/,
-    );
-  },
-);
-
-test.each([
-  { half: "encodeInvitation", run: encodeInvitation },
-  {
-    half: "decodeInvitation",
-    run: async (token: InvitationToken) =>
-      decodeInvitation(await encodeRaw(token)),
-  },
-])(
-  "$half refuses an empty disclosed set beside a payload.send naming a column",
-  async ({ run }) => {
-    // The reverse pairing, refused on the same ground and without the output
-    // gate below: assertPayloadSendDisclosed holds a non-empty `send` to
-    // exactly what metadata discloses whichever way the result runs, so no
-    // mint can produce this pair either.
-    const token: InvitationToken = {
-      ...baseToken,
-      linkageTerms: {
-        ...helperInviterTerms,
-        payload: { send: [{ name: "risk_score" }] },
-      },
-      disclosedPayloadColumns: [],
-    };
-    await expect(run(token)).rejects.toThrow(
-      /disclosedPayloadColumns is empty while the linkage terms declare a payload.send naming a column/,
-    );
-  },
-);
-
-test("an empty payload.send and a matching empty or absent subset still decode", async () => {
-  // The shape the refusal must not catch, and the one the withheld-table fact
-  // is selected from: a helper inviter disclosing nothing, with the subset
-  // stating the same thing or left lazy. Both decode, and both still select
-  // the withholding.
-  for (const disclosed of [[], undefined]) {
-    const decoded = await decodeInvitation(
-      await encodeRaw({
-        ...baseToken,
-        linkageTerms: { ...helperInviterTerms, payload: { send: [] } },
-        ...(disclosed !== undefined
-          ? { disclosedPayloadColumns: disclosed }
-          : {}),
-      }),
-    );
-    expect(decoded.disclosedPayloadColumns).toEqual(disclosed);
-    expect(summarizeInvitation(decoded).inviterTableWithheld).toBe(true);
-  }
+    }),
+  );
+  expect(summarizeInvitation(decoded).inviterTableWithheld).toBe(true);
 });
 
-test("a payload.send and a subset naming the same column still decode", async () => {
-  // The ordinary disclosing invitation: the declaration and the subset agree,
-  // which is what every mint path emits.
+test("a payload.send naming a column decodes and does not select the withheld table", async () => {
   const decoded = await decodeInvitation(
     await encodeRaw({
       ...baseToken,
@@ -733,31 +575,9 @@ test("a payload.send and a subset naming the same column still decode", async ()
         ...helperInviterTerms,
         payload: { send: [{ name: "risk_score" }] },
       },
-      disclosedPayloadColumns: ["risk_score"],
     }),
   );
-  expect(decoded.disclosedPayloadColumns).toEqual(["risk_score"]);
   expect(summarizeInvitation(decoded).inviterTableWithheld).toBe(false);
-});
-
-test("a disclosed column beside an empty send decodes where the partner gets no result", async () => {
-  // The control the output gate exists for, measured against the mint rule
-  // itself: assertPayloadSendDisclosed admits an empty `payload.send` beside
-  // disclosing metadata when `shareWithPartner` is false, since the run then
-  // transmits no column at all, so an Alcove mint stamps exactly this pair and
-  // decode must keep taking it.
-  const decoded = await decodeInvitation(
-    await encodeRaw({
-      ...baseToken,
-      linkageTerms: {
-        ...helperInviterTerms,
-        output: { expectsOutput: true, shareWithPartner: false },
-        payload: { send: [] },
-      },
-      disclosedPayloadColumns: ["risk_score"],
-    }),
-  );
-  expect(decoded.disclosedPayloadColumns).toEqual(["risk_score"]);
 });
 
 test("decodeInvitation rejects a deeply-nested transform.params at decode (bounded fold)", async () => {
@@ -1132,32 +952,20 @@ test.each(positiveCases)(
   },
 );
 
-// --- Disclosed-columns subset ------------------------------------------------
+// --- A top-level field an earlier build wrote ---------------------------------
 
-test("round-trips the inviter's disclosed-columns subset on the token", async () => {
-  const token: InvitationToken = {
-    ...baseToken,
-    disclosedPayloadColumns: ["county", "enrollment_id"],
-  };
-  const decoded = await decodeInvitation(await encodeInvitation(token));
-  expect(decoded.disclosedPayloadColumns).toEqual(["county", "enrollment_id"]);
-  // An optional TOP-LEVEL addition does not bump the token version.
-  expect(decoded.version).toBe("1");
-});
-
-test("a token minted without the disclosed-columns field still decodes (top-level back-compat)", async () => {
-  // The field is an optional top-level addition on the non-strict token schema,
-  // so a token shaped as one minted before it existed (no such key) decodes
-  // unchanged -- the backward-compatibility property that licenses the
-  // no-version-bump, exactly as connectionEndpoint took.
+test("a token holding the disclosed-columns list an earlier build wrote decodes without it", async () => {
+  // The token schema is non-strict at the top level, so a field this build no
+  // longer reads is dropped rather than refused; the terms' own payload.send
+  // states the same columns.
   const decoded = await decodeInvitation(
     await encodeRaw({
-      version: "1",
-      linkageTerms: baseTerms,
-      sharedSecret: VALID_SECRET,
+      ...baseToken,
+      disclosedPayloadColumns: ["county", "enrollment_id"],
     }),
   );
-  expect(decoded.disclosedPayloadColumns).toBeUndefined();
+  expect(decoded).not.toHaveProperty("disclosedPayloadColumns");
+  expect(decoded.linkageTerms).toEqual(baseToken.linkageTerms);
 });
 
 // --- Retain-mode declaration -------------------------------------------------
@@ -1383,22 +1191,6 @@ test.each(sharedDirEndpoints)(
     expect(decoded.inviterRetainsFiles).toBe(false);
   },
 );
-
-test("encodeInvitation rejects a disclosed-columns entry with an empty name", async () => {
-  const token = {
-    ...baseToken,
-    disclosedPayloadColumns: [""],
-  } as unknown as InvitationToken;
-  await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
-});
-
-test("decodeInvitation rejects a disclosed-columns entry with an empty name", async () => {
-  const encoded = await encodeRaw({
-    ...baseToken,
-    disclosedPayloadColumns: [""],
-  });
-  await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
-});
 
 test.each(credentialCases)(
   "encodeInvitation rejects a $channel endpoint holding $field",

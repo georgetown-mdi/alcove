@@ -117,20 +117,14 @@ export type ExchangeLocator = ExchangeFileConnection | WebRTCExchangeLocator;
  * Everything a web-composed exchange needs to become a CLI-ready config, minus
  * the secret (which rides only the invitation code, never the file). The
  * connection is a credential-free {@link ExchangeFileConnection}; the linkage
- * terms are mandatory; metadata, standardization, and the payload-column
- * commitments are optional.
+ * terms are mandatory; metadata, standardization, and the partner's
+ * declared `deduplicate` are optional.
  */
 export interface ExchangeFileInput {
   connection: ExchangeFileConnection;
   linkageTerms: LinkageTerms;
   metadata?: Metadata;
   standardization?: Standardization;
-  /**
-   * This party's RECEIVE-side commitment (the partner's column namespace) -- the
-   * top-level `expected_payload_columns` a later `alcove exchange` enforces it
-   * receives. Optional; omit to reconcile lazily.
-   */
-  expectedPayloadColumns?: string[];
   /**
    * The `deduplicate` an accepted invitation declared for the PARTNER's own side
    * -- the top-level `expected_partner_deduplicate` a later `alcove exchange`
@@ -162,8 +156,6 @@ interface ExchangeSpecAssembly {
   linkageTerms: LinkageTerms;
   metadata?: Metadata;
   standardization?: Standardization;
-  /** See {@link ExchangeFileInput.expectedPayloadColumns}. */
-  expectedPayloadColumns?: string[];
   /** See {@link ExchangeFileInput.expectedPartnerDeduplicate}. */
   expectedPartnerDeduplicate?: boolean;
   /**
@@ -236,9 +228,6 @@ export function assembleExchangeSpec(
     ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
     ...(input.standardization !== undefined
       ? { standardization: input.standardization }
-      : {}),
-    ...(input.expectedPayloadColumns !== undefined
-      ? { expectedPayloadColumns: input.expectedPayloadColumns }
       : {}),
     ...(input.expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate: input.expectedPartnerDeduplicate }

@@ -207,10 +207,4 @@ describe("inviterServerJobConfig", () => {
     expect(config).not.toHaveProperty("metadata");
     expect(config).not.toHaveProperty("standardization");
   });
-
-  test("sets no received-payload commitment -- that one is the acceptor's", () => {
-    // The commitment mirrors an invitation's disclosed set, which only the accepting
-    // side has to mirror; the inviter authored the set itself.
-    expect(configFor().expectedPayloadColumns).toBeUndefined();
-  });
 });

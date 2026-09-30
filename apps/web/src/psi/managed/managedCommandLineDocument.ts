@@ -412,7 +412,6 @@ function composableDocumentFields(): ReadonlySet<string> {
     linkageTerms: getDefaultLinkageTerms("composition probe"),
     metadata: [],
     standardization: [],
-    expectedPayloadColumns: [],
     expectedPartnerDeduplicate: false,
     includeOwnColumns: "all",
     csvDelimiter: "|",

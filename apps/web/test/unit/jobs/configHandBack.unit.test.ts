@@ -73,7 +73,6 @@ function webrtcDocument(
     linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
     csv_delimiter: "|",
     include_own_columns: "all",
-    expected_payload_columns: ["partner_notes"],
     expected_partner_deduplicate: false,
     retention_disposition: "Filed with the 2026 intake.",
     signing: {

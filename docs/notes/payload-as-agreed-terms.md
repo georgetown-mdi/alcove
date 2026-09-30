@@ -4,16 +4,16 @@ title: "The Payload Column Set as Agreed Terms"
 
 # The payload column set as agreed terms: one record, compared at the handshake
 
-_Status: decided on the maintainer's ruling, after a 3-panelist design panel and a survey of what the terms exchange already compares; the first-run fill of an unset `payload.receive`, the in-band terms change, the mint-time `payload.send`, and the removal of the two send-side records are built; the removal of the receive-side record and its post-payload check is not. The receive-side record is specified as it stands in [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#payload-disclosure-consent), the terms comparison in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload) and [CANONICAL_ENCODING.md](../spec/CANONICAL_ENCODING.md#scope), and the terms-exchange envelope in [PROTOCOL.md](../spec/PROTOCOL.md#linkage-strategies-cascade-and-single-pass); the spec rows change as each part lands. This note records why the shape is the one it is. See [docs/notes/README.md](README.md)._
+_Status: decided on the maintainer's ruling, after a 3-panelist design panel and a survey of what the terms exchange already compares; the first-run fill of an unset `payload.receive`, the in-band terms change, the mint-time `payload.send`, and the removal of the two send-side records and of the receive-side record and its post-payload check are built. The payload lists are specified in [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#payload-disclosure-consent), the terms comparison in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload) and [CANONICAL_ENCODING.md](../spec/CANONICAL_ENCODING.md#scope), and the terms-exchange envelope in [PROTOCOL.md](../spec/PROTOCOL.md#linkage-strategies-cascade-and-single-pass). This note records why the shape is the one it is. See [docs/notes/README.md](README.md)._
 
 A recurring exchange runs the same agreement many times, and either party's input file can change between runs: a column added to an extract, a column dropped from it, a column renamed. The question was how the exchange holds the set of payload columns each party sends and receives when that happens, so that neither party discloses a column the partner never agreed to receive, and neither party runs on for less than it agreed to receive.
 
 ## The records the ruling removes
 
-Three records the tool writes into a party's configuration, beside the agreed terms rather than inside them ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#payload-disclosure-consent)):
+Three records the tool wrote into a party's configuration, beside the agreed terms rather than inside them:
 
 - a send-side commitment and an accepting party's outbound consent, both checked before connecting;
-- a receive-side expected set, checked only after the partner's payload has crossed ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#receive-side-runtime-enforcement-reconcilereceivedpayload)).
+- a receive-side expected set, checked only after the partner's payload had crossed.
 
 That arrangement left three gaps, all on the paths a recurring exchange takes:
 
@@ -29,7 +29,8 @@ The agreement is the only record of the payload.
 
 - **What a party sends** is what its input metadata declares as payload. A column the metadata does not name is not sent, and the run lists the undeclared columns.
 - **What a party receives** is `linkage_terms.payload.receive`. A recurring exchange that leaves it unset takes the partner's declared send set on its first run, at the terms exchange and before any key or data moves, and records it in the configuration it runs from; every later run compares it strictly ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#an-unset-payloadreceive-is-filled-on-the-first-run)). A one-off exchange leaves it unset and takes what the partner sends. A party that declares `output.expects_output: false` has already stated that it receives nothing and lists no `payload.receive`; for a party that expects output, an explicit empty `receive: []` is how it states that it receives nothing (the cross-check itself: [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload)).
-- **No tool-written payload records.** The send-side commitment, the outbound consent and its pending state, the receive-side expected set, and the check that runs after the payload has crossed are removed, along with the console's confirmation card for the consent and the web import's lines for those records. The accept screen keeps showing the data dictionary.
+- **No tool-written payload records.** The send-side commitment, the outbound consent and its pending state, the receive-side expected set, and the check that runs after the payload has crossed are removed, along with the console's confirmation card for the consent and the web import's lines for those records. The accept screen keeps showing the data dictionary. The one check left after the payload crosses refuses any payload sent to a party that receives none, which no record feeds.
+- **Every mint states the send set the same way.** An invitation or terms update made from a configuration whose `payload.send` names other columns than its metadata sends states the metadata's columns in its place, as a run and the web re-invite do, and the command line rewrites the configuration's list and warns ([EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#a-stated-payloadsend-that-differs-from-the-metadata)). The alternative, refusing that mint on the command line and on the web re-invite alike, stops the operator at a mismatch the run itself already resolves the same way.
 - **A change on either side is a terms mismatch at the handshake**, refused before any key or data moves. A declared column missing from the input is refused locally, before connecting.
 
 ## Why the terms were already enough
@@ -75,7 +76,7 @@ Three designs were weighed. All three kept tool-written records of the set in ea
 
 ## See also
 
-- [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#payload-disclosure-consent) - the payload records as they stand, and [what a terms update writes](../spec/EXCHANGE_FILE.md#what-applying-writes)
+- [EXCHANGE_FILE.md](../spec/EXCHANGE_FILE.md#payload-disclosure-consent) - the payload lists as agreed terms, and [what a terms update writes](../spec/EXCHANGE_FILE.md#what-applying-writes)
 - [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#linkage_termspayload) - `payload.send` and `payload.receive`, and how they are cross-checked
 - [PROTOCOL.md](../spec/PROTOCOL.md#linkage-strategies-cascade-and-single-pass) - the payload-intent flag on the terms-exchange envelope, outside the agreed-terms hash
 - [CLI.md](../CLI.md#changing-the-terms-of-an-established-partnership) - `alcove update` and `alcove apply`

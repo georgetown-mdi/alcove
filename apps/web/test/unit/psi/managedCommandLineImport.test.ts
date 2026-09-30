@@ -592,6 +592,22 @@ describe("refusing what this app cannot hold", () => {
     expect(message).toContain("import it again");
   });
 
+  test.each([
+    "expected_payload_columns",
+    "disclosed_payload_columns",
+    "outbound_payload_consent",
+  ])("a retired %s is named with the remedy the command line states", (key) => {
+    const message = refusal(
+      configText(commandLineDocument({ [key]: ["age"] })),
+    );
+
+    expect(message).toContain(
+      `the setting "${key}" is retired; delete it from the file`,
+    );
+    expect(message).toContain("import it again");
+    expect(message).not.toContain("not an Alcove exchange configuration");
+  });
+
   test("a key outside the schema is named, not mistaken for another file", () => {
     const message = refusal(
       configText(commandLineDocument({ surprise_field: "hand-edited line" })),
@@ -659,13 +675,13 @@ describe("refusing what this app cannot hold", () => {
     const message = refusal(
       stringifyYaml({
         ...(snakeizeKeys(commandLineDocument()) as Record<string, unknown>),
-        expected_payload_columns: ["partner_program"],
-        expectedPayloadColumns: ["other_program"],
+        retention_disposition: "partner_program",
+        retentionDisposition: "other_program",
       }),
     );
 
-    expect(message).toContain("expected_payload_columns");
-    expect(message).toContain("expectedPayloadColumns");
+    expect(message).toContain("retention_disposition");
+    expect(message).toContain("retentionDisposition");
     expect(message).not.toContain("partner_program");
   });
 
@@ -794,15 +810,11 @@ describe("import then export", () => {
           },
           { name: "program", type: "other", role: "payload", isPayload: true },
         ],
-        expectedPayloadColumns: ["partner_program"],
         expectedPartnerDeduplicate: true,
       }),
     });
     const record = readManagedCommandLineConfiguration(exported);
 
-    expect(record.exchangeFile.expectedPayloadColumns).toEqual([
-      "partner_program",
-    ]);
     expect(record.exchangeFile.expectedPartnerDeduplicate).toBe(true);
 
     const reexported = parseExchangeSpec(
@@ -811,7 +823,6 @@ describe("import then export", () => {
         "re-export",
       ),
     );
-    expect(reexported.expectedPayloadColumns).toEqual(["partner_program"]);
     expect(reexported.expectedPartnerDeduplicate).toBe(true);
   });
 });
@@ -829,7 +840,6 @@ describe("import, edit, and export on every channel", () => {
       },
       { name: "program", type: "other", role: "payload", isPayload: true },
     ],
-    expectedPayloadColumns: ["partner_program"],
     expectedPartnerDeduplicate: true,
     includeOwnColumns: "all",
     csvDelimiter: ";",

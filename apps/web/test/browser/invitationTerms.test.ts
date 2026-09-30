@@ -160,7 +160,6 @@ async function renderTerms(
   linkageTerms: LinkageTerms = terms,
   options?: {
     perspective?: "review" | "proposing";
-    disclosedPayloadColumns?: Array<string>;
     inviterRetainsFiles?: boolean;
     connectionEndpoint?: ConnectionEndpoint;
     outboundColumns?: Array<string>;
@@ -189,9 +188,6 @@ async function renderTerms(
         : {}),
       ...(options?.headingOrder !== undefined
         ? { headingOrder: options.headingOrder }
-        : {}),
-      ...(options?.disclosedPayloadColumns !== undefined
-        ? { disclosedPayloadColumns: options.disclosedPayloadColumns }
         : {}),
       ...(options?.outboundColumns !== undefined
         ? { outboundColumns: options.outboundColumns }
@@ -1337,7 +1333,6 @@ describe("InvitationTerms: always-visible ingress count in the 'What you receive
     linkageTerms: LinkageTerms,
     options?: {
       perspective?: "review" | "proposing";
-      disclosedPayloadColumns?: Array<string>;
     },
   ) {
     await renderTerms(linkageTerms, options);
@@ -1383,27 +1378,14 @@ describe("InvitationTerms: always-visible ingress count in the 'What you receive
     );
   });
 
-  test("the count derives from the actually-transmitted set held on the token", async () => {
-    // disclosedPayloadColumns is the inviter's own disclosure predicate output --
-    // exactly the set that flows -- so the hint counts it, not the authored
-    // payload.send (a single column here). Three transmitted columns => count 3.
-    await render(terms, {
-      disclosedPayloadColumns: ["ssn", "zip_code", "phone_number"],
-    });
-    await expect.element(toggle("Other details")).toBeInTheDocument();
-    expect(app.container.textContent).toContain(
-      "You will receive 3 data columns from your partner.",
-    );
-  });
-
   test("the declared-empty 'receive nothing' commitment raises no ingress count and no receive tier", async () => {
-    // A present-but-empty disclosed set is the strict "(none)" commitment: there is
+    // A present-but-empty payload.send is the strict "(none)" commitment: there is
     // no incoming data to flag, so the count is absent even though the send is
     // DECLARED.
     // With no ingress (and no request under review), the "What you receive" tier does
     // not render at all -- distinct from Result sharing's "You will receive the
     // matched result" line, which lives in the produce tier.
-    await render(terms, { disclosedPayloadColumns: [] });
+    await render({ ...terms, payload: { send: [], receive: [] } });
     await expect.element(toggle("Other details")).toBeInTheDocument();
     expect(group("What you receive").query()).toBeNull();
     // ... yet the declared-empty send still shows a bare "(none)" in the detail,
@@ -1416,7 +1398,7 @@ describe("InvitationTerms: always-visible ingress count in the 'What you receive
   });
 
   test("a lazy (undeclared) send raises no ingress count and no receive tier", async () => {
-    // No send authored and no disclosed set present: the inviter sends whatever its
+    // No send authored: the inviter sends whatever its
     // own metadata discloses (lazy), nothing declared up front, so nothing to flag and
     // no "What you receive" tier.
     await render({ ...terms, payload: { receive: [] } });
@@ -1425,29 +1407,21 @@ describe("InvitationTerms: always-visible ingress count in the 'What you receive
   });
 
   test("an invitation giving this party no result raises no ingress count beside its 'No'", async () => {
-    // The mint-reachable pair: the result is not shared, the terms declare an
-    // empty send, and the token still holds the subset a mint stamps whatever
-    // the output direction. Nothing crosses to a party entitled to no result, so
-    // the screen states the non-receipt under Result sharing and counts no
+    // The mint-reachable pair: the result is not shared and the terms declare
+    // an empty send. Nothing crosses to a party entitled to no result, so the
+    // screen states the non-receipt under Result sharing and counts no
     // arriving column against it -- the same reading the CLI accept prompt makes
     // of the same pair (apps/cli/test/unit/commands/accept.test.ts).
-    await render(
-      {
-        ...terms,
-        output: { expectsOutput: true, shareWithPartner: false },
-        payload: { send: [] },
-      },
-      { disclosedPayloadColumns: ["diagnosis"] },
-    );
+    await render({
+      ...terms,
+      output: { expectsOutput: true, shareWithPartner: false },
+      payload: { send: [] },
+    });
     await expect.element(toggle("Other details")).toBeInTheDocument();
     expect(app.container.textContent).toContain(
       "You will receive the matched result: No",
     );
     expect(group("What you receive").query()).toBeNull();
-    // The stamped column is named nowhere either: a column that does not cross
-    // is no part of what this party receives, at the count or in the detail.
-    const panel = await readyPanel("Other details");
-    expect(panel.textContent).not.toContain("diagnosis");
   });
 
   test("the inviter's own proposing preview shows no ingress count (its send is chips in 'What you disclose')", async () => {
@@ -1993,7 +1967,6 @@ describe("InvitationTerms: the always-visible facts are tiered into labelled dir
     linkageTerms: LinkageTerms,
     options?: {
       perspective?: "review" | "proposing";
-      disclosedPayloadColumns?: Array<string>;
     },
   ) {
     await renderTerms(linkageTerms, options);
@@ -3235,9 +3208,9 @@ describe("InvitationTerms: no partner-controlled byte reaches the screen", () =>
   );
 
   test("the same holds on the acceptor's review screen, over the columns and expiry the token includes", async () => {
-    // The props the accept screen supplies alongside the terms: the
-    // disclosed-columns subset the partner's token holds and the token's expiry
-    // instant, each reaching the screen through the same display boundary. The
+    // The props the accept screen supplies alongside the terms: the partner's
+    // declared send columns and the token's expiry instant, each reaching the
+    // screen through the same display boundary. The
     // acceptor's own file header goes in as a plain name and is not walked for:
     // it is the one prop here the partner does not control, so it is isolated
     // rather than escaped (asserted by the provenance pair above), and it enters
@@ -3246,11 +3219,10 @@ describe("InvitationTerms: no partner-controlled byte reaches the screen", () =>
       {
         linkageTerms: hostileTerms,
         perspective: "review",
-        disclosedPayloadColumns: [`disclo${RLO}sed`],
         outboundColumns: ["header"],
         expires: hostileSource.expires,
       },
-      [HOSTILE_IDENTITY, `disclo${RLO}sed`],
+      [HOSTILE_IDENTITY, `risk${BEL}score`],
     );
   });
 });

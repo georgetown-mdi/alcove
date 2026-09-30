@@ -330,12 +330,6 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # Omit the field to write your partner's values alone.
 # include_own_columns: disclosed
 
-# expected_payload_columns: payload columns (in the partner's namespace) you
-# require to receive at runtime. An empty list means "receive nothing"; omit the
-# field to accept whatever the partner sends.
-# expected_payload_columns:
-#   - matched_record_id
-
 # expected_partner_deduplicate: the linkage_terms.deduplicate your partner
 # declared for its own side in the invitation you accepted. 'alcove accept'
 # fills this in; you rarely set it by hand. An exchange refuses a partner that

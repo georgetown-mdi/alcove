@@ -439,16 +439,22 @@ test("with no way to take a change on, a changed partner deduplicate is refused 
   expect(partnerSent.every(isTermsOrDecisionFrame)).toBe(true);
 });
 
-test("a receive commitment the partner's columns no longer match is met at the terms exchange", async () => {
+test("a receive list the partner's columns no longer match is met at the terms exchange", async () => {
   const changes: TermsChange[] = [];
   const [connA, connB] = createMessagePipe();
   const partnerPrepared = prepareForExchange(
-    { metadata: sends("note"), linkageTerms: { ...baseTerms, identity: "P" } },
+    {
+      metadata: sends("note"),
+      linkageTerms: {
+        ...baseTerms,
+        identity: "P",
+        payload: { receive: columns("note") },
+      },
+    },
     "P",
     rows("P"),
     ["first_name", "note", "extra"],
   );
-  partnerPrepared.expectedPayloadColumns = ["note"];
   const [changer, partner] = await Promise.allSettled([
     runExchange(
       connA,

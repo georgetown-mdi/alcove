@@ -149,10 +149,6 @@ test("no payload column reaches the wire from an acceptor declaring it sends not
     inviterRows,
     inviterColumns,
   );
-  // What the CLI derives for this config: an authored `payload.receive: []` and
-  // no separate commitment falls back to the receive names, a strict "receive
-  // nothing".
-  inviterPrepared.expectedPayloadColumns = [];
 
   const acceptorRun = (async () =>
     runExchange(connAcceptor, "responder", acceptorPrepared(), {

@@ -12,7 +12,7 @@ import {
   withPartnerCertificateCondition,
 } from "../../src/records/signingIdentity";
 import { buildExchangeRecord } from "../../src/records/exchangeRecord";
-import { reconcileReceivedPayload } from "../../src/payloadExchange";
+import { assertNoPayloadReceived } from "../../src/payloadExchange";
 import {
   ConnectionError,
   createMessagePipe,
@@ -234,17 +234,18 @@ describe("a record states no mismatch where the run observed none", () => {
     expect(await terminatedRecordFor(refusal)).toBe(false);
   });
 
-  test("a received payload outside the set this party consented to", async () => {
+  test("a received payload for a party that receives none", async () => {
     const refusal = (() => {
       try {
-        reconcileReceivedPayload(
-          { columns: ["diagnosis"], rowIndices: [0], rows: [["x"]] },
-          ["status"],
-        );
+        assertNoPayloadReceived({
+          columns: ["diagnosis"],
+          rowIndices: [0],
+          rows: [["x"]],
+        });
       } catch (err: unknown) {
         return err;
       }
-      throw new Error("expected the reconciliation to refuse");
+      throw new Error("expected the received payload to be refused");
     })();
 
     expect(observedPartnerCertificateMismatch(refusal)).toBe(false);

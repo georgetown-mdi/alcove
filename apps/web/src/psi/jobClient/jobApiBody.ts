@@ -43,8 +43,8 @@ export const MAX_SFTP_CONNECTION_RESPONSE_BYTES = 64 * 1024;
  * so the intent schema's caps decide its length: `metadata` at
  * `MAX_METADATA_COLUMNS` entries each holding a
  * `MAX_METADATA_DESCRIPTION_LENGTH` description accounts for about 18 MB of it,
- * and `expectedPayloadColumns` plus the standardization outputs and inputs at
- * `MAX_NAME_LENGTH` for about 4 MB more; 32 MiB is the next power of two above
+ * and the standardization outputs and inputs at `MAX_NAME_LENGTH` for about
+ * 3 MB more; 32 MiB is the next power of two above
  * that sum, and its margin holds the linkage terms, connection, signing block,
  * tuning options, and the standardization steps, which core's compose refuses
  * past its node budget rather than serializing. A step's `function` name and

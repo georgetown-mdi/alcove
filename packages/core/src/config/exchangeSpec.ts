@@ -13,13 +13,9 @@ import {
   unrecognizedKeysAsWritten,
 } from "./unreadKeys.js";
 import {
-  columnsNamedOnce,
   LinkageTermsSchema,
-  MAX_NAME_LENGTH,
   MAX_PARAMS_ENTRIES,
-  MAX_PAYLOAD_ENTRIES,
   MAX_TEXT_LENGTH,
-  nameValue,
 } from "./linkageTermsSchema.js";
 import {
   csvDelimiterRefusal,
@@ -30,29 +26,8 @@ import { AuthenticationSchema, ConnectionConfigSchema } from "./connection.js";
 import { StandardizationSchema } from "./standardizationSchema.js";
 import { MetadataSchema, OwnColumnSelectionSchema } from "./metadata.js";
 import { SigningConfigSchema } from "./signing.js";
-import { boundedArray } from "../utils/boundedArray.js";
 
 // --- Exchange spec -----------------------------------------------------------
-
-/**
- * One of this spec's local payload column-name lists, with each name kept once:
- * the first entry naming a column stands and a later entry repeating it is
- * dropped ({@link columnsNamedOnce}, the collapse the negotiated payload
- * dictionary applies to the same input). A name written twice names one column
- * twice, and enforcement compares the list against a set of columns that holds
- * each once, so a repeat left standing would refuse a run for the author's own
- * typo -- on the receive side attributing it to the partner.
- *
- * {@link boundedArray} bounds the count at {@link MAX_PAYLOAD_ENTRIES} ahead of
- * the collapse, so a padded list is refused for its authored count. Each name
- * holds the shape (`nameValue`) and per-name cap of the linkage-terms names.
- */
-const payloadColumnNameList = (message: string): z.ZodType<string[]> =>
-  boundedArray(
-    nameValue(z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH))),
-    MAX_PAYLOAD_ENTRIES,
-    message,
-  ).transform((names) => columnsNamedOnce(names, (name) => name));
 
 /**
  * A complete alcove exchange specification. Consumed by both the web
@@ -63,9 +38,9 @@ const payloadColumnNameList = (message: string): z.ZodType<string[]> =>
  * rather than used literally; apply `readAtSignFile` (or equivalent) to
  * credential fields before parsing.
  *
- * `strictObject`: `expectedPayloadColumns` and `expectedPartnerDeduplicate`
- * are enforcement records whose ABSENCE is a valid state, so a misspelled key
- * that `strip` discards would silently disable the control it names. The
+ * `strictObject`: `expectedPartnerDeduplicate` is an enforcement record whose
+ * ABSENCE is a valid state, so a misspelled key that `strip` discards would
+ * silently disable the control it names. The
  * nested blocks still strip, `authentication` and the connection union's
  * webrtc member excepted, which are strict for the same reason as the top
  * level -- see EXCHANGE_FILE.md ("Versioning and compatibility policy").
@@ -107,30 +82,7 @@ export const ExchangeSpecSchema = z
       .min(1)
       .check(maxCodeUnits(MAX_TEXT_LENGTH))
       .optional(),
-    // Optional local enforcement record: the payload columns (in the
-    // PARTNER's namespace) this party will enforce it receives at runtime
-    // (reconcileReceivedPayload). Per-party and local like
-    // retentionDisposition -- not negotiated, swapped, cross-validated, or
-    // folded into the agreed-terms hash, and distinct from
-    // linkageTerms.payload.receive (the negotiated dictionary).
-    // Two kinds of writer: a party that learns the set UP FRONT (an offline
-    // or online acceptance writes the invitation's disclosedPayloadColumns
-    // here), and one that learns it only by OBSERVING a first exchange (the
-    // online inviter and a zero-setup `--save` party crystallize what they
-    // observed). An empty array is a strict "receive nothing"; an absent
-    // field reconciles lazily. An observe-on-save writer records only a
-    // NON-EMPTY observation, since an observed-empty set is an ambiguous
-    // zero-match run. `payloadColumnNameList` holds the count, the name shape,
-    // and the one-entry-per-name collapse; names are partner-controlled. An
-    // acceptance writes the list from the invitation, which holds the same
-    // shape. The payload wire does not, so an observe-on-save writer leaves
-    // the field absent when an observed name fails the shape, as it does for
-    // an over-cap observation, rather than write a file that cannot reload.
-    expectedPayloadColumns: payloadColumnNameList(
-      `expectedPayloadColumns must not exceed ${MAX_PAYLOAD_ENTRIES} entries`,
-    ).optional(),
-    // Optional local TERMS-side enforcement record, the deduplicate
-    // counterpart of expectedPayloadColumns above: the `deduplicate` the accepted
+    // Optional local TERMS-side enforcement record: the `deduplicate` the accepted
     // INVITATION declared for the INVITING party's own side, which a later
     // `alcove exchange` holds the partner's presented value to
     // (assertPresentedDeduplicateMatchesInvitation), refusing a
@@ -202,10 +154,11 @@ const EXCHANGE_FILE_WIDTH_BOUNDS: WidthBounds = new Map([
 /**
  * Top-level settings this build refuses by name rather than as unknown keys,
  * so the refusal tells the operator to delete them. The agreed terms'
- * `payload.send` states the outbound payload set each of them named.
+ * `payload.send` and `payload.receive` state the payload sets they named.
  */
 const RETIRED_TOP_LEVEL_SETTINGS: ReadonlySet<string> = new Set([
   "disclosedPayloadColumns",
+  "expectedPayloadColumns",
   "outboundPayloadConsent",
 ]);
 

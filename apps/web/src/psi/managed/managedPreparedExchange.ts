@@ -2,22 +2,12 @@
  * Assemble a re-run's {@link PreparedExchange} from the stored record's
  * exchange-file document and the input acquired THIS run. The record's
  * `exchangeFile` already holds this party's OWN-perspective document -- the
- * linkage terms, metadata, standardization, and payload commitments composed at
- * deposit time (the inviter's minted terms, or the acceptor's derived
- * perspective) -- so a re-run binds those persisted terms to the freshly-read
- * rows and columns and commits to the received-payload set exactly as the
- * one-shot accept path does.
- *
- * The received-payload enforcement is the security-relevant part, and it mirrors
- * the one-shot flows: {@link PreparedExchange.expectedPayloadColumns} is set to
- * the record's persisted `expectedPayloadColumns` (the partner's committed send
- * set, pinned at accept and recorded in the document), so a re-run fails CLOSED
- * if the partner transmits a different set than was consented to -- the same
- * enforcement `prepareAcceptorExchange` applies from the invitation's disclosed
- * set. An absent persisted set falls back to the names the document's own
- * `payload.receive` lists, as the command line's recurring run does; for a
- * document holding neither, the run fills `payload.receive` from the partner's
- * declared send set and holds itself to that.
+ * linkage terms, metadata, and standardization composed at deposit time (the
+ * inviter's minted terms, or the acceptor's derived perspective) -- so a re-run
+ * binds those persisted terms to the freshly-read rows and columns. The columns
+ * this party receives are the terms' own `payload.receive`, which the terms
+ * exchange compares against the partner's stated `payload.send`; a document
+ * whose terms leave it unset is filled there from the partner's send set.
  *
  * The terms-side enforcement beside it is the acceptor's persisted
  * `expectedPartnerDeduplicate` -- the `deduplicate` the invitation declared for
@@ -47,10 +37,10 @@ import type { CSVRow, ExchangeSpec, PreparedExchange } from "@alcove/core";
  * terms' own identity (this party's, composed at deposit), so the run holds the
  * same identity the exchange record commits to. The metadata and standardization
  * ride the persisted document when authored, otherwise core infers them from the
- * columns exactly as the quick path does. The persisted `expectedPayloadColumns`
- * and the persisted `expectedPartnerDeduplicate` are threaded onto the prepared
- * object after `prepareForExchange` (the same call site the accept path uses),
- * never inferred here.
+ * columns exactly as the quick path does. The persisted
+ * `expectedPartnerDeduplicate` is threaded onto the prepared object after
+ * `prepareForExchange` (the same call site the accept path uses), never
+ * inferred here.
  */
 export function prepareManagedRerunExchange(
   exchangeFile: ExchangeSpec,
@@ -77,13 +67,6 @@ export function prepareManagedRerunExchange(
     rawRows,
     columns,
   );
-  // The received-payload enforcement, as the command line's recurring run
-  // applies it: the persisted commitment, else the names the document's own
-  // payload.receive lists. An empty set is a strict "receive nothing"
-  // commitment; a document holding neither is filled at the terms exchange.
-  prepared.expectedPayloadColumns =
-    exchangeFile.expectedPayloadColumns ??
-    exchangeFile.linkageTerms.payload?.receive?.map((column) => column.name);
   // The terms-side enforcement, mirrored from the persisted document exactly as
   // the accept path mirrors it from the invitation's declared terms: passed
   // AS-IS, so an absent declaration (an inviter's record, or a document no

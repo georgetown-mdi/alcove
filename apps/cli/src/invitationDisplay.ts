@@ -987,27 +987,15 @@ export function displayInvitation(params: {
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   for (const key of summary.linkageKeys) displayLinkageKey(emit, key);
 
-  // The columns the inviter declares it will transmit for matched records,
-  // in the inviter's namespace -- what this party will RECEIVE. Derived
-  // from the wire's own disclosure predicate (the token's held
-  // `disclosedPayloadColumns`) when the invitation has one, falling back
-  // to the authored `payload.send` otherwise. A lazy send -- no held
-  // subset and nothing authored -- is omitted, since it reconciles at
-  // exchange time; so is an invitation that hands this party no result,
-  // which transmits no column for the "you will receive the result" line
-  // above to disagree with. That omission is what leaves a bare "(none)"
-  // unambiguous, since only a declared direction reaches the line at all.
-  // What the declaration commits its party to is docs/CLI.md's to state.
-  //
-  // The two sources take different bases, so the marker is selected from
-  // which one the summary used: only the held subset is enforced and
-  // reconciled against; the authored one is the inviter's own word.
+  // What this party will RECEIVE: the inviter's `payload.send`, which an
+  // acceptance mirrors into this party's `payload.receive` and every terms
+  // exchange compares against the send set the inviter's run states. An unset
+  // send, or an invitation that hands this party no result, is omitted, so a
+  // bare "(none)" is always a declared empty set.
   if (summary.payload?.sendDeclared === true) {
     const label = marked(
       "columns you will receive",
-      summary.payload.sendFromCarriedSubset
-        ? "inboundPayloadColumnsCarried"
-        : "inboundPayloadColumnsAuthored",
+      "inboundPayloadColumns",
       declaredPayloadTotalNote(summary.payload.send.length),
     );
     if (summary.payload.send.length === 0) emit(`  ${label}: (none)`);

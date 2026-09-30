@@ -18,7 +18,6 @@ import {
   getDiagnosticSink,
   getLogger,
   parseExchangeSpec,
-  reconcileReceivedPayload,
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
@@ -1570,10 +1569,7 @@ describe("accepting and running a webrtc exchange in one command", () => {
     const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
     try {
       const token = sampleToken(FUTURE(), WEBRTC_ENDPOINT);
-      const encoded = await encodeInvitation({
-        ...token,
-        disclosedPayloadColumns: ["diagnosis"],
-      });
+      const encoded = await encodeInvitation(token);
       const ready = await validateAccept({
         resolved: { mode: "offline", invitation: encoded, input },
         options: testOptions(),
@@ -1589,39 +1585,11 @@ describe("accepting and running a webrtc exchange in one command", () => {
         host: "peer.example.org",
         path: "/psi",
       });
-      // The prepared exchange has the same two bindings the URL-driven mode
-      // sets, so this single run enforces what the acceptance consented to.
-      expect(ready.prepared.expectedPayloadColumns).toEqual(["diagnosis"]);
+      // The prepared exchange has the same binding the URL-driven mode sets,
+      // so this single run enforces what the acceptance consented to.
       expect(ready.prepared.expectedPartnerDeduplicate).toBe(
         token.linkageTerms.deduplicate,
       );
-    } finally {
-      fs.rmSync(input, { force: true });
-    }
-  });
-
-  test("validateAccept: a column the invitation discloses twice is expected once", async () => {
-    // The acceptance writes the invitation's disclosed set as what it will
-    // receive, and the run aborts when the partner's transmitted set differs
-    // (reconcileReceivedPayload). A name written twice is one declaration;
-    // encodeInvitation collapses it once at mint, so this test pins that
-    // mint-side collapse. The decode-side case, a raw partner token minted
-    // outside encodeInvitation, is pinned by
-    // packages/core/test/config/invitation.test.ts's encodeRaw test.
-    const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
-    try {
-      const encoded = await encodeInvitation({
-        ...sampleToken(FUTURE(), WEBRTC_ENDPOINT),
-        disclosedPayloadColumns: ["diagnosis", "diagnosis"],
-      });
-      const ready = await validateAccept({
-        resolved: { mode: "offline", invitation: encoded, input },
-        options: testOptions(),
-        log: silentLog,
-      });
-      expect(ready.mode).toBe("endpointRun");
-      if (ready.mode !== "endpointRun") return;
-      expect(ready.prepared.expectedPayloadColumns).toEqual(["diagnosis"]);
     } finally {
       fs.rmSync(input, { force: true });
     }
@@ -3326,10 +3294,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
         host: "peer.example.org",
         path: "/psi",
       });
-      const encoded = await encodeInvitation({
-        ...token,
-        disclosedPayloadColumns: ["diagnosis"],
-      });
+      const encoded = await encodeInvitation(token);
       await acceptHandler({
         _: [],
         $0: "alcove",
@@ -3353,10 +3318,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       expect(passed.configPath).toBe(configFile);
       expect(passed.keyPath).toBe(keyFile);
       expect(passed.output).toBe(output);
-      // The acceptance's own records ride the same write the URL-driven mode makes.
-      expect(passed.receivedPayloadLockIn).toEqual({
-        consentedColumns: ["diagnosis"],
-      });
+      // The acceptance's own record rides the same write the URL-driven mode makes.
       expect(passed.expectedPartnerDeduplicate).toBe(
         token.linkageTerms.deduplicate,
       );
@@ -4677,60 +4639,15 @@ describe("handler: the prompt's copy has the redaction on its own", () => {
   });
 });
 
-// --- handler: online accept threads the token commitment to the persistence layer
+// --- handler: online accept-reuse forwards the acceptance record ----------------
 
-describe("handler: online accept threads the token commitment to the persistence layer", () => {
-  test("handler: online accept forwards the token's disclosed set to runOnlineBootstrap", async () => {
-    // The accept-side wiring: the online handler must pass
-    // token.disclosedPayloadColumns to runOnlineBootstrap as the acceptance's
-    // receivedPayloadLockIn, so the config records the consented received-column
-    // commitment (runOnlineBootstrap's own tests cover the write). It is mocked here so
-    // no connection is opened; --consent-to-terms skips the prompt.
-    const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
-    try {
-      const encoded = await encodeInvitation({
-        ...sampleToken(FUTURE()),
-        disclosedPayloadColumns: ["diagnosis", "notes"],
-      });
-      await acceptHandler({
-        _: [],
-        $0: "alcove",
-        identity: "Agency B",
-        args: ["sftp://host/drop", encoded, input],
-        "consent-to-terms": true,
-        "config-file": configFile,
-        "key-file": keyFile,
-        "log-level": "silent",
-        record: false,
-      } as unknown as Arguments);
-      expect(exit).not.toHaveBeenCalled();
-      expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
-      const passed = runOnlineBootstrapMock.mock.calls[0][0];
-      expect(passed.receivedPayloadLockIn).toEqual({
-        consentedColumns: ["diagnosis", "notes"],
-      });
-      // A fresh (non-reuse) config, so the commitment is actually written.
-      expect(passed.reuseExistingConfig).toBe(false);
-    } finally {
-      exit.mockRestore();
-      // Module-level mock: reset so no later test inherits this call/impl.
-      runOnlineBootstrapMock.mockReset();
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("handler: online accept-reuse forwards the commitment the kept config must be refreshed to", async () => {
+describe("handler: online accept-reuse forwards the acceptance record", () => {
+  test("handler: online accept-reuse forwards the declaration the kept config must be refreshed to", async () => {
     // A re-accept over a config that reconciles for reuse still passes this
-    // acceptance's consented set to the persistence layer, which refreshes the kept
-    // config's field in place -- the reuse branch must not be a no-op, or the next
-    // recurring exchange would enforce the previous acceptance's set against an
-    // honest partner. A subset-less invitation forwards the decision with no columns,
-    // which removes the stale field rather than leaving it.
+    // acceptance's declared deduplicate to the persistence layer, which refreshes
+    // the kept config's record in place -- the reuse branch must not be a no-op,
+    // or the next recurring exchange would hold the partner to the previous
+    // acceptance's value.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
     runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
@@ -4746,11 +4663,12 @@ describe("handler: online accept threads the token commitment to the persistence
           path: platformAbsolutePath("/mnt/share"),
         },
       });
-      for (const disclosed of [["diagnosis", "notes"], undefined]) {
+      for (const declared of [true, false]) {
         runOnlineBootstrapMock.mockClear();
+        const base = sampleToken(FUTURE());
         const encoded = await encodeInvitation({
-          ...sampleToken(FUTURE()),
-          disclosedPayloadColumns: disclosed,
+          ...base,
+          linkageTerms: { ...base.linkageTerms, deduplicate: declared },
         });
         await acceptHandler({
           _: [],
@@ -4767,11 +4685,7 @@ describe("handler: online accept threads the token commitment to the persistence
         expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
         const passed = runOnlineBootstrapMock.mock.calls[0][0];
         expect(passed.reuseExistingConfig).toBe(true);
-        // Strict: the subset-less case must forward the DECISION with no columns,
-        // which removes the field, not an absent decision, which leaves it standing.
-        expect(passed.receivedPayloadLockIn).toStrictEqual({
-          consentedColumns: disclosed,
-        });
+        expect(passed.expectedPartnerDeduplicate).toBe(declared);
       }
     } finally {
       exit.mockRestore();
@@ -4781,29 +4695,26 @@ describe("handler: online accept threads the token commitment to the persistence
   });
 });
 
-// --- handler: offline accept-reuse refreshes the received-payload commitment -----
+// --- handler: offline accept-reuse ---------------------------------------------
 
 /**
  * Run the offline accept handler over a pre-existing config, with
  * --consent-to-terms so the confirmation prompt is skipped (its own tests cover
- * the prompt gate). The token holds `disclosed`, the disclosed subset the
- * operator consents to on this acceptance. Returns the config file's raw text and
- * the exit spy so the caller can assert the on-disk refresh.
+ * the prompt gate). Returns the config file's raw text so the caller can assert
+ * the on-disk refresh.
  */
 async function runOfflineAcceptReuse(params: {
   configFile: string;
   input?: string;
-  disclosed: string[] | undefined;
   token?: InvitationToken;
 }): Promise<string> {
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
   try {
-    const encoded = await encodeInvitation({
-      ...(params.token ?? sampleToken(FUTURE())),
-      disclosedPayloadColumns: params.disclosed,
-    });
+    const encoded = await encodeInvitation(
+      params.token ?? sampleToken(FUTURE()),
+    );
     await acceptHandler({
       _: [],
       $0: "alcove",
@@ -4822,38 +4733,7 @@ async function runOfflineAcceptReuse(params: {
   }
 }
 
-describe("handler: offline accept-reuse refreshes the received-payload commitment", () => {
-  test("handler: offline accept-reuse refreshes a stale commitment, preserving operator content", async () => {
-    // A reused config holding an OLD consented set is re-accepted over an invitation
-    // whose disclosed subset changed. The surgical refresh overwrites the stale
-    // value, preserving the operator's connection block, linkage terms, and a
-    // hand-authored comment.
-    const { dir, input, configFile } = offlineAcceptFixture();
-    try {
-      // A config whose linkage terms agree with the invitation's defaults (so it
-      // reconciles for reuse), then a hand-authored comment and a stale commitment
-      // appended so the surgical write has operator content to preserve.
-      writeExistingConfig(configFile);
-      fs.appendFileSync(
-        configFile,
-        "# operator-authored note\nexpected_payload_columns:\n  - old_col\n",
-      );
-      const raw = await runOfflineAcceptReuse({
-        configFile,
-        input,
-        disclosed: ["diagnosis", "notes"],
-      });
-      // The operator's comment and connection block survive the surgical write.
-      expect(raw).toContain("# operator-authored note");
-      expect(raw).toContain("/mnt/share");
-      expect(raw).not.toContain("old_col");
-      const parsed = parseExchangeSpec(YAML.parse(raw));
-      expect(parsed.expectedPayloadColumns).toEqual(["diagnosis", "notes"]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
+describe("handler: offline accept-reuse", () => {
   test("handler: accept-reuse leaves the kept configuration's identity untouched", async () => {
     // The other half of the stored label winning: the acceptance runs under the
     // file's label and leaves the file as it found it. A flag that rewrote the
@@ -4862,112 +4742,11 @@ describe("handler: offline accept-reuse refreshes the received-payload commitmen
     const { dir, input, configFile } = offlineAcceptFixture();
     try {
       writeExistingConfig(configFile);
-      const raw = await runOfflineAcceptReuse({
-        configFile,
-        input,
-        disclosed: ["diagnosis"],
-      });
+      const raw = await runOfflineAcceptReuse({ configFile, input });
       expect(parseExchangeSpec(YAML.parse(raw)).linkageTerms.identity).toBe(
         "Acceptor Org",
       );
       expect(raw).not.toContain("Agency B");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("handler: offline accept-reuse fixes the false-abort a stale commitment would have caused", async () => {
-    // The end-to-end failure this task closes. Before the refresh the config holds
-    // the partner's OLD disclosed set; the partner now discloses a new set, so a
-    // recurring exchange's reconcileReceivedPayload would abort the honest exchange.
-    // After the re-accept the config holds the NEW set, so the same reconcile passes;
-    // asserting the stale set would have thrown proves the config actually changed
-    // the outcome.
-    const { dir, input, configFile } = offlineAcceptFixture();
-    try {
-      writeExistingConfig(configFile);
-      // Seed the stale commitment the operator originally consented to.
-      fs.appendFileSync(configFile, "expected_payload_columns:\n  - old_col\n");
-      const staleSpec = parseExchangeSpec(
-        YAML.parse(fs.readFileSync(configFile, "utf8")),
-      );
-      expect(staleSpec.expectedPayloadColumns).toEqual(["old_col"]);
-
-      const raw = await runOfflineAcceptReuse({
-        configFile,
-        input,
-        disclosed: ["diagnosis", "notes"],
-      });
-      const refreshedSpec = parseExchangeSpec(YAML.parse(raw));
-      // What the partner actually transmits now: its new disclosed set.
-      const partnerPayload = {
-        columns: ["diagnosis", "notes"],
-        rowIndices: [],
-        rows: [],
-      };
-      // The refreshed commitment matches the partner's transmission -> no abort.
-      expect(() =>
-        reconcileReceivedPayload(
-          partnerPayload,
-          refreshedSpec.expectedPayloadColumns,
-        ),
-      ).not.toThrow();
-      // The stale commitment would have aborted the same honest exchange.
-      expect(() =>
-        reconcileReceivedPayload(
-          partnerPayload,
-          staleSpec.expectedPayloadColumns,
-        ),
-      ).toThrow(/payload disclosure mismatch/);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("handler: offline accept-reuse removes the commitment when the invitation holds no disclosed subset", async () => {
-    // A re-accept whose invitation held no disclosed subset (an older or
-    // metadata-unknown mint) records no consented set: the prior commitment is cleared
-    // so the recurring exchange reconciles lazily, not left stale.
-    const { dir, input, configFile } = offlineAcceptFixture();
-    try {
-      writeExistingConfig(configFile);
-      fs.appendFileSync(configFile, "expected_payload_columns:\n  - old_col\n");
-      const raw = await runOfflineAcceptReuse({
-        configFile,
-        input,
-        disclosed: undefined,
-      });
-      expect(raw).not.toContain("expected_payload_columns");
-      expect(raw).not.toContain("old_col");
-      const parsed = parseExchangeSpec(YAML.parse(raw));
-      expect(parsed.expectedPayloadColumns).toBeUndefined();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("handler: offline accept-reuse writes an empty consented set verbatim (strict receive-nothing)", async () => {
-    // An empty disclosed subset is a real consent ("receive nothing"), distinct from
-    // absent: it must be written as an empty list so a later non-empty payload aborts.
-    const { dir, input, configFile } = offlineAcceptFixture();
-    try {
-      writeExistingConfig(configFile);
-      fs.appendFileSync(configFile, "expected_payload_columns:\n  - old_col\n");
-      const raw = await runOfflineAcceptReuse({
-        configFile,
-        input,
-        disclosed: [],
-      });
-      expect(raw).not.toContain("old_col");
-      const parsed = parseExchangeSpec(YAML.parse(raw));
-      expect(parsed.expectedPayloadColumns).toEqual([]);
-      // Strict "receive nothing": any transmitted column aborts.
-      expect(() =>
-        reconcileReceivedPayload(
-          { columns: ["diagnosis"], rowIndices: [], rows: [] },
-          parsed.expectedPayloadColumns,
-        ),
-      ).toThrow(/payload disclosure mismatch/);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -5133,7 +4912,6 @@ describe("the acceptance's terms-side commitment reaches the config", () => {
       const raw = await runOfflineAcceptReuse({
         configFile,
         input,
-        disclosed: undefined,
         token: {
           ...base,
           linkageTerms: { ...base.linkageTerms, deduplicate: false },
@@ -5190,197 +4968,6 @@ describe("the acceptance's terms-side commitment reaches the config", () => {
       runOnlineBootstrapMock.mockReset();
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  });
-});
-
-// --- accept-reuse warns when the re-acceptance drops the commitment -------------
-
-// The distinctive clause of the removal warning, kept apart from the column list
-// and the remedy the assertions check separately.
-const DROPPED_LOCK_IN_CLAUSE =
-  "clears the list of columns you previously agreed to receive";
-
-/**
- * Every warning a reuse acceptance emits over a config recording `recorded` as
- * its received-payload commitment, re-accepted from an invitation holding
- * `disclosed`. Both accept-reuse paths reconcile the same kept config, so `mode`
- * drives either through one fixture; the saved connection agrees with the online
- * URL, so the reuse verdict has no connection warning of its own.
- */
-async function reuseLockInWarnings(params: {
-  recorded: string[] | undefined;
-  disclosed: string[] | undefined;
-  loggerName: string;
-  mode?: "online" | "offline";
-}): Promise<string[]> {
-  const { recorded, disclosed, loggerName, mode = "offline" } = params;
-  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-accept-lockin-"));
-  const configFile = path.join(dir, "alcove.yaml");
-  const keyFile = path.join(dir, ".alcove.key");
-  const input = path.join(dir, "input.csv");
-  fs.writeFileSync(
-    input,
-    "first_name,last_name,dob,ssn\nAlice,Smith,1990-01-02,123456789\n",
-  );
-  saveConfig(configFile, {
-    connection: { channel: "sftp", server: { host: "host" } },
-    linkageTerms: sampleTerms("Acceptor Org"),
-    ...(recorded !== undefined ? { expectedPayloadColumns: recorded } : {}),
-  });
-  const log = getLogger(loggerName);
-  log.setLevel("silent");
-  const warnSpy = vi.spyOn(log, "warn");
-  // These options have the default flag identity, which the kept file does not
-  // match, so every case here also raises the no-effect notice on the prompt's
-  // own sink; capture it rather than leaving it in the suite's output.
-  const stdio = captureStdio();
-  try {
-    const encoded = await encodeInvitation({
-      ...sampleToken(FUTURE()),
-      disclosedPayloadColumns: disclosed,
-    });
-    const ready = await validateAccept({
-      resolved:
-        mode === "online"
-          ? {
-              mode: "online",
-              url: new URL("sftp://host"),
-              invitation: encoded,
-              input,
-            }
-          : { mode: "offline", invitation: encoded, input },
-      options: testOptions({ configFile, keyFile }),
-      log,
-    });
-    // Every case here is a reuse: a warning about the kept config's commitment is
-    // meaningless if the config was not kept.
-    expect(ready.reuseExistingConfig).toBe(true);
-    return warnSpy.mock.calls.map((c) => String(c[0]));
-  } finally {
-    stdio.restore();
-    warnSpy.mockRestore();
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-/** The one dropped-commitment warning in `warnings`, asserted to be exactly one. */
-function droppedLockInWarning(warnings: string[]): string {
-  const dropped = warnings.filter((m) => m.includes(DROPPED_LOCK_IN_CLAUSE));
-  expect(dropped).toHaveLength(1);
-  return dropped[0];
-}
-
-describe("accept-reuse warns when the re-acceptance drops the commitment", () => {
-  test("validateAccept: offline reuse warns, naming the columns, when the re-acceptance drops the commitment", async () => {
-    // The kept config records what the operator consented to receive; this
-    // invitation has no disclosed subset, so accepting it removes that record
-    // and leaves the next exchange reconciling lazily. One warning, naming the
-    // columns being given up, while the operator can still decline.
-    const warnings = await reuseLockInWarnings({
-      recorded: ["diagnosis", "notes"],
-      disclosed: undefined,
-      loggerName: "accept-lockin-drop-offline",
-    });
-    const dropped = droppedLockInWarning(warnings);
-    // One column per line, so a name holding the list separator cannot be misread
-    // as two entries.
-    expect(dropped).toContain("\n  - diagnosis");
-    expect(dropped).toContain("\n  - notes");
-    expect(dropped).toContain("accepts whatever columns the partner transmits");
-  });
-
-  test("validateAccept: online reuse warns when the re-acceptance drops the commitment", async () => {
-    // The second accept-reuse path: the online acceptance refreshes the same kept
-    // config, so the same removal must be visible there -- and it lands before any
-    // network activity, so the operator sees it at the same prompt.
-    const warnings = await reuseLockInWarnings({
-      recorded: ["diagnosis"],
-      disclosed: undefined,
-      loggerName: "accept-lockin-drop-online",
-      mode: "online",
-    });
-    expect(droppedLockInWarning(warnings)).toContain("\n  - diagnosis");
-  });
-
-  test("validateAccept: reuse stays silent when the acceptance records a commitment of its own", async () => {
-    // Nothing is dropped when this acceptance consents to a set: an unchanged set
-    // leaves the record as it stands, and a changed one is a refresh the operator
-    // just consented to. Neither loses the check, so neither warns.
-    const unchanged = await reuseLockInWarnings({
-      recorded: ["diagnosis"],
-      disclosed: ["diagnosis"],
-      loggerName: "accept-lockin-unchanged",
-    });
-    expect(unchanged.filter((m) => m.includes(DROPPED_LOCK_IN_CLAUSE))).toEqual(
-      [],
-    );
-    const changed = await reuseLockInWarnings({
-      recorded: ["diagnosis"],
-      disclosed: ["notes"],
-      loggerName: "accept-lockin-changed",
-    });
-    expect(changed.filter((m) => m.includes(DROPPED_LOCK_IN_CLAUSE))).toEqual(
-      [],
-    );
-  });
-
-  test("validateAccept: reuse stays silent when the acceptance newly sets the commitment", async () => {
-    // A kept config that recorded no commitment loses nothing by gaining one.
-    const warnings = await reuseLockInWarnings({
-      recorded: undefined,
-      disclosed: ["diagnosis"],
-      loggerName: "accept-lockin-newly-set",
-    });
-    expect(warnings.filter((m) => m.includes(DROPPED_LOCK_IN_CLAUSE))).toEqual(
-      [],
-    );
-  });
-
-  test("validateAccept: reuse warns that a recorded receive-nothing consent is dropped", async () => {
-    // The strictest commitment of all -- an empty recorded set, which aborts on any
-    // transmitted column -- has no column names to list, so the warning has to name
-    // the consent itself rather than fall silent on an empty list.
-    const warnings = await reuseLockInWarnings({
-      recorded: [],
-      disclosed: undefined,
-      loggerName: "accept-lockin-drop-empty",
-    });
-    expect(droppedLockInWarning(warnings)).toContain(
-      "no columns at all (a strict receive-nothing consent)",
-    );
-  });
-
-  test("validateAccept: the dropped commitment's column names are escaped for display", async () => {
-    // The recorded set is the partner's namespace, brought into the config by an
-    // earlier acceptance, so a name planted to disturb the terminal must not
-    // reach the operator raw when this warning reads it back out. A zero-width
-    // joiner rather than an ESC: the recorded list holds the name shape, which
-    // refuses a control character outright (the case below), and the joiner is
-    // outside that class and still needs escaping here.
-    const hostile = "notes\u200d[0m";
-    const warnings = await reuseLockInWarnings({
-      recorded: [hostile],
-      disclosed: undefined,
-      loggerName: "accept-lockin-drop-escaping",
-    });
-    const dropped = droppedLockInWarning(warnings);
-    expect(dropped).toContain(sanitizeForDisplay(hostile));
-    expect(dropped).not.toContain("\u200d");
-  });
-
-  test("validateAccept: a recorded commitment holding the name class is refused", async () => {
-    // The class the header read strips and every name field refuses cannot sit
-    // in the recorded set either: the config read this reuse path makes holds
-    // the list to the same shape, so the acceptance stops at the config rather
-    // than warning about a name no honest writer could have put there. The
-    // refusal names the field and prints none of the value.
-    await expect(
-      reuseLockInWarnings({
-        recorded: [`notes${ESC}[0m`],
-        disclosed: undefined,
-        loggerName: "accept-lockin-drop-refused",
-      }),
-    ).rejects.toThrow(/expected_payload_columns\.0: a linkage terms name/);
   });
 });
 
@@ -5506,10 +5093,9 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       "first_name,last_name,dob,ssn\nAlice,Smith,1990-01-02,123456789\n",
     );
     writeExistingConfig(configFile);
-    const encoded = await encodeInvitation({
-      ...sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
-      disclosedPayloadColumns: ["diagnosis"],
-    });
+    const encoded = await encodeInvitation(
+      sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
+    );
     const accept = () =>
       acceptHandler({
         _: [],
@@ -5537,8 +5123,8 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       expect(fs.existsSync(keyFile)).toBe(true);
       expect(
         parseExchangeSpec(YAML.parse(fs.readFileSync(configFile, "utf8")))
-          .expectedPayloadColumns,
-      ).toEqual(["diagnosis"]);
+          .expectedPartnerDeduplicate,
+      ).toBe(false);
     } finally {
       stdio.restore();
       exitSpy.mockRestore();

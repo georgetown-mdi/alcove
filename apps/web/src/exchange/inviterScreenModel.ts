@@ -227,10 +227,8 @@ export interface InviterScreenState {
   loadedTermsBaseline: string | undefined;
   /** The enforcement records a loaded configuration states, held so the run's
    * composed configuration states each as the file did
-   * (docs/spec/EXCHANGE_FILE.md, "The records that must survive"), except a
-   * pending consent the operator confirms on the review step, which it states
-   * as confirmed. Empty where no configuration is open, or the open one states
-   * none. */
+   * (docs/spec/EXCHANGE_FILE.md, "The record that must survive"). Empty where
+   * no configuration is open, or the open one states none. */
   loadedEnforcementRecords: LoadedEnforcementRecords;
 }
 

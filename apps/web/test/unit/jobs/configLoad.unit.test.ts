@@ -66,7 +66,6 @@ function savedSftpDocument(
       linkageTerms: terms(),
       csvDelimiter: "|",
       includeOwnColumns: "all",
-      expectedPayloadColumns: ["partner_notes"],
       expectedPartnerDeduplicate: false,
       retentionDisposition: "Filed with the 2026 intake.",
     }) as Record<string, unknown>),
@@ -527,6 +526,19 @@ describe("what the load refuses", () => {
     expect(message).not.toContain("sftp.partner.example");
   });
 
+  test.each([
+    "expected_payload_columns",
+    "disclosed_payload_columns",
+    "outbound_payload_consent",
+  ])("a retired %s, named with the remedy the command line states", (key) => {
+    const message = refusal(savedSftpDocument({ [key]: ["age"] }));
+    expect(message).toContain(
+      `the setting "${key}" is retired; delete it from the file`,
+    );
+    expect(message).toContain("open it again");
+    expect(message).not.toContain("not an Alcove exchange configuration");
+  });
+
   test("bytes that are not YAML, without the parser's own words", () => {
     let message = "";
     try {
@@ -720,10 +732,7 @@ describe("a setting inside a block the composition writes", () => {
 });
 
 describe("the records that must survive a load", () => {
-  const MUST_SURVIVE = [
-    "expected_payload_columns",
-    "expected_partner_deduplicate",
-  ];
+  const MUST_SURVIVE = ["expected_partner_deduplicate"];
 
   test("none of them is reported as held without an editor", () => {
     // Held-without-an-editor is what a setting the composition cannot emit
@@ -737,7 +746,6 @@ describe("the records that must survive a load", () => {
 
   test("each reaches the disclosed document with the value the file states", () => {
     const { document } = loadDocument(savedSftpDocument());
-    expect(document?.expectedPayloadColumns).toEqual(["partner_notes"]);
     expect(document?.expectedPartnerDeduplicate).toBe(false);
   });
 
@@ -753,29 +761,20 @@ describe("the records that must survive a load", () => {
       validSftpIntent({ ...records }),
       testSftpServerEntry(),
     );
-    expect(composed.expectedPayloadColumns).toEqual(["partner_notes"]);
     expect(composed.expectedPartnerDeduplicate).toBe(false);
   });
 
-  test("an empty list survives as an empty list, not as an absence", () => {
-    const { document } = loadDocument(
-      savedSftpDocument({ expected_payload_columns: [] }),
-    );
-    expect(document?.expectedPayloadColumns).toEqual([]);
-  });
-
   test("a document stating one the composition cannot emit refuses by name", () => {
-    // Driven against carriedThroughFields directly: were one of the two to
-    // leave the composers, it would appear here, which is the condition the
-    // load's own refusal reads. This is the check standing in for a comment
-    // claiming the two survive.
+    // Driven against carriedThroughFields directly: were the record to leave
+    // the composers, it would appear here, which is the condition the load's
+    // own refusal reads. This is the check standing in for a comment claiming
+    // it survives.
     const spec = {
       connection: {
         channel: "sftp",
         server: { host: "h", hostKeyFingerprint: FINGERPRINT },
       },
       linkageTerms: terms(),
-      expectedPayloadColumns: ["a"],
       expectedPartnerDeduplicate: true,
     } as unknown as ExchangeSpec;
     expect(carriedThroughFields(spec)).toEqual([]);

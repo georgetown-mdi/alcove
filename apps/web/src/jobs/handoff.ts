@@ -626,8 +626,7 @@ export function handBackConfigDocument(
     throw new Error(
       "a hand-back reached compose for a channel the console runs as a job",
     );
-  const { expectedPayloadColumns, expectedPartnerDeduplicate } =
-    mountedDocument;
+  const { expectedPartnerDeduplicate } = mountedDocument;
   const {
     metadata,
     standardization,
@@ -641,7 +640,6 @@ export function handBackConfigDocument(
     linkageTerms: handBack.linkageTerms,
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
-    ...(expectedPayloadColumns !== undefined ? { expectedPayloadColumns } : {}),
     ...(expectedPartnerDeduplicate !== undefined
       ? { expectedPartnerDeduplicate }
       : {}),

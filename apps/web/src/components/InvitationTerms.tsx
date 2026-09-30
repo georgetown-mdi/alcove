@@ -413,7 +413,6 @@ function MatchKeyDetails({ summary }: { summary: InvitationKeySummary }) {
 export function InvitationTerms({
   linkageTerms,
   expires,
-  disclosedPayloadColumns,
   inviterRetainsFiles,
   connectionEndpoint,
   outboundColumns,
@@ -427,12 +426,6 @@ export function InvitationTerms({
   linkageTerms: LinkageTerms;
   /** The invitation's expiry instant (ISO 8601), if it has one. */
   expires?: string;
-  /** The columns the invitation declared the inviter will send (its
-   * `disclosedPayloadColumns`). When present, the "your partner will send" line
-   * derives from it -- the wire's own disclosure predicate -- rather than the
-   * authored `payload.send`; absent for the inviter's pre-mint "proposing"
-   * preview and older tokens, which fall back to `payload.send`. */
-  disclosedPayloadColumns?: Array<string>;
   /** The invitation's retain-mode declaration: the inviter stating its exchange
    * keeps every file it writes rather than deleting each once read. Rendered as a
    * consent fact under "What the exchange produces"; nothing renders when false or
@@ -447,7 +440,7 @@ export function InvitationTerms({
    * webrtc endpoint's relay is named before consent. */
   connectionEndpoint?: ConnectionEndpoint;
   /** This viewer's OWN outbound disclosure: the columns it will send to its
-   * partner for matched records. Distinct from {@link disclosedPayloadColumns}
+   * partner for matched records. Distinct from the terms' `payload.send`
    * (what the INVITER sends). Rendered as a count and then chips in the
    * always-visible core, in the same slot the inviter's "proposing" send block
    * uses. The acceptor passes its live metadata disclosure here; the inviter does
@@ -509,7 +502,6 @@ export function InvitationTerms({
   const summary = summarizeInvitation({
     linkageTerms,
     expires,
-    disclosedPayloadColumns,
     inviterRetainsFiles,
     connectionEndpoint,
   });
@@ -546,9 +538,10 @@ export function InvitationTerms({
   // "proposing": the inviter's own send is shown as chips there instead.
   const sendCount = summary.payload?.send.length ?? 0;
   // Direction-first, and a DECLARATION (definite): summary.payload.send is the
-  // disclosed set the exchange transmits for matched records, so the copy states
-  // "you will receive", the certain counterpart to the egress line's conditional
-  // "requests". Mirrors the "Result sharing" block's "You will receive ..." framing.
+  // inviter's agreed send set, which each terms exchange compares against the set
+  // the inviter's run states, so the copy states "you will receive" where the
+  // egress line states a request. Mirrors the "Result sharing" block's "You will
+  // receive ..." framing.
   const ingressNotice =
     perspective !== "proposing" && sendCount > 0
       ? `You will receive ${dataColumns(sendCount)} from your partner.`

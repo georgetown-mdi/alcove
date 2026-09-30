@@ -154,7 +154,7 @@ test("mintExchangeFile: a filedrop split pair is held at the top level", () => {
 
 // --- Options and optional-block passthrough ----------------------------------
 
-test("mintExchangeFile: FileSyncOptions, metadata, standardization, and payload commitments pass through", () => {
+test("mintExchangeFile: FileSyncOptions, metadata, standardization, and the partner deduplicate pass through", () => {
   const input: ExchangeFileInput = {
     connection: {
       channel: "sftp",
@@ -167,7 +167,6 @@ test("mintExchangeFile: FileSyncOptions, metadata, standardization, and payload 
     standardization: [
       { output: "ssn", input: "ssn", steps: [{ function: "trim" }] },
     ],
-    expectedPayloadColumns: ["last_name"],
     expectedPartnerDeduplicate: false,
   };
   const yaml = mintExchangeFile(input);
@@ -179,7 +178,6 @@ test("mintExchangeFile: FileSyncOptions, metadata, standardization, and payload 
   expect(reparsed.connection.options?.unexpectedFiles).toBe("warn");
   expect(reparsed.metadata).toEqual(baseMetadata);
   expect(reparsed.standardization).toBeDefined();
-  expect(reparsed.expectedPayloadColumns).toEqual(["last_name"]);
   // The terms-side commitment survives the snake_case wire form as `false`
   // rather than as an absent key: absent would bind nothing, which is the
   // state the acceptance is persisting to avoid.
@@ -197,7 +195,6 @@ test("mintExchangeFile: absent optional blocks are omitted keys, not explicit nu
   // re-parse differently than the assembled spec.
   expect(raw).not.toHaveProperty("metadata");
   expect(raw).not.toHaveProperty("standardization");
-  expect(raw).not.toHaveProperty("expected_payload_columns");
   expect(raw).not.toHaveProperty("expected_partner_deduplicate");
   // Never an authentication block: the secret rides only the invitation code.
   expect(raw).not.toHaveProperty("authentication");
@@ -225,7 +222,7 @@ test("mintExchangeFile: no credential field appears anywhere in a maximal minted
     standardization: [
       { output: "ssn", input: "ssn", steps: [{ function: "trim" }] },
     ],
-    expectedPayloadColumns: ["last_name"],
+    expectedPartnerDeduplicate: false,
   });
 
   for (const forbidden of [
