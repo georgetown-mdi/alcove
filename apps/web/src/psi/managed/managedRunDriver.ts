@@ -528,16 +528,18 @@ export function runManagedExchangeInBrowser(
   });
 
   /** Register the rotated relay key a run owes its registrar; the run's
-   * cancel stops it. Never throws: a failure is logged and raised as a notice,
-   * unescaped since each notice sink escapes what it shows, and the record's
-   * pending registration is what the next run retries. */
+   * cancel ends the retries, never the attempt it meets. Never throws: a
+   * failure is logged and raised as a notice, unescaped since each notice
+   * sink escapes what it shows. A cancelled run drops the notice, so the
+   * record's pending registration, which the next run retries, is what the
+   * exchange's page states afterwards. */
   async function registerRotatedKey(
     carried: ManagedRerunCarried,
   ): Promise<void> {
     if (carried.relayRegistration === undefined) return;
     const result = await registerRotatedManagedRelayKey(
       { id: record.id, ...carried.relayRegistration },
-      { signal },
+      { cancel: signal },
     );
     if (result.kind === "failed") {
       log.error(

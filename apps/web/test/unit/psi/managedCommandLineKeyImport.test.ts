@@ -311,6 +311,7 @@ describe("reading a configuration with its key file", () => {
     expect(imported.relayRegistrationPendingSince).toBe(
       "2026-09-01T00:00:00.000Z",
     );
+    expect(imported.relayRegistrar).toBeUndefined();
     expect(imported.sharedSecret).toBe(record.sharedSecret);
   });
 
@@ -491,6 +492,57 @@ describe("laying a pair over the stored record it revives", () => {
     expect(
       applyManagedExchangeCommandLinePair(enrolled, noPending),
     ).not.toHaveProperty("relayRegistrationPendingSince");
+  });
+
+  test("a revive whose pair holds the stored secret keeps the stored pending registration unless the key file states one", () => {
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(newExchange()),
+      ),
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: MARKED_AT,
+    });
+    const samePair = (pendingSince?: string) =>
+      runnableManagedExchangeOrRefuse(
+        buildManagedExchangeRecord(
+          newExchange({
+            label: "",
+            sharedSecret: enrolled.sharedSecret,
+            ...(pendingSince !== undefined && {
+              relayRegistrationPendingSince: pendingSince,
+            }),
+          }),
+        ),
+      );
+    expect(
+      applyManagedExchangeCommandLinePair(enrolled, samePair())
+        .relayRegistrationPendingSince,
+    ).toBe(MARKED_AT);
+    expect(
+      applyManagedExchangeCommandLinePair(
+        enrolled,
+        samePair("2026-09-01T00:00:00.000Z"),
+      ).relayRegistrationPendingSince,
+    ).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  test("a revive onto a record naming no registrar keeps the key file's pending registration", () => {
+    const stored = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(newExchange()),
+    );
+    const imported = runnableManagedExchangeOrRefuse(
+      buildManagedExchangeRecord(
+        newExchange({
+          label: "",
+          relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    const revived = applyManagedExchangeCommandLinePair(stored, imported);
+    expect(revived.relayRegistrar).toBeUndefined();
+    expect(revived.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
   });
 
   test("a pair holding another secret drops the rotation-in-flight marker", () => {

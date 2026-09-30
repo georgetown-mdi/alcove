@@ -16,7 +16,11 @@ import {
   retryPendingRelayRegistration,
 } from "../../src/relayKeyRotation";
 import { exitCodeForError } from "../../src/util/exit";
-import { fakeRegistrar, jsonResponse } from "./relayRegistrarFake";
+import {
+  fakeRegistrar,
+  jsonResponse,
+  registrationAnswer,
+} from "./relayRegistrarFake";
 
 // Two 43-char base64url secrets: the one a run starts with and the one its key
 // exchange rotates to.
@@ -44,7 +48,7 @@ afterEach(() => {
 
 describe("registerRelayKey", () => {
   test("signs with the signing secret's key and registers the other secret's key", async () => {
-    const registrar = fakeRegistrar([jsonResponse(200, {})]);
+    const registrar = fakeRegistrar([registrationAnswer()]);
     await registerRelayKey(
       {
         registrar: REGISTRAR,
@@ -72,7 +76,7 @@ describe("registerRelayKey", () => {
   });
 
   test("sends maxAgeDays null for a row with no lapse", async () => {
-    const registrar = fakeRegistrar([jsonResponse(200, {})]);
+    const registrar = fakeRegistrar([registrationAnswer()]);
     await registerRelayKey(
       {
         registrar: REGISTRAR,
@@ -139,7 +143,7 @@ describe("registerRelayKey", () => {
     const serverTime = NOW.getTime() / 1000 + 900;
     const registrar = fakeRegistrar([
       jsonResponse(401, { error: "skewed", serverTime }),
-      jsonResponse(200, {}),
+      registrationAnswer(),
     ]);
     const outcome = await registerRelayKey(
       {
@@ -289,7 +293,7 @@ describe("retryPendingRelayRegistration", () => {
       sharedSecret: ROTATED,
       relayRegistrationPendingSince: NOW.toISOString(),
     });
-    const registrar = fakeRegistrar([jsonResponse(200, {})]);
+    const registrar = fakeRegistrar([registrationAnswer()]);
     await retryPendingRelayRegistration(
       {
         registrar: REGISTRAR,

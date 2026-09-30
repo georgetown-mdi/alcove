@@ -33,6 +33,11 @@ const MAX_REGISTRAR_REASON_LENGTH = 300;
 /** What stands in a message for the credential a request carried. */
 export const REMOVED_CREDENTIAL_TEXT = "[credential removed]";
 
+const UNREAD_ANSWER_REASON =
+  "its answer is not the registrar's answer to a registration (a JSON " +
+  "object stating maxAgeDays and lapsesAt), so the registration is not " +
+  "taken as confirmed";
+
 const MALFORMED_LAPSE_REASON =
   "its answer states a lapse time that is not a UTC timestamp, so the " +
   "registration is not taken as confirmed";
@@ -98,11 +103,11 @@ export function relayRegistrationBody(
 
 /** How the registrar answered one registration. */
 export type RelayRegistrarAnswer =
-  /** The registrar holds the key: 200. */
+  /** The registrar holds the key: a 2xx stating the registration. */
   | {
       kind: "registered";
-      maxAgeDays: number | null | undefined;
-      lapsesAt: string | null | undefined;
+      maxAgeDays: number | null;
+      lapsesAt: string | null;
     }
   /** A proof outside the registrar's clock window: 401 with `serverTime`. */
   | { kind: "clock-skew"; serverTimeSeconds: number; reason?: string }
@@ -113,7 +118,10 @@ export type RelayRegistrarAnswer =
   | { kind: "refused"; status: number; reason?: string }
   /** A request the registrar will not take as sent: a redirect or other 4xx. */
   | { kind: "rejected"; status: number; reason?: string }
-  /** No answer, or one a later attempt may not repeat: 408, 429, or 5xx. */
+  /**
+   * No answer, one a later attempt may not repeat (408, 429, or 5xx), or a
+   * 2xx that does not state the registration.
+   */
   | { kind: "unavailable"; status?: number; reason: string };
 
 /** How a registrar request is sent: injectable for tests. */
@@ -156,8 +164,12 @@ function requestSignal(
 interface RegistrarAnswerBody {
   error?: string;
   serverTime?: number;
-  maxAgeDays?: number | null;
-  lapsesAt?: string | null;
+  /**
+   * The registration the answer states: both fields present, `maxAgeDays` an
+   * integer or `null` and `lapsesAt` a UTC timestamp or `null`, as the
+   * registrar writes every answer to an enrollment or registration.
+   */
+  registration?: { maxAgeDays: number | null; lapsesAt: string | null };
   /** The answer carried a `lapsesAt` other than `null` or a UTC timestamp. */
   malformedLapse?: true;
 }
@@ -193,12 +205,15 @@ async function readAnswerBody(
   )
     body.serverTime = fields["serverTime"];
   const maxAgeDays = fields["maxAgeDays"];
-  if (maxAgeDays === null || Number.isSafeInteger(maxAgeDays))
-    body.maxAgeDays = maxAgeDays as number | null;
   const lapsesAt = fields["lapsesAt"];
-  if (lapsesAt === null || LAPSES_AT_SCHEMA.safeParse(lapsesAt).success)
-    body.lapsesAt = lapsesAt as string | null;
-  else if (lapsesAt !== undefined) body.malformedLapse = true;
+  const lapseRead =
+    lapsesAt === null || LAPSES_AT_SCHEMA.safeParse(lapsesAt).success;
+  if (!lapseRead && lapsesAt !== undefined) body.malformedLapse = true;
+  if (lapseRead && (maxAgeDays === null || Number.isSafeInteger(maxAgeDays)))
+    body.registration = {
+      maxAgeDays: maxAgeDays as number | null,
+      lapsesAt: lapsesAt as string | null,
+    };
   return body;
 }
 
@@ -206,9 +221,11 @@ async function readAnswerBody(
  * Send one registration -- `POST` to enroll, `PUT` to rotate or renew -- and
  * classify the answer. Never throws for a network failure or a status: each
  * is an answer kind. Redirects are not followed, so the credential reaches no
- * second host, and no reason repeats the credential. A success whose
- * `lapsesAt` is neither `null` nor a UTC timestamp is `unavailable`, with a
- * fixed reason, and so is a request `transport.signal` cancelled.
+ * second host, and no reason repeats the credential. A 2xx is `registered`
+ * only when its body is the registrar's answer to a registration -- a JSON
+ * object, within the answer bound, stating `maxAgeDays` and `lapsesAt`; any
+ * other 2xx is `unavailable` with a fixed reason, and so is a request
+ * `transport.signal` cancelled.
  */
 export async function sendRelayRegistration(
   request: {
@@ -266,14 +283,13 @@ export async function sendRelayRegistration(
       };
     }
     const body = await readAnswerBody(response, signal, request.authorization);
-    if (status >= 200 && status < 300 && body.malformedLapse === true)
-      return { kind: "unavailable", status, reason: MALFORMED_LAPSE_REASON };
-    if (status >= 200 && status < 300)
-      return {
-        kind: "registered",
-        maxAgeDays: body.maxAgeDays,
-        lapsesAt: body.lapsesAt,
-      };
+    if (status >= 200 && status < 300) {
+      if (body.malformedLapse === true)
+        return { kind: "unavailable", status, reason: MALFORMED_LAPSE_REASON };
+      if (body.registration === undefined)
+        return { kind: "unavailable", status, reason: UNREAD_ANSWER_REASON };
+      return { kind: "registered", ...body.registration };
+    }
     if (status === 401 && body.serverTime !== undefined)
       return {
         kind: "clock-skew",
@@ -314,11 +330,9 @@ export function relayRegistrationNotice(
   outcome: Extract<RelayRegistrationOutcome, { kind: "registered" }>,
 ): string {
   const lapse =
-    typeof outcome.lapsesAt === "string"
-      ? `; the registration lapses at ${outcome.lapsesAt} unless a run renews it`
-      : outcome.lapsesAt === null
-        ? "; the registration does not lapse"
-        : "";
+    outcome.lapsesAt === null
+      ? "; the registration does not lapse"
+      : `; the registration lapses at ${outcome.lapsesAt} unless a run renews it`;
   return (
     `${relayRegistrarLabel(registrar)} holds the relay key derived from ` +
     `this exchange's current shared secret${lapse}.`
@@ -366,28 +380,38 @@ export interface RelayRegistrationEnvironment extends RelayRegistrarTransport {
   sleep?: (ms: number) => Promise<void>;
   /** The waits between attempts; {@link RELAY_REGISTRATION_RETRY_DELAYS_MS}. */
   retryDelaysMs?: readonly number[];
+  /**
+   * Ends the retries without cutting a request: once it aborts, a wait under
+   * way ends, and the attempt in flight or the next one is the last. Unlike
+   * `signal`, it never reaches a request, which runs to its own timeout.
+   */
+  lastAttemptSignal?: AbortSignal;
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-// `sleep(ms)`, ended early once `cancel` aborts.
+// `sleep(ms)`, ended early once any of `cancels` aborts.
 async function sleepUnlessCancelled(
   sleep: (ms: number) => Promise<void>,
   ms: number,
-  cancel: AbortSignal | undefined,
+  cancels: ReadonlyArray<AbortSignal | undefined>,
 ): Promise<void> {
-  if (cancel === undefined) return sleep(ms);
-  if (cancel.aborted) return;
+  const sources = cancels.filter(
+    (cancel): cancel is AbortSignal => cancel !== undefined,
+  );
+  if (sources.length === 0) return sleep(ms);
+  if (sources.some((cancel) => cancel.aborted)) return;
   let stop = () => {};
   const cancelled = new Promise<void>((resolve) => {
     stop = resolve;
-    cancel.addEventListener("abort", stop, { once: true });
+    for (const cancel of sources)
+      cancel.addEventListener("abort", stop, { once: true });
   });
   try {
     await Promise.race([sleep(ms), cancelled]);
   } finally {
-    cancel.removeEventListener("abort", stop);
+    for (const cancel of sources) cancel.removeEventListener("abort", stop);
   }
 }
 
@@ -402,7 +426,9 @@ async function sleepUnlessCancelled(
  * `retryDelaysMs`; a proof outside the registrar's clock window is signed
  * again once at the registrar's own time. A refusal is final: this path holds
  * no relay-owner token and never falls back to one. Once `env.signal` aborts,
- * no further attempt is made and the outcome is `unavailable`.
+ * no further attempt is made and the outcome is `unavailable`; once
+ * `env.lastAttemptSignal` aborts, the attempt in flight or the next one is
+ * the last, and its answer is the outcome.
  */
 export async function registerRelayKey(
   registration: {
@@ -455,8 +481,15 @@ export async function registerRelayKey(
       clockOffsetMs = answer.serverTimeSeconds * 1000 - now().getTime();
       continue;
     }
-    if (answer.kind === "unavailable" && attempt < delays.length) {
-      await sleepUnlessCancelled(sleep, delays[attempt]!, env.signal);
+    if (
+      answer.kind === "unavailable" &&
+      attempt < delays.length &&
+      env.lastAttemptSignal?.aborted !== true
+    ) {
+      await sleepUnlessCancelled(sleep, delays[attempt]!, [
+        env.signal,
+        env.lastAttemptSignal,
+      ]);
       attempt++;
       continue;
     }

@@ -470,7 +470,7 @@ describe("the retry before a run connects", () => {
 
 describe("a cancelled run's registration", () => {
   /** A registrar that never answers: each request waits until its signal
-   * aborts, as a real fetch does. */
+   * aborts and rejects with the signal's reason, as a real fetch does. */
   function neverAnswering(): {
     fetch: typeof globalThis.fetch;
     requests: () => number;
@@ -479,9 +479,10 @@ describe("a cancelled run's registration", () => {
     const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
       requests++;
       return new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("aborted", "AbortError")),
-        );
+        const signal = init?.signal;
+        signal?.addEventListener("abort", () => {
+          reject(signal.reason);
+        });
       });
     }) as typeof globalThis.fetch;
     return { fetch, requests: () => requests };
@@ -512,27 +513,72 @@ describe("a cancelled run's registration", () => {
     expect(store.cleared).toEqual([]);
   });
 
-  test("the registration after the run stops at the cancel and leaves it pending", async () => {
+  const rotation = () => ({
+    id: "record-under-test",
+    registrar: REGISTRAR,
+    preRotationSecret: generateSharedSecret(),
+    rotatedSecret: generateSharedSecret(),
+    maxAgeDays: null,
+  });
+
+  test("the registration after a cancelled run makes one attempt to its timeout and leaves it pending", async () => {
     const registrar = neverAnswering();
     const store = recordingStore();
     const cancel = new AbortController();
-    setTimeout(() => cancel.abort(), 10);
+    cancel.abort();
 
     const result = await registerRotatedManagedRelayKey(
+      rotation(),
       {
-        id: "record-under-test",
-        registrar: REGISTRAR,
-        preRotationSecret: generateSharedSecret(),
-        rotatedSecret: generateSharedSecret(),
-        maxAgeDays: null,
+        fetch: registrar.fetch,
+        timeoutMs: 20,
+        retryDelaysMs: [600_000, 600_000],
+        cancel: cancel.signal,
       },
-      { fetch: registrar.fetch, timeoutMs: 600_000, signal: cancel.signal },
       store,
     );
 
     expect(result.kind).toBe("failed");
+    expect(result.kind === "failed" && result.message).toContain(
+      "no answer within 20 ms",
+    );
     expect(registrar.requests()).toBe(1);
     expect(store.cleared).toEqual([]);
+  });
+
+  test("a cancel during the registration after the run does not cut it: its answer confirms", async () => {
+    const store = recordingStore();
+    const cancel = new AbortController();
+    const params = rotation();
+    let requests = 0;
+    const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+      requests++;
+      cancel.abort();
+      return new Promise<Response>((resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+        setTimeout(
+          () =>
+            resolve(
+              new Response(JSON.stringify(REGISTERED[1]), { status: 200 }),
+            ),
+          10,
+        );
+      });
+    }) as typeof globalThis.fetch;
+
+    const result = await registerRotatedManagedRelayKey(
+      params,
+      { fetch, cancel: cancel.signal },
+      store,
+    );
+
+    expect(result).toEqual({ kind: "registered" });
+    expect(requests).toBe(1);
+    expect(store.cleared).toEqual([
+      ["record-under-test", params.rotatedSecret],
+    ]);
   });
 });
 

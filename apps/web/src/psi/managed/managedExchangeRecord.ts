@@ -1040,7 +1040,7 @@ export interface ManagedExchangeRotation {
 /**
  * The pending relay registration a rotation write leaves: the one the
  * rotation states; else, on a record that names a registrar, the one the
- * record held, since only a confirmed registration clears it; else none.
+ * record held, since a rotation confirms nothing; else none.
  */
 function pendingRelayRegistrationAfterRotation(
   record: RunnableManagedExchangeRecord,

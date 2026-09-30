@@ -15,6 +15,7 @@ import { captureProcessExit } from "../../exitCapture";
 import {
   fakeRegistrar,
   jsonResponse,
+  registrationAnswer,
   type RecordedRegistrarRequest,
 } from "../relayRegistrarFake";
 
@@ -202,7 +203,7 @@ test("an unconfirmed registration the registrar confirms is cleared, and the run
     sharedSecret: PRE_ROTATION,
     relayRegistrationPendingSince: PENDING_SINCE,
   });
-  const requests = useRegistrar([jsonResponse(200, {})]);
+  const requests = useRegistrar([registrationAnswer()]);
   let keyFileAtDial: unknown;
   vi.mocked(runProtocol).mockImplementationOnce(async () => {
     keyFileAtDial = loadKeyFile(keyFile);
@@ -219,7 +220,7 @@ test("an unconfirmed registration the registrar confirms is cleared, and the run
 test("after the run, the rotated key is registered signed with the pre-rotation key", async () => {
   writeConfig();
   saveKeyFile(keyFile, { sharedSecret: PRE_ROTATION });
-  const requests = useRegistrar([jsonResponse(200, {})]);
+  const requests = useRegistrar([registrationAnswer()]);
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     expect(options.auth?.relayRegistrationFollows).toBe(true);
     rotateLikeTheKeyExchange(options);
@@ -257,7 +258,7 @@ test("a refused registration after a completed run reports 73, keeps the rotated
 test("a run that fails after rotating still registers the rotated key", async () => {
   writeConfig();
   saveKeyFile(keyFile, { sharedSecret: PRE_ROTATION });
-  const requests = useRegistrar([jsonResponse(200, {})]);
+  const requests = useRegistrar([registrationAnswer()]);
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     rotateLikeTheKeyExchange(options);
     throw Object.assign(new Error("partner went away"), { exitCode: 69 });

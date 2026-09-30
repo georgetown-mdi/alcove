@@ -207,6 +207,15 @@ export async function retryPendingManagedRelayRegistration(
   log.info(relayRegistrationNotice(registrar, outcome));
 }
 
+/** How {@link registerRotatedManagedRelayKey} runs: injectable for tests. */
+export type RotatedManagedRelayKeyEnvironment = Omit<
+  RelayRegistrationEnvironment,
+  "signal" | "lastAttemptSignal"
+> & {
+  /** The run's cancel: ends the retries, never the request under way. */
+  cancel?: AbortSignal;
+};
+
 /** What {@link registerRotatedManagedRelayKey} did. */
 export type RotatedManagedRelayKeyResult =
   { kind: "registered" } | { kind: "failed"; message: string };
@@ -216,9 +225,14 @@ export type RotatedManagedRelayKeyResult =
  * `rotatedSecret`, signed with the key derived from `preRotationSecret`, which
  * the registrar holds. A confirmed registration drops the pending
  * registration the rotation write stored; a failed one leaves it for the next
- * run's retry, and its message names the registrar and the next step, as
- * does one `env.signal` cancelled. Never throws: the run's own outcome is not
- * this registration's.
+ * run's retry, and its message names the registrar and the next step.
+ *
+ * `env.cancel`, the run's cancel, ends the retries but reaches no request:
+ * the attempt under way when it aborts, or the next one when it aborts
+ * between attempts, runs to its timeout and is the last. The pre-rotation
+ * secret is held nowhere else, so an abandoned registration would leave a
+ * key only the relay-owner token can replace. Never throws: the run's own
+ * outcome is not this registration's.
  */
 export async function registerRotatedManagedRelayKey(
   params: {
@@ -228,11 +242,12 @@ export async function registerRotatedManagedRelayKey(
     rotatedSecret: string;
     maxAgeDays: number | null;
   },
-  env: RelayRegistrationEnvironment = {},
+  env: RotatedManagedRelayKeyEnvironment = {},
   store: ManagedRelayRegistrationStore = defaultRegistrationStore,
 ): Promise<RotatedManagedRelayKeyResult> {
   const { id, registrar, preRotationSecret, rotatedSecret, maxAgeDays } =
     params;
+  const { cancel, ...transport } = env;
   let outcome: RelayRegistrationOutcome;
   try {
     outcome = await registerRelayKey(
@@ -242,7 +257,7 @@ export async function registerRotatedManagedRelayKey(
         registeredSecret: rotatedSecret,
         maxAgeDays,
       },
-      env,
+      { ...transport, lastAttemptSignal: cancel },
     );
   } catch (error) {
     log.error("registering the rotated relay key failed:", error);

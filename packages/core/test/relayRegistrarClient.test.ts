@@ -11,8 +11,9 @@ import type { RelayRegistrar } from "../src/config/connection";
 
 // The transport-neutral registrar client both apps share. The CLI's suite
 // (apps/cli/test/unit/relayRegistrar.test.ts, relayKeyRotation.test.ts) holds
-// the answer classification and the retries; these hold what differs from a
-// Node-only client: the credential scrub runs without Node's Buffer.
+// most of the answer classification and the retries; these hold the 2xx
+// bodies that confirm nothing, the cancel and last-attempt signals, and the
+// credential scrub without Node's Buffer.
 
 const REGISTRAR: RelayRegistrar = {
   url: "https://relay.example.org:8443",
@@ -36,7 +37,88 @@ function answering(
   return fetch;
 }
 
+/** A fetch answering once with `status` and the raw `text`. */
+function answeringText(status: number, text: string): typeof globalThis.fetch {
+  return (() =>
+    Promise.resolve(
+      new Response(text, {
+        status,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )) as typeof globalThis.fetch;
+}
+
+/** A fetch whose every request waits until its signal aborts, recording the
+ * name of the reason each one ended with. */
+function neverAnswering(): typeof globalThis.fetch & { endings: string[] } {
+  const endings: string[] = [];
+  const fetch = ((_input: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        const reason: unknown = init.signal?.reason;
+        endings.push(reason instanceof Error ? reason.name : String(reason));
+        reject(reason);
+      });
+    })) as typeof globalThis.fetch & { endings: string[] };
+  fetch.endings = endings;
+  return fetch;
+}
+
+// What infra/relay/registrar.py answers an enrollment or registration with.
+const REGISTRAR_ANSWER = {
+  message: "exchange-1 registered",
+  maxAgeDays: 30,
+  lapsesAt: "2026-10-30T00:00:00Z",
+};
+
+const PROOF_REQUEST = {
+  registrar: REGISTRAR,
+  method: "PUT" as const,
+  body: "{}",
+  authorization: "Alcove-Relay-Proof ts=1,mac=x",
+};
+
 describe("sendRelayRegistration", () => {
+  test("the registrar's answer to a registration confirms it", async () => {
+    const answer = await sendRelayRegistration(PROOF_REQUEST, {
+      fetch: answeringText(200, JSON.stringify(REGISTRAR_ANSWER)),
+    });
+    expect(answer).toEqual({
+      kind: "registered",
+      maxAgeDays: 30,
+      lapsesAt: "2026-10-30T00:00:00Z",
+    });
+  });
+
+  test.each([
+    [
+      "over the answer bound",
+      JSON.stringify({ ...REGISTRAR_ANSWER, message: "x".repeat(5000) }),
+    ],
+    ["HTML", "<!doctype html><html><body>Welcome</body></html>"],
+    ["JSON that is not an object", JSON.stringify([REGISTRAR_ANSWER])],
+    ["an object stating no registration", JSON.stringify({ ok: true })],
+    [
+      "an object with no lapse",
+      JSON.stringify({ message: "ok", maxAgeDays: 30 }),
+    ],
+    [
+      "a lapse in days that is not a whole number",
+      JSON.stringify({ ...REGISTRAR_ANSWER, maxAgeDays: "30" }),
+    ],
+  ])(
+    "a 200 whose body is %s is not a confirmed registration",
+    async (_, text) => {
+      const answer = await sendRelayRegistration(PROOF_REQUEST, {
+        fetch: answeringText(200, text),
+      });
+      expect(answer).toMatchObject({ kind: "unavailable", status: 200 });
+      expect(answer.kind === "unavailable" && answer.reason).toContain(
+        "not taken as confirmed",
+      );
+    },
+  );
+
   test.each([
     ["as sent", (token: string) => token],
     ["base64-encoded", (token: string) => btoa(token)],
@@ -122,6 +204,91 @@ describe("registerRelayKey", () => {
       reason: RELAY_REGISTRATION_CANCELLED_REASON,
     });
     expect(requests).toBe(1);
+  });
+
+  test("once its last attempt is called, a registration makes that one attempt and it runs to its timeout", async () => {
+    const secret = generateSharedSecret();
+    const lastAttempt = new AbortController();
+    lastAttempt.abort();
+    const fetch = neverAnswering();
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      {
+        fetch,
+        timeoutMs: 20,
+        retryDelaysMs: [600_000, 600_000],
+        lastAttemptSignal: lastAttempt.signal,
+      },
+    );
+    expect(outcome).toEqual({
+      kind: "unavailable",
+      reason: "no answer within 20 ms",
+    });
+    expect(fetch.endings).toEqual(["TimeoutError"]);
+  });
+
+  test("a last attempt called during an attempt lets it finish and confirm", async () => {
+    const secret = generateSharedSecret();
+    const lastAttempt = new AbortController();
+    let requests = 0;
+    const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+      requests++;
+      lastAttempt.abort();
+      return new Promise<Response>((resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+        setTimeout(
+          () => resolve(new Response(JSON.stringify(REGISTRAR_ANSWER))),
+          10,
+        );
+      });
+    }) as typeof globalThis.fetch;
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: 30,
+      },
+      { fetch, lastAttemptSignal: lastAttempt.signal },
+    );
+    expect(outcome.kind).toBe("registered");
+    expect(requests).toBe(1);
+  });
+
+  test("a last attempt called during the wait between attempts makes one more", async () => {
+    const secret = generateSharedSecret();
+    const lastAttempt = new AbortController();
+    const fetch = answering([
+      [503, {}],
+      [503, {}],
+      [503, {}],
+    ]);
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      {
+        fetch,
+        retryDelaysMs: [600_000, 600_000],
+        sleep: () => {
+          lastAttempt.abort();
+          return new Promise(() => {});
+        },
+        lastAttemptSignal: lastAttempt.signal,
+      },
+    );
+    expect(outcome).toMatchObject({ kind: "unavailable", status: 503 });
+    expect(fetch.authorizations).toHaveLength(2);
   });
 
   test("a cancel during the wait between attempts makes no further attempt", async () => {

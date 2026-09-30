@@ -1358,17 +1358,21 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   registrar holding the key of a secret the record no longer holds; so no
   moment exists at which the record holds the rotated secret without it. A
   re-invite's rotation writes it too where the record names a registrar, since
-  no registration is signed for the fresh secret. A record naming no registrar
-  stores none.
+  no registration is signed for the fresh secret. A rotation write on a
+  record naming no registrar stores one only when it carries it in from a
+  command-line key file (**Carried in**, below).
 - **What it holds.** An instant only. The pre-rotation secret the registration
   is signed with is the run's own copy of the record read inside the run+rotate
   lock, held until the run ends, and no key derived from either secret is
   written.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
-  rotated since unchanged; by an enrollment; and by stopping registration. No
-  other write removes it: a rotation write on a record naming a registrar sets
-  or keeps it.
+  rotated since unchanged; by an enrollment; by stopping registration; by a
+  revive from a command-line pair whose secret differs from the stored one,
+  which takes the key file's field in its place (**Carried in**, below); and
+  by a rotation write on a record naming no registrar that carries none in.
+  No other write removes it: a rotation write on a record naming a registrar
+  sets or keeps it.
 - **Read** by the next run that relays through this browser's own relay,
   inside the lock, after the input guard and before any contact with the
   partner: it registers the current key again, signed under that key. The
@@ -1379,7 +1383,18 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 - **Carried in** from a command-line key file holding the CLI's own field
   ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), by the
   pair import and the hand-off re-take, so the exchange's first run here
-  retries it. A revive keeps the registrar the stored record was enrolled at.
+  retries it. A revive keeps the registrar the stored record was enrolled at
+  (`applyManagedExchangeCommandLinePair`): where the pair's secret differs,
+  the key file decides, so the stored marker is dropped and the key file's is
+  taken, and a key file holding none means the command line confirmed its
+  registration or made none; where the secrets match, the key file's marker
+  replaces the stored one and its absence keeps it. The re-take of a pair
+  whose secret differs is a rotation write (`decideRetake`): the key file's
+  marker when it holds one, else the stored one where the record names a
+  registrar. A marker carried in is kept on a record that names no registrar
+  -- a fresh import names none -- where no run retries it and no page shows
+  it; an enrollment then removes it, having registered the current key with
+  the token.
 - **Not carried out**: the export artifact and the command-line files this app
   writes hold neither field, so an exchange moved by either is enrolled again
   where it runs next -- without the token where the registrar already holds its
