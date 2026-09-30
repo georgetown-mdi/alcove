@@ -6,6 +6,7 @@ import {
   parseSensitiveYaml,
 } from "@alcove/core";
 
+import { ZodError } from "zod";
 import { stringify as stringifyYaml } from "yaml";
 
 import {
@@ -17,6 +18,11 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  MANAGED_RELAY_REENROLLMENT_STEP,
+  ManagedRelayRegistrationError,
+  retryPendingManagedRelayRegistration,
+} from "@psi/managed/managedRelayRegistration";
+import {
   ManagedConfigurationRefusedError,
   readManagedCommandLineConfiguration,
 } from "@psi/managed/managedCommandLineImport";
@@ -27,13 +33,15 @@ import {
   reconstructRecordFromArtifact,
   serializeManagedExchangeArtifact,
 } from "@psi/managed/managedExchangeArtifact";
+import { managedInstallFields } from "@psi/managed/managedExchangeImport";
 
 import type {
+  ManagedExchangeRecord,
   ManagedExchangeSchedule,
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { WebRTCExchangeLocator } from "@alcove/core";
+import type { RelayRegistrar, WebRTCExchangeLocator } from "@alcove/core";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -592,5 +600,206 @@ describe("a backup's webrtc connection outside the credential-free locator", () 
         "credential. Remove it from the configuration inside the backup " +
         "file and import it again.",
     );
+  });
+});
+
+describe("the relay key registration", () => {
+  const REGISTRAR: RelayRegistrar = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+  const PENDING_SINCE = "2026-09-29T12:00:00.000Z";
+
+  function enrolledRecord(
+    pending?: Pick<
+      ManagedExchangeRecord,
+      "relayRegistrationPendingSince" | "relayRegistrationPendingReason"
+    >,
+  ): RunnableManagedExchangeRecord {
+    return runnableRecord(
+      newExchange({ relayRegistrar: REGISTRAR, ...pending }),
+    );
+  }
+
+  /** The backup's bytes imported the way the import control reads them. */
+  function restored(
+    record: RunnableManagedExchangeRecord,
+  ): RunnableManagedExchangeRecord {
+    return runnableManagedExchangeOrRefuse(
+      importManagedExchangeArtifact(
+        serializeManagedExchangeArtifact(encodeManagedExchangeArtifact(record)),
+      ).record,
+    );
+  }
+
+  test("an enrolled record with no pending registration restores its registrar", () => {
+    const record = enrolledRecord();
+    const artifact = encodeManagedExchangeArtifact(record);
+    expect(artifact.local.relayRegistrar).toEqual(REGISTRAR);
+    expect(artifact.key).not.toHaveProperty("relayRegistrationPendingSince");
+    expect(artifact.local).not.toHaveProperty("relayRegistrationPendingReason");
+
+    const back = restored(record);
+    expect(back.relayRegistrar).toEqual(REGISTRAR);
+    expect(back).not.toHaveProperty("relayRegistrationPendingSince");
+    expect(back).not.toHaveProperty("relayRegistrationPendingReason");
+  });
+
+  test("a pending registration rides the key block, which still reads as a key file", () => {
+    const record = enrolledRecord({
+      relayRegistrationPendingSince: PENDING_SINCE,
+    });
+    const artifact = encodeManagedExchangeArtifact(record);
+    expect(artifact.key.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    expect(
+      keyFileFieldsSchema.parse(artifact.key).relayRegistrationPendingSince,
+    ).toBe(PENDING_SINCE);
+
+    const back = restored(record);
+    expect(back.relayRegistrar).toEqual(REGISTRAR);
+    expect(back.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    expect(back).not.toHaveProperty("relayRegistrationPendingReason");
+  });
+
+  test("a re-invite's pending registration restores with its reason", () => {
+    const record = enrolledRecord({
+      relayRegistrationPendingSince: PENDING_SINCE,
+      relayRegistrationPendingReason: "reinvite",
+    });
+    const artifact = encodeManagedExchangeArtifact(record);
+    expect(artifact.local.relayRegistrationPendingReason).toBe("reinvite");
+    expect(artifact.key).not.toHaveProperty("relayRegistrationPendingReason");
+
+    const back = restored(record);
+    expect(back.relayRegistrationPendingSince).toBe(PENDING_SINCE);
+    expect(back.relayRegistrationPendingReason).toBe("reinvite");
+  });
+
+  test.each([
+    ["no pending registration", {}],
+    [
+      "a pending registration",
+      { relayRegistrationPendingSince: PENDING_SINCE },
+    ],
+    [
+      "a re-invite's pending registration",
+      {
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite" as const,
+      },
+    ],
+  ])(
+    "a fresh install from a restore with %s keeps the registration",
+    (_case, pending) => {
+      const record = enrolledRecord(pending);
+      const installed = buildManagedExchangeRecord(
+        managedInstallFields(restored(record)),
+      );
+      expect(installed.relayRegistrar).toEqual(REGISTRAR);
+      expect(installed.relayRegistrationPendingSince).toBe(
+        record.relayRegistrationPendingSince,
+      );
+      expect(installed.relayRegistrationPendingReason).toBe(
+        record.relayRegistrationPendingReason,
+      );
+    },
+  );
+
+  test("the first run of a restored record retries the pending registration before it connects", async () => {
+    const back = restored(
+      enrolledRecord({ relayRegistrationPendingSince: PENDING_SINCE }),
+    );
+    const sent: Array<string> = [];
+    const cleared: Array<string> = [];
+    await retryPendingManagedRelayRegistration(
+      back,
+      REGISTRAR,
+      {
+        fetch: (input: string | URL | Request) => {
+          sent.push(String(input));
+          return Promise.resolve(
+            new Response(JSON.stringify({ maxAgeDays: null, lapsesAt: null }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        },
+      },
+      {
+        clearPending: (id, secret) => {
+          cleared.push(secret);
+          return Promise.resolve({ ...back, id });
+        },
+      },
+    );
+    expect(sent).toEqual([
+      "https://relay.example.org:8443/exchanges/riverbend-q3",
+    ]);
+    expect(cleared).toEqual([back.sharedSecret]);
+  });
+
+  test("the first run of a record restored with a re-invite's pending registration sends nothing and names re-enrollment", async () => {
+    const back = restored(
+      enrolledRecord({
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      }),
+    );
+    const error = await retryPendingManagedRelayRegistration(back, REGISTRAR, {
+      fetch: () => Promise.reject(new Error("no request expected")),
+    }).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(ManagedRelayRegistrationError);
+    expect((error as Error).message).toContain(MANAGED_RELAY_REENROLLMENT_STEP);
+  });
+
+  test("a backup holding a pending registration's reason without the registration is refused", () => {
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(enrolledRecord()),
+      ),
+    );
+    artifact.local.relayRegistrationPendingReason = "reinvite";
+    expect(() =>
+      importManagedExchangeArtifact(JSON.stringify(artifact)),
+    ).toThrow(ZodError);
+  });
+
+  test("a backup naming a registrar the record schema refuses is refused", () => {
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(enrolledRecord()),
+      ),
+    );
+    artifact.local.relayRegistrar = {
+      url: "http://relay.example.org",
+      exchangeId: "riverbend-q3",
+    };
+    expect(() =>
+      importManagedExchangeArtifact(JSON.stringify(artifact)),
+    ).toThrow(ZodError);
+  });
+
+  test("a backup whose embedded document names a registrar is refused, the registrar having its own block", () => {
+    const artifact = JSON.parse(
+      serializeManagedExchangeArtifact(
+        encodeManagedExchangeArtifact(runnableRecord(newExchange())),
+      ),
+    );
+    const document = parseSensitiveYaml(
+      artifact.exchangeDocument,
+      "test backup document",
+    ) as { connection: Record<string, unknown> };
+    document.connection.relay_registrar = {
+      url: REGISTRAR.url,
+      exchange_id: REGISTRAR.exchangeId,
+    };
+    document.connection.turn = [{ url: "turns:relay.example.org:443" }];
+    artifact.exchangeDocument = stringifyYaml(document);
+    expect(() =>
+      importManagedExchangeArtifact(JSON.stringify(artifact)),
+    ).toThrow(ManagedConfigurationRefusedError);
   });
 });

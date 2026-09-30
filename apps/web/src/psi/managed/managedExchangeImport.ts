@@ -245,8 +245,10 @@ export interface ManagedImportDeps {
 /**
  * The fields a fresh install creates its record from: everything `record`
  * holds but its `id`, which the install assigns anew, and the platform
- * grants, which a file cannot bring. The run bookkeeping and a raised
- * standing condition are kept, so an install on a new profile clears neither.
+ * grants, which a file cannot bring. The run bookkeeping, a raised standing
+ * condition, and the relay registration -- the registrar and any pending
+ * registration with its reason -- are kept, so an install on a new profile
+ * clears none of them.
  */
 export function managedInstallFields(
   record: ManagedExchangeRecord,
@@ -264,6 +266,17 @@ export function managedInstallFields(
     ...(record.schedule !== undefined ? { schedule: record.schedule } : {}),
     ...(record.lastRun !== undefined ? { lastRun: record.lastRun } : {}),
     ...(standingCondition !== undefined ? { standingCondition } : {}),
+    ...(record.relayRegistrar !== undefined
+      ? { relayRegistrar: record.relayRegistrar }
+      : {}),
+    ...(record.relayRegistrationPendingSince !== undefined
+      ? { relayRegistrationPendingSince: record.relayRegistrationPendingSince }
+      : {}),
+    ...(record.relayRegistrationPendingReason !== undefined
+      ? {
+          relayRegistrationPendingReason: record.relayRegistrationPendingReason,
+        }
+      : {}),
   };
 }
 

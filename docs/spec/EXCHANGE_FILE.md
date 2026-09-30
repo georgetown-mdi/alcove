@@ -689,8 +689,10 @@ been confirmed at the relay registrar a run registers at
   validates the field as the command line does, so it reads the file and
   refuses one whose field is not an ISO 8601 instant. The web application's
   import of a command-line key file carries the field onto the managed record
-  it installs, so that exchange's first browser run retries the registration
-  ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#the-pending-relay-registration)).
+  it installs, so that exchange's first browser run retries the registration,
+  and its command-line export writes the field from a record's own pending
+  registration, so the first command-line run retries it
+  ([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)).
 
 ### `exchange --invitation` fail-closed ordering
 

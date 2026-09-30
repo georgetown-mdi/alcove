@@ -574,7 +574,7 @@ const persistedExchangeFileSchema = z.preprocess(
 /**
  * The `.alcove.key` fields: `sharedSecret`, `expires`, `rotationInFlightSince`,
  * `relayRegistrationPendingSince`. The artifact's key half and the key file
- * this app writes are the pair without the two markers
+ * this app writes are the fields without the rotation-in-flight marker
  * ({@link ManagedExchangeKeyPair}), so a record's secret half maps onto a valid
  * `.alcove.key` and one read back maps onto a record.
  */
@@ -587,28 +587,31 @@ export interface ManagedExchangeKeyFields {
    * file reads; never carried onto a record, whose import is read through the
    * import marker instead. */
   rotationInFlightSince?: string;
-  /** A command-line key file's unconfirmed relay key registration. Carried
-   * onto the record an import builds, so its first run here retries it. */
+  /** An unconfirmed relay key registration: the record's
+   * `relayRegistrationPendingSince`, written by both exports and set on the
+   * record an import builds, so its first run retries it. */
   relayRegistrationPendingSince?: string;
 }
 
-/** The key pair without the command-line markers: what the export artifact's
- * key block and the key file this app writes hold. */
+/** The key fields without the command line's rotation-in-flight marker: what
+ * the export artifact's key block and the key file this app writes hold. */
 export type ManagedExchangeKeyPair = Omit<
   ManagedExchangeKeyFields,
-  "rotationInFlightSince" | "relayRegistrationPendingSince"
+  "rotationInFlightSince"
 >;
 
 const keyPairShape = {
   sharedSecret: z.string().regex(SHARED_SECRET_REGEX),
   expires: z.iso.datetime().optional(),
+  relayRegistrationPendingSince: z.iso.datetime().optional(),
 };
 
 /**
- * The key pair's validator, for the export artifact's key block: `sharedSecret`
- * and an optional ISO 8601 `expires`. Strict, so an artifact whose key block
- * holds the rotation-in-flight marker, which the artifact never carries, is
- * refused rather than read with the field dropped.
+ * The key pair's validator, for the export artifact's key block:
+ * `sharedSecret`, an optional ISO 8601 `expires`, and an optional pending
+ * relay registration. Strict, so an artifact whose key block holds the
+ * rotation-in-flight marker, which the artifact never holds, is refused rather
+ * than read with the field dropped.
  */
 export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
   .object(keyPairShape)
@@ -625,7 +628,6 @@ export const keyFileFieldsSchema: ZodType<ManagedExchangeKeyFields> = z
   .object({
     ...keyPairShape,
     rotationInFlightSince: z.iso.datetime().optional(),
-    relayRegistrationPendingSince: z.iso.datetime().optional(),
   })
   .strict();
 
@@ -990,9 +992,15 @@ export interface NewManagedExchange {
    * `lastRun` is: an import that dropped one would be a way to clear a condition
    * only the operator, a re-invite, or a delete may clear. */
   standingCondition?: ManagedStandingCondition;
-  /** A command-line key file's unconfirmed relay key registration, set only by
-   * the import of one, so the first run here retries it. */
+  /** The relay registrar the exchange registers at, set only by an import of
+   * a backup or a command-line pair naming one. */
+  relayRegistrar?: RelayRegistrar;
+  /** An unconfirmed relay key registration, set only by an import of a backup
+   * or a key file recording one, so the first run here retries it. */
   relayRegistrationPendingSince?: string;
+  /** Why no run can confirm {@link relayRegistrationPendingSince}, set only by
+   * a backup import holding it beside the marker. */
+  relayRegistrationPendingReason?: ManagedRelayRegistrationPendingReason;
 }
 
 /**
@@ -1028,8 +1036,16 @@ export function buildManagedExchangeRecord(
     ...(fields.expires !== undefined ? { expires: fields.expires } : {}),
     ...(fields.schedule !== undefined ? { schedule: fields.schedule } : {}),
     ...(fields.lastRun !== undefined ? { lastRun: fields.lastRun } : {}),
+    ...(fields.relayRegistrar !== undefined
+      ? { relayRegistrar: fields.relayRegistrar }
+      : {}),
     ...(fields.relayRegistrationPendingSince !== undefined
       ? { relayRegistrationPendingSince: fields.relayRegistrationPendingSince }
+      : {}),
+    ...(fields.relayRegistrationPendingReason !== undefined
+      ? {
+          relayRegistrationPendingReason: fields.relayRegistrationPendingReason,
+        }
       : {}),
     standingCondition: fields.standingCondition ?? NO_STANDING_CONDITION,
   };
@@ -1450,11 +1466,12 @@ export function applyManagedExchangeRotationInFlight(
  * `expires` or policy clearing the stored one, and everything the pair has no
  * field for -- the `id`, label, schedule, `lastRun`, standing condition, and
  * platform grants -- stays as stored, so the revive clears no condition only
- * the operator, a re-invite, or a delete may clear. The relay registrar the
- * record enrolled at is kept too. A rotation-in-flight marker goes with the
- * stored secret when the pair replaces it. The key file's own pending
- * registration replaces the stored one; absent, the stored one is kept. The
- * inputs are not mutated.
+ * the operator, a re-invite, or a delete may clear. A rotation-in-flight
+ * marker goes with the stored secret when the pair replaces it. A pair naming
+ * a relay registrar states the whole registration: its registrar and the key
+ * file's pending registration, or none, replace the stored ones. A pair naming
+ * none keeps the stored registrar, and the key file's pending registration
+ * replaces the stored one only where it holds one. The inputs are not mutated.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
@@ -1474,7 +1491,15 @@ export function applyManagedExchangeCommandLinePair(
   else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
   if (imported.sharedSecret !== stored.sharedSecret)
     delete next.rotationInFlightSince;
-  if (imported.relayRegistrationPendingSince !== undefined)
+  if (imported.relayRegistrar !== undefined) {
+    next.relayRegistrar = imported.relayRegistrar;
+    setPendingRelayRegistration(
+      next,
+      imported.relayRegistrationPendingSince === undefined
+        ? undefined
+        : { since: imported.relayRegistrationPendingSince },
+    );
+  } else if (imported.relayRegistrationPendingSince !== undefined)
     setPendingRelayRegistration(next, {
       since: imported.relayRegistrationPendingSince,
     });
