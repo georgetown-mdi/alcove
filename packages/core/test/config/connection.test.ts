@@ -876,6 +876,59 @@ test("a create-mode server with no host still has its other fields checked", () 
 });
 
 test.each([
+  [
+    "sftp",
+    {
+      channel: "sftp",
+      server: { provision: createModeProvision, port: 70000 },
+    },
+  ],
+  [
+    "webrtc",
+    {
+      channel: "webrtc",
+      server: { provision: createModeProvision, port: 70000 },
+    },
+  ],
+] as const)(
+  "a %s create-mode server with no host and a bad port is refused naming both",
+  (_, connection) => {
+    const connecting = safeParseConnectionConfig(connection);
+    expect(connecting.success).toBe(false);
+    if (connecting.success) return;
+    expect(connecting.error.issues).toEqual([
+      expect.objectContaining({ code: "too_big", path: ["server", "port"] }),
+      expect.objectContaining({
+        code: "custom",
+        path: ["server", "host"],
+        message: UNALLOCATED_SERVER_HOST_MESSAGE,
+      }),
+    ]);
+
+    const awaiting = safeParseConnectionConfigAwaitingAddress(connection);
+    expect(awaiting.success).toBe(false);
+    if (awaiting.success) return;
+    expect(awaiting.error.issues).toEqual([
+      expect.objectContaining({ code: "too_big", path: ["server", "port"] }),
+    ]);
+  },
+);
+
+test("a create-mode server with no host and a bad connection option is refused naming both", () => {
+  const connecting = safeParseConnectionConfig({
+    channel: "sftp",
+    server: { provision: createModeProvision },
+    options: { poll_interval_ms: -5 },
+  });
+  expect(connecting.success).toBe(false);
+  if (connecting.success) return;
+  expect(connecting.error.issues.map((issue) => issue.path)).toEqual([
+    ["options", "pollIntervalMs"],
+    ["server", "host"],
+  ]);
+});
+
+test.each([
   ["sftp with no provision block", { channel: "sftp", server: {} }],
   ["webrtc with no provision block", { channel: "webrtc", server: {} }],
   [

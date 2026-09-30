@@ -1694,19 +1694,35 @@ const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
   );
 
 /**
+ * Whether a connection is anything but an sftp or webrtc server block with a
+ * create-mode `provision` and no `host`. Runs beside the connection's other
+ * issues, so it reads only the fields it needs from a value that may be
+ * partly invalid.
+ */
+function statesCreatedServerHost(
+  connection: ConnectionConfigAwaitingAddress,
+): connection is ConnectionConfig {
+  if (connection.channel !== "sftp" && connection.channel !== "webrtc")
+    return true;
+  const server: unknown = connection.server;
+  if (typeof server !== "object" || server === null) return true;
+  return (
+    (server as { host?: unknown }).host !== undefined ||
+    !statesCreateModeProvision(server)
+  );
+}
+
+/**
  * A connection block's schema for a command that connects: a create-mode
  * server block with no `host` is refused with
- * {@link UNALLOCATED_SERVER_HOST_MESSAGE}.
+ * {@link UNALLOCATED_SERVER_HOST_MESSAGE}, listed with the block's other
+ * issues.
  */
 export const ConnectionConfigSchema: z.ZodType<ConnectionConfig> =
-  AwaitingAddressSchema.transform((connection, ctx) => {
-    if (statesServerHost(connection)) return connection;
-    ctx.addIssue({
-      code: "custom",
-      path: ["server", "host"],
-      message: UNALLOCATED_SERVER_HOST_MESSAGE,
-    });
-    return z.NEVER;
+  AwaitingAddressSchema.refine(statesCreatedServerHost, {
+    path: ["server", "host"],
+    message: UNALLOCATED_SERVER_HOST_MESSAGE,
+    ...SERVER_HOST_REQUIREMENT_WHEN,
   });
 
 // --- Parse -------------------------------------------------------------------

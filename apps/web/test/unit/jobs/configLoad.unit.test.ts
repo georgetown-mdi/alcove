@@ -503,12 +503,15 @@ describe("what the load refuses", () => {
     expect(message).not.toContain("70000");
   });
 
-  test("a create-mode server with no host, with the invite step and no file value", () => {
+  /** A document whose server is created by `alcove invite`, `host` left out. */
+  function createModeDocument(
+    channel: "sftp" | "webrtc",
+    server: Record<string, unknown> = {},
+  ): Record<string, unknown> {
     const document = savedSftpDocument();
     (document.connection as Record<string, unknown>) = {
-      channel: "sftp",
+      channel,
       server: {
-        port: 2222,
         path: "/exchange-from-file",
         username: "county-from-file",
         provision: {
@@ -516,9 +519,36 @@ describe("what the load refuses", () => {
           host: "provisioner-from-file.example.org",
           path: "/provision-path-from-file",
         },
+        ...server,
       },
     };
-    const message = refusal(document);
+    return document;
+  }
+
+  const provisionRefusal =
+    "This configuration states a setting the console has no control for " +
+    "and cannot write back, because a run here writes the block holding " +
+    "it: connection.server.provision. Run this configuration with Alcove " +
+    "on the command line instead.";
+
+  test.each([
+    ["alone", {}],
+    ["beside a bad port", { port: 70_000 }],
+  ])(
+    "an sftp create-mode server with no host, %s, is refused for its provision block",
+    (_, server) => {
+      const message = refusal(createModeDocument("sftp", server));
+      expect(message).toBe(provisionRefusal);
+      expect(
+        refusal(
+          createModeDocument("sftp", { host: "sftp-from-file.example.org" }),
+        ),
+      ).toBe(message);
+    },
+  );
+
+  test("a webrtc create-mode server with no host, with the invite step and no file value", () => {
+    const message = refusal(createModeDocument("webrtc", { port: 2222 }));
     expect(message).toBe(
       "The alcove.yaml in your working folder creates its server when you " +
         "run alcove invite, which writes the server address into the file. " +

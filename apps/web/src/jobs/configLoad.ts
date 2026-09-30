@@ -485,7 +485,14 @@ export function carriedThroughFields(document: ExchangeSpec): Array<string> {
 function assertHeldSettingsSurvive(document: ExchangeSpec): void {
   const lost = unadoptedFields(document).filter(insideComposedBlock);
   if (lost.length === 0) return;
-  throw new ConfigurationLoadRefusedError(
+  throw heldSettingsLostRefusal(lost);
+}
+
+/** The refusal of {@link assertHeldSettingsSurvive}, naming the settings. */
+function heldSettingsLostRefusal(
+  lost: ReadonlyArray<string>,
+): ConfigurationLoadRefusedError {
+  return new ConfigurationLoadRefusedError(
     "This configuration states " +
       (lost.length === 1 ? "a setting" : "settings") +
       " the console has no control for and cannot write back, because a run " +
@@ -548,6 +555,28 @@ function parsedYaml(source: string): unknown {
   }
 }
 
+/** A server's `provision` block, as the file spells it. */
+const SERVER_PROVISION_FIELD = "connection.server.provision";
+
+/**
+ * Whether the document is on a channel whose load refuses a stated
+ * {@link SERVER_PROVISION_FIELD} ({@link assertHeldSettingsSurvive}). A
+ * create-mode server with no host states one, so it gets that refusal rather
+ * than an `alcove invite` step that ends at the same refusal.
+ */
+function heldProvisionIsLost(raw: unknown): boolean {
+  if (typeof raw !== "object" || raw === null) return false;
+  const connection: unknown = (raw as { connection?: unknown }).connection;
+  if (typeof connection !== "object" || connection === null) return false;
+  const channel: unknown = (connection as { channel?: unknown }).channel;
+  return (
+    typeof channel === "string" &&
+    isJobChannel(channel) &&
+    insideComposedBlock(SERVER_PROVISION_FIELD) &&
+    !COMPOSED_FIELD_PATHS.has(SERVER_PROVISION_FIELD)
+  );
+}
+
 /** The document the shared exchange-file schema reads out of the mounted file,
  * refused in the console's own words: the operator edits this file by hand, so
  * a setting it rejects is a line they can fix. The non-throwing parse is what
@@ -565,6 +594,8 @@ function parsedDocument(raw: unknown): ExchangeSpec {
     );
   const fields = refusedDocumentFields(parsed.error, raw);
   const awaitingServerAddress = refusesUnallocatedServerHost(parsed.error);
+  if (awaitingServerAddress && heldProvisionIsLost(raw))
+    throw heldSettingsLostRefusal([SERVER_PROVISION_FIELD]);
   const unallocatedServerHostRemedy =
     "The alcove.yaml in your working folder creates its server when you run " +
     "alcove invite, which writes the server address into the file. Run " +
