@@ -143,6 +143,11 @@ function schemaRefusal(
     );
   const fields = refusedDocumentFields(error, document);
   const awaitingServerAddress = refusesUnallocatedServerHost(error);
+  if (awaitingServerAddress) {
+    const serverNotHeld = serverFieldsNotHeldInFile(document);
+    if (serverNotHeld.includes("server.provision"))
+      return connectionNotHeldRefusal(serverNotHeld);
+  }
   if (fields.length === 0 && !awaitingServerAddress)
     return new ManagedConfigurationRefusedError(
       "This file is not an Alcove exchange configuration. Check that you " +
@@ -161,6 +166,41 @@ function schemaRefusal(
       namedFieldList(fields) +
       "." +
       (awaitingServerAddress ? ` ${unallocatedServerHostRemedy}` : ""),
+  );
+}
+
+/**
+ * The keys the file's own `connection.server` block holds outside what its
+ * channel's configuration holds ({@link serverFieldsNotHeld}), read before the
+ * schema accepts the file. None when the file names no channel this import
+ * knows.
+ */
+function serverFieldsNotHeldInFile(document: unknown): Array<string> {
+  const channel = documentValueAt(document, ["connection", "channel"]);
+  if (channel !== "webrtc" && channel !== "sftp" && channel !== "filedrop")
+    return [];
+  return serverFieldsNotHeld(
+    channel,
+    documentValueAt(document, ["connection", "server"]),
+  );
+}
+
+/**
+ * The refusal of a command-line file whose connection holds the named
+ * settings this app does not keep. A create-mode server with no `host` on a
+ * channel that does not keep `server.provision` gets this refusal rather than
+ * an `alcove invite` step that ends at it.
+ */
+function connectionNotHeldRefusal(
+  outside: ReadonlyArray<string>,
+): ManagedConfigurationRefusedError {
+  return new ManagedConfigurationRefusedError(
+    "This configuration's connection holds settings this app does not " +
+      "keep -- a credential, or an address or file the command line would " +
+      "open. Remove these lines from the connection and import it again: " +
+      outside.join(", ") +
+      ". The configuration this app hands back leaves them out, so add " +
+      "them back to that file before you run it.",
   );
 }
 
@@ -222,15 +262,7 @@ function importedConnection(
         ". Remove them from the configuration inside the backup file and " +
         "import it again.",
     );
-  if (outside.length > 0)
-    throw new ManagedConfigurationRefusedError(
-      "This configuration's connection holds settings this app does not " +
-        "keep -- a credential, or an address or file the command line would " +
-        "open. Remove these lines from the connection and import it again: " +
-        outside.join(", ") +
-        ". The configuration this app hands back leaves them out, so add " +
-        "them back to that file before you run it.",
-    );
+  if (outside.length > 0) throw connectionNotHeldRefusal(outside);
   const literal = literalCredentialFields(connection);
   if (literal.length > 0 && source === "backup")
     throw new ManagedConfigurationRefusedError(
