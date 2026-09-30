@@ -964,6 +964,29 @@ describe("the relay key registration across the command-line files", () => {
     expect(installed.relayRegistrationPendingSince).toBe(PENDING_SINCE);
   });
 
+  test("a pair import returns the TURN urls its configuration names beside the registrar", async () => {
+    const { configuration, key } = exportedPair(
+      { relayRegistrar: REGISTRAR },
+      ownRelay,
+    );
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      recordingDeps(),
+    );
+    expect(result.droppedTurnUrls).toEqual([OWN_TURN]);
+  });
+
+  test("a pair import naming no registrar returns no dropped TURN url", async () => {
+    const { configuration, key } = exportedPair();
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      recordingDeps(),
+    );
+    expect(result).not.toHaveProperty("droppedTurnUrls");
+  });
+
   test("the configuration alone naming a registrar is refused, naming both ways past it", () => {
     const { configuration } = exportedPair(
       { relayRegistrar: REGISTRAR },

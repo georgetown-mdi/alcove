@@ -331,6 +331,56 @@ describe("what a re-take checks and writes", () => {
     );
   });
 
+  test("a hand-off whose command line confirmed its registration and rotated leaves no pending marker", () => {
+    const registrar = {
+      url: "https://relay.example.org:8443",
+      exchangeId: "riverbend-q3",
+    };
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...runnable(),
+      relayRegistrar: registrar,
+      relayRegistrationPendingSince: "2026-08-01T00:00:00.000Z",
+    });
+    // The command line confirmed the registration, clearing the key file's
+    // marker, and rotated: its configuration names the registrar and its key
+    // file holds a new secret and no marker.
+    const confirmedAndRotated = runnableManagedExchangeOrRefuse({
+      ...runnable(),
+      relayRegistrar: registrar,
+    });
+
+    const decided = decideRetake(enrolled, confirmedAndRotated);
+
+    if (decided.kind !== "retake") throw new Error("expected a re-take");
+    expect(decided.advanced).toBe(true);
+    expect(decided.record.sharedSecret).toBe(confirmedAndRotated.sharedSecret);
+    expect(decided.record.relayRegistrar).toEqual(registrar);
+    expect(decided.record).not.toHaveProperty("relayRegistrationPendingSince");
+    expect(decided.record).not.toHaveProperty("relayRegistrationPendingReason");
+  });
+
+  test("a pair naming the registrar with the key file's marker sets that marker", () => {
+    const registrar = {
+      url: "https://relay.example.org:8443",
+      exchangeId: "riverbend-q3",
+    };
+    const enrolled = runnableManagedExchangeOrRefuse({
+      ...runnable(),
+      relayRegistrar: registrar,
+    });
+
+    const decided = decideRetake(enrolled, {
+      ...runnable(),
+      relayRegistrar: registrar,
+      relayRegistrationPendingSince: "2026-09-01T00:00:00.000Z",
+    });
+
+    if (decided.kind !== "retake") throw new Error("expected a re-take");
+    expect(decided.record.relayRegistrationPendingSince).toBe(
+      "2026-09-01T00:00:00.000Z",
+    );
+  });
+
   test("no pair, or one holding the stored secret, leaves the record as it was", () => {
     const stored = runnable();
 

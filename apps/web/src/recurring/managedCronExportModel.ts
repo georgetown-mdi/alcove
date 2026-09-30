@@ -33,6 +33,7 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 /**
  * The STUN server the exported invocation falls back to, disclosed on the panel
@@ -91,15 +92,18 @@ function exportPanelState<TComposed extends ManagedCommandLineConfig>(
 }
 
 /**
- * Derive the hand-off panel's state for `record`. A record the composer refuses
- * -- a stored connection on another channel, or a document holding anything the
- * app could not have composed -- yields the refusal and its reason; anything else
- * yields the composed export and the two schedule lines.
+ * Derive the hand-off panel's state for `record`, composed against `readOwn`,
+ * the relay settings read the panel's download composes against too. A record
+ * the composer refuses -- a stored connection on another channel, or a
+ * document holding anything the app could not have composed -- yields the
+ * refusal and its reason; anything else yields the composed export and the
+ * two schedule lines.
  */
 export function managedCronExportPanelState(
   record: RunnableManagedExchangeRecord,
+  readOwn: () => OwnRelayRead,
 ): ManagedCronExportPanelState<ManagedCronExport> {
-  return exportPanelState(() => composeManagedCronExport(record));
+  return exportPanelState(() => composeManagedCronExport(record, readOwn));
 }
 
 /**

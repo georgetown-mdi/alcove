@@ -90,7 +90,7 @@ import {
 import {
   MAX_CONFIGURATION_IMPORT_BYTES,
   readManagedCommandLineConfiguration,
-  readManagedCommandLinePair,
+  readManagedCommandLinePairImport,
 } from "./managedCommandLineImport";
 import {
   createManagedExchange,
@@ -301,6 +301,10 @@ export interface ManagedImportResult {
   /** A listed exchange with the restored record's agreed terms and side, which
    * a scoped restore reports rather than asks about. */
   sameTermsAs?: { id: string; label: string };
+  /** On a pair import, the `connection.turn` urls its configuration names
+   * beside a relay registrar, which this browser's own relay settings replace
+   * ({@link readManagedCommandLinePairImport}), as the file states them. */
+  droppedTurnUrls?: Array<string>;
 }
 
 /** The grants the artifact's source held that the imported record does not, which is
@@ -623,9 +627,9 @@ const defaultPairDeps: ManagedPairImportDeps = {
 /**
  * Import a command-line `alcove.yaml` and the `.alcove.key` beside it as a
  * runnable managed exchange. Both files are read in full before the store is
- * reached ({@link readManagedCommandLinePair}), so a refusal of either writes
- * nothing. The record is then reconciled on the backup import's rule -- a
- * stored record holding the same secret is the same exchange -- and:
+ * reached ({@link readManagedCommandLinePairImport}), so a refusal of either
+ * writes nothing. The record is then reconciled on the backup import's rule
+ * -- a stored record holding the same secret is the same exchange -- and:
  *
  * - a migration-spent match is revived in place, the pair's fields laid over
  *   it and its import marker stamped, in the reconciliation's transaction; one
@@ -646,7 +650,8 @@ const defaultPairDeps: ManagedPairImportDeps = {
  *
  * The secret lands in the record's `sharedSecret` alone, the field every
  * runnable record keeps it in; no refusal here states any byte of the key
- * file.
+ * file. A landed import returns the `turn` urls the record did not keep, for
+ * the notice to name.
  *
  * @throws {ManagedImportBackupNotConfigurationError} if the configuration file
  *   is the app's backup; nothing is written.
@@ -670,15 +675,20 @@ export async function importManagedCommandLinePair(
 ): Promise<ManagedImportResult> {
   if (probeImportFile(configurationSource) === "backup")
     throw new ManagedImportBackupNotConfigurationError();
-  const imported = readManagedCommandLinePair(configurationSource, keySource);
+  const { record: imported, droppedTurnUrls } =
+    readManagedCommandLinePairImport(configurationSource, keySource);
+  const landed = (record: ManagedExchangeRecord): ManagedImportResult => ({
+    record,
+    missingGrants: [],
+    ...(droppedTurnUrls.length > 0 ? { droppedTurnUrls } : {}),
+  });
   const at = deps.now().toISOString();
   const reconciled = await deps.reconcile(imported, at, options);
   if (reconciled.kind === "revived" || reconciled.kind === "completed")
-    return { record: reconciled.record, missingGrants: [] };
+    return landed(reconciled.record);
   if (reconciled.kind === "retake") {
     const retaken = await deps.retake(reconciled.id, at, imported);
-    if (retaken.kind === "retaken")
-      return { record: retaken.record, missingGrants: [] };
+    if (retaken.kind === "retaken") return landed(retaken.record);
     throw new ManagedImportChosenCopyError(
       retaken.kind === "run-in-flight" ? "run-in-flight" : "changed",
     );
@@ -702,5 +712,5 @@ export async function importManagedCommandLinePair(
     // Best-effort, as on the backup leg: the record is durable, and reporting
     // failure here would install a duplicate on retry.
   }
-  return { record: installed, missingGrants: [] };
+  return landed(installed);
 }

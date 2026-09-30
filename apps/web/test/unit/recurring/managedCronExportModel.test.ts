@@ -28,6 +28,7 @@ import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -46,6 +47,8 @@ function runnableRecord(
 // here.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
+
+const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
 
 const webrtcLocator: WebRTCExchangeLocator = {
   channel: "webrtc",
@@ -72,7 +75,7 @@ function managedRecord(
 /** The state for an exportable record, failing the test if the composer refused
  * one it was expected to compose. */
 function exportableState(record: RunnableManagedExchangeRecord) {
-  const state = managedCronExportPanelState(record);
+  const state = managedCronExportPanelState(record, noOwnRelay);
   if (state.kind !== "exportable")
     throw new Error(`the model refused an exportable record: ${state.reason}`);
   return state;
@@ -163,16 +166,19 @@ describe("a record the composer refuses", () => {
     // of its values.
     const secret = generateSharedSecret();
     const base = managedRecord();
-    const state = managedCronExportPanelState({
-      ...base,
-      exchangeFile: {
-        ...base.exchangeFile,
-        authentication: {
-          sharedSecret: secret,
-          expires: "2026-04-06T14:00:00.000Z",
+    const state = managedCronExportPanelState(
+      {
+        ...base,
+        exchangeFile: {
+          ...base.exchangeFile,
+          authentication: {
+            sharedSecret: secret,
+            expires: "2026-04-06T14:00:00.000Z",
+          },
         },
       },
-    });
+      noOwnRelay,
+    );
     expect(state.kind).toBe("refused");
     if (state.kind !== "refused") return;
     expect(state.reason).toContain("authentication");

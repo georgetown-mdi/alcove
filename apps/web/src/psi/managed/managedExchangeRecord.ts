@@ -1468,10 +1468,9 @@ export function applyManagedExchangeRotationInFlight(
  * platform grants -- stays as stored, so the revive clears no condition only
  * the operator, a re-invite, or a delete may clear. A rotation-in-flight
  * marker goes with the stored secret when the pair replaces it. A pair naming
- * a relay registrar states the whole registration: its registrar and the key
- * file's pending registration, or none, replace the stored ones. A pair naming
- * none keeps the stored registrar, and the key file's pending registration
- * replaces the stored one only where it holds one. The inputs are not mutated.
+ * a relay registrar replaces the stored one; a pair naming none keeps it. The
+ * pending registration follows
+ * {@link pendingRelayRegistrationFromCommandLine}. The inputs are not mutated.
  *
  * @throws {ZodError} if the result is not a valid record.
  */
@@ -1491,19 +1490,60 @@ export function applyManagedExchangeCommandLinePair(
   else next.tokenMaxAgeDays = imported.tokenMaxAgeDays;
   if (imported.sharedSecret !== stored.sharedSecret)
     delete next.rotationInFlightSince;
-  if (imported.relayRegistrar !== undefined) {
+  if (imported.relayRegistrar !== undefined)
     next.relayRegistrar = imported.relayRegistrar;
-    setPendingRelayRegistration(
-      next,
-      imported.relayRegistrationPendingSince === undefined
-        ? undefined
-        : { since: imported.relayRegistrationPendingSince },
-    );
-  } else if (imported.relayRegistrationPendingSince !== undefined)
-    setPendingRelayRegistration(next, {
-      since: imported.relayRegistrationPendingSince,
-    });
+  setPendingRelayRegistration(
+    next,
+    pendingRelayRegistrationFromCommandLine(stored, imported),
+  );
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+/**
+ * The pending relay registration a command-line pair leaves on `stored`. A
+ * pair naming a registrar states the whole registration: the key file's
+ * marker, or its absence where the command line confirmed. A key file beside
+ * a configuration naming none was never asked to register, so its marker
+ * replaces the stored one only where it holds one.
+ */
+function pendingRelayRegistrationFromCommandLine(
+  stored: ManagedExchangeRecord,
+  pair: RunnableManagedExchangeRecord,
+): PendingRelayRegistration | undefined {
+  if (pair.relayRegistrationPendingSince !== undefined)
+    return { since: pair.relayRegistrationPendingSince };
+  if (pair.relayRegistrar !== undefined) return undefined;
+  if (stored.relayRegistrationPendingSince === undefined) return undefined;
+  return stored.relayRegistrationPendingReason === undefined
+    ? { since: stored.relayRegistrationPendingSince }
+    : {
+        since: stored.relayRegistrationPendingSince,
+        reason: stored.relayRegistrationPendingReason,
+      };
+}
+
+/**
+ * Set the pending relay registration a command-line pair states on `record`,
+ * by the rule the pair import applies
+ * ({@link applyManagedExchangeCommandLinePair}), keeping its registrar. The
+ * same record comes back where the registration does not change. The inputs
+ * are not mutated.
+ *
+ * @throws {ZodError} if the result is not a valid record.
+ */
+export function applyCommandLineRelayRegistration(
+  record: ManagedExchangeRecord,
+  pair: RunnableManagedExchangeRecord,
+): ManagedExchangeRecord {
+  const pending = pendingRelayRegistrationFromCommandLine(record, pair);
+  if (
+    pending?.since === record.relayRegistrationPendingSince &&
+    pending?.reason === record.relayRegistrationPendingReason
+  )
+    return record;
+  const next: ManagedExchangeRecord = { ...record };
+  setPendingRelayRegistration(next, pending);
+  return parseManagedExchangeRecord(next);
 }
 
 /**

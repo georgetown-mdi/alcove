@@ -801,7 +801,6 @@ describe("the relay key registration", () => {
 
   test.each<[string, () => OwnRelayRead]>([
     ["no relay setting", () => ({ kind: "none" })],
-    ["an unreadable relay setting", () => ({ kind: "unreadable" })],
     [
       "a relay setting naming STUN only",
       ownRelay([], ["stun:stun.example.org"]),
@@ -811,11 +810,29 @@ describe("the relay key registration", () => {
     (_case, readOwn) => {
       const record = managedRecord({ relayRegistrar: REGISTRAR });
       expect(() => composeManagedCronExport(record, readOwn)).toThrow(
-        "Add your relay's TURN url under Relay settings, or stop registering " +
-          "under Relay registration on this exchange's page, then export again.",
+        "but this browser's relay settings name no TURN url to write there. " +
+          "Add your relay's TURN url on the Relay server page, or stop " +
+          "registering under Relay registration on this exchange's page, " +
+          "then export again.",
       );
     },
   );
+
+  test("an enrolled record is refused under an unreadable relay setting, naming setting it again", () => {
+    const record = managedRecord({ relayRegistrar: REGISTRAR });
+    let refusal: unknown;
+    try {
+      composeManagedCronExport(record, () => ({ kind: "unreadable" }));
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(Error);
+    expect((refusal as Error).message).toContain(
+      "but this browser's relay setting could not be read. Set it again on " +
+        "the Relay server page, then export again.",
+    );
+    expect((refusal as Error).message).not.toContain("name no TURN url");
+  });
 
   test("a record naming no registrar writes no TURN url, whatever the relay setting", () => {
     const connection = exportedConfig(managedRecord(), ownRelay([OWN_TURN]));

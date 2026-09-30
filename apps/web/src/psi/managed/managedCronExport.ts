@@ -153,9 +153,9 @@ export interface ManagedCommandLineConfig {
  * line: the two files and the invocation.
  */
 export interface ManagedCronExport extends ManagedCommandLineConfig {
-  /** The `.alcove.key` half: the shared secret, any `expires`, and any pending
-   * relay key registration. A plaintext
-   * credential -- this is the file the handover's custody rules are about. */
+  /** The `.alcove.key` half: the shared secret, any `expires`, and any
+   * pending relay key registration. A plaintext credential -- this is the file
+   * the handover's custody rules are about. */
   key: ManagedCronExportFile;
 }
 
@@ -193,24 +193,34 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
  * The connection fields that register the relay key at `registrar`: the
  * registrar, and this browser's own TURN urls as entries whose credential
  * each run mints, which the command line requires beside a registrar and
- * registers only for. With no own TURN url the export is refused rather than
- * written without the registrar, whose absence would leave the relay holding
- * the key of a secret the first command-line run rotates past.
+ * registers only for. With no own TURN url, or a relay setting this build
+ * cannot read, the export is refused rather than written without the
+ * registrar, whose absence would leave the relay holding the key of a secret
+ * the first command-line run rotates past.
  */
 function relayRegistrationConnectionFields(
   registrar: RelayRegistrar,
   readOwn: () => OwnRelayRead,
 ): Pick<WebRTCConnectionConfig, "turn" | "relayRegistrar"> {
   const own = readOwn();
+  const registers =
+    `This exchange registers its relay key at ${relayRegistrarLabel(registrar)}, ` +
+    "and the command line registers it only for a TURN relay named in " +
+    "the configuration, ";
+  if (own.kind === "unreadable")
+    throw new Error(
+      registers +
+        "but this browser's relay setting could not be read. Set it again " +
+        "on the Relay server page, then export again.",
+    );
   const turn = own.kind === "set" ? own.relay.turn : [];
   if (turn.length === 0)
     throw new Error(
-      `This exchange registers its relay key at ${relayRegistrarLabel(registrar)}, ` +
-        "and the command line registers it only for a TURN relay named in " +
-        "the configuration, but this browser's relay settings name no TURN " +
-        "url to write there. Add your relay's TURN url under Relay settings, " +
-        "or stop registering under Relay registration on this exchange's " +
-        "page, then export again.",
+      registers +
+        "but this browser's relay settings name no TURN url to write there. " +
+        "Add your relay's TURN url on the Relay server page, or stop " +
+        "registering under Relay registration on this exchange's page, then " +
+        "export again.",
     );
   return {
     turn: turn.map((url) => ({ url })),

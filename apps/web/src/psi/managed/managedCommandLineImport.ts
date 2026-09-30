@@ -299,8 +299,6 @@ function importedConnection(
   return connection;
 }
 
-/** Whether every `turn` entry has its credential minted from the shared
- * secret: none sets a username or a credential, so none holds a secret. */
 function everyTurnEntryMinted(
   turn: ReadonlyArray<{ username?: string; credential?: string }>,
 ): boolean {
@@ -318,13 +316,7 @@ function withoutRole(connection: ConnectionConfig): ConnectionConfig {
   return rest;
 }
 
-/** The connection without the webrtc fields a command-line import reads into
- * record fields -- `role`, and a `relay_registrar` with the `turn` entries
- * beside it when each has its credential minted -- so the locator allowlist
- * measures only the fields that stay in the stored document. A `turn` entry
- * stating a credential stays, for the allowlist to refuse. A backup's
- * document holds the registrar in the artifact's own block instead, so its
- * connection is measured without the role alone. */
+/** A `turn` entry stating a credential stays, so the allowlist refuses it. */
 function withoutLocalConnectionFields(
   connection: ConnectionConfig,
 ): ConnectionConfig {
@@ -335,6 +327,19 @@ function withoutLocalConnectionFields(
   return turn === undefined || everyTurnEntryMinted(turn)
     ? held
     : { ...held, turn };
+}
+
+/** The `turn` urls a pair import drops beside a relay registrar
+ * ({@link withoutLocalConnectionFields}): a run here relays through this
+ * browser's own relay settings instead. */
+function turnUrlsBesideRegistrar(connection: ConnectionConfig): Array<string> {
+  if (
+    connection.channel !== "webrtc" ||
+    connection.relayRegistrar === undefined
+  )
+    return [];
+  const turn = connection.turn ?? [];
+  return everyTurnEntryMinted(turn) ? turn.map(({ url }) => url) : [];
 }
 
 /** The relay registrar a webrtc connection names, which becomes the record's
@@ -463,6 +468,15 @@ export function refuseDocumentNotHeld(
  * file read on its own terms ({@link readManagedCommandLineKeyFile}).
  */
 function commandLineExchangeFields(source: string): NewManagedExchange {
+  return commandLineExchange(source).fields;
+}
+
+/** {@link commandLineExchangeFields}, with the `turn` urls the file names
+ * beside a relay registrar, which the record does not keep. */
+function commandLineExchange(source: string): {
+  fields: NewManagedExchange;
+  droppedTurnUrls: Array<string>;
+} {
   const raw = parseSensitiveYaml(source, "command-line exchange configuration");
   const document = importedDocument(raw);
   const connection = importedConnection(document, raw, "command line");
@@ -472,11 +486,14 @@ function commandLineExchangeFields(source: string): NewManagedExchange {
   const exchangeFile = storedDocument(document, connection);
   refuseFieldsOutsideComposableDocument(exchangeFile, "command line");
   return {
-    label: IMPORTED_CONFIGURATION_LABEL,
-    exchangeFile,
-    ...(side !== undefined ? { side } : {}),
-    ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
-    ...(relayRegistrar !== undefined ? { relayRegistrar } : {}),
+    fields: {
+      label: IMPORTED_CONFIGURATION_LABEL,
+      exchangeFile,
+      ...(side !== undefined ? { side } : {}),
+      ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
+      ...(relayRegistrar !== undefined ? { relayRegistrar } : {}),
+    },
+    droppedTurnUrls: turnUrlsBesideRegistrar(connection),
   };
 }
 
@@ -656,7 +673,29 @@ export function readManagedCommandLinePair(
   configurationSource: string,
   keySource: string,
 ): RunnableManagedExchangeRecord {
-  const fields = commandLineExchangeFields(configurationSource);
+  return readManagedCommandLinePairImport(configurationSource, keySource)
+    .record;
+}
+
+/** A command-line pair read into a record
+ * ({@link readManagedCommandLinePair}), with the `connection.turn` urls the
+ * configuration names beside a relay registrar, which the record does not
+ * keep: a run here relays through this browser's own relay settings. */
+export interface ManagedCommandLinePairRead {
+  record: RunnableManagedExchangeRecord;
+  /** The dropped urls, as the file states them; empty where it names no
+   * registrar or no `turn` entry. */
+  droppedTurnUrls: Array<string>;
+}
+
+/** {@link readManagedCommandLinePair}, also returning the `turn` urls the
+ * record does not keep, so the import can name them. Throws what that
+ * function throws. */
+export function readManagedCommandLinePairImport(
+  configurationSource: string,
+  keySource: string,
+): ManagedCommandLinePairRead {
+  const { fields, droppedTurnUrls } = commandLineExchange(configurationSource);
   const channel = channelThisAppDoesNotRun(fields.exchangeFile);
   if (channel !== undefined)
     throw new ManagedConfigurationRefusedError(
@@ -675,7 +714,7 @@ export function readManagedCommandLinePair(
         "run the exchange with Alcove.",
     );
   const key = readManagedCommandLineKeyFile(keySource);
-  return runnableManagedExchangeOrRefuse(
+  const record = runnableManagedExchangeOrRefuse(
     buildManagedExchangeRecord({
       ...fields,
       sharedSecret: key.sharedSecret,
@@ -685,4 +724,5 @@ export function readManagedCommandLinePair(
         : {}),
     }),
   );
+  return { record, droppedTurnUrls };
 }

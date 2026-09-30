@@ -1697,7 +1697,7 @@ The cells:
 | `connection.server.username` (webrtc) | not applicable | not applicable | refused |
 | `connection.role` | authored | not applicable | carried |
 | `connection.stun` | carried | not applicable | refused |
-| `connection.turn` | carried | not applicable | refused, except entries with no credential beside `connection.relay_registrar` in a file imported with its key file, which the browser's own relay settings replace and the command-line export writes back from them |
+| `connection.turn` | carried | not applicable | refused, except beside `connection.relay_registrar` (see that row and [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)) |
 | `connection.invitation_relay` | authored (recorded on accept) | not applicable | carried (recorded on accept; the browser relays through it on each re-run) |
 | `connection.relay_registrar` | carried | not applicable | authored (enrolled under Relay registration; read from a file imported with its key file, refused in one imported alone) |
 | `connection.ice_transport_policy` | carried | not applicable | refused |

@@ -1424,12 +1424,13 @@ not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
   replaces the stored one; a key file holding none there does not show that
   the command line confirmed a registration, since the configuration had no
   registrar configured, so its absence keeps the stored marker, on a record
-  naming a registrar or none. The re-take of a pair whose secret differs is a
-  rotation write (`decideRetake`): the key file's marker when it holds one,
-  else the stored one, and the stored registrar. A marker carried in is kept
-  on a record that names no registrar, where no run retries it; the page and
-  the list name enrollment, which removes it, having registered the current
-  key with the token.
+  naming a registrar or none. The hand-off re-take reads the key file by the
+  same rule, whether or not its secret differs, and keeps the stored
+  registrar (`decideRetake`), so a command line that confirmed its
+  registration and rotated leaves no marker for the next run here to retry.
+  A marker carried in is kept on a record that names no registrar, where no
+  run retries it; the page and the list name enrollment, which removes it,
+  having registered the current key with the token.
 - **Written out** by both exports, as the next section states.
 
 ### What the exports write
@@ -1459,7 +1460,10 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   without one, so the export writes this browser's own TURN urls from its
   relay settings as those entries, a url each. It writes no STUN url. With no
   own TURN url set, the export is refused, naming the two ways past it: set
-  the relay's TURN url in the relay settings, or stop registering.
+  the relay's TURN url in the relay settings, or stop registering. A relay
+  setting this build cannot read is refused apart, naming setting it again.
+  The panel's preview and its download compose from one read of the relay
+  settings, so the files name the urls the panel showed.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
   registrar holds the key of the secret the re-invite replaced, which is not
@@ -1474,7 +1478,10 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   settings, which the export writes back in their place. A `turn` entry
   stating a credential is refused, as it is without a registrar. The key
   file's marker becomes `relayRegistrationPendingSince`, and a fresh install
-  keeps both.
+  keeps both. The import warns rather than refuses: its notice names the
+  dropped urls where this browser's own TURN urls differ, and, where this
+  browser names no TURN url, says the registrar registers nothing until the
+  Relay server page names one.
 - **An `alcove.yaml` chosen alone naming a registrar is refused**: a
   configuration-only record registers nothing and holds no registrar. The
   refusal names choosing the key file too, or removing
@@ -1609,14 +1616,15 @@ either imports with the answer or is refused entire. The artifact's own
   shown for a record that is in the operator's own custody. It cannot make a
   record run that would otherwise refuse, and it cannot stop a refusal the spent
   entry earns.
-- **CLI-separable format.** The record is the CLI's config-plus-key pair kept as
-one browser object, and its export stays consumable by the CLI toolchain rather
-than becoming a third format. The embedded `exchangeDocument` is a valid
-`alcove.yaml`. The `key` block's `sharedSecret`, `expires`, and
-`relayRegistrationPendingSince` map onto a valid `.alcove.key`, and can be
-lifted out verbatim, since the field names already match the key file's. The `local` block's fields are cleanly separable
-and ignorable. This is a format-compatibility commitment, not a
-  claim the embedded exchange runs there: the composed webrtc connection holds
+- **CLI-separable format.** The record is the CLI's config-plus-key pair kept
+  as one browser object, and its export stays consumable by the CLI toolchain
+  rather than becoming a third format. The embedded `exchangeDocument` is a
+  valid `alcove.yaml`. The `key` block's `sharedSecret`, `expires`, and
+  `relayRegistrationPendingSince` map onto a valid `.alcove.key`, and can be
+  lifted out verbatim, since the field names already match the key file's.
+  The `local` block's fields are cleanly separable and ignorable. This is a
+  format-compatibility commitment, not a claim the embedded exchange runs
+  there: the composed webrtc connection holds
   no `role`, the field the CLI derives its rendezvous peer id from and refuses a
   webrtc run without (see [Role: a local `side` field](#role-a-local-side-field-not-the-document)).
 - **Plaintext, custody-protected.** The artifact is a plaintext credential file,

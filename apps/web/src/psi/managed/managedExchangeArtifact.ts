@@ -308,10 +308,11 @@ export function parseManagedExchangeArtifact(
  * {@link parseSensitiveYaml} and {@link parseExchangeSpec}, the secret,
  * `expires`, and any pending relay registration come from the key pair, and
  * the local fields pass through unchanged, so the first run of a restored
- * record retries a pending registration before it connects. Built through {@link buildManagedExchangeRecord} -- a fresh `id`, the v4
- * `schemaVersion`, re-validated through the record schema -- so a malformed
- * document or secret is rejected and nothing is installed. Holds no
- * working-folder handle: the operator grants the folder again.
+ * record retries a pending registration before it connects. Built through
+ * {@link buildManagedExchangeRecord} -- a fresh `id`, the v4 `schemaVersion`,
+ * re-validated through the record schema -- so a malformed document or secret
+ * is rejected and nothing is installed. Holds no working-folder handle: the
+ * operator grants the folder again.
  *
  * @throws {UsageError} if the embedded document is not parseable YAML.
  * @throws {ZodError} if the embedded document or the reconstructed record is invalid.
