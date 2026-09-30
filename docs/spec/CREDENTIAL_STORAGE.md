@@ -366,8 +366,11 @@ writes with. In order:
    passes. The device number is not a substitute: a bind mount can share it with
    the directory it is mounted into.
 
-Each rejection states the remedy and that the write would otherwise fail after a
-successful key exchange, which is what the pre-flight exists to prevent.
+Each rejection is a usage error (exit 64) that says what is wrong with the key
+path or its parent, states the remedy to apply before running the exchange, and
+ends with the one consequence every rejection shares: otherwise saving the
+rotated key would fail after the key exchange and both parties would need to
+re-invite. That failure is what the pre-flight exists to prevent.
 
 ## Windows write discipline and load check
 
