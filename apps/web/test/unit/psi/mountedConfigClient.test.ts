@@ -88,6 +88,41 @@ describe("a definitive answer", () => {
     expect(answer.document.channel).toBe("webrtc");
   });
 
+  test("a webrtc configuration naming a relay registrar says so", async () => {
+    const { fetchImpl } = answering(200, {
+      configured: true,
+      present: true,
+      document: {
+        channel: "webrtc",
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+      },
+      carriedThrough: [],
+      warnings: [],
+      signingPathSettings: [],
+      folderPathSettings: [],
+      relayRegistrarNamed: true,
+    });
+    const answer = await fetchMountedConfiguration(fetchImpl);
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    expect(answer.relayRegistrarNamed).toBe(true);
+  });
+
+  test("a relay registrar flag that is not true is a body it cannot read", async () => {
+    const { fetchImpl } = answering(200, {
+      configured: true,
+      present: true,
+      document: DOCUMENT,
+      carriedThrough: [],
+      warnings: [],
+      signingPathSettings: [],
+      folderPathSettings: [],
+      relayRegistrarNamed: "yes",
+    });
+    expect(await fetchMountedConfiguration(fetchImpl)).toEqual({
+      kind: "unavailable",
+    });
+  });
+
   test("a refusal keeps the console's own text", async () => {
     const error = "This configuration runs over ftp.";
     const { fetchImpl } = answering(400, { error });

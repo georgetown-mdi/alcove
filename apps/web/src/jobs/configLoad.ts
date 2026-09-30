@@ -210,6 +210,8 @@ export interface LoadedConfigurationResponse {
   /** The shared-folder paths the file states, as it spells them
    * ({@link folderPathSettings}). Absent where no file was opened. */
   folderPathSettings?: Array<string>;
+  /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
+  relayRegistrarNamed?: true;
 }
 
 /**
@@ -720,6 +722,13 @@ export function folderPathSettings(document: ExchangeSpec): Array<string> {
   ];
 }
 
+function namesRelayRegistrar(document: ExchangeSpec): boolean {
+  const { connection } = document;
+  return (
+    connection.channel === "webrtc" && connection.relayRegistrar !== undefined
+  );
+}
+
 /** The connection form's own fields, read off an sftp connection. */
 function disclosedServer(document: ExchangeSpec): DisclosedSftpServer {
   const { connection } = document;
@@ -885,6 +894,9 @@ function responseFor(document: ExchangeSpec): LoadedConfigurationResponse {
     warnings: credentialFieldsNotAdopted(document),
     signingPathSettings: signingPathSettings(document),
     folderPathSettings: folderPathSettings(document),
+    ...(namesRelayRegistrar(document)
+      ? { relayRegistrarNamed: true as const }
+      : {}),
   };
 }
 
