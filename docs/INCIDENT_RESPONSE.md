@@ -1,7 +1,7 @@
 ---
 title: "Security Incident Response Runbook"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-08-15"
+last_reviewed: "2026-09-29"
 ---
 
 # Security incident response runbook
@@ -12,7 +12,7 @@ Where a step already has a home, this runbook points at it instead of repeating 
 
 Two roles appear throughout:
 
-- **The maintainer** holds commit access, the release signing key, and the registry credentials, and does the technical work.
+- **The maintainer** holds commit access and the release signing key, and does the technical work.
 - **The co-owner** is the organization's other owner. When the maintainer is unavailable, the co-owner covers intake and reporter communication and does not attempt the fix; see [When the maintainer is unavailable](#when-the-maintainer-is-unavailable).
 
 A leaked shared secret between two exchange partners is a different event with a different reader: the operator-side procedure for that is [SECURITY_DESIGN.md#compromise-response](SECURITY_DESIGN.md#compromise-response), which the partners run themselves and which needs nothing from this project.
@@ -124,7 +124,7 @@ The 90-day window in [SECURITY.md](../SECURITY.md#response-timeline) runs from c
 
 ## When the maintainer is unavailable
 
-This section is for the co-owner. All of it is communication. None of it is a release: the signing key and registry credentials are the maintainer's alone, so no fix can ship on this path, and an accurate date is worth more to a reporter than an attempted release.
+This section is for the co-owner. All of it is communication. None of it is a release: the release signing key is the maintainer's alone, so no fix can ship on this path, and an accurate date is worth more to a reporter than an attempted release.
 
 In order:
 
@@ -173,5 +173,5 @@ This runbook is walked once a year against a simulated report, and again after a
 
 4. GitHub private vulnerability reporting -- the only intake path SECURITY.md names -- read as disabled when checked on the exercise date, so a reporter following the policy would find no way to file. The precondition check above exists so this is caught yearly rather than by a reporter.
 5. No fallback intake channel is published anywhere in the repository. A reporter who cannot use the GitHub path, or who arrives while it is off, has nowhere to go but a public issue.
-6. The release signing key and the registry credentials are single-custody. That is what makes the maintainer-unavailable path communication-only, and whether it is accepted or mitigated is a decision for the owners rather than for this runbook.
+6. The release signing key is single-custody, and it is the only thing that gates a hotfix. That is what makes the maintainer-unavailable path communication-only, and whether it is accepted or mitigated is a decision for the owners rather than for this runbook.
 7. The scope list in SECURITY.md covers the protocol, transport confidentiality, and credential parsing, but not the at-rest permissions of the artifacts Alcove writes -- the very class this exercise simulated. The interim reading is in step 2; whether the published list should name it is the maintainer's call.
