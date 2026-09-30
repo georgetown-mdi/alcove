@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  RELAY_REGISTRATION_CANCELLED_REASON,
   REMOVED_CREDENTIAL_TEXT,
   registerRelayKey,
   sendRelayRegistration,
@@ -84,5 +85,70 @@ describe("registerRelayKey", () => {
     expect(outcome.kind).toBe("registered");
     expect(fetch.authorizations).toHaveLength(2);
     expect(fetch.authorizations[1]).toMatch(/ts=1767225600,/);
+  });
+
+  test("a cancelled registration stops at a registrar that never answers", async () => {
+    const secret = generateSharedSecret();
+    const cancel = new AbortController();
+    let requests = 0;
+    const neverAnswering = ((
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      requests++;
+      queueMicrotask(() => cancel.abort());
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    }) as typeof globalThis.fetch;
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      {
+        fetch: neverAnswering,
+        timeoutMs: 600_000,
+        retryDelaysMs: [600_000, 600_000],
+        signal: cancel.signal,
+      },
+    );
+    expect(outcome).toEqual({
+      kind: "unavailable",
+      reason: RELAY_REGISTRATION_CANCELLED_REASON,
+    });
+    expect(requests).toBe(1);
+  });
+
+  test("a cancel during the wait between attempts makes no further attempt", async () => {
+    const secret = generateSharedSecret();
+    const cancel = new AbortController();
+    const fetch = answering([[503, {}]]);
+    const outcome = await registerRelayKey(
+      {
+        registrar: REGISTRAR,
+        signingSecret: secret,
+        registeredSecret: secret,
+        maxAgeDays: null,
+      },
+      {
+        fetch,
+        retryDelaysMs: [600_000],
+        sleep: () => {
+          cancel.abort();
+          return new Promise(() => {});
+        },
+        signal: cancel.signal,
+      },
+    );
+    expect(outcome).toEqual({
+      kind: "unavailable",
+      reason: RELAY_REGISTRATION_CANCELLED_REASON,
+    });
+    expect(fetch.authorizations).toHaveLength(1);
   });
 });

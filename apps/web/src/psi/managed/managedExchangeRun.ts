@@ -183,12 +183,6 @@ interface ManagedExchangeRunPhases<TInput, THandshake, TExchange> {
    * fires is the handshake failing closed, one after it can arise on a
    * tampered frame mid-exchange. */
   onDataExchangeStart?: () => void;
-  /** Whether a relay key registration of the rotated secret follows this
-   * run, read once the handshake has rotated it: when true, the rotation write
-   * stores the pending registration beside the rotated secret, so a run cut
-   * before the registration is confirmed leaves it for the next run to retry.
-   * Absent, the rotation write stores none. */
-  relayRegistrationFollows?: () => boolean;
   /** Lock acquisition discipline (queue vs. fail-fast). */
   lock?: ManagedExchangeLockOptions;
   /** The clock, injected so a test can pin the rotation and bookkeeping stamps.
@@ -301,7 +295,7 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
           persistRotation(
             record.id,
             writeBack,
-            phases.relayRegistrationFollows?.() === true
+            current.relayRegistrar !== undefined
               ? new Date(now()).toISOString()
               : undefined,
           ),

@@ -257,6 +257,11 @@ function SavedExchangesList({
                 {row.sideLabel} - {row.status}
               </span>
               <ScheduleLines row={row} />
+              {row.relayRegistrationLine !== undefined && (
+                <span className={`${styles.small} ${styles.sub}`}>
+                  {row.relayRegistrationLine}
+                </span>
+              )}
               <BackupLine row={row} />
               {row.spentAsOf !== undefined &&
                 row.spentHandoff === undefined && (

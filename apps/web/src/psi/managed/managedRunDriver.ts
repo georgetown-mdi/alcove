@@ -267,8 +267,7 @@ export function runManagedExchangeInBrowser(
   };
   signal.addEventListener("abort", cutRunOnCancel);
 
-  // The registrar this run registers at, decided before it connects and read
-  // again by the rotation write, which stores the registration as pending.
+  // The registrar this run registers at, decided before it connects.
   let runRegistrar: RelayRegistrar | undefined;
 
   return runManagedRerun<ManagedRerunInput, ManagedRerunCarried, RunOutputs>(
@@ -303,7 +302,9 @@ export function runManagedExchangeInBrowser(
         // shared secret is still unchanged.
         runRegistrar = managedRelayRegistrarForRun(current);
         if (runRegistrar !== undefined)
-          await retryPendingManagedRelayRegistration(current, runRegistrar);
+          await retryPendingManagedRelayRegistration(current, runRegistrar, {
+            signal,
+          });
         const psiPromise = loadPsiBackend(
           { loadWasm: () => PSI() as Promise<PSILibrary> },
           { isNode: false },
@@ -410,7 +411,6 @@ export function runManagedExchangeInBrowser(
           throw error;
         }
       },
-      relayRegistrationFollows: () => runRegistrar !== undefined,
       // After the durable persist: run the PSI exchange, file the disclosure on
       // either exit, build the outputs, and tear down regardless of outcome.
       // The rotated relay key is registered on either exit too, while the run
@@ -527,18 +527,18 @@ export function runManagedExchangeInBrowser(
     signal.removeEventListener("abort", cutRunOnCancel);
   });
 
-  /** Register the rotated relay key a run owes its registrar. Never throws: a
-   * failure is logged and raised as a notice, unescaped since each notice sink
-   * escapes what it shows, and the record's pending registration is what the
-   * next run retries. */
+  /** Register the rotated relay key a run owes its registrar; the run's
+   * cancel stops it. Never throws: a failure is logged and raised as a notice,
+   * unescaped since each notice sink escapes what it shows, and the record's
+   * pending registration is what the next run retries. */
   async function registerRotatedKey(
     carried: ManagedRerunCarried,
   ): Promise<void> {
     if (carried.relayRegistration === undefined) return;
-    const result = await registerRotatedManagedRelayKey({
-      id: record.id,
-      ...carried.relayRegistration,
-    });
+    const result = await registerRotatedManagedRelayKey(
+      { id: record.id, ...carried.relayRegistration },
+      { signal },
+    );
     if (result.kind === "failed") {
       log.error(
         "managed re-run:",
@@ -546,7 +546,7 @@ export function runManagedExchangeInBrowser(
           maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
         }),
       );
-      onWarning?.(result.message);
+      emitRunNotice(result.message);
     }
   }
 }

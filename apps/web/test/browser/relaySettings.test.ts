@@ -59,10 +59,14 @@ describe("RelaySettingsScreen", () => {
     expect(readOwnRelaySetting()).toEqual({ kind: "none" });
   });
 
-  test("states that each run's relay key must be registered again", async () => {
+  test("states that an exchange not enrolled at a registrar needs its relay key registered again", async () => {
     await mountScreen();
 
     await expect.element(page.getByText(RELAY_KEY_NOTICE)).toBeVisible();
+    expect(RELAY_KEY_NOTICE).toContain(
+      "A saved exchange enrolled at your relay's registrar",
+    );
+    expect(RELAY_KEY_NOTICE).not.toContain("does not register");
   });
 
   test("an invalid TURN url is reported on the TURN field alone and nothing is saved", async () => {

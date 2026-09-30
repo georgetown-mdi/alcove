@@ -610,9 +610,9 @@ export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
 /**
  * The command-line key file's validator: the key pair plus the optional
  * rotation-in-flight and pending relay registration markers the command line
- * writes there. Shares the pair's
- * field schemas so neither reader validates against a looser copy. Strict, so a
- * reader rejects an unknown key rather than silently accepting it.
+ * writes there. Shares the pair's field schemas so neither reader validates
+ * against a looser copy. Strict, so a reader rejects an unknown key rather
+ * than silently accepting it.
  */
 export const keyFileFieldsSchema: ZodType<ManagedExchangeKeyFields> = z
   .object({
@@ -1019,33 +1019,49 @@ export function buildManagedExchangeRecord(
 }
 
 /** The rotation fields a successful run advances on the stored record: the
- * rotated secret always, the `expires` bound restamped from the max-age
- * policy (a string to set it, `null` to clear any standing bound), and the
- * pending relay registration. The only
- * fields {@link applyManagedExchangeRotation} touches, so a rotation write
- * cannot hold a stale secret or a stale document -- the persist-before-success
- * write is structurally incapable of it (see
+ * rotated secret always, the `expires` bound restamped from the max-age policy
+ * (a string to set it, `null` to clear any standing bound), and the pending
+ * relay registration. The only fields {@link applyManagedExchangeRotation}
+ * touches, so a rotation write cannot hold a stale secret or a stale document
+ * -- the persist-before-success write is structurally incapable of it (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, "Persist-before-success ordering"). */
 export interface ManagedExchangeRotation {
   /** The rotated shared secret (base64url) to persist as the current secret. */
   sharedSecret: string;
   /** The restamped bound to set, or `null` to clear any standing bound. */
   expires: string | null;
-  /** The instant of the rotation, when a relay key registration of the rotated
-   * secret follows it; absent, the rotation stores no pending registration and
-   * drops any the record held. */
+  /** The pending relay registration to store: the instant of the rotation,
+   * on a record that names a relay registrar. Absent, a record naming a
+   * registrar keeps the pending registration it held and one naming none
+   * stores none ({@link pendingRelayRegistrationAfterRotation}). */
   relayRegistrationPendingSince?: string;
+}
+
+/**
+ * The pending relay registration a rotation write leaves: the one the
+ * rotation states; else, on a record that names a registrar, the one the
+ * record held, since only a confirmed registration clears it; else none.
+ */
+function pendingRelayRegistrationAfterRotation(
+  record: RunnableManagedExchangeRecord,
+  rotation: ManagedExchangeRotation,
+): string | undefined {
+  if (rotation.relayRegistrationPendingSince !== undefined)
+    return rotation.relayRegistrationPendingSince;
+  return record.relayRegistrar === undefined
+    ? undefined
+    : record.relayRegistrationPendingSince;
 }
 
 /**
  * Apply a rotation to a record, producing a validated new record with only the
  * rotated secret, the `expires` bound, and the pending relay registration
- * changed and the rotation-in-flight marker removed in the same write -- the document, the label, the schedule,
- * the handle, and the run bookkeeping remain untouched. A
- * string `expires` sets the bound; `null` clears it (a policy dropped between runs
- * must not leave a stale bound armed). The result is re-validated through the
- * schema, so a malformed rotated secret is rejected here. The input record is not
- * mutated.
+ * changed and the rotation-in-flight marker removed in the same write -- the
+ * document, the label, the schedule, the handle, and the run bookkeeping
+ * remain untouched. A string `expires` sets the bound; `null` clears it (a
+ * policy dropped between runs must not leave a stale bound armed). The result
+ * is re-validated through the schema, so a malformed rotated secret is
+ * rejected here. The input record is not mutated.
  *
  * @throws {ZodError} if the rotated record is invalid (a malformed secret).
  */
@@ -1060,11 +1076,19 @@ export function applyManagedExchangeRotation(
   if (rotation.expires === null) delete next.expires;
   else next.expires = rotation.expires;
   delete next.rotationInFlightSince;
-  if (rotation.relayRegistrationPendingSince === undefined)
-    delete next.relayRegistrationPendingSince;
-  else
-    next.relayRegistrationPendingSince = rotation.relayRegistrationPendingSince;
+  setPendingRelayRegistration(
+    next,
+    pendingRelayRegistrationAfterRotation(record, rotation),
+  );
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
+}
+
+function setPendingRelayRegistration(
+  next: ManagedExchangeRecord,
+  pendingSince: string | undefined,
+): void {
+  if (pendingSince === undefined) delete next.relayRegistrationPendingSince;
+  else next.relayRegistrationPendingSince = pendingSince;
 }
 
 /**
@@ -1337,10 +1361,10 @@ export function applyManagedExchangeReinviteRotation(
   else next.expires = rotation.expires;
   delete next.lastRun;
   delete next.rotationInFlightSince;
-  if (rotation.relayRegistrationPendingSince === undefined)
-    delete next.relayRegistrationPendingSince;
-  else
-    next.relayRegistrationPendingSince = rotation.relayRegistrationPendingSince;
+  setPendingRelayRegistration(
+    next,
+    pendingRelayRegistrationAfterRotation(record, rotation),
+  );
   next.standingCondition = NO_STANDING_CONDITION;
   return runnableManagedExchangeOrRefuse(parseManagedExchangeRecord(next));
 }

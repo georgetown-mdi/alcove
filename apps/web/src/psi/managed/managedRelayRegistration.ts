@@ -173,8 +173,11 @@ const defaultRegistrationStore: ManagedRelayRegistrationStore = {
  * this is a renewal signed with the current key, which the registrar takes
  * only if it already holds that key -- a rotation whose answer was lost. A
  * confirmed renewal drops the pending registration from the record.
+ * `env.signal` cancels the renewal and its retries.
  *
  * @throws {ManagedRelayRegistrationError} if the registrar did not confirm.
+ * @throws the reason `env.signal` aborted with, when it cancelled the renewal;
+ *   the registration stays pending.
  */
 export async function retryPendingManagedRelayRegistration(
   current: RunnableManagedExchangeRecord,
@@ -196,8 +199,10 @@ export async function retryPendingManagedRelayRegistration(
     },
     env,
   );
-  if (outcome.kind !== "registered")
+  if (outcome.kind !== "registered") {
+    env.signal?.throwIfAborted();
     throw new ManagedRelayRegistrationError(registrar, outcome);
+  }
   await store.clearPending(current.id, current.sharedSecret);
   log.info(relayRegistrationNotice(registrar, outcome));
 }
@@ -211,8 +216,9 @@ export type RotatedManagedRelayKeyResult =
  * `rotatedSecret`, signed with the key derived from `preRotationSecret`, which
  * the registrar holds. A confirmed registration drops the pending
  * registration the rotation write stored; a failed one leaves it for the next
- * run's retry, and its message names the registrar and the next step. Never
- * throws: the run's own outcome is not this registration's.
+ * run's retry, and its message names the registrar and the next step, as
+ * does one `env.signal` cancelled. Never throws: the run's own outcome is not
+ * this registration's.
  */
 export async function registerRotatedManagedRelayKey(
   params: {
@@ -361,6 +367,58 @@ export async function enrollManagedRelayRegistrar(
       record: await deps.persistRegistrar(id, registrar, record.sharedSecret),
     };
   });
+}
+
+/** The platform boundaries stopping a registration drives: injectable for
+ * tests. */
+export interface ManagedRelayRegistrationStopDeps {
+  /** Runs `step` under the record's run+rotate lock, refusing when a run holds it. */
+  withLock: <T>(id: string, step: () => Promise<T>) => Promise<T>;
+  removeRegistrar: (id: string) => Promise<RunnableManagedExchangeRecord>;
+}
+
+const defaultStopDeps: ManagedRelayRegistrationStopDeps = {
+  withLock: defaultEnrollmentDeps.withLock,
+  removeRegistrar: (id) => persistManagedExchangeRelayRegistrar(id, undefined),
+};
+
+/**
+ * Stop registering a stored exchange's relay key: drop the registrar it was
+ * enrolled at and any pending registration, under the record's run+rotate
+ * lock as enrollment is, so no run is registering while it is dropped.
+ *
+ * @throws {ManagedExchangeLockUnavailableError} if a run holds the lock.
+ * @throws {Error} if the record is gone or holds a configuration only.
+ */
+export async function stopManagedRelayRegistration(
+  id: string,
+  deps: ManagedRelayRegistrationStopDeps = defaultStopDeps,
+): Promise<RunnableManagedExchangeRecord> {
+  return deps.withLock(id, () => deps.removeRegistrar(id));
+}
+
+// The field name the schema's exchange-id messages open with, which names the
+// command line's configuration key.
+const EXCHANGE_ID_MESSAGE_PREFIX = "relay_registrar.exchange_id ";
+
+/**
+ * The exchange-id problems of a registrar that failed its schema, in the
+ * schema's own words with the field named as the enrollment form names it.
+ */
+export function relayRegistrarExchangeIdProblems(
+  issues: ReadonlyArray<{
+    path: ReadonlyArray<PropertyKey>;
+    message: string;
+  }>,
+): Array<string> {
+  return issues
+    .filter((issue) => issue.path[0] === "exchangeId")
+    .map((issue) => {
+      const rule = issue.message.startsWith(EXCHANGE_ID_MESSAGE_PREFIX)
+        ? issue.message.slice(EXCHANGE_ID_MESSAGE_PREFIX.length)
+        : issue.message;
+      return `The exchange id ${rule}.`;
+    });
 }
 
 /** The message a failed enrollment states: the registrar's answer and what to

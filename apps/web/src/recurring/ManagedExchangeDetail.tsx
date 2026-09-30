@@ -95,6 +95,7 @@ import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
 import { LocalDocumentFields } from "./LocalDocumentFields";
 import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
+import { relayRegistrationPendingLine } from "./savedExchangesModel";
 import { useInputFileModifiedAt } from "./useInputFileModifiedAt";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
 
@@ -146,6 +147,7 @@ export function ManagedExchangeDetail({
   onStopUsingWorkingFolder,
   onReinviteToChangeTerms,
   onTermsChanged,
+  onRelayRegistrationChanged,
   canReinvite,
   compromiseResponse,
   runInFlight,
@@ -216,8 +218,11 @@ export function ManagedExchangeDetail({
    * partner instead (the caller routes by {@link canReinvite}). */
   onReinviteToChangeTerms: () => void;
   /** Read the stored exchange again after {@link ManagedTermsUpdate} changed
-   * its terms, or {@link ManagedRelayRegistration} its relay registration. */
+   * its terms. */
   onTermsChanged: () => void;
+  /** Read the stored exchange again after {@link ManagedRelayRegistration}
+   * changed its relay registration. */
+  onRelayRegistrationChanged: () => void;
   /** Whether this party can mint a re-invite (inviter-only); drives the terms
    * re-invite affordance's copy. */
   canReinvite: boolean;
@@ -282,7 +287,7 @@ export function ManagedExchangeDetail({
         <ManagedRelayRegistration
           record={record}
           runInFlight={runInFlight}
-          onChanged={onTermsChanged}
+          onChanged={onRelayRegistrationChanged}
         />
       )}
       <LocalFieldsEditor
@@ -975,9 +980,13 @@ function RunHistory({
   resultSizeWarning: string | undefined;
 }) {
   const entries = runHistoryEntries(record);
+  const relayRegistrationLine = relayRegistrationPendingLine(record);
   return (
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Run history</h2>
+      {relayRegistrationLine !== undefined && (
+        <p className={styles.small}>{relayRegistrationLine}</p>
+      )}
       {resultSizeWarning !== undefined && (
         <Alert
           color="yellow"

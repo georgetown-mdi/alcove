@@ -21,12 +21,14 @@ import {
 import {
   enrollManagedRelayRegistrar,
   managedRelayEnrollmentFailureMessage,
+  relayRegistrarExchangeIdProblems,
+  stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
-import { dateTimeLabel } from "@psi/formatting";
-import { persistManagedExchangeRelayRegistrar } from "@psi/managed/managedExchangeStore";
 
 import styles from "@styles/app.module.css";
+
+import { relayRegistrationPendingLine } from "./savedExchangesModel";
 
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -49,16 +51,20 @@ const URL_PROBLEM =
   "Enter the registrar's address as https:// followed by its host and an " +
   "optional port, with no path.";
 
-const EXCHANGE_ID_PROBLEM =
-  "Enter an exchange id of 1 to 128 letters, digits, '.', '_' and '-', not " +
-  "starting with '-' or 'alcove-verify-'. The registrar's answers let anyone " +
-  "learn whether an id is enrolled, so choose one that names neither party.";
+const EXCHANGE_ID_PRIVACY =
+  "The registrar's answers let anyone learn whether an id is enrolled, so " +
+  "choose one that names neither party.";
 
 /** What the last enrollment or removal on this page came to. */
 type Outcome =
   | { kind: "enrolled" }
   | { kind: "removed" }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; action: "enroll" | "stop"; message: string };
+
+const FAILURE_TITLE: Record<"enroll" | "stop", string> = {
+  enroll: "The exchange was not enrolled",
+  stop: "Registration was not stopped",
+};
 
 /**
  * Enrolling a saved exchange at its relay's registrar, and stopping its
@@ -87,15 +93,19 @@ export function ManagedRelayRegistration({
   const [problems, setProblems] = useState<Array<string>>([]);
 
   const enrolled = record.relayRegistrar;
-  const pendingSince = record.relayRegistrationPendingSince;
+  const pendingLine = relayRegistrationPendingLine(record);
 
   const enroll = async () => {
     const parsed = RelayRegistrarSchema.safeParse({ url, exchangeId });
     if (!parsed.success) {
-      const paths = new Set(parsed.error.issues.map((issue) => issue.path[0]));
+      const { issues } = parsed.error;
+      const exchangeIdProblems = relayRegistrarExchangeIdProblems(issues);
       setProblems([
-        ...(paths.has("url") ? [URL_PROBLEM] : []),
-        ...(paths.has("exchangeId") ? [EXCHANGE_ID_PROBLEM] : []),
+        ...(issues.some((issue) => issue.path[0] === "url")
+          ? [URL_PROBLEM]
+          : []),
+        ...exchangeIdProblems,
+        ...(exchangeIdProblems.length > 0 ? [EXCHANGE_ID_PRIVACY] : []),
       ]);
       return;
     }
@@ -116,6 +126,7 @@ export function ManagedRelayRegistration({
       } else
         setOutcome({
           kind: "failed",
+          action: "enroll",
           message: sanitizeForDisplay(
             managedRelayEnrollmentFailureMessage(
               parsed.data,
@@ -126,7 +137,11 @@ export function ManagedRelayRegistration({
           ),
         });
     } catch (error) {
-      setOutcome({ kind: "failed", message: failureText(error) });
+      setOutcome({
+        kind: "failed",
+        action: "enroll",
+        message: failureText(error),
+      });
     } finally {
       setOwnerToken("");
       setBusy(false);
@@ -137,11 +152,15 @@ export function ManagedRelayRegistration({
     setOutcome(undefined);
     setBusy(true);
     try {
-      await persistManagedExchangeRelayRegistrar(record.id, undefined);
+      await stopManagedRelayRegistration(record.id);
       setOutcome({ kind: "removed" });
       onChanged();
     } catch (error) {
-      setOutcome({ kind: "failed", message: failureText(error) });
+      setOutcome({
+        kind: "failed",
+        action: "stop",
+        message: failureText(error),
+      });
     } finally {
       setBusy(false);
     }
@@ -154,15 +173,13 @@ export function ManagedRelayRegistration({
       {enrolled !== undefined && (
         <p className={styles.small}>
           {`Enrolled at ${relayRegistrarLabel(enrolled)}.`}
-          {pendingSince !== undefined &&
-            ` The registration of the current key has not been confirmed ` +
-              `since ${dateTimeLabel(new Date(pendingSince))}; the next run ` +
-              "retries it before it connects."}
+          {pendingLine !== undefined && ` ${pendingLine}`}
         </p>
       )}
       {runInFlight ? (
         <p className={styles.small}>
-          A run of this exchange is under way. Enroll it once the run ends.
+          A run of this exchange is under way. Change its relay registration
+          once the run ends.
         </p>
       ) : (
         <Stack gap="xs">
@@ -225,7 +242,7 @@ export function ManagedRelayRegistration({
         </p>
       )}
       {outcome?.kind === "failed" && (
-        <Alert color="red" title="The exchange was not enrolled" mt="sm">
+        <Alert color="red" title={FAILURE_TITLE[outcome.action]} mt="sm">
           {outcome.message}
         </Alert>
       )}

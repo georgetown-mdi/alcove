@@ -1225,7 +1225,8 @@ After that, each run that relays through this browser's own relay registers the
 key derived from the new secret, signed with the key being replaced, before it
 lets the exchange go. A run relaying through a relay your partner's invitation
 named registers nothing: the party that supplies a relay is the one that
-registers at it.
+registers at it. Such a run still leaves the registration pending, since the
+registrar then holds the key of a secret this exchange no longer has.
 
 A registration the registrar does not confirm is kept on the exchange and tried
 again before the next run connects. If the registrar still does not confirm, the
@@ -1233,7 +1234,8 @@ run stops before contacting your partner and says why. Where the registrar
 refused, it no longer holds a key this browser has, and the remedy is to enroll
 the exchange again with the relay-owner token, choosing to replace the key it
 holds. A fresh invitation from here needs the same, since it replaces the secret
-without a registration. The field-level account:
+without a registration. While a registration is pending, the recurring list and
+the exchange's page say since when and what to do. The field-level account:
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-pending-relay-registration).
 
 ### Bringing a command-line configuration back

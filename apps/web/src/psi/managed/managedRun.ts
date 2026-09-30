@@ -104,9 +104,6 @@ interface ManagedRerunSeams<TInput, THandshake, TExchange> {
   /** Run the data exchange -- reachable only after the durable persist resolves.
    * Receives the handshake's output value. */
   dataExchange: (handshake: THandshake) => Promise<TExchange>;
-  /** Whether a relay key registration of the rotated secret follows this run,
-   * so the rotation write stores it as pending ({@link runManagedExchange}). */
-  relayRegistrationFollows?: () => boolean;
 }
 
 /** How a re-run launches, plus the clock. `attendance` is the run path (attended
@@ -228,9 +225,6 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
       },
       handshake: seams.handshake,
       dataExchange: seams.dataExchange,
-      ...(seams.relayRegistrationFollows !== undefined
-        ? { relayRegistrationFollows: seams.relayRegistrationFollows }
-        : {}),
       onDataExchangeStart: () => {
         dataExchangeStarted = true;
         options.onDataExchangeStart?.();

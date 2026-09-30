@@ -34,9 +34,10 @@ export const RELAY_KEY_NOTICE =
   "exchange's current shared secret and valid for at most one hour, so the " +
   "relay must hold the key derived from the current secret. The shared secret " +
   "changes after every run that completes its handshake, even one that then " +
-  "fails, and this app does not register each run's key with the relay " +
-  "itself, so a recurring exchange through your " +
-  "relay needs its key registered with the relay again after each run.";
+  "fails. A saved exchange enrolled at your relay's registrar, under Relay " +
+  "registration on its page, registers each new key there itself; any other " +
+  "exchange through your relay needs its key registered with the relay again " +
+  "after each run.";
 
 /** The field error for one list's parse, or `undefined` when it parsed. */
 function fieldError(lines: RelayUrlLines): string | undefined {

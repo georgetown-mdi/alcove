@@ -130,6 +130,29 @@ export interface SavedExchangeRow {
    * spent (see {@link scheduleLines}). Absent otherwise, so a row for an exchange
    * nobody scheduled says nothing about scheduling. */
   schedule?: SavedExchangeScheduleLines;
+  /** The pending relay key registration, for a record that is not spent
+   * ({@link relayRegistrationPendingLine}). */
+  relayRegistrationLine?: string;
+}
+
+/**
+ * The line a record enrolled at a relay registrar shows while the registrar
+ * has not confirmed the key of its current secret, or `undefined`: since when,
+ * what the next run does about it, and the step if the registrar refuses.
+ */
+export function relayRegistrationPendingLine(
+  record: ManagedExchangeRecord,
+): string | undefined {
+  const pendingSince = record.relayRegistrationPendingSince;
+  if (record.relayRegistrar === undefined || pendingSince === undefined)
+    return undefined;
+  return (
+    `Relay key registration pending since ` +
+    `${dateTimeLabel(new Date(pendingSince))}; the next run through this ` +
+    "browser's relay retries it before connecting. If the registrar refuses " +
+    "it, enroll the exchange again with the relay-owner token under Relay " +
+    "registration."
+  );
 }
 
 /** The too-large line's remedy gist by whose set was over the bound: the row's
@@ -325,11 +348,16 @@ export function savedExchangeRow(
       backup: { kind: "not-applicable" },
       configurationOnly: true,
     };
+  const relayRegistrationLine =
+    local?.spent === undefined
+      ? relayRegistrationPendingLine(record)
+      : undefined;
   return {
     id: record.id,
     label: record.label,
     sideLabel: SIDE_LABEL[record.side],
     status: lastRunStatus(record, local, now),
+    ...(relayRegistrationLine !== undefined && { relayRegistrationLine }),
     expired: managedExchangeLapsed(record, now),
     backup: backupFor(local),
     configurationOnly: false,

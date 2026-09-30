@@ -122,6 +122,35 @@ export interface RelayRegistrarTransport {
   fetch?: typeof globalThis.fetch;
   /** The per-request timeout; {@link RELAY_REGISTRAR_REQUEST_TIMEOUT_MS}. */
   timeoutMs?: number;
+  /** Cancels the request, and a registration's remaining retries. */
+  signal?: AbortSignal;
+}
+
+/** The reason an `unavailable` outcome states for a cancelled registration. */
+export const RELAY_REGISTRATION_CANCELLED_REASON =
+  "the registration was cancelled";
+
+// The timeout's signal, or one that also aborts with `cancel`. Built by hand
+// rather than with `AbortSignal.any`, which older browsers lack.
+function requestSignal(
+  timeout: AbortSignal,
+  cancel: AbortSignal | undefined,
+): { signal: AbortSignal; release: () => void } {
+  if (cancel === undefined) return { signal: timeout, release: () => {} };
+  const combined = new AbortController();
+  const sources = [timeout, cancel];
+  const forward = () => {
+    const aborted = sources.find((source) => source.aborted);
+    combined.abort(aborted?.reason);
+  };
+  const release = () => {
+    for (const source of sources) source.removeEventListener("abort", forward);
+  };
+  if (sources.some((source) => source.aborted)) forward();
+  else
+    for (const source of sources)
+      source.addEventListener("abort", forward, { once: true });
+  return { signal: combined.signal, release };
 }
 
 interface RegistrarAnswerBody {
@@ -179,7 +208,7 @@ async function readAnswerBody(
  * is an answer kind. Redirects are not followed, so the credential reaches no
  * second host, and no reason repeats the credential. A success whose
  * `lapsesAt` is neither `null` nor a UTC timestamp is `unavailable`, with a
- * fixed reason.
+ * fixed reason, and so is a request `transport.signal` cancelled.
  */
 export async function sendRelayRegistration(
   request: {
@@ -192,72 +221,85 @@ export async function sendRelayRegistration(
 ): Promise<RelayRegistrarAnswer> {
   const fetchImpl = transport.fetch ?? globalThis.fetch;
   const timeoutMs = transport.timeoutMs ?? RELAY_REGISTRAR_REQUEST_TIMEOUT_MS;
-  const signal = AbortSignal.timeout(timeoutMs);
-  let response: Response;
+  const { signal, release } = requestSignal(
+    AbortSignal.timeout(timeoutMs),
+    transport.signal,
+  );
+  const cancel = transport.signal;
   try {
-    response = await fetchImpl(registrarRequestUrl(request.registrar), {
-      method: request.method,
-      redirect: "manual",
-      headers: {
-        Authorization: request.authorization,
-        "Content-Type": "application/json",
-      },
-      body: request.body,
-      signal,
-    });
-  } catch (err) {
-    return {
-      kind: "unavailable",
-      reason:
-        err instanceof Error && err.name === "TimeoutError"
-          ? `no answer within ${timeoutMs} ms`
-          : `it could not be reached (${withCredentialRemoved(
-              err instanceof Error ? err.message : String(err),
-              request.authorization,
-            )})`,
-    };
-  }
-  const status = response.status;
-  if (response.type === "opaqueredirect" || (status >= 300 && status < 400)) {
-    await response.body?.cancel().catch(() => undefined);
+    let response: Response;
+    try {
+      response = await fetchImpl(registrarRequestUrl(request.registrar), {
+        method: request.method,
+        redirect: "manual",
+        headers: {
+          Authorization: request.authorization,
+          "Content-Type": "application/json",
+        },
+        body: request.body,
+        signal,
+      });
+    } catch (err) {
+      if (cancel?.aborted === true)
+        return {
+          kind: "unavailable",
+          reason: RELAY_REGISTRATION_CANCELLED_REASON,
+        };
+      return {
+        kind: "unavailable",
+        reason:
+          err instanceof Error && err.name === "TimeoutError"
+            ? `no answer within ${timeoutMs} ms`
+            : `it could not be reached (${withCredentialRemoved(
+                err instanceof Error ? err.message : String(err),
+                request.authorization,
+              )})`,
+      };
+    }
+    const status = response.status;
+    if (response.type === "opaqueredirect" || (status >= 300 && status < 400)) {
+      await response.body?.cancel().catch(() => undefined);
+      return {
+        kind: "rejected",
+        status,
+        reason: "it answered with a redirect, which is not followed",
+      };
+    }
+    const body = await readAnswerBody(response, signal, request.authorization);
+    if (status >= 200 && status < 300 && body.malformedLapse === true)
+      return { kind: "unavailable", status, reason: MALFORMED_LAPSE_REASON };
+    if (status >= 200 && status < 300)
+      return {
+        kind: "registered",
+        maxAgeDays: body.maxAgeDays,
+        lapsesAt: body.lapsesAt,
+      };
+    if (status === 401 && body.serverTime !== undefined)
+      return {
+        kind: "clock-skew",
+        serverTimeSeconds: body.serverTime,
+        ...(body.error !== undefined && { reason: body.error }),
+      };
+    if (status === 401 || status === 409)
+      return {
+        kind: "refused",
+        status,
+        ...(body.error !== undefined && { reason: body.error }),
+      };
+    if (status === 408 || status === 429 || status >= 500)
+      return {
+        kind: "unavailable",
+        status,
+        reason: body.error ?? "the registrar did not take the request",
+      };
     return {
       kind: "rejected",
       status,
-      reason: "it answered with a redirect, which is not followed",
+      ...(body.error !== undefined && { reason: body.error }),
     };
+  } finally {
+    release();
   }
-  const body = await readAnswerBody(response, signal, request.authorization);
-  if (status >= 200 && status < 300 && body.malformedLapse === true)
-    return { kind: "unavailable", status, reason: MALFORMED_LAPSE_REASON };
-  if (status >= 200 && status < 300)
-    return {
-      kind: "registered",
-      maxAgeDays: body.maxAgeDays,
-      lapsesAt: body.lapsesAt,
-    };
-  if (status === 401 && body.serverTime !== undefined)
-    return {
-      kind: "clock-skew",
-      serverTimeSeconds: body.serverTime,
-      ...(body.error !== undefined && { reason: body.error }),
-    };
-  if (status === 401 || status === 409)
-    return {
-      kind: "refused",
-      status,
-      ...(body.error !== undefined && { reason: body.error }),
-    };
-  if (status === 408 || status === 429 || status >= 500)
-    return {
-      kind: "unavailable",
-      status,
-      reason: body.error ?? "the registrar did not take the request",
-    };
-  return {
-    kind: "rejected",
-    status,
-    ...(body.error !== undefined && { reason: body.error }),
-  };
 }
 
 /** The final answer to a registration, after its retries. */
@@ -329,6 +371,26 @@ export interface RelayRegistrationEnvironment extends RelayRegistrarTransport {
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+// `sleep(ms)`, ended early once `cancel` aborts.
+async function sleepUnlessCancelled(
+  sleep: (ms: number) => Promise<void>,
+  ms: number,
+  cancel: AbortSignal | undefined,
+): Promise<void> {
+  if (cancel === undefined) return sleep(ms);
+  if (cancel.aborted) return;
+  let stop = () => {};
+  const cancelled = new Promise<void>((resolve) => {
+    stop = resolve;
+    cancel.addEventListener("abort", stop, { once: true });
+  });
+  try {
+    await Promise.race([sleep(ms), cancelled]);
+  } finally {
+    cancel.removeEventListener("abort", stop);
+  }
+}
+
 /**
  * Register the relay key derived from `registeredSecret` for the exchange,
  * proving possession of the key derived from `signingSecret` -- the key the
@@ -339,7 +401,8 @@ const defaultSleep = (ms: number): Promise<void> =>
  * An unanswered or unavailable attempt is retried after each of
  * `retryDelaysMs`; a proof outside the registrar's clock window is signed
  * again once at the registrar's own time. A refusal is final: this path holds
- * no relay-owner token and never falls back to one.
+ * no relay-owner token and never falls back to one. Once `env.signal` aborts,
+ * no further attempt is made and the outcome is `unavailable`.
  */
 export async function registerRelayKey(
   registration: {
@@ -363,6 +426,11 @@ export async function registerRelayKey(
   let resignedForClock = false;
   let attempt = 0;
   for (;;) {
+    if (env.signal?.aborted === true)
+      return {
+        kind: "unavailable",
+        reason: RELAY_REGISTRATION_CANCELLED_REASON,
+      };
     const authorization = await relayRegistrarAuthorization({
       relayKey: signingKey,
       method: "PUT",
@@ -388,7 +456,7 @@ export async function registerRelayKey(
       continue;
     }
     if (answer.kind === "unavailable" && attempt < delays.length) {
-      await sleep(delays[attempt]!);
+      await sleepUnlessCancelled(sleep, delays[attempt]!, env.signal);
       attempt++;
       continue;
     }

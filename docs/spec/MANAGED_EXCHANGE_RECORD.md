@@ -73,10 +73,11 @@ prevent. `camelCase` on the TypeScript side; the persisted key names below are
 the normative field names.
 
 The five bookkeeping fields, `schedule`, `lastRun`, `standingCondition`,
-`rotationInFlightSince`, and `relayRegistrationPendingSince`, hold **no free text**: every field of each is a timestamp, an integer duration,
-a closed enum, or a marker admitted only as `true`, so none can accumulate
-narrative, a match result, a count, or a row value. The constraint is the type,
-not a prose promise.
+`rotationInFlightSince`, and `relayRegistrationPendingSince`, hold **no free
+text**: every field of each is a timestamp, an integer duration, a closed enum,
+or a marker admitted only as `true`, so none can accumulate narrative, a match
+result, a count, or a row value. The constraint is the type, not a prose
+promise.
 
 The CLI parity has one deliberate break. The CLI's two artifacts are separable:
 an operator can retire the secret alone (delete `.alcove.key`, keep the config)
@@ -1352,21 +1353,26 @@ derived from the rotated secret at the registrar the record names
 not confirmed. The code: `apps/web/src/psi/managed/managedRelayRegistration.ts`.
 
 - **Written** by the rotation write that stores the rotated secret, in the same
-  strict-durability transaction, when the run registers; so no moment exists at
-  which the record holds the rotated secret without it. A re-invite's rotation
-  writes it too where the record names a registrar, since no registration is
-  signed for the fresh secret.
+  strict-durability transaction, whenever the record names a registrar --
+  whether or not the run registers, since a run relaying elsewhere leaves the
+  registrar holding the key of a secret the record no longer holds; so no
+  moment exists at which the record holds the rotated secret without it. A
+  re-invite's rotation writes it too where the record names a registrar, since
+  no registration is signed for the fresh secret. A record naming no registrar
+  stores none.
 - **What it holds.** An instant only. The pre-rotation secret the registration
   is signed with is the run's own copy of the record read inside the run+rotate
   lock, held until the run ends, and no key derived from either secret is
   written.
 - **Removed** once the registrar confirms the key derived from the secret the
   record still holds, by a field-scoped write that leaves a record which has
-  rotated since unchanged; by an enrollment; by stopping registration; and by a
-  rotation write of a run that does not register, which stores none.
-- **Read** by the next run, inside the lock, after the input guard and before
-  any contact with the partner: it registers the current key again, signed
-  under that key. A registrar that does not confirm stops the run with its
+  rotated since unchanged; by an enrollment; and by stopping registration. No
+  other write removes it: a rotation write on a record naming a registrar sets
+  or keeps it.
+- **Read** by the next run that relays through this browser's own relay,
+  inside the lock, after the input guard and before any contact with the
+  partner: it registers the current key again, signed under that key. The
+  exchange's page and the recurring list show it with the next step. A registrar that does not confirm stops the run with its
   answer, the registrar, and the next step; nothing rotated and no `lastRun` is
   written. A refusal names owner-token re-enrollment, since the key the
   registrar holds is not one this browser has.

@@ -1,15 +1,17 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  RelayRegistrarSchema,
   deriveRelayKey,
   generateSharedSecret,
   getDefaultLinkageTerms,
   relayRegistrarAuthorization,
 } from "@alcove/core";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   ManagedRelayRegistrarStaleError,
   NO_STANDING_CONDITION,
+  applyManagedExchangeReinviteRotation,
   applyManagedExchangeRelayRegistrar,
   applyManagedExchangeRelayRegistrationConfirmed,
   applyManagedExchangeRotation,
@@ -23,13 +25,16 @@ import {
   enrollManagedRelayRegistrar,
   managedRelayRegistrarForRun,
   registerRotatedManagedRelayKey,
+  relayRegistrarExchangeIdProblems,
   retryPendingManagedRelayRegistration,
+  stopManagedRelayRegistration,
 } from "@psi/managed/managedRelayRegistration";
 import {
   benignRerunOutcome,
   rerunFailureLastRun,
   runManagedRerun,
 } from "@psi/managed/managedRun";
+import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { persistManagedExchangeRotation } from "@psi/managed/managedExchangeStore";
 
 import type {
@@ -212,7 +217,7 @@ describe("which runs register", () => {
 });
 
 describe("the rotation write", () => {
-  test("stores the pending registration beside the rotated secret when a registration follows", async () => {
+  test("stores the pending registration beside the rotated secret on a record that names a registrar, whether or not the run registers", async () => {
     stubGrantingWebLocks();
     storedRecord.value = record({ relayRegistrar: REGISTRAR });
     const rotatedSecret = generateSharedSecret();
@@ -223,7 +228,6 @@ describe("the rotation write", () => {
         handshake: () =>
           Promise.resolve({ rotatedSecret, handshake: "carried" }),
         dataExchange: () => Promise.resolve("exchanged"),
-        relayRegistrationFollows: () => true,
       },
       { now: () => NOW.getTime() },
     );
@@ -237,7 +241,7 @@ describe("the rotation write", () => {
     );
   });
 
-  test("stores none when no registration follows", async () => {
+  test("stores none on a record that names no registrar", async () => {
     stubGrantingWebLocks();
     storedRecord.value = record();
     await runManagedRerun(storedRecord.value, {
@@ -254,22 +258,41 @@ describe("the rotation write", () => {
     expect(rotation).not.toHaveProperty("relayRegistrationPendingSince");
   });
 
-  test("a rotation sets the pending registration it is given and drops one it is not", () => {
+  test("a rotation sets the pending registration it is given", () => {
     const stored = record({
       relayRegistrar: REGISTRAR,
       relayRegistrationPendingSince: PENDING_SINCE,
     });
-    const rotated = generateSharedSecret();
     expect(
       applyManagedExchangeRotation(stored, {
-        sharedSecret: rotated,
+        sharedSecret: generateSharedSecret(),
         expires: null,
         relayRegistrationPendingSince: NOW.toISOString(),
       }).relayRegistrationPendingSince,
     ).toBe(NOW.toISOString());
+  });
+
+  test("a rotation that states none keeps the pending registration of a record naming a registrar", () => {
+    const stored = record({
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: PENDING_SINCE,
+    });
+    const rotation = { sharedSecret: generateSharedSecret(), expires: null };
+    expect(
+      applyManagedExchangeRotation(stored, rotation)
+        .relayRegistrationPendingSince,
+    ).toBe(PENDING_SINCE);
+    expect(
+      applyManagedExchangeReinviteRotation(stored, rotation)
+        .relayRegistrationPendingSince,
+    ).toBe(PENDING_SINCE);
+  });
+
+  test("a rotation of a record naming no registrar stores no pending registration", () => {
+    const stored = record({ relayRegistrationPendingSince: PENDING_SINCE });
     expect(
       applyManagedExchangeRotation(stored, {
-        sharedSecret: rotated,
+        sharedSecret: generateSharedSecret(),
         expires: null,
       }),
     ).not.toHaveProperty("relayRegistrationPendingSince");
@@ -442,6 +465,130 @@ describe("the retry before a run connects", () => {
       undefined,
     );
     expect(benignRerunOutcome(error, false)).toBe("relay-registration");
+  });
+});
+
+describe("a cancelled run's registration", () => {
+  /** A registrar that never answers: each request waits until its signal
+   * aborts, as a real fetch does. */
+  function neverAnswering(): {
+    fetch: typeof globalThis.fetch;
+    requests: () => number;
+  } {
+    let requests = 0;
+    const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+      requests++;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    }) as typeof globalThis.fetch;
+    return { fetch, requests: () => requests };
+  }
+
+  test("the retry before connecting stops at the cancel and leaves the registration pending", async () => {
+    const registrar = neverAnswering();
+    const store = recordingStore();
+    const cancel = new AbortController();
+    const cancelled = new Error("the operator cancelled the run");
+    setTimeout(() => cancel.abort(cancelled), 10);
+
+    const error = await retryPendingManagedRelayRegistration(
+      record({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+      }),
+      REGISTRAR,
+      { fetch: registrar.fetch, timeoutMs: 600_000, signal: cancel.signal },
+      store,
+    ).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+
+    expect(error).toBe(cancelled);
+    expect(registrar.requests()).toBe(1);
+    expect(store.cleared).toEqual([]);
+  });
+
+  test("the registration after the run stops at the cancel and leaves it pending", async () => {
+    const registrar = neverAnswering();
+    const store = recordingStore();
+    const cancel = new AbortController();
+    setTimeout(() => cancel.abort(), 10);
+
+    const result = await registerRotatedManagedRelayKey(
+      {
+        id: "record-under-test",
+        registrar: REGISTRAR,
+        preRotationSecret: generateSharedSecret(),
+        rotatedSecret: generateSharedSecret(),
+        maxAgeDays: null,
+      },
+      { fetch: registrar.fetch, timeoutMs: 600_000, signal: cancel.signal },
+      store,
+    );
+
+    expect(result.kind).toBe("failed");
+    expect(registrar.requests()).toBe(1);
+    expect(store.cleared).toEqual([]);
+  });
+});
+
+describe("stopping registration", () => {
+  test("drops the registrar under the run lock", async () => {
+    const steps: Array<string> = [];
+    await stopManagedRelayRegistration("record-under-test", {
+      withLock: async <T>(_id: string, step: () => Promise<T>) => {
+        steps.push("locked");
+        const result = await step();
+        steps.push("released");
+        return result;
+      },
+      removeRegistrar: (id) => {
+        steps.push(`removed ${id}`);
+        return Promise.resolve(record());
+      },
+    });
+    expect(steps).toEqual(["locked", "removed record-under-test", "released"]);
+  });
+
+  test("is refused, and writes nothing, while a run holds the exchange", async () => {
+    const removeRegistrar = vi.fn(() => Promise.resolve(record()));
+    await expect(
+      stopManagedRelayRegistration("record-under-test", {
+        withLock: () =>
+          Promise.reject(
+            new ManagedExchangeLockUnavailableError("record-under-test"),
+          ),
+        removeRegistrar,
+      }),
+    ).rejects.toBeInstanceOf(ManagedExchangeLockUnavailableError);
+    expect(removeRegistrar).not.toHaveBeenCalled();
+  });
+});
+
+describe("the enrollment form's exchange-id problems", () => {
+  test.each([
+    [".", "must not be '.' or '..'"],
+    ["..", "must not be '.' or '..'"],
+    ["a".repeat(3) + "0123456789abcdef".repeat(4), "64 hex characters"],
+    ["alcove-verify-x", "must not start with alcove-verify-"],
+  ])("%s is refused in the schema's own words", (exchangeId, rule) => {
+    const parsed = RelayRegistrarSchema.safeParse({
+      url: REGISTRAR.url,
+      exchangeId,
+    });
+    expect(parsed.success).toBe(false);
+    const problems = relayRegistrarExchangeIdProblems(
+      parsed.success ? [] : parsed.error.issues,
+    );
+    expect(problems.some((problem) => problem.includes(rule))).toBe(true);
+    for (const problem of problems) {
+      expect(problem).toMatch(/^The exchange id /);
+      expect(problem).not.toContain("relay_registrar");
+    }
   });
 });
 

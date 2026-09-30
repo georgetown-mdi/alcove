@@ -7,6 +7,7 @@ import {
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  relayRegistrationPendingLine,
   savedExchangeRow,
   savedExchangeRows,
 } from "@recurring/savedExchangesModel";
@@ -600,5 +601,60 @@ describe("savedExchangeRow: a partner terms change the last run did not take on"
     const { status } = savedExchangeRow(terms, undefined, NOW);
     expect(status).toMatch(/declined, run again to review it/);
     expect(status).not.toMatch(/apply/i);
+  });
+});
+
+describe("the pending relay key registration", () => {
+  const REGISTRAR = {
+    url: "https://relay.example.org:8443",
+    exchangeId: "riverbend-q3",
+  };
+  const PENDING_SINCE = "2026-07-13T08:00:00.000Z";
+
+  test("an enrolled record with a pending registration names since when and the remedy", () => {
+    const line = relayRegistrationPendingLine(
+      record({
+        relayRegistrar: REGISTRAR,
+        relayRegistrationPendingSince: PENDING_SINCE,
+      }),
+    );
+    expect(line).toMatch(/^Relay key registration pending since /);
+    expect(line).toContain("retries it before connecting");
+    expect(line).toContain(
+      "enroll the exchange again with the relay-owner token",
+    );
+  });
+
+  test("the list row shows it, and a row for a spent copy does not", () => {
+    const pending = record({
+      relayRegistrar: REGISTRAR,
+      relayRegistrationPendingSince: PENDING_SINCE,
+    });
+    expect(
+      savedExchangeRow(pending, undefined, NOW).relayRegistrationLine,
+    ).toBe(relayRegistrationPendingLine(pending));
+    expect(
+      savedExchangeRow(
+        pending,
+        {
+          spent: { spentAt: "2026-07-01T10:00:00.000Z" },
+        },
+        NOW,
+      ),
+    ).not.toHaveProperty("relayRegistrationLine");
+  });
+
+  test("a confirmed registration, or a record enrolled nowhere, shows nothing", () => {
+    expect(
+      relayRegistrationPendingLine(record({ relayRegistrar: REGISTRAR })),
+    ).toBeUndefined();
+    expect(
+      relayRegistrationPendingLine(
+        record({ relayRegistrationPendingSince: PENDING_SINCE }),
+      ),
+    ).toBeUndefined();
+    expect(savedExchangeRow(record(), undefined, NOW)).not.toHaveProperty(
+      "relayRegistrationLine",
+    );
   });
 });

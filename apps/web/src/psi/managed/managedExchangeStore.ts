@@ -1039,15 +1039,14 @@ export async function updateManagedExchangeLocalFields(
 
 /**
  * Persist a rotation to the stored record: advance the rotated secret and the
- * `expires` bound, remove the rotation-in-flight marker, and store or drop the
- * pending relay key registration, and nothing else,
- * AND clear the record's backup marker -- both
- * in one strict-durability transaction spanning the record and sibling stores
- * ({@link readModifyWriteRotation}). The record write is field-scoped through
- * {@link applyManagedExchangeRotation} (which re-validates), so it cannot include a
- * stale secret or document. This is the durable write the persist-before-success
- * ordering awaits before the data exchange begins (see
- * docs/spec/MANAGED_EXCHANGE_RECORD.md).
+ * `expires` bound, remove the rotation-in-flight marker, and set the pending
+ * relay key registration, and nothing else, AND clear the record's backup
+ * marker -- both in one strict-durability transaction spanning the record and
+ * sibling stores ({@link readModifyWriteRotation}). The record write is
+ * field-scoped through {@link applyManagedExchangeRotation} (which
+ * re-validates), so it cannot include a stale secret or document. This is the
+ * durable write the persist-before-success ordering awaits before the data
+ * exchange begins (see docs/spec/MANAGED_EXCHANGE_RECORD.md).
  *
  * @throws {Error} if no record with `id` exists, or if the stored record holds a
  *   configuration only ({@link runnableManagedExchangeOrRefuse}): the `id` carries
@@ -1159,7 +1158,6 @@ export async function persistManagedExchangeReinvite(
   id: string,
   rotation: ManagedExchangeRotation,
 ): Promise<RunnableManagedExchangeRecord> {
-  const rotatedAt = new Date().toISOString();
   return withManagedExchangeLock(
     id,
     () =>
@@ -1178,7 +1176,10 @@ export async function persistManagedExchangeReinvite(
           existing,
           existing.relayRegistrar === undefined
             ? rotation
-            : { ...rotation, relayRegistrationPendingSince: rotatedAt },
+            : {
+                ...rotation,
+                relayRegistrationPendingSince: new Date().toISOString(),
+              },
         );
       }),
     { ifAvailable: true },
