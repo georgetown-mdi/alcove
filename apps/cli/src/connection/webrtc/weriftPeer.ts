@@ -21,6 +21,7 @@ import { PEER_TIMEOUT_GUIDANCE } from "../timeoutGuidance";
 import {
   BROKER_MESSAGE,
   BrokerIdTakenError,
+  BrokerSocketDroppedError,
   connectToBroker,
 } from "./brokerClient";
 import {
@@ -936,7 +937,7 @@ export async function openWebRtcPeerSession(
         id: localId,
         handlers: {
           onMessage: (message) => negotiation.onBrokerMessage(message),
-          onClose: (error) => negotiation.fail(error),
+          onClose: (error) => negotiation.brokerEnded(error),
         },
         signal,
         socketFactory,
@@ -1202,6 +1203,8 @@ class Negotiation {
   partnerRestart: PartnerRestart | undefined;
   /** Set once the run has settled, after which nothing is left to time out. */
   private finished = false;
+  /** Set once the attempt ended unmet, which may precede {@link run}. */
+  private unmet = false;
   private settle:
     | {
         resolve: (outcome: RTCDataChannel | typeof ATTEMPT_UNMET) => void;
@@ -1264,7 +1267,30 @@ class Negotiation {
    */
   private endUnmet(): void {
     if (this.finished || this.failure !== undefined) return;
+    this.unmet = true;
     this.settle?.resolve(ATTEMPT_UNMET);
+  }
+
+  /**
+   * The broker socket ended. A drop before the partner has sent its
+   * description ends only this attempt, and the next registers again; a
+   * refusal, a bound breach, or a drop once the partner is engaged fails the
+   * wait.
+   */
+  brokerEnded(error: ConnectionError): void {
+    if (
+      !(error instanceof BrokerSocketDroppedError) ||
+      this.partnerEngaged() ||
+      this.finished ||
+      this.failure !== undefined
+    ) {
+      this.fail(error);
+      return;
+    }
+    log.warn(
+      `${sanitizeErrorForDisplay(error)}; starting a new connection attempt`,
+    );
+    this.endUnmet();
   }
 
   /**
@@ -1338,6 +1364,7 @@ class Negotiation {
       (resolve, reject) => {
         this.settle = { resolve, reject };
         if (this.failure !== undefined) reject(this.failure);
+        else if (this.unmet) resolve(ATTEMPT_UNMET);
       },
     );
     // Keep the rejection handled from the instant the promise exists, before

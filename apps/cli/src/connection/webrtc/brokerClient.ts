@@ -210,6 +210,16 @@ function idTakenError(): ConnectionError {
   return new BrokerIdTakenError();
 }
 
+/**
+ * The registered socket closing, or failing, without a refusal from the
+ * broker. A caller waiting for a partner can register again.
+ */
+export class BrokerSocketDroppedError extends ConnectionError {
+  constructor(message: string) {
+    super(message, "transport");
+  }
+}
+
 /** What a failed signaling socket reports when the certificate verified. */
 export const SIGNALING_SOCKET_FAILED_MESSAGE =
   "the connection to the signaling server failed";
@@ -796,7 +806,7 @@ export function connectToBroker(
 
     const onSocketError = (): void => {
       if (opened) {
-        end(signalingSocketError(undefined));
+        end(new BrokerSocketDroppedError(SIGNALING_SOCKET_FAILED_MESSAGE));
         return;
       }
       if (!claimTerminal()) return;
@@ -807,9 +817,8 @@ export function connectToBroker(
 
     const onSocketClose = (): void =>
       end(
-        new ConnectionError(
+        new BrokerSocketDroppedError(
           "the signaling server closed the connection",
-          "transport",
         ),
       );
 
