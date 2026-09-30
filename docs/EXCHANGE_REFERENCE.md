@@ -877,16 +877,16 @@ connection:
 *Required:* no  
 *Applies to:* `webrtc`
 
-The registrar of the relay your own [`turn`](#connectionturn) entries name, when that relay runs the reference registrar ([infra/relay/README.md](../infra/relay/README.md#the-registrar)). The relay accepts credentials minted from the relay key it holds for the exchange. `alcove enroll-relay` enrolls the exchange at this registrar: it registers the key derived from the key file's current shared secret, lapsing after [`authentication.token_max_age_days`](#authenticationtoken_max_age_days) days, or never where that is unset.
+The registrar of the relay your own [`turn`](#connectionturn) entries name, when that relay runs the reference registrar ([infra/relay/README.md](../infra/relay/README.md#the-registrar)). The relay accepts credentials minted from the relay key it holds for the exchange, and that key changes each time the shared secret rotates, so after each run that rotates it `alcove exchange` registers the key derived from the new secret at this registrar, signed with the key being replaced. The registration lapses after [`authentication.token_max_age_days`](#authenticationtoken_max_age_days) days, or never where that is unset, and each run renews it.
 
-It holds no credential. The relay-owner token is asked for by `alcove enroll-relay` each time it runs ([CLI.md](CLI.md#registering-the-relay-key-at-your-relay)) and is never written to the configuration or the key file.
+It holds no credential. The relay-owner token is asked for once, by `alcove enroll-relay`, which enrolls the exchange before its first registered run and is the recovery when the registrar holds a key no run has any more ([CLI.md](CLI.md#registering-the-relay-key-at-your-relay)). The token is never written to the configuration or the key file.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | yes | The registrar's `https://` address: a host and an optional port, with no path, query, fragment, or user |
 | `exchange_id` | string | yes | The id the registrar holds this exchange's key under: 1 to 128 of `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, not starting with `-`, not starting with `alcove-verify-`, and holding no run of 64 hex characters. The registrar's refusals let anyone learn whether an id is enrolled, so choose one that reveals nothing about either party |
 
-It requires a `turn` entry that sets no `username` or `credential`. `alcove enroll-relay` refuses a configuration whose runs relay through the relay an invitation named ([`invitation_relay`](#connectioninvitation_relay)): the party that supplies a relay is the one that registers at it.
+It requires a `turn` entry that sets no `username` or `credential`. A run that relays through the relay an invitation named ([`invitation_relay`](#connectioninvitation_relay)) registers nothing, and says so: the party that supplies a relay is the one that registers at it.
 
 ```yaml
 connection:

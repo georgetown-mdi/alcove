@@ -3132,6 +3132,60 @@ test("a token_max_age_days policy stamps expires onto both rotated key files", a
   expect(expiresB).toBeLessThanOrEqual(after + THIRTY_DAYS_MS);
 }, 20_000);
 
+test("a run that registers its relay key records the registration as pending in the rotation write", async () => {
+  // The pending record is written by the same write that stores the rotated
+  // secret, so no moment exists at which the key file holds the rotated secret
+  // without it; the post-exchange hook already sees it on disk.
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  let seenAtOutputComplete: unknown;
+
+  await Promise.all([
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: {
+        sharedSecret: TOKEN_A,
+        keyFilePath: keyFileA,
+        relayRegistrationFollows: true,
+      },
+      prepared: minimalPrepared,
+      output: path.join(tmpDir, "out-a.csv"),
+      verbosity: -1,
+      loggerName: "test-a",
+      fileSyncRuntime: {
+        onOutputComplete: () => {
+          seenAtOutputComplete = loadKeyFile(keyFileA);
+          return { persisted: true };
+        },
+      },
+    }),
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileB },
+      prepared: minimalPrepared,
+      output: path.join(tmpDir, "out-b.csv"),
+      verbosity: -1,
+      loggerName: "test-b",
+    }),
+  ]);
+
+  const rotatedA = loadKeyFile(keyFileA);
+  expect(rotatedA?.sharedSecret).not.toBe(TOKEN_A);
+  expect(rotatedA?.relayRegistrationPendingSince).toBeDefined();
+  expect(seenAtOutputComplete).toEqual(rotatedA);
+  expect(loadKeyFile(keyFileB)?.relayRegistrationPendingSince).toBeUndefined();
+}, 20_000);
+
 // --- Abort-marker echo suppression via runProtocol ---------------------------
 //
 // These pin the orchestrator-side gate that DECIDES whether to write an abort

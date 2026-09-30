@@ -1109,7 +1109,7 @@ A webrtc connection endpoint MAY hold `relay`, the inviting party's relay locato
 
 **Which relay a run uses.** The accepting party keeps the locator on its connection as `invitation_relay` ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectioninvitation_relay)), beside its own `turn` and `stun` rather than in them. A run chooses per kind (`selectRunRelay` in `packages/core/src/relayCredential.ts`): the invitation's TURN urls when it names any, else its own `turn` entries; the invitation's STUN urls when it names any, else its own `stun` list. A connection with no `invitation_relay` runs exactly its own lists.
 
-**The run credential.** A run that uses the invitation's TURN urls presents one credential to each of them, minted when the run starts (`mintRunRelayCredential`) and, in a CLI run, minted again for each connection attempt after the first while it waits for the partner ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#connection-attempts)): the relay key derived from the shared secret the run holds, `ttl` = 3600, and `label` = `alcove`. A CLI run that uses its own `turn` entries presents the same minted credential to each entry that sets no `username` or `credential`, and an entry's own static pair to every other; a run holding no shared secret refuses such an entry by its url before anything is dialed. The secret rotates on every successful handshake, so each run's credential derives from a different key, and nothing derived is stored.
+**The run credential.** A run that uses the invitation's TURN urls presents one credential to each of them, minted when the run starts (`mintRunRelayCredential`) and, in a CLI run, minted again for each connection attempt after the first while it waits for the partner ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#connection-attempts)): the relay key derived from the shared secret the run holds, `ttl` = 3600, and `label` = `alcove`. A CLI run that uses its own `turn` entries presents the same minted credential to each entry that sets no `username` or `credential`, and an entry's own static pair to every other; a run holding no shared secret refuses such an entry by its url before anything is dialed. The secret rotates on every successful handshake, so each run's credential derives from a different key. Neither the credential nor the relay key is written anywhere. A CLI run that [registers its rotated relay key](#registering-the-rotated-relay-key) also holds the pre-rotation shared secret in memory until the process exits, whether or not the registrar confirmed; it signs the registration with the relay key it derives from that secret, and the one thing it writes is a timestamp in the key file recording that the registrar has not yet confirmed the rotated key.
 
 ### The registrar request proof
 
@@ -1150,6 +1150,18 @@ body_sha256   = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 mac           = f62d215cae1ac9c3dfdc844bb0cd4cc5758c362398c7986d39ce3da1a57ebe4b
 authorization = Alcove-Relay-Proof ts=1767225600,mac=f62d215cae1ac9c3dfdc844bb0cd4cc5758c362398c7986d39ce3da1a57ebe4b
 ```
+
+### Registering the rotated relay key
+
+The CLI keeps the relay key a registrar holds current by registering the key derived from each rotated secret (`apps/cli/src/relayRegistrar.ts`). The browser and the console register nothing.
+
+- **Who registers.** The party that supplies the relay: a CLI run registers only when its connection names a [`relay_registrar`](../EXCHANGE_REFERENCE.md#connectionrelay_registrar) and the run relays through this party's own `turn` entries, one of which has its credential minted from the secret. A run relaying through the relay an invitation named registers nothing.
+- **When.** After a run whose key exchange rotated the secret: once its outputs are written, before the terminal event, or after the failure of a run that failed past the rotation.
+- **The request.** `PUT /exchanges/<exchange_id>` with the body `{"key": <relay key of the rotated secret>, "maxAgeDays": <authentication.token_max_age_days, or null>}` and a proof made under the relay key of the pre-rotation secret. The body always holds `maxAgeDays`.
+- **Retries.** Each request has 15 s. No answer, a 408, 429, or 5xx is tried again after 2 s and after 5 s, three attempts in all. A 401 holding `serverTime` is signed again once at the registrar's time. Any other 401, and a 409, is final.
+- **No token.** No request on this path holds the relay-owner token, and no refusal leads to one. The token is sent only by `alcove enroll-relay`, which asks for it: a `POST` to enroll, or a `PUT` with `--replace-relay-key` as the operator's recovery.
+- **The pending record.** The rotation write that stores the rotated secret also stores `relayRegistrationPendingSince` in the key file ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-pending-relay-registration)), and a confirmed registration removes it. A failure never rolls the secret back.
+- **The retry before the next run dials.** A run whose key file holds the record registers the current key again before any contact with its partner, signed under that same key. The pre-rotation secret left with the run that rotated, so this succeeds only when the registrar already holds the current key, as when the rotation landed and its answer was lost. A refusal ends the run with exit 77 and the re-enrollment step, the shared secret unchanged; an unavailable registrar ends it with 69.
 
 # Post-linkage steps
 

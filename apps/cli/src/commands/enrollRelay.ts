@@ -5,7 +5,7 @@ import type { RelayRegistrar } from "@alcove/core";
 
 import { DEFAULT_CONFIG_PATH } from "../config";
 import { expandTilde } from "../fileUtils";
-import { DEFAULT_KEY_PATH } from "../keyFile";
+import { clearRelayRegistrationPending, DEFAULT_KEY_PATH } from "../keyFile";
 import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
 import {
   enrollRelayKey,
@@ -27,7 +27,8 @@ import { loadConfig } from "./exchange";
 
 // `alcove enroll-relay` is the one command that takes the relay-owner token:
 // it asks for it, sends it in the one enrollment request, and keeps it
-// nowhere.
+// nowhere. Every later registration is signed with the exchange's own relay
+// key by `alcove exchange`, which never asks for the token.
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = cmd
@@ -130,7 +131,9 @@ export interface EnrollRelayOptions {
  * its connection names: register the relay key derived from the key file's
  * current shared secret, with the configuration's `token_max_age_days` as the
  * row's lapse, under the relay-owner token `readOwnerToken` supplies. The
- * token is read after every local check, sent once, and written nowhere.
+ * token is read after every local check, sent once, and written nowhere; a
+ * confirmed enrollment drops any registration the key file records as
+ * pending, since the registrar then holds the current key.
  *
  * @internal exported for testing
  */
@@ -167,6 +170,10 @@ export async function enrollRelay(
   );
   if (outcome.kind !== "registered")
     throw enrollmentError(registrar, outcome, options.replace);
+  clearRelayRegistrationPending(
+    authentication.keyFilePath,
+    authentication.sharedSecret,
+  );
   return relayRegistrationNotice(registrar, outcome);
 }
 

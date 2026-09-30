@@ -664,6 +664,31 @@ that began and has not saved its rotated secret.
   (see [MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#the-rotation-in-flight-marker)).
   A key file the web application writes holds no marker.
 
+### The pending relay registration
+
+The key file holds a fourth, optional field: `relayRegistrationPendingSince`,
+an ISO 8601 UTC instant. It records that the secret the file holds has not
+been confirmed at the relay registrar a run registers at
+([PROTOCOL.md, Registering the rotated relay key](PROTOCOL.md#registering-the-rotated-relay-key)).
+
+- **Write order.** A run that registers its relay key stores it in the
+  rotation write itself (`authenticateRun` in `apps/cli/src/protocol.ts`), so
+  no moment exists at which the file holds the rotated secret without it. A
+  registration the registrar confirms removes it through
+  `clearRelayRegistrationPending` (`apps/cli/src/keyFile.ts`), under the same
+  owner-only, atomic-rename write; so does `alcove enroll-relay`.
+- **What it holds.** An instant only. The pre-rotation secret and every key
+  derived from either secret stay out of the file.
+- **What it means.** A key file still holding it at the next run records a
+  registration that run confirms before it dials; a refusal there ends the run
+  with exit 77 and the re-enrollment step, with the secret unchanged.
+- **What supersedes it.** A run that does not register -- its connection names
+  no registrar, or it relays through the invitation's relay -- leaves the
+  field, and its own rotation write, which stores none, drops it.
+- **Across applications.** The console's check of a mounted key file strips an
+  unknown field, so it reads the file. The web application's import of a
+  command-line key file refuses one holding the field as an unknown field.
+
 ### `exchange --invitation` fail-closed ordering
 
 `provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is the ordering

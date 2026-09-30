@@ -58,7 +58,10 @@ afterEach(() => {
 
 test("asks for the token once, sends it in one enrollment, and stores it nowhere", async () => {
   fs.writeFileSync(configFile, YAML.stringify(webrtcConfig()));
-  saveKeyFile(keyFile, { sharedSecret: SECRET });
+  saveKeyFile(keyFile, {
+    sharedSecret: SECRET,
+    relayRegistrationPendingSince: "2026-01-01T00:00:00.000Z",
+  });
   const configBefore = fs.readFileSync(configFile, "utf8");
   const registrar = fakeRegistrar([
     jsonResponse(200, { maxAgeDays: 45, lapsesAt: "2026-02-15T00:00:00Z" }),
