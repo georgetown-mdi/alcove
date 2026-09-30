@@ -136,9 +136,12 @@ export async function makeManagedTermsUpdate(
  *   it, so it was made from this exchange's own terms (`alcove apply`'s
  *   identity check).
  * - `not-applicable`: the stored exchange cannot hold its terms.
- * - `not-runnable`: the stored exchange can hold its terms, but a run under
- *   them would refuse before it sends anything (core's `assertTermsRunnable`,
- *   the check `alcove apply` makes); the error's `cause` names the rule.
+ * - `not-runnable`: a run under its terms would refuse before it sends
+ *   anything, as `alcove apply` checks: core's `deriveAcceptedLinkageTerms`
+ *   refuses the partner's terms (a count-only shape, a deduplicate no
+ *   strategy matches, a transform that does not compile), or core's
+ *   `assertTermsRunnable` refuses the terms derived from them. The error's
+ *   `cause` names the rule.
  * - `changed`: the stored exchange changed after the update was read, so the
  *   change shown is not the one applying it would make.
  */
@@ -200,7 +203,11 @@ async function checkedTermsUpdate(
       update,
     });
   } catch (error) {
-    if (error instanceof UsageError || error instanceof ZodError)
+    if (error instanceof UsageError)
+      throw new ManagedTermsUpdateNotAppliedError("not-runnable", {
+        cause: error,
+      });
+    if (error instanceof ZodError)
       throw new ManagedTermsUpdateNotAppliedError("not-applicable");
     throw error;
   }

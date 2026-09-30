@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { ZodError } from "zod";
 
 import {
   PLACEHOLDER_IDENTITY,
@@ -532,6 +533,45 @@ describe("applying a partner's terms update", () => {
     },
   );
 
+  test("refuses at Check and at Accept an update whose element transform does not compile, naming the rule, and writes nothing", async () => {
+    const record = await agencyBRecord();
+    const before = storedBytes.get(record.id);
+    const [first, ...rest] = OWN_TERMS.linkageKeys;
+    const [element, ...others] = first.elements;
+    const update = await updateStating({
+      ...OWN_TERMS,
+      linkageKeys: [
+        {
+          ...first,
+          elements: [
+            { ...element, transform: [{ function: "pad_left", params: {} }] },
+            ...others,
+          ],
+        },
+        ...rest,
+      ],
+    });
+
+    const error: unknown = await readManagedTermsUpdate(record, update).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ManagedTermsUpdateNotAppliedError);
+    const refused = error as ManagedTermsUpdateNotAppliedError;
+    expect(refused.refusal).toBe("not-runnable");
+    expect(refused.cause).toBeInstanceOf(UsageError);
+    const rule = (refused.cause as UsageError).message;
+    expect(rule).toMatch(/pad_left/);
+    expect(termsUpdateNotAppliedText(error)).toBe(
+      `${TERMS_UPDATE_NOT_APPLIED_TEXT["not-runnable"]} The rule the terms ` +
+        `break: ${rule}`,
+    );
+    expect(
+      await refusalOf(applyManagedTermsUpdate(record.id, unreadUpdate(update))),
+    ).toBe("not-runnable");
+    expect(storedBytes.get(record.id)).toBe(before);
+  });
+
   test("applies an update a run holding this party's own standardization accepts", async () => {
     const record = await agencyBRecordHolding({
       standardization: FIRST_NAME_STANDARDIZATION,
@@ -547,10 +587,10 @@ describe("applying a partner's terms update", () => {
     expect(applied.exchangeFile.linkageTerms.identity).toBe("Agency B");
   });
 
-  test("refuses as not applicable where the apply write refuses the terms", async () => {
+  test("refuses as not applicable where the record cannot hold the terms", async () => {
     const record = await agencyBRecord();
     vi.mocked(applyManagedExchangeTermsChange).mockImplementationOnce(() => {
-      throw new UsageError("these terms cannot be applied");
+      throw new ZodError([]);
     });
     expect(
       await refusalOf(readManagedTermsUpdate(record, CLI_TERMS_UPDATE)),

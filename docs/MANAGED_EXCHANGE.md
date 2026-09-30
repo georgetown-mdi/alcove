@@ -1791,7 +1791,8 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
   was made from your own terms rather than your partner's, when it changes
   terms this exchange cannot take on here, such as the columns used to match,
   or when a run under the new terms would stop before it sent anything. That
-  last check is the one `alcove apply` makes -- a count-only run sending no
+  last check covers the checks `alcove apply` makes on your partner's terms
+  and on your configuration running under them -- a count-only run sending no
   column, standardization matching the terms, an implemented algorithm,
   deduplication and fan-out, transforms that compile -- and the refusal names
   the rule in the words `alcove apply` uses. An update that passes shows its

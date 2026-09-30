@@ -1091,7 +1091,8 @@ export type ManagedTermsChangeWrite =
  * re-validated through the schema, and the input record is not mutated.
  *
  * @throws {UsageError} for an `apply` or `update` on a record whose terms
- *   name no identity for this party, or name one the terms cannot hold.
+ *   name no identity for this party, or name one the terms cannot hold, or
+ *   whose partner terms core's `deriveAcceptedLinkageTerms` refuses.
  * @throws {ZodError} if the resulting record is invalid.
  */
 export function applyManagedExchangeTermsChange(
