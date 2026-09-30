@@ -1,4 +1,4 @@
-# PSI Link Web App
+# alcove-web
 
 The browser-based Alcove app: two parties run a peer-to-peer exchange over WebRTC using ephemeral invitation links.
 

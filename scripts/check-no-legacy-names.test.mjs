@@ -106,6 +106,18 @@ describe("findLegacyNames", () => {
     ]);
   });
 
+  it("catches the spaced form and not PSI linkage", () => {
+    const root = fixtureTree({
+      "README.md": "# PSI Link\n\nRuns a PSI linkage protocol.\n",
+      "notes.md": "the psi link app\n",
+      "core.ts": "// Prepares the payload after PSI linkage.\n",
+    });
+    expect(findLegacyNames(root)).toEqual([
+      { path: "README.md", line: 1, text: "# PSI Link" },
+      { path: "notes.md", line: 1, text: "the psi link app" },
+    ]);
+  });
+
   it("reports a tracked path that holds the name", () => {
     const root = fixtureTree({ "support/start-psilink.sh": "echo alcove\n" });
     expect(findLegacyNames(root)).toEqual([
