@@ -457,8 +457,9 @@ export function addCommonBootstrapOptions(
       describe:
         "run an exchange whose PSI round needs more memory than this process " +
         "has, with a warning, instead of refusing it before connecting. The " +
-        "run may then run out of memory partway through. No effect on an " +
-        "offline invite or accept, which runs no exchange",
+        "run may then run out of memory partway through. On invite and " +
+        "accept it applies to every form that runs an exchange and has no " +
+        "effect on one that only writes files",
     })
     .option("lockless-rendezvous", {
       type: "boolean",

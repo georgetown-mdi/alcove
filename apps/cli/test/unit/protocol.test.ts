@@ -51,6 +51,8 @@ const mockState = vi.hoisted(() => ({
   memoryReadings: undefined as
     | {
         engineHeapLimitBytes: number;
+        engineInWorker: boolean;
+        mainThreadHeapLimitBytes: number;
         hostBytes: number;
         containerLimitBytes: number | undefined;
         heapRaisedByRestart: boolean;
@@ -4365,6 +4367,8 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
 // at the measured per-element cost -- are short.
 const SHORT_MEMORY = {
   engineHeapLimitBytes: 20e9,
+  engineInWorker: true,
+  mainThreadHeapLimitBytes: 20e9,
   hostBytes: 32e9,
   containerLimitBytes: 1e9,
   heapRaisedByRestart: false,

@@ -67,7 +67,17 @@ vi.mock("../../../src/onlineBootstrap", async () => {
   return { ...actual, runOnlineBootstrap: vi.fn() };
 });
 
+// The restart under the PSI heap ceiling, whose own decision and spawn are
+// tested in psiHeapRestart.test.ts; here only whether the handler asks for it.
+vi.mock("../../../src/psiHeapRestart", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../src/psiHeapRestart")
+  >("../../../src/psiHeapRestart");
+  return { ...actual, restartUnderPsiHeapCeiling: vi.fn() };
+});
+
 import {
+  acceptFormMayRunExchange,
   handler as acceptHandler,
   resolveAcceptPositionals,
   validateAccept,
@@ -90,6 +100,7 @@ import {
   PLACEHOLDER_IDENTITY,
 } from "../../../src/partyIdentity";
 import { saveConfig } from "../../../src/config";
+import { restartUnderPsiHeapCeiling } from "../../../src/psiHeapRestart";
 import { webRtcDialFrom } from "../../../src/protocol";
 import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import { promptConfirm, promptFreeText } from "../../../src/util/prompt";
@@ -3360,6 +3371,75 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       runOnlineBootstrapMock.mockReset();
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("handler: a webrtc acceptance given an input file restarts under the PSI heap ceiling; one without does not", async () => {
+    // The endpointRun form reaches runOnlineBootstrap as the URL form does, so
+    // it asks for the restart the URL form asks for; an invitation alone only
+    // writes the configuration and key file, and runs in this process.
+    const restartMock = vi.mocked(restartUnderPsiHeapCeiling);
+    restartMock.mockResolvedValue();
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const fixtures = [offlineAcceptFixture(), offlineAcceptFixture()];
+    try {
+      const encoded = await encodeInvitation(
+        sampleToken(FUTURE(), {
+          channel: "webrtc",
+          host: "peer.example.org",
+          path: "/psi",
+        }),
+      );
+      const accept = (
+        fixture: ReturnType<typeof offlineAcceptFixture>,
+        args: string[],
+      ) =>
+        acceptHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency B",
+          args,
+          "consent-to-terms": true,
+          "config-file": fixture.configFile,
+          "key-file": fixture.keyFile,
+          "log-level": "silent",
+          record: false,
+        } as unknown as Arguments);
+
+      await accept(fixtures[0], [encoded, fixtures[0].input]);
+      expect(restartMock).toHaveBeenCalledTimes(1);
+      expect(restartMock).toHaveBeenCalledWith({ passEventStreamFd: false });
+      expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+
+      restartMock.mockClear();
+      runOnlineBootstrapMock.mockClear();
+      await accept(fixtures[1], [encoded]);
+      expect(restartMock).not.toHaveBeenCalled();
+      expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
+      expect(fs.existsSync(fixtures[1].keyFile)).toBe(true);
+      expect(exit).not.toHaveBeenCalled();
+    } finally {
+      exit.mockRestore();
+      restartMock.mockReset();
+      runOnlineBootstrapMock.mockReset();
+      for (const { dir } of fixtures)
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("acceptFormMayRunExchange: the URL form and an invitation with an input file, not an invitation alone", () => {
+    expect(
+      acceptFormMayRunExchange(["sftp://host/drop", "INVITE", "input.csv"]),
+    ).toBe(true);
+    expect(acceptFormMayRunExchange(["INVITE", "input.csv"])).toBe(true);
+    expect(acceptFormMayRunExchange(["INVITE", "input.csv", "out.csv"])).toBe(
+      true,
+    );
+    expect(acceptFormMayRunExchange(["INVITE"])).toBe(false);
+    expect(acceptFormMayRunExchange([])).toBe(false);
   });
 
   test("handler: --peer-timeout reaches the run and the configuration it writes", async () => {

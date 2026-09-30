@@ -63,6 +63,8 @@ describe("the budget", () => {
   it("takes the least of the heap limit, host memory and container limit", () => {
     const readings: MemoryReadings = {
       engineHeapLimitBytes: 20e9,
+      engineInWorker: true,
+      mainThreadHeapLimitBytes: 20e9,
       hostBytes: 64e9,
       containerLimitBytes: 8e9,
       heapRaisedByRestart: false,
@@ -95,6 +97,8 @@ describe("the readings", () => {
   it("takes the raised limit when the engine runs in a worker", () => {
     expect(readMemory(true, false, snapshot)).toEqual({
       engineHeapLimitBytes: PSI_HEAP_CEILING_MIB * 2 ** 20,
+      engineInWorker: true,
+      mainThreadHeapLimitBytes: 4_395_630_592,
       hostBytes: 25e9,
       containerLimitBytes: undefined,
       heapRaisedByRestart: false,
@@ -129,6 +133,8 @@ describe("the readings", () => {
 describe("the check", () => {
   const smallHost: MemoryReadings = {
     engineHeapLimitBytes: 4_395_630_592,
+    engineInWorker: false,
+    mainThreadHeapLimitBytes: 4_395_630_592,
     hostBytes: 2e9,
     containerLimitBytes: 512e6,
     heapRaisedByRestart: false,
@@ -158,20 +164,58 @@ describe("the check", () => {
     expect(outcome).not.toBeInstanceOf(Error);
     expect(warnings).toEqual([]);
     expect(infos).toEqual([
-      "memory: the PSI engine runs under a heap limit of 4.40 GB; a round " +
-        "over this run's 1,000 records needs about 0.27 GB, and this process " +
-        "has 0.51 GB (host memory 2.00 GB, container memory limit 0.51 GB)",
+      "memory: the PSI engine runs on this process's main thread under a " +
+        "heap limit of 4.40 GB; a round over this run's 1,000 records needs " +
+        "about 0.27 GB, and this process has 0.51 GB (host memory 2.00 GB, " +
+        "container memory limit 0.51 GB)",
     ]);
   });
 
-  it("names the restart that raised the heap limit", () => {
+  // The installed CLI's two threads: the worker at the ceiling the flag sets,
+  // and the main thread at whatever limit it measures.
+  const inWorker = (mainThreadHeapLimitBytes: number): MemoryReadings => ({
+    engineHeapLimitBytes: PSI_HEAP_CEILING_MIB * 2 ** 20,
+    engineInWorker: true,
+    mainThreadHeapLimitBytes,
+    hostBytes: 64e9,
+    containerLimitBytes: undefined,
+    heapRaisedByRestart: true,
+  });
+
+  it("states both threads' limits and names the restart that raised the main thread's", () => {
     const statement = psiMemoryStatement(
-      assessPsiMemory(1_000, { ...smallHost, heapRaisedByRestart: true }),
+      assessPsiMemory(1_000, inWorker(20_102_250_496)),
+    );
+    expect(statement).toBe(
+      "memory: the PSI engine runs in a worker thread under a heap limit of " +
+        "20.00 GB, and this process's main thread, which reads the input, " +
+        "under 20.10 GB (raised by restarting this process with " +
+        "--max-old-space-size=19075); a round over this run's 1,000 records " +
+        "needs about 0.27 GB, and this process has 20.00 GB (host memory " +
+        "64.00 GB, no container memory limit)",
+    );
+  });
+
+  it("names the operator's node option when it kept the main thread below the ceiling", () => {
+    const statement = psiMemoryStatement(
+      assessPsiMemory(1_000, inWorker(4_345_298_944)),
     );
     expect(statement).toContain(
-      "heap limit of 4.40 GB (raised by restarting this process with " +
-        "--max-old-space-size=19075); a round",
+      "this process's main thread, which reads the input, under 4.35 GB " +
+        "(set by a heap size option given to node, which takes precedence " +
+        "over the --max-old-space-size=19075 the restart added); a round",
     );
+    expect(statement).not.toContain("raised by restarting");
+  });
+
+  it("names no source for the main thread's limit in a process that was not restarted", () => {
+    const statement = psiMemoryStatement(
+      assessPsiMemory(1_000, {
+        ...inWorker(4_395_630_592),
+        heapRaisedByRestart: false,
+      }),
+    );
+    expect(statement).toContain("under 4.40 GB; a round");
   });
 
   it("refuses a run short of memory, naming both figures and the override", () => {

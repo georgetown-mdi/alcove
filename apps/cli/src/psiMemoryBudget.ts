@@ -70,6 +70,10 @@ export function raisePsiWorkerHeapLimit(): void {
 export interface MemoryReadings {
   /** The heap limit of the thread the PSI engine runs in. */
   engineHeapLimitBytes: number;
+  /** Whether the PSI engine runs in a worker rather than on the main thread. */
+  engineInWorker: boolean;
+  /** The heap limit of this process's main thread, as measured. */
+  mainThreadHeapLimitBytes: number;
   /** The host's total memory. */
   hostBytes: number;
   /** The container's memory limit, or `undefined` when none is set. */
@@ -99,6 +103,8 @@ export function readMemory(
     engineHeapLimitBytes: engineInWorker
       ? Math.max(heapLimitBytes, PSI_HEAP_CEILING_MIB * 2 ** 20)
       : heapLimitBytes,
+    engineInWorker,
+    mainThreadHeapLimitBytes: heapLimitBytes,
     hostBytes: hostMemBytes,
     containerLimitBytes:
       constrainedMemBytes > 0 && constrainedMemBytes < hostMemBytes
@@ -155,6 +161,21 @@ const LIMIT_NAMES: Record<PsiMemoryAssessment["limitedBy"], string> = {
   container: "its container's memory limit",
 };
 
+/**
+ * Where the main thread's heap limit came from, when this process is the
+ * restarted one: the restart's flag, or a smaller heap option given to node,
+ * which takes precedence over it.
+ */
+function mainThreadLimitSource(readings: MemoryReadings): string {
+  if (!readings.heapRaisedByRestart) return "";
+  if (readings.mainThreadHeapLimitBytes >= PSI_HEAP_CEILING_MIB * 2 ** 20)
+    return ` (raised by restarting this process with ${PSI_HEAP_CEILING_FLAG})`;
+  return (
+    ` (set by a heap size option given to node, which takes precedence over ` +
+    `the ${PSI_HEAP_CEILING_FLAG} the restart added)`
+  );
+}
+
 /** The line every exchange logs once, before any network contact. */
 export function psiMemoryStatement(assessment: PsiMemoryAssessment): string {
   const { readings } = assessment;
@@ -162,12 +183,17 @@ export function psiMemoryStatement(assessment: PsiMemoryAssessment): string {
     readings.containerLimitBytes === undefined
       ? "no container memory limit"
       : `container memory limit ${gigabytes(readings.containerLimitBytes)}`;
-  const raisedBy = readings.heapRaisedByRestart
-    ? ` (raised by restarting this process with ${PSI_HEAP_CEILING_FLAG})`
-    : "";
+  const mainThread =
+    `${gigabytes(readings.mainThreadHeapLimitBytes)}` +
+    mainThreadLimitSource(readings);
+  const limits = readings.engineInWorker
+    ? `the PSI engine runs in a worker thread under a heap limit of ` +
+      `${gigabytes(readings.engineHeapLimitBytes)}, and this process's main ` +
+      `thread, which reads the input, under ${mainThread}`
+    : `the PSI engine runs on this process's main thread under a heap ` +
+      `limit of ${mainThread}`;
   return (
-    `memory: the PSI engine runs under a heap limit of ` +
-    `${gigabytes(readings.engineHeapLimitBytes)}${raisedBy}; a round over this run's ` +
+    `memory: ${limits}; a round over this run's ` +
     `${assessment.records.toLocaleString("en-US")} records needs about ` +
     `${gigabytes(assessment.needBytes)}, and this process has ` +
     `${gigabytes(assessment.availableBytes)} (host memory ` +

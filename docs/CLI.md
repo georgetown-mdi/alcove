@@ -1194,13 +1194,13 @@ See [Compromise response](SECURITY_DESIGN.md#compromise-response) for the proced
 
 ## Memory for a large exchange
 
-Every exchange-running command (the zero-setup exchange, `alcove exchange`, and the online `alcove invite`/`accept`) logs one line at `info` before it contacts the server or your partner, stating the heap limit the matching runs under, the memory a matching round over your input needs, and the memory the run has:
+Every exchange-running command (the zero-setup exchange, `alcove exchange`, the online `alcove invite`, and an `alcove accept` that runs the exchange: the URL form, or an invitation and an input file over a webrtc endpoint) logs one line at `info` before it contacts the server or your partner, stating the heap limits the matching and the input reading run under, the memory a matching round over your input needs, and the memory the run has:
 
 ```text
-memory: the PSI engine runs under a heap limit of 20.00 GB; a round over this run's 1,000,000 records needs about 1.45 GB, and this process has 20.00 GB (host memory 25.42 GB, no container memory limit)
+memory: the PSI engine runs in a worker thread under a heap limit of 20.00 GB, and this process's main thread, which reads the input, under 20.10 GB; a round over this run's 1,000,000 records needs about 1.45 GB, and this process has 20.00 GB (host memory 25.42 GB, no container memory limit)
 ```
 
-What the run has is the least of the matching's heap limit, the machine's memory, and the container's memory limit when one is set. How the heap limit is sized, Node's default limit, and how the need is computed and what it leaves out are in [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs).
+What the run has is the least of the matching's heap limit, the machine's memory, and the container's memory limit when one is set. How the heap limit is sized, Node's default limit, and how the need is computed and what it leaves out are in [FILE_SYNC.md](spec/FILE_SYNC.md#memory-a-psi-round-needs). The need includes a fixed 271 MB whatever the input's size, the measured memory of a round over no records, so a container memory limit below about 272 MB refuses every run until you pass `--allow-memory-shortfall`.
 
 **When the need is over what the run has**, the run stops with exit 64 before any network contact, naming both figures. Running out of memory partway through fails the exchange for both parties, so the refusal comes first. To go ahead:
 
@@ -1210,7 +1210,8 @@ What the run has is the least of the matching's heap limit, the machine's memory
 
 **An installed `alcove`** (rather than the container image) starts at Node's default heap limit, which a large input does not fit. So each exchange-running command starts itself again once, before it reads any file, as a second `node` process with a larger heap limit, and exits with that process's exit code. `Ctrl-C` and a `SIGTERM` sent to the first process reach the second. Other commands, such as `doctor` and `verify-receipt`, do not.
 
-- **To see it**, read the memory line: it ends the heap limit with `(raised by restarting this process with --max-old-space-size=19075)`. The `runtime:` line at `-v` states the main thread's limit, and `ps` lists two `node` processes for the run.
+- **To see it**, read the memory line: it ends the main thread's limit with `(raised by restarting this process with --max-old-space-size=19075)`, and `ps` lists two `node` processes for the run. A smaller `--max-old-space-size` you gave `node` yourself takes precedence over the restart's, and the line then states that limit and that your option set it.
+- **`alcove accept` restarts** for the URL form and for an invitation given an input file, deciding before it reads the invitation, so an acceptance whose invitation names no webrtc endpoint also restarts though it only writes files. An invitation alone does not.
 - **To start at the larger limit instead**, and skip the second process, set it yourself; a larger value raises the matching's limit too. The container image does this (see [DEPLOYMENT.md](DEPLOYMENT.md#giving-a-run-more-memory)):
 
   ```sh
