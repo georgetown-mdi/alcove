@@ -592,6 +592,22 @@ describe("refusing what this app cannot hold", () => {
     expect(message).toContain("import it again");
   });
 
+  test.each([
+    "expected_payload_columns",
+    "disclosed_payload_columns",
+    "outbound_payload_consent",
+  ])("a retired %s is named with the remedy the command line states", (key) => {
+    const message = refusal(
+      configText(commandLineDocument({ [key]: ["age"] })),
+    );
+
+    expect(message).toContain(
+      `the setting "${key}" is retired; delete it from the file`,
+    );
+    expect(message).toContain("import it again");
+    expect(message).not.toContain("not an Alcove exchange configuration");
+  });
+
   test("a key outside the schema is named, not mistaken for another file", () => {
     const message = refusal(
       configText(commandLineDocument({ surprise_field: "hand-edited line" })),

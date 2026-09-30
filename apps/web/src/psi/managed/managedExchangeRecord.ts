@@ -530,10 +530,24 @@ export { tokenMaxAgeDaysSchema };
  * the document, so a stored record cannot smuggle a secret through the document
  * half. Guards the read path against a hand-edited or corrupted store;
  * composition never produces the block (see {@link composeManagedExchangeFile}).
+ *
+ * A stored document holding the retired `expectedPayloadColumns` reads without
+ * it, as the record drops the retired `inputFileHandle` and
+ * `outputDirectoryHandle`: the agreed terms' `payload.receive` states that set,
+ * and the next write leaves the field out.
  */
-const persistedExchangeFileSchema = ExchangeSpecSchema.refine(
-  (spec) => spec.authentication === undefined,
-  { message: "exchangeFile must not carry an authentication block" },
+const persistedExchangeFileSchema = z.preprocess(
+  (stored) => {
+    if (typeof stored !== "object" || stored === null) return stored;
+    const { expectedPayloadColumns: _retired, ...document } = stored as Record<
+      string,
+      unknown
+    >;
+    return document;
+  },
+  ExchangeSpecSchema.refine((spec) => spec.authentication === undefined, {
+    message: "exchangeFile must not carry an authentication block",
+  }),
 );
 
 /**

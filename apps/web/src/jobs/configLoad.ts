@@ -54,6 +54,7 @@ import {
 import {
   namedFieldList,
   refusedDocumentFields,
+  retiredSettingsRefusal,
 } from "@psi/exchangeDocumentRefusal";
 
 import { JOB_FILE_NAMES, isJobChannel } from "./intentSchemas";
@@ -555,6 +556,12 @@ function parsedYaml(source: string): unknown {
 function parsedDocument(raw: unknown): ExchangeSpec {
   const parsed = safeParseExchangeSpec(raw);
   if (parsed.success) return parsed.data;
+  const retired = retiredSettingsRefusal(raw);
+  if (retired !== undefined)
+    throw new ConfigurationLoadRefusedError(
+      "The alcove.yaml in your working folder is not a valid Alcove " +
+        `configuration: ${retired}, then open it again.`,
+    );
   const fields = refusedDocumentFields(parsed.error, raw);
   throw new ConfigurationLoadRefusedError(
     fields.length === 0

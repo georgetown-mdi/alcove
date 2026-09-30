@@ -526,6 +526,19 @@ describe("what the load refuses", () => {
     expect(message).not.toContain("sftp.partner.example");
   });
 
+  test.each([
+    "expected_payload_columns",
+    "disclosed_payload_columns",
+    "outbound_payload_consent",
+  ])("a retired %s, named with the remedy the command line states", (key) => {
+    const message = refusal(savedSftpDocument({ [key]: ["age"] }));
+    expect(message).toContain(
+      `the setting "${key}" is retired; delete it from the file`,
+    );
+    expect(message).toContain("open it again");
+    expect(message).not.toContain("not an Alcove exchange configuration");
+  });
+
   test("bytes that are not YAML, without the parser's own words", () => {
     let message = "";
     try {
