@@ -34,6 +34,7 @@ const LABEL_FAMILIES: ReadonlyMap<string, readonly string[]> = new Map<
   ["alcove-aead-v2:", AEAD_CONTEXTS],
   ["alcove-abort-token-v2:", ABORT_TOKEN_ROLES],
   ["alcove-webrtc-peerid-v2:", RENDEZVOUS_ROLES],
+  ["alcove-relay-registrar-v2:", ["proof-key", "request"]],
   [
     "alcove-signed-receipt-payload-v2:",
     ["initiator-to-responder", "responder-to-initiator"],

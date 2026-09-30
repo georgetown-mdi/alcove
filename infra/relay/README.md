@@ -284,33 +284,71 @@ finds and mints none.
 
 ## The registrar
 
-An HTTPS service beside coturn that registers and revokes an exchange's key
-for a caller holding the relay-owner token, so a browser inviter can register
-the key it rotates to at the end of each run without shell access to the relay
-host. It is optional: `install.sh` runs it only on a host holding
-`/etc/alcove-relay/registrar-token`. To turn it on:
+An HTTPS service beside coturn that enrolls, rotates, and revokes an exchange's
+key, so a browser inviter can register the key it rotates to at the end of
+each run without shell access to the relay host. It is optional: `install.sh`
+runs it only on a host holding `/etc/alcove-relay/registrar-token`. To turn it
+on:
 
 ```sh
 (umask 077; openssl rand -hex 32 > /etc/alcove-relay/registrar-token)
 /opt/alcove-relay/install.sh   # or the checkout's install.sh
 ```
 
-Give the token to the relay's operator, who keeps it in the browser's own
-settings, never in a served bundle. To turn it off, delete the file and run
-`install.sh` again. To replace the token, overwrite the file and
+Give the token to the relay's operator, who needs it only to enroll an
+exchange and to recover one, and never puts it in a served bundle. To turn the
+registrar off, delete the file and run `install.sh` again. To replace the
+token, overwrite the file and
 `systemctl restart alcove-relay-registrar.service`.
 
-- **The calls.** Every request needs `Authorization: Bearer <token>`; without
-  it, or with a wrong token, the answer is 401 and nothing is written. A CORS
-  preflight (`OPTIONS`) is the one exception: a browser sends it with no
-  token, and it is answered 204 and does nothing. Any other method -- `GET`,
-  `TRACE`, `PROPFIND`, anything but `PUT`, `DELETE`, and `OPTIONS` -- is
-  answered 401 without the token and 405 with it, in JSON, and writes nothing.
+- **Two ways to authenticate.** Every request but a CORS preflight holds one
+  credential in its `Authorization` header:
+  - **The relay-owner token**, `Authorization: Bearer <token>`, enrolls an
+    exchange the relay does not yet hold (`POST`). It also registers or revokes
+    any exchange unconditionally (`PUT`, `DELETE`): that is the operator's
+    recovery route, below.
+  - **A proof**, `Authorization: Alcove-Relay-Proof ts=<unix-seconds>,mac=<hex64>`,
+    shows the caller holds the key the exchange has registered, and rotates
+    (`PUT`) or revokes (`DELETE`) that exchange. Its format, the key it is
+    signed under, and test vectors are in
+    [PROTOCOL.md, The registrar request proof](../../docs/spec/PROTOCOL.md#the-registrar-request-proof);
+    core's `relayRegistrarAuthorization` makes one. It holds no token, so the
+    routine calls after enrollment never need the token.
 
-  | request | writes | answer |
-  | --- | --- | --- |
-  | `PUT /exchanges/<exchange-id>` with `{"key": "<key-hex64>", "maxAgeDays": <days> \| null}` | what `register-exchange.sh <exchange-id> <days\|none>` writes | 200 and `{"message": ..., "maxAgeDays": ..., "lapsesAt": ...}` |
-  | `DELETE /exchanges/<exchange-id>` | what `revoke-exchange.sh <exchange-id>` writes | 200 and `{"message": ...}` |
+  A request with neither, a wrong token, or a malformed proof is answered 401
+  and nothing is written. A proof whose `ts` is more than 300 s from the
+  registrar's clock is answered 401 with `serverTime`, the registrar's Unix
+  seconds, so a caller whose clock has drifted signs again. A CORS preflight
+  (`OPTIONS`) is answered 204 without a credential and does nothing. Any other
+  method -- `GET`, `TRACE`, `PROPFIND`, anything but `POST`, `PUT`, `DELETE`,
+  and `OPTIONS` -- is answered 401 without a credential and 405 with one, in
+  JSON, and writes nothing.
+- **The calls.**
+
+  | request | credential | writes | answer |
+  | --- | --- | --- | --- |
+  | `POST /exchanges/<exchange-id>` with `{"key": "<key-hex64>", "maxAgeDays": <days> \| null}` | token | the key's row and the exchange's mapping, for an id not yet enrolled | 200 and `{"message": ..., "maxAgeDays": ..., "lapsesAt": ...}` |
+  | `PUT /exchanges/<exchange-id>` with the same body | proof | the new key in place of the one proven, or a renewal of the key held | as `POST` |
+  | `DELETE /exchanges/<exchange-id>` | proof | what `revoke-exchange.sh <exchange-id>` writes | 200 and `{"message": ...}` |
+  | `PUT` or `DELETE`, as above | token | what `register-exchange.sh <exchange-id> <days\|none>` or `revoke-exchange.sh <exchange-id>` writes, whatever key the exchange holds | as above |
+
+  - **Enrolling** is create-only. Enrolling an exchange again with the key it
+    holds changes nothing and is answered 200 with the registration as held,
+    so a caller can repeat a call whose answer it lost; enrolling it with any
+    other key is answered 409.
+  - **A rotation** replaces the key only if the proof verifies under the key the
+    exchange holds when the write takes the table's lock: a compare-and-swap,
+    so of two rotations proven under one key only the first lands, and a
+    proof made under a key since replaced is answered 409. A `PUT` naming the
+    key the exchange already holds renews it, whichever key its proof was made
+    under, so the second party to register a rotated key renews the row rather
+    than failing; the renewal restarts the lapse and takes `maxAgeDays` from
+    the body.
+  - **A revocation** under a proof deletes the row only if the proof verifies
+    under the key the exchange holds. A proof for an exchange not enrolled is
+    answered 409. The two 409 messages tell a caller holding no key whether an
+    id is enrolled, so choose exchange ids that reveal nothing about the
+    parties.
 
   `maxAgeDays` is required: a whole number of days, or `null` for a row that
   never lapses. A body that leaves it out is refused, so a re-registration
@@ -323,11 +361,20 @@ settings, never in a served bundle. To turn it off, delete the file and run
   refused 400 unless the request carries `Alcove-Relay-Verify-Run: 1`, which
   `verify.sh` sends and which the preflight does not allow a browser to send. A
   body that is not that JSON object is answered 400, one over 1024 bytes 413,
-  and one without a `Content-Length` 411. A request line or header block the
+  and one without a `Content-Length` 411; a revocation under a proof may send
+  no body, which it signs as empty. A request line or header block the
   registrar cannot parse is answered in JSON with the connection closed. A
   refusal on the exchange's state -- a key another exchange holds, an id not
-  registered -- is answered 409, and a table that cannot be written 500, each
-  with `{"error": ...}`, which never contains the key. One write runs at a time.
+  registered, a proof that does not verify under the key held -- is answered
+  409, and a table that cannot be written 500, each with `{"error": ...}`,
+  which never contains the key. One write runs at a time.
+- **Recovery is the operator's action.** An exchange whose key nobody holds any
+  more -- a key lost, or a registrar holding a key the caller no longer has --
+  is recovered by the relay's operator, deliberately: the token on `PUT` or
+  `DELETE` above, or `register-exchange.sh` and `revoke-exchange.sh` on the
+  host. A client never falls back to the token on its own when a proof is
+  answered 401 or 409: a client that did would make the token the credential
+  for every call again.
 - **Authentication and CORS.** Authentication reads the `Authorization` header
   and nothing else -- no cookie, no query parameter -- and no answer carries
   `Access-Control-Allow-Credentials`, so a browser's ambient credentials never
@@ -352,7 +399,8 @@ settings, never in a served bundle. To turn it off, delete the file and run
   the standard library only), which Amazon Linux 2023 ships.
 - **What it logs.** One line per request to the journal (`journalctl -u
   alcove-relay-registrar.service`), naming the method, the status, and the
-  path, and the result of each write. The path is logged only when it is
+  path, and the result of each write, naming whether the token or a proof
+  made it. The path is logged only when it is
   `/exchanges/<exchange-id>` with a well-formed id, and the method only when
   it is a standard one; any other path or method, and any part of a malformed
   request line, is replaced by a fixed placeholder, since it could hold a key
