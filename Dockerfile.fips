@@ -26,7 +26,7 @@ ARG NODE_VERSION=v26.7.0
 # still served by every snapshot since they first appeared -- so pinning the
 # snapshot as well as the package NVR is what makes the provider layer
 # reproducible rather than a function of the build date.
-ARG AL2023_RELEASEVER=2023.12.20260817
+ARG AL2023_RELEASEVER=2023.12.20260918
 
 # CMVP certificate 5438. The package and version pin which build is installed;
 # the module version string is what the module itself reports. Ten NVRs share
@@ -43,7 +43,7 @@ ARG FIPS_MODULE_VERSION=3.2.2-799901ad7ab41d45
 # assertion in the stage below holds rather than this comment. Where the digest
 # was resolved, and the checklist a bump of it works through, are in
 # docs/spec/DEPENDENCY_PINS.md.
-FROM amazonlinux:2023@sha256:181f98c48832fe926f8ca3b6ffeafcce128e96e77b93d08fbe9a9bc9403ce284 AS nodebase
+FROM amazonlinux:2023@sha256:5b29412077a463b4a3a8fbc99a8cdf4b929f38a3ecc8dac10328d8f36b0099b8 AS nodebase
 ARG NODE_VERSION
 ARG AL2023_RELEASEVER
 # The coupling the digest above is pinned for, asserted rather than described:
