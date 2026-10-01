@@ -11,8 +11,8 @@ import { boundedArray } from "../utils/boundedArray.js";
 import { patternConformsToDialect } from "../utils/linearRegex.js";
 import {
   findTransformRegexRefusal,
-  MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
   regexStepPatternParam,
+  transformPatternSizeMessage,
 } from "./transformRegexDialect.js";
 import type { TransformRegexRefusal } from "./transformRegexDialect.js";
 import {
@@ -1734,11 +1734,8 @@ function transformRegexIssue(refusal: TransformRegexRefusal): {
     code: "custom",
     message:
       `the regular expression in linkageKeys[${keyIndex}].elements[${elementIndex}]` +
-      `.transform[${stepIndex}].params.${paramKey} is too large: its size is ` +
-      `${weightedSize} (compiled instructions times one plus the number of ` +
-      `capture groups), over the limit of ${MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}. ` +
-      "Shorten it: replace a long counted repeat such as .{0,999} with .* or " +
-      "a smaller bound, and write (?:...) for a group the step does not read",
+      `.transform[${stepIndex}].params.${paramKey} ` +
+      transformPatternSizeMessage(weightedSize),
     path: [
       "linkageKeys",
       keyIndex,

@@ -33,6 +33,11 @@ import {
 } from "../../src/config/linkageTermsSchema";
 import type { LinkageKey } from "../../src/config/linkageTermsSchema";
 import { ExchangeSpecSchema } from "../../src/config/exchangeSpec";
+import {
+  MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
+  transformPatternSizeMessage,
+} from "../../src/config/transformRegexDialect";
+import { STANDARDIZATION_FUNCTION_DESCRIPTORS } from "../../src/standardization";
 import { MAX_ENCODED_INVITATION_LENGTH } from "../../src/config/invitation";
 import { pipelineAlwaysDrops } from "../../src/linkageSatisfiability";
 import { describeDecodeError } from "../../src/utils/describeDecodeError";
@@ -1199,6 +1204,29 @@ test("the pattern-length cap also covers split_on's delimiter param", () => {
       }),
     ).success,
   ).toBe(false);
+});
+
+test("the step editor and the terms gate refuse the same oversized pattern", () => {
+  // a{n} compiles to n + 2 instructions with no capture group: a{998} weighs
+  // exactly the cap, a{999} one over.
+  const editor = STANDARDIZATION_FUNCTION_DESCRIPTORS["filter_regex"].params;
+  const terms = (pattern: string) =>
+    safeParseLinkageTerms(regexStepTerms("filter_regex", { pattern }));
+  expect(editor.safeParse({ pattern: "a{998}" }).success).toBe(true);
+  expect(terms("a{998}").success).toBe(true);
+
+  const editorOver = editor.safeParse({ pattern: "a{999}" });
+  const termsOver = terms("a{999}");
+  expect(editorOver.success).toBe(false);
+  expect(termsOver.success).toBe(false);
+  if (editorOver.success || termsOver.success) return;
+  const sizeMessage = transformPatternSizeMessage(
+    MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE + 1,
+  );
+  expect(editorOver.error.issues.map((i) => i.message)).toEqual([sizeMessage]);
+  expect(termsOver.error.issues.map((i) => i.message)).toEqual([
+    `the regular expression in linkageKeys[0].elements[0].transform[0].params.pattern ${sizeMessage}`,
+  ]);
 });
 
 test("a short non-text transform regex pattern is refused at validation", () => {

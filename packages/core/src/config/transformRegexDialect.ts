@@ -73,6 +73,36 @@ const REGEX_DIALECT_TOTAL_BUDGET_MS = 2000;
  */
 export const MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE = 1000;
 
+/**
+ * The weighted size of in-dialect `pattern` when it exceeds
+ * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}, or `undefined` when it fits.
+ * The one size check both the terms gate ({@link findTransformRegexRefusal})
+ * and the editor-facing `regexPatternSchema` apply, so the editor refuses
+ * exactly the patterns an exchange would. Throws on a pattern outside the
+ * dialect, as {@link patternWeightedSize} does.
+ */
+export function transformPatternOverSizeCap(
+  pattern: string,
+): number | undefined {
+  const weightedSize = patternWeightedSize(pattern);
+  return weightedSize > MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE
+    ? weightedSize
+    : undefined;
+}
+
+/**
+ * The size refusal both the terms gate and the step editor show for a pattern
+ * of `weightedSize` over {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}.
+ */
+export function transformPatternSizeMessage(weightedSize: number): string {
+  return (
+    `is too large: its size is ${weightedSize} (compiled instructions times ` +
+    "one plus the number of capture groups), over the limit of " +
+    `${MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}. A pattern with fewer or smaller ` +
+    "counted repeats, or fewer capture groups, fits"
+  );
+}
+
 /** Optional overrides for the conformance walk; both defaulted. Exposed so tests
  * can drive the budget-exhaustion path deterministically, and so the schema can
  * pass the source-length bound the gate rejects at. */
@@ -163,8 +193,8 @@ export function findTransformRegexRefusal(
         // precise over-length message (MAX_TRANSFORM_PATTERN_LENGTH).
         if (source.length > maxPatternLength) return NONCONFORMANT;
         if (!patternConformsToDialect(source)) return NONCONFORMANT;
-        const weightedSize = patternWeightedSize(source);
-        if (weightedSize > MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE)
+        const weightedSize = transformPatternOverSizeCap(source);
+        if (weightedSize !== undefined)
           return {
             reason: "size",
             keyIndex,
