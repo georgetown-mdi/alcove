@@ -124,25 +124,25 @@ export interface MessageConnection {
   inboundPollIntervalMs?(): number | undefined;
   /**
    * Optional: the frame bound the partner's receive path applies, on a WebRTC
-   * data channel, or `undefined` for a transport with no such bound. A sender
-   * checks a frame it built against it (`webrtcFrameExceedsBound`) before
-   * sending, so a set the partner would refuse on receipt is refused here, with
-   * nothing sent. See docs/spec/CHANNEL_SECURITY.md.
+   * data channel, or `undefined` for a transport with no such bound. A round
+   * sizes the parts of each PSI set it sends to it (`psiSetPartPayloadBytes`),
+   * so no part is one the partner refuses on receipt. See
+   * docs/spec/CHANNEL_SECURITY.md.
    */
   outboundWebRtcFrameBound?(): number | undefined;
   /**
    * Optional: the message-file bound the partner's file-sync read gate
-   * applies, or `undefined` for a transport with no such bound. A sender
-   * checks the file a frame it built would take against it before sending, so
-   * a set the partner would refuse on receipt is refused here, with nothing
-   * written. See docs/spec/FILE_SYNC.md ("Round set size limits").
+   * applies, or `undefined` for a transport with no such bound. A round sizes
+   * the parts of each PSI set it sends so each part's message file fits it
+   * (`psiSetPartPayloadBytes`). See docs/spec/FILE_SYNC.md ("Round set size
+   * limits").
    */
   outboundFileSyncFrameBound?(): number | undefined;
   /**
    * Optional: the bytes this connection adds around each binary frame before
    * the transport under it packs the frame (an encryption envelope), or 0 when
-   * absent. A sender checking a frame against
-   * {@link outboundWebRtcFrameBound} adds it to the frame's length first.
+   * absent. A sender sizing a frame to either bound above adds it to the
+   * frame's length first.
    */
   outboundFrameOverheadBytes?(): number;
 }

@@ -118,8 +118,8 @@ export interface WebRtcMessageConnectionOptions {
   channelCloseTimeoutMs?: number;
   /** Per-bound overrides for the inbound reassembler; tests only. Its
    * `maxFrameBytes` is also the bound the connection states for the partner's
-   * receive path (`outboundWebRtcFrameBound`), which a PSI round checks its set
-   * frames against before sending them. */
+   * receive path (`outboundWebRtcFrameBound`), which a PSI round sizes the parts of its
+   * sets to. */
   inboundBounds?: ConstructorParameters<typeof BoundedInboundFrames>[0];
 }
 

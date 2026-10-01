@@ -868,13 +868,6 @@ describe("a set too large for one WebRTC message", () => {
   const FIRST_ROUND_REFUSAL = new WebRtcFrameLimitError(
     "This input is too large for a WebRTC exchange: the first linkage key " +
       "gives this party at least 9000000 values to send. Nothing was sent.",
-    "local",
-  );
-  const ROUND_REFUSAL = new WebRtcFrameLimitError(
-    "The reply to your partner's set for this linkage key is 300.1 MiB, " +
-      "over the 256 MiB one WebRTC message can hold. Ask your partner to " +
-      "split their input.",
-    "partner",
   );
 
   /** The state the run surface shows for `rejection`, classified the way the
@@ -915,27 +908,6 @@ describe("a set too large for one WebRTC message", () => {
       "too-large",
       "Your file is too large for a browser exchange",
       FIRST_ROUND_REFUSAL.message,
-    ]);
-    expect(managedRunRetryable(shown)).toBe(false);
-  });
-
-  test("a round's refusal reaches the classifier unchanged", async () => {
-    const { mc } = makeParkedCloseMc();
-    mockedOpen.mockResolvedValue(mc);
-    acquireResources();
-    mockedRunExchange.mockRejectedValueOnce(ROUND_REFUSAL);
-
-    const rejection = await runDriver(new AbortController().signal).catch(
-      (error: unknown) => error,
-    );
-
-    expect(rejection).toBe(ROUND_REFUSAL);
-    const shown = shownFor(rejection, true);
-    if (shown.kind === "handed-off") throw new Error("expected an alert");
-    expect([shown.kind, shown.title, shown.message]).toEqual([
-      "too-large",
-      "Your partner's file is too large for a browser exchange",
-      ROUND_REFUSAL.message,
     ]);
     expect(managedRunRetryable(shown)).toBe(false);
   });

@@ -556,7 +556,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     "The set this party sends for this linkage key is 300.1 MiB, over the " +
       "256 MiB one WebRTC message can hold, so the exchange stopped before " +
       "sending it and told your partner.",
-    "local",
   );
 
   test("the first-round refusal and a round's refusal both record too-large", async () => {
@@ -577,23 +576,12 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
         at: RUN_AT,
         outcome: "failed",
         failureKind: "too-large",
-        tooLargeSetOwner: "local",
         tooLargeBound: "webrtc-message",
       });
       expect(
         deriveManagedFailureTier(record({ lastRun }), undefined, NOW),
       ).toBe("too-large");
     }
-  });
-
-  test("a refusal of the partner's set records the partner as its owner", () => {
-    const lastRun = rerunFailureLastRun(
-      new WebRtcFrameLimitError("the reply is too large", "partner"),
-      Date.parse(RUN_AT),
-      false,
-      true,
-    );
-    expect(lastRun?.tooLargeSetOwner).toBe("partner");
   });
 
   test("a lapsed bound does not turn the refusal into an expiry", () => {
@@ -629,7 +617,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     if (failure === undefined || failure.kind === "handed-off")
       throw new Error("expected the too-large alert");
     expect(failure.message).toContain("256 MiB one WebRTC message can hold");
-    expect(failure.message).toContain("Split the input into smaller files");
+    expect(failure.message).toContain("Split your input into smaller files");
     expect(failure.message).not.toMatch(/nothing left this device/i);
     expect(failure.recovery).toBe("split");
     expect(managedRunRetryable(failure)).toBe(false);
@@ -644,19 +632,15 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     if (failure === undefined || failure.kind === "handed-off")
       throw new Error("expected the too-large alert");
     expect(failure.message).toContain(
-      "a set of values it had to send was too large, so that set was not sent",
+      "built from your input file was too large, so it was not sent",
     );
     expect(failure.message).not.toMatch(/WebRTC/);
   });
 
-  test("the next visit names splitting your own input for your own set", () => {
+  test("the next visit names splitting your own input", () => {
     const failure = managedRunFailureFromRecord(
       record({
-        lastRun: {
-          ...failed("too-large"),
-          tooLargeSetOwner: "local",
-          tooLargeBound: "webrtc-message",
-        },
+        lastRun: { ...failed("too-large"), tooLargeBound: "webrtc-message" },
       }),
       undefined,
       NOW,
@@ -670,31 +654,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       "Split your input into smaller files and set up one exchange for each.",
     );
     expect(failure.message).not.toMatch(/partner/i);
-    expect(managedRunRetryable(failure)).toBe(false);
-  });
-
-  test("the next visit names asking the partner for the partner's set", () => {
-    const failure = managedRunFailureFromRecord(
-      record({
-        lastRun: {
-          ...failed("too-large"),
-          tooLargeSetOwner: "partner",
-          tooLargeBound: "webrtc-message",
-        },
-      }),
-      undefined,
-      NOW,
-    );
-    if (failure === undefined || failure.kind === "handed-off")
-      throw new Error("expected the too-large alert");
-    expect(failure.title).toBe(
-      "Your partner's file is too large for a browser exchange",
-    );
-    expect(failure.message).toContain("built from your partner's input file");
-    expect(failure.message).toContain(
-      "Ask your partner to split their input into smaller files",
-    );
-    expect(failure.message).not.toMatch(/split your input/i);
     expect(managedRunRetryable(failure)).toBe(false);
   });
 
@@ -723,7 +682,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
   test("a first round the check cannot count records too-large and shows its own message", () => {
     const uncounted = new WebRtcFrameLimitError(
       ROUND_ONE_SET_UNCOUNTED_MESSAGE,
-      "local",
       { cause: new RangeError("Map maximum size exceeded") },
     );
     expect(uncounted).toBeInstanceOf(UsageError);
@@ -733,7 +691,6 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       at: RUN_AT,
       outcome: "failed",
       failureKind: "too-large",
-      tooLargeSetOwner: "local",
       tooLargeBound: "webrtc-message",
     });
     const failure = classifyManagedRunFailure(

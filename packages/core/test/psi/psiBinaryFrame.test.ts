@@ -12,6 +12,7 @@ import { decodePsiBinaryFrame } from "../../src/psi/psiBinaryFrame";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { sendAbort } from "../../src/protocolSetup";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { asOnePsiSetPart } from "../utils/psiSetPart";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
 
@@ -38,7 +39,7 @@ async function endOfRoundAfter(frame: unknown): Promise<Error | undefined> {
     () => undefined,
     (err: unknown) => err as Error,
   );
-  await senderConn.send(frame);
+  await senderConn.send(asOnePsiSetPart(frame));
   const ended = await round;
   await senderConn.close();
   return ended;

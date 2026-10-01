@@ -1,0 +1,79 @@
+{
+  "description": "Known-answer vectors for the parts a cascade or count-only round sends a PSI set (the setup, the request, the response) in. Each part is a 16-byte header -- the part's index and the set's part count as big-endian uint32, then the set's byte length as a big-endian uint64 -- followed by the next slice of the set, at most partPayloadBytes long. The set bytes are synthetic; the engine's serialization is pinned by psi-engine-wire-vectors.json. `refusals` are part sequences a receiver refuses before joining them, with the refusal's fixed tail. Replayed by packages/core/test/psi/psiSetPartVectors.test.ts; regenerate with generate-psi-set-part-vectors.mjs in this directory.",
+  "headerBytes": 16,
+  "sets": [
+    {
+      "name": "an empty set is one part of header alone",
+      "setHex": "",
+      "partPayloadBytes": 8,
+      "partsHex": ["00000000000000010000000000000000"]
+    },
+    {
+      "name": "a set within one part",
+      "setHex": "0b30557a9f",
+      "partPayloadBytes": 8,
+      "partsHex": ["000000000000000100000000000000050b30557a9f"]
+    },
+    {
+      "name": "a set filling one part exactly",
+      "setHex": "0b30557a9fc4e90e",
+      "partPayloadBytes": 8,
+      "partsHex": ["000000000000000100000000000000080b30557a9fc4e90e"]
+    },
+    {
+      "name": "a set one byte over one part",
+      "setHex": "0b30557a9fc4e90e33",
+      "partPayloadBytes": 8,
+      "partsHex": [
+        "000000000000000200000000000000090b30557a9fc4e90e",
+        "0000000100000002000000000000000933"
+      ]
+    },
+    {
+      "name": "a set of three parts, the last short",
+      "setHex": "0b30557a9fc4e90e33587da2c7ec11365b80a5caef",
+      "partPayloadBytes": 8,
+      "partsHex": [
+        "000000000000000300000000000000150b30557a9fc4e90e",
+        "0000000100000003000000000000001533587da2c7ec1136",
+        "000000020000000300000000000000155b80a5caef"
+      ]
+    }
+  ],
+  "refusals": [
+    {
+      "name": "a missing part",
+      "partsHex": [
+        "000000000000000300000000000000150b30557a9fc4e90e",
+        "000000020000000300000000000000155b80a5caef"
+      ],
+      "maxSetBytes": 21,
+      "refusal": "is missing part 1"
+    },
+    {
+      "name": "a repeated part",
+      "partsHex": [
+        "000000000000000300000000000000150b30557a9fc4e90e",
+        "000000000000000300000000000000150b30557a9fc4e90e"
+      ],
+      "maxSetBytes": 21,
+      "refusal": "repeats part 0"
+    },
+    {
+      "name": "a set longer than the receiver's bound",
+      "partsHex": ["000000000000000300000000000000150b30557a9fc4e90e"],
+      "maxSetBytes": 20,
+      "refusal": "declares 21 bytes, over the 20 the agreed record counts admit"
+    },
+    {
+      "name": "a last part short of the declared length",
+      "partsHex": [
+        "000000000000000300000000000000150b30557a9fc4e90e",
+        "0000000100000003000000000000001533587da2c7ec1136",
+        "000000020000000300000000000000155b80a5ca"
+      ],
+      "maxSetBytes": 21,
+      "refusal": "ends short of the set's declared length"
+    }
+  ]
+}

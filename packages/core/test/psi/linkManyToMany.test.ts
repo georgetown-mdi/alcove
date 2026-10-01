@@ -60,6 +60,7 @@ import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
 import type { Metadata } from "../../src/config/metadata";
 import type { CSVRow } from "../../src/file";
 import type { AssociationTable } from "../../src/types";
+import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
 // Both-sided deduplicating matching at the cascade boundary: each party keeps a
@@ -559,9 +560,14 @@ async function runNonConformingStarter(
 ): Promise<void> {
   const participant = makeParticipant("starter");
   const { setup, permutation } = await participant.createServerSetup(values);
-  await conn.send(setup);
-  const request = (await conn.receive()) as Uint8Array;
-  await conn.send(await participant.processClientRequest(request));
+  await sendPsiSet(conn, setup);
+  const request = await receivePsiSet(
+    conn,
+    "starter",
+    "request",
+    Number.MAX_SAFE_INTEGER,
+  );
+  await sendPsiSet(conn, await participant.processClientRequest(request));
 
   const [joinerPositions, sortedRows] = (await conn.receive()) as [
     Array<number>,

@@ -22,6 +22,7 @@ import {
 import type { AssociationTable } from "../../src/types";
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
+import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { recordingConnection } from "../utils/recordingConnection";
@@ -437,9 +438,14 @@ async function runNonConformingStarter(
 ): Promise<void> {
   const participant = makeParticipant("starter");
   const { setup, permutation } = await participant.createServerSetup(values);
-  await conn.send(setup);
-  const request = (await conn.receive()) as Uint8Array;
-  await conn.send(await participant.processClientRequest(request));
+  await sendPsiSet(conn, setup);
+  const request = await receivePsiSet(
+    conn,
+    "starter",
+    "request",
+    Number.MAX_SAFE_INTEGER,
+  );
+  await sendPsiSet(conn, await participant.processClientRequest(request));
 
   // The joiner computes the round's table and sends it as [its own positions,
   // ours in the library's sorted order]; the starter's half of the round is to put
@@ -1097,9 +1103,14 @@ async function runNonConformingStarterRound(
   values: Array<string>,
 ): Promise<Array<number>> {
   const { setup, permutation } = await participant.createServerSetup(values);
-  await conn.send(setup);
-  const request = (await conn.receive()) as Uint8Array;
-  await conn.send(await participant.processClientRequest(request));
+  await sendPsiSet(conn, setup);
+  const request = await receivePsiSet(
+    conn,
+    "starter",
+    "request",
+    Number.MAX_SAFE_INTEGER,
+  );
+  await sendPsiSet(conn, await participant.processClientRequest(request));
   const [joinerPositions, sortedRows] = (await conn.receive()) as [
     Array<number>,
     Array<number>,

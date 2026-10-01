@@ -331,10 +331,9 @@ export function tooLargeBoundOf(
  * since it is a deterministic local state an abort cannot produce:
  * {@link PartnerNoShowError} before the data exchange began records the benign
  * `missed` outcome ({@link missedRun}). A set too large to send
- * ({@link isSetTooLargeError}) records `too-large`, with the refusal's
- * `setOwner` and the bound it names ({@link tooLargeBoundOf}), on either side
- * of the data exchange boundary: a round past the first refuses after data has
- * moved, and the same files refuse identically at every window. A
+ * ({@link isSetTooLargeError}) records `too-large`, with the bound it names
+ * ({@link tooLargeBoundOf}), on either side of the data exchange boundary: the
+ * same files refuse identically at every window. A
  * {@link TermsChangeRefusedError} records `terms-change`: it is raised at the
  * terms exchange, inside the data exchange but before any linkage key or data
  * moves, and the same partner terms refuse identically until the operator
@@ -374,7 +373,6 @@ export function rerunFailureLastRun(
     const tooLargeBound = tooLargeBoundOf(error);
     return {
       ...failedRun(at, "failed", "too-large"),
-      tooLargeSetOwner: error.setOwner,
       ...(tooLargeBound === undefined ? {} : { tooLargeBound }),
     };
   }
@@ -392,9 +390,10 @@ export function rerunFailureLastRun(
 
 /** The benign outcomes a surface classifies without attack framing. The first
  * six are read before any connection is attempted; `"missed"` is read after a
- * connection attempt found no partner, `"too-large"` before connecting or
- * at any round, and `"relay-registration"` before connecting, once the
- * registrar did not confirm a pending registration. */
+ * connection attempt found no partner, `"too-large"` before connecting or at
+ * a later round whose own set holds more values than
+ * `MAX_PSI_DECODE_ELEMENTS`, and `"relay-registration"` before connecting,
+ * once the registrar did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
   | "handed-off"

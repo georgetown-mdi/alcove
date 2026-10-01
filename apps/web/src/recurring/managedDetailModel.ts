@@ -348,8 +348,9 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * `"terms-change"` (stamped only for core's refusal at the terms exchange,
  * which precedes every linkage round and the payload frame). The
  * remaining kinds -- `"transport"` (the catch-all a mid-exchange failure also
- * lands in), `"too-large"` (a round past the first refuses after data has
- * moved), `"cancelled"`, and a missing kind -- cannot prove it.
+ * lands in), `"too-large"` (a later round refuses this party's own set over
+ * `MAX_PSI_DECODE_ELEMENTS` after data has moved), `"cancelled"`, and a
+ * missing kind -- cannot prove it.
  */
 function disclosurePrecedesExchange(
   failureKind: ManagedExchangeLastRun["failureKind"],

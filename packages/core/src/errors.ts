@@ -189,66 +189,50 @@ export class OperatorConfigError extends UsageError {
 
 /**
  * A PSI set too large for one WebRTC message, refused by the party that would
- * have sent it before it goes on the wire: at the start of a WebRTC exchange,
- * from this party's own record count, or at a round, from the frame the round
- * built (docs/spec/PROTOCOL.md, "The memory ceiling, and the CSV intake cap").
- * The message names the size, the bound, and the remedy, and is composed only
- * from frame sizes and fixed constants.
+ * have sent it before it goes on the wire, at the start of a WebRTC exchange,
+ * from this party's own record count (docs/spec/PROTOCOL.md, "The memory
+ * ceiling, and the CSV intake cap"). The message names the size, the bound,
+ * and the remedy, and is composed only from frame sizes and fixed constants.
  *
- * `setOwner` names whose set the frame would have held: `"local"` for this
- * party's own, `"partner"` for the reply that returns the partner's set to it.
- * Not an {@link OperatorConfigError}: the reply's size is set by the partner's
- * set, and that family's messages hold only this party's own configuration.
  * Holds `alcoveRecoveryHintEmitted`: a retry refuses identically, so the CLI's
  * generic retry advisory is suppressed. The start-of-exchange check raises it
- * too, with `setOwner` `"local"` and the failure as its `cause`, when it cannot
- * count this party's first-round set at all.
+ * too, with the failure as its `cause`, when it cannot count this party's
+ * first-round set at all.
  */
 export class WebRtcFrameLimitError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
 
-  constructor(
-    message: string,
-    readonly setOwner: "local" | "partner",
-    options?: ErrorOptions,
-  ) {
+  constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "WebRtcFrameLimitError";
   }
 }
 
 /**
- * A linkage key round whose set of values is larger than one round can hold
- * on SFTP or a synced folder: more values than one message file holds
- * (docs/spec/FILE_SYNC.md, "Round set size limits"). The message names the
+ * A linkage key round whose set of values is larger than one round can hold:
+ * on SFTP or a synced folder, a first round with more values than one message
+ * file holds (docs/spec/FILE_SYNC.md, "Round set size limits"); on any
+ * channel, a set of this party's own with more values than any receiver
+ * admits (`MAX_PSI_DECODE_ELEMENTS`), refused before it is built and with
+ * the partner sent an abort in its place. The message names the
  * count, the bound, and the remedy, and is composed only from counts and
  * fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry refuses
  * identically, so the CLI's generic retry advisory is suppressed.
- *
- * `setOwner` names whose set it was: `"local"` for this party's own, the
- * default, or `"partner"` for a reply that returns the partner's set
- * re-encrypted. {@link isSetTooLargeError} classifies it with
- * {@link WebRtcFrameLimitError}.
+ * {@link isSetTooLargeError} classifies it with {@link WebRtcFrameLimitError}.
  */
 export class RoundSetLimitError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
-  readonly setOwner: "local" | "partner";
 
-  constructor(
-    message: string,
-    options?: ErrorOptions & { setOwner?: "local" | "partner" },
-  ) {
+  constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "RoundSetLimitError";
-    this.setOwner = options?.setOwner ?? "local";
   }
 }
 
 /**
  * Whether `error` refuses a PSI set as too large to send: a
  * {@link WebRtcFrameLimitError} or a {@link RoundSetLimitError}. Both refuse
- * identically on every retry and at every window, and both name whose set it
- * was in `setOwner`.
+ * identically on every retry and at every window.
  */
 export function isSetTooLargeError(
   error: unknown,

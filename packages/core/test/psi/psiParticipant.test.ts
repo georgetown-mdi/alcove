@@ -21,6 +21,7 @@ import {
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { asOnePsiSetPart } from "../utils/psiSetPart";
 
 const psiLibrary = await PSI();
 
@@ -208,6 +209,11 @@ const OVER_DECLARED_COUNT = 64;
 const tinyElements = () =>
   Array.from({ length: OVER_DECLARED_COUNT }, () => new Uint8Array([1, 2]));
 
+// A round holds a set to the bytes its element bound admits before the scan
+// runs, so a round test bounds at 8: the over-declared frame is within those
+// bytes, and the scan is what refuses it.
+const ROUND_ELEMENT_BOUND = 8;
+
 test("processClientRequest rejects a request declaring more elements than the bound", async () => {
   // Single-pass sender boundary: the starter would deserialize the
   // receiver's request.
@@ -298,12 +304,16 @@ test("cascade identifyIntersection (starter) rejects an over-declared request fr
     "starter",
     psiLibrary,
     { role: "starter", verbose: 0 },
-    { ...UNBOUNDED_PSI_ELEMENTS, request: 4 },
+    { ...UNBOUNDED_PSI_ELEMENTS, request: ROUND_ELEMENT_BOUND },
   );
   const overDeclared = new psiLibrary.request();
   overDeclared.setEncryptedElementsList(tinyElements());
   const run = starter.identifyIntersection(
-    corruptNthReceive(serverConn, 1, overDeclared.serializeBinary()),
+    corruptNthReceive(
+      serverConn,
+      1,
+      asOnePsiSetPart(overDeclared.serializeBinary()),
+    ),
     ["Alice", "Carol"],
   );
   // The starter sends its setup, then reads the client request (its 1st receive).
@@ -311,7 +321,7 @@ test("cascade identifyIntersection (starter) rejects an over-declared request fr
   // frame from the peer to unblock it; the over-declared request stands in.
   await clientConn.send(new Uint8Array([0]));
   await expect(run).rejects.toThrow(
-    /inbound PSI request declares more than 4 encrypted element\(s\)/,
+    /inbound PSI request declares more than 8 encrypted element\(s\)/,
   );
 });
 
@@ -323,21 +333,21 @@ test("cascade identifyIntersection (joiner) rejects an over-declared server setu
     "joiner",
     psiLibrary,
     { role: "joiner", verbose: 0 },
-    { ...UNBOUNDED_PSI_ELEMENTS, setup: 4 },
+    { ...UNBOUNDED_PSI_ELEMENTS, setup: ROUND_ELEMENT_BOUND },
   );
   const setup = new psiLibrary.serverSetup();
   const raw = new psiLibrary.serverSetup.RawInfo();
   raw.setEncryptedElementsList(tinyElements());
   setup.setRaw(raw);
   const run = joiner.identifyIntersection(
-    corruptNthReceive(clientConn, 1, setup.serializeBinary()),
+    corruptNthReceive(clientConn, 1, asOnePsiSetPart(setup.serializeBinary())),
     ["Carol"],
   );
   // The joiner reads the server setup first (its 1st receive); send any frame
   // from the peer to unblock it, and the over-declared setup stands in.
   await serverConn.send(new Uint8Array([0]));
   await expect(run).rejects.toThrow(
-    /inbound PSI serverSetup declares more than 4 encrypted element\(s\)/,
+    /inbound PSI serverSetup declares more than 8 encrypted element\(s\)/,
   );
 });
 
@@ -351,7 +361,7 @@ test("count-only countIntersection (joiner) rejects an over-declared response fr
     "joiner",
     psiLibrary,
     { role: "joiner", verbose: 0 },
-    { ...UNBOUNDED_PSI_ELEMENTS, response: 4 },
+    { ...UNBOUNDED_PSI_ELEMENTS, response: ROUND_ELEMENT_BOUND },
     new InProcessPsiEngine(psiLibrary, "joiner", "joiner", "count-only"),
   );
   const sender = new InProcessPsiEngine(
@@ -366,10 +376,14 @@ test("count-only countIntersection (joiner) rejects an over-declared response fr
   // The joiner reads the setup (1st receive), sends its request, then reads the
   // response (2nd receive) -- the frame replaced here.
   const run = joiner.countIntersection(
-    corruptNthReceive(clientConn, 2, overDeclared.serializeBinary()),
+    corruptNthReceive(
+      clientConn,
+      2,
+      asOnePsiSetPart(overDeclared.serializeBinary()),
+    ),
     ["Carol"],
   );
-  await serverConn.send(setup);
+  await serverConn.send(asOnePsiSetPart(setup));
   // Drain the joiner's request and unblock its 2nd receive; the
   // over-declared response stands in for whatever this frame holds.
   await serverConn.receive();
@@ -377,7 +391,7 @@ test("count-only countIntersection (joiner) rejects an over-declared response fr
   const deserialize = vi.spyOn(psiLibrary.response, "deserializeBinary");
   try {
     await expect(run).rejects.toThrow(
-      /inbound PSI response declares more than 4 encrypted element\(s\)/,
+      /inbound PSI response declares more than 8 encrypted element\(s\)/,
     );
     expect(deserialize).not.toHaveBeenCalled();
   } finally {
@@ -432,7 +446,7 @@ test("cascade identifyIntersection (joiner) rejects a non-Raw server setup frame
     UNBOUNDED_PSI_ELEMENTS,
   );
   const run = joiner.identifyIntersection(
-    corruptNthReceive(clientConn, 1, nonRawServerSetupBytes()),
+    corruptNthReceive(clientConn, 1, asOnePsiSetPart(nonRawServerSetupBytes())),
     ["Carol"],
   );
   await serverConn.send(new Uint8Array([0]));

@@ -44,7 +44,6 @@ import type {
   ManagedExchangeSchedule,
   ManagedExchangeSide,
   TooLargeBound,
-  TooLargeSetOwner,
 } from "@psi/managed/managedExchangeRecord";
 import type {
   ManagedFailureTier,
@@ -173,26 +172,18 @@ export function relayRegistrationPendingLine(
   );
 }
 
-/** The too-large line's remedy gist by whose set was over the bound: the row's
- * short form of the one remedy the next-visit alert states in full. */
-const TOO_LARGE_ROW_REMEDY_BY_OWNER: Record<TooLargeSetOwner, string> = {
-  local: "split your input",
-  partner: "ask your partner to split theirs",
-};
-
 /** The one-line status a failure tier displays as in the list -- a specific but quiet
  * line naming the state and its recovery gist, deferring the full copy (and, for the
  * unexplained tier, the attack framing and the out-of-band confirmation) to the
  * per-exchange surface the row opens. A benign tier is never treated as attack framing
  * here; the unexplained tier displays as "needs you to check with your partner", the
  * plain lead without the checklist. `at` is the last run's phrased instant;
- * `tooLargeSetOwner` and `tooLargeBound` name whose set a too-large run's was
- * and the bound that refused it, when recorded; `termsProposalStored` is
- * whether a terms change waits on this device for the operator's decision. */
+ * `tooLargeBound` names the bound that refused a too-large run's set, when
+ * recorded; `termsProposalStored` is whether a terms change waits on this
+ * device for the operator's decision. */
 function tierStatus(
   tier: ManagedFailureTier,
   at: string,
-  tooLargeSetOwner: TooLargeSetOwner | undefined,
   tooLargeBound: TooLargeBound | undefined,
   termsProposalStored: boolean,
 ): string {
@@ -204,13 +195,7 @@ function tierStatus(
     case "terms-shortfall":
       return `Last run stopped before connecting (${at}); settle the terms or use a covering file`;
     case "too-large":
-      if (tooLargeSetOwner === undefined)
-        return `Last run stopped: a file ${tooLargeFileProblem(tooLargeBound)} (${at}); split the input`;
-      return (
-        `Last run stopped: ${tooLargeSetOwner === "local" ? "your" : "your partner's"} ` +
-        `file ${tooLargeFileProblem(tooLargeBound)} (${at}); ` +
-        TOO_LARGE_ROW_REMEDY_BY_OWNER[tooLargeSetOwner]
-      );
+      return `Last run stopped: your file ${tooLargeFileProblem(tooLargeBound)} (${at}); split your input`;
     case "terms-change":
       return termsProposalStored
         ? `Your partner's terms changed (${at}); apply or decline the change`
@@ -305,7 +290,6 @@ function lastRunStatus(
   return tierStatus(
     tier,
     at,
-    record.lastRun?.tooLargeSetOwner,
     record.lastRun?.tooLargeBound,
     local?.termsProposal !== undefined,
   );

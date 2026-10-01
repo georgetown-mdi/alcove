@@ -355,11 +355,8 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
     ).not.toBe(tagFor(failed("terms-shortfall")));
   });
 
-  test("a too-large refusal of your own set names splitting your input", () => {
-    const lastRun: ManagedExchangeLastRun = {
-      ...failed("too-large"),
-      tooLargeSetOwner: "local",
-    };
+  test("a too-large refusal names splitting your input", () => {
+    const lastRun: ManagedExchangeLastRun = failed("too-large");
     const notice = betweenVisitNotice({
       record: record({ lastRun }),
       local: undefined,
@@ -383,53 +380,6 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
     expect(notice?.body).not.toMatch(/partner/i);
   });
 
-  test("a too-large refusal of the partner's set names asking the partner", () => {
-    const lastRun: ManagedExchangeLastRun = {
-      ...failed("too-large"),
-      tooLargeSetOwner: "partner",
-    };
-    const notice = betweenVisitNotice({
-      record: record({ lastRun }),
-      local: undefined,
-      caughtUpMisses: 0,
-      disposition: "failed",
-      now: NOW,
-    });
-    const alert = managedRunTierFailure(
-      "too-large",
-      record({ lastRun }),
-      undefined,
-    );
-    if (!("title" in alert)) throw new Error("expected the too-large alert");
-
-    expect(notice?.kind).toBe("too-large");
-    expect(notice?.title).toBe(alert.title);
-    expect(notice?.body).toContain("built from your partner's input file");
-    expect(notice?.body).toContain(
-      "Ask your partner to split their input into smaller files",
-    );
-    expect(notice?.body).not.toMatch(/split your input/i);
-  });
-
-  test("a too-large refusal fires its own notice for each side", () => {
-    const tagFor = (lastRun: ManagedExchangeLastRun) =>
-      betweenVisitNotice({
-        record: record({ lastRun }),
-        local: undefined,
-        caughtUpMisses: 0,
-        disposition: "failed",
-        now: NOW,
-      })?.tag;
-
-    const local = tagFor({ ...failed("too-large"), tooLargeSetOwner: "local" });
-    const partner = tagFor({
-      ...failed("too-large"),
-      tooLargeSetOwner: "partner",
-    });
-    expect(local).not.toBe(partner);
-    expect(local).not.toBe(tagFor(failed("too-large")));
-  });
-
   describe("a too-large notice names the bound the refusal recorded", () => {
     const bodyFor = (lastRun: ManagedExchangeLastRun) =>
       betweenVisitNotice({
@@ -450,31 +400,16 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
           now: NOW,
         })?.title;
       expect(
-        titleFor({
-          ...failed("too-large"),
-          tooLargeSetOwner: "local",
-          tooLargeBound: "webrtc-message",
-        }),
+        titleFor({ ...failed("too-large"), tooLargeBound: "webrtc-message" }),
       ).toBe("Your file is too large for a browser exchange");
-      expect(
-        titleFor({
-          ...failed("too-large"),
-          tooLargeSetOwner: "partner",
-          tooLargeBound: "webrtc-message",
-        }),
-      ).toBe("Your partner's file is too large for a browser exchange");
       expect(titleFor(failed("too-large"))).toBe(
-        "A file in this exchange is too large to send",
+        "Your file is too large to send",
       );
     });
 
     test("the WebRTC message bound, with its size", () => {
       expect(
-        bodyFor({
-          ...failed("too-large"),
-          tooLargeSetOwner: "local",
-          tooLargeBound: "webrtc-message",
-        }),
+        bodyFor({ ...failed("too-large"), tooLargeBound: "webrtc-message" }),
       ).toBe(
         "Riverbend quarterly stopped because the set of values built from your " +
           "input file was over the 256 MiB one WebRTC message can hold, and " +
@@ -483,29 +418,13 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
       );
     });
 
-    test("the WebRTC message bound, for the partner's set", () => {
-      expect(
-        bodyFor({
-          ...failed("too-large"),
-          tooLargeSetOwner: "partner",
-          tooLargeBound: "webrtc-message",
-        }),
-      ).toBe(
-        "Riverbend quarterly stopped because the set of values built from your " +
-          "partner's input file was over the 256 MiB one WebRTC message can " +
-          "hold, and every later window stops the same way. Ask your partner " +
-          "to split their input into smaller files, and set up one exchange " +
-          "with them for each.",
-      );
-    });
-
     test("no bound, for a record that does not say which", () => {
       const body = bodyFor(failed("too-large"));
       expect(body).toBe(
-        "Riverbend quarterly stopped because a set of values it had to send was " +
-          "too large, and every later window stops the same way. " +
-          "Split the input into smaller files and set up one exchange for " +
-          "each; if the set was your partner's, ask them to split theirs.",
+        "Riverbend quarterly stopped because the set of values built from your " +
+          "input file was too large, and every later window stops the same " +
+          "way. Split your input into smaller files and set up one exchange " +
+          "for each.",
       );
       expect(body).not.toMatch(/WebRTC|distinct/);
     });

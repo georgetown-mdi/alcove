@@ -33,8 +33,7 @@ import {
   TERMS_CHANGE_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
   TOO_LARGE_REMEDY,
-  TOO_LARGE_REMEDY_BY_OWNER,
-  TOO_LARGE_SET_SOURCE_BY_OWNER,
+  TOO_LARGE_SET_SOURCE,
   UNEXPLAINED_FAILURE_TITLE,
   repeatedMissCoordination,
   tooLargeFailureTitle,
@@ -220,9 +219,8 @@ function partialRotationNotice(
  * The reading rides the tag as well as the body: the two readings are different
  * standing states with different remedies, so a shortfall that becomes a
  * one-column reading says so rather than being suppressed as the state already
- * reported. The too-large notice splits the same way on the stamp's own
- * `tooLargeSetOwner`, which names whose input to split, and names the bound
- * the stamp's `tooLargeBound` records. */
+ * reported. The too-large notice names the bound the stamp's `tooLargeBound`
+ * records. */
 function failureNotice(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
@@ -279,23 +277,15 @@ function failureNotice(
       tag: noticeTag(record.id, "terms-change"),
     };
   if (tier === "too-large") {
-    const owner = record.lastRun?.tooLargeSetOwner;
-    const overBound =
-      `${tooLargeSetOverBound(record.lastRun?.tooLargeBound)}, and every ` +
-      `later window stops the same way.`;
+    const bound = record.lastRun?.tooLargeBound;
     return {
       kind: "too-large",
-      title: tooLargeFailureTitle(owner, record.lastRun?.tooLargeBound),
+      title: tooLargeFailureTitle(bound),
       body:
-        owner === undefined
-          ? `${name} stopped because a set of values it had to send ` +
-            `${overBound} ${TOO_LARGE_REMEDY}`
-          : `${name} stopped because ${TOO_LARGE_SET_SOURCE_BY_OWNER[owner]} ` +
-            `${overBound} ${TOO_LARGE_REMEDY_BY_OWNER[owner]}`,
-      tag: noticeTag(
-        record.id,
-        owner === undefined ? "too-large" : `too-large:${owner}`,
-      ),
+        `${name} stopped because ${TOO_LARGE_SET_SOURCE} ` +
+        `${tooLargeSetOverBound(bound)}, and every later window stops the ` +
+        `same way. ${TOO_LARGE_REMEDY}`,
+      tag: noticeTag(record.id, "too-large"),
     };
   }
   return {

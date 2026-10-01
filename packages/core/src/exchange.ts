@@ -1559,11 +1559,11 @@ export function prepareForExchange(
  * refuses on a count over the bound in both roles, and on any failure to
  * count, with the failure as the refusal's cause. A {@link UsageError} the
  * round would raise in one role is left to the round when the other role
- * fits; raised in both, it is thrown as it is.
- * Every later round, and a frame this bound cannot size from a count,
- * is checked on the frame the round builds (`PSIParticipant`). Where the
- * round reads one candidate per record, a record holding a candidate set
- * raises the round's own fan-out refusal rather than this one. A single-pass
+ * fits; raised in both, it is thrown as it is. Every later round is sent in
+ * parts, each within the bound, rather than checked here
+ * (docs/spec/PROTOCOL.md, "A PSI set is sent in parts"). Where the round reads
+ * one candidate per record, a record holding a candidate set raises the
+ * round's own fan-out refusal rather than this one. A single-pass
  * exchange is not checked here: its dataset ceiling holds every frame it
  * sends under the bound (docs/spec/PROTOCOL.md, "The single-pass dataset
  * ceiling").
@@ -1586,10 +1586,9 @@ export async function assertFirstRoundFitsWebRtcFrame(
     tooLarge: (fewest) =>
       new WebRtcFrameLimitError(
         roundOneSetTooLargeMessage(fewest, maxFrameBytes),
-        "local",
       ),
     uncounted: (failure) =>
-      new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, "local", {
+      new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, {
         cause: failure,
       }),
   });
@@ -1624,8 +1623,9 @@ export function fileSyncRoundOneSetTooLargeMessage(
  * It counts as {@link assertFirstRoundFitsWebRtcFrame} does, against the
  * inbound frame bound every file-sync receiver applies
  * (`MAX_FRAME_SIZE_BYTES`). A later round's set is known only once the
- * earlier rounds have matched, so it is checked on the frame the round builds
- * (`PSIParticipant`; docs/spec/FILE_SYNC.md, "Round set size limits").
+ * earlier rounds have matched, and it is sent in parts, each within one
+ * message file, rather than checked here (docs/spec/FILE_SYNC.md, "Round set
+ * size limits").
  * Progress is reported as {@link assertFirstRoundFitsWebRtcFrame} reports it.
  */
 export async function assertFirstRoundFitsFileSyncFrame(
@@ -1707,8 +1707,7 @@ async function assertFirstRoundFits(
   const key = linkageTerms.linkageKeys[0];
   if (key === undefined) return;
   // Every row contributes at most the key's declared width of candidates, so
-  // a dataset whose rows cannot reach the count is not read at all. Were a
-  // row to exceed it, the round's own frame check still refuses.
+  // a dataset whose rows cannot reach the count is not read at all.
   const candidateCeiling =
     rowCount *
     declaredKeyWidth(key, 0) *

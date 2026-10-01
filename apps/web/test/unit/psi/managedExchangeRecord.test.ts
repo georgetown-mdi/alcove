@@ -444,16 +444,19 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     expect(parseManagedExchangeRecord(legacy).lastRun).toEqual(legacy.lastRun);
   });
 
-  test("reads back whose set a too-large refusal found over the bound", () => {
-    for (const tooLargeSetOwner of ["local", "partner"] as const) {
-      const lastRun: ManagedExchangeLastRun = {
-        at: "2026-07-14T09:00:00.000Z",
-        outcome: "failed",
-        failureKind: "too-large",
-        tooLargeSetOwner,
+  test("reads a too-large entry that names whose set it was", () => {
+    const lastRun = {
+      at: "2026-07-14T09:00:00.000Z",
+      outcome: "failed",
+      failureKind: "too-large",
+      tooLargeBound: "webrtc-message",
+    } as const;
+    for (const tooLargeSetOwner of ["local", "partner"]) {
+      const written = {
+        ...buildManagedExchangeRecord(newExchange()),
+        lastRun: { ...lastRun, tooLargeSetOwner },
       };
-      const record = buildManagedExchangeRecord(newExchange({ lastRun }));
-      expect(parseManagedExchangeRecord(record).lastRun).toEqual(lastRun);
+      expect(parseManagedExchangeRecord(written).lastRun).toEqual(lastRun);
     }
   });
 
@@ -463,7 +466,6 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
         at: "2026-07-14T09:00:00.000Z",
         outcome: "failed",
         failureKind: "too-large",
-        tooLargeSetOwner: "local",
         tooLargeBound,
       };
       const record = buildManagedExchangeRecord(newExchange({ lastRun }));
@@ -479,19 +481,6 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
         outcome: "failed",
         failureKind: "too-large",
         tooLargeBound: "message-file",
-      },
-    };
-    expect(safeParseManagedExchangeRecord(future).success).toBe(false);
-  });
-
-  test("rejects a set owner it does not recognize", () => {
-    const future = {
-      ...buildManagedExchangeRecord(newExchange()),
-      lastRun: {
-        at: "2026-07-14T09:00:00.000Z",
-        outcome: "failed",
-        failureKind: "too-large",
-        tooLargeSetOwner: "both",
       },
     };
     expect(safeParseManagedExchangeRecord(future).success).toBe(false);

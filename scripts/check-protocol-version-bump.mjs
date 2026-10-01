@@ -48,9 +48,10 @@
 // What this check cannot see:
 //   - A wire-format delta no vectors file pins. The pinned files cover the PSI
 //     engine's bytes, the resolved association mapping, the terms-exchange
-//     envelope, and single-pass message 2's frame layout -- not every frame the
-//     protocol defines. The cascade's per-round mapped-element and
-//     association-table frames and the count-only reply are specified in
+//     envelope, single-pass message 2's frame layout, and the parts a PSI set
+//     is sent in -- not every frame the protocol defines. The cascade's
+//     per-round mapped-element and association-table frames and the
+//     count-only reply are specified in
 //     docs/spec/PROTOCOL.md, and the save-bootstrap secret frame in
 //     docs/SECURITY_DESIGN.md; all are pinned by no file here, so a delta
 //     confined to one of them moves no digest. The pin is the
@@ -134,6 +135,11 @@ export const COVERED_VECTORS = [
     vectors: "psi-intersection-vectors.json",
     reason:
       "the resolved intersection membership and the association/permutation mapping back to input rows -- what message 3's association table states and what both parties must resolve identically.",
+  },
+  {
+    vectors: "psi-set-part-vectors.json",
+    reason:
+      "the header every part of a cascade or count-only round's PSI set begins with and how a set is cut into parts, which a partner reads to join the set before decoding it.",
   },
   {
     vectors: "terms-envelope-vectors.json",

@@ -179,6 +179,11 @@ export const GENERATED_VECTORS = [
     needsCoreDist: true,
   },
   {
+    vectors: "psi-set-part-vectors.json",
+    generator: "generate-psi-set-part-vectors.mjs",
+    writes: "stdout",
+  },
+  {
     vectors: "signed-receipt-vectors.json",
     generator: "generate-signed-receipt-vectors.mjs",
     writes: "file",
