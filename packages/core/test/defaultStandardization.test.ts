@@ -13,8 +13,14 @@ import {
   INFER_DATE_SCAN_CAP,
 } from "../src/utils/date";
 import { runPipeline, titles } from "../src/standardization";
-import { patternConformsToDialect } from "../src/utils/linearRegex";
-import { regexStepPatternParam } from "../src/config/transformRegexDialect";
+import {
+  patternConformsToDialect,
+  patternWeightedSize,
+} from "../src/utils/linearRegex";
+import {
+  MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
+  regexStepPatternParam,
+} from "../src/config/transformRegexDialect";
 import type { ColumnMetadata } from "../src/config/metadata";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 
@@ -169,7 +175,7 @@ describe("getDefaultStandardization — structure", () => {
     }
   });
 
-  test("every raw-pattern step in every default pipeline is in the linear-time dialect", () => {
+  test("every raw-pattern step in every default pipeline is in the linear-time dialect and under the size cap", () => {
     // The dialect gate rejects out-of-dialect partner patterns at terms
     // validation; a SHIPPED default that drifted out of dialect would only
     // show up as a remote exchange failing to validate the bundled terms.
@@ -198,6 +204,10 @@ describe("getDefaultStandardization — structure", () => {
       expect(patternConformsToDialect(pattern), `pattern: ${pattern}`).toBe(
         true,
       );
+      expect(
+        patternWeightedSize(pattern),
+        `pattern: ${pattern}`,
+      ).toBeLessThanOrEqual(MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE);
     }
   });
 });

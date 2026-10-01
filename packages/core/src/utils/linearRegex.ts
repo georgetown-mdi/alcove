@@ -148,9 +148,22 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
 }
 
 /**
+ * The weighted size of `pattern`: the compiled program's instruction count
+ * times one plus its capture-group count, both as the engine reports them.
+ * Per-row matching time grows with the input length times this size, so it is
+ * the measure the terms-validation gate caps
+ * ({@link findTransformRegexRefusal}). Throws, as {@link compileLinearRegex}
+ * does, on a pattern outside the dialect.
+ */
+export function patternWeightedSize(pattern: string): number {
+  const re = compileCached(pattern);
+  return re.programSize() * (1 + re.groupCount());
+}
+
+/**
  * Whether `pattern` is in the linear-time dialect: it compiles under the
  * engine. The single conformance oracle for both the terms-validation gate
- * ({@link linkageTermsHaveNonConformantTransformRegex}) and the editor-facing
+ * ({@link findTransformRegexRefusal}) and the editor-facing
  * `regexPatternSchema`, so the editor accepts exactly what an exchange will
  * run. Returns `false` on any compile failure, including a feature RE2 drops
  * (backreference, lookaround) -- exactly the patterns that could otherwise

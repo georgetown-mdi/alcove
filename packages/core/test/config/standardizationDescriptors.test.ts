@@ -348,7 +348,8 @@ describe("param schemas", () => {
     // compile, so a pathological-length pattern is rejected without the editor
     // paying the super-linear compile cost on its live-preview thread.
     test("rejects a pattern longer than MAX_TRANSFORM_PATTERN_LENGTH", () => {
-      const atLimit = "a".repeat(MAX_TRANSFORM_PATTERN_LENGTH);
+      // One character class, so the weighted-size cap does not decide it.
+      const atLimit = `[${"a".repeat(MAX_TRANSFORM_PATTERN_LENGTH - 2)}]`;
       const overLimit = "a".repeat(MAX_TRANSFORM_PATTERN_LENGTH + 1);
       expect(
         schemaFor("filter_regex").safeParse({ pattern: atLimit }).success,

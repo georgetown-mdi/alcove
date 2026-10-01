@@ -283,6 +283,40 @@ test("decodeInvitation rejects linkage terms holding an out-of-dialect transform
   );
 });
 
+test("the author's mint and the acceptor's decode give one verdict on the transform-pattern size cap", async () => {
+  // a{998} compiles to exactly the weighted-size cap and a{999} one past it.
+  const tokenWith = (pattern: string): InvitationToken => ({
+    ...baseToken,
+    linkageTerms: {
+      ...baseTerms,
+      linkageKeys: [
+        {
+          name: "SSN",
+          elements: [
+            {
+              field: "ssn",
+              transform: [{ function: "filter_regex", params: { pattern } }],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  const atCap = tokenWith("a{998}");
+  const minted = await encodeInvitation(atCap);
+  await expect(decodeInvitation(minted)).resolves.toBeDefined();
+  await expect(decodeInvitation(await encodeRaw(atCap))).resolves.toBeDefined();
+
+  const pastCap = tokenWith("a{999}");
+  const sizeRefusal =
+    /linkageKeys\[0\]\.elements\[0\]\.transform\[0\]\.params\.pattern is too large: its size is 1001 \(.*\), over the limit of 1000\./;
+  await expect(encodeInvitation(pastCap)).rejects.toThrow(sizeRefusal);
+  await expect(decodeInvitation(await encodeRaw(pastCap))).rejects.toThrow(
+    sizeRefusal,
+  );
+});
+
 test("decodeInvitation refuses a transform pattern declared as an object", async () => {
   // `{"toString": "x"}` is JSON, so a crafted token can include it where a
   // pattern belongs. Nothing on the decode path renders a declared pattern to

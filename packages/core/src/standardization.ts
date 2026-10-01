@@ -16,6 +16,10 @@ import {
   patternConformsToDialect,
 } from "./utils/linearRegex.js";
 import {
+  transformPatternOverSizeCap,
+  transformPatternSizeMessage,
+} from "./config/transformRegexDialect.js";
+import {
   declaredTransformParamType,
   transformParamEntryTypeMessage,
   transformParamRequiredMessage,
@@ -1048,13 +1052,13 @@ const noParams = z.object({});
 /**
  * A user-authored regular-expression param. Required, bounded in length, and
  * validated to compile under the linear-time dialect ({@link patternConformsToDialect})
- * -- the same engine the regex factories run, so the editor accepts the patterns an
- * exchange will execute and rejects what RE2 drops (backreferences, lookaround).
- * Under a non-backtracking engine there is no danger tier to gate, only the
- * dialect to conform to. See docs/spec/PROTOCOL.md.
+ * within the weighted-size cap ({@link transformPatternOverSizeCap}) -- the same
+ * engine and the same checks the linkage-terms gate applies, so the editor accepts
+ * the patterns an exchange will execute and rejects what RE2 drops (backreferences,
+ * lookaround) or what the gate would refuse as too large. See docs/spec/PROTOCOL.md.
  *
  * The length cap matches {@link MAX_TRANSFORM_PATTERN_LENGTH} (the same bound the
- * linkage-terms validation gate applies to wire patterns). The dialect refine below
+ * linkage-terms validation gate applies to wire patterns). The refine below
  * re-checks the length and skips the compile when it is exceeded: Zod's string checks
  * do not abort, so a bare `.max` would still let `.refine` compile an oversized
  * source, and an in-dialect pattern compiles in time super-linear in its length --
@@ -1072,22 +1076,30 @@ const regexPatternSchema = z
       `must not exceed ${MAX_TRANSFORM_PATTERN_LENGTH} characters`,
     ),
   )
-  .refine(
+  .superRefine((pattern, ctx) => {
     // Skip the compile for an over-length source: the ceiling above does not
-    // abort (Zod string checks are non-aborting), so without this length
-    // re-check `.refine` would compile an oversized pattern -- and RE2 compile
-    // is super-linear in length, which a live editor preview must never pay on
-    // the main thread. The ceiling already reports the length error; this
-    // guard only spares the compile.
-    (pattern) =>
-      pattern.length <= MAX_TRANSFORM_PATTERN_LENGTH &&
-      patternConformsToDialect(pattern),
-    {
-      message:
-        "must be a valid regular expression in the linear-time dialect " +
-        "(RE2 syntax; backreferences and lookaround are not supported)",
-    },
-  );
+    // abort (Zod string checks are non-aborting), and RE2 compile is
+    // super-linear in length, which a live editor preview must never pay on
+    // the main thread.
+    if (
+      pattern.length > MAX_TRANSFORM_PATTERN_LENGTH ||
+      !patternConformsToDialect(pattern)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "must be a valid regular expression in the linear-time dialect " +
+          "(RE2 syntax; backreferences and lookaround are not supported)",
+      });
+      return;
+    }
+    const weightedSize = transformPatternOverSizeCap(pattern);
+    if (weightedSize !== undefined)
+      ctx.addIssue({
+        code: "custom",
+        message: transformPatternSizeMessage(weightedSize),
+      });
+  });
 
 /**
  * Editor-facing descriptor for every standardization function the library

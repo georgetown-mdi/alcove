@@ -3,7 +3,10 @@ import {
   frozenLookupTable,
   frozenLookupTableEntry,
 } from "../utils/frozenLookupTable.js";
-import { patternConformsToDialect } from "../utils/linearRegex.js";
+import {
+  patternConformsToDialect,
+  patternWeightedSize,
+} from "../utils/linearRegex.js";
 
 // --- Transform-regex dialect conformance -------------------------------------
 //
@@ -13,14 +16,14 @@ import { patternConformsToDialect } from "../utils/linearRegex.js";
 // carries a transcription checksum only, not an authenticity guarantee.
 //
 // Patterns run on the linear-time engine (utils/linearRegex.ts), which
-// closes catastrophic backtracking. What remains is dialect conformance: a
-// pattern outside the engine's dialect must be rejected at terms
-// validation, before either party commits to terms it cannot evaluate
-// identically. Fail closed. Normative dialect: docs/spec/PROTOCOL.md
-// ("Transform regular-expression dialect").
+// closes catastrophic backtracking. What remains is dialect conformance and
+// size: a pattern outside the engine's dialect, or over the weighted-size cap
+// that bounds its per-row cost, is rejected at terms validation, before
+// either party commits to terms. Fail closed. Normative dialect:
+// docs/spec/PROTOCOL.md ("Transform regular-expression dialect").
 //
 // parse_date is not screened: its regex is library-generated and always
-// in-dialect; its own backtracking exposure is closed by the same engine.
+// in-dialect, and its format-length cap bounds its size.
 
 /**
  * Which `params` key carries the raw partner-controlled pattern for each
@@ -56,10 +59,49 @@ export function regexStepPatternParam(
  * but their product (keys x elements x steps) is large enough that
  * a hostile counterparty could make compilation itself a denial of
  * service. Once exhausted, remaining patterns are rejected closed (see
- * {@link linkageTermsHaveNonConformantTransformRegex}). A legitimate terms
+ * {@link findTransformRegexRefusal}). A legitimate terms
  * set finishes in well under a millisecond.
  */
 const REGEX_DIALECT_TOTAL_BUDGET_MS = 2000;
+
+/**
+ * Upper bound on one transform pattern's weighted size
+ * ({@link patternWeightedSize}): instruction count times one plus the
+ * capture-group count. A count, so the verdict is the same on every machine.
+ * Calibrated against measured per-row cost: docs/spec/CHANNEL_SECURITY.md,
+ * "Transform-regex linear-time dialect".
+ */
+export const MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE = 1000;
+
+/**
+ * The weighted size of in-dialect `pattern` when it exceeds
+ * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}, or `undefined` when it fits.
+ * The one size check both the terms gate ({@link findTransformRegexRefusal})
+ * and the editor-facing `regexPatternSchema` apply, so the editor refuses
+ * exactly the patterns an exchange would. Throws on a pattern outside the
+ * dialect, as {@link patternWeightedSize} does.
+ */
+export function transformPatternOverSizeCap(
+  pattern: string,
+): number | undefined {
+  const weightedSize = patternWeightedSize(pattern);
+  return weightedSize > MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE
+    ? weightedSize
+    : undefined;
+}
+
+/**
+ * The size refusal both the terms gate and the step editor show for a pattern
+ * of `weightedSize` over {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}.
+ */
+export function transformPatternSizeMessage(weightedSize: number): string {
+  return (
+    `is too large: its size is ${weightedSize} (compiled instructions times ` +
+    "one plus the number of capture groups), over the limit of " +
+    `${MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}. A pattern with fewer or smaller ` +
+    "counted repeats, or fewer capture groups, fits"
+  );
+}
 
 /** Optional overrides for the conformance walk; both defaulted. Exposed so tests
  * can drive the budget-exhaustion path deterministically, and so the schema can
@@ -80,27 +122,46 @@ interface RegexDialectBudget {
   maxPatternLength?: number;
 }
 
+/** Why {@link findTransformRegexRefusal} refused a terms set. */
+export type TransformRegexRefusal =
+  /** Outside the dialect, over the source-length bound, or left unchecked
+   * when the time budget ran out. */
+  | { reason: "nonconformant" }
+  /** In the dialect but over {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}. */
+  | {
+      reason: "size";
+      keyIndex: number;
+      elementIndex: number;
+      stepIndex: number;
+      /** The step param holding the pattern: a {@link REGEX_STEP_PATTERN_PARAM} value. */
+      paramKey: string;
+      weightedSize: number;
+    };
+
+const NONCONFORMANT: TransformRegexRefusal = Object.freeze({
+  reason: "nonconformant",
+});
+
 /**
- * Whether any linkage-key transform in `terms` uses a raw-pattern step
- * whose pattern is outside the linear-time dialect, or the conformance
- * budget runs out before a pattern is checked (fail closed). Returns
- * `true` to reject. Checks the pattern the factory would compile -- the
- * text a step declares, which is what a factory's text accessor admits --
- * so the verdict matches what executes; a pattern longer than
- * `budget.maxPatternLength` is rejected on length alone, before compiling.
- * A pattern that is omitted, or declared as any other type, is skipped here
- * and refused by the step schema's own checks
- * ({@link transformParamAbsenceRefusals} and
- * {@link transformParamTypeRefusals}); `parse_date` is not screened (its
- * generated regex is always in-dialect).
+ * The first reason to refuse a linkage-key transform pattern in `terms`, or
+ * `undefined` to admit them all. Refuses a pattern outside the linear-time
+ * dialect, one longer than `budget.maxPatternLength` (on length alone, before
+ * compiling), one whose weighted size exceeds
+ * {@link MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}, and -- fail closed -- every
+ * pattern left when the time budget runs out. Checks the pattern the factory
+ * would compile -- the text a step declares, which is what a factory's text
+ * accessor admits -- so the verdict matches what executes. A pattern that is
+ * omitted, or declared as any other type, is skipped here and refused by the
+ * step schema's own checks ({@link transformParamAbsenceRefusals} and
+ * {@link transformParamTypeRefusals}); `parse_date` is not screened.
  *
- * The caller's message names no partner-controlled value: the offending
- * pattern is located by inspection, not echoed.
+ * A refusal holds positions and counts, never a partner-controlled value, so
+ * the caller's message locates the offending pattern rather than echoing it.
  */
-export function linkageTermsHaveNonConformantTransformRegex(
+export function findTransformRegexRefusal(
   terms: Pick<LinkageTerms, "linkageKeys">,
   budget: RegexDialectBudget = {},
-): boolean {
+): TransformRegexRefusal | undefined {
   const totalBudgetMs = budget.totalBudgetMs ?? REGEX_DIALECT_TOTAL_BUDGET_MS;
   const maxPatternLength = budget.maxPatternLength ?? Infinity;
   // performance.now() rather than the wall clock: a backward system-clock step
@@ -109,9 +170,9 @@ export function linkageTermsHaveNonConformantTransformRegex(
   // the fail-open direction for a bound on compile cost.
   const startedAt = performance.now();
 
-  for (const key of terms.linkageKeys) {
-    for (const element of key.elements) {
-      for (const step of element.transform ?? []) {
+  for (const [keyIndex, key] of terms.linkageKeys.entries()) {
+    for (const [elementIndex, element] of key.elements.entries()) {
+      for (const [stepIndex, step] of (element.transform ?? []).entries()) {
         const paramKey = regexStepPatternParam(step.function);
         if (paramKey === undefined) continue;
         const source = step.params?.[paramKey];
@@ -123,16 +184,27 @@ export function linkageTermsHaveNonConformantTransformRegex(
         // which throws out of a safe parse when it is not callable.
         if (typeof source !== "string") continue;
 
-        if (performance.now() - startedAt >= totalBudgetMs) return true;
+        if (performance.now() - startedAt >= totalBudgetMs)
+          return NONCONFORMANT;
         // Reject an oversized source on length alone, before compiling: an
         // in-dialect source compiles in time super-linear in its length, and
         // the time budget above cannot interrupt one in-flight compile.
         // The per-step length refine reports the same rejection with a
         // precise over-length message (MAX_TRANSFORM_PATTERN_LENGTH).
-        if (source.length > maxPatternLength) return true;
-        if (!patternConformsToDialect(source)) return true;
+        if (source.length > maxPatternLength) return NONCONFORMANT;
+        if (!patternConformsToDialect(source)) return NONCONFORMANT;
+        const weightedSize = transformPatternOverSizeCap(source);
+        if (weightedSize !== undefined)
+          return {
+            reason: "size",
+            keyIndex,
+            elementIndex,
+            stepIndex,
+            paramKey,
+            weightedSize,
+          };
       }
     }
   }
-  return false;
+  return undefined;
 }
