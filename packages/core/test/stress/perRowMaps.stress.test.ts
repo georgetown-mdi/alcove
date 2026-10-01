@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { freemem, totalmem } from "node:os";
+import { totalmem } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { expect, test } from "vitest";
 
 import type { ProbeCase, ProbeResult } from "./perRowMaps.probe";
+import { stressMemory } from "./stressMemory";
 
 // The per-row structures of a linkage round and of the entity closure, driven
 // past the 2^24 entries a V8 Map or Set holds and at a 50-million-record input
@@ -86,11 +87,11 @@ test.for(cases)(
   "%s at %i entries throws at the Map or Set limit in %s",
   { timeout: PROBE_TIMEOUT_MS },
   ([probe, entries, frame, needGiB], ctx) => {
-    const freeGiB = freemem() / GIB;
+    const memory = stressMemory();
     ctx.skip(
-      freeGiB < needGiB,
-      `${probe} at ${entries} entries needs ${needGiB} GiB free; ` +
-        `${freeGiB.toFixed(1)} GiB is free`,
+      memory.bytes / GIB < needGiB,
+      `${probe} at ${entries} entries needs ${needGiB} GiB; ` +
+        `this host's ${memory.measure} is ${(memory.bytes / GIB).toFixed(1)} GiB`,
     );
     const result = measure(probe, entries);
     expect(result.holds).toBe(false);

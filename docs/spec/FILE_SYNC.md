@@ -427,9 +427,16 @@ On 2026-09-30 and 2026-10-01, on an Apple M1 Max with 32 GB of memory (Docker De
 
 The completion run at the per-set maximum:
 
-- **16,777,216 records a side, file-sync pair, to completion.** Not yet run; needs a host with about 60 GB.
+- **16,777,216 records a side, file-sync pair, to completion.** Not yet run. Each party runs on its own host; at the measured costs the joiner needs about 32.7 GB and the starter about 29.3 GB.
 
-`apps/cli/test/stress/fileSyncCompletion.stress.test.ts` drives it in the CLI's opt-in stress tier (`npm run test:stress -w apps/cli`, after `npm run build -w apps/cli`). Two built `alcove` processes exchange over a synced folder under the images' heap setting, each with the four-column input above, half of it shared with the other. The test holds both results to that shared half, row for row, which is what a run with no size limit returns, and logs the wall time and each party's peak RSS, its PSI worker included. It skips where the free memory is under what the pair needs, about 60 GB at 2^24; `ALCOVE_STRESS_COMPLETION_ROWS` lowers the row count.
+Those needs are each party's PSI round ([The measured costs](#the-measured-costs): 20.0 GB for the joiner, 16.6 GB for the starter) beside its main thread's peak of 11.78 GiB ([Preparing the input at 2^24](#preparing-the-input-at-224)). Two parties on one host need their sum, about 62 GB.
+
+`apps/cli/test/stress/fileSyncCompletion.stress.test.ts` drives the run in the CLI's opt-in stress tier (`npm run test:stress -w apps/cli`, after `npm run build -w apps/cli`). Each party is the built `alcove` under the images' heap setting, with the four-column input above, half of it shared with the other. The test holds each result to that shared half, row for row, which is what a run with no size limit returns, and logs the wall time and the party's peak RSS, its PSI worker included. It has two modes:
+
+- **Both parties on one host**, over a local directory: the default, for sizes that fit one host.
+- **One party on this host**, against a partner on another (`ALCOVE_STRESS_COMPLETION_PARTY` set to `starter` or `joiner`, `ALCOVE_STRESS_COMPLETION_URL` naming the shared directory as a `file://` or `sftp://` URL). The joiner is the party that arrives second, so on a `file://` directory the joiner waits for the starter's hello before it starts; either party stops as soon as it logs a role other than its own. It writes the party's figures and its host to a summary file.
+
+Each skips where the memory is under what it needs: the free memory, or on macOS, whose free figure leaves out the cache it can reclaim, the total memory. `ALCOVE_STRESS_COMPLETION_ROWS` lowers the row count; the test file's header lists the other settings.
 
 ### Preparing the input at 2^24
 

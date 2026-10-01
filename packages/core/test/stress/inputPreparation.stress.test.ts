@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
-import { freemem, tmpdir, totalmem } from "node:os";
+import { tmpdir, totalmem } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,7 @@ import { expect, test } from "vitest";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 
 import type { PreparationProbeResult } from "./inputPreparation.probe";
+import { stressMemory } from "./stressMemory";
 
 // The CLI's input preparation over 2^24 records, each with its own 9-digit
 // SSN, from reading the CSV to the first-round check: admitted at the per-set
@@ -42,11 +43,11 @@ test(
   `preparing ${ROWS} records keeps its pace through the first-round count`,
   { timeout: PROBE_TIMEOUT_MS + 60_000 },
   (ctx) => {
-    const freeGiB = freemem() / GIB;
+    const memory = stressMemory();
     ctx.skip(
-      freeGiB < NEED_GIB,
-      `the preparation of ${ROWS} records needs ${NEED_GIB} GiB free; ` +
-        `${freeGiB.toFixed(1)} GiB is free`,
+      memory.bytes / GIB < NEED_GIB,
+      `the preparation of ${ROWS} records needs ${NEED_GIB} GiB; ` +
+        `this host's ${memory.measure} is ${(memory.bytes / GIB).toFixed(1)} GiB`,
     );
     const dir = mkdtempSync(join(tmpdir(), "alcove-preparation-"));
     let out: string;
