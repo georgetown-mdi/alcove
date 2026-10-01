@@ -49,9 +49,9 @@ import {
 // ALCOVE_STRESS_COMPLETION_TIMEOUT_MS bounds each party (four hours by
 // default); ALCOVE_STRESS_COMPLETION_CLI_ARGS adds arguments, separated by
 // whitespace, to each party's command line, as SFTP credentials need;
-// ALCOVE_STRESS_COMPLETION_LOG_DIR, an existing directory, keeps each party's
-// log there as it runs (party-<name>.log) and, in one-party mode, a summary of
-// the run (party-<name>.json).
+// ALCOVE_STRESS_COMPLETION_LOG_DIR, a directory the test creates, keeps each
+// party's log there as it runs (party-<name>.log) and, in one-party mode, a
+// summary of the run (party-<name>.json).
 
 const CLI = fileURLToPath(new URL("../../dist/index.js", import.meta.url));
 const PEAK_MEMORY_REPORT = pathToFileURL(
@@ -91,8 +91,10 @@ function partyNeedBytes(party: PartyName): number {
 }
 
 // macOS counts its reclaimable cache as used, so os.freemem() there reads a
-// fraction of what a run can have; the gate takes the total memory there
-// (packages/core/test/stress/stressMemory.ts, which the core cases share).
+// fraction of what a run can have; the gate takes the total memory there. A
+// copy of stressMemory() in packages/core/test/stress/stressMemory.ts, which
+// the core cases share: the CLI's test tsconfig cannot import it (rootDir), so
+// the two must match.
 function hostMemory(): { bytes: number; measure: string } {
   return platform() === "darwin"
     ? { bytes: totalmem(), measure: "total memory (macOS)" }
@@ -173,10 +175,15 @@ function runParty(
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  const logPath =
+    LOG_DIR === undefined ? undefined : join(LOG_DIR, `party-${name}.log`);
+  if (LOG_DIR !== undefined) mkdirSync(LOG_DIR, { recursive: true });
   const logFile =
-    LOG_DIR === undefined
-      ? undefined
-      : createWriteStream(join(LOG_DIR, `party-${name}.log`));
+    logPath === undefined ? undefined : createWriteStream(logPath);
+  let logError: Error | undefined;
+  logFile?.on("error", (error) => {
+    logError = error;
+  });
   const run: PartyRun = {
     exitCode: null,
     wallMs: 0,
@@ -200,10 +207,17 @@ function runParty(
   child.stdout.on("data", onOutput);
   child.stderr.on("data", onOutput);
   const timer = setTimeout(() => child.kill("SIGKILL"), RUN_TIMEOUT_MS);
-  return new Promise((resolve) => {
-    child.on("close", (exitCode) => {
+  return new Promise((resolve, reject) => {
+    child.on("close", async (exitCode) => {
       clearTimeout(timer);
-      logFile?.end();
+      if (logFile !== undefined)
+        await new Promise((done) => {
+          logFile.end(done);
+        });
+      if (logError !== undefined) {
+        reject(new Error(`could not write ${logPath}: ${logError.message}`));
+        return;
+      }
       run.exitCode = exitCode;
       run.wallMs = Math.round(performance.now() - startedAt);
       if (existsSync(peakFile))
@@ -250,7 +264,12 @@ const PEER_HELLO = /-hello\.json$/;
 // A party's hello, on a directory this host can list. The joiner is the party
 // that finds its partner's hello there on arrival.
 function peerHelloPresent(dir: string): boolean {
-  return readdirSync(dir).some((name) => PEER_HELLO.test(name));
+  try {
+    return readdirSync(dir).some((name) => PEER_HELLO.test(name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 test(
@@ -323,7 +342,7 @@ test(
     if (URL_OF_DROP === undefined || !/^(file|sftp|ssh):\/\//.test(URL_OF_DROP))
       throw new Error(
         "set ALCOVE_STRESS_COMPLETION_URL to the shared directory as a " +
-          "file:// or sftp:// URL",
+          "file://, sftp:// or ssh:// URL",
       );
     ctx.skip(
       !existsSync(CLI),
@@ -340,15 +359,18 @@ test(
     const localDrop = URL_OF_DROP.startsWith("file://")
       ? fileURLToPath(URL_OF_DROP)
       : undefined;
-    if (
-      PARTY === "starter" &&
-      localDrop !== undefined &&
-      peerHelloPresent(localDrop)
-    )
-      throw new Error(
-        `${localDrop} already holds a hello: the starter arrives first, so ` +
-          "clear the directory and start the joiner after the starter",
-      );
+    if (PARTY === "starter" && localDrop !== undefined) {
+      if (!existsSync(localDrop))
+        throw new Error(
+          `${localDrop} does not exist: create the shared directory before ` +
+            "the starter runs",
+        );
+      if (peerHelloPresent(localDrop))
+        throw new Error(
+          `${localDrop} already holds a hello: the starter arrives first, so ` +
+            "clear the directory and start the joiner after the starter",
+        );
+    }
 
     const root = mkdtempSync(join(tmpdir(), "alcove-completion-"));
     try {
