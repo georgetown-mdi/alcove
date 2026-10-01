@@ -126,20 +126,19 @@ describe("savedExchangeRow", () => {
       undefined,
       NOW,
     );
-    expect(row.status).toMatch(/a file is too large to send/i);
+    expect(row.status).toMatch(/your file is too large to send/i);
     expect(row.status).not.toMatch(/browser/i);
-    expect(row.status).toMatch(/split the input/i);
+    expect(row.status).toMatch(/; split your input$/);
     expect(row.status).not.toMatch(/did not complete|attack|tamper|desync/i);
   });
 
-  test("a too-large run over this party's set names its own file and remedy", () => {
+  test("a too-large run over the WebRTC message bound names the bound", () => {
     const row = savedExchangeRow(
       record({
         lastRun: {
           at: "2026-07-10T09:00:00.000Z",
           outcome: "failed",
           failureKind: "too-large",
-          tooLargeSetOwner: "local",
           tooLargeBound: "webrtc-message",
         },
       }),
@@ -151,25 +150,6 @@ describe("savedExchangeRow", () => {
     );
     expect(row.status).toMatch(/; split your input$/);
     expect(row.status).not.toMatch(/partner/i);
-  });
-
-  test("a too-large run over the partner's set asks the partner to split theirs", () => {
-    const row = savedExchangeRow(
-      record({
-        lastRun: {
-          at: "2026-07-10T09:00:00.000Z",
-          outcome: "failed",
-          failureKind: "too-large",
-          tooLargeSetOwner: "partner",
-        },
-      }),
-      undefined,
-      NOW,
-    );
-    expect(row.status).toMatch(/your partner's file is too large to send/i);
-    expect(row.status).not.toMatch(/browser/i);
-    expect(row.status).toMatch(/; ask your partner to split theirs$/);
-    expect(row.status).not.toMatch(/split your input|split the input/i);
   });
 
   test("a linkage shortfall displays as its own quiet line, not the input file's", () => {

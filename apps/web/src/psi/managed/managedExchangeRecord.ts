@@ -252,10 +252,6 @@ export type ManagedExchangeFailureKind =
   | "terms-change"
   | "cancelled";
 
-/** Whose set a `"too-large"` refusal found over the bound: `"local"` for this
- * party's own, `"partner"` for the partner's set a run had to send back. */
-export type TooLargeSetOwner = "local" | "partner";
-
 /** Which bound a `"too-large"` refusal found a set over: `"webrtc-message"`
  * for the bytes one WebRTC message holds. */
 export type TooLargeBound = "webrtc-message";
@@ -277,10 +273,6 @@ export interface ManagedExchangeLastRun {
    * between-visit notice state the delimiter remedy where it is set and the
    * agreed-keys copy where it is absent. */
   singleColumnInput?: true;
-  /** Present only on a `"too-large"` failure: whose set was over the bound.
-   * The next visit's summary and the between-visit notice name the one remedy
-   * that side takes, and both remedies where it is absent. */
-  tooLargeSetOwner?: TooLargeSetOwner;
   /** Present only on a `"too-large"` failure: which bound the set was over.
    * The next visit's summary and the between-visit notice name that bound and
    * its figure, and name no bound where it is absent. */
@@ -504,7 +496,6 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
     ])
     .optional(),
   singleColumnInput: z.literal(true).optional(),
-  tooLargeSetOwner: z.enum(["local", "partner"]).optional(),
   tooLargeBound: z.enum(["webrtc-message"]).optional(),
 });
 

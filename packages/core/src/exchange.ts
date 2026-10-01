@@ -1586,10 +1586,9 @@ export async function assertFirstRoundFitsWebRtcFrame(
     tooLarge: (fewest) =>
       new WebRtcFrameLimitError(
         roundOneSetTooLargeMessage(fewest, maxFrameBytes),
-        "local",
       ),
     uncounted: (failure) =>
-      new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, "local", {
+      new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, {
         cause: failure,
       }),
   });

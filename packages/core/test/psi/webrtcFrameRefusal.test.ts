@@ -100,7 +100,6 @@ test("the first-round check refuses one value over the bound and admits one unde
     }),
   );
   expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as WebRtcFrameLimitError).setOwner).toBe("local");
   expect((refusal as Error).message).toMatch(
     /at least 301 values to send.*Nothing was sent/,
   );
@@ -338,7 +337,6 @@ test("the first-round check refuses, with the failure as its cause, when the cou
   );
   expect(reports).toEqual(["started", "failed"]);
   expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as WebRtcFrameLimitError).setOwner).toBe("local");
   expect((refusal as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
   expect((refusal as Error).cause).toBe(failure);
 });
@@ -455,7 +453,6 @@ test("the first-round check refuses, with the failure as its cause, when the rec
   );
   expect(keyPasses).toBe(2);
   expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as WebRtcFrameLimitError).setOwner).toBe("local");
   expect((refusal as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
   expect((refusal as Error).cause).toBe(failure);
 });

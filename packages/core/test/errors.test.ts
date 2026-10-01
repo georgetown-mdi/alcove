@@ -306,9 +306,7 @@ describe("PeerAbortError exemplar (unchanged)", () => {
 
 test("both set-too-large refusals are sets too large to send, and nothing else is", () => {
   expect(isSetTooLargeError(new RoundSetLimitError("too many"))).toBe(true);
-  expect(
-    isSetTooLargeError(new WebRtcFrameLimitError("too large", "partner")),
-  ).toBe(true);
+  expect(isSetTooLargeError(new WebRtcFrameLimitError("too large"))).toBe(true);
   expect(isSetTooLargeError(new Error("other"))).toBe(false);
   expect(isSetTooLargeError(undefined)).toBe(false);
 });

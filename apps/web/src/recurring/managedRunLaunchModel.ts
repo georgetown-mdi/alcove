@@ -19,8 +19,7 @@ import {
   TERMS_CHANGE_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
   TOO_LARGE_REMEDY,
-  TOO_LARGE_REMEDY_BY_OWNER,
-  TOO_LARGE_SET_SOURCE_BY_OWNER,
+  TOO_LARGE_SET_SOURCE,
   UNEXPLAINED_FAILURE_TITLE,
   tooLargeFailureTitle,
   tooLargeSetOverBound,
@@ -51,7 +50,6 @@ import { dateTimeLabel } from "@psi/formatting";
 import type {
   ManagedExchangeRecord,
   TooLargeBound,
-  TooLargeSetOwner,
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
@@ -462,45 +460,29 @@ const TOO_LARGE_RETRY_NOTE =
  * refused to send it. The record holds no count, so this copy states the bound
  * and not the set's size; a live launch shows the refusal's own message instead
  * ({@link tooLargeFailure}). Not the retry state -- the same files refuse
- * identically -- and it claims nothing about earlier rounds, since a round
- * past the first refuses after data has moved. The record's
- * `tooLargeSetOwner` names whose set it was and so the one remedy; a record
- * without it states both. */
+ * identically. */
 function recordedTooLargeFailure(
-  owner: TooLargeSetOwner | undefined,
   bound: TooLargeBound | undefined,
 ): ManagedRunFailureAlert {
-  const overBound = tooLargeSetOverBound(bound);
-  if (owner === undefined)
-    return {
-      kind: "too-large",
-      title: tooLargeFailureTitle(undefined, bound),
-      message:
-        `The last run stopped because a set of values it had to send ` +
-        `${overBound}, so that set was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
-        TOO_LARGE_REMEDY,
-      recovery: "split",
-    };
   return {
     kind: "too-large",
-    title: tooLargeFailureTitle(owner, bound),
+    title: tooLargeFailureTitle(bound),
     message:
-      `The last run stopped because ${TOO_LARGE_SET_SOURCE_BY_OWNER[owner]} ` +
-      `${overBound}, so it was not sent. ${TOO_LARGE_RETRY_NOTE} ` +
-      TOO_LARGE_REMEDY_BY_OWNER[owner],
+      `The last run stopped because ${TOO_LARGE_SET_SOURCE} ` +
+      `${tooLargeSetOverBound(bound)}, so it was not sent. ` +
+      `${TOO_LARGE_RETRY_NOTE} ${TOO_LARGE_REMEDY}`,
     recovery: "split",
   };
 }
 
 /** The too-large state for THIS run's refusal: the refusal's message states the
- * set's size, the bound, what was sent and whose input to split, or that the
- * first-round count could not be taken and why, so it is the state's whole
- * message. The titles are the one-shot seats' own for the same refusal. */
+ * set's size, the bound, and the remedy, or that the first-round count could
+ * not be taken and why, so it is the state's whole message. The titles are the
+ * one-shot seats' own for the same refusal. */
 function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
-  if (!isSetTooLargeError(error))
-    return recordedTooLargeFailure(undefined, undefined);
+  if (!isSetTooLargeError(error)) return recordedTooLargeFailure(undefined);
   return {
-    ...recordedTooLargeFailure(error.setOwner, tooLargeBoundOf(error)),
+    ...recordedTooLargeFailure(tooLargeBoundOf(error)),
     message: sanitizeErrorForDisplay(error),
   };
 }
@@ -650,10 +632,7 @@ export function managedRunTierFailure(
         ? TERMS_CHANGE_FAILURE
         : TERMS_CHANGE_DECLINED_FAILURE;
     case "too-large":
-      return recordedTooLargeFailure(
-        record.lastRun?.tooLargeSetOwner,
-        record.lastRun?.tooLargeBound,
-      );
+      return recordedTooLargeFailure(record.lastRun?.tooLargeBound);
     case "handed-off":
       return HANDED_OFF_FAILURE;
     case "custody-unreadable":

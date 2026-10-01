@@ -24,7 +24,6 @@ import { MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
 import type {
   ManagedExchangeSchedule,
   TooLargeBound,
-  TooLargeSetOwner,
 } from "./managedExchangeRecord";
 
 /**
@@ -103,13 +102,6 @@ export function tooLargeSetOverBound(bound: TooLargeBound | undefined): string {
   }
 }
 
-/** The too-large tier's remedy for a record that does not say whose set was
- * over the bound, in the words the next-visit alert and the between-visit
- * notification both state it in. */
-export const TOO_LARGE_REMEDY =
-  "Split the input into smaller files and set up one exchange for each; if " +
-  "the set was your partner's, ask them to split theirs.";
-
 /** What was wrong with a too-large file, by which bound refused it, completing
  * a sentence whose subject is the file. */
 export function tooLargeFileProblem(bound: TooLargeBound | undefined): string {
@@ -121,42 +113,22 @@ export function tooLargeFileProblem(bound: TooLargeBound | undefined): string {
   }
 }
 
-const TOO_LARGE_FILE_SUBJECT_BY_OWNER: Record<TooLargeSetOwner, string> = {
-  local: "Your file",
-  partner: "Your partner's file",
-};
-
-/** The title over a too-large failure, naming whose file it was when known and
- * the bound that refused it; shared by the one-shot exchange, a managed run's
- * live refusal, and the record read back. */
-export function tooLargeFailureTitle(
-  owner: TooLargeSetOwner | undefined,
-  bound: TooLargeBound | undefined,
-): string {
-  const subject =
-    owner === undefined
-      ? "A file in this exchange"
-      : TOO_LARGE_FILE_SUBJECT_BY_OWNER[owner];
-  return `${subject} ${tooLargeFileProblem(bound)}`;
+/** The title over a too-large failure, naming the bound that refused this
+ * party's file; shared by the one-shot exchange, a managed run's live
+ * refusal, and the record read back. */
+export function tooLargeFailureTitle(bound: TooLargeBound | undefined): string {
+  return `Your file ${tooLargeFileProblem(bound)}`;
 }
 
-/** Whose values the set over the bound was built from, in the words the
+/** The set a too-large failure found over the bound, in the words the
  * next-visit alert and the between-visit notification both state it in. */
-export const TOO_LARGE_SET_SOURCE_BY_OWNER: Record<TooLargeSetOwner, string> = {
-  local: "the set of values built from your input file",
-  partner: "the set of values built from your partner's input file",
-};
+export const TOO_LARGE_SET_SOURCE =
+  "the set of values built from your input file";
 
-/** The one remedy a too-large failure that names whose set it was takes, in
- * the words the next-visit alert and the between-visit notification both state
- * it in. */
-export const TOO_LARGE_REMEDY_BY_OWNER: Record<TooLargeSetOwner, string> = {
-  local:
-    "Split your input into smaller files and set up one exchange for each.",
-  partner:
-    "Ask your partner to split their input into smaller files, and set up " +
-    "one exchange with them for each.",
-};
+/** The too-large tier's remedy, in the words the next-visit alert and the
+ * between-visit notification both state it in. */
+export const TOO_LARGE_REMEDY =
+  "Split your input into smaller files and set up one exchange for each.";
 
 /** The title over the interrupted-rotation failure tier. */
 export const PARTIAL_ROTATION_FAILURE_TITLE =

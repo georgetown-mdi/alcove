@@ -392,7 +392,7 @@ function failureContentFor(
   if (isSetTooLargeError(error))
     return {
       category: "config",
-      title: tooLargeFailureTitle(error.setOwner, tooLargeBoundOf(error)),
+      title: tooLargeFailureTitle(tooLargeBoundOf(error)),
       message: sanitizedFailureMessage(error),
     };
   if (error instanceof LinkageTermsUnsatisfiableError) {

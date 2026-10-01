@@ -137,21 +137,12 @@ test("a set over the bound is handed to PeerJS in parts within the bound, holdin
 test("the refusal is shown as its own alert, with no retry", () => {
   const own = failureFor(
     "exchange",
-    new WebRtcFrameLimitError("the set is too large; split the input", "local"),
+    new WebRtcFrameLimitError("the set is too large; split the input"),
   );
   expect(own.category).toBe("config");
   expect(own.title).toBe("Your file is too large for a browser exchange");
   expect(own.message).toBe("the set is too large; split the input");
   expect(own.reportedCause).toBeUndefined();
-
-  const partner = failureFor(
-    "config",
-    new WebRtcFrameLimitError("the reply is too large", "partner"),
-  );
-  expect(partner.category).toBe("config");
-  expect(partner.title).toBe(
-    "Your partner's file is too large for a browser exchange",
-  );
 });
 
 test("a message-file refusal is shown as the same alert, with no retry", () => {
@@ -172,7 +163,7 @@ test("a message-file refusal is shown as the same alert, with no retry", () => {
 test("a first round the check cannot count is shown as its own alert, with no retry", () => {
   const failure = failureFor(
     "exchange",
-    new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, "local", {
+    new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, {
       cause: new RangeError("Map maximum size exceeded"),
     }),
   );
