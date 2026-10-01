@@ -139,6 +139,16 @@ export interface MessageConnection {
    */
   outboundFileSyncFrameBound?(): number | undefined;
   /**
+   * Optional: the most elements a PSI set the partner sends on this connection
+   * may hold, where this party can match fewer than the protocol admits (a
+   * browser tab), or `undefined` for a party held to the protocol's maximum
+   * alone. A cascade or count-only exchange refuses at the terms exchange a
+   * partner whose round count is over it, and a round holds the partner's set
+   * to it when the set's first part arrives. See docs/spec/PROTOCOL.md ("What
+   * a browser tab can match").
+   */
+  inboundPsiSetElementCeiling?(): number | undefined;
+  /**
    * Optional: the bytes this connection adds around each binary frame before
    * the transport under it packs the frame (an encryption envelope), or 0 when
    * absent. A sender sizing a frame to either bound above adds it to the
@@ -237,6 +247,12 @@ interface TransportHooks {
    * such bound omits it.
    */
   outboundFileSyncFrameBound?: () => number;
+  /**
+   * Optional: this party's own ceiling on a partner's PSI set (see
+   * {@link MessageConnection.inboundPsiSetElementCeiling}); a party held to
+   * the protocol's maximum alone omits it.
+   */
+  inboundPsiSetElementCeiling?: () => number;
 }
 
 type TransportConnect = (controls: TransportControls) => TransportHooks;
@@ -687,6 +703,10 @@ export class QueuedMessageConnection implements MessageConnection {
 
   outboundFileSyncFrameBound(): number | undefined {
     return this.hooks.outboundFileSyncFrameBound?.();
+  }
+
+  inboundPsiSetElementCeiling(): number | undefined {
+    return this.hooks.inboundPsiSetElementCeiling?.();
   }
 }
 

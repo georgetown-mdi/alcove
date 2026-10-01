@@ -581,6 +581,10 @@ export class EncryptedMessageConnection implements MessageConnection {
     return this.inner.outboundFileSyncFrameBound?.();
   }
 
+  inboundPsiSetElementCeiling(): number | undefined {
+    return this.inner.inboundPsiSetElementCeiling?.();
+  }
+
   // The envelope is added before the inner transport packs and chunks the
   // frame, so it is charged once per frame, not per chunk.
   outboundFrameOverheadBytes(): number {

@@ -1,13 +1,18 @@
 import { getHeapStatistics, setFlagsFromString } from "node:v8";
 
-import { UsageError } from "@alcove/core";
+import {
+  MAX_PSI_DECODE_ELEMENTS,
+  RoundCapacityError,
+  UsageError,
+} from "@alcove/core";
 
 import { readRuntimeEnv, type RuntimeEnvSnapshot } from "./util/runtimeEnv";
 
 // The memory budget a CLI party's PSI round runs under: a heap ceiling sized to
-// the largest set the CLI is built for, and a check, before any network
-// contact, that this party's own input fits the memory the process has. The
-// figures, their measurement, and the limits of the check:
+// the largest set the protocol admits, a check, before any network contact,
+// that this party's own input fits the memory the process has, and the same
+// check against the partner's round once the terms are exchanged. The
+// figures, their measurement, and the limits of the checks:
 // docs/spec/FILE_SYNC.md, "Memory a PSI round needs".
 
 /**
@@ -25,8 +30,11 @@ export const PSI_ROUND_BYTES_PER_ELEMENT = 1_176;
  */
 export const PSI_ROUND_FIXED_BYTES = 271_000_000;
 
-/** The set size a side the heap ceiling is sized for: 2^24 elements. */
-export const PSI_TARGET_ELEMENTS = 2 ** 24;
+/**
+ * The set size a side the heap ceiling is sized for: the protocol's per-set
+ * maximum, 2^24 elements.
+ */
+export const PSI_TARGET_ELEMENTS = MAX_PSI_DECODE_ELEMENTS;
 
 /**
  * The memory a PSI round over `elements` a side needs, in bytes, at the
@@ -253,5 +261,75 @@ export function checkPsiMemoryBudget(params: {
   if (!params.allowShortfall)
     throw new UsageError(psiMemoryShortfallMessage(assessment));
   params.onShortfallWarning(psiMemoryShortfallOverrideWarning(assessment));
+  return assessment;
+}
+
+function partnerShortfallSentence(assessment: PsiMemoryAssessment): string {
+  return (
+    `your partner's set for one linkage key can hold up to ` +
+    `${assessment.records.toLocaleString("en-US")} values, a PSI round over ` +
+    `that many needs about ${gigabytes(assessment.needBytes)} of memory, and ` +
+    `this process has ${gigabytes(assessment.availableBytes)} ` +
+    `(${LIMIT_NAMES[assessment.limitedBy]})`
+  );
+}
+
+/** The refusal for a partner round whose need is over what the process has. */
+export function partnerRoundMemoryShortfallMessage(
+  assessment: PsiMemoryAssessment,
+): string {
+  return (
+    `${partnerShortfallSentence(assessment)}, so the exchange stopped before ` +
+    `any linkage key was sent and told your partner. Run the exchange on a ` +
+    `host with more memory, or with a larger docker run --memory, or ask ` +
+    `your partner to split their input into smaller files and run one ` +
+    `exchange for each. Pass --allow-memory-shortfall to run anyway; the ` +
+    `exchange may then run out of memory partway through, which fails it ` +
+    `for both parties.`
+  );
+}
+
+/**
+ * The warning for a run {@link partnerRoundMemoryShortfallMessage} would
+ * refuse, run under the override.
+ */
+export function partnerRoundMemoryShortfallOverrideWarning(
+  assessment: PsiMemoryAssessment,
+): string {
+  return (
+    `running with --allow-memory-shortfall: ` +
+    `${partnerShortfallSentence(assessment)}. The exchange may run out of ` +
+    `memory partway through, which fails it for both parties.`
+  );
+}
+
+/**
+ * Hold the partner's round to what the process has, once the terms are
+ * exchanged: `partnerRoundValues` is an upper bound on the values a
+ * conforming partner's set for one linkage key holds, weighed at
+ * {@link psiRoundMemoryNeedBytes} as the pre-contact check weighs this party's
+ * own records. A need over it is a {@link RoundCapacityError} naming both
+ * figures and the override, or, with `allowShortfall`, a warning passed to
+ * `onShortfallWarning` and the run continues.
+ */
+export function checkPartnerRoundMemory(params: {
+  partnerRoundValues: number;
+  allowShortfall: boolean;
+  readings: MemoryReadings;
+  onShortfallWarning: (message: string) => void;
+}): PsiMemoryAssessment {
+  const assessment = assessPsiMemory(
+    params.partnerRoundValues,
+    params.readings,
+  );
+  if (assessment.needBytes <= assessment.availableBytes) return assessment;
+  if (!params.allowShortfall)
+    throw new RoundCapacityError(
+      partnerRoundMemoryShortfallMessage(assessment),
+      "terms-exchange",
+    );
+  params.onShortfallWarning(
+    partnerRoundMemoryShortfallOverrideWarning(assessment),
+  );
   return assessment;
 }

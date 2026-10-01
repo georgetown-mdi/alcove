@@ -155,3 +155,23 @@ export const SINGLE_COLUMN_DELIMITER_REMEDY =
   "exchange reads it with. Save the input file with that separator, or " +
   'change "How your file separates fields" in this exchange\'s local ' +
   "settings to your file's separator.";
+
+/** The title over a refusal of a partner's set larger than this browser can
+ * match; shared by the one-shot exchange, a managed run's alert, and the
+ * between-visit notification. */
+export const PARTNER_SET_TOO_LARGE_TITLE =
+  "Your partner's set is too large for this browser";
+
+/** What stopped a run refused for its partner's set, completing a sentence
+ * that ends "stopped because". */
+export const PARTNER_SET_TOO_LARGE_PROBLEM =
+  "your partner's set of values for a linkage key is larger than this " +
+  "browser can match";
+
+/** The remedy for a partner's set larger than this browser can match, in the
+ * words the next-visit alert and the between-visit notification both state it
+ * in. */
+export const PARTNER_SET_TOO_LARGE_REMEDY =
+  "Run this exchange with the command-line application, or ask your " +
+  "partner to split their input into smaller files and set up one " +
+  "exchange for each.";

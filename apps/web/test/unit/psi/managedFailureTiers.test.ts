@@ -4,7 +4,7 @@ import {
   RoundSetLimitError,
   UsageError,
   WebRtcFrameLimitError,
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   assertFirstRoundFitsWebRtcFrame,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -544,7 +544,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
 
   type FirstRoundCheck =
     | typeof assertFirstRoundFitsWebRtcFrame
-    | typeof assertFirstRoundFitsFileSyncFrame;
+    | typeof assertFileSyncFirstRoundWithinSetMaximum;
 
   /** A first-round check's real refusal, at a bound two values cross. */
   async function firstRoundRefusal(
@@ -556,7 +556,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       columns,
     );
     try {
-      await check(prepared, { maxFrameBytes: 1 });
+      await check(prepared, { maxFrameBytes: 1, maxValues: 0 });
     } catch (error) {
       return error;
     }
@@ -747,7 +747,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
 
   test("a message-file first round the check cannot count records an uncounted set", async () => {
     const uncounted = await firstRoundUncounted(
-      assertFirstRoundFitsFileSyncFrame,
+      assertFileSyncFirstRoundWithinSetMaximum,
     );
     expect(uncounted).toBeInstanceOf(RoundSetLimitError);
     expect((uncounted as Error).cause).toBeInstanceOf(RangeError);
@@ -766,7 +766,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
 
   test("a message-file first round over its bound records a set over a bound, not an uncounted one", async () => {
     const overBound = await firstRoundRefusal(
-      assertFirstRoundFitsFileSyncFrame,
+      assertFileSyncFirstRoundWithinSetMaximum,
     );
     expect(overBound).toBeInstanceOf(RoundSetLimitError);
     expect((overBound as Error).cause).toBeUndefined();

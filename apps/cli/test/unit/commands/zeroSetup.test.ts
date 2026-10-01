@@ -13,7 +13,7 @@ import type { Readable } from "node:stream";
 import yargs, { type Arguments } from "yargs";
 import YAML from "yaml";
 import {
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   CONSENT_FACTS,
   getLogger,
   prepareForExchange,
@@ -98,8 +98,8 @@ vi.mock("@alcove/core", async (importActual) => {
   return {
     ...actual,
     prepareForExchange: vi.fn(actual.prepareForExchange),
-    assertFirstRoundFitsFileSyncFrame: vi.fn(
-      actual.assertFirstRoundFitsFileSyncFrame,
+    assertFileSyncFirstRoundWithinSetMaximum: vi.fn(
+      actual.assertFileSyncFirstRoundWithinSetMaximum,
     ),
   };
 });
@@ -1064,7 +1064,7 @@ test("handler: undeclared columns are named once, before host-key trust", async 
   }
 });
 
-test("handler: a first round too large for one message file exits 64 with no host-key probe", async () => {
+test("handler: a file-sync first round over the per-set maximum exits 64 with no host-key probe", async () => {
   // The size check reads only the prepared input, so its refusal ends the run
   // over the same sftp URL with the host-key step never entered. The refusal
   // is planted: reaching the real bound takes millions of rows.
@@ -1076,9 +1076,11 @@ test("handler: a first round too large for one message file exits 64 with no hos
       input,
       "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
     );
-    vi.mocked(assertFirstRoundFitsFileSyncFrame).mockImplementationOnce(() => {
-      throw new RoundSetLimitError("first round too large for one file");
-    });
+    vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockImplementationOnce(
+      () => {
+        throw new RoundSetLimitError("first round too large for one file");
+      },
+    );
     vi.mocked(establishHostKeyTrust).mockClear();
     vi.mocked(runProtocol).mockClear();
 
@@ -1098,7 +1100,9 @@ test("handler: a first round too large for one message file exits 64 with no hos
       ),
     );
     expect(raised).toEqual(new Error("exit:64"));
-    expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).toHaveBeenCalled();
+    expect(
+      vi.mocked(assertFileSyncFirstRoundWithinSetMaximum),
+    ).toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
     // The refusal ends the machine-interface stream with its terminal error.
@@ -1133,7 +1137,7 @@ test("handler: the memory check is decided before the first-round count", async 
       "log-level": "silent",
     } as unknown as Arguments;
     const memory = vi.mocked(checkRunMemoryBudget);
-    const count = vi.mocked(assertFirstRoundFitsFileSyncFrame);
+    const count = vi.mocked(assertFileSyncFirstRoundWithinSetMaximum);
     memory.mockClear();
     count.mockClear();
     vi.mocked(runProtocol).mockImplementationOnce((async (

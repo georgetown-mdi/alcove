@@ -11,7 +11,7 @@ import {
 } from "@alcove/core";
 import {
   DEFAULT_LINKAGE_RULE_SET,
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   assertFirstRoundFitsWebRtcFrame,
   assertSharedSecretReadyForHandshake,
   computeTermsHash,
@@ -99,8 +99,8 @@ vi.mock("@alcove/core", async (importActual) => {
     // leak that field between tests.
     // Spy-wrapped so a test can plant the refusal the check raises on an input
     // whose first round is too large, which the stubbed preparation cannot hold.
-    assertFirstRoundFitsFileSyncFrame: vi.fn(
-      actual.assertFirstRoundFitsFileSyncFrame,
+    assertFileSyncFirstRoundWithinSetMaximum: vi.fn(
+      actual.assertFileSyncFirstRoundWithinSetMaximum,
     ),
     assertFirstRoundFitsWebRtcFrame: vi.fn(
       actual.assertFirstRoundFitsWebRtcFrame,
@@ -2780,15 +2780,17 @@ test("handler: an input that cannot satisfy the agreed terms exits 64 with no ho
   }
 });
 
-test("handler: a first round too large for one message file exits 64 with no host-key probe", async () => {
+test("handler: a file-sync first round over the per-set maximum exits 64 with no host-key probe", async () => {
   // Over the same unpinned sftp config: the size check reads only the prepared
   // input, so its refusal ends the run with the host-key step -- and so the
   // probe that contacts the server and writes the pin -- never entered.
   const input = writeSftpExchangeInputs();
 
-  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockImplementationOnce(() => {
-    throw new RoundSetLimitError("first round too large for one file");
-  });
+  vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockImplementationOnce(
+    () => {
+      throw new RoundSetLimitError("first round too large for one file");
+    },
+  );
   vi.mocked(establishHostKeyTrust).mockClear();
   vi.mocked(runProtocol).mockReset();
   const exitSpy = captureProcessExit();
@@ -2806,7 +2808,9 @@ test("handler: a first round too large for one message file exits 64 with no hos
     expect(mockState.errors.join("\n")).toContain(
       "first round too large for one file",
     );
-    expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).toHaveBeenCalled();
+    expect(
+      vi.mocked(assertFileSyncFirstRoundWithinSetMaximum),
+    ).toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
   } finally {
@@ -3290,12 +3294,14 @@ test("handler: a key-file path the preflight refuses sends no wake call", async 
   }
 });
 
-test("handler: a first round too large for one message file sends no wake call", async () => {
+test("handler: a file-sync first round over the per-set maximum sends no wake call", async () => {
   const argv = provisionedRun(minimalSFTPConfig.connection);
   const fetch = stubProvisionFetch(200);
-  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockImplementationOnce(() => {
-    throw new RoundSetLimitError("first round too large for one file");
-  });
+  vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockImplementationOnce(
+    () => {
+      throw new RoundSetLimitError("first round too large for one file");
+    },
+  );
   try {
     await expectExchangeExit(argv, 64);
     expect(fetch).not.toHaveBeenCalled();

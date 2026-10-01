@@ -210,11 +210,11 @@ export class WebRtcFrameLimitError extends UsageError {
 
 /**
  * A linkage key round whose set of values is larger than one round can hold:
- * on SFTP or a synced folder, a first round with more values than one message
- * file holds (docs/spec/FILE_SYNC.md, "Round set size limits"); on any
- * channel, a set of this party's own with more values than any receiver
- * admits (`MAX_PSI_DECODE_ELEMENTS`), refused before it is built and with
- * the partner sent an abort in its place. The message names the
+ * on SFTP or a synced folder, a first round with more values than one PSI set
+ * can hold, refused before contact (docs/spec/FILE_SYNC.md, "Round set size
+ * limits"); on any channel, a set of this party's own with more values than
+ * any receiver admits (`MAX_PSI_DECODE_ELEMENTS`), refused before it is built
+ * and with the partner sent an abort in its place. The message names the
  * count, the bound, and the remedy, and is composed only from counts and
  * fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry refuses
  * identically, so the CLI's generic retry advisory is suppressed.
@@ -226,6 +226,41 @@ export class RoundSetLimitError extends UsageError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "RoundSetLimitError";
+  }
+}
+
+/**
+ * Where a {@link RoundCapacityError} was raised: `"terms-exchange"`, before any
+ * PSI set moves, or `"set-first-part"`, at the first part of a partner's set
+ * inside a round, after this party may have sent sets of its own -- its sets of
+ * earlier rounds, and a sender's setup for the same round.
+ */
+export type RoundCapacityStage = "terms-exchange" | "set-first-part";
+
+/**
+ * A partner's PSI set for a linkage key that can hold more values than this
+ * party can process, with the partner sent an abort: this party's own capacity
+ * limit, not a fault in anything the partner sent. It is refused after the
+ * terms exchange and before any set moves, from the partner's authenticated
+ * record count (`checkPartnerRoundCapacity` in exchange.ts), or at the first
+ * part of a partner's set over the connection's ceiling (`receivePsiSet`);
+ * `stage` states which. The message names the count, this party's limit, and
+ * the remedy, and is composed only from counts and fixed text. Holds
+ * `alcoveRecoveryHintEmitted`: a retry against the same partner input refuses
+ * identically, so the CLI's generic retry advisory is suppressed.
+ */
+export class RoundCapacityError extends UsageError {
+  readonly alcoveRecoveryHintEmitted = true;
+  readonly stage: RoundCapacityStage;
+
+  constructor(
+    message: string,
+    stage: RoundCapacityStage,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "RoundCapacityError";
+    this.stage = stage;
   }
 }
 

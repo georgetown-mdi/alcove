@@ -20,6 +20,7 @@ import {
 import {
   PeerAbortError,
   ProtocolRefusalError,
+  RoundCapacityError,
   RoundSetLimitError,
 } from "../../src/errors";
 import { sendAbort } from "../../src/protocolSetup";
@@ -27,6 +28,8 @@ import { PSIParticipant } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   ownSetTooLargeMessage,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  partnerSetOverCeilingMessage,
   PSI_SET_PART_HEADER_BYTES,
   PSI_SET_TOO_LARGE_ABORT_REASON,
   psiSetByteBound,
@@ -151,6 +154,50 @@ test("a set declaring more bytes than the bound admits is refused at its first p
         "4611686018427387904 bytes, over the 356 the agreed record counts admit",
     ),
   );
+});
+
+test("a set within the bound but over this party's capacity is refused at its first part as its capacity, and the partner told", async () => {
+  const parts = partsOf(bytes(25), 10);
+  const [a, b] = createMessagePipe();
+  // Only the first part is queued: a receiver that read on would wait forever.
+  await a.send(parts[0]);
+  const refusal = await receivePsiSet(b, "client", "serverSetup", 25, {
+    setBytes: 24,
+    elements: 3,
+  }).catch((err: unknown) => err);
+  expect(refusal).toBeInstanceOf(RoundCapacityError);
+  expect((refusal as RoundCapacityError).stage).toBe("set-first-part");
+  expect((refusal as Error).message).toBe(partnerSetOverCeilingMessage(3));
+  expect(await a.receive()).toEqual({
+    decision: "abort",
+    abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+  });
+
+  const [c, d] = createMessagePipe();
+  for (const part of parts) await c.send(part);
+  expect(
+    await receivePsiSet(d, "client", "serverSetup", 25, {
+      setBytes: 25,
+      elements: 3,
+    }),
+  ).toEqual(bytes(25));
+});
+
+test("a set over the bound is refused as a protocol error even when it is also over this party's capacity", async () => {
+  const [a, b] = createMessagePipe();
+  await a.send(partsOf(bytes(25), 10)[0]);
+  const refusal = await receivePsiSet(b, "client", "serverSetup", 24, {
+    setBytes: 20,
+    elements: 3,
+  }).catch((err: unknown) => err);
+  expect(refusal).toEqual(
+    new ProtocolRefusalError(
+      "client protocol error: inbound PSI serverSetup declares 25 bytes, " +
+        "over the 24 the agreed record counts admit",
+    ),
+  );
+  await b.close();
+  await expect(a.receive()).rejects.toThrow("peer closed the connection");
 });
 
 test("an abort in place of any part ends the receive as the partner's abort", async () => {
@@ -486,6 +533,151 @@ test("a round refuses a setup longer than the partner's record counts admit", as
   // At the count the setup holds, the same set is admitted.
   expect(setup.byteLength).toBeLessThanOrEqual(psiSetByteBound(10));
 });
+
+/** `conn` stating `ceiling` as its ceiling on a partner's set. */
+function withSetCeiling(
+  conn: MessageConnection,
+  ceiling: number,
+): MessageConnection {
+  return {
+    send: (data) => conn.send(data),
+    receive: (timeoutMs) => conn.receive(timeoutMs),
+    close: () => conn.close(),
+    inboundPsiSetElementCeiling: () => ceiling,
+  };
+}
+
+// A joiner held to `ceiling` and the setup element bound `setupBound`, fed
+// only the first of several parts of a 10-value setup: a receiver that
+// allocated the joined set and read on would wait forever. Returns how the
+// joiner's round ended and the first frame it sent.
+async function joinerFedFirstSetupPart(
+  setupBound: number,
+  ceiling: number,
+): Promise<{ outcome: unknown; firstSent: unknown }> {
+  const engine = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "server",
+    "identifier-revealing",
+  );
+  const { setup } = await engine.createServerSetup(values(10, "s"));
+  engine.dispose();
+  expect(setup.byteLength).toBeGreaterThan(psiSetByteBound(9));
+  expect(setup.byteLength).toBeLessThanOrEqual(psiSetByteBound(10));
+  const [a, b] = createMessagePipe();
+  const joiner = new PSIParticipant(
+    "client",
+    psiLibrary,
+    { role: "joiner", verbose: -1 },
+    { ...UNBOUNDED_PSI_ELEMENTS, setup: setupBound },
+  );
+  const ended = joiner
+    .identifyIntersection(withSetCeiling(b, ceiling), values(3, "j"))
+    .then(
+      () => "completed",
+      (err: unknown) => err,
+    );
+  await a.send(partsOf(setup, 100)[0]);
+  const outcome = await ended;
+  joiner.dispose();
+  // The joiner sends any abort before its round ends, so a short wait
+  // finds it queued.
+  const firstSent = await a.receive(50).catch((err: unknown) => err);
+  await a.close();
+  return { outcome, firstSent };
+}
+
+test("a round refuses a partner's setup within the record counts but over the connection's ceiling at its first part, as this party's capacity", async () => {
+  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+  const { outcome, firstSent } = await joinerFedFirstSetupPart(10, 9);
+  expect(outcome).toBeInstanceOf(RoundCapacityError);
+  expect((outcome as RoundCapacityError).stage).toBe("set-first-part");
+  expect((outcome as Error).message).toBe(partnerSetOverCeilingMessage(9));
+  expect(firstSent).toEqual({
+    decision: "abort",
+    abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+  });
+  expect(decode).not.toHaveBeenCalled();
+});
+
+test("a round refuses a partner's setup over the record counts as a protocol error, whatever the connection's ceiling", async () => {
+  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+  for (const ceiling of [5, 9, 20]) {
+    const { outcome, firstSent } = await joinerFedFirstSetupPart(9, ceiling);
+    expect(outcome).toBeInstanceOf(ProtocolRefusalError);
+    expect((outcome as Error).message).toMatch(
+      new RegExp(
+        `inbound PSI serverSetup declares \\d+ bytes, over the ` +
+          `${psiSetByteBound(9)} the agreed record counts admit$`,
+      ),
+    );
+    expect(firstSent).not.toEqual(
+      expect.objectContaining({ decision: "abort" }),
+    );
+  }
+  expect(decode).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["a starter holds the partner's request to it", "starter", 1, 3, "starter"],
+  ["a joiner holds the partner's setup to it", "joiner", 3, 1, "joiner"],
+  ["a joiner's own response is not held to it", "joiner", 1, 3, undefined],
+] as const)(
+  "the connection's ceiling on a partner's set: %s",
+  async (_name, ceilingRole, starterValues, joinerValues, refusedRole) => {
+    const ceiling = 2;
+    const [a, b] = createMessagePipe();
+    const participant = (role: "starter" | "joiner") =>
+      new PSIParticipant(
+        role === "starter" ? "server" : "client",
+        psiLibrary,
+        { role, verbose: -1 },
+        UNBOUNDED_PSI_ELEMENTS,
+      );
+    const starter = participant("starter");
+    const joiner = participant("joiner");
+    const run = (
+      p: PSIParticipant,
+      conn: MessageConnection,
+      set: Array<string>,
+    ): Promise<unknown> =>
+      p.identifyIntersection(conn, set).then(
+        () => "completed",
+        (err: unknown) => err,
+      );
+    const ends = {
+      starter: run(
+        starter,
+        ceilingRole === "starter" ? withSetCeiling(a, ceiling) : a,
+        values(starterValues, "s"),
+      ),
+      joiner: run(
+        joiner,
+        ceilingRole === "joiner" ? withSetCeiling(b, ceiling) : b,
+        values(joinerValues, "j"),
+      ),
+    };
+    if (refusedRole === undefined) {
+      expect(await Promise.all([ends.starter, ends.joiner])).toEqual([
+        "completed",
+        "completed",
+      ]);
+    } else {
+      const refusal = await ends[refusedRole];
+      expect(refusal).toBeInstanceOf(RoundCapacityError);
+      expect((refusal as Error).message).toBe(
+        partnerSetOverCeilingMessage(ceiling),
+      );
+    }
+    // The refusing side sends nothing more, so its partner is released by
+    // the close.
+    await Promise.all([a.close(), b.close()]);
+    await Promise.all([ends.starter, ends.joiner]);
+    starter.dispose();
+    joiner.dispose();
+  },
+);
 
 test.each([
   ["starter", false],

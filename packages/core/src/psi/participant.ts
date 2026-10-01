@@ -184,8 +184,8 @@ export enum ProcessState {
  *
  * One more, `countFirstRoundValues`, is no crypto operation: it is the count
  * the first-round size check (`assertFirstRoundFitsWebRtcFrame`,
- * `assertFirstRoundFitsFileSyncFrame`) takes over this party's records before
- * anything is sent. Its `elements` and `processed` count records, not values.
+ * `assertFileSyncFirstRoundWithinSetMaximum`) takes over this party's records
+ * before anything is sent. Its `elements` and `processed` count records, not values.
  * Its `started` and `progress` reports give the dataset's full row count as
  * `elements`; its `finished` and `failed` reports give the count of rows the
  * check actually walked, which is short of the row count when a
@@ -403,16 +403,31 @@ export class PSIParticipant {
   }
 
   // Receive one of the round's PSI sets in its parts, held to the bytes the
-  // authenticated element bound for its kind admits.
+  // authenticated element bound for its kind admits. A setup or a request
+  // holds the partner's own set, so it is also held to the connection's
+  // ceiling on a partner's set, as this party's capacity rather than the
+  // protocol's; a response re-encrypts this party's request.
   private receiveRoundSet(
     conn: MessageConnection,
     kind: PsiMessageKind,
   ): Promise<Uint8Array> {
-    const elementBound =
+    const elementBound = Math.min(
       kind === "serverSetup"
         ? this.elementBounds.setup
-        : this.elementBounds[kind];
-    return receivePsiSet(conn, this.id, kind, psiSetByteBound(elementBound));
+        : this.elementBounds[kind],
+      MAX_PSI_DECODE_ELEMENTS,
+    );
+    const ceiling =
+      kind === "response" ? undefined : conn.inboundPsiSetElementCeiling?.();
+    return receivePsiSet(
+      conn,
+      this.id,
+      kind,
+      psiSetByteBound(elementBound),
+      ceiling !== undefined && ceiling < elementBound
+        ? { setBytes: psiSetByteBound(ceiling), elements: ceiling }
+        : undefined,
+    );
   }
 
   // Report one crypto operation's element count and duration around the engine

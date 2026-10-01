@@ -282,8 +282,8 @@ vi.mock("@alcove/core", async (importActual) => {
     exchangeRecordOwedButUnbuilt: vi.fn().mockReturnValue(false),
     describeExchangeStages: vi.fn().mockReturnValue([]),
     buildOutputTable: vi.fn().mockReturnValue({ headers: [], rows: [] }),
-    assertFirstRoundFitsFileSyncFrame: vi.fn(
-      actual.assertFirstRoundFitsFileSyncFrame,
+    assertFileSyncFirstRoundWithinSetMaximum: vi.fn(
+      actual.assertFileSyncFirstRoundWithinSetMaximum,
     ),
   };
 });
@@ -379,8 +379,9 @@ import {
   operatorSuppliedSpans,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   describeExchangeStages,
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   prepareForExchange,
+  RoundCapacityError,
   RoundSetLimitError,
 } from "@alcove/core";
 import {
@@ -632,11 +633,11 @@ test("rejects before opening a connection when keyFilePath is whitespace-only", 
   ).rejects.toThrow("key file path is empty");
 });
 
-test("a first round too large for one message file is refused before any file is written", async () => {
-  // 301 values held once each, checked against a bound under 300 values' file,
-  // stand in for one past the real bound: the check's arithmetic at that bound
-  // is core's to pin, and what the dispatch decides is that the refusal comes
-  // before the transport is built and exits 64.
+test("a first round over the per-set maximum is refused before any file is written", async () => {
+  // 301 values held once each, checked against a maximum of 300, stand in for
+  // one past the real maximum: the check's bound is core's to pin, and what
+  // the dispatch decides is that the refusal comes before the transport is
+  // built and exits 64.
   const names = Array.from(
     { length: 301 },
     (_unused, i) =>
@@ -657,10 +658,10 @@ test("a first round too large for one message file is refused before any file is
     names.map((name) => ({ first_name: name })),
     ["first_name"],
   );
-  const check = vi.mocked(assertFirstRoundFitsFileSyncFrame);
+  const check = vi.mocked(assertFileSyncFirstRoundWithinSetMaximum);
   const actual = check.getMockImplementation()!;
   check.mockImplementationOnce((checked) =>
-    actual(checked, { maxFrameBytes: MESSAGE_HEADER_BYTES + 300 * 35 }),
+    actual(checked, { maxValues: 300 }),
   );
   const error = await runProtocol({
     connection: { channel: "filedrop", path: dropDir },
@@ -676,7 +677,7 @@ test("a first round too large for one message file is refused before any file is
   expect(check).toHaveBeenCalledWith(prepared, expect.anything());
   expect(error).toBeInstanceOf(RoundSetLimitError);
   expect((error as Error).message).toMatch(
-    /at least 301 values to send, over the \d+ one message file holds/,
+    /at least 301 values to send, over the 300 one PSI set can hold/,
   );
   expect(exitCodeForError(error)).toBe(64);
   expect(fs.readdirSync(dropDir)).toEqual([]);
@@ -4378,7 +4379,7 @@ const SHORT_MEMORY_RECORDS = 1_000_000;
 test("preflightRun refuses a run short of memory before any file is written", async () => {
   mockState.memoryReadings = SHORT_MEMORY;
   mockFd3Open();
-  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockClear();
+  vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockClear();
   try {
     await expect(
       preflightRun({
@@ -4396,7 +4397,9 @@ test("preflightRun refuses a run short of memory before any file is written", as
     vi.mocked(fs.fstatSync).mockRestore();
   }
   expect(fs.readdirSync(dropDir)).toEqual([]);
-  expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).not.toHaveBeenCalled();
+  expect(
+    vi.mocked(assertFileSyncFirstRoundWithinSetMaximum),
+  ).not.toHaveBeenCalled();
   expect(mockState.infos.filter((m) => m.startsWith("memory: "))).toHaveLength(
     1,
   );
@@ -4408,7 +4411,7 @@ test("preflightRun refuses a run short of memory before any file is written", as
 test("--allow-memory-shortfall turns the refusal into a warning on both channels", async () => {
   mockState.memoryReadings = SHORT_MEMORY;
   mockFd3Open();
-  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockClear();
+  vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockClear();
   let result: Awaited<ReturnType<typeof preflightRun>>;
   try {
     result = await preflightRun({
@@ -4424,7 +4427,9 @@ test("--allow-memory-shortfall turns the refusal into a warning on both channels
     vi.mocked(fs.fstatSync).mockRestore();
   }
   expect(result.memoryBudgetReported).toBe(true);
-  expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).toHaveBeenCalledTimes(1);
+  expect(
+    vi.mocked(assertFileSyncFirstRoundWithinSetMaximum),
+  ).toHaveBeenCalledTimes(1);
   const warning = mockState.warnings.find((m) =>
     m.startsWith("running with --allow-memory-shortfall: "),
   );
@@ -4480,6 +4485,57 @@ test("a run whose preflight reported its memory does not report it again", async
   ).rejects.not.toThrow(/--allow-memory-shortfall/);
   expect(mockState.infos.filter((m) => m.startsWith("memory: "))).toEqual([]);
 });
+
+test("the partner's round is held to this process's memory once the terms are exchanged, and the override warns", async () => {
+  mockState.memoryReadings = SHORT_MEMORY;
+  const outcomes: Array<unknown> = [];
+  vi.mocked(runExchange).mockImplementation((async (
+    _conn: unknown,
+    _role: unknown,
+    _prepared: unknown,
+    options: { checkPartnerRoundCapacity?: (values: number) => void },
+  ) => {
+    try {
+      options.checkPartnerRoundCapacity?.(SHORT_MEMORY_RECORDS);
+      outcomes.push("passed");
+    } catch (err) {
+      outcomes.push(err);
+    }
+    return defaultRunExchange();
+  }) as never);
+  await Promise.all(
+    ["test-refuses", "test-overrides"].map((loggerName) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: null,
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName,
+        allowMemoryShortfall: loggerName === "test-overrides",
+      }),
+    ),
+  );
+  const refused = outcomes.filter((o) => o !== "passed");
+  expect(outcomes).toHaveLength(2);
+  expect(refused).toHaveLength(1);
+  expect(refused[0]).toBeInstanceOf(RoundCapacityError);
+  expect((refused[0] as Error).message).toMatch(
+    /^your partner's set for one linkage key can hold up to 1,000,000 values, .* has 1\.00 GB \(its container's memory limit\).*--allow-memory-shortfall/,
+  );
+  expect(
+    mockState.warnings.filter((m) =>
+      m.startsWith(
+        "running with --allow-memory-shortfall: your partner's set for one " +
+          "linkage key can hold up to 1,000,000 values",
+      ),
+    ),
+  ).toHaveLength(1);
+}, 20_000);
 
 /**
  * Run one party of a signed, no-record exchange through preflightRun and then

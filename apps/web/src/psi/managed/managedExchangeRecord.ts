@@ -240,7 +240,12 @@ export type ManagedExchangeRunOutcome =
  * refusal (the partner's linkage terms changed and this run did not take them
  * on) is met at the terms exchange, after the handshake and before any linkage
  * key or data moves, and is benign too: its remedy is the operator's decision
- * on the change. */
+ * on the change. A `"partner-set-too-large"` refusal (the partner's set for a
+ * linkage key can hold more values than this browser can match) is met at the
+ * terms exchange too, or at the first part of a partner's set inside a round,
+ * after sets of this party's may have moved, and is benign the same way: its
+ * remedy is the command-line application or a smaller input on the partner's
+ * side. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -250,6 +255,7 @@ export type ManagedExchangeFailureKind =
   | "terms-shortfall"
   | "handed-off"
   | "too-large"
+  | "partner-set-too-large"
   | "terms-change"
   | "cancelled";
 
@@ -283,6 +289,11 @@ export interface ManagedExchangeLastRun {
    * summary and the between-visit notice say the set could not be counted
    * and name no bound, even beside a `tooLargeBound`. */
   setUncounted?: true;
+  /** Present only on a `"partner-set-too-large"` failure refused at the first
+   * part of a partner's set inside a round rather than at the terms exchange,
+   * so sets of this party's may have been sent. The run history then states
+   * the uncertain disclosure line rather than that nothing was disclosed. */
+  refusedInRound?: true;
 }
 
 /** What a `"too-large"` failure records about the set it refused. */
@@ -487,9 +498,9 @@ export function parseStoredInstant(value: string): number {
  * was added still reads and tiers exactly as it did, and neither enum growing
  * moves {@link MANAGED_EXCHANGE_SCHEMA_VERSION}. An artifact holding a value
  * this reader does not know is refused whole rather than read with the value
- * dropped -- the reader-rejects-unknown rule. `singleColumnInput` and
- * `setUncounted` are admitted only as `true`, so neither field can hold a
- * reading its absence already states. */
+ * dropped -- the reader-rejects-unknown rule. `singleColumnInput`,
+ * `setUncounted`, and `refusedInRound` are admitted only as `true`, so none
+ * can hold a reading its absence already states. */
 export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   at: z.iso.datetime(),
   outcome: z.enum(["succeeded", "failed", "desynced", "missed", "skipped"]),
@@ -503,6 +514,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "terms-shortfall",
       "handed-off",
       "too-large",
+      "partner-set-too-large",
       "terms-change",
       "cancelled",
     ])
@@ -510,6 +522,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   singleColumnInput: z.literal(true).optional(),
   tooLargeBound: z.enum(["webrtc-message"]).optional(),
   setUncounted: z.literal(true).optional(),
+  refusedInRound: z.literal(true).optional(),
 });
 
 /** The canonical validator for the operator's answer. Strict, so a member a

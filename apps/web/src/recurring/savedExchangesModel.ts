@@ -200,6 +200,8 @@ function tierStatus(
       return termsProposalStored
         ? `Your partner's terms changed (${at}); apply or decline the change`
         : `Your partner's terms changed (${at}); the change was declined, run again to review it`;
+    case "partner-set-too-large":
+      return `Last run stopped: your partner's set is too large for this browser (${at}); use the command-line application`;
     case "handed-off":
       // The row already names the hand-off and its date beside this line, so the
       // status says what the run did rather than repeating the state.

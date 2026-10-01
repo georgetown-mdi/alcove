@@ -6,6 +6,7 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  RoundCapacityError,
   assertFirstRoundFitsWebRtcFrame,
   getLogger,
   isSetTooLargeError,
@@ -54,8 +55,12 @@ import { undeclaredColumnsRunNotice } from "@psi/runWarnings";
 import { buildRunOutputs } from "@psi/runOutputs";
 import { invitationUsable } from "@psi/formatting";
 import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
-import { tooLargeFailureTitle } from "@psi/managed/managedFailureCopy";
 import { tooLargeReadingOf } from "@psi/managed/managedRun";
+
+import {
+  PARTNER_SET_TOO_LARGE_TITLE,
+  tooLargeFailureTitle,
+} from "@psi/managed/managedFailureCopy";
 
 import { buildRunEvents } from "./runEvents";
 import { useFailedRunRecord } from "./useFailedRunRecord";
@@ -383,6 +388,16 @@ function failureContentFor(
       ...(consoleReported ? reportedCauseFields(cause) : {}),
     };
   }
+  // A partner whose set for a linkage key can hold more values than this
+  // browser can match, refused at the terms exchange. The message is fixed
+  // copy with counts. Classified `config`: the same partner input refuses
+  // identically however many times it runs.
+  if (error instanceof RoundCapacityError)
+    return {
+      category: "config",
+      title: PARTNER_SET_TOO_LARGE_TITLE,
+      message: sanitizedFailureMessage(error),
+    };
   // A set too large for one WebRTC message, refused at the start, before
   // anything was sent, from this party's own rows; or a first-round count that
   // could not be taken. The message is fixed copy with counts, and for an

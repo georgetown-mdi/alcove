@@ -510,6 +510,8 @@ across runs before anything tighter gates on them.
 
 `npm run test:stress -w packages/core` runs `packages/core/test/stress/`, the large-input cases kept out of `npm run test` and run nightly by `.github/workflows/nightly_core_stress.yaml`. Stress files run one at a time, and a case that needs more free memory than the machine has skips with a message naming the case, its need, and the free memory.
 
+`npm run test:stress -w apps/cli` runs `apps/cli/test/stress/`, exchanges between processes of the built CLI (`npm run build -w apps/cli` first) at sizes only a large host holds. Nothing schedules it: a host with the memory runs it by hand. Its files skip the same way, and also without a built CLI.
+
 ## What a run did not cover
 
 A run that quietly covers less than the suite does is worse than a red one: its

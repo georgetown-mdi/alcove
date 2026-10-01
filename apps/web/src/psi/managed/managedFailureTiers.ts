@@ -50,6 +50,12 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   the terms exchange and did not take them on, before any linkage key or data
  *   moved (recovery: apply or decline the change; never a retry, since the same
  *   terms refuse identically at the next window).
+ * - `"partner-set-too-large"` -- the last run refused, at the terms exchange
+ *   or a set's first part, a partner whose set for a linkage key can hold more
+ *   values than this browser can match (recovery: run the exchange with the
+ *   command-line application, or the partner splits their input; never a
+ *   retry, since the same partner input refuses identically at the next
+ *   window).
  * - `"handed-off"` -- the last run met a copy an export had handed off and refused
  *   before reading the input or connecting (recovery: none here; the exchange runs
  *   wherever the hand-off took it, and every later run on this device refuses the
@@ -87,6 +93,7 @@ export type ManagedFailureTier =
   | "terms-shortfall"
   | "too-large"
   | "terms-change"
+  | "partner-set-too-large"
   | "handed-off"
   | "custody-unreadable"
   | "missed"
@@ -280,6 +287,10 @@ function recordedFailureTier(
   // transport bucket because reconnecting meets the same terms; its remedy is
   // the operator's decision on the change.
   if (lastRun.failureKind === "terms-change") return "terms-change";
+  // A recorded refusal of a partner's set too large for this browser: benign,
+  // and out of the transport bucket because reconnecting meets the same set.
+  if (lastRun.failureKind === "partner-set-too-large")
+    return "partner-set-too-large";
   // A recorded hand-off refusal: the copy this device held was given away, so the
   // failure is the single-owner invariant holding rather than anything to recover
   // from here -- and nothing about it is a desync or an attack.

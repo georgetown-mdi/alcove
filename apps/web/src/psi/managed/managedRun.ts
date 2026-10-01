@@ -22,6 +22,7 @@ import {
   ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  RoundCapacityError,
   TermsChangeRefusedError,
   WebRtcFrameLimitError,
   isSetTooLargeError,
@@ -274,7 +275,8 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
  * would report a defect in Alcove as a benign expiry that a fresh invitation
  * cannot fix. A set too large to send ({@link isSetTooLargeError}) is excluded
  * the same way: it holds the tag too, and a fresh invitation leaves the set it
- * refused as large.
+ * refused as large. So is a partner's set too large for this browser
+ * ({@link RoundCapacityError}), for the same reason.
  */
 export function remapLapsedRunFailure(
   error: unknown,
@@ -283,6 +285,7 @@ export function remapLapsedRunFailure(
 ): ManagedExchangeExpiredError | undefined {
   if (error instanceof InternalConsistencyError) return undefined;
   if (isSetTooLargeError(error)) return undefined;
+  if (error instanceof RoundCapacityError) return undefined;
   if (!hasRecoveryHint(error)) return undefined;
   if (!managedExchangeLapsed(record, now)) return undefined;
   // expires is defined here: managedExchangeLapsed returns true only when it is
@@ -335,7 +338,12 @@ export function tooLargeReadingOf(
  * {@link TermsChangeRefusedError} records `terms-change`: it is raised at the
  * terms exchange, inside the data exchange but before any linkage key or data
  * moves, and the same partner terms refuse identically until the operator
- * decides on them. `aborted` then records `cancelled`. A `security`-kind
+ * decides on them. A {@link RoundCapacityError} records
+ * `partner-set-too-large`: it is raised at the terms exchange too, or at the
+ * first part of a partner's set over this browser's ceiling, which adds
+ * `refusedInRound`, and the same partner input refuses identically at every
+ * window. `aborted` then records
+ * `cancelled`. A `security`-kind
  * {@link ConnectionError} before the data exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
  * records `transport`.
@@ -374,6 +382,11 @@ export function rerunFailureLastRun(
     };
   if (error instanceof TermsChangeRefusedError)
     return failedRun(at, "failed", "terms-change");
+  if (error instanceof RoundCapacityError)
+    return {
+      ...failedRun(at, "failed", "partner-set-too-large"),
+      ...(error.stage === "set-first-part" ? { refusedInRound: true } : {}),
+    };
   if (aborted) return failedRun(at, "failed", "cancelled");
   if (
     error instanceof ConnectionError &&
@@ -388,8 +401,10 @@ export function rerunFailureLastRun(
  * six are read before any connection is attempted; `"missed"` is read after a
  * connection attempt found no partner, `"too-large"` before connecting or at
  * a later round whose own set holds more values than
- * `MAX_PSI_DECODE_ELEMENTS`, and `"relay-registration"` before connecting,
- * once the registrar did not confirm a pending registration. */
+ * `MAX_PSI_DECODE_ELEMENTS`, `"partner-set-too-large"` at the terms exchange
+ * or the first part of a partner's set,
+ * and `"relay-registration"` before connecting, once the registrar did not
+ * confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
   | "handed-off"
@@ -399,6 +414,7 @@ type BenignRerunOutcome =
   | "already-running"
   | "missed"
   | "too-large"
+  | "partner-set-too-large"
   | "relay-registration";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
@@ -465,6 +481,7 @@ export function benignRerunOutcome(
   if (error instanceof PartnerNoShowError && !dataExchangeStarted)
     return "missed";
   if (isSetTooLargeError(error)) return "too-large";
+  if (error instanceof RoundCapacityError) return "partner-set-too-large";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
   return undefined;
