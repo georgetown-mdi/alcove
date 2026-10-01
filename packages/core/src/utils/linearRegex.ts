@@ -38,10 +38,9 @@ function compiledWeightedSize(re: RE2JS): number {
   return re.programSize() * (1 + re.groupCount());
 }
 
-// The weight of a one-character pattern, the smallest a search runs under.
-// Every step's read is already charged one unit per code unit, which stands for
-// a first pass under such a pattern, so a first pass is charged only the weight
-// above it.
+// The weight of a one-character pattern, 3 on this build. A first pass under
+// weight w is charged w minus this per code unit, on top of the step's own read
+// of 1 unit per code unit, so it costs w - 2 per code unit in all.
 const ONE_CHARACTER_PATTERN_WEIGHT = compiledWeightedSize(RE2JS.compile("a"));
 
 function compileCached(pattern: string): RE2JS {
@@ -70,10 +69,11 @@ function compileCached(pattern: string): RE2JS {
  * runs one search per match, each from where the last match ended, and a
  * pattern whose preferred alternative can stay live to the end of the value
  * scans the rest of it on every search, so its cost grows with the square of
- * the value length. What the searches span is charged in code units times the
- * weighted size, less, on the first pass over the value, the weight of a
- * one-character pattern, which the step's own read stands for. A replacement
- * also counts the text it copies out of the value against `remaining`, since a
+ * the value length. A first pass over the value under weight w is charged
+ * w - 3 per code unit (3 being a one-character pattern's weight), which with
+ * the step's own read of 1 unit per code unit makes w - 2 per code unit in
+ * all; every rescan is charged w per code unit it spans. A replacement also
+ * counts the text it copies out of the value against `remaining`, since a
  * `` $` `` or `$'` reference copies a prefix or suffix for every match; those
  * copies are charged only where they cross, as a returned replacement's output
  * is charged by its caller. The operation stops at the read or copy that would
@@ -123,7 +123,6 @@ class SpanCountingValue {
     this.allowance = allowance;
   }
 
-  // What the searches spanned, in units.
   searchCharged(): number {
     const firstPass = Math.min(this.spanned, this.length);
     return (
@@ -203,13 +202,6 @@ class SpanCountingInput extends MatcherInputBase {
   constructor(counted: SpanCountingValue) {
     super();
     this.counted = counted;
-  }
-
-  // The value itself, for an operation that hands the engine a string rather
-  // than a matcher input. It is one search, read from a fresh span.
-  asSingleSearchValue(): string {
-    this.counted.startSearch();
-    return this.counted as unknown as string;
   }
 
   override isUTF16Encoding(): boolean {
@@ -380,7 +372,7 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
       budget === undefined
         ? re.test(input)
         : underScanBudget(input, weightedSize, budget, false, (counted) =>
-            re.test(counted.asSingleSearchValue()),
+            re.test(counted.asCharSequence()),
           ),
     matches: (input) => re.matcher(input).matches(),
     split: (input, budget) =>
