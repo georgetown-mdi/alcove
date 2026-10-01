@@ -38,9 +38,6 @@ export const INTERRUPT_CLEANUP_BOUND_MS = 8_000;
  */
 export const INTERRUPT_DELETE_TIMEOUT_MS = 3_000;
 
-/** A probe-file suffix the cleanup's name mask cannot widen. */
-const PROBE_SUFFIX = /^[A-Za-z0-9_-]+$/;
-
 /** Ceiling on the port-445 reachability probe. */
 const TCP_PROBE_TIMEOUT_MS = 8_000;
 
@@ -668,10 +665,7 @@ export async function runProbe(
   const removeWorkDir = (): void =>
     fs.rmSync(workDir, { recursive: true, force: true });
 
-  // The name mask covering every file this run can leave on the share, set
-  // while one may be there. The share belongs to someone else and their partner
-  // can see it, so anything still there when the run ends -- on a failure, a
-  // timeout, or an interrupt -- is deleted before returning.
+  // Covers both of this run's probe files; set while either may be on the share.
   let leftoverMask: string | undefined;
   let target = "";
   let interrupted = false;
@@ -704,8 +698,7 @@ export async function runProbe(
     smbclient(shareArgs(input, authFile, target, command));
 
   // One sweep per run, shared by the ordinary exit and an interrupt. It waits
-  // for the command in flight to end, so a put stopped partway is deleted
-  // after it ends rather than before, and the credentials file the delete
+  // for the command in flight to end, and the credentials file the delete
   // needs is removed only once it is done.
   let swept: Promise<void> | undefined;
   const sweep = (deleteTimeoutMs: number): Promise<void> =>
@@ -889,10 +882,6 @@ export async function runProbe(
     // one who lost the race would be told the share is create-only.
     const suffix =
       input.token === "" ? randomBytes(6).toString("hex") : input.token;
-    // The cleanup deletes by `${probeName}*`, which matches only this run's
-    // two names while the suffix holds no dot and no wildcard.
-    if (!PROBE_SUFFIX.test(suffix))
-      throw new Error(`the probe file suffix '${suffix}' is not a plain name.`);
     const probeName = `alcove-probe-${suffix}.tmp`;
     const renamedName = `${probeName}.renamed`;
     fs.writeFileSync(path.join(workDir, probeName), "Alcove write probe\n");

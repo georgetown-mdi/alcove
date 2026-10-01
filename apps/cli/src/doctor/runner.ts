@@ -149,12 +149,16 @@ export const nodeCommandRunner: CommandRunner = {
         stop();
       }, options.timeoutMs);
       timer.unref();
-      options.signal?.addEventListener("abort", stop, { once: true });
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        stop();
+      };
+      options.signal?.addEventListener("abort", onAbort, { once: true });
 
       const settle = (result: CommandResult): void => {
         clearTimeout(timer);
         if (killTimer !== undefined) clearTimeout(killTimer);
-        options.signal?.removeEventListener("abort", stop);
+        options.signal?.removeEventListener("abort", onAbort);
         resolve(result);
       };
 

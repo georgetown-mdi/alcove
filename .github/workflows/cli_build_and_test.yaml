@@ -551,9 +551,9 @@ jobs:
 
           sudo umount /mnt/alcove /mnt/alcove-elsewhere
 
-      # After an interrupt the probe files go in one masked delete. Which names
-      # that mask matches is the server's call, so it is checked here: both
-      # probe files gone, and every near-miss name and the marker still there.
+      # Which names the interrupt cleanup's masked delete matches is the
+      # server's call: both probe files must go, and every near-miss name and
+      # the marker must stay.
       - name: An interrupted probe removes its probe files and nothing else
         run: |
           set -euo pipefail

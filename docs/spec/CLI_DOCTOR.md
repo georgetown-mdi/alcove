@@ -136,7 +136,7 @@ Probe cleanup is attempted, never guaranteed. Every working file a run creates i
 
 An interrupt (`SIGINT` or `SIGTERM`) is a handled exit path, bounded at 8 seconds from the signal to its re-raise. The run prints one line to stderr, `cleaning up, up to 8 s; press Ctrl-C again to skip`, stops the `smbclient` command in flight (`SIGTERM`, then `SIGKILL` 2 seconds later), issues the masked delete under a 3-second timeout, removes its local credentials directory, and re-raises the signal. Whatever is still running when the bound expires is abandoned; the credentials directory is removed before the re-raise in every case. A second interrupt abandons the cleanup at once, likewise removing the credentials directory before it re-raises.
 
-A supervisor stopping the probe -- `docker stop`, a Kubernetes `terminationGracePeriodSeconds`, a scheduler's kill timeout -- has to allow at least the 8-second bound between its `SIGTERM` and its `SIGKILL`. Docker's default of 10 seconds does. A `SIGKILL` cannot be handled, so one sent sooner leaves the credentials file on disk in an `alcove-doctor-*` directory under the temporary directory Node reports (`/tmp` by default), and may leave probe files on the share. In a container started with `docker run --rm` that directory goes with the container.
+A `SIGKILL` cannot be handled, so one sent during the cleanup leaves the credentials file on disk in an `alcove-doctor-*` directory under the temporary directory, and may leave probe files on the share. A supervisor's stop timeout must be at least the 8-second bound.
 
 The marker file is the single persistent artifact: the probe
 leaves it behind, and `doctor mount` consumes it on a matching cross-check.

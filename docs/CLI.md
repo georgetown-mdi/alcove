@@ -920,6 +920,8 @@ Run both: the probe leaves a marker file behind and the mount check looks for it
 
 Neither mode changes anything on the share beyond its own working files: the probe attempts to remove every file it creates except the marker and sweeps any `alcove-probe` working file already present, whichever run left it, and the mount check consumes the marker and removes the rest. On a share that refuses deletes or a connection that dies mid-run, an `alcove-probe-*.tmp*` working file can remain until the next run's sweep ([cleanup limits](spec/CLI_DOCTOR.md#cleanup-limits)).
 
+Stopping a probe with `Ctrl-C` or a `SIGTERM` makes it clean up before it exits, which takes up to 8 seconds. Where a supervisor stops the container, give it at least that long between the stop request and the kill: `docker stop` allows 10 seconds by default, which is enough, and a Kubernetes `terminationGracePeriodSeconds` or a scheduler's kill timeout set lower is not. A probe killed sooner leaves its credentials file in an `alcove-doctor-*` directory under `/tmp`, which a container started with `docker run --rm` discards along with the container. Details: [cleanup limits](spec/CLI_DOCTOR.md#cleanup-limits).
+
 ### Inputs
 
 `doctor probe` takes its connection details from the environment, not from flags, so the password never becomes an argv value that any process listing on the machine can read:
