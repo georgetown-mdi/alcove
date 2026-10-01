@@ -56,7 +56,7 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  * sizes the parts of its sets to. It states the browser's ceiling on a
  * partner's PSI set (`inboundPsiSetElementCeiling`), which the exchange holds
  * the partner's round count to at the terms exchange and each partner set to
- * when its first part arrives.
+ * when its first part arrives, both as this party's capacity.
  *
  * If the channel never opens, the returned promise rejects and the half-open
  * channel is torn down first, since `peer.disconnect()` alone would not

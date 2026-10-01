@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
@@ -12,8 +12,18 @@ import {
   runExchange,
 } from "../src/exchange";
 
+import {
+  buildKeyStrings,
+  localFanOutFactor,
+  StandardizedDataset,
+  StandardizedField,
+} from "../src/standardization";
+
 import type { MessageConnection } from "../src/connection/messageConnection";
-import type { LinkageStrategy } from "../src/config/linkageTermsSchema";
+import type {
+  LinkageKey,
+  LinkageStrategy,
+} from "../src/config/linkageTermsSchema";
 import type { PreparedExchange, RunExchangeOptions } from "../src/exchange";
 
 // The capacity check a party makes on its partner's round once the terms are
@@ -119,33 +129,112 @@ async function runPair(params: {
   return { local: outcomes[0], partner: outcomes[1], sent };
 }
 
-test("the partner's round is its record count times the widest key's width in the partner's role", () => {
+test("the partner's round is its record count times the widest key's declared width", () => {
   const keys = {
     linkageKeys: [{ name: "a", elements: [{ field: "a" }] }, swappedKey],
   };
-  expect(partnerRoundValues(1_000, keys, true)).toBe(2_000);
-  expect(partnerRoundValues(1_000, keys, false)).toBe(1_000);
+  expect(partnerRoundValues(1_000, keys)).toBe(2_000);
   expect(
-    partnerRoundValues(1_000, { linkageKeys: [keys.linkageKeys[0]] }, true),
+    partnerRoundValues(1_000, { linkageKeys: [keys.linkageKeys[0]] }),
   ).toBe(1_000);
+});
+
+describe("the partner's round is not under what a partner's key read realizes", () => {
+  const split = [{ function: "split_on", params: { delimiter: " " } }];
+  const tokens = (prefix: string, count: number): string =>
+    Array.from({ length: count }, (_unused, i) => `${prefix}t${i}`).join(" ");
+
+  // Realizes `key` over `rows` rows of a first name of `firstTokens` tokens and
+  // a last name of `lastTokens`, cleaned by `localSteps`, in each PSI role,
+  // against the partner's round for the count those rows declare.
+  function realizedAndWeighed(
+    key: LinkageKey,
+    localSteps: Array<{ function: string; params: { delimiter: string } }>,
+    firstTokens: number,
+    lastTokens: number,
+    rows: number,
+  ) {
+    const raw = Array.from({ length: rows }, (_unused, r) => ({
+      first_name: tokens(`f${r}`, firstTokens),
+      last_name: tokens(`l${r}`, lastTokens),
+    }));
+    const dataset = new StandardizedDataset(
+      [
+        new StandardizedField("firstName", "first_name", localSteps, raw),
+        new StandardizedField("lastName", "last_name", localSteps, raw),
+      ],
+      [key],
+    );
+    const realized = (isReceiver: boolean): number => {
+      let total = 0;
+      for (let row = 0; row < rows; row++)
+        total += buildKeyStrings(key, dataset, row, isReceiver)?.size ?? 0;
+      return total;
+    };
+    return {
+      sender: realized(false),
+      receiver: realized(true),
+      weighed: partnerRoundValues(
+        rows * localFanOutFactor(dataset.declaresFanOut),
+        { linkageKeys: [key] },
+      ),
+    };
+  }
+
+  test("a swapped key whose elements both declare split_on, 10 rows of 30 by 15 tokens", () => {
+    const key: LinkageKey = {
+      name: "FN + LN",
+      elements: [
+        { field: "firstName", transform: split },
+        { field: "lastName", transform: split },
+      ],
+      swap: ["firstName", "lastName"],
+    };
+    const { sender, receiver, weighed } = realizedAndWeighed(
+      key,
+      [],
+      30,
+      15,
+      10,
+    );
+    expect(sender).toBe(4_500);
+    expect(weighed).toBe(8_000);
+    expect(sender).toBeLessThanOrEqual(weighed);
+    expect(receiver).toBeLessThanOrEqual(weighed);
+  });
+
+  test("a swapped key whose fields the partner's own cleaning splits, 10 rows of 6 by 6 tokens", () => {
+    const key: LinkageKey = {
+      name: "FN + LN",
+      elements: [{ field: "firstName" }, { field: "lastName" }],
+      swap: ["firstName", "lastName"],
+    };
+    const { sender, receiver, weighed } = realizedAndWeighed(
+      key,
+      split,
+      6,
+      6,
+      10,
+    );
+    expect(sender).toBe(360);
+    expect(weighed).toBe(400);
+    expect(sender).toBeLessThanOrEqual(weighed);
+    expect(receiver).toBeLessThanOrEqual(weighed);
+  });
 });
 
 test("the partner's round is held to the per-set maximum no sender exceeds", () => {
   const oneKey = {
     linkageKeys: [{ name: "a", elements: [{ field: "a" }] }],
   };
-  expect(partnerRoundValues(MAX_PSI_DECODE_ELEMENTS, oneKey, true)).toBe(
+  expect(partnerRoundValues(MAX_PSI_DECODE_ELEMENTS, oneKey)).toBe(
     MAX_PSI_DECODE_ELEMENTS,
   );
-  expect(partnerRoundValues(MAX_PSI_DECODE_ELEMENTS + 1, oneKey, true)).toBe(
+  expect(partnerRoundValues(MAX_PSI_DECODE_ELEMENTS + 1, oneKey)).toBe(
     MAX_PSI_DECODE_ELEMENTS,
   );
   expect(
-    partnerRoundValues(
-      MAX_PSI_DECODE_ELEMENTS,
-      { linkageKeys: [swappedKey] },
-      true,
-    ),
+    partnerRoundValues(MAX_PSI_DECODE_ELEMENTS, { linkageKeys: [swappedKey] }),
   ).toBe(MAX_PSI_DECODE_ELEMENTS);
 });
 
@@ -235,23 +324,22 @@ test("a single-pass exchange is left to its dataset ceiling", async () => {
   expect(partner.status).toBe("fulfilled");
 });
 
-test("a sender partner is weighed without the width only the receiver applies", async () => {
-  // The partner has more records, so it resolves to the PSI sender and builds
-  // the authored order alone: its round is its record count, not twice it.
+test("a sender partner is weighed at the declared width", async () => {
+  // The partner has more records, so it resolves to the PSI sender.
   const seen: Array<number> = [];
   const { local, partner } = await runPair({
     localRows: 5,
     partnerRows: 12,
-    ceiling: 12,
+    ceiling: 24,
     swapped: true,
     options: { checkPartnerRoundCapacity: (values) => void seen.push(values) },
   });
-  expect(seen).toEqual([12]);
+  expect(seen).toEqual([24]);
   expect(local.status).toBe("fulfilled");
   expect(partner.status).toBe("fulfilled");
 });
 
-test("a receiver partner is weighed at the width it applies", async () => {
+test("a receiver partner is weighed at the declared width", async () => {
   const { local } = await runPair({
     localRows: 12,
     partnerRows: 5,

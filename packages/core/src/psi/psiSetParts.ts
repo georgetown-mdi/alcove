@@ -20,7 +20,8 @@ import {
   PSI_SET_MAX_FRAMING_BYTES,
   webrtcFrameExceedsBound,
 } from "../connection/webrtcOutboundBound";
-import { ProtocolRefusalError } from "../errors";
+import { ProtocolRefusalError, RoundCapacityError } from "../errors";
+import { sendAbort } from "../protocolSetup";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 
 import type { MessageConnection } from "../connection/messageConnection";
@@ -55,6 +56,33 @@ export function psiSetByteBound(elementBound: number): number {
  * like every abort reason (see `sendAbort`).
  */
 export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
+
+/**
+ * The abort reason a party sends when the partner's set for a linkage key is
+ * larger than this party can process: at the terms exchange
+ * (`checkPartnerRoundCapacity` in exchange.ts) or at the first part of the set
+ * ({@link receivePsiSet}). A fixed literal, as every abort reason must be (see
+ * `sendAbort`).
+ */
+export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
+  "the partner cannot process a set as large as the one you send for a " +
+  "linkage key";
+
+/**
+ * The refusal a party raises at the first part of a partner's set whose
+ * declared length is within what the agreed record counts admit but over the
+ * `ceilingElements` values its connection can process.
+ */
+export function partnerSetOverCeilingMessage(ceilingElements: number): string {
+  return (
+    "Too large for this browser: your partner's set for this linkage key " +
+    `holds more than the ${ceilingElements} values a browser exchange can ` +
+    "match, so the exchange stopped before receiving it and told your " +
+    "partner. Ask your partner to split their input into smaller files and " +
+    "run one exchange for each, or run this exchange with the command-line " +
+    "application on a host with enough memory."
+  );
+}
 
 /**
  * The refusal a round raises, before building the set, on a set of this
@@ -166,15 +194,23 @@ export async function sendPsiSet(
  * the only part of an empty set, so a partner cannot hold the receive reading
  * empty parts. Any deviation is a {@link ProtocolRefusalError}.
  *
+ * A set whose declared length is within `maxSetBytes` but over
+ * `capacity.setBytes` is this party's own limit rather than a deviation: the
+ * partner is sent {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON} and a
+ * {@link RoundCapacityError} is raised, before any buffer is allocated.
+ *
  * @param what - The set the round awaits, named in every refusal.
- * @param maxSetBytes - The most bytes the set may hold
+ * @param maxSetBytes - The most bytes the set may hold under the protocol
  *   ({@link psiSetByteBound}).
+ * @param capacity - This party's own ceiling on the set, when it is under
+ *   `maxSetBytes`: its bytes and the element count they are derived from.
  */
 export async function receivePsiSet(
   conn: MessageConnection,
   participantId: string,
   what: string,
   maxSetBytes: number,
+  capacity?: { readonly setBytes: number; readonly elements: number },
 ): Promise<Uint8Array> {
   const refuse = (detail: string): ProtocolRefusalError =>
     new ProtocolRefusalError(
@@ -204,6 +240,12 @@ export async function receivePsiSet(
           `declares ${declaredBytes} bytes, over the ${maxSetBytes} the ` +
             "agreed record counts admit",
         );
+      if (capacity !== undefined && declaredBytes > BigInt(capacity.setBytes)) {
+        await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
+        throw new RoundCapacityError(
+          partnerSetOverCeilingMessage(capacity.elements),
+        );
+      }
       setBytes = Number(declaredBytes);
       count = declaredCount;
       if (count < 1 || count > Math.max(1, setBytes))

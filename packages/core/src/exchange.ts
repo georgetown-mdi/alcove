@@ -25,7 +25,6 @@ import {
   buildStandardizedDataset,
   declaredEffectiveKeyCount,
   declaredKeyWidth,
-  keyWidthInRole,
   localFanOutFactor,
   StandardizedKeyIterable,
 } from "./standardization.js";
@@ -45,6 +44,7 @@ import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
 import { snakeizeKey } from "./utils/camelizeKeys.js";
 import type { CSVRow } from "./file.js";
 import { PSIParticipant } from "./psi/participant.js";
+import { PARTNER_SET_OVER_CAPACITY_ABORT_REASON } from "./psi/psiSetParts.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
 import type { PsiEngine, PsiEngineMode } from "./psi/psiEngine.js";
 import {
@@ -2226,13 +2226,14 @@ export interface RunExchangeOptions {
   /**
    * This party's check of its own capacity against the partner's round, called
    * once on a cascade or count-only exchange after the terms exchange and
-   * before any PSI set moves, with the most values the partner's set for one
-   * linkage key can hold ({@link partnerRoundValues}). A throw refuses the run
-   * and propagates; a {@link RoundCapacityError} also sends the partner
-   * {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}. The command-line
-   * application weighs the memory a round of that size needs here. A connection that states a ceiling on a
-   * partner's set (`MessageConnection.inboundPsiSetElementCeiling`) is held to
-   * it first, as a {@link RoundCapacityError}, whether or not this is given.
+   * before any PSI set moves, with an upper bound on the values a conforming
+   * partner's set for one linkage key holds ({@link partnerRoundValues}). A
+   * throw refuses the run and propagates; a {@link RoundCapacityError} also
+   * sends the partner {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}. The
+   * command-line application weighs the memory a round of that size needs
+   * here. A connection that states a ceiling on a partner's set
+   * (`MessageConnection.inboundPsiSetElementCeiling`) is held to it first, as
+   * a {@link RoundCapacityError}, whether or not this is given.
    */
   checkPartnerRoundCapacity?: (
     partnerRoundValues: number,
@@ -2378,32 +2379,29 @@ export interface RunExchangeOptions {
   verbosity?: number;
 }
 
-/**
- * The abort reason a party sends when the partner's set for a linkage key is
- * larger than this party can process
- * ({@link RunExchangeOptions.checkPartnerRoundCapacity}). A fixed literal, as
- * every abort reason must be (see `sendAbort`).
- */
-export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
-  "the partner cannot process a set as large as the one you send for a " +
-  "linkage key";
+export { PARTNER_SET_OVER_CAPACITY_ABORT_REASON };
 
 /**
- * The most values the partner's set for one linkage key can hold: its declared
- * record count, which includes its own fan-out, times the widest key's width
- * as the partner's PSI role applies it ({@link keyWidthInRole}), held to
+ * An upper bound on the values a conforming partner's set for one linkage key
+ * holds: its declared record count, which includes its own fan-out, times the
+ * widest key's declared width ({@link declaredKeyWidth}), held to
  * {@link MAX_PSI_DECODE_ELEMENTS}, over which no sender sends a set. Every
  * input is authenticated session state.
+ *
+ * The declared width in either PSI role: a sender's key read holds a row to
+ * the declared width times its local fan-out factor, and `split_on` has no
+ * per-element cap, so a sender whose agreed or local cleaning fans out can
+ * realize up to the declared width per declared record. Its local cleaning is
+ * not in the agreed terms, so no sender partner is weighed narrower.
  */
 export function partnerRoundValues(
   partnerRecordCount: number,
   linkageTerms: Pick<LinkageTerms, "linkageKeys">,
-  partnerIsReceiver: boolean,
 ): number {
   const widest = Math.max(
     0,
     ...linkageTerms.linkageKeys.map((key, keyIndex) =>
-      keyWidthInRole(key, partnerIsReceiver, keyIndex),
+      declaredKeyWidth(key, keyIndex),
     ),
   );
   return Math.min(partnerRecordCount * widest, MAX_PSI_DECODE_ELEMENTS);
@@ -2901,7 +2899,7 @@ export async function runExchange(
   if (linkageTerms.linkageStrategy !== "single-pass" || countOnly)
     await assertPartnerRoundWithinCapacity(
       conn,
-      partnerRoundValues(partnerRecordCount, linkageTerms, !isReceiver),
+      partnerRoundValues(partnerRecordCount, linkageTerms),
       options.checkPartnerRoundCapacity,
     );
 

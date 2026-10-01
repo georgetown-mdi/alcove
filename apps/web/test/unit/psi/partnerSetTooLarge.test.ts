@@ -1,9 +1,18 @@
 import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
+  MAX_PSI_DECODE_ELEMENTS,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSIParticipant,
   RoundCapacityError,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
+import {
+  PSI_SET_PART_HEADER_BYTES,
+  psiSetByteBound,
+} from "@alcove/core/testing";
 import { describe, expect, test } from "vitest";
+import PSI from "@openmined/psi.js";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
@@ -32,6 +41,7 @@ import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type { MessageConnection } from "@alcove/core";
 
 // A browser party's refusal, at the terms exchange, of a partner whose set for
 // a linkage key can hold more values than this browser can match: its own
@@ -103,6 +113,73 @@ describe("a managed exchange", () => {
         "partner-set-too-large",
       );
     }
+  });
+
+  test("a partner setup refused at its first part, within the record counts but over the browser's ceiling, records the same kind rather than transport", async () => {
+    // The first of two parts of a setup one byte longer than the browser's
+    // ceiling admits and well within what the record counts admit, on a
+    // connection stating the ceiling the browser's connection states.
+    const declaredBytes = psiSetByteBound(BROWSER_PSI_SET_MAX_ELEMENTS) + 1;
+    const firstPart = new Uint8Array(PSI_SET_PART_HEADER_BYTES + 1);
+    const header = new DataView(firstPart.buffer);
+    header.setUint32(0, 0);
+    header.setUint32(4, 2);
+    header.setBigUint64(8, BigInt(declaredBytes));
+    const inbound: Array<unknown> = [firstPart];
+    const sent: Array<unknown> = [];
+    const conn: MessageConnection = {
+      send: (data) => {
+        sent.push(data);
+        return Promise.resolve();
+      },
+      receive: () =>
+        inbound.length > 0
+          ? Promise.resolve(inbound.shift())
+          : new Promise(() => {}),
+      close: () => Promise.resolve(),
+      inboundPsiSetElementCeiling: () => BROWSER_PSI_SET_MAX_ELEMENTS,
+    };
+    const joiner = new PSIParticipant(
+      "client",
+      await PSI(),
+      { role: "joiner", verbose: -1 },
+      {
+        setup: MAX_PSI_DECODE_ELEMENTS,
+        request: MAX_PSI_DECODE_ELEMENTS,
+        response: MAX_PSI_DECODE_ELEMENTS,
+      },
+    );
+    const error = await joiner.identifyIntersection(conn, ["a", "b"]).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    joiner.dispose();
+    expect(error).toBeInstanceOf(RoundCapacityError);
+    expect(sent).toEqual([
+      {
+        decision: "abort",
+        abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
+      },
+    ]);
+    for (const dataExchangeStarted of [false, true]) {
+      const lastRun = rerunFailureLastRun(
+        error,
+        Date.parse(RUN_AT),
+        false,
+        dataExchangeStarted,
+      );
+      expect(lastRun).toEqual(stamped);
+      expect(lastRun?.failureKind).not.toBe("transport");
+    }
+    const failure = classifyManagedRunFailure(
+      error,
+      { atLaunch: record(), afterRun: record({ lastRun: stamped }) },
+      undefined,
+      NOW,
+      true,
+    );
+    expect(failure.kind).toBe("partner-set-too-large");
+    expect(managedRunRetryable(failure)).toBe(false);
   });
 
   test("a lapsed bound does not turn the refusal into an expiry", () => {

@@ -405,22 +405,28 @@ export class PSIParticipant {
   // Receive one of the round's PSI sets in its parts, held to the bytes the
   // authenticated element bound for its kind admits. A setup or a request
   // holds the partner's own set, so it is also held to the connection's
-  // ceiling on a partner's set; a response re-encrypts this party's request.
+  // ceiling on a partner's set, as this party's capacity rather than the
+  // protocol's; a response re-encrypts this party's request.
   private receiveRoundSet(
     conn: MessageConnection,
     kind: PsiMessageKind,
   ): Promise<Uint8Array> {
-    const elementBound =
+    const elementBound = Math.min(
       kind === "serverSetup"
         ? this.elementBounds.setup
-        : this.elementBounds[kind];
+        : this.elementBounds[kind],
+      MAX_PSI_DECODE_ELEMENTS,
+    );
     const ceiling =
       kind === "response" ? undefined : conn.inboundPsiSetElementCeiling?.();
     return receivePsiSet(
       conn,
       this.id,
       kind,
-      psiSetByteBound(Math.min(elementBound, ceiling ?? elementBound)),
+      psiSetByteBound(elementBound),
+      ceiling !== undefined && ceiling < elementBound
+        ? { setBytes: psiSetByteBound(ceiling), elements: ceiling }
+        : undefined,
     );
   }
 

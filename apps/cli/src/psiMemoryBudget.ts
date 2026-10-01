@@ -305,12 +305,12 @@ export function partnerRoundMemoryShortfallOverrideWarning(
 
 /**
  * Hold the partner's round to what the process has, once the terms are
- * exchanged: `partnerRoundValues` is the most values the partner's set for one
- * linkage key can hold, weighed at {@link psiRoundMemoryNeedBytes} as the
- * pre-contact check weighs this party's own records. A need over it is a
- * {@link RoundCapacityError} naming both figures and the override, or, with
- * `allowShortfall`, a warning passed to `onShortfallWarning` and the run
- * continues.
+ * exchanged: `partnerRoundValues` is an upper bound on the values a
+ * conforming partner's set for one linkage key holds, weighed at
+ * {@link psiRoundMemoryNeedBytes} as the pre-contact check weighs this party's
+ * own records. A need over it is a {@link RoundCapacityError} naming both
+ * figures and the override, or, with `allowShortfall`, a warning passed to
+ * `onShortfallWarning` and the run continues.
  */
 export function checkPartnerRoundMemory(params: {
   partnerRoundValues: number;

@@ -50,11 +50,12 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   the terms exchange and did not take them on, before any linkage key or data
  *   moved (recovery: apply or decline the change; never a retry, since the same
  *   terms refuse identically at the next window).
- * - `"partner-set-too-large"` -- the last run refused, at the terms exchange,
- *   a partner whose set for a linkage key can hold more values than this
- *   browser can match (recovery: run the exchange with the command-line
- *   application, or the partner splits their input; never a retry, since the
- *   same partner input refuses identically at the next window).
+ * - `"partner-set-too-large"` -- the last run refused, at the terms exchange
+ *   or a set's first part, a partner whose set for a linkage key can hold more
+ *   values than this browser can match (recovery: run the exchange with the
+ *   command-line application, or the partner splits their input; never a
+ *   retry, since the same partner input refuses identically at the next
+ *   window).
  * - `"handed-off"` -- the last run met a copy an export had handed off and refused
  *   before reading the input or connecting (recovery: none here; the exchange runs
  *   wherever the hand-off took it, and every later run on this device refuses the

@@ -107,9 +107,13 @@ export {
   webrtcFrameReceiveCharge,
 } from "./connection/webrtcOutboundBound.js";
 
-// The header each part of a PSI set begins with, so each WebRTC transport's
-// suite can join the parts a round sent back into the set.
-export { PSI_SET_PART_HEADER_BYTES } from "./psi/psiSetParts.js";
+// The header each part of a PSI set begins with, and the byte bound a set's
+// first part is held to, so each WebRTC transport's suite can join the parts a
+// round sent back into the set and drive a first part at that bound's edge.
+export {
+  PSI_SET_PART_HEADER_BYTES,
+  psiSetByteBound,
+} from "./psi/psiSetParts.js";
 
 // The input bounds a suite drives at their edge: the invitation decode's host,
 // path, and whole-token limits, and the CSV line ceiling. They stay out of the

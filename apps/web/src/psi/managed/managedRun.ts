@@ -339,7 +339,8 @@ export function tooLargeReadingOf(
  * terms exchange, inside the data exchange but before any linkage key or data
  * moves, and the same partner terms refuse identically until the operator
  * decides on them. A {@link RoundCapacityError} records
- * `partner-set-too-large`: it is raised at the terms exchange too, and the same
+ * `partner-set-too-large`: it is raised at the terms exchange too, or at the
+ * first part of a partner's set over this browser's ceiling, and the same
  * partner input refuses identically at every window. `aborted` then records
  * `cancelled`. A `security`-kind
  * {@link ConnectionError} before the data exchange began records `auth`.
@@ -396,7 +397,8 @@ export function rerunFailureLastRun(
  * six are read before any connection is attempted; `"missed"` is read after a
  * connection attempt found no partner, `"too-large"` before connecting or at
  * a later round whose own set holds more values than
- * `MAX_PSI_DECODE_ELEMENTS`, `"partner-set-too-large"` at the terms exchange,
+ * `MAX_PSI_DECODE_ELEMENTS`, `"partner-set-too-large"` at the terms exchange
+ * or the first part of a partner's set,
  * and `"relay-registration"` before connecting, once the registrar did not
  * confirm a pending registration. */
 type BenignRerunOutcome =
