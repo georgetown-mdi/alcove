@@ -10,7 +10,11 @@
  * value except the record's own local `expires`.
  */
 
-import { isSetTooLargeError, sanitizeErrorForDisplay } from "@alcove/core";
+import {
+  RoundCapacityError,
+  isSetTooLargeError,
+  sanitizeErrorForDisplay,
+} from "@alcove/core";
 
 import {
   INPUT_FAILURE_TITLE,
@@ -80,7 +84,7 @@ export {
  *   input replaced: the file cannot supply every agreed linkage key, and the
  *   same file refuses identically every time. Not `"retry"`.
  * - `"split"` -- the input must be split into smaller exchanges: a set this
- *   exchange sends is over the bound one WebRTC message holds, or the
+ *   exchange sends is over the most values the partner can receive, or the
  *   partner's set is larger than this browser can match, and the same files
  *   refuse identically every time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
@@ -490,10 +494,10 @@ function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
   };
 }
 
-/** The benign state of a run that refused, at the terms exchange, a partner
- * whose set for a linkage key can hold more values than this browser can
- * match. The record holds no count, so this copy states neither figure; a live
- * launch shows the refusal's own message instead
+/** The benign state of a run stopped because the partner's set for a linkage
+ * key holds more values than this browser can match. The record holds no
+ * count, so this copy states neither figure; a live launch this browser
+ * refused shows the refusal's own message instead
  * ({@link partnerSetTooLargeFailure}). Not the retry state -- the same partner
  * input refuses identically. */
 const RECORDED_PARTNER_SET_TOO_LARGE_FAILURE: ManagedRunFailureAlert = {
@@ -506,10 +510,13 @@ const RECORDED_PARTNER_SET_TOO_LARGE_FAILURE: ManagedRunFailureAlert = {
   recovery: "split",
 };
 
-/** The partner-set-too-large state for THIS run's refusal: the refusal's
- * message states the partner's count, this browser's ceiling, and the remedy,
- * so it is the state's whole message. */
+/** The partner-set-too-large state for THIS run: where this browser refused,
+ * the refusal's message states the partner's count, this browser's ceiling,
+ * and the remedy, so it is the state's whole message; where the partner
+ * stopped the run, its abort states no figure, so the recorded copy stands. */
 function partnerSetTooLargeFailure(error: unknown): ManagedRunFailureAlert {
+  if (!(error instanceof RoundCapacityError))
+    return RECORDED_PARTNER_SET_TOO_LARGE_FAILURE;
   return {
     ...RECORDED_PARTNER_SET_TOO_LARGE_FAILURE,
     message: sanitizeErrorForDisplay(error),

@@ -24,15 +24,17 @@ import {
   RoundSetLimitError,
 } from "../../src/errors";
 import { sendAbort } from "../../src/protocolSetup";
+import {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../../src/psi/psiBinaryFrame";
 import { PSIParticipant } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   ownSetOverPartnerCeilingMessage,
   ownSetTooLargeMessage,
-  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   partnerSetOverCeilingMessage,
   PSI_SET_PART_HEADER_BYTES,
-  PSI_SET_TOO_LARGE_ABORT_REASON,
   psiSetByteBound,
   psiSetPartPayloadBytes,
   psiSetParts,

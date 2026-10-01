@@ -234,18 +234,18 @@ export type ManagedExchangeRunOutcome =
  * was handed off did not read, so the run does not rotate on custody it could
  * not establish) -- are detected before any connection and never routed through
  * desync/attack framing. A `"too-large"` refusal (a set this run had to send
- * was over the bound one WebRTC message holds, or could not be counted to
- * check it) is benign the same way, but a round past the first can meet it
+ * was over the most values the partner can receive, or could not be counted
+ * to check it) is benign the same way, but a round past the first can meet it
  * after data has moved. A `"terms-change"`
  * refusal (the partner's linkage terms changed and this run did not take them
  * on) is met at the terms exchange, after the handshake and before any linkage
  * key or data moves, and is benign too: its remedy is the operator's decision
- * on the change. A `"partner-set-too-large"` refusal (the partner's set for a
- * linkage key can hold more values than this browser can match) is met at the
- * terms exchange too, or at the first part of a partner's set inside a round,
- * after sets of this party's may have moved, and is benign the same way: its
- * remedy is the command-line application or a smaller input on the partner's
- * side. */
+ * on the change. A `"partner-set-too-large"` stop (the partner's set for a
+ * linkage key holds more values than this browser can match) is met after the
+ * terms exchange, when the partner refuses to send the set or this browser
+ * refuses its first part, after sets of this party's may have moved, and is
+ * benign the same way: its remedy is the command-line application or a
+ * smaller input on the partner's side. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -261,8 +261,8 @@ export type ManagedExchangeFailureKind =
 
 /** Which bound a `"too-large"` refusal found a set over: `"partner-ceiling"`
  * for the most values the partner stated it can receive, `"webrtc-message"`
- * for the bytes one WebRTC message holds, which only an entry an earlier build
- * wrote names. */
+ * for the bytes one WebRTC message holds, kept a member because stored
+ * records hold it; the record schema test pins that it still parses. */
 export type TooLargeBound = "partner-ceiling" | "webrtc-message";
 
 /** Run bookkeeping the backup state and the desync UX read. Every field is a
@@ -291,10 +291,11 @@ export interface ManagedExchangeLastRun {
    * summary and the between-visit notice say the set could not be counted
    * and name no bound, even beside a `tooLargeBound`. */
   setUncounted?: true;
-  /** Present only on a `"partner-set-too-large"` failure refused at the first
-   * part of a partner's set inside a round rather than at the terms exchange,
-   * so sets of this party's may have been sent. The run history then states
-   * the uncertain disclosure line rather than that nothing was disclosed. */
+  /** Present only on a `"partner-set-too-large"` failure stopped inside a
+   * round rather than at the terms exchange -- the partner's abort in place of
+   * its set, or this browser's refusal of the set's first part -- so sets of
+   * this party's may have been sent. The run history then states the uncertain
+   * disclosure line rather than that nothing was disclosed. */
   refusedInRound?: true;
 }
 

@@ -601,7 +601,7 @@ test("a host the resolver admits but the authority parse refuses exits 64", asyn
   expect(mockState.dials).toHaveLength(0);
 });
 
-test("a first round too large for one WebRTC message is refused before anything is dialed", async () => {
+test("a first round over the per-set maximum is refused before anything is dialed", async () => {
   // A dataset of 301 values held once each, checked against a bound of 300
   // values' frame, stands in for one past the real bound: the check's
   // arithmetic at that bound is core's to pin, and what the dispatch decides is

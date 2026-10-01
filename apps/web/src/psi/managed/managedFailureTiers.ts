@@ -42,20 +42,20 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   (recovery: a file covering every agreed key, or terms re-agreed with the
  *   partner; never a retry or a bare re-pick, since the same file refuses
  *   identically at the next window).
- * - `"too-large"` -- the last run refused to send a set over the bound one WebRTC
- *   message holds, before connecting or at a round (recovery: split the input
- *   into smaller exchanges; never a retry, since the same files refuse
- *   identically at the next window).
+ * - `"too-large"` -- the last run refused to send a set of its own over the most
+ *   values the partner can receive, before connecting or at a round (recovery:
+ *   split the input into smaller exchanges; never a retry, since the same files
+ *   refuse identically at the next window).
  * - `"terms-change"` -- the last run met the partner's changed linkage terms at
  *   the terms exchange and did not take them on, before any linkage key or data
  *   moved (recovery: apply or decline the change; never a retry, since the same
  *   terms refuse identically at the next window).
- * - `"partner-set-too-large"` -- the last run refused, at the terms exchange
- *   or a set's first part, a partner whose set for a linkage key can hold more
- *   values than this browser can match (recovery: run the exchange with the
- *   command-line application, or the partner splits their input; never a
- *   retry, since the same partner input refuses identically at the next
- *   window).
+ * - `"partner-set-too-large"` -- the last run stopped because the partner's set
+ *   for a linkage key holds more values than this browser can match: the
+ *   partner refused to send it, or this browser refused its first part
+ *   (recovery: run the exchange with the command-line application, or the
+ *   partner splits their input; never a retry, since the same partner input
+ *   stops identically at the next window).
  * - `"handed-off"` -- the last run met a copy an export had handed off and refused
  *   before reading the input or connecting (recovery: none here; the exchange runs
  *   wherever the hand-off took it, and every later run on this device refuses the
@@ -280,8 +280,8 @@ function recordedFailureTier(
   // input tier offers is not its remedy -- the same file refuses identically, so
   // this tier's copy names a conforming file or terms re-agreed with the partner.
   if (lastRun.failureKind === "terms-shortfall") return "terms-shortfall";
-  // A recorded refusal of a set too large for one WebRTC message: benign, and
-  // held out of the transport bucket because reconnecting sends the same set.
+  // A recorded refusal of a set too large to send: benign, and held out of the
+  // transport bucket because reconnecting sends the same set.
   if (lastRun.failureKind === "too-large") return "too-large";
   // A recorded refusal of the partner's changed terms: benign, and out of the
   // transport bucket because reconnecting meets the same terms; its remedy is

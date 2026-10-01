@@ -347,13 +347,14 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * `rerunFailureLastRun`), `"storage"` (persist-before-success), `"terms-change"`
  * (stamped only for core's refusal at the terms exchange, which precedes every
  * linkage round and the payload frame), and `"partner-set-too-large"` without
- * `refusedInRound` (the same terms-exchange refusal). The remaining kinds --
- * `"transport"` (the catch-all a mid-exchange failure also lands in),
- * `"too-large"` (a later round refuses this party's own set over
- * `MAX_PSI_DECODE_ELEMENTS` after data has moved), `"partner-set-too-large"`
- * with `refusedInRound` (refused at a partner set's first part, after sets of
- * this party's may have moved), `"cancelled"`, and a missing kind -- cannot
- * prove it.
+ * `refusedInRound` (a refusal at the terms exchange, which stored records
+ * hold). The remaining kinds -- `"transport"` (the catch-all a mid-exchange
+ * failure also lands in), `"too-large"` (a later round refuses this party's
+ * own set over the partner's ceiling after data has moved),
+ * `"partner-set-too-large"` with `refusedInRound` (the partner's abort in
+ * place of its set, or this browser's refusal of a set's first part, after
+ * sets of this party's may have moved), `"cancelled"`, and a missing kind --
+ * cannot prove it.
  */
 function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {
   const { failureKind } = lastRun;

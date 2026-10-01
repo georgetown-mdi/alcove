@@ -3,6 +3,8 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   PSIParticipant,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  PeerAbortError,
   RoundCapacityError,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -291,5 +293,59 @@ describe("a managed exchange", () => {
     expect(
       lastRunSchema.safeParse({ ...stamped, refusedInRound: false }).success,
     ).toBe(false);
+  });
+});
+
+describe("a managed exchange the partner stopped over this browser's ceiling", () => {
+  const partnerAbort = new PeerAbortError(
+    undefined,
+    PSI_SET_TOO_LARGE_ABORT_REASON,
+  );
+
+  test("records the partner's abort as its own non-retryable kind, with the payload left open", () => {
+    for (const dataExchangeStarted of [false, true]) {
+      const lastRun = rerunFailureLastRun(
+        partnerAbort,
+        Date.parse(RUN_AT),
+        false,
+        dataExchangeStarted,
+      );
+      expect(lastRun).toEqual(stampedInRound);
+      expect(lastRunSchema.safeParse(lastRun).success).toBe(true);
+      expect(benignRerunOutcome(partnerAbort, dataExchangeStarted)).toBe(
+        "partner-set-too-large",
+      );
+    }
+  });
+
+  test("a live launch states the recorded cause and remedy and offers no retry", () => {
+    const failure = classifyManagedRunFailure(
+      partnerAbort,
+      { atLaunch: record(), afterRun: record({ lastRun: stampedInRound }) },
+      undefined,
+      NOW,
+      true,
+    );
+    if (failure.kind === "handed-off")
+      throw new Error("expected the partner-set-too-large alert");
+    expect(failure.kind).toBe("partner-set-too-large");
+    expect(failure.title).toBe(PARTNER_SET_TOO_LARGE_TITLE);
+    expect(failure.message).toMatch(
+      /^The last run stopped because your partner's set of values for a linkage key is larger than this browser can match\./,
+    );
+    expect(managedRunRetryable(failure)).toBe(false);
+  });
+
+  test("an abort with any other reason, or none, keeps the connection-problem record", () => {
+    for (const partnerReason of [
+      undefined,
+      PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+    ]) {
+      const abort = new PeerAbortError(undefined, partnerReason);
+      expect(
+        rerunFailureLastRun(abort, Date.parse(RUN_AT), false, true),
+      ).toEqual({ at: RUN_AT, outcome: "failed", failureKind: "transport" });
+      expect(benignRerunOutcome(abort, true)).toBeUndefined();
+    }
   });
 });

@@ -8,6 +8,7 @@ import {
   PeerAbortError,
   RoundCapacityError,
   RoundSetLimitError,
+  UsageError,
 } from "../src/errors";
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
@@ -16,7 +17,10 @@ import {
   roundOneSetOverPartnerCeilingMessage,
   runExchange,
 } from "../src/exchange";
-import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../src/psi/psiSetParts";
+import {
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../src/psi/psiBinaryFrame";
 
 import {
   buildKeyStrings,
@@ -26,6 +30,7 @@ import {
 } from "../src/standardization";
 
 import type { MessageConnection } from "../src/connection/messageConnection";
+import type { CSVRow } from "../src/file";
 import type {
   LinkageKey,
   LinkageStrategy,
@@ -253,7 +258,7 @@ test("the partner's round is held to the per-set maximum no sender exceeds", () 
   ).toBe(MAX_PSI_DECODE_ELEMENTS);
 });
 
-test("a partner over this party's stated ceiling refuses its first round before either party builds a set", async () => {
+test("a sender partner over this party's stated ceiling refuses its first round before either party sends a set", async () => {
   const { local, partner, sent, partnerSent } = await runPair({
     localRows: 5,
     partnerRows: 12,
@@ -272,9 +277,85 @@ test("a partner over this party's stated ceiling refuses its first round before 
   });
   expect(binaryFrames(sent)).toEqual([]);
   expect(local.status).toBe("rejected");
-  expect((local as PromiseRejectedResult).reason).toBeInstanceOf(
-    PeerAbortError,
+  const abort = (local as PromiseRejectedResult).reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
+});
+
+// `exchange` with every row of its dataset throwing `failure` when read, so the
+// first-round count raises it.
+function withThrowingRows(
+  exchange: PreparedExchange,
+  failure: Error,
+): PreparedExchange {
+  const rows = new Proxy<Array<CSVRow>>([], {
+    get: (target, prop, receiver) => {
+      if (prop === "length") return exchange.rowCount;
+      if (typeof prop === "string" && /^[0-9]+$/.test(prop)) throw failure;
+      return Reflect.get(target, prop, receiver) as unknown;
+    },
+  });
+  return {
+    ...exchange,
+    dataset: new StandardizedDataset(
+      [
+        new StandardizedField("firstName", "first_name", [], rows),
+        new StandardizedField("lastName", "last_name", [], rows),
+      ],
+      exchange.linkageTerms.linkageKeys,
+    ),
+  };
+}
+
+test("a first round refused for other than its size sends the partner a fixed abort and throws the refusal", async () => {
+  const refusal = new UsageError("a refusal the round would raise");
+  const [local, partner] = createMessagePipe();
+  const sent: Array<unknown> = [];
+  const partnerSent: Array<unknown> = [];
+  const [localOutcome, partnerOutcome] = await Promise.allSettled([
+    runExchange(
+      withCeiling(local, 11, sent),
+      "initiator",
+      prepared("Local Co", 5),
+      { psiLibrary },
+    ),
+    runExchange(
+      withCeiling(partner, undefined, partnerSent),
+      "responder",
+      withThrowingRows(prepared("Partner Co", 12), refusal),
+      { psiLibrary },
+    ),
+  ]);
+  expect(partnerOutcome.status).toBe("rejected");
+  expect((partnerOutcome as PromiseRejectedResult).reason).toBe(refusal);
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(partnerSent.at(-1)).toEqual({
+    decision: "abort",
+    abortReasons: [PSI_SET_REFUSED_ABORT_REASON],
+  });
+  expect(localOutcome.status).toBe("rejected");
+  const abort = (localOutcome as PromiseRejectedResult)
+    .reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_REFUSED_ABORT_REASON);
+});
+
+test("a receiver partner over this party's stated ceiling refuses its first round after this party sent its setup", async () => {
+  // The partner has fewer records, so it resolves to the PSI receiver; this
+  // party, the sender, sends its setup without waiting on the partner's check.
+  const { local, partner, sent, partnerSent } = await runPair({
+    localRows: 12,
+    partnerRows: 5,
+    ceiling: 4,
+  });
+  expect((partner as PromiseRejectedResult).reason).toBeInstanceOf(
+    RoundSetLimitError,
   );
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(binaryFrames(sent)).toHaveLength(1);
+  const abort = (local as PromiseRejectedResult).reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
 });
 
 test("a partner first round at this party's stated ceiling runs to completion", async () => {

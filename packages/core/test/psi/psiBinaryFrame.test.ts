@@ -8,7 +8,10 @@ import {
   createMessagePipe,
 } from "../../src/connection/messageConnection";
 import { markNamedDiagnosis, PeerAbortError } from "../../src/errors";
-import { decodePsiBinaryFrame } from "../../src/psi/psiBinaryFrame";
+import {
+  decodePsiBinaryFrame,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../../src/psi/psiBinaryFrame";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { sendAbort } from "../../src/protocolSetup";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
@@ -75,6 +78,29 @@ test("a partner's abort ends the parked round as a peer termination", async () =
   // nothing the partner authored reaches this party's display.
   expect(ended?.message).not.toContain(REFUSAL_REASON);
   expect(ended?.cause).toBeUndefined();
+  expect((ended as PeerAbortError).partnerReason).toBeUndefined();
+});
+
+test("a round's fixed abort reason is kept as this build's own constant, and only alone", async () => {
+  const alone = await endOfRoundAfter({
+    decision: "abort",
+    abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
+  });
+  expect(alone).toBeInstanceOf(PeerAbortError);
+  expect((alone as PeerAbortError).partnerReason).toBe(
+    PSI_SET_TOO_LARGE_ABORT_REASON,
+  );
+
+  for (const abortReasons of [
+    [PSI_SET_TOO_LARGE_ABORT_REASON, REFUSAL_REASON],
+    [`${PSI_SET_TOO_LARGE_ABORT_REASON} `],
+    [7],
+    PSI_SET_TOO_LARGE_ABORT_REASON,
+  ]) {
+    const ended = await endOfRoundAfter({ decision: "abort", abortReasons });
+    expect(ended).toBeInstanceOf(PeerAbortError);
+    expect((ended as PeerAbortError).partnerReason).toBeUndefined();
+  }
 });
 
 test("a non-binary frame that is no abort is not reported as a refusal", async () => {

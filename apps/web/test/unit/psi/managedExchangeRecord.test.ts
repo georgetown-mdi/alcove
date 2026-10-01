@@ -461,7 +461,10 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
   });
 
   test("reads back which bound a too-large refusal found the set over", () => {
-    for (const tooLargeBound of ["webrtc-message"] as const) {
+    for (const tooLargeBound of [
+      "partner-ceiling",
+      "webrtc-message",
+    ] as const) {
       const lastRun: ManagedExchangeLastRun = {
         at: "2026-07-14T09:00:00.000Z",
         outcome: "failed",

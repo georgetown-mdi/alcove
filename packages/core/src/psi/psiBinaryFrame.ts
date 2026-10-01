@@ -17,13 +17,56 @@ import { isPartnerAbortFrame } from "../protocolSetup";
 import type { MessageConnection } from "../connection/messageConnection";
 
 /**
+ * The reason a party puts on the abort it sends the partner in place of a set
+ * of its own over `MAX_PSI_DECODE_ELEMENTS` or the partner's stated
+ * receive ceiling, or a first round it could not count to check against that
+ * ceiling. A fixed literal, like every abort reason (see `sendAbort`).
+ */
+export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
+
+/**
+ * The reason a party puts on the abort it sends the partner when its first
+ * round, checked against the partner's stated receive ceiling after the terms
+ * exchange, refused for any cause other than its size. It states only that
+ * the party refused to send its set.
+ */
+export const PSI_SET_REFUSED_ABORT_REASON =
+  "a PSI set was refused before sending";
+
+/**
+ * The abort reason a party sends when the partner's set for a linkage key is
+ * larger than this party can process: at the terms exchange
+ * (`checkPartnerRoundCapacity` in exchange.ts) or at the first part of the set
+ * (`receivePsiSet`). A fixed literal, as every abort reason must be (see
+ * `sendAbort`).
+ */
+export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
+  "the partner cannot process a set as large as the one you send for a " +
+  "linkage key";
+
+const ROUND_ABORT_REASONS: ReadonlyArray<string> = [
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  PSI_SET_REFUSED_ABORT_REASON,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+];
+
+// The one fixed round abort reason an abort frame states, as this build's own
+// constant, or undefined for any other frame: the frame's text is never kept.
+function roundAbortReasonOf(frame: unknown): string | undefined {
+  const reasons = (frame as { abortReasons?: unknown }).abortReasons;
+  if (!Array.isArray(reasons) || reasons.length !== 1) return undefined;
+  return ROUND_ABORT_REASONS.find((reason) => reason === reasons[0]);
+}
+
+/**
  * Reads the next frame where the protocol expects PSI binary, classifying
  * whatever arrives before it can reach the library's decoder.
  *
  * A partner's abort decision raises {@link PeerAbortError}: the partner ended
- * the exchange and holds the reason locally, which is the whole of what this
- * side can state. The abort's own reasons are partner-written text and are not
- * read here, so the error holds no partner byte.
+ * the exchange and holds the reason locally. The abort's reasons are
+ * partner-written text, compared only against the fixed reasons a round sends;
+ * the error's `partnerReason` holds this build's own constant where one
+ * matches, so the error holds no partner byte.
  *
  * Bytes delivered as an `ArrayBuffer` are viewed as a `Uint8Array`, the one
  * shape everything below reads. Anything else that is not a byte frame is a
@@ -53,7 +96,8 @@ function asPsiBinaryFrame(
   // ArrayBuffer, which the element scan beneath reads as a zero-length frame,
   // so it is viewed as bytes here.
   if (frame instanceof ArrayBuffer) return new Uint8Array(frame);
-  if (isPartnerAbortFrame(frame)) throw new PeerAbortError();
+  if (isPartnerAbortFrame(frame))
+    throw new PeerAbortError(undefined, roundAbortReasonOf(frame));
   throw new ConnectionError(
     `${participantId} protocol error: inbound PSI ${what} is not a binary ` +
       "frame",

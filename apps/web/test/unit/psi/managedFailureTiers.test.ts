@@ -516,7 +516,7 @@ describe("managedStandingConditionTier", () => {
 
 describe("the too-large tier: a set over a bound the exchange cannot send past", () => {
   // The refusal an unattended run meets when its input is over a bound the
-  // exchange cannot send past (one WebRTC message, or one message file).
+  // exchange cannot send past (the most values the partner can receive).
   // Reconnecting sends the same set, so it tiers apart from the retryable
   // transport drop, and its copy names splitting the input.
   const columns = ["ssn", "ssn4", "first_name", "last_name", "date_of_birth"];

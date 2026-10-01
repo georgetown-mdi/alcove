@@ -46,8 +46,9 @@ import type { CSVRow } from "./file.js";
 import { PSIParticipant } from "./psi/participant.js";
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
-} from "./psi/psiSetParts.js";
+} from "./psi/psiBinaryFrame.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
 import type { PsiEngine, PsiEngineMode } from "./psi/psiEngine.js";
 import {
@@ -1666,9 +1667,10 @@ export interface FirstRoundCheckOptions {
 }
 
 // Hold this party's first round to the partner's stated receive ceiling, after
-// the terms exchange and before any set moves: counted as the start-of-exchange
-// check counts, in the role this party resolved to. A refusal of its own sends
-// the partner an abort before it propagates.
+// the terms exchange and before this party builds a set: counted as the
+// start-of-exchange check counts, in the role this party resolved to. Every
+// refusal sends the partner an abort before it propagates, its reason stating
+// only that the set was too large or that it was refused.
 async function assertFirstRoundWithinPartnerCeiling(
   conn: MessageConnection,
   input: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
@@ -1692,8 +1694,11 @@ async function assertFirstRoundWithinPartnerCeiling(
         ),
     });
   } catch (err) {
-    if (err instanceof RoundSetLimitError)
-      await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
+    await sendAbort(conn, [
+      err instanceof RoundSetLimitError
+        ? PSI_SET_TOO_LARGE_ABORT_REASON
+        : PSI_SET_REFUSED_ABORT_REASON,
+    ]);
     throw err;
   }
 }
@@ -2908,7 +2913,7 @@ export async function runExchange(
   // A cascade or count-only round exchanges one key's sets at a time, sent in
   // parts, each held to the receive ceilings; the single-pass dataset ceiling
   // bounds the rest. This party's first round is held to the partner's stated
-  // ceiling before either party builds a set; at the protocol's maximum, the
+  // ceiling before this party builds a set; at the protocol's maximum, the
   // start-of-exchange check and each round's own refusal hold it already.
   const roundsSentInParts =
     linkageTerms.linkageStrategy !== "single-pass" || countOnly;

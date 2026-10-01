@@ -608,14 +608,14 @@ already defines:
   runs](#what-the-setup-consent-covers-across-runs)).
 - **This needs you: a file is too large to send.** A set of values the run had
   to send was over the most values the partner can receive, or could not be
-  counted to check it, so the run refused to send it; the same files build the same
-  set at every window, so it is never offered as retryable (see [An input too
-  large to send](#an-input-too-large-to-send)).
+  counted to check it, so the run refused to send it; the same files build the
+  same set at every window, so it is never offered as retryable (see [An input
+  too large to send](#an-input-too-large-to-send)).
 - **This needs you: the partner's set is too large for this browser.** The
   partner's set for a linkage key holds more values than this browser can
-  match, so the run stopped at the first part of the partner's set; the same partner input refuses at every window, so it is
-  never offered as retryable (see [A
-  partner's set too large for this
+  match, so the partner stopped the run or this browser refused the set; the
+  same partner input stops the same way at every window, so it is never offered
+  as retryable (see [A partner's set too large for this
   browser](#a-partners-set-too-large-for-this-browser)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
   ran and failed closed with no recorded benign cause (the Tier-2 case; see
@@ -824,17 +824,14 @@ change is saved.
 #### An input too large to send
 
 A run sends its sets of values over WebRTC, in as many messages as each set
-needs, and each set must hold no more values than the partner can receive: the
-partner states that figure when the run starts, a browser 7,643,790 and the
-command-line application 16,777,216 (see
-[PROTOCOL.md](spec/PROTOCOL.md#the-receive-ceiling)). The party holding the
-input checks its first round against the partner's figure once the partner
-has stated it, before either party sends any set, and refuses a set over it.
-Where it cannot count the set at all, it refuses the same way: the alert says
-the set could not be counted, names no bound, and gives the reason the count
-failed. A later round refuses a set of this party's own over the partner's
-figure before sending any of it. A first round over 16,777,216 values, the most
-any party receives, is refused at run start, before connecting.
+needs, and each set must hold no more than the most values the partner states
+it can receive (see [PROTOCOL.md](spec/PROTOCOL.md#the-receive-ceiling)). The
+party holding the input checks its first round against that figure once the
+partner has stated it, before building its own first set, and refuses a set
+over it. Where it cannot count the set at all, it refuses the same way: the
+alert says the set could not be counted, names no bound, and gives the reason
+the count failed. A later round refuses a set of this party's own over the
+partner's figure before sending any of it.
 
 It is a state of its own, held apart from a connection problem: reconnecting
 sends the same set, so no surface offers a retry. The remedy is to split the
@@ -852,17 +849,19 @@ or a synced folder, which allow larger messages.
 #### A partner's set too large for this browser
 
 A browser can match a partner's set for one linkage key only up to a fixed
-size, which it states to the partner when the run starts. The partner holds
-its sets to that size: a partner whose first round is over it stops the run
-before either party sends a set. This run records that stop as it records a
-connection problem, and runs again at the next window, since nothing here
-reads why the partner stopped.
+size, which it states to the partner when the run starts. The run stops at one
+of two points:
 
-A set the partner sends over the size anyway is refused at its first part
-inside a round, and the run stops and tells the partner. Sets of this party's
-may already have been sent by then, so the run history says the run did not
-complete and that whether any data reached the partner is not recorded, and
-points at the accounting of disclosures.
+- **The partner stops it.** A partner holds its sets to that size, and refuses
+  a set over it before sending it, telling this browser the set was too large.
+- **This browser stops it.** A set the partner sends over the size anyway is
+  refused at its first part, and the run tells the partner.
+
+Either way, sets of this party's may already have been sent: this browser
+can send its own first set before the partner's check ends.
+The run history says the run did not complete and that whether any data
+reached the partner is not recorded, and points at the accounting of
+disclosures.
 
 How the size is derived and stated: [PROTOCOL.md, The receive
 ceiling](spec/PROTOCOL.md#the-receive-ceiling).
@@ -873,8 +872,10 @@ remedy is to run the exchange with the command-line application, or for the
 partner to split their input into smaller files and set up one exchange for
 each.
 
-- **On the run screen**, an attended run shows the refusal's own message: the
-  partner's count, this browser's ceiling, and what to do.
+- **On the run screen**, an attended run this browser refused shows the
+  refusal's own message: the partner's count, this browser's ceiling, and what
+  to do. One the partner stopped states the cause and the remedy, since the
+  partner sends no count.
 - **At the next visit and in the between-visit notification**, the bookkeeping
   holds the state but no count, so they state the cause and the remedy.
 

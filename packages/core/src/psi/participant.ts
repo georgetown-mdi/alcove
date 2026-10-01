@@ -22,12 +22,14 @@ import {
 } from "../utils/partnerIndices";
 import { ProtocolRefusalError, RoundSetLimitError } from "../errors";
 import { sendAbort } from "../protocolSetup";
-import { decodePsiBinaryFrame } from "./psiBinaryFrame";
+import {
+  decodePsiBinaryFrame,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
 import {
   ownSetOverPartnerCeilingMessage,
   ownSetTooLargeMessage,
-  PSI_SET_TOO_LARGE_ABORT_REASON,
   psiSetByteBound,
   receivePsiSet,
   sendPsiSet,
@@ -184,9 +186,10 @@ export enum ProcessState {
  * minutes inside.
  *
  * One more, `countFirstRoundValues`, is no crypto operation: it is the count
- * the first-round size check (`assertFirstRoundFitsWebRtcFrame`,
- * `assertFileSyncFirstRoundWithinSetMaximum`) takes over this party's records
- * before anything is sent. Its `elements` and `processed` count records, not values.
+ * the first-round size checks take over this party's records before this
+ * party sends a set: `assertFirstRoundWithinSetMaximum` before contact, and
+ * the check against the partner's stated receive ceiling after the terms
+ * exchange. Its `elements` and `processed` count records, not values.
  * Its `started` and `progress` reports give the dataset's full row count as
  * `elements`; its `finished` and `failed` reports give the count of rows the
  * check actually walked, which is short of the row count when a

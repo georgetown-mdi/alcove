@@ -22,7 +22,10 @@ import {
 } from "../connection/webrtcOutboundBound";
 import { ProtocolRefusalError, RoundCapacityError } from "../errors";
 import { sendAbort } from "../protocolSetup";
-import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  receivePsiBinaryFrame,
+} from "./psiBinaryFrame";
 
 import type { MessageConnection } from "../connection/messageConnection";
 
@@ -49,25 +52,6 @@ export function psiSetByteBound(elementBound: number): number {
     PSI_SET_MAX_FRAMING_BYTES
   );
 }
-
-/**
- * The reason a round puts on the abort it sends the partner in place of a set
- * of this party's own over {@link MAX_PSI_DECODE_ELEMENTS} or the partner's
- * stated receive ceiling. A fixed literal, like every abort reason (see
- * `sendAbort`).
- */
-export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
-
-/**
- * The abort reason a party sends when the partner's set for a linkage key is
- * larger than this party can process: at the terms exchange
- * (`checkPartnerRoundCapacity` in exchange.ts) or at the first part of the set
- * ({@link receivePsiSet}). A fixed literal, as every abort reason must be (see
- * `sendAbort`).
- */
-export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
-  "the partner cannot process a set as large as the one you send for a " +
-  "linkage key";
 
 /**
  * The refusal a party raises at the first part of a partner's set whose

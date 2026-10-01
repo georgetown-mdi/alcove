@@ -794,17 +794,25 @@ export class ConnectionClosedError extends Error {
  * and a retry alone does not help until the partner runs again.
  *
  * It holds no partner-controlled bytes: the marker token never decodes to
- * display text, the abort frame's reasons are not read, and the message
- * is fixed, so the display-boundary sanitizer is only belt-and-suspenders
- * here. `alcoveRecoveryHintEmitted` is set so the CLI's hint-walker
+ * display text, the message is fixed, and `partnerReason` is one of this
+ * build's own fixed abort reasons, set only where the abort frame states
+ * exactly that one reason, so the display-boundary sanitizer is only
+ * belt-and-suspenders here. `alcoveRecoveryHintEmitted` is set so the CLI's hint-walker
  * suppresses its generic "retry without re-inviting" advisory, which would
  * otherwise contradict the definitive peer-abort message. (This reuses the
  * CLI-recovery convention that `auth.ts` already sets on core errors.)
  */
 export class PeerAbortError extends ConnectionError {
   readonly alcoveRecoveryHintEmitted = true;
+  /**
+   * The fixed reason a PSI round's abort stated
+   * (`PSI_SET_TOO_LARGE_ABORT_REASON` and its siblings in
+   * `packages/core/src/psi/psiBinaryFrame.ts`), as this build's own constant;
+   * undefined for any other abort.
+   */
+  readonly partnerReason: string | undefined;
 
-  constructor(options?: ErrorOptions) {
+  constructor(options?: ErrorOptions, partnerReason?: string) {
     super(
       "the peer authentically signaled that it aborted the exchange; this is " +
         "a definitive peer-side termination, not an inactivity timeout or a " +
@@ -814,6 +822,7 @@ export class PeerAbortError extends ConnectionError {
       options,
     );
     this.name = "PeerAbortError";
+    this.partnerReason = partnerReason;
   }
 }
 
