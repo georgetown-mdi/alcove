@@ -22,7 +22,7 @@ import {
   TOO_LARGE_SET_SOURCE,
   UNEXPLAINED_FAILURE_TITLE,
   tooLargeFailureTitle,
-  tooLargeSetOverBound,
+  tooLargeSetProblem,
 } from "@psi/managed/managedFailureCopy";
 import {
   ManagedExchangeExpiredError,
@@ -30,7 +30,7 @@ import {
   ManagedInputError,
   ManagedRelayRegistrationError,
   benignRerunOutcome,
-  tooLargeBoundOf,
+  tooLargeReadingOf,
 } from "@psi/managed/managedRun";
 import {
   deriveManagedFailureTier,
@@ -49,7 +49,7 @@ import { dateTimeLabel } from "@psi/formatting";
 
 import type {
   ManagedExchangeRecord,
-  TooLargeBound,
+  TooLargeReading,
 } from "@psi/managed/managedExchangeRecord";
 import type { ManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import type { ManagedLocalState } from "@psi/managed/managedLocalState";
@@ -455,21 +455,19 @@ const TOO_LARGE_RETRY_NOTE =
   "Running it again with the same files stops the same way - this is not a " +
   "connection problem.";
 
-/** The benign too-large state read back from a record: a set the last run had
- * to send was over the bound the record's `tooLargeBound` names, so the run
- * refused to send it. The record holds no count, so this copy states the bound
- * and not the set's size; a live launch shows the refusal's own message instead
- * ({@link tooLargeFailure}). Not the retry state -- the same files refuse
- * identically. */
+/** The benign too-large state read back from a record. The record holds no
+ * count, so this copy states no size; a live launch shows the refusal's own
+ * message instead ({@link tooLargeFailure}). Not the retry state -- the same
+ * files refuse identically. */
 function recordedTooLargeFailure(
-  bound: TooLargeBound | undefined,
+  reading: TooLargeReading,
 ): ManagedRunFailureAlert {
   return {
     kind: "too-large",
-    title: tooLargeFailureTitle(bound),
+    title: tooLargeFailureTitle(reading),
     message:
       `The last run stopped because ${TOO_LARGE_SET_SOURCE} ` +
-      `${tooLargeSetOverBound(bound)}, so it was not sent. ` +
+      `${tooLargeSetProblem(reading)}, so it was not sent. ` +
       `${TOO_LARGE_RETRY_NOTE} ${TOO_LARGE_REMEDY}`,
     recovery: "split",
   };
@@ -480,9 +478,9 @@ function recordedTooLargeFailure(
  * not be taken and why, so it is the state's whole message. The titles are the
  * one-shot seats' own for the same refusal. */
 function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
-  if (!isSetTooLargeError(error)) return recordedTooLargeFailure(undefined);
+  if (!isSetTooLargeError(error)) return recordedTooLargeFailure({});
   return {
-    ...recordedTooLargeFailure(tooLargeBoundOf(error)),
+    ...recordedTooLargeFailure(tooLargeReadingOf(error)),
     message: sanitizeErrorForDisplay(error),
   };
 }
@@ -632,7 +630,7 @@ export function managedRunTierFailure(
         ? TERMS_CHANGE_FAILURE
         : TERMS_CHANGE_DECLINED_FAILURE;
     case "too-large":
-      return recordedTooLargeFailure(record.lastRun?.tooLargeBound);
+      return recordedTooLargeFailure(record.lastRun ?? {});
     case "handed-off":
       return HANDED_OFF_FAILURE;
     case "custody-unreadable":

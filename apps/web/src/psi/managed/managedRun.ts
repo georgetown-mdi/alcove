@@ -56,7 +56,7 @@ import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
-  TooLargeBound,
+  TooLargeReading,
 } from "./managedExchangeRecord";
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
@@ -290,16 +290,14 @@ export function remapLapsedRunFailure(
   return new ManagedExchangeExpiredError(record.expires as string);
 }
 
-/**
- * Which bound a set-too-large refusal found the set over: one WebRTC
- * message's bytes for {@link WebRtcFrameLimitError}. A
- * {@link RoundSetLimitError} refused a message file's bound and names none.
- */
-export function tooLargeBoundOf(
+/** What a set-too-large refusal found about the set it refused. */
+export function tooLargeReadingOf(
   error: WebRtcFrameLimitError | RoundSetLimitError,
-): TooLargeBound | undefined {
-  if (error instanceof WebRtcFrameLimitError) return "webrtc-message";
-  return undefined;
+): TooLargeReading {
+  if (error.cause !== undefined) return { setUncounted: true };
+  if (error instanceof WebRtcFrameLimitError)
+    return { tooLargeBound: "webrtc-message" };
+  return {};
 }
 
 /**
@@ -331,8 +329,8 @@ export function tooLargeBoundOf(
  * since it is a deterministic local state an abort cannot produce:
  * {@link PartnerNoShowError} before the data exchange began records the benign
  * `missed` outcome ({@link missedRun}). A set too large to send
- * ({@link isSetTooLargeError}) records `too-large`, with the bound it names
- * ({@link tooLargeBoundOf}), on either side of the data exchange boundary: the
+ * ({@link isSetTooLargeError}) records `too-large`, with what it found
+ * ({@link tooLargeReadingOf}), on either side of the data exchange boundary: the
  * same files refuse identically at every window. A
  * {@link TermsChangeRefusedError} records `terms-change`: it is raised at the
  * terms exchange, inside the data exchange but before any linkage key or data
@@ -369,13 +367,11 @@ export function rerunFailureLastRun(
     return failedRun(at, "failed", "terms-shortfall");
   if (error instanceof PartnerNoShowError && !dataExchangeStarted)
     return missedRun(at);
-  if (isSetTooLargeError(error)) {
-    const tooLargeBound = tooLargeBoundOf(error);
+  if (isSetTooLargeError(error))
     return {
       ...failedRun(at, "failed", "too-large"),
-      ...(tooLargeBound === undefined ? {} : { tooLargeBound }),
+      ...tooLargeReadingOf(error),
     };
-  }
   if (error instanceof TermsChangeRefusedError)
     return failedRun(at, "failed", "terms-change");
   if (aborted) return failedRun(at, "failed", "cancelled");

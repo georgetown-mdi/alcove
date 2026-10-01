@@ -428,6 +428,50 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
       );
       expect(body).not.toMatch(/WebRTC|distinct/);
     });
+
+    test("no bound, and the failed count, for a set that could not be counted", () => {
+      const lastRun: ManagedExchangeLastRun = {
+        ...failed("too-large"),
+        setUncounted: true,
+      };
+      const notice = betweenVisitNotice({
+        record: record({ lastRun }),
+        local: undefined,
+        caughtUpMisses: 0,
+        disposition: "failed",
+        now: NOW,
+      });
+      const alert = managedRunTierFailure(
+        "too-large",
+        record({ lastRun }),
+        undefined,
+      );
+      if (!("title" in alert)) throw new Error("expected the too-large alert");
+      expect(notice?.title).toBe(
+        "The values built from your file could not be counted",
+      );
+      expect(notice?.title).toBe(alert.title);
+      expect(notice?.body).toBe(
+        "Riverbend quarterly stopped because the set of values built from your " +
+          "input file could not be counted, and every later window stops the " +
+          "same way. Split your input into smaller files and set up one " +
+          "exchange for each.",
+      );
+    });
+
+    test("a set that could not be counted fires its own notice over a too-large one", () => {
+      const tagFor = (lastRun: ManagedExchangeLastRun) =>
+        betweenVisitNotice({
+          record: record({ lastRun }),
+          local: undefined,
+          caughtUpMisses: 0,
+          disposition: "failed",
+          now: NOW,
+        })?.tag;
+      expect(tagFor({ ...failed("too-large"), setUncounted: true })).not.toBe(
+        tagFor({ ...failed("too-large"), tooLargeBound: "webrtc-message" }),
+      );
+    });
   });
 
   test("a failure a restore explains stays as quiet as it is in the app", () => {

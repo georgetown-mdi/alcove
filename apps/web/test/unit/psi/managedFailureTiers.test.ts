@@ -4,18 +4,23 @@ import {
   RoundSetLimitError,
   UsageError,
   WebRtcFrameLimitError,
+  assertFirstRoundFitsFileSyncFrame,
   assertFirstRoundFitsWebRtcFrame,
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
 } from "@alcove/core";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
+import {
+  ROUND_ONE_SET_UNCOUNTED_MESSAGE,
+  StandardizedKeyIterable,
+} from "@alcove/core/testing";
 import {
   assessManagedInputColumns,
   managedInputFailureKind,
@@ -34,8 +39,8 @@ import {
 import {
   remapLapsedRunFailure,
   rerunFailureLastRun,
+  tooLargeReadingOf,
 } from "@psi/managed/managedRun";
-import { ROUND_ONE_SET_UNCOUNTED_MESSAGE } from "@alcove/core/testing";
 import { prepareManagedRerunExchange } from "@psi/managed/managedPreparedExchange";
 
 import type {
@@ -537,19 +542,43 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     },
   ];
 
-  /** The first-round check's real refusal, at a bound two values cross. */
-  async function firstRoundRefusal(): Promise<unknown> {
+  type FirstRoundCheck =
+    | typeof assertFirstRoundFitsWebRtcFrame
+    | typeof assertFirstRoundFitsFileSyncFrame;
+
+  /** A first-round check's real refusal, at a bound two values cross. */
+  async function firstRoundRefusal(
+    check: FirstRoundCheck = assertFirstRoundFitsWebRtcFrame,
+  ): Promise<unknown> {
     const prepared = prepareManagedRerunExchange(
       record().exchangeFile,
       rows,
       columns,
     );
     try {
-      await assertFirstRoundFitsWebRtcFrame(prepared, { maxFrameBytes: 1 });
+      await check(prepared, { maxFrameBytes: 1 });
     } catch (error) {
       return error;
     }
     return undefined;
+  }
+
+  /** The same check's real refusal when its count throws before reaching a
+   * size. */
+  async function firstRoundUncounted(
+    check: FirstRoundCheck = assertFirstRoundFitsWebRtcFrame,
+  ): Promise<unknown> {
+    const failure = new RangeError("Map maximum size exceeded");
+    const count = vi
+      .spyOn(StandardizedKeyIterable.prototype, Symbol.iterator)
+      .mockImplementation(() => {
+        throw failure;
+      });
+    try {
+      return await firstRoundRefusal(check);
+    } finally {
+      count.mockRestore();
+    }
   }
 
   const roundRefusal = new WebRtcFrameLimitError(
@@ -679,26 +708,26 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     }
   });
 
-  test("a first round the check cannot count records too-large and shows its own message", () => {
-    const uncounted = new WebRtcFrameLimitError(
-      ROUND_ONE_SET_UNCOUNTED_MESSAGE,
-      { cause: new RangeError("Map maximum size exceeded") },
-    );
+  test("a first round the check cannot count records an uncounted set with no bound", async () => {
+    const uncounted = await firstRoundUncounted();
+    expect(uncounted).toBeInstanceOf(WebRtcFrameLimitError);
     expect(uncounted).toBeInstanceOf(UsageError);
-    expect(
-      rerunFailureLastRun(uncounted, Date.parse(RUN_AT), false, false),
-    ).toEqual({
+    expect((uncounted as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
+    const lastRun = rerunFailureLastRun(
+      uncounted,
+      Date.parse(RUN_AT),
+      false,
+      false,
+    );
+    expect(lastRun).toEqual({
       at: RUN_AT,
       outcome: "failed",
       failureKind: "too-large",
-      tooLargeBound: "webrtc-message",
+      setUncounted: true,
     });
     const failure = classifyManagedRunFailure(
       uncounted,
-      {
-        atLaunch: record(),
-        afterRun: record({ lastRun: failed("too-large") }),
-      },
+      { atLaunch: record(), afterRun: record({ lastRun }) },
       undefined,
       NOW,
       false,
@@ -706,10 +735,68 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     if (failure.kind === "handed-off")
       throw new Error("expected the too-large alert");
     expect(failure.kind).toBe("too-large");
+    expect(failure.title).toBe(
+      "The values built from your file could not be counted",
+    );
     expect(failure.message).toContain(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
     expect(failure.message).toContain("Map maximum size exceeded");
     expect(failure.message).not.toMatch(/try again|temporary/i);
     expect(failure.recovery).toBe("split");
+    expect(managedRunRetryable(failure)).toBe(false);
+  });
+
+  test("a message-file first round the check cannot count records an uncounted set", async () => {
+    const uncounted = await firstRoundUncounted(
+      assertFirstRoundFitsFileSyncFrame,
+    );
+    expect(uncounted).toBeInstanceOf(RoundSetLimitError);
+    expect((uncounted as Error).cause).toBeInstanceOf(RangeError);
+    expect(tooLargeReadingOf(uncounted as RoundSetLimitError)).toEqual({
+      setUncounted: true,
+    });
+    expect(
+      rerunFailureLastRun(uncounted, Date.parse(RUN_AT), false, false),
+    ).toEqual({
+      at: RUN_AT,
+      outcome: "failed",
+      failureKind: "too-large",
+      setUncounted: true,
+    });
+  });
+
+  test("a message-file first round over its bound records a set over a bound, not an uncounted one", async () => {
+    const overBound = await firstRoundRefusal(
+      assertFirstRoundFitsFileSyncFrame,
+    );
+    expect(overBound).toBeInstanceOf(RoundSetLimitError);
+    expect((overBound as Error).cause).toBeUndefined();
+    expect(tooLargeReadingOf(overBound as RoundSetLimitError)).toEqual({});
+    expect(
+      rerunFailureLastRun(overBound, Date.parse(RUN_AT), false, false),
+    ).toEqual({
+      at: RUN_AT,
+      outcome: "failed",
+      failureKind: "too-large",
+    });
+  });
+
+  test("the next visit says an uncounted set could not be counted and names no bound", () => {
+    const failure = managedRunFailureFromRecord(
+      record({ lastRun: { ...failed("too-large"), setUncounted: true } }),
+      undefined,
+      NOW,
+    );
+    if (failure === undefined || failure.kind === "handed-off")
+      throw new Error("expected the too-large alert");
+    expect(failure.kind).toBe("too-large");
+    expect(failure.title).toBe(
+      "The values built from your file could not be counted",
+    );
+    expect(failure.message).toContain(
+      "built from your input file could not be counted, so it was not sent",
+    );
+    expect(failure.message).toContain("Split your input into smaller files");
+    expect(failure.message).not.toMatch(/WebRTC|MiB|too large/);
     expect(managedRunRetryable(failure)).toBe(false);
   });
 });

@@ -607,10 +607,10 @@ already defines:
   offered as retryable (see [What the setup consent covers across
   runs](#what-the-setup-consent-covers-across-runs)).
 - **This needs you: a file is too large to send.** A set of values the run had
-  to send was over the bound one WebRTC message holds, so the run refused to
-  send it; the same files build the same set at every window, so it is never
-  offered as retryable (see [An input too large to
-  send](#an-input-too-large-to-send)).
+  to send was over the bound one WebRTC message holds, or could not be counted
+  to check it, so the run refused to send it; the same files build the same
+  set at every window, so it is never offered as retryable (see [An input too
+  large to send](#an-input-too-large-to-send)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
   ran and failed closed with no recorded benign cause (the Tier-2 case; see
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)) is the
@@ -822,10 +822,12 @@ one WebRTC message under the bound the partner's side accepts (see
 [PROTOCOL.md](spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
 The party holding the input checks this at run start, from the input's own
 record count, before connecting, and refuses a set over the bound, so nothing
-of the run has been sent. Later rounds send a set larger than one message in
-parts and do not meet this refusal; a later round refuses only a set of this
-party's own over the most values any receiver admits (16,777,215), before
-sending any of it.
+of the run has been sent. Where it cannot count the set at all, it refuses the
+same way: the alert says the set could not be counted, names no bound, and
+gives the reason the count failed. Later rounds send a set larger than one
+message in parts and do not meet this refusal; a later round refuses only a
+set of this party's own over the most values any receiver admits (16,777,215),
+before sending any of it.
 
 It is a state of its own, held apart from a connection problem: reconnecting
 sends the same set, so no surface offers a retry. The remedy is to split the
@@ -836,8 +838,9 @@ or a synced folder, which allow larger messages.
 - **On the run screen**, an attended run shows the refusal's own message: the
   set's size, the bound, and what to do.
 - **At the next visit and in the between-visit notification**, the bookkeeping
-  holds the state and which bound refused it, but no size (it holds no
-  counts), so they state that bound and its figure and the remedy.
+  holds the state and which bound refused it, or that the count failed, but no
+  size and no reason (it holds no counts and no free text), so they state that
+  bound and its figure, or that the set could not be counted, and the remedy.
 
 #### An input that has not changed since the last run
 

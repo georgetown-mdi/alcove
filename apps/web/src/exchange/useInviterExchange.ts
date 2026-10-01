@@ -54,8 +54,8 @@ import { undeclaredColumnsRunNotice } from "@psi/runWarnings";
 import { buildRunOutputs } from "@psi/runOutputs";
 import { invitationUsable } from "@psi/formatting";
 import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
-import { tooLargeBoundOf } from "@psi/managed/managedRun";
 import { tooLargeFailureTitle } from "@psi/managed/managedFailureCopy";
+import { tooLargeReadingOf } from "@psi/managed/managedRun";
 
 import { buildRunEvents } from "./runEvents";
 import { useFailedRunRecord } from "./useFailedRunRecord";
@@ -392,7 +392,7 @@ function failureContentFor(
   if (isSetTooLargeError(error))
     return {
       category: "config",
-      title: tooLargeFailureTitle(tooLargeBoundOf(error)),
+      title: tooLargeFailureTitle(tooLargeReadingOf(error)),
       message: sanitizedFailureMessage(error),
     };
   if (error instanceof LinkageTermsUnsatisfiableError) {

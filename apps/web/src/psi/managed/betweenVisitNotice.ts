@@ -37,10 +37,13 @@ import {
   UNEXPLAINED_FAILURE_TITLE,
   repeatedMissCoordination,
   tooLargeFailureTitle,
-  tooLargeSetOverBound,
+  tooLargeSetProblem,
 } from "./managedFailureCopy";
 
-import type { ManagedExchangeRecord } from "./managedExchangeRecord";
+import type {
+  ManagedExchangeRecord,
+  TooLargeReading,
+} from "./managedExchangeRecord";
 import type { ManagedFailureTier } from "./managedFailureTiers";
 import type { ManagedLocalState } from "./managedLocalStateShape";
 import type { ManagedScheduleWindowDisposition } from "./managedSchedule";
@@ -219,8 +222,7 @@ function partialRotationNotice(
  * The reading rides the tag as well as the body: the two readings are different
  * standing states with different remedies, so a shortfall that becomes a
  * one-column reading says so rather than being suppressed as the state already
- * reported. The too-large notice names the bound the stamp's `tooLargeBound`
- * records. */
+ * reported. */
 function failureNotice(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
@@ -277,15 +279,18 @@ function failureNotice(
       tag: noticeTag(record.id, "terms-change"),
     };
   if (tier === "too-large") {
-    const bound = record.lastRun?.tooLargeBound;
+    const reading: TooLargeReading = record.lastRun ?? {};
     return {
       kind: "too-large",
-      title: tooLargeFailureTitle(bound),
+      title: tooLargeFailureTitle(reading),
       body:
         `${name} stopped because ${TOO_LARGE_SET_SOURCE} ` +
-        `${tooLargeSetOverBound(bound)}, and every later window stops the ` +
+        `${tooLargeSetProblem(reading)}, and every later window stops the ` +
         `same way. ${TOO_LARGE_REMEDY}`,
-      tag: noticeTag(record.id, "too-large"),
+      tag: noticeTag(
+        record.id,
+        reading.setUncounted === true ? "too-large:uncounted" : "too-large",
+      ),
     };
   }
   return {

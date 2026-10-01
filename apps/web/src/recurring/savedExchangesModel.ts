@@ -24,7 +24,7 @@ import {
 } from "@psi/managed/managedFailureTiers";
 import { deriveManagedBackupState } from "@psi/managed/managedBackupState";
 import { managedExchangeLapsed } from "@psi/managed/managedExpiry";
-import { tooLargeFileProblem } from "@psi/managed/managedFailureCopy";
+import { tooLargeFailureClause } from "@psi/managed/managedFailureCopy";
 
 import { dateLabel, dateTimeLabel } from "@psi/formatting";
 
@@ -43,7 +43,7 @@ import type {
   ManagedExchangeRecord,
   ManagedExchangeSchedule,
   ManagedExchangeSide,
-  TooLargeBound,
+  TooLargeReading,
 } from "@psi/managed/managedExchangeRecord";
 import type {
   ManagedFailureTier,
@@ -178,13 +178,13 @@ export function relayRegistrationPendingLine(
  * per-exchange surface the row opens. A benign tier is never treated as attack framing
  * here; the unexplained tier displays as "needs you to check with your partner", the
  * plain lead without the checklist. `at` is the last run's phrased instant;
- * `tooLargeBound` names the bound that refused a too-large run's set, when
- * recorded; `termsProposalStored` is whether a terms change waits on this
+ * `tooLargeReading` is what a too-large run recorded of the set it refused;
+ * `termsProposalStored` is whether a terms change waits on this
  * device for the operator's decision. */
 function tierStatus(
   tier: ManagedFailureTier,
   at: string,
-  tooLargeBound: TooLargeBound | undefined,
+  tooLargeReading: TooLargeReading,
   termsProposalStored: boolean,
 ): string {
   switch (tier) {
@@ -195,7 +195,7 @@ function tierStatus(
     case "terms-shortfall":
       return `Last run stopped before connecting (${at}); settle the terms or use a covering file`;
     case "too-large":
-      return `Last run stopped: your file ${tooLargeFileProblem(tooLargeBound)} (${at}); split your input`;
+      return `Last run stopped: ${tooLargeFailureClause(tooLargeReading)} (${at}); split your input`;
     case "terms-change":
       return termsProposalStored
         ? `Your partner's terms changed (${at}); apply or decline the change`
@@ -290,7 +290,7 @@ function lastRunStatus(
   return tierStatus(
     tier,
     at,
-    record.lastRun?.tooLargeBound,
+    record.lastRun ?? {},
     local?.termsProposal !== undefined,
   );
 }

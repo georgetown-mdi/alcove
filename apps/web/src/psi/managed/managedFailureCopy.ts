@@ -23,7 +23,7 @@ import { MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
 
 import type {
   ManagedExchangeSchedule,
-  TooLargeBound,
+  TooLargeReading,
 } from "./managedExchangeRecord";
 
 /**
@@ -89,12 +89,13 @@ export const WEBRTC_MESSAGE_BOUND_LABEL = `${(
   (1024 * 1024)
 ).toString()} MiB`;
 
-/** What a set over the bound was, by which bound refused it, completing a
- * sentence whose subject is the set; a record that does not say which bound
- * names none. Shared by the next-visit alert and the between-visit
- * notification. */
-export function tooLargeSetOverBound(bound: TooLargeBound | undefined): string {
-  switch (bound) {
+/** What happened to the set a too-large failure refused, completing a
+ * sentence whose subject is the set: over the bound the reading names, not
+ * counted, or too large with no bound named. Shared by the next-visit alert
+ * and the between-visit notification. */
+export function tooLargeSetProblem(reading: TooLargeReading): string {
+  if (reading.setUncounted === true) return "could not be counted";
+  switch (reading.tooLargeBound) {
     case "webrtc-message":
       return `was over the ${WEBRTC_MESSAGE_BOUND_LABEL} one WebRTC message can hold`;
     case undefined:
@@ -102,26 +103,28 @@ export function tooLargeSetOverBound(bound: TooLargeBound | undefined): string {
   }
 }
 
-/** What was wrong with a too-large file, by which bound refused it, completing
- * a sentence whose subject is the file. */
-export function tooLargeFileProblem(bound: TooLargeBound | undefined): string {
-  switch (bound) {
+/** What stopped a too-large run, as a lowercase clause about this party's
+ * file. */
+export function tooLargeFailureClause(reading: TooLargeReading): string {
+  if (reading.setUncounted === true)
+    return "the values built from your file could not be counted";
+  switch (reading.tooLargeBound) {
     case "webrtc-message":
-      return "is too large for a browser exchange";
+      return "your file is too large for a browser exchange";
     case undefined:
-      return "is too large to send";
+      return "your file is too large to send";
   }
 }
 
-/** The title over a too-large failure, naming the bound that refused this
- * party's file; shared by the one-shot exchange, a managed run's live
- * refusal, and the record read back. */
-export function tooLargeFailureTitle(bound: TooLargeBound | undefined): string {
-  return `Your file ${tooLargeFileProblem(bound)}`;
+/** The title over a too-large failure; shared by the one-shot exchange, a
+ * managed run's live refusal, and the record read back. */
+export function tooLargeFailureTitle(reading: TooLargeReading): string {
+  const clause = tooLargeFailureClause(reading);
+  return clause.charAt(0).toUpperCase() + clause.slice(1);
 }
 
-/** The set a too-large failure found over the bound, in the words the
- * next-visit alert and the between-visit notification both state it in. */
+/** The set a too-large failure refused, in the words the next-visit alert and
+ * the between-visit notification both state it in. */
 export const TOO_LARGE_SET_SOURCE =
   "the set of values built from your input file";
 
