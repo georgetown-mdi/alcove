@@ -423,6 +423,12 @@ On 2026-09-30 and 2026-10-01, on an Apple M1 Max with 32 GB of memory (Docker De
 - **16,777,216 records a side, file-sync pair, no container memory limit.** The run did not complete. Both parties were stopped during the first-round value count after about 15,600 s of wall time, at a peak of about 7.4 and 7.6 GiB a party. No refusal and no memory line was reached: on the build measured, the zero-setup path counted before it logged the memory line.
 - **15,339,166 records a side.** Not run: the pair needs about 37 GB and the host held 23.7 GB. A single party's preparation, up to the memory line, took 100 s and 108 s in two runs.
 
+The completion run at the per-set maximum:
+
+- **16,777,216 records a side, file-sync pair, to completion.** Not yet run; needs a host with about 60 GB.
+
+`apps/cli/test/stress/fileSyncCompletion.stress.test.ts` drives it in the CLI's opt-in stress tier (`npm run test:stress -w apps/cli`, after `npm run build -w apps/cli`). Two built `alcove` processes exchange over a synced folder under the images' heap setting, each with the four-column input above, half of it shared with the other. The test holds both results to that shared half, row for row, which is what a run with no size limit returns, and logs the wall time and each party's peak RSS, its PSI worker included. It skips where the free memory is under what the pair needs, about 60 GB at 2^24; `ALCOVE_STRESS_COMPLETION_ROWS` lowers the row count.
+
 ### Preparing the input at 2^24
 
 Measured 2026-10-01 in the development container (dev container, 10 cores, 23 GB; aarch64 Linux, Node v26.10.0), with other workloads running beside it. One zero-setup party ran alone over a file-drop directory (`alcove --peer-timeout 30s file://<dir> <input>`) under `NODE_OPTIONS=--max-old-space-size=19075`, on the four-column input above, one distinct SSN a record. Times are from the process's start, read off its log lines; peak RSS is the process's `VmHWM` at the end of each stage.

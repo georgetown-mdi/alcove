@@ -108,7 +108,7 @@ export const GUARDED_VITEST_CONFIGS = [
   { directory: "packages/core", projects: ["unit", "stress"] },
   {
     directory: "apps/cli",
-    projects: ["unit", "integration", "webrtc", "backend-agnostic"],
+    projects: ["unit", "integration", "webrtc", "backend-agnostic", "stress"],
   },
   {
     directory: "apps/web",

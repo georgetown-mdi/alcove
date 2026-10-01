@@ -15,6 +15,7 @@
     "test:integration:native-chroot": "node test/sftpServer/runChrootProfile.mjs",
     "test:integration:webrtc": "vitest run --project webrtc",
     "test:integration:backend-agnostic": "vitest run --project backend-agnostic",
+    "test:stress": "vitest run --project stress",
     "coverage": "vitest run --project unit --project integration --project webrtc --project backend-agnostic --coverage"
   },
   "dependencies": {

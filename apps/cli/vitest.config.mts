@@ -153,6 +153,17 @@ export default defineConfig({
           // project above.
         },
       },
+      {
+        test: {
+          name: "stress",
+          // Opt-in only (`npm run test:stress`): each file drives the built
+          // CLI at a size that needs a large host, and skips with the memory
+          // it needs on a smaller one.
+          include: ["test/stress/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
+          pool: "forks",
+          fileParallelism: false,
+        },
+      },
     ],
   },
 });
