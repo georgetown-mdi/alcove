@@ -132,16 +132,11 @@ A local fault that stops `doctor probe` before it can compose a verdict -- the t
 
 ## Cleanup limits
 
-Probe cleanup is attempted, never guaranteed. A delete is issued for every
-working file the run created (`alcove-probe-*.tmp*`) on every handled exit
-path, but its outcome is not re-verified: a share that refuses deletes or a
-transport that dies mid-run leaves the file in place. An interrupt (`SIGINT`
-or `SIGTERM`) is a handled exit path: the run waits for the command in
-flight, issues the deletes, removes its local credentials file, and then
-re-raises the signal. A second interrupt during those deletes abandons them,
-removing the credentials file before it re-raises. The next probe run sweeps
-that name mask before its own staged test, which is the designed safety
-check for such residue.
+Probe cleanup is attempted, never guaranteed. Every working file a run creates is named `alcove-probe-<suffix>.tmp` or `alcove-probe-<suffix>.tmp.renamed`, the suffix being the run's `SMB_TOKEN` or a random value, and on every handled exit path one masked delete, `del alcove-probe-<suffix>.tmp*`, is issued for whichever of them may still be on the share. Its outcome is not re-verified: a share that refuses deletes or a transport that dies mid-run leaves the file in place. The next probe run deletes `alcove-probe-*.tmp*` before its own staged test, which is the designed safety check for such residue.
+
+An interrupt (`SIGINT` or `SIGTERM`) is a handled exit path, bounded at 8 seconds from the signal to its re-raise. The run prints one line to stderr, `cleaning up, up to 8 s; press Ctrl-C again to skip`, stops the `smbclient` command in flight (`SIGTERM`, then `SIGKILL` 2 seconds later), issues the masked delete under a 3-second timeout, removes its local credentials directory, and re-raises the signal. Whatever is still running when the bound expires is abandoned; the credentials directory is removed before the re-raise in every case. A second interrupt abandons the cleanup at once, likewise removing the credentials directory before it re-raises.
+
+A supervisor stopping the probe -- `docker stop`, a Kubernetes `terminationGracePeriodSeconds`, a scheduler's kill timeout -- has to allow at least the 8-second bound between its `SIGTERM` and its `SIGKILL`. Docker's default of 10 seconds does. A `SIGKILL` cannot be handled, so one sent sooner leaves the credentials file on disk in an `alcove-doctor-*` directory under the temporary directory Node reports (`/tmp` by default), and may leave probe files on the share. In a container started with `docker run --rm` that directory goes with the container.
 
 The marker file is the single persistent artifact: the probe
 leaves it behind, and `doctor mount` consumes it on a matching cross-check.

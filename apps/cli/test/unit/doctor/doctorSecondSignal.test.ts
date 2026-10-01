@@ -54,6 +54,9 @@ test.skipIf(process.platform === "win32")(
     const sentAt = Number(reported(stdout, "second-signal"));
     expect(exitedAt - sentAt).toBeLessThan(PROMPT_EXIT_MS);
     expect(fs.existsSync(reported(stdout, "credentials"))).toBe(false);
+    expect(reported(stdout, "announced")).toBe(
+      "cleaning up, up to 8 s; press Ctrl-C again to skip",
+    );
   },
   TEST_TIMEOUT_MS,
 );

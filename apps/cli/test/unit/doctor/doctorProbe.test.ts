@@ -3,9 +3,11 @@ import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 
 import { MAX_DIRECTORY_ENTRIES } from "../../../src/connection/listingGuard";
-import { OutputCapture } from "../../../src/doctor/runner";
+import { KILL_GRACE_MS, OutputCapture } from "../../../src/doctor/runner";
 import type { CommandResult, CommandRunner } from "../../../src/doctor/runner";
 import {
+  INTERRUPT_CLEANUP_BOUND_MS,
+  INTERRUPT_DELETE_TIMEOUT_MS,
   PROBE_CHECK_IDS,
   countEntries,
   dialectArgs,
@@ -191,6 +193,7 @@ function deps(
     runner,
     lookupHost: () => Promise.resolve("10.10.0.5"),
     connectTcp: () => Promise.resolve(true),
+    announce: () => undefined,
     ...overrides,
     calls,
   };
@@ -374,7 +377,7 @@ describe("staged failures", () => {
     // What it wrote (or tried to) is swept before it returns, even on the
     // failure path: the share belongs to someone else.
     expect(probeDeps.calls.map((call) => commandOf(call.args))).toContain(
-      "del alcove-probe-abc123.tmp",
+      "del alcove-probe-abc123.tmp*",
     );
   });
 
@@ -784,15 +787,17 @@ describe("every skipped record explains itself", () => {
 
 describe("local cleanup does not depend on the remote", () => {
   test("a runner that dies during del still loses the work directory", async () => {
-    // The throw is pinned to this run's own litter name, not the wildcard
-    // stale-mask sweep that runs before litter has a member: the finally's
-    // litter loop must actually iterate for this test to measure its guard.
+    // The staged delete is refused so a probe file is left, and the throw is
+    // pinned to this run's own mask rather than the stale-file sweep: the
+    // finally's delete must actually run for this test to measure its guard.
     let authDir: string | undefined;
     const probeDeps = deps((args) => {
       const authPath = authPathOf(args);
       if (authPath !== undefined) authDir = path.dirname(authPath);
       const command = commandOf(args) ?? "";
-      if (command.startsWith("del alcove-probe-") && !command.includes("*"))
+      if (command === "del alcove-probe-abc123.tmp.renamed")
+        return { code: 1, output: "NT_STATUS_ACCESS_DENIED deleting" };
+      if (command === "del alcove-probe-abc123.tmp*")
         throw new Error("runner died");
       return healthyReply(args);
     });
@@ -858,9 +863,9 @@ describe("an interrupt sweeps the share before it re-raises", () => {
    * A runner answering like a healthy share whose share list, subdirectory
    * listing, and put of the probe file each settle on the next turn after
    * `during` runs, so a signal delivered there arrives while that command is
-   * still in flight; the delete of the probe file settles a turn late as well.
+   * still in flight; the delete of the probe files settles a turn late as well.
    * Each landing records whether the credentials file was still there when the
-   * command finished.
+   * command finished, and a stop request records `stop <command>`.
    */
   function interruptingRunner(
     events: string[],
@@ -891,15 +896,18 @@ describe("an interrupt sweeps the share before it re-raises", () => {
     return {
       authDir: () => authDir,
       runner: {
-        run(_file, args): Promise<CommandResult> {
+        run(_file, args, options): Promise<CommandResult> {
           const authPath = authPathOf(args);
           if (authPath !== undefined) authDir = path.dirname(authPath);
-          if (args.includes("-L")) {
-            events.push("list");
-            return settleAfter(during.list, "list landed", args);
-          }
-          const command = commandOf(args) ?? "";
+          const command = args.includes("-L")
+            ? "list"
+            : (commandOf(args) ?? "");
           events.push(command);
+          options.signal?.addEventListener("abort", () =>
+            events.push(`stop ${command}`),
+          );
+          if (command === "list")
+            return settleAfter(during.list, "list landed", args);
           if (command === "ls" && args.includes("-D"))
             return settleAfter(
               during.subdirectory,
@@ -908,7 +916,7 @@ describe("an interrupt sweeps the share before it re-raises", () => {
             );
           if (command === "put alcove-probe-abc123.tmp alcove-probe-abc123.tmp")
             return settleAfter(during.put, "put landed", args);
-          if (command === "del alcove-probe-abc123.tmp")
+          if (command === "del alcove-probe-abc123.tmp*")
             return settleAfter(undefined, "del landed", args);
           return Promise.resolve({ ...RESULT, ...healthyReply(args) });
         },
@@ -917,11 +925,11 @@ describe("an interrupt sweeps the share before it re-raises", () => {
   }
 
   test.each([
-    ["the share list", "list", "list landed"],
-    ["the subdirectory listing", "subdirectory", "subdirectory landed"],
+    ["the share list", "list", "list", "list landed"],
+    ["the subdirectory listing", "subdirectory", "ls", "subdirectory landed"],
   ] as const)(
-    "an interrupt during %s removes the credentials file only once it finishes",
-    async (_name, stage, landed) => {
+    "an interrupt during %s stops it and removes the credentials file once it ends",
+    async (_name, stage, command, landed) => {
       const before = new Set<unknown>(process.listeners("SIGINT"));
       const events: string[] = [];
       const kill = vi
@@ -942,6 +950,9 @@ describe("an interrupt sweeps the share before it re-raises", () => {
         await vi.waitFor(() => expect(events).toContain("kill SIGINT"));
 
         expect(events).toContain(`${landed} with credentials`);
+        const stop = events.indexOf(`stop ${command}`);
+        expect(stop).toBeGreaterThan(-1);
+        expect(stop).toBeLessThan(events.indexOf(landed));
         expect(events.indexOf("kill SIGINT")).toBeGreaterThan(
           events.indexOf(landed),
         );
@@ -954,7 +965,7 @@ describe("an interrupt sweeps the share before it re-raises", () => {
     },
   );
 
-  test("an interrupt during the put deletes the probe file once the put lands", async () => {
+  test("an interrupt during the put stops it and deletes the probe files once it ends", async () => {
     const before = new Set<unknown>(process.listeners("SIGINT"));
     const beforeTerm = process.listenerCount("SIGTERM");
     const events: string[] = [];
@@ -975,8 +986,15 @@ describe("an interrupt sweeps the share before it re-raises", () => {
       ).rejects.toThrow("interrupted");
       await vi.waitFor(() => expect(events).toContain("kill SIGINT"));
 
-      const del = events.indexOf("del alcove-probe-abc123.tmp");
+      const put = "put alcove-probe-abc123.tmp alcove-probe-abc123.tmp";
+      const stopPut = events.indexOf(`stop ${put}`);
+      expect(stopPut).toBeGreaterThan(-1);
+      expect(stopPut).toBeLessThan(events.indexOf("put landed"));
+      const del = events.indexOf("del alcove-probe-abc123.tmp*");
       expect(del).toBeGreaterThan(events.indexOf("put landed"));
+      expect(
+        events.filter((event) => event.startsWith("del alcove-probe-abc123")),
+      ).toHaveLength(1);
       expect(events.indexOf("kill SIGINT")).toBeGreaterThan(
         events.indexOf("del landed"),
       );
@@ -986,6 +1004,145 @@ describe("an interrupt sweeps the share before it re-raises", () => {
       expect(process.listenerCount("SIGTERM")).toBe(beforeTerm);
     } finally {
       kill.mockRestore();
+    }
+  });
+});
+
+describe("the cleanup after an interrupt is bounded", () => {
+  const ANNOUNCEMENT = `cleaning up, up to ${INTERRUPT_CLEANUP_BOUND_MS / 1000} s; press Ctrl-C again to skip`;
+
+  test("stopping the command in flight and the delete fit inside the bound", () => {
+    // Each stop may take its SIGTERM grace before the SIGKILL lands.
+    expect(
+      KILL_GRACE_MS + INTERRUPT_DELETE_TIMEOUT_MS + KILL_GRACE_MS,
+    ).toBeLessThan(INTERRUPT_CLEANUP_BOUND_MS);
+  });
+
+  interface HeldCall {
+    command: string;
+    timeoutMs: number;
+    signal: AbortSignal | undefined;
+  }
+
+  /**
+   * Run the probe with a runner that answers like a healthy share until
+   * `holds(command)`, then delivers SIGINT to the probe's own listener while
+   * that command is in flight. It never answers that command or any after it,
+   * except that `answersStop` ends a held command once it is told to stop.
+   * Resolves once `waitFor` names a held command, with every held call and
+   * what was announced.
+   */
+  async function interruptAndHold(options: {
+    holds: (command: string) => boolean;
+    answersStop: boolean;
+    waitFor: (command: string) => boolean;
+  }): Promise<{ held: HeldCall[]; announced: string[]; authDir: string }> {
+    const before = new Set<unknown>(process.listeners("SIGINT"));
+    const held: HeldCall[] = [];
+    const announced: string[] = [];
+    let authDir: string | undefined;
+    let signalled = false;
+    let markReached = (): void => undefined;
+    const reached = new Promise<void>((resolve) => {
+      markReached = resolve;
+    });
+    const runner: CommandRunner = {
+      run(_file, args, runOptions): Promise<CommandResult> {
+        const authPath = authPathOf(args);
+        if (authPath !== undefined) authDir = path.dirname(authPath);
+        const command = args.includes("-L") ? "list" : (commandOf(args) ?? "");
+        if (!signalled && !options.holds(command))
+          return Promise.resolve({
+            code: 0,
+            output: "",
+            timedOut: false,
+            ...healthyReply(args),
+          });
+        held.push({
+          command,
+          timeoutMs: runOptions.timeoutMs,
+          signal: runOptions.signal,
+        });
+        if (!signalled) {
+          signalled = true;
+          queueMicrotask(() => {
+            for (const listener of process.listeners("SIGINT"))
+              if (!before.has(listener))
+                (listener as (signal: NodeJS.Signals) => void)("SIGINT");
+            if (options.waitFor(command)) markReached();
+          });
+        } else if (options.waitFor(command)) markReached();
+        return new Promise((resolve) => {
+          if (options.answersStop)
+            runOptions.signal?.addEventListener("abort", () =>
+              resolve({ code: null, output: "", timedOut: false }),
+            );
+        });
+      },
+    };
+    void runProbe(
+      INPUT,
+      deps(healthyReply, {
+        runner,
+        announce: (line) => announced.push(line),
+      }),
+    ).catch(() => undefined);
+    await reached;
+    return { held, announced, authDir: authDir as string };
+  }
+
+  test("a command that never ends cannot hold the re-raise past the bound", async () => {
+    const listenersBefore = process.listenerCount("SIGINT");
+    const termListenersBefore = process.listenerCount("SIGTERM");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const { held, announced, authDir } = await interruptAndHold({
+        holds: (command) => command === "list",
+        answersStop: false,
+        waitFor: (command) => command === "list",
+      });
+      expect(announced).toEqual([ANNOUNCEMENT]);
+      expect(held[0]?.signal?.aborted).toBe(true);
+      expect(fs.existsSync(authDir)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(INTERRUPT_CLEANUP_BOUND_MS - 1);
+      expect(kill).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(kill).toHaveBeenCalledExactlyOnceWith(process.pid, "SIGINT");
+      expect(fs.existsSync(authDir)).toBe(false);
+      expect(process.listenerCount("SIGINT")).toBe(listenersBefore);
+      expect(process.listenerCount("SIGTERM")).toBe(termListenersBefore);
+    } finally {
+      kill.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  test("the probe files go in one masked delete, itself held to the bound", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const { held, authDir } = await interruptAndHold({
+        holds: (command) => command.startsWith("put alcove-probe-"),
+        answersStop: true,
+        waitFor: (command) => command.startsWith("del "),
+      });
+      expect(held.map((call) => call.command)).toEqual([
+        "put alcove-probe-abc123.tmp alcove-probe-abc123.tmp",
+        "del alcove-probe-abc123.tmp*",
+      ]);
+      const del = held[1] as HeldCall;
+      expect(del.timeoutMs).toBe(INTERRUPT_DELETE_TIMEOUT_MS);
+      expect(del.signal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(INTERRUPT_CLEANUP_BOUND_MS);
+      expect(kill).toHaveBeenCalledExactlyOnceWith(process.pid, "SIGINT");
+      expect(del.signal?.aborted).toBe(true);
+      expect(fs.existsSync(authDir)).toBe(false);
+    } finally {
+      kill.mockRestore();
+      vi.useRealTimers();
     }
   });
 });

@@ -26,12 +26,24 @@ export interface CommandResult {
   spawnErrorCode?: string;
 }
 
+/** How one child process is run. */
+export interface CommandRunOptions {
+  cwd?: string;
+  timeoutMs: number;
+  /**
+   * Stops the child early when aborted, through the same SIGTERM-then-SIGKILL
+   * path the timeout takes, without marking the result timed out. Already
+   * aborted, nothing is spawned.
+   */
+  signal?: AbortSignal;
+}
+
 /** The injectable process runner the doctor checks invoke smbclient through. */
 export interface CommandRunner {
   run(
     file: string,
     args: string[],
-    options: { cwd?: string; timeoutMs: number },
+    options: CommandRunOptions,
   ): Promise<CommandResult>;
 }
 
@@ -70,8 +82,12 @@ export class OutputCapture {
   }
 }
 
-/** Grace period between the timeout's SIGTERM and the SIGKILL behind it. */
-const KILL_GRACE_MS = 2000;
+/**
+ * Grace period between the SIGTERM that stops a child, on a timeout or an
+ * abort, and the SIGKILL behind it.
+ * @internal exported for testing
+ */
+export const KILL_GRACE_MS = 2000;
 
 /**
  * Environment variables removed from every child's environment. The password
@@ -87,6 +103,10 @@ const STRIPPED_CHILD_ENV = ["SMB_PASS", "PASSWD", "PASSWD_FILE"];
 export const nodeCommandRunner: CommandRunner = {
   run(file, args, options) {
     return new Promise<CommandResult>((resolve) => {
+      if (options.signal?.aborted === true) {
+        resolve({ code: null, output: "", timedOut: false });
+        return;
+      }
       const env = { ...process.env };
       for (const name of STRIPPED_CHILD_ENV) delete env[name];
 
@@ -118,17 +138,23 @@ export const nodeCommandRunner: CommandRunner = {
       child.stderr?.on("data", capture);
 
       let killTimer: NodeJS.Timeout | undefined;
-      const timer = setTimeout(() => {
-        timedOut = true;
+      const stop = (): void => {
+        if (killTimer !== undefined) return;
         child.kill("SIGTERM");
         killTimer = setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS);
         killTimer.unref();
+      };
+      const timer = setTimeout(() => {
+        timedOut = true;
+        stop();
       }, options.timeoutMs);
       timer.unref();
+      options.signal?.addEventListener("abort", stop, { once: true });
 
       const settle = (result: CommandResult): void => {
         clearTimeout(timer);
         if (killTimer !== undefined) clearTimeout(killTimer);
+        options.signal?.removeEventListener("abort", stop);
         resolve(result);
       };
 
