@@ -3880,4 +3880,32 @@ describe("the grading pass under the transform-work budget", () => {
     expect(pipelineCollapsesParsedDateToConstant(steps)).toBe(true);
     expect(pipelineAlwaysDrops(steps)).toBe(false);
   });
+
+  // A probe padded to the per-value ceiling, searched by a find-all step that
+  // keeps every match ("$&"), and sliced back to its date: the probes stay
+  // distinct whatever the pattern, so only the search's own spend can blank
+  // them.
+  const searchedPaddedProbe = (pattern: string): TransformStep[] => [
+    {
+      function: "parse_date",
+      params: { inputFormat: "MM/DD/YYYY", outputFormat: "YYYYMMDD" },
+    },
+    { function: "pad_left", params: { length: 4096, char: "0" } },
+    { function: "replace_regex", params: { pattern, replacement: "$&" } },
+    { function: "substring", params: { start: 4089, length: 8 } },
+  ];
+
+  test("an ordinary find-all search reads the probes it holds", () => {
+    expect(
+      pipelineCollapsesParsedDateToConstant(searchedPaddedProbe("0+")),
+    ).toBe(false);
+  });
+
+  test("a rescanning find-all search runs out of budget and reports the wider word", () => {
+    expect(
+      pipelineCollapsesParsedDateToConstant(
+        searchedPaddedProbe("(?:[^#]*[^#]{0,40}#|.)"),
+      ),
+    ).toBe(true);
+  }, 60_000);
 });

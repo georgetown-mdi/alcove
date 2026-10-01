@@ -26,6 +26,7 @@ import {
   transformParamTypeMessage,
 } from "./config/transformParamTypes.js";
 import type { TransformParamType } from "./config/transformParamTypes.js";
+import type { ScanBudget } from "./utils/linearRegex.js";
 import type {
   Standardization,
   StandardizationStep,
@@ -265,8 +266,9 @@ function textListParam(
 
 // A compiled standardizing function: params are captured at construction time
 // via the factory, so per-row calls pay no param-parsing or regex-compilation
-// cost.
-type StandardizingFn = (value: string) => FieldValue;
+// cost. `scan` is the row's transform work budget, which the find-all regex
+// steps charge their search to; it is absent where no budget runs.
+type StandardizingFn = (value: string, scan?: ScanBudget) => FieldValue;
 
 // A factory pre-processes params once and returns a StandardizingFn closure.
 type StandardizingFnFactory = (params: Params) => StandardizingFn;
@@ -834,7 +836,7 @@ function replaceRegexFactory(params: Params): StandardizingFn {
   // authored-NFC pattern matches a value left non-NFC by an upstream case-fold;
   // the result is derived from the normalized value, byte-identical for
   // already-canonical inputs. replaceAll is global, like the old `g` flag.
-  return (s) => re.replaceAll(s.normalize("NFC"), replacement);
+  return (s, scan) => re.replaceAll(s.normalize("NFC"), replacement, scan);
 }
 
 function extractRegexFactory(params: Params): StandardizingFn {
@@ -864,14 +866,14 @@ function splitOnFactory(params: Params): StandardizingFn {
   const includeOriginal =
     booleanParam("split_on", params, "includeOriginal") ?? false;
   const re = compileLinearRegex(delimiter);
-  return (s) => {
+  return (s, scan) => {
     // Normalize before splitting (see the STANDARDIZING_FUNCTIONS contract) so
     // an authored-NFC delimiter matches a value left non-NFC by an upstream
     // case-fold. Parts (and the unsplit value) come from the normalized form,
     // like extract_regex, since the split offsets are computed on it; this is a
     // no-op for already-canonical inputs.
     const n = s.normalize("NFC");
-    const parts = re.split(n).filter((p) => p.length > 0);
+    const parts = re.split(n, scan).filter((p) => p.length > 0);
     if (parts.length <= 1) return new Set([n]);
     return includeOriginal ? new Set([n, ...parts]) : new Set(parts);
   };
@@ -1671,7 +1673,8 @@ function addCandidate(
  * operator's own standardization pipeline -- its config and its data both local
  * -- runs without it (docs/notes/bound-transformed-value.md). `work` is the
  * budget on what the partner's steps may SPEND, charged wherever this runs one
- * of them: the probe pipelines open a meter of their own.
+ * of them: the probe pipelines open a meter of their own. `stepAt` locates the
+ * step on the element-transform path, so a crossing inside its search names it.
  *
  * @internal run by the probe pipelines in `linkageSatisfiability.ts`.
  */
@@ -1681,6 +1684,7 @@ export function applyStep(
   provenance?: FanOutProvenance,
   site?: CandidateAccumulationSite,
   work?: TransformWorkMeter,
+  stepAt?: TransformStepLocation,
 ): FieldValue {
   if (step.kind === "coalesce") {
     if (current === null || (current instanceof Set && current.size === 0)) {
@@ -1716,7 +1720,7 @@ export function applyStep(
       // The read is charged before the step runs, so a row out of budget stops
       // here rather than after one more invocation.
       chargeTransformWork(work, v.length, site, provenance);
-      const r = step.fn(v);
+      const r = step.fn(v, scanBudget(work, site, provenance, stepAt));
       // Noted before the produced units are charged, so a crossing decided on
       // this invocation reads the provenance this invocation established, as
       // the accumulating charge below does.
@@ -1748,7 +1752,7 @@ export function applyStep(
   }
 
   chargeTransformWork(work, current.length, site, provenance);
-  const result = step.fn(current);
+  const result = step.fn(current, scanBudget(work, site, provenance, stepAt));
   noteFanOutProducer(result, step.isListedFanOutFunction, provenance);
   chargeTransformWork(work, producedCodeUnits(result), site, provenance);
   return result;
@@ -2372,7 +2376,10 @@ function applyElementTransform(
   const compiled = compiledElementSteps(steps);
   let current: FieldValue = value;
   for (const [stepIndex, step] of compiled.entries()) {
-    current = applyStep(current, step, provenance, site, work);
+    current = applyStep(current, step, provenance, site, work, {
+      stepIndex,
+      functionName: steps[stepIndex].function,
+    });
     const over = valueOverCeiling(current);
     if (over !== undefined)
       throw transformStepValueTooLongRefusal(
@@ -2767,11 +2774,89 @@ function producedCodeUnits(result: FieldValue): number {
 // of the terms and so is not a UsageError.
 class TransformWorkBudgetCrossed extends Error {
   readonly spent: number;
+  readonly scanAt: LocatedTransformStep | undefined;
 
-  constructor(spent: number) {
+  constructor(spent: number, scanAt?: LocatedTransformStep) {
     super("the row's transform work crossed the per-row budget");
     this.spent = spent;
+    this.scanAt = scanAt;
   }
+}
+
+/**
+ * A step's place in the element transform that declares it, read by a refusal
+ * that names the step.
+ *
+ * @internal the shape {@link applyStep} takes.
+ */
+export interface TransformStepLocation {
+  readonly stepIndex: number;
+  readonly functionName: string;
+}
+
+// A step located on the element-transform path, where the key and element are
+// the site's.
+interface LocatedTransformStep extends TransformStepLocation {
+  readonly keyIndex: number | undefined;
+  readonly elementIndex: number;
+}
+
+function locatedStepPath(step: LocatedTransformStep): string {
+  return (
+    `${keyElementPath(step.keyIndex, step.elementIndex)}` +
+    `.transform[${step.stepIndex}], ` +
+    transformFunctionLabel(step.functionName)
+  );
+}
+
+// The work limb's refusal where the crossing landed inside a find-all step's
+// search (replace_regex, split_on). The step is named, since its pattern is what
+// to change, and the totals are the same derived integers the general refusal
+// states, so neither this party's value nor the partner's free text is echoed.
+// The operator may have written the pattern, so the remedy is addressed to
+// whoever holds the terms rather than to the partner.
+function findAllScanBudgetRefusal(
+  site: CandidateAccumulationSite,
+  spent: number,
+  step: LocatedTransformStep,
+): UsageError {
+  return new UsageError(
+    `a linkage key spent ${spent} code units of transform work on row ` +
+      `${site.rowIndex} of this party's data, above the ` +
+      `${MAX_TRANSFORM_WORK_PER_ROW} one row may spend deriving one key, ` +
+      "while a regular-expression step searched the value " +
+      `(${locatedStepPath(step)}). The step searches again after every ` +
+      "match and is charged for each character its searches read more " +
+      "than once, times the size of its pattern, so a pattern that reads on " +
+      "toward the end of the value after each match spends the budget. " +
+      "Both parties must " +
+      "derive byte-identical keys, so the search cannot be cut short: the " +
+      "exchange is refused instead. Change or remove that step's pattern in " +
+      "the agreed linkage terms, or shorten the field the element reads.",
+  );
+}
+
+// The budget a find-all step charges its search to, on a path that runs one.
+function scanBudget(
+  work: TransformWorkMeter | undefined,
+  site: CandidateAccumulationSite | undefined,
+  provenance: FanOutProvenance | undefined,
+  stepAt: TransformStepLocation | undefined,
+): ScanBudget | undefined {
+  if (work === undefined) return undefined;
+  const scanAt =
+    site === undefined || stepAt === undefined
+      ? undefined
+      : {
+          ...stepAt,
+          keyIndex: site.keyIndex,
+          elementIndex: site.elementIndex,
+        };
+  return {
+    remaining: MAX_TRANSFORM_WORK_PER_ROW - work.spent,
+    charge: (units) =>
+      chargeTransformWork(work, units, site, provenance, scanAt),
+  };
 }
 
 // The work limb's refusal. The spent total and the row index are derived
@@ -2807,11 +2892,15 @@ function transformWorkBudgetRefusal(
 // TransformWorkBudgetCrossed stands for. On the exchange path the fate is the
 // key's own, read exactly as the byte limb reads it, so a row's outcome does not
 // turn on which limb or which site the crossing landed at.
+//
+// `scanAt` is set where the charge is a find-all step's search, so the crossing
+// names that step; the fate is the same either way.
 function chargeTransformWork(
   work: TransformWorkMeter | undefined,
   units: number,
   site: CandidateAccumulationSite | undefined,
   provenance: FanOutProvenance | undefined,
+  scanAt?: LocatedTransformStep,
 ): void {
   if (work === undefined) return;
   work.spent += units;
@@ -2823,7 +2912,9 @@ function chargeTransformWork(
       provenance?.fromUnlistedFunction === true,
     ) === "drop"
   )
-    throw new TransformWorkBudgetCrossed(work.spent);
+    throw new TransformWorkBudgetCrossed(work.spent, scanAt);
+  if (scanAt !== undefined)
+    throw findAllScanBudgetRefusal(site, work.spent, scanAt);
   throw transformWorkBudgetRefusal(site, work.spent);
 }
 
@@ -3245,7 +3336,11 @@ function buildKeyStringsUnderPlan(
       index,
       `spends ${err.spent} code units of transform work on this key's ` +
         `declared fan-out, more than the ${MAX_TRANSFORM_WORK_PER_ROW} one ` +
-        "row may spend deriving one key",
+        "row may spend deriving one key" +
+        (err.scanAt === undefined
+          ? ""
+          : `, crossing it while a regular-expression step searched the ` +
+            `value (${locatedStepPath(err.scanAt)})`),
     );
   }
 }
