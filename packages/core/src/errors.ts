@@ -209,9 +209,12 @@ export class WebRtcFrameLimitError extends UsageError {
 }
 
 /**
- * A linkage key round whose set of values is larger than one round can hold
- * on SFTP or a synced folder: more values than one message file holds
- * (docs/spec/FILE_SYNC.md, "Round set size limits"). The message names the
+ * A linkage key round whose set of values is larger than one round can hold:
+ * on SFTP or a synced folder, a first round with more values than one message
+ * file holds (docs/spec/FILE_SYNC.md, "Round set size limits"); on any
+ * channel, a set of this party's own with more values than any receiver
+ * admits (`MAX_PSI_DECODE_ELEMENTS`), refused before it is built and with
+ * the partner sent an abort in its place. The message names the
  * count, the bound, and the remedy, and is composed only from counts and
  * fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry refuses
  * identically, so the CLI's generic retry advisory is suppressed.

@@ -10,7 +10,10 @@ import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
 } from "../connection/frameSize";
-import { fileSyncMessageFileBytes } from "../connection/fileSyncOutboundBound";
+import {
+  fileSyncMessageFileBytes,
+  SPLIT_INPUT_REMEDY,
+} from "../connection/fileSyncOutboundBound";
 import {
   binaryPackByteStringLength,
   PSI_ENCODED_ELEMENT_BYTES,
@@ -43,6 +46,27 @@ export function psiSetByteBound(elementBound: number): number {
     Math.min(elementBound, MAX_PSI_DECODE_ELEMENTS) *
       PSI_ENCODED_ELEMENT_BYTES +
     PSI_SET_MAX_FRAMING_BYTES
+  );
+}
+
+/**
+ * The reason a round puts on the abort it sends the partner in place of a set
+ * of this party's own over {@link MAX_PSI_DECODE_ELEMENTS}. A fixed literal,
+ * like every abort reason (see `sendAbort`).
+ */
+export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
+
+/**
+ * The refusal a round raises, before building the set, on a set of this
+ * party's own whose `elementCount` values exceed
+ * {@link MAX_PSI_DECODE_ELEMENTS}, the most any receiver admits.
+ */
+export function ownSetTooLargeMessage(elementCount: number): string {
+  return (
+    "Too large to send: the set this party sends for this linkage key " +
+    `holds ${elementCount} values, over the ${MAX_PSI_DECODE_ELEMENTS} one ` +
+    "set can hold, so the exchange stopped before sending it and told your " +
+    `partner. ${SPLIT_INPUT_REMEDY}`
   );
 }
 

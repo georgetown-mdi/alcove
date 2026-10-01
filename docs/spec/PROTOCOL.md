@@ -193,6 +193,8 @@ The rest of the part is the next slice of the set's bytes, in order. An empty se
 
 **The combined bound.** A set may declare at most `min(n, MAX_PSI_DECODE_ELEMENTS) * 35 + 6` bytes (`psiSetByteBound`). `n` is the authenticated element bound for the set's kind (`psiElementBounds`: the sender's value slots for a setup, the receiver's for a request or a response), 35 is `PSI_ENCODED_ELEMENT_BYTES` and 6 is `PSI_SET_MAX_FRAMING_BYTES`, so no legitimate set of at most `n` elements is longer. At `MAX_PSI_DECODE_ELEMENTS` (16,777,215) the bound is 587,202,531 bytes: two message files, or three WebRTC messages.
 
+**The sender's own bound.** A round refuses a set of this party's own with more than `MAX_PSI_DECODE_ELEMENTS` values before building it, as a `RoundSetLimitError` naming the count and the split-input remedy, and sends the partner an abort in its place (`PSIParticipant`, `packages/core/src/psi/participant.ts`), so a sender never sends a set the combined bound refuses.
+
 **What the receiver refuses, before any decode.** Each refusal is a `ProtocolRefusalError` naming the set and the condition:
 
 - On the first part, a declared byte length over the combined bound, checked before the set's buffer is allocated; and a part count of 0, or above the byte length (above 1 for an empty set).

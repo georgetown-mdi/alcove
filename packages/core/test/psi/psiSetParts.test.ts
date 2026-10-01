@@ -17,12 +17,18 @@ import {
   binaryPackByteStringLength,
   webrtcFrameExceedsBound,
 } from "../../src/connection/webrtcOutboundBound";
-import { PeerAbortError, ProtocolRefusalError } from "../../src/errors";
+import {
+  PeerAbortError,
+  ProtocolRefusalError,
+  RoundSetLimitError,
+} from "../../src/errors";
 import { sendAbort } from "../../src/protocolSetup";
 import { PSIParticipant } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
+  ownSetTooLargeMessage,
   PSI_SET_PART_HEADER_BYTES,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
   psiSetByteBound,
   psiSetPartPayloadBytes,
   psiSetParts,
@@ -480,3 +486,78 @@ test("a round refuses a setup longer than the partner's record counts admit", as
   // At the count the setup holds, the same set is admitted.
   expect(setup.byteLength).toBeLessThanOrEqual(psiSetByteBound(10));
 });
+
+test.each([
+  ["starter", false],
+  ["starter", true],
+  ["joiner", false],
+  ["joiner", true],
+] as const)(
+  "a %s whose own set is one value over the decode cap refuses it before sending any part (count-only: %s)",
+  async (overRole, countOnly) => {
+    const build = [
+      vi.spyOn(InProcessPsiEngine.prototype, "createServerSetup"),
+      vi.spyOn(InProcessPsiEngine.prototype, "createClientRequest"),
+    ];
+    const [a, b] = createMessagePipe();
+    const sent: Array<unknown> = [];
+    const overConn: MessageConnection = {
+      send: (data) => {
+        sent.push(data);
+        return a.send(data);
+      },
+      receive: (timeoutMs) => a.receive(timeoutMs),
+      close: () => a.close(),
+    };
+    const partnerRole = overRole === "starter" ? "joiner" : "starter";
+    const mode = countOnly ? "count-only" : "identifier-revealing";
+    const participant = (role: "starter" | "joiner") =>
+      new PSIParticipant(
+        role === "starter" ? "server" : "client",
+        psiLibrary,
+        { role, verbose: -1 },
+        UNBOUNDED_PSI_ELEMENTS,
+        new InProcessPsiEngine(
+          psiLibrary,
+          role,
+          role === "starter" ? "server" : "client",
+          mode,
+        ),
+      );
+    const over = participant(overRole);
+    const partner = participant(partnerRole);
+    const run = (
+      p: PSIParticipant,
+      conn: MessageConnection,
+      set: Array<string>,
+    ): Promise<unknown> =>
+      (countOnly
+        ? p.countIntersection(conn, set)
+        : p.identifyIntersection(conn, set)
+      ).then(
+        () => "completed",
+        (err: unknown) => err,
+      );
+    // Sparse: the check reads only the count, so no value is materialized.
+    const overSet = new Array<string>(MAX_PSI_DECODE_ELEMENTS + 1);
+    const [overEnd, partnerEnd] = await Promise.all([
+      run(over, overConn, overSet),
+      run(partner, b, values(3, "p")),
+    ]);
+    over.dispose();
+    partner.dispose();
+    await a.close();
+
+    expect(overEnd).toBeInstanceOf(RoundSetLimitError);
+    expect((overEnd as Error).message).toBe(
+      ownSetTooLargeMessage(MAX_PSI_DECODE_ELEMENTS + 1),
+    );
+    expect(sent).toEqual([
+      { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
+    ]);
+    expect(partnerEnd).toBeInstanceOf(PeerAbortError);
+    for (const spy of build)
+      for (const [built] of spy.mock.calls)
+        expect(built.length).toBeLessThanOrEqual(MAX_PSI_DECODE_ELEMENTS);
+  },
+);

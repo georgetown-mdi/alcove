@@ -390,9 +390,10 @@ export function rerunFailureLastRun(
 
 /** The benign outcomes a surface classifies without attack framing. The first
  * six are read before any connection is attempted; `"missed"` is read after a
- * connection attempt found no partner, `"too-large"` before connecting or
- * at any round, and `"relay-registration"` before connecting, once the
- * registrar did not confirm a pending registration. */
+ * connection attempt found no partner, `"too-large"` before connecting or at
+ * a later round whose own set holds more values than
+ * `MAX_PSI_DECODE_ELEMENTS`, and `"relay-registration"` before connecting,
+ * once the registrar did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
   | "handed-off"

@@ -20,10 +20,17 @@ import {
   assertPartnerIndices,
   assertPartnerIndexTable,
 } from "../utils/partnerIndices";
-import { ProtocolRefusalError } from "../errors";
+import { ProtocolRefusalError, RoundSetLimitError } from "../errors";
+import { sendAbort } from "../protocolSetup";
 import { decodePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
-import { psiSetByteBound, receivePsiSet, sendPsiSet } from "./psiSetParts";
+import {
+  ownSetTooLargeMessage,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  psiSetByteBound,
+  receivePsiSet,
+  sendPsiSet,
+} from "./psiSetParts";
 import type { RoundGroupingField } from "./roundGrouping";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -383,6 +390,18 @@ export class PSIParticipant {
     return declared;
   }
 
+  // Refuse this party's own set before building it when it holds more values
+  // than any receiver admits (the cap psiSetByteBound applies): the partner is
+  // parked on this set, so it is sent the abort in its place.
+  private async refuseOwnSetOverDecodeCap(
+    conn: MessageConnection,
+    elementCount: number,
+  ): Promise<void> {
+    if (elementCount <= MAX_PSI_DECODE_ELEMENTS) return;
+    await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
+    throw new RoundSetLimitError(ownSetTooLargeMessage(elementCount));
+  }
+
   // Receive one of the round's PSI sets in its parts, held to the bytes the
   // authenticated element bound for its kind admits.
   private receiveRoundSet(
@@ -587,6 +606,7 @@ export class PSIParticipant {
     set: Array<string>,
   ): Promise<number | undefined> {
     if (this.config.role === "starter") {
+      await this.refuseOwnSetOverDecodeCap(conn, set.length);
       const { setup } = await this.createServerSetup(set);
       this.log.debug(
         `${this.id}: starting count-only protocol; sending server data ` +
@@ -614,6 +634,7 @@ export class PSIParticipant {
     this.log.debug(`${this.id}: receiving server data encrypted by server`);
     await this.receiveServerSetup(serverSetup);
 
+    await this.refuseOwnSetOverDecodeCap(conn, set.length);
     const clientRequest = await this.createClientRequest(set);
     this.log.debug(`${this.id}: sending client data encrypted by client`);
     await sendPsiSet(conn, clientRequest);
@@ -639,6 +660,7 @@ export class PSIParticipant {
     grouping?: RoundGroupingExchange,
   ): Promise<AssociationTable> {
     if (this.config.role === "starter") {
+      await this.refuseOwnSetOverDecodeCap(conn, set.length);
       const { setup, permutation } = await this.createServerSetup(set);
 
       this.log.debug(
@@ -726,6 +748,7 @@ export class PSIParticipant {
       // arrives a round trip later.
       await this.receiveServerSetup(serverSetup);
 
+      await this.refuseOwnSetOverDecodeCap(conn, set.length);
       const clientRequest = await this.createClientRequest(set);
 
       this.log.debug(`${this.id}: sending client data encrypted by client`);
