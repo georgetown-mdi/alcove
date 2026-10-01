@@ -11,6 +11,7 @@ import {
   PEERJS_CHUNK_MTU,
   PSI_ENCODED_ELEMENT_BYTES,
   binaryPackByteStringLength,
+  largestOneFramePsiSetElements,
   minimumPsiSetFrameBytes,
   roundOneSetTooLargeMessage,
   webrtcFrameExceedsBound,
@@ -96,6 +97,7 @@ test("the count check refuses one element over the largest set it admits", () =>
     MAX_WEBRTC_FRAME_BYTES,
   );
   expect(largest).toBe(7_643_790);
+  expect(largestOneFramePsiSetElements()).toBe(largest);
   expect(webrtcFrameExceedsBound(minimumPsiSetFrameBytes(largest - 1))).toBe(
     false,
   );

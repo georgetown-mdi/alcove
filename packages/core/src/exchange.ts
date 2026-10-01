@@ -110,10 +110,9 @@ import {
 import { MAX_WEBRTC_FRAME_BYTES } from "./connection/binaryPackBounds.js";
 import { SPLIT_INPUT_REMEDY } from "./connection/fileSyncOutboundBound.js";
 import {
-  minimumPsiSetFrameBytes,
+  largestOneFramePsiSetElements,
   ROUND_ONE_SET_UNCOUNTED_MESSAGE,
   roundOneSetTooLargeMessage,
-  webrtcFrameExceedsBound,
 } from "./connection/webrtcOutboundBound.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
 import type { Standardization } from "./config/standardizationSchema.js";
@@ -1575,12 +1574,9 @@ export async function assertFirstRoundFitsWebRtcFrame(
   options: FirstRoundCheckOptions = {},
 ): Promise<void> {
   const maxFrameBytes = options.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
+  const largestAdmitted = largestOneFramePsiSetElements(maxFrameBytes);
   await assertFirstRoundFits(prepared, options, {
-    exceeds: (elementCount) =>
-      webrtcFrameExceedsBound(
-        minimumPsiSetFrameBytes(elementCount),
-        maxFrameBytes,
-      ),
+    exceeds: (elementCount) => elementCount > largestAdmitted,
     tooLarge: (fewest) =>
       new WebRtcFrameLimitError(
         roundOneSetTooLargeMessage(fewest, maxFrameBytes),

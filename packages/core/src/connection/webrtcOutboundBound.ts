@@ -104,6 +104,29 @@ export function minimumPsiSetFrameBytes(elementCount: number): number {
   return binaryPackByteStringLength(elementCount * PSI_ENCODED_ELEMENT_BYTES);
 }
 
+/**
+ * The most elements a PSI set can hold and still fit one WebRTC frame bounded
+ * at `maxFrameBytes`: the largest count whose {@link minimumPsiSetFrameBytes}
+ * {@link webrtcFrameExceedsBound} admits. The first-round check of a WebRTC
+ * exchange refuses a count over it.
+ *
+ * @param maxFrameBytes - The receiver's bound, {@link MAX_WEBRTC_FRAME_BYTES}
+ *   unless a test lowers it.
+ */
+export function largestOneFramePsiSetElements(
+  maxFrameBytes: number = MAX_WEBRTC_FRAME_BYTES,
+): number {
+  let admitted = 0;
+  let refused = Math.floor(maxFrameBytes / PSI_ENCODED_ELEMENT_BYTES) + 1;
+  while (refused - admitted > 1) {
+    const mid = Math.floor((admitted + refused) / 2);
+    if (webrtcFrameExceedsBound(minimumPsiSetFrameBytes(mid), maxFrameBytes))
+      refused = mid;
+    else admitted = mid;
+  }
+  return admitted;
+}
+
 const MIB = 1024 * 1024;
 
 /**

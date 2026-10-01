@@ -8,6 +8,10 @@ import {
   MAX_RECORD_COUNT,
   psiElementBounds,
 } from "../../src/connection/frameSize";
+import {
+  minimumPsiSetFrameBytes,
+  webrtcFrameExceedsBound,
+} from "../../src/connection/webrtcOutboundBound";
 import { psiSetByteBound } from "../../src/psi/psiSetParts";
 import { MAX_LINKAGE_ENTRIES } from "../../src/config/linkageTermsSchema";
 import {
@@ -109,8 +113,18 @@ test("MAX_PSI_DECODE_ELEMENTS is 2^24, admits a full frame's elements, and bound
   );
 });
 
-test("a browser party's ceiling on a partner's set is under the protocol's and its joined set fits one WebRTC frame", () => {
-  expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBe(1_048_576);
+test("a browser party's ceiling on a partner's set is the count the WebRTC first-round check admits", () => {
+  expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBe(7_643_790);
+  expect(
+    webrtcFrameExceedsBound(
+      minimumPsiSetFrameBytes(BROWSER_PSI_SET_MAX_ELEMENTS),
+    ),
+  ).toBe(false);
+  expect(
+    webrtcFrameExceedsBound(
+      minimumPsiSetFrameBytes(BROWSER_PSI_SET_MAX_ELEMENTS + 1),
+    ),
+  ).toBe(true);
   expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBeLessThan(MAX_PSI_DECODE_ELEMENTS);
   expect(psiSetByteBound(BROWSER_PSI_SET_MAX_ELEMENTS)).toBeLessThanOrEqual(
     MAX_WEBRTC_FRAME_BYTES,

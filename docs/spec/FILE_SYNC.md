@@ -399,7 +399,9 @@ Once the terms are exchanged and before any PSI set moves, a cascade or count-on
 - **A need over it is refused** as a `RoundCapacityError` (a usage error, exit 64) naming the count, both figures and the remedies: a host with more memory, or the partner splitting their input into smaller files. It is this party's own limit, not a fault in anything the partner sent, and the partner is sent a fixed abort reason.
 - **`--allow-memory-shortfall`** turns it into a warning, on stderr and on the event stream under `memoryShortfall`, as before contact.
 
-A single-pass exchange is left to its dataset ceiling. A browser party refuses against a fixed ceiling instead ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
+The partner's figure is an authenticated upper bound, not the size of the set it sends: duplicate values and empty cells shrink the real set below the record count times the widest declared key width. A command-line party whose memory sits near the bound is therefore refused unless `--allow-memory-shortfall` is passed, though the set it would receive could fit.
+
+A single-pass exchange is left to its dataset ceiling. A browser party refuses against a fixed ceiling instead, on the same upper bound, and has no override ([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
 
 ### Limits
 
