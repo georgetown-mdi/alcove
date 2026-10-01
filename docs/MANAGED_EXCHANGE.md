@@ -817,25 +817,23 @@ change is saved.
 
 #### An input too large to send
 
-A set of values a run sends travels as one WebRTC message, and the party
-holding it refuses to send one over the bound the partner's side accepts (see
-[PROTOCOL.md](spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)): at
-run start from the input's own record count, before connecting, or at a round
-from the set it built, which tells the partner the run stopped. A later round
-can meet it after earlier rounds have run, so this state claims nothing about
-what the run sent.
+A run sends its sets of values over WebRTC, and the first round's set must fit
+one WebRTC message under the bound the partner's side accepts (see
+[PROTOCOL.md](spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
+The party holding the input checks this at run start, from the input's own
+record count, before connecting, and refuses a set over the bound, so nothing
+of the run has been sent. Later rounds send a set larger than one message in
+parts and do not meet this refusal.
 
 It is a state of its own, held apart from a connection problem: reconnecting
 sends the same set, so no surface offers a retry. The remedy is to split the
-input into smaller files and set up one exchange for each, or, where the set
-was the partner's, for the partner to split theirs.
+input into smaller files and set up one exchange for each.
 
 - **On the run screen**, an attended run shows the refusal's own message: the
-  set's size, the bound, whose input it was, and what to do.
+  set's size, the bound, and what to do.
 - **At the next visit and in the between-visit notification**, the bookkeeping
-  holds the state, whose set it was, and which bound refused it, but no size
-  (it holds no counts), so they state that bound and its figure and the one
-  remedy that applies: split your input, or ask the partner to split theirs.
+  holds the state and which bound refused it, but no size (it holds no
+  counts), so they state that bound and its figure and the remedy.
 
 #### An input that has not changed since the last run
 
