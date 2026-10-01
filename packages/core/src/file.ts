@@ -228,10 +228,14 @@ export function guardStreamLineByteCeiling(
     // run, each terminator resets it. Check the run AT each terminator (and at the
     // chunk's unterminated tail) so a run that crosses the ceiling before a later
     // terminator in the same chunk still trips -- the within-chunk overflow case.
+    // Each kind's next position is searched for again only once the walk passes
+    // it, so a chunk holding one kind alone is scanned once for the other.
     let from = 0;
+    let lf = -2;
+    let cr = -2;
     while (from < buf.length) {
-      const lf = buf.indexOf(0x0a, from);
-      const cr = buf.indexOf(0x0d, from);
+      if (lf !== -1 && lf < from) lf = buf.indexOf(0x0a, from);
+      if (cr !== -1 && cr < from) cr = buf.indexOf(0x0d, from);
       const term = lf === -1 ? cr : cr === -1 ? lf : Math.min(lf, cr);
       if (term === -1) {
         run += buf.length - from;

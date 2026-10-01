@@ -72,7 +72,7 @@ import { openInputSource } from "../../src/util/dataIo";
 import { exitCodeForError, runOrExit } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
-import { assertFileSyncFirstRoundFits } from "../../src/fileSyncFirstRound";
+import { assertFirstRoundFits } from "../../src/fileSyncFirstRound";
 import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
@@ -118,7 +118,7 @@ vi.mock("../../src/fileSyncFirstRound", async (importActual) => {
     await importActual<typeof import("../../src/fileSyncFirstRound")>();
   return {
     ...actual,
-    assertFileSyncFirstRoundFits: vi.fn(actual.assertFileSyncFirstRoundFits),
+    assertFirstRoundFits: vi.fn(actual.assertFirstRoundFits),
   };
 });
 
@@ -3264,7 +3264,7 @@ describe("runOnlineBootstrap", () => {
     const refusal = new RoundSetLimitError(
       "first round too large for one file",
     );
-    vi.mocked(assertFileSyncFirstRoundFits).mockImplementationOnce(() => {
+    vi.mocked(assertFirstRoundFits).mockImplementationOnce(() => {
       throw refusal;
     });
     vi.mocked(establishHostKeyTrust).mockClear();

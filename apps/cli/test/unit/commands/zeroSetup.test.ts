@@ -40,6 +40,7 @@ import { resolveConnectionCredentials } from "../../../src/util/atSignRefs";
 import { redactUrlCredentials } from "../../../src/util/connectionUrl";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import {
+  checkRunMemoryBudget,
   runProtocol,
   undeclaredColumnsNotice,
   warnUndeclaredColumns,
@@ -66,14 +67,16 @@ import {
 // Hoisted above the imports by vitest. Only runProtocol is stubbed -- the
 // refusal messages the handler raises are the module's real constants, so an
 // assertion here matches what the operator actually sees, not a copy of it.
-// The undeclared-columns notice stays real, spy-wrapped so the ordering test
-// below can place it against the host-key step.
+// The undeclared-columns notice and the memory check stay real, spy-wrapped so
+// the ordering tests below can place them against the host-key step and the
+// first-round count.
 vi.mock("../../../src/protocol", async (importActual) => {
   const actual = await importActual<typeof import("../../../src/protocol")>();
   return {
     ...actual,
     runProtocol: vi.fn(),
     warnUndeclaredColumns: vi.fn(actual.warnUndeclaredColumns),
+    checkRunMemoryBudget: vi.fn(actual.checkRunMemoryBudget),
   };
 });
 
@@ -1079,20 +1082,92 @@ test("handler: a first round too large for one message file exits 64 with no hos
     vi.mocked(establishHostKeyTrust).mockClear();
     vi.mocked(runProtocol).mockClear();
 
-    await expect(
+    const { value: raised, lines } = await captureFd3(() =>
       handler({
         _: ["sftp://userb@localhost:2222/drop", input],
         $0: "alcove",
+        "event-stream": true,
         "config-file": path.join(dir, "alcove.yaml"),
         "key-file": path.join(dir, ".alcove.key"),
         identity: "Tester",
         record: false,
         "log-level": "silent",
-      } as unknown as Arguments),
-    ).rejects.toThrow("exit:64");
+      } as unknown as Arguments).then(
+        () => undefined,
+        (err: unknown) => err,
+      ),
+    );
+    expect(raised).toEqual(new Error("exit:64"));
     expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+    // The refusal ends the machine-interface stream with its terminal error.
+    expect(lines.filter((l) => l.type === "error")).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("first round too large for one file"),
+      }),
+    ]);
+    expect(lines.at(-1)?.type).toBe("error");
+  } finally {
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("handler: the memory check is decided before the first-round count", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeromemory-"));
+  const exitSpy = captureProcessExit();
+  try {
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(
+      input,
+      "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+    );
+    const args = {
+      _: ["sftp://userb@localhost:2222/drop", input],
+      $0: "alcove",
+      "config-file": path.join(dir, "alcove.yaml"),
+      "key-file": path.join(dir, ".alcove.key"),
+      identity: "Tester",
+      record: false,
+      "log-level": "silent",
+    } as unknown as Arguments;
+    const memory = vi.mocked(checkRunMemoryBudget);
+    const count = vi.mocked(assertFirstRoundFitsFileSyncFrame);
+    memory.mockClear();
+    count.mockClear();
+    vi.mocked(runProtocol).mockImplementationOnce((async (
+      ...callArgs: unknown[]
+    ) =>
+      driveCompletedExchange(callArgs, { partnerSaveIntent: false })) as never);
+    await handler(args);
+    expect(memory).toHaveBeenCalledTimes(1);
+    expect(count).toHaveBeenCalledTimes(1);
+    expect(memory.mock.invocationCallOrder[0]).toBeLessThan(
+      count.mock.invocationCallOrder[0],
+    );
+
+    // A refusal from the memory check ends the run with nothing counted.
+    memory.mockClear();
+    count.mockClear();
+    memory.mockImplementationOnce(() => {
+      throw new UsageError("short of memory");
+    });
+    const { value: raised, lines } = await captureFd3(() =>
+      handler({ ...args, "event-stream": true } as Arguments).then(
+        () => undefined,
+        (err: unknown) => err,
+      ),
+    );
+    expect(raised).toEqual(new Error("exit:64"));
+    expect(memory).toHaveBeenCalledTimes(1);
+    expect(count).not.toHaveBeenCalled();
+    expect(lines.filter((l) => l.type === "error")).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("short of memory"),
+      }),
+    ]);
+    expect(lines.at(-1)?.type).toBe("error");
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });

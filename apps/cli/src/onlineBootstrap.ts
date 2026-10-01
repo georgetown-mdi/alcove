@@ -47,8 +47,6 @@ import {
   saveConfig,
 } from "./config";
 import { detectFileConflicts, FileExistsError } from "./fileUtils";
-import { assertFileSyncFirstRoundFits } from "./fileSyncFirstRound";
-import { withFirstRoundCountDisplay } from "./psiProgressDisplay";
 import { writeAcceptanceRecordReportingLoss } from "./acceptedTermsRecords";
 import {
   applyConnectionCredentials,
@@ -919,24 +917,13 @@ export async function runOnlineBootstrap(params: {
     params.connection,
     params.provision,
   );
-  // Decided from the input alone, so settled before the host-key step too.
-  await withFirstRoundCountDisplay(
-    {
-      verbosity: params.verbosity,
-      logFile: params.logFile,
-      log: getLogger(params.loggerName),
-    },
-    (report) =>
-      assertFileSyncFirstRoundFits(params.connection, params.prepared, report),
-  );
-
   // Open the machine-interface stream here rather than leaving it to runProtocol:
   // this bootstrap's own persistence losses (both hooks below) must ride the
   // same fd-3 channel as the run's terminal result event, and runProtocol drives
   // the emitter but does not hand it to a hook, so reporting a loss means
   // holding the object here and passing it in. preflightRun opens it and makes
   // runProtocol's own local checks -- the fd-3 preflight, the shared secret and
-  // its key-file path, the first round's size, the memory the round needs, and
+  // its key-file path, the memory the round needs, the first round's size, and
   // the webrtc rendezvous -- so each, like the non-interactive host-key refusal
   // after it, comes before the wake call and the host-key probe, as in
   // `alcove exchange`.

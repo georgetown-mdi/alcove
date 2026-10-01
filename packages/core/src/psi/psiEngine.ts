@@ -3,6 +3,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { Server as PSIServer } from "@openmined/psi.js/implementation/server.d.ts";
 
 import { markNamedDiagnosis } from "../errors";
+import { DistinctValues } from "../utils/distinctValues";
 import {
   appendChunkElements,
   buildRequest,
@@ -87,10 +88,16 @@ function engineRefusal(message: string): Error {
 export function valuesContributedExactlyOnce(
   values: ReadonlyArray<string>,
 ): Array<string> {
-  const occurrences = new Map<string, number>();
-  for (const value of values)
-    occurrences.set(value, (occurrences.get(value) ?? 0) + 1);
-  return values.filter((value) => occurrences.get(value) === 1);
+  const distinct = new DistinctValues();
+  const occurrences: Array<number> = [];
+  const positions = values.map((value) => {
+    const size = distinct.size;
+    const position = distinct.add(value);
+    if (position === size) occurrences.push(1);
+    else ++occurrences[position];
+    return position;
+  });
+  return values.filter((_value, i) => occurrences[positions[i]] === 1);
 }
 
 /**

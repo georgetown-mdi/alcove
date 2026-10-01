@@ -68,7 +68,8 @@ import {
   UsageError,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
-import { MAX_MAP_SHARD_ENTRIES, ShardedMap } from "./shardedMap";
+import { DistinctValues } from "../utils/distinctValues";
+import { MAX_MAP_SHARD_ENTRIES } from "./shardedMap";
 import { receiveCountReport, sendCountReport } from "../protocolSetup";
 
 import { getLoggerForVerbosity } from "../utils/logger";
@@ -195,15 +196,13 @@ const HELD_BY_SEVERAL_ROWS = -1;
  * The uniqueness rule applies per VALUE rather than per record, so a record
  * whose other candidates are unique keeps them, and a record whose every
  * candidate is a duplicate participates with nothing
- * (docs/spec/PROTOCOL.md, Value-level round participation). Keeps one map
- * from each value to its first row, marked once a second row holds the value,
- * and reads the survivors off it in insertion order, which is the row-major
- * order.
+ * (docs/spec/PROTOCOL.md, Value-level round participation). Keeps each
+ * distinct value's first row, marked once a second row holds the value, and
+ * reads the survivors off in first-seen order, which is the row-major order.
  *
  * `permutation` maps a survivor's index back to its original row when the
- * input is a carried-forward subset of a later round. The map holds any
- * number of distinct values ({@link ShardedMap}); tests lower
- * `shardEntries`.
+ * input is a carried-forward subset of a later round. It holds any number of
+ * distinct values ({@link DistinctValues}); tests lower `shardEntries`.
  *
  * @internal
  */
@@ -212,15 +211,23 @@ export function removeDuplicatesAndUndefineds(
   permutation?: Array<number>,
   shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): [Array<string>, Array<number>] {
-  const firstRow = new ShardedMap<string, number>(shardEntries);
+  const distinct = new DistinctValues({ shardEntries });
+  const firstRow: Array<number> = [];
   forEachCandidate(dataWithDuplicatesAndUndefineds, (row, value) => {
-    const first = firstRow.setIfAbsent(value, row);
-    if (first !== undefined && first !== row && first !== HELD_BY_SEVERAL_ROWS)
-      firstRow.set(value, HELD_BY_SEVERAL_ROWS);
+    const size = distinct.size;
+    const position = distinct.add(value);
+    if (position === size) {
+      firstRow.push(row);
+      return;
+    }
+    const first = firstRow[position];
+    if (first !== row && first !== HELD_BY_SEVERAL_ROWS)
+      firstRow[position] = HELD_BY_SEVERAL_ROWS;
   });
   const data: Array<string> = [];
   const originalIndices: Array<number> = [];
-  firstRow.forEach((i, value) => {
+  distinct.values.forEach((value, position) => {
+    const i = firstRow[position];
     if (i === HELD_BY_SEVERAL_ROWS) return;
     data.push(value);
     originalIndices.push(permutation ? permutation[i] : i);
@@ -241,7 +248,9 @@ export function removeDuplicatesAndUndefineds(
  * @internal
  */
 export class RoundSetCounter {
-  private readonly rowOf: ShardedMap<string, number>;
+  private readonly distinct: DistinctValues;
+  // Each value's first row, by position, until a second row holds it.
+  private readonly rowOf: Array<number> = [];
   private heldByOneRow = 0;
   private readonly keepsDuplicates: boolean;
 
@@ -250,7 +259,7 @@ export class RoundSetCounter {
     shardEntries: number = MAX_MAP_SHARD_ENTRIES,
   ) {
     this.keepsDuplicates = keepsDuplicates;
-    this.rowOf = new ShardedMap(shardEntries);
+    this.distinct = new DistinctValues({ shardEntries });
   }
 
   /** Count the candidates of row `row`. */
@@ -261,17 +270,23 @@ export class RoundSetCounter {
   }
 
   private addValue(row: number, value: string): void {
-    const holder = this.rowOf.setIfAbsent(value, row);
-    if (holder === undefined) ++this.heldByOneRow;
-    else if (holder !== row && holder !== HELD_BY_SEVERAL_ROWS) {
-      this.rowOf.set(value, HELD_BY_SEVERAL_ROWS);
+    const size = this.distinct.size;
+    const position = this.distinct.add(value);
+    if (position === size) {
+      this.rowOf.push(row);
+      ++this.heldByOneRow;
+      return;
+    }
+    const holder = this.rowOf[position];
+    if (holder !== row && holder !== HELD_BY_SEVERAL_ROWS) {
+      this.rowOf[position] = HELD_BY_SEVERAL_ROWS;
       --this.heldByOneRow;
     }
   }
 
   /** The round's set size over the rows added so far. */
   get size(): number {
-    return this.keepsDuplicates ? this.rowOf.size : this.heldByOneRow;
+    return this.keepsDuplicates ? this.distinct.size : this.heldByOneRow;
   }
 
   /**
@@ -306,15 +321,15 @@ export function groupDuplicatesAndRemoveUndefineds(
   permutation?: Array<number>,
   shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): [Array<string>, RoundCandidates] {
-  const positionOf = new ShardedMap<string, number>(shardEntries);
-  const data: Array<string> = [];
+  const distinct = new DistinctValues({ shardEntries });
+  const data = distinct.values;
   const firstRowAt: Array<number> = [];
   const laterRowsAt: Array<Array<number> | undefined> = [];
   forEachCandidate(dataWithDuplicatesAndUndefineds, (i, value) => {
     const row = permutation ? permutation[i] : i;
-    const position = positionOf.setIfAbsent(value, data.length);
-    if (position === undefined) {
-      data.push(value);
+    const size = distinct.size;
+    const position = distinct.add(value);
+    if (position === size) {
       firstRowAt.push(row);
       laterRowsAt.push(undefined);
       return;

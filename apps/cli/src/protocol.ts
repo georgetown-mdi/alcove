@@ -1801,11 +1801,12 @@ export function checkRunMemoryBudget(params: {
 
 /**
  * The run's refusals decided from local inputs alone: the shared secret's
- * readiness and its key-file path, the first round's size against one message
- * on the channel, the memory the round needs ({@link checkRunMemoryBudget},
- * skipped when `memoryBudgetReported`), and on webrtc the rendezvous
- * resolution. None of them contacts the network, so {@link preflightRun}
- * runs them ahead of a command's own first network contact as well.
+ * readiness and its key-file path, the memory the round needs
+ * ({@link checkRunMemoryBudget}, skipped when `memoryBudgetReported`), the
+ * first round's size against one message on the channel, and on webrtc the
+ * rendezvous resolution. None of them contacts the network, so
+ * {@link preflightRun} runs them ahead of a command's own first network
+ * contact as well.
  */
 async function checkRunLocalInputs(params: {
   connection: ProtocolConnectionConfig;
@@ -1848,13 +1849,15 @@ async function checkRunLocalInputs(params: {
     // saveKeyFile writes after the handshake.
     trimmedKeyFilePath = preflightKeyFilePath(auth.keyFilePath, log);
   }
+  // The memory check reads only the record count, so it is decided before the
+  // first-round count walks the input.
+  if (!memoryBudgetReported)
+    checkRunMemoryBudget({ prepared, allowMemoryShortfall, log, emit });
   // A first round too large for one message is refused before the rendezvous
   // is resolved, before the transport is built, and before anything is sent.
   await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
     assertFirstRoundFits(connection, prepared, report),
   );
-  if (!memoryBudgetReported)
-    checkRunMemoryBudget({ prepared, allowMemoryShortfall, log, emit });
   if (connection.channel !== "webrtc") return { trimmedKeyFilePath };
   // Resolve the rendezvous -- broker location, ICE servers, role, and the
   // secret both ids derive from -- here rather than at the dial, so a

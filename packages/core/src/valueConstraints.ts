@@ -34,6 +34,7 @@ import type {
   LinkageTerms,
 } from "./config/linkageTermsSchema.js";
 import { isCalendarDateValid } from "./utils/calendarDate.js";
+import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
 import type { StandardizedDataset } from "./standardization.js";
 
 /**
@@ -181,7 +182,7 @@ function isStructurallyValidSsn4(value: string): boolean {
 }
 
 // Memoized `exclude` denylists, keyed by the constraint's `exclude` ARRAY
-// identity, so the membership test is an O(1) Set lookup rather than an O(n)
+// identity, so the membership test is an O(1) indexed lookup rather than an O(n)
 // `Array.includes` scan. The dataset sweep (summarizeDatasetConstraintViolations)
 // calls checkValueConstraints once per produced value per row against the SAME
 // field -- hence the same `exclude` array reference -- so without this a
@@ -189,22 +190,23 @@ function isStructurallyValidSsn4(value: string): boolean {
 // generous MAX_EXCLUDE_ENTRIES) would re-scan up to that bound on every row, a
 // per-row cost unbounded by row count over a large dataset. This is the
 // exclude-denylist sibling of {@link compiledElementTransforms}' per-row recompile
-// guard. A WeakMap keyed on the array releases the Set with the terms, and the
+// guard. A WeakMap keyed on the array releases the index with the terms, and the
 // parsed terms reuse the array reference across rows, so a legitimate sweep builds
-// each Set once; Set membership is byte-identical to Array.includes for strings.
-const excludeDenylistSets = new WeakMap<readonly string[], Set<string>>();
+// each index once; its membership is `===`, as Array.includes is for strings.
+const excludeDenylistValues = new WeakMap<readonly string[], DistinctValues>();
 
 function isExcludedValue(
   exclude: readonly string[] | undefined,
   value: string,
 ): boolean {
   if (exclude === undefined) return false;
-  let set = excludeDenylistSets.get(exclude);
-  if (set === undefined) {
-    set = new Set(exclude);
-    excludeDenylistSets.set(exclude, set);
+  let excludedValues = excludeDenylistValues.get(exclude);
+  if (excludedValues === undefined) {
+    excludedValues = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
+    for (const excluded of exclude) excludedValues.add(excluded);
+    excludeDenylistValues.set(exclude, excludedValues);
   }
-  return set.has(value);
+  return excludedValues.indexOf(value) !== -1;
 }
 
 /**

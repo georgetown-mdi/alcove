@@ -49,6 +49,7 @@ import {
 } from "./linkageTermsPolicy.js";
 import type { ColumnMetadata } from "./config/metadata.js";
 import { readRowColumn } from "./file.js";
+import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
 import type { CSVRow } from "./file.js";
 import { isCalendarDateValid } from "./utils/calendarDate.js";
 import {
@@ -810,13 +811,14 @@ function nullIfFactory(params: Params): StandardizingFn {
   // NFC-normalize the exclusion values so one authored in a different form
   // (e.g. NFD from a YAML file written on macOS) still matches the runtime
   // value.
-  const set = new Set(values.map((v) => v.normalize("NFC")));
+  const excluded = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
+  for (const value of values) excluded.add(value.normalize("NFC"));
   // NFC-normalize the value before comparing (see the STANDARDIZING_FUNCTIONS
   // contract): an upstream case-fold can leave non-NFC bytes against which an
   // authored-NFC exclusion would otherwise silently miss. Return the original
   // value on a non-match so emitted bytes for already-canonical inputs are
   // untouched.
-  return (s) => (set.has(s.normalize("NFC")) ? null : s);
+  return (s) => (excluded.indexOf(s.normalize("NFC")) !== -1 ? null : s);
 }
 
 function replaceRegexFactory(params: Params): StandardizingFn {
@@ -1651,7 +1653,10 @@ function totalCandidateCharacters(values: readonly string[]): number {
 // Add one candidate to a step's accumulating output and report the characters it
 // RETAINED: a duplicate the set collapses retains nothing, so it is not charged
 // to the accumulation bound.
-function addCandidate(out: Set<string>, candidate: string): number {
+function addCandidate(
+  out: { readonly size: number; add(candidate: string): unknown },
+  candidate: string,
+): number {
   const size = out.size;
   out.add(candidate);
   return out.size > size ? candidate.length : 0;
@@ -3170,13 +3175,14 @@ export function buildKeyStrings(
   isReceiver = false,
   keyIndex?: number,
 ): Set<string> | null {
-  return buildKeyStringsUnderPlan(
+  const built = buildKeyStringsUnderPlan(
     key,
     planKeyRead(key, dataset, isReceiver, keyIndex),
     dataset,
     index,
     keyIndex,
   );
+  return built === null ? null : new Set(built.values);
 }
 
 /**
@@ -3218,7 +3224,7 @@ function buildKeyStringsUnderPlan(
   dataset: StandardizedDataset,
   index: number,
   keyIndex: number | undefined,
-): Set<string> | null {
+): DistinctValues | null {
   try {
     // One meter for the whole (record, key): what the key's elements spend
     // accumulates across them, since the element count is a partner-authored
@@ -3260,7 +3266,7 @@ function readRowUnderPlan(
   index: number,
   keyIndex: number | undefined,
   work: TransformWorkMeter,
-): Set<string> | null {
+): DistinctValues | null {
   const elementValues: string[][] = [];
   // Whether a fuzzy expansion this party applies actually widened the row, which
   // is what routes the width bound below to its refusal. Measured on the
@@ -3318,7 +3324,7 @@ function readRowUnderPlan(
     // a collapsing transform -- every value of a multi-value cell mapped to one
     // candidate -- from being charged once per value for bytes the row holds
     // once.
-    const transformed = new Set<string>();
+    const transformed = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
     try {
       for (const v of raw) {
         // The cell the element reads is the work its steps are handed, and it is
@@ -3378,7 +3384,7 @@ function readRowUnderPlan(
     }
     if (transformed.size === 0) return null;
 
-    const candidates = [...transformed];
+    const candidates = transformed.values;
     if (candidates.length > 1) fansOut = true;
 
     // Fuzzy expansion runs AFTER the element transform, on the value that would
@@ -3531,11 +3537,9 @@ function readRowUnderPlan(
   // element-transform path (which assembles keys outside runCompiledPipeline) and
   // the case where concatenating two NFC parts crosses a base + combining-mark
   // boundary that itself composes (NFC is not closed under concatenation).
-  const result = new Set(
-    cartesianProduct(elementValues).map((parts) =>
-      parts.join("").normalize("NFC"),
-    ),
-  );
+  const result = new DistinctValues({ scanUpTo: SCAN_UP_TO_VALUES });
+  for (const parts of cartesianProduct(elementValues))
+    result.add(parts.join("").normalize("NFC"));
 
   // The swap's other order, from the lists already built: exchanging the pair's
   // two candidate lists is the authored order because the pair's two positions
@@ -3673,8 +3677,8 @@ export class StandardizedKeyIterable {
     // is unwrapped, so a set that survives to a consumer always holds two or
     // more candidates. `""` is a real value and reaches the round as one.
     if (result === null || result.size === 0) return undefined;
-    if (result.size === 1) return result.values().next().value as string;
-    return result;
+    if (result.size === 1) return result.values[0];
+    return new Set(result.values);
   }
 
   *[Symbol.iterator](): Iterator<KeyCandidates> {

@@ -33,6 +33,15 @@ export class ShardedMap<K, V extends NonNullable<unknown>> {
     return last * this.shardEntries + this.shards[last].size;
   }
 
+  /** The value held against `key`, or `undefined`. One probe of each shard. */
+  get(key: K): V | undefined {
+    for (const shard of this.shards) {
+      const held = shard.get(key);
+      if (held !== undefined) return held;
+    }
+    return undefined;
+  }
+
   /**
    * The value already held against `key`; where there is none, holds `value`
    * against it in the last shard, opening a new one when the last is full,

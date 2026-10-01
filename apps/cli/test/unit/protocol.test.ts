@@ -4378,6 +4378,7 @@ const SHORT_MEMORY_RECORDS = 1_000_000;
 test("preflightRun refuses a run short of memory before any file is written", async () => {
   mockState.memoryReadings = SHORT_MEMORY;
   mockFd3Open();
+  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockClear();
   try {
     await expect(
       preflightRun({
@@ -4395,6 +4396,7 @@ test("preflightRun refuses a run short of memory before any file is written", as
     vi.mocked(fs.fstatSync).mockRestore();
   }
   expect(fs.readdirSync(dropDir)).toEqual([]);
+  expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).not.toHaveBeenCalled();
   expect(mockState.infos.filter((m) => m.startsWith("memory: "))).toHaveLength(
     1,
   );
@@ -4406,6 +4408,7 @@ test("preflightRun refuses a run short of memory before any file is written", as
 test("--allow-memory-shortfall turns the refusal into a warning on both channels", async () => {
   mockState.memoryReadings = SHORT_MEMORY;
   mockFd3Open();
+  vi.mocked(assertFirstRoundFitsFileSyncFrame).mockClear();
   let result: Awaited<ReturnType<typeof preflightRun>>;
   try {
     result = await preflightRun({
@@ -4421,6 +4424,7 @@ test("--allow-memory-shortfall turns the refusal into a warning on both channels
     vi.mocked(fs.fstatSync).mockRestore();
   }
   expect(result.memoryBudgetReported).toBe(true);
+  expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).toHaveBeenCalledTimes(1);
   const warning = mockState.warnings.find((m) =>
     m.startsWith("running with --allow-memory-shortfall: "),
   );
