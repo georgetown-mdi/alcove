@@ -917,9 +917,11 @@ function attachTerminalReconciliation(
     // It delivers before stderr's `end`, so the tail can be short by a marker's
     // lookahead of the child's last delivery: diagnostic fidelity only, on a
     // path that rarely has stderr at all.
+    // The message is composed raw, fitted but not escaped: the seat escapes it
+    // once.
     handlers.onDegraded(
       "relayProcessError",
-      `CLI process error: ${sanitizeForDisplay(error.message)}`,
+      `CLI process error: ${redactAndFitUnescaped(error.message, DEFAULT_MAX_DISPLAY_LENGTH)}`,
     );
     deliver(1, null);
   });
