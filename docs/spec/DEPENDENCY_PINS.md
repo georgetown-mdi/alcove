@@ -469,22 +469,15 @@ answered `No fix available` -- against two copies at 2.1.2 nested under
 tree it was taken from.
 
 **The advisory data as re-driven 2026-10-01.** `npm audit --package-lock-only`
-on 11.19.1, against a tree holding a single `brace-expansion` version:
-
-- 1.1.21, 2.1.7 and 5.0.12 draw no finding.
-- 2.1.2 and 5.0.7 each draw both advisories above, among others, at high
-  severity.
-- 5.0.9, the version the committed lockfile installs, draws three further
-  advisories at high severity, which npm reports against the range
-  `4.0.0 - 5.0.11`.
-
-So against the committed lockfile `npm audit --package-lock-only` reports one
-high-severity finding on 11.17.0 and 11.19.1, which 11.19.1 answers
-`fix available via npm audit fix`; 5.0.12 lies inside the override's range. A
-resolve of the committed tree without the override -- the override removed and
-the root `brace-expansion` entry deleted before `npm install --package-lock-only`
--- nests `brace-expansion@2.1.7` under both `archiver-utils` and `readdir-glob`,
-takes the root copy to 5.0.12, and draws `found 0 vulnerabilities` on both
+on 11.19.1, against a tree holding a single `brace-expansion` version, draws no
+finding at 1.1.21, 2.1.7 or 5.0.12. The committed lockfile's root copy is
+`brace-expansion@5.0.12`, and against it `npm audit --package-lock-only` and
+`npm audit --omit=dev --package-lock-only` each answer
+`found 0 vulnerabilities` on 11.17.0 and 11.19.1 (2026-10-01). A resolve of the
+tree without the override -- the override removed and the root
+`brace-expansion` entry deleted before `npm install --package-lock-only` --
+nests `brace-expansion@2.1.7` under both `archiver-utils` and `readdir-glob`,
+puts the root copy at 5.0.12, and draws `found 0 vulnerabilities` on both
 releases.
 
 **Why no bump moves the nested copies.** `nitropack@2.13.4` is the current
@@ -498,7 +491,7 @@ nitropack to move off them. Against the advisory data above, the 2.x release
 those ranges resolve to draws no finding of its own.
 
 **What the override changes in the tree.** The hoisted root
-`brace-expansion@5.0.9` serves both minimatch declarations: the lockfile holds
+`brace-expansion@5.0.12` serves both minimatch declarations: the lockfile holds
 no nested `brace-expansion` entry and no nested `balanced-match` entry under
 `archiver-utils` or `readdir-glob`, and no other package version moves. Re-driven
 2026-10-01 on 11.17.0 and 11.19.1: restoring the override over the
@@ -555,18 +548,18 @@ npm 11.19.1, measured 2026-09-27 against the committed lockfile, marks neither
 committed lockfile, with the same result): `npm ls --all` and the
 unscoped `npm sbom` name only the
 [crossws peer](#the-crossws-peer-conflict-blocks-the-release-sbom), and print
-`brace-expansion@5.0.9 deduped` under both minimatch copies with no marking.
+`brace-expansion@5.0.12 deduped` under both minimatch copies with no marking.
 So npm's `invalid` marking is not a signal for this edge class. The release
 path is out of its reach either way -- `npm ls --omit=dev` exits 0, and the
 release-scoped `npm sbom --omit=dev -w packages/core -w apps/cli -w apps/web`
 (step 9 in [RELEASES.md](../RELEASES.md)) names only that same peer.
 
 **What the out-of-range edge is underneath: an API-incompatible major.** The npm
-reporting artifact is not the whole cost. `brace-expansion@5.0.9` exports a
+reporting artifact is not the whole cost. `brace-expansion@5.0.12` exports a
 named `expand` and no callable default:
 `Object.keys(require("brace-expansion"))` is
-`["EXPANSION_MAX", "EXPANSION_MAX_LENGTH", "expand"]`, and `.default` is
-`undefined`. Both dependents the hoisted copy serves call the 2.x callable
+`["EXPANSION_MAX", "EXPANSION_MAX_LENGTH", "EXPANSION_MAX_DEPTH",
+"EXPANSION_MAX_REWRITES", "expand"]`, and `.default` is `undefined`. Both dependents the hoisted copy serves call the 2.x callable
 shape, so each breaks on any brace pattern -- measured against the committed
 tree, `braceExpand("a{b,c}d")` throws from `minimatch@5.1.9` (under
 `readdir-glob`, declaring `^2.0.1`) with `TypeError: expand is not a function`,
@@ -581,10 +574,9 @@ not build. Every `brace-expansion` copy is development-only besides, so none of
 it is in the shipped image. What is left is a forward risk -- a dependent
 arriving on `brace-expansion@^1` or `^2` is forced onto the 5.x line by the
 same override and hits the same `TypeError`. npm resolves and installs the
-tree either way, and the out-of-range edges draw no `npm audit` finding of
-their own: the one finding `npm audit --package-lock-only` reports against the
-committed lockfile on 2026-10-01 is the root `brace-expansion@5.0.9` copy
-above.
+tree either way, and `npm audit --package-lock-only` answers
+`found 0 vulnerabilities` against the committed lockfile on 2026-10-01 with
+the two out-of-range edges in the tree.
 
 **What catches the next one.** `scripts/check-locked-dep-ranges.mjs`
 (`npm run check:locked-dep-ranges`, run by `npm run check:all`) is the guard.
