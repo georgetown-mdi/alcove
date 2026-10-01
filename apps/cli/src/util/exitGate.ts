@@ -61,7 +61,7 @@ export function processHeldNotice(
  * asynchronous on some platforms, and the caller here exits the process on the
  * next statement, which would drop the line on exactly the runs it exists for.
  */
-function writeStderrLine(line: string): void {
+export function writeStderrLine(line: string): void {
   const buf = Buffer.from(line + "\n", "utf8");
   let offset = 0;
   try {

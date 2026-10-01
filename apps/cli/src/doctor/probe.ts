@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { MAX_DIRECTORY_ENTRIES } from "../connection/listingGuard";
 import { stripExtendedAcls, writeFileOwnerOnly } from "../fileUtils";
+import { writeStderrLine } from "../util/exitGate";
 import type { CommandResult, CommandRunner } from "./runner";
 import { nodeCommandRunner } from "./runner";
 import type { SmbProbeInput } from "./smbEnvironment";
@@ -20,6 +21,22 @@ import { fail, ok, skipped, SKIPPED_BY_FAILURE_MEANING, warn } from "./verdict";
 
 /** Ceiling on one smbclient invocation. */
 const SMBCLIENT_TIMEOUT_MS = 30_000;
+
+/**
+ * Ceiling on the cleanup after an interrupt: from the signal to its re-raise.
+ * It sits inside Docker's default 10 s stop window, and a supervisor allowing
+ * less SIGKILLs the run before its credentials file is removed.
+ * @internal exported for testing
+ */
+export const INTERRUPT_CLEANUP_BOUND_MS = 8_000;
+
+/**
+ * Ceiling on the probe-file delete issued after an interrupt. With the stop of
+ * the command in flight and the kill grace behind each, it fits the cleanup
+ * bound.
+ * @internal exported for testing
+ */
+export const INTERRUPT_DELETE_TIMEOUT_MS = 3_000;
 
 /** Ceiling on the port-445 reachability probe. */
 const TCP_PROBE_TIMEOUT_MS = 8_000;
@@ -80,6 +97,8 @@ export interface ProbeDeps {
     port: number,
     timeoutMs: number,
   ) => Promise<boolean>;
+  /** Write one line to stderr before the process may end on a signal. */
+  announce: (line: string) => void;
 }
 
 /** The real effects. */
@@ -104,6 +123,7 @@ export const REAL_PROBE_DEPS: ProbeDeps = {
       socket.once("timeout", () => settle(false));
       socket.once("error", () => settle(false));
     }),
+  announce: writeStderrLine,
 };
 
 const IPV4_LITERAL = /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/;
@@ -645,29 +665,32 @@ export async function runProbe(
   const removeWorkDir = (): void =>
     fs.rmSync(workDir, { recursive: true, force: true });
 
-  // Names this run can leave on the share. The share belongs to someone else and
-  // their partner can see it, so anything still there when the run ends -- on a
-  // failure, a timeout, or an interrupt -- is swept before returning.
-  const litter = new Set<string>();
+  // Covers both of this run's probe files; set while either may be on the share.
+  let leftoverMask: string | undefined;
   let target = "";
   let interrupted = false;
   let inFlight: Promise<unknown> = Promise.resolve();
+  // The first signal stops the command in flight; the cleanup bound or a
+  // second signal stops the cleanup's own delete.
+  const stopChecks = new AbortController();
+  const stopCleanup = new AbortController();
 
   // Every smbclient invocation runs from the work directory so the local side of
   // a `put` is a bare filename: the local path would otherwise be interpolated
   // into the `-c` command string, where a space or a semicolon anywhere in the
   // temporary directory's path would split the command.
-  const runSmbclient = (args: string[]): Promise<CommandResult> =>
-    deps.runner.run("smbclient", args, {
-      cwd: workDir,
-      timeoutMs: SMBCLIENT_TIMEOUT_MS,
-    });
+  const runSmbclient = (
+    args: string[],
+    timeoutMs: number,
+    signal: AbortSignal,
+  ): Promise<CommandResult> =>
+    deps.runner.run("smbclient", args, { cwd: workDir, timeoutMs, signal });
   // Every call reading the credentials file outside the sweep goes through
   // here, so the sweep can wait for whichever one is running.
   const smbclient = (args: string[]): Promise<CommandResult> => {
     if (interrupted)
       return Promise.reject(new Error("the checks were interrupted."));
-    const pending = runSmbclient(args);
+    const pending = runSmbclient(args, SMBCLIENT_TIMEOUT_MS, stopChecks.signal);
     inFlight = pending.catch(() => undefined);
     return pending;
   };
@@ -675,17 +698,18 @@ export async function runProbe(
     smbclient(shareArgs(input, authFile, target, command));
 
   // One sweep per run, shared by the ordinary exit and an interrupt. It waits
-  // for the command in flight, so a put the signal arrived during is deleted
-  // after it lands rather than before, and the credentials file the deletes
-  // need is removed only once they are done.
+  // for the command in flight to end, and the credentials file the delete
+  // needs is removed only once it is done.
   let swept: Promise<void> | undefined;
-  const sweep = (): Promise<void> =>
+  const sweep = (deleteTimeoutMs: number): Promise<void> =>
     (swept ??= (async () => {
       try {
         await inFlight;
-        for (const leftover of litter)
+        if (leftoverMask !== undefined)
           await runSmbclient(
-            shareArgs(input, authFile, target, `del ${leftover}`),
+            shareArgs(input, authFile, target, `del ${leftoverMask}`),
+            deleteTimeoutMs,
+            stopCleanup.signal,
           );
       } finally {
         removeWorkDir();
@@ -702,26 +726,36 @@ export async function runProbe(
   };
 
   // Ctrl-C is the likely operator response to the very hang this command
-  // exists to diagnose. The share is swept before the signal is re-raised, so
-  // the exit still reports it; a second signal abandons the sweep but still
-  // removes the credentials file.
+  // exists to diagnose, and a supervisor's stop is a SIGTERM with a SIGKILL
+  // behind it. The share is swept and the signal re-raised within the bound,
+  // so the exit still reports it; the bound or a second signal abandons the
+  // sweep, and every way out removes the credentials file first.
   const onSignal = (signal: NodeJS.Signals): void => {
     interrupted = true;
     stopListening(onSignal);
-    const abandon = (again: NodeJS.Signals): void => {
+    let ended = false;
+    const end = (raised: NodeJS.Signals): void => {
+      if (ended) return;
+      ended = true;
+      clearTimeout(deadline);
       stopListening(abandon);
+      stopCleanup.abort();
       try {
         removeWorkDir();
       } finally {
-        process.kill(process.pid, again);
+        process.kill(process.pid, raised);
       }
     };
+    const abandon = (again: NodeJS.Signals): void => end(again);
+    const deadline = setTimeout(() => end(signal), INTERRUPT_CLEANUP_BOUND_MS);
     listen(abandon);
-    const reraise = (): void => {
-      stopListening(abandon);
-      process.kill(process.pid, signal);
-    };
-    void sweep().then(reraise, reraise);
+    deps.announce(
+      `cleaning up, up to ${INTERRUPT_CLEANUP_BOUND_MS / 1000} s; ` +
+        "press Ctrl-C again to skip",
+    );
+    stopChecks.abort();
+    const reraise = (): void => end(signal);
+    void sweep(INTERRUPT_DELETE_TIMEOUT_MS).then(reraise, reraise);
   };
   listen(onSignal);
 
@@ -852,7 +886,7 @@ export async function runProbe(
     const renamedName = `${probeName}.renamed`;
     fs.writeFileSync(path.join(workDir, probeName), "Alcove write probe\n");
 
-    litter.add(probeName);
+    leftoverMask = `${probeName}*`;
     const put = await smb(`put ${probeName} ${probeName}`);
     if (transportFailed(put)) {
       checks.push(transportFailureCheck("write", input.server, put));
@@ -883,7 +917,6 @@ export async function runProbe(
       ),
     );
 
-    litter.add(renamedName);
     const rename = await smb(`rename ${probeName} ${renamedName}`);
     if (transportFailed(rename)) {
       checks.push(transportFailureCheck("rename", input.server, rename));
@@ -906,7 +939,6 @@ export async function runProbe(
       );
       return finish();
     }
-    litter.delete(probeName);
     checks.push(ok("rename", "renamed it."));
 
     const del = await smb(`del ${renamedName}`);
@@ -931,7 +963,7 @@ export async function runProbe(
       );
       return finish();
     }
-    litter.delete(renamedName);
+    leftoverMask = undefined;
     checks.push(ok("delete", "deleted it."));
 
     // Left in place on purpose: these checks reached //server/share with a
@@ -967,7 +999,7 @@ export async function runProbe(
     return finish();
   } finally {
     try {
-      await sweep();
+      await sweep(SMBCLIENT_TIMEOUT_MS);
     } finally {
       stopListening(onSignal);
     }

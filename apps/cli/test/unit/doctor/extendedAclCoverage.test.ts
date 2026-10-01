@@ -222,6 +222,7 @@ function probeDeps(onAuthFile?: (authFile: string) => void): ProbeDeps {
   return {
     lookupHost: () => Promise.resolve("10.10.0.5"),
     connectTcp: () => Promise.resolve(true),
+    announce: () => undefined,
     runner: {
       run(_file, args): Promise<CommandResult> {
         const index = args.indexOf("-A");

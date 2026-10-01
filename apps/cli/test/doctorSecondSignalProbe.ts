@@ -5,12 +5,13 @@ import type { CommandResult } from "../src/doctor/runner";
 
 /**
  * A doctor probe run that receives a real SIGINT while its put is in flight and
- * a real SIGTERM while the interrupt's sweep is deleting the probe file, with
+ * a real SIGTERM while the interrupt's sweep is deleting the probe files, with
  * that delete held open for a minute. The put lands only once the probe's own
- * SIGINT listener has run. Prints the credentials path and the time the second
- * signal was sent, then is expected to die of the SIGTERM. Run as a child
- * process because the process exiting is what is under test. Written with
- * `fs.writeSync` so the lines reach a pipe before the signal lands.
+ * SIGINT listener has run. Prints the credentials path, the cleanup line it
+ * announced, and the time the second signal was sent, then is expected to die
+ * of the SIGTERM. Run as a child process because the process exiting is what
+ * is under test. Written with `fs.writeSync` so the lines reach a pipe before
+ * the signal lands.
  */
 
 const DELETE_HELD_MS = 60_000;
@@ -40,6 +41,7 @@ void runProbe(
   {
     lookupHost: () => Promise.resolve("10.10.0.5"),
     connectTcp: () => Promise.resolve(true),
+    announce: (line) => report(`announced ${line}`),
     runner: {
       run(_file, args): Promise<CommandResult> {
         const authIndex = args.indexOf("-A");
@@ -59,7 +61,7 @@ void runProbe(
           process.kill(process.pid, "SIGINT");
           return landed;
         }
-        if (command === `del ${PROBE_FILE}`) {
+        if (command === `del ${PROBE_FILE}*`) {
           report(`second-signal ${Date.now()}`);
           process.kill(process.pid, "SIGTERM");
           return new Promise((resolve) =>

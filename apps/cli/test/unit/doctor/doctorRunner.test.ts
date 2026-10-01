@@ -1,8 +1,12 @@
-import { describe, expect, test } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, test, vi } from "vitest";
 
 import { MAX_DIRECTORY_ENTRIES } from "../../../src/connection/listingGuard";
 import { countEntries, freeMegabytes } from "../../../src/doctor/probe";
 import {
+  KILL_GRACE_MS,
   MAX_CAPTURED_OUTPUT,
   nodeCommandRunner,
 } from "../../../src/doctor/runner";
@@ -65,6 +69,93 @@ describe("the process runner", () => {
       { timeoutMs: 250 },
     );
     expect(result.timedOut).toBe(true);
+  });
+
+  test("stops a child when told to, without calling it a timeout", async () => {
+    const stop = new AbortController();
+    const pending = nodeCommandRunner.run(
+      NODE,
+      evaluate("setInterval(() => {}, 1000)"),
+      { timeoutMs: RUN_TIMEOUT_MS, signal: stop.signal },
+    );
+    stop.abort();
+    const result = await pending;
+    expect(result.code).toBeNull();
+    expect(result.timedOut).toBe(false);
+  });
+
+  test("follows a stop the child ignores with SIGKILL after the grace", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-runner-"));
+    const ready = path.join(dir, "ready");
+    try {
+      const stop = new AbortController();
+      const pending = nodeCommandRunner.run(
+        NODE,
+        evaluate(
+          "process.on('SIGTERM', () => {});" +
+            `require('node:fs').writeFileSync(${JSON.stringify(ready)}, '');` +
+            "setInterval(() => {}, 1000)",
+        ),
+        { timeoutMs: RUN_TIMEOUT_MS, signal: stop.signal },
+      );
+      await vi.waitFor(() => expect(fs.existsSync(ready)).toBe(true), {
+        timeout: RUN_TIMEOUT_MS,
+      });
+      const stoppedAt = Date.now();
+      stop.abort();
+      const result = await pending;
+      expect(result.code).toBeNull();
+      expect(result.timedOut).toBe(false);
+      expect(Date.now() - stoppedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 50);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not call an aborted run a timeout that fires in the kill grace", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-runner-"));
+    const ready = path.join(dir, "ready");
+    try {
+      const stop = new AbortController();
+      const pending = nodeCommandRunner.run(
+        NODE,
+        evaluate(
+          "process.on('SIGTERM', () => {});" +
+            `require('node:fs').writeFileSync(${JSON.stringify(ready)}, '');` +
+            "setInterval(() => {}, 1000)",
+        ),
+        { timeoutMs: KILL_GRACE_MS - 100, signal: stop.signal },
+      );
+      await vi.waitFor(() => expect(fs.existsSync(ready)).toBe(true), {
+        timeout: KILL_GRACE_MS - 200,
+      });
+      stop.abort();
+      const result = await pending;
+      expect(result.code).toBeNull();
+      expect(result.timedOut).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("spawns nothing once already told to stop", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-runner-"));
+    const created = path.join(dir, "created");
+    try {
+      const stop = new AbortController();
+      stop.abort();
+      const result = await nodeCommandRunner.run(
+        NODE,
+        evaluate(
+          `require('node:fs').writeFileSync(${JSON.stringify(created)}, '')`,
+        ),
+        { timeoutMs: RUN_TIMEOUT_MS, signal: stop.signal },
+      );
+      expect(result.code).toBeNull();
+      expect(fs.existsSync(created)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("removes the password variable from the child's environment", async () => {

@@ -550,3 +550,30 @@ jobs:
           echo "$verdict" | jq -e '.overall == "fatal"'
 
           sudo umount /mnt/alcove /mnt/alcove-elsewhere
+
+      # Which names the interrupt cleanup's masked delete matches is the
+      # server's call: both probe files must go, and every near-miss name and
+      # the marker must stay.
+      - name: An interrupted probe removes its probe files and nothing else
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /srv/alcove/interrupt
+          sudo chown "$SMB_TEST_USER":"$SMB_TEST_USER" /srv/alcove/interrupt
+          export SMB_SERVER=127.0.0.1 SMB_SHARE=exchange SMB_PATH=interrupt
+          export SMB_USER="$SMB_TEST_USER" SMB_PASS="$SMB_TEST_PASSWORD"
+          export SMB_TOKEN=interruptrun
+          set +e
+          (cd apps/cli && exec node --import=tsx test/doctorInterruptCleanupSamba.ts) \
+            >driver.log 2>stderr.log
+          code=$?
+          set -e
+          cat driver.log stderr.log
+          # 130: the process ended on the SIGINT it re-raised.
+          test "$code" = 130
+          grep -qx "cleaning up, up to 8 s; press Ctrl-C again to skip" stderr.log
+          credentials=$(sed -n 's/^credentials //p' driver.log)
+          test -n "$credentials"
+          test ! -e "$credentials"
+          diff <(ls -A /srv/alcove/interrupt | sort) \
+            <(sed -n 's/^kept //p' driver.log | sort)
+          rm -f driver.log stderr.log
