@@ -1,4 +1,4 @@
-import { RE2JS } from "re2js";
+import { MatcherInputBase, RE2JS } from "re2js";
 
 // Linear-time regex engine for every partner-supplied transform pattern: the
 // four `tier: "regex"` factories (replace_regex, extract_regex, filter_regex,
@@ -32,6 +32,12 @@ const COMPILE_CACHE_MAX = 1024;
  */
 const compileCache = new Map<string, RE2JS>();
 
+// The one definition of a pattern's weighted size, shared by the cap
+// (patternWeightedSize) and the find-all charge multiplier.
+function compiledWeightedSize(re: RE2JS): number {
+  return re.programSize() * (1 + re.groupCount());
+}
+
 function compileCached(pattern: string): RE2JS {
   const cached = compileCache.get(pattern);
   if (cached !== undefined) return cached;
@@ -46,6 +52,166 @@ function compileCached(pattern: string): RE2JS {
   }
   compileCache.set(pattern, compiled);
   return compiled;
+}
+
+/**
+ * What one find-all operation ({@link CompiledLinearRegex.replaceAll},
+ * {@link CompiledLinearRegex.split}) may spend searching a value, and where it
+ * reports what it spent.
+ *
+ * A find-all operation runs one search per match, each from where the last
+ * match ended, and a pattern whose preferred alternative can stay live to the
+ * end of the value scans the rest of it on every search, so the operation's
+ * cost grows with the square of the value length whatever the pattern's size.
+ * One pass over the value is the cost of a single match, which the
+ * weighted-size cap bounds; what the operation's searches read beyond that one
+ * pass is charged, in code units times the pattern's weighted size
+ * ({@link patternWeightedSize}), and the operation stops at the read that would
+ * take the charge past `remaining`.
+ */
+export interface ScanBudget {
+  /** The units the operation may spend before it crosses. */
+  readonly remaining: number;
+  /**
+   * Record `units` spent. Throws where the total crosses the budget: an
+   * operation that read past `remaining` never returns a result.
+   */
+  charge(units: number): void;
+}
+
+// Thrown at the read that takes a scan past its allowance, and caught by
+// underScanBudget, which turns it into the budget's own crossing.
+class ScanAllowanceExhausted extends Error {}
+
+// The value as the engine reads it. A UTF-16 search reads it through
+// `charCodeAt` and, for a literal prefix or a required literal, `indexOf`;
+// `substring` only copies out a match or the text between matches. A search
+// spans from the lowest code unit it read to the highest, and the spans add up
+// across searches, so a rescan of text an earlier search already read counts
+// again while the engine's own re-reads within one search do not.
+class SpanCountingValue {
+  readonly length: number;
+  spanned = 0;
+  private readonly value: string;
+  private readonly allowance: number;
+  private low = 0;
+  private high = -1;
+
+  constructor(value: string, allowance: number) {
+    this.value = value;
+    this.length = value.length;
+    this.allowance = allowance;
+  }
+
+  startSearch(): void {
+    this.low = 0;
+    this.high = -1;
+  }
+
+  charCodeAt(index: number): number {
+    this.cover(index, index);
+    return this.value.charCodeAt(index);
+  }
+
+  indexOf(search: string, from: number): number {
+    const start = Math.min(Math.max(from, 0), this.length);
+    const found = this.value.indexOf(search, start);
+    const end = found < 0 ? this.length : found + search.length;
+    if (end > start) this.cover(start, end - 1);
+    return found;
+  }
+
+  substring(start: number, end?: number): string {
+    return this.value.substring(start, end);
+  }
+
+  toString(): string {
+    return this.value;
+  }
+
+  private cover(first: number, last: number): void {
+    if (this.high < this.low) {
+      this.low = first;
+      this.high = last;
+      this.spanned += last - first + 1;
+    } else {
+      if (first < this.low) {
+        this.spanned += this.low - first;
+        this.low = first;
+      }
+      if (last > this.high) {
+        this.spanned += last - this.high;
+        this.high = last;
+      }
+    }
+    if (this.spanned > this.allowance) throw new ScanAllowanceExhausted();
+  }
+}
+
+// The value handed to the engine. re2js asks for the text once at the start of
+// every search (and once to copy out text, which reads nothing), which is where
+// a search's span starts over; test/utils/linearRegex.test.ts holds the charge
+// against searches whose span is known, so a release that asks less often fails
+// there rather than undercounting.
+class SpanCountingInput extends MatcherInputBase {
+  readonly counted: SpanCountingValue;
+
+  constructor(counted: SpanCountingValue) {
+    super();
+    this.counted = counted;
+  }
+
+  override isUTF16Encoding(): boolean {
+    return true;
+  }
+
+  override isUTF8Encoding(): boolean {
+    return false;
+  }
+
+  override asCharSequence(): string {
+    this.counted.startSearch();
+    return this.counted as unknown as string;
+  }
+
+  override asBytes(): number[] {
+    throw new Error("a counted search reads its value as UTF-16 only");
+  }
+
+  override length(): number {
+    return this.counted.length;
+  }
+}
+
+// Run one find-all operation over `value` under `budget`, charging what its
+// searches span beyond one pass over the value, times `weightedSize`. A crossing
+// stops the engine at the read past the allowance and is raised by the budget's
+// own charge, so the caller sees the budget's crossing and never a partial
+// result.
+function underScanBudget<T>(
+  value: string,
+  weightedSize: number,
+  budget: ScanBudget,
+  operation: (input: MatcherInputBase) => T,
+): T {
+  const counted = new SpanCountingValue(
+    value,
+    value.length + Math.floor(budget.remaining / weightedSize),
+  );
+  const rescanned = (): number =>
+    Math.max(0, counted.spanned - value.length) * weightedSize;
+  let result: T;
+  try {
+    result = operation(new SpanCountingInput(counted));
+  } catch (err) {
+    if (!(err instanceof ScanAllowanceExhausted)) throw err;
+    budget.charge(rescanned());
+    throw new Error(
+      "a find-all search read past its allowance but its budget did not refuse it",
+    );
+  }
+  budget.charge(rescanned());
+  return result;
 }
 
 /**
@@ -67,9 +233,10 @@ export interface CompiledLinearRegex {
    * emitted literally here, where JavaScript resolves the first to group 1
    * and substitutes empty for the second. Normative in docs/spec/PROTOCOL.md
    * (Transform regular-expression dialect); both divergences are checks in
-   * test/utils/linearRegex.test.ts.
+   * test/utils/linearRegex.test.ts. With a `budget`, the search is charged to
+   * it ({@link ScanBudget}).
    */
-  replaceAll(input: string, replacement: string): string;
+  replaceAll(input: string, replacement: string, budget?: ScanBudget): string;
   /**
    * The first capture group of the first match, or the whole match when the
    * pattern has no group, or `null` on no match or an empty result. Mirrors
@@ -95,9 +262,10 @@ export interface CompiledLinearRegex {
    * unlike `String.prototype.split`, capture groups in the pattern are NOT
    * emitted as output elements (see the dialect spec). Trailing empty strings
    * are retained (limit < 0), so a caller filtering empties gets the same
-   * non-empty parts as `input.split(new RegExp(pattern))` would.
+   * non-empty parts as `input.split(new RegExp(pattern))` would. With a
+   * `budget`, the search is charged to it ({@link ScanBudget}).
    */
-  split(input: string): string[];
+  split(input: string, budget?: ScanBudget): string[];
   /**
    * The capture groups of the first match as `[group0, group1, ...]` (index 0
    * is the whole match; an unmatched optional group is `null`), or `null` on
@@ -119,9 +287,14 @@ export interface CompiledLinearRegex {
  */
 export function compileLinearRegex(pattern: string): CompiledLinearRegex {
   const re = compileCached(pattern);
+  const weightedSize = compiledWeightedSize(re);
   return {
-    replaceAll: (input, replacement) =>
-      re.matcher(input).replaceAll(replacement),
+    replaceAll: (input, replacement, budget) =>
+      budget === undefined
+        ? re.matcher(input).replaceAll(replacement)
+        : underScanBudget(input, weightedSize, budget, (counted) =>
+            re.matcher(counted).replaceAll(replacement),
+          ),
     extractFirst: (input) => {
       const m = re.matcher(input);
       if (!m.find()) return null;
@@ -135,7 +308,12 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
     },
     test: (input) => re.test(input),
     matches: (input) => re.matcher(input).matches(),
-    split: (input) => re.split(input, -1),
+    split: (input, budget) =>
+      budget === undefined
+        ? re.split(input, -1)
+        : underScanBudget(input, weightedSize, budget, (counted) =>
+            re.split(counted as unknown as string, -1),
+          ),
     matchGroups: (input) => {
       const m = re.matcher(input);
       if (!m.find()) return null;
@@ -156,8 +334,7 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
  * does, on a pattern outside the dialect.
  */
 export function patternWeightedSize(pattern: string): number {
-  const re = compileCached(pattern);
-  return re.programSize() * (1 + re.groupCount());
+  return compiledWeightedSize(compileCached(pattern));
 }
 
 /**

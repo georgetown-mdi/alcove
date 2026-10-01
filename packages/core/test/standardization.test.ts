@@ -3901,7 +3901,7 @@ describe("buildKeyStrings", () => {
       makeDataset({ last_name: tokenCell(1442), date_of_birth: "19750716" }),
       0,
     );
-    expect(spent).toBe(21156230);
+    expect(spent).toBe(21161998);
     expect(spent).toBeLessThan(WORK_BUDGET_PER_ROW);
   });
 
@@ -3945,6 +3945,205 @@ describe("buildKeyStrings", () => {
       ).toThrow(UsageError);
       expect(provenance.fromUnlistedFunction).toBe(true);
     }
+  });
+
+  // --- the find-all steps' search, charged to the work limb ------------------
+  // replace_regex and split_on search again after every match. A pattern whose
+  // preferred alternative stays live to the end of the value rescans the rest
+  // of it each time, so the search is charged every code unit it reads times
+  // the pattern's weighted size, and a crossing takes the key's own fate.
+
+  // Weight 87, and no "#" in the value: the first alternative reads to the end
+  // of the value before the second matches one character, once per character.
+  const RESCANNING_PATTERN = "(?:[^#]*[^#]{0,40}#|.)";
+  const valueAtTheBound = (): string =>
+    "Ana-Maria Gonzalez de la Cruz, 1200 Main St; ".repeat(100).slice(0, 4096);
+  // Well under the time the unbounded search spends on this value (seconds),
+  // and above what reaching the budget costs on a loaded machine.
+  const SCAN_CROSSING_TEST_TIMEOUT_MS = 60_000;
+
+  const keyOverSteps = (steps: TransformStep[]): LinkageKey => ({
+    name: "PARTNER AUTHORED KEY NAME",
+    elements: [{ field: "notes", transform: steps }],
+  });
+
+  test(
+    "a rescanning replace_regex at the value bound refuses, naming the step",
+    () => {
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      let raised: unknown;
+      try {
+        buildKeyStrings(
+          keyOverSteps([
+            {
+              function: "replace_regex",
+              params: { pattern: RESCANNING_PATTERN, replacement: "" },
+            },
+          ]),
+          makeDataset({ notes: valueAtTheBound() }),
+          0,
+          false,
+          1,
+        );
+      } catch (err) {
+        raised = err;
+      }
+      expect(raised).toBeInstanceOf(UsageError);
+      const message = (raised as UsageError).message;
+      expect(message).toMatch(
+        /^a linkage key spent \d+ code units of transform work on row 0 of this party's data, above the 33554432 one row may spend deriving one key, while a regular-expression step searched the value \(linkageKeys\[1\]\.elements\[0\]\.transform\[0\], "replace_regex"\)\./,
+      );
+      expect(message).toContain(
+        "Change or remove that step's pattern in the agreed linkage terms",
+      );
+      expect(message).not.toContain("Gonzalez");
+      expect(message).not.toContain("PARTNER AUTHORED KEY NAME");
+      expect(message).not.toContain(RESCANNING_PATTERN);
+      expect(warn).not.toHaveBeenCalled();
+    },
+    SCAN_CROSSING_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "a rescanning split_on at the value bound takes its key's drop, naming the step",
+    () => {
+      // split_on is the declared fan-out producer, so its key's fate at every
+      // limb is the warned drop rather than the refusal.
+      const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const dataset = makeDataset({
+        notes: valueAtTheBound(),
+        date_of_birth: "19750716",
+      });
+      expect(
+        buildKeyStrings(
+          keyOverSteps([
+            {
+              function: "split_on",
+              params: { delimiter: RESCANNING_PATTERN },
+            },
+          ]),
+          dataset,
+          0,
+          false,
+          1,
+        ),
+      ).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(
+        /spends \d+ code units of transform work on this key's declared fan-out, more than the 33554432 one row may spend deriving one key, crossing it while a regular-expression step searched the value \(linkageKeys\[1\]\.elements\[0\]\.transform\[0\], "split_on"\)/,
+      );
+      expect(warn.mock.calls[0][0]).not.toContain("Gonzalez");
+      // The row sits out this key's round alone.
+      expect(
+        buildKeyStrings(
+          { name: "DOB", elements: [{ field: "date_of_birth" }] },
+          dataset,
+          0,
+          false,
+          2,
+        ),
+      ).toEqual(new Set(["19750716"]));
+    },
+    SCAN_CROSSING_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "a crossing inside a later element's search is the row's total across the key",
+    () => {
+      // The search is charged to the same meter as every other step, so a row
+      // that spent most of the budget before the search crosses sooner.
+      const elements: LinkageKeyElement[] = [
+        ...amplifyingElements(ELEMENTS_UNDER_BUDGET),
+        {
+          field: "notes",
+          transform: [
+            {
+              function: "replace_regex",
+              params: { pattern: "(?:[^#]*#|.)", replacement: "$&" },
+            },
+          ],
+        },
+      ];
+      let raised: unknown;
+      try {
+        buildKeyStrings(
+          { name: "spend", elements },
+          makeDataset({
+            ...spenderRow(ELEMENTS_UNDER_BUDGET),
+            notes: "a".repeat(200),
+          }),
+          0,
+          false,
+          1,
+        );
+      } catch (err) {
+        raised = err;
+      }
+      expect(raised).toBeInstanceOf(UsageError);
+      expect((raised as UsageError).message).toContain(
+        `(linkageKeys[1].elements[${ELEMENTS_UNDER_BUDGET}].transform[0], "replace_regex")`,
+      );
+    },
+    SCAN_CROSSING_TEST_TIMEOUT_MS,
+  );
+
+  test("ordinary find-all steps at the value bound derive today's keys", () => {
+    const value = valueAtTheBound();
+    const replaceSteps: TransformStep[] = [
+      {
+        function: "replace_regex",
+        params: { pattern: "[^A-Za-z0-9]+", replacement: "" },
+      },
+    ];
+    const expected = value.replace(/[^A-Za-z0-9]+/g, "");
+    expect(runPipeline(value, replaceSteps)).toBe(expected);
+    expect(
+      buildKeyStrings(
+        keyOverSteps(replaceSteps),
+        makeDataset({ notes: value }),
+        0,
+        false,
+        1,
+      ),
+    ).toEqual(new Set([expected]));
+
+    const split = `${"A".repeat(1365)} ; ${"B".repeat(1365)} ; ${"C".repeat(1360)}`;
+    expect(split.length).toBe(4096);
+    const splitSteps: TransformStep[] = [
+      { function: "split_on", params: { delimiter: "\\s*;\\s*" } },
+    ];
+    const parts = new Set([
+      "A".repeat(1365),
+      "B".repeat(1365),
+      "C".repeat(1360),
+    ]);
+    expect(runPipeline(split, splitSteps)).toEqual(parts);
+    expect(
+      buildKeyStrings(
+        keyOverSteps(splitSteps),
+        makeDataset({ notes: split }),
+        0,
+        false,
+        1,
+      ),
+    ).toEqual(parts);
+  });
+
+  test("an ordinary find-all step at the value bound spends a sliver of the budget", () => {
+    // What the meter reads for the search, read and output together, for
+    // this test's value; the spec's range comes from the stress tier's text.
+    const spent = transformWorkSpentDerivingKey(
+      keyOverSteps([
+        {
+          function: "replace_regex",
+          params: { pattern: "[^A-Za-z0-9]+", replacement: "" },
+        },
+      ]),
+      makeDataset({ notes: valueAtTheBound() }),
+      0,
+    );
+    expect(spent).toBe(14563);
+    expect(spent * 500).toBeLessThan(WORK_BUDGET_PER_ROW);
   });
 
   test("an unrecognized function name reaches the operator as a literal", () => {

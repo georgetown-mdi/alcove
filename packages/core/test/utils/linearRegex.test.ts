@@ -3,7 +3,9 @@ import { describe, expect, test } from "vitest";
 import {
   compileLinearRegex,
   patternConformsToDialect,
+  patternWeightedSize,
 } from "../../src/utils/linearRegex";
+import type { ScanBudget } from "../../src/utils/linearRegex";
 
 // --- Engine operations -------------------------------------------------------
 
@@ -227,5 +229,152 @@ describe("linear-time execution", () => {
     const start = performance.now();
     expect(re.matchGroups("1".repeat(80) + "x")).toBeNull();
     expect(performance.now() - start).toBeLessThan(1000);
+  });
+});
+
+// --- The find-all scan budget ------------------------------------------------
+// replaceAll and split search again after every match. Under a budget, what
+// their searches span beyond one pass over the value is charged times the
+// pattern's weighted size, and the read past the allowance stops the engine.
+
+class BudgetCrossed extends Error {}
+
+// A budget of `units` that refuses past them, recording what it was charged.
+function scanBudget(units: number): ScanBudget & { charged: number } {
+  const budget = {
+    charged: 0,
+    remaining: units,
+    charge(spent: number) {
+      budget.charged += spent;
+      if (budget.charged > units) throw new BudgetCrossed();
+    },
+  };
+  return budget;
+}
+
+const WORK_BUDGET_PER_ROW = 8 * 1024 * 4096;
+const RESCANNING_PATTERN = "(?:[^#]*[^#]{0,40}#|.)";
+
+describe("find-all operations under a scan budget", () => {
+  // Patterns over every engine route the two operations take: a literal prefix
+  // and a required literal (searched with indexOf), empty matches, capture
+  // groups loaded for a replacement, named groups, case folding, and a value
+  // with surrogate pairs.
+  const cases: ReadonlyArray<[string, string, string]> = [
+    ["[^0-9]", "(1) 2-3 x", ""],
+    ["\\s+", "  a  b\tc  ", " "],
+    ["x*", "abc", "-"],
+    ["^1(\\d{10})$", "15551234567", "$1"],
+    ["(a)(b)", "xabyab", "$2$1$`$'$&$$"],
+    ["(?<g>a)", "banana", "<$<g>>"],
+    ["abc", "zzabczzabc", "!"],
+    ["foo|bar", "a foo b bar c", "_"],
+    ["(?i)straße", "STRASSE Straße", "S"],
+    ["\\p{L}+", "a😀b c", "w"],
+    [",\\s*", "a, b,c ,  d", "|"],
+  ];
+
+  test.each(cases)(
+    "%s gives the unbudgeted result under a budget",
+    (pattern, input, replacement) => {
+      const re = compileLinearRegex(pattern);
+      const weight = patternWeightedSize(pattern);
+      const replaced = scanBudget(WORK_BUDGET_PER_ROW);
+      expect(re.replaceAll(input, replacement, replaced)).toBe(
+        re.replaceAll(input, replacement),
+      );
+      const split = scanBudget(WORK_BUDGET_PER_ROW);
+      expect(re.split(input, split)).toEqual(re.split(input));
+      for (const budget of [replaced, split])
+        expect(budget.charged % weight).toBe(0);
+    },
+  );
+
+  test("one pass over the value is not charged", () => {
+    // A pattern with no match reads the value once, in one search: the single
+    // match the weighted-size cap already bounds.
+    const value = "a".repeat(1000);
+    for (const pattern of ["[0-9]", "z", "(?:b|c)d"]) {
+      const replaced = scanBudget(WORK_BUDGET_PER_ROW);
+      compileLinearRegex(pattern).replaceAll(value, "", replaced);
+      expect(replaced.charged).toBe(0);
+      const split = scanBudget(WORK_BUDGET_PER_ROW);
+      compileLinearRegex(pattern).split(value, split);
+      expect(split.charged).toBe(0);
+    }
+  });
+
+  test.each([
+    // A program this small runs on the engine's backtracking route at this
+    // length, and one over 500 instructions on its automaton route at any.
+    { pattern: "(?:[^#]*#|.)", length: 200 },
+    { pattern: "(?:[^#]*[^#]{0,300}#|.)", length: 200 },
+  ])(
+    "the rescanning $pattern is charged the square of the value",
+    ({ pattern, length }) => {
+      // Each match is one character, found only after the first alternative has
+      // read to the end of the value, so the searches span length + (length -
+      // 1) + ... + 1 code units. A count that took the operation as one search,
+      // rather than one per match, or that missed the engine's reads, would
+      // fall short.
+      const value = "a".repeat(length);
+      const budget = scanBudget(Number.MAX_SAFE_INTEGER);
+      compileLinearRegex(pattern).replaceAll(value, "", budget);
+      expect(budget.charged).toBeGreaterThanOrEqual(
+        ((length * (length + 1)) / 2 - length) * patternWeightedSize(pattern),
+      );
+    },
+  );
+
+  test.each(["replaceAll", "split"] as const)(
+    "%s with the weight-87 rescanning shape at 4096 characters crosses the budget",
+    (operation) => {
+      const re = compileLinearRegex(RESCANNING_PATTERN);
+      expect(patternWeightedSize(RESCANNING_PATTERN)).toBe(87);
+      const value = "a".repeat(4096);
+      const budget = scanBudget(WORK_BUDGET_PER_ROW);
+      expect(() =>
+        operation === "replaceAll"
+          ? re.replaceAll(value, "", budget)
+          : re.split(value, budget),
+      ).toThrow(BudgetCrossed);
+      // Stopped at the read past the allowance, not after the operation ran on.
+      expect(budget.charged).toBeGreaterThan(WORK_BUDGET_PER_ROW);
+      expect(budget.charged).toBeLessThanOrEqual(WORK_BUDGET_PER_ROW + 87);
+    },
+    60_000,
+  );
+
+  test.each(["(?:[^#]*#|.)", "([^#]*#|(.))"])(
+    "a budget already spent stops %s at its first read past one pass, charged its capped size",
+    (pattern) => {
+      const budget = scanBudget(0);
+      expect(() =>
+        compileLinearRegex(pattern).replaceAll("aaaa", "", budget),
+      ).toThrow(BudgetCrossed);
+      expect(budget.charged).toBe(patternWeightedSize(pattern));
+    },
+  );
+
+  test("a pattern stopped mid-search runs correctly afterwards", () => {
+    const re = compileLinearRegex("(?:[^#]*#|.)");
+    expect(() => re.replaceAll("a".repeat(500), "", scanBudget(1000))).toThrow(
+      BudgetCrossed,
+    );
+    expect(re.replaceAll("ab#cd", "<$&>")).toBe("<ab#><c><d>");
+    expect(re.split("ab#cd", scanBudget(WORK_BUDGET_PER_ROW))).toEqual(
+      re.split("ab#cd"),
+    );
+  });
+
+  test("a budget whose charge does not refuse a crossing still never returns", () => {
+    const lenient: ScanBudget = { remaining: 10, charge: () => {} };
+    expect(() =>
+      compileLinearRegex("(?:[^#]*#|.)").replaceAll(
+        "a".repeat(100),
+        "",
+        lenient,
+      ),
+    ).toThrow(/read past its allowance but its budget did not refuse it/);
   });
 });
