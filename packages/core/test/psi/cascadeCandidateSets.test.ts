@@ -21,6 +21,7 @@ import {
   type LinkageCardinality,
 } from "../../src/psi/link";
 import {
+  ConnectionError,
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
@@ -540,3 +541,100 @@ test("a group split across two of the one side's records resolves as single-pass
     OVERLAPPING_ONE_SIDE,
   );
 });
+
+// --- the canonical position, where the partner's partition is not held -------
+// The many side omits its grouping where each of its records owns one matched
+// position, so the "one" side cannot tell which of its widened record's matched
+// positions an entry rests on and holds every entry naming that record to the
+// lowest of them (docs/spec/PROTOCOL.md, Deriving one table from the exchanged
+// association maps). Here the "one" side's single record owns both of the
+// round's matched positions and the many side's two records each own one.
+
+type MappedElement = { theirIndex: number; iteration: number };
+
+const isMappedElementList = (frame: unknown): frame is Array<MappedElement> =>
+  Array.isArray(frame) &&
+  frame.length > 0 &&
+  typeof frame[0] === "object" &&
+  frame[0] !== null &&
+  !Array.isArray(frame[0]);
+
+for (const manySide of ["starter", "joiner"] as const) {
+  test(`a list naming a widened record by a non-canonical position is refused (many side: ${manySide})`, async () => {
+    const oneSide = manySide === "starter" ? "joiner" : "starter";
+    const [starterKeys, joinerKeys] =
+      manySide === "starter"
+        ? [CROSS_GROUP_MANY_SIDE, CROSS_GROUP_ONE_SIDE]
+        : [CROSS_GROUP_ONE_SIDE, CROSS_GROUP_MANY_SIDE];
+    const cardinality: LinkageCardinality =
+      manySide === "starter" ? "many-to-one" : "one-to-many";
+
+    // The "one" side's first inbound mapped-element list is the many side's
+    // list of its records; the last entry is moved off the canonical position
+    // onto the record's other matched one.
+    let named: Array<MappedElement> | undefined;
+    const deviating = (conn: MessageConnection): MessageConnection => ({
+      send: (data) => conn.send(data),
+      receive: async (timeoutMs?: number) => {
+        const frame = await conn.receive(timeoutMs);
+        if (named !== undefined || !isMappedElementList(frame)) return frame;
+        named = frame;
+        const last = frame[frame.length - 1];
+        return [
+          ...frame.slice(0, -1),
+          { ...last, theirIndex: 1 - last.theirIndex },
+        ];
+      },
+      close: () => conn.close(),
+      setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
+    });
+
+    const [starterConn, joinerConn] = createMessagePipe();
+    const connFor = (party: "starter" | "joiner", conn: MessageConnection) =>
+      party === oneSide ? deviating(conn) : conn;
+    const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
+    const settle = (run: Promise<AssociationTable>) =>
+      run.then(
+        (table) => table,
+        (err: unknown) => err as Error,
+      );
+    const runs = {
+      starter: settle(
+        linkViaPSI(
+          { cardinality },
+          makeParticipant("starter"),
+          connFor("starter", starterConn),
+          starterKeys,
+          candidateSetBounds(joinerKeys[0].length, keyWidths),
+          -1,
+        ),
+      ),
+      joiner: settle(
+        linkViaPSI(
+          { cardinality: mirrorCardinality(cardinality) },
+          makeParticipant("joiner"),
+          connFor("joiner", joinerConn),
+          joinerKeys,
+          candidateSetBounds(starterKeys[0].length, keyWidths),
+          -1,
+        ),
+      ),
+    };
+    const outcome = await runs[oneSide];
+    await starterConn.close();
+    await joinerConn.close();
+    await Promise.all([runs.starter, runs.joiner]);
+
+    // Non-vacuity: the conforming list named the one record twice, both times
+    // by its canonical position, so the deviation names its other one.
+    expect(named).toStrictEqual([
+      { theirIndex: 0, iteration: 0 },
+      { theirIndex: 0, iteration: 0 },
+    ]);
+    expect(outcome).toBeInstanceOf(ConnectionError);
+    expect((outcome as ConnectionError).kind).toBe("protocol");
+    expect((outcome as Error).message).toMatch(
+      /names a position other than the canonical one of the record it matched/,
+    );
+  });
+}
