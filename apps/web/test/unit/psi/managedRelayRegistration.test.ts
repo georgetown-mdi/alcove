@@ -673,30 +673,39 @@ describe("the registration a re-invite makes", () => {
 
 describe("a cancelled run's registration", () => {
   /** A registrar that never answers: each request waits until its signal
-   * aborts and rejects with the signal's reason, as a real fetch does. */
-  function neverAnswering(): {
+   * aborts and rejects with the signal's reason, as a real fetch does, at once
+   * for a signal already aborted. `onRequest` runs once the request is under
+   * way. */
+  function neverAnswering(onRequest: () => void = () => {}): {
     fetch: typeof globalThis.fetch;
     requests: () => number;
   } {
     let requests = 0;
     const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
       requests++;
-      return new Promise<Response>((_resolve, reject) => {
+      const answer = new Promise<Response>((_resolve, reject) => {
         const signal = init?.signal;
+        if (signal?.aborted === true) {
+          reject(signal.reason);
+          return;
+        }
         signal?.addEventListener("abort", () => {
           reject(signal.reason);
         });
       });
+      onRequest();
+      return answer;
     }) as typeof globalThis.fetch;
     return { fetch, requests: () => requests };
   }
 
   test("the retry before connecting stops at the cancel and leaves the registration pending", async () => {
-    const registrar = neverAnswering();
-    const store = recordingStore();
+    // Cancelled from inside the request, not after a delay: a cancel landing
+    // before the relay keys are derived correctly makes no request at all.
     const cancel = new AbortController();
     const cancelled = new Error("the operator cancelled the run");
-    setTimeout(() => cancel.abort(cancelled), 10);
+    const registrar = neverAnswering(() => cancel.abort(cancelled));
+    const store = recordingStore();
 
     const error = await retryPendingManagedRelayRegistration(
       record({
