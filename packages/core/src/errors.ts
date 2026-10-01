@@ -189,11 +189,10 @@ export class OperatorConfigError extends UsageError {
 
 /**
  * A PSI set too large for one WebRTC message, refused by the party that would
- * have sent it before it goes on the wire: at the start of a WebRTC exchange,
- * from this party's own record count, or at a round, from the frame the round
- * built (docs/spec/PROTOCOL.md, "The memory ceiling, and the CSV intake cap").
- * The message names the size, the bound, and the remedy, and is composed only
- * from frame sizes and fixed constants.
+ * have sent it before it goes on the wire, at the start of a WebRTC exchange,
+ * from this party's own record count (docs/spec/PROTOCOL.md, "The memory
+ * ceiling, and the CSV intake cap"). The message names the size, the bound,
+ * and the remedy, and is composed only from frame sizes and fixed constants.
  *
  * `setOwner` names whose set the frame would have held: `"local"` for this
  * party's own, `"partner"` for the reply that returns the partner's set to it.

@@ -383,9 +383,9 @@ function failureContentFor(
       ...(consoleReported ? reportedCauseFields(cause) : {}),
     };
   }
-  // A set too large for one WebRTC message, refused before it was sent: at the
-  // start, from this party's own rows, or at a round, from the frame the round
-  // built; or a first-round count that could not be taken. The message is
+  // A set too large for one WebRTC message, refused at the start,
+  // before anything was sent, from this party's own rows; or a first-round
+  // count that could not be taken. The message is
   // fixed copy with counts, and for an uncounted refusal the cause's message,
   // which the display sanitizer bounds. Classified `config`: the same input
   // refuses identically however many times it runs.

@@ -1,10 +1,9 @@
 // The send-side half of the WebRTC data-channel frame bound
 // (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"): the
-// arithmetic a sender uses to refuse a frame the partner's receive path would
-// refuse, before the frame goes on the wire. Every refusal the exchange makes
-// on this bound -- the pre-connection count check and the per-round check on
-// the built frame -- goes through `webrtcFrameExceedsBound`, so the two cannot
-// disagree about where the bound falls.
+// arithmetic a sender uses to keep every frame within what the partner's receive
+// path admits. The pre-connection count check and the size of each part a
+// round sends (psi/psiSetParts.ts) both go through `webrtcFrameExceedsBound`,
+// so the two cannot disagree about where the bound falls.
 
 import {
   MAX_WEBRTC_FRAME_BYTES,
@@ -104,13 +103,6 @@ export function minimumPsiSetFrameBytes(elementCount: number): number {
   return binaryPackByteStringLength(elementCount * PSI_ENCODED_ELEMENT_BYTES);
 }
 
-/**
- * The reason a round's refusal puts on the abort frame it sends the partner.
- * A fixed literal, like every abort reason (see `sendAbort`).
- */
-export const WEBRTC_FRAME_LIMIT_ABORT_REASON =
-  "a PSI set is too large for one WebRTC message";
-
 const MIB = 1024 * 1024;
 
 /**
@@ -159,28 +151,3 @@ export const ROUND_ONE_SET_UNCOUNTED_MESSAGE =
   "This party could not count the values the first linkage key gives it to " +
   "send, so it cannot confirm the set fits one WebRTC message. Nothing was " +
   `sent. ${SPLIT_OR_FILE_SYNC_REMEDY}`;
-
-/**
- * The refusal a round raises on a set frame it built that the partner's
- * receive path would refuse. `setOwner` is whose set the frame holds: this
- * party's own, or the partner's, which the reply returns re-encrypted.
- */
-export function builtSetTooLargeMessage(
-  setOwner: "local" | "partner",
-  packedFrameBytes: number,
-  maxFrameBytes: number = MAX_WEBRTC_FRAME_BYTES,
-): string {
-  const size = formatBytes(webrtcFrameReceiveCharge(packedFrameBytes), true);
-  const limit = formatBytes(maxFrameBytes, false);
-  return setOwner === "local"
-    ? `The set this party sends for this linkage key is ${size}, over the ` +
-        `${limit} one WebRTC message can hold, so the exchange stopped ` +
-        `before sending it and told your partner. ${SPLIT_OR_FILE_SYNC_REMEDY}`
-    : `The reply to your partner's set for this linkage key is ${size}, ` +
-        `over the ${limit} one WebRTC message can hold, so the exchange ` +
-        "stopped before sending it and told your partner. Ask your partner " +
-        "to split their input into smaller files and run one exchange for " +
-        "each, or run the exchange together with the command-line " +
-        "application over SFTP or a synced folder, which allow larger " +
-        "messages.";
-}

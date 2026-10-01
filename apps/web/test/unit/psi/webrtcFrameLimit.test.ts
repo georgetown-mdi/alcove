@@ -14,6 +14,7 @@ import {
   WebRtcFrameLimitError,
 } from "@alcove/core";
 import {
+  PSI_SET_PART_HEADER_BYTES,
   ROUND_ONE_SET_UNCOUNTED_MESSAGE,
   binaryPackByteStringLength,
   webrtcFrameReceiveCharge,
@@ -25,8 +26,8 @@ import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection"
 import type { DataConnection } from "peerjs";
 
 // The browser's half of the sender-side WebRTC frame bound: its data channel
-// states the bound its own receive path applies, a PSI round over it refuses a
-// set frame past that bound before handing it to PeerJS, and the refusal
+// states the bound its own receive path applies, a PSI round over it hands
+// PeerJS a set past that bound in parts within it, and a set-size refusal
 // reaches the operator as its own alert rather than as a connection problem.
 
 const psiLibrary = await PSI();
@@ -100,7 +101,7 @@ test("the browser channel states the receive bound it applies", async () => {
   expect((await open(4096).connection).outboundWebRtcFrameBound?.()).toBe(4096);
 });
 
-test("a set frame one over the bound is refused before PeerJS sees it, and one under and at it is sent", async () => {
+test("a set over the bound is handed to PeerJS in parts within the bound, holding the whole set", async () => {
   const engine = new InProcessPsiEngine(
     psiLibrary,
     "starter",
@@ -110,22 +111,27 @@ test("a set frame one over the bound is refused before PeerJS sees it, and one u
   const { setup } = await engine.createServerSetup(SET);
   engine.dispose();
   const charge = webrtcFrameReceiveCharge(
-    binaryPackByteStringLength(setup.byteLength),
+    binaryPackByteStringLength(PSI_SET_PART_HEADER_BYTES + setup.byteLength),
   );
 
-  for (const bound of [charge + 1, charge]) {
+  for (const [bound, partCount] of [
+    [charge, 1],
+    [charge - 1, 2],
+  ]) {
     const { ended, sent } = await starterFirstFrame(bound);
     expect(ended).toBe("waiting");
-    expect(sent).toHaveLength(1);
-    expect((sent[0] as Uint8Array).byteLength).toBe(setup.byteLength);
+    expect(sent).toHaveLength(partCount);
+    const parts = sent as Array<Uint8Array>;
+    for (const part of parts)
+      expect(
+        webrtcFrameReceiveCharge(binaryPackByteStringLength(part.byteLength)),
+      ).toBeLessThanOrEqual(bound);
+    const setBytes = parts.reduce(
+      (sum, part) => sum + part.byteLength - PSI_SET_PART_HEADER_BYTES,
+      0,
+    );
+    expect(setBytes).toBe(setup.byteLength);
   }
-
-  const { ended, sent } = await starterFirstFrame(charge - 1);
-  expect(ended).toBeInstanceOf(WebRtcFrameLimitError);
-  // What PeerJS was handed in its place is the abort, not the set.
-  expect(sent).toEqual([
-    { decision: "abort", abortReasons: [expect.any(String)] },
-  ]);
 });
 
 test("the refusal is shown as its own alert, with no retry", () => {

@@ -6,10 +6,10 @@ import {
   InProcessPsiEngine,
   MAX_WEBRTC_FRAME_BYTES,
   PSIParticipant,
-  WebRtcFrameLimitError,
 } from "@alcove/core";
 import {
   binaryPackByteStringLength,
+  PSI_SET_PART_HEADER_BYTES,
   webrtcFrameReceiveCharge,
 } from "@alcove/core/testing";
 
@@ -24,9 +24,9 @@ import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPee
 import type { RTCDataChannel } from "werift";
 
 // The CLI's half of the sender-side WebRTC frame bound: its data channel states
-// the bound its own receive path applies, a PSI round over it refuses a set
-// frame past that bound before sending, and the charge the check weighs covers
-// what this receive path charges for the frames its own chunker writes.
+// the bound its own receive path applies, a PSI round over it sends a set past
+// that bound in parts that path admits, and the charge the sizing weighs
+// covers what this receive path charges for the frames its own chunker writes.
 
 const psiLibrary = await PSI();
 
@@ -105,23 +105,27 @@ test("the check's charge covers what this receive path charges for a chunked fra
 });
 
 /**
- * The first frame a starter's round over the CLI data channel sends for a set
- * of `count` values, with the channel's receive bound at `bound`: the set it
- * sent, or the refusal it raised in its place.
+ * The parts of the setup a starter's round over the CLI data channel sends for
+ * a set of `count` values, with the channel's receive bound at `bound`, as a
+ * receive path bounded the same reassembles them.
  */
-async function starterFirstFrame(
+async function starterSetupParts(
   count: number,
   bound: number,
-): Promise<{ ended: unknown; sent: Array<Uint8Array> }> {
-  // A round that sent its set waits for the partner, which never answers, so
-  // the set reassembling on a receive path bounded the same is its end here.
-  let setSent: () => void = () => {};
-  const setOnWire = new Promise<"waiting">((resolve) => {
-    setSent = () => resolve("waiting");
+): Promise<unknown> {
+  // A round that sent its setup waits for the partner, which never answers, so
+  // the setup's last part reassembling on the bounded receive path is its end.
+  let allSent: (parts: Array<Uint8Array>) => void = () => {};
+  const setupOnWire = new Promise<Array<Uint8Array>>((resolve) => {
+    allSent = resolve;
   });
-  const { session, sent } = recordingSession((datagrams) => {
-    if (received(datagrams, bound).some((frame) => frame instanceof Uint8Array))
-      setSent();
+  const { session } = recordingSession((datagrams) => {
+    const parts = received(datagrams, bound).filter(
+      (frame): frame is Uint8Array => frame instanceof Uint8Array,
+    );
+    if (parts.length === 0) return;
+    const header = new DataView(parts[0].buffer, parts[0].byteOffset);
+    if (parts.length === header.getUint32(4)) allSent(parts);
   });
   const conn = webRtcMessageConnection(session, {
     inboundBounds: { maxFrameBytes: bound },
@@ -145,13 +149,13 @@ async function starterFirstFrame(
       () => undefined,
       (err: unknown) => err,
     );
-  const settled = await Promise.race([round, setOnWire]);
+  const settled = await Promise.race([round, setupOnWire]);
   await conn.close();
   starter.dispose();
-  return { ended: settled, sent };
+  return settled;
 }
 
-test("a set frame one over the bound is refused before sending, and one under and at it is sent", async () => {
+test("a set over the bound goes in parts this receive path admits, and they hold the whole set", async () => {
   // Large enough that the setup crosses the chunk size, so the bound is the
   // chunked charge rather than the frame's own length.
   const count = 500;
@@ -165,23 +169,24 @@ test("a set frame one over the bound is refused before sending, and one under an
     Array.from({ length: count }, (_unused, i) => `value-${i}`),
   );
   engine.dispose();
-  const packed = binaryPackByteStringLength(setup.byteLength);
+  const packed = binaryPackByteStringLength(
+    PSI_SET_PART_HEADER_BYTES + setup.byteLength,
+  );
   expect(packed).toBeGreaterThan(PEERJS_CHUNK_MTU);
   const charge = webrtcFrameReceiveCharge(packed);
 
-  for (const bound of [charge + 1, charge]) {
-    const { ended, sent } = await starterFirstFrame(count, bound);
-    expect(ended).toBe("waiting");
-    // The partner's receive path, bounded the same, takes the whole setup.
-    const [frame] = received(sent, bound);
-    expect((frame as Uint8Array).byteLength).toBe(setup.byteLength);
+  // At the charge the setup goes whole; under it, in parts each admitted.
+  for (const [bound, partCount] of [
+    [charge, 1],
+    [charge - 1, 2],
+    [Math.floor(charge / 3), 3],
+  ]) {
+    const parts = await starterSetupParts(count, bound);
+    expect(parts).toHaveLength(partCount);
+    const setBytes = (parts as Array<Uint8Array>).reduce(
+      (sum, part) => sum + part.byteLength - PSI_SET_PART_HEADER_BYTES,
+      0,
+    );
+    expect(setBytes).toBe(setup.byteLength);
   }
-
-  const { ended, sent } = await starterFirstFrame(count, charge - 1);
-  expect(ended).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((ended as Error).message).toMatch(/Split the input/);
-  // What went on the wire in its place is the abort, not the set.
-  expect(received(sent, charge - 1)).toEqual([
-    { decision: "abort", abortReasons: [expect.any(String)] },
-  ]);
 });

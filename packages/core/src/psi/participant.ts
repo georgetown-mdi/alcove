@@ -20,26 +20,10 @@ import {
   assertPartnerIndices,
   assertPartnerIndexTable,
 } from "../utils/partnerIndices";
-import {
-  binaryPackByteStringLength,
-  builtSetTooLargeMessage,
-  webrtcFrameExceedsBound,
-  WEBRTC_FRAME_LIMIT_ABORT_REASON,
-} from "../connection/webrtcOutboundBound";
-import {
-  FILE_SYNC_SET_LIMIT_ABORT_REASON,
-  fileSyncBuiltSetTooLargeMessage,
-  fileSyncMaxRoundSetValues,
-  fileSyncMessageFileBytes,
-} from "../connection/fileSyncOutboundBound";
-import {
-  ProtocolRefusalError,
-  RoundSetLimitError,
-  WebRtcFrameLimitError,
-} from "../errors";
-import { sendAbort } from "../protocolSetup";
-import { decodePsiBinaryFrame, receivePsiBinaryFrame } from "./psiBinaryFrame";
+import { ProtocolRefusalError } from "../errors";
+import { decodePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
+import { psiSetByteBound, receivePsiSet, sendPsiSet } from "./psiSetParts";
 import type { RoundGroupingField } from "./roundGrouping";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -399,58 +383,17 @@ export class PSIParticipant {
     return declared;
   }
 
-  // Send one of the round's PSI set frames, refusing it first where the
-  // transport states a receive-side frame bound the frame would cross: the
-  // partner is parked on this frame, so it is sent the abort in its place and
-  // ends the round as a peer termination rather than on a frame it refuses.
-  // `setOwner` is whose set the frame holds -- the response returns the
-  // partner's own set re-encrypted -- which is whose input the remedy names.
-  private async sendPsiSetFrame(
+  // Receive one of the round's PSI sets in its parts, held to the bytes the
+  // authenticated element bound for its kind admits.
+  private receiveRoundSet(
     conn: MessageConnection,
-    frame: Uint8Array,
-    setOwner: "local" | "partner",
-  ): Promise<void> {
-    const envelopeBytes = conn.outboundFrameOverheadBytes?.() ?? 0;
-    const bound = conn.outboundWebRtcFrameBound?.();
-    if (bound !== undefined) {
-      const packedFrameBytes = binaryPackByteStringLength(
-        frame.byteLength + envelopeBytes,
-      );
-      if (webrtcFrameExceedsBound(packedFrameBytes, bound)) {
-        await sendAbort(conn, [WEBRTC_FRAME_LIMIT_ABORT_REASON]);
-        throw new WebRtcFrameLimitError(
-          builtSetTooLargeMessage(setOwner, packedFrameBytes, bound),
-          setOwner,
-        );
-      }
-    }
-    const fileBound = conn.outboundFileSyncFrameBound?.();
-    if (
-      fileBound !== undefined &&
-      fileSyncMessageFileBytes(frame.byteLength, envelopeBytes) > fileBound
-    ) {
-      const kind: PsiMessageKind =
-        setOwner === "partner"
-          ? "response"
-          : this.config.role === "starter"
-            ? "serverSetup"
-            : "request";
-      const elementCount = countDeclaredPsiElements(
-        frame,
-        kind,
-        Number.MAX_SAFE_INTEGER,
-      );
-      await sendAbort(conn, [FILE_SYNC_SET_LIMIT_ABORT_REASON]);
-      throw new RoundSetLimitError(
-        fileSyncBuiltSetTooLargeMessage(
-          setOwner,
-          elementCount,
-          fileSyncMaxRoundSetValues(fileBound),
-        ),
-        { setOwner },
-      );
-    }
-    await conn.send(frame);
+    kind: PsiMessageKind,
+  ): Promise<Uint8Array> {
+    const elementBound =
+      kind === "serverSetup"
+        ? this.elementBounds.setup
+        : this.elementBounds[kind];
+    return receivePsiSet(conn, this.id, kind, psiSetByteBound(elementBound));
   }
 
   // Report one crypto operation's element count and duration around the engine
@@ -649,20 +592,16 @@ export class PSIParticipant {
         `${this.id}: starting count-only protocol; sending server data ` +
           "encrypted by server",
       );
-      await this.sendPsiSetFrame(conn, setup, "local");
+      await sendPsiSet(conn, setup);
 
       this.log.debug(`${this.id}: waiting for client request`);
-      const clientRequest = await receivePsiBinaryFrame(
-        conn,
-        this.id,
-        "request",
-      );
+      const clientRequest = await this.receiveRoundSet(conn, "request");
 
       const serverResponse = await this.processClientRequest(clientRequest);
       this.log.debug(
         `${this.id}: sending client data encrypted by both server and client`,
       );
-      await this.sendPsiSetFrame(conn, serverResponse, "partner");
+      await sendPsiSet(conn, serverResponse);
 
       // The sender's round ends here: it holds no count, and whether one reaches it
       // at all is the entitlement question the caller answers (see protocolSetup's
@@ -671,23 +610,15 @@ export class PSIParticipant {
     }
 
     this.log.debug(`${this.id}: starting count-only protocol`);
-    const serverSetup = await receivePsiBinaryFrame(
-      conn,
-      this.id,
-      "serverSetup",
-    );
+    const serverSetup = await this.receiveRoundSet(conn, "serverSetup");
     this.log.debug(`${this.id}: receiving server data encrypted by server`);
     await this.receiveServerSetup(serverSetup);
 
     const clientRequest = await this.createClientRequest(set);
     this.log.debug(`${this.id}: sending client data encrypted by client`);
-    await this.sendPsiSetFrame(conn, clientRequest, "local");
+    await sendPsiSet(conn, clientRequest);
 
-    const serverResponse = await receivePsiBinaryFrame(
-      conn,
-      this.id,
-      "response",
-    );
+    const serverResponse = await this.receiveRoundSet(conn, "response");
     this.log.debug(
       `${this.id}: receiving server data encrypted by both server and client`,
     );
@@ -714,15 +645,11 @@ export class PSIParticipant {
         `${this.id}: starting identify-intersection protocol; sending server ` +
           " data encrypted by server",
       );
-      await this.sendPsiSetFrame(conn, setup, "local");
+      await sendPsiSet(conn, setup);
 
       this.log.debug(`${this.id}: waiting for client request`);
 
-      const clientRequest = await receivePsiBinaryFrame(
-        conn,
-        this.id,
-        "request",
-      );
+      const clientRequest = await this.receiveRoundSet(conn, "request");
       this.log.debug(`${this.id}: received client data encrypted by client`);
 
       const serverResponse = await this.processClientRequest(clientRequest);
@@ -731,7 +658,7 @@ export class PSIParticipant {
         `${this.id}: sending client data encrypted by both server and client`,
       );
 
-      await this.sendPsiSetFrame(conn, serverResponse, "partner");
+      await sendPsiSet(conn, serverResponse);
 
       // The partner sends [theirIndices, ourIndices]; the swapped names
       // restore our-first order. A third element is the partner's own grouping
@@ -791,11 +718,7 @@ export class PSIParticipant {
     } else {
       this.log.debug(`${this.id}: starting identify-intersection protocol`);
 
-      const serverSetup = await receivePsiBinaryFrame(
-        conn,
-        this.id,
-        "serverSetup",
-      );
+      const serverSetup = await this.receiveRoundSet(conn, "serverSetup");
       this.log.debug(`${this.id}: receiving server data encrypted by server`);
 
       // Validate and hold the server setup the instant it arrives -- a fail-fast
@@ -807,13 +730,9 @@ export class PSIParticipant {
 
       this.log.debug(`${this.id}: sending client data encrypted by client`);
 
-      await this.sendPsiSetFrame(conn, clientRequest, "local");
+      await sendPsiSet(conn, clientRequest);
 
-      const serverResponse = await receivePsiBinaryFrame(
-        conn,
-        this.id,
-        "response",
-      );
+      const serverResponse = await this.receiveRoundSet(conn, "response");
       this.log.debug(
         `${this.id}: receiving server data encrypted by both by server and ` +
           "client",

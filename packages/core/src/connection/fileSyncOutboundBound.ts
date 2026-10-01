@@ -1,8 +1,8 @@
 // The send-side half of the file-sync inbound frame bound
 // (docs/spec/FILE_SYNC.md, "Round set size limits"): the arithmetic a sender
-// uses to refuse a PSI set whose message file the partner's read gate would
-// refuse, before the file is written. The first-round count check and the
-// per-round check on the built frame both size a set against
+// uses to size a PSI set's message files to the partner's read gate before
+// any is written. The first-round count check and the size of each part a
+// round sends (psi/psiSetParts.ts) both weigh a file against
 // `MAX_FRAME_SIZE_BYTES`, the bound every file-sync receiver applies.
 
 import { AEAD_ENVELOPE_OVERHEAD_BYTES } from "./encryptedMessageConnection";
@@ -46,34 +46,3 @@ export function fileSyncMessageFileBytes(
  */
 export const SPLIT_INPUT_REMEDY =
   "Split the input into smaller files and run one exchange for each.";
-
-/**
- * The reason a round's refusal puts on the abort frame it sends the partner.
- * A fixed literal, like every abort reason (see `sendAbort`).
- */
-export const FILE_SYNC_SET_LIMIT_ABORT_REASON =
-  "a PSI set is too large for one message file";
-
-/**
- * The refusal a round raises on a set frame it built whose message file the
- * partner's read gate would refuse. `setOwner` is whose set the frame holds:
- * this party's own, or the partner's, which the reply returns re-encrypted.
- * `elementCount` is the values the set holds, `maxValues` what one message
- * file holds ({@link fileSyncMaxRoundSetValues}).
- */
-export function fileSyncBuiltSetTooLargeMessage(
-  setOwner: "local" | "partner",
-  elementCount: number,
-  maxValues: number = fileSyncMaxRoundSetValues(),
-): string {
-  return setOwner === "local"
-    ? "Too large for SFTP or a synced folder: the set this party sends for " +
-        `this linkage key holds ${elementCount} values, over the ` +
-        `${maxValues} one message file holds, so the exchange stopped ` +
-        `before sending it and told your partner. ${SPLIT_INPUT_REMEDY}`
-    : "Too large for SFTP or a synced folder: the reply to your partner's " +
-        `set for this linkage key holds ${elementCount} values, over the ` +
-        `${maxValues} one message file holds, so the exchange stopped ` +
-        "before sending it and told your partner. Ask your partner to split " +
-        "their input into smaller files and run one exchange for each.";
-}

@@ -1,25 +1,11 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-import PSI from "@openmined/psi.js";
-
-import { PSIParticipant } from "../../src/psi/participant";
-import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
-  AEAD_ENVELOPE_OVERHEAD_BYTES,
-  EncryptedMessageConnection,
-} from "../../src/connection/encryptedMessageConnection";
-import {
-  binaryPackByteStringLength,
   minimumPsiSetFrameBytes,
   ROUND_ONE_SET_UNCOUNTED_MESSAGE,
   webrtcFrameReceiveCharge,
 } from "../../src/connection/webrtcOutboundBound";
-import {
-  PeerAbortError,
-  UsageError,
-  WebRtcFrameLimitError,
-} from "../../src/errors";
+import { UsageError, WebRtcFrameLimitError } from "../../src/errors";
 import {
   assertFirstRoundFitsWebRtcFrame,
   prepareForExchange,
@@ -31,200 +17,10 @@ import {
   StandardizedKeyIterable,
 } from "../../src/standardization";
 import { getLogger } from "../../src/utils/logger";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
-import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
 import type { PsiProgress } from "../../src/psi/participant";
-
-// The sender-side half of the WebRTC frame bound: a party refuses a set frame
-// the partner's receive path would refuse, before it goes on the wire. The
-// bound is lowered to a few kilobytes so the boundary is reached with sets of
-// a few hundred values; the arithmetic at the real bound is pinned in
-// connection/webrtcOutboundBound.test.ts.
-
-const psiLibrary = await PSI();
-
-/** `conn` advertising `bound` as its partner's receive-side frame bound. */
-function withFrameBound(
-  conn: MessageConnection,
-  bound: number | undefined,
-): MessageConnection {
-  return {
-    send: (data) => conn.send(data),
-    receive: (timeoutMs) => conn.receive(timeoutMs),
-    close: () => conn.close(),
-    outboundWebRtcFrameBound: () => bound,
-  };
-}
-
-function values(count: number, prefix: string): Array<string> {
-  return Array.from({ length: count }, (_unused, i) => `${prefix}-${i}`);
-}
-
-/**
- * The packed length of the frame the library builds for `set` in `role`, sent
- * inside an envelope of `envelopeBytes`.
- */
-async function builtFrameBytes(
-  role: "starter" | "joiner",
-  set: Array<string>,
-  envelopeBytes = 0,
-): Promise<number> {
-  const engine = new InProcessPsiEngine(
-    psiLibrary,
-    role,
-    role === "starter" ? "server" : "client",
-    "identifier-revealing",
-  );
-  try {
-    const bytes =
-      role === "starter"
-        ? (await engine.createServerSetup(set)).setup
-        : await engine.createClientRequest(set);
-    return binaryPackByteStringLength(bytes.byteLength + envelopeBytes);
-  } finally {
-    engine.dispose();
-  }
-}
-
-const SESSION_KEY = new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>;
-
-/**
- * One cascade round between a starter holding `starterSet` and a joiner
- * holding `joinerSet`, each advertising its own bound, over AEAD-wrapped
- * connections when `encrypted`. Resolves to how each side ended.
- */
-async function round(
-  starterSet: Array<string>,
-  joinerSet: Array<string>,
-  bounds: { starter?: number; joiner?: number },
-  encrypted = false,
-): Promise<{ starter: unknown; joiner: unknown }> {
-  const [rawA, rawB] = createMessagePipe();
-  const [a, b]: Array<MessageConnection> = encrypted
-    ? await Promise.all([
-        EncryptedMessageConnection.create(
-          withFrameBound(rawA, bounds.starter),
-          SESSION_KEY,
-          "initiator",
-        ),
-        EncryptedMessageConnection.create(
-          withFrameBound(rawB, bounds.joiner),
-          SESSION_KEY,
-          "responder",
-        ),
-      ])
-    : [
-        withFrameBound(rawA, bounds.starter),
-        withFrameBound(rawB, bounds.joiner),
-      ];
-  const starter = new PSIParticipant(
-    "server",
-    psiLibrary,
-    { role: "starter", verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-  const joiner = new PSIParticipant(
-    "client",
-    psiLibrary,
-    { role: "joiner", verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-  const settle = (promise: Promise<unknown>) =>
-    promise.then(
-      () => "completed",
-      (err: unknown) => err,
-    );
-  const [starterEnd, joinerEnd] = await Promise.all([
-    settle(starter.identifyIntersection(a, starterSet)),
-    settle(joiner.identifyIntersection(b, joinerSet)),
-  ]);
-  await a.close();
-  await b.close();
-  starter.dispose();
-  joiner.dispose();
-  return { starter: starterEnd, joiner: joinerEnd };
-}
-
-test("a starter's setup is sent one under and at the bound, and refused one over", async () => {
-  const set = values(100, "s");
-  const charge = webrtcFrameReceiveCharge(
-    await builtFrameBytes("starter", set),
-  );
-
-  for (const bound of [charge + 1, charge]) {
-    const ended = await round(set, values(3, "s"), { starter: bound });
-    expect(ended).toEqual({ starter: "completed", joiner: "completed" });
-  }
-
-  const ended = await round(set, values(3, "s"), { starter: charge - 1 });
-  expect(ended.starter).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((ended.starter as WebRtcFrameLimitError).setOwner).toBe("local");
-  // The partner, parked on the setup, reads the abort sent in its place.
-  expect(ended.joiner).toBeInstanceOf(PeerAbortError);
-});
-
-test("a joiner's request is sent one under and at the bound, and refused one over", async () => {
-  const set = values(120, "j");
-  const charge = webrtcFrameReceiveCharge(await builtFrameBytes("joiner", set));
-
-  for (const bound of [charge + 1, charge]) {
-    const ended = await round(values(3, "j"), set, { joiner: bound });
-    expect(ended).toEqual({ starter: "completed", joiner: "completed" });
-  }
-
-  const ended = await round(values(3, "j"), set, { joiner: charge - 1 });
-  expect(ended.joiner).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((ended.joiner as WebRtcFrameLimitError).setOwner).toBe("local");
-  expect(ended.starter).toBeInstanceOf(PeerAbortError);
-});
-
-test("the reply returning a partner's set over the bound is refused as the partner's", async () => {
-  // A partner that checks nothing sends a request the starter's reply to would
-  // cross the bound; the starter's own setup is small enough to send.
-  const joinerSet = values(200, "r");
-  const bound = webrtcFrameReceiveCharge(
-    minimumPsiSetFrameBytes(joinerSet.length) - 1,
-  );
-  const ended = await round(values(3, "r"), joinerSet, { starter: bound });
-  expect(ended.starter).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((ended.starter as WebRtcFrameLimitError).setOwner).toBe("partner");
-  expect((ended.starter as Error).message).toMatch(/Ask your partner/);
-  expect(ended.joiner).toBeInstanceOf(PeerAbortError);
-});
-
-test("over an encrypted connection, the bound is charged the envelope too", async () => {
-  const set = values(100, "e");
-  const wrappedCharge = webrtcFrameReceiveCharge(
-    await builtFrameBytes("starter", set, AEAD_ENVELOPE_OVERHEAD_BYTES),
-  );
-
-  const at = await round(set, values(3, "e"), { starter: wrappedCharge }, true);
-  expect(at).toEqual({ starter: "completed", joiner: "completed" });
-
-  const under = await round(
-    set,
-    values(3, "e"),
-    { starter: wrappedCharge - 1 },
-    true,
-  );
-  expect(under.starter).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((under.starter as WebRtcFrameLimitError).setOwner).toBe("local");
-  expect(under.joiner).toBeInstanceOf(PeerAbortError);
-
-  // Unwrapped, the same frame fits one byte under the wrapped charge.
-  const plain = await round(set, values(3, "e"), {
-    starter: wrappedCharge - 1,
-  });
-  expect(plain).toEqual({ starter: "completed", joiner: "completed" });
-});
-
-test("a transport stating no bound sends any set", async () => {
-  const ended = await round(values(50, "n"), values(50, "n"), {});
-  expect(ended).toEqual({ starter: "completed", joiner: "completed" });
-});
 
 // The first-round check reads the prepared dataset, before any connection.
 

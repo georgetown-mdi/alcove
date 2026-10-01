@@ -11,7 +11,6 @@ import {
   PEERJS_CHUNK_MTU,
   PSI_ENCODED_ELEMENT_BYTES,
   binaryPackByteStringLength,
-  builtSetTooLargeMessage,
   minimumPsiSetFrameBytes,
   roundOneSetTooLargeMessage,
   webrtcFrameExceedsBound,
@@ -140,26 +139,11 @@ test("no set frame the PSI library builds is shorter than the count check assume
 
 test("a refusal states a size over the bound it names", () => {
   // Rounded up, so a frame one byte over never displays as equal to the bound.
-  const oneOver = largestAdmittedFrame() + 1;
-  const message = builtSetTooLargeMessage("local", oneOver);
-  expect(message).toContain("256.1 MiB");
-  expect(message).toContain("256 MiB one WebRTC message can hold");
-  expect(message).toMatch(/Split the input/);
-  expect(builtSetTooLargeMessage("partner", oneOver)).toMatch(
-    /Ask your partner to split their input/,
-  );
   expect(roundOneSetTooLargeMessage(7_643_791)).toMatch(
     /at least 7643791 values to send, a set of at least 256.1 MiB, over the 256 MiB/,
   );
   // Under a mebibyte the figures are exact.
-  expect(builtSetTooLargeMessage("local", 1001, 1000)).toContain(
-    "is 1001 bytes, over the 1000 bytes",
+  expect(roundOneSetTooLargeMessage(29, 1000)).toContain(
+    "a set of at least 1018 bytes, over the 1000 bytes",
   );
 });
-
-function largestAdmittedFrame(): number {
-  return largestAdmitted(
-    (bytes) => !webrtcFrameExceedsBound(bytes),
-    MAX_WEBRTC_FRAME_BYTES,
-  );
-}
