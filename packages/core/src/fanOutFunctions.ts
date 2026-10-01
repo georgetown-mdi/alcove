@@ -18,7 +18,10 @@
 import { MAX_LINKAGE_ENTRIES } from "./config/linkageTermsBounds.js";
 import type { LinkageKey, LinkageTerms } from "./config/linkageTermsSchema.js";
 import { InternalConsistencyError, UsageError } from "./errors.js";
-import { fuzzyCandidateCeiling } from "./fuzzyComparisons.js";
+import {
+  expandsOnReceiverOnly,
+  fuzzyCandidateCeiling,
+} from "./fuzzyComparisons.js";
 import { elementValueWidthBound } from "./keyElementWidth.js";
 
 /**
@@ -290,18 +293,41 @@ export function declaredKeyWidth(key: LinkageKey, keyIndex?: number): number {
   return verdict.width;
 }
 
+/**
+ * The most candidate values one record of a party in the given PSI role
+ * contributes to `key`: {@link declaredKeyWidth} for the receiver, and for the
+ * sender that width without the factors only the receiver's key read applies
+ * -- the swap's second order and each expansion
+ * {@link expandsOnReceiverOnly} classifies.
+ */
+export function keyWidthInRole(
+  key: LinkageKey,
+  partyIsReceiver: boolean,
+  keyIndex?: number,
+): number {
+  const verdict = keyWidthOrRefusal(key, keyIndex, partyIsReceiver);
+  if ("refusal" in verdict) throw new UsageError(verdict.refusal);
+  return verdict.width;
+}
+
 // The width one key declares, or the refusal that width earns: the single
 // derivation behind both boundaries that read it, so the parse issue and the
-// raised error state the same thing.
+// raised error state the same thing. The declared width is the receiver's.
 function keyWidthOrRefusal(
   key: LinkageKey,
   keyIndex?: number,
+  partyIsReceiver = true,
 ): { readonly width: number } | { readonly refusal: string } {
-  let width = key.swap !== undefined ? SWAP_VARIANT_WIDTH_FACTOR : 1;
+  let width =
+    partyIsReceiver && key.swap !== undefined ? SWAP_VARIANT_WIDTH_FACTOR : 1;
   for (const element of key.elements) {
     if (declaredFanOutFunction(element.transform) !== undefined)
       width *= FAN_OUT_CANDIDATES_PER_ELEMENT;
-    if (element.generateFuzzyComparisons !== undefined)
+    if (
+      element.generateFuzzyComparisons !== undefined &&
+      (partyIsReceiver ||
+        !expandsOnReceiverOnly(element.generateFuzzyComparisons))
+    )
       width *= fuzzyCandidateCeiling(
         element.generateFuzzyComparisons,
         elementValueWidthBound(element.transform),

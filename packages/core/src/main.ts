@@ -709,7 +709,7 @@ export {
   PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   assertAlgorithmImplemented,
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   assertFirstRoundFitsWebRtcFrame,
   assertLocalCertificateAuthorizesAgreedIdentity,
   assertSigningModeImplemented,

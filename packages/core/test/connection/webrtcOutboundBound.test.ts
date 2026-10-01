@@ -10,6 +10,7 @@ import { encodeBinaryPackValue } from "../../src/connection/binaryPackEncode";
 import {
   PEERJS_CHUNK_MTU,
   PSI_ENCODED_ELEMENT_BYTES,
+  PSI_SET_MAX_FRAMING_BYTES,
   binaryPackByteStringLength,
   largestOneFramePsiSetElements,
   minimumPsiSetFrameBytes,
@@ -107,7 +108,7 @@ test("the count check refuses one element over the largest set it admits", () =>
   );
 });
 
-test("no set frame the PSI library builds is shorter than the count check assumes", async () => {
+test("every set frame the PSI library builds is within the lengths the checks assume", async () => {
   // The count check refuses on the fewest bytes a set of its count can take, so
   // it holds only while every frame the library builds is at least that long.
   // Driven against the real serializer, every message a round sends a set in.
@@ -128,10 +129,15 @@ test("no set frame the PSI library builds is shorter than the count check assume
     const { setup } = await sender.createServerSetup(values);
     const request = await receiver.createClientRequest(values);
     const response = await sender.processClientRequest(request);
-    for (const frame of [setup, request, response])
+    for (const frame of [setup, request, response]) {
       expect(
         binaryPackByteStringLength(frame.byteLength),
       ).toBeGreaterThanOrEqual(minimumPsiSetFrameBytes(n));
+      // The set byte bound a receiver holds a set to rests on this ceiling.
+      expect(frame.byteLength).toBeLessThanOrEqual(
+        n * PSI_ENCODED_ELEMENT_BYTES + PSI_SET_MAX_FRAMING_BYTES,
+      );
+    }
     // The response is exactly the per-element bytes: the bound is tight.
     expect(response.byteLength).toBe(n * PSI_ENCODED_ELEMENT_BYTES);
     sender.dispose();

@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
+import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { PeerAbortError, RoundCapacityError } from "../src/errors";
 import {
@@ -21,11 +22,22 @@ import type { PreparedExchange, RunExchangeOptions } from "../src/exchange";
 
 const psiLibrary = await PSI();
 
+// Under a swapped key the PSI receiver assembles both orders of the pair and
+// the sender the authored order alone (docs/notes/one-sided-fuzzy-expansion.md).
+const swappedKey = {
+  name: "FN + LN",
+  elements: [{ field: "firstName" }, { field: "lastName" }],
+  swap: ["firstName", "lastName"] as [string, string],
+};
+
 function prepared(
   identity: string,
   rowCount: number,
   linkageStrategy: LinkageStrategy = "cascade",
+  swapped = false,
 ): PreparedExchange {
+  const name = (i: number) =>
+    `zq${String.fromCharCode(97 + (i % 26))}${Math.floor(i / 26)}`;
   return prepareForExchange(
     {
       linkageTerms: {
@@ -36,17 +48,21 @@ function prepared(
         linkageStrategy,
         identity,
         output: { expectsOutput: true, shareWithPartner: true },
-        linkageFields: [{ name: "firstName", type: "first_name" }],
-        linkageKeys: [
-          { name: "firstName", elements: [{ field: "firstName" }] },
+        linkageFields: [
+          { name: "firstName", type: "first_name" },
+          { name: "lastName", type: "last_name" },
         ],
+        linkageKeys: swapped
+          ? [swappedKey]
+          : [{ name: "firstName", elements: [{ field: "firstName" }] }],
       },
     },
     identity,
     Array.from({ length: rowCount }, (_unused, i) => ({
-      first_name: `zq${String.fromCharCode(97 + (i % 26))}${Math.floor(i / 26)}`,
+      first_name: name(i),
+      last_name: `${name(i)}x`,
     })),
-    ["first_name"],
+    ["first_name", "last_name"],
   );
 }
 
@@ -76,6 +92,7 @@ async function runPair(params: {
   partnerRows: number;
   ceiling?: number;
   strategy?: LinkageStrategy;
+  swapped?: boolean;
   options?: Partial<RunExchangeOptions>;
 }) {
   const [local, partner] = createMessagePipe();
@@ -84,34 +101,52 @@ async function runPair(params: {
     runExchange(
       withCeiling(local, params.ceiling, sent),
       "initiator",
-      prepared("Local Co", params.localRows, params.strategy),
+      prepared("Local Co", params.localRows, params.strategy, params.swapped),
       { psiLibrary, ...params.options },
     ),
     runExchange(
       partner,
       "responder",
-      prepared("Partner Co", params.partnerRows, params.strategy),
+      prepared(
+        "Partner Co",
+        params.partnerRows,
+        params.strategy,
+        params.swapped,
+      ),
       { psiLibrary },
     ),
   ]);
   return { local: outcomes[0], partner: outcomes[1], sent };
 }
 
-test("the partner's round is its record count times the widest key's declared width", () => {
+test("the partner's round is its record count times the widest key's width in the partner's role", () => {
   const keys = {
-    linkageKeys: [
-      { name: "a", elements: [{ field: "a" }] },
-      {
-        name: "ab",
-        elements: [{ field: "a" }, { field: "b" }],
-        swap: ["a", "b"] as [string, string],
-      },
-    ],
+    linkageKeys: [{ name: "a", elements: [{ field: "a" }] }, swappedKey],
   };
-  expect(partnerRoundValues(1_000, keys)).toBe(2_000);
+  expect(partnerRoundValues(1_000, keys, true)).toBe(2_000);
+  expect(partnerRoundValues(1_000, keys, false)).toBe(1_000);
   expect(
-    partnerRoundValues(1_000, { linkageKeys: [keys.linkageKeys[0]] }),
+    partnerRoundValues(1_000, { linkageKeys: [keys.linkageKeys[0]] }, true),
   ).toBe(1_000);
+});
+
+test("the partner's round is held to the per-set maximum no sender exceeds", () => {
+  const oneKey = {
+    linkageKeys: [{ name: "a", elements: [{ field: "a" }] }],
+  };
+  expect(partnerRoundValues(MAX_PSI_DECODE_ELEMENTS, oneKey, true)).toBe(
+    MAX_PSI_DECODE_ELEMENTS,
+  );
+  expect(partnerRoundValues(MAX_PSI_DECODE_ELEMENTS + 1, oneKey, true)).toBe(
+    MAX_PSI_DECODE_ELEMENTS,
+  );
+  expect(
+    partnerRoundValues(
+      MAX_PSI_DECODE_ELEMENTS,
+      { linkageKeys: [swappedKey] },
+      true,
+    ),
+  ).toBe(MAX_PSI_DECODE_ELEMENTS);
 });
 
 test("a partner round over the connection's ceiling is refused as this party's capacity, before any set moves", async () => {
@@ -198,4 +233,62 @@ test("a single-pass exchange is left to its dataset ceiling", async () => {
   expect(seen).toEqual([]);
   expect(local.status).toBe("fulfilled");
   expect(partner.status).toBe("fulfilled");
+});
+
+test("a sender partner is weighed without the width only the receiver applies", async () => {
+  // The partner has more records, so it resolves to the PSI sender and builds
+  // the authored order alone: its round is its record count, not twice it.
+  const seen: Array<number> = [];
+  const { local, partner } = await runPair({
+    localRows: 5,
+    partnerRows: 12,
+    ceiling: 12,
+    swapped: true,
+    options: { checkPartnerRoundCapacity: (values) => void seen.push(values) },
+  });
+  expect(seen).toEqual([12]);
+  expect(local.status).toBe("fulfilled");
+  expect(partner.status).toBe("fulfilled");
+});
+
+test("a receiver partner is weighed at the width it applies", async () => {
+  const { local } = await runPair({
+    localRows: 12,
+    partnerRows: 5,
+    ceiling: 9,
+    swapped: true,
+  });
+  expect(local.status).toBe("rejected");
+  expect(((local as PromiseRejectedResult).reason as Error).message).toContain(
+    "can hold up to 10 values, over the 9 a browser exchange can match",
+  );
+});
+
+test("a failure of the capacity check other than a capacity refusal propagates and sends no abort", async () => {
+  const failure = new Error("the memory figures could not be read");
+  const [local, partner] = createMessagePipe();
+  const sent: Array<unknown> = [];
+  const partnerRun = runExchange(
+    partner,
+    "responder",
+    prepared("Partner Co", 12),
+    { psiLibrary },
+  );
+  const localOutcome = await runExchange(
+    withCeiling(local, undefined, sent),
+    "initiator",
+    prepared("Local Co", 5),
+    {
+      psiLibrary,
+      checkPartnerRoundCapacity: () => {
+        throw failure;
+      },
+    },
+  ).catch((err: unknown) => err);
+  local.close();
+  await partnerRun.catch(() => undefined);
+  expect(localOutcome).toBe(failure);
+  expect(sent).not.toContainEqual(
+    expect.objectContaining({ decision: "abort" }),
+  );
 });

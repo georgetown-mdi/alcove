@@ -1,33 +1,12 @@
 import { expect, test } from "vitest";
 
-import PSI from "@openmined/psi.js";
-
-import {
-  AEAD_ENVELOPE_OVERHEAD_BYTES,
-  EncryptedMessageConnection,
-} from "../../src/connection/encryptedMessageConnection";
-import {
-  MESSAGE_HEADER_BYTES,
-  MESSAGE_TYPE_BINARY,
-  serializeFileSyncMessage,
-} from "../../src/connection/fileSyncFraming";
-import { fileSyncMaxRoundSetValues } from "../../src/connection/fileSyncOutboundBound";
-import {
-  MAX_FRAME_SIZE_BYTES,
-  MAX_PSI_DECODE_ELEMENTS,
-} from "../../src/connection/frameSize";
-import { createMessagePipe } from "../../src/connection/messageConnection";
-import {
-  PSI_ENCODED_ELEMENT_BYTES,
-  PSI_SET_MAX_FRAMING_BYTES,
-} from "../../src/connection/webrtcOutboundBound";
+import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { RoundSetLimitError, UsageError } from "../../src/errors";
 import {
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   fileSyncRoundOneSetTooLargeMessage,
   prepareForExchange,
 } from "../../src/exchange";
-import { serializeRequest, serializeSetup } from "../../src/psi/psiChunks";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import {
@@ -80,16 +59,8 @@ function preparedWith(
   );
 }
 
-// The most bytes a first-round message file of `values` values takes.
-const boundFor = (values: number) =>
-  MESSAGE_HEADER_BYTES +
-  AEAD_ENVELOPE_OVERHEAD_BYTES +
-  PSI_SET_MAX_FRAMING_BYTES +
-  values * PSI_ENCODED_ELEMENT_BYTES;
-
-test("the check's real bound is the protocol's per-set maximum, past one message file", () => {
+test("the check's bound is the protocol's per-set maximum", () => {
   expect(MAX_PSI_DECODE_ELEMENTS).toBe(2 ** 24);
-  expect(MAX_PSI_DECODE_ELEMENTS).toBeGreaterThan(fileSyncMaxRoundSetValues());
   expect(
     fileSyncRoundOneSetTooLargeMessage(MAX_PSI_DECODE_ELEMENTS + 1),
   ).toContain(
@@ -98,53 +69,13 @@ test("the check's real bound is the protocol's per-set maximum, past one message
   );
 });
 
-test("one message file holds 15,339,166 values", () => {
-  const ceiling = fileSyncMaxRoundSetValues();
-  expect(ceiling).toBe(15_339_166);
-  expect(boundFor(ceiling)).toBeLessThanOrEqual(MAX_FRAME_SIZE_BYTES);
-  expect(boundFor(ceiling + 1)).toBeGreaterThan(MAX_FRAME_SIZE_BYTES);
-  expect(fileSyncMaxRoundSetValues(boundFor(300))).toBe(300);
-  expect(fileSyncMaxRoundSetValues(boundFor(300) - 1)).toBe(299);
-});
-
-const psiLibrary = await PSI();
-
-/** The message file the encrypting connection writes for `payload`. */
-async function encryptedMessageFile(payload: Uint8Array): Promise<Buffer> {
-  const [local, peer] = createMessagePipe();
-  const sender = await EncryptedMessageConnection.create(
-    local,
-    new Uint8Array(32).fill(0x42),
-    "initiator",
-  );
-  await sender.send(payload);
-  const envelope = (await peer.receive()) as Uint8Array;
-  return serializeFileSyncMessage(MESSAGE_TYPE_BINARY, 1, envelope);
-}
-
-test("a message file of the most values it holds fits the receiver's frame bound", async () => {
-  const values = 300;
-  const bound = boundFor(values);
-  expect(fileSyncMaxRoundSetValues(bound)).toBe(values);
-  const elements = Array.from({ length: values }, () =>
-    new Uint8Array(PSI_ENCODED_ELEMENT_BYTES - 2).fill(7),
-  );
-  for (const message of [
-    serializeSetup(psiLibrary, elements),
-    serializeRequest(psiLibrary, elements, true),
-  ]) {
-    const file = await encryptedMessageFile(message);
-    expect(file.length).toBeLessThanOrEqual(bound);
-  }
-});
-
 /** What the check under a per-set maximum of `maxValues` rejects with, or undefined. */
 async function refusalOf(
-  prepared: Parameters<typeof assertFirstRoundFitsFileSyncFrame>[0],
+  prepared: Parameters<typeof assertFileSyncFirstRoundWithinSetMaximum>[0],
   maxValues: number,
 ): Promise<unknown> {
   try {
-    await assertFirstRoundFitsFileSyncFrame(prepared, { maxValues });
+    await assertFileSyncFirstRoundWithinSetMaximum(prepared, { maxValues });
   } catch (err) {
     return err;
   }

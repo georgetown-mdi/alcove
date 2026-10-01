@@ -850,12 +850,11 @@ or a synced folder, which allow larger messages.
 
 #### A partner's set too large for this browser
 
-A browser party holds the partner's set for one linkage key to the most one
-WebRTC message holds (see
-[PROTOCOL.md](spec/PROTOCOL.md#what-a-browser-tab-can-match)). At the terms
-exchange, before any linkage key is sent, it refuses a partner whose declared
-record count times the widest key's width is over that ceiling, and tells the
-partner.
+A browser can match a partner's set for one linkage key only up to a fixed
+size. When the partner's set can be larger, the run stops at the terms
+exchange, before any linkage key is sent, and tells the partner. How the limit
+and the partner's figure are derived: [PROTOCOL.md, What a browser tab can
+match](spec/PROTOCOL.md#what-a-browser-tab-can-match).
 
 It is a state of its own, held apart from a connection problem: the same
 partner input refuses at every window, so no surface offers a retry. The

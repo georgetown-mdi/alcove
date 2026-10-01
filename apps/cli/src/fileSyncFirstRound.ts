@@ -1,5 +1,5 @@
 import {
-  assertFirstRoundFitsFileSyncFrame,
+  assertFileSyncFirstRoundWithinSetMaximum,
   assertFirstRoundFitsWebRtcFrame,
 } from "@alcove/core";
 import type {
@@ -13,9 +13,9 @@ const passedWebRtcFirstRoundCheck = new WeakSet<PreparedExchange>();
 
 /**
  * Refuse, on an SFTP or synced-folder connection, a first round with more
- * values than one PSI set can hold (`assertFirstRoundFitsFileSyncFrame`),
- * the set itself being sent in parts; a no-op on WebRTC,
- * whose own check runs as the transport is prepared. The refusal is decided
+ * values than one PSI set can hold
+ * (`assertFileSyncFirstRoundWithinSetMaximum`), the set itself being sent in
+ * parts; a no-op on WebRTC, whose own check runs as the transport is prepared. The refusal is decided
  * from local input, so a command runs this before the host-key step, whose
  * first-use probe contacts the server. `runProtocol` runs it again for a
  * caller that did not, and a prepared exchange that already passed is not
@@ -28,7 +28,7 @@ export async function assertFileSyncFirstRoundFits(
 ): Promise<void> {
   if (connection.channel === "webrtc") return;
   if (passedFileSyncFirstRoundCheck.has(prepared)) return;
-  await assertFirstRoundFitsFileSyncFrame(prepared, { onProgress });
+  await assertFileSyncFirstRoundWithinSetMaximum(prepared, { onProgress });
   passedFileSyncFirstRoundCheck.add(prepared);
 }
 

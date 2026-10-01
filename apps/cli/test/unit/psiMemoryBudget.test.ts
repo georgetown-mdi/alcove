@@ -310,6 +310,29 @@ describe("the partner's round", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("passes the per-set maximum on a host with exactly the memory a round of it needs", () => {
+    // The core figure is held to the per-set maximum, so a host sized for it
+    // admits every partner.
+    const need = psiRoundMemoryNeedBytes(MAX_PSI_DECODE_ELEMENTS);
+    const warnings: string[] = [];
+    expect(() =>
+      checkPartnerRoundMemory({
+        partnerRoundValues: MAX_PSI_DECODE_ELEMENTS,
+        allowShortfall: false,
+        readings: {
+          engineHeapLimitBytes: need,
+          engineInWorker: false,
+          mainThreadHeapLimitBytes: need,
+          hostBytes: need,
+          containerLimitBytes: undefined,
+          heapRaisedByRestart: false,
+        },
+        onShortfallWarning: (m) => warnings.push(m),
+      }),
+    ).not.toThrow();
+    expect(warnings).toEqual([]);
+  });
+
   it("warns instead under the override", () => {
     const { outcome, warnings } = run(1_000_000, true);
     expect(outcome).not.toBeInstanceOf(Error);

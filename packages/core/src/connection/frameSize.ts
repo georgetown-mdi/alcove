@@ -295,7 +295,7 @@ export interface PsiElementBounds {
  * frame and never rejects one. It applies to both the single-pass and cascade
  * decode paths: single-pass pools each party's distinct values across all keys (at
  * most its slot count), and the cascade sends one key's values per round (at most
- * `recordCount`, well within the same bound).
+ * `recordCount` times that key's width, within the same bound).
  *
  * The setup holds the SENDER's masked set; the request holds the RECEIVER's
  * masked set; the response re-encrypts that request, so it holds the receiver's

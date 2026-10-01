@@ -25,6 +25,7 @@ import {
   buildStandardizedDataset,
   declaredEffectiveKeyCount,
   declaredKeyWidth,
+  keyWidthInRole,
   localFanOutFactor,
   StandardizedKeyIterable,
 } from "./standardization.js";
@@ -1545,8 +1546,8 @@ export function prepareForExchange(
  * message, before anything is sent: a {@link WebRtcFrameLimitError} naming
  * the size, the bound, and the remedy. Call it at the start of a WebRTC
  * exchange, once {@link prepareForExchange} has returned and before the
- * connection opens; {@link assertFirstRoundFitsFileSyncFrame} is the SFTP and
- * synced-folder counterpart.
+ * connection opens; {@link assertFileSyncFirstRoundWithinSetMaximum} is the
+ * SFTP and synced-folder counterpart.
  *
  * It counts the values the first cascade or count-only round sends under this
  * party's own within-round rule ({@link RoundSetCounter}): every distinct
@@ -1621,7 +1622,7 @@ export function fileSyncRoundOneSetTooLargeMessage(
  * rather than here (docs/spec/FILE_SYNC.md, "Round set size limits").
  * Progress is reported as {@link assertFirstRoundFitsWebRtcFrame} reports it.
  */
-export async function assertFirstRoundFitsFileSyncFrame(
+export async function assertFileSyncFirstRoundWithinSetMaximum(
   prepared: PreparedExchange,
   options: FirstRoundCheckOptions = {},
 ): Promise<void> {
@@ -1644,7 +1645,7 @@ export async function assertFirstRoundFitsFileSyncFrame(
 
 /**
  * What a first-round check ({@link assertFirstRoundFitsWebRtcFrame},
- * {@link assertFirstRoundFitsFileSyncFrame}) takes beyond the prepared
+ * {@link assertFileSyncFirstRoundWithinSetMaximum}) takes beyond the prepared
  * exchange.
  */
 export interface FirstRoundCheckOptions {
@@ -2226,10 +2227,10 @@ export interface RunExchangeOptions {
    * This party's check of its own capacity against the partner's round, called
    * once on a cascade or count-only exchange after the terms exchange and
    * before any PSI set moves, with the most values the partner's set for one
-   * linkage key can hold ({@link partnerRoundValues}). A throw refuses the run:
-   * the partner is sent {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON} and the
-   * throw propagates. The command-line application weighs the memory a round
-   * of that size needs here. A connection that states a ceiling on a
+   * linkage key can hold ({@link partnerRoundValues}). A throw refuses the run
+   * and propagates; a {@link RoundCapacityError} also sends the partner
+   * {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}. The command-line
+   * application weighs the memory a round of that size needs here. A connection that states a ceiling on a
    * partner's set (`MessageConnection.inboundPsiSetElementCeiling`) is held to
    * it first, as a {@link RoundCapacityError}, whether or not this is given.
    */
@@ -2389,21 +2390,23 @@ export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
 
 /**
  * The most values the partner's set for one linkage key can hold: its declared
- * record count, which includes its own fan-out, times the widest key's declared
- * candidate width. Both are authenticated session state. A count-only round
- * runs over one key, so for it this is that key's figure.
+ * record count, which includes its own fan-out, times the widest key's width
+ * as the partner's PSI role applies it ({@link keyWidthInRole}), held to
+ * {@link MAX_PSI_DECODE_ELEMENTS}, over which no sender sends a set. Every
+ * input is authenticated session state.
  */
 export function partnerRoundValues(
   partnerRecordCount: number,
   linkageTerms: Pick<LinkageTerms, "linkageKeys">,
+  partnerIsReceiver: boolean,
 ): number {
   const widest = Math.max(
     0,
     ...linkageTerms.linkageKeys.map((key, keyIndex) =>
-      declaredKeyWidth(key, keyIndex),
+      keyWidthInRole(key, partnerIsReceiver, keyIndex),
     ),
   );
-  return partnerRecordCount * widest;
+  return Math.min(partnerRecordCount * widest, MAX_PSI_DECODE_ELEMENTS);
 }
 
 /**
@@ -2427,7 +2430,8 @@ export function partnerRoundOverBrowserCeilingMessage(
 
 // Hold the partner's round to this party's capacity, before any PSI set moves:
 // the connection's own ceiling on a partner's set, then the caller's check. A
-// refusal sends the partner a fixed abort reason before it propagates.
+// capacity refusal sends the partner a fixed abort reason before it
+// propagates; any other failure propagates unchanged.
 async function assertPartnerRoundWithinCapacity(
   conn: MessageConnection,
   roundValues: number,
@@ -2441,7 +2445,8 @@ async function assertPartnerRoundWithinCapacity(
       );
     await check?.(roundValues);
   } catch (err) {
-    await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
+    if (err instanceof RoundCapacityError)
+      await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
     throw err;
   }
 }
@@ -2896,7 +2901,7 @@ export async function runExchange(
   if (linkageTerms.linkageStrategy !== "single-pass" || countOnly)
     await assertPartnerRoundWithinCapacity(
       conn,
-      partnerRoundValues(partnerRecordCount, linkageTerms),
+      partnerRoundValues(partnerRecordCount, linkageTerms, !isReceiver),
       options.checkPartnerRoundCapacity,
     );
 
