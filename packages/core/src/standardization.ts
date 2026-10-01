@@ -77,7 +77,6 @@ export {
   fanOutDeclaredMessage,
   FAN_OUT_CANDIDATES_PER_ELEMENT,
   FAN_OUT_FUNCTION_NAMES,
-  keyWidthInRole,
   localFanOutFactor,
   termsDeclareCandidateSet,
 } from "./fanOutFunctions.js";

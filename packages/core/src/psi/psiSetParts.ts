@@ -244,6 +244,7 @@ export async function receivePsiSet(
         await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
         throw new RoundCapacityError(
           partnerSetOverCeilingMessage(capacity.elements),
+          "set-first-part",
         );
       }
       setBytes = Number(declaredBytes);

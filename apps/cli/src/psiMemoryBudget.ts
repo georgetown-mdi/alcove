@@ -326,6 +326,7 @@ export function checkPartnerRoundMemory(params: {
   if (!params.allowShortfall)
     throw new RoundCapacityError(
       partnerRoundMemoryShortfallMessage(assessment),
+      "terms-exchange",
     );
   params.onShortfallWarning(
     partnerRoundMemoryShortfallOverrideWarning(assessment),

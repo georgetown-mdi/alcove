@@ -344,18 +344,21 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * connection), `"input"` and `"terms-shortfall"` (both
  * pre-connection), `"auth"` (a `security`-kind failure the classifier stamps
  * only before the data exchange begins; see {@link ../psi/managedRun.ts},
- * `rerunFailureLastRun`), `"storage"` (persist-before-success), and
- * `"terms-change"` and `"partner-set-too-large"` (each stamped only for
- * core's refusal at the terms exchange, which precedes every linkage round and
- * the payload frame). The
- * remaining kinds -- `"transport"` (the catch-all a mid-exchange failure also
- * lands in), `"too-large"` (a later round refuses this party's own set over
- * `MAX_PSI_DECODE_ELEMENTS` after data has moved), `"cancelled"`, and a
- * missing kind -- cannot prove it.
+ * `rerunFailureLastRun`), `"storage"` (persist-before-success), `"terms-change"`
+ * (stamped only for core's refusal at the terms exchange, which precedes every
+ * linkage round and the payload frame), and `"partner-set-too-large"` without
+ * `refusedInRound` (the same terms-exchange refusal). The remaining kinds --
+ * `"transport"` (the catch-all a mid-exchange failure also lands in),
+ * `"too-large"` (a later round refuses this party's own set over
+ * `MAX_PSI_DECODE_ELEMENTS` after data has moved), `"partner-set-too-large"`
+ * with `refusedInRound` (refused at a partner set's first part, after sets of
+ * this party's may have moved), `"cancelled"`, and a missing kind -- cannot
+ * prove it.
  */
-function disclosurePrecedesExchange(
-  failureKind: ManagedExchangeLastRun["failureKind"],
-): boolean {
+function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {
+  const { failureKind } = lastRun;
+  if (failureKind === "partner-set-too-large")
+    return lastRun.refusedInRound !== true;
   return (
     failureKind === "handed-off" ||
     failureKind === "custody-unreadable" ||
@@ -363,8 +366,7 @@ function disclosurePrecedesExchange(
     failureKind === "terms-shortfall" ||
     failureKind === "auth" ||
     failureKind === "storage" ||
-    failureKind === "terms-change" ||
-    failureKind === "partner-set-too-large"
+    failureKind === "terms-change"
   );
 }
 
@@ -382,7 +384,7 @@ function sendNotRuledOut(lastRun: ManagedExchangeLastRun): boolean {
     lastRun.outcome === "skipped"
   )
     return false;
-  return !disclosurePrecedesExchange(lastRun.failureKind);
+  return !disclosurePrecedesExchange(lastRun);
 }
 
 /**

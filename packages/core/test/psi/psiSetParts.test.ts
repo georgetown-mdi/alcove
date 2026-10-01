@@ -166,6 +166,7 @@ test("a set within the bound but over this party's capacity is refused at its fi
     elements: 3,
   }).catch((err: unknown) => err);
   expect(refusal).toBeInstanceOf(RoundCapacityError);
+  expect((refusal as RoundCapacityError).stage).toBe("set-first-part");
   expect((refusal as Error).message).toBe(partnerSetOverCeilingMessage(3));
   expect(await a.receive()).toEqual({
     decision: "abort",
@@ -591,6 +592,7 @@ test("a round refuses a partner's setup within the record counts but over the co
   const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
   const { outcome, firstSent } = await joinerFedFirstSetupPart(10, 9);
   expect(outcome).toBeInstanceOf(RoundCapacityError);
+  expect((outcome as RoundCapacityError).stage).toBe("set-first-part");
   expect((outcome as Error).message).toBe(partnerSetOverCeilingMessage(9));
   expect(firstSent).toEqual({
     decision: "abort",

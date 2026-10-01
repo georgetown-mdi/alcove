@@ -613,8 +613,9 @@ already defines:
   large to send](#an-input-too-large-to-send)).
 - **This needs you: the partner's set is too large for this browser.** The
   partner's set for a linkage key can hold more values than this browser can
-  match, so the run stopped at the terms exchange; the same partner input
-  refuses at every window, so it is never offered as retryable (see [A
+  match, so the run stopped at the terms exchange or at the first part of the
+  partner's set; the same partner input refuses at every window, so it is
+  never offered as retryable (see [A
   partner's set too large for this
   browser](#a-partners-set-too-large-for-this-browser)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
@@ -851,10 +852,19 @@ or a synced folder, which allow larger messages.
 #### A partner's set too large for this browser
 
 A browser can match a partner's set for one linkage key only up to a fixed
-size. When the partner's set can be larger, the run stops at the terms
-exchange, before any linkage key is sent, and tells the partner. How the limit
-and the partner's figure are derived: [PROTOCOL.md, What a browser tab can
-match](spec/PROTOCOL.md#what-a-browser-tab-can-match).
+size. When the partner's set can be larger, the run stops and tells the
+partner, at one of two points:
+
+- **At the terms exchange**, before any linkage key is sent. The run history
+  says nothing was disclosed.
+- **At the first part of the partner's set** inside a round, if the set the
+  partner sends is over the limit. Sets of this party's may already have been
+  sent by then, so the run history says the run did not complete and that
+  whether any data reached the partner is not recorded, and points at the
+  accounting of disclosures.
+
+How the limit and the partner's figure are derived: [PROTOCOL.md, What a
+browser tab can match](spec/PROTOCOL.md#what-a-browser-tab-can-match).
 
 It is a state of its own, held apart from a connection problem: the same
 partner input refuses at every window, so no surface offers a retry. The

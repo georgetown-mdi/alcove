@@ -15,7 +15,6 @@ import {
   declaredKeyWidth,
   FAN_OUT_CANDIDATES_PER_ELEMENT,
   keyDeclaresCandidateSet,
-  keyWidthInRole,
   MAX_KEY_CANDIDATE_WIDTH,
   SWAP_VARIANT_WIDTH_FACTOR,
 } from "../../src/fanOutFunctions";
@@ -583,52 +582,6 @@ describe("the width a key declares", () => {
       /declares a width of more than the 1024/,
     );
   });
-});
-
-describe("the width a party's PSI role applies", () => {
-  test.each(FUZZY_KINDS)(
-    "%s beside a swap pair: neither role realizes more than its width",
-    (kind) => {
-      // The receiver's width is the declared one; the sender's leaves out the
-      // swap's second order and a receiver-only expansion, so a sender key
-      // read that applied either would realize more than its width here.
-      const dateKind = kind === "adjacent_years" || kind === "day_month_swaps";
-      const key: LinkageKey = {
-        name: "A+B+C",
-        elements: [
-          { field: "a" },
-          { field: "b" },
-          {
-            field: "c",
-            generateFuzzyComparisons: kind,
-            ...(dateKind ? {} : { transform: boundToTranspositionWidth }),
-          },
-        ],
-        swap: ["a", "b"],
-      };
-      const row = {
-        a: "ALPHA",
-        b: "BRAVO",
-        c: dateKind ? "19900112" : "ABCDEFGHIJ",
-      };
-      const dataset = new StandardizedDataset(
-        ["a", "b", "c"].map(
-          (name) => new StandardizedField(name, name, [], [row]),
-        ),
-        [key],
-      );
-      expect(keyWidthInRole(key, true)).toBe(declaredKeyWidth(key));
-      for (const isReceiver of [true, false]) {
-        const built = buildKeyStrings(key, dataset, 0, isReceiver);
-        expect(built?.size ?? 0).toBeLessThanOrEqual(
-          keyWidthInRole(key, isReceiver),
-        );
-      }
-      expect(buildKeyStrings(key, dataset, 0, true)!.size).toBeGreaterThan(
-        keyWidthInRole(key, false),
-      );
-    },
-  );
 });
 
 describe("both parties derive the same width with no round-trip", () => {

@@ -2440,6 +2440,7 @@ async function assertPartnerRoundWithinCapacity(
     if (ceiling !== undefined && roundValues > ceiling)
       throw new RoundCapacityError(
         partnerRoundOverBrowserCeilingMessage(roundValues, ceiling),
+        "terms-exchange",
       );
     await check?.(roundValues);
   } catch (err) {

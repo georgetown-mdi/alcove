@@ -248,6 +248,7 @@ test("a partner round over the connection's ceiling is refused as this party's c
   const refusal = (local as PromiseRejectedResult).reason as Error;
   expect(refusal).toBeInstanceOf(RoundCapacityError);
   expect((refusal as RoundCapacityError).alcoveRecoveryHintEmitted).toBe(true);
+  expect((refusal as RoundCapacityError).stage).toBe("terms-exchange");
   expect(refusal.message).toContain(
     "your partner's set for one linkage key can hold up to 12 values, over " +
       "the 11 a browser exchange can match",
@@ -275,7 +276,10 @@ test("a partner round at the connection's ceiling runs to completion", async () 
 
 test("the caller's capacity check is handed the partner's round, and its throw aborts the run", async () => {
   const seen: Array<number> = [];
-  const failure = new RoundCapacityError("not enough memory for that round");
+  const failure = new RoundCapacityError(
+    "not enough memory for that round",
+    "terms-exchange",
+  );
   const { local, partner, sent } = await runPair({
     localRows: 5,
     partnerRows: 12,

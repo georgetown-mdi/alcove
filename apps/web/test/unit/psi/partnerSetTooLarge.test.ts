@@ -30,11 +30,14 @@ import {
   managedRunFailureFromRecord,
   managedRunRetryable,
 } from "@recurring/managedRunLaunchModel";
+import {
+  lastRunMayHaveSentPayload,
+  runHistoryEntries,
+} from "@recurring/managedDetailModel";
 import { PARTNER_SET_TOO_LARGE_TITLE } from "@psi/managed/managedFailureCopy";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { failureFor } from "@exchange/useInviterExchange";
-import { lastRunMayHaveSentPayload } from "@recurring/managedDetailModel";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
 
 import type {
@@ -43,8 +46,9 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { MessageConnection } from "@alcove/core";
 
-// A browser party's refusal, at the terms exchange, of a partner whose set for
-// a linkage key can hold more values than this browser can match: its own
+// A browser party's refusal, at the terms exchange or a set's first part, of a
+// partner whose set for a linkage key can hold more values than this browser
+// can match: its own
 // title and copy on the one-shot seats, and a non-retryable state of its own
 // on a managed exchange's record, next visit, notification, and list row.
 
@@ -56,6 +60,7 @@ const refusal = new RoundCapacityError(
     "hold up to 9000000 values, over the 7643790 a browser exchange can " +
     "match, so the exchange stopped before any linkage key was sent and " +
     "told your partner.",
+  "terms-exchange",
 );
 
 function record(
@@ -80,6 +85,11 @@ const stamped: ManagedExchangeLastRun = {
   at: RUN_AT,
   outcome: "failed",
   failureKind: "partner-set-too-large",
+};
+
+const stampedInRound: ManagedExchangeLastRun = {
+  ...stamped,
+  refusedInRound: true,
 };
 
 describe("a one-shot exchange", () => {
@@ -155,6 +165,7 @@ describe("a managed exchange", () => {
     );
     joiner.dispose();
     expect(error).toBeInstanceOf(RoundCapacityError);
+    expect((error as RoundCapacityError).stage).toBe("set-first-part");
     expect(sent).toEqual([
       {
         decision: "abort",
@@ -168,12 +179,15 @@ describe("a managed exchange", () => {
         false,
         dataExchangeStarted,
       );
-      expect(lastRun).toEqual(stamped);
-      expect(lastRun?.failureKind).not.toBe("transport");
+      expect(lastRun).toEqual(stampedInRound);
+      expect(lastRunSchema.safeParse(lastRun).success).toBe(true);
+      expect(
+        deriveManagedFailureTier(record({ lastRun }), undefined, NOW),
+      ).toBe("partner-set-too-large");
     }
     const failure = classifyManagedRunFailure(
       error,
-      { atLaunch: record(), afterRun: record({ lastRun: stamped }) },
+      { atLaunch: record(), afterRun: record({ lastRun: stampedInRound }) },
       undefined,
       NOW,
       true,
@@ -255,7 +269,26 @@ describe("a managed exchange", () => {
     );
   });
 
-  test("the run history rules out a payload sent", () => {
+  test("the run history states nothing was disclosed for a refusal at the terms exchange", () => {
     expect(lastRunMayHaveSentPayload({ lastRun: stamped })).toBe(false);
+    expect(runHistoryEntries({ lastRun: stamped })[0].disclosure).toBe(
+      "Nothing was disclosed -- the run stopped before any data was exchanged.",
+    );
+  });
+
+  test("the run history leaves a payload sent open for a refusal at a set's first part", () => {
+    expect(lastRunMayHaveSentPayload({ lastRun: stampedInRound })).toBe(true);
+    expect(runHistoryEntries({ lastRun: stampedInRound })[0].disclosure).toBe(
+      "The run did not complete. Whether any data reached your partner is " +
+        "not recorded here; check the accounting of disclosures below, where " +
+        "a run that sent its payload files its record.",
+    );
+  });
+
+  test("the record admits the in-round marker only as true", () => {
+    expect(lastRunSchema.safeParse(stampedInRound).success).toBe(true);
+    expect(
+      lastRunSchema.safeParse({ ...stamped, refusedInRound: false }).success,
+    ).toBe(false);
   });
 });

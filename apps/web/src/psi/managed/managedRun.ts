@@ -340,8 +340,9 @@ export function tooLargeReadingOf(
  * moves, and the same partner terms refuse identically until the operator
  * decides on them. A {@link RoundCapacityError} records
  * `partner-set-too-large`: it is raised at the terms exchange too, or at the
- * first part of a partner's set over this browser's ceiling, and the same
- * partner input refuses identically at every window. `aborted` then records
+ * first part of a partner's set over this browser's ceiling, which adds
+ * `refusedInRound`, and the same partner input refuses identically at every
+ * window. `aborted` then records
  * `cancelled`. A `security`-kind
  * {@link ConnectionError} before the data exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
@@ -382,7 +383,10 @@ export function rerunFailureLastRun(
   if (error instanceof TermsChangeRefusedError)
     return failedRun(at, "failed", "terms-change");
   if (error instanceof RoundCapacityError)
-    return failedRun(at, "failed", "partner-set-too-large");
+    return {
+      ...failedRun(at, "failed", "partner-set-too-large"),
+      ...(error.stage === "set-first-part" ? { refusedInRound: true } : {}),
+    };
   if (aborted) return failedRun(at, "failed", "cancelled");
   if (
     error instanceof ConnectionError &&
