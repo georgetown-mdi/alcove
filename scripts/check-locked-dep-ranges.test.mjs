@@ -40,7 +40,7 @@ function lockfile(packages = {}) {
 /**
  * A root override forcing `lib` onto 5.0.0 under a requirer that declared
  * `range`: the forced copy hoisted to the root, the requirer nested beneath the
- * package that brought it in, as the brace-expansion override leaves minimatch.
+ * package that brought it in.
  */
 const overrideForced = (range) =>
   lockfile({
@@ -242,30 +242,27 @@ describe("the verdict over a lockfile", () => {
 });
 
 describe("the committed tree", () => {
-  it("passes, with the brace-expansion edges the override forces recorded", () => {
+  it("passes, with the crossws optional peer its only out-of-range edge", () => {
     const result = assess(committedLock());
     expect(result.ok, text(result)).toBe(true);
-    const forced = classifyEdges(committedLock()).filter(
-      (edge) =>
-        edge.dependency === "brace-expansion" && edge.status === "out-of-range",
+    const outOfRange = classifyEdges(committedLock()).filter(
+      (edge) => edge.status === "out-of-range",
     );
     expect(
-      forced.map(({ dependent, range }) => `${dependent} ${range}`).sort(),
-    ).toEqual(["minimatch ^2.0.1", "minimatch ^2.0.2"]);
+      outOfRange.map(
+        ({ dependent, dependency, range }) =>
+          `${dependent} ${dependency} ${range}`,
+      ),
+    ).toEqual(["h3 crossws ^0.4.1"]);
   });
 
-  it("fails naming both brace-expansion edges once their records are gone", () => {
+  it("fails naming the crossws edge once its record is gone", () => {
     const allowlist = OUT_OF_RANGE_BY_DESIGN.filter(
-      (allowed) => allowed.dependency !== "brace-expansion",
+      (allowed) => allowed.dependency !== "crossws",
     );
     const result = assess(committedLock(), allowlist);
     expect(result.ok).toBe(false);
-    expect(text(result)).toContain(
-      'minimatch@9.0.9 (node_modules/archiver-utils/node_modules/minimatch) declares brace-expansion "^2.0.2" in dependencies, but the lockfile installs brace-expansion@',
-    );
-    expect(text(result)).toContain(
-      'minimatch@5.1.9 (node_modules/readdir-glob/node_modules/minimatch) declares brace-expansion "^2.0.1" in dependencies, but the lockfile installs brace-expansion@',
-    );
+    expect(text(result)).toContain('declares crossws "^0.4.1"');
   });
 
   it("exits 0 as a script against the committed lockfile", () => {
@@ -287,7 +284,7 @@ describe("the committed tree", () => {
     );
   });
 
-  it("is what the brace-expansion record names as the guard", () => {
+  it("is what the overrides record names as the guard", () => {
     expect(readRoot("docs/spec/DEPENDENCY_PINS.md")).toContain(
       "scripts/check-locked-dep-ranges.mjs",
     );

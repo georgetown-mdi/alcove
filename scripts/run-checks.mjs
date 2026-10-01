@@ -160,12 +160,6 @@ export const CHECKS = [
       "Every package with an upgrade checklist in docs/spec/DEPENDENCY_PINS.md is excluded from the batched npm Dependabot groups.",
   },
   {
-    script: "check:brace-expansion-override",
-    expiresOn: "2026-12-31",
-    description:
-      "The root brace-expansion override still overrules a range the committed lockfile declares.",
-  },
-  {
     script: "check:crossws-sbom-block",
     expiresOn: "2026-12-31",
     description:
