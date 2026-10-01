@@ -394,6 +394,7 @@ The need for a small input is the 271 MB fixed part plus about 1.2 KB a record: 
 - **Records, not elements.** The need is taken from the records this party holds. A key whose transforms produce several candidates a record, or a `split_on` fan-out, sends more elements than records, which the check does not count.
 - **Total, not free, memory.** The host figure is the host's total memory, so two parties on one host, or other workloads beside the run, share memory the check counts once.
 - **The container figure is Node's.** The container limit the check counts is `process.constrainedMemory()`, which enters the least of the three figures when it is below the host's memory; the check reads no cgroup file itself.
+- **Measured on cgroup v2 only.** On Docker Desktop 29.8.1 (linuxkit 7.0.14, cgroup v2), `process.constrainedMemory()` equals the `docker run --memory` value, and with no limit it returns 2^64, which the check treats as no container limit. cgroup v1 is not measured. Under a small container limit V8 shrinks its young generation, so the heap figure in the memory line is 20.03 GB at 768m and 20.10 GB at 4g or with no limit. Under 768m the check refuses with exit 64 and writes nothing to the drop directory; with `--allow-memory-shortfall` it warns and the run proceeds. The FIPS image behaves the same.
 - **No parent watch on Windows.** Windows does not re-parent a child whose parent has died, so the restarted process there does not watch its parent, and a restarted exchange whose parent is killed outright runs on to its own end.
 
 ### Measured runs at 2^24
@@ -404,6 +405,22 @@ On 2026-09-30 two `alcove` zero-setup parties ran over a file-drop directory in 
 - **With `NODE_OPTIONS=--max-old-space-size=19075`, the images' setting.** Both parties were still preparing their input on the main thread after 30 minutes, each on one core at 100%, at 6.78 GB and 6.11 GB RSS, and the attempt was stopped there, before the pre-contact check and before any network contact.
 
 At the measured costs a symmetric round at this size needs about 20 GB for the joiner and 17 GB for the starter, more than this host holds for two parties.
+
+On 2026-09-30 and 2026-10-01, on an Apple M1 Max with 32 GB of memory (Docker Desktop VM of 23.7 GB, 10 vCPUs, cgroup v2, the Node 26.10.0 Alpine image):
+
+- **16,777,216 records a side, file-sync pair, no container memory limit.** The run did not complete. Both parties were stopped during the first-round value count after about 15,600 s of wall time, at a peak of about 7.4 and 7.6 GiB a party. No refusal and no memory line was reached: on the zero-setup path the count runs before the memory line.
+- **15,339,166 records a side.** Not run: the pair needs about 37 GB and the host held 23.7 GB. A single party's preparation, up to the memory line, took 100 s and 108 s in two runs.
+
+### The practical input bound
+
+On Node 26, V8's string-table lookup collapses once about 2^24 distinct 9-digit numeric strings are live. A `Set` or `Map` lookup on a fresh string internalizes it, and that internalizing is what slows. The inputs' cleaned SSNs are such strings, one per record, so two steps degrade from roughly 95,000 rows/s to 2,000-3,000 rows/s:
+
+- the constraint pass over 2^24 records;
+- the first-round value count, from about 13.4M records.
+
+This holds in Docker and natively alike. Sharding the map, bypassing `normalize`, and tuning the garbage collector do not move it. Strings of 8 digits or fewer, and longer composite keys, show no collapse up to 20M-30M strings (measured 2026-09-30 and 2026-10-01 on the host above).
+
+This is the practical input bound for a 2^24-record round on this Node line, independent of the message-file bound above. Whether real SSN data, which is less sequential, behaves the same is unmeasured.
 
 ## Bilateral configuration: detect and fail, never negotiate
 
