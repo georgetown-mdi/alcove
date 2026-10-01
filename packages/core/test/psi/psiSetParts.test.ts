@@ -201,6 +201,27 @@ test("a part that disagrees with the set's framing is refused", async () => {
   );
 });
 
+test("a part with no set bytes is refused unless it is an empty set's only part", async () => {
+  const parts = partsOf(bytes(25), 10);
+  const headerOnly = parts[0].slice(0, PSI_SET_PART_HEADER_BYTES);
+  const [a, b] = createMessagePipe();
+  for (const frame of [headerOnly, ...parts]) await a.send(frame);
+  const receive = vi.spyOn(b, "receive");
+  await expect(receivePsiSet(b, "client", "serverSetup", 25)).rejects.toThrow(
+    new ProtocolRefusalError(
+      "client protocol error: inbound PSI serverSetup part 0 holds no set bytes",
+    ),
+  );
+  expect(receive).toHaveBeenCalledTimes(1);
+
+  const emptyLast = parts[2].slice(0, PSI_SET_PART_HEADER_BYTES);
+  await expect(receiveAfter([parts[0], parts[1], emptyLast])).rejects.toThrow(
+    /part 2 holds no set bytes/,
+  );
+
+  expect(await receiveAfter(partsOf(bytes(0), 10))).toEqual(new Uint8Array(0));
+});
+
 test("a part fills the transport's bound to the byte", () => {
   const [raw] = createMessagePipe();
   for (const envelope of [0, AEAD_ENVELOPE_OVERHEAD_BYTES]) {

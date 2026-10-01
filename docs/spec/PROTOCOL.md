@@ -200,6 +200,7 @@ The rest of the part is the next slice of the set's bytes, in order. An empty se
 - A part whose index is below the one expected (a repeated part) or above it (a missing part).
 - On a later part, a part count or byte length that differs from the first part's.
 - A part whose slice runs past the declared length, and a last part that leaves the set short of it.
+- A part with no set bytes, unless it is the only part of an empty set, so every part before the last holds payload and a partner cannot keep the receiver reading empty parts.
 
 An abort frame in place of any part ends the round as a peer termination, and any other non-binary frame is a `protocol` error, as [above](#an-abort-arriving-where-a-round-awaits-binary). The part header is a wire-format delta within `PROTOCOL_VERSION` 1, as [Wire-format deltas](#wire-format-deltas-existing-frames-only-and-no-version-bump) states for pre-publication deltas; its vectors are among those `check:protocol-version-bump` pins.
 

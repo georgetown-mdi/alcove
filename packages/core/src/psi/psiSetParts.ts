@@ -138,7 +138,9 @@ export async function sendPsiSet(
  * a partner's abort in place of any part ends the round as a peer abort. The
  * set's declared length is checked against `maxSetBytes` before a buffer is
  * allocated for it, and each part's header against the part expected next and
- * against the first part's; any deviation is a {@link ProtocolRefusalError}.
+ * against the first part's. A part with no set bytes is refused unless it is
+ * the only part of an empty set, so a partner cannot hold the receive reading
+ * empty parts. Any deviation is a {@link ProtocolRefusalError}.
  *
  * @param what - The set the round awaits, named in every refusal.
  * @param maxSetBytes - The most bytes the set may hold
@@ -187,6 +189,8 @@ export async function receivePsiSet(
       throw refuse(`part ${index} declares a different set than part 0`);
     }
     const payload = part.subarray(PSI_SET_PART_HEADER_BYTES);
+    if (payload.byteLength === 0 && setBytes > 0)
+      throw refuse(`part ${index} holds no set bytes`);
     if (payload.byteLength > setBytes - filled)
       throw refuse(`part ${index} runs past the set's declared length`);
     if (set === undefined) set = payload;
