@@ -782,16 +782,6 @@ export async function handler(argv: Arguments): Promise<void> {
         connection,
         options.serverProvisionRead,
       );
-      // Decided from the input alone, so settled before the host-key step too.
-      await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
-        assertFileSyncFirstRoundFits(connection, prepared, report),
-      );
-      // Show what this run discloses and matches on, all of it inferred from
-      // the input file above, before the host-key step below can contact the
-      // server. Placed after every check that reads this party's own files, so
-      // a run refused from its own input shows no account of an exchange it
-      // does not conduct.
-      displayZeroSetupDisclosure({ prepared, logFile, log });
       // The --save bootstrap persists from the onOutputComplete hook below and
       // reports what it loses on the machine-interface stream, so this command
       // opens the stream itself and hands runProtocol the emitter rather than
@@ -809,6 +799,8 @@ export async function handler(argv: Arguments): Promise<void> {
         },
       });
       try {
+        // The memory check reads only the record count, so it is decided
+        // before the first-round count walks the input.
         checkRunMemoryBudget({
           prepared,
           allowMemoryShortfall: allowMemoryShortfall === true,
@@ -818,10 +810,23 @@ export async function handler(argv: Arguments): Promise<void> {
           },
         });
         memoryBudgetReported = true;
+        // Decided from the input alone, so settled before the host-key step
+        // too.
+        await withFirstRoundCountDisplay(
+          { verbosity, logFile, log },
+          (report) =>
+            assertFileSyncFirstRoundFits(connection, prepared, report),
+        );
       } catch (err) {
         emitPrepareRefusal(eventStreamEmitter, prepared.rowCount, err);
         throw err;
       }
+      // Show what this run discloses and matches on, all of it inferred from
+      // the input file above, before the host-key step below can contact the
+      // server. Placed after every check that reads this party's own files, so
+      // a run refused from its own input shows no account of an exchange it
+      // does not conduct.
+      displayZeroSetupDisclosure({ prepared, logFile, log });
       // Establish first-use SSH host-key trust on the ORIGINAL `connection`
       // (before the clone below), so the pin reaches both the live connect and,
       // under --save, the persisted config. A pinned connection is a no-op; an

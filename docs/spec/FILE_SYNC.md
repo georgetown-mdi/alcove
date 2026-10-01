@@ -333,7 +333,7 @@ A linkage key round sends its set of values as one PSI message, in as many messa
 
 - **One message file: 15,339,166 values.** Every file-sync receiver refuses a message file over `MAX_FRAME_SIZE_BYTES` (536,870,888 bytes; [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#inbound-frame-size-bound)) before reading it. A first-round file of `n` values takes at most `n` times `PSI_ENCODED_ELEMENT_BYTES` (35: a 33-byte compressed point plus its protobuf tag and length) plus 46 bytes: the file's `MESSAGE_HEADER_BYTES` (10), the AEAD envelope's `AEAD_ENVELOPE_OVERHEAD_BYTES` (30), and `PSI_SET_MAX_FRAMING_BYTES` (6), the most a PSI message adds to its elements. `fileSyncMaxRoundSetValues()` (`packages/core/src/exchange.ts`) is the largest `n` that fits, so the check never admits a set whose file the receiver refuses; it may refuse a request one value short of fitting. The framing is measured on the vendored library: a server setup adds 5 bytes at 10^6 values and 6 from 7,669,585 values up, where its element list's length prefix reaches 5 bytes; a request adds 2 and a response none.
 
-**Deduplication holds any number of distinct values.** A round keeps one map entry per distinct value, and a V8 `Map` holds at most 2^24 entries: on Node 26.10, inserting the 16,777,217th entry throws `RangeError: Map maximum size exceeded` (a `Set` stops at the same count). The round's deduplication and the first-round count below therefore store their entries in shards of 2^24 (`ShardedMap`, `packages/core/src/psi/shardedMap.ts`), filled in turn so the round's values keep their row-major order ([PROTOCOL.md, The per-round grouping the two frames hold](PROTOCOL.md#the-per-round-grouping-the-two-frames-hold)). No distinct-value count refuses a round; one message file is the binding limit on the first round's set.
+**Deduplication holds any number of distinct values.** A round keeps one map entry per distinct value, and a V8 `Map` holds at most 2^24 entries: on Node 26.10, inserting the 16,777,217th entry throws `RangeError: Map maximum size exceeded` (a `Set` stops at the same count). The round's deduplication and the first-round count below therefore index their values in shards of 2^24 (`DistinctValues` over `ShardedMap`, `packages/core/src/utils/distinctValues.ts` and `packages/core/src/psi/shardedMap.ts`; the index itself is described under [The practical input bound](#the-practical-input-bound)), filled in turn so the round's values keep their row-major order ([PROTOCOL.md, The per-round grouping the two frames hold](PROTOCOL.md#the-per-round-grouping-the-two-frames-hold)). No distinct-value count refuses a round; one message file is the binding limit on the first round's set.
 
 **Where the limits are checked.** Before the transport is built, and so before any file is written for the partner, the command-line application counts the values this party's first round sends and refuses a count over the message-file bound (`assertFirstRoundFitsFileSyncFrame`), in both PSI roles, as the WebRTC first-round check does ([PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)). The count follows this party's own terms: every distinct value when they set `deduplicate`, and otherwise only the values exactly one of its records holds. The check runs with the other refusals decided from local input, before the SFTP host-key step contacts the server. Where the count was taken, the refusal names it -- for a party that keeps its duplicates, the count at which it passed the bound, as the least the round sends -- the message-file bound, and the remedy: split the input into smaller files and run one exchange for each. A later round's set is known only once the earlier rounds have matched, so it is not checked there. Sending in parts leaves this check unchanged: a first round whose count is over one message file is still refused here, before any file is written, rather than written as several.
 
@@ -379,7 +379,7 @@ Two other routes do not reach the worker on Node v26.10.0, driven in real Node:
 
 ### The pre-contact check
 
-Every exchange-running command (`alcove exchange`, zero-setup, the online `invite`, and an `accept` in the URL or `endpointRun` mode) logs one line before any network contact stating the heap limit the PSI engine runs under, the memory a round over this party's input needs, and the memory the process has (`checkRunMemoryBudget`, `apps/cli/src/protocol.ts`). With the engine in a worker, the line states the worker's limit and the main thread's measured `heap_size_limit` separately. In a restarted process it names the restart as the main thread's source only when that limit is at or above the ceiling; below it, a heap option given to node took precedence, and the line says so. It runs with the other refusals decided from local input, after the first-round size check.
+Every exchange-running command (`alcove exchange`, zero-setup, the online `invite`, and an `accept` in the URL or `endpointRun` mode) logs one line before any network contact stating the heap limit the PSI engine runs under, the memory a round over this party's input needs, and the memory the process has (`checkRunMemoryBudget`, `apps/cli/src/protocol.ts`). With the engine in a worker, the line states the worker's limit and the main thread's measured `heap_size_limit` separately. In a restarted process it names the restart as the main thread's source only when that limit is at or above the ceiling; below it, a heap option given to node took precedence, and the line says so. It runs with the other refusals decided from local input, on every command before the first-round size check: the check reads only the record count, while the count walks every record, so a host short of memory is refused without waiting for it.
 
 - **The need** is `psiRoundMemoryNeedBytes` of this party's own record count, known before contact.
 - **What the process has** is the least of three figures: the heap limit of the thread that runs the engine (the raised worker limit, or the process's own when no bundled worker is present), the host's total memory (`os.totalmem()`), and the container's memory limit as Node reports it (`process.constrainedMemory()`, the cgroup limit), counted only when it is below the host's memory.
@@ -408,19 +408,64 @@ At the measured costs a symmetric round at this size needs about 20 GB for the j
 
 On 2026-09-30 and 2026-10-01, on an Apple M1 Max with 32 GB of memory (Docker Desktop VM of 23.7 GB, 10 vCPUs, cgroup v2, the Node 26.10.0 Alpine image):
 
-- **16,777,216 records a side, file-sync pair, no container memory limit.** The run did not complete. Both parties were stopped during the first-round value count after about 15,600 s of wall time, at a peak of about 7.4 and 7.6 GiB a party. No refusal and no memory line was reached: on the zero-setup path the count runs before the memory line.
+- **16,777,216 records a side, file-sync pair, no container memory limit.** The run did not complete. Both parties were stopped during the first-round value count after about 15,600 s of wall time, at a peak of about 7.4 and 7.6 GiB a party. No refusal and no memory line was reached: on the build measured, the zero-setup path counted before it logged the memory line.
 - **15,339,166 records a side.** Not run: the pair needs about 37 GB and the host held 23.7 GB. A single party's preparation, up to the memory line, took 100 s and 108 s in two runs.
+
+### Preparing the input at 2^24
+
+Measured 2026-10-01 in the development container (dev container, 10 cores, 23 GB; aarch64 Linux, Node v26.10.0), with other workloads running beside it. One zero-setup party ran alone over a file-drop directory (`alcove --peer-timeout 30s file://<dir> <input>`) under `NODE_OPTIONS=--max-old-space-size=19075`, on the four-column input above, one distinct SSN a record. Times are from the process's start, read off its log lines; peak RSS is the process's `VmHWM` at the end of each stage.
+
+16,777,216 records, load average 2.7 at the start:
+
+| Stage | Time | Ends at | Peak RSS |
+| --- | --- | --- | --- |
+| Read and parse the CSV, infer the terms | 14.1 s | 14.1 s | 3.09 GiB |
+| Constraint pass (standardizes every record's key fields, cached for the round) | 78.7 s | 92.8 s | 7.69 GiB |
+| Memory check (`memory:` line) | under 0.1 s | 92.8 s | 7.69 GiB |
+| First-round count, as the sender | 133.4 s (125,816 records/s) | 226.1 s | 11.78 GiB |
+| First-round count, as the receiver | 136.1 s (123,314 records/s) | 362.2 s | 11.78 GiB |
+
+The count found at least 16,777,215 values, over the 15,339,166 one message file holds, so the run was refused there with exit 64 and made no network contact. The stress probe below, over the same input on the core code without the lookups described under [The practical input bound](#the-practical-input-bound) (staging at 400122b0), read it in 24.9 s and was still in the constraint pass 25.5 minutes later, when it was stopped.
+
+15,339,166 records, the first 15,339,166 rows of the same input, load average 10.4 at the start: the read took 25.2 s and the constraint pass 176.4 s. The first-round count was skipped, since one value a record cannot exceed the bound, and the first entry appeared in the drop directory at 201.6 s, within 25 ms of the memory line, at a peak RSS of 6.48 GiB.
+
+**The bound.** On this host a 2^24-record preparation, from reading the input to the first-round refusal, completes within **27 s per million records**, about 7.5 minutes, while the host's load stays within its core count. It is the slowest such run rounded up to a whole second per million: the stress probe below took 446.0 s (26.6 s per million) at a load average of about 12, and the profiled run above 362.2 s (21.6 s per million). An input within the message-file bound skips the count and reached first contact at 13.1 s per million. Past that load the bound does not hold: the stress test run beside a full repository check took 828.3 s (49.4 s per million), 627.6 s of it in the count: about 430 s in its first role and 180 s in its second.
+
+`packages/core/test/stress/inputPreparation.stress.test.ts` reproduces the measurement in the opt-in stress tier (`npm run test:stress -w packages/core`): it writes the input, runs the same core stages in a process of its own under the raised heap, logs each stage's time and peak RSS, and holds the first-round count's pace steady across the input and its refusal at 2^24. About eight minutes and 12 GB resident; `ALCOVE_STRESS_PREPARATION_ROWS` lowers the row count.
+
+**Stages left as they are.** Each is linear in the records and is a limit of the bound above:
+
+- **The constraint pass**: 78.7 s at 2^24, 176.4 s at 15,339,166 under load. It runs every record's field standardization.
+- **The count walks every record twice** where this party drops its duplicates, the zero-setup default: once for each PSI role, since it refuses only when both are over the bound. 269.5 s of the 362.2 s at 2^24. A party that keeps its duplicates stops counting once over the bound.
+- **Main-thread memory**: a peak of 11.78 GiB at 2^24, the dataset's cached values (7.69 GiB) and the count's index of every first-round value. The PSI round's own need ([The budget](#the-budget)) is in the worker, beside it.
 
 ### The practical input bound
 
-On Node 26, V8's string-table lookup collapses once about 2^24 distinct 9-digit numeric strings are live. A `Set` or `Map` lookup on a fresh string internalizes it, and that internalizing is what slows. The inputs' cleaned SSNs are such strings, one per record, so two steps degrade from roughly 95,000 rows/s to 2,000-3,000 rows/s:
+On Node 26, V8 adds every string a `Map` or `Set` is asked about to its string table, and that table's lookups slow about fiftyfold once it holds about 2^24 strings of 9 decimal digits, which a cleaned SSN is. Measured 2026-10-01 in the development container, keeping each fresh string alive and looking it up once in a one-entry `Set`:
 
-- the constraint pass over 2^24 records;
-- the first-round value count, from about 13.4M records.
+- 9-digit values in order took 20-70 ms per 250,000 lookups up to 17.0M strings, then over 5 s per 250,000;
+- the same values in scattered order collapsed at the same count, so real SSNs, which are not sequential, are no different;
+- 10-digit values above 2^32 and 16-digit values did not collapse up to 20M strings.
 
-This holds in Docker and natively alike. Sharding the map, bypassing `normalize`, and tuning the garbage collector do not move it. Strings of 8 digits or fewer, and longer composite keys, show no collapse up to 20M-30M strings (measured 2026-09-30 and 2026-10-01 on the host above).
+The host above measured the same collapse in the constraint pass at 2^24 records and in the first-round count from about 13.4M records, from roughly 95,000 to 2,000-3,000 records/s, in Docker and natively alike (2026-09-30 and 2026-10-01).
 
-This is the practical input bound for a 2^24-record round on this Node line, independent of the message-file bound above. Whether real SSN data, which is less sequential, behaves the same is unmeasured.
+**Preparation and the round never ask a `Map` or `Set` about a per-record value.** The `null_if` and `exclude` lists, a record's candidate values as its key is assembled, the first-round count, the round's deduplication and the count-only round's single-occurrence filter all look values up through `DistinctValues` (`packages/core/src/utils/distinctValues.ts`):
+
+- It keys a `Map` by a 30-bit FNV-1a hash of the value's UTF-16 code units, a small integer in every V8 build, and confirms a hit by comparing the two strings with `===`, so two values share an entry exactly where the string comparison equates them.
+- A value whose hash another value already holds goes to a string-keyed map of its own, about 131,000 values at 2^24.
+- A collection that rarely holds more than one value, a record's candidates or a short `null_if` list, compares its first 16 values one by one before it builds the index.
+
+**Why a hash.** Measured 2026-10-01 in the development container, one process each, with other workloads beside them:
+
+| Key the `Map` is given | 2^24 distinct 9-digit values | 2^24 distinct composite keys | 2^24 preparation: constraint pass, count, peak RSS |
+| --- | --- | --- | --- |
+| The string | 32.4 s | 37.6 s | constraint pass unfinished after 25.5 min |
+| A digit string of up to 15 digits as the number `1` followed by its digits, any other string as itself | 9.9 s | 33.1 s | 123.4 s, 264.6 s, 12.00 GiB |
+| The 30-bit hash, confirmed by comparison | 5.4 s | 22.2 s | 157.2 s, 272.8 s, 11.27 GiB |
+
+The two keys that avoid the collapse ran the whole preparation within the run-to-run spread of the shared host. The hash is faster on both shapes in isolation and adds no per-record string to the table whatever its shape, where the numeric key still adds every composite first-round value.
+
+**Where values still reach the table.** A record holding several candidates, from a `split_on` fan-out or a fuzzy expansion, reaches the round as a `Set` of its candidates, and a `split_on` step's output inside a field's standardization is a `Set`; both add those candidates to the string table. A fan-out over 2^24 records of digit values is not measured.
 
 ## Bilateral configuration: detect and fail, never negotiate
 

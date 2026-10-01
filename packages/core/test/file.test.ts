@@ -642,6 +642,35 @@ test("guardStreamLineByteCeiling: CR-only line endings reset the run like LF/CRL
   expect(g.tripped()).toBe(false);
 });
 
+test("guardStreamLineByteCeiling: LF and CR mixed in one chunk each reset the run, and a long run between them trips", () => {
+  const passes = fakeGuardSource();
+  guardStreamLineByteCeiling(passes.source, 8);
+  passes.push(Buffer.from("aa\nbbbbbbbb\rcc\r\ndddddddd\nee"));
+  expect(passes.tripped()).toBe(false);
+
+  const trips = fakeGuardSource();
+  guardStreamLineByteCeiling(trips.source, 8);
+  trips.push(Buffer.from("aa\rbb\nccccccccc\r\ndd"));
+  expect(trips.tripped()).toBe(true);
+});
+
+test("guardStreamLineByteCeiling: a chunk of LF lines is searched for CR once, not once a line", () => {
+  const g = fakeGuardSource();
+  guardStreamLineByteCeiling(g.source, 16);
+  const lines = 1000;
+  const chunk = Buffer.from("a,b\n".repeat(lines));
+  const searches = new Map<number, number>();
+  const indexOf = chunk.indexOf.bind(chunk);
+  chunk.indexOf = ((value: number, from?: number) => {
+    searches.set(value, (searches.get(value) ?? 0) + 1);
+    return indexOf(value, from);
+  }) as typeof chunk.indexOf;
+  g.push(chunk);
+  expect(g.tripped()).toBe(false);
+  expect(searches.get(0x0d)).toBe(1);
+  expect(searches.get(0x0a)).toBe(lines);
+});
+
 test("guardStreamLineByteCeiling: an over-ceiling run terminated later in the same chunk still trips", () => {
   // The inner-overflow path: the over-ceiling segment must trip BEFORE the
   // terminator that follows it in the same chunk resets the run -- otherwise an
