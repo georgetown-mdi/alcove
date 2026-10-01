@@ -15,6 +15,9 @@ import { isSetTooLargeError, sanitizeErrorForDisplay } from "@alcove/core";
 import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
+  PARTNER_SET_TOO_LARGE_PROBLEM,
+  PARTNER_SET_TOO_LARGE_REMEDY,
+  PARTNER_SET_TOO_LARGE_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
@@ -77,8 +80,9 @@ export {
  *   input replaced: the file cannot supply every agreed linkage key, and the
  *   same file refuses identically every time. Not `"retry"`.
  * - `"split"` -- the input must be split into smaller exchanges: a set this
- *   exchange sends is over the bound one WebRTC message holds, and the same
- *   files refuse identically every time. Not `"retry"`.
+ *   exchange sends is over the bound one WebRTC message holds, or the
+ *   partner's set is larger than this browser can match, and the same files
+ *   refuse identically every time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
   "reinvite" | "retry" | "wait" | "confirm" | "restate" | "split" | "none";
@@ -111,6 +115,7 @@ export interface ManagedRunFailureAlert {
     | "input"
     | "terms-shortfall"
     | "too-large"
+    | "partner-set-too-large"
     | "terms-change"
     | "relay-registration"
     | "custody-unreadable"
@@ -485,6 +490,32 @@ function tooLargeFailure(error: unknown): ManagedRunFailureAlert {
   };
 }
 
+/** The benign state of a run that refused, at the terms exchange, a partner
+ * whose set for a linkage key can hold more values than this browser can
+ * match. The record holds no count, so this copy states neither figure; a live
+ * launch shows the refusal's own message instead
+ * ({@link partnerSetTooLargeFailure}). Not the retry state -- the same partner
+ * input refuses identically. */
+const RECORDED_PARTNER_SET_TOO_LARGE_FAILURE: ManagedRunFailureAlert = {
+  kind: "partner-set-too-large",
+  title: PARTNER_SET_TOO_LARGE_TITLE,
+  message:
+    `The last run stopped because ${PARTNER_SET_TOO_LARGE_PROBLEM}. ` +
+    "Running it again stops the same way until your partner's input is " +
+    `smaller. ${PARTNER_SET_TOO_LARGE_REMEDY}`,
+  recovery: "split",
+};
+
+/** The partner-set-too-large state for THIS run's refusal: the refusal's
+ * message states the partner's count, this browser's ceiling, and the remedy,
+ * so it is the state's whole message. */
+function partnerSetTooLargeFailure(error: unknown): ManagedRunFailureAlert {
+  return {
+    ...RECORDED_PARTNER_SET_TOO_LARGE_FAILURE,
+    message: sanitizeErrorForDisplay(error),
+  };
+}
+
 /** The state of a run that stopped before connecting because its relay's
  * registrar did not confirm the registration the record held as pending. The
  * error's own message names the registrar, its answer, and the next step: a
@@ -629,6 +660,8 @@ export function managedRunTierFailure(
       return local?.termsProposal !== undefined
         ? TERMS_CHANGE_FAILURE
         : TERMS_CHANGE_DECLINED_FAILURE;
+    case "partner-set-too-large":
+      return RECORDED_PARTNER_SET_TOO_LARGE_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "handed-off":
@@ -743,6 +776,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "terms-shortfall": "alert-copy",
   "too-large": "none",
   "terms-change": "none",
+  "partner-set-too-large": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -797,7 +831,8 @@ export type ManagedRunCausePlacement =
  * message (docs/notes/reported-failure-cause.md). The too-large state's live
  * copy is the refusal's own message ({@link tooLargeFailure}), so a second
  * block would repeat it, and so is the relay-registration state's
- * ({@link relayRegistrationFailure}).
+ * ({@link relayRegistrationFailure}), and the partner-set-too-large state's
+ * ({@link partnerSetTooLargeFailure}).
  */
 const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   ManagedRunFailureAlert["kind"],
@@ -810,6 +845,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "terms-shortfall": "withheld",
   "too-large": "withheld",
   "relay-registration": "withheld",
+  "partner-set-too-large": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",
   missed: "withheld",
@@ -943,6 +979,8 @@ function classifyLaunchState(
   if (benign === "terms-shortfall") return shortfallFailure(error);
   if (benign === "missed") return missedFailure(records.atLaunch, local, now);
   if (benign === "too-large") return tooLargeFailure(error);
+  if (benign === "partner-set-too-large")
+    return partnerSetTooLargeFailure(error);
   if (benign === "relay-registration") return relayRegistrationFailure(error);
   const { afterRun } = records;
   const tier = deriveManagedFailureTier(afterRun, local, now);

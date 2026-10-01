@@ -611,6 +611,12 @@ already defines:
   to check it, so the run refused to send it; the same files build the same
   set at every window, so it is never offered as retryable (see [An input too
   large to send](#an-input-too-large-to-send)).
+- **This needs you: the partner's set is too large for this browser.** The
+  partner's set for a linkage key can hold more values than this browser can
+  match, so the run stopped at the terms exchange; the same partner input
+  refuses at every window, so it is never offered as retryable (see [A
+  partner's set too large for this
+  browser](#a-partners-set-too-large-for-this-browser)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
   ran and failed closed with no recorded benign cause (the Tier-2 case; see
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)) is the
@@ -841,6 +847,26 @@ or a synced folder, which allow larger messages.
   holds the state and which bound refused it, or that the count failed, but no
   size and no reason (it holds no counts and no free text), so they state that
   bound and its figure, or that the set could not be counted, and the remedy.
+
+#### A partner's set too large for this browser
+
+A browser party holds the partner's set for one linkage key to the most one
+WebRTC message holds (see
+[PROTOCOL.md](spec/PROTOCOL.md#what-a-browser-tab-can-match)). At the terms
+exchange, before any linkage key is sent, it refuses a partner whose declared
+record count times the widest key's width is over that ceiling, and tells the
+partner.
+
+It is a state of its own, held apart from a connection problem: the same
+partner input refuses at every window, so no surface offers a retry. The
+remedy is to run the exchange with the command-line application, or for the
+partner to split their input into smaller files and set up one exchange for
+each.
+
+- **On the run screen**, an attended run shows the refusal's own message: the
+  partner's count, this browser's ceiling, and what to do.
+- **At the next visit and in the between-visit notification**, the bookkeeping
+  holds the state but no count, so they state the cause and the remedy.
 
 #### An input that has not changed since the last run
 

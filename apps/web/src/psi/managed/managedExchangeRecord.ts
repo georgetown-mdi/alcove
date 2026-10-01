@@ -240,7 +240,10 @@ export type ManagedExchangeRunOutcome =
  * refusal (the partner's linkage terms changed and this run did not take them
  * on) is met at the terms exchange, after the handshake and before any linkage
  * key or data moves, and is benign too: its remedy is the operator's decision
- * on the change. */
+ * on the change. A `"partner-set-too-large"` refusal (the partner's set for a
+ * linkage key can hold more values than this browser can match) is met at the
+ * terms exchange too, and is benign the same way: its remedy is the
+ * command-line application or a smaller input on the partner's side. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -250,6 +253,7 @@ export type ManagedExchangeFailureKind =
   | "terms-shortfall"
   | "handed-off"
   | "too-large"
+  | "partner-set-too-large"
   | "terms-change"
   | "cancelled";
 
@@ -503,6 +507,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "terms-shortfall",
       "handed-off",
       "too-large",
+      "partner-set-too-large",
       "terms-change",
       "cancelled",
     ])

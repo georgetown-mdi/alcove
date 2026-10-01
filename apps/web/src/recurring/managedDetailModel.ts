@@ -345,8 +345,9 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * pre-connection), `"auth"` (a `security`-kind failure the classifier stamps
  * only before the data exchange begins; see {@link ../psi/managedRun.ts},
  * `rerunFailureLastRun`), `"storage"` (persist-before-success), and
- * `"terms-change"` (stamped only for core's refusal at the terms exchange,
- * which precedes every linkage round and the payload frame). The
+ * `"terms-change"` and `"partner-set-too-large"` (each stamped only for
+ * core's refusal at the terms exchange, which precedes every linkage round and
+ * the payload frame). The
  * remaining kinds -- `"transport"` (the catch-all a mid-exchange failure also
  * lands in), `"too-large"` (a later round refuses this party's own set over
  * `MAX_PSI_DECODE_ELEMENTS` after data has moved), `"cancelled"`, and a
@@ -362,7 +363,8 @@ function disclosurePrecedesExchange(
     failureKind === "terms-shortfall" ||
     failureKind === "auth" ||
     failureKind === "storage" ||
-    failureKind === "terms-change"
+    failureKind === "terms-change" ||
+    failureKind === "partner-set-too-large"
   );
 }
 
