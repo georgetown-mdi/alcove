@@ -345,14 +345,16 @@ describe("find-all operations under a scan budget", () => {
     60_000,
   );
 
-  test("a budget already spent stops the search at its first read past one pass", () => {
-    const pattern = "(?:[^#]*#|.)";
-    const budget = scanBudget(0);
-    expect(() =>
-      compileLinearRegex(pattern).replaceAll("aaaa", "", budget),
-    ).toThrow(BudgetCrossed);
-    expect(budget.charged).toBe(patternWeightedSize(pattern));
-  });
+  test.each(["(?:[^#]*#|.)", "([^#]*#|(.))"])(
+    "a budget already spent stops %s at its first read past one pass, charged its capped size",
+    (pattern) => {
+      const budget = scanBudget(0);
+      expect(() =>
+        compileLinearRegex(pattern).replaceAll("aaaa", "", budget),
+      ).toThrow(BudgetCrossed);
+      expect(budget.charged).toBe(patternWeightedSize(pattern));
+    },
+  );
 
   test("a pattern stopped mid-search runs correctly afterwards", () => {
     const re = compileLinearRegex("(?:[^#]*#|.)");

@@ -32,6 +32,12 @@ const COMPILE_CACHE_MAX = 1024;
  */
 const compileCache = new Map<string, RE2JS>();
 
+// The one definition of a pattern's weighted size, shared by the cap
+// (patternWeightedSize) and the find-all charge multiplier.
+function compiledWeightedSize(re: RE2JS): number {
+  return re.programSize() * (1 + re.groupCount());
+}
+
 function compileCached(pattern: string): RE2JS {
   const cached = compileCache.get(pattern);
   if (cached !== undefined) return cached;
@@ -165,7 +171,6 @@ class SpanCountingInput extends MatcherInputBase {
 
   override asCharSequence(): string {
     this.counted.startSearch();
-    // Read only through the methods SpanCountingValue implements.
     return this.counted as unknown as string;
   }
 
@@ -282,7 +287,7 @@ export interface CompiledLinearRegex {
  */
 export function compileLinearRegex(pattern: string): CompiledLinearRegex {
   const re = compileCached(pattern);
-  const weightedSize = re.programSize() * (1 + re.groupCount());
+  const weightedSize = compiledWeightedSize(re);
   return {
     replaceAll: (input, replacement, budget) =>
       budget === undefined
@@ -307,8 +312,6 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
       budget === undefined
         ? re.split(input, -1)
         : underScanBudget(input, weightedSize, budget, (counted) =>
-            // Declared as a string, but re2js hands it straight to `matcher`,
-            // which takes a MatcherInputBase as replaceAll's path does.
             re.split(counted as unknown as string, -1),
           ),
     matchGroups: (input) => {
@@ -331,8 +334,7 @@ export function compileLinearRegex(pattern: string): CompiledLinearRegex {
  * does, on a pattern outside the dialect.
  */
 export function patternWeightedSize(pattern: string): number {
-  const re = compileCached(pattern);
-  return re.programSize() * (1 + re.groupCount());
+  return compiledWeightedSize(compileCached(pattern));
 }
 
 /**
