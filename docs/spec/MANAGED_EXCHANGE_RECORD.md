@@ -1478,8 +1478,8 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   relays there and registers nothing, here or on the command line, so the
   export writes no `connection.relay_registrar` and no own `turn` entry and
   reads no relay setting; the configuration's `invitation_relay` is the relay
-  its runs use. A record naming no registrar writes no own `turn` entry
-  either: the export writes only the relay its runs register for.
+  its runs use. Such a record is also not refused for a pending re-invite
+  registration, and its key file writes no pending marker.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
   registrar holds the key of the secret the re-invite replaced, which is not

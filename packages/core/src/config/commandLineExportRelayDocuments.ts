@@ -35,7 +35,7 @@ export interface CommandLineExportRelayCase {
   /** The registrar a command-line run of the document registers at, or null
    * where it registers nothing. */
   readonly runRegistrar: RelayRegistrar | null;
-  /** Why this record exports that, in one line. */
+  /** Why this record exports that, in one line; the parity tests' title. */
   readonly because: string;
 }
 

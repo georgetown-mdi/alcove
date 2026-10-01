@@ -417,13 +417,16 @@ export function composeManagedCronExport(
   record: RunnableManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedCronExport {
-  assertNoReinviteRegistrationPending(record);
+  const relaysThroughPartner = managedExchangeRelaysThroughPartner(record);
+  if (!relaysThroughPartner) assertNoReinviteRegistrationPending(record);
   const { config, command } = composeManagedCronExportConfig(record, readOwn);
+  const keyFields = keyFileFieldsFromRecord(record);
+  if (relaysThroughPartner) delete keyFields.relayRegistrationPendingSince;
   return {
     config,
     key: {
       fileName: CRON_EXPORT_KEY_FILE_NAME,
-      text: serializeKeyFile(keyFileFieldsFromRecord(record)),
+      text: serializeKeyFile(keyFields),
       mimeType: CRON_EXPORT_KEY_MIME,
     },
     command,

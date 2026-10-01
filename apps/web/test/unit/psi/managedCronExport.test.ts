@@ -890,5 +890,19 @@ describe("the relay key registration", () => {
         });
       },
     );
+
+    test("a pending re-invite registration is neither refused nor written as a marker", () => {
+      const record: RunnableManagedExchangeRecord = {
+        ...partnerRelayedRecord(),
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      };
+      expect(() =>
+        composeManagedCronExport(record, ownRelay([OWN_TURN])),
+      ).not.toThrow();
+      expect(exportedKey(record, ownRelay([OWN_TURN]))).not.toHaveProperty(
+        "relayRegistrationPendingSince",
+      );
+    });
   });
 });
