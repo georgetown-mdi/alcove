@@ -4130,8 +4130,8 @@ describe("buildKeyStrings", () => {
   });
 
   test("an ordinary find-all step at the value bound spends a sliver of the budget", () => {
-    // What the meter reads for the search, read and output together: the
-    // figure docs/spec/CHANNEL_SECURITY.md states for an ordinary pattern.
+    // What the meter reads for the search, read and output together, for
+    // this test's value; the spec's range comes from the stress tier's text.
     const spent = transformWorkSpentDerivingKey(
       keyOverSteps([
         {
