@@ -425,7 +425,7 @@ Measured 2026-10-01 in the development container (dev container, 10 cores, 23 GB
 | First-round count, as the sender | 133.4 s (125,816 records/s) | 226.1 s | 11.78 GiB |
 | First-round count, as the receiver | 136.1 s (123,314 records/s) | 362.2 s | 11.78 GiB |
 
-The count found at least 16,777,215 values, over the 15,339,166 one message file holds, so the run was refused there with exit 64 and made no network contact. The stress probe below, over the same input on the core code without the lookups described under [The practical input bound](#the-practical-input-bound) (staging at 400122b0), read it in 24.9 s and was still in the constraint pass 25.5 minutes later, when it was stopped.
+The count found at least 16,777,215 values, over the 15,339,166 one message file holds, so the run was refused there with exit 64 and made no network contact. The stress probe below, run the same day over the same input on the core code as it stood before the lookups described under [The practical input bound](#the-practical-input-bound), with each value its own `Map` key, read it in 24.9 s and was still in the constraint pass 25.5 minutes later, when it was stopped.
 
 15,339,166 records, the first 15,339,166 rows of the same input, load average 10.4 at the start: the read took 25.2 s and the constraint pass 176.4 s. The first-round count was skipped, since one value a record cannot exceed the bound, and the first entry appeared in the drop directory at 201.6 s, within 25 ms of the memory line, at a peak RSS of 6.48 GiB.
 
@@ -449,23 +449,15 @@ On Node 26, V8 adds every string a `Map` or `Set` is asked about to its string t
 
 The host above measured the same collapse in the constraint pass at 2^24 records and in the first-round count from about 13.4M records, from roughly 95,000 to 2,000-3,000 records/s, in Docker and natively alike (2026-09-30 and 2026-10-01).
 
-**Preparation and the round never ask a `Map` or `Set` about a per-record value.** The `null_if` and `exclude` lists, a record's candidate values as its key is assembled, the first-round count, the round's deduplication and the count-only round's single-occurrence filter all look values up through `DistinctValues` (`packages/core/src/utils/distinctValues.ts`):
+**The constraint pass, the first-round count and the round's deduplication look values up by hash.** The `null_if` and `exclude` lists, a record's candidate values as its key is assembled, the first-round count, the round's deduplication and the count-only round's single-occurrence filter look values up through `DistinctValues` (`packages/core/src/utils/distinctValues.ts`) rather than asking a `Map` or `Set` about the value, within the limit under Where values still reach the table below:
 
 - It keys a `Map` by a 30-bit FNV-1a hash of the value's UTF-16 code units, a small integer in every V8 build, and confirms a hit by comparing the two strings with `===`, so two values share an entry exactly where the string comparison equates them.
 - A value whose hash another value already holds goes to a string-keyed map of its own, about 131,000 values at 2^24.
 - A collection that rarely holds more than one value, a record's candidates or a short `null_if` list, compares its first 16 values one by one before it builds the index.
 
-**Why a hash.** Measured 2026-10-01 in the development container, one process each, with other workloads beside them:
+The hash is the key because, of the keys measured at 2^24, it alone adds no per-record string to the table whatever the value's shape ([docs/notes/hash-keyed-value-lookup.md](../notes/hash-keyed-value-lookup.md)).
 
-| Key the `Map` is given | 2^24 distinct 9-digit values | 2^24 distinct composite keys | 2^24 preparation: constraint pass, count, peak RSS |
-| --- | --- | --- | --- |
-| The string | 32.4 s | 37.6 s | constraint pass unfinished after 25.5 min |
-| A digit string of up to 15 digits as the number `1` followed by its digits, any other string as itself | 9.9 s | 33.1 s | 123.4 s, 264.6 s, 12.00 GiB |
-| The 30-bit hash, confirmed by comparison | 5.4 s | 22.2 s | 157.2 s, 272.8 s, 11.27 GiB |
-
-The two keys that avoid the collapse ran the whole preparation within the run-to-run spread of the shared host. The hash is faster on both shapes in isolation and adds no per-record string to the table whatever its shape, where the numeric key still adds every composite first-round value.
-
-**Where values still reach the table.** A record holding several candidates, from a `split_on` fan-out or a fuzzy expansion, reaches the round as a `Set` of its candidates, and a `split_on` step's output inside a field's standardization is a `Set`; both add those candidates to the string table. A fan-out over 2^24 records of digit values is not measured.
+**Where values still reach the table.** The lookups above stop short of two collections. A record holding several candidates, from a `split_on` fan-out or a fuzzy expansion, reaches the round as a `Set` of its candidates, and a `split_on` step's output inside a field's standardization is a `Set`; both add those candidates to the string table. A fan-out over 2^24 records of digit values is not measured.
 
 ## Bilateral configuration: detect and fail, never negotiate
 

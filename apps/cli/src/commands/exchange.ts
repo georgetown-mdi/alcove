@@ -1271,8 +1271,8 @@ export async function handler(argv: Arguments): Promise<void> {
     // of them come before the wake call and the host-key probe, the run's
     // first network contact: an unpinned SFTP host on a non-interactive run,
     // then runProtocol's own local checks (the --event-stream fd-3 preflight,
-    // the shared secret, the key-file path, the first round's size, the memory
-    // the round needs, and the webrtc rendezvous), which runProtocol runs
+    // the shared secret, the key-file path, the memory the round needs, the
+    // first round's size, and the webrtc rendezvous), which runProtocol runs
     // again.
     let openedEventStream: EventStreamEmitter | undefined;
     let signingWithoutRecordWarned = false;

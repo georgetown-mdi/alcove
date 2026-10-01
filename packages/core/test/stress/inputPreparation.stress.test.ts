@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "vitest";
 
+import { fileSyncMaxRoundSetValues } from "../../src/exchange";
+
 import type { PreparationProbeResult } from "./inputPreparation.probe";
 
 // The CLI's input preparation over 2^24 records, each with its own 9-digit
 // SSN, from reading the CSV to the first-round count's refusal
-// (docs/spec/FILE_SYNC.md, Measured runs at 2^24). The probe runs in its own
-// process under the heap the CLI raises its main thread to, and reports each
-// stage's time and the process's peak resident set. Eight to fourteen minutes
+// (docs/spec/FILE_SYNC.md, Preparing the input at 2^24). The probe runs in its
+// own process under the heap the CLI raises its main thread to, and reports
+// each stage's time and the process's peak resident set. About eight minutes
 // and 12 GB resident on the measured host, which is why it is the opt-in tier.
 // ALCOVE_STRESS_PREPARATION_ROWS lowers the row count for a quicker run.
 
@@ -26,7 +28,7 @@ const HEAP_MIB = Math.min(19_075, Math.floor(totalmem() / MIB) - 2_048);
 // Rounded up from the measured peak at 2^24 records, scaled to the run.
 const NEED_GIB = Math.ceil((12 * ROWS) / 2 ** 24);
 const PROBE_TIMEOUT_MS = 40 * 60_000;
-const FILE_SYNC_FIRST_ROUND_BOUND = 15_339_166;
+const FILE_SYNC_FIRST_ROUND_BOUND = fileSyncMaxRoundSetValues();
 
 function median(values: ReadonlyArray<number>): number {
   const sorted = [...values].sort((a, b) => a - b);

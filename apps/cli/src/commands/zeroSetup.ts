@@ -799,8 +799,6 @@ export async function handler(argv: Arguments): Promise<void> {
         },
       });
       try {
-        // The memory check reads only the record count, so it is decided
-        // before the first-round count walks the input.
         checkRunMemoryBudget({
           prepared,
           allowMemoryShortfall: allowMemoryShortfall === true,
