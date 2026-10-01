@@ -152,6 +152,26 @@ describe("savedExchangeRow", () => {
     expect(row.status).not.toMatch(/partner/i);
   });
 
+  test("a run whose set could not be counted says so and names no bound", () => {
+    const row = savedExchangeRow(
+      record({
+        lastRun: {
+          at: "2026-07-10T09:00:00.000Z",
+          outcome: "failed",
+          failureKind: "too-large",
+          setUncounted: true,
+        },
+      }),
+      undefined,
+      NOW,
+    );
+    expect(row.status).toMatch(
+      /^Last run stopped: the values built from your file could not be counted \(/,
+    );
+    expect(row.status).toMatch(/; split your input$/);
+    expect(row.status).not.toMatch(/too large|browser/i);
+  });
+
   test("a linkage shortfall displays as its own quiet line, not the input file's", () => {
     const row = savedExchangeRow(
       record({

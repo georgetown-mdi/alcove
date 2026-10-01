@@ -168,7 +168,9 @@ test("a first round the check cannot count is shown as its own alert, with no re
     }),
   );
   expect(failure.category).toBe("config");
-  expect(failure.title).toBe("Your file is too large for a browser exchange");
+  expect(failure.title).toBe(
+    "The values built from your file could not be counted",
+  );
   expect(failure.message).toContain(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
   expect(failure.message).toContain("Map maximum size exceeded");
   expect(failure.message).not.toMatch(/try again|temporary/i);

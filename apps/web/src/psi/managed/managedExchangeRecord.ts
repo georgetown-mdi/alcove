@@ -234,8 +234,9 @@ export type ManagedExchangeRunOutcome =
  * was handed off did not read, so the run does not rotate on custody it could
  * not establish) -- are detected before any connection and never routed through
  * desync/attack framing. A `"too-large"` refusal (a set this run had to send
- * was over the bound one WebRTC message holds) is benign the same way, but a
- * round past the first can meet it after data has moved. A `"terms-change"`
+ * was over the bound one WebRTC message holds, or could not be counted to
+ * check it) is benign the same way, but a round past the first can meet it
+ * after data has moved. A `"terms-change"`
  * refusal (the partner's linkage terms changed and this run did not take them
  * on) is met at the terms exchange, after the handshake and before any linkage
  * key or data moves, and is benign too: its remedy is the operator's decision
@@ -277,7 +278,19 @@ export interface ManagedExchangeLastRun {
    * The next visit's summary and the between-visit notice name that bound and
    * its figure, and name no bound where it is absent. */
   tooLargeBound?: TooLargeBound;
+  /** Present only on a `"too-large"` failure whose run could not count the
+   * set it had to send, so no bound was found crossed. The next visit's
+   * summary and the between-visit notice say the set could not be counted
+   * and name no bound, even beside a `tooLargeBound`. */
+  setUncounted?: true;
 }
+
+/** What a `"too-large"` failure records about the set it refused: the bound
+ * the set was over, or that the set could not be counted to check it. */
+export type TooLargeReading = Pick<
+  ManagedExchangeLastRun,
+  "tooLargeBound" | "setUncounted"
+>;
 
 /** The failure kinds that raise a standing condition: a rotation this device
  * could not save (`"storage"`, which may have left the two parties on different
@@ -475,9 +488,9 @@ export function parseStoredInstant(value: string): number {
  * was added still reads and tiers exactly as it did, and neither enum growing
  * moves {@link MANAGED_EXCHANGE_SCHEMA_VERSION}. An artifact holding a value
  * this reader does not know is refused whole rather than read with the value
- * dropped -- the reader-rejects-unknown rule. `singleColumnInput` is admitted
- * only as `true`, so the field cannot hold a reading its absence already
- * states. */
+ * dropped -- the reader-rejects-unknown rule. `singleColumnInput` and
+ * `setUncounted` are admitted only as `true`, so neither field can hold a
+ * reading its absence already states. */
 export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
   at: z.iso.datetime(),
   outcome: z.enum(["succeeded", "failed", "desynced", "missed", "skipped"]),
@@ -497,6 +510,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
     .optional(),
   singleColumnInput: z.literal(true).optional(),
   tooLargeBound: z.enum(["webrtc-message"]).optional(),
+  setUncounted: z.literal(true).optional(),
 });
 
 /** The canonical validator for the operator's answer. Strict, so a member a

@@ -473,6 +473,30 @@ describe("parseManagedExchangeRecord reader-rejects-unknown", () => {
     }
   });
 
+  test("reads back a too-large refusal whose set could not be counted", () => {
+    const lastRun: ManagedExchangeLastRun = {
+      at: "2026-07-14T09:00:00.000Z",
+      outcome: "failed",
+      failureKind: "too-large",
+      setUncounted: true,
+    };
+    const record = buildManagedExchangeRecord(newExchange({ lastRun }));
+    expect(parseManagedExchangeRecord(record).lastRun).toEqual(lastRun);
+  });
+
+  test("rejects an uncounted marker written as false", () => {
+    const written = {
+      ...buildManagedExchangeRecord(newExchange()),
+      lastRun: {
+        at: "2026-07-14T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "too-large",
+        setUncounted: false,
+      },
+    };
+    expect(safeParseManagedExchangeRecord(written).success).toBe(false);
+  });
+
   test("rejects a bound it does not recognize", () => {
     const future = {
       ...buildManagedExchangeRecord(newExchange()),
