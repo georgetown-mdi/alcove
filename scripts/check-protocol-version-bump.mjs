@@ -49,8 +49,9 @@
 //   - A wire-format delta no vectors file pins. The pinned files cover the PSI
 //     engine's bytes, the resolved association mapping, the terms-exchange
 //     envelope, single-pass message 2's frame layout, and the parts a PSI set
-//     is sent in -- not every frame the protocol defines. The cascade's per-round mapped-element and
-//     association-table frames and the count-only reply are specified in
+//     is sent in -- not every frame the protocol defines. The cascade's
+//     per-round mapped-element and association-table frames and the
+//     count-only reply are specified in
 //     docs/spec/PROTOCOL.md, and the save-bootstrap secret frame in
 //     docs/SECURITY_DESIGN.md; all are pinned by no file here, so a delta
 //     confined to one of them moves no digest. The pin is the

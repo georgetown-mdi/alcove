@@ -1,9 +1,10 @@
 // The send-side half of the WebRTC data-channel frame bound
 // (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"): the
-// arithmetic a sender uses to keep every frame within what the partner's receive
-// path admits. The pre-connection count check and the size of each part a
-// round sends (psi/psiSetParts.ts) both go through `webrtcFrameExceedsBound`,
-// so the two cannot disagree about where the bound falls.
+// arithmetic a sender uses to keep every frame within what the partner's
+// receive path admits. The pre-connection count check and the size of each
+// part a round sends (psi/psiSetParts.ts) both go through
+// `webrtcFrameExceedsBound`, so the two cannot disagree about where the bound
+// falls.
 
 import {
   MAX_WEBRTC_FRAME_BYTES,
