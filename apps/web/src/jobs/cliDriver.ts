@@ -919,7 +919,7 @@ function attachTerminalReconciliation(
     // path that rarely has stderr at all.
     handlers.onDegraded(
       "relayProcessError",
-      `CLI process error: ${sanitizeForDisplay(error.message)}`,
+      `CLI process error: ${redactAndFitUnescaped(error.message, DEFAULT_MAX_DISPLAY_LENGTH)}`,
     );
     deliver(1, null);
   });
