@@ -1629,15 +1629,8 @@ const linkageTermsSchema = (
         "transform a column differently on the two parties",
       path: ["linkageKeys"],
     })
-    // Reject a transform regex outside the linear-time dialect, or over its
-    // weighted-size cap, before it can run. Element-transform regex patterns
-    // are partner-controlled and execute per row over the full dataset under
-    // the linear-time engine (utils/linearRegex.ts), so they cannot backtrack
-    // catastrophically, but their per-row cost grows with their size. Fail
-    // closed, before any execution and before both parties commit to the
-    // terms. Covers every parse path (parseLinkageTerms, invitation-token
-    // decode, ExchangeSpecSchema). Full reasoning:
-    // docs/spec/CHANNEL_SECURITY.md, "Transform-regex linear-time dialect".
+    // Placed here so every parse path refuses a partner's transform regex
+    // before it runs: docs/spec/CHANNEL_SECURITY.md, "Transform-regex linear-time dialect".
     .superRefine((terms, ctx) => {
       const refusal = findTransformRegexRefusal(terms, {
         maxPatternLength: MAX_TRANSFORM_PATTERN_LENGTH,
@@ -1712,9 +1705,7 @@ const linkageTermsSchema = (
         });
     });
 
-// The issue for a refused transform pattern. Every value interpolated is a
-// position, a count, or a fixed param name from REGEX_STEP_PATTERN_PARAM, so
-// nothing the partner wrote reaches the message.
+// Interpolates only positions, counts, and fixed param names, never partner text.
 function transformRegexIssue(refusal: TransformRegexRefusal): {
   code: "custom";
   message: string;

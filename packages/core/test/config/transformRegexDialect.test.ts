@@ -37,10 +37,10 @@ test("REGEX_STEP_PATTERN_PARAM matches exactly the regex-tier function descripto
   }
 });
 
-// --- Dialect-conformance walk ------------------------------------------------
+// --- Refusal walk ------------------------------------------------------------
 
 describe("findTransformRegexRefusal", () => {
-  test("returns false for in-dialect raw patterns (including a former-ReDoS one)", () => {
+  test("admits in-dialect raw patterns under the size cap (including a former-ReDoS one)", () => {
     expect(
       rejects(
         termsWith([
@@ -53,7 +53,7 @@ describe("findTransformRegexRefusal", () => {
     ).toBe(false);
   });
 
-  test("returns true for a pattern outside the dialect (backreference)", () => {
+  test("refuses a pattern outside the dialect (backreference)", () => {
     expect(
       rejects(
         termsWith([
@@ -63,7 +63,7 @@ describe("findTransformRegexRefusal", () => {
     ).toBe(true);
   });
 
-  test("returns true for a split_on delimiter outside the dialect (lookahead)", () => {
+  test("refuses a split_on delimiter outside the dialect (lookahead)", () => {
     expect(
       rejects(
         termsWith([{ function: "split_on", params: { delimiter: "a(?=b)" } }]),
@@ -73,8 +73,8 @@ describe("findTransformRegexRefusal", () => {
 
   test("does not screen parse_date (its generated regex is always in-dialect)", () => {
     // A format that expands to 24 adjacent `(\d{1,2})` groups -- a backtracking
-    // bomb on new RegExp -- is NOT a raw-pattern step, so the gate ignores it; its
-    // safety comes from running on the linear-time engine, not this screen.
+    // bomb on new RegExp -- is NOT a raw-pattern step, so the walk ignores it; the
+    // linear-time engine and the format-length cap bound it instead.
     expect(
       rejects(
         termsWith([
@@ -154,10 +154,9 @@ describe("findTransformRegexRefusal", () => {
         { maxPatternLength: 1000 },
       ),
     ).toBe(true);
-    // Without the bound the SAME in-dialect pattern compiles cleanly, so the
-    // gate refuses it on size rather than as out of dialect. This is exactly the
-    // gate behavior the maxPatternLength guard adds; the production caller
-    // (LinkageTermsSchema) always passes the bound.
+    // Without the bound the same pattern is compiled and refused on weighted
+    // size instead; the production caller (LinkageTermsSchema) always passes
+    // the bound, so it is refused before compiling.
     expect(
       findTransformRegexRefusal(
         termsWith([
