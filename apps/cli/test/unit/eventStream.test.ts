@@ -7,6 +7,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import {
   AuthenticationError,
   ConnectionError,
+  DISPLAY_TRUNCATION_MARKER,
   InternalConsistencyError,
   OperatorConfigError,
   PeerAbortError,
@@ -15,9 +16,12 @@ import {
   SIGNING_CERTIFICATE_VERSION,
   StandardizationTermsError,
   UsageError,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   assertLocalCertificateAuthorizesAgreedIdentity,
   assertSigningModeImplemented,
+  renderedDisplayCost,
 } from "@alcove/core";
+import type { Displayable } from "@alcove/core";
 
 import {
   EVENT_RESULT_CLUSTER_SHAPES_MAX,
@@ -705,6 +709,54 @@ test("sanitizes a hostile warning message", () => {
   expect(event.message).toContain("\\u202e");
 });
 
+test("holds a warning's text before its escape beside the escaped message", () => {
+  // A consumer that escapes what it shows -- the console seat -- reads the
+  // unescaped field, so the text takes that one pass rather than this one too.
+  const partnerValue = "a\\b caf\u00e9";
+  const event = buildWarningEvent("termsExchange", partnerValue);
+  expect(event.unescapedMessage).toBe(partnerValue);
+  expect(event.message).toBe("a\\\\b caf\\xe9");
+});
+
+test("fits a warning's unescaped text to what one escape of it renders to", () => {
+  const flooded = "\u202e".repeat(WARNING_MESSAGE_MAX_DISPLAY_LENGTH);
+  const event = buildWarningEvent("termsExchange", flooded);
+  const unescaped = event.unescapedMessage ?? "";
+  expect(unescaped.endsWith(DISPLAY_TRUNCATION_MARKER)).toBe(true);
+  expect(renderedDisplayCost(unescaped)).toBeLessThanOrEqual(
+    WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  );
+});
+
+for (const source of WARNING_SOURCES.filter(
+  (value) => value !== "payloadReceiveTaken",
+))
+  test(`a ${source} warning reaches fd 3 with its text unescaped beside the escaped message`, () => {
+    const cap = captureFd3Writes();
+    const emitter = openEventStreamWithFdWired();
+    const text = "the partner named a\\b caf\u00e9";
+    if (source === "logFileLoss") emitter.logFileLoss(text, 2);
+    else emitter.warning(source, text);
+    const [line] = cap.lines();
+    expect(line).toMatch(/^[\x20-\x7e]*$/);
+    const event = JSON.parse(line) as Record<string, unknown>;
+    expect(event.source).toBe(source);
+    expect(event.unescapedMessage).toBe(text);
+    expect(event.message).toBe("the partner named a\\\\b caf\\xe9");
+  });
+
+test("a payloadReceiveTaken warning holds its partner text in columns alone", () => {
+  const cap = captureFd3Writes();
+  openEventStreamWithFdWired().payloadReceiveTaken(
+    'the notice: "caf\\xe9"' as Displayable,
+    ["caf\u00e9"],
+    1,
+  );
+  const event = JSON.parse(cap.lines()[0]) as Record<string, unknown>;
+  expect(event.columns).toEqual(["caf\u00e9"]);
+  expect(event).not.toHaveProperty("unescapedMessage");
+});
+
 test("redacts private-key material held in a warning message", () => {
   // The fd-3 stream is a persisted machine sink like --log-file, and its error
   // event is already redacted, so the warning is the one text field that would
@@ -719,6 +771,8 @@ test("redacts private-key material held in a warning message", () => {
   );
   expect(event.message).toContain("[redacted private key]");
   expect(event.message).not.toContain(body);
+  expect(event.unescapedMessage).toContain("[redacted private key]");
+  expect(event.unescapedMessage).not.toContain(body);
 });
 
 test("sanitizes hostile error text through the display boundary", () => {
@@ -739,31 +793,42 @@ test("no raw ESC or newline survives serialization of a hostile event", () => {
   expect(line.includes("\n")).toBe(false);
 });
 
-test("every event serializes to a printable-ASCII line", () => {
-  // This stream is the machine-readable line the printable-ASCII encoder behind
-  // the --json stdout lines (apps/cli/src/util/jsonLine.ts) names as what it
-  // excludes: its text is display-escaped where each event is composed, and
-  // bare JSON.stringify passes DEL, the C1 range, and U+2028 through, so that
-  // composition pass is what keeps those bytes off the descriptor. Held here,
-  // over the fields this stream has, rather than in the encoder's header prose.
+test("every event is written to fd 3 as a printable-ASCII line", () => {
+  // Two fields hold text no escape has touched -- a warning's unescaped text
+  // and a fill warning's column names -- and bare JSON.stringify passes DEL,
+  // the C1 range, and U+2028 through, so the writer encodes each line with
+  // the printable-ASCII encoder behind the --json stdout lines
+  // (apps/cli/src/util/jsonLine.ts). Held here over the bytes the writer
+  // flushed, for every event the emitter writes, rather than in prose.
   const PRINTABLE_ASCII_ONLY = /^[\x20-\x7e]*$/;
   const hostile =
     `${ESC_INJECTION}\n${RLO_INJECTION}` +
-    `${String.fromCharCode(0x7f)}${String.fromCharCode(0x9b)} \u{1f600}`;
-  const events: StreamEvent[] = [
-    buildStagesEvent([{ id: hostile, label: hostile }]),
-    buildStageEvent(hostile, hostile),
-    buildStageEndEvent(hostile, 1234),
-    buildWarningEvent("termsExchange", hostile),
-    buildMetricsEvent(1000, 2, 1),
-    buildResultEvent(false, ONE_TO_ONE, {
-      intersectionCount: 7,
-      reportedByPartner: true,
-    }),
-    buildErrorEvent(new Error(hostile), "run"),
-  ];
-  for (const event of events)
-    expect(PRINTABLE_ASCII_ONLY.test(JSON.stringify(event))).toBe(true);
+    `${String.fromCharCode(0x7f)}${String.fromCharCode(0x9b)} \u2028 \u{1f600}`;
+  const cap = captureFd3Writes();
+  const emitter = openEventStreamWithFdWired();
+  emitter.stages([{ id: hostile, label: hostile }]);
+  emitter.stage(hostile, hostile);
+  emitter.stageEnd(hostile, 1234);
+  emitter.warning("termsExchange", hostile);
+  emitter.payloadReceiveTaken(hostile as Displayable, [hostile], 1);
+  emitter.logFileLoss(hostile, 3);
+  emitter.metrics(1000, 2, 1);
+  emitter.result(false, ONE_TO_ONE, {
+    intersectionCount: 7,
+    reportedByPartner: true,
+  });
+  const failing = openEventStreamWithFdWired();
+  failing.error(new Error(hostile), "run");
+
+  const lines = cap.lines();
+  expect(lines).toHaveLength(9);
+  for (const line of lines) expect(PRINTABLE_ASCII_ONLY.test(line)).toBe(true);
+  // The encoding is of the text alone: each unescaped field parses back to
+  // the bytes it was given.
+  const warning = JSON.parse(lines[3]) as Record<string, unknown>;
+  expect(warning.unescapedMessage).toBe(hostile);
+  const taken = JSON.parse(lines[4]) as Record<string, unknown>;
+  expect(taken.columns).toEqual([hostile]);
 });
 
 // --- fail-closed missing-fd path ---------------------------------------------

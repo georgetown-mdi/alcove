@@ -7,7 +7,11 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  boundRawFragmentForFit,
+  clipToRenderedCost,
   redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
+  sanitizeForDisplay,
 } from "@alcove/core";
 import { reconcileHostKeyFingerprints } from "@alcove/core/testing";
 
@@ -28,12 +32,12 @@ import {
 import type { PresentedHostKey } from "@alcove/core";
 import type { RelayEvent } from "@jobs/cliDriver";
 
-// A CLI warning is one composition; the relay's trust-boundary pass and the
-// seat's display pass both re-escape it, and either one applying the
-// per-value default would cut the host-key divergence notice before its
-// re-pin instruction. One test drives the real notice end to end; the other
-// drives a message composed at the shared budget, to catch the two
-// boundaries capping differently.
+// A CLI warning is one composition, escaped once on its way to a console
+// seat: the relay fits the CLI's unescaped text and the seat escapes it. Either
+// boundary applying the per-value default would cut the host-key divergence
+// notice before its re-pin instruction. One test drives the real notice end to
+// end; the other drives a message composed at the shared budget, to catch the
+// two boundaries capping differently.
 
 const dirs: Array<string> = [];
 
@@ -58,13 +62,11 @@ const CONFIRM_STEP = "Confirm the server's current host key out-of-band";
 const EXPLANATION = /interception/;
 
 /**
- * The divergence notice exactly as the CLI puts it on fd 3: composed by core
- * with all four interpolated fragments flooded -- both parties' key types and
- * both fingerprints -- then redacted and escaped under the shared warning
- * budget, which is what `buildWarningEvent` does to it. The two sides differ, so
- * the reconciliation still finds a divergence to warn about.
+ * The divergence notice as core composes it, with all four interpolated
+ * fragments flooded -- both parties' key types and both fingerprints. The two
+ * sides differ, so the reconciliation still finds a divergence to warn about.
  */
-function cliWarningMessage(): string {
+function floodedDivergence(): string {
   const local: PresentedHostKey = {
     fingerprint: "‭".repeat(100),
     keyType: "‭".repeat(64),
@@ -75,9 +77,30 @@ function cliWarningMessage(): string {
   };
   const composed = reconcileHostKeyFingerprints(local, partner);
   expect(composed).toBeDefined();
-  return redactAndSanitizeForDisplay(composed!, {
-    maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  });
+  return composed!;
+}
+
+/**
+ * The fields a CLI `warning` event holds for `composed`, as `buildWarningEvent`
+ * (apps/cli/src/eventStream.ts) writes them on fd 3: the text escaped under the
+ * shared warning budget, and beside it the same text redacted and fitted to
+ * that budget but not escaped.
+ */
+function cliWarningFields(composed: string): {
+  message: string;
+  unescapedMessage: string;
+} {
+  return {
+    message: redactAndSanitizeForDisplay(composed, {
+      maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    }),
+    unescapedMessage: clipToRenderedCost(
+      redactPrivateKeyMaterial(
+        boundRawFragmentForFit(composed, WARNING_MESSAGE_MAX_DISPLAY_LENGTH),
+      ),
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    ),
+  };
 }
 
 /** The clause the synthetic warning below ends on, sitting at the far end of the
@@ -101,12 +124,13 @@ function warningComposedAtBudget(): string {
 }
 
 /**
- * The events the relay delivered for a child that wrote `message` as a warning
+ * The events the relay delivered for a child that wrote `fields` as a warning
  * line on fd 3 -- the real child process, line reader, and schema validation.
  */
-async function relayWarningFromChild(
-  message: string,
-): Promise<Array<RelayEvent>> {
+async function relayWarningFromChild(fields: {
+  message: string;
+  unescapedMessage: string;
+}): Promise<Array<RelayEvent>> {
   const workdir = scratchDir("relay-warning");
   const relayed: Array<RelayEvent> = [];
   await awaitJobTerminalState((onTerminal) =>
@@ -122,7 +146,7 @@ async function relayWarningFromChild(
       runControls: { sweepExchangeFiles: false, logFilePath: undefined },
       extraEnv: {
         STUB_FD3_EVENTS: JSON.stringify([
-          { v: 1, type: "warning", message },
+          { v: 1, type: "warning", source: "hostKeyDivergence", ...fields },
           { v: 1, type: "result", resultWritten: true },
         ]),
         STUB_EXIT_CODE: "0",
@@ -176,12 +200,13 @@ async function warningsAtSeat(
 }
 
 test("a relayed CLI warning reaches a console seat ending on its own clause", async () => {
-  const message = cliWarningMessage();
+  const composed = floodedDivergence();
+  const fields = cliWarningFields(composed);
   // This assertion holds only once the message exceeds the per-value default.
-  expect(message.length).toBeGreaterThan(DEFAULT_MAX_DISPLAY_LENGTH);
-  expect(message.endsWith(CLOSING_CLAUSE)).toBe(true);
+  expect(fields.message.length).toBeGreaterThan(DEFAULT_MAX_DISPLAY_LENGTH);
+  expect(fields.message.endsWith(CLOSING_CLAUSE)).toBe(true);
 
-  const relayed = await relayWarningFromChild(message);
+  const relayed = await relayWarningFromChild(fields);
   const warnings = relayed.filter((event) => event.type === "warning");
   expect(warnings).toHaveLength(1);
   expect((warnings[0].message as string).endsWith(CLOSING_CLAUSE)).toBe(true);
@@ -200,13 +225,21 @@ test("a relayed CLI warning reaches a console seat ending on its own clause", as
   expect(rendered.length).toBeGreaterThan(
     DEFAULT_MAX_DISPLAY_LENGTH + DISPLAY_TRUNCATION_MARKER.length,
   );
+  // One escape of core's composition, and no more: the seat shows what the
+  // CLI's own escape of it holds.
+  expect(rendered).toBe(
+    sanitizeForDisplay(composed, {
+      maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    }),
+  );
+  expect(rendered).toBe(fields.message);
 });
 
 test("a warning composed at the shared budget reaches a seat uncut", async () => {
   const message = warningComposedAtBudget();
   expect(message.length).toBe(WARNING_MESSAGE_MAX_DISPLAY_LENGTH);
 
-  const relayed = await relayWarningFromChild(message);
+  const relayed = await relayWarningFromChild(cliWarningFields(message));
   const warnings = relayed.filter((event) => event.type === "warning");
   expect(warnings).toHaveLength(1);
   expect(warnings[0].message).toBe(message);

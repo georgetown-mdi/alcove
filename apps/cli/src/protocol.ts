@@ -863,16 +863,21 @@ async function runExchangeStage(params: {
         emit((e) => e.warning("termsExchange", msg));
       },
       // A host-key divergence is a security signal, not a terms warning,
-      // so it gets its own un-prefixed warn line; the message is
-      // complete and display-safe (reconcileHostKeyFingerprints
-      // sanitizes both parties' server-controlled values). It also rides
+      // so it gets its own un-prefixed warn line. The message is
+      // complete and composed raw (reconcileHostKeyFingerprints redacts
+      // and fits both parties' server-controlled values), so this line
+      // and the emitter each escape it once. It also rides
       // the machine-interface warning event: a supervisor that discards
       // stderr on success (an unattended CLI run under cron, say) must
       // still see the one control that catches a one-sided SFTP
       // interception. Non-fatal: the exchange still completes and the
       // operator disambiguates a rekey from an interception out-of-band.
       onHostKeyDivergence: (msg: string) => {
-        log.warn(msg);
+        log.warn(
+          redactAndSanitizeForDisplay(msg, {
+            maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+          }),
+        );
         emit((e) => e.warning("hostKeyDivergence", msg));
       },
       // A present-but-malformed partner host-key advertisement is

@@ -80,8 +80,8 @@ export const COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH = 1024;
  * Cap on the output characters a boundary emits for a whole composed
  * WARNING, above the per-value {@link DEFAULT_MAX_DISPLAY_LENGTH}. A
  * warning is a COMPOSITION: first-party explanation and recovery text
- * around fragments already escaped and capped where they were
- * interpolated. The per-value default is sized for one fragment, so
+ * around fragments fitted to their own cap where they were interpolated.
+ * The per-value default is sized for one fragment, so
  * applying it here would truncate the warning's own instruction -- and the
  * cross-party host-key divergence warning is exactly what a supervisor
  * discarding stderr, or an operator watching the console, has nothing else
@@ -91,15 +91,17 @@ export const COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH = 1024;
  * Four boundaries hold a whole warning message and take this cap rather
  * than the default, so none re-caps what an earlier one delivered: the
  * CLI's stderr log of a composed terms-exchange warning, the CLI's fd-3
- * warning event, the console relay re-validating that stream
- * (`validateAndSanitizeEvent`), and the console seat rendering it
+ * warning event (both its escaped text and the unescaped text it fits
+ * beside it), the console relay fitting that unescaped text
+ * (`validateAndSanitizeEvent`), and the console seat escaping it once
  * (`appendSanitizedRunWarning`). The first two are one warning's two sinks,
  * so a differing cap would show the terminal operator less than the
  * supervisor reading the machine channel gets. A boundary holding a single
  * value keeps the default.
  *
  * Sized to admit that warning with every fragment at its own cap and
- * escaped again at each boundary it crosses. What holds the size is the
+ * escaped again by a consumer re-escaping the fd-3 event's escaped text
+ * (docs/spec/CLI_EVENTS.md, Sanitization). What holds the size is the
  * pair of checks that render the divergence warning with all four
  * fragments flooded -- both parties' key types and both fingerprints -- and
  * fail unless its explanation and re-pin instruction both survive.
