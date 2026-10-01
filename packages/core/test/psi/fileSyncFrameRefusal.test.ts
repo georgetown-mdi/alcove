@@ -11,7 +11,11 @@ import {
   MESSAGE_TYPE_BINARY,
   serializeFileSyncMessage,
 } from "../../src/connection/fileSyncFraming";
-import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
+import { fileSyncMaxRoundSetValues } from "../../src/connection/fileSyncOutboundBound";
+import {
+  MAX_FRAME_SIZE_BYTES,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../../src/connection/frameSize";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
   PSI_ENCODED_ELEMENT_BYTES,
@@ -20,7 +24,6 @@ import {
 import { RoundSetLimitError, UsageError } from "../../src/errors";
 import {
   assertFirstRoundFitsFileSyncFrame,
-  fileSyncMaxRoundSetValues,
   fileSyncRoundOneSetTooLargeMessage,
   prepareForExchange,
 } from "../../src/exchange";
@@ -36,8 +39,8 @@ import type { LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
 
 // The SFTP and synced-folder first-round check reads the prepared dataset,
-// before any connection. The frame bound is lowered so the boundary is reached
-// with a few hundred values.
+// before any connection. The per-set maximum is lowered so the boundary is
+// reached with a few hundred values.
 
 function letters(i: number): string {
   let out = "";
@@ -84,7 +87,18 @@ const boundFor = (values: number) =>
   PSI_SET_MAX_FRAMING_BYTES +
   values * PSI_ENCODED_ELEMENT_BYTES;
 
-test("the real bound is the most values one message file holds", () => {
+test("the check's real bound is the protocol's per-set maximum, past one message file", () => {
+  expect(MAX_PSI_DECODE_ELEMENTS).toBe(2 ** 24);
+  expect(MAX_PSI_DECODE_ELEMENTS).toBeGreaterThan(fileSyncMaxRoundSetValues());
+  expect(
+    fileSyncRoundOneSetTooLargeMessage(MAX_PSI_DECODE_ELEMENTS + 1),
+  ).toContain(
+    `at least ${MAX_PSI_DECODE_ELEMENTS + 1} values to send, over the ` +
+      `${MAX_PSI_DECODE_ELEMENTS} one PSI set can hold`,
+  );
+});
+
+test("one message file holds 15,339,166 values", () => {
   const ceiling = fileSyncMaxRoundSetValues();
   expect(ceiling).toBe(15_339_166);
   expect(boundFor(ceiling)).toBeLessThanOrEqual(MAX_FRAME_SIZE_BYTES);
@@ -108,7 +122,7 @@ async function encryptedMessageFile(payload: Uint8Array): Promise<Buffer> {
   return serializeFileSyncMessage(MESSAGE_TYPE_BINARY, 1, envelope);
 }
 
-test("a first-round file at the ceiling fits the frame bound the check applies", async () => {
+test("a message file of the most values it holds fits the receiver's frame bound", async () => {
   const values = 300;
   const bound = boundFor(values);
   expect(fileSyncMaxRoundSetValues(bound)).toBe(values);
@@ -124,13 +138,13 @@ test("a first-round file at the ceiling fits the frame bound the check applies",
   }
 });
 
-/** What the check under `maxFrameBytes` rejects with, or undefined. */
+/** What the check under a per-set maximum of `maxValues` rejects with, or undefined. */
 async function refusalOf(
   prepared: Parameters<typeof assertFirstRoundFitsFileSyncFrame>[0],
-  maxFrameBytes: number,
+  maxValues: number,
 ): Promise<unknown> {
   try {
-    await assertFirstRoundFitsFileSyncFrame(prepared, { maxFrameBytes });
+    await assertFirstRoundFitsFileSyncFrame(prepared, { maxValues });
   } catch (err) {
     return err;
   }
@@ -147,7 +161,7 @@ test("the check refuses one value over the bound and admits one under and at it"
     ...shared,
     ...shared,
   ];
-  const bound = boundFor(300);
+  const bound = 300;
 
   expect(await refusalOf(preparedWith(rows(299)), bound)).toBeUndefined();
   expect(await refusalOf(preparedWith(rows(300)), bound)).toBeUndefined();
@@ -155,7 +169,7 @@ test("the check refuses one value over the bound and admits one under and at it"
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as RoundSetLimitError).alcoveRecoveryHintEmitted).toBe(true);
   expect((refusal as Error).message).toMatch(
-    /SFTP or a synced folder: .*at least 301 values to send, over the 300 one message file holds\. Nothing was sent\. Split the input/,
+    /SFTP or a synced folder: .*at least 301 values to send, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,
   );
 });
 
@@ -164,7 +178,7 @@ test("the file-sync first-round check counts every distinct value a deduplicatin
   // sends none of them, one whose terms set deduplicate sends all 400.
   const values = Array.from({ length: 400 }, (_unused, i) => letters(i));
   const rows = [...values, ...values];
-  const bound = boundFor(300);
+  const bound = 300;
 
   expect(
     await refusalOf(preparedWith(rows, "cascade", false), bound),
@@ -177,9 +191,9 @@ test("the file-sync first-round check counts every distinct value a deduplicatin
 test("the check leaves a single-pass exchange to its dataset ceiling", async () => {
   const rows = Array.from({ length: 50 }, (_unused, i) => letters(i));
   expect(
-    await refusalOf(preparedWith(rows, "single-pass"), boundFor(10)),
+    await refusalOf(preparedWith(rows, "single-pass"), 10),
   ).toBeUndefined();
-  expect(await refusalOf(preparedWith(rows), boundFor(10))).toBeInstanceOf(
+  expect(await refusalOf(preparedWith(rows), 10)).toBeInstanceOf(
     RoundSetLimitError,
   );
 });
@@ -219,11 +233,11 @@ test("the check refuses, with the failure as its cause, when the count throws", 
   const failure = new RangeError("out of memory");
   const refusal = await refusalOf(
     withThrowingRows(prepared, rowCount, failure),
-    boundFor(10),
+    10,
   );
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as Error).message).toMatch(
-    /could not count .* one message file\. Nothing was sent\./,
+    /could not count .* one PSI set can hold them\. Nothing was sent\./,
   );
   expect((refusal as Error).cause).toBe(failure);
 });
@@ -235,10 +249,7 @@ test("the check raises a refusal the count throws in both roles as it is", async
   );
   const refusal = new UsageError("a refusal the round would raise");
   expect(
-    await refusalOf(
-      withThrowingRows(prepared, rowCount, refusal),
-      boundFor(10),
-    ),
+    await refusalOf(withThrowingRows(prepared, rowCount, refusal), 10),
   ).toBe(refusal);
 });
 
@@ -246,7 +257,7 @@ test("the refusal survives the display boundary whole at the real bound", () => 
   // The remedy is the last sentence, and the render boundary truncates a link,
   // so a message that grows past it loses the part the operator acts on.
   const refusal = new RoundSetLimitError(
-    fileSyncRoundOneSetTooLargeMessage(fileSyncMaxRoundSetValues() * 10),
+    fileSyncRoundOneSetTooLargeMessage(MAX_PSI_DECODE_ELEMENTS * 10),
   );
   const shown = sanitizeErrorForDisplay(refusal);
   expect(shown).not.toContain(DISPLAY_TRUNCATION_MARKER);

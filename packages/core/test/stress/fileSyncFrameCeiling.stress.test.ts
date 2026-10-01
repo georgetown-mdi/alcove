@@ -7,20 +7,21 @@ import {
   MESSAGE_TYPE_BINARY,
   serializeFileSyncMessage,
 } from "../../src/connection/fileSyncFraming";
+import { fileSyncMaxRoundSetValues } from "../../src/connection/fileSyncOutboundBound";
 import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
   PSI_ENCODED_ELEMENT_BYTES,
   PSI_SET_MAX_FRAMING_BYTES,
 } from "../../src/connection/webrtcOutboundBound";
-import { fileSyncMaxRoundSetValues } from "../../src/exchange";
 import { serializeSetup } from "../../src/psi/psiChunks";
 
-// The file-sync first-round ceiling at its real size: a server setup of the
-// ceiling's values, sealed by the real cipher and framed as a message file,
-// stays within the frame bound every file-sync receiver applies. The setup is
-// the largest first-round message; its element list's length prefix is 5 bytes
-// at this size. About 2 GB of heap, which is why it is the opt-in tier.
+// The most values one file-sync message file holds, at its real size: a server
+// setup of that many values, sealed by the real cipher and framed as a message
+// file, stays within the frame bound every file-sync receiver applies. The
+// setup is the largest PSI message of a count; its element list's length
+// prefix is 5 bytes at this size. About 2 GB of heap, which is why it is the
+// opt-in tier.
 
 test("a setup file of the ceiling's values fits the frame bound", async () => {
   const values = fileSyncMaxRoundSetValues();

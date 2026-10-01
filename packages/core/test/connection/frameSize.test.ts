@@ -1,11 +1,14 @@
 import { expect, test } from "vitest";
 
+import { MAX_WEBRTC_FRAME_BYTES } from "../../src/connection/binaryPackBounds";
 import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
   MAX_RECORD_COUNT,
   psiElementBounds,
 } from "../../src/connection/frameSize";
+import { psiSetByteBound } from "../../src/psi/psiSetParts";
 import { MAX_LINKAGE_ENTRIES } from "../../src/config/linkageTermsSchema";
 import {
   MAX_EFFECTIVE_KEY_COUNT,
@@ -83,28 +86,33 @@ test("psiElementBounds widens with the fanning-out party alone", () => {
   expect(bounds.response).toBe(3 * 7);
 });
 
-// --- MAX_PSI_DECODE_ELEMENTS: the pre-deserialize ceiling's two security props --
-// The absolute element ceiling (connection/psiElementScan.ts is the enforcer) rests
-// on two numeric properties. Both are derived from MAX_FRAME_SIZE_BYTES and the
-// per-element sizes, so a future edit to either input could silently break one --
-// pin them here.
+// --- MAX_PSI_DECODE_ELEMENTS: the per-set maximum and its security props ----
+// The absolute element ceiling (connection/psiElementScan.ts is the enforcer) is
+// the protocol's per-set maximum, a set being joined from parts rather than read
+// as one frame. It rests on the numeric properties pinned here.
 
-test("MAX_PSI_DECODE_ELEMENTS admits every legitimate frame yet bounds deserialize memory", () => {
-  // (a) Never rejects a legitimate frame: the ceiling is at least the most real
-  // elements a max-size frame can hold (a real element is a ~33-byte curve
-  // point plus protobuf framing, ~35 bytes on the wire), so any frame the byte
-  // cap admits clears the element ceiling too.
+test("MAX_PSI_DECODE_ELEMENTS is 2^24, admits a full frame's elements, and bounds deserialize memory", () => {
+  expect(MAX_PSI_DECODE_ELEMENTS).toBe(16_777_216);
+  // At least the most real elements one max-size frame holds (a ~33-byte
+  // curve point plus protobuf framing, ~35 bytes on the wire), so a set that
+  // fits one frame is never refused for its count.
   const REAL_ELEMENT_WIRE_BYTES = 35;
-  const maxLegitimateElements = Math.floor(
-    MAX_FRAME_SIZE_BYTES / REAL_ELEMENT_WIRE_BYTES,
+  expect(MAX_PSI_DECODE_ELEMENTS).toBeGreaterThanOrEqual(
+    Math.floor(MAX_FRAME_SIZE_BYTES / REAL_ELEMENT_WIRE_BYTES),
   );
-  expect(MAX_PSI_DECODE_ELEMENTS).toBeGreaterThanOrEqual(maxLegitimateElements);
 
-  // (b) Bounds the deserialize allocation: at the measured ~211 bytes the protobuf
-  // deserializer allocates per declared element, the worst ceiling-passing frame
-  // stays well under the 16 GiB target (a 4 GiB guard here), so it cannot OOM.
+  // At the measured ~211 bytes the protobuf deserializer allocates per
+  // declared element, the worst ceiling-passing set stays under 4 GiB.
   const DESERIALIZE_BYTES_PER_ELEMENT = 211;
   expect(MAX_PSI_DECODE_ELEMENTS * DESERIALIZE_BYTES_PER_ELEMENT).toBeLessThan(
     4 * 1024 ** 3,
+  );
+});
+
+test("a browser party's ceiling on a partner's set is under the protocol's and its joined set fits one WebRTC frame", () => {
+  expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBe(1_048_576);
+  expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBeLessThan(MAX_PSI_DECODE_ELEMENTS);
+  expect(psiSetByteBound(BROWSER_PSI_SET_MAX_ELEMENTS)).toBeLessThanOrEqual(
+    MAX_WEBRTC_FRAME_BYTES,
   );
 });

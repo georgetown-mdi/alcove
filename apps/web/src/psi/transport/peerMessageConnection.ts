@@ -1,4 +1,5 @@
 import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
   ConnectionError,
   MAX_WEBRTC_FRAME_BYTES,
   QueuedMessageConnection,
@@ -52,7 +53,10 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  * ({@link packOutboundFramesIteratively}), so a frame's element count is
  * bounded by memory rather than by the JavaScript stack, and states the same
  * byte bound as the partner's (`outboundWebRtcFrameBound`), which a PSI round
- * sizes the parts of its sets to.
+ * sizes the parts of its sets to. It states the browser's ceiling on a
+ * partner's PSI set (`inboundPsiSetElementCeiling`), which the exchange holds
+ * the partner's round count to at the terms exchange and each partner set to
+ * when its first part arrives.
  *
  * If the channel never opens, the returned promise rejects and the half-open
  * channel is torn down first, since `peer.disconnect()` alone would not
@@ -138,6 +142,7 @@ export async function openPeerMessageConnection(
       conn.on("close", onClose);
       return {
         outboundWebRtcFrameBound: () => maxFrameBytes,
+        inboundPsiSetElementCeiling: () => BROWSER_PSI_SET_MAX_ELEMENTS,
         send: (data) => conn.send(data),
         close: async (closeOptions) => {
           conn.off("data", onData);

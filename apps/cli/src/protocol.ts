@@ -92,7 +92,11 @@ import {
   type PsiProgressDisplay,
 } from "./psiProgressDisplay";
 import { restartedForPsiHeap } from "./psiHeapRestart";
-import { checkPsiMemoryBudget, readMemory } from "./psiMemoryBudget";
+import {
+  checkPartnerRoundMemory,
+  checkPsiMemoryBudget,
+  readMemory,
+} from "./psiMemoryBudget";
 import { createPsiEngine, psiEngineRunsInWorker } from "./psiWorkerHost";
 import { writeExchangeRecord, type RecordOutput } from "./recordFile";
 import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
@@ -695,6 +699,7 @@ async function runExchangeStage(params: {
     ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined;
   onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
   recordOutput: RecordOutput | undefined;
+  allowMemoryShortfall: boolean;
   stageTimer: { open: (id: string) => void; close: () => void };
   psiProgress: PsiProgressDisplay;
   onRunPhase: () => void;
@@ -716,6 +721,7 @@ async function runExchangeStage(params: {
     onPayloadReceiveFill,
     onTermsChange,
     recordOutput,
+    allowMemoryShortfall,
     stageTimer,
     psiProgress,
     onRunPhase,
@@ -894,6 +900,20 @@ async function runExchangeStage(params: {
             "exchange; it was dropped per the fail-soft contract and " +
             "cross-party host-key reconciliation was skipped for it",
         ),
+      // The partner's round, weighed against this process's memory once the
+      // terms say how large it can be, as the pre-contact check weighs this
+      // party's own input.
+      checkPartnerRoundCapacity: (partnerRoundValues) => {
+        checkPartnerRoundMemory({
+          partnerRoundValues,
+          allowShortfall: allowMemoryShortfall,
+          readings: readMemory(psiEngineRunsInWorker(), restartedForPsiHeap()),
+          onShortfallWarning: (message) => {
+            log.warn(message);
+            emit((e) => e.warning("memoryShortfall", message));
+          },
+        });
+      },
       onProtocolConfirmed: (partnerTerms, resolvedRole, runShape) => {
         // identity is partner-controlled free text with no consistency
         // check (a mutually-distrusting party sets it), so escape it
@@ -1853,7 +1873,7 @@ async function checkRunLocalInputs(params: {
   // first-round count walks the input.
   if (!memoryBudgetReported)
     checkRunMemoryBudget({ prepared, allowMemoryShortfall, log, emit });
-  // A first round too large for one message is refused before the rendezvous
+  // A first round too large for the channel is refused before the rendezvous
   // is resolved, before the transport is built, and before anything is sent.
   await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
     assertFirstRoundFits(connection, prepared, report),
@@ -3117,6 +3137,7 @@ export async function runProtocol(
       onPayloadReceiveFill,
       onTermsChange,
       recordOutput,
+      allowMemoryShortfall,
       stageTimer,
       psiProgress,
       onRunPhase: () => {

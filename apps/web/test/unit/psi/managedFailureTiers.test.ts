@@ -556,7 +556,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       columns,
     );
     try {
-      await check(prepared, { maxFrameBytes: 1 });
+      await check(prepared, { maxFrameBytes: 1, maxValues: 0 });
     } catch (error) {
       return error;
     }

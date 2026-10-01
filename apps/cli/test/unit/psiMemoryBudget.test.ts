@@ -5,10 +5,15 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { UsageError } from "@alcove/core";
+import {
+  MAX_PSI_DECODE_ELEMENTS,
+  RoundCapacityError,
+  UsageError,
+} from "@alcove/core";
 
 import {
   assessPsiMemory,
+  checkPartnerRoundMemory,
   checkPsiMemoryBudget,
   PSI_HEAP_CEILING_BYTES,
   PSI_HEAP_CEILING_MIB,
@@ -52,6 +57,13 @@ describe("the budget", () => {
     expect(PSI_HEAP_CEILING_MIB).toBe(19_075);
     expect(PSI_HEAP_CEILING_MIB * 2 ** 20).toBeGreaterThanOrEqual(
       PSI_HEAP_CEILING_BYTES,
+    );
+  });
+
+  it("holds the heap ceiling to what a round at the protocol's per-set maximum needs", () => {
+    expect(PSI_TARGET_ELEMENTS).toBe(MAX_PSI_DECODE_ELEMENTS);
+    expect(PSI_HEAP_CEILING_BYTES).toBeGreaterThanOrEqual(
+      psiRoundMemoryNeedBytes(MAX_PSI_DECODE_ELEMENTS),
     );
   });
 
@@ -244,6 +256,69 @@ describe("the check", () => {
         "process has 0.51 GB (its container's memory limit). The exchange " +
         "may run out of memory partway through, which fails it for both " +
         "parties.",
+    ]);
+  });
+});
+
+describe("the partner's round", () => {
+  const smallHost: MemoryReadings = {
+    engineHeapLimitBytes: 4_395_630_592,
+    engineInWorker: false,
+    mainThreadHeapLimitBytes: 4_395_630_592,
+    hostBytes: 2e9,
+    containerLimitBytes: 512e6,
+    heapRaisedByRestart: false,
+  };
+
+  function run(partnerRoundValues: number, allowShortfall: boolean) {
+    const warnings: string[] = [];
+    let outcome: unknown;
+    try {
+      outcome = checkPartnerRoundMemory({
+        partnerRoundValues,
+        allowShortfall,
+        readings: smallHost,
+        onShortfallWarning: (m) => warnings.push(m),
+      });
+    } catch (error) {
+      outcome = error;
+    }
+    return { outcome, warnings };
+  }
+
+  it("passes a partner round the process has memory for", () => {
+    const { outcome, warnings } = run(1_000, false);
+    expect(outcome).not.toBeInstanceOf(Error);
+    expect(warnings).toEqual([]);
+  });
+
+  it("refuses a partner round short of memory as this party's capacity, naming both figures and the remedies", () => {
+    const { outcome, warnings } = run(1_000_000, false);
+    expect(outcome).toBeInstanceOf(RoundCapacityError);
+    expect(outcome).toBeInstanceOf(UsageError);
+    expect((outcome as Error).message).toBe(
+      "your partner's set for one linkage key can hold up to 1,000,000 " +
+        "values, a PSI round over that many needs about 1.45 GB of memory, " +
+        "and this process has 0.51 GB (its container's memory limit), so the " +
+        "exchange stopped before any linkage key was sent and told your " +
+        "partner. Run the exchange on a host with more memory, or with a " +
+        "larger docker run --memory, or ask your partner to split their " +
+        "input into smaller files and run one exchange for each. Pass " +
+        "--allow-memory-shortfall to run anyway; the exchange may then run " +
+        "out of memory partway through, which fails it for both parties.",
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns instead under the override", () => {
+    const { outcome, warnings } = run(1_000_000, true);
+    expect(outcome).not.toBeInstanceOf(Error);
+    expect(warnings).toEqual([
+      "running with --allow-memory-shortfall: your partner's set for one " +
+        "linkage key can hold up to 1,000,000 values, a PSI round over that " +
+        "many needs about 1.45 GB of memory, and this process has 0.51 GB " +
+        "(its container's memory limit). The exchange may run out of memory " +
+        "partway through, which fails it for both parties.",
     ]);
   });
 });

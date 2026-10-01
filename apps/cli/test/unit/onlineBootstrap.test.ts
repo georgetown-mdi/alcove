@@ -3252,7 +3252,7 @@ describe("runOnlineBootstrap", () => {
     }
   });
 
-  test("refuses a first round too large for one message file before the host-key step", async () => {
+  test("refuses a file-sync first round over the per-set maximum before the host-key step", async () => {
     // Decided from this party's own input, so settled before the step whose
     // first-use probe contacts the server, on an unpinned connection.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));

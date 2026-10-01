@@ -11,26 +11,27 @@
  */
 export const MAX_FRAME_SIZE_BYTES = 536_870_888;
 
-// A conservative lower bound on the on-wire byte footprint of a LEGITIMATE
-// encrypted element, kept below the real figure so the element ceiling derived
-// from it never under-counts the legitimate maximum and so never rejects a
-// real frame.
-const MIN_ENCODED_ELEMENT_BYTES = 32;
+/**
+ * The protocol's per-set element maximum: the most encrypted elements one PSI
+ * set may hold, 2^24. A sender refuses its own set over it before sending any
+ * part, and a receiver holds an inbound set's declared byte length and its
+ * wire-format element scan (see {@link countDeclaredPsiElements} in
+ * connection/psiElementScan.ts) to it before deserialization. It is the
+ * per-side target the command-line application's heap ceiling is sized to,
+ * and it caps the worst-case deserialize allocation: docs/spec/PROTOCOL.md
+ * ("A PSI set is sent in parts"). Fixed, not operator-configurable, for the
+ * same reason as the frame-size bound.
+ */
+export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 
 /**
- * Absolute ceiling on the number of encrypted elements an inbound PSI frame
- * may DECLARE, enforced by a wire-format scan BEFORE deserialization (see
- * {@link countDeclaredPsiElements} in connection/psiElementScan.ts, called at
- * the participant.ts decode call sites). The amplification it closes, its
- * derivation from the frame cap, and what it bounds the worst-case
- * deserialize allocation to: docs/spec/PROTOCOL.md ("The single-pass dataset
- * ceiling") and docs/spec/CHANNEL_SECURITY.md ("Single-pass per-exchange
- * cap"). Fixed, not operator-configurable, for the same reason as the
- * frame-size bound.
+ * The most elements a PSI set a browser party receives from its partner may
+ * hold: the largest symmetric round the spec records as completed in a browser
+ * tab (docs/spec/PROTOCOL.md, "What a browser tab can match"). A browser party
+ * refuses a partner whose authenticated round count is over it at the terms
+ * exchange, and holds a partner's set to it when the set's first part arrives.
  */
-export const MAX_PSI_DECODE_ELEMENTS = Math.floor(
-  MAX_FRAME_SIZE_BYTES / MIN_ENCODED_ELEMENT_BYTES,
-);
+export const BROWSER_PSI_SET_MAX_ELEMENTS = 2 ** 20;
 
 /**
  * The single-pass dataset ceiling, expressed as a per-party budget on the value

@@ -487,6 +487,117 @@ test("a round refuses a setup longer than the partner's record counts admit", as
   expect(setup.byteLength).toBeLessThanOrEqual(psiSetByteBound(10));
 });
 
+/** `conn` stating `ceiling` as its ceiling on a partner's set. */
+function withSetCeiling(
+  conn: MessageConnection,
+  ceiling: number,
+): MessageConnection {
+  return {
+    send: (data) => conn.send(data),
+    receive: (timeoutMs) => conn.receive(timeoutMs),
+    close: () => conn.close(),
+    inboundPsiSetElementCeiling: () => ceiling,
+  };
+}
+
+test("a round holds a partner's setup to the connection's ceiling at its first part", async () => {
+  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+  const engine = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "server",
+    "identifier-revealing",
+  );
+  const { setup } = await engine.createServerSetup(values(10, "s"));
+  engine.dispose();
+  const [a, b] = createMessagePipe();
+  const joiner = new PSIParticipant(
+    "client",
+    psiLibrary,
+    { role: "joiner", verbose: -1 },
+    UNBOUNDED_PSI_ELEMENTS,
+  );
+  const ended = joiner
+    .identifyIntersection(withSetCeiling(b, 9), values(3, "j"))
+    .then(
+      () => "completed",
+      (err: unknown) => err,
+    );
+  // Only the first of several parts is sent: a receiver that allocated the
+  // joined set and read on would wait forever.
+  await a.send(partsOf(setup, 100)[0]);
+  const outcome = await ended;
+  joiner.dispose();
+  await a.close();
+  expect(outcome).toBeInstanceOf(ProtocolRefusalError);
+  expect((outcome as Error).message).toBe(
+    `client protocol error: inbound PSI serverSetup declares ` +
+      `${setup.byteLength} bytes, over the ${psiSetByteBound(9)} the agreed ` +
+      "record counts admit",
+  );
+  expect(decode).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["a starter holds the partner's request to it", "starter", 1, 3, "starter"],
+  ["a joiner holds the partner's setup to it", "joiner", 3, 1, "joiner"],
+  ["a joiner's own response is not held to it", "joiner", 1, 3, undefined],
+] as const)(
+  "the connection's ceiling on a partner's set: %s",
+  async (_name, ceilingRole, starterValues, joinerValues, refusedRole) => {
+    const ceiling = 2;
+    const [a, b] = createMessagePipe();
+    const participant = (role: "starter" | "joiner") =>
+      new PSIParticipant(
+        role === "starter" ? "server" : "client",
+        psiLibrary,
+        { role, verbose: -1 },
+        UNBOUNDED_PSI_ELEMENTS,
+      );
+    const starter = participant("starter");
+    const joiner = participant("joiner");
+    const run = (
+      p: PSIParticipant,
+      conn: MessageConnection,
+      set: Array<string>,
+    ): Promise<unknown> =>
+      p.identifyIntersection(conn, set).then(
+        () => "completed",
+        (err: unknown) => err,
+      );
+    const ends = {
+      starter: run(
+        starter,
+        ceilingRole === "starter" ? withSetCeiling(a, ceiling) : a,
+        values(starterValues, "s"),
+      ),
+      joiner: run(
+        joiner,
+        ceilingRole === "joiner" ? withSetCeiling(b, ceiling) : b,
+        values(joinerValues, "j"),
+      ),
+    };
+    if (refusedRole === undefined) {
+      expect(await Promise.all([ends.starter, ends.joiner])).toEqual([
+        "completed",
+        "completed",
+      ]);
+    } else {
+      const refusal = await ends[refusedRole];
+      expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+      expect((refusal as Error).message).toContain(
+        `over the ${psiSetByteBound(ceiling)} the agreed record counts admit`,
+      );
+    }
+    // The refusing side sends nothing more, so its partner is released by
+    // the close.
+    await Promise.all([a.close(), b.close()]);
+    await Promise.all([ends.starter, ends.joiner]);
+    starter.dispose();
+    joiner.dispose();
+  },
+);
+
 test.each([
   ["starter", false],
   ["starter", true],

@@ -20,6 +20,7 @@ export {
   OperatorConfigError,
   PeerAbortError,
   ProtocolRefusalError,
+  RoundCapacityError,
   RoundSetLimitError,
   StandardizationTermsError,
   TransportOperationStalledError,
@@ -120,6 +121,13 @@ export {
   scanFrameStructure,
 } from "./connection/binaryPackBounds";
 export type { FrameStructureRefusal } from "./connection/binaryPackBounds";
+// The PSI set element ceilings the front ends size to: the CLI's heap ceiling
+// is the memory a round at the protocol's maximum needs, and a browser party
+// states its own lower ceiling on its connection.
+export {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "./connection/frameSize";
 // The send-side half of the same wire. Barrelled for the same reason: both
 // WebRTC transports encode their outbound frames outside this package, and one
 // implementation has to produce the bytes a partner's BinaryPack reads.
@@ -699,6 +707,7 @@ export {
   CONFIRMING_PROTOCOL_STAGE_ID,
   InvitationTermDivergenceError,
   PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   assertAlgorithmImplemented,
   assertFirstRoundFitsFileSyncFrame,
   assertFirstRoundFitsWebRtcFrame,

@@ -826,7 +826,7 @@ of the run has been sent. Where it cannot count the set at all, it refuses the
 same way: the alert says the set could not be counted, names no bound, and
 gives the reason the count failed. Later rounds send a set larger than one
 message in parts and do not meet this refusal; a later round refuses only a
-set of this party's own over the most values any receiver admits (16,777,215),
+set of this party's own over the most values any receiver admits (16,777,216),
 before sending any of it.
 
 It is a state of its own, held apart from a connection problem: reconnecting

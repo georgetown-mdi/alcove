@@ -1091,13 +1091,14 @@ test("the envelope a binary payload is sent in is the payload plus the stated ov
   await rawPeer.close();
 });
 
-test("the outbound frame bound is forwarded, and a nested wrapper's overhead adds up", async () => {
+test("the outbound frame bound and the ceiling on a partner's set are forwarded, and a nested wrapper's overhead adds up", async () => {
   const [, rawLocal] = createMessagePipe();
   const inner: MessageConnection = {
     send: (data) => rawLocal.send(data),
     receive: (timeoutMs) => rawLocal.receive(timeoutMs),
     close: () => rawLocal.close(),
     outboundWebRtcFrameBound: () => 4096,
+    inboundPsiSetElementCeiling: () => 77,
   };
   const once = await EncryptedMessageConnection.create(
     inner,
@@ -1111,6 +1112,7 @@ test("the outbound frame bound is forwarded, and a nested wrapper's overhead add
   );
   expect(once.outboundWebRtcFrameBound()).toBe(4096);
   expect(twice.outboundWebRtcFrameBound()).toBe(4096);
+  expect(twice.inboundPsiSetElementCeiling()).toBe(77);
   expect(twice.outboundFrameOverheadBytes()).toBe(
     2 * AEAD_ENVELOPE_OVERHEAD_BYTES,
   );

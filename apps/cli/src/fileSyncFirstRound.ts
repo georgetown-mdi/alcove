@@ -12,8 +12,9 @@ const passedFileSyncFirstRoundCheck = new WeakSet<PreparedExchange>();
 const passedWebRtcFirstRoundCheck = new WeakSet<PreparedExchange>();
 
 /**
- * Refuse, on an SFTP or synced-folder connection, a first round too large for
- * one message file (`assertFirstRoundFitsFileSyncFrame`); a no-op on WebRTC,
+ * Refuse, on an SFTP or synced-folder connection, a first round with more
+ * values than one PSI set can hold (`assertFirstRoundFitsFileSyncFrame`),
+ * the set itself being sent in parts; a no-op on WebRTC,
  * whose own check runs as the transport is prepared. The refusal is decided
  * from local input, so a command runs this before the host-key step, whose
  * first-use probe contacts the server. `runProtocol` runs it again for a
@@ -32,10 +33,10 @@ export async function assertFileSyncFirstRoundFits(
 }
 
 /**
- * Refuse a first round too large for one message on the connection's channel:
- * one WebRTC message (`assertFirstRoundFitsWebRtcFrame`) or one message file
- * ({@link assertFileSyncFirstRoundFits}). As there, a prepared exchange that
- * already passed is not counted a second time.
+ * Refuse a first round too large for the connection's channel: one WebRTC
+ * message (`assertFirstRoundFitsWebRtcFrame`) or one PSI set on SFTP or a
+ * synced folder ({@link assertFileSyncFirstRoundFits}). As there, a prepared
+ * exchange that already passed is not counted a second time.
  */
 export async function assertFirstRoundFits(
   connection: Pick<ConnectionConfig, "channel">,
