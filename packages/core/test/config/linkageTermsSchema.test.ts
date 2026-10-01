@@ -1154,11 +1154,15 @@ const regexStepTerms = (fn: string, params: Record<string, unknown>) => ({
   ],
 });
 
+// A source exactly at the length cap that compiles to one character class, so
+// the weighted-size cap does not decide the two length tests below.
+const patternAtLengthCap = `[${"a".repeat(MAX_TRANSFORM_PATTERN_LENGTH - 2)}]`;
+
 test("a replace_regex pattern at the length cap parses; one over is rejected", () => {
   expect(
     safeParseLinkageTerms(
       regexStepTerms("replace_regex", {
-        pattern: "a".repeat(MAX_TRANSFORM_PATTERN_LENGTH),
+        pattern: patternAtLengthCap,
         replacement: "",
       }),
     ).success,
@@ -1184,7 +1188,7 @@ test("the pattern-length cap also covers split_on's delimiter param", () => {
   expect(
     safeParseLinkageTerms(
       regexStepTerms("split_on", {
-        delimiter: "a".repeat(MAX_TRANSFORM_PATTERN_LENGTH),
+        delimiter: patternAtLengthCap,
       }),
     ).success,
   ).toBe(true);

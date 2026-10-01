@@ -10,9 +10,11 @@ import { droppedSettingIssues } from "./unreadKeys.js";
 import { boundedArray } from "../utils/boundedArray.js";
 import { patternConformsToDialect } from "../utils/linearRegex.js";
 import {
-  linkageTermsHaveNonConformantTransformRegex,
+  findTransformRegexRefusal,
+  MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE,
   regexStepPatternParam,
 } from "./transformRegexDialect.js";
+import type { TransformRegexRefusal } from "./transformRegexDialect.js";
 import {
   transformParamAbsenceRefusals,
   transformParamTypeRefusals,
@@ -1627,29 +1629,21 @@ const linkageTermsSchema = (
         "transform a column differently on the two parties",
       path: ["linkageKeys"],
     })
-    // Reject a transform regex outside the linear-time dialect before it can
-    // run. Element-transform regex patterns are partner-controlled and
-    // execute per row over the full dataset under the linear-time engine
-    // (utils/linearRegex.ts), so they cannot backtrack catastrophically;
-    // this rejects a pattern that engine cannot compile -- fail closed,
-    // before any execution and before both parties commit to terms they
-    // could not evaluate identically. Covers every parse path
-    // (parseLinkageTerms, invitation-token decode, ExchangeSpecSchema). Full
-    // reasoning: docs/spec/CHANNEL_SECURITY.md, "Transform-regex
-    // linear-time dialect".
-    .refine(
-      (a) =>
-        !linkageTermsHaveNonConformantTransformRegex(a, {
-          maxPatternLength: MAX_TRANSFORM_PATTERN_LENGTH,
-        }),
-      {
-        message:
-          "a linkage key element transform uses a regular expression outside the " +
-          "linear-time dialect (RE2 syntax; backreferences and lookaround are not " +
-          "supported); it is rejected before any pattern executes",
-        path: ["linkageKeys"],
-      },
-    )
+    // Reject a transform regex outside the linear-time dialect, or over its
+    // weighted-size cap, before it can run. Element-transform regex patterns
+    // are partner-controlled and execute per row over the full dataset under
+    // the linear-time engine (utils/linearRegex.ts), so they cannot backtrack
+    // catastrophically, but their per-row cost grows with their size. Fail
+    // closed, before any execution and before both parties commit to the
+    // terms. Covers every parse path (parseLinkageTerms, invitation-token
+    // decode, ExchangeSpecSchema). Full reasoning:
+    // docs/spec/CHANNEL_SECURITY.md, "Transform-regex linear-time dialect".
+    .superRefine((terms, ctx) => {
+      const refusal = findTransformRegexRefusal(terms, {
+        maxPatternLength: MAX_TRANSFORM_PATTERN_LENGTH,
+      });
+      if (refusal !== undefined) ctx.addIssue(transformRegexIssue(refusal));
+    })
     // The count-only shape, one refine per rule so a document breaking one
     // is located by its own issue path and answered by its own message. The
     // rules are docs/spec/PROTOCOL.md, PSI-C; placed here so EVERY parse
@@ -1717,6 +1711,46 @@ const linkageTermsSchema = (
           path: refusal.path,
         });
     });
+
+// The issue for a refused transform pattern. Every value interpolated is a
+// position, a count, or a fixed param name from REGEX_STEP_PATTERN_PARAM, so
+// nothing the partner wrote reaches the message.
+function transformRegexIssue(refusal: TransformRegexRefusal): {
+  code: "custom";
+  message: string;
+  path: (string | number)[];
+} {
+  if (refusal.reason === "nonconformant")
+    return {
+      code: "custom",
+      message:
+        "a linkage key element transform uses a regular expression outside the " +
+        "linear-time dialect (RE2 syntax; backreferences and lookaround are not " +
+        "supported); it is rejected before any pattern executes",
+      path: ["linkageKeys"],
+    };
+  const { keyIndex, elementIndex, stepIndex, paramKey, weightedSize } = refusal;
+  return {
+    code: "custom",
+    message:
+      `the regular expression in linkageKeys[${keyIndex}].elements[${elementIndex}]` +
+      `.transform[${stepIndex}].params.${paramKey} is too large: its size is ` +
+      `${weightedSize} (compiled instructions times one plus the number of ` +
+      `capture groups), over the limit of ${MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE}. ` +
+      "Shorten it: replace a long counted repeat such as .{0,999} with .* or " +
+      "a smaller bound, and write (?:...) for a group the step does not read",
+    path: [
+      "linkageKeys",
+      keyIndex,
+      "elements",
+      elementIndex,
+      "transform",
+      stepIndex,
+      "params",
+      paramKey,
+    ],
+  };
+}
 
 /**
  * The linkage terms of a document, whose declared-type refusal states the type
