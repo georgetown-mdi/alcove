@@ -1,9 +1,11 @@
 import {
   LINKAGE_CARDINALITIES,
   ProcessState,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   getLogger,
   joinErrorCauseChain,
   parseBoundedJson,
+  sanitizeForDisplay,
 } from "@alcove/core";
 
 import {
@@ -1501,12 +1503,21 @@ async function consumeJobStream(
           break;
         }
         case "warning": {
-          // Dev-gated like onError: event.message is server/CLI-controlled,
-          // so a production console has none of it. The consumer's optional
-          // onWarning is the operator-facing slot; it renders through its
-          // own display-boundary sanitization.
-          whenDiagnostic(() => log.warn("server job warning:", event.message));
+          // Dev-gated like onError. The relayed message is unescaped text a
+          // partner value can reach, so this log escapes it once; the
+          // consumer's optional onWarning is the operator-facing slot and
+          // escapes it at its own display sink.
           const message = event.message;
+          whenDiagnostic(() =>
+            log.warn(
+              "server job warning:",
+              typeof message === "string"
+                ? sanitizeForDisplay(message, {
+                    maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+                  })
+                : message,
+            ),
+          );
           if (
             onWarning !== undefined &&
             typeof message === "string" &&
