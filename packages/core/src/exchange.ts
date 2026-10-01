@@ -2252,7 +2252,8 @@ export interface RunExchangeOptions {
   /**
    * Called once, after the terms exchange, when the two parties' advertised SFTP
    * host-key fingerprints diverge (see {@link reconcileHostKeyFingerprints}). The
-   * argument is a complete, display-safe warning naming both observed values.
+   * argument is a complete warning naming both observed values, composed raw:
+   * the caller escapes it once where it shows it.
    * Not called when the fingerprints match, when either party observed no host
    * key, or when {@link observedHostKey} was not supplied. The divergence is
    * non-fatal -- the exchange continues -- so a caller reports it as a warning

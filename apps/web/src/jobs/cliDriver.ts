@@ -7,12 +7,10 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
-  clipToRenderedCost,
   createPrivateKeyStreamRedactor,
   parseBoundedJson,
   partnerOriginText,
-  redactPrivateKeyMaterial,
+  redactAndFitUnescaped,
   sanitizeErrorChainLinks,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -584,12 +582,14 @@ const RELAY_EVENT_TYPES = new Set<RelayEventType>([
  * Validate a parsed fd-3 value against the v1 event vocabulary and sanitize every
  * string field (recursively, through arrays and nested objects) before it is
  * buffered or relayed -- defense in depth on top of the CLI's own construction-
- * time sanitizing. Returns null for anything that does not match the schema.
+ * time sanitizing -- save the two warning fields below, which the seat escapes
+ * once. Returns null for anything that does not match the schema.
  *
  * A `warning` event's own `message` keeps the wider
- * {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH} budget the CLI composed it to;
- * every other string (a stage label, a nested value, an event's own keys) takes
- * the per-value default.
+ * {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH} budget the CLI composed it to,
+ * and is taken from the CLI's text before its escape rather than escaped here
+ * ({@link relayedWarningMessage}); every other string (a stage label, a nested
+ * value, an event's own keys) is escaped at the per-value default.
  *
  * A terminal `error` event's `message` crosses as a structured chain in
  * {@link ERROR_MESSAGE_CHAIN_FIELD} instead of one flat-capped value: up to
@@ -602,7 +602,7 @@ const RELAY_EVENT_TYPES = new Set<RelayEventType>([
  * the source is dropped, then reassigned from this pass's own derivation, so no
  * source ever hands the seat a whole chain directly.
  *
- * A `payloadReceiveTaken` warning's `columns` is the one field left unescaped
+ * A `payloadReceiveTaken` warning's `columns` is the other field left unescaped
  * ({@link relayedTakenColumnNames}): the console composes its notice from those
  * names for the run view's single escape, and escapes the served field itself
  * (`withConsolePayloadReceiveTakenNotice` in `./payloadReceiveTakenNotice.ts`).
@@ -639,13 +639,15 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
       if (names !== undefined) sanitized[outKey] = names;
       continue;
     }
-    sanitized[outKey] =
-      type === "warning" && key === "message" && typeof field === "string"
-        ? sanitizeForDisplay(field, {
-            maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-          })
-        : sanitizeValue(field);
+    if (
+      type === "warning" &&
+      (key === "message" || key === UNESCAPED_MESSAGE_FIELD)
+    )
+      continue;
+    sanitized[outKey] = sanitizeValue(field);
   }
+  if (type === "warning")
+    Object.assign(sanitized, relayedWarningMessage(record));
   // Unconditional for an error event, so the field's provenance does not vary
   // with what the source sent: no string `message` is no chain to split, and an
   // empty one is inert at the seat, which then reads its flat-field fallback.
@@ -694,13 +696,49 @@ function relayedTakenColumnNames(value: unknown): Array<string> | undefined {
   const kept: Array<unknown> = value.slice(0, RELAY_TERMS_CHANGE_LIST_CAP);
   if (!kept.every((entry) => typeof entry === "string")) return undefined;
   return kept.map((entry: string) =>
-    clipToRenderedCost(
-      redactPrivateKeyMaterial(
-        boundRawFragmentForFit(entry, DEFAULT_MAX_DISPLAY_LENGTH),
-      ),
-      DEFAULT_MAX_DISPLAY_LENGTH,
-    ),
+    redactAndFitUnescaped(entry, DEFAULT_MAX_DISPLAY_LENGTH),
   );
+}
+
+/**
+ * The field of a CLI `warning` event holding its text before the CLI's escape
+ * (docs/spec/CLI_EVENTS.md, the `warning` event).
+ */
+export const UNESCAPED_MESSAGE_FIELD = "unescapedMessage";
+
+/**
+ * The `message` a relayed `warning` event takes: the CLI's
+ * {@link UNESCAPED_MESSAGE_FIELD} where it is a string, cut, redacted and
+ * fitted to {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH} but not escaped, since
+ * the seat's warning sink (`appendSanitizedRunWarning` in
+ * `../psi/runWarnings.ts`) escapes every warning it shows once. Escaping it
+ * here too would double every literal backslash on its way to the operator.
+ *
+ * Where that field is absent or not a string -- a `payloadReceiveTaken`
+ * warning, whose message the console replaces, or a child outside the CLI's
+ * shape -- the CLI's escaped `message` is escaped again as any other field
+ * is, which costs fidelity and nothing else. Neither field is relayed under
+ * its own name otherwise.
+ */
+function relayedWarningMessage(record: Record<string, unknown>): {
+  message?: unknown;
+} {
+  const unescaped = record[UNESCAPED_MESSAGE_FIELD];
+  if (typeof unescaped === "string")
+    return {
+      message: redactAndFitUnescaped(
+        unescaped,
+        WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      ),
+    };
+  const { message } = record;
+  if (typeof message === "string")
+    return {
+      message: sanitizeForDisplay(message, {
+        maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      }),
+    };
+  return message === undefined ? {} : { message: sanitizeValue(message) };
 }
 
 /** One direction of a relayed terms change, or undefined when malformed. */

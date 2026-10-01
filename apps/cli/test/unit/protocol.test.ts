@@ -7871,10 +7871,17 @@ test("a host-key divergence under --event-stream emits a warning event and still
   // interception, and a supervisor that discards child stderr on success (the
   // console job runner) would otherwise lose it -- so it must ride the fd-3
   // stream as a structured warning event, in addition to the human warn line.
+  // Core composes the notice raw, so the partner's fingerprint -- a value it
+  // advertised -- holds a backslash and a non-ASCII character here, and each
+  // sink below is held to escaping it exactly once.
   const divergence =
     "Both observed key type 'ssh-ed25519', but this party observed " +
     `fingerprint SHA256:${"A".repeat(43)} while the partner observed ` +
-    `SHA256:${"B".repeat(43)}.`;
+    `SHA256:${"B".repeat(40)}a\\b\u00e9.`;
+  const escapedOnce =
+    "Both observed key type 'ssh-ed25519', but this party observed " +
+    `fingerprint SHA256:${"A".repeat(43)} while the partner observed ` +
+    `SHA256:${"B".repeat(40)}a\\\\b\\xe9.`;
 
   vi.mocked(runExchange).mockImplementation((async (...args: unknown[]) => {
     const options = args[3] as {
@@ -7932,13 +7939,14 @@ test("a host-key divergence under --event-stream emits a warning event and still
   // The security signal of this stream, under a source of its own: a supervisor
   // alerting on it alone never has to read the prose of a routine notice.
   expect(lines[1].source).toBe("hostKeyDivergence");
-  expect(lines[1].message).toBe(divergence);
+  expect(lines[1].message).toBe(escapedOnce);
+  expect(lines[1].unescapedMessage).toBe(divergence);
   expect(lines[2].type).toBe("metrics");
   expect(lines[3].type).toBe("result");
 
-  // The stderr warn line is preserved verbatim: un-prefixed, unlike the
-  // "terms exchange:" lines onWarning produces.
-  expect(mockState.warnings).toContain(divergence);
+  // The stderr warn line is un-prefixed, unlike the "terms exchange:" lines
+  // onWarning produces, and escapes the notice once.
+  expect(mockState.warnings).toContain(escapedOnce);
 }, 20_000);
 
 test("a terms-exchange warning under --event-stream reaches the fd-3 warning event", async () => {

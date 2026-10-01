@@ -5,6 +5,8 @@ import {
 } from "./operatorSuppliedText";
 import type { DisplaySpan, OperatorSuppliedText } from "./operatorSuppliedText";
 import {
+  boundRawFragmentForFit,
+  clipToRenderedCost,
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   renderedDisplayCost,
@@ -310,6 +312,22 @@ export function redactAndSanitizeForDisplay(
   options?: SanitizeForDisplayOptions,
 ): Displayable {
   return sanitizeForDisplay(redactPrivateKeyMaterial(value), options);
+}
+
+/**
+ * `value` redacted and fitted so its single escape at the sink stays within
+ * `budget`, but not escaped, for text composed raw for a sink that escapes
+ * it once. Cut to a raw length first, since the fit measures the whole
+ * escaped form of what it is handed ({@link boundRawFragmentForFit}), then
+ * redacted, then clipped: redaction before the clip, never after, since the
+ * clip appends a truncation marker that a `BEGIN` marker left dangling in
+ * the kept prefix would consume ({@link clipToRenderedCost}).
+ */
+export function redactAndFitUnescaped(value: string, budget: number): string {
+  return clipToRenderedCost(
+    redactPrivateKeyMaterial(boundRawFragmentForFit(value, budget)),
+    budget,
+  );
 }
 
 /**

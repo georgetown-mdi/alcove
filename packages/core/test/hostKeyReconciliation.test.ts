@@ -4,6 +4,13 @@ import PSI from "@openmined/psi.js";
 
 import { reconcileHostKeyFingerprints } from "../src/hostKeyReconciliation";
 import { redactPrivateKeyMaterial } from "../src/utils/sanitizeErrorForDisplay";
+import {
+  DEFAULT_MAX_DISPLAY_LENGTH,
+  DISPLAY_TRUNCATION_MARKER,
+  WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  renderedDisplayCost,
+  sanitizeForDisplay,
+} from "../src/utils/sanitizeForDisplay";
 import { keyTypeFromBlob } from "../src/utils/sshHostKey";
 import { prepareForExchange, runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
@@ -148,18 +155,55 @@ test("a charset-conforming marker lookalike reaches the operator verbatim", () =
   expect(redactPrivateKeyMaterial(msg!)).toContain(REPIN_INSTRUCTION);
 });
 
-test("a server-controlled key type is escaped before display", () => {
+test("a server-controlled key type is composed raw for its sink's single escape", () => {
   // A partner's advertised keyType is parsed under a length bound alone and
-  // stored unsanitized, so the reconciliation must neutralise control bytes
-  // before they reach the operator's terminal.
+  // stored unsanitized. The warning keeps it raw, so the one escape its sink
+  // applies is the only pass it takes, and that pass neutralises the control
+  // bytes before they reach the operator's terminal.
   const hostile: PresentedHostKey = {
     fingerprint: KEY_RSA.fingerprint,
     keyType: "ssh-rsa\r\nINJECTED",
   };
   const msg = reconcileHostKeyFingerprints(KEY_ED25519, hostile);
   expect(msg).toBeDefined();
-  expect(msg).not.toContain("\r");
-  expect(msg).not.toContain("\n");
+  expect(msg).toContain("'ssh-rsa\r\nINJECTED'");
+  const shown = sanitizeForDisplay(msg!, {
+    maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  });
+  expect(shown).not.toContain("\r");
+  expect(shown).not.toContain("\n");
+  expect(shown).toContain("'ssh-rsa\\x0d\\x0aINJECTED'");
+});
+
+test("a partner value takes one escape at the sink, not one at composition too", () => {
+  const partner: PresentedHostKey = {
+    fingerprint: "SHA256:a\\b-caf\u00e9",
+    keyType: KEY_RSA.keyType,
+  };
+  const msg = reconcileHostKeyFingerprints(KEY_ED25519, partner);
+  expect(msg).toContain(partner.fingerprint);
+  const shown = sanitizeForDisplay(msg!, {
+    maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  });
+  expect(shown).toContain("SHA256:a\\\\b-caf\\xe9");
+  expect(shown).not.toContain("\\\\\\\\");
+});
+
+test("each observed value is fitted to the per-value budget its sink renders", () => {
+  // The partner's values are bounded on the wire by length alone, and a code
+  // point can escape to ten characters, so the fit is taken on what the sink
+  // renders rather than on the raw length.
+  const msg = reconcileHostKeyFingerprints(KEY_ED25519, {
+    fingerprint: "\u202e".repeat(100),
+    keyType: KEY_RSA.keyType,
+  });
+  const lead = "while the partner observed a 'ssh-rsa' key with fingerprint ";
+  const afterLead = msg!.slice(msg!.indexOf(lead) + lead.length);
+  const fragment = afterLead.slice(0, afterLead.indexOf(". Different key"));
+  expect(fragment.endsWith(DISPLAY_TRUNCATION_MARKER)).toBe(true);
+  expect(renderedDisplayCost(fragment)).toBeLessThanOrEqual(
+    DEFAULT_MAX_DISPLAY_LENGTH,
+  );
 });
 
 // The two parties' key types are compared verbatim, and equality is what selects

@@ -1,10 +1,9 @@
 // The encoder that builds every machine-readable JSON line the CLI prints
-// (probe-host-key --json, doctor --json). The opt-in fd-3 NDJSON event
-// stream sits outside it -- it is display-escaped at composition instead,
-// which eventStream.test.ts pins. See docs/spec/CHANNEL_SECURITY.md, SFTP
-// host-key verification, for why `JSON.stringify` alone is not enough and how
-// this stays off the display-escaping ladder (CONTRIBUTING.md,
-// Operator-facing escaping).
+// (probe-host-key --json, doctor --json, and each line of the opt-in fd-3
+// NDJSON event stream, which eventStream.test.ts pins). See
+// docs/spec/CHANNEL_SECURITY.md, SFTP host-key verification, for why
+// `JSON.stringify` alone is not enough and how this stays off the
+// display-escaping ladder (CONTRIBUTING.md, Operator-facing escaping).
 
 /** A value {@link asciiSafeJsonLine} accepts: the JSON shapes a machine-readable
  * line is built from. `undefined` is admitted for the optional-key idiom
@@ -43,7 +42,17 @@ const NON_PRINTABLE_ASCII_UNIT = /[^\x20-\x7e]/g;
  * a display escape -- see CONTRIBUTING.md, Operator-facing escaping.
  */
 export function asciiSafeJsonLine(fields: JsonLineObject): string {
-  return JSON.stringify(fields).replace(
+  return asciiSafeJsonText(JSON.stringify(fields));
+}
+
+/**
+ * `json`, text `JSON.stringify` produced, with every unit outside printable
+ * ASCII rewritten to the `\uXXXX` escape JSON defines for it, so it parses to
+ * exactly what it did before. For a caller whose value is typed by interfaces
+ * {@link JsonLineObject} cannot take -- the fd-3 event stream's.
+ */
+export function asciiSafeJsonText(json: string): string {
+  return json.replace(
     NON_PRINTABLE_ASCII_UNIT,
     (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
   );

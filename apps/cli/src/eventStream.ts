@@ -6,12 +6,10 @@ import {
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
   causeChainSome,
-  clipToRenderedCost,
   getLogger,
   redactAndSanitizeForDisplay,
-  redactPrivateKeyMaterial,
+  redactAndFitUnescaped,
 } from "@alcove/core";
 import type {
   Displayable,
@@ -28,6 +26,7 @@ import {
   INTERNAL_FAULT_EXIT_CODE,
   renderFailureForOperator,
 } from "./util/exit";
+import { asciiSafeJsonText } from "./util/jsonLine";
 import { takeLogFileLossReport } from "./util/logging";
 import { termsChangeNotTakenOf } from "./termsChangeNotTaken";
 
@@ -193,6 +192,14 @@ export interface WarningEvent extends EventBase {
   type: "warning";
   source: WarningSource;
   message: string;
+  /**
+   * The text `message` escapes, before that escape: redacted and fitted so
+   * its escaped form stays within `WARNING_MESSAGE_MAX_DISPLAY_LENGTH`, but
+   * not escaped, so a consumer that escapes what it shows makes the one pass
+   * the text takes. Present on every warning but `payloadReceiveTaken`,
+   * whose partner text is in `columns` ({@link buildWarningEvent}).
+   */
+  unescapedMessage?: string;
   /**
    * How many diagnostic lines the `--log-file` could not take; present only
    * under `source: "logFileLoss"` ({@link reportLogFileLoss}).
@@ -454,6 +461,10 @@ export function buildWarningEvent(
     message: redactAndSanitizeForDisplay(message, {
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
+    unescapedMessage: redactAndFitUnescaped(
+      message,
+      WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+    ),
   };
 }
 
@@ -475,12 +486,7 @@ export function buildPayloadReceiveTakenEvent(
     source: "payloadReceiveTaken",
     message,
     columns: shownColumns.map((name) =>
-      clipToRenderedCost(
-        redactPrivateKeyMaterial(
-          boundRawFragmentForFit(name, DEFAULT_MAX_DISPLAY_LENGTH),
-        ),
-        DEFAULT_MAX_DISPLAY_LENGTH,
-      ),
+      redactAndFitUnescaped(name, DEFAULT_MAX_DISPLAY_LENGTH),
     ),
     columnCount: toCount(columnCount),
   };
@@ -722,7 +728,10 @@ class EventStreamWriter {
     }
     if (event.type === "result" || event.type === "error")
       this.terminated = true;
-    const line = JSON.stringify(event) + "\n";
+    // Two fields hold text no escape has touched (a warning's
+    // `unescapedMessage`, a fill warning's `columns`), so the line is encoded
+    // to printable ASCII rather than left to `JSON.stringify` alone.
+    const line = asciiSafeJsonText(JSON.stringify(event)) + "\n";
     const buf = Buffer.from(line, "utf8");
     let offset = 0;
     try {
