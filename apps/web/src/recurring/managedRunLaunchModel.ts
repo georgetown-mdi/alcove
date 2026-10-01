@@ -455,13 +455,10 @@ const TOO_LARGE_RETRY_NOTE =
   "Running it again with the same files stops the same way - this is not a " +
   "connection problem.";
 
-/** The benign too-large state read back from a record: a set the last run had
- * to send was over the bound the record's `tooLargeBound` names, or could not
- * be counted where its `setUncounted` is set, so the run refused to send it.
- * The record holds no count, so this copy states the bound and not the set's
- * size; a live launch shows the refusal's own message instead
- * ({@link tooLargeFailure}). Not the retry state -- the same files refuse
- * identically. */
+/** The benign too-large state read back from a record. The record holds no
+ * count, so this copy states no size; a live launch shows the refusal's own
+ * message instead ({@link tooLargeFailure}). Not the retry state -- the same
+ * files refuse identically. */
 function recordedTooLargeFailure(
   reading: TooLargeReading,
 ): ManagedRunFailureAlert {

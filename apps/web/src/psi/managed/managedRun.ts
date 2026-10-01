@@ -290,14 +290,7 @@ export function remapLapsedRunFailure(
   return new ManagedExchangeExpiredError(record.expires as string);
 }
 
-/**
- * What a set-too-large refusal found: that the set could not be counted,
- * where the first-round check raised it with the count's failure as its
- * `cause`; otherwise the bound it was over -- one WebRTC message's bytes for
- * {@link WebRtcFrameLimitError}, and none named for a
- * {@link RoundSetLimitError}, which refused a message file's bound or the most
- * values a receiver admits.
- */
+/** What a set-too-large refusal found about the set it refused. */
 export function tooLargeReadingOf(
   error: WebRtcFrameLimitError | RoundSetLimitError,
 ): TooLargeReading {

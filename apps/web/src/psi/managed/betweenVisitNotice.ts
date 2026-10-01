@@ -222,9 +222,7 @@ function partialRotationNotice(
  * The reading rides the tag as well as the body: the two readings are different
  * standing states with different remedies, so a shortfall that becomes a
  * one-column reading says so rather than being suppressed as the state already
- * reported. The too-large notice states what the stamp records of the set:
- * the bound its `tooLargeBound` names, or that its `setUncounted` count
- * failed, which rides the tag the same way. */
+ * reported. */
 function failureNotice(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,

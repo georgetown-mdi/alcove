@@ -285,8 +285,7 @@ export interface ManagedExchangeLastRun {
   setUncounted?: true;
 }
 
-/** What a `"too-large"` failure records about the set it refused: the bound
- * the set was over, or that the set could not be counted to check it. */
+/** What a `"too-large"` failure records about the set it refused. */
 export type TooLargeReading = Pick<
   ManagedExchangeLastRun,
   "tooLargeBound" | "setUncounted"
