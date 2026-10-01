@@ -1,10 +1,8 @@
 import {
+  redactAndFitUnescaped,
   redactAndSanitizeForDisplay,
-  redactPrivateKeyMaterial,
 } from "./sanitizeErrorForDisplay";
 import {
-  boundRawFragmentForFit,
-  clipToRenderedCost,
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DEFAULT_MAX_DISPLAY_LENGTH,
 } from "./sanitizeForDisplay";
@@ -17,24 +15,15 @@ import type { Displayable } from "./sanitizeForDisplay";
  * A segment can be an object key the inviting party wrote -- Zod's
  * `invalid_key` puts a rejected record key in the path verbatim -- and the path
  * LEADS the description, so an unfitted segment spends the whole budget of the
- * link that shows it and the refusal reason behind it is cut. Redacted before
- * the fit, never after: the fit appends a truncation marker, which a `BEGIN`
- * marker left dangling in the kept prefix would consume at the sink.
- *
- * Cut to a raw length before either treatment: on the wire linkage-terms route
- * the segment is a partner-chosen `transform.params` key bounded only by the
- * transport's frame cap, and the fit measures the whole escaped form of what it
- * is handed ({@link boundRawFragmentForFit}).
+ * link that shows it and the refusal reason behind it is cut. On the wire
+ * linkage-terms route the segment is a partner-chosen `transform.params` key
+ * bounded only by the transport's frame cap, so the raw cut ahead of the fit
+ * ({@link redactAndFitUnescaped}) is required there.
  *
  * @internal not a stable public API.
  */
 export const fittedPathSegment = (segment: PropertyKey): string =>
-  clipToRenderedCost(
-    redactPrivateKeyMaterial(
-      boundRawFragmentForFit(String(segment), DEFAULT_MAX_DISPLAY_LENGTH),
-    ),
-    DEFAULT_MAX_DISPLAY_LENGTH,
-  );
+  redactAndFitUnescaped(String(segment), DEFAULT_MAX_DISPLAY_LENGTH);
 
 /**
  * Render an invitation decode/validation failure concisely, composed RAW for

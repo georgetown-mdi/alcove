@@ -7,10 +7,8 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
-  clipToRenderedCost,
+  redactAndFitUnescaped,
   redactAndSanitizeForDisplay,
-  redactPrivateKeyMaterial,
   sanitizeForDisplay,
 } from "@alcove/core";
 import { reconcileHostKeyFingerprints } from "@alcove/core/testing";
@@ -94,10 +92,8 @@ function cliWarningFields(composed: string): {
     message: redactAndSanitizeForDisplay(composed, {
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
-    unescapedMessage: clipToRenderedCost(
-      redactPrivateKeyMaterial(
-        boundRawFragmentForFit(composed, WARNING_MESSAGE_MAX_DISPLAY_LENGTH),
-      ),
+    unescapedMessage: redactAndFitUnescaped(
+      composed,
       WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     ),
   };

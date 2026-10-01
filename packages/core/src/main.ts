@@ -217,6 +217,7 @@ export {
   renderedDisplayCostKeepingLineBreaks,
   redactPrivateKeyMaterial,
   redactAndSanitizeForDisplay,
+  redactAndFitUnescaped,
   redactAndRenderOperatorSuppliedText,
   createPrivateKeyStreamRedactor,
   holdsPrivateKeyMaterial,

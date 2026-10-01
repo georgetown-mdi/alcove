@@ -7,12 +7,10 @@ import {
   DEFAULT_MAX_DISPLAY_LENGTH,
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
-  clipToRenderedCost,
   createPrivateKeyStreamRedactor,
   parseBoundedJson,
   partnerOriginText,
-  redactPrivateKeyMaterial,
+  redactAndFitUnescaped,
   sanitizeErrorChainLinks,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -698,7 +696,7 @@ function relayedTakenColumnNames(value: unknown): Array<string> | undefined {
   const kept: Array<unknown> = value.slice(0, RELAY_TERMS_CHANGE_LIST_CAP);
   if (!kept.every((entry) => typeof entry === "string")) return undefined;
   return kept.map((entry: string) =>
-    fittedUnescaped(entry, DEFAULT_MAX_DISPLAY_LENGTH),
+    redactAndFitUnescaped(entry, DEFAULT_MAX_DISPLAY_LENGTH),
   );
 }
 
@@ -728,7 +726,10 @@ function relayedWarningMessage(record: Record<string, unknown>): {
   const unescaped = record[UNESCAPED_MESSAGE_FIELD];
   if (typeof unescaped === "string")
     return {
-      message: fittedUnescaped(unescaped, WARNING_MESSAGE_MAX_DISPLAY_LENGTH),
+      message: redactAndFitUnescaped(
+        unescaped,
+        WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+      ),
     };
   const { message } = record;
   if (typeof message === "string")
@@ -738,19 +739,6 @@ function relayedWarningMessage(record: Record<string, unknown>): {
       }),
     };
   return message === undefined ? {} : { message: sanitizeValue(message) };
-}
-
-/**
- * `value` cut, redacted and fitted so the seat's escape of it stays within
- * `budget`, but not escaped. Cut to a raw length first, since the fit
- * measures the whole escaped form of what it is handed
- * (`boundRawFragmentForFit`).
- */
-function fittedUnescaped(value: string, budget: number): string {
-  return clipToRenderedCost(
-    redactPrivateKeyMaterial(boundRawFragmentForFit(value, budget)),
-    budget,
-  );
 }
 
 /** One direction of a relayed terms change, or undefined when malformed. */

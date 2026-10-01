@@ -6,12 +6,10 @@ import {
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
   causeChainSome,
-  clipToRenderedCost,
   getLogger,
   redactAndSanitizeForDisplay,
-  redactPrivateKeyMaterial,
+  redactAndFitUnescaped,
 } from "@alcove/core";
 import type {
   Displayable,
@@ -463,24 +461,11 @@ export function buildWarningEvent(
     message: redactAndSanitizeForDisplay(message, {
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
-    unescapedMessage: fittedUnescaped(
+    unescapedMessage: redactAndFitUnescaped(
       message,
       WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     ),
   };
-}
-
-/**
- * `value` redacted and fitted so its escaped form stays within `budget`, but
- * not escaped, for a field a consumer escapes once where it shows it. Cut to
- * a raw length first, since the fit measures the whole escaped form of what
- * it is handed (`boundRawFragmentForFit`).
- */
-function fittedUnescaped(value: string, budget: number): string {
-  return clipToRenderedCost(
-    redactPrivateKeyMaterial(boundRawFragmentForFit(value, budget)),
-    budget,
-  );
 }
 
 /**
@@ -501,7 +486,7 @@ export function buildPayloadReceiveTakenEvent(
     source: "payloadReceiveTaken",
     message,
     columns: shownColumns.map((name) =>
-      fittedUnescaped(name, DEFAULT_MAX_DISPLAY_LENGTH),
+      redactAndFitUnescaped(name, DEFAULT_MAX_DISPLAY_LENGTH),
     ),
     columnCount: toCount(columnCount),
   };

@@ -7,6 +7,7 @@ import {
   renderedDisplayCostKeepingLineBreaks,
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
+  redactAndFitUnescaped,
   redactAndSanitizeForDisplay,
   redactPrivateKeyMaterial,
   CAUSE_DEPTH_ELISION_MARKER,
@@ -945,6 +946,32 @@ describe("redactAndSanitizeForDisplay", () => {
     expect(redactAndSanitizeForDisplay("x".repeat(50), { maxLength: 10 })).toBe(
       sanitizeForDisplay("x".repeat(50), { maxLength: 10 }),
     );
+  });
+});
+
+describe("redactAndFitUnescaped", () => {
+  const BEGIN = "-----BEGIN OPENSSH PRIVATE KEY-----";
+  const END = "-----END OPENSSH PRIVATE KEY-----";
+  const budget = 64;
+
+  test("redacts a private-key block the raw cut lands inside", () => {
+    const body = "A".repeat(4 * budget);
+    const out = redactAndFitUnescaped(
+      `host key: ${BEGIN}${body}${END} then more text`,
+      budget,
+    );
+    expect(out).toBe("host key: [redacted private key]");
+  });
+
+  test("redacts a block the clip lands inside before clipping, keeping the truncation marker", () => {
+    const tail = ` ${"t".repeat(budget)}`;
+    const out = redactAndFitUnescaped(
+      `host key: ${BEGIN}${"A".repeat(10)}${END}${tail}`,
+      budget,
+    );
+    expect(out.startsWith("host key: [redacted private key] ttt")).toBe(true);
+    expect(out.endsWith(DISPLAY_TRUNCATION_MARKER)).toBe(true);
+    expect(out).not.toContain("AAAA");
   });
 });
 

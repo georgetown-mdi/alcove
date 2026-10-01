@@ -3,10 +3,8 @@ import fs from "node:fs";
 import {
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
-  clipToRenderedCost,
+  redactAndFitUnescaped,
   redactAndSanitizeForDisplay,
-  redactPrivateKeyMaterial,
   renderedDisplayCost,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -133,10 +131,8 @@ function cliWarningLine(
     message: redactAndSanitizeForDisplay(text, {
       maxLength: WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
-    [UNESCAPED_MESSAGE_FIELD]: clipToRenderedCost(
-      redactPrivateKeyMaterial(
-        boundRawFragmentForFit(text, WARNING_MESSAGE_MAX_DISPLAY_LENGTH),
-      ),
+    [UNESCAPED_MESSAGE_FIELD]: redactAndFitUnescaped(
+      text,
       WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
     ),
     ...extra,

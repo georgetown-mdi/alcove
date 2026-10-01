@@ -1,24 +1,9 @@
-import {
-  DEFAULT_MAX_DISPLAY_LENGTH,
-  boundRawFragmentForFit,
-  clipToRenderedCost,
-} from "./utils/sanitizeForDisplay.js";
-import { redactPrivateKeyMaterial } from "./utils/sanitizeErrorForDisplay.js";
+import { DEFAULT_MAX_DISPLAY_LENGTH } from "./utils/sanitizeForDisplay.js";
+import { redactAndFitUnescaped } from "./utils/sanitizeErrorForDisplay.js";
 import type { PresentedHostKey } from "./connection/fileSyncConnection.js";
 
-/**
- * One observed value, redacted and fitted to what a single value may render
- * to, but not escaped: the warning is composed raw for its sink's single
- * escape. Cut to a raw length first, since the fit measures the whole escaped
- * form of what it is handed ({@link boundRawFragmentForFit}).
- */
 const fittedObservedValue = (value: string): string =>
-  clipToRenderedCost(
-    redactPrivateKeyMaterial(
-      boundRawFragmentForFit(value, DEFAULT_MAX_DISPLAY_LENGTH),
-    ),
-    DEFAULT_MAX_DISPLAY_LENGTH,
-  );
+  redactAndFitUnescaped(value, DEFAULT_MAX_DISPLAY_LENGTH);
 
 /**
  * Compare the two parties' observed SFTP host keys and, on a divergence,
@@ -51,7 +36,7 @@ const fittedObservedValue = (value: string): string =>
  * The warning is composed RAW: the caller escapes it once, at the sink that
  * shows it (CONTRIBUTING.md, Operator-facing escaping). Both key types and
  * both fingerprints are still redacted and fitted to the per-value budget
- * before they enter it ({@link fittedObservedValue}) -- the partner's values
+ * before they enter it ({@link redactAndFitUnescaped}) -- the partner's values
  * arrive over the wire under a length bound alone, and a server's key type is
  * server-controlled (see {@link PresentedHostKey.keyType}). That redaction
  * runs ahead of the explanation and the out-of-band-confirm step, so the
