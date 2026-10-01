@@ -271,10 +271,10 @@ type StandardizingFn = PlainStandardizingFn | SearchChargedStandardizingFn;
 
 type PlainStandardizingFn = (value: string) => FieldValue;
 
-// A find-all regex step (replace_regex, split_on), which charges its search to
-// `scan`, the row's transform work budget, absent where no budget runs. Built
-// only through chargingItsSearch, whose tag is what tells applyStep to build
-// the budget.
+// A regex step (replace_regex, extract_regex, filter_regex, split_on,
+// parse_date), which charges its search to `scan`, the row's transform work
+// budget, absent where no budget runs. Built only through chargingItsSearch,
+// whose tag is what tells applyStep to build the budget.
 type SearchChargedStandardizingFn = ((
   value: string,
   scan: ScanBudget | undefined,
@@ -650,7 +650,7 @@ export function renderDateOutput(
 // Parse `input_format` -> YAML camelizes keys but not values, so format
 // string tokens YYYY / YY / MM / DD stay as written; delimiter characters are
 // literal. Params arrive as camelCase after camelizeKeys (e.g. inputFormat).
-function parseDateFactory(params: Params): PlainStandardizingFn {
+function parseDateFactory(params: Params): SearchChargedStandardizingFn {
   const inputFormat =
     textParam("parse_date", params, "inputFormat") ?? "MM/DD/YYYY";
   const outputFormat =
@@ -665,12 +665,12 @@ function parseDateFactory(params: Params): PlainStandardizingFn {
   // expansion through compileLinearRegex.
   const re = compileLinearRegex(source);
 
-  return (s) => {
+  return chargingItsSearch((s, scan) => {
     // Normalize before matching (see the STANDARDIZING_FUNCTIONS contract). Date
     // separators are ASCII in practice, so this is a no-op on real input, but it
     // keeps parse_date inside the same authored-pattern-matching family as the
     // other regex steps rather than a silent exception.
-    const groups = re.matchGroups(s.normalize("NFC"));
+    const groups = re.matchGroups(s.normalize("NFC"), scan);
     if (groups === null) return null;
 
     let year: string | undefined;
@@ -695,7 +695,7 @@ function parseDateFactory(params: Params): PlainStandardizingFn {
     if (!isCalendarDateValid(year, month, day)) return null;
 
     return renderDateOutput(outputFormat, year, month, day);
-  };
+  });
 }
 
 // The half-open `[start, end)` index range a `substring` step reads out of a
@@ -857,7 +857,7 @@ function replaceRegexFactory(params: Params): SearchChargedStandardizingFn {
   );
 }
 
-function extractRegexFactory(params: Params): PlainStandardizingFn {
+function extractRegexFactory(params: Params): SearchChargedStandardizingFn {
   const pattern = requiredTextParam("extract_regex", params, "pattern");
   const re = compileLinearRegex(pattern);
   // Match AND slice on the NFC-normalized value (see the STANDARDIZING_FUNCTIONS
@@ -866,17 +866,21 @@ function extractRegexFactory(params: Params): PlainStandardizingFn {
   // normalized string -- NFC can change the code-unit count, so a capture taken
   // from the original could misalign. extractFirst returns capture substrings of
   // the string it ran against, so slicing follows the normalized value for free.
-  return (s) => re.extractFirst(s.normalize("NFC"));
+  return chargingItsSearch((s, scan) =>
+    re.extractFirst(s.normalize("NFC"), scan),
+  );
 }
 
-function filterRegexFactory(params: Params): PlainStandardizingFn {
+function filterRegexFactory(params: Params): SearchChargedStandardizingFn {
   const pattern = requiredTextParam("filter_regex", params, "pattern");
   const re = compileLinearRegex(pattern);
   // NFC-normalize before testing (see the STANDARDIZING_FUNCTIONS contract) so
   // an authored-NFC pattern matches a value left non-NFC by an upstream
   // case-fold; return the original value on a match so emitted bytes for
   // already-canonical inputs are untouched.
-  return (s) => (re.test(s.normalize("NFC")) ? s : null);
+  return chargingItsSearch((s, scan) =>
+    re.test(s.normalize("NFC"), scan) ? s : null,
+  );
 }
 
 function splitOnFactory(params: Params): SearchChargedStandardizingFn {
@@ -2834,7 +2838,7 @@ function locatedStepPath(step: LocatedTransformStep): string {
   );
 }
 
-function findAllScanBudgetRefusal(
+function regexSearchBudgetRefusal(
   site: CandidateAccumulationSite,
   spent: number,
   step: LocatedTransformStep,
@@ -2863,7 +2867,7 @@ function runStandardizingFn(
     : fn(value);
 }
 
-// The budget a find-all step charges its search to, on a path that runs one.
+// The budget a regex step charges its search to, on a path that runs one.
 function scanBudget(
   work: TransformWorkMeter | undefined,
   site: CandidateAccumulationSite | undefined,
@@ -2920,7 +2924,7 @@ function transformWorkBudgetRefusal(
 // key's own, read exactly as the byte limb reads it, so a row's outcome does not
 // turn on which limb or which site the crossing landed at.
 //
-// `scanAt` is set where the charge is a find-all step's search, so the crossing
+// `scanAt` is set where the charge is a regex step's search, so the crossing
 // names that step; the fate is the same either way.
 function chargeTransformWork(
   work: TransformWorkMeter | undefined,
@@ -2941,7 +2945,7 @@ function chargeTransformWork(
   )
     throw new TransformWorkBudgetCrossed(work.spent, scanAt);
   if (scanAt !== undefined)
-    throw findAllScanBudgetRefusal(site, work.spent, scanAt);
+    throw regexSearchBudgetRefusal(site, work.spent, scanAt);
   throw transformWorkBudgetRefusal(site, work.spent);
 }
 
