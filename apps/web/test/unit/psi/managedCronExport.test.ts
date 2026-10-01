@@ -854,4 +854,55 @@ describe("the relay key registration", () => {
     expect(connection.turn).toBeUndefined();
     expect(connection.relayRegistrar).toBeUndefined();
   });
+
+  describe("an enrolled record whose invitation named a relay", () => {
+    const PARTNER_TURN = "turns:partner-relay.example.org:443?transport=tcp";
+
+    function partnerRelayedRecord(): RunnableManagedExchangeRecord {
+      return managedRecord({
+        side: "acceptor",
+        exchangeFile: composeManagedDocument(
+          { side: "acceptor", linkageTerms },
+          webrtcLocatorFromEndpoint({
+            channel: "webrtc",
+            host: "signaling.example.org",
+            relay: { turn: [PARTNER_TURN] },
+          }),
+        ),
+        relayRegistrar: REGISTRAR,
+      });
+    }
+
+    test.each<[string, () => OwnRelayRead]>([
+      ["a relay setting naming a TURN url", ownRelay([OWN_TURN])],
+      ["no relay setting", () => ({ kind: "none" })],
+      ["an unreadable relay setting", () => ({ kind: "unreadable" })],
+    ])(
+      "writes neither the registrar nor an own TURN url under %s",
+      (_case, readOwn) => {
+        const connection = exportedConfig(partnerRelayedRecord(), readOwn);
+        expect(connection.relayRegistrar).toBeUndefined();
+        expect(connection.turn).toBeUndefined();
+        expect(connection.invitationRelay).toEqual({ turn: [PARTNER_TURN] });
+        expect(selectRunRelay(connection).turn).toEqual({
+          source: "invitation",
+          urls: [PARTNER_TURN],
+        });
+      },
+    );
+
+    test("a pending re-invite registration is neither refused nor written as a marker", () => {
+      const record: RunnableManagedExchangeRecord = {
+        ...partnerRelayedRecord(),
+        relayRegistrationPendingSince: PENDING_SINCE,
+        relayRegistrationPendingReason: "reinvite",
+      };
+      expect(() =>
+        composeManagedCronExport(record, ownRelay([OWN_TURN])),
+      ).not.toThrow();
+      expect(exportedKey(record, ownRelay([OWN_TURN]))).not.toHaveProperty(
+        "relayRegistrationPendingSince",
+      );
+    });
+  });
 });

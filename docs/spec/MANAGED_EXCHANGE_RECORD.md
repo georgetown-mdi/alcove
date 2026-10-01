@@ -1473,6 +1473,13 @@ The code: `encodeManagedExchangeArtifact` and `reconstructRecordFromArtifact`
   setting this build cannot read is refused apart, naming setting it again.
   The panel's preview and its download compose from one read of the relay
   settings, so the files name the urls the panel showed.
+- **A record whose runs relay through the partner's relay writes neither.**
+  When the invitation the record was accepted from names a TURN url, a run
+  relays there and registers nothing, here or on the command line, so the
+  export writes no `connection.relay_registrar` and no own `turn` entry and
+  reads no relay setting; the configuration's `invitation_relay` is the relay
+  its runs use. Such a record is also not refused for a pending re-invite
+  registration, and its key file writes no pending marker.
 - **A re-invite's pending registration refuses the command-line export.** The
   reason has no key-file form, and the plain marker would not do: the
   registrar holds the key of the secret the re-invite replaced, which is not

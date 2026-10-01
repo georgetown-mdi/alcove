@@ -32,6 +32,17 @@ export type {
   CertificateOnlyLoadCaseId,
 } from "./records/signingIdentityDocuments.js";
 
+export {
+  COMMAND_LINE_EXPORT_LINKAGE_TERMS,
+  COMMAND_LINE_EXPORT_OWN_TURN_URL,
+  COMMAND_LINE_EXPORT_RELAY_CASES,
+  COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
+} from "./config/commandLineExportRelayDocuments.js";
+export type {
+  CommandLineExportRelayCase,
+  CommandLineExportRelayCaseId,
+} from "./config/commandLineExportRelayDocuments.js";
+
 // The key-schedule core, so the browser cross-implementation suite can run the
 // checked-in known-answer vectors through the browser build the way the Node
 // suite runs them through the Node build. It stays out of the main entry point:
