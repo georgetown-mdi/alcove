@@ -21,8 +21,7 @@ name: Dependency Audit
 # in docs/spec/DEPENDENCY_PINS.md, "npm resolution residuals".
 #
 # The whole tree reports `found 0 vulnerabilities` against the committed
-# lockfile with no root `overrides` block, so this starts from zero and a
-# nonzero result is news. It is left to
+# lockfile, so this starts from zero and a nonzero result is news. It is left to
 # fail on a finding: a scheduled workflow cannot gate a merge whatever its
 # conclusion, and a run that is green either way is a report nobody reads.
 

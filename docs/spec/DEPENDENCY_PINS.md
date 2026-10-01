@@ -86,12 +86,6 @@ with a message asking for an npm exclude entry that would be false.
   committed bytes. See
   [The vendored @openmined/psi.js addon](#the-vendored-openminedpsijs-addon).
 
-Each registry pin above is that package's current release as of 2026-10-01
-(`ssh2` 1.17.0, `ssh2-sftp-client` 12.1.1, `peerjs` 1.5.5,
-`peerjs-js-binarypack` 2.1.0, `werift` 0.24.4), so no pin holds the tree back
-from a published release; what keeps each pinned is the code reaching its
-internals.
-
 ## The vendored @openmined/psi.js addon
 
 `@openmined/psi.js` is vendored as a local tarball (`lib/openmined-psi.js-<version>.tgz`, a `file:` dependency), not a registry package, because it is an Alcove fork that ships **native N-API prebuilds** upstream does not. The prebuilds cover the platforms the CLI deploys on -- Linux x64/arm64 in both glibc and musl (Alpine) variants, macOS, and Windows x64 -- so a Node deployment loads the native backend (roughly an order of magnitude faster than WASM; see [PROTOCOL.md](PROTOCOL.md)), and any platform without a prebuild falls back to the always-correct WASM build. The browser always uses WASM.
@@ -356,10 +350,10 @@ conflict the release SBOM works around, what a root `overrides` block does to
 the lockfile it is added to or removed from and to later installs, and the
 `brace-expansion` copies the development tree holds. Their normative residue is
 short -- release step 9 runs with `--legacy-peer-deps`, the root `package.json`
-holds no `overrides` block, and CI checks stand over the first two: one watching
-for the upstream move that retires the flag, two others for the out-of-range
-edges and the split hoist an `overrides` block leaves behind. The measurement
-behind each is kept so the dead ends are not re-walked.
+holds no `overrides` block, and CI checks stand over the first two records: one
+watching for the upstream move that retires the flag, and two watching what an
+`overrides` block leaves behind, the out-of-range edges and the split hoist. The
+measurement behind each is kept so the dead ends are not re-walked.
 
 ### The crossws peer conflict blocks the release SBOM
 
