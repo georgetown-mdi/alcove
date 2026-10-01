@@ -1082,20 +1082,32 @@ test("handler: a first round too large for one message file exits 64 with no hos
     vi.mocked(establishHostKeyTrust).mockClear();
     vi.mocked(runProtocol).mockClear();
 
-    await expect(
+    const { value: raised, lines } = await captureFd3(() =>
       handler({
         _: ["sftp://userb@localhost:2222/drop", input],
         $0: "alcove",
+        "event-stream": true,
         "config-file": path.join(dir, "alcove.yaml"),
         "key-file": path.join(dir, ".alcove.key"),
         identity: "Tester",
         record: false,
         "log-level": "silent",
-      } as unknown as Arguments),
-    ).rejects.toThrow("exit:64");
+      } as unknown as Arguments).then(
+        () => undefined,
+        (err: unknown) => err,
+      ),
+    );
+    expect(raised).toEqual(new Error("exit:64"));
     expect(vi.mocked(assertFirstRoundFitsFileSyncFrame)).toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+    // The refusal ends the machine-interface stream with its terminal error.
+    expect(lines.filter((l) => l.type === "error")).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("first round too large for one file"),
+      }),
+    ]);
+    expect(lines.at(-1)?.type).toBe("error");
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1141,9 +1153,21 @@ test("handler: the memory check is decided before the first-round count", async 
     memory.mockImplementationOnce(() => {
       throw new UsageError("short of memory");
     });
-    await expect(handler(args)).rejects.toThrow("exit:64");
+    const { value: raised, lines } = await captureFd3(() =>
+      handler({ ...args, "event-stream": true } as Arguments).then(
+        () => undefined,
+        (err: unknown) => err,
+      ),
+    );
+    expect(raised).toEqual(new Error("exit:64"));
     expect(memory).toHaveBeenCalledTimes(1);
     expect(count).not.toHaveBeenCalled();
+    expect(lines.filter((l) => l.type === "error")).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("short of memory"),
+      }),
+    ]);
+    expect(lines.at(-1)?.type).toBe("error");
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
