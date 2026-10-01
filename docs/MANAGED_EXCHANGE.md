@@ -823,11 +823,15 @@ one WebRTC message under the bound the partner's side accepts (see
 The party holding the input checks this at run start, from the input's own
 record count, before connecting, and refuses a set over the bound, so nothing
 of the run has been sent. Later rounds send a set larger than one message in
-parts and do not meet this refusal.
+parts and do not meet this refusal; a later round refuses only a set of this
+party's own over the most values any receiver admits (16,777,215), before
+sending any of it.
 
 It is a state of its own, held apart from a connection problem: reconnecting
 sends the same set, so no surface offers a retry. The remedy is to split the
-input into smaller files and set up one exchange for each.
+input into smaller files and set up one exchange for each, or, for the first
+round's set, to run the exchange with the command-line application over SFTP
+or a synced folder, which allow larger messages.
 
 - **On the run screen**, an attended run shows the refusal's own message: the
   set's size, the bound, and what to do.
