@@ -259,9 +259,11 @@ export type ManagedExchangeFailureKind =
   | "terms-change"
   | "cancelled";
 
-/** Which bound a `"too-large"` refusal found a set over: `"webrtc-message"`
- * for the bytes one WebRTC message holds. */
-export type TooLargeBound = "webrtc-message";
+/** Which bound a `"too-large"` refusal found a set over: `"partner-ceiling"`
+ * for the most values the partner stated it can receive, `"webrtc-message"`
+ * for the bytes one WebRTC message holds, which only an entry an earlier build
+ * wrote names. */
+export type TooLargeBound = "partner-ceiling" | "webrtc-message";
 
 /** Run bookkeeping the backup state and the desync UX read. Every field is a
  * timestamp, a closed enum, or a marker present only as `true` -- no free-text
@@ -520,7 +522,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
     ])
     .optional(),
   singleColumnInput: z.literal(true).optional(),
-  tooLargeBound: z.enum(["webrtc-message"]).optional(),
+  tooLargeBound: z.enum(["partner-ceiling", "webrtc-message"]).optional(),
   setUncounted: z.literal(true).optional(),
   refusedInRound: z.literal(true).optional(),
 });

@@ -3263,6 +3263,7 @@ describe("runOnlineBootstrap", () => {
     };
     const refusal = new RoundSetLimitError(
       "first round too large for one file",
+      "over-set-maximum",
     );
     vi.mocked(assertFirstRoundFits).mockImplementationOnce(() => {
       throw refusal;

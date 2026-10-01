@@ -9,8 +9,8 @@
 //
 // Purpose: the terms exchange is the one round-trip both parties always perform,
 // and every piece of per-party, per-run role and bounds metadata rides its
-// envelope beside `linkageTerms` -- the record count, the declared effective key
-// count, the protocol version, the save intent, the payload-intent flag, the
+// envelope beside `linkageTerms` -- the record count, the receive ceiling, the
+// declared effective key count, the protocol version, the save intent, the payload-intent flag, the
 // observed host key, and the signing certificate a party that will sign
 // presents (docs/spec/PROTOCOL.md, The counts ride the terms exchange).
 // A partner reads that envelope by field name, so adding, renaming, dropping, or
@@ -121,6 +121,9 @@ const scenarios = [
     initiator: {
       terms: "partyA",
       recordCount: 100,
+      // A browser party's receive ceiling; a party that passes none states
+      // the protocol's per-set maximum.
+      receiveCeiling: 7_643_790,
       saveIntent: true,
       hostKey: initiatorHostKey,
       disclosesPayload: true,
@@ -254,6 +257,7 @@ function readBack(result) {
     // is optional, and "the partner named itself none" is what this pins.
     partnerIdentity: result.partnerTerms.identity ?? null,
     partnerRecordCount: result.partnerRecordCount,
+    partnerReceiveCeiling: result.partnerReceiveCeiling,
     partnerSaveIntent: result.partnerSaveIntent,
     partnerDisclosesPayload: result.partnerDisclosesPayload ?? null,
     partnerHostKey: result.partnerHostKey ?? null,
@@ -285,6 +289,8 @@ async function runScenario(scenario) {
       side.certificate === undefined
         ? undefined
         : signingCertificates[side.certificate],
+      undefined,
+      side.receiveCeiling,
     );
 
   const [initiatorResult, responderResult] = await Promise.all([
@@ -362,7 +368,8 @@ const vectors = {
     "set, field order, and values each frame slot puts on the wire, captured " +
     "off a real exchangeTerms run rather than authored. Every piece of " +
     "per-party, per-run role and bounds metadata rides this envelope beside " +
-    "`linkageTerms` -- the record count, the declared effective key count, the " +
+    "`linkageTerms` -- the record count, the receive ceiling, the declared " +
+    "effective key count, the " +
     "protocol version, the save intent, the payload-intent flag, the " +
     "observed host key, and the signing certificate a party that will sign " +
     "presents -- and a partner reads each by name, so adding, " +

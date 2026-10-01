@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import { exchangeTerms, PROTOCOL_VERSION } from "../src/protocolSetup";
+import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import {
   createMessagePipe,
@@ -85,6 +86,7 @@ async function messageThreeAbort(reasons: string[]): Promise<string> {
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION,
   });
   await connA.receive();

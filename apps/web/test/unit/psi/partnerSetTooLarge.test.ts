@@ -46,9 +46,8 @@ import type {
 } from "@psi/managed/managedExchangeRecord";
 import type { MessageConnection } from "@alcove/core";
 
-// A browser party's refusal, at the terms exchange or a set's first part, of a
-// partner whose set for a linkage key can hold more values than this browser
-// can match: its own
+// A browser party's refusal, at a set's first part, of a partner whose set for
+// a linkage key holds more values than this browser can match: its own
 // title and copy on the one-shot seats, and a non-retryable state of its own
 // on a managed exchange's record, next visit, notification, and list row.
 
@@ -127,8 +126,8 @@ describe("a managed exchange", () => {
 
   test("a partner setup refused at its first part, within the record counts but over the browser's ceiling, records the same kind rather than transport", async () => {
     // The first of two parts of a setup one byte longer than the browser's
-    // ceiling admits and well within what the record counts admit, on a
-    // connection stating the ceiling the browser's connection states.
+    // ceiling admits and well within what the record counts admit, held to
+    // the receive ceiling the browser's connection states.
     const declaredBytes = psiSetByteBound(BROWSER_PSI_SET_MAX_ELEMENTS) + 1;
     const firstPart = new Uint8Array(PSI_SET_PART_HEADER_BYTES + 1);
     const header = new DataView(firstPart.buffer);
@@ -147,7 +146,6 @@ describe("a managed exchange", () => {
           ? Promise.resolve(inbound.shift())
           : new Promise(() => {}),
       close: () => Promise.resolve(),
-      inboundPsiSetElementCeiling: () => BROWSER_PSI_SET_MAX_ELEMENTS,
     };
     const joiner = new PSIParticipant(
       "client",
@@ -158,6 +156,9 @@ describe("a managed exchange", () => {
         request: MAX_PSI_DECODE_ELEMENTS,
         response: MAX_PSI_DECODE_ELEMENTS,
       },
+      undefined,
+      undefined,
+      { local: BROWSER_PSI_SET_MAX_ELEMENTS, partner: MAX_PSI_DECODE_ELEMENTS },
     );
     const error = await joiner.identifyIntersection(conn, ["a", "b"]).then(
       () => undefined,

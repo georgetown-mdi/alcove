@@ -4,8 +4,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   ConnectionError,
-  WebRtcFrameLimitError,
-  assertFirstRoundFitsWebRtcFrame,
+  RoundSetLimitError,
+  assertFirstRoundWithinSetMaximum,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
@@ -188,8 +188,8 @@ vi.mock("@alcove/core", async (importOriginal) => {
   );
   return {
     ...actual,
-    assertFirstRoundFitsWebRtcFrame: vi.fn(
-      actual.assertFirstRoundFitsWebRtcFrame,
+    assertFirstRoundWithinSetMaximum: vi.fn(
+      actual.assertFirstRoundWithinSetMaximum,
     ),
     loadPsiBackend: vi.fn(() =>
       Promise.resolve({
@@ -861,13 +861,15 @@ describe("runManagedExchangeInBrowser", () => {
   );
 });
 
-describe("a set too large for one WebRTC message", () => {
+describe("a first round over the per-set maximum", () => {
   // A scheduled run meets this refusal with nobody watching, so it reaches the
   // classifier as the same error, and the state it lands on names splitting
   // the input rather than a retry that sends the same set again.
-  const FIRST_ROUND_REFUSAL = new WebRtcFrameLimitError(
-    "This input is too large for a WebRTC exchange: the first linkage key " +
-      "gives this party at least 9000000 values to send. Nothing was sent.",
+  const FIRST_ROUND_REFUSAL = new RoundSetLimitError(
+    "Too large to send: the first linkage key gives this party at least " +
+      "17000000 values to send, over the 16777216 one PSI set can hold. " +
+      "Nothing was sent.",
+    "over-set-maximum",
   );
 
   /** The state the run surface shows for `rejection`, classified the way the
@@ -891,7 +893,7 @@ describe("a set too large for one WebRTC message", () => {
   }
 
   test("the first-round refusal stops the run before any connection", async () => {
-    vi.mocked(assertFirstRoundFitsWebRtcFrame).mockImplementationOnce(() => {
+    vi.mocked(assertFirstRoundWithinSetMaximum).mockImplementationOnce(() => {
       throw FIRST_ROUND_REFUSAL;
     });
     acquireResources();
@@ -906,7 +908,7 @@ describe("a set too large for one WebRTC message", () => {
     if (shown.kind === "handed-off") throw new Error("expected an alert");
     expect([shown.kind, shown.title, shown.message]).toEqual([
       "too-large",
-      "Your file is too large for a browser exchange",
+      "Your file is too large to send",
       FIRST_ROUND_REFUSAL.message,
     ]);
     expect(managedRunRetryable(shown)).toBe(false);

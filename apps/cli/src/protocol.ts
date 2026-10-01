@@ -1873,10 +1873,11 @@ async function checkRunLocalInputs(params: {
   // first-round count walks the input.
   if (!memoryBudgetReported)
     checkRunMemoryBudget({ prepared, allowMemoryShortfall, log, emit });
-  // A first round too large for the channel is refused before the rendezvous
-  // is resolved, before the transport is built, and before anything is sent.
+  // A first round over the protocol's per-set maximum is refused before the
+  // rendezvous is resolved, before the transport is built, and before anything
+  // is sent.
   await withFirstRoundCountDisplay({ verbosity, logFile, log }, (report) =>
-    assertFirstRoundFits(connection, prepared, report),
+    assertFirstRoundFits(prepared, report),
   );
   if (connection.channel !== "webrtc") return { trimmedKeyFilePath };
   // Resolve the rendezvous -- broker location, ICE servers, role, and the

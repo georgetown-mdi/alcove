@@ -29,7 +29,7 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 import {
   TermsChangeRefusedError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
@@ -287,7 +287,7 @@ export function runManagedExchangeInBrowser(
           acquired.rows,
           acquired.columns,
         );
-        await assertFirstRoundFitsWebRtcFrame(prepared, { signal });
+        await assertFirstRoundWithinSetMaximum(prepared, { signal });
         const undeclaredNotice = undeclaredColumnsRunNotice(prepared);
         if (undeclaredNotice !== undefined) emitRunNotice(undeclaredNotice);
         return { prepared };

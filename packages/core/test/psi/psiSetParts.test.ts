@@ -27,6 +27,7 @@ import { sendAbort } from "../../src/protocolSetup";
 import { PSIParticipant } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
+  ownSetOverPartnerCeilingMessage,
   ownSetTooLargeMessage,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   partnerSetOverCeilingMessage,
@@ -535,17 +536,12 @@ test("a round refuses a setup longer than the partner's record counts admit", as
 });
 
 /** `conn` stating `ceiling` as its ceiling on a partner's set. */
-function withSetCeiling(
-  conn: MessageConnection,
-  ceiling: number,
-): MessageConnection {
-  return {
-    send: (data) => conn.send(data),
-    receive: (timeoutMs) => conn.receive(timeoutMs),
-    close: () => conn.close(),
-    inboundPsiSetElementCeiling: () => ceiling,
-  };
-}
+// This party's receive ceiling `local`, with the partner's at the protocol's
+// maximum.
+const localCeiling = (local: number) => ({
+  local,
+  partner: MAX_PSI_DECODE_ELEMENTS,
+});
 
 // A joiner held to `ceiling` and the setup element bound `setupBound`, fed
 // only the first of several parts of a 10-value setup: a receiver that
@@ -571,13 +567,14 @@ async function joinerFedFirstSetupPart(
     psiLibrary,
     { role: "joiner", verbose: -1 },
     { ...UNBOUNDED_PSI_ELEMENTS, setup: setupBound },
+    undefined,
+    undefined,
+    localCeiling(ceiling),
   );
-  const ended = joiner
-    .identifyIntersection(withSetCeiling(b, ceiling), values(3, "j"))
-    .then(
-      () => "completed",
-      (err: unknown) => err,
-    );
+  const ended = joiner.identifyIntersection(b, values(3, "j")).then(
+    () => "completed",
+    (err: unknown) => err,
+  );
   await a.send(partsOf(setup, 100)[0]);
   const outcome = await ended;
   joiner.dispose();
@@ -588,7 +585,7 @@ async function joinerFedFirstSetupPart(
   return { outcome, firstSent };
 }
 
-test("a round refuses a partner's setup within the record counts but over the connection's ceiling at its first part, as this party's capacity", async () => {
+test("a round refuses a partner's setup within the record counts but over this party's receive ceiling at its first part, as this party's capacity", async () => {
   const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
   const { outcome, firstSent } = await joinerFedFirstSetupPart(10, 9);
   expect(outcome).toBeInstanceOf(RoundCapacityError);
@@ -601,7 +598,7 @@ test("a round refuses a partner's setup within the record counts but over the co
   expect(decode).not.toHaveBeenCalled();
 });
 
-test("a round refuses a partner's setup over the record counts as a protocol error, whatever the connection's ceiling", async () => {
+test("a round refuses a partner's setup over the record counts as a protocol error, whatever this party's receive ceiling", async () => {
   const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
   for (const ceiling of [5, 9, 20]) {
     const { outcome, firstSent } = await joinerFedFirstSetupPart(9, ceiling);
@@ -624,7 +621,7 @@ test.each([
   ["a joiner holds the partner's setup to it", "joiner", 3, 1, "joiner"],
   ["a joiner's own response is not held to it", "joiner", 1, 3, undefined],
 ] as const)(
-  "the connection's ceiling on a partner's set: %s",
+  "this party's receive ceiling on a partner's set: %s",
   async (_name, ceilingRole, starterValues, joinerValues, refusedRole) => {
     const ceiling = 2;
     const [a, b] = createMessagePipe();
@@ -634,6 +631,9 @@ test.each([
         psiLibrary,
         { role, verbose: -1 },
         UNBOUNDED_PSI_ELEMENTS,
+        undefined,
+        undefined,
+        role === ceilingRole ? localCeiling(ceiling) : undefined,
       );
     const starter = participant("starter");
     const joiner = participant("joiner");
@@ -647,16 +647,8 @@ test.each([
         (err: unknown) => err,
       );
     const ends = {
-      starter: run(
-        starter,
-        ceilingRole === "starter" ? withSetCeiling(a, ceiling) : a,
-        values(starterValues, "s"),
-      ),
-      joiner: run(
-        joiner,
-        ceilingRole === "joiner" ? withSetCeiling(b, ceiling) : b,
-        values(joinerValues, "j"),
-      ),
+      starter: run(starter, a, values(starterValues, "s")),
+      joiner: run(joiner, b, values(joinerValues, "j")),
     };
     if (refusedRole === undefined) {
       expect(await Promise.all([ends.starter, ends.joiner])).toEqual([
@@ -741,6 +733,7 @@ test.each([
     await a.close();
 
     expect(overEnd).toBeInstanceOf(RoundSetLimitError);
+    expect((overEnd as RoundSetLimitError).reason).toBe("over-set-maximum");
     expect((overEnd as Error).message).toBe(
       ownSetTooLargeMessage(MAX_PSI_DECODE_ELEMENTS + 1),
     );
@@ -753,3 +746,127 @@ test.each([
         expect(built.length).toBeLessThanOrEqual(MAX_PSI_DECODE_ELEMENTS);
   },
 );
+
+test.each([
+  ["starter", false],
+  ["starter", true],
+  ["joiner", false],
+  ["joiner", true],
+] as const)(
+  "a %s whose own set is over the partner's stated ceiling refuses it before building it (count-only: %s)",
+  async (overRole, countOnly) => {
+    const build = [
+      vi.spyOn(InProcessPsiEngine.prototype, "createServerSetup"),
+      vi.spyOn(InProcessPsiEngine.prototype, "createClientRequest"),
+    ];
+    const [a, b] = createMessagePipe();
+    const sent: Array<unknown> = [];
+    const overConn: MessageConnection = {
+      send: (data) => {
+        sent.push(data);
+        return a.send(data);
+      },
+      receive: (timeoutMs) => a.receive(timeoutMs),
+      close: () => a.close(),
+    };
+    const partnerRole = overRole === "starter" ? "joiner" : "starter";
+    const mode = countOnly ? "count-only" : "identifier-revealing";
+    const participant = (role: "starter" | "joiner") =>
+      new PSIParticipant(
+        role === "starter" ? "server" : "client",
+        psiLibrary,
+        { role, verbose: -1 },
+        UNBOUNDED_PSI_ELEMENTS,
+        new InProcessPsiEngine(
+          psiLibrary,
+          role,
+          role === "starter" ? "server" : "client",
+          mode,
+        ),
+        undefined,
+        role === overRole
+          ? { local: MAX_PSI_DECODE_ELEMENTS, partner: 2 }
+          : undefined,
+      );
+    const over = participant(overRole);
+    const partner = participant(partnerRole);
+    const run = (
+      p: PSIParticipant,
+      conn: MessageConnection,
+      set: Array<string>,
+    ): Promise<unknown> =>
+      (countOnly
+        ? p.countIntersection(conn, set)
+        : p.identifyIntersection(conn, set)
+      ).then(
+        () => "completed",
+        (err: unknown) => err,
+      );
+    const [overEnd, partnerEnd] = await Promise.all([
+      run(over, overConn, values(3, "o")),
+      run(partner, b, values(2, "p")),
+    ]);
+    over.dispose();
+    partner.dispose();
+    await a.close();
+
+    expect(overEnd).toBeInstanceOf(RoundSetLimitError);
+    expect((overEnd as RoundSetLimitError).reason).toBe("over-partner-ceiling");
+    expect((overEnd as Error).message).toBe(
+      ownSetOverPartnerCeilingMessage(3, 2),
+    );
+    expect(sent).toEqual([
+      { decision: "abort", abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON] },
+    ]);
+    expect(partnerEnd).toBeInstanceOf(PeerAbortError);
+    for (const spy of build)
+      for (const [built] of spy.mock.calls) expect(built.length).toBe(2);
+  },
+);
+
+test("the element scan holds a partner's setup or request to this party's receive ceiling, and a response to its record counts alone", async () => {
+  const engine = (role: "starter" | "joiner") =>
+    new InProcessPsiEngine(
+      psiLibrary,
+      role,
+      role === "starter" ? "server" : "client",
+      "identifier-revealing",
+    );
+  const starterEngine = engine("starter");
+  const joinerEngine = engine("joiner");
+  const { setup } = await starterEngine.createServerSetup(values(3, "s"));
+  const request = await joinerEngine.createClientRequest(values(3, "j"));
+  const response = await starterEngine.processClientRequest(request);
+  starterEngine.dispose();
+  joinerEngine.dispose();
+  const held = (role: "starter" | "joiner") =>
+    new PSIParticipant(
+      role === "starter" ? "server" : "client",
+      psiLibrary,
+      { role, verbose: -1 },
+      UNBOUNDED_PSI_ELEMENTS,
+      undefined,
+      undefined,
+      localCeiling(2),
+    );
+  const decode = [
+    vi.spyOn(InProcessPsiEngine.prototype, "processClientRequest"),
+    vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup"),
+  ];
+
+  const starter = held("starter");
+  await expect(starter.processClientRequest(request)).rejects.toThrow(
+    new ProtocolRefusalError(
+      "server protocol error: inbound PSI request declares more than 2 " +
+        "encrypted element(s)",
+    ),
+  );
+  starter.dispose();
+  const joiner = held("joiner");
+  await expect(joiner.computeValueMatches(setup, response)).rejects.toThrow(
+    "client protocol error: inbound PSI serverSetup declares more than 2 " +
+      "encrypted element(s)",
+  );
+  joiner.dispose();
+  for (const spy of decode) expect(spy).not.toHaveBeenCalled();
+});

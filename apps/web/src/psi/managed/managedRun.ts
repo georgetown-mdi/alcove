@@ -24,7 +24,6 @@ import {
   LinkageTermsUnsatisfiableError,
   RoundCapacityError,
   TermsChangeRefusedError,
-  WebRtcFrameLimitError,
   isSetTooLargeError,
 } from "@alcove/core";
 
@@ -293,14 +292,17 @@ export function remapLapsedRunFailure(
   return new ManagedExchangeExpiredError(record.expires as string);
 }
 
-/** What a set-too-large refusal found about the set it refused. */
-export function tooLargeReadingOf(
-  error: WebRtcFrameLimitError | RoundSetLimitError,
-): TooLargeReading {
-  if (error.cause !== undefined) return { setUncounted: true };
-  if (error instanceof WebRtcFrameLimitError)
-    return { tooLargeBound: "webrtc-message" };
-  return {};
+/** What a set-too-large refusal found about the set it refused, read off
+ * the reason the refusal states. */
+export function tooLargeReadingOf(error: RoundSetLimitError): TooLargeReading {
+  switch (error.reason) {
+    case "uncounted":
+      return { setUncounted: true };
+    case "over-partner-ceiling":
+      return { tooLargeBound: "partner-ceiling" };
+    case "over-set-maximum":
+      return {};
+  }
 }
 
 /**

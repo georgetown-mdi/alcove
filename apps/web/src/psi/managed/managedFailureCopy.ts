@@ -96,6 +96,8 @@ export const WEBRTC_MESSAGE_BOUND_LABEL = `${(
 export function tooLargeSetProblem(reading: TooLargeReading): string {
   if (reading.setUncounted === true) return "could not be counted";
   switch (reading.tooLargeBound) {
+    case "partner-ceiling":
+      return "was over the most values your partner can receive";
     case "webrtc-message":
       return `was over the ${WEBRTC_MESSAGE_BOUND_LABEL} one WebRTC message can hold`;
     case undefined:
@@ -109,6 +111,8 @@ export function tooLargeFailureClause(reading: TooLargeReading): string {
   if (reading.setUncounted === true)
     return "the values built from your file could not be counted";
   switch (reading.tooLargeBound) {
+    case "partner-ceiling":
+      return "your file is too large for your partner to receive";
     case "webrtc-message":
       return "your file is too large for a browser exchange";
     case undefined:

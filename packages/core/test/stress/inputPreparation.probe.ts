@@ -16,7 +16,7 @@ import { performance } from "node:perf_hooks";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { RoundSetLimitError } from "../../src/errors";
 import {
-  assertFileSyncFirstRoundWithinSetMaximum,
+  assertFirstRoundWithinSetMaximum,
   prepareForExchange,
 } from "../../src/exchange";
 import { loadCSVFile } from "../../src/file";
@@ -121,14 +121,14 @@ async function main(): Promise<void> {
       },
     );
   const firstRound = await timed("first-round count", () =>
-    outcome(assertFileSyncFirstRoundWithinSetMaximum(prepared, { maxValues })),
+    outcome(assertFirstRoundWithinSetMaximum(prepared, { maxValues })),
   );
   const countRowsPerSecond: Array<number> = [];
   let lastMillion = 0;
   let lastMillionAt = performance.now();
   const firstRoundOneOver = await timed("first-round count, one over", () =>
     outcome(
-      assertFileSyncFirstRoundWithinSetMaximum(prepared, {
+      assertFirstRoundWithinSetMaximum(prepared, {
         maxValues: rows - 1,
         progressIntervalMs: 100,
         onProgress: (report) => {

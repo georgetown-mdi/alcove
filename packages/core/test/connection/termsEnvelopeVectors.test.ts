@@ -40,6 +40,8 @@ type LinkageTermsFixture = "partyA" | "partyB" | "unnamedParty";
 interface PartyInputs {
   terms: LinkageTermsFixture;
   recordCount: number;
+  /** Absent for a party that states the protocol's per-set maximum. */
+  receiveCeiling?: number;
   saveIntent?: boolean;
   hostKey?: PresentedHostKey;
   disclosesPayload?: boolean;
@@ -51,6 +53,7 @@ interface PartyInputs {
 interface ReadBack {
   partnerIdentity: string | null;
   partnerRecordCount: number;
+  partnerReceiveCeiling: number;
   partnerSaveIntent: boolean;
   partnerDisclosesPayload: boolean | null;
   partnerHostKey: PresentedHostKey | null;
@@ -118,6 +121,7 @@ function readBack(result: TermsExchangeResult): ReadBack {
   return {
     partnerIdentity: result.partnerTerms.identity ?? null,
     partnerRecordCount: result.partnerRecordCount,
+    partnerReceiveCeiling: result.partnerReceiveCeiling,
     partnerSaveIntent: result.partnerSaveIntent,
     partnerDisclosesPayload: result.partnerDisclosesPayload ?? null,
     partnerHostKey: result.partnerHostKey ?? null,
@@ -143,6 +147,8 @@ function drive(
     side.certificate === undefined
       ? undefined
       : vectors.signingCertificates[side.certificate],
+    undefined,
+    side.receiveCeiling,
   );
 }
 

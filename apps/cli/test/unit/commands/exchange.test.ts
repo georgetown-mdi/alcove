@@ -11,8 +11,7 @@ import {
 } from "@alcove/core";
 import {
   DEFAULT_LINKAGE_RULE_SET,
-  assertFileSyncFirstRoundWithinSetMaximum,
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   assertSharedSecretReadyForHandshake,
   computeTermsHash,
   csvDelimiterRefusal,
@@ -99,11 +98,8 @@ vi.mock("@alcove/core", async (importActual) => {
     // leak that field between tests.
     // Spy-wrapped so a test can plant the refusal the check raises on an input
     // whose first round is too large, which the stubbed preparation cannot hold.
-    assertFileSyncFirstRoundWithinSetMaximum: vi.fn(
-      actual.assertFileSyncFirstRoundWithinSetMaximum,
-    ),
-    assertFirstRoundFitsWebRtcFrame: vi.fn(
-      actual.assertFirstRoundFitsWebRtcFrame,
+    assertFirstRoundWithinSetMaximum: vi.fn(
+      actual.assertFirstRoundWithinSetMaximum,
     ),
     assertSharedSecretReadyForHandshake: vi.fn(
       actual.assertSharedSecretReadyForHandshake,
@@ -2786,11 +2782,12 @@ test("handler: a file-sync first round over the per-set maximum exits 64 with no
   // probe that contacts the server and writes the pin -- never entered.
   const input = writeSftpExchangeInputs();
 
-  vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockImplementationOnce(
-    () => {
-      throw new RoundSetLimitError("first round too large for one file");
-    },
-  );
+  vi.mocked(assertFirstRoundWithinSetMaximum).mockImplementationOnce(() => {
+    throw new RoundSetLimitError(
+      "first round too large for one file",
+      "over-set-maximum",
+    );
+  });
   vi.mocked(establishHostKeyTrust).mockClear();
   vi.mocked(runProtocol).mockReset();
   const exitSpy = captureProcessExit();
@@ -2808,9 +2805,7 @@ test("handler: a file-sync first round over the per-set maximum exits 64 with no
     expect(mockState.errors.join("\n")).toContain(
       "first round too large for one file",
     );
-    expect(
-      vi.mocked(assertFileSyncFirstRoundWithinSetMaximum),
-    ).toHaveBeenCalled();
+    expect(vi.mocked(assertFirstRoundWithinSetMaximum)).toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
   } finally {
@@ -3297,11 +3292,12 @@ test("handler: a key-file path the preflight refuses sends no wake call", async 
 test("handler: a file-sync first round over the per-set maximum sends no wake call", async () => {
   const argv = provisionedRun(minimalSFTPConfig.connection);
   const fetch = stubProvisionFetch(200);
-  vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockImplementationOnce(
-    () => {
-      throw new RoundSetLimitError("first round too large for one file");
-    },
-  );
+  vi.mocked(assertFirstRoundWithinSetMaximum).mockImplementationOnce(() => {
+    throw new RoundSetLimitError(
+      "first round too large for one file",
+      "over-set-maximum",
+    );
+  });
   try {
     await expectExchangeExit(argv, 64);
     expect(fetch).not.toHaveBeenCalled();
@@ -3310,21 +3306,24 @@ test("handler: a file-sync first round over the per-set maximum sends no wake ca
   }
 });
 
-test("handler: a webrtc first round too large for one message sends no wake call", async () => {
+test("handler: a webrtc first round over the per-set maximum sends no wake call", async () => {
   const argv = provisionedRun({
     channel: "webrtc",
     role: "acceptor",
     server: { host: "peers.example.org" },
   });
   const fetch = stubProvisionFetch(200);
-  vi.mocked(assertFirstRoundFitsWebRtcFrame).mockImplementationOnce(() => {
-    throw new RoundSetLimitError("first round too large for one message");
+  vi.mocked(assertFirstRoundWithinSetMaximum).mockImplementationOnce(() => {
+    throw new RoundSetLimitError(
+      "first round over the per-set maximum",
+      "over-set-maximum",
+    );
   });
   try {
     await expectExchangeExit(argv, 64);
     expect(fetch).not.toHaveBeenCalled();
     expect(mockState.errors.join("\n")).toContain(
-      "first round too large for one message",
+      "first round over the per-set maximum",
     );
   } finally {
     vi.unstubAllGlobals();

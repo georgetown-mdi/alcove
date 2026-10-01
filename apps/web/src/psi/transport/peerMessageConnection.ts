@@ -53,10 +53,10 @@ const DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
  * ({@link packOutboundFramesIteratively}), so a frame's element count is
  * bounded by memory rather than by the JavaScript stack, and states the same
  * byte bound as the partner's (`outboundWebRtcFrameBound`), which a PSI round
- * sizes the parts of its sets to. It states the browser's ceiling on a
- * partner's PSI set (`inboundPsiSetElementCeiling`), which the exchange holds
- * the partner's round count to at the terms exchange and each partner set to
- * when its first part arrives, both as this party's capacity.
+ * sizes the parts of its sets to. It states the browser's receive ceiling
+ * (`inboundPsiSetElementCeiling`), which the exchange states to the partner
+ * on the terms exchange and holds each partner set to when its first part
+ * arrives and at its element scan.
  *
  * If the channel never opens, the returned promise rejects and the half-open
  * channel is torn down first, since `peer.disconnect()` alone would not

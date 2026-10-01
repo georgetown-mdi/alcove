@@ -9,6 +9,7 @@ import {
   TERMS_ENVELOPE_FIELDS,
 } from "../src/protocolSetup";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
+import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
 import { ProtocolRefusalError } from "../src/errors";
 import type { LinkageTerms, Output } from "../src/config/linkageTermsSchema";
 import type { PresentedHostKey } from "../src/connection/fileSyncConnection";
@@ -169,6 +170,7 @@ test("responder flags a present-but-malformed partner hostKey without aborting",
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
     protocolVersion: PROTOCOL_VERSION,
     hostKey: { fingerprint: "x".repeat(200), keyType: "ssh-ed25519" },
@@ -190,6 +192,7 @@ test("a null partner hostKey is treated as absent, not malformed", async () => {
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
     protocolVersion: PROTOCOL_VERSION,
     hostKey: null,
@@ -212,6 +215,7 @@ test("initiator flags a present-but-malformed partner hostKey without aborting",
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
     protocolVersion: PROTOCOL_VERSION,
     hostKey: { fingerprint: "x".repeat(200), keyType: "ssh-ed25519" },
@@ -306,6 +310,7 @@ test("responder fails fast when message 1 advertises a different protocol versio
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION + 1,
   });
   // The responder relays the mismatch as its abort reason (message 2) so the
@@ -330,6 +335,7 @@ test("initiator fails fast when message 2 advertises a different protocol versio
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION + 1,
   });
   const abort = await connB.receive(); // msg 3: initiator's abort
@@ -369,6 +375,7 @@ test("initiator fails fast when message 2 advertises no protocol version", async
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
   }); // no version
   const abort = await connB.receive(); // msg 3: initiator's abort
@@ -425,6 +432,7 @@ test("responder fails fast when message 1 advertises a malformed protocol versio
     await connA.send({
       linkageTerms: termsA,
       recordCount: 100,
+      receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
       protocolVersion: bad,
     });
     const abort = await connA.receive();
@@ -448,6 +456,7 @@ test("initiator fails fast (and sends an abort) on a malformed message-2 version
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: "2", // present but garbled
   });
   const abort = await connB.receive(); // msg 3: initiator's abort -- must arrive
@@ -464,6 +473,7 @@ test("a malformed sibling field does not bury the version skew (responder path)"
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION + 1,
     save: "yes", // non-boolean: throws the strict envelope parse
   });
@@ -489,6 +499,7 @@ test("a malformed sibling field does not bury the version skew, and still aborts
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION + 1,
     save: "yes", // non-boolean: throws the strict envelope parse
   });
@@ -512,6 +523,7 @@ test("a same-version malformed sibling field still fails as a parse error, not a
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION, // MATCHES -- reconcile is a no-op
     save: "yes", // non-boolean: the strict parse must still reject this
   });
@@ -538,6 +550,7 @@ test("initiator: a same-version malformed message 2 still rejects as a protocol 
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION, // MATCHES -- reconcile is a no-op
     save: "yes", // non-boolean: the strict parse must still reject this
   });
@@ -574,6 +587,7 @@ test("a throwing protocolVersion getter degrades to no readable version", () => 
   const frame = {
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     get protocolVersion(): unknown {
       throw new Error("boom");
     },
@@ -596,6 +610,7 @@ test("initiator fails fast (and sends an abort) on message 2 versions it cannot 
         linkageTerms: termsB,
         decision: "proceed",
         recordCount: 200,
+        receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
         effectiveKeyCount: 1,
         protocolVersion: null,
       },
@@ -606,6 +621,7 @@ test("initiator fails fast (and sends an abort) on message 2 versions it cannot 
         linkageTerms: termsB,
         decision: "proceed",
         recordCount: 200,
+        receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
         effectiveKeyCount: 1,
         get protocolVersion(): unknown {
           throw new Error("boom");
@@ -641,6 +657,7 @@ test("a version mismatch is diagnosed ahead of a simultaneous terms mismatch", a
   await connA.send({
     linkageTerms: { ...termsA, algorithm: "psi-c" },
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION + 1,
   });
   const abort = await connA.receive();
@@ -734,11 +751,13 @@ test("record counts ride the terms messages, not a separate frame", async () => 
   expect(initiatorSent[0]).toMatchObject({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
   });
   expect(responderSent[0]).toMatchObject({
     linkageTerms: termsB,
     decision: "proceed",
     recordCount: 200,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
   });
 
   for (const frame of [...initiatorSent, ...responderSent]) {
@@ -776,6 +795,7 @@ test("a terms frame still holding the retired width field is ignored", async () 
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 20,
     protocolVersion: PROTOCOL_VERSION,
   });
@@ -836,6 +856,155 @@ test("responder rejects a message 1 that omits the record count", async () => {
   await expect(responder).rejects.toBeInstanceOf(ProtocolRefusalError);
 });
 
+// --- Receive ceiling ---------------------------------------------------------
+
+test("each party's receive ceiling rides its terms message and reads back as the partner's", async () => {
+  const [connA, connB] = makeConnections();
+  const { conn: recordingA, sent: initiatorSent } = recordingConnection(connA);
+  const { conn: recordingB, sent: responderSent } = recordingConnection(connB);
+  const [a, b] = await Promise.all([
+    exchangeTerms(
+      recordingA,
+      "initiator",
+      termsA,
+      100,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      7_643_790,
+    ),
+    exchangeTerms(recordingB, "responder", termsB, 200),
+  ]);
+
+  expect(initiatorSent[0]).toMatchObject({ receiveCeiling: 7_643_790 });
+  expect(responderSent[0]).toMatchObject({
+    decision: "proceed",
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+  });
+  expect(a.partnerReceiveCeiling).toBe(MAX_PSI_DECODE_ELEMENTS);
+  expect(b.partnerReceiveCeiling).toBe(7_643_790);
+});
+
+const CEILINGS_OUT_OF_BOUNDS: Array<unknown> = [
+  0,
+  -1,
+  MAX_PSI_DECODE_ELEMENTS + 1,
+  1.5,
+  "16777216",
+  null,
+];
+
+test.each(CEILINGS_OUT_OF_BOUNDS)(
+  "the responder refuses a message 1 stating a receive ceiling of %s",
+  async (receiveCeiling) => {
+    const [connA, connB] = makeConnections();
+    const responder = exchangeTerms(connB, "responder", termsB, 200);
+    await connA.send({
+      linkageTerms: termsA,
+      recordCount: 100,
+      receiveCeiling,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+    const abort = await connA.receive();
+    expect(abort).toMatchObject({ decision: "abort" });
+    expect((abort as { abortReasons?: string[] }).abortReasons?.[0]).toMatch(
+      /failed to parse: .*receiveCeiling/,
+    );
+    await expect(responder).rejects.toBeInstanceOf(ProtocolRefusalError);
+  },
+);
+
+test.each(CEILINGS_OUT_OF_BOUNDS)(
+  "the initiator refuses a message 2 stating a receive ceiling of %s",
+  async (receiveCeiling) => {
+    const [connA, connB] = makeConnections();
+    const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+    await connB.receive();
+    await connB.send({
+      linkageTerms: termsB,
+      decision: "proceed",
+      recordCount: 200,
+      receiveCeiling,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+    const err = await initiator.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConnectionError);
+    expect((err as ConnectionError).kind).toBe("protocol");
+  },
+);
+
+test("a receive ceiling at either end of its bounds is admitted", async () => {
+  for (const ceiling of [1, MAX_PSI_DECODE_ELEMENTS]) {
+    const [connA, connB] = makeConnections();
+    const [a, b] = await Promise.all([
+      exchangeTerms(
+        connA,
+        "initiator",
+        termsA,
+        100,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ceiling,
+      ),
+      exchangeTerms(
+        connB,
+        "responder",
+        termsB,
+        200,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ceiling,
+      ),
+    ]);
+    expect(a.partnerReceiveCeiling).toBe(ceiling);
+    expect(b.partnerReceiveCeiling).toBe(ceiling);
+  }
+});
+
+test("initiator aborts when a proceed frame omits the receive ceiling", async () => {
+  // Optional on the message-2 schema for the reason recordCount is: that frame
+  // doubles as the responder's abort frame.
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "proceed",
+    recordCount: 200,
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  const abort = await connB.receive();
+  expect(abort).toMatchObject({
+    decision: "abort",
+    abortReasons: ["partner omitted receive ceiling"],
+  });
+  await expect(initiator).rejects.toThrow(
+    "partner omitted receive ceiling on terms exchange",
+  );
+  await expect(initiator).rejects.toBeInstanceOf(ProtocolRefusalError);
+});
+
+test("responder rejects a message 1 that omits the receive ceiling", async () => {
+  const [connA, connB] = makeConnections();
+  const responder = exchangeTerms(connB, "responder", termsB, 200);
+  await connA.send({
+    linkageTerms: termsA,
+    recordCount: 100,
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  const abort = await connA.receive();
+  expect(abort).toMatchObject({ decision: "abort" });
+  await expect(responder).rejects.toThrow("linkage terms are incompatible");
+});
+
 // --- Incompatible terms ------------------------------------------------------
 
 test("an incompatibility rejects both parties with a message identifying the cause", async () => {
@@ -873,6 +1042,7 @@ test("responder renders partner bytes in a linkage-terms parse error escaped onc
   const responder = exchangeTerms(connB, "responder", termsB, 200);
   await connA.send({
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
     protocolVersion: PROTOCOL_VERSION,
     linkageTerms: {
@@ -956,6 +1126,7 @@ test("exchangeTerms responder: rejects (does not hang) when abort send fails on 
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
     protocolVersion: PROTOCOL_VERSION,
   });
@@ -1007,6 +1178,7 @@ async function responderAbortRender(reasons: string[]): Promise<string> {
   await connA.send({
     linkageTerms: termsA,
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     protocolVersion: PROTOCOL_VERSION,
   });
   await connA.receive();
@@ -1090,6 +1262,7 @@ test("responder refuses partner terms holding two keys that fold to one name", a
   const responder = exchangeTerms(connB, "responder", termsB, 200);
   await connA.send({
     recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
     effectiveKeyCount: 1,
     protocolVersion: PROTOCOL_VERSION,
     linkageTerms: {

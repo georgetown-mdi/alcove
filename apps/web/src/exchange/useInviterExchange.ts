@@ -7,7 +7,7 @@ import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   RoundCapacityError,
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   getLogger,
   isSetTooLargeError,
   joinErrorCauseChain,
@@ -890,7 +890,7 @@ export function useInviterExchange({
         minted.rawRows,
         minted.columns,
       );
-      await assertFirstRoundFitsWebRtcFrame(prepared, {
+      await assertFirstRoundWithinSetMaximum(prepared, {
         onProgress: onPsiProgress,
         signal,
       });
