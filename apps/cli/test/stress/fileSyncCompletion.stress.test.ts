@@ -30,16 +30,23 @@ import {
   PSI_HEAP_CEILING_FLAG,
   psiRoundMemoryNeedBytes,
 } from "../../src/psiMemoryBudget";
+import {
+  expectedResultCount,
+  expectedResultPairs,
+  nulledPopulationRows,
+  populationSsn,
+} from "./completionPopulation";
 
 // The built `alcove` exchanging over a synced folder or an SFTP server at 2^24
 // records a side, to completion (docs/spec/FILE_SYNC.md, Measured runs at
 // 2^24). Half of each side's input is shared with the other, one distinct SSN
 // a record, so each party's result is known without running the exchange: the
-// shared half, row for row. Logs the wall time and each party's peak resident
+// shared half, row for row, less the rows whose SSN the built-in
+// standardization nulls. Logs the wall time and each party's peak resident
 // set, PSI worker included. Two modes, chosen by environment variable:
 //
 // - Both parties on this host over a local directory (the default). For small
-//   sizes: at 2^24 the pair needs about 62 GB.
+//   sizes: at 2^24 the pair needs about 64 GB.
 // - One party on this host, against a partner on another
 //   (ALCOVE_STRESS_COMPLETION_PARTY=starter or joiner, with
 //   ALCOVE_STRESS_COMPLETION_URL naming the shared directory as a file:// or
@@ -81,13 +88,21 @@ const MAIN_THREAD_BYTES_PER_RECORD = 754;
 // intercept. The joiner's is the CLI's own budget, the costlier role.
 const STARTER_BYTES_PER_ELEMENT = 983;
 const STARTER_FIXED_BYTES = 142_000_000;
+// The starter's whole peak measured one party per host at 2^24 on Linux,
+// 29,913,112,576 bytes (docs/spec/FILE_SYNC.md, Measured runs at 2^24), above
+// the figure the costs give; its gate takes that peak a record plus 5%.
+const STARTER_MEASURED_PEAK_BYTES_PER_RECORD = 29_913_112_576 / 2 ** 24;
+const STARTER_PEAK_MARGIN = 1.05;
 
 function partyNeedBytes(party: PartyName): number {
-  const round =
-    party === "joiner"
-      ? psiRoundMemoryNeedBytes(ROWS)
-      : STARTER_FIXED_BYTES + STARTER_BYTES_PER_ELEMENT * ROWS;
-  return round + MAIN_THREAD_BYTES_PER_RECORD * ROWS;
+  if (party === "joiner")
+    return psiRoundMemoryNeedBytes(ROWS) + MAIN_THREAD_BYTES_PER_RECORD * ROWS;
+  const modelled =
+    STARTER_FIXED_BYTES +
+    (STARTER_BYTES_PER_ELEMENT + MAIN_THREAD_BYTES_PER_RECORD) * ROWS;
+  const measured =
+    STARTER_MEASURED_PEAK_BYTES_PER_RECORD * STARTER_PEAK_MARGIN * ROWS;
+  return Math.max(modelled, measured);
 }
 
 // macOS counts its reclaimable cache as used, so os.freemem() there reads a
@@ -101,11 +116,6 @@ function hostMemory(): { bytes: number; measure: string } {
     : { bytes: freemem(), measure: "free memory" };
 }
 
-function ssn(i: number): string {
-  const digits = String(100_000_000 + i);
-  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
-}
-
 // Rows `offset` to `offset + ROWS - 1` of one population, numbered from 1. The
 // starter's input is the population from 0, the joiner's from SHARED.
 async function writeInput(path: string, offset: number): Promise<void> {
@@ -115,7 +125,7 @@ async function writeInput(path: string, offset: number): Promise<void> {
   for (let i = 0; i < ROWS; i++) {
     const k = offset + i;
     buffered +=
-      `${i + 1},${ssn(k)},N${k % 99991},` +
+      `${i + 1},${populationSsn(k)},N${k % 99991},` +
       `${1 + (k % 12)}/${1 + (k % 28)}/${1940 + (k % 60)}\n`;
     if (buffered.length > 1 << 20) {
       if (!out.write(buffered)) await once(out, "drain");
@@ -228,9 +238,7 @@ function runParty(
 }
 
 // The first difference between a party's result and the rows a run bounded by
-// no size limit returns, or undefined when they agree. The starter's row
-// SHARED + j holds the value of the joiner's row j; a result row is the
-// party's own 1-based Person_ID, then the partner's 0-based row index.
+// no size limit returns, or undefined when they agree.
 function resultDifference(
   resultPath: string,
   party: PartyName,
@@ -242,15 +250,16 @@ function resultDifference(
       return [own, partner];
     })
     .sort((a, b) => a[0] - b[0]);
-  const expectedCount = ROWS - SHARED;
+  const nulledRows = nulledPopulationRows(ROWS + SHARED);
+  const expectedCount = expectedResultCount(ROWS, SHARED, nulledRows);
   if (pairs.length !== expectedCount)
     return `${pairs.length} matched rows, expected ${expectedCount}`;
-  for (let j = 0; j < expectedCount; j++) {
-    const expected: [number, number] =
-      party === "starter" ? [SHARED + j + 1, j] : [j + 1, SHARED + j];
+  let j = 0;
+  for (const expected of expectedResultPairs(ROWS, SHARED, party, nulledRows)) {
     const [own, partner] = pairs[j];
     if (own !== expected[0] || partner !== expected[1])
       return `matched row ${j} is ${own},${partner}, expected ${expected.join(",")}`;
+    j++;
   }
   return undefined;
 }
