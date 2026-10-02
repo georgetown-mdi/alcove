@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   DEFAULT_MAX_DISPLAY_LENGTH,
+  isProtocolGrammarName,
   pathsResolveToSameDir,
   renderedDisplayCost,
 } from "@alcove/core";
@@ -676,7 +677,7 @@ export function jobRendezvousDirs(
 }
 
 /**
- * How many entries a not-empty warning names before it counts the rest. A retain-mode
+ * How many entries a leftover-files warning names before it counts the rest. A retain-mode
  * transcript holds a file per message, so naming every entry would bury the recovery
  * the warning exists to deliver.
  *
@@ -757,9 +758,11 @@ function unresolvedRealPathNotice(
 const QUOTED_SWEEP_CONTROL = "Clear leftover exchange files";
 
 /**
- * The lead of a non-empty rendezvous directory's warning: what is wrong, the
- * console's own sweep control that clears it (never a host-side deletion), and
- * that the operator's own input and results are not what it deletes.
+ * The lead of the warning for a rendezvous directory holding exchange files --
+ * names in the exchange's own filename grammar ({@link isProtocolGrammarName}),
+ * which is what its entry guard refuses over: what is wrong, the console's own
+ * sweep control that clears it (never a host-side deletion), and that the
+ * operator's own input and results are not what it deletes.
  *
  * Wording follows `sweepExchangeFiles`, the launch's own sweep intent: a launch
  * that already turned the control on is told its state, not told to turn on what
@@ -779,7 +782,7 @@ export function notEmptyLead(
 ): string {
   const label = legNoun(leg, "directory");
   const problem =
-    " is not empty; an exchange refuses to start on an earlier run's files. ";
+    " holds an earlier exchange's files, which an exchange refuses to start on. ";
   const recovery = sweepExchangeFiles
     ? `"${QUOTED_SWEEP_CONTROL}" is on and runs first; your own input and ` +
       "results are not what it sweeps."
@@ -792,9 +795,9 @@ export function notEmptyLead(
 }
 
 /**
- * What a non-empty rendezvous directory holds, as its own warning message. Sorted,
- * because readdir order is not a promise, so the same directory reads the same way
- * twice.
+ * The exchange files a rendezvous directory holds, as their own warning message.
+ * Sorted, because readdir order is not a promise, so the same directory reads the
+ * same way twice.
  *
  * Entry names are partner-chosen and reach the operator through the display sink
  * raw, fitted by RENDERED cost. A name is shown only when it fits whole -- a
@@ -836,12 +839,65 @@ function describeRendezvousEntries(
   return `${head}${listed}${omitted > 0 ? andMoreSuffix(omitted) : ""}`;
 }
 
+/** The operator's own directories a rendezvous mount is compared against. */
+type OverlapSubject = "dataRoot" | "inputDir";
+
+const OVERLAP_SUBJECT_LABELS: Record<OverlapSubject, string> = {
+  dataRoot: "the job data root",
+  inputDir: "the work-input directory",
+};
+
+/**
+ * The one notice for a rendezvous mount that HOLDS the operator's own folders --
+ * the single-mount layout: the partner's sync copies out what is in them, so it
+ * names what leaves rather than what arrives. One notice whichever of the data
+ * root and the work-input directory it holds, since on that layout they are
+ * usually one folder.
+ */
+function sharedFolderExposureNotice(
+  rendezvousDir: string,
+  leg: RendezvousLeg,
+  held: ReadonlySet<OverlapSubject>,
+): string {
+  const label = legNoun(leg, "directory");
+  const contents =
+    held.has("inputDir") && held.has("dataRoot")
+      ? "input file, configuration and results"
+      : held.has("inputDir")
+        ? "input file"
+        : "configuration and results";
+  const exposure =
+    ` holds your ${contents}, so whoever syncs it gets them. Give the shared ` +
+    `folder its own mount with ${JOB_RENDEZVOUS_DIR_ENV} and restart the console.`;
+  return fitNotice(
+    `${label} ${rendezvousDir}${exposure}`,
+    `${label}${exposure}`,
+  );
+}
+
+/** The notice for a rendezvous mount nested INSIDE one of the operator's
+ * folders: the partner's sync reaches that subfolder, so what is at stake is
+ * their writes landing among the operator's files, not the files beside it. */
+function nestedRendezvousNotice(
+  rendezvousDir: string,
+  leg: RendezvousLeg,
+  subject: OverlapSubject,
+): string {
+  const label = legNoun(leg, "directory");
+  const nested =
+    ` is inside ${OVERLAP_SUBJECT_LABELS[subject]}; a partner's sync writes ` +
+    "land among your own files there";
+  return fitNotice(`${label} ${rendezvousDir}${nested}`, `${label}${nested}`);
+}
+
 /**
  * The preflight warnings for a filedrop job's rendezvous directory, reported
  * through the job's warning channel at start. Defensive, never fatal: a missing,
- * non-directory, non-writable, unlistable, or non-empty mount only warns, and an
- * overlap with the input directory or data root warns rather than refuses -- the
- * operator's own directory layout is theirs to choose.
+ * non-directory, non-writable, or unlistable mount, or one holding files the
+ * exchange's entry guard would refuse over, only warns, and an overlap with the
+ * input directory or data root warns rather than refuses -- the operator's own
+ * directory layout is theirs to choose. An overlap raises one notice per leg,
+ * not one per directory it overlaps.
  *
  * Overlap and real-path checks run over each path as configured and as symlinks
  * resolve it ({@link resolvePathForms}); an unreadable side falls back to the
@@ -907,7 +963,8 @@ export function rendezvousStartupWarnings(
           .readdirSync(rendezvousDir)
           .filter(
             (entry) =>
-              path.resolve(rendezvousDir, entry) !== path.resolve(jobWorkdir),
+              path.resolve(rendezvousDir, entry) !== path.resolve(jobWorkdir) &&
+              isProtocolGrammarName(entry),
           )
           .sort();
       } catch {
@@ -930,25 +987,28 @@ export function rendezvousStartupWarnings(
   }
 
   const rendezvousPaths = resolvePathForms(rendezvousDir);
-  const overlaps: Array<[string, string]> = [[dataRoot, "the job data root"]];
-  if (jobInputDir !== undefined)
-    overlaps.push([jobInputDir, "the work-input directory"]);
-  for (const [other, otherLabel] of overlaps) {
+  const others: Array<[string, OverlapSubject]> = [[dataRoot, "dataRoot"]];
+  if (jobInputDir !== undefined) others.push([jobInputDir, "inputDir"]);
+  const held = new Set<OverlapSubject>();
+  const nestedIn: Array<OverlapSubject> = [];
+  for (const [other, subject] of others) {
     const otherPaths = resolvePathForms(other);
-    if (pathFormsOverlap(rendezvousPaths, otherPaths))
-      warnings.push(
-        fitNotice(
-          `${label} ${rendezvousDir} overlaps ${otherLabel} ` +
-            `(${otherPaths.resolved}); a partner's sync writes would reach it`,
-          `${label} overlaps ${otherLabel}; a partner's sync ` +
-            "writes would reach it",
-        ),
-      );
+    if (pathFormsContain(rendezvousPaths, otherPaths)) held.add(subject);
+    else if (pathFormsContain(otherPaths, rendezvousPaths))
+      nestedIn.push(subject);
     if (!otherPaths.canonicalized)
       warnings.push(
-        unresolvedRealPathNotice(otherLabel, otherPaths.resolved, label),
+        unresolvedRealPathNotice(
+          OVERLAP_SUBJECT_LABELS[subject],
+          otherPaths.resolved,
+          label,
+        ),
       );
   }
+  if (held.size > 0)
+    warnings.push(sharedFolderExposureNotice(rendezvousDir, leg, held));
+  else if (nestedIn.length > 0)
+    warnings.push(nestedRendezvousNotice(rendezvousDir, leg, nestedIn[0]));
   if (!rendezvousPaths.canonicalized)
     warnings.push(unresolvedRealPathNotice(label, rendezvousDir));
   return warnings;

@@ -16,10 +16,10 @@
 // Not re-exported wholesale by the package barrel (main.ts barrels
 // fileSyncConnection.ts, not this file), so an `@internal` export here
 // stays out of the public runtime surface while a unit test can still
-// deep-import it -- the same pattern as fileSyncConstants.ts. Three
+// deep-import it -- the same pattern as fileSyncConstants.ts. Four
 // recognizers are public: isAbortMarkerName and isExpectedAbortName,
 // re-exported from fileSyncConnection.ts (which IS barrelled), and
-// isProtocolTempName, named individually by main.ts.
+// isProtocolTempName and isProtocolGrammarName, named individually by main.ts.
 
 import {
   v4 as uuidv4,
@@ -248,7 +248,6 @@ export const isExpectedAbortName = (
 // foreign: at the no-flag entry guard it is unexpected (rejected), and
 // under --sweep-exchange-files it is swept. A `temp-*.tmp` whose stem is
 // not a v4 UUID fails the grammar here and is treated as foreign.
-/** @internal */
 export const isProtocolGrammarName = (name: string): boolean => {
   if (isProtocolTempName(name)) return true;
   if (!name.endsWith(".json")) return false;

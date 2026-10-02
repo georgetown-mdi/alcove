@@ -18,6 +18,7 @@ import { ConnectionTuningCard } from "@console/ConnectionTuningCard";
 import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { SftpConnectionCard } from "@console/SftpConnectionCard";
+import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
 import { splitDirectoryRetainProblem } from "@console/sftpConnectionChoice";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
@@ -164,45 +165,53 @@ export function DirectServerSection({
           onCleared={onClearConnection}
         />
       ) : rendezvousConfigured ? (
-        <Text size="sm">
-          {/* Named only where the console can name the shared folder: where the
+        <>
+          <Text size="sm">
+            {/* Named only where the console can name the shared folder: where the
               rendezvous mount point was chosen by a launcher rather than by the
               operator, it names the launcher's layout, not their folder. */}
-          {rendezvous.split === true ? (
-            <>
-              Runs through the two shared folders mounted on this console: it
-              reads your partner&apos;s files out of one and writes yours into
-              the other.{" "}
-              {rendezvous.folderName !== undefined &&
-              rendezvous.outboundFolderName !== undefined ? (
-                <>
-                  You read from{" "}
-                  <span className={styles.mono}>{rendezvous.folderName}</span>{" "}
-                  and write to{" "}
-                  <span className={styles.mono}>
-                    {rendezvous.outboundFolderName}
-                  </span>
-                  .{" "}
-                </>
-              ) : null}
-              Point your partner&apos;s console at the same two folders, the
-              other way round.
-            </>
-          ) : (
-            <>
-              {rendezvous.folderName === undefined ? (
-                <>Runs through the shared directory mounted on this console.</>
-              ) : (
-                <>
-                  Runs through the shared directory{" "}
-                  <span className={styles.mono}>{rendezvous.folderName}</span>{" "}
-                  on this console.
-                </>
-              )}{" "}
-              Point your partner&apos;s console at the same synced folder.
-            </>
-          )}
-        </Text>
+            {rendezvous.split === true ? (
+              <>
+                Runs through the two shared folders mounted on this console: it
+                reads your partner&apos;s files out of one and writes yours into
+                the other.{" "}
+                {rendezvous.folderName !== undefined &&
+                rendezvous.outboundFolderName !== undefined ? (
+                  <>
+                    You read from{" "}
+                    <span className={styles.mono}>{rendezvous.folderName}</span>{" "}
+                    and write to{" "}
+                    <span className={styles.mono}>
+                      {rendezvous.outboundFolderName}
+                    </span>
+                    .{" "}
+                  </>
+                ) : null}
+                Point your partner&apos;s console at the same two folders, the
+                other way round.
+              </>
+            ) : (
+              <>
+                {rendezvous.folderName === undefined ? (
+                  <>
+                    Runs through the shared directory mounted on this console.
+                  </>
+                ) : (
+                  <>
+                    Runs through the shared directory{" "}
+                    <span className={styles.mono}>{rendezvous.folderName}</span>{" "}
+                    on this console.
+                  </>
+                )}{" "}
+                Point your partner&apos;s console at the same synced folder.
+              </>
+            )}
+          </Text>
+          <SharedFolderExposureNotice
+            rendezvous={rendezvous}
+            mintsInvitation={false}
+          />
+        </>
       ) : (
         <Alert
           color="blue"

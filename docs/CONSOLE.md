@@ -18,16 +18,25 @@ The published `ghcr.io/georgetown-mdi/alcove` image is the console: it is built 
 
 ## Running the container
 
-Pass `serve` as the first argument to run the single-party console instead of the headless CLI (see [Running the CLI](DEPLOYMENT.md#running-the-cli)). The image bakes the `console` web build (see [The image and the console build](#the-image-and-the-console-build)), so no build-time configuration is needed; the Nitro server listens on port 3000. Publish that port to the host loopback so the console is reachable only from the operator's own machine. The simplest console is a single mount and a single environment variable; run it in the foreground and stop it with Ctrl-C when the exchange is done, since nothing needs to persist between exchanges (results stay in the mounted directory):
+Pass `serve` as the first argument to run the single-party console instead of the headless CLI (see [Running the CLI](DEPLOYMENT.md#running-the-cli)). The image bakes the `console` web build (see [The image and the console build](#the-image-and-the-console-build)), so no build-time configuration is needed; the Nitro server listens on port 3000. Publish that port to the host loopback so the console is reachable only from the operator's own machine. Run it in the foreground and stop it with Ctrl-C when the exchange is done, since nothing needs to persist between exchanges (results stay in the mounted directory).
+
+For a shared-directory exchange, mount your working folder and the shared folder separately:
 
 ```sh
 docker run --rm -p 127.0.0.1:3000:3000 \
   --env JOB_DATA_ROOT=/data \
   -v /host/work:/data \
+  --env JOB_RENDEZVOUS_DIR=/shared \
+  --env JOB_RENDEZVOUS_NAME=agency-a-agency-b \
+  -v /host/agency-a-agency-b:/shared \
   ghcr.io/georgetown-mdi/alcove:latest serve
 ```
 
-The operator drops their input CSVs into `/host/work`, and a shared-directory exchange rendezvouses there too. Splitting those into separate mounts is recommended for the rendezvous directory, because it is partner-synced (see [Mounted work-input directory](#mounted-work-input-directory)):
+The operator drops their input CSVs into `/host/work`; `/host/agency-a-agency-b` is the folder their sync tool shares with the partner, and `JOB_RENDEZVOUS_NAME` is the name an invitation tells the partner to look for (see below).
+
+For a browser-to-browser or SFTP exchange, which syncs no folder with the partner, the single mount is enough: leave out the three shared-folder lines. A shared-directory exchange still runs on the single mount, out of `JOB_DATA_ROOT` -- but then this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results. The console says so where you choose the shared-directory transport, with the flags above, and once more when the run starts; it does not refuse the run (see [Mounted work-input directory](#mounted-work-input-directory)).
+
+Inputs can have a mount of their own as well, which can be read-only:
 
 ```sh
 docker run --rm \
@@ -92,13 +101,17 @@ The console lists this party's input CSVs out of `JOB_INPUT_DIR`, falling back t
 
 Beside the file list is "How your file separates fields", the same control the web application offers: the comma it starts on, the other common separators, and a detect option that takes the separator from the file. The console profiles the selected file by that choice, so the columns you confirm are the columns the exchange reads, and it states the choice as [`csv_delimiter`](EXCHANGE_REFERENCE.md#csv_delimiter) in the configuration it composes, so the result comes back separated the same way. Changing the choice after you have selected a file re-profiles it and asks you to confirm the columns again. Every flow that picks a file offers it, Direct exchange included; there the choice reaches the run as the `--csv-delimiter` flag rather than a configuration key, and the recurring-run command the console hands back states it.
 
-A shared-directory (`filedrop`) exchange runs over the rendezvous directory at `JOB_RENDEZVOUS_DIR`, which the remote partner writes into over the synced folder; it too falls back to `JOB_DATA_ROOT` when unset, so the single-folder console rendezvouses out of the data root. Setting `JOB_RENDEZVOUS_DIR` to a dedicated mount -- separate from, and not nested with, the working directory that holds your key, input, and results -- is recommended, because the rendezvous directory is partner-writable: a dedicated mount keeps the partner's write access to the rendezvous mailbox and away from your own secrets. The console warns at job start when the rendezvous path overlaps the work-input directory or the data root (as it does in the single-folder layout), but the operator's own directory layout is theirs to choose, so the exchange still runs; a dedicated rendezvous directory is the reliable safeguard, not a requirement.
+A shared-directory (`filedrop`) exchange runs over the rendezvous directory at `JOB_RENDEZVOUS_DIR`, which the remote partner's sync tool keeps in step with their copy; it too falls back to `JOB_DATA_ROOT` when unset, so the single-folder console rendezvouses out of the data root. The sync runs both ways: what your partner writes arrives in the folder, and everything already in it -- on the single-folder layout, your input, configuration and results -- goes to your partner. Setting `JOB_RENDEZVOUS_DIR` to a dedicated mount, separate from and not nested with the working directory that holds your key, input, and results, is recommended for that reason.
 
-The console also warns at job start when the rendezvous directory is not empty, naming what it holds. Every shared-directory exchange on this console rendezvouses out of the same mount, and an exchange refuses to start on files an earlier exchange left there -- which a run you asked to keep its files (retain mode) leaves behind after finishing normally, no crash required.
+- Where you choose the shared-directory transport on a single-folder console -- creating an invitation, accepting one, or a Direct exchange -- the console shows one warning: this console's shared folder is the folder holding your files, whoever syncs it gets your input, configuration and results, and the docker flags that give the shared folder its own mount. When creating an invitation it also names the folder as the invitation will give it to your partner, which on the single-folder layout is the container's mount point rather than your folder's name.
+- At job start the same layout raises one warning per rendezvous folder, saying what it holds and naming `JOB_RENDEZVOUS_DIR`. A rendezvous folder nested inside your working directory raises a narrower one, since the partner's sync reaches that subfolder rather than the files beside it.
+- The operator's own directory layout is theirs to choose, so each is a warning and the exchange still runs; a dedicated rendezvous directory is the reliable safeguard, not a requirement.
+
+The console also warns at job start when the rendezvous directory holds files an earlier exchange left there, naming them. Every shared-directory exchange on this console rendezvouses out of the same mount, and an exchange refuses to start on such files -- which a run you asked to keep its files (retain mode) leaves behind after finishing normally, no crash required.
 
 - The warning points you at the console's own recovery for it: turn on "Clear leftover exchange files before starting" in the Diagnostics and recovery section and start the run again -- the sweep runs first, over the exchange's own files, without leaving the GUI. Deleting them on the host before the next launch does the same job.
 - A launch that already has that control on is told so instead -- the warning still names what the mount holds, and says the sweep runs first and that your own input and results are not what it sweeps.
-- Files that are not part of an exchange -- your input CSVs, your results, the per-job working directories -- are not what the refusal is about, so the warning names them without asking you to remove them, and the launch stays your call.
+- Files that are not part of an exchange -- your input CSVs, your configuration, your results, the per-job working directories -- are not what the refusal is about, so they raise no warning and are not named. The exchange's own filename grammar decides which files count, the same classification its entry guard and the sweep use.
 - It reaches every console surface that watches an exchange run: the flow that mints an invitation, the flow that accepts a partner's, Direct exchange, and the panel that reconnects to an exchange already under way. That enumeration is about which surfaces display a warning, not a promise that every notice arrives whole: the console escapes each warning and caps its displayed length, so a long one -- a notice relayed from the CLI rather than raised by the console itself -- can reach the seat abbreviated.
 
 ### A column name the console cannot record

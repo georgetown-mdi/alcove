@@ -91,6 +91,10 @@ export type {
 // whether a path handed to safeDelete is the protocol's own in-flight temp
 // write.
 export { isProtocolTempName } from "./connection/fileSyncNames";
+// The protocol filename grammar, named individually for the console's start-of-run
+// notice, which asks for a sweep only when the rendezvous folder holds a file the
+// entry guard would refuse over -- by the guard's own classification.
+export { isProtocolGrammarName } from "./connection/fileSyncNames";
 // The file name byte limit, named individually for the CLI's directory-listing
 // guard, which bounds each listed name by it.
 export { MAX_FILE_NAME_BYTES } from "./connection/fileSyncRendezvous";
