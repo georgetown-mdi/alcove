@@ -112,10 +112,32 @@ const SENTINEL_HANDOFF_TIMEOUT_MS = 2_000;
  */
 const CHANNEL_CLOSE_TIMEOUT_MS = 2_000;
 
+/**
+ * Bytes the send path lets wait in the data channel's buffer before it stops
+ * handing over datagrams, and the level it resumes at. werift does work per
+ * buffered message on every acknowledgement it processes, so handing it a
+ * whole frame at once grows that work with the frame and starves the event
+ * loop that answers ICE consent checks; the window keeps it to a few dozen
+ * messages. werift's `bufferedAmount` falls only when its whole queue has gone
+ * out, so the low mark is reached in one step rather than gradually.
+ */
+const SEND_WINDOW_BYTES = 1024 * 1024;
+const SEND_WINDOW_LOW_BYTES = 256 * 1024;
+
+/**
+ * How often a send waiting on the window re-reads the channel even without a
+ * low-buffer event, so a channel that closes or a peer that goes while the
+ * buffer is full ends the wait.
+ */
+const SEND_WINDOW_POLL_INTERVAL_MS = 250;
+
 export interface WebRtcMessageConnectionOptions {
   inactivityTimeoutMs?: number;
   closeFlushTimeoutMs?: number;
   channelCloseTimeoutMs?: number;
+  /** Outbound window bounds; tests only. */
+  sendWindowBytes?: number;
+  sendWindowLowBytes?: number;
   /** Per-bound overrides for the inbound reassembler; tests only. Its
    * `maxFrameBytes` is also the bound the connection states for the partner's
    * receive path (`outboundWebRtcFrameBound`), which a PSI round sizes the parts of its
@@ -203,12 +225,56 @@ export function webRtcMessageConnection(
     options?.closeFlushTimeoutMs ?? DEFAULT_CLOSE_FLUSH_TIMEOUT_MS;
   const channelCloseTimeoutMs =
     options?.channelCloseTimeoutMs ?? CHANNEL_CLOSE_TIMEOUT_MS;
+  const sendWindowBytes = options?.sendWindowBytes ?? SEND_WINDOW_BYTES;
+  const sendWindowLowBytes =
+    options?.sendWindowLowBytes ?? SEND_WINDOW_LOW_BYTES;
 
   return new QueuedMessageConnection(
     (controls) => {
       const encoder = new PeerJsFrameEncoder();
       const bounds = new BoundedInboundFrames(options?.inboundBounds);
       let peerCloseRead = false;
+      let sendStopped = false;
+      let sendQueue: Promise<void> = Promise.resolve();
+      let wakeSender: (() => void) | undefined;
+      const wake = (): void => wakeSender?.();
+      channel.bufferedAmountLowThreshold = sendWindowLowBytes;
+      channel.addEventListener("bufferedamountlow", wake);
+
+      // Resolves once the channel's buffer has fallen to the low mark, or once
+      // there is nothing left to send to; the caller re-reads which.
+      const bufferDrained = (): Promise<void> =>
+        new Promise((resolve) => {
+          const poll = setTimeout(done, SEND_WINDOW_POLL_INTERVAL_MS);
+          poll.unref();
+          wakeSender = done;
+          function done(): void {
+            clearTimeout(poll);
+            wakeSender = undefined;
+            resolve();
+          }
+        });
+
+      const sendable = (): boolean =>
+        !sendStopped && channel.readyState === "open" && session.isConnected();
+
+      const sendCut = (): ConnectionError =>
+        new ConnectionError(
+          "the connection to the exchange partner closed before a message " +
+            "could be sent",
+          "transport",
+        );
+
+      const sendFrame = async (data: unknown): Promise<void> => {
+        for (const datagram of encoder.encode(data)) {
+          while (channel.bufferedAmount >= sendWindowBytes) {
+            if (!sendable()) throw sendCut();
+            await bufferDrained();
+          }
+          if (sendStopped) throw sendCut();
+          channel.send(Buffer.from(datagram));
+        }
+      };
 
       channel.onmessage = ({ data }) => {
         let outcome;
@@ -257,11 +323,14 @@ export function webRtcMessageConnection(
         outboundWebRtcFrameBound: () =>
           options?.inboundBounds?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES,
         send: (data) => {
-          for (const datagram of encoder.encode(data)) {
-            channel.send(Buffer.from(datagram));
-          }
+          const frame = sendQueue.then(() => sendFrame(data));
+          sendQueue = frame.catch(() => {});
+          return frame;
         },
         close: async (closeOptions) => {
+          sendStopped = true;
+          wake();
+          channel.removeEventListener("bufferedamountlow", wake);
           channel.onmessage = undefined;
           channel.onclose = undefined;
           channel.onerror = undefined;
