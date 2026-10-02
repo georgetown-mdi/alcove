@@ -146,9 +146,23 @@ bumping the dependency and rebuilding and re-releasing `@alcove/core`. Which
 dependencies that covers is therefore an upgrade-path fact, not a build detail.
 
 `@openmined/psi.js` and [`canonicalize`](https://www.npmjs.com/package/canonicalize)
-are inlined into every build. `canonicalize` is inlined because from 3.0.0 it
-ships ESM-only and a bare `require` of it fails in the CJS bundle; it is the
-RFC 8785 serializer behind [CANONICAL_ENCODING.md](CANONICAL_ENCODING.md).
+are inlined into every build. `canonicalize` is the RFC 8785 serializer behind
+[CANONICAL_ENCODING.md](CANONICAL_ENCODING.md). It is inlined because it is an
+ES module with a default export and the CJS build uses rollup's default
+`interop`, which treats a `require()` result as the default export itself.
+Driven on 2026-10-02 with Node 26.10.0, `canonicalize` 5.1.0 and rollup 4.63.4:
+
+- `require("canonicalize")` loads: the package's `exports` carries a `default`
+  condition and Node 26 loads an ES module through `require`. It returns the
+  module namespace (`__esModule` and `default` keys), not the function.
+- With `canonicalize` held external, the CJS bundle loads, and the first
+  `canonicalString` call fails with `canonicalize is not a function`.
+- Adding `interop: "compat"` to the CJS output makes the external build work,
+  but changes how every external is imported, so the single-function package
+  stays inlined instead.
+
+Moving it to external is therefore a build-configuration change, not only a
+list edit, and is re-driven the same way before it is made.
 
 `re2js` and `yaml` are inlined only into the standalone UMD browser build. The
 ESM and CJS builds keep them external, so a transitive bump does remediate them
