@@ -64,8 +64,8 @@ test("recordCountField rejects a record count above the explicit bound at decode
 // --- psiElementBounds: authenticated per-message decode-boundary caps --------
 // Both parties derive identical bounds from the two exchanged record counts and
 // the two declared effective key counts. The setup holds the sender's set; the
-// request and the response (which re-encrypts that request) hold the
-// receiver's.
+// request holds the receiver's. A response is held to the request this
+// party sent instead (psiParticipant.test.ts).
 
 test("psiElementBounds maps each message kind to the relevant party's value slots", () => {
   const bounds = psiElementBounds(
@@ -74,7 +74,6 @@ test("psiElementBounds maps each message kind to the relevant party's value slot
   );
   expect(bounds.setup).toBe(3 * 10); // sender's set
   expect(bounds.request).toBe(3 * 7); // receiver's set
-  expect(bounds.response).toBe(3 * 7); // re-encrypted receiver's set
 });
 
 test("psiElementBounds widens with the fanning-out party alone", () => {
@@ -87,7 +86,6 @@ test("psiElementBounds widens with the fanning-out party alone", () => {
   );
   expect(bounds.setup).toBe(22 * 10);
   expect(bounds.request).toBe(3 * 7);
-  expect(bounds.response).toBe(3 * 7);
 });
 
 // --- MAX_PSI_DECODE_ELEMENTS: the per-set maximum and its security props ----

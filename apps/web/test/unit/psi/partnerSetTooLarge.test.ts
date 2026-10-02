@@ -201,7 +201,6 @@ describe("a managed exchange", () => {
       {
         setup: MAX_PSI_DECODE_ELEMENTS,
         request: MAX_PSI_DECODE_ELEMENTS,
-        response: MAX_PSI_DECODE_ELEMENTS,
       },
       undefined,
       undefined,

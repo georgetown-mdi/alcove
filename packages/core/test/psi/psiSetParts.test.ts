@@ -826,7 +826,7 @@ test.each([
   },
 );
 
-test("the element scan holds a partner's setup or request to this party's receive ceiling, and a response to its record counts alone", async () => {
+test("the element scan holds a partner's setup or request to this party's receive ceiling", async () => {
   const engine = (role: "starter" | "joiner") =>
     new InProcessPsiEngine(
       psiLibrary,
