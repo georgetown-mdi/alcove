@@ -331,7 +331,7 @@ These operator-level requirements are part of the model: violating any of them s
 
 A linkage key round sends its set of values as one PSI message, in as many message files as the set needs ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). One bound caps how many values the first round's set can hold on the file-sync channels. It is not configurable.
 
-- **One PSI set: 16,777,216 values.** The protocol's per-set maximum, `MAX_PSI_DECODE_ELEMENTS` = 2^24 ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). Every sender refuses a set of its own over it before sending any part, and every receiver refuses a set declaring more.
+- **One PSI set: 16,777,216 values.** The protocol's per-set maximum, `MAX_PSI_DECODE_ELEMENTS` = 2^24 ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). Every sender refuses a set of its own over it before sending any part, and every receiver refuses a set declaring more. A file-sync exchange at the maximum completes with one party on each of two hosts, in about 64 minutes on the hosts measured, the starter peaking at 29.9 GB and the joiner at 22.5 GB or more ([Measured runs at 2^24](#measured-runs-at-224)).
 
 A set is sent in as many message files as it needs, each part's file filled to `MAX_FRAME_SIZE_BYTES` (536,870,888 bytes; [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#inbound-frame-size-bound)) as described below, so a set at the per-set maximum takes two ([PROTOCOL.md, A PSI set is sent in parts](PROTOCOL.md#a-psi-set-is-sent-in-parts)). A set of `n` values takes at most `n` times `PSI_ENCODED_ELEMENT_BYTES` (35: a 33-byte compressed point plus its protobuf tag and length) plus `PSI_SET_MAX_FRAMING_BYTES` (6), the most a PSI message adds to its elements. The framing is measured on the vendored library: a server setup adds 5 bytes at 10^6 values and 6 from 7,669,585 values up, where its element list's length prefix reaches 5 bytes; a request adds 2 and a response none.
 
@@ -427,11 +427,22 @@ On 2026-09-30 and 2026-10-01, on an Apple M1 Max with 32 GB of memory (Docker De
 
 The completion run at the per-set maximum:
 
-- **16,777,216 records a side, file-sync pair, to completion.** Not yet run. Each party runs on its own host; at the measured costs the joiner needs about 32.7 GB and the starter about 29.3 GB.
+- **16,777,216 records a side, file-sync pair, to completion, one party per host.** On 2026-10-02 both parties exited 0 and each returned the expected result, 8,388,607 matched rows (below). Round 1 took about 25 minutes, rounds 2 and 3 about 11 each, and round 4 to the end of the run about 15.
 
-Those needs are each party's PSI round ([The measured costs](#the-measured-costs): 20.0 GB for the joiner, 16.6 GB for the starter) beside its main thread's peak of 11.78 GiB ([Preparing the input at 2^24](#preparing-the-input-at-224)). Two parties on one host need their sum, about 62 GB.
+| Party | Host | Transport | Wall time | Peak RSS |
+| --- | --- | --- | --- | --- |
+| Starter | Proxmox LXC container: Intel Core i3-14100, 3 cores / 6 logical CPUs, 29 GiB container memory limit, no swap, Linux, Node v26.8.2 | `file://` on a directory of its own host | 3,826,025 ms | 29,913,112,576 bytes |
+| Joiner | Apple M1 Max, 10 CPUs, 32 GiB, macOS, Node v26.8.2 | `sftp://` to the starter's host over the LAN | 3,760,626 ms | 22,453,616,640 bytes, a floor |
 
-`apps/cli/test/stress/fileSyncCompletion.stress.test.ts` drives the run in the CLI's opt-in stress tier (`npm run test:stress -w apps/cli`, after `npm run build -w apps/cli`). Each party is the built `alcove` under the images' heap setting, with the four-column input above, half of it shared with the other. The test holds each result to that shared half, row for row, which is what a run with no size limit returns, and logs the wall time and the party's peak RSS, its PSI worker included. It has two modes:
+What the figures mean for a host:
+
+- **The starter's host had no margin.** The container's cgroup memory peak was 30,859,788,288 bytes, 145 MB under its `memory.high` throttling threshold, so at that limit the starter placement had no margin.
+- **The joiner's figure is a floor.** macOS peak RSS does not count compressed pages, and the Mac had about 1 GB in swap before and after the run, so 22.45 GB is a lower bound on the joiner's true peak.
+- **The expected result leaves out nulled SSNs.** One shared row of the synthetic population holds 111-11-1111, which the built-in standardization nulls, so it matches on no key and the result holds 8,388,607 of the 8,388,608 shared rows.
+
+The modelled needs are each party's PSI round ([The measured costs](#the-measured-costs): 20.0 GB for the joiner, 16.6 GB for the starter) beside its main thread's peak of 11.78 GiB ([Preparing the input at 2^24](#preparing-the-input-at-224)): about 32.7 GB for the joiner and 29.3 GB for the starter. The starter's measured peak is 0.6 GB over its model. Two parties on one host need their sum, about 64 GB.
+
+`apps/cli/test/stress/fileSyncCompletion.stress.test.ts` drives the run in the CLI's opt-in stress tier (`npm run test:stress -w apps/cli`, after `npm run build -w apps/cli`). Each party is the built `alcove` under the images' heap setting, with the four-column input above, half of it shared with the other. The test holds each result to that shared half, row for row, less any row whose SSN the built-in standardization nulls, which is what a run with no size limit returns, and logs the wall time and the party's peak RSS, its PSI worker included. It has two modes:
 
 - **Both parties on one host**, over a local directory: the default, for sizes that fit one host.
 - **One party on this host**, against a partner on another (`ALCOVE_STRESS_COMPLETION_PARTY` set to `starter` or `joiner`, `ALCOVE_STRESS_COMPLETION_URL` naming the shared directory as a `file://` or `sftp://` URL). The joiner is the party that arrives second, so on a `file://` directory the joiner waits for the starter's hello before it starts; either party stops as soon as it logs a role other than its own. It writes the party's figures and its host to a summary file.
