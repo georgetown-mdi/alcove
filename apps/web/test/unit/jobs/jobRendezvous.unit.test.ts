@@ -2045,6 +2045,51 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
     namesMount: true,
   },
   {
+    label: "a mount holding the work input and nested inside the data root",
+    arrange: (mount, leg) => {
+      const dataRoot = path.dirname(mount);
+      const jobInput = path.join(mount, "input");
+      fs.mkdirSync(jobInput, { recursive: true });
+      return {
+        args: [
+          mount,
+          leg,
+          jobInput,
+          dataRoot,
+          path.join(dataRoot, "current-job"),
+          SWEEP_OFF,
+        ] as PreflightArgs,
+      };
+    },
+    match: /whoever syncs it/,
+    tail: () => "It is also inside the job data root.",
+    namesMount: true,
+  },
+  {
+    label:
+      "a mount holding the data root and nested inside the work-input directory",
+    arrange: (mount, leg) => {
+      const jobInput = path.dirname(mount);
+      const dataRoot = path.join(mount, "data");
+      fs.mkdirSync(dataRoot, { recursive: true });
+      return {
+        args: [
+          mount,
+          leg,
+          jobInput,
+          dataRoot,
+          path.join(dataRoot, "current-job"),
+          SWEEP_OFF,
+        ] as PreflightArgs,
+      };
+    },
+    match: /whoever syncs it/,
+    tail: () => "It is also inside the work-input directory.",
+    // Its first-party copy alone leaves less room than an ordinary mount costs,
+    // so the fit drops the path here by design; the budget check still covers it.
+    namesMount: false,
+  },
+  {
     label: "a mount nested inside the job data root",
     arrange: (mount, leg) => {
       fs.mkdirSync(mount, { recursive: true });

@@ -875,19 +875,24 @@ function sharedFolderExposureNotice(
   const exposure =
     ` holds your ${contents}, so whoever syncs it gets them. Give the shared ` +
     `folder its own mount with ${JOB_RENDEZVOUS_DIR_ENV} and restart the console.` +
-    (nestedIn.size > 0 ? ` It is also ${nestedClause(nestedIn)}.` : "");
+    (nestedIn.size > 0
+      ? ` It is also inside ${containerLabels(nestedIn)}.`
+      : "");
   return fitNotice(
     `${label} ${rendezvousDir}${exposure}`,
     `${label}${exposure}`,
   );
 }
 
-function nestedClause(nestedIn: ReadonlySet<OverlapSubject>): string {
-  const containers = OVERLAP_SUBJECTS.filter((subject) => nestedIn.has(subject))
+function containerLabels(nestedIn: ReadonlySet<OverlapSubject>): string {
+  return OVERLAP_SUBJECTS.filter((subject) => nestedIn.has(subject))
     .map((subject) => OVERLAP_SUBJECT_LABELS[subject])
     .join(" and ");
+}
+
+function nestedClause(nestedIn: ReadonlySet<OverlapSubject>): string {
   return (
-    `inside ${containers}; a partner's sync writes ` +
+    `inside ${containerLabels(nestedIn)}; a partner's sync writes ` +
     "land among your own files there"
   );
 }
