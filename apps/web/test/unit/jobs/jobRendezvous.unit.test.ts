@@ -1099,7 +1099,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
       ),
     );
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("holds your input file, so");
+    expect(warnings[0]).toContain("holds your input files, so");
   });
 
   test("warns when the work-input directory contains the rendezvous", () => {
@@ -1118,6 +1118,25 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("is inside the work-input directory");
+  });
+
+  test("adds the nesting when a mount holds the work input and sits inside the data root", () => {
+    const dataRoot = tempDir("data");
+    const rendezvous = subDir(dataRoot, "rendezvous");
+    const jobInput = subDir(rendezvous, "input");
+    const warnings = overlapWarnings(
+      rendezvousStartupWarnings(
+        rendezvous,
+        "shared",
+        jobInput,
+        dataRoot,
+        path.join(dataRoot, "current-job"),
+        SWEEP_OFF,
+      ),
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("holds your input files, so");
+    expect(warnings[0]).toContain("also inside the job data root");
   });
 
   test("names both directories when the rendezvous is nested inside both", () => {
@@ -1156,7 +1175,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(
-      "holds your input file, configuration and results",
+      "holds your input files, configuration and results",
     );
   });
 
@@ -1217,7 +1236,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
       ),
     );
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("holds your input file, so");
+    expect(warnings[0]).toContain("holds your input files, so");
   });
 
   test("does not warn for a symlinked mount that resolves beside the data root", () => {
@@ -2299,7 +2318,7 @@ describe("every preflight notice fits its budget once rendered", () => {
     for (const rendered of renderedAtSeat(warnings))
       expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
     expect(renderedAtSeat([overlap!])[0]).toContain(
-      "holds your input file, so whoever syncs it gets them",
+      "holds your input files, so whoever syncs it gets them",
     );
   });
 

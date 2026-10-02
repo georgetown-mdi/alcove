@@ -863,20 +863,32 @@ function sharedFolderExposureNotice(
   rendezvousDir: string,
   leg: RendezvousLeg,
   held: ReadonlySet<OverlapSubject>,
+  nestedIn: ReadonlySet<OverlapSubject>,
 ): string {
   const label = legNoun(leg, "directory");
   const contents =
     held.has("inputDir") && held.has("dataRoot")
-      ? "input file, configuration and results"
+      ? "input files, configuration and results"
       : held.has("inputDir")
-        ? "input file"
+        ? "input files"
         : "configuration and results";
   const exposure =
     ` holds your ${contents}, so whoever syncs it gets them. Give the shared ` +
-    `folder its own mount with ${JOB_RENDEZVOUS_DIR_ENV} and restart the console.`;
+    `folder its own mount with ${JOB_RENDEZVOUS_DIR_ENV} and restart the console.` +
+    (nestedIn.size > 0 ? ` It is also ${nestedClause(nestedIn)}.` : "");
   return fitNotice(
     `${label} ${rendezvousDir}${exposure}`,
     `${label}${exposure}`,
+  );
+}
+
+function nestedClause(nestedIn: ReadonlySet<OverlapSubject>): string {
+  const containers = OVERLAP_SUBJECTS.filter((subject) => nestedIn.has(subject))
+    .map((subject) => OVERLAP_SUBJECT_LABELS[subject])
+    .join(" and ");
+  return (
+    `inside ${containers}; a partner's sync writes ` +
+    "land among your own files there"
   );
 }
 
@@ -890,12 +902,7 @@ function nestedRendezvousNotice(
   nestedIn: ReadonlySet<OverlapSubject>,
 ): string {
   const label = legNoun(leg, "directory");
-  const containers = OVERLAP_SUBJECTS.filter((subject) => nestedIn.has(subject))
-    .map((subject) => OVERLAP_SUBJECT_LABELS[subject])
-    .join(" and ");
-  const nested =
-    ` is inside ${containers}; a partner's sync writes ` +
-    "land among your own files there";
+  const nested = ` is ${nestedClause(nestedIn)}`;
   return fitNotice(`${label} ${rendezvousDir}${nested}`, `${label}${nested}`);
 }
 
@@ -1015,7 +1022,9 @@ export function rendezvousStartupWarnings(
       );
   }
   if (held.size > 0)
-    warnings.push(sharedFolderExposureNotice(rendezvousDir, leg, held));
+    warnings.push(
+      sharedFolderExposureNotice(rendezvousDir, leg, held, nestedIn),
+    );
   else if (nestedIn.size > 0)
     warnings.push(nestedRendezvousNotice(rendezvousDir, leg, nestedIn));
   if (!rendezvousPaths.canonicalized)

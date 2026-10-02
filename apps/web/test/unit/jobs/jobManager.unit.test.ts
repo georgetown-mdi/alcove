@@ -1492,7 +1492,7 @@ describe("filedrop rendezvous facilitation", () => {
       .map((event) => event.message);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(
-      "holds your input file, configuration and results, so whoever syncs " +
+      "holds your input files, configuration and results, so whoever syncs " +
         "it gets them",
     );
   });
