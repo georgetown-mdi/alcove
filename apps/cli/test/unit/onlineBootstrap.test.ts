@@ -72,7 +72,7 @@ import { openInputSource } from "../../src/util/dataIo";
 import { exitCodeForError, runOrExit } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
-import { assertFirstRoundFits } from "../../src/fileSyncFirstRound";
+import { assertFirstRoundFits } from "../../src/firstRoundFits";
 import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
@@ -113,9 +113,9 @@ vi.mock("../../src/eventStream", async (importActual) => {
 // The first-round size check is spy-WRAPPED so the ordering test below can
 // plant its refusal, which reaching the real bound would take millions of rows
 // to raise.
-vi.mock("../../src/fileSyncFirstRound", async (importActual) => {
+vi.mock("../../src/firstRoundFits", async (importActual) => {
   const actual =
-    await importActual<typeof import("../../src/fileSyncFirstRound")>();
+    await importActual<typeof import("../../src/firstRoundFits")>();
   return {
     ...actual,
     assertFirstRoundFits: vi.fn(actual.assertFirstRoundFits),

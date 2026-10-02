@@ -59,7 +59,7 @@ import type {
 } from "@alcove/core";
 
 import { LocalFSClient } from "./connection/localFSClient";
-import { assertFirstRoundFits } from "./fileSyncFirstRound";
+import { assertFirstRoundFits } from "./firstRoundFits";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import {
   INACTIVITY_TIMEOUT_GUIDANCE,

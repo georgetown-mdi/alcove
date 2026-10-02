@@ -31,7 +31,7 @@ import {
   type EventStreamEmitter,
 } from "../eventStream";
 import { displayZeroSetupDisclosure } from "../exchangeDisclosure";
-import { assertFirstRoundFits } from "../fileSyncFirstRound";
+import { assertFirstRoundFits } from "../firstRoundFits";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
 import {
   detectFileConflicts,
