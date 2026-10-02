@@ -17,6 +17,7 @@ import {
 } from "./roundGrouping";
 import {
   resolveRoundCandidatePairs,
+  roundCandidatePairSweep,
   type RoundAcceptance,
 } from "./roundResolution";
 import type { AssociationTable } from "../types";
@@ -69,6 +70,12 @@ import {
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { DistinctValues } from "../utils/distinctValues";
+import {
+  EventLoopPacer,
+  PACED_STRETCH_RECORDS,
+  runPaced,
+  type PaceableSteps,
+} from "../utils/eventLoop";
 import { MAX_MAP_SHARD_ENTRIES } from "./shardedMap";
 import { receiveCountReport, sendCountReport } from "../protocolSetup";
 
@@ -165,28 +172,147 @@ export function requireSingleCandidate(
 /** @internal re-exported for the round-construction tests. */
 export { candidatePositionCount };
 
-// Walks this party's rows in ascending order, visiting each candidate value a
-// row contributes to the round in the order realization produced them. That
-// walk is what makes the candidate lists below ROW-MAJOR: one record's
+// Visits each candidate value a row contributes to the round in the order
+// realization produced them. A round's set takes its rows in ascending order,
+// which is what makes the candidate lists below ROW-MAJOR: one record's
 // candidates are contiguous and records ascend, so ascending position order is
 // ascending own-row order (docs/spec/PROTOCOL.md, The round's candidate list is
 // row-major). `undefined` means the row has no value for this key -- "" is a
 // real value and is kept (docs/spec/PROTOCOL.md, Key input data).
-function forEachCandidate(
-  data: ReadonlyArray<KeyCandidates>,
-  visit: (row: number, value: string) => void,
+function forEachCandidateOfRow(
+  candidates: KeyCandidates,
+  visit: (value: string) => void,
 ): void {
-  for (let i = 0; i < data.length; ++i) {
-    const candidates = data[i];
-    if (candidates === undefined) continue;
-    if (typeof candidates === "string") visit(i, candidates);
-    else for (const value of candidates) visit(i, value);
+  if (candidates === undefined) return;
+  if (typeof candidates === "string") visit(candidates);
+  else for (const value of candidates) visit(value);
+}
+
+// A value's first row in SingleHolderRoundSet and RoundSetCounter, once a
+// second row holds the value too.
+const HELD_BY_SEVERAL_ROWS = -1;
+
+// A round's set under one of the two within-round rules, taking the round's
+// rows one at a time in ascending order. `index` is the row's place in the
+// input the round reads, which a carried-forward subset's `permutation` maps
+// back to its original row.
+interface RoundSet {
+  add(index: number, candidates: KeyCandidates): void;
+  finish(): [Array<string>, RoundCandidates];
+}
+
+// The set removeDuplicatesAndUndefineds documents.
+class SingleHolderRoundSet implements RoundSet {
+  private readonly distinct: DistinctValues;
+  private readonly firstRow: Array<number> = [];
+  private readonly permutation: Array<number> | undefined;
+
+  constructor(permutation: Array<number> | undefined, shardEntries: number) {
+    this.permutation = permutation;
+    this.distinct = new DistinctValues({ shardEntries });
+  }
+
+  add(index: number, candidates: KeyCandidates): void {
+    forEachCandidateOfRow(candidates, (value) => {
+      const size = this.distinct.size;
+      const position = this.distinct.add(value);
+      if (position === size) {
+        this.firstRow.push(index);
+        return;
+      }
+      const first = this.firstRow[position];
+      if (first !== index && first !== HELD_BY_SEVERAL_ROWS)
+        this.firstRow[position] = HELD_BY_SEVERAL_ROWS;
+    });
+  }
+
+  finish(): [Array<string>, { rows: Array<number> }] {
+    const { permutation } = this;
+    const data: Array<string> = [];
+    const rows: Array<number> = [];
+    this.distinct.values.forEach((value, position) => {
+      const i = this.firstRow[position];
+      if (i === HELD_BY_SEVERAL_ROWS) return;
+      data.push(value);
+      rows.push(permutation ? permutation[i] : i);
+    });
+    return [data, { rows }];
   }
 }
 
-// A value's first row in removeDuplicatesAndUndefineds and RoundSetCounter,
-// once a second row holds the value too.
-const HELD_BY_SEVERAL_ROWS = -1;
+// The set groupDuplicatesAndRemoveUndefineds documents.
+class GroupedRoundSet implements RoundSet {
+  private readonly distinct: DistinctValues;
+  private readonly firstRowAt: Array<number> = [];
+  private readonly laterRowsAt: Array<Array<number> | undefined> = [];
+  private readonly permutation: Array<number> | undefined;
+
+  constructor(permutation: Array<number> | undefined, shardEntries: number) {
+    this.permutation = permutation;
+    this.distinct = new DistinctValues({ shardEntries });
+  }
+
+  add(index: number, candidates: KeyCandidates): void {
+    const row = this.permutation ? this.permutation[index] : index;
+    forEachCandidateOfRow(candidates, (value) => {
+      const size = this.distinct.size;
+      const position = this.distinct.add(value);
+      if (position === size) {
+        this.firstRowAt.push(row);
+        this.laterRowsAt.push(undefined);
+        return;
+      }
+      const laterRows = this.laterRowsAt[position];
+      if (laterRows === undefined) {
+        if (this.firstRowAt[position] !== row)
+          this.laterRowsAt[position] = [row];
+      } else if (laterRows[laterRows.length - 1] !== row) laterRows.push(row);
+    });
+  }
+
+  finish(): [Array<string>, RoundCandidates] {
+    const data = this.distinct.values;
+    const rows: Array<number> = [];
+    const groupStarts: Array<number> = new Array(data.length + 1);
+    groupStarts[0] = 0;
+    for (let position = 0; position < data.length; ++position) {
+      rows.push(this.firstRowAt[position]);
+      const laterRows = this.laterRowsAt[position];
+      if (laterRows !== undefined) for (const row of laterRows) rows.push(row);
+      groupStarts[position + 1] = rows.length;
+    }
+    return [data, { rows, groupStarts }];
+  }
+}
+
+/**
+ * Builds a round's set from `source`, this party's rows in ascending order,
+ * each read through `read`: the set {@link groupDuplicatesAndRemoveUndefineds}
+ * builds where `keepsDuplicates`, else the one
+ * {@link removeDuplicatesAndUndefineds} builds. Yields to the event loop as it
+ * goes ({@link EventLoopPacer}), since a round is built on an open connection.
+ *
+ * @returns The set, and how many rows `source` held.
+ * @internal exported for the round-construction tests.
+ */
+export async function buildRoundSet(
+  source: Iterable<KeyCandidates>,
+  read: (value: KeyCandidates) => KeyCandidates,
+  keepsDuplicates: boolean,
+  permutation?: Array<number>,
+  shardEntries: number = MAX_MAP_SHARD_ENTRIES,
+): Promise<{ set: [Array<string>, RoundCandidates]; rowCount: number }> {
+  const set: RoundSet = keepsDuplicates
+    ? new GroupedRoundSet(permutation, shardEntries)
+    : new SingleHolderRoundSet(permutation, shardEntries);
+  const pacer = new EventLoopPacer();
+  let rowCount = 0;
+  for (const candidates of source) {
+    set.add(rowCount, read(candidates));
+    if (++rowCount % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
+  }
+  return { set: set.finish(), rowCount };
+}
 
 /**
  * The round's candidate list for a party that DROPS its within-round
@@ -211,28 +337,12 @@ export function removeDuplicatesAndUndefineds(
   permutation?: Array<number>,
   shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): [Array<string>, Array<number>] {
-  const distinct = new DistinctValues({ shardEntries });
-  const firstRow: Array<number> = [];
-  forEachCandidate(dataWithDuplicatesAndUndefineds, (row, value) => {
-    const size = distinct.size;
-    const position = distinct.add(value);
-    if (position === size) {
-      firstRow.push(row);
-      return;
-    }
-    const first = firstRow[position];
-    if (first !== row && first !== HELD_BY_SEVERAL_ROWS)
-      firstRow[position] = HELD_BY_SEVERAL_ROWS;
-  });
-  const data: Array<string> = [];
-  const originalIndices: Array<number> = [];
-  distinct.values.forEach((value, position) => {
-    const i = firstRow[position];
-    if (i === HELD_BY_SEVERAL_ROWS) return;
-    data.push(value);
-    originalIndices.push(permutation ? permutation[i] : i);
-  });
-  return [data, originalIndices];
+  const set = new SingleHolderRoundSet(permutation, shardEntries);
+  dataWithDuplicatesAndUndefineds.forEach((candidates, index) =>
+    set.add(index, candidates),
+  );
+  const [data, { rows }] = set.finish();
+  return [data, rows];
 }
 
 /**
@@ -321,34 +431,11 @@ export function groupDuplicatesAndRemoveUndefineds(
   permutation?: Array<number>,
   shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): [Array<string>, RoundCandidates] {
-  const distinct = new DistinctValues({ shardEntries });
-  const data = distinct.values;
-  const firstRowAt: Array<number> = [];
-  const laterRowsAt: Array<Array<number> | undefined> = [];
-  forEachCandidate(dataWithDuplicatesAndUndefineds, (i, value) => {
-    const row = permutation ? permutation[i] : i;
-    const size = distinct.size;
-    const position = distinct.add(value);
-    if (position === size) {
-      firstRowAt.push(row);
-      laterRowsAt.push(undefined);
-      return;
-    }
-    const laterRows = laterRowsAt[position];
-    if (laterRows === undefined) {
-      if (firstRowAt[position] !== row) laterRowsAt[position] = [row];
-    } else if (laterRows[laterRows.length - 1] !== row) laterRows.push(row);
-  });
-  const rows: Array<number> = [];
-  const groupStarts: Array<number> = new Array(data.length + 1);
-  groupStarts[0] = 0;
-  for (let position = 0; position < data.length; ++position) {
-    rows.push(firstRowAt[position]);
-    const laterRows = laterRowsAt[position];
-    if (laterRows !== undefined) for (const row of laterRows) rows.push(row);
-    groupStarts[position + 1] = rows.length;
-  }
-  return [data, { rows, groupStarts }];
+  const set = new GroupedRoundSet(permutation, shardEntries);
+  dataWithDuplicatesAndUndefineds.forEach((candidates, index) =>
+    set.add(index, candidates),
+  );
+  return set.finish();
 }
 
 // The (round, partner record) each entry of this party's own outbound
@@ -604,14 +691,15 @@ function roundAcceptance(
 // `matchedPositions` is the round's value-level incidence read from this
 // side's records: the positions of the other party's set each of them matched.
 // It is what keeps a partner record's other positions out of an entry.
-function acceptedPositionSets(
+function* acceptedPositionSets(
   acceptedRanks: ReadonlyArray<number>,
   partnerRanks: ReadonlyArray<number>,
   partnerPositions: OrdinalPositions,
   matchedPositions: ReadonlyMap<number, Set<number>>,
-): Map<number, Array<number>> {
+): PaceableSteps<Map<number, Array<number>>> {
   const sets = new Map<number, Set<number>>();
   for (let p = 0; p < acceptedRanks.length; ++p) {
+    if ((p + 1) % PACED_STRETCH_RECORDS === 0) yield;
     const matched = matchedPositions.get(acceptedRanks[p]);
     if (matched === undefined)
       throw new InternalConsistencyError(
@@ -633,11 +721,13 @@ function acceptedPositionSets(
     }
   }
   const entries = new Map<number, Array<number>>();
-  for (const [rank, set] of sets)
+  for (const [rank, set] of sets) {
     entries.set(
       rank,
       [...set].sort((a, b) => a - b),
     );
+    if (entries.size % PACED_STRETCH_RECORDS === 0) yield;
+  }
   return entries;
 }
 
@@ -695,6 +785,13 @@ function stillInCandidacy(outOfCandidacy: Uint8Array): Array<number> {
   for (let i = 0; i < outOfCandidacy.length; ++i)
     if (!outOfCandidacy[i]) rows.push(i);
   return rows;
+}
+
+function* candidatesOfRows(
+  data: IndexableIterable<KeyCandidates>,
+  rows: ReadonlyArray<number>,
+): Generator<KeyCandidates> {
+  for (const row of rows) yield data[row];
 }
 
 // One round's two groupings: this party's own, built from the candidate list
@@ -901,44 +998,35 @@ export async function linkViaPSI(
   const partnerEntriesByIter: Array<Array<ReadonlyArray<number>> | undefined> =
     [];
   const partnerEntryRowsByIter: Array<Array<Array<number>> | undefined> = [];
+  // A round is resolved on an open connection, over as many entries as it
+  // matched, so each pass below yields to the event loop as it goes.
+  const pacer = new EventLoopPacer();
 
   for (let j = 0; j < data.length; ++j) {
     setStage(`stage ${j + 1} / ${data.length}`);
-    let dataWithDuplicatesAndUndefineds: Array<KeyCandidates>;
-    let unidentifiedIndices: Array<number> | undefined;
-    if (j === 0) {
-      dataWithDuplicatesAndUndefineds = Array.from(data[j], readCandidates);
-      indexIterationMap = Array(dataWithDuplicatesAndUndefineds.length).fill(
-        undefined,
-      );
-      outOfCandidacy = new Uint8Array(indexIterationMap.length);
-      canonicalPositionOf = new Int32Array(indexIterationMap.length).fill(-1);
-      acceptedPartnerRank = new Int32Array(indexIterationMap.length).fill(-1);
-      log.debug(`${participant.id}: ${indexIterationMap.length} total records`);
-    } else {
-      unidentifiedIndices = stillInCandidacy(outOfCandidacy);
-      dataWithDuplicatesAndUndefineds = unidentifiedIndices.map((i) => {
-        return readCandidates(data[j][i]);
-      });
-    }
+    const unidentifiedIndices =
+      j === 0 ? undefined : stillInCandidacy(outOfCandidacy);
     // The within-round rule this party applies to its own values, which is the
     // whole of the per-side difference a deduplicating cardinality makes to the
     // round: the "many" side keeps a value several of its records hold and
     // stands the round position for that group, every other party drops it.
-    let data_j: Array<string>;
-    let candidates: RoundCandidates;
-    if (sides.localKeepsDuplicates) {
-      [data_j, candidates] = groupDuplicatesAndRemoveUndefineds(
-        dataWithDuplicatesAndUndefineds,
-        unidentifiedIndices,
-      );
-    } else {
-      const [values, rows] = removeDuplicatesAndUndefineds(
-        dataWithDuplicatesAndUndefineds,
-        unidentifiedIndices,
-      );
-      data_j = values;
-      candidates = { rows };
+    const {
+      set: [data_j, candidates],
+      rowCount,
+    } = await buildRoundSet(
+      unidentifiedIndices === undefined
+        ? data[j]
+        : candidatesOfRows(data[j], unidentifiedIndices),
+      readCandidates,
+      sides.localKeepsDuplicates,
+      unidentifiedIndices,
+    );
+    if (j === 0) {
+      indexIterationMap = Array(rowCount).fill(undefined);
+      outOfCandidacy = new Uint8Array(rowCount);
+      canonicalPositionOf = new Int32Array(rowCount).fill(-1);
+      acceptedPartnerRank = new Int32Array(rowCount).fill(-1);
+      log.debug(`${participant.id}: ${rowCount} total records`);
     }
     candidatesByIter.push(candidates);
 
@@ -1023,6 +1111,7 @@ export async function linkViaPSI(
       positions.add(position);
     };
     for (let m = 0; m < localPositions.length; ++m) {
+      if ((m + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
       // Both groupings partition the very index lists the round's frames
       // named, so every matched position of either party has a slot.
       const mine = local.ownership.slotOfPosition.get(localPositions[m]);
@@ -1079,10 +1168,9 @@ export async function linkViaPSI(
         }
       }
     }
-    const resolved = resolveRoundCandidatePairs(
-      senderRanks,
-      receiverRanks,
-      acceptance,
+    const resolved = await runPaced(
+      roundCandidatePairSweep(senderRanks, receiverRanks, acceptance),
+      pacer,
     );
     const localAccepted = localIsSender
       ? resolved.acceptedSenderRanks
@@ -1104,22 +1192,29 @@ export async function linkViaPSI(
     const statesPositionSets =
       !sides.localKeepsDuplicates || local.field !== undefined || bothSided;
     const entryPositionSets = statesPositionSets
-      ? acceptedPositionSets(
-          localAccepted,
-          partnerAccepted,
-          positionsByOrdinal(partner),
-          partnerPositionsMatched,
+      ? await runPaced(
+          acceptedPositionSets(
+            localAccepted,
+            partnerAccepted,
+            positionsByOrdinal(partner),
+            partnerPositionsMatched,
+          ),
+          pacer,
         )
       : undefined;
     if (round.partnerPartitionIsExact()) {
-      const partnerEntries = acceptedPositionSets(
-        partnerAccepted,
-        localAccepted,
-        positionsByOrdinal(local.ownership),
-        localPositionsMatched,
+      const partnerEntries = await runPaced(
+        acceptedPositionSets(
+          partnerAccepted,
+          localAccepted,
+          positionsByOrdinal(local.ownership),
+          localPositionsMatched,
+        ),
+        pacer,
       );
       const rowsAcceptedWith = new Map<number, Set<number>>();
       for (let p = 0; p < partnerAccepted.length; ++p) {
+        if ((p + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
         let rows = rowsAcceptedWith.get(partnerAccepted[p]);
         if (rows === undefined) {
           rows = new Set<number>();
@@ -1132,10 +1227,16 @@ export async function linkViaPSI(
       // entry for the `i`-th of these (docs/spec/PROTOCOL.md, An entry is
       // attributed by its place in the round).
       const ranks = [...rowsAcceptedWith.keys()].sort((a, b) => a - b);
-      partnerEntriesByIter[j] = ranks.map((rank) => partnerEntries.get(rank)!);
-      partnerEntryRowsByIter[j] = ranks.map((rank) =>
-        [...rowsAcceptedWith.get(rank)!].sort((a, b) => a - b),
-      );
+      const entries: Array<ReadonlyArray<number>> = [];
+      const entryRows: Array<Array<number>> = [];
+      for (const rank of ranks) {
+        entries.push(partnerEntries.get(rank)!);
+        entryRows.push([...rowsAcceptedWith.get(rank)!].sort((a, b) => a - b));
+        if (entries.length % PACED_STRETCH_RECORDS === 0)
+          await pacer.yieldWhenDue();
+      }
+      partnerEntriesByIter[j] = entries;
+      partnerEntryRowsByIter[j] = entryRows;
     } else {
       partnerEntriesByIter[j] = undefined;
       partnerEntryRowsByIter[j] = undefined;
@@ -1146,6 +1247,7 @@ export async function linkViaPSI(
       ? new Map<number, Set<number>>()
       : undefined;
     for (let p = 0; p < localAccepted.length; ++p) {
+      if ((p + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
       const held = lowestPartnerRank.get(localAccepted[p]);
       if (held === undefined || partnerAccepted[p] < held)
         lowestPartnerRank.set(localAccepted[p], partnerAccepted[p]);
@@ -1158,7 +1260,9 @@ export async function linkViaPSI(
         ranks.add(partnerAccepted[p]);
       }
     }
+    let recorded = 0;
     for (const [rank, partnerRank] of lowestPartnerRank) {
+      if (++recorded % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
       const row = local.rowOfOrdinal[rank];
       let theirIndex: number | Array<number>;
       if (entryPositionSets === undefined)
@@ -1568,9 +1672,9 @@ export async function linkViaCountOnlyPSI(
   setStage = setStage ?? (() => {});
   setStage("stage 1 / 1");
 
-  const [values] = removeDuplicatesAndUndefineds(
-    Array.from(data[0], requireSingleCandidate),
-  );
+  const {
+    set: [values],
+  } = await buildRoundSet(data[0], requireSingleCandidate, false);
   log.debug(
     `${participant.id}: counting the intersection over 1 key: ` +
       `${values.length} unique value(s)`,

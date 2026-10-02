@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
 } from "node:fs";
 import { arch, cpus, freemem, platform, release, totalmem } from "node:os";
 import { join } from "node:path";
@@ -32,6 +33,9 @@ export const CLI = fileURLToPath(
 );
 const PEAK_MEMORY_REPORT = pathToFileURL(
   fileURLToPath(new URL("./peakMemoryReport.mjs", import.meta.url)),
+).href;
+const LOOP_LAG_REPORT = pathToFileURL(
+  fileURLToPath(new URL("./loopLagReport.mjs", import.meta.url)),
 ).href;
 
 /** Each party's bound, from ALCOVE_STRESS_COMPLETION_TIMEOUT_MS. */
@@ -129,6 +133,11 @@ export interface PartyRun {
   loggedRoleAtMs?: number;
   /** Set when the party was stopped for logging a role other than the one asked for. */
   stoppedForRole?: string;
+  /**
+   * Each time the party's event loop ran over a second late, as
+   * loopLagReport.mjs records it: when the late turn ran, and how late.
+   */
+  loopLags: Array<{ at: number; lateMs: number }>;
   log: string;
 }
 
@@ -147,13 +156,21 @@ export function runParty(options: {
 }): Promise<PartyRun> {
   const { dir, args, name, roleLine, expectedRole } = options;
   const peakFile = join(dir, "peak-rss");
+  const lagFile =
+    LOG_DIR === undefined
+      ? join(dir, "loop-lag")
+      : join(LOG_DIR, `loop-lag-${name}.log`);
+  rmSync(lagFile, { force: true });
   const startedAt = performance.now();
   const child = spawn(process.execPath, ["--expose-gc", CLI, ...args], {
     cwd: dir,
     env: {
       ...process.env,
-      NODE_OPTIONS: `${PSI_HEAP_CEILING_FLAG} --import=${PEAK_MEMORY_REPORT}`,
+      NODE_OPTIONS:
+        `${PSI_HEAP_CEILING_FLAG} --import=${PEAK_MEMORY_REPORT} ` +
+        `--import=${LOOP_LAG_REPORT}`,
       ALCOVE_STRESS_PEAK_RSS_FILE: peakFile,
+      ALCOVE_STRESS_LOOP_LAG_FILE: lagFile,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -170,6 +187,7 @@ export function runParty(options: {
     exitCode: null,
     wallMs: 0,
     peakRssBytes: Number.NaN,
+    loopLags: [],
     log: "",
   };
   const onOutput = (chunk: Buffer): void => {
@@ -204,6 +222,12 @@ export function runParty(options: {
       run.wallMs = Math.round(performance.now() - startedAt);
       if (existsSync(peakFile))
         run.peakRssBytes = Number(readFileSync(peakFile, "utf8"));
+      if (existsSync(lagFile))
+        for (const line of readFileSync(lagFile, "utf8").split("\n")) {
+          const [at, lateMs] = line.split(" ");
+          if (at === "" || at === "max") continue;
+          run.loopLags.push({ at: Date.parse(at), lateMs: Number(lateMs) });
+        }
       resolve(run);
     });
   });
@@ -239,6 +263,22 @@ export function resultDifference(
     j++;
   }
   return undefined;
+}
+
+/**
+ * The longest the party's main thread was held in a hold that began at or
+ * after `since`, in milliseconds, read to the second loopLagReport.mjs reports
+ * from. A hold that began before `since` is left out even where it ended after.
+ */
+export function maxLoopLagSince(
+  run: Pick<PartyRun, "loopLags">,
+  since: number,
+): number {
+  return run.loopLags.reduce(
+    (max, lag) =>
+      lag.at - lag.lateMs >= since && lag.lateMs > max ? lag.lateMs : max,
+    0,
+  );
 }
 
 /** A party's peak resident set in gigabytes, for a log line. */

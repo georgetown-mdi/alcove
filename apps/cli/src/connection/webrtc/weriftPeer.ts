@@ -1027,6 +1027,7 @@ export async function openWebRtcPeerSession(
       // ended when the channel opened.
       let onLost: (() => void) | undefined;
       peer.onconnectionstatechange = () => {
+        log.debug("the peer connection is now", peer.connectionState);
         if (peer.connectionState === "connected") return;
         onLost?.();
       };

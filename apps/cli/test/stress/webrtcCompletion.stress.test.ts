@@ -23,6 +23,7 @@ import {
   cliPartyNeedBytes,
   hostDescription,
   hostMemory,
+  maxLoopLagSince,
   peakGb,
   resultDifference,
   runParty,
@@ -50,7 +51,8 @@ import type { PartyRun } from "./completionRun";
 // default); ALCOVE_STRESS_COMPLETION_CLI_ARGS adds arguments, separated by
 // whitespace, to each party's command line;
 // ALCOVE_STRESS_COMPLETION_LOG_DIR, a directory the test creates, keeps each
-// party's log there as it runs (party-<name>.log) and a summary of the run
+// party's log there as it runs (party-<name>.log), each time its event loop
+// ran over a second late (loop-lag-<name>.log), and a summary of the run
 // (webrtc-completion.json).
 
 // Past the 7,643,790 elements one WebRTC frame holds (docs/spec/PROTOCOL.md,
@@ -137,6 +139,22 @@ function writeConfiguration(
 
 const ROLE_LINE = /\[exchange\] role: (sender|receiver)\b/;
 
+// The line a party logs once its data channel is open, with the time it did.
+const CHANNEL_OPEN_LINE = /^\[(\S+)\] \[INFO\] \[exchange\] authenticating$/m;
+
+// An arbitrary working value, raised or lowered on request (docs/spec/
+// WEBRTC_TRANSPORT.md, The main thread on an open channel).
+const MAX_CONNECTED_LOOP_LAG_MS = 15_000;
+
+// The longest the party's main thread was held from its channel opening on, or
+// undefined when its log has no line stating when that was.
+function connectedLoopLagMs(run: PartyRun): number | undefined {
+  const openedAt = CHANNEL_OPEN_LINE.exec(run.log)?.[1];
+  return openedAt === undefined
+    ? undefined
+    : maxLoopLagSince(run, Date.parse(openedAt));
+}
+
 function runWebRtcParty(dir: string, name: PartyName): Promise<PartyRun> {
   return runParty({
     dir,
@@ -212,7 +230,10 @@ test(
           `${peakGb(inviter)} GB and ${peakGb(acceptor)} GB; roles ` +
           `${inviter.loggedRole ?? "not logged"} and ` +
           `${acceptor.loggedRole ?? "not logged"}; exit ` +
-          `${inviter.exitCode} and ${acceptor.exitCode}`,
+          `${inviter.exitCode} and ${acceptor.exitCode}; longest hold of ` +
+          `the main thread on an open channel ` +
+          `${connectedLoopLagMs(inviter) ?? "not logged"} ms and ` +
+          `${connectedLoopLagMs(acceptor) ?? "not logged"} ms`,
       );
       const inviterDifference =
         inviter.exitCode === 0
@@ -234,6 +255,7 @@ test(
         const summary = (run: PartyRun, difference: string | undefined) => ({
           wallMs: run.wallMs,
           peakRssBytes: run.peakRssBytes,
+          maxConnectedLoopLagMs: connectedLoopLagMs(run) ?? null,
           loggedRole: run.loggedRole,
           loggedRoleAtMs: run.loggedRoleAtMs,
           exitCode: run.exitCode,
@@ -266,6 +288,20 @@ test(
       expect([inviter.exitCode, acceptor.exitCode]).toEqual([0, 0]);
       expect(inviterDifference).toBe(undefined);
       expect(acceptorDifference).toBe(undefined);
+      for (const [name, party] of [
+        ["inviter", inviter],
+        ["acceptor", acceptor],
+      ] as const) {
+        const lagMs = connectedLoopLagMs(party);
+        if (lagMs === undefined)
+          expect.fail(
+            `the ${name}'s log has no "[exchange] authenticating" line, so ` +
+              `when its channel opened is unknown`,
+          );
+        expect(lagMs, `the ${name}'s longest hold`).toBeLessThanOrEqual(
+          MAX_CONNECTED_LOOP_LAG_MS,
+        );
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

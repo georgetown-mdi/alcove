@@ -1,4 +1,9 @@
 import { InternalConsistencyError } from "../errors";
+import {
+  PACED_STRETCH_RECORDS,
+  runUnpaced,
+  type PaceableSteps,
+} from "../utils/eventLoop";
 
 /**
  * Which of a round's two sides may stand in more than one accepted pair.
@@ -66,6 +71,20 @@ export function resolveRoundCandidatePairs(
   receiverRanks: ReadonlyArray<number>,
   acceptance: RoundAcceptance,
 ): ResolvedRound {
+  return runUnpaced(
+    roundCandidatePairSweep(senderRanks, receiverRanks, acceptance),
+  );
+}
+
+/**
+ * The sweep {@link resolveRoundCandidatePairs} runs, as steps a caller holding
+ * an open connection paces.
+ */
+export function* roundCandidatePairSweep(
+  senderRanks: ReadonlyArray<number>,
+  receiverRanks: ReadonlyArray<number>,
+  acceptance: RoundAcceptance,
+): PaceableSteps<ResolvedRound> {
   if (senderRanks.length !== receiverRanks.length)
     throw new InternalConsistencyError(
       "a round's candidate pairs need one receiver rank per sender rank, " +
@@ -90,8 +109,10 @@ export function resolveRoundCandidatePairs(
   let previousSender = -1;
   let previousReceiver = -1;
   let senderAccepted = false;
+  let swept = 0;
 
   for (const i of order) {
+    if (++swept % PACED_STRETCH_RECORDS === 0) yield;
     const sender = senderRanks[i];
     const receiver = receiverRanks[i];
     if (sender === previousSender && receiver === previousReceiver) continue;

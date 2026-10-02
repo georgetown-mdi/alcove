@@ -330,6 +330,27 @@ parked-receive budget below has elapsed from the send's start (1 h, or
 the failure tears the connection down without sending the close sentinel. The
 browser peer leaves pacing to PeerJS.
 
+### The main thread on an open channel
+
+The CLI's peer runs on the process's main thread, and it answers its partner's
+ICE consent checks from that thread's event loop. Work that holds the thread
+therefore counts against the thirty seconds or so in which an unanswered
+partner calls the connection lost, and the two parties' holds add up
+([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+
+- The PSI masking runs in a worker thread, off that event loop.
+- A cascade or count-only round builds its set, and a cascade round resolves
+  its matches, in paced stretches. The pacer reads the clock every **1,024**
+  records and yields to the event loop at the first record boundary after
+  **50 ms** of work (`packages/core/src/utils/eventLoop.ts`), so a stretch is
+  bounded by 50 ms plus one stretch of records. The work between paced passes,
+  such as the sorts, is not paced. Both values are arbitrary working values.
+- What still holds the thread on an open channel is bounded by one frame or
+  one index list rather than paced: encoding and decoding a frame, and
+  checking and sorting a round's matched positions. At 7,700,000 records a
+  side the longest such hold measured was about 10 s, encoding and decoding
+  the lists of matched records the parties exchange after the last round.
+
 ## The clean close
 
 The close sentinel is a `__peerData` close object sent through the same
