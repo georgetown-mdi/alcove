@@ -112,10 +112,24 @@ const SENTINEL_HANDOFF_TIMEOUT_MS = 2_000;
  */
 const CHANNEL_CLOSE_TIMEOUT_MS = 2_000;
 
+/** The send window's high and low marks: docs/spec/WEBRTC_TRANSPORT.md, Outbound pacing. */
+const SEND_WINDOW_BYTES = 1024 * 1024;
+const SEND_WINDOW_LOW_BYTES = 256 * 1024;
+
+/**
+ * How often a send waiting on the window re-reads the channel even without a
+ * low-buffer event, so a channel that closes or a peer that goes while the
+ * buffer is full ends the wait.
+ */
+const SEND_WINDOW_POLL_INTERVAL_MS = 250;
+
 export interface WebRtcMessageConnectionOptions {
   inactivityTimeoutMs?: number;
   closeFlushTimeoutMs?: number;
   channelCloseTimeoutMs?: number;
+  /** Outbound window bounds; tests only. */
+  sendWindowBytes?: number;
+  sendWindowLowBytes?: number;
   /** Per-bound overrides for the inbound reassembler; tests only. Its
    * `maxFrameBytes` is also the bound the connection states for the partner's
    * receive path (`outboundWebRtcFrameBound`), which a PSI round sizes the parts of its
@@ -203,12 +217,42 @@ export function webRtcMessageConnection(
     options?.closeFlushTimeoutMs ?? DEFAULT_CLOSE_FLUSH_TIMEOUT_MS;
   const channelCloseTimeoutMs =
     options?.channelCloseTimeoutMs ?? CHANNEL_CLOSE_TIMEOUT_MS;
+  const sendWindowBytes = options?.sendWindowBytes ?? SEND_WINDOW_BYTES;
+  const sendWindowLowBytes =
+    options?.sendWindowLowBytes ?? SEND_WINDOW_LOW_BYTES;
 
   return new QueuedMessageConnection(
     (controls) => {
       const encoder = new PeerJsFrameEncoder();
       const bounds = new BoundedInboundFrames(options?.inboundBounds);
       let peerCloseRead = false;
+      let sendStopped = false;
+      let sendQueue: Promise<void> = Promise.resolve();
+      const sendWake = sendWindowWake(SEND_WINDOW_POLL_INTERVAL_MS);
+      const wake = sendWake.wake;
+      channel.bufferedAmountLowThreshold = sendWindowLowBytes;
+      channel.addEventListener("bufferedamountlow", wake);
+
+      const sendable = (): boolean =>
+        !sendStopped && channel.readyState === "open" && session.isConnected();
+
+      const sendCut = (): ConnectionError =>
+        new ConnectionError(
+          "the connection to the exchange partner closed before a message " +
+            "could be sent",
+          "transport",
+        );
+
+      const sendFrame = async (data: unknown): Promise<void> => {
+        for (const datagram of encoder.encode(data)) {
+          while (channel.bufferedAmount >= sendWindowBytes) {
+            if (!sendable()) throw sendCut();
+            await sendWake.wait();
+          }
+          if (sendStopped) throw sendCut();
+          channel.send(Buffer.from(datagram));
+        }
+      };
 
       channel.onmessage = ({ data }) => {
         let outcome;
@@ -257,11 +301,14 @@ export function webRtcMessageConnection(
         outboundWebRtcFrameBound: () =>
           options?.inboundBounds?.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES,
         send: (data) => {
-          for (const datagram of encoder.encode(data)) {
-            channel.send(Buffer.from(datagram));
-          }
+          const frame = sendQueue.then(() => sendFrame(data));
+          sendQueue = frame.catch(() => {});
+          return frame;
         },
         close: async (closeOptions) => {
+          sendStopped = true;
+          wake();
+          channel.removeEventListener("bufferedamountlow", wake);
           channel.onmessage = undefined;
           channel.onclose = undefined;
           channel.onerror = undefined;
@@ -317,6 +364,40 @@ export function webRtcMessageConnection(
       inactivityHint: INACTIVITY_TIMEOUT_GUIDANCE,
     },
   );
+}
+
+/**
+ * The send window's one wait: `wait` resolves on the next `wake` (the
+ * channel's low-buffer event, or a close) or after `pollIntervalMs`, whichever
+ * comes first, and the caller re-reads the channel.
+ *
+ * @internal
+ */
+export function sendWindowWake(pollIntervalMs: number): {
+  wait: () => Promise<void>;
+  wake: () => void;
+} {
+  let pending: (() => void) | undefined;
+  return {
+    wake: () => pending?.(),
+    wait: () => {
+      // One slot holds because the send queue runs one frame at a time.
+      if (pending !== undefined)
+        throw new Error(
+          "a second send waited on the send window while one was waiting",
+        );
+      return new Promise((resolve) => {
+        const poll = setTimeout(done, pollIntervalMs);
+        poll.unref();
+        pending = done;
+        function done(): void {
+          clearTimeout(poll);
+          pending = undefined;
+          resolve();
+        }
+      });
+    },
+  };
 }
 
 /**

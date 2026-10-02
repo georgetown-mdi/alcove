@@ -303,6 +303,33 @@ shadow outright, which is wider than the packer: the packer throws on all but
 one of these shapes, and on the one it survives -- an own `hasOwnProperty` that
 answers false for every key -- it writes a map header it fills with nothing.
 
+### Outbound pacing
+
+The CLI hands a frame to the data channel a window at a time rather than all at
+once:
+
+- It stops handing over datagrams while the channel's `bufferedAmount` is at or
+  above **1 MiB**, and resumes when the channel's `bufferedamountlow` event
+  reports it at **256 KiB**.
+- A send waiting on the window also re-reads the channel every **250 ms**, so
+  it does not depend on that event firing.
+- A frame larger than the window goes out over as many windows as it needs.
+  Frames go out whole and in the order they were sent, one after another.
+
+All three values are arbitrary working values, raised or lowered on request.
+Why werift needs the window, the measurements behind it, and the re-check on a
+werift bump are in
+[DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-cli-webrtc-peer-werift).
+
+A send waiting on the window ends when the data channel leaves `open`, when the
+peer connection leaves `connected`, or when the connection closes, and the send
+then fails with a transport error; nothing more of its frame is handed over.
+Otherwise a send whose frame has not all been handed over fails once the
+parked-receive budget below has elapsed from the send's start (1 h, or
+`inactivity_timeout_ms`): core bounds every send's hand-off by that value, and
+the failure tears the connection down without sending the close sentinel. The
+browser peer leaves pacing to PeerJS.
+
 ## The clean close
 
 The close sentinel is a `__peerData` close object sent through the same

@@ -49,6 +49,8 @@ function recordingSession(
       onSend(sent);
     },
     close: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
   };
   return {
     sent,
