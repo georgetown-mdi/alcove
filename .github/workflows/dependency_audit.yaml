@@ -16,9 +16,9 @@ name: Dependency Audit
 # threat is carried by `strict-allow-scripts=true` in .npmrc, which fails an
 # install outright on a package with no `allowScripts` verdict, and by the
 # Dependabot cooldown in .github/dependabot.yml. A finding here is triaged on its
-# own terms rather than cleared by `npm audit fix`; how the last development-tree
-# advisory was resolved, and what holds it resolved, is in
-# docs/spec/DEPENDENCY_PINS.md.
+# own terms rather than cleared by `npm audit fix`; the residuals npm leaves in
+# the development tree, and what a root override answering a finding costs, are
+# in docs/spec/DEPENDENCY_PINS.md, "npm resolution residuals".
 #
 # The whole tree reports `found 0 vulnerabilities` against the committed
 # lockfile, so this starts from zero and a nonzero result is news. It is left to

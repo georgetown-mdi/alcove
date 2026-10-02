@@ -4,8 +4,8 @@
 // A root `overrides` entry forces every dependent of a package onto the
 // overridden version, whatever range the dependent declared. Where that range
 // excludes the forced version the dependent gets code it was not written
-// against -- docs/spec/DEPENDENCY_PINS.md, "The brace-expansion advisory is
-// fixed by a root override", measures the TypeError that follows -- and npm
+// against -- docs/spec/DEPENDENCY_PINS.md, "What a root overrides block
+// changes about later installs", measures the TypeError that follows -- and npm
 // 11.19.1 does not mark such an edge `invalid` in `npm ls --all`, so nothing at
 // install, audit or listing time names it. It shows only when the dependent's
 // code runs.
@@ -53,9 +53,6 @@ const DEPENDENCY_FIELDS = [
   "peerDependencies",
 ];
 
-const OVERRIDE_REASON =
-  'The root "brace-expansion" override forces this dependent onto the 5.x line its 2.x range excludes, to clear an advisory no 2.x release patches; docs/spec/DEPENDENCY_PINS.md, "The brace-expansion advisory is fixed by a root override", records the cost and the exit condition.';
-
 /**
  * The out-of-range edges that are meant to stand, each keyed by the dependent's
  * package name, the dependency, and the range declared, with the reason it
@@ -64,18 +61,6 @@ const OVERRIDE_REASON =
  * dependent, or a new range, is a new edge and fails until recorded.
  */
 export const OUT_OF_RANGE_BY_DESIGN = [
-  {
-    dependent: "minimatch",
-    dependency: "brace-expansion",
-    range: "^2.0.1",
-    reason: OVERRIDE_REASON,
-  },
-  {
-    dependent: "minimatch",
-    dependency: "brace-expansion",
-    range: "^2.0.2",
-    reason: OVERRIDE_REASON,
-  },
   {
     dependent: "h3",
     dependency: "crossws",

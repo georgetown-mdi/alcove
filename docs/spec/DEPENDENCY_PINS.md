@@ -234,7 +234,7 @@ Three residuals sit under that model, all of which cost a refusal rather than a 
 
 - A git source is grouped with `file:` and remote unmeasured, for want of a reachable git host to measure it against.
 - The check keys an override both to the name a package is installed under and to the name its resolved URL holds, since either can be the name the rewritten edge names. Whether npm's own matcher follows an aliased edge (`"h3-v2": "npm:h3@2"`) to an override keyed on either name is unmeasured, so the check can refuse a verdict npm holds.
-- Nothing verifies that the committed lockfile is the one npm resolves with the overrides in force: npm leaves a lockfile whose existing resolution already satisfies its dependents byte-identical when an override is added (re-driven 2026-10-01 on 11.17.0 and 11.19.1; [the brace-expansion fix](#the-brace-expansion-advisory-is-fixed-by-a-root-override) records the route around that). An override that has not been applied is treated as covered. Where the lockfile already holds what that override resolves to, `npm ci` installs that same lockfile and what runs is what the check read -- measured 2026-10-01 on 11.17.0 and 11.19.1, a `brace-expansion` override standing over a lockfile resolved without it installs clean under the committed map. Where the lockfile lacks a package the unapplied override needs, `npm ci` refuses rather than resolving one: on both releases that day, an override of `"brace-expansion": "^1.1.11"` over the committed lockfile fails `EUSAGE` (`Missing: brace-expansion@1.1.21 from lock file`, followed by `balanced-match@1.0.2` and `concat-map@0.0.1`), so nothing installs and no unreviewed script runs.
+- Nothing verifies that the committed lockfile is the one npm resolves with the overrides in force: npm leaves a lockfile whose existing resolution already satisfies its dependents byte-identical when an override is added (re-driven 2026-10-01 on 11.17.0 and 11.19.1; [What a root `overrides` block changes about later installs](#what-a-root-overrides-block-changes-about-later-installs) records the route around that). An override that has not been applied is treated as covered. Where the lockfile already holds what that override resolves to, `npm ci` installs that same lockfile and what runs is what the check read -- measured 2026-10-01 on 11.17.0 and 11.19.1, a `brace-expansion` override standing over a lockfile resolved without it installs clean under the committed map. Where the lockfile lacks a package the unapplied override needs, `npm ci` refuses rather than resolving one: on both releases that day, an override of `"brace-expansion": "^1.1.11"` over the committed lockfile fails `EUSAGE` (`Missing: brace-expansion@1.1.21 from lock file`, followed by `balanced-match@1.0.2` and `concat-map@0.0.1`), so nothing installs and no unreviewed script runs.
 
 The rest are limits rather than refusals:
 
@@ -346,13 +346,14 @@ reading there may be nothing to open.
 ## npm resolution residuals
 
 Three records of what npm's resolver leaves behind in this workspace: a peer
-conflict the release SBOM works around, what the mere presence of a root
-`overrides` block does to a later install, and the one override this repository
-holds. Their normative residue is short -- release step 9 runs with
-`--legacy-peer-deps`, the `brace-expansion` override exists, and a CI check
-stands over each of the last two: one watching for the upstream move that
-retires the override, the other for the split hoist the block's presence leaves
-behind. The measurement behind each is kept so the dead ends are not re-walked.
+conflict the release SBOM works around, what a root `overrides` block does to
+the lockfile it is added to or removed from and to later installs, and the
+`brace-expansion` copies the development tree holds. Their normative residue is
+short -- release step 9 runs with `--legacy-peer-deps`, the root `package.json`
+holds no `overrides` block, and CI checks stand over the first two records: one
+watching for the upstream move that retires the flag, and two watching what an
+`overrides` block leaves behind, the out-of-range edges and the split hoist. The
+measurement behind each is kept so the dead ends are not re-walked.
 
 ### The crossws peer conflict blocks the release SBOM
 
@@ -373,28 +374,75 @@ The other candidates fail outright: `overrides` scoped to the parent or to the a
 
 **The adopted workaround.** `--legacy-peer-deps` on the step 9 invocation disables peer-conflict validation for that command alone rather than mutating the lockfile or the installed tree, which is what separates it in kind from every candidate above. Measured 2026-09-25 on npm 11.19.1 against the committed lockfile: `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev --legacy-peer-deps -w packages/core -w apps/cli -w apps/web` exits 0 at 176 components, and the same command without `-w apps/web` exits 0 at 64. Every one of those 64 also appears in the 176, so the flagged, full-scope command is a strict superset that closes the web console's runtime set into the BOM rather than dropping it. Its cost is stated where the command is documented: this one invocation would suppress a genuine peer conflict elsewhere in the tree just as quietly as it suppresses this one. That is why [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) pairs it with `npm ls --all --omit=dev` as a compensating strict check that still fails loudly and, as of the same measurement, names only this same `crossws` edge.
 
-**Resolution path.** This clears upstream, without action here, once `h3` v2 ships stable (so `@tanstack/start-server-core` stops depending on a prerelease) or `nitropack` / `h3@1.x` move to the 0.4 line -- at which point the ranges are mutually satisfiable, npm hoists one version that satisfies everyone, and the unflagged release-scoped `npm sbom` runs again. A dev-inclusive `npm sbom` clears at the same point: the [`brace-expansion` override](#the-brace-expansion-advisory-is-fixed-by-a-root-override)'s two out-of-range minimatch edges are not what blocks it, since npm 11.19.1 does not mark either `invalid`. Until then, step 9 runs with `--legacy-peer-deps` as above; re-check after any `@tanstack/*` or `nitropack` bump. When the flag is no longer needed, drop it from step 9, remove this section and step 9's cost note and compensating check, and re-check the SBOM section's hoisting residual in the same pass, since that residual is stated independently of this block and outlives it. A further local workaround, if one is ever wanted before then, is weighed against the rejected candidates recorded above rather than re-derived from scratch, and any that touches the tree still needs to keep `scripts/check-nitro-websocket-unset.mjs` passing.
+**Resolution path.** This clears upstream, without action here, once `h3` v2 ships stable (so `@tanstack/start-server-core` stops depending on a prerelease) or `nitropack` / `h3@1.x` move to the 0.4 line -- at which point the ranges are mutually satisfiable, npm hoists one version that satisfies everyone, and the unflagged release-scoped `npm sbom` runs again. A dev-inclusive `npm sbom` clears at the same point: re-driven 2026-10-01 on 11.17.0 and 11.19.1, the unscoped command names this edge alone. Until then, step 9 runs with `--legacy-peer-deps` as above; re-check after any `@tanstack/*` or `nitropack` bump. When the flag is no longer needed, drop it from step 9, remove this section and step 9's cost note and compensating check, and re-check the SBOM section's hoisting residual in the same pass, since that residual is stated independently of this block and outlives it. A further local workaround, if one is ever wanted before then, is weighed against the rejected candidates recorded above rather than re-derived from scratch, and any that touches the tree still needs to keep `scripts/check-nitro-websocket-unset.mjs` passing.
 
 **What watches this.** `scripts/check-crossws-sbom-block.mjs` (`npm run check:crossws-sbom-block`, a CI static check in `static_checks.yaml`) is what watches the revisit trigger above, rather than leaving it to memory. It runs the unflagged command itself and fails once it succeeds while `docs/RELEASES.md` still prescribes the flag, so the manual "re-check after a bump" habit has a safety check that does not depend on anyone remembering to look.
 
 ### What a root `overrides` block changes about later installs
 
-The root `package.json` has an `overrides` block, and two npm behaviors follow
-from its mere presence. They are separate questions, and the second is the one an
-author who adds an override and moves on meets later.
+The root `package.json` holds no `overrides` block. Adding one is the answer of
+last resort here rather than a routine fix, for the three npm behaviors below:
+the block is not applied or removed by an ordinary install, it can hand a
+dependent a version its declared range excludes, and its mere presence changes
+how a later range bump is hoisted.
 
-The first is about adopting an override: npm leaves a lockfile whose existing
-resolution already satisfies its dependents byte-identical when the override is
-added (re-driven 2026-10-01 on 11.17.0 and 11.19.1), so adding
-the block appears to do nothing at all. That behavior, and the surgical route that
-does apply it, are recorded with
-[the brace-expansion override](#the-brace-expansion-advisory-is-fixed-by-a-root-override)
-rather than repeated here.
+**Adding or removing an override does not re-resolve the lockfile.** npm leaves
+a lockfile whose existing resolution already satisfies its dependents
+byte-identical when an override is added, so adding the block appears to do
+nothing at all: re-driven 2026-10-01 on 11.17.0 and 11.19.1, `npm install`,
+`npm install --package-lock-only`, and each with `--force` return it unchanged.
+Removing one does the same. Driven 2026-10-01 by deleting a root
+`"brace-expansion": "^5.0.8"` override that held two `minimatch` copies
+declaring `^2.0.1` and `^2.0.2` on a hoisted 5.0.12: `npm install
+--package-lock-only` on 11.17.0 and 11.19.1, and `npm install` on 11.19.1, leave
+the lockfile byte-identical, and `npm ls --all` then marks both edges `invalid`.
+The route that applies either direction surgically is to delete the lockfile
+entries the change has to move and re-run `npm install --package-lock-only`: on
+that removal, deleting the hoisted `node_modules/brace-expansion` entry restored
+it at 5.0.12 and added exactly a `brace-expansion@2.1.7` and a
+`balanced-match@1.0.2` entry under each of `archiver-utils` and `readdir-glob`,
+changing nothing else, on both releases. A from-scratch resolve applies an
+override too and is not the route: adding that same override that way on
+2026-10-01 changed 246 package versions against the lockfile it started from,
+added 26 entries and removed 59, a far larger review surface than the change
+being landed.
 
-The second is about any dependent range bump made afterwards, and is this
-section's. **With a root `overrides` block present, npm 11.17 does not hoist a
-later range bump incrementally: the stale hoisted copy is kept and the new version
-is nested under the workspace that raised its range.** What an operator or
+**An override can hand a dependent an API-incompatible major.** An override
+forces every dependent onto the overridden version whatever range it declared,
+and npm does not reliably report the result. With such an override in force,
+npm 11.17 marks the edge `invalid` -- `npm ls --all` exits 1 with
+`ELSPROBLEMS`, and an unscoped `npm sbom` refuses with `ESBOMPROBLEMS` -- while
+npm 11.19.1 marks neither (measured 2026-09-27, re-driven 2026-10-01 on 11.17.0
+and 11.19.1). What the edge is underneath shows only when the dependent's code
+runs. `brace-expansion@5.0.12` exports a named `expand` and no callable default:
+`Object.keys(require("brace-expansion"))` is
+`["EXPANSION_MAX", "EXPANSION_MAX_LENGTH", "EXPANSION_MAX_DEPTH",
+"EXPANSION_MAX_REWRITES", "expand"]`, and `.default` is `undefined`. With the
+override above in force, `braceExpand("a{b,c}d")` threw from `minimatch@5.1.9`
+with `TypeError: expand is not a function` and from `minimatch@9.0.9` with
+`TypeError: (0 , brace_expansion_1.default) is not a function`, while
+`npm run build -w apps/web` exited 0, `npm audit --package-lock-only` answered
+`found 0 vulnerabilities`, and npm 11.19.1 listed both edges as `deduped` with
+no marking.
+
+**What catches that.** `scripts/check-locked-dep-ranges.mjs`
+(`npm run check:locked-dep-ranges`, run by `npm run check:all`) reads the
+committed lockfile and fails on any edge whose locked version lies outside the
+range its dependent declared, naming the dependent, the declared range and the
+locked version, for every dependent the lockfile records: the root project,
+each workspace, and each installed package. An edge meant to stand is recorded
+with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, which holds the
+[crossws optional peer](#the-crossws-peer-conflict-blocks-the-release-sbom)
+alone; an override-forced edge fails until it is recorded, and a recorded edge
+that comes back into range fails until its entry is deleted. It compares
+declared ranges with locked versions only, and does not model npm's resolution
+or which override forced an edge.
+
+**A later range bump splits across the workspace boundary.** This is the
+behavior an author who adds an override and moves on meets later. With a root
+`overrides` block present, npm 11.17 does not hoist a later range bump
+incrementally: the stale hoisted copy is kept and the new version is nested
+under the workspace that raised its range. What an operator or
 reviewer actually sees is not that mechanism but its result -- two copies of one
 package split across the workspace boundary, resolved by different dependents --
 and nothing at install time reports the split.
@@ -431,9 +479,9 @@ to the signal CI gives about it.
 re-resolve with `npm install --package-lock-only`. Two routes were measured not to
 work: `@dependabot rebase` and `@dependabot recreate` each reproduce the
 duplicate. A from-scratch resolve does hoist correctly and is still not the
-remedy, for the reason the brace-expansion record states of the same route: it
-moves hundreds of unrelated package versions, which is a far larger review
-surface than the bump being landed.
+remedy, for the reason stated above of the same route: it moves hundreds of
+unrelated package versions, which is a far larger review surface than the bump
+being landed.
 
 **What catches the next one.** `scripts/check-nested-root-package.mjs`
 (`npm run check:nested-root-package`, a CI static check in `static_checks.yaml`)
@@ -448,161 +496,42 @@ it reports is the split the lockfile records, not one npm would resolve, and
 only at that one depth: a copy nested under another package is ordinary conflict
 resolution, which this tree has dozens of.
 
-### The brace-expansion advisory is fixed by a root override
+### The development tree's brace-expansion copies
 
-The root `package.json` has `"overrides": { "brace-expansion": "^5.0.8" }`.
-It was adopted for two advisories, as the advisory data stood at the time:
+The tree holds three `brace-expansion` copies, each development-only: 5.0.12
+hoisted at the root for `minimatch@10.2.5` under `eslint`, and 2.1.7 nested
+under `archiver-utils` and `readdir-glob`, whose `minimatch@9.0.9` and
+`minimatch@5.1.9` declare `^2.0.2` and `^2.0.1`. Against the committed lockfile
+`npm audit --package-lock-only` and `npm audit --omit=dev --package-lock-only`
+each answer `found 0 vulnerabilities` (re-driven 2026-10-01 on 11.17.0 and
+11.19.1), and `npm ls brace-expansion --all` marks no edge.
 
-- GHSA-mh99-v99m-4gvg (`brace-expansion`: denial of service via unbounded
-  expansion length driving an out-of-memory process crash), which affected
-  every version at or below 5.0.7 and named 5.0.8 as its first patch, with no
-  patched 2.x, 3.x or 4.x line.
-- GHSA-rgw5-rvv9-x895, which defeats that first patch's mitigation through
-  unbounded intermediate arrays: it affected 4.0.0 up to but excluding 5.0.9
-  and named 5.0.9 as its first patch, so the range the override declares took
-  the tree onto that patch with no spec change.
+**Why the nested copies stay on the 2.x line.** Both `minimatch` ranges cap
+below 5.x, so an advisory against `brace-expansion` clears for them only once
+its 2.x line is patched. On 2026-10-01 the registry's advisory data names a
+2.x patch for every advisory it holds against the package, the highest floor
+being 2.1.7 (GHSA-q2hr-2g5m-vwhr). `nitropack@2.13.4`, the current release
+that day, declares `archiver: ^7.0.1`, which reaches those two `minimatch`
+lines, so no bump on that path moves the copies off 2.x until `minimatch`
+widens the range on one of those lines or `archiver` and `nitropack` move off
+them. An advisory that names no 2.x patch meets that cap, and an override
+answering it carries the costs recorded in
+[What a root `overrides` block changes about later installs](#what-a-root-overrides-block-changes-about-later-installs).
 
-Without the override the audit then reported 9 high-severity findings -- one
-advisory rolled up through the nine packages that depend on it, which npm
-answered `No fix available` -- against two copies at 2.1.2 nested under
-`archiver-utils` and `readdir-glob`. That count was not re-driven against the
-tree it was taken from.
-
-**The advisory data as re-driven 2026-10-01.** `npm audit --package-lock-only`
-on 11.19.1, against a tree holding a single `brace-expansion` version, draws no
-finding at 1.1.21, 2.1.7 or 5.0.12. The committed lockfile's root copy is
-`brace-expansion@5.0.12`, and against it `npm audit --package-lock-only` and
-`npm audit --omit=dev --package-lock-only` each answer
-`found 0 vulnerabilities` on 11.17.0 and 11.19.1 (2026-10-01). A resolve of the
-tree without the override -- the override removed and the root
-`brace-expansion` entry deleted before `npm install --package-lock-only` --
-nests `brace-expansion@2.1.7` under both `archiver-utils` and `readdir-glob`,
-puts the root copy at 5.0.12, and draws `found 0 vulnerabilities` on both
-releases.
-
-**Why no bump moves the nested copies.** `nitropack@2.13.4` is the current
-release (2026-10-01) and declares `archiver: ^7.0.1`. Under archiver 7,
-`archiver-utils` reaches `minimatch@9.0.9` through `glob@^10` and `readdir-glob`
-reaches `minimatch@5.1.9`; those two declare `brace-expansion` at `^2.0.2` and
-`^2.0.1`. Both ranges cap below the 5.x line, so no bump of any package on that
-path moves them onto it, and the override is what puts them there. Ending that
-requires minimatch to widen the range on one of those lines, or archiver and
-nitropack to move off them. Against the advisory data above, the 2.x release
-those ranges resolve to draws no finding of its own.
-
-**What the override changes in the tree.** The hoisted root
-`brace-expansion@5.0.12` serves both minimatch declarations: the lockfile holds
-no nested `brace-expansion` entry and no nested `balanced-match` entry under
-`archiver-utils` or `readdir-glob`, and no other package version moves. Re-driven
-2026-10-01 on 11.17.0 and 11.19.1: restoring the override over the
-no-override resolve above, deleting its four nested entries and running
-`npm install --package-lock-only` removes those four entries and changes nothing
-else. When the override was adopted, an otherwise identical resolve without it
-reported the same 9 high, which isolated the clearing to the override rather
-than to version drift; against the advisory data above that resolve reports
-none.
-
-**Reproducing that lockfile.** npm does not apply a newly added root
-`overrides` to a lockfile whose existing resolution already satisfies its
-dependents. Re-driven 2026-10-01 on 11.17.0 and 11.19.1, adding the override
-over the no-override resolve above: `npm install`,
-`npm install --package-lock-only`, and each with `--force` return the lockfile
-byte-identical. The override takes effect on a from-scratch resolve -- which on
-2026-10-01 changed 246 package versions against the committed lockfile, added
-26 entries and removed 59 -- or, the route that yields the surgical diff and the
-one taken here, after deleting exactly the four nested entries above from the
-lockfile and reinstalling. Take the same route after any bump that reintroduces
-a nested copy.
-
-**Why it did not reach the shipped tree.** Every copy is development-only:
-`npm ls --omit=dev brace-expansion` prints `(empty)`, which is npm's no-match
-answer -- it exits nonzero on a filtered query that matches nothing, while the
-unfiltered `npm ls --omit=dev` runs clean, so the nonzero exit reports the
-absence rather than a broken tree (re-driven 2026-10-01 on 11.19.1 against an
-install of the committed lockfile). A production-scoped audit excludes it by
-construction as well: `npm audit --omit=dev --package-lock-only` answers
-`found 0 vulnerabilities` and exits 0, as does
-`npm audit --omit=dev --package-lock-only -w packages/core -w apps/cli`, the
-scope matching the Dockerfile's runtime install (both re-driven 2026-10-01 on
-11.17.0 and 11.19.1). The path is the web build
-toolchain:
-`@tanstack/nitro-v2-vite-plugin` -> `nitropack` -> `archiver` ->
-`archiver-utils` / `readdir-glob` -> `minimatch` -> `brace-expansion`, which is
-nitropack archiving its own build output. The brace patterns expanded there come
-from this repository's build configuration, not from partner, operator, or
-network input, so nothing an attacker controls reaches the expansion the
-advisory describes, and the shipped CLI image installs `--omit=dev` (see [The
-Docker image's dependency
-freeze](CONTAINER_IMAGES.md#the-docker-images-dependency-freeze)). That
-bounds the urgency of a finding on this path rather than its fix; the
-override's cost is recorded next.
-
-**What the override costs: two dependents held outside their declared range.**
-The override resolves both minimatch edges onto the 5.x line their `^2` ranges
-exclude, and npm does not reliably report that. npm 11.17 marks such an edge
-`invalid`: `npm ls --all` exits 1 with `ELSPROBLEMS`, and an unscoped
-`npm sbom` refuses with `ESBOMPROBLEMS` naming
-`^2.0.2 required by minimatch@9.0.9` and `^2.0.1 required by minimatch@5.1.9`.
-npm 11.19.1, measured 2026-09-27 against the committed lockfile, marks neither
-(both re-driven 2026-10-01 on 11.17.0 and 11.19.1 against an install of the
-committed lockfile, with the same result): `npm ls --all` and the
-unscoped `npm sbom` name only the
-[crossws peer](#the-crossws-peer-conflict-blocks-the-release-sbom), and print
-`brace-expansion@5.0.12 deduped` under both minimatch copies with no marking.
-So npm's `invalid` marking is not a signal for this edge class. The release
-path is out of its reach either way -- `npm ls --omit=dev` exits 0, and the
-release-scoped `npm sbom --omit=dev -w packages/core -w apps/cli -w apps/web`
-(step 9 in [RELEASES.md](../RELEASES.md)) names only that same peer.
-
-**What the out-of-range edge is underneath: an API-incompatible major.** The npm
-reporting artifact is not the whole cost. `brace-expansion@5.0.12` exports a
-named `expand` and no callable default:
-`Object.keys(require("brace-expansion"))` is
-`["EXPANSION_MAX", "EXPANSION_MAX_LENGTH", "EXPANSION_MAX_DEPTH",
-"EXPANSION_MAX_REWRITES", "expand"]`, and `.default` is `undefined`. Both dependents the hoisted copy serves call the 2.x callable
-shape, so each breaks on any brace pattern -- measured against the committed
-tree, `braceExpand("a{b,c}d")` throws from `minimatch@5.1.9` (under
-`readdir-glob`, declaring `^2.0.1`) with `TypeError: expand is not a function`,
-and from `minimatch@9.0.9` (under `archiver-utils`, declaring `^2.0.2`) with
-`TypeError: (0 , brace_expansion_1.default) is not a function`. Non-brace
-patterns still match.
-
-That break is latent and development-only. `npm run build -w apps/web` exits 0
-against the committed tree, because nothing built here reaches archiver's brace
-path: archiver arrives through nitropack's azure preset, which this repo does
-not build. Every `brace-expansion` copy is development-only besides, so none of
-it is in the shipped image. What is left is a forward risk -- a dependent
-arriving on `brace-expansion@^1` or `^2` is forced onto the 5.x line by the
-same override and hits the same `TypeError`. npm resolves and installs the
-tree either way, and `npm audit --package-lock-only` answers
-`found 0 vulnerabilities` against the committed lockfile on 2026-10-01 with
-the two out-of-range edges in the tree.
-
-**What catches the next one.** `scripts/check-locked-dep-ranges.mjs`
-(`npm run check:locked-dep-ranges`, run by `npm run check:all`) is the guard.
-It reads the committed lockfile and fails on any edge whose locked version lies
-outside the range its dependent declared, naming the dependent, the declared
-range and the locked version, for every dependent the lockfile records: the
-root project, each workspace, and each installed package. The two minimatch
-edges above, and the crossws optional peer, are recorded with their reasons in
-the check's `OUT_OF_RANGE_BY_DESIGN` list; a new dependent forced onto the
-overridden line is a new edge and fails until it is recorded, and a recorded
-edge that comes back into range fails until its entry is deleted. It compares
-declared ranges with locked versions only, and does not model npm's resolution
-or which override forced an edge.
-
-**Revisit when** `nitropack` or `archiver` moves off `archiver@^7` to a line
-whose `minimatch` accepts `brace-expansion@^5`, or `minimatch` widens the `^2`
-range on its 5.x or 9.x lines. Either one makes the override redundant, and
-dropping it puts both minimatch edges back inside their declared ranges.
-`scripts/check-brace-expansion-override.mjs` (`npm run check:brace-expansion-override`, a CI static check in
-`static_checks.yaml`) is what watches for that, rather than the trigger resting
-on someone remembering it: it fails once the committed lockfile declares no
-`brace-expansion` range excluding the version it installs, which is the state
-either move leaves behind. It reads the two committed files and nothing else, so
-what it reports is what the lockfile declares and not what npm would resolve with
-the override gone -- confirming a removal still means regenerating the lockfile
-and re-running `npm audit --package-lock-only` against it.
+**Why none of it reaches the shipped tree.** `npm ls --omit=dev brace-expansion`
+prints `(empty)`, which is npm's no-match answer -- it exits nonzero on a
+filtered query that matches nothing, while the unfiltered `npm ls --omit=dev`
+runs clean (re-driven 2026-10-01 on 11.19.1). `npm audit --omit=dev
+--package-lock-only -w packages/core -w apps/cli`, the scope matching the
+Dockerfile's runtime install, answers `found 0 vulnerabilities` the same day.
+The path is the web build toolchain: `@tanstack/nitro-v2-vite-plugin` ->
+`nitropack` -> `archiver` -> `archiver-utils` / `readdir-glob` -> `minimatch`
+-> `brace-expansion`, which is nitropack archiving its own build output. The
+brace patterns expanded there come from this repository's build configuration,
+not from partner, operator, or network input, and the shipped CLI image installs
+`--omit=dev` (see [The Docker image's dependency
+freeze](CONTAINER_IMAGES.md#the-docker-images-dependency-freeze)). That bounds
+the urgency of a finding on this path rather than its fix.
 
 ## Upgrading the SFTP Stack (ssh2 / ssh2-sftp-client)
 

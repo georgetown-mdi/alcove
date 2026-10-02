@@ -185,7 +185,7 @@ Resolve any high-severity findings before proceeding. For any dependency added s
 
 This covers the npm tree this repository declares. The image as built -- its OS packages, and that same tree as installed inside it -- is gated separately, in CI, by the [image vulnerability scan](#image-vulnerability-scan).
 
-The unscoped `npm audit` additionally reports development-tree findings, which are triaged separately rather than at release time; how the last one was resolved, and what holds it resolved, is recorded in [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#the-brace-expansion-advisory-is-fixed-by-a-root-override).
+The unscoped `npm audit` additionally reports development-tree findings, which are triaged separately rather than at release time; the residuals npm leaves in that tree, and what an override answering a finding costs, are recorded in [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#npm-resolution-residuals).
 
 A Dependabot alert in the repository's Security tab is evaluated against `main`, which routinely lags `staging` by dozens of commits, so an alert can still read as open against `main` after `staging` already has the fix -- check `staging`'s lockfile before triaging a default-branch alert. That check narrows the triage rather than closing it: a package `staging` has not yet patched still gets a full triage. When the same evaluation opens a security update as a pull request against `main`, handle it by [A security update opened against main](#a-security-update-opened-against-main) rather than merging it there.
 
