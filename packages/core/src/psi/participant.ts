@@ -20,7 +20,11 @@ import {
   assertPartnerIndices,
   assertPartnerIndexTable,
 } from "../utils/partnerIndices";
-import { ProtocolRefusalError, RoundSetLimitError } from "../errors";
+import {
+  InternalConsistencyError,
+  ProtocolRefusalError,
+  RoundSetLimitError,
+} from "../errors";
 import { sendAbort } from "../protocolSetup";
 import {
   decodePsiBinaryFrame,
@@ -289,9 +293,8 @@ export class PSIParticipant {
   private engine: PsiEngine;
   private onProgress?: PsiProgressReporter;
   private setCeilings: PsiSetCeilings;
-  // The request this party last sent. A response re-encrypts it element for
-  // element without its framing, so the response is held to its bytes and
-  // element count. Undefined until this party creates a request.
+  // The request this party sent that no response has answered yet, which
+  // bounds that response (docs/spec/CHANNEL_SECURITY.md, PSI set parts).
   private sentRequest: SentRequest | undefined;
   // The operation now dispatched to the engine, for the mid-operation reports
   // the engine raises against it. Undefined between operations.
@@ -431,21 +434,18 @@ export class PSIParticipant {
     return declared;
   }
 
-  // The request a received response answers. A response arriving before this
-  // party sent any request answers nothing, and is refused.
   private requestAnswered(): SentRequest {
     if (this.sentRequest === undefined)
       throw new ProtocolRefusalError(
-        `${this.id} protocol error: inbound PSI response before this party ` +
-          "sent a request",
+        `${this.id} protocol error: inbound PSI response with no request ` +
+          "of this party's awaiting one",
       );
     return this.sentRequest;
   }
 
-  // Hold a received response to the request it answers: no longer than that
-  // request in bytes, then no more elements, before it is decoded.
   private assertResponseWithinRequest(responseBytes: Uint8Array): number {
     const request = this.requestAnswered();
+    this.sentRequest = undefined;
     if (responseBytes.byteLength > request.bytes)
       throw new ProtocolRefusalError(
         `${this.id} protocol error: inbound PSI response is ` +
@@ -485,8 +485,8 @@ export class PSIParticipant {
   // Receive one of the round's PSI sets in its parts. A setup or a request
   // holds the partner's own set: it is held to the bytes the authenticated
   // element bound for its kind admits, and to this party's receive ceiling, as
-  // this party's capacity rather than the protocol's. A response re-encrypts
-  // this party's request, so it is held to that request's length.
+  // this party's capacity rather than the protocol's. A response is held to
+  // the request this party sent.
   private receiveRoundSet(
     conn: MessageConnection,
     kind: PsiMessageKind,
@@ -608,6 +608,11 @@ export class PSIParticipant {
   public async createClientRequest(
     values: ReadonlyArray<string>,
   ): Promise<Uint8Array> {
+    if (this.sentRequest !== undefined)
+      throw new InternalConsistencyError(
+        `${this.id}: a PSI request was created while this party's previous ` +
+          "request had no response",
+      );
     const request = await this.reportProgress(
       "createClientRequest",
       values.length,

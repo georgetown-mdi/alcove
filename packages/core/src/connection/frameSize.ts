@@ -267,8 +267,8 @@ export function singlePassReplyByteCap(
  * only from the two parties' authenticated sizes -- never from the inbound frame's
  * own bytes -- and enforced at the `deserializeBinary` call site in participant.ts
  * before the element list drives curve-point materialization in the library. A
- * response, which re-encrypts this party's own request, is held to that request
- * instead (participant.ts). See {@link psiElementBounds}.
+ * response is held to the request this party sent instead (participant.ts). See
+ * {@link psiElementBounds}.
  */
 export interface PsiElementBounds {
   /** Max elements a received server setup (the sender's masked set) may declare. */

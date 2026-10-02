@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
@@ -10,7 +10,10 @@ import {
   roundOriginalIndexListMessage,
 } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { ProtocolRefusalError } from "../../src/errors";
+import {
+  InternalConsistencyError,
+  ProtocolRefusalError,
+} from "../../src/errors";
 
 import {
   createMessagePipe,
@@ -23,6 +26,8 @@ import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { asOnePsiSetPart } from "../utils/psiSetPart";
 import { PSI_SET_PART_HEADER_BYTES } from "../../src/psi/psiSetParts";
+import { countDeclaredPsiElements } from "../../src/connection/psiElementScan";
+import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
 const psiLibrary = await PSI();
 
@@ -270,9 +275,6 @@ test("computeValueMatches rejects a setup declaring more elements than the bound
   );
 });
 
-// Eight values, so a request of 8 * 35 + 2 bytes: the over-declared frame's
-// 64 two-byte elements fit within its length, and the element scan is what
-// refuses them.
 const EIGHT_VALUES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
 test("computeValueMatches rejects a response declaring more elements than the request it answers", async () => {
@@ -375,7 +377,102 @@ test("a response before this party sent any request is refused", async () => {
   );
   const { setup, response } = await respondedRound();
   await expect(receiver.computeValueMatches(setup, response)).rejects.toThrow(
-    "inbound PSI response before this party sent a request",
+    "inbound PSI response with no request of this party's awaiting one",
+  );
+});
+
+test("a second response to an answered request is refused", async () => {
+  const { receiver, setup, response } = await respondedRound();
+  await receiver.computeValueMatches(setup, response);
+  await expect(receiver.computeValueMatches(setup, response)).rejects.toThrow(
+    "inbound PSI response with no request of this party's awaiting one",
+  );
+  receiver.dispose();
+});
+
+test("creating a request while the previous one has no response is an internal consistency error", async () => {
+  const { receiver, setup, response } = await respondedRound();
+  const unanswered = receiver.createClientRequest(["Carol"]);
+  await expect(unanswered).rejects.toBeInstanceOf(InternalConsistencyError);
+  await expect(unanswered).rejects.toThrow(
+    "receiver: a PSI request was created while this party's previous " +
+      "request had no response",
+  );
+  await receiver.computeValueMatches(setup, response);
+  await expect(receiver.createClientRequest(["Carol"])).resolves.toBeInstanceOf(
+    Uint8Array,
+  );
+  receiver.dispose();
+});
+
+const nativeLibrary = await loadNativeAddonOrSkip();
+const RESPONSE_BOUND_SETS: ReadonlyArray<[string, Array<string>]> = [
+  ["an empty set", []],
+  ["a one-element set", ["Carol"]],
+  ["a several-element set", ["Carol", "Elizabeth", "Henry", "Ivan", "Judy"]],
+];
+
+describe.each([
+  ["wasm", psiLibrary],
+  ["native", nativeLibrary],
+] as const)("a real round on the %s backend", (_backend, library) => {
+  describe.each(["identifier-revealing", "count-only"] as const)(
+    "in %s mode",
+    (mode) => {
+      test.for(RESPONSE_BOUND_SETS)(
+        "answers a request from %s with a response no longer than it",
+        async ([, receiverSet], ctx) => {
+          if (library === undefined) {
+            ctx.skip();
+            return;
+          }
+          const [senderConn, receiverConn] = createMessagePipe();
+          const senderEngine = new InProcessPsiEngine(
+            library,
+            "starter",
+            "sender",
+            mode,
+          );
+          const processRequest = vi.spyOn(senderEngine, "processClientRequest");
+          const sender = new PSIParticipant(
+            "sender",
+            library,
+            { role: "starter", verbose: 0 },
+            UNBOUNDED_PSI_ELEMENTS,
+            senderEngine,
+          );
+          const receiver = new PSIParticipant(
+            "receiver",
+            library,
+            { role: "joiner", verbose: 0 },
+            UNBOUNDED_PSI_ELEMENTS,
+            new InProcessPsiEngine(library, "joiner", "receiver", mode),
+          );
+          const senderSet = ["Alice", "Carol", "Elizabeth"];
+          await (mode === "count-only"
+            ? Promise.all([
+                sender.countIntersection(senderConn, senderSet),
+                receiver.countIntersection(receiverConn, receiverSet),
+              ])
+            : Promise.all([
+                sender.identifyIntersection(senderConn, senderSet),
+                receiver.identifyIntersection(receiverConn, receiverSet),
+              ]));
+          expect(processRequest).toHaveBeenCalledTimes(1);
+          const request = processRequest.mock.calls[0][0];
+          const response = await processRequest.mock.results[0].value;
+          expect(response.byteLength).toBeLessThanOrEqual(request.byteLength);
+          const max = Number.MAX_SAFE_INTEGER;
+          expect(
+            countDeclaredPsiElements(response, "response", max),
+          ).toBeLessThanOrEqual(
+            countDeclaredPsiElements(request, "request", max),
+          );
+          sender.dispose();
+          receiver.dispose();
+        },
+      );
+    },
   );
 });
 
