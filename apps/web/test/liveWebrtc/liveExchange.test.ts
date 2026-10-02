@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterAll, beforeAll, expect, test, vi } from "vitest";
+import { afterAll, beforeAll, expect, test } from "vitest";
 import { commands } from "vitest/browser";
 
 import { loadCSVFile, runExchange } from "@alcove/core";
@@ -48,35 +48,6 @@ import type { PeerCloseOutcome } from "@psi/transport/waitForPeerClose";
  * {@link LEG_ENVIRONMENT_FAILURE}, so an environment that could not stand the
  * leg up is never read as an interop divergence.
  */
-
-/**
- * The one module this leg substitutes, and the reason it can run at all:
- * `@psi/transport/rendezvous` loads its config at module scope through
- * `ConfigManager`, whose env read needs `process` -- absent in the browser
- * runner, so the import throws there. The rest of the browser suite stubs the
- * whole rendezvous module for that reason
- * (`apps/web/test/browser/moduleMocks.ts`); this leg stubs the CONFIG instead,
- * one level below, so the dial it drives is the app's own. The values are the
- * schema's defaults, which is what an unset environment resolves to.
- */
-vi.mock("@utils/clientConfig", () => {
-  class ConfigManager {
-    load(): Promise<{
-      PEERJS_DEBUG_LEVEL: number;
-      LOG_LEVEL: string;
-      DEPLOYMENT_PROFILE: string;
-      ALCOVE_VERSION: string;
-    }> {
-      return Promise.resolve({
-        PEERJS_DEBUG_LEVEL: 1,
-        LOG_LEVEL: "INFO",
-        DEPLOYMENT_PROFILE: "hosted",
-        ALCOVE_VERSION: "",
-      });
-    }
-  }
-  return { ConfigManager };
-});
 
 /** What the browser peer links on. Two rows in common with the CLI party's
  * file, at different offsets on each side, so a party reading its own table

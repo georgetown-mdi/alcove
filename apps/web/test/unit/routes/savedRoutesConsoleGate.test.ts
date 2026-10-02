@@ -8,8 +8,8 @@ import { Route as SavedIndexRoute } from "../../../src/routes/saved.index.tsx";
 // The recurring surface (`/saved`, `/saved/$id`) belongs to the hosted browser
 // build. A console build has no managed store, so both routes redirect to the
 // lobby at `/` before rendering. `isConsoleBuild` is the only setting a test
-// varies; the rest of the module (the ConfigManager the psi rendezvous module
-// imports at load) stays real so importing the route modules does not fault.
+// varies; the rest of the module (the PeerJS debug level the psi rendezvous
+// module reads) stays real so importing the route modules does not fault.
 const clientConfig = vi.hoisted(() => ({ consoleBuild: false }));
 vi.mock("@utils/clientConfig", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();

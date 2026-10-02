@@ -2,20 +2,11 @@ import { StartClient } from "@tanstack/react-start/client";
 import { StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 
-import { ConfigManager, isConsoleBuild } from "@utils/clientConfig";
+import { isConsoleBuild, logLevel } from "@utils/clientConfig";
 import { registerAppShell } from "@utils/appShellUpdate";
 import { setDefaultLevel } from "loglevel";
 
-const configManager = new ConfigManager();
-const config = await configManager.load({
-  data: Object.fromEntries(
-    Object.entries(import.meta.env)
-      .filter(([key]) => key.startsWith("VITE_"))
-      .map(([key, value]) => [key.substring(5), value]),
-  ),
-});
-
-setDefaultLevel(config.LOG_LEVEL);
+setDefaultLevel(logLevel());
 
 hydrateRoot(
   document,

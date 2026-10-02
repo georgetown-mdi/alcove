@@ -30,34 +30,6 @@ import type { WebRTCEndpoint } from "@alcove/core";
  * the measurement is offline and names no server that has to exist.
  */
 
-/**
- * The one module this file substitutes. `@psi/transport/rendezvous` loads its
- * config at module scope through `ConfigManager`, whose env read needs
- * `process`, absent in the browser runner; the rest of this suite stubs the
- * whole rendezvous module for that reason (`moduleMocks.ts`), which would leave
- * nothing here to measure. Stubbing the config one level below keeps the dial
- * path the app's own. The values are the schema's defaults, which is what an
- * unset environment resolves to.
- */
-vi.mock("@utils/clientConfig", () => {
-  class ConfigManager {
-    load(): Promise<{
-      PEERJS_DEBUG_LEVEL: number;
-      LOG_LEVEL: string;
-      DEPLOYMENT_PROFILE: string;
-      ALCOVE_VERSION: string;
-    }> {
-      return Promise.resolve({
-        PEERJS_DEBUG_LEVEL: 1,
-        LOG_LEVEL: "INFO",
-        DEPLOYMENT_PROFILE: "hosted",
-        ALCOVE_VERSION: "",
-      });
-    }
-  }
-  return { ConfigManager };
-});
-
 /** The address the client assembles, for one endpoint, in its recorded form. */
 interface AssembledAddress {
   /** The string the PeerJS client built and would have handed a WebSocket. */
