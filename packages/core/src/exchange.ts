@@ -1695,7 +1695,7 @@ async function assertFirstRoundWithinPartnerCeiling(
     });
   } catch (err) {
     await sendAbort(conn, [
-      err instanceof RoundSetLimitError
+      err instanceof RoundSetLimitError && err.reason !== "uncounted"
         ? PSI_SET_TOO_LARGE_ABORT_REASON
         : PSI_SET_REFUSED_ABORT_REASON,
     ]);

@@ -340,6 +340,41 @@ test("a first round refused for other than its size sends the partner a fixed ab
   expect(abort.partnerReason).toBe(PSI_SET_REFUSED_ABORT_REASON);
 });
 
+test("a first round this party could not count sends the partner the refused abort, not the too-large one", async () => {
+  const failure = new Error("a row could not be read");
+  const [local, partner] = createMessagePipe();
+  const sent: Array<unknown> = [];
+  const partnerSent: Array<unknown> = [];
+  const [localOutcome, partnerOutcome] = await Promise.allSettled([
+    runExchange(
+      withCeiling(local, 11, sent),
+      "initiator",
+      prepared("Local Co", 5),
+      { psiLibrary },
+    ),
+    runExchange(
+      withCeiling(partner, undefined, partnerSent),
+      "responder",
+      withThrowingRows(prepared("Partner Co", 12), failure),
+      { psiLibrary },
+    ),
+  ]);
+  expect(partnerOutcome.status).toBe("rejected");
+  const refusal = (partnerOutcome as PromiseRejectedResult).reason as Error;
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
+  expect((refusal as RoundSetLimitError).reason).toBe("uncounted");
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(partnerSent.at(-1)).toEqual({
+    decision: "abort",
+    abortReasons: [PSI_SET_REFUSED_ABORT_REASON],
+  });
+  expect(localOutcome.status).toBe("rejected");
+  const abort = (localOutcome as PromiseRejectedResult)
+    .reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_REFUSED_ABORT_REASON);
+});
+
 test("a receiver partner over this party's stated ceiling refuses its first round after this party sent its setup", async () => {
   // The partner has fewer records, so it resolves to the PSI receiver; this
   // party, the sender, sends its setup without waiting on the partner's check.
