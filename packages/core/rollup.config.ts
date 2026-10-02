@@ -11,14 +11,12 @@ const pkg = require("./package.json");
 
 // Packages bundled into the output rather than kept as peer dependencies.
 // @openmined/psi.js is always bundled (WASM, no npm-installable form).
-// canonicalize is always bundled because it is ESM-only: from 3.0.0 its package
-// `exports` declares only an `import` condition (no `require`, no `default`), so
-// a `require("canonicalize")` left in the CJS build resolves to nothing and
-// crashes at load with ERR_PACKAGE_PATH_NOT_EXPORTED. Only the ESM-resolving dev
-// paths (vitest via Vite, the CLI's `node --import=tsx`) take the `import`
-// condition and so never hit it; the shipped CJS bundle (e.g. the Docker CLI run
-// as plain `node`) does. Its source is a single function, so inlining it into
-// every build is cheap and removes the runtime resolution of it entirely.
+// canonicalize is always bundled: Node 26 `require`s it as a module namespace,
+// and the CJS output's default `interop` calls that namespace as the default
+// export, so an external build fails with "canonicalize is not a function".
+// `interop: "compat"` would fix that for every external; inlining the one
+// function is narrower. Measured: docs/spec/DEPENDENCY_PINS.md, "Inlined
+// dependencies and their remediation path".
 // @noble/curves is bundled in the UMD browser build only because it ships
 // ESM-only and has no UMD global name; the ESM/CJS builds keep it external.
 const ALWAYS_BUNDLED = new Set(["@openmined/psi.js", "canonicalize"]);
