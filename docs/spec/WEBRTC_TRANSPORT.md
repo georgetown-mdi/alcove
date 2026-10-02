@@ -340,9 +340,11 @@ partner calls the connection lost, and the two parties' holds add up
 
 - The PSI masking runs in a worker thread, off that event loop.
 - A cascade or count-only round builds its set, and a cascade round resolves
-  its matches, in stretches of at most **50 ms** before the event loop runs
-  again, read from the clock every **1,024** records
-  (`packages/core/src/utils/eventLoop.ts`). Both are arbitrary working values.
+  its matches, in paced stretches. The pacer reads the clock every **1,024**
+  records and yields to the event loop at the first record boundary after
+  **50 ms** of work (`packages/core/src/utils/eventLoop.ts`), so a stretch is
+  bounded by 50 ms plus one stretch of records. The work between paced passes,
+  such as the sorts, is not paced. Both values are arbitrary working values.
 - What still holds the thread on an open channel is bounded by one frame or
   one index list rather than paced: encoding and decoding a frame, and
   checking and sorting a round's matched positions. At 7,700,000 records a
