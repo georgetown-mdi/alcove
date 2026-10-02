@@ -614,17 +614,22 @@ const MAX_RENDERED_LINK_LENGTH =
 // The first-party copy, restated whole so a link that renders a PREFIX of it --
 // the defect this partition exists to close -- fails rather than matching a
 // phrase that happens to survive the cap.
-const NON_INTERACTIVE_SUMMARY =
+const REMEDY_PREFIX =
   "no host_key_fingerprint is pinned for this SFTP server and this run is " +
-  "not interactive, so its identity cannot be confirmed; refusing to connect.";
-const RECOVERY_WITH_CONFIG =
-  "Run once from an interactive terminal to review and pin the presented key, " +
-  "or pin it out-of-band by setting connection.server.host_key_fingerprint in " +
-  "the configuration below.";
-const RECOVERY_WITHOUT_CONFIG =
-  "Run once from an interactive terminal to review and pin the presented key, " +
-  "or pin it out-of-band by setting connection.server.host_key_fingerprint in " +
-  "a saved configuration.";
+  "not interactive, so its identity cannot be confirmed; refusing to " +
+  "connect. To fix: read the server's key with 'alcove probe-host-key " +
+  "sftp://HOST[:PORT]' (HOST is the configured host below), confirm it with " +
+  "the server's administrator, then pass it as --server-host-key-fingerprint " +
+  "SHA256:...";
+const REFUSAL_WITH_CONFIG =
+  REMEDY_PREFIX +
+  ", or set connection.server.host_key_fingerprint in the configuration " +
+  "below; or run once from an interactive terminal (with docker, add -it) " +
+  "to review and pin the presented key.";
+const REFUSAL_WITHOUT_CONFIG =
+  REMEDY_PREFIX +
+  "; or run from an interactive terminal (with docker, add -it) to review " +
+  "and accept the presented key for this run only.";
 // Raised after the probe, itself a connection: this can only accurately
 // assure what that connection disclosed, not that none was opened. ssh2
 // refuses at host-key verification, before userauth (the assumption recorded
@@ -642,8 +647,8 @@ const CONFIG_LABEL = "configuration file: ";
 // Refuse through establishHostKeyTrust and render what the operator sees:
 // sanitizeErrorForDisplay over the whole cause chain, which is the boundary
 // every CLI sink shows a thrown error at. That each sink renders the chain
-// rather than a bare `.message` -- what delivers a recovery step composed onto a
-// cause link -- is held by errorSinkCauseChain.test.ts. The real renderer here,
+// rather than a bare `.message` -- what delivers the labelled fragments composed
+// onto cause links -- is held by errorSinkCauseChain.test.ts. The real renderer here,
 // not a stub: the per-link cap is the whole subject.
 async function refuse(options: {
   persistence: HostKeyPersistence;
@@ -733,20 +738,19 @@ for (const [modeLabel, persistenceFor] of CONFIG_BEARING_MODES)
           host,
         });
 
-        // Whole links, not prefixes: the summary and the recovery each hold a
-        // budget nobody else can spend.
-        expect(links[0]).toBe(NON_INTERACTIVE_SUMMARY);
-        expect(links[1]).toBe(RECOVERY_WITH_CONFIG);
+        // A whole link, not a prefix: the refusal and its remedy hold a budget
+        // nobody else can spend.
+        expect(links[0]).toBe(REFUSAL_WITH_CONFIG);
         // Each unbounded fragment sits alone behind its own first-party label,
         // and a fragment wider than a link spends its own budget and no other.
-        expect(links[2]?.startsWith(CONFIG_LABEL)).toBe(true);
-        expect(links[2]).toContain(configPath.slice(0, 32));
-        expect(links[2]?.includes(DISPLAY_TRUNCATION_MARKER)).toBe(
+        expect(links[1]?.startsWith(CONFIG_LABEL)).toBe(true);
+        expect(links[1]).toContain(configPath.slice(0, 32));
+        expect(links[1]?.includes(DISPLAY_TRUNCATION_MARKER)).toBe(
           pathOverruns,
         );
-        expect(links[3]?.startsWith(HOST_LABEL)).toBe(true);
-        expect(links[3]).toContain(host.slice(0, 16));
-        expect(links[3]?.includes(DISPLAY_TRUNCATION_MARKER)).toBe(
+        expect(links[2]?.startsWith(HOST_LABEL)).toBe(true);
+        expect(links[2]).toContain(host.slice(0, 16));
+        expect(links[2]?.includes(DISPLAY_TRUNCATION_MARKER)).toBe(
           hostOverruns,
         );
         // Enforcement is untouched: still a UsageError (exit 64), still no
@@ -764,10 +768,9 @@ for (const [hostLabel, host, hostOverruns] of HOSTS)
       host,
     });
 
-    expect(links[0]).toBe(NON_INTERACTIVE_SUMMARY);
-    expect(links[1]).toBe(RECOVERY_WITHOUT_CONFIG);
-    expect(links[2]?.startsWith(HOST_LABEL)).toBe(true);
-    expect(links[2]?.includes(DISPLAY_TRUNCATION_MARKER)).toBe(hostOverruns);
+    expect(links[0]).toBe(REFUSAL_WITHOUT_CONFIG);
+    expect(links[1]?.startsWith(HOST_LABEL)).toBe(true);
+    expect(links[1]?.includes(DISPLAY_TRUNCATION_MARKER)).toBe(hostOverruns);
     // Nothing to name, so nothing is named: the ephemeral shape has no
     // config path at all, so no link -- and no empty or `undefined` label --
     // is grown for one.
@@ -776,6 +779,31 @@ for (const [hostLabel, host, hostOverruns] of HOSTS)
     expect(probeCalls).toBe(0);
     if (connection.channel === "sftp")
       expect(connection.server.hostKeyFingerprint).toBeUndefined();
+  });
+
+// The non-interactive refusal is what a scheduled run, or `docker run` without
+// -it, meets first, so its remedy names the two tools that let such a run
+// connect, on the refusal's own line rather than a "caused by:" link, and the
+// ephemeral shape does not point at a configuration it does not have.
+for (const persistence of [
+  { mode: "write-now", configPath: ORDINARY_CONFIG_PATH },
+  { mode: "save-with-config", configPath: ORDINARY_CONFIG_PATH },
+  { mode: "ephemeral" },
+] satisfies HostKeyPersistence[])
+  test(`the non-interactive refusal (${persistence.mode}) names probe-host-key and --server-host-key-fingerprint under "To fix:"`, async () => {
+    const { links } = await refuse({ persistence });
+    const remedy = links[0]?.slice(links[0].indexOf("To fix: ")) ?? "";
+
+    expect(links[0]).toContain("refusing to connect. To fix: ");
+    expect(remedy).toContain("alcove probe-host-key sftp://HOST[:PORT]");
+    expect(remedy).toContain("--server-host-key-fingerprint SHA256:");
+    expect(remedy).toContain("interactive terminal (with docker, add -it)");
+    if (persistence.mode === "ephemeral")
+      expect(links[0]).not.toContain("configuration");
+    else
+      expect(remedy).toContain(
+        "connection.server.host_key_fingerprint in the configuration below",
+      );
   });
 
 for (const [hostLabel, host, hostOverruns] of HOSTS)
@@ -836,7 +864,7 @@ const FLOODED_REFUSALS: Array<
         },
         host: "h".repeat(100_000),
       }),
-    RECOVERY_WITH_CONFIG,
+    REFUSAL_WITH_CONFIG,
   ],
   [
     "the declined-trust refusal",
@@ -887,16 +915,15 @@ test("a control-laden host is escaped at the boundary and cannot forge a link", 
 
   for (const raw of ["\x1b", "\r", "\x00", "\u202e"])
     expect(rendered).not.toContain(raw);
-  expect(links[0]).toBe(NON_INTERACTIVE_SUMMARY);
-  expect(links[1]).toBe(RECOVERY_WITH_CONFIG);
-  expect(links[3]).toBe(
+  expect(links[0]).toBe(REFUSAL_WITH_CONFIG);
+  expect(links[2]).toBe(
     `${HOST_LABEL}sftp\\x1b[31m.example.org\\x0anot-an-error: forged\\x0d` +
       `\\x0acaused by: forged\\x00\\u202e`,
   );
   // Non-forgeable framing: the separator's newline is the only one the render
   // contains, so a host holding `caused by: ` text of its own adds no link and
   // cannot pass its bytes off as a further step in the chain.
-  expect(links.length).toBe(4);
+  expect(links.length).toBe(3);
   expect(rendered.split("\n").length).toBe(links.length);
 });
 
@@ -916,10 +943,9 @@ test("a bare PEM marker as the host is redacted on the host's own link", async (
     host: PEM_MARKER,
   });
 
-  expect(links[0]).toBe(NON_INTERACTIVE_SUMMARY);
-  expect(links[1]).toBe(RECOVERY_WITH_CONFIG);
-  expect(links[2]).toBe(`${CONFIG_LABEL}${ORDINARY_CONFIG_PATH}`);
-  expect(links[3]).toBe(`${HOST_LABEL}${REDACTED}`);
+  expect(links[0]).toBe(REFUSAL_WITH_CONFIG);
+  expect(links[1]).toBe(`${CONFIG_LABEL}${ORDINARY_CONFIG_PATH}`);
+  expect(links[2]).toBe(`${HOST_LABEL}${REDACTED}`);
   expect(rendered).not.toContain("PRIVATE KEY");
 });
 
@@ -929,9 +955,8 @@ test("a sliced key in the host is redacted with the surrounding text kept", asyn
     host: `${ORDINARY_HOST} ${PEM_MARKER}\n${KEY_BODY}\ntrailing`,
   });
 
-  expect(links[0]).toBe(NON_INTERACTIVE_SUMMARY);
-  expect(links[1]).toBe(RECOVERY_WITH_CONFIG);
-  expect(links[3]).toBe(`${HOST_LABEL}${ORDINARY_HOST} ${REDACTED}`);
+  expect(links[0]).toBe(REFUSAL_WITH_CONFIG);
+  expect(links[2]).toBe(`${HOST_LABEL}${ORDINARY_HOST} ${REDACTED}`);
   expect(rendered).not.toContain(KEY_BODY.slice(0, 24));
   expect(rendered).not.toContain("trailing");
 });
@@ -945,13 +970,12 @@ test("a sliced key in the config path is redacted on the config path's own link"
     host: ORDINARY_HOST,
   });
 
-  expect(links[0]).toBe(NON_INTERACTIVE_SUMMARY);
-  expect(links[1]).toBe(RECOVERY_WITH_CONFIG);
-  expect(links[2]).toBe(`${CONFIG_LABEL}/etc/${REDACTED}`);
+  expect(links[0]).toBe(REFUSAL_WITH_CONFIG);
+  expect(links[1]).toBe(`${CONFIG_LABEL}/etc/${REDACTED}`);
   expect(rendered).not.toContain(KEY_BODY.slice(0, 24));
   // The reach stops at the link boundary: each link is redacted on its own, so
   // a marker in the config path cannot swallow the host link behind it.
-  expect(links[3]).toBe(`${HOST_LABEL}${ORDINARY_HOST}`);
+  expect(links[2]).toBe(`${HOST_LABEL}${ORDINARY_HOST}`);
 });
 
 // Every link has its `cause` the way the two-argument Error constructor
@@ -974,7 +998,7 @@ test("every refusal link installs its cause non-enumerably", async () => {
   });
 
   const chain = causeChainOf(error);
-  expect(chain.length).toBe(4);
+  expect(chain.length).toBe(3);
   for (const link of chain) {
     expect(Object.getOwnPropertyDescriptor(link, "cause")?.enumerable).toBe(
       false,

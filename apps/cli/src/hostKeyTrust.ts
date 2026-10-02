@@ -156,26 +156,26 @@ export function assertHostKeyTrustCanBeEstablished(
   // interpolated -- see
   // docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
   const hostDetail = hostDetailOf(connection.server.host);
-  throw hostKeyRefusal(
+  const summary =
     `no host_key_fingerprint is pinned for this SFTP server and this run ` +
-      `is not interactive, so its identity cannot be confirmed; refusing ` +
-      `to connect.`,
+    `is not interactive, so its identity cannot be confirmed; refusing ` +
+    `to connect. To fix: read the server's key with 'alcove ` +
+    `probe-host-key sftp://HOST[:PORT]' (HOST is the configured host ` +
+    `below), confirm it with the server's administrator, then pass it as ` +
+    `--server-host-key-fingerprint SHA256:...`;
+  throw hostKeyRefusal(
+    persistence.mode !== "ephemeral"
+      ? `${summary}, or set connection.server.host_key_fingerprint in the ` +
+          `configuration below; or run once from an interactive terminal ` +
+          `(with docker, add -it) to review and pin the presented key.`
+      : `${summary}; or run from an interactive terminal (with docker, add ` +
+          `-it) to review and accept the presented key for this run only.`,
     persistence.mode !== "ephemeral"
       ? [
-          `Run once from an interactive terminal to review and pin the ` +
-            `presented key, or pin it out-of-band by setting ` +
-            `connection.server.host_key_fingerprint in the configuration ` +
-            `below.`,
           `configuration file: ${redactPrivateKeyMaterial(persistence.configPath)}`,
           hostDetail,
         ]
-      : [
-          `Run once from an interactive terminal to review and pin the ` +
-            `presented key, or pin it out-of-band by setting ` +
-            `connection.server.host_key_fingerprint in a saved ` +
-            `configuration.`,
-          hostDetail,
-        ],
+      : [hostDetail],
   );
 }
 

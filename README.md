@@ -57,15 +57,17 @@ To link a file:
 2. Within the Docker terminal (or in a Windows/Mac/Linux terminal window), run:  
 ```sh
 docker pull ghcr.io/georgetown-mdi/alcove:latest
-docker run \
+docker run -it \
   --rm --mount type=bind,src=WORK_PATH,dst=/work \
   ghcr.io/georgetown-mdi/alcove:latest \
-  sftp://SFTP_USER:SFTP_PASSWORD@SFTP_HOST:SFTP_PORT/SFTP_PATH \
+  sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH \
+  --server-password=@PASSWORD_FILE \
   INPUT_FILE OUTPUT_FILE
 ```  
 Replacing each of the following:
    * `WORK_PATH` - relative or absolute path to a directory on your machine that contains your input file. The container can only read and write inside this directory, and the output file is written here. Example: `/Users/me/psi-exchange` (Mac/Linux) or `C:\Users\me\psi-exchange` (Windows).
-   * `SFTP_USER`, `SFTP_PASSWORD`, `SFTP_HOST`, `SFTP_PORT` - standard SFTP connection information: the account username and password, the server address, and the port (usually `22`; if you use the default you can omit `:SFTP_PORT`).
+   * `SFTP_USER`, `SFTP_HOST`, `SFTP_PORT` - standard SFTP connection information: the account username, the server address, and the port (usually `22`; if you use the default you can omit `:SFTP_PORT`).
+   * `PASSWORD_FILE` - a file in `WORK_PATH` holding the SFTP account's password, so the password stays out of the command line and your shell history. Example: `passwd`.
    * `SFTP_PATH` - path from the **root** of the SFTP server to a directory that both parties can read and write; the exchange happens through files placed here. Example: `/exchanges/county-a-county-b`.
    * `INPUT_FILE` - your data file: a CSV with identifier columns (such as name, date of birth, or SSN) and, optionally, columns with data to share with the other party for matched records. A relative path is resolved inside `WORK_PATH`. Example: `clients.csv`.
    * `OUTPUT_FILE` - name for the results file. Unless an absolute path is specified, the output file is written in `WORK_PATH`. Example: `matches.csv`.
@@ -73,12 +75,31 @@ Replacing each of the following:
 A complete example, run from `/Users/me/psi-exchange` containing `clients.csv`:
 
 ```sh
+docker run -it \
+  --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work \
+  ghcr.io/georgetown-mdi/alcove:latest \
+  sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b \
+  --server-password=@passwd \
+  clients.csv matches.csv
+```
+
+The `-it` flag connects your terminal to the container. On the first connection, Alcove shows the SFTP server's host-key fingerprint and asks you to confirm it; check it against the fingerprint your server administrator gives you before answering yes. Without `-it` there is no terminal to ask at, and Alcove refuses to connect to a server whose fingerprint it has not been given.
+
+To run without a terminal, as a scheduled job does, read the fingerprint first, confirm it with your server administrator, and pass it on each run:
+
+```sh
+docker run --rm ghcr.io/georgetown-mdi/alcove:latest \
+  probe-host-key sftp://sftp.example.org
 docker run \
   --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work \
   ghcr.io/georgetown-mdi/alcove:latest \
-  'sftp://exchange_user:password123@sftp.example.org/exchanges/county-a-county-b' \
+  sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b \
+  --server-password=@passwd \
+  --server-host-key-fingerprint=SHA256:FINGERPRINT \
   clients.csv matches.csv
 ```
+
+Replace `SHA256:FINGERPRINT` with the whole fingerprint `probe-host-key` printed. See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
 
 Because the only content accessible to the container is what is in `WORK_PATH`, we recommend making a new directory and placing the file you wish to link in it.
 
@@ -121,17 +142,19 @@ The `serve` role is the one that cannot instead be run as your own account with 
 
 #### Passwords
 
-Special characters in passwords can be interpreted incorrectly by your shell. To avoid this, encase the whole connection string in single-quotation marks or escape the problematic characters. As an example of an exchange running from the current directory (indicated by mounting `$PWD`, or **p**rinting the **w**orking **d**irectory):
+Read the password from a file with `--server-password=@PASSWORD_FILE`, as the quickstart does: the password then never appears on the command line or in your shell history, and its special characters need no escaping. See [Command line flags](#command-line-flags).
+
+If you put the password in the connection string instead, special characters in it can be interpreted incorrectly by your shell. To avoid this, encase the whole connection string in single-quotation marks or escape the problematic characters. As an example of an exchange running from the current directory (indicated by mounting `$PWD`, or **p**rinting the **w**orking **d**irectory):
 
 ```sh
-docker run --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \ 
+docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
    'sftp://user:passw!rd@example.org/psi' input.csv output.csv
 ```
 
 or
 
 ```sh
-docker run --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \ 
+docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
    sftp://user:passw\!rd@example.org/psi input.csv output.csv
 ```
 
@@ -147,7 +170,7 @@ Connection parameters can also be specified individually as command line flags t
 Using `@path`s specifies that the value should be read from a file. For example, to have the script read a password from the file `passwd` in the working directory, run:
 
 ```sh
-docker run --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
+docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
   sftp://user@example.org/psi \
   --server-password=@passwd \
   input.csv output.csv
@@ -172,21 +195,21 @@ Paths can be given to Docker using standard Windows-style back-slashes. One exce
 Additionally, the line-continuation markers given in the examples (the `\` at the end of each line) above do not parse correctly. Put commands all on one line instead. For example:
 
 ```sh
-docker run --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user:password@example.org/psi input.csv output.csv
+docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv output.csv
 ```
 
 ### Docker run background
 
-The `docker run` command has two parts. The first is the Docker invocation, which mounts `WORK_PATH` at `/work` so the container can read your input and write the output there (see Docker's own docs for [`--rm`](https://docs.docker.com/reference/cli/docker/container/run/#rm) and [`--mount`](https://docs.docker.com/reference/cli/docker/container/run/#mount)):
+The `docker run` command has two parts. The first is the Docker invocation, which connects your terminal to the container so Alcove can ask you to confirm the server's fingerprint, and mounts `WORK_PATH` at `/work` so the container can read your input and write the output there (see Docker's own docs for [`--rm`](https://docs.docker.com/reference/cli/docker/container/run/#rm) and [`--mount`](https://docs.docker.com/reference/cli/docker/container/run/#mount)):
 
 ```sh
-docker run --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest
+docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown-mdi/alcove:latest
 ```
 
 The second part is the invocation of the Alcove script and includes any command line options you wish to use. In the first example above it is:
 
 ```sh
-sftp://SFTP_USER:SFTP_PASSWORD@SFTP_HOST:SFTP_PORT/SFTP_PATH INPUT_FILE OUTPUT_FILE
+sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FILE
 ```
 
 However, you can place anything here you wish to pass on to the program. For example, to have it print all of its options, execute:
