@@ -108,6 +108,47 @@ describe("a one-shot exchange", () => {
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.retry).toBe("withheld");
   });
+
+  test("states a partner's abort over this browser's ceiling, with no retry", () => {
+    const failure = failureFor(
+      "exchange",
+      new PeerAbortError(undefined, PSI_SET_TOO_LARGE_ABORT_REASON),
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe(PARTNER_SET_TOO_LARGE_TITLE);
+    expect(failure.message).toMatch(
+      /^The exchange stopped because your partner's set of values for a linkage key is larger than this browser can match\. .*command-line application/,
+    );
+    expect(failure.reportedCause).toBeUndefined();
+    expect(failure.retry).toBe("withheld");
+  });
+
+  test("states a partner's refusal of its own set, with no retry", () => {
+    const failure = failureFor(
+      "exchange",
+      new PeerAbortError(undefined, PSI_SET_REFUSED_ABORT_REASON),
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe(PARTNER_REFUSED_SET_TITLE);
+    expect(failure.message).toMatch(
+      /^The exchange stopped because your partner's run refused to send its set of values\. .*ask your partner to fix the cause/,
+    );
+    expect(failure.reportedCause).toBeUndefined();
+    expect(failure.retry).toBe("withheld");
+  });
+
+  test("keeps the generic copy for any other partner abort", () => {
+    const generic = failureFor("exchange", new PeerAbortError());
+    expect(generic.category).toBe("exchange");
+    expect(generic.title).toBe("Exchange failed");
+    expect(generic.retry).toBe("offered");
+    expect(
+      failureFor(
+        "exchange",
+        new PeerAbortError(undefined, PARTNER_SET_OVER_CAPACITY_ABORT_REASON),
+      ),
+    ).toEqual(generic);
+  });
 });
 
 describe("a managed exchange", () => {

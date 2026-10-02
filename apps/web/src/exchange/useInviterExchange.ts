@@ -6,6 +6,9 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  PeerAbortError,
   RoundCapacityError,
   assertFirstRoundWithinSetMaximum,
   getLogger,
@@ -58,6 +61,11 @@ import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
 import { tooLargeReadingOf } from "@psi/managed/managedRun";
 
 import {
+  PARTNER_REFUSED_SET_PROBLEM,
+  PARTNER_REFUSED_SET_REMEDY,
+  PARTNER_REFUSED_SET_TITLE,
+  PARTNER_SET_TOO_LARGE_PROBLEM,
+  PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
@@ -397,6 +405,35 @@ function failureContentFor(
       category: "config",
       title: PARTNER_SET_TOO_LARGE_TITLE,
       message: sanitizedFailureMessage(error),
+    };
+  // The partner's abort in place of a set of its own over the ceiling this
+  // browser stated, or in place of its first set refused for another cause.
+  // The abort states no figure, so the copy is fixed. Classified `config`: the
+  // partner's run refuses the same way however many times it runs. Any other
+  // partner abort falls through to the generic copy below.
+  if (
+    error instanceof PeerAbortError &&
+    error.partnerReason === PSI_SET_TOO_LARGE_ABORT_REASON
+  )
+    return {
+      category: "config",
+      title: PARTNER_SET_TOO_LARGE_TITLE,
+      message:
+        `The exchange stopped because ${PARTNER_SET_TOO_LARGE_PROBLEM}. ` +
+        "Running it again stops the same way until your partner's input is " +
+        `smaller. ${PARTNER_SET_TOO_LARGE_REMEDY}`,
+    };
+  if (
+    error instanceof PeerAbortError &&
+    error.partnerReason === PSI_SET_REFUSED_ABORT_REASON
+  )
+    return {
+      category: "config",
+      title: PARTNER_REFUSED_SET_TITLE,
+      message:
+        `The exchange stopped because ${PARTNER_REFUSED_SET_PROBLEM}. ` +
+        "Running it again stops the same way until your partner fixes the " +
+        `cause. ${PARTNER_REFUSED_SET_REMEDY}`,
     };
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
