@@ -55,7 +55,7 @@ const FORGED_FRAME =
  * the blank line that ends a frame -- around a complete forged event. Legal on
  * every POSIX filesystem: only `/` and NUL are excluded from a filename.
  */
-const FORGING_ENTRY_NAME = `q1\n${FORGED_FRAME}\r\n\ncohort.csv`;
+const FORGING_ENTRY_NAME = `q1\n${FORGED_FRAME}\r\n\ncohort-hello.json`;
 
 /** A running console job whose rendezvous mount already holds `entries`, so the
  * preflight raises its manager-composed warnings before the child is spawned. */
@@ -177,7 +177,8 @@ describe("a newline-bearing manager warning cannot forge an event frame", () => 
       (event) =>
         event.type === "warning" &&
         typeof event.message === "string" &&
-        event.message.includes("holds"),
+        event.message.includes("holds") &&
+        !event.message.includes("an earlier exchange's files"),
     );
     expect(listing).toBeDefined();
     expect(listing!.message).toContain(FORGING_ENTRY_NAME);
@@ -189,13 +190,15 @@ describe("a newline-bearing manager warning cannot forge an event frame", () => 
       (accumulated, message) => appendSanitizedRunWarning(accumulated, message),
       [],
     );
-    const renderedListing = rendered.find((warning) =>
-      warning.includes("holds"),
+    const renderedListing = rendered.find(
+      (warning) =>
+        warning.includes("holds") &&
+        !warning.includes("an earlier exchange's files"),
     );
     expect(renderedListing).toBeDefined();
     expect(renderedListing).toContain("q1\\x0a");
     expect(renderedListing).toContain("\\x0d");
-    expect(renderedListing).toContain("cohort.csv");
+    expect(renderedListing).toContain("cohort-hello.json");
     expect(renderedListing).not.toContain("\n");
     expect(renderedListing).not.toContain("\r");
   });

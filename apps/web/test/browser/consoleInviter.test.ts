@@ -25,13 +25,16 @@ import {
   UNDESCRIBABLE_RECORD_LEAD,
 } from "@exchange/RecordDownload";
 import {
+  SHARED_FOLDER_EXPOSURE_NOTICE,
+  SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT,
+} from "@console/filedropRendezvousChoice";
+import {
   SWEEP_CONFIRMATION_LABEL,
   SWEEP_CONTROL_LABEL,
 } from "@psi/runDiagnosticsModel";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { RECEIPT_MISSING_LEAD } from "@exchange/ReceiptDownload";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
-import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
 
 import {
@@ -611,6 +614,63 @@ describe("console inviter transports and sample data", () => {
     await expect
       .element(page.getByLabelText("Over a shared directory, run here"))
       .toBeChecked();
+  });
+
+  test("a shared folder that holds the working folder is named for what leaves", async () => {
+    stubJobApi({
+      sftp: { configured: false },
+      rendezvous: {
+        configured: true,
+        locator: "work",
+        folderName: "work",
+        sharesDataRoot: true,
+        sharesDataRootUncertain: false,
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    const notice = page.getByRole("note").filter({
+      hasText: "The shared folder holds your own files",
+    });
+    await expect
+      .element(notice.getByText(SHARED_FOLDER_EXPOSURE_NOTICE))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        notice.getByText("--env JOB_RENDEZVOUS_DIR=/shared", { exact: false }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        notice.getByText("an invitation from it gives your partner", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(notice.getByText("work", { exact: true }))
+      .toBeInTheDocument();
+  });
+
+  test("a shared folder with a mount of its own raises no notice", async () => {
+    stubJobApi({
+      sftp: { configured: false },
+      rendezvous: {
+        configured: true,
+        locator: "agency-a-agency-b",
+        folderName: "agency-a-agency-b",
+        sharesDataRoot: false,
+        sharesDataRootUncertain: false,
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await expect
+      .element(page.getByLabelText("Over a shared directory, run here"))
+      .toBeChecked();
+    expect(
+      page.getByText("The shared folder holds your own files").query(),
+    ).toBeNull();
   });
 
   test("with no rendezvous mount the filedrop card is disabled", async () => {

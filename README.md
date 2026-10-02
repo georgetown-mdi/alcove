@@ -121,19 +121,26 @@ For more information, see [apps/cli](apps/cli/).
 The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP or a shared directory) on that machine rather than browser-to-browser. It serves one party and is never shared beyond that host.
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-2. From a directory holding your input CSV, for Mac / Linux, run:
+2. From a directory holding your input CSV, for Mac / Linux, run the command below. Replace `/path/to/shared-folder` with the folder your sync tool shares with your partner, and `shared-folder` on the line above it with the name you and your partner know that folder by:
 ```sh
 docker run --rm -p 127.0.0.1:3000:3000 \
   --env JOB_DATA_ROOT=/work -v "$PWD":/work \
+  --env JOB_RENDEZVOUS_DIR=/shared \
+  --env JOB_RENDEZVOUS_NAME=shared-folder \
+  -v "/path/to/shared-folder":/shared \
   ghcr.io/georgetown-mdi/alcove:latest serve
 ```
    On Windows, navigate to that directory in the Docker console and run:
 ```sh
-docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" ghcr.io/georgetown-mdi/alcove:latest serve
+docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/work" --env JOB_RENDEZVOUS_DIR=/shared --env JOB_RENDEZVOUS_NAME=shared-folder -v "C:\path\to\shared-folder:/shared" ghcr.io/georgetown-mdi/alcove:latest serve
 ```
 3. Visit [http://127.0.0.1:3000](http://127.0.0.1:3000) on that machine; press Ctrl-C when done.
 
-The one mounted directory holds your input, the exchange's working files, and its results; the console reads your CSV in place. Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP exchanges, or to keep the partner-synced directory separate from your files, see [CONSOLE.md](docs/CONSOLE.md).
+Your directory holds your input, the exchange's working files, and its results; the console reads your CSV in place. The shared folder is the one a shared-directory exchange runs through, and the name you give it is the name an invitation tells your partner to look for.
+
+For a browser-to-browser or SFTP exchange, which syncs no folder with your partner, the three shared-folder lines can be left out. For a shared-directory exchange, keep them: without them, this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results.
+
+Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP exchanges and the other settings, see [CONSOLE.md](docs/CONSOLE.md).
 
 The `serve` role is the one that cannot instead be run as your own account with `--user`: it keeps container-internal state belonging to uid 1000, so what it leaves behind in the mounted directory belongs to uid 1000 as well, and `sudo` may be needed to move or delete it afterwards. See the uid 1000 guidance above, and [The user the image runs as](docs/DEPLOYMENT.md#the-user-the-image-runs-as).
 

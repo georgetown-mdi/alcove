@@ -1338,6 +1338,34 @@ describe("direct exchange transport step", () => {
       .toBeInTheDocument();
   });
 
+  test("a shared directory that holds the working folder raises the notice", async () => {
+    stubJobApi({
+      sftp: { configured: false },
+      rendezvous: {
+        configured: true,
+        locator: "work",
+        folderName: "work",
+        sharesDataRoot: true,
+        sharesDataRootUncertain: false,
+      },
+    });
+    app.render(createElement(DirectExchangeScreen));
+    await page.getByRole("button", { name: "Select clients.csv" }).click();
+    await page.getByRole("button", { name: "Use this file" }).click();
+    await page
+      .getByRole("radio", { name: "A shared directory", exact: false })
+      .click();
+    await expect
+      .element(page.getByText("The shared folder holds your own files"))
+      .toBeInTheDocument();
+    // No invitation is minted here, so the notice states no partner-facing name.
+    expect(
+      page
+        .getByText("an invitation from it gives your partner", { exact: false })
+        .query(),
+    ).toBeNull();
+  });
+
   test("names no shared directory where the console could not name one", async () => {
     // The mount point a launcher chose is not the folder's name, so the line
     // says only that the exchange runs through the mounted directory.

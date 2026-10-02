@@ -88,6 +88,7 @@ import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { ReceiptsCard } from "@console/ReceiptsCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { ServerFilePicker } from "@console/ServerFilePicker";
+import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 
@@ -1420,6 +1421,12 @@ export function AcceptorScreen() {
                   </>
                 )}
               </Alert>
+            )}
+            {confirmSharedFolder && (
+              <SharedFolderExposureNotice
+                rendezvous={rendezvous}
+                mintsInvitation={false}
+              />
             )}
             {acceptAssuranceLine !== undefined && (
               <p className={`${styles.small} ${styles.sub}`}>

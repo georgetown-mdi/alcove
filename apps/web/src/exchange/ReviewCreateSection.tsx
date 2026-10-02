@@ -57,6 +57,7 @@ import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { ReceiptsCard } from "@console/ReceiptsCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { SftpConnectionCard } from "@console/SftpConnectionCard";
+import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
 import { splitDirectoryRetainProblem } from "@console/sftpConnectionChoice";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
@@ -453,6 +454,12 @@ export function ReviewCreateSection({
             label={filedropLabel}
             description={filedropDescription}
           />
+          {transport === "filedrop" && exchangeFilesOffered && (
+            <SharedFolderExposureNotice
+              rendezvous={rendezvous}
+              mintsInvitation
+            />
+          )}
         </div>
         <p className={`${styles.small} ${styles.sub}`}>{capabilityNote}</p>
       </fieldset>

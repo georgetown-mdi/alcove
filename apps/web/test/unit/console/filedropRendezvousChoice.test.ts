@@ -3,11 +3,14 @@ import { describe, expect, test } from "vitest";
 import { decodeInvitation, encodeInvitation } from "@alcove/core";
 
 import {
+  SHARED_FOLDER_MOUNT_FLAGS,
   SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT,
   acceptKitEndpointForRendezvous,
   filedropEndpointForRendezvous,
+  sharedFolderExposure,
   splitRendezvousRetainProblem,
 } from "@console/filedropRendezvousChoice";
+import { resolveJobRendezvousProvisioning } from "@jobs/jobRendezvous";
 
 import type { InvitationToken } from "@alcove/core";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
@@ -168,5 +171,46 @@ describe("the retain-mode precondition a split rendezvous has", () => {
     expect(
       splitRendezvousRetainProblem({ configured: false }, false),
     ).toBeUndefined();
+  });
+});
+
+describe("the notice for a shared folder that holds the working folder", () => {
+  test("is raised on the single-mount layout, with the folder's name", () => {
+    expect(sharedFolderExposure({ ...SHARED, sharesDataRoot: true })).toEqual({
+      folderName: "alcove",
+    });
+    expect(
+      sharedFolderExposure({
+        configured: true,
+        locator: "rendezvous",
+        sharesDataRoot: true,
+        sharesDataRootUncertain: true,
+      }),
+    ).toEqual({});
+  });
+
+  test("is not raised where the shared folder has a mount of its own", () => {
+    expect(
+      sharedFolderExposure({ ...SHARED, sharesDataRoot: false }),
+    ).toBeUndefined();
+    expect(sharedFolderExposure({ configured: false })).toBeUndefined();
+    expect(sharedFolderExposure(undefined)).toBeUndefined();
+  });
+
+  test("the flags it gives, added to the single mount, separate the two", () => {
+    // Read back through the console's own resolution, so a flag naming a
+    // variable the server does not read, or a mount point nested in the
+    // working folder, fails here rather than in the operator's next run.
+    const env: NodeJS.ProcessEnv = { JOB_DATA_ROOT: "/work" };
+    for (const match of SHARED_FOLDER_MOUNT_FLAGS.matchAll(
+      /--env (\w+)=(\S+)/g,
+    ))
+      env[match[1]] = match[2];
+    const mountPoint = /:(\/\S+) \\$/m.exec(SHARED_FOLDER_MOUNT_FLAGS)?.[1];
+    expect(mountPoint).toBe(env.JOB_RENDEZVOUS_DIR);
+    const provisioning = resolveJobRendezvousProvisioning(env);
+    expect(provisioning.sharesDataRoot).toBeUndefined();
+    expect(provisioning.problem).toBeUndefined();
+    expect(provisioning.folderName).toBe("shared-folder");
   });
 });

@@ -1467,6 +1467,36 @@ describe("filedrop rendezvous facilitation", () => {
     expect(fs.existsSync(root)).toBe(false);
   });
 
+  test("the single-mount layout opens a run with one notice, about what leaves", async () => {
+    // One mount is the data root, the input directory and the rendezvous at once,
+    // and holds only the operator's own files: no sweep to ask for, and the one
+    // overlap stated once rather than once per directory it overlaps.
+    const root = tempDataRoot("single-mount");
+    roots.push(root);
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, "patients.csv"), "id\n1\n");
+    fs.writeFileSync(path.join(root, "alcove.yaml"), "");
+    const manager = new JobManager({
+      dataRoot: root,
+      binaryPath: STUB_CLI_PATH,
+      jobInputDir: root,
+      jobRendezvousDir: root,
+      childEnv: { STUB_FD3_EVENTS: JSON.stringify([RESULT_EVENT]) },
+    });
+    managers.push(manager);
+    const id = await manager.createJob(validIntent());
+    const warnings = manager
+      .getJob(id)!
+      .events.map((entry) => entry.event)
+      .filter((event) => event.type === "warning")
+      .map((event) => event.message);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(
+      "holds your input files, configuration and results, so whoever syncs " +
+        "it gets them",
+    );
+  });
+
   test("warns through the job stream when the rendezvous mount is missing", async () => {
     const rvz = path.join(tempDataRoot("rvz-missing"), "not-created");
     const manager = makeManager({
@@ -1482,7 +1512,7 @@ describe("filedrop rendezvous facilitation", () => {
     expect(warnings.length).toBeGreaterThan(0);
   });
 
-  /** The not-empty lead a job created over a mount holding leftovers put on its
+  /** The leftover-files lead a job created over a mount holding leftovers put on its
    * own event stream. The relay event's payload is an open record, so the message
    * is treated as unknown and is narrowed rather than cast. */
   async function notEmptyLeadFor(
@@ -1503,11 +1533,12 @@ describe("filedrop rendezvous facilitation", () => {
       .map((event) => event.message)
       .find(
         (message): message is string =>
-          typeof message === "string" && message.includes("is not empty"),
+          typeof message === "string" &&
+          message.includes("holds an earlier exchange's files"),
       );
   }
 
-  test("the not-empty lead follows this launch's own sweep intent", async () => {
+  test("the leftover-files lead follows this launch's own sweep intent", async () => {
     // The lead is composed moments before the same intent reaches the child as
     // --sweep-exchange-files, so a launch already holding the sweep is told the
     // control's state rather than told to turn it on -- and one that is not still
@@ -1618,7 +1649,7 @@ describe("a split-provisioned filedrop console", () => {
       warnings.some(
         (message) =>
           message.includes("the inbound rendezvous directory") &&
-          message.includes("is not empty"),
+          message.includes("holds an earlier exchange's files"),
       ),
     ).toBe(true);
     expect(

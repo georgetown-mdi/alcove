@@ -111,3 +111,67 @@ export function splitRendezvousRetainProblem(
   if (rendezvous?.split !== true || retainFiles) return undefined;
   return SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT;
 }
+
+/**
+ * What the console says where the operator picks the shared-directory transport on
+ * a console whose rendezvous holds its own working folder -- the single-mount
+ * layout. The partner's sync tool keeps that whole folder in step, so the notice
+ * names what leaves this machine and how to give the shared folder a mount of its
+ * own. Warn and guide: the run is the operator's to start either way.
+ */
+export const SHARED_FOLDER_EXPOSURE_NOTICE =
+  "This console's shared folder is the folder holding your files. Whoever " +
+  "syncs it gets your input, configuration and results. Give the shared " +
+  "folder its own mount: add these lines to your docker run command, before " +
+  "the image name, and restart the console.";
+
+/** The mount point {@link SHARED_FOLDER_MOUNT_FLAGS} binds the shared folder at:
+ * outside the single-mount layout's own mount, so the two do not nest. */
+const SHARED_FOLDER_MOUNT_POINT = "/shared";
+
+/** The placeholder name {@link SHARED_FOLDER_MOUNT_FLAGS} gives the shared folder,
+ * which {@link SHARED_FOLDER_MOUNT_HINT} tells the operator to replace. */
+const SHARED_FOLDER_PLACEHOLDER = "shared-folder";
+
+/**
+ * The docker flags that give the shared folder its own mount, each line ending in
+ * a shell continuation so the block drops in above the image name of a
+ * multi-line `docker run`. The folder's name is set explicitly because the mount
+ * point is named for the container's layout, and without the name an invitation
+ * would hand the partner the mount point's.
+ */
+export const SHARED_FOLDER_MOUNT_FLAGS = [
+  `--env JOB_RENDEZVOUS_DIR=${SHARED_FOLDER_MOUNT_POINT}`,
+  `--env JOB_RENDEZVOUS_NAME=${SHARED_FOLDER_PLACEHOLDER}`,
+  `-v "/path/to/${SHARED_FOLDER_PLACEHOLDER}":${SHARED_FOLDER_MOUNT_POINT}`,
+]
+  .map((line) => `${line} \\`)
+  .join("\n");
+
+/** The line under {@link SHARED_FOLDER_MOUNT_FLAGS} saying what to replace in it. */
+export const SHARED_FOLDER_MOUNT_HINT =
+  `Replace ${SHARED_FOLDER_PLACEHOLDER} with the name you and your partner ` +
+  "know the folder by, and the path with where that folder is on this machine.";
+
+/** The shared-folder notice's facts, or undefined where it is not raised. */
+interface SharedFolderExposure {
+  /** The name this console gives the shared folder -- what an invitation from
+   * it hands the partner -- when it has one. */
+  folderName?: string;
+}
+
+/**
+ * Whether the shared-folder notice is raised for this console's rendezvous, and
+ * the folder name it states. Raised where the report says a rendezvous leg holds
+ * the working folder, the uncertain verdict included: the report's own fail-safe
+ * direction, since what could not be ruled out is what the notice is about.
+ */
+export function sharedFolderExposure(
+  rendezvous: JobRendezvousConfig | undefined,
+): SharedFolderExposure | undefined {
+  if (rendezvous?.configured !== true || rendezvous.sharesDataRoot !== true)
+    return undefined;
+  return rendezvous.folderName === undefined
+    ? {}
+    : { folderName: rendezvous.folderName };
+}

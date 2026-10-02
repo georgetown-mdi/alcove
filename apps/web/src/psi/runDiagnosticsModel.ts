@@ -35,7 +35,7 @@ export const RUN_DIAGNOSTICS_DEFAULT: RunDiagnosticsDraft = {
 
 /**
  * The sweep control's visible label. Named here because the rendezvous
- * preflight's not-empty warning sends the operator to this control, and a
+ * preflight's leftover-files warning sends the operator to this control, and a
  * warning quoting a label the card does not hold sends them nowhere.
  */
 export const SWEEP_CONTROL_LABEL =
