@@ -1120,6 +1120,26 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     expect(warnings[0]).toContain("is inside the work-input directory");
   });
 
+  test("names both directories when the rendezvous is nested inside both", () => {
+    const dataRoot = tempDir("data");
+    const jobInput = subDir(dataRoot, "input");
+    const rendezvous = subDir(jobInput, "rendezvous");
+    const warnings = overlapWarnings(
+      rendezvousStartupWarnings(
+        rendezvous,
+        "shared",
+        jobInput,
+        dataRoot,
+        path.join(dataRoot, "current-job"),
+        SWEEP_OFF,
+      ),
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(
+      "is inside the job data root and the work-input directory",
+    );
+  });
+
   test("warns once when the rendezvous contains both the data root and the work-input directory", () => {
     const rendezvous = tempDir("rendezvous");
     const dataRoot = subDir(rendezvous, "data");
@@ -1354,8 +1374,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
 
 /** Whether a preflight warning is one of those about what the directory holds --
  * the leftover-files lead, the listing that follows it, or the unlistable-mount
- * notice --
- * as opposed to the overlap and permission warnings the same call can raise. */
+ * notice -- as opposed to the overlap and permission warnings the same call can raise. */
 function isContentWarning(warning: string): boolean {
   return (
     (warning.includes("holds") && !warning.includes("whoever syncs it")) ||
@@ -1411,6 +1430,16 @@ const retainedTranscript = [
   "console-partner-hello-ack.json",
   "console-20260812T101500123Z-001-4096.json",
   "partner-console-20260812T101500123Z-001-4096-ack.json",
+];
+
+/** Names outside the exchange's filename grammar, including one with a control
+ * character and one near the file name byte limit, as a partner's sync might
+ * leave beside the operator's own files. */
+const foreignNames = [
+  "patients.csv",
+  "alcove.yaml",
+  `notes${String.fromCharCode(1)}.txt`,
+  `${"y".repeat(240)}.txt`,
 ];
 
 describe("rendezvousStartupWarnings emptiness branch", () => {
@@ -1558,6 +1587,41 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     expect(listing).toContain("console-hello.json");
     expect(listing).not.toContain("patients.csv");
     expect(listing).not.toContain("alcove.yaml");
+  });
+
+  test("a folder holding only foreign names raises no warning at all", () => {
+    const rendezvous = tempDir("rendezvous");
+    const dataRoot = tempDir("data");
+    for (const entry of foreignNames)
+      fs.writeFileSync(path.join(rendezvous, entry), "");
+    expect(
+      rendezvousStartupWarnings(
+        rendezvous,
+        "shared",
+        tempDir("input"),
+        dataRoot,
+        path.join(dataRoot, "current-job"),
+        SWEEP_OFF,
+      ),
+    ).toEqual([]);
+  });
+
+  test("one exchange file among foreign names is the only name listed", () => {
+    const exchangeName = `drop${String.fromCharCode(7)}ping-hello.json`;
+    const [lead, listing] = renderedContentWarnings([
+      ...foreignNames,
+      exchangeName,
+    ]);
+    expect(lead).toContain("holds an earlier exchange's files");
+    expect(listing).toContain("drop\\x07ping-hello.json");
+    expect(listing).not.toContain("\\\\x07");
+    expect(listing).toMatch(/ holds drop\\x07ping-hello\.json$/);
+    for (const foreign of [...foreignNames, "\\x01"])
+      expect(listing).not.toContain(foreign);
+    for (const rendered of [lead, listing]) {
+      expect(rendered.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
+      expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    }
   });
 
   test("a subdirectory is not an exchange file", () => {
@@ -2206,7 +2270,7 @@ describe("every preflight notice fits its budget once rendered", () => {
     }
 
   test("the overlap notice names the mount alone, however deep the directory it holds", () => {
-    // The directory the mount holds is described by what it carries rather than
+    // The directory the mount holds is described by what it holds rather than
     // by its path, so a work-input directory nested deep under a short mount
     // cannot push the mount out of the notice.
     const mount = tempDir("rendezvous");

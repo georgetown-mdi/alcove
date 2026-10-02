@@ -248,6 +248,8 @@ export const isExpectedAbortName = (
 // foreign: at the no-flag entry guard it is unexpected (rejected), and
 // under --sweep-exchange-files it is swept. A `temp-*.tmp` whose stem is
 // not a v4 UUID fails the grammar here and is treated as foreign.
+/** Whether a filename is in the exchange's protocol filename grammar rather than
+ * foreign; the console's start-of-run preflight shares this classification. */
 export const isProtocolGrammarName = (name: string): boolean => {
   if (isProtocolTempName(name)) return true;
   if (!name.endsWith(".json")) return false;

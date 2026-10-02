@@ -168,8 +168,8 @@ export function DirectServerSection({
         <>
           <Text size="sm">
             {/* Named only where the console can name the shared folder: where the
-              rendezvous mount point was chosen by a launcher rather than by the
-              operator, it names the launcher's layout, not their folder. */}
+                rendezvous mount point was chosen by a launcher rather than by the
+                operator, it names the launcher's layout, not their folder. */}
             {rendezvous.split === true ? (
               <>
                 Runs through the two shared folders mounted on this console: it

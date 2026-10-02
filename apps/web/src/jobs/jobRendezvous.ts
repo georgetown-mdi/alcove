@@ -842,6 +842,11 @@ function describeRendezvousEntries(
 /** The operator's own directories a rendezvous mount is compared against. */
 type OverlapSubject = "dataRoot" | "inputDir";
 
+const OVERLAP_SUBJECTS: ReadonlyArray<OverlapSubject> = [
+  "dataRoot",
+  "inputDir",
+];
+
 const OVERLAP_SUBJECT_LABELS: Record<OverlapSubject, string> = {
   dataRoot: "the job data root",
   inputDir: "the work-input directory",
@@ -875,17 +880,21 @@ function sharedFolderExposureNotice(
   );
 }
 
-/** The notice for a rendezvous mount nested INSIDE one of the operator's
- * folders: the partner's sync reaches that subfolder, so what is at stake is
- * their writes landing among the operator's files, not the files beside it. */
+/** The notice for a rendezvous mount nested INSIDE the operator's folders,
+ * naming each folder it is inside: the partner's sync reaches that subfolder, so
+ * what is at stake is their writes landing among the operator's files, not the
+ * files beside it. */
 function nestedRendezvousNotice(
   rendezvousDir: string,
   leg: RendezvousLeg,
-  subject: OverlapSubject,
+  nestedIn: ReadonlySet<OverlapSubject>,
 ): string {
   const label = legNoun(leg, "directory");
+  const containers = OVERLAP_SUBJECTS.filter((subject) => nestedIn.has(subject))
+    .map((subject) => OVERLAP_SUBJECT_LABELS[subject])
+    .join(" and ");
   const nested =
-    ` is inside ${OVERLAP_SUBJECT_LABELS[subject]}; a partner's sync writes ` +
+    ` is inside ${containers}; a partner's sync writes ` +
     "land among your own files there";
   return fitNotice(`${label} ${rendezvousDir}${nested}`, `${label}${nested}`);
 }
@@ -990,12 +999,12 @@ export function rendezvousStartupWarnings(
   const others: Array<[string, OverlapSubject]> = [[dataRoot, "dataRoot"]];
   if (jobInputDir !== undefined) others.push([jobInputDir, "inputDir"]);
   const held = new Set<OverlapSubject>();
-  const nestedIn: Array<OverlapSubject> = [];
+  const nestedIn = new Set<OverlapSubject>();
   for (const [other, subject] of others) {
     const otherPaths = resolvePathForms(other);
     if (pathFormsContain(rendezvousPaths, otherPaths)) held.add(subject);
     else if (pathFormsContain(otherPaths, rendezvousPaths))
-      nestedIn.push(subject);
+      nestedIn.add(subject);
     if (!otherPaths.canonicalized)
       warnings.push(
         unresolvedRealPathNotice(
@@ -1007,8 +1016,8 @@ export function rendezvousStartupWarnings(
   }
   if (held.size > 0)
     warnings.push(sharedFolderExposureNotice(rendezvousDir, leg, held));
-  else if (nestedIn.length > 0)
-    warnings.push(nestedRendezvousNotice(rendezvousDir, leg, nestedIn[0]));
+  else if (nestedIn.size > 0)
+    warnings.push(nestedRendezvousNotice(rendezvousDir, leg, nestedIn));
   if (!rendezvousPaths.canonicalized)
     warnings.push(unresolvedRealPathNotice(label, rendezvousDir));
   return warnings;
