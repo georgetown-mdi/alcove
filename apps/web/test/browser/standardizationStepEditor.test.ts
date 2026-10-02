@@ -378,7 +378,7 @@ describe("StandardizationStepEditor", () => {
     await userEvent.click(
       page.getByRole("button", { name: "Remove Uppercase" }),
     );
-    expect(page.getByText("Uppercase").elements()).toHaveLength(0);
+    await expect.element(page.getByText("Uppercase")).not.toBeInTheDocument();
     await expect
       .element(page.getByTestId("outcome-value"))
       .toMatchTextContent("mary");

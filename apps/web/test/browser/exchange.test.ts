@@ -171,6 +171,11 @@ function lifecycleCall(index: number): CapturedLifecycle {
 
 const EM_DASH = "\u2014";
 
+// The coverage sweep is debounced (AGGREGATE_DEBOUNCE_MS, 500 ms). Waits for it
+// to settle measured up to 405 ms alone and 566 ms under CPU load, so 5 s is
+// about 9x the worst observed and well past the default 1 s.
+const COVERAGE_SETTLE_TIMEOUT_MS = 5000;
+
 const app = createAppMount();
 
 afterEach(async () => {
@@ -799,7 +804,7 @@ describe("inviter screen", () => {
         cleaningCustomizeRow()?.querySelector(`.${styles.valAttention}`)
           ?.textContent,
       ).toBe("1 field failing");
-    });
+    }, COVERAGE_SETTLE_TIMEOUT_MS);
 
     // The work column's Problems block names the field (its safe type label) and
     // Create refuses to arm while it is open.
@@ -828,7 +833,7 @@ describe("inviter screen", () => {
       expect(
         document.querySelector('[data-testid="coverage-silent-empty"]'),
       ).not.toBeNull();
-    });
+    }, COVERAGE_SETTLE_TIMEOUT_MS);
     expect(
       document.querySelector('[role="status"][aria-live="polite"]')
         ?.textContent,
