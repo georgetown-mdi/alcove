@@ -39,31 +39,40 @@ import type { PartyRun } from "./completionRun";
 // variable:
 //
 // - Both parties on this host over loopback (the default).
-// - One party on this host, against a partner on another
-//   (ALCOVE_STRESS_COMPLETION_PARTY=inviter or acceptor, with
-//   ALCOVE_STRESS_COMPLETION_SECRET holding the shared secret both hosts set,
-//   43 base64url characters, and ALCOVE_STRESS_COMPLETION_BROKER_URL naming
-//   a broker both hosts reach). Each host runs its own party at the same row
-//   count, in either order: a party waits up to an hour for its partner.
+// - One party on this host, against a partner on another, when no one host
+//   holds the pair. Each host runs its own party at the same row count, in
+//   either order: a party waits up to an hour for its partner, and its bound
+//   is extended by that hour.
 //
 // Each party runs `alcove exchange` on the configuration `alcove init` writes
 // from its input, with the connection block replaced by a `channel: webrtc`
-// one -- one party `role: inviter`, the other `role: acceptor` -- and a key
-// file holding one shared secret. The signaling broker is not started here:
-// run `npm start -w packages/peerjs-broker -- --port 9000` first, or name
-// another with ALCOVE_STRESS_COMPLETION_BROKER_URL (a ws:// URL, mount path
-// included).
+// one and a key file holding one shared secret. The signaling broker is not
+// started here: run `npm start -w packages/peerjs-broker -- --port 9000`
+// first, or name another.
 //
-// ALCOVE_STRESS_COMPLETION_ROWS lowers the row count;
-// ALCOVE_STRESS_COMPLETION_TIMEOUT_MS bounds each party (four hours by
-// default); ALCOVE_STRESS_COMPLETION_CLI_ARGS adds arguments, separated by
-// whitespace, to each party's command line;
-// ALCOVE_STRESS_COMPLETION_LOG_DIR, a directory the test creates, keeps each
-// party's log there as it runs (party-<name>.log), each time its event loop
-// ran over a second late (loop-lag-<name>.log), and a summary of the run
-// (webrtc-completion.json, or party-<name>.json in one-party mode). A summary
-// names the candidate pair the channel opened over when the party logs at
-// debug level (--log-level debug in ALCOVE_STRESS_COMPLETION_CLI_ARGS).
+// The environment variables:
+//
+// - ALCOVE_STRESS_COMPLETION_PARTY, inviter or acceptor, selects one-party
+//   mode and the party this host runs.
+// - ALCOVE_STRESS_COMPLETION_SECRET, in one-party mode, the shared secret both
+//   hosts set: 43 base64url characters.
+// - ALCOVE_STRESS_COMPLETION_BROKER_URL names a broker every party reaches, a
+//   ws:// URL, mount path included (ws://127.0.0.1:9000/api by default).
+// - ALCOVE_STRESS_COMPLETION_STUN is the STUN entry each party lists
+//   (stun:127.0.0.1:3478 by default, which gathers host candidates only:
+//   docs/CLI.md, STUN, and what it discloses). Without it, the two hosts of
+//   one-party mode must share one network.
+// - ALCOVE_STRESS_COMPLETION_ROWS lowers the row count.
+// - ALCOVE_STRESS_COMPLETION_TIMEOUT_MS bounds each party (four hours by
+//   default).
+// - ALCOVE_STRESS_COMPLETION_CLI_ARGS adds arguments, separated by whitespace,
+//   to each party's command line.
+// - ALCOVE_STRESS_COMPLETION_LOG_DIR, a directory the test creates, keeps each
+//   party's log there as it runs (party-<name>.log), each time its event loop
+//   ran over a second late (loop-lag-<name>.log), and a summary of the run
+//   (webrtc-completion.json, or party-<name>.json in one-party mode). A
+//   summary names the candidate pair the channel opened over when the party
+//   logs at debug level (--log-level debug in the CLI arguments).
 
 // Past the 7,643,790 elements one WebRTC frame holds (docs/spec/PROTOCOL.md,
 // The memory ceiling and the CSV intake cap), so each first-round set goes in
@@ -73,7 +82,6 @@ const BROKER_URL = new URL(
   process.env.ALCOVE_STRESS_COMPLETION_BROKER_URL ?? "ws://127.0.0.1:9000/api",
 );
 const SHARED = Math.floor(ROWS / 2);
-const PARTY = process.env.ALCOVE_STRESS_COMPLETION_PARTY;
 const PARTY_SECRET = process.env.ALCOVE_STRESS_COMPLETION_SECRET;
 // The shape the CLI's key file requires of a shared secret.
 const SHARED_SECRET_SHAPE = /^[A-Za-z0-9_-]{43}$/;
@@ -93,11 +101,20 @@ const POPULATION_OFFSET: Record<PartyName, number> = {
   acceptor: SHARED,
 };
 
+function partyFromEnvironment(): PartyName | undefined {
+  const party = process.env.ALCOVE_STRESS_COMPLETION_PARTY;
+  if (party === undefined || party === "inviter" || party === "acceptor")
+    return party;
+  throw new Error(
+    `ALCOVE_STRESS_COMPLETION_PARTY is ${party}; set it to inviter or acceptor`,
+  );
+}
+const PARTY = partyFromEnvironment();
+const STUN = process.env.ALCOVE_STRESS_COMPLETION_STUN ?? "stun:127.0.0.1:3478";
+
 function connectionBlock(role: PartyName, peerTimeoutMs?: number): string {
   const secure = BROKER_URL.protocol === "wss:";
   const port = BROKER_URL.port === "" ? (secure ? 443 : 80) : BROKER_URL.port;
-  // The host-candidates-only form docs/CLI.md documents (STUN, and what it
-  // discloses): both parties are on this host or on one network.
   return (
     "connection:\n" +
     "  channel: webrtc\n" +
@@ -108,7 +125,7 @@ function connectionBlock(role: PartyName, peerTimeoutMs?: number): string {
     `    secure: ${secure}\n` +
     `  role: ${role}\n` +
     "  stun:\n" +
-    "    - stun:127.0.0.1:3478\n" +
+    `    - ${STUN}\n` +
     (peerTimeoutMs === undefined
       ? ""
       : `  options:\n    peer_timeout_ms: ${peerTimeoutMs}\n`)
@@ -216,7 +233,11 @@ function expectConnectedLoopLagWithinBound(
   );
 }
 
-function runWebRtcParty(dir: string, name: PartyName): Promise<PartyRun> {
+function runWebRtcParty(
+  dir: string,
+  name: PartyName,
+  timeoutMs?: number,
+): Promise<PartyRun> {
   return runParty({
     dir,
     args: [
@@ -228,6 +249,7 @@ function runWebRtcParty(dir: string, name: PartyName): Promise<PartyRun> {
     ],
     name,
     roleLine: ROLE_LINE,
+    timeoutMs,
   });
 }
 
@@ -356,16 +378,13 @@ test(
   `one WebRTC party of ${ROWS} records completes with the known result against a partner on another host`,
   { timeout: RUN_TIMEOUT_MS + ONE_PARTY_PEER_TIMEOUT_MS + 30 * 60_000 },
   async (ctx) => {
-    ctx.skip(
-      PARTY === undefined,
-      "set ALCOVE_STRESS_COMPLETION_PARTY to inviter or acceptor, and " +
-        "ALCOVE_STRESS_COMPLETION_SECRET and " +
-        "ALCOVE_STRESS_COMPLETION_BROKER_URL, to run one party",
-    );
-    if (PARTY !== "inviter" && PARTY !== "acceptor")
-      throw new Error(
-        `ALCOVE_STRESS_COMPLETION_PARTY is ${PARTY}; set it to inviter or acceptor`,
+    if (PARTY === undefined) {
+      ctx.skip(
+        "set ALCOVE_STRESS_COMPLETION_PARTY to run one party; the header of " +
+          "webrtcCompletion.stress.test.ts lists the variables its mode needs",
       );
+      return;
+    }
     if (PARTY_SECRET === undefined || !SHARED_SECRET_SHAPE.test(PARTY_SECRET))
       throw new Error(
         "set ALCOVE_STRESS_COMPLETION_SECRET to one 43-character base64url " +
@@ -394,13 +413,20 @@ test(
       console.log(
         `the ${PARTY} waits up to ${ONE_PARTY_PEER_TIMEOUT_MS / 60_000} ` +
           `minutes at ${BROKER_URL.href} for the ${partner}: start it on the ` +
-          "other host with the same ALCOVE_STRESS_COMPLETION_ROWS, " +
-          "ALCOVE_STRESS_COMPLETION_SECRET and " +
-          "ALCOVE_STRESS_COMPLETION_BROKER_URL",
+          "other host with the same variables (the header of " +
+          "webrtcCompletion.stress.test.ts)",
       );
 
       const startedAt = new Date();
-      const run = await runWebRtcParty(root, PARTY);
+      const run = await runWebRtcParty(
+        root,
+        PARTY,
+        RUN_TIMEOUT_MS + ONE_PARTY_PEER_TIMEOUT_MS,
+      );
+      const sinceRoleMs =
+        run.loggedRoleAtMs === undefined
+          ? undefined
+          : run.wallMs - run.loggedRoleAtMs;
       const difference =
         run.exitCode === 0
           ? resultDifference(
@@ -410,7 +436,8 @@ test(
             )
           : undefined;
       console.log(
-        `${PARTY}, ${ROWS} records: wall ${run.wallMs} ms; peak RSS ` +
+        `${PARTY}, ${ROWS} records: wall ${run.wallMs} ms, of which ` +
+          `${sinceRoleMs ?? "-"} ms from its role on; peak RSS ` +
           `${peakGb(run)} GB; role ${run.loggedRole ?? "not logged"} at ` +
           `${run.loggedRoleAtMs ?? "-"} ms; candidate pair ` +
           `${candidatePair(run) ?? "not logged"}; exit ${run.exitCode}; ` +
@@ -427,6 +454,7 @@ test(
               broker: BROKER_URL.href,
               startedAt: startedAt.toISOString(),
               ...partySummary(run, difference),
+              wallSinceRoleMs: sinceRoleMs ?? null,
               host: {
                 ...hostDescription(),
                 gateMemoryBytes: memory.bytes,

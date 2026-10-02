@@ -145,7 +145,7 @@ export interface PartyRun {
  * Runs the built CLI in `dir` with `args` after it, keeping its log in
  * {@link LOG_DIR} as party-<name>.log when that is set, reading its role off
  * the first line `roleLine` matches, and stopping it when that role is not
- * `expectedRole`.
+ * `expectedRole`. The party is killed `timeoutMs` after it starts.
  */
 export function runParty(options: {
   dir: string;
@@ -153,8 +153,16 @@ export function runParty(options: {
   name: string;
   roleLine: RegExp;
   expectedRole?: string;
+  timeoutMs?: number;
 }): Promise<PartyRun> {
-  const { dir, args, name, roleLine, expectedRole } = options;
+  const {
+    dir,
+    args,
+    name,
+    roleLine,
+    expectedRole,
+    timeoutMs = RUN_TIMEOUT_MS,
+  } = options;
   const peakFile = join(dir, "peak-rss");
   const lagFile =
     LOG_DIR === undefined
@@ -206,7 +214,7 @@ export function runParty(options: {
   };
   child.stdout.on("data", onOutput);
   child.stderr.on("data", onOutput);
-  const timer = setTimeout(() => child.kill("SIGKILL"), RUN_TIMEOUT_MS);
+  const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
   return new Promise((resolve, reject) => {
     child.on("close", async (exitCode) => {
       clearTimeout(timer);
