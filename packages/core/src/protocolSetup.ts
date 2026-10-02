@@ -17,7 +17,10 @@ import type {
   TermsDelta,
 } from "./linkageTermsNegotiation";
 import { SHARED_SECRET_REGEX } from "./config/connection";
-import { MAX_RECORD_COUNT } from "./connection/frameSize";
+import {
+  MAX_PSI_DECODE_ELEMENTS,
+  MAX_RECORD_COUNT,
+} from "./connection/frameSize";
 import { randomBytes, toBase64Url } from "./utils/crypto";
 import { rawDecodeErrorDescription } from "./utils/describeDecodeError";
 import { redactPrivateKeyMaterial } from "./utils/sanitizeErrorForDisplay";
@@ -154,6 +157,18 @@ export const recordCountField = z
   .nonnegative()
   .max(MAX_RECORD_COUNT);
 
+// Each party's receive ceiling: the most values one PSI set it receives may
+// hold, stated on the terms-exchange envelope so the partner holds every set
+// it sends to it (docs/spec/PROTOCOL.md, "The receive ceiling"). No party can
+// receive more than the protocol's per-set maximum, and a ceiling of no values
+// admits no round at all.
+/** @internal exported for the receive-ceiling bound tests. */
+export const receiveCeilingField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_PSI_DECODE_ELEMENTS);
+
 // The build-level exchange-protocol version both parties advertise on the
 // terms exchange and reconcile fail-closed. What the reconcile refuses, the
 // three neighbouring identifiers this marker is not, and what a bump is
@@ -179,9 +194,9 @@ export const PROTOCOL_VERSION_MISMATCH_MESSAGE =
 // The initiator's opening terms frame. Every field beside `linkageTerms` is
 // per-party envelope metadata rather than an agreed term, so none of it enters
 // the canonical/agreed-terms hash; what each one is for is in
-// docs/spec/PROTOCOL.md ("The counts ride the terms exchange", "Withholding
-// the sender's table from a blind helper", and "Protocol-version reconcile at
-// the terms exchange").
+// docs/spec/PROTOCOL.md ("The counts ride the terms exchange", "The receive
+// ceiling", "Withholding the sender's table from a blind helper", and
+// "Protocol-version reconcile at the terms exchange").
 //
 // Two optionality choices this schema fixes. `disclosesPayload` is optional
 // even though the production caller always passes a definite boolean, and
@@ -191,10 +206,12 @@ export const PROTOCOL_VERSION_MISMATCH_MESSAGE =
 // whose agreed terms declare an empty `payload.receive` it is refused
 // before any round, as an asserted disclosure would be. `recordCount` is
 // required here because this frame is never an abort, so a missing count
-// is a clean decode failure rather than an unenforced assumption.
+// is a clean decode failure rather than an unenforced assumption, and
+// `receiveCeiling` is required for the same reason.
 const termsMessage = z.object({
   linkageTerms: z.unknown(),
   recordCount: recordCountField,
+  receiveCeiling: receiveCeilingField,
   // Read as `unknown` and optional so every non-matching value reaches
   // reconcileProtocolVersion rather than throwing a generic parse error; the
   // reconcile refuses an absent advertisement itself, ahead of this parse.
@@ -223,12 +240,14 @@ const abortReasonsField = boundedArray(
 // doubles as the responder's abort frame, which holds no role metadata --
 // the same reason `save` is not spread onto an abort (see sendAbort). On a
 // `proceed` decision the initiator enforces its presence; on an `abort`
-// the exchange ends before the count is ever read.
+// the exchange ends before the count is ever read. `receiveCeiling` is
+// optional for the same reason.
 const termsWithDecisionMessage = z.object({
   linkageTerms: z.unknown(),
   decision: z.enum(["proceed", "abort"]),
   abortReasons: abortReasonsField,
   recordCount: recordCountField.optional(),
+  receiveCeiling: receiveCeilingField.optional(),
   protocolVersion: z.unknown().optional(), // read as unknown; see termsMessage
   save: z.boolean().optional(),
   disclosesPayload: z.boolean().optional(), // per-party payload-intent; see termsMessage
@@ -382,6 +401,13 @@ export interface TermsExchangeResult {
    * (a partner that omits it fails the exchange as a non-conforming peer).
    */
   partnerRecordCount: number;
+  /**
+   * The most values one PSI set the partner receives may hold, as it stated on
+   * the terms message envelope: every set this party sends it is held to this
+   * (docs/spec/PROTOCOL.md, "The receive ceiling"). Always present on a
+   * successful exchange, within 1 and `MAX_PSI_DECODE_ELEMENTS`.
+   */
+  partnerReceiveCeiling: number;
   /**
    * Whether the partner advertised zero-setup `--save` intent on this terms
    * exchange. `false` outside the save flow (the partner omitted the field).
@@ -646,8 +672,8 @@ async function settleTermsChange(params: {
  * proceed.
  *
  * The three-message protocol mirrors the sequencing of the handshake:
- *   1. Initiator  -> Responder : `{ linkageTerms, recordCount, protocolVersion }`
- *   2. Responder  -> Initiator : `{ linkageTerms, recordCount, decision, protocolVersion }`
+ *   1. Initiator  -> Responder : `{ linkageTerms, recordCount, receiveCeiling, protocolVersion }`
+ *   2. Responder  -> Initiator : `{ linkageTerms, recordCount, receiveCeiling, decision, protocolVersion }`
  *   3. Initiator  -> Responder : `{ decision }`
  *
  * If either party finds the terms incompatible, it sends `decision: "abort"`
@@ -668,7 +694,8 @@ async function settleTermsChange(params: {
  * field entirely rather than sending a default, so a party with nothing to
  * advertise leaves the wire format unchanged. What each one is consumed for:
  * docs/spec/PROTOCOL.md ("The counts ride the terms exchange" for
- * `localRecordCount`, "Withholding the sender's table from a blind helper" for
+ * `localRecordCount`, "The receive ceiling" for `localReceiveCeiling`, which
+ * is always sent, "Withholding the sender's table from a blind helper" for
  * `localDisclosesPayload`, "Protocol-version reconcile at the terms exchange"
  * for the version this function advertises on its own) and
  * docs/SECURITY_DESIGN.md for `localSaveIntent` and the host-key
@@ -700,6 +727,7 @@ export async function exchangeTerms(
   localDisclosesPayload?: boolean,
   localCertificate?: SigningCertificate,
   termsChange?: TermsChangeOptions,
+  localReceiveCeiling: number = MAX_PSI_DECODE_ELEMENTS,
 ): Promise<TermsExchangeResult> {
   // Spread into the outgoing terms frame only when this party is saving, so a
   // non-save exchange sends no `save` field at all.
@@ -729,6 +757,7 @@ export async function exchangeTerms(
     await conn.send({
       linkageTerms: localTerms,
       recordCount: localRecordCount,
+      receiveCeiling: localReceiveCeiling,
       protocolVersion: PROTOCOL_VERSION,
       ...saveField,
       ...disclosesPayloadField,
@@ -766,6 +795,12 @@ export async function exchangeTerms(
       await sendAbort(conn, ["partner omitted record count"]);
       throw new ProtocolRefusalError(
         "partner omitted record count on terms exchange",
+      );
+    }
+    if (msg.receiveCeiling === undefined) {
+      await sendAbort(conn, ["partner omitted receive ceiling"]);
+      throw new ProtocolRefusalError(
+        "partner omitted receive ceiling on terms exchange",
       );
     }
 
@@ -823,6 +858,7 @@ export async function exchangeTerms(
       localTerms: agreed.terms,
       warnings: agreed.comparison.warnings,
       partnerRecordCount: msg.recordCount,
+      partnerReceiveCeiling: msg.receiveCeiling,
       partnerSaveIntent: msg.save === true,
       partnerDisclosesPayload: msg.disclosesPayload,
       partnerHostKey: msg.hostKey.value,
@@ -842,6 +878,7 @@ export async function exchangeTerms(
     // which requires `recordCount` (message 1's schema makes it mandatory, so a
     // missing count is caught as a parse error before this value is returned).
     let partnerRecordCount = 0;
+    let partnerReceiveCeiling = 0;
     let partnerSaveIntent = false;
     let partnerDisclosesPayload: boolean | undefined;
     let partnerHostKey: PresentedHostKey | undefined;
@@ -858,6 +895,7 @@ export async function exchangeTerms(
     try {
       const parsed = termsMessage.parse(rawData);
       partnerRecordCount = parsed.recordCount;
+      partnerReceiveCeiling = parsed.receiveCeiling;
       partnerSaveIntent = parsed.save === true;
       partnerDisclosesPayload = parsed.disclosesPayload;
       partnerHostKey = parsed.hostKey.value;
@@ -912,6 +950,7 @@ export async function exchangeTerms(
       linkageTerms: agreed.terms,
       decision: "proceed",
       recordCount: localRecordCount,
+      receiveCeiling: localReceiveCeiling,
       protocolVersion: PROTOCOL_VERSION,
       ...saveField,
       ...disclosesPayloadField,
@@ -927,6 +966,7 @@ export async function exchangeTerms(
       localTerms: agreed.terms,
       warnings: agreed.comparison.warnings,
       partnerRecordCount,
+      partnerReceiveCeiling,
       partnerSaveIntent,
       partnerDisclosesPayload,
       partnerHostKey,

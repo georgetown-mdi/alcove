@@ -188,44 +188,38 @@ export class OperatorConfigError extends UsageError {
 }
 
 /**
- * A PSI set too large for one WebRTC message, refused by the party that would
- * have sent it before it goes on the wire, at the start of a WebRTC exchange,
- * from this party's own record count (docs/spec/PROTOCOL.md, "The memory
- * ceiling, and the CSV intake cap"). The message names the size, the bound,
- * and the remedy, and is composed only from frame sizes and fixed constants.
- *
- * Holds `alcoveRecoveryHintEmitted`: a retry refuses identically, so the CLI's
- * generic retry advisory is suppressed. The start-of-exchange check raises it
- * too, with the failure as its `cause`, when it cannot count this party's
- * first-round set at all.
+ * Why a {@link RoundSetLimitError} refused a set: `"over-set-maximum"`, more
+ * values than any receiver admits (`MAX_PSI_DECODE_ELEMENTS`);
+ * `"over-partner-ceiling"`, more than the partner stated on the terms exchange
+ * that it can receive; `"uncounted"`, the first-round check could not count
+ * the set, the failure being the error's `cause`.
  */
-export class WebRtcFrameLimitError extends UsageError {
-  readonly alcoveRecoveryHintEmitted = true;
-
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "WebRtcFrameLimitError";
-  }
-}
+export type RoundSetLimitReason =
+  "over-set-maximum" | "over-partner-ceiling" | "uncounted";
 
 /**
- * A linkage key round whose set of values is larger than one round can hold:
- * on SFTP or a synced folder, a first round with more values than one PSI set
- * can hold, refused before contact (docs/spec/FILE_SYNC.md, "Round set size
- * limits"); on any channel, a set of this party's own with more values than
- * any receiver admits (`MAX_PSI_DECODE_ELEMENTS`), refused before it is built
- * and with the partner sent an abort in its place. The message names the
- * count, the bound, and the remedy, and is composed only from counts and
- * fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry refuses
- * identically, so the CLI's generic retry advisory is suppressed.
- * {@link isSetTooLargeError} classifies it with {@link WebRtcFrameLimitError}.
+ * A set of this party's own too large to send, refused before it is built:
+ * before contact, a first round over the protocol's per-set maximum or one
+ * whose values could not be counted; after the terms exchange, a first round
+ * over the partner's stated receive ceiling or one that could not be counted;
+ * in any round, a set over either bound, with the partner sent an abort in its
+ * place (docs/spec/PROTOCOL.md, "The receive ceiling"). `reason` states which.
+ * The message names the count, the bound, and the remedy, and is composed only
+ * from counts and fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry
+ * refuses identically, so the CLI's generic retry advisory is suppressed.
  */
 export class RoundSetLimitError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
+  readonly reason: RoundSetLimitReason;
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(
+    message: string,
+    reason: RoundSetLimitReason,
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = "RoundSetLimitError";
+    this.reason = reason;
   }
 }
 
@@ -243,7 +237,7 @@ export type RoundCapacityStage = "terms-exchange" | "set-first-part";
  * limit, not a fault in anything the partner sent. It is refused after the
  * terms exchange and before any set moves, from the partner's authenticated
  * record count (`checkPartnerRoundCapacity` in exchange.ts), or at the first
- * part of a partner's set over the connection's ceiling (`receivePsiSet`);
+ * part of a partner's set over this party's receive ceiling (`receivePsiSet`);
  * `stage` states which. The message names the count, this party's limit, and
  * the remedy, and is composed only from counts and fixed text. Holds
  * `alcoveRecoveryHintEmitted`: a retry against the same partner input refuses
@@ -265,17 +259,14 @@ export class RoundCapacityError extends UsageError {
 }
 
 /**
- * Whether `error` refuses a PSI set as too large to send: a
- * {@link WebRtcFrameLimitError} or a {@link RoundSetLimitError}. Both refuse
- * identically on every retry and at every window.
+ * Whether `error` refuses a PSI set of this party's own as too large to send:
+ * a {@link RoundSetLimitError}, which refuses identically on every retry and
+ * at every window.
  */
 export function isSetTooLargeError(
   error: unknown,
-): error is WebRtcFrameLimitError | RoundSetLimitError {
-  return (
-    error instanceof WebRtcFrameLimitError ||
-    error instanceof RoundSetLimitError
-  );
+): error is RoundSetLimitError {
+  return error instanceof RoundSetLimitError;
 }
 
 /**
@@ -803,17 +794,25 @@ export class ConnectionClosedError extends Error {
  * and a retry alone does not help until the partner runs again.
  *
  * It holds no partner-controlled bytes: the marker token never decodes to
- * display text, the abort frame's reasons are not read, and the message
- * is fixed, so the display-boundary sanitizer is only belt-and-suspenders
- * here. `alcoveRecoveryHintEmitted` is set so the CLI's hint-walker
+ * display text, the message is fixed, and `partnerReason` is one of this
+ * build's own fixed abort reasons, set only where the abort frame states
+ * exactly that one reason, so the display-boundary sanitizer is only
+ * belt-and-suspenders here. `alcoveRecoveryHintEmitted` is set so the CLI's hint-walker
  * suppresses its generic "retry without re-inviting" advisory, which would
  * otherwise contradict the definitive peer-abort message. (This reuses the
  * CLI-recovery convention that `auth.ts` already sets on core errors.)
  */
 export class PeerAbortError extends ConnectionError {
   readonly alcoveRecoveryHintEmitted = true;
+  /**
+   * The fixed reason a PSI round's abort stated
+   * (`PSI_SET_TOO_LARGE_ABORT_REASON` and its siblings in
+   * `packages/core/src/psi/psiBinaryFrame.ts`), as this build's own constant;
+   * undefined for any other abort.
+   */
+  readonly partnerReason: string | undefined;
 
-  constructor(options?: ErrorOptions) {
+  constructor(options?: ErrorOptions, partnerReason?: string) {
     super(
       "the peer authentically signaled that it aborted the exchange; this is " +
         "a definitive peer-side termination, not an inactivity timeout or a " +
@@ -823,6 +822,7 @@ export class PeerAbortError extends ConnectionError {
       options,
     );
     this.name = "PeerAbortError";
+    this.partnerReason = partnerReason;
   }
 }
 

@@ -1,10 +1,11 @@
 {
-  "description": "Known-answer vectors for the terms-exchange message envelope: the field set, field order, and values each frame slot puts on the wire, captured off a real exchangeTerms run rather than authored. Every piece of per-party, per-run role and bounds metadata rides this envelope beside `linkageTerms` -- the record count, the declared effective key count, the protocol version, the save intent, the payload-intent flag, the observed host key, and the signing certificate a party that will sign presents -- and a partner reads each by name, so adding, renaming, dropping, or re-ordering one is a wire-format delta. `linkageTerms` is lifted out of each frame into the `linkageTerms` section below and named per frame by party; the consuming suite rebuilds the full frame from `fields`, `envelope`, and `carriesLinkageTerms`. The terms document's own content is versioned by the operator-authored `linkage_terms.version` rather than by PROTOCOL_VERSION, so what this file pins is the envelope around it. `envelopeFields` is every field each slot ADMITS, read off the schemas; the frames below are what each slot EMITS, and the consuming suite holds their union to it so a field added to a schema cannot ride the wire with no frame pinning it. Replayed by packages/core/test/connection/termsEnvelopeVectors.test.ts; regenerate with generate-terms-envelope-vectors.mjs in this directory.",
+  "description": "Known-answer vectors for the terms-exchange message envelope: the field set, field order, and values each frame slot puts on the wire, captured off a real exchangeTerms run rather than authored. Every piece of per-party, per-run role and bounds metadata rides this envelope beside `linkageTerms` -- the record count, the receive ceiling, the declared effective key count, the protocol version, the save intent, the payload-intent flag, the observed host key, and the signing certificate a party that will sign presents -- and a partner reads each by name, so adding, renaming, dropping, or re-ordering one is a wire-format delta. `linkageTerms` is lifted out of each frame into the `linkageTerms` section below and named per frame by party; the consuming suite rebuilds the full frame from `fields`, `envelope`, and `carriesLinkageTerms`. The terms document's own content is versioned by the operator-authored `linkage_terms.version` rather than by PROTOCOL_VERSION, so what this file pins is the envelope around it. `envelopeFields` is every field each slot ADMITS, read off the schemas; the frames below are what each slot EMITS, and the consuming suite holds their union to it so a field added to a schema cannot ride the wire with no frame pinning it. Replayed by packages/core/test/connection/termsEnvelopeVectors.test.ts; regenerate with generate-terms-envelope-vectors.mjs in this directory.",
   "protocolVersion": 1,
   "envelopeFields": {
     "message 1": [
       "linkageTerms",
       "recordCount",
+      "receiveCeiling",
       "protocolVersion",
       "save",
       "disclosesPayload",
@@ -16,6 +17,7 @@
       "decision",
       "abortReasons",
       "recordCount",
+      "receiveCeiling",
       "protocolVersion",
       "save",
       "disclosesPayload",
@@ -179,6 +181,7 @@
       "initiator": {
         "terms": "partyA",
         "recordCount": 100,
+        "receiveCeiling": 7643790,
         "saveIntent": true,
         "hostKey": {
           "fingerprint": "SHA256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -203,6 +206,7 @@
           "fields": [
             "linkageTerms",
             "recordCount",
+            "receiveCeiling",
             "protocolVersion",
             "save",
             "disclosesPayload",
@@ -210,6 +214,7 @@
           ],
           "envelope": {
             "recordCount": 100,
+            "receiveCeiling": 7643790,
             "protocolVersion": 1,
             "save": true,
             "disclosesPayload": true,
@@ -227,6 +232,7 @@
             "linkageTerms",
             "decision",
             "recordCount",
+            "receiveCeiling",
             "protocolVersion",
             "save",
             "disclosesPayload",
@@ -235,6 +241,7 @@
           "envelope": {
             "decision": "proceed",
             "recordCount": 250,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1,
             "save": true,
             "disclosesPayload": false,
@@ -259,6 +266,7 @@
         "initiator": {
           "partnerIdentity": "Party B",
           "partnerRecordCount": 250,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": true,
           "partnerDisclosesPayload": false,
           "partnerHostKey": {
@@ -272,6 +280,7 @@
         "responder": {
           "partnerIdentity": "Party A",
           "partnerRecordCount": 100,
+          "partnerReceiveCeiling": 7643790,
           "partnerSaveIntent": true,
           "partnerDisclosesPayload": true,
           "partnerHostKey": {
@@ -299,9 +308,15 @@
         {
           "sender": "initiator",
           "slot": "message 1",
-          "fields": ["linkageTerms", "recordCount", "protocolVersion"],
+          "fields": [
+            "linkageTerms",
+            "recordCount",
+            "receiveCeiling",
+            "protocolVersion"
+          ],
           "envelope": {
             "recordCount": 7,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1
           },
           "carriesLinkageTerms": "partyA"
@@ -313,11 +328,13 @@
             "linkageTerms",
             "decision",
             "recordCount",
+            "receiveCeiling",
             "protocolVersion"
           ],
           "envelope": {
             "decision": "proceed",
             "recordCount": 0,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1
           },
           "carriesLinkageTerms": "partyB"
@@ -336,6 +353,7 @@
         "initiator": {
           "partnerIdentity": "Party B",
           "partnerRecordCount": 0,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": false,
           "partnerDisclosesPayload": null,
           "partnerHostKey": null,
@@ -346,6 +364,7 @@
         "responder": {
           "partnerIdentity": "Party A",
           "partnerRecordCount": 7,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": false,
           "partnerDisclosesPayload": null,
           "partnerHostKey": null,
@@ -377,12 +396,14 @@
           "fields": [
             "linkageTerms",
             "recordCount",
+            "receiveCeiling",
             "protocolVersion",
             "disclosesPayload",
             "certificate"
           ],
           "envelope": {
             "recordCount": 100,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1,
             "disclosesPayload": true,
             "certificate": {
@@ -407,6 +428,7 @@
             "linkageTerms",
             "decision",
             "recordCount",
+            "receiveCeiling",
             "protocolVersion",
             "disclosesPayload",
             "certificate"
@@ -414,6 +436,7 @@
           "envelope": {
             "decision": "proceed",
             "recordCount": 250,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1,
             "disclosesPayload": true,
             "certificate": {
@@ -445,6 +468,7 @@
         "initiator": {
           "partnerIdentity": "Party B",
           "partnerRecordCount": 250,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": false,
           "partnerDisclosesPayload": true,
           "partnerHostKey": null,
@@ -466,6 +490,7 @@
         "responder": {
           "partnerIdentity": "Party A",
           "partnerRecordCount": 100,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": false,
           "partnerDisclosesPayload": true,
           "partnerHostKey": null,
@@ -501,9 +526,15 @@
         {
           "sender": "initiator",
           "slot": "message 1",
-          "fields": ["linkageTerms", "recordCount", "protocolVersion"],
+          "fields": [
+            "linkageTerms",
+            "recordCount",
+            "receiveCeiling",
+            "protocolVersion"
+          ],
           "envelope": {
             "recordCount": 12,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1
           },
           "carriesLinkageTerms": "partyA"
@@ -515,11 +546,13 @@
             "linkageTerms",
             "decision",
             "recordCount",
+            "receiveCeiling",
             "protocolVersion"
           ],
           "envelope": {
             "decision": "proceed",
             "recordCount": 34,
+            "receiveCeiling": 16777216,
             "protocolVersion": 1
           },
           "carriesLinkageTerms": "unnamedParty"
@@ -538,6 +571,7 @@
         "initiator": {
           "partnerIdentity": null,
           "partnerRecordCount": 34,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": false,
           "partnerDisclosesPayload": null,
           "partnerHostKey": null,
@@ -548,6 +582,7 @@
         "responder": {
           "partnerIdentity": "Party A",
           "partnerRecordCount": 12,
+          "partnerReceiveCeiling": 16777216,
           "partnerSaveIntent": false,
           "partnerDisclosesPayload": null,
           "partnerHostKey": null,

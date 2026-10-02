@@ -1,13 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 
+import { RoundSetLimitError, UsageError } from "../../src/errors";
 import {
-  minimumPsiSetFrameBytes,
-  ROUND_ONE_SET_UNCOUNTED_MESSAGE,
-  webrtcFrameReceiveCharge,
-} from "../../src/connection/webrtcOutboundBound";
-import { UsageError, WebRtcFrameLimitError } from "../../src/errors";
-import {
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   prepareForExchange,
 } from "../../src/exchange";
 import {
@@ -22,7 +17,9 @@ import type { LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
 import type { PsiProgress } from "../../src/psi/participant";
 
-// The first-round check reads the prepared dataset, before any connection.
+// The first-round count reads the prepared dataset, before any connection.
+// The per-set maximum is lowered so the bound is reached with a few hundred
+// values.
 
 function letters(i: number): string {
   let out = "";
@@ -72,72 +69,18 @@ async function refusalOf(check: Promise<void>): Promise<unknown> {
   return undefined;
 }
 
-test("the first-round check refuses one value over the bound and admits one under and at it", async () => {
-  // 300 values held by one record each, beside 40 records sharing 20 values:
-  // the round drops a shared value, so 300 is the count the check weighs.
-  const unique = Array.from({ length: 301 }, (_unused, i) => letters(i));
-  const shared = Array.from({ length: 20 }, (_unused, i) => letters(1000 + i));
-  const rows = (uniqueCount: number) => [
-    ...unique.slice(0, uniqueCount),
-    ...shared,
-    ...shared,
-  ];
-  const boundAt = webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300));
-
-  await expect(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows(299)), {
-      maxFrameBytes: boundAt,
-    }),
-  ).resolves.toBeUndefined();
-  await expect(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows(300)), {
-      maxFrameBytes: boundAt,
-    }),
-  ).resolves.toBeUndefined();
-  const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows(301)), {
-      maxFrameBytes: boundAt,
-    }),
-  );
-  expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as Error).message).toMatch(
-    /at least 301 values to send.*Nothing was sent/,
-  );
-});
-
-test("the WebRTC first-round check counts every distinct value a deduplicating party sends", async () => {
-  // 400 values each held by two records: a party that drops a shared value
-  // sends none of them, one whose terms set deduplicate sends all 400.
-  const values = Array.from({ length: 400 }, (_unused, i) => letters(i));
-  const rows = [...values, ...values];
-  const maxFrameBytes = webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300));
-
-  await expect(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows, "cascade", false), {
-      maxFrameBytes,
-    }),
-  ).resolves.toBeUndefined();
-  const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows, "cascade", true), {
-      maxFrameBytes,
-    }),
-  );
-  expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as Error).message).toMatch(/at least 400 values to send/);
-});
-
 test("a deduplicating party's count stops once its set is over the bound", async () => {
   // 3000 distinct values against a bound of 300: the size only grows, so the
   // count stops at the first clock check past the bound, in each role.
   const rows = Array.from({ length: 3000 }, (_unused, i) => letters(i));
   const reports: Array<PsiProgress> = [];
   const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows, "cascade", true), {
-      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300)),
+    assertFirstRoundWithinSetMaximum(preparedWith(rows, "cascade", true), {
+      maxValues: 300,
       onProgress: (progress) => reports.push(progress),
     }),
   );
-  expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as Error).message).toMatch(/at least 1024 values to send/);
   expect(reports.map((report) => report.state)).toEqual([
     "started",
@@ -159,13 +102,13 @@ test("the first-round count reports its progress through both roles", async () =
   const rows = Array.from({ length: rowCount }, (_unused, i) => letters(i));
   const reports: Array<PsiProgress> = [];
   const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows), {
-      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300)),
+    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+      maxValues: 300,
       onProgress: (progress) => reports.push(progress),
       progressIntervalMs: 0,
     }),
   );
-  expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
   const pass = [
     { state: "started" },
     { state: "progress", processed: 1024 },
@@ -186,10 +129,10 @@ test("the first-round count reports its progress through both roles", async () =
 
 test("the first-round count reports nothing for an input whose records cannot reach the bound", async () => {
   const reports: Array<PsiProgress> = [];
-  await assertFirstRoundFitsWebRtcFrame(
+  await assertFirstRoundWithinSetMaximum(
     preparedWith(Array.from({ length: 50 }, (_unused, i) => letters(i))),
     {
-      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300)),
+      maxValues: 300,
       onProgress: (progress) => reports.push(progress),
     },
   );
@@ -198,23 +141,23 @@ test("the first-round count reports nothing for an input whose records cannot re
 
 test("the first-round count drops a raise on a progress report, and a raise on any other reaches the caller", async () => {
   const rows = Array.from({ length: 5000 }, (_unused, i) => letters(i));
-  const maxFrameBytes = webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300));
+  const maxValues = 300;
   const display = new Error("display fault");
   const onProgress = (throwOn: PsiProgress["state"]) => (p: PsiProgress) => {
     if (p.state === throwOn) throw display;
   };
   const progressRefusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows), {
-      maxFrameBytes,
+    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+      maxValues,
       onProgress: onProgress("progress"),
       progressIntervalMs: 0,
     }),
   );
-  expect(progressRefusal).toBeInstanceOf(WebRtcFrameLimitError);
+  expect(progressRefusal).toBeInstanceOf(RoundSetLimitError);
   expect(
     await refusalOf(
-      assertFirstRoundFitsWebRtcFrame(preparedWith(rows), {
-        maxFrameBytes,
+      assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+        maxValues,
         onProgress: onProgress("started"),
       }),
     ),
@@ -229,8 +172,8 @@ test("the first-round count yields to the event loop as it reports", async () =>
     timerRan = true;
   }, 0);
   await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows), {
-      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300)),
+    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+      maxValues: 300,
       onProgress: (progress) => {
         if (progress.state === "progress" && timerRan)
           progressAfterTimer = true;
@@ -239,18 +182,6 @@ test("the first-round count yields to the event loop as it reports", async () =>
     }),
   );
   expect(progressAfterTimer).toBe(true);
-});
-
-test("the first-round check leaves a single-pass exchange to its dataset ceiling", async () => {
-  const rows = Array.from({ length: 50 }, (_unused, i) => letters(i));
-  await expect(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows, "single-pass"), {
-      maxFrameBytes: 100,
-    }),
-  ).resolves.toBeUndefined();
-  await expect(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows), { maxFrameBytes: 100 }),
-  ).rejects.toThrow(WebRtcFrameLimitError);
 });
 
 test("the first-round check raises the fan-out refusal for a candidate set a count-only round refuses", async () => {
@@ -285,13 +216,13 @@ test("the first-round check raises the fan-out refusal for a candidate set a cou
     ...cascade,
     linkageTerms: { ...cascade.linkageTerms, algorithm: "psi-c" as const },
   };
-  const maxFrameBytes = webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(100));
+  const maxValues = 100;
 
   await expect(
-    assertFirstRoundFitsWebRtcFrame(cascade, { maxFrameBytes }),
-  ).rejects.toThrow(WebRtcFrameLimitError);
+    assertFirstRoundWithinSetMaximum(cascade, { maxValues }),
+  ).rejects.toThrow(RoundSetLimitError);
   await expect(
-    assertFirstRoundFitsWebRtcFrame(countOnly, { maxFrameBytes }),
+    assertFirstRoundWithinSetMaximum(countOnly, { maxValues }),
   ).rejects.toThrow(fanOutReachedMatchingRefusal().message);
 });
 
@@ -330,14 +261,14 @@ test("the first-round check refuses, with the failure as its cause, when the cou
   const failure = new RangeError("Map maximum size exceeded");
   const reports: Array<PsiProgress["state"]> = [];
   const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(
+    assertFirstRoundWithinSetMaximum(
       withThrowingRows(prepared, rowCount, failure),
-      { maxFrameBytes: 100, onProgress: ({ state }) => reports.push(state) },
+      { maxValues: 2, onProgress: ({ state }) => reports.push(state) },
     ),
   );
   expect(reports).toEqual(["started", "failed"]);
-  expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
+  expect((refusal as RoundSetLimitError).reason).toBe("uncounted");
   expect((refusal as Error).cause).toBe(failure);
 });
 
@@ -348,9 +279,9 @@ test("the first-round check raises a refusal the count throws in both roles as i
   );
   const refusal = new UsageError("a refusal the round would raise");
   await expect(
-    assertFirstRoundFitsWebRtcFrame(
+    assertFirstRoundWithinSetMaximum(
       withThrowingRows(prepared, rowCount, refusal),
-      { maxFrameBytes: 100 },
+      { maxValues: 2 },
     ),
   ).rejects.toThrow(refusal);
 });
@@ -409,8 +340,8 @@ test("the first-round check reports no row, so each row's warning comes once, fr
   // A bound the dataset's ceiling crosses, so the check reads the rows, and
   // the set the round sends fits.
   await expect(
-    assertFirstRoundFitsWebRtcFrame(prepared, {
-      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(100)),
+    assertFirstRoundWithinSetMaximum(prepared, {
+      maxValues: 100,
     }),
   ).resolves.toBeUndefined();
   expect(rowLines()).toEqual([]);
@@ -449,11 +380,11 @@ test("the first-round check refuses, with the failure as its cause, when the rec
     return iterate.call(this);
   });
   const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(prepared, { maxFrameBytes: 100 }),
+    assertFirstRoundWithinSetMaximum(prepared, { maxValues: 2 }),
   );
   expect(keyPasses).toBe(2);
-  expect(refusal).toBeInstanceOf(WebRtcFrameLimitError);
-  expect((refusal as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
+  expect((refusal as RoundSetLimitError).reason).toBe("uncounted");
   expect((refusal as Error).cause).toBe(failure);
 });
 
@@ -462,8 +393,8 @@ test("an aborted first-round count rejects with the signal's reason and reports 
   const controller = new AbortController();
   const reports: Array<PsiProgress> = [];
   const refusal = await refusalOf(
-    assertFirstRoundFitsWebRtcFrame(preparedWith(rows), {
-      maxFrameBytes: webrtcFrameReceiveCharge(minimumPsiSetFrameBytes(300)),
+    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+      maxValues: 300,
       onProgress: (progress) => {
         reports.push(progress);
         if (progress.state === "progress") controller.abort();

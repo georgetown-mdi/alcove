@@ -97,13 +97,20 @@ export { AEAD_ENVELOPE_VERSION } from "./connection/encryptedMessageConnection.j
 // over a transport, and only a test needs a pair with no transport under it.
 export { createMessagePipe } from "./connection/messageConnection.js";
 
-// The sender-side WebRTC frame check's arithmetic and its uncounted refusal, so
-// each WebRTC transport's suite can hold its own receive path to the charge the
-// check weighs and its alert to the refusal's text. They stay out of the main
-// entry point: a caller meets the refusal, not the arithmetic.
+// The first-round refusals over the partner's stated receive ceiling, so each
+// front end's suite can hold its alert to the refusal's text. They stay out of
+// the main entry point: a caller meets the refusal, not its composition.
+export {
+  ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
+  roundOneSetOverPartnerCeilingMessage,
+} from "./exchange.js";
+
+// The sender-side WebRTC frame check's arithmetic, so each WebRTC transport's
+// suite can hold its own receive path to the charge the check weighs. It stays
+// out of the main entry point: a caller meets the part size, not the
+// arithmetic.
 export {
   binaryPackByteStringLength,
-  ROUND_ONE_SET_UNCOUNTED_MESSAGE,
   webrtcFrameReceiveCharge,
 } from "./connection/webrtcOutboundBound.js";
 

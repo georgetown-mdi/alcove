@@ -27,12 +27,12 @@ export {
   TransportPublishIndeterminateError,
   UnknownStandardizationFunctionError,
   UsageError,
-  WebRtcFrameLimitError,
   causeChainSome,
   chainDetailCauses,
   isPeerWaitTimeout,
   isSetTooLargeError,
 } from "./errors";
+export type { RoundSetLimitReason } from "./errors";
 export { PSIParticipant, ProcessState } from "./psi/participant";
 export type {
   PsiOperation,
@@ -40,6 +40,10 @@ export type {
   PsiProgressReporter,
   PsiProgressState,
 } from "./psi/participant";
+export {
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "./psi/psiBinaryFrame";
 export { loadPsiBackend } from "./psi/psiBackend";
 export type { PsiBackendOptions, PsiBackendSelection } from "./psi/psiBackend";
 export { InProcessPsiEngine } from "./psi/psiEngine";
@@ -123,7 +127,7 @@ export {
 export type { FrameStructureRefusal } from "./connection/binaryPackBounds";
 // The PSI set element ceilings the front ends size to: the CLI's heap ceiling
 // is the memory a round at the protocol's maximum needs, and a browser party
-// states its own lower ceiling on its connection.
+// states its own lower receive ceiling on its connection.
 export {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_PSI_DECODE_ELEMENTS,
@@ -709,8 +713,7 @@ export {
   PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   assertAlgorithmImplemented,
-  assertFileSyncFirstRoundWithinSetMaximum,
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   assertLocalCertificateAuthorizesAgreedIdentity,
   assertSigningModeImplemented,
   assertTermsRunnable,

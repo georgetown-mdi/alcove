@@ -4,13 +4,23 @@ import PSI from "@openmined/psi.js";
 
 import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
 import { createMessagePipe } from "../src/connection/messageConnection";
-import { PeerAbortError, RoundCapacityError } from "../src/errors";
+import {
+  PeerAbortError,
+  RoundCapacityError,
+  RoundSetLimitError,
+  UsageError,
+} from "../src/errors";
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   partnerRoundValues,
   prepareForExchange,
+  roundOneSetOverPartnerCeilingMessage,
   runExchange,
 } from "../src/exchange";
+import {
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "../src/psi/psiBinaryFrame";
 
 import {
   buildKeyStrings,
@@ -20,15 +30,17 @@ import {
 } from "../src/standardization";
 
 import type { MessageConnection } from "../src/connection/messageConnection";
+import type { CSVRow } from "../src/file";
 import type {
   LinkageKey,
   LinkageStrategy,
 } from "../src/config/linkageTermsSchema";
 import type { PreparedExchange, RunExchangeOptions } from "../src/exchange";
 
-// The capacity check a party makes on its partner's round once the terms are
-// exchanged and before any PSI set moves (docs/spec/PROTOCOL.md, "What a
-// browser tab can match"; docs/spec/FILE_SYNC.md, "The partner's round").
+// The checks a party makes once the terms are exchanged and before any PSI set
+// moves: its own capacity against the partner's round (docs/spec/FILE_SYNC.md,
+// "The partner's round"), and its own first round against the receive ceiling
+// the partner stated (docs/spec/PROTOCOL.md, "The receive ceiling").
 
 const psiLibrary = await PSI();
 
@@ -45,9 +57,14 @@ function prepared(
   rowCount: number,
   linkageStrategy: LinkageStrategy = "cascade",
   swapped = false,
+  sharedRows = 0,
 ): PreparedExchange {
-  const name = (i: number) =>
-    `zq${String.fromCharCode(97 + (i % 26))}${Math.floor(i / 26)}`;
+  // The last `sharedRows` rows repeat the ones before them, so the round
+  // drops each such value and sends `rowCount - 2 * sharedRows`.
+  const name = (row: number) => {
+    const i = row < rowCount - sharedRows ? row : row - sharedRows;
+    return `zq${String.fromCharCode(97 + (i % 26))}${Math.floor(i / 26)}`;
+  };
   return prepareForExchange(
     {
       linkageTerms: {
@@ -76,8 +93,8 @@ function prepared(
   );
 }
 
-// `conn` stating `ceiling` as its ceiling on a partner's set, as the browser's
-// connection does, and recording every frame this party sends.
+// `conn` stating `ceiling` as its receive ceiling, as the browser's connection
+// does, and recording every frame this party sends.
 function withCeiling(
   conn: MessageConnection,
   ceiling: number | undefined,
@@ -100,6 +117,7 @@ const binaryFrames = (frames: Array<unknown>): Array<unknown> =>
 async function runPair(params: {
   localRows: number;
   partnerRows: number;
+  partnerSharedRows?: number;
   ceiling?: number;
   strategy?: LinkageStrategy;
   swapped?: boolean;
@@ -107,6 +125,7 @@ async function runPair(params: {
 }) {
   const [local, partner] = createMessagePipe();
   const sent: Array<unknown> = [];
+  const partnerSent: Array<unknown> = [];
   const outcomes = await Promise.allSettled([
     runExchange(
       withCeiling(local, params.ceiling, sent),
@@ -115,18 +134,19 @@ async function runPair(params: {
       { psiLibrary, ...params.options },
     ),
     runExchange(
-      partner,
+      withCeiling(partner, undefined, partnerSent),
       "responder",
       prepared(
         "Partner Co",
         params.partnerRows,
         params.strategy,
         params.swapped,
+        params.partnerSharedRows,
       ),
       { psiLibrary },
     ),
   ]);
-  return { local: outcomes[0], partner: outcomes[1], sent };
+  return { local: outcomes[0], partner: outcomes[1], sent, partnerSent };
 }
 
 test("the partner's round is its record count times the widest key's declared width", () => {
@@ -238,37 +258,159 @@ test("the partner's round is held to the per-set maximum no sender exceeds", () 
   ).toBe(MAX_PSI_DECODE_ELEMENTS);
 });
 
-test("a partner round over the connection's ceiling is refused as this party's capacity, before any set moves", async () => {
-  const { local, partner, sent } = await runPair({
+test("a sender partner over this party's stated ceiling refuses its first round before either party sends a set", async () => {
+  const { local, partner, sent, partnerSent } = await runPair({
     localRows: 5,
     partnerRows: 12,
     ceiling: 11,
   });
-  expect(local.status).toBe("rejected");
-  const refusal = (local as PromiseRejectedResult).reason as Error;
-  expect(refusal).toBeInstanceOf(RoundCapacityError);
-  expect((refusal as RoundCapacityError).alcoveRecoveryHintEmitted).toBe(true);
-  expect((refusal as RoundCapacityError).stage).toBe("terms-exchange");
-  expect(refusal.message).toContain(
-    "your partner's set for one linkage key can hold up to 12 values, over " +
-      "the 11 a browser exchange can match",
-  );
-  expect(binaryFrames(sent)).toEqual([]);
-  expect(sent.at(-1)).toEqual({
-    decision: "abort",
-    abortReasons: [PARTNER_SET_OVER_CAPACITY_ABORT_REASON],
-  });
   expect(partner.status).toBe("rejected");
-  expect((partner as PromiseRejectedResult).reason).toBeInstanceOf(
-    PeerAbortError,
-  );
+  const refusal = (partner as PromiseRejectedResult).reason as Error;
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
+  expect((refusal as RoundSetLimitError).reason).toBe("over-partner-ceiling");
+  expect((refusal as RoundSetLimitError).alcoveRecoveryHintEmitted).toBe(true);
+  expect(refusal.message).toBe(roundOneSetOverPartnerCeilingMessage(12, 11));
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(partnerSent.at(-1)).toEqual({
+    decision: "abort",
+    abortReasons: [PSI_SET_TOO_LARGE_ABORT_REASON],
+  });
+  expect(binaryFrames(sent)).toEqual([]);
+  expect(local.status).toBe("rejected");
+  const abort = (local as PromiseRejectedResult).reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
 });
 
-test("a partner round at the connection's ceiling runs to completion", async () => {
+// `exchange` with every row of its dataset throwing `failure` when read, so the
+// first-round count raises it.
+function withThrowingRows(
+  exchange: PreparedExchange,
+  failure: Error,
+): PreparedExchange {
+  const rows = new Proxy<Array<CSVRow>>([], {
+    get: (target, prop, receiver) => {
+      if (prop === "length") return exchange.rowCount;
+      if (typeof prop === "string" && /^[0-9]+$/.test(prop)) throw failure;
+      return Reflect.get(target, prop, receiver) as unknown;
+    },
+  });
+  return {
+    ...exchange,
+    dataset: new StandardizedDataset(
+      [
+        new StandardizedField("firstName", "first_name", [], rows),
+        new StandardizedField("lastName", "last_name", [], rows),
+      ],
+      exchange.linkageTerms.linkageKeys,
+    ),
+  };
+}
+
+test("a first round refused for other than its size sends the partner a fixed abort and throws the refusal", async () => {
+  const refusal = new UsageError("a refusal the round would raise");
+  const [local, partner] = createMessagePipe();
+  const sent: Array<unknown> = [];
+  const partnerSent: Array<unknown> = [];
+  const [localOutcome, partnerOutcome] = await Promise.allSettled([
+    runExchange(
+      withCeiling(local, 11, sent),
+      "initiator",
+      prepared("Local Co", 5),
+      { psiLibrary },
+    ),
+    runExchange(
+      withCeiling(partner, undefined, partnerSent),
+      "responder",
+      withThrowingRows(prepared("Partner Co", 12), refusal),
+      { psiLibrary },
+    ),
+  ]);
+  expect(partnerOutcome.status).toBe("rejected");
+  expect((partnerOutcome as PromiseRejectedResult).reason).toBe(refusal);
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(partnerSent.at(-1)).toEqual({
+    decision: "abort",
+    abortReasons: [PSI_SET_REFUSED_ABORT_REASON],
+  });
+  expect(localOutcome.status).toBe("rejected");
+  const abort = (localOutcome as PromiseRejectedResult)
+    .reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_REFUSED_ABORT_REASON);
+});
+
+test("a first round this party could not count sends the partner the refused abort, not the too-large one", async () => {
+  const failure = new Error("a row could not be read");
+  const [local, partner] = createMessagePipe();
+  const sent: Array<unknown> = [];
+  const partnerSent: Array<unknown> = [];
+  const [localOutcome, partnerOutcome] = await Promise.allSettled([
+    runExchange(
+      withCeiling(local, 11, sent),
+      "initiator",
+      prepared("Local Co", 5),
+      { psiLibrary },
+    ),
+    runExchange(
+      withCeiling(partner, undefined, partnerSent),
+      "responder",
+      withThrowingRows(prepared("Partner Co", 12), failure),
+      { psiLibrary },
+    ),
+  ]);
+  expect(partnerOutcome.status).toBe("rejected");
+  const refusal = (partnerOutcome as PromiseRejectedResult).reason as Error;
+  expect(refusal).toBeInstanceOf(RoundSetLimitError);
+  expect((refusal as RoundSetLimitError).reason).toBe("uncounted");
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(partnerSent.at(-1)).toEqual({
+    decision: "abort",
+    abortReasons: [PSI_SET_REFUSED_ABORT_REASON],
+  });
+  expect(localOutcome.status).toBe("rejected");
+  const abort = (localOutcome as PromiseRejectedResult)
+    .reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_REFUSED_ABORT_REASON);
+});
+
+test("a receiver partner over this party's stated ceiling refuses its first round after this party sent its setup", async () => {
+  // The partner has fewer records, so it resolves to the PSI receiver; this
+  // party, the sender, sends its setup without waiting on the partner's check.
+  const { local, partner, sent, partnerSent } = await runPair({
+    localRows: 12,
+    partnerRows: 5,
+    ceiling: 4,
+  });
+  expect((partner as PromiseRejectedResult).reason).toBeInstanceOf(
+    RoundSetLimitError,
+  );
+  expect(binaryFrames(partnerSent)).toEqual([]);
+  expect(binaryFrames(sent)).toHaveLength(1);
+  const abort = (local as PromiseRejectedResult).reason as PeerAbortError;
+  expect(abort).toBeInstanceOf(PeerAbortError);
+  expect(abort.partnerReason).toBe(PSI_SET_TOO_LARGE_ABORT_REASON);
+});
+
+test("a partner first round at this party's stated ceiling runs to completion", async () => {
   const { local, partner } = await runPair({
     localRows: 5,
     partnerRows: 12,
     ceiling: 12,
+  });
+  expect(local.status).toBe("fulfilled");
+  expect(partner.status).toBe("fulfilled");
+});
+
+test("a partner whose records exceed this party's ceiling but whose first round is within it runs to completion", async () => {
+  // 12 records, 4 of them repeating others: the round sends the 4 values only
+  // one record holds and drops the shared ones.
+  const { local, partner } = await runPair({
+    localRows: 5,
+    partnerRows: 12,
+    partnerSharedRows: 4,
+    ceiling: 4,
   });
   expect(local.status).toBe("fulfilled");
   expect(partner.status).toBe("fulfilled");
@@ -343,16 +485,18 @@ test("a sender partner is weighed at the declared width", async () => {
   expect(partner.status).toBe("fulfilled");
 });
 
-test("a receiver partner is weighed at the declared width", async () => {
-  const { local } = await runPair({
+test("a receiver partner counts its first round in both orders of a swapped key", async () => {
+  // The partner has fewer records, so it resolves to the PSI receiver, which
+  // assembles both orders of the pair: 5 records send 10 values.
+  const { partner } = await runPair({
     localRows: 12,
     partnerRows: 5,
     ceiling: 9,
     swapped: true,
   });
-  expect(local.status).toBe("rejected");
-  expect(((local as PromiseRejectedResult).reason as Error).message).toContain(
-    "can hold up to 10 values, over the 9 a browser exchange can match",
+  expect(partner.status).toBe("rejected");
+  expect(((partner as PromiseRejectedResult).reason as Error).message).toBe(
+    roundOneSetOverPartnerCeilingMessage(10, 9),
   );
 });
 

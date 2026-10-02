@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
 import {
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   deriveAcceptedLinkageTerms,
   getLogger,
   loadPsiBackend,
@@ -433,7 +433,7 @@ export function useAcceptorExchange({
         columns,
         deduplicate,
       });
-      await assertFirstRoundFitsWebRtcFrame(prepared, {
+      await assertFirstRoundWithinSetMaximum(prepared, {
         onProgress: onPsiProgress,
         signal,
       });

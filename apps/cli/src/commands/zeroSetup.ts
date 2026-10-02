@@ -31,7 +31,7 @@ import {
   type EventStreamEmitter,
 } from "../eventStream";
 import { displayZeroSetupDisclosure } from "../exchangeDisclosure";
-import { assertFileSyncFirstRoundFits } from "../fileSyncFirstRound";
+import { assertFirstRoundFits } from "../fileSyncFirstRound";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
 import {
   detectFileConflicts,
@@ -812,8 +812,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // too.
         await withFirstRoundCountDisplay(
           { verbosity, logFile, log },
-          (report) =>
-            assertFileSyncFirstRoundFits(connection, prepared, report),
+          (report) => assertFirstRoundFits(prepared, report),
         );
       } catch (err) {
         emitPrepareRefusal(eventStreamEmitter, prepared.rowCount, err);

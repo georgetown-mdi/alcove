@@ -99,6 +99,10 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("partner-set-too-large") }),
     undefined,
   ],
+  "partner-refused-set": [
+    record({ lastRun: failed("partner-refused-set") }),
+    undefined,
+  ],
   "handed-off": [record({ lastRun: failed("handed-off") }), undefined],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),

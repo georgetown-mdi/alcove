@@ -13,7 +13,7 @@ import type { Readable } from "node:stream";
 import yargs, { type Arguments } from "yargs";
 import YAML from "yaml";
 import {
-  assertFileSyncFirstRoundWithinSetMaximum,
+  assertFirstRoundWithinSetMaximum,
   CONSENT_FACTS,
   getLogger,
   prepareForExchange,
@@ -98,8 +98,8 @@ vi.mock("@alcove/core", async (importActual) => {
   return {
     ...actual,
     prepareForExchange: vi.fn(actual.prepareForExchange),
-    assertFileSyncFirstRoundWithinSetMaximum: vi.fn(
-      actual.assertFileSyncFirstRoundWithinSetMaximum,
+    assertFirstRoundWithinSetMaximum: vi.fn(
+      actual.assertFirstRoundWithinSetMaximum,
     ),
   };
 });
@@ -1076,11 +1076,12 @@ test("handler: a file-sync first round over the per-set maximum exits 64 with no
       input,
       "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
     );
-    vi.mocked(assertFileSyncFirstRoundWithinSetMaximum).mockImplementationOnce(
-      () => {
-        throw new RoundSetLimitError("first round too large for one file");
-      },
-    );
+    vi.mocked(assertFirstRoundWithinSetMaximum).mockImplementationOnce(() => {
+      throw new RoundSetLimitError(
+        "first round too large for one file",
+        "over-set-maximum",
+      );
+    });
     vi.mocked(establishHostKeyTrust).mockClear();
     vi.mocked(runProtocol).mockClear();
 
@@ -1100,9 +1101,7 @@ test("handler: a file-sync first round over the per-set maximum exits 64 with no
       ),
     );
     expect(raised).toEqual(new Error("exit:64"));
-    expect(
-      vi.mocked(assertFileSyncFirstRoundWithinSetMaximum),
-    ).toHaveBeenCalled();
+    expect(vi.mocked(assertFirstRoundWithinSetMaximum)).toHaveBeenCalled();
     expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
     expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
     // The refusal ends the machine-interface stream with its terminal error.
@@ -1137,7 +1136,7 @@ test("handler: the memory check is decided before the first-round count", async 
       "log-level": "silent",
     } as unknown as Arguments;
     const memory = vi.mocked(checkRunMemoryBudget);
-    const count = vi.mocked(assertFileSyncFirstRoundWithinSetMaximum);
+    const count = vi.mocked(assertFirstRoundWithinSetMaximum);
     memory.mockClear();
     count.mockClear();
     vi.mocked(runProtocol).mockImplementationOnce((async (

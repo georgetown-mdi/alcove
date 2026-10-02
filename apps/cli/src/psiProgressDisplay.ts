@@ -338,12 +338,11 @@ export function terminalPsiStatusLine(params: {
 }
 
 /**
- * Run a first-round check (`assertFirstRoundFitsWebRtcFrame`,
- * `assertFileSyncFirstRoundWithinSetMaximum`) with a display of its own for
- * the count it takes: a line logged as the count starts, so a run with no live line
- * still shows the count is under way, then the live line and completion line
- * {@link createPsiProgressDisplay} draws. A check that does not count logs
- * nothing.
+ * Run the first-round check (`assertFirstRoundWithinSetMaximum`) with a
+ * display of its own for the count it takes: a line logged as the count
+ * starts, so a run with no live line still shows the count is under way, then
+ * the live line and completion line {@link createPsiProgressDisplay} draws. A
+ * check that does not count logs nothing.
  */
 export async function withFirstRoundCountDisplay(
   params: {

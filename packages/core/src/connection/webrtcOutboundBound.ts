@@ -1,10 +1,10 @@
 // The send-side half of the WebRTC data-channel frame bound
 // (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"): the
 // arithmetic a sender uses to keep every frame within what the partner's
-// receive path admits. The pre-connection count check and the size of each
-// part a round sends (psi/psiSetParts.ts) both go through
-// `webrtcFrameExceedsBound`, so the two cannot disagree about where the bound
-// falls.
+// receive path admits. The size of each part a round sends
+// (psi/psiSetParts.ts) and a browser party's receive ceiling
+// (`BROWSER_PSI_SET_MAX_ELEMENTS`) both go through `webrtcFrameExceedsBound`,
+// so the two cannot disagree about where the bound falls.
 
 import {
   MAX_WEBRTC_FRAME_BYTES,
@@ -107,8 +107,8 @@ export function minimumPsiSetFrameBytes(elementCount: number): number {
 /**
  * The most elements a PSI set can hold and still fit one WebRTC frame bounded
  * at `maxFrameBytes`: the largest count whose {@link minimumPsiSetFrameBytes}
- * {@link webrtcFrameExceedsBound} admits. The first-round check of a WebRTC
- * exchange refuses a count over it.
+ * {@link webrtcFrameExceedsBound} admits. At {@link MAX_WEBRTC_FRAME_BYTES}
+ * it is a browser party's receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS`.
  *
  * @param maxFrameBytes - The receiver's bound, {@link MAX_WEBRTC_FRAME_BYTES}
  *   unless a test lowers it.
@@ -126,52 +126,3 @@ export function largestOneFramePsiSetElements(
   }
   return admitted;
 }
-
-const MIB = 1024 * 1024;
-
-/**
- * A byte count as the operator reads it: whole bytes under a mebibyte, else
- * mebibytes to one decimal place. `roundUp` rounds a size up rather than to
- * nearest, so a size over a bound never displays as equal to it.
- */
-function formatBytes(bytes: number, roundUp: boolean): string {
-  if (bytes < MIB) return `${bytes} bytes`;
-  const tenths = (roundUp ? Math.ceil : Math.round)((bytes / MIB) * 10);
-  return `${(tenths / 10).toString()} MiB`;
-}
-
-const SPLIT_OR_FILE_SYNC_REMEDY =
-  "Split the input into smaller files and run one exchange for each, or " +
-  "run the exchange with the command-line application over SFTP or a " +
-  "synced folder, which allow larger messages.";
-
-/**
- * The refusal a WebRTC exchange raises at its start when this party's first
- * round alone cannot fit one message: `elementCount` is the fewest values that
- * round sends, so the size stated is the least its set can take.
- */
-export function roundOneSetTooLargeMessage(
-  elementCount: number,
-  maxFrameBytes: number = MAX_WEBRTC_FRAME_BYTES,
-): string {
-  const charge = webrtcFrameReceiveCharge(
-    minimumPsiSetFrameBytes(elementCount),
-  );
-  return (
-    "This input is too large for a WebRTC exchange: the first linkage key " +
-    `gives this party at least ${elementCount} values to send, a set of at ` +
-    `least ${formatBytes(charge, true)}, over the ` +
-    `${formatBytes(maxFrameBytes, false)} one WebRTC message can hold. ` +
-    `Nothing was sent. ${SPLIT_OR_FILE_SYNC_REMEDY}`
-  );
-}
-
-/**
- * The refusal a WebRTC exchange raises at its start when counting the values
- * its first round sends fails for a reason other than a refusal of its own;
- * the failure is the refusal's cause.
- */
-export const ROUND_ONE_SET_UNCOUNTED_MESSAGE =
-  "This party could not count the values the first linkage key gives it to " +
-  "send, so it cannot confirm the set fits one WebRTC message. Nothing was " +
-  `sent. ${SPLIT_OR_FILE_SYNC_REMEDY}`;

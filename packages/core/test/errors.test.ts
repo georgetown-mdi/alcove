@@ -16,7 +16,6 @@ import {
   isTransportPublishIndeterminate,
   markPeerWaitTimeout,
   RoundSetLimitError,
-  WebRtcFrameLimitError,
 } from "../src/errors";
 import { ConnectionError } from "../src/connection/messageConnection";
 
@@ -304,9 +303,16 @@ describe("PeerAbortError exemplar (unchanged)", () => {
   });
 });
 
-test("both set-too-large refusals are sets too large to send, and nothing else is", () => {
-  expect(isSetTooLargeError(new RoundSetLimitError("too many"))).toBe(true);
-  expect(isSetTooLargeError(new WebRtcFrameLimitError("too large"))).toBe(true);
+test("a set-limit refusal for each reason is a set too large to send, and nothing else is", () => {
+  for (const reason of [
+    "over-set-maximum",
+    "over-partner-ceiling",
+    "uncounted",
+  ] as const) {
+    const refusal = new RoundSetLimitError("too many", reason);
+    expect(refusal.reason).toBe(reason);
+    expect(isSetTooLargeError(refusal)).toBe(true);
+  }
   expect(isSetTooLargeError(new Error("other"))).toBe(false);
   expect(isSetTooLargeError(undefined)).toBe(false);
 });

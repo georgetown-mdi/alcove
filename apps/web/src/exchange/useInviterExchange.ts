@@ -7,7 +7,7 @@ import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   RoundCapacityError,
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   getLogger,
   isSetTooLargeError,
   joinErrorCauseChain,
@@ -388,22 +388,22 @@ function failureContentFor(
       ...(consoleReported ? reportedCauseFields(cause) : {}),
     };
   }
-  // A partner whose set for a linkage key can hold more values than this
-  // browser can match, refused at the terms exchange. The message is fixed
-  // copy with counts. Classified `config`: the same partner input refuses
-  // identically however many times it runs.
+  // A partner's set for a linkage key over this browser's ceiling, refused at
+  // its first part. The message is fixed copy with counts. Classified
+  // `config`: the same partner input refuses identically however many times it
+  // runs.
   if (error instanceof RoundCapacityError)
     return {
       category: "config",
       title: PARTNER_SET_TOO_LARGE_TITLE,
       message: sanitizedFailureMessage(error),
     };
-  // A set too large for one WebRTC message, refused at the start, before
-  // anything was sent, from this party's own rows; or a first-round count that
-  // could not be taken. The message is fixed copy with counts, and for an
-  // uncounted refusal the cause's message, which the display sanitizer bounds.
-  // Classified `config`: the same input refuses identically however many times
-  // it runs.
+  // A set of this party's own over the most values the partner can receive, or
+  // over the protocol's maximum, refused before it is sent; or a first-round
+  // count that could not be taken. The message is fixed copy with counts, and
+  // for an uncounted refusal the cause's message, which the display sanitizer
+  // bounds. Classified `config`: the same input refuses identically however
+  // many times it runs.
   if (isSetTooLargeError(error))
     return {
       category: "config",
@@ -890,7 +890,7 @@ export function useInviterExchange({
         minted.rawRows,
         minted.columns,
       );
-      await assertFirstRoundFitsWebRtcFrame(prepared, {
+      await assertFirstRoundWithinSetMaximum(prepared, {
         onProgress: onPsiProgress,
         signal,
       });

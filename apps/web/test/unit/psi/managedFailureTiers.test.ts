@@ -3,9 +3,7 @@ import {
   LinkageTermsUnsatisfiableError,
   RoundSetLimitError,
   UsageError,
-  WebRtcFrameLimitError,
-  assertFileSyncFirstRoundWithinSetMaximum,
-  assertFirstRoundFitsWebRtcFrame,
+  assertFirstRoundWithinSetMaximum,
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
@@ -17,10 +15,6 @@ import {
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
-import {
-  ROUND_ONE_SET_UNCOUNTED_MESSAGE,
-  StandardizedKeyIterable,
-} from "@alcove/core/testing";
 import {
   assessManagedInputColumns,
   managedInputFailureKind,
@@ -41,6 +35,7 @@ import {
   rerunFailureLastRun,
   tooLargeReadingOf,
 } from "@psi/managed/managedRun";
+import { StandardizedKeyIterable } from "@alcove/core/testing";
 import { prepareManagedRerunExchange } from "@psi/managed/managedPreparedExchange";
 
 import type {
@@ -521,7 +516,7 @@ describe("managedStandingConditionTier", () => {
 
 describe("the too-large tier: a set over a bound the exchange cannot send past", () => {
   // The refusal an unattended run meets when its input is over a bound the
-  // exchange cannot send past (one WebRTC message, or one message file).
+  // exchange cannot send past (the most values the partner can receive).
   // Reconnecting sends the same set, so it tiers apart from the retryable
   // transport drop, and its copy names splitting the input.
   const columns = ["ssn", "ssn4", "first_name", "last_name", "date_of_birth"];
@@ -542,21 +537,15 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     },
   ];
 
-  type FirstRoundCheck =
-    | typeof assertFirstRoundFitsWebRtcFrame
-    | typeof assertFileSyncFirstRoundWithinSetMaximum;
-
-  /** A first-round check's real refusal, at a bound two values cross. */
-  async function firstRoundRefusal(
-    check: FirstRoundCheck = assertFirstRoundFitsWebRtcFrame,
-  ): Promise<unknown> {
+  /** The first-round check's real refusal, at a bound two values cross. */
+  async function firstRoundRefusal(): Promise<unknown> {
     const prepared = prepareManagedRerunExchange(
       record().exchangeFile,
       rows,
       columns,
     );
     try {
-      await check(prepared, { maxFrameBytes: 1, maxValues: 0 });
+      await assertFirstRoundWithinSetMaximum(prepared, { maxValues: 0 });
     } catch (error) {
       return error;
     }
@@ -565,9 +554,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
 
   /** The same check's real refusal when its count throws before reaching a
    * size. */
-  async function firstRoundUncounted(
-    check: FirstRoundCheck = assertFirstRoundFitsWebRtcFrame,
-  ): Promise<unknown> {
+  async function firstRoundUncounted(): Promise<unknown> {
     const failure = new RangeError("Map maximum size exceeded");
     const count = vi
       .spyOn(StandardizedKeyIterable.prototype, Symbol.iterator)
@@ -575,25 +562,30 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
         throw failure;
       });
     try {
-      return await firstRoundRefusal(check);
+      return await firstRoundRefusal();
     } finally {
       count.mockRestore();
     }
   }
 
-  const roundRefusal = new WebRtcFrameLimitError(
-    "The set this party sends for this linkage key is 300.1 MiB, over the " +
-      "256 MiB one WebRTC message can hold, so the exchange stopped before " +
-      "sending it and told your partner.",
+  const roundRefusal = new RoundSetLimitError(
+    "Too large for your partner: the set this party sends for this linkage " +
+      "key holds 8000000 values, over the 7643790 your partner can receive " +
+      "in one PSI set, so the exchange stopped before sending it and told " +
+      "your partner.",
+    "over-partner-ceiling",
   );
 
-  test("the first-round refusal and a round's refusal both record too-large", async () => {
+  test("the first-round refusal and a round's refusal both record too-large, each with the bound it found crossed", async () => {
     const beforeConnecting = await firstRoundRefusal();
-    expect(beforeConnecting).toBeInstanceOf(WebRtcFrameLimitError);
+    expect(beforeConnecting).toBeInstanceOf(RoundSetLimitError);
+    expect((beforeConnecting as RoundSetLimitError).reason).toBe(
+      "over-set-maximum",
+    );
     const at = Date.parse(RUN_AT);
-    for (const [error, dataExchangeStarted] of [
-      [beforeConnecting, false],
-      [roundRefusal, true],
+    for (const [error, dataExchangeStarted, bound] of [
+      [beforeConnecting, false, {}],
+      [roundRefusal, true, { tooLargeBound: "partner-ceiling" }],
     ] as const) {
       const lastRun = rerunFailureLastRun(
         error,
@@ -605,12 +597,29 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
         at: RUN_AT,
         outcome: "failed",
         failureKind: "too-large",
-        tooLargeBound: "webrtc-message",
+        ...bound,
       });
       expect(
         deriveManagedFailureTier(record({ lastRun }), undefined, NOW),
       ).toBe("too-large");
     }
+  });
+
+  test("the reading is the refusal's reason, whatever cause it holds", () => {
+    const cause = new RangeError("an unrelated cause");
+    expect(
+      tooLargeReadingOf(
+        new RoundSetLimitError("over", "over-partner-ceiling", { cause }),
+      ),
+    ).toEqual({ tooLargeBound: "partner-ceiling" });
+    expect(
+      tooLargeReadingOf(
+        new RoundSetLimitError("over", "over-set-maximum", { cause }),
+      ),
+    ).toEqual({});
+    expect(
+      tooLargeReadingOf(new RoundSetLimitError("uncounted", "uncounted")),
+    ).toEqual({ setUncounted: true });
   });
 
   test("a lapsed bound does not turn the refusal into an expiry", () => {
@@ -623,9 +632,9 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     ).toBeUndefined();
   });
 
-  test("a message-file refusal names no bound", () => {
+  test("a refusal over the per-set maximum names no bound", () => {
     const lastRun = rerunFailureLastRun(
-      new RoundSetLimitError("over one message file"),
+      new RoundSetLimitError("over the per-set maximum", "over-set-maximum"),
       Date.parse(RUN_AT),
       false,
       true,
@@ -664,6 +673,26 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
       "built from your input file was too large, so it was not sent",
     );
     expect(failure.message).not.toMatch(/WebRTC/);
+  });
+
+  test("the next visit names the partner's ceiling for a set over it", () => {
+    const failure = managedRunFailureFromRecord(
+      record({
+        lastRun: { ...failed("too-large"), tooLargeBound: "partner-ceiling" },
+      }),
+      undefined,
+      NOW,
+    );
+    if (failure === undefined || failure.kind === "handed-off")
+      throw new Error("expected the too-large alert");
+    expect(failure.title).toBe(
+      "Your file is too large for your partner to receive",
+    );
+    expect(failure.message).toContain(
+      "was over the most values your partner can receive",
+    );
+    expect(failure.message).toContain("Split your input into smaller files");
+    expect(managedRunRetryable(failure)).toBe(false);
   });
 
   test("the next visit names splitting your own input", () => {
@@ -710,9 +739,9 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
 
   test("a first round the check cannot count records an uncounted set with no bound", async () => {
     const uncounted = await firstRoundUncounted();
-    expect(uncounted).toBeInstanceOf(WebRtcFrameLimitError);
+    expect(uncounted).toBeInstanceOf(RoundSetLimitError);
+    expect((uncounted as RoundSetLimitError).reason).toBe("uncounted");
     expect(uncounted).toBeInstanceOf(UsageError);
-    expect((uncounted as Error).message).toBe(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
     const lastRun = rerunFailureLastRun(
       uncounted,
       Date.parse(RUN_AT),
@@ -738,46 +767,11 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
     expect(failure.title).toBe(
       "The values built from your file could not be counted",
     );
-    expect(failure.message).toContain(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
+    expect(failure.message).toContain((uncounted as Error).message);
     expect(failure.message).toContain("Map maximum size exceeded");
     expect(failure.message).not.toMatch(/try again|temporary/i);
     expect(failure.recovery).toBe("split");
     expect(managedRunRetryable(failure)).toBe(false);
-  });
-
-  test("a message-file first round the check cannot count records an uncounted set", async () => {
-    const uncounted = await firstRoundUncounted(
-      assertFileSyncFirstRoundWithinSetMaximum,
-    );
-    expect(uncounted).toBeInstanceOf(RoundSetLimitError);
-    expect((uncounted as Error).cause).toBeInstanceOf(RangeError);
-    expect(tooLargeReadingOf(uncounted as RoundSetLimitError)).toEqual({
-      setUncounted: true,
-    });
-    expect(
-      rerunFailureLastRun(uncounted, Date.parse(RUN_AT), false, false),
-    ).toEqual({
-      at: RUN_AT,
-      outcome: "failed",
-      failureKind: "too-large",
-      setUncounted: true,
-    });
-  });
-
-  test("a message-file first round over its bound records a set over a bound, not an uncounted one", async () => {
-    const overBound = await firstRoundRefusal(
-      assertFileSyncFirstRoundWithinSetMaximum,
-    );
-    expect(overBound).toBeInstanceOf(RoundSetLimitError);
-    expect((overBound as Error).cause).toBeUndefined();
-    expect(tooLargeReadingOf(overBound as RoundSetLimitError)).toEqual({});
-    expect(
-      rerunFailureLastRun(overBound, Date.parse(RUN_AT), false, false),
-    ).toEqual({
-      at: RUN_AT,
-      outcome: "failed",
-      failureKind: "too-large",
-    });
   });
 
   test("the next visit says an uncounted set could not be counted and names no bound", () => {

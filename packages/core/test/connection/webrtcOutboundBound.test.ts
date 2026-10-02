@@ -14,7 +14,6 @@ import {
   binaryPackByteStringLength,
   largestOneFramePsiSetElements,
   minimumPsiSetFrameBytes,
-  roundOneSetTooLargeMessage,
   webrtcFrameExceedsBound,
   webrtcFrameReceiveCharge,
 } from "../../src/connection/webrtcOutboundBound";
@@ -92,7 +91,7 @@ test("the frame bound refuses one byte over the largest frame it admits", () => 
   expect(largest).toBeLessThan(MAX_WEBRTC_FRAME_BYTES);
 });
 
-test("the count check refuses one element over the largest set it admits", () => {
+test("the browser receive ceiling is the largest set one frame holds", () => {
   const largest = largestAdmitted(
     (n) => !webrtcFrameExceedsBound(minimumPsiSetFrameBytes(n)),
     MAX_WEBRTC_FRAME_BYTES,
@@ -109,8 +108,9 @@ test("the count check refuses one element over the largest set it admits", () =>
 });
 
 test("every set frame the PSI library builds is within the lengths the checks assume", async () => {
-  // The count check refuses on the fewest bytes a set of its count can take, so
-  // it holds only while every frame the library builds is at least that long.
+  // The browser receive ceiling is the largest count whose fewest bytes fit
+  // one frame, so it holds only while every frame the library builds is at
+  // least that long.
   // Driven against the real serializer, every message a round sends a set in.
   for (const n of [0, 1, 4, 100, 1000]) {
     const values = Array.from({ length: n }, (_unused, i) => `value-${i}`);
@@ -143,15 +143,4 @@ test("every set frame the PSI library builds is within the lengths the checks as
     sender.dispose();
     receiver.dispose();
   }
-});
-
-test("a refusal states a size over the bound it names", () => {
-  // Rounded up, so a frame one byte over never displays as equal to the bound.
-  expect(roundOneSetTooLargeMessage(7_643_791)).toMatch(
-    /at least 7643791 values to send, a set of at least 256.1 MiB, over the 256 MiB/,
-  );
-  // Under a mebibyte the figures are exact.
-  expect(roundOneSetTooLargeMessage(29, 1000)).toContain(
-    "a set of at least 1018 bytes, over the 1000 bytes",
-  );
 });

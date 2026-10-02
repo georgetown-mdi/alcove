@@ -22,7 +22,10 @@ import {
 } from "../connection/webrtcOutboundBound";
 import { ProtocolRefusalError, RoundCapacityError } from "../errors";
 import { sendAbort } from "../protocolSetup";
-import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  receivePsiBinaryFrame,
+} from "./psiBinaryFrame";
 
 import type { MessageConnection } from "../connection/messageConnection";
 
@@ -51,27 +54,9 @@ export function psiSetByteBound(elementBound: number): number {
 }
 
 /**
- * The reason a round puts on the abort it sends the partner in place of a set
- * of this party's own over {@link MAX_PSI_DECODE_ELEMENTS}. A fixed literal,
- * like every abort reason (see `sendAbort`).
- */
-export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
-
-/**
- * The abort reason a party sends when the partner's set for a linkage key is
- * larger than this party can process: at the terms exchange
- * (`checkPartnerRoundCapacity` in exchange.ts) or at the first part of the set
- * ({@link receivePsiSet}). A fixed literal, as every abort reason must be (see
- * `sendAbort`).
- */
-export const PARTNER_SET_OVER_CAPACITY_ABORT_REASON =
-  "the partner cannot process a set as large as the one you send for a " +
-  "linkage key";
-
-/**
  * The refusal a party raises at the first part of a partner's set whose
  * declared length is within what the agreed record counts admit but over the
- * `ceilingElements` values its connection can process.
+ * `ceilingElements` values of its receive ceiling.
  */
 export function partnerSetOverCeilingMessage(ceilingElements: number): string {
   return (
@@ -95,6 +80,23 @@ export function ownSetTooLargeMessage(elementCount: number): string {
     `holds ${elementCount} values, over the ${MAX_PSI_DECODE_ELEMENTS} one ` +
     "set can hold, so the exchange stopped before sending it and told your " +
     `partner. ${SPLIT_INPUT_REMEDY}`
+  );
+}
+
+/**
+ * The refusal a round raises, before building the set, on a set of this
+ * party's own whose `elementCount` values exceed `partnerCeiling`, the most
+ * the partner stated on the terms exchange that it can receive.
+ */
+export function ownSetOverPartnerCeilingMessage(
+  elementCount: number,
+  partnerCeiling: number,
+): string {
+  return (
+    "Too large for your partner: the set this party sends for this linkage " +
+    `key holds ${elementCount} values, over the ${partnerCeiling} your ` +
+    "partner can receive in one PSI set, so the exchange stopped before " +
+    `sending it and told your partner. ${SPLIT_INPUT_REMEDY}`
   );
 }
 

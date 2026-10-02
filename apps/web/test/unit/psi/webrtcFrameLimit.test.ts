@@ -11,12 +11,12 @@ import {
   PEERJS_CHUNK_MTU,
   PSIParticipant,
   RoundSetLimitError,
-  WebRtcFrameLimitError,
 } from "@alcove/core";
 import {
   PSI_SET_PART_HEADER_BYTES,
-  ROUND_ONE_SET_UNCOUNTED_MESSAGE,
+  ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
   binaryPackByteStringLength,
+  roundOneSetOverPartnerCeilingMessage,
   webrtcFrameReceiveCharge,
 } from "@alcove/core/testing";
 
@@ -134,24 +134,26 @@ test("a set over the bound is handed to PeerJS in parts within the bound, holdin
   }
 });
 
-test("the refusal is shown as its own alert, with no retry", () => {
+test("a refusal over the partner's stated ceiling is shown as its own alert, with no retry", () => {
+  const message = roundOneSetOverPartnerCeilingMessage(8_000_000, 7_643_790);
   const own = failureFor(
     "exchange",
-    new WebRtcFrameLimitError("the set is too large; split the input"),
+    new RoundSetLimitError(message, "over-partner-ceiling"),
   );
   expect(own.category).toBe("config");
-  expect(own.title).toBe("Your file is too large for a browser exchange");
-  expect(own.message).toBe("the set is too large; split the input");
+  expect(own.title).toBe("Your file is too large for your partner to receive");
+  expect(own.message).toBe(message);
   expect(own.reportedCause).toBeUndefined();
 });
 
-test("a message-file refusal is shown as the same alert, with no retry", () => {
+test("a refusal over the per-set maximum is shown as the same alert, with no retry", () => {
   const failure = failureFor(
     "exchange",
     new RoundSetLimitError(
       "The set holds 20000000 values, over the 15339166 one message file " +
         "holds. Split the input into smaller files and run one exchange for " +
         "each.",
+      "over-set-maximum",
     ),
   );
   expect(failure.category).toBe("config");
@@ -163,15 +165,19 @@ test("a message-file refusal is shown as the same alert, with no retry", () => {
 test("a first round the check cannot count is shown as its own alert, with no retry", () => {
   const failure = failureFor(
     "exchange",
-    new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, {
-      cause: new RangeError("Map maximum size exceeded"),
-    }),
+    new RoundSetLimitError(
+      ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
+      "uncounted",
+      { cause: new RangeError("Map maximum size exceeded") },
+    ),
   );
   expect(failure.category).toBe("config");
   expect(failure.title).toBe(
     "The values built from your file could not be counted",
   );
-  expect(failure.message).toContain(ROUND_ONE_SET_UNCOUNTED_MESSAGE);
+  expect(failure.message).toContain(
+    ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
+  );
   expect(failure.message).toContain("Map maximum size exceeded");
   expect(failure.message).not.toMatch(/try again|temporary/i);
   expect(failure.reportedCause).toBeUndefined();

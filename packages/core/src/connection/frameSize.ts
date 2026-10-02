@@ -28,12 +28,11 @@ export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 
 /**
  * The most elements a PSI set a browser party receives from its partner may
- * hold: the most one WebRTC frame holds, the count the first-round check of a
- * WebRTC exchange admits, so the browser tab's one-frame envelope bounds the
- * joined set (docs/spec/PROTOCOL.md, "What a browser tab can match"). A
- * browser party refuses a partner whose authenticated round count is over it
- * at the terms exchange, and holds a partner's set to it when the set's first
- * part arrives.
+ * hold: the most one WebRTC frame holds, so the browser tab's one-frame
+ * envelope bounds the joined set (docs/spec/PROTOCOL.md, "What a browser tab
+ * can match"). A browser party states it as its receive ceiling on the terms
+ * exchange, and holds a partner's set to it when the set's first part arrives
+ * and at its element scan.
  */
 export const BROWSER_PSI_SET_MAX_ELEMENTS = largestOneFramePsiSetElements();
 

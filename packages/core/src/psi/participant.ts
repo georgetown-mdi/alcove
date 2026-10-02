@@ -22,11 +22,14 @@ import {
 } from "../utils/partnerIndices";
 import { ProtocolRefusalError, RoundSetLimitError } from "../errors";
 import { sendAbort } from "../protocolSetup";
-import { decodePsiBinaryFrame } from "./psiBinaryFrame";
+import {
+  decodePsiBinaryFrame,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
 import {
+  ownSetOverPartnerCeilingMessage,
   ownSetTooLargeMessage,
-  PSI_SET_TOO_LARGE_ABORT_REASON,
   psiSetByteBound,
   receivePsiSet,
   sendPsiSet,
@@ -183,9 +186,10 @@ export enum ProcessState {
  * minutes inside.
  *
  * One more, `countFirstRoundValues`, is no crypto operation: it is the count
- * the first-round size check (`assertFirstRoundFitsWebRtcFrame`,
- * `assertFileSyncFirstRoundWithinSetMaximum`) takes over this party's records
- * before anything is sent. Its `elements` and `processed` count records, not values.
+ * the first-round size checks take over this party's records before this
+ * party sends a set: `assertFirstRoundWithinSetMaximum` before contact, and
+ * the check against the partner's stated receive ceiling after the terms
+ * exchange. Its `elements` and `processed` count records, not values.
  * Its `started` and `progress` reports give the dataset's full row count as
  * `elements`; its `finished` and `failed` reports give the count of rows the
  * check actually walked, which is short of the row count when a
@@ -255,6 +259,23 @@ export interface PsiProgress {
  */
 export type PsiProgressReporter = (progress: PsiProgress) => void;
 
+/**
+ * The receive ceilings a round holds PSI sets to, each the most values one
+ * set may hold: `local`, this party's own, which a setup or a request it
+ * receives is held to before decode; `partner`, the one the partner stated on
+ * the terms exchange, which every set this party builds is held to
+ * (docs/spec/PROTOCOL.md, "The receive ceiling").
+ */
+export interface PsiSetCeilings {
+  readonly local: number;
+  readonly partner: number;
+}
+
+const PROTOCOL_SET_CEILINGS: PsiSetCeilings = {
+  local: MAX_PSI_DECODE_ELEMENTS,
+  partner: MAX_PSI_DECODE_ELEMENTS,
+};
+
 export class PSIParticipant {
   id: string;
   config: Config;
@@ -262,6 +283,7 @@ export class PSIParticipant {
   private elementBounds: PsiElementBounds;
   private engine: PsiEngine;
   private onProgress?: PsiProgressReporter;
+  private setCeilings: PsiSetCeilings;
   // The operation now dispatched to the engine, for the mid-operation reports
   // the engine raises against it. Undefined between operations.
   private runningOperation:
@@ -290,11 +312,15 @@ export class PSIParticipant {
     // caller rendering a progress display. Omitted, no report is composed at
     // all, so a caller that shows nothing pays nothing.
     onProgress?: PsiProgressReporter,
+    // The two parties' receive ceilings. Omitted, both are the protocol's
+    // per-set maximum, which every set is held to whatever is given.
+    setCeilings: PsiSetCeilings = PROTOCOL_SET_CEILINGS,
   ) {
     this.id = id;
     this.config = config;
     this.elementBounds = elementBounds;
     this.onProgress = onProgress;
+    this.setCeilings = setCeilings;
 
     if (this.config.verbose === undefined) {
       this.config.verbose = DEFAULT_VERBOSITY;
@@ -356,13 +382,15 @@ export class PSIParticipant {
   // repeated entries within the frame byte cap -- declaring up to
   // ~frameBytes/2 elements -- and exhaust memory (tens of GiB) inside
   // deserializeBinary itself, before any post-deserialize count could read
-  // it. The ceiling is the tighter of the authenticated
+  // it. The ceiling is the tightest of the authenticated
   // `keyCount * recordCount` bound (both parties compute it identically
-  // from authenticated session state) and the absolute
+  // from authenticated session state), the absolute
   // {@link MAX_PSI_DECODE_ELEMENTS}, which binds a cascade frame whose
-  // partner over-declares its record count. The scan stops as soon as the
-  // count exceeds the ceiling, so an over-declared frame costs O(ceiling),
-  // not O(frame); a malformed frame is a clean protocol abort too. See
+  // partner over-declares its record count, and, for a setup or a request,
+  // which hold the partner's own set, this party's receive ceiling. The scan
+  // stops as soon as the count exceeds the ceiling, so an over-declared frame
+  // costs O(ceiling), not O(frame); a malformed frame is a clean protocol
+  // abort too. See
   // connection/psiElementScan.ts.
   // Returns the count the frame declares, for the progress report on the
   // operation that follows: the scan stops early only above the ceiling, and
@@ -373,7 +401,11 @@ export class PSIParticipant {
     bytes: Uint8Array,
     authenticatedBound: number,
   ): number {
-    const ceiling = Math.min(authenticatedBound, MAX_PSI_DECODE_ELEMENTS);
+    const ceiling = Math.min(
+      authenticatedBound,
+      MAX_PSI_DECODE_ELEMENTS,
+      kind === "response" ? MAX_PSI_DECODE_ELEMENTS : this.setCeilings.local,
+    );
     let declared: number;
     try {
       declared = countDeclaredPsiElements(bytes, kind, ceiling);
@@ -391,22 +423,33 @@ export class PSIParticipant {
   }
 
   // Refuse this party's own set before building it when it holds more values
-  // than any receiver admits (the cap psiSetByteBound applies): the partner is
-  // parked on this set, so it is sent the abort in its place.
+  // than any receiver admits (the cap psiSetByteBound applies) or than the
+  // partner stated it can receive: the partner is parked on this set, so it
+  // is sent the abort in its place.
   private async refuseOwnSetOverDecodeCap(
     conn: MessageConnection,
     elementCount: number,
   ): Promise<void> {
-    if (elementCount <= MAX_PSI_DECODE_ELEMENTS) return;
+    const partnerCeiling = this.setCeilings.partner;
+    if (elementCount <= Math.min(MAX_PSI_DECODE_ELEMENTS, partnerCeiling))
+      return;
     await sendAbort(conn, [PSI_SET_TOO_LARGE_ABORT_REASON]);
-    throw new RoundSetLimitError(ownSetTooLargeMessage(elementCount));
+    throw elementCount > MAX_PSI_DECODE_ELEMENTS
+      ? new RoundSetLimitError(
+          ownSetTooLargeMessage(elementCount),
+          "over-set-maximum",
+        )
+      : new RoundSetLimitError(
+          ownSetOverPartnerCeilingMessage(elementCount, partnerCeiling),
+          "over-partner-ceiling",
+        );
   }
 
   // Receive one of the round's PSI sets in its parts, held to the bytes the
   // authenticated element bound for its kind admits. A setup or a request
-  // holds the partner's own set, so it is also held to the connection's
-  // ceiling on a partner's set, as this party's capacity rather than the
-  // protocol's; a response re-encrypts this party's request.
+  // holds the partner's own set, so it is also held to this party's receive
+  // ceiling, as this party's capacity rather than the protocol's; a response
+  // re-encrypts this party's request.
   private receiveRoundSet(
     conn: MessageConnection,
     kind: PsiMessageKind,
@@ -417,8 +460,7 @@ export class PSIParticipant {
         : this.elementBounds[kind],
       MAX_PSI_DECODE_ELEMENTS,
     );
-    const ceiling =
-      kind === "response" ? undefined : conn.inboundPsiSetElementCeiling?.();
+    const ceiling = kind === "response" ? undefined : this.setCeilings.local;
     return receivePsiSet(
       conn,
       this.id,

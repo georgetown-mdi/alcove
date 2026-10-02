@@ -139,13 +139,13 @@ export interface MessageConnection {
    */
   outboundFileSyncFrameBound?(): number | undefined;
   /**
-   * Optional: the most elements a PSI set the partner sends on this connection
-   * may hold, where this party can match fewer than the protocol admits (a
-   * browser tab), or `undefined` for a party held to the protocol's maximum
-   * alone. A cascade or count-only exchange refuses at the terms exchange a
-   * partner whose round count is over it, and a round holds the partner's set
-   * to it when the set's first part arrives. See docs/spec/PROTOCOL.md ("What
-   * a browser tab can match").
+   * Optional: this party's receive ceiling, the most elements a PSI set the
+   * partner sends on this connection may hold, where this party can match
+   * fewer than the protocol admits (a browser tab), or `undefined` for a party
+   * held to the protocol's maximum alone. An exchange states it to the partner
+   * on the terms exchange, and a round holds the partner's setup or request
+   * to it at the set's first part and at the element scan. See
+   * docs/spec/PROTOCOL.md ("The receive ceiling").
    */
   inboundPsiSetElementCeiling?(): number | undefined;
   /**

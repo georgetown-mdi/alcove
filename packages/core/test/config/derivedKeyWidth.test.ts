@@ -34,6 +34,7 @@ import { prepareForExchange, runExchange } from "../../src/exchange";
 import type { ResolvedRunShape } from "../../src/pairTableProjection";
 import { UsageError } from "../../src/errors";
 import { createMessagePipe } from "../../src/connection/messageConnection";
+import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { recordingConnection } from "../utils/recordingConnection";
 import type {
   GenerateFuzzyComparisons,
@@ -656,6 +657,7 @@ describe("both parties derive the same width with no round-trip", () => {
     await connA.send({
       linkageTerms: FUZZY_TERMS,
       recordCount: 100,
+      receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
       effectiveKeyCount: 3,
       protocolVersion: PROTOCOL_VERSION,
     });

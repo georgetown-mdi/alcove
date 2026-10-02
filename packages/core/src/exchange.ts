@@ -44,7 +44,11 @@ import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
 import { snakeizeKey } from "./utils/camelizeKeys.js";
 import type { CSVRow } from "./file.js";
 import { PSIParticipant } from "./psi/participant.js";
-import { PARTNER_SET_OVER_CAPACITY_ABORT_REASON } from "./psi/psiSetParts.js";
+import {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "./psi/psiBinaryFrame.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
 import type { PsiEngine, PsiEngineMode } from "./psi/psiEngine.js";
 import {
@@ -105,16 +109,9 @@ import {
   RoundCapacityError,
   RoundSetLimitError,
   UsageError,
-  WebRtcFrameLimitError,
   causeChainSome,
 } from "./errors.js";
-import { MAX_WEBRTC_FRAME_BYTES } from "./connection/binaryPackBounds.js";
 import { SPLIT_INPUT_REMEDY } from "./connection/fileSyncOutboundBound.js";
-import {
-  largestOneFramePsiSetElements,
-  ROUND_ONE_SET_UNCOUNTED_MESSAGE,
-  roundOneSetTooLargeMessage,
-} from "./connection/webrtcOutboundBound.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
 import type { Standardization } from "./config/standardizationSchema.js";
 import {
@@ -1542,110 +1539,108 @@ export function prepareForExchange(
 }
 
 /**
- * Refuse a WebRTC exchange whose first round alone cannot fit one WebRTC
- * message, before anything is sent: a {@link WebRtcFrameLimitError} naming
- * the size, the bound, and the remedy. Call it at the start of a WebRTC
- * exchange, once {@link prepareForExchange} has returned and before the
- * connection opens; {@link assertFileSyncFirstRoundWithinSetMaximum} is the
- * SFTP and synced-folder counterpart.
+ * The refusal an exchange raises at its start when this party's first round
+ * holds more values than one PSI set can hold: `elementCount` is the fewest
+ * values that round sends, `maxValues` the protocol's per-set maximum.
+ */
+export function roundOneSetOverMaximumMessage(
+  elementCount: number,
+  maxValues: number = MAX_PSI_DECODE_ELEMENTS,
+): string {
+  return (
+    "Too large to send: the first linkage key gives this party at least " +
+    `${elementCount} values to send, over the ${maxValues} one PSI set can ` +
+    `hold. Nothing was sent. ${SPLIT_INPUT_REMEDY}`
+  );
+}
+
+/**
+ * The refusal raised after the terms exchange, before any linkage key is
+ * sent, when this party's first round holds more values than the partner
+ * stated it can receive: `elementCount` is the fewest values that round
+ * sends, `partnerReceiveCeiling` the partner's stated ceiling.
+ */
+export function roundOneSetOverPartnerCeilingMessage(
+  elementCount: number,
+  partnerReceiveCeiling: number,
+): string {
+  return (
+    "Too large for your partner: the first linkage key gives this party at " +
+    `least ${elementCount} values to send, over the ` +
+    `${partnerReceiveCeiling} your partner can receive in one PSI set, so ` +
+    "the exchange stopped before any linkage key was sent and told your " +
+    `partner. ${PARTNER_CEILING_REMEDY}`
+  );
+}
+
+/**
+ * The refusal raised after the terms exchange when counting the values this
+ * party's first round sends fails for a reason other than a refusal of its
+ * own; the failure is the refusal's cause.
+ */
+export const ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE =
+  "This party could not count the values the first linkage key gives it to " +
+  "send, so it cannot confirm your partner can receive them. The exchange " +
+  "stopped before any linkage key was sent and told your partner. " +
+  SPLIT_INPUT_REMEDY;
+
+const PARTNER_CEILING_REMEDY =
+  "Split the input into smaller files and run one exchange for each, or " +
+  "ask your partner to run the exchange with the command-line application.";
+
+/**
+ * Refuse an exchange whose first round holds more values than one PSI set can
+ * hold, before anything is sent: a {@link RoundSetLimitError} naming the
+ * count, the bound, and the remedy. Call it at the start of an exchange on any
+ * channel, once {@link prepareForExchange} has returned and before the
+ * connection opens.
  *
  * It counts the values the first cascade or count-only round sends under this
  * party's own within-round rule ({@link RoundSetCounter}): every distinct
  * value when its terms set `deduplicate` on a cascade, else only the values
  * exactly one record holds. The count is taken in both PSI roles, since which
- * one this party plays is not yet known. It
- * refuses on a count over the bound in both roles, and on any failure to
- * count, with the failure as the refusal's cause. A {@link UsageError} the
- * round would raise in one role is left to the round when the other role
- * fits; raised in both, it is thrown as it is. Every later round is sent in
- * parts, each within the bound, rather than checked here
- * (docs/spec/PROTOCOL.md, "A PSI set is sent in parts"). Where the round reads
+ * one this party plays is not yet known. It refuses on a count over the
+ * protocol's per-set maximum (`MAX_PSI_DECODE_ELEMENTS`) in both roles, and on
+ * any failure to count, with the failure as the refusal's cause. A
+ * {@link UsageError} the round would raise in one role is left to the round
+ * when the other role fits; raised in both, it is thrown as it is. The
+ * partner's stated receive ceiling is checked once the terms are exchanged,
+ * in the role this party resolves to, and every later round's set when it is
+ * built (docs/spec/PROTOCOL.md, "The receive ceiling"). Where the round reads
  * one candidate per record, a record holding a candidate set raises the
- * round's own fan-out refusal rather than this one. A single-pass
- * exchange is not checked here: its dataset ceiling holds every frame it
- * sends under the bound (docs/spec/PROTOCOL.md, "The single-pass dataset
- * ceiling").
+ * round's own fan-out refusal rather than this one. A single-pass exchange is
+ * not checked here: its dataset ceiling holds every set it sends
+ * (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling").
  *
  * The count reports its progress through `options.onProgress`
  * ({@link FirstRoundCheckOptions}) and yields to the event loop as it goes,
  * so a display stays live through it.
  */
-export async function assertFirstRoundFitsWebRtcFrame(
-  prepared: PreparedExchange,
-  options: FirstRoundCheckOptions = {},
-): Promise<void> {
-  const maxFrameBytes = options.maxFrameBytes ?? MAX_WEBRTC_FRAME_BYTES;
-  const largestAdmitted = largestOneFramePsiSetElements(maxFrameBytes);
-  await assertFirstRoundFits(prepared, options, {
-    exceeds: (elementCount) => elementCount > largestAdmitted,
-    tooLarge: (fewest) =>
-      new WebRtcFrameLimitError(
-        roundOneSetTooLargeMessage(fewest, maxFrameBytes),
-      ),
-    uncounted: (failure) =>
-      new WebRtcFrameLimitError(ROUND_ONE_SET_UNCOUNTED_MESSAGE, {
-        cause: failure,
-      }),
-  });
-}
-
-/**
- * The refusal an SFTP or synced-folder exchange raises at its start when this
- * party's first round holds more values than one PSI set can hold:
- * `elementCount` is the fewest values that round sends, `maxValues` the
- * protocol's per-set maximum.
- */
-export function fileSyncRoundOneSetTooLargeMessage(
-  elementCount: number,
-  maxValues: number = MAX_PSI_DECODE_ELEMENTS,
-): string {
-  return (
-    "Too large for SFTP or a synced folder: the first linkage key gives " +
-    `this party at least ${elementCount} values to send, over the ` +
-    `${maxValues} one PSI set can hold. Nothing was sent. ` +
-    SPLIT_INPUT_REMEDY
-  );
-}
-
-/**
- * Refuse an SFTP or synced-folder exchange whose first round holds more
- * values than one PSI set can hold, before anything is written for the
- * partner: a {@link RoundSetLimitError} naming the count, the bound, and the
- * remedy. Call it at the start of such an exchange, once
- * {@link prepareForExchange} has returned and before the connection opens.
- *
- * It counts as {@link assertFirstRoundFitsWebRtcFrame} does, against the
- * protocol's per-set maximum (`MAX_PSI_DECODE_ELEMENTS`), the bound every
- * sender and receiver holds a set to. The set itself is sent in parts, each
- * within one message file. A later round's set is known only once the
- * earlier rounds have matched, so the round refuses it when it is built
- * rather than here (docs/spec/FILE_SYNC.md, "Round set size limits").
- * Progress is reported as {@link assertFirstRoundFitsWebRtcFrame} reports it.
- */
-export async function assertFileSyncFirstRoundWithinSetMaximum(
+export async function assertFirstRoundWithinSetMaximum(
   prepared: PreparedExchange,
   options: FirstRoundCheckOptions = {},
 ): Promise<void> {
   const maxValues = options.maxValues ?? MAX_PSI_DECODE_ELEMENTS;
-  await assertFirstRoundFits(prepared, options, {
+  await assertFirstRoundFits(prepared, options, [false, true], {
     exceeds: (elementCount) => elementCount > maxValues,
     tooLarge: (fewest) =>
       new RoundSetLimitError(
-        fileSyncRoundOneSetTooLargeMessage(fewest, maxValues),
+        roundOneSetOverMaximumMessage(fewest, maxValues),
+        "over-set-maximum",
       ),
     uncounted: (failure) =>
       new RoundSetLimitError(
         "This party could not count the values the first linkage key gives " +
           "it to send, so it cannot confirm one PSI set can hold them. " +
           `Nothing was sent. ${SPLIT_INPUT_REMEDY}`,
+        "uncounted",
         { cause: failure },
       ),
   });
 }
 
 /**
- * What a first-round check ({@link assertFirstRoundFitsWebRtcFrame},
- * {@link assertFileSyncFirstRoundWithinSetMaximum}) takes beyond the prepared
+ * What {@link assertFirstRoundWithinSetMaximum} takes beyond the prepared
  * exchange.
  */
 export interface FirstRoundCheckOptions {
@@ -1660,12 +1655,7 @@ export interface FirstRoundCheckOptions {
    * `elements` when a deduplicating party's growing count stopped early.
    */
   onProgress?: PsiProgressReporter;
-  /** The WebRTC receiver's frame bound; lowered only by tests. */
-  maxFrameBytes?: number;
-  /**
-   * The most values one PSI set holds on SFTP or a synced folder; lowered
-   * only by tests.
-   */
+  /** The most values one PSI set holds; lowered only by tests. */
   maxValues?: number;
   /** The least time between two progress reports; lowered only by tests. */
   progressIntervalMs?: number;
@@ -1674,6 +1664,43 @@ export interface FirstRoundCheckOptions {
    * with `signal.reason` and reports nothing further, not even a settle.
    */
   signal?: AbortSignal;
+}
+
+// Hold this party's first round to the partner's stated receive ceiling, after
+// the terms exchange and before this party builds a set: counted as the
+// start-of-exchange check counts, in the role this party resolved to. Every
+// refusal sends the partner an abort before it propagates, its reason stating
+// only that the set was too large or that it was refused.
+async function assertFirstRoundWithinPartnerCeiling(
+  conn: MessageConnection,
+  input: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
+  isReceiver: boolean,
+  partnerReceiveCeiling: number,
+  onProgress: PsiProgressReporter | undefined,
+): Promise<void> {
+  try {
+    await assertFirstRoundFits(input, { onProgress }, [isReceiver], {
+      exceeds: (elementCount) => elementCount > partnerReceiveCeiling,
+      tooLarge: (fewest) =>
+        new RoundSetLimitError(
+          roundOneSetOverPartnerCeilingMessage(fewest, partnerReceiveCeiling),
+          "over-partner-ceiling",
+        ),
+      uncounted: (failure) =>
+        new RoundSetLimitError(
+          ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
+          "uncounted",
+          { cause: failure },
+        ),
+    });
+  } catch (err) {
+    await sendAbort(conn, [
+      err instanceof RoundSetLimitError && err.reason !== "uncounted"
+        ? PSI_SET_TOO_LARGE_ABORT_REASON
+        : PSI_SET_REFUSED_ABORT_REASON,
+    ]);
+    throw err;
+  }
 }
 
 // How often the count reads the clock, in records, and the least time between
@@ -1686,13 +1713,15 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-// The first-round count both channel checks above share. `exceeds` is the
-// channel's bound on a set of that many values, `tooLarge` its refusal on the
-// fewest values the round sends in either role, `uncounted` its refusal when
-// the count fails other than with a refusal the round would raise.
+// The first-round count both checks above share, in each of `roles` (whether
+// this party counts as the PSI receiver) until one fits. `exceeds` is the
+// check's bound on a set of that many values, `tooLarge` its refusal on the
+// fewest values the round sends in any role counted, `uncounted` its refusal
+// when the count fails other than with a refusal the round would raise.
 async function assertFirstRoundFits(
-  prepared: PreparedExchange,
+  prepared: Pick<PreparedExchange, "linkageTerms" | "dataset" | "rowCount">,
   options: FirstRoundCheckOptions,
+  roles: ReadonlyArray<boolean>,
   bound: {
     exceeds: (elementCount: number) => boolean;
     tooLarge: (fewest: number) => Error;
@@ -1799,15 +1828,17 @@ async function assertFirstRoundFits(
     settled("finished", startedAt, row);
     return size;
   };
-  const refusedInRole = (size: number | UsageError): boolean =>
-    typeof size !== "number" || bound.exceeds(size);
-  const asSender = await roundSetSize(false);
-  if (!refusedInRole(asSender)) return;
-  const asReceiver = await roundSetSize(true);
-  if (!refusedInRole(asReceiver)) return;
-  if (typeof asSender !== "number") throw asSender;
-  if (typeof asReceiver !== "number") throw asReceiver;
-  throw bound.tooLarge(Math.min(asSender, asReceiver));
+  const counted: Array<number> = [];
+  const refusals: Array<UsageError> = [];
+  for (const isReceiver of roles) {
+    const size = await roundSetSize(isReceiver);
+    if (typeof size === "number") {
+      if (!bound.exceeds(size)) return;
+      counted.push(size);
+    } else refusals.push(size);
+  }
+  if (refusals.length > 0) throw refusals[0];
+  throw bound.tooLarge(Math.min(...counted));
 }
 
 // --- Exchange execution ------------------------------------------------------
@@ -2231,9 +2262,7 @@ export interface RunExchangeOptions {
    * throw refuses the run and propagates; a {@link RoundCapacityError} also
    * sends the partner {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON}. The
    * command-line application weighs the memory a round of that size needs
-   * here. A connection that states a ceiling on a partner's set
-   * (`MessageConnection.inboundPsiSetElementCeiling`) is held to it first, as
-   * a {@link RoundCapacityError}, whether or not this is given.
+   * here.
    */
   checkPartnerRoundCapacity?: (
     partnerRoundValues: number,
@@ -2407,42 +2436,17 @@ export function partnerRoundValues(
   return Math.min(partnerRecordCount * widest, MAX_PSI_DECODE_ELEMENTS);
 }
 
-/**
- * The refusal a party raises when the partner's set for a linkage key can hold
- * more values than its connection's ceiling on a partner's set: a browser
- * party, whose PSI engine matches fewer values than the protocol admits.
- */
-export function partnerRoundOverBrowserCeilingMessage(
-  roundValues: number,
-  ceiling: number,
-): string {
-  return (
-    "Too large for this browser: your partner's set for one linkage key can " +
-    `hold up to ${roundValues} values, over the ${ceiling} a browser ` +
-    "exchange can match, so the exchange stopped before any linkage key " +
-    "was sent and told your partner. Ask your partner to split their input " +
-    "into smaller files and run one exchange for each, or run this exchange " +
-    "with the command-line application on a host with enough memory."
-  );
-}
-
-// Hold the partner's round to this party's capacity, before any PSI set moves:
-// the connection's own ceiling on a partner's set, then the caller's check. A
-// capacity refusal sends the partner a fixed abort reason before it
+// Hold the partner's round to the caller's capacity check, before any PSI set
+// moves. A capacity refusal sends the partner a fixed abort reason before it
 // propagates; any other failure propagates unchanged.
 async function assertPartnerRoundWithinCapacity(
   conn: MessageConnection,
   roundValues: number,
   check: RunExchangeOptions["checkPartnerRoundCapacity"],
 ): Promise<void> {
+  if (check === undefined) return;
   try {
-    const ceiling = conn.inboundPsiSetElementCeiling?.();
-    if (ceiling !== undefined && roundValues > ceiling)
-      throw new RoundCapacityError(
-        partnerRoundOverBrowserCeilingMessage(roundValues, ceiling),
-        "terms-exchange",
-      );
-    await check?.(roundValues);
+    await check(roundValues);
   } catch (err) {
     if (err instanceof RoundCapacityError)
       await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
@@ -2567,12 +2571,22 @@ export async function runExchange(
 
   const { onTermsChange } = options;
 
+  // The most values one PSI set this party receives may hold, stated on the
+  // terms exchange so the partner holds every set it sends here to it: the
+  // connection's own ceiling where it states one (a browser party's), else the
+  // protocol's per-set maximum.
+  const localReceiveCeiling = Math.min(
+    conn.inboundPsiSetElementCeiling?.() ?? MAX_PSI_DECODE_ELEMENTS,
+    MAX_PSI_DECODE_ELEMENTS,
+  );
+
   onStage(CONFIRMING_PROTOCOL_STAGE_ID);
   const {
     partnerTerms: partnerTermsAsSent,
     localTerms: agreedLocalTerms,
     warnings,
     partnerRecordCount,
+    partnerReceiveCeiling,
     partnerSaveIntent,
     partnerDisclosesPayload,
     partnerHostKey,
@@ -2610,6 +2624,7 @@ export async function runExchange(
               );
             },
     },
+    localReceiveCeiling,
   );
   for (const warning of warnings) onWarning(warning);
   linkageTerms = agreedLocalTerms;
@@ -2895,14 +2910,28 @@ export async function runExchange(
     isReceiver ? localSize : partnerSize,
   );
 
-  // A cascade or count-only round receives the partner's set for one key at a
-  // time, sent in parts; the single-pass dataset ceiling bounds the rest.
-  if (linkageTerms.linkageStrategy !== "single-pass" || countOnly)
+  // A cascade or count-only round exchanges one key's sets at a time, sent in
+  // parts, each held to the receive ceilings; the single-pass dataset ceiling
+  // bounds the rest. This party's first round is held to the partner's stated
+  // ceiling before this party builds a set; at the protocol's maximum, the
+  // start-of-exchange check and each round's own refusal hold it already.
+  const roundsSentInParts =
+    linkageTerms.linkageStrategy !== "single-pass" || countOnly;
+  if (roundsSentInParts) {
     await assertPartnerRoundWithinCapacity(
       conn,
       partnerRoundValues(partnerRecordCount, linkageTerms),
       options.checkPartnerRoundCapacity,
     );
+    if (partnerReceiveCeiling < MAX_PSI_DECODE_ELEMENTS)
+      await assertFirstRoundWithinPartnerCeiling(
+        conn,
+        { linkageTerms, dataset, rowCount },
+        isReceiver,
+        partnerReceiveCeiling,
+        options.onPsiProgress,
+      );
+  }
 
   // Single-pass is allowlisted; any other value (including the default) runs the
   // cascade. No mismatch guard needed here -- validateCompatibility already
@@ -2951,6 +2980,9 @@ export async function runExchange(
       elementBounds,
       engine,
       options.onPsiProgress,
+      roundsSentInParts
+        ? { local: localReceiveCeiling, partner: partnerReceiveCeiling }
+        : undefined,
     );
     if (countOnly)
       // One round over one key, resolving to the intersection size and nothing that
