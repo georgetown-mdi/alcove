@@ -42,6 +42,7 @@ import {
 } from "./utils/sanitizeErrorForDisplay.js";
 import { rawDecodeErrorDescription } from "./utils/describeDecodeError.js";
 import { snakeizeKey } from "./utils/camelizeKeys.js";
+import { yieldToEventLoop } from "./utils/eventLoop.js";
 import type { CSVRow } from "./file.js";
 import { PSIParticipant } from "./psi/participant.js";
 import {
@@ -1708,10 +1709,6 @@ async function assertFirstRoundWithinPartnerCeiling(
 // display on the same thread can draw it.
 const FIRST_ROUND_COUNT_CLOCK_RECORDS = 1024;
 const FIRST_ROUND_COUNT_PROGRESS_MS = 250;
-
-function yieldToEventLoop(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
 
 // The first-round count both checks above share, in each of `roles` (whether
 // this party counts as the PSI receiver) until one fits. `exceeds` is the
