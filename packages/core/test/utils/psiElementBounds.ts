@@ -11,5 +11,4 @@ import type { PsiElementBounds } from "../../src/connection/frameSize";
 export const UNBOUNDED_PSI_ELEMENTS: PsiElementBounds = {
   setup: Number.POSITIVE_INFINITY,
   request: Number.POSITIVE_INFINITY,
-  response: Number.POSITIVE_INFINITY,
 };

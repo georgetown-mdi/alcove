@@ -73,7 +73,6 @@ async function starterFirstFrame(
     {
       setup: Number.POSITIVE_INFINITY,
       request: Number.POSITIVE_INFINITY,
-      response: Number.POSITIVE_INFINITY,
     },
   );
   const round = starter.identifyIntersection(mc, SET).then(

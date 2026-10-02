@@ -22,6 +22,7 @@ import type { MessageConnection } from "../../src/connection/messageConnection";
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { asOnePsiSetPart } from "../utils/psiSetPart";
+import { PSI_SET_PART_HEADER_BYTES } from "../../src/psi/psiSetParts";
 
 const psiLibrary = await PSI();
 
@@ -269,15 +270,21 @@ test("computeValueMatches rejects a setup declaring more elements than the bound
   );
 });
 
-test("computeValueMatches rejects a response declaring more elements than the bound", async () => {
+// Eight values, so a request of 8 * 35 + 2 bytes: the over-declared frame's
+// 64 two-byte elements fit within its length, and the element scan is what
+// refuses them.
+const EIGHT_VALUES = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+test("computeValueMatches rejects a response declaring more elements than the request it answers", async () => {
   // Single-pass receiver boundary (response): a within-bound setup, an
   // over-declared response, so the response check is what fires.
   const receiver = new PSIParticipant(
     "receiver",
     psiLibrary,
     { role: "joiner", verbose: 0 },
-    { ...UNBOUNDED_PSI_ELEMENTS, response: 4 },
+    UNBOUNDED_PSI_ELEMENTS,
   );
+  await receiver.createClientRequest(EIGHT_VALUES);
   const setup = new psiLibrary.serverSetup();
   const raw = new psiLibrary.serverSetup.RawInfo();
   raw.setEncryptedElementsList([new Uint8Array([1, 2])]);
@@ -290,8 +297,127 @@ test("computeValueMatches rejects a response declaring more elements than the bo
       response.serializeBinary(),
     ),
   ).rejects.toThrow(
-    /inbound PSI response declares more than 4 encrypted element\(s\)/,
+    /inbound PSI response declares more than 8 encrypted element\(s\)/,
   );
+});
+
+// A setup, a request, and the sender's real response to it, for the tests
+// holding a response to the length of the request this party sent.
+async function respondedRound(): Promise<{
+  receiver: PSIParticipant;
+  setup: Uint8Array;
+  request: Uint8Array;
+  response: Uint8Array;
+}> {
+  const sender = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "sender",
+    "identifier-revealing",
+  );
+  const receiver = new PSIParticipant(
+    "receiver",
+    psiLibrary,
+    { role: "joiner", verbose: 0 },
+    UNBOUNDED_PSI_ELEMENTS,
+  );
+  const { setup } = await sender.createServerSetup(["Alice", "Carol"]);
+  const request = await receiver.createClientRequest(["Carol", "Henry"]);
+  const response = await sender.processClientRequest(request);
+  sender.dispose();
+  return { receiver, setup, request, response };
+}
+
+// The response padded to `length` bytes with one unknown protobuf field the
+// library skips: a varint of field 15 whose value 0 is written in
+// `length - response.byteLength - 1` bytes.
+function paddedResponse(response: Uint8Array, length: number): Uint8Array {
+  const valueBytes = length - response.byteLength - 1;
+  const padding = [15 << 3, ...Array<number>(valueBytes - 1).fill(0x80), 0];
+  return new Uint8Array([...response, ...padding]);
+}
+
+test("a response as long as the request this party sent proceeds", async () => {
+  const { receiver, setup, request, response } = await respondedRound();
+  expect(response.byteLength).toBeLessThan(request.byteLength);
+  const atLength = paddedResponse(response, request.byteLength);
+  expect(atLength.byteLength).toBe(request.byteLength);
+  const [local, partner] = await receiver.computeValueMatches(setup, atLength);
+  expect(local).toStrictEqual([0]);
+  expect(partner).toHaveLength(1);
+  receiver.dispose();
+});
+
+test("a response longer than the request this party sent is refused before decode", async () => {
+  const { receiver, setup, request, response } = await respondedRound();
+  const overLength = paddedResponse(response, request.byteLength + 1);
+  const deserialize = vi.spyOn(psiLibrary.response, "deserializeBinary");
+  try {
+    const refused = receiver.computeValueMatches(setup, overLength);
+    await expect(refused).rejects.toBeInstanceOf(ProtocolRefusalError);
+    await expect(refused).rejects.toThrow(
+      `inbound PSI response is ${request.byteLength + 1} bytes, over the ` +
+        `${request.byteLength} bytes of the request this party sent`,
+    );
+    expect(deserialize).not.toHaveBeenCalled();
+  } finally {
+    deserialize.mockRestore();
+    receiver.dispose();
+  }
+});
+
+test("a response before this party sent any request is refused", async () => {
+  const receiver = new PSIParticipant(
+    "receiver",
+    psiLibrary,
+    { role: "joiner", verbose: 0 },
+    UNBOUNDED_PSI_ELEMENTS,
+  );
+  const { setup, response } = await respondedRound();
+  await expect(receiver.computeValueMatches(setup, response)).rejects.toThrow(
+    "inbound PSI response before this party sent a request",
+  );
+});
+
+test("cascade identifyIntersection (joiner) refuses a response declaring more bytes than its request, at the first part", async () => {
+  const [serverConn, clientConn] = createMessagePipe();
+  const joiner = new PSIParticipant(
+    "joiner",
+    psiLibrary,
+    { role: "joiner", verbose: 0 },
+    UNBOUNDED_PSI_ELEMENTS,
+  );
+  const sender = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "sender",
+    "identifier-revealing",
+  );
+  const { setup } = await sender.createServerSetup(["Alice", "Carol"]);
+  sender.dispose();
+  let requestBytes = 0;
+  const run = joiner.identifyIntersection(
+    {
+      send: (data) => clientConn.send(data),
+      receive: async (timeoutMs?: number) => {
+        const frame = await clientConn.receive(timeoutMs);
+        return requestBytes === 0
+          ? frame
+          : asOnePsiSetPart(new Uint8Array(requestBytes + 1));
+      },
+      close: () => clientConn.close(),
+    },
+    ["Carol", "Henry"],
+  );
+  await serverConn.send(asOnePsiSetPart(setup));
+  const requestPart = (await serverConn.receive()) as Uint8Array;
+  requestBytes = requestPart.byteLength - PSI_SET_PART_HEADER_BYTES;
+  await serverConn.send(new Uint8Array([0]));
+  await expect(run).rejects.toThrow(
+    `inbound PSI response declares ${requestBytes + 1} bytes, over the ` +
+      `${requestBytes} bytes of the request this party sent`,
+  );
+  joiner.dispose();
 });
 
 test("cascade identifyIntersection (starter) rejects an over-declared request frame", async () => {
@@ -361,7 +487,7 @@ test("count-only countIntersection (joiner) rejects an over-declared response fr
     "joiner",
     psiLibrary,
     { role: "joiner", verbose: 0 },
-    { ...UNBOUNDED_PSI_ELEMENTS, response: ROUND_ELEMENT_BOUND },
+    UNBOUNDED_PSI_ELEMENTS,
     new InProcessPsiEngine(psiLibrary, "joiner", "joiner", "count-only"),
   );
   const sender = new InProcessPsiEngine(
@@ -381,7 +507,7 @@ test("count-only countIntersection (joiner) rejects an over-declared response fr
       2,
       asOnePsiSetPart(overDeclared.serializeBinary()),
     ),
-    ["Carol"],
+    EIGHT_VALUES,
   );
   await serverConn.send(asOnePsiSetPart(setup));
   // Drain the joiner's request and unblock its 2nd receive; the

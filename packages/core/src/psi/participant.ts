@@ -276,6 +276,11 @@ const PROTOCOL_SET_CEILINGS: PsiSetCeilings = {
   partner: MAX_PSI_DECODE_ELEMENTS,
 };
 
+interface SentRequest {
+  readonly bytes: number;
+  readonly elements: number;
+}
+
 export class PSIParticipant {
   id: string;
   config: Config;
@@ -284,6 +289,10 @@ export class PSIParticipant {
   private engine: PsiEngine;
   private onProgress?: PsiProgressReporter;
   private setCeilings: PsiSetCeilings;
+  // The request this party last sent. A response re-encrypts it element for
+  // element without its framing, so the response is held to its bytes and
+  // element count. Undefined until this party creates a request.
+  private sentRequest: SentRequest | undefined;
   // The operation now dispatched to the engine, for the mid-operation reports
   // the engine raises against it. Undefined between operations.
   private runningOperation:
@@ -422,6 +431,34 @@ export class PSIParticipant {
     return declared;
   }
 
+  // The request a received response answers. A response arriving before this
+  // party sent any request answers nothing, and is refused.
+  private requestAnswered(): SentRequest {
+    if (this.sentRequest === undefined)
+      throw new ProtocolRefusalError(
+        `${this.id} protocol error: inbound PSI response before this party ` +
+          "sent a request",
+      );
+    return this.sentRequest;
+  }
+
+  // Hold a received response to the request it answers: no longer than that
+  // request in bytes, then no more elements, before it is decoded.
+  private assertResponseWithinRequest(responseBytes: Uint8Array): number {
+    const request = this.requestAnswered();
+    if (responseBytes.byteLength > request.bytes)
+      throw new ProtocolRefusalError(
+        `${this.id} protocol error: inbound PSI response is ` +
+          `${responseBytes.byteLength} bytes, over the ${request.bytes} bytes ` +
+          "of the request this party sent",
+      );
+    return this.assertInboundElementBound(
+      "response",
+      responseBytes,
+      request.elements,
+    );
+  }
+
   // Refuse this party's own set before building it when it holds more values
   // than any receiver admits (the cap psiSetByteBound applies) or than the
   // partner stated it can receive: the partner is parked on this set, so it
@@ -445,28 +482,33 @@ export class PSIParticipant {
         );
   }
 
-  // Receive one of the round's PSI sets in its parts, held to the bytes the
-  // authenticated element bound for its kind admits. A setup or a request
-  // holds the partner's own set, so it is also held to this party's receive
-  // ceiling, as this party's capacity rather than the protocol's; a response
-  // re-encrypts this party's request.
+  // Receive one of the round's PSI sets in its parts. A setup or a request
+  // holds the partner's own set: it is held to the bytes the authenticated
+  // element bound for its kind admits, and to this party's receive ceiling, as
+  // this party's capacity rather than the protocol's. A response re-encrypts
+  // this party's request, so it is held to that request's length.
   private receiveRoundSet(
     conn: MessageConnection,
     kind: PsiMessageKind,
   ): Promise<Uint8Array> {
+    if (kind === "response")
+      return receivePsiSet(conn, this.id, kind, {
+        bytes: this.requestAnswered().bytes,
+        source: "bytes of the request this party sent",
+      });
     const elementBound = Math.min(
       kind === "serverSetup"
         ? this.elementBounds.setup
-        : this.elementBounds[kind],
+        : this.elementBounds.request,
       MAX_PSI_DECODE_ELEMENTS,
     );
-    const ceiling = kind === "response" ? undefined : this.setCeilings.local;
+    const ceiling = this.setCeilings.local;
     return receivePsiSet(
       conn,
       this.id,
       kind,
       psiSetByteBound(elementBound),
-      ceiling !== undefined && ceiling < elementBound
+      ceiling < elementBound
         ? { setBytes: psiSetByteBound(ceiling), elements: ceiling }
         : undefined,
     );
@@ -566,9 +608,20 @@ export class PSIParticipant {
   public async createClientRequest(
     values: ReadonlyArray<string>,
   ): Promise<Uint8Array> {
-    return this.reportProgress("createClientRequest", values.length, () =>
-      this.engine.createClientRequest(values),
+    const request = await this.reportProgress(
+      "createClientRequest",
+      values.length,
+      () => this.engine.createClientRequest(values),
     );
+    this.sentRequest = {
+      bytes: request.byteLength,
+      elements: countDeclaredPsiElements(
+        request,
+        "request",
+        Number.MAX_SAFE_INTEGER,
+      ),
+    };
+    return request;
   }
 
   /**
@@ -610,11 +663,7 @@ export class PSIParticipant {
   private computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
-    const elements = this.assertInboundElementBound(
-      "response",
-      responseBytes,
-      this.elementBounds.response,
-    );
+    const elements = this.assertResponseWithinRequest(responseBytes);
     return this.reportProgress("computeAssociationTable", elements, () =>
       decodePsiBinaryFrame(this.id, "response", () =>
         this.engine.computeAssociationTable(responseBytes),
@@ -630,11 +679,7 @@ export class PSIParticipant {
   private computeIntersectionCardinality(
     responseBytes: Uint8Array,
   ): Promise<number> {
-    const elements = this.assertInboundElementBound(
-      "response",
-      responseBytes,
-      this.elementBounds.response,
-    );
+    const elements = this.assertResponseWithinRequest(responseBytes);
     return this.reportProgress("computeIntersectionCardinality", elements, () =>
       decodePsiBinaryFrame(this.id, "response", () =>
         this.engine.computeIntersectionCardinality(responseBytes),

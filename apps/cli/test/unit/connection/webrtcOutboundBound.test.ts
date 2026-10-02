@@ -139,7 +139,6 @@ async function starterSetupParts(
     {
       setup: Number.POSITIVE_INFINITY,
       request: Number.POSITIVE_INFINITY,
-      response: Number.POSITIVE_INFINITY,
     },
   );
   const round = starter

@@ -263,30 +263,25 @@ export function singlePassReplyByteCap(
 
 /**
  * Per-message upper bounds on the encrypted-element count a received PSI frame may
- * declare, one field per message kind a party can receive. Derived only from the
- * two parties' authenticated sizes -- never from the inbound frame's own bytes --
- * and enforced at the `deserializeBinary` call site in participant.ts before
- * the element list drives curve-point materialization in the library. See
- * {@link psiElementBounds}.
+ * declare, one field per message kind that holds the partner's own set. Derived
+ * only from the two parties' authenticated sizes -- never from the inbound frame's
+ * own bytes -- and enforced at the `deserializeBinary` call site in participant.ts
+ * before the element list drives curve-point materialization in the library. A
+ * response, which re-encrypts this party's own request, is held to that request
+ * instead (participant.ts). See {@link psiElementBounds}.
  */
 export interface PsiElementBounds {
   /** Max elements a received server setup (the sender's masked set) may declare. */
   readonly setup: number;
   /** Max elements a received request (the receiver's masked set) may declare. */
   readonly request: number;
-  /**
-   * Max elements a received response (the sender's re-encryption of the receiver's
-   * request, so it holds the receiver's element count) may declare.
-   */
-  readonly response: number;
 }
 
 /**
  * Derive the per-message element-count bounds from authenticated session state:
  * the two exchanged record counts and the two declared effective key counts. Both
- * parties compute the SAME bounds, and each enforces only the ones for the messages
- * it receives (the sender checks the request; the receiver checks the setup and
- * response).
+ * parties compute the SAME bounds, and each enforces only the one for the message
+ * it receives (the sender checks the request; the receiver checks the setup).
  *
  * The bound is the same value slot count the single-pass frame cap sizes against --
  * the worst-case upper bound on a party's distinct-value count, reached only when
@@ -297,8 +292,7 @@ export interface PsiElementBounds {
  * `recordCount` times that key's width, within the same bound).
  *
  * The setup holds the SENDER's masked set; the request holds the RECEIVER's
- * masked set; the response re-encrypts that request, so it holds the receiver's
- * count too. Inputs are non-negative integers well below 2^53 (record counts are
+ * masked set. Inputs are non-negative integers well below 2^53 (record counts are
  * bounded by {@link MAX_RECORD_COUNT}, effective key counts by
  * MAX_EFFECTIVE_KEY_COUNT), so the products are exact.
  */
@@ -309,6 +303,5 @@ export function psiElementBounds(
   return {
     setup: valueSlots(sender),
     request: valueSlots(receiver),
-    response: valueSlots(receiver),
   };
 }

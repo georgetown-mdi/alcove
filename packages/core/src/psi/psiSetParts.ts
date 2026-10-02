@@ -187,6 +187,15 @@ export async function sendPsiSet(
 }
 
 /**
+ * A limit on a received set's declared length, with what it derives from,
+ * which the refusal names after the byte count ("over the N <source>").
+ */
+export interface PsiSetByteLimit {
+  readonly bytes: number;
+  readonly source: string;
+}
+
+/**
  * Receives one PSI set sent by {@link sendPsiSet} and returns its bytes,
  * joined. Each part is read as {@link receivePsiBinaryFrame} reads a frame, so
  * a partner's abort in place of any part ends the round as a peer abort. The
@@ -202,8 +211,9 @@ export async function sendPsiSet(
  * {@link RoundCapacityError} is raised, before any buffer is allocated.
  *
  * @param what - The set the round awaits, named in every refusal.
- * @param maxSetBytes - The most bytes the set may hold under the protocol
- *   ({@link psiSetByteBound}).
+ * @param maxSetBytes - The most bytes the set may hold under the protocol:
+ *   {@link psiSetByteBound} of the agreed record counts, or a
+ *   {@link PsiSetByteLimit} naming another source.
  * @param capacity - This party's own ceiling on the set, when it is under
  *   `maxSetBytes`: its bytes and the element count they are derived from.
  */
@@ -211,9 +221,13 @@ export async function receivePsiSet(
   conn: MessageConnection,
   participantId: string,
   what: string,
-  maxSetBytes: number,
+  maxSetBytes: number | PsiSetByteLimit,
   capacity?: { readonly setBytes: number; readonly elements: number },
 ): Promise<Uint8Array> {
+  const limit =
+    typeof maxSetBytes === "number"
+      ? { bytes: maxSetBytes, source: "the agreed record counts admit" }
+      : maxSetBytes;
   const refuse = (detail: string): ProtocolRefusalError =>
     new ProtocolRefusalError(
       `${participantId} protocol error: inbound PSI ${what} ${detail}`,
@@ -237,10 +251,10 @@ export async function receivePsiSet(
     if (index < expected) throw refuse(`repeats part ${index}`);
     if (index > expected) throw refuse(`is missing part ${expected}`);
     if (expected === 0) {
-      if (declaredBytes > BigInt(maxSetBytes))
+      if (declaredBytes > BigInt(limit.bytes))
         throw refuse(
-          `declares ${declaredBytes} bytes, over the ${maxSetBytes} the ` +
-            "agreed record counts admit",
+          `declares ${declaredBytes} bytes, over the ${limit.bytes} ` +
+            limit.source,
         );
       if (capacity !== undefined && declaredBytes > BigInt(capacity.setBytes)) {
         await sendAbort(conn, [PARTNER_SET_OVER_CAPACITY_ABORT_REASON]);
