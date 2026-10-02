@@ -13,7 +13,10 @@ import {
   packCloseSentinel,
   packValue,
 } from "../../../src/connection/webrtc/peerjsWire";
-import { webRtcMessageConnection } from "../../../src/connection/webrtc/webrtcMessageConnection";
+import {
+  sendWindowWake,
+  webRtcMessageConnection,
+} from "../../../src/connection/webrtc/webrtcMessageConnection";
 import { webRtcDialFrom } from "../../../src/protocol";
 
 import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";
@@ -302,6 +305,53 @@ test("a send held by a full window fails when the channel closes without an even
   expect(channel.sent).toHaveLength(3);
 });
 
+test("a send held by a window that never drains fails at inactivity_timeout_ms", async () => {
+  vi.useFakeTimers();
+  try {
+    const { channel, session, closed } = harness();
+    channel.buffers = true;
+    const connection = webRtcMessageConnection(session, {
+      sendWindowBytes: WINDOW,
+      inactivityTimeoutMs: 10_000,
+    });
+    let failure: ConnectionError | undefined;
+    const sending = connection
+      .send({ body: new Uint8Array(PEERJS_CHUNK_MTU * 10) })
+      .catch((err: unknown) => {
+        failure = err as ConnectionError;
+      });
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(failure).toBeUndefined();
+    expect(channel.sent).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await sending;
+    expect(failure?.kind).toBe("transport");
+    expect(failure?.message).toContain(
+      "did not accept an outbound message within 10000ms",
+    );
+    await expect(connection.receive()).rejects.toBe(failure);
+    await vi.advanceTimersByTimeAsync(1_000);
+    // The error teardown stops the frame and sends no close sentinel.
+    expect(channel.sent).toHaveLength(3);
+    expect(closed()).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a second wait on the send window while one is pending throws", async () => {
+  const sendWake = sendWindowWake(250);
+  const first = sendWake.wait();
+  expect(() => sendWake.wait()).toThrow(
+    "a second send waited on the send window while one was waiting",
+  );
+  sendWake.wake();
+  await first;
+  const next = sendWake.wait();
+  sendWake.wake();
+  await next;
+});
+
 // --- receive ----------------------------------------------------------------
 
 test("inbound datagrams are delivered as whole frames", async () => {
@@ -332,6 +382,30 @@ test("the close sentinel half-closes: a queued frame is drained before it", asyn
   );
   expect(after?.kind).toBe("transport");
   expect(after?.message).toContain("peer connection closed");
+});
+
+test("a partial frame followed by the close sentinel is discarded and the close is clean", async () => {
+  // A sender's close stops a frame mid-datagrams and sends the sentinel behind
+  // what it had handed over.
+  const { channel, session, closed } = harness();
+  const connection = webRtcMessageConnection(session);
+  const encoder = new PeerJsFrameEncoder();
+  const datagrams = [
+    ...encoder.encode({ body: new Uint8Array(PEERJS_CHUNK_MTU * 5) }),
+  ];
+  expect(datagrams.length).toBeGreaterThan(3);
+  for (const datagram of datagrams.slice(0, 3)) channel.deliver(datagram);
+  channel.deliver(packCloseSentinel());
+
+  const after = await connection.receive().then(
+    () => undefined,
+    (err: unknown) => err as ConnectionError,
+  );
+  expect(after?.kind).toBe("transport");
+  expect(after?.message).toBe("peer connection closed");
+  await settleTeardown();
+  expect(channel.teardown).toEqual(["channel", "session"]);
+  expect(closed()).toBe(1);
 });
 
 test("an over-bound datagram fails the connection closed", async () => {

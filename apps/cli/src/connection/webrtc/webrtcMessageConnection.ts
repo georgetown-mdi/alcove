@@ -112,15 +112,7 @@ const SENTINEL_HANDOFF_TIMEOUT_MS = 2_000;
  */
 const CHANNEL_CLOSE_TIMEOUT_MS = 2_000;
 
-/**
- * Bytes the send path lets wait in the data channel's buffer before it stops
- * handing over datagrams, and the level it resumes at. werift does work per
- * buffered message on every acknowledgement it processes, so handing it a
- * whole frame at once grows that work with the frame and starves the event
- * loop that answers ICE consent checks; the window keeps it to a few dozen
- * messages. werift's `bufferedAmount` falls only when its whole queue has gone
- * out, so the low mark is reached in one step rather than gradually.
- */
+/** The send window's high and low marks: docs/spec/WEBRTC_TRANSPORT.md, Outbound pacing. */
 const SEND_WINDOW_BYTES = 1024 * 1024;
 const SEND_WINDOW_LOW_BYTES = 256 * 1024;
 
@@ -236,24 +228,10 @@ export function webRtcMessageConnection(
       let peerCloseRead = false;
       let sendStopped = false;
       let sendQueue: Promise<void> = Promise.resolve();
-      let wakeSender: (() => void) | undefined;
-      const wake = (): void => wakeSender?.();
+      const sendWake = sendWindowWake(SEND_WINDOW_POLL_INTERVAL_MS);
+      const wake = sendWake.wake;
       channel.bufferedAmountLowThreshold = sendWindowLowBytes;
       channel.addEventListener("bufferedamountlow", wake);
-
-      // Resolves once the channel's buffer has fallen to the low mark, or once
-      // there is nothing left to send to; the caller re-reads which.
-      const bufferDrained = (): Promise<void> =>
-        new Promise((resolve) => {
-          const poll = setTimeout(done, SEND_WINDOW_POLL_INTERVAL_MS);
-          poll.unref();
-          wakeSender = done;
-          function done(): void {
-            clearTimeout(poll);
-            wakeSender = undefined;
-            resolve();
-          }
-        });
 
       const sendable = (): boolean =>
         !sendStopped && channel.readyState === "open" && session.isConnected();
@@ -269,7 +247,7 @@ export function webRtcMessageConnection(
         for (const datagram of encoder.encode(data)) {
           while (channel.bufferedAmount >= sendWindowBytes) {
             if (!sendable()) throw sendCut();
-            await bufferDrained();
+            await sendWake.wait();
           }
           if (sendStopped) throw sendCut();
           channel.send(Buffer.from(datagram));
@@ -386,6 +364,40 @@ export function webRtcMessageConnection(
       inactivityHint: INACTIVITY_TIMEOUT_GUIDANCE,
     },
   );
+}
+
+/**
+ * The send window's one wait: `wait` resolves on the next `wake` (the
+ * channel's low-buffer event, or a close) or after `pollIntervalMs`, whichever
+ * comes first, and the caller re-reads the channel.
+ *
+ * @internal
+ */
+export function sendWindowWake(pollIntervalMs: number): {
+  wait: () => Promise<void>;
+  wake: () => void;
+} {
+  let pending: (() => void) | undefined;
+  return {
+    wake: () => pending?.(),
+    wait: () => {
+      // One slot holds because the send queue runs one frame at a time.
+      if (pending !== undefined)
+        throw new Error(
+          "a second send waited on the send window while one was waiting",
+        );
+      return new Promise((resolve) => {
+        const poll = setTimeout(done, pollIntervalMs);
+        poll.unref();
+        pending = done;
+        function done(): void {
+          clearTimeout(poll);
+          pending = undefined;
+          resolve();
+        }
+      });
+    },
+  };
 }
 
 /**

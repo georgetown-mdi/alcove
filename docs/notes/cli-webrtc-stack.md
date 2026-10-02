@@ -265,11 +265,11 @@ the low-threshold event fires exactly once, about a millisecond before
 completion. PeerJS's own sender pattern -- pause above a buffered ceiling, retry
 on a timer -- therefore degenerates on werift into serialized batches: push,
 wait for the whole queue, push again. Correctness is unaffected; ordering held
-across 2059 chunks in both directions. The CLI's send path paces this way all
-the same, because handing werift a whole large frame costs far more than the
-batching does ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#outbound-pacing)). For unattended scheduled exchanges this
-is acceptable, and it is the kind of number a pure-JavaScript DTLS/SCTP stack
-pays and a native one does not. A party's set frame near the top of what the
+across 2059 chunks in both directions. The CLI's send path paces to a window
+all the same, for the reason in
+[WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#outbound-pacing). For
+unattended scheduled exchanges this is acceptable, and it is the kind of
+number a pure-JavaScript DTLS/SCTP stack pays and a native one does not. A party's set frame near the top of what the
 WebRTC frame envelope admits would spend minutes on the wire from the CLI side.
 If throughput is ever elevated from a cost to a requirement, node-datachannel is
 the comparison point to measure against before the pick is revisited.

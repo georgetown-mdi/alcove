@@ -306,28 +306,29 @@ answers false for every key -- it writes a map header it fills with nothing.
 ### Outbound pacing
 
 The CLI hands a frame to the data channel a window at a time rather than all at
-once. It stops handing over datagrams while the channel's `bufferedAmount` is at
-or above **1 MiB**, and resumes when it falls to **256 KiB**, on the channel's
-`bufferedamountlow` event; a frame larger than the window goes out over as many
-windows as it needs. Frames go out whole and in the order they were sent, one
-after another.
+once:
 
-The window is what keeps a large frame from losing the connection. werift does
-work for each message handed to it and not yet transmitted on every
-acknowledgement it processes, so a whole frame handed over at once -- 1,074
-messages for a 17.5 MB set -- held the sender's main thread busy enough that
-ICE consent responses waited behind the data for longer than the consent check
-waits for them, and after thirty seconds of that the peer connection failed.
-Measured on one host over loopback, a 17.5 MB set took about 60 s and a 35 MB
-set about 344 s unpaced, and the response transfer of a 500,000-record round
-lost the connection every time; paced, the same sets take about 1 s and 2 s,
-and a 70 MB set about 5 s.
+- It stops handing over datagrams while the channel's `bufferedAmount` is at or
+  above **1 MiB**, and resumes when the channel's `bufferedamountlow` event
+  reports it at **256 KiB**.
+- A send waiting on the window also re-reads the channel every **250 ms**, so
+  it does not depend on that event firing.
+- A frame larger than the window goes out over as many windows as it needs.
+  Frames go out whole and in the order they were sent, one after another.
+
+All three values are arbitrary working values, raised or lowered on request.
+Why werift needs the window, the measurements behind it, and the re-check on a
+werift bump are in
+[DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-cli-webrtc-peer-werift).
 
 A send waiting on the window ends when the data channel leaves `open`, when the
 peer connection leaves `connected`, or when the connection closes, and the send
 then fails with a transport error; nothing more of its frame is handed over.
-Otherwise it is bounded by the parked-receive budget below, which also bounds a
-send's hand-off. The browser peer leaves pacing to PeerJS.
+Otherwise a send whose frame has not all been handed over fails once the
+parked-receive budget below has elapsed from the send's start (1 h, or
+`inactivity_timeout_ms`): core bounds every send's hand-off by that value, and
+the failure tears the connection down without sending the close sentinel. The
+browser peer leaves pacing to PeerJS.
 
 ## The clean close
 

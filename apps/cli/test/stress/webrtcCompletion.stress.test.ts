@@ -1,8 +1,6 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { once } from "node:events";
 import {
-  createWriteStream,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,31 +8,28 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import {
-  arch,
-  cpus,
-  freemem,
-  platform,
-  release,
-  tmpdir,
-  totalmem,
-} from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { expect, test } from "vitest";
 
 import {
-  PSI_HEAP_CEILING_FLAG,
-  psiRoundMemoryNeedBytes,
-} from "../../src/psiMemoryBudget";
-import {
-  expectedResultCount,
-  expectedResultPairs,
-  nulledPopulationRows,
-  populationSsn,
-} from "./completionPopulation";
+  CLI,
+  EXTRA_CLI_ARGS,
+  GB,
+  LOG_DIR,
+  RUN_TIMEOUT_MS,
+  cliPartyNeedBytes,
+  hostDescription,
+  hostMemory,
+  peakGb,
+  resultDifference,
+  runParty,
+  writeInput,
+} from "./completionRun";
+
+import type { PartyRun } from "./completionRun";
 
 // The built `alcove` exchanging CLI to CLI over WebRTC, to completion, both
 // parties on this host: the WebRTC counterpart of
@@ -58,25 +53,13 @@ import {
 // party's log there as it runs (party-<name>.log) and a summary of the run
 // (webrtc-completion.json).
 
-const CLI = fileURLToPath(new URL("../../dist/index.js", import.meta.url));
-const PEAK_MEMORY_REPORT = pathToFileURL(
-  fileURLToPath(new URL("./peakMemoryReport.mjs", import.meta.url)),
-).href;
 // Past the 7,643,790 elements one WebRTC frame holds (docs/spec/PROTOCOL.md,
 // The memory ceiling and the CSV intake cap), so each first-round set goes in
 // two parts.
 const ROWS = Number(process.env.ALCOVE_STRESS_COMPLETION_ROWS ?? 7_700_000);
-const RUN_TIMEOUT_MS = Number(
-  process.env.ALCOVE_STRESS_COMPLETION_TIMEOUT_MS ?? 4 * 3_600_000,
-);
-const LOG_DIR = process.env.ALCOVE_STRESS_COMPLETION_LOG_DIR;
 const BROKER_URL = new URL(
   process.env.ALCOVE_STRESS_COMPLETION_BROKER_URL ?? "ws://127.0.0.1:9000/api",
 );
-const EXTRA_CLI_ARGS = (process.env.ALCOVE_STRESS_COMPLETION_CLI_ARGS ?? "")
-  .split(/\s+/)
-  .filter((arg) => arg !== "");
-const GB = 1e9;
 const SHARED = Math.floor(ROWS / 2);
 
 // The inviter holds the population from 0, as the file-sync starter does; the
@@ -86,43 +69,6 @@ const POPULATION_PARTY = {
   inviter: "starter",
   acceptor: "joiner",
 } as const;
-
-// The file-sync joiner's figure for either party: the CLI's own round budget
-// and the main thread's peak beside it (docs/spec/FILE_SYNC.md, Preparing the
-// input at 2^24).
-const MAIN_THREAD_BYTES_PER_RECORD = 754;
-
-function partyNeedBytes(): number {
-  return psiRoundMemoryNeedBytes(ROWS) + MAIN_THREAD_BYTES_PER_RECORD * ROWS;
-}
-
-// macOS counts its reclaimable cache as used, so os.freemem() there reads a
-// fraction of what a run can have; the gate takes the total memory there. A
-// copy of the one in fileSyncCompletion.stress.test.ts.
-function hostMemory(): { bytes: number; measure: string } {
-  return platform() === "darwin"
-    ? { bytes: totalmem(), measure: "total memory (macOS)" }
-    : { bytes: freemem(), measure: "free memory" };
-}
-
-// Rows `offset` to `offset + ROWS - 1` of one population, numbered from 1.
-async function writeInput(path: string, offset: number): Promise<void> {
-  const out = createWriteStream(path);
-  out.write("Person_ID,SSN,LastName,DOB\n");
-  let buffered = "";
-  for (let i = 0; i < ROWS; i++) {
-    const k = offset + i;
-    buffered +=
-      `${i + 1},${populationSsn(k)},N${k % 99991},` +
-      `${1 + (k % 12)}/${1 + (k % 28)}/${1940 + (k % 60)}\n`;
-    if (buffered.length > 1 << 20) {
-      if (!out.write(buffered)) await once(out, "drain");
-      buffered = "";
-    }
-  }
-  out.end(buffered);
-  await once(out, "finish");
-}
 
 function connectionBlock(role: PartyName): string {
   const secure = BROKER_URL.protocol === "wss:";
@@ -189,127 +135,24 @@ function writeConfiguration(
   );
 }
 
-interface PartyRun {
-  exitCode: number | null;
-  wallMs: number;
-  peakRssBytes: number;
-  // The PSI role the party logged, and when, from its start.
-  loggedRole?: string;
-  loggedRoleAtMs?: number;
-  log: string;
-}
-
 const ROLE_LINE = /\[exchange\] role: (sender|receiver)\b/;
 
-function runParty(dir: string, name: PartyName): Promise<PartyRun> {
-  const peakFile = join(dir, "peak-rss");
-  const startedAt = performance.now();
-  const child = spawn(
-    process.execPath,
-    [
-      "--expose-gc",
-      CLI,
+function runWebRtcParty(dir: string, name: PartyName): Promise<PartyRun> {
+  return runParty({
+    dir,
+    args: [
       "exchange",
       "--no-record",
       ...EXTRA_CLI_ARGS,
       join(dir, "input.csv"),
       join(dir, "result.csv"),
     ],
-    {
-      cwd: dir,
-      env: {
-        ...process.env,
-        NODE_OPTIONS: `${PSI_HEAP_CEILING_FLAG} --import=${PEAK_MEMORY_REPORT}`,
-        ALCOVE_STRESS_PEAK_RSS_FILE: peakFile,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  const logPath =
-    LOG_DIR === undefined ? undefined : join(LOG_DIR, `party-${name}.log`);
-  if (LOG_DIR !== undefined) mkdirSync(LOG_DIR, { recursive: true });
-  const logFile =
-    logPath === undefined ? undefined : createWriteStream(logPath);
-  let logError: Error | undefined;
-  logFile?.on("error", (error) => {
-    logError = error;
-  });
-  const run: PartyRun = {
-    exitCode: null,
-    wallMs: 0,
-    peakRssBytes: Number.NaN,
-    log: "",
-  };
-  const onOutput = (chunk: Buffer): void => {
-    const text = chunk.toString();
-    run.log += text;
-    logFile?.write(text);
-    if (run.loggedRole !== undefined) return;
-    const role = ROLE_LINE.exec(run.log)?.[1];
-    if (role === undefined) return;
-    run.loggedRole = role;
-    run.loggedRoleAtMs = Math.round(performance.now() - startedAt);
-  };
-  child.stdout.on("data", onOutput);
-  child.stderr.on("data", onOutput);
-  const timer = setTimeout(() => child.kill("SIGKILL"), RUN_TIMEOUT_MS);
-  return new Promise((resolve, reject) => {
-    child.on("close", async (exitCode) => {
-      clearTimeout(timer);
-      if (logFile !== undefined)
-        await new Promise((done) => {
-          logFile.end(done);
-        });
-      if (logError !== undefined) {
-        reject(new Error(`could not write ${logPath}: ${logError.message}`));
-        return;
-      }
-      run.exitCode = exitCode;
-      run.wallMs = Math.round(performance.now() - startedAt);
-      if (existsSync(peakFile))
-        run.peakRssBytes = Number(readFileSync(peakFile, "utf8"));
-      resolve(run);
-    });
+    name,
+    roleLine: ROLE_LINE,
   });
 }
 
-// The first difference between a party's result and the rows a run bounded by
-// no size limit returns, or undefined when they agree.
-function resultDifference(
-  resultPath: string,
-  party: PartyName,
-): string | undefined {
-  const [, ...rows] = readFileSync(resultPath, "utf8").trim().split("\n");
-  const pairs = rows
-    .map((row): [number, number] => {
-      const [own, partner] = row.split(",").map(Number);
-      return [own, partner];
-    })
-    .sort((a, b) => a[0] - b[0]);
-  const nulledRows = nulledPopulationRows(ROWS + SHARED);
-  const expectedCount = expectedResultCount(ROWS, SHARED, nulledRows);
-  if (pairs.length !== expectedCount)
-    return `${pairs.length} matched rows, expected ${expectedCount}`;
-  let j = 0;
-  for (const expected of expectedResultPairs(
-    ROWS,
-    SHARED,
-    POPULATION_PARTY[party],
-    nulledRows,
-  )) {
-    const [own, partner] = pairs[j];
-    if (own !== expected[0] || partner !== expected[1])
-      return `matched row ${j} is ${own},${partner}, expected ${expected.join(",")}`;
-    j++;
-  }
-  return undefined;
-}
-
-function peakGb(run: PartyRun): string {
-  return (run.peakRssBytes / GB).toFixed(2);
-}
-
-// The broker's readiness endpoint (packages/peerjs-broker/README.md).
+// The broker's readiness endpoint, `health` under its mount path.
 async function brokerIsReady(): Promise<boolean> {
   const health = new URL(BROKER_URL.href);
   health.protocol = BROKER_URL.protocol === "wss:" ? "https:" : "http:";
@@ -332,7 +175,7 @@ test(
       !existsSync(CLI),
       "the completion run drives the built CLI; run npm run build -w apps/cli",
     );
-    const need = 2 * partyNeedBytes();
+    const need = 2 * cliPartyNeedBytes(ROWS);
     const memory = hostMemory();
     ctx.skip(
       memory.bytes < need,
@@ -351,8 +194,8 @@ test(
       const a = join(root, "a");
       const b = join(root, "b");
       for (const dir of [a, b]) mkdirSync(dir);
-      await writeInput(join(a, "input.csv"), 0);
-      await writeInput(join(b, "input.csv"), SHARED);
+      await writeInput(join(a, "input.csv"), ROWS, 0);
+      await writeInput(join(b, "input.csv"), ROWS, SHARED);
       const sharedSecret = randomBytes(32).toString("base64url");
       writeConfiguration(a, "inviter", sharedSecret);
       writeConfiguration(b, "acceptor", sharedSecret);
@@ -360,8 +203,8 @@ test(
       const startedAt = new Date();
       const startedAtMs = performance.now();
       const [inviter, acceptor] = await Promise.all([
-        runParty(a, "inviter"),
-        runParty(b, "acceptor"),
+        runWebRtcParty(a, "inviter"),
+        runWebRtcParty(b, "acceptor"),
       ]);
       const wallMs = Math.round(performance.now() - startedAtMs);
       console.log(
@@ -373,11 +216,19 @@ test(
       );
       const inviterDifference =
         inviter.exitCode === 0
-          ? resultDifference(join(a, "result.csv"), "inviter")
+          ? resultDifference(
+              join(a, "result.csv"),
+              ROWS,
+              POPULATION_PARTY.inviter,
+            )
           : undefined;
       const acceptorDifference =
         acceptor.exitCode === 0
-          ? resultDifference(join(b, "result.csv"), "acceptor")
+          ? resultDifference(
+              join(b, "result.csv"),
+              ROWS,
+              POPULATION_PARTY.acceptor,
+            )
           : undefined;
       if (LOG_DIR !== undefined) {
         const summary = (run: PartyRun, difference: string | undefined) => ({
@@ -399,15 +250,9 @@ test(
               inviter: summary(inviter, inviterDifference),
               acceptor: summary(acceptor, acceptorDifference),
               host: {
-                platform: platform(),
-                release: release(),
-                arch: arch(),
-                cpuModel: cpus()[0]?.model,
-                cpuCount: cpus().length,
-                totalMemoryBytes: totalmem(),
+                ...hostDescription(),
                 gateMemoryBytes: memory.bytes,
                 gateNeedBytes: need,
-                node: process.version,
               },
             },
             null,
