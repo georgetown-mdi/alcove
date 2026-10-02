@@ -1,12 +1,7 @@
 import { InternalConsistencyError, markNamedDiagnosis } from "../errors";
-import {
-  PSI_CHUNK_MIN_ELEMENTS,
-  chunkRangesOfSize,
-  compareElementBytes,
-} from "./psiChunks";
+import { PSI_CHUNK_MIN_ELEMENTS, compareElementBytes } from "./psiChunks";
 
 import type { PsiBackendSelection } from "./psiBackend";
-import type { PsiChunkRange } from "./psiChunks";
 import type { InProcessPsiEngineOptions } from "./psiEngine";
 
 // Sizing the joiner's match so the WebAssembly engine's linear memory stays
@@ -53,17 +48,6 @@ export function matchSetupSliceElements(
       `a PSI match over ${String(responseElementsPerCall)} response elements leaves a setup slice of ${String(sliceElements)} elements under a ${String(budgetBytes)}-byte budget, below the floor of ${String(PSI_CHUNK_MIN_ELEMENTS)}`,
     );
   return sliceElements;
-}
-
-/**
- * The contiguous ranges a `setupElements`-element setup is matched in, each
- * at most `sliceElements` long and the sizes differing by at most one.
- */
-export function matchSetupSliceRanges(
-  setupElements: number,
-  sliceElements: number,
-): PsiChunkRange[] {
-  return chunkRangesOfSize(setupElements, sliceElements);
 }
 
 /**

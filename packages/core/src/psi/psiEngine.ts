@@ -19,8 +19,9 @@ import {
 } from "./psiChunks";
 import {
   assertStrictlyAscending,
+  WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT,
+  WASM_MATCH_BYTES_PER_SETUP_ELEMENT,
   matchSetupSliceElements,
-  matchSetupSliceRanges,
 } from "./psiMatchSlices";
 
 import type { PsiAssociationChunk, PsiChunkRange } from "./psiChunks";
@@ -338,17 +339,21 @@ export class InProcessPsiEngine implements PsiEngine {
     setupCount: number,
     responseElementsPerCall: number,
   ): PsiChunkRange[] {
+    const wholeSetup = [{ start: 0, end: setupCount }];
+    const budget = this.matchMemoryBudgetBytes;
+    if (
+      this.setupSliceElements === undefined &&
+      (budget === undefined ||
+        setupCount * WASM_MATCH_BYTES_PER_SETUP_ELEMENT +
+          responseElementsPerCall * WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT <=
+          budget)
+    )
+      return wholeSetup;
     const sliceElements =
       this.setupSliceElements ??
-      (this.matchMemoryBudgetBytes === undefined
-        ? undefined
-        : matchSetupSliceElements(
-            responseElementsPerCall,
-            this.matchMemoryBudgetBytes,
-          ));
-    if (sliceElements === undefined || sliceElements >= setupCount)
-      return [{ start: 0, end: setupCount }];
-    return matchSetupSliceRanges(setupCount, sliceElements);
+      matchSetupSliceElements(responseElementsPerCall, budget!);
+    if (sliceElements >= setupCount) return wholeSetup;
+    return chunkRangesOfSize(setupCount, sliceElements);
   }
 
   // The held setup's elements, refused unless strictly ascending: a sliced

@@ -1,9 +1,13 @@
 import { expect, test } from "vitest";
 
+import PSI from "@openmined/psi.js";
+
+import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { isNamedDiagnosis } from "../../src/errors";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
+  chunkRangesOfSize,
   psiChunkRanges,
 } from "../../src/psi/psiChunks";
 import {
@@ -13,7 +17,6 @@ import {
   WASM_PSI_MEMORY_MAX_BYTES,
   assertStrictlyAscending,
   matchSetupSliceElements,
-  matchSetupSliceRanges,
   psiEngineOptionsForBackend,
 } from "../../src/psi/psiMatchSlices";
 
@@ -33,7 +36,7 @@ function sliceCount(
   setupElements: number,
   responseElementsPerCall: number,
 ): number {
-  return matchSetupSliceRanges(
+  return chunkRangesOfSize(
     setupElements,
     matchSetupSliceElements(
       responseElementsPerCall,
@@ -90,7 +93,7 @@ test("a slice below the floor is an internal error, not a tiny slice", () => {
 });
 
 test("slice ranges cover the setup contiguously", () => {
-  const ranges = matchSetupSliceRanges(1_000_003, 300_000);
+  const ranges = chunkRangesOfSize(1_000_003, 300_000);
   expect(ranges).toHaveLength(4);
   expect(ranges[0]!.start).toBe(0);
   expect(ranges.at(-1)!.end).toBe(1_000_003);
@@ -129,7 +132,7 @@ test.each([
 
 test("a repeat straddling a slice boundary is refused", () => {
   const elements = Array.from({ length: 10 }, (_, index) => bytes(index));
-  const ranges = matchSetupSliceRanges(elements.length, 5);
+  const ranges = chunkRangesOfSize(elements.length, 5);
   elements[ranges[1]!.start] = elements[ranges[0]!.end - 1]!;
   expect(() => assertStrictlyAscending(elements, "joiner")).toThrow(
     /strictly ascending/,
@@ -141,4 +144,41 @@ test("only the WebAssembly backend is budgeted", () => {
     matchMemoryBudgetBytes: WASM_PSI_MATCH_BUDGET_BYTES,
   });
   expect(psiEngineOptionsForBackend("native")).toStrictEqual({});
+});
+
+test("a setup that fits the budget matches in one call whatever the slice size would be", async () => {
+  const library = await PSI();
+  const setupValues = ["a", "b", "c", "d", "e", "f", "g"];
+  const clientValues = ["c", "e", "z"];
+  const budget =
+    WASM_MATCH_BYTES_PER_SETUP_ELEMENT * setupValues.length +
+    WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT * clientValues.length;
+  expect(() => matchSetupSliceElements(clientValues.length, budget)).toThrow(
+    /below the floor/,
+  );
+  const options = { matchMemoryBudgetBytes: budget };
+  const sender = new InProcessPsiEngine(
+    library,
+    "starter",
+    "starter",
+    "count-only",
+    options,
+  );
+  const receiver = new InProcessPsiEngine(
+    library,
+    "joiner",
+    "joiner",
+    "count-only",
+    options,
+  );
+  try {
+    const { setup } = await sender.createServerSetup(setupValues);
+    await receiver.receiveServerSetup(setup);
+    const request = await receiver.createClientRequest(clientValues);
+    const response = await sender.processClientRequest(request);
+    expect(await receiver.computeIntersectionCardinality(response)).toBe(2);
+  } finally {
+    sender.dispose();
+    receiver.dispose();
+  }
 });

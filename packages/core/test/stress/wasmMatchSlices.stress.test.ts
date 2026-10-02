@@ -4,12 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "vitest";
 
-import { psiChunkRanges } from "../../src/psi/psiChunks";
+import { chunkRangesOfSize, psiChunkRanges } from "../../src/psi/psiChunks";
 import {
   WASM_PSI_MATCH_BUDGET_BYTES,
   WASM_PSI_MEMORY_MAX_BYTES,
   matchSetupSliceElements,
-  matchSetupSliceRanges,
 } from "../../src/psi/psiMatchSlices";
 
 import type { PsiEngineMode } from "../../src/psi/psiEngine";
@@ -143,7 +142,7 @@ test.for(["identifier-revealing", "count-only"] as const)(
     const slices =
       sliceElements >= SETUP_N
         ? 1
-        : matchSetupSliceRanges(SETUP_N, sliceElements).length;
+        : chunkRangesOfSize(SETUP_N, sliceElements).length;
 
     const result = probe(
       mode,
