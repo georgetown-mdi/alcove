@@ -142,11 +142,8 @@ const ROLE_LINE = /\[exchange\] role: (sender|receiver)\b/;
 // The line a party logs once its data channel is open, with the time it did.
 const CHANNEL_OPEN_LINE = /^\[(\S+)\] \[INFO\] \[exchange\] authenticating$/m;
 
-// The longest a party's main thread may be held while its channel is open. An
-// arbitrary working value: above the frame encodes of a run this size, which
-// hold it up to about 10 s, and half the thirty seconds or so of two parties'
-// holds together that end the connection (docs/spec/DEPENDENCY_PINS.md, The
-// behavioural assumptions).
+// An arbitrary working value, raised or lowered on request (docs/spec/
+// WEBRTC_TRANSPORT.md, The main thread on an open channel).
 const MAX_CONNECTED_LOOP_LAG_MS = 15_000;
 
 // The longest the party's main thread was held from its channel opening on, or
@@ -291,10 +288,20 @@ test(
       expect([inviter.exitCode, acceptor.exitCode]).toEqual([0, 0]);
       expect(inviterDifference).toBe(undefined);
       expect(acceptorDifference).toBe(undefined);
-      for (const party of [inviter, acceptor])
-        expect(connectedLoopLagMs(party)).toBeLessThanOrEqual(
+      for (const [name, party] of [
+        ["inviter", inviter],
+        ["acceptor", acceptor],
+      ] as const) {
+        const lagMs = connectedLoopLagMs(party);
+        if (lagMs === undefined)
+          expect.fail(
+            `the ${name}'s log has no "[exchange] authenticating" line, so ` +
+              `when its channel opened is unknown`,
+          );
+        expect(lagMs, `the ${name}'s longest hold`).toBeLessThanOrEqual(
           MAX_CONNECTED_LOOP_LAG_MS,
         );
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

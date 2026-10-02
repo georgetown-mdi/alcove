@@ -266,13 +266,17 @@ export function resultDifference(
 }
 
 /**
- * The latest the party's event loop ran after `since`, in milliseconds: the
- * longest the main thread was held from then on, read to the second
- * loopLagReport.mjs reports from.
+ * The longest the party's main thread was held in a hold that began at or
+ * after `since`, in milliseconds, read to the second loopLagReport.mjs reports
+ * from. A hold that began before `since` is left out even where it ended after.
  */
-export function maxLoopLagSince(run: PartyRun, since: number): number {
+export function maxLoopLagSince(
+  run: Pick<PartyRun, "loopLags">,
+  since: number,
+): number {
   return run.loopLags.reduce(
-    (max, lag) => (lag.at > since && lag.lateMs > max ? lag.lateMs : max),
+    (max, lag) =>
+      lag.at - lag.lateMs >= since && lag.lateMs > max ? lag.lateMs : max,
     0,
   );
 }

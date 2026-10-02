@@ -240,6 +240,15 @@ Each party states on the terms exchange the most values one PSI set it receives 
 - **A browser party** states `BROWSER_PSI_SET_MAX_ELEMENTS`, 7,643,790 ([above](#what-a-browser-tab-can-match)).
 - **The command-line application** states `MAX_PSI_DECODE_ELEMENTS`, 16,777,216, on every channel. Its capacity below that is held by its own memory check ([FILE_SYNC.md, The partner's round](FILE_SYNC.md#the-partners-round)), not by the figure it states.
 
+**A command-line round on WebRTC past one frame.** Two command-line parties hold each other to 16,777,216, so a WebRTC set past the browser's 7,643,790 goes in parts. On 2026-10-02 two `alcove exchange` parties on one host (Apple M1 Max, 10 CPUs, 32 GiB, macOS, Node v26.8.2) ran a cascade over `channel: webrtc` through the repository's broker on loopback, with host candidates only, at 7,700,000 records a side. Each first-round set went in two parts at [the part size](#a-psi-set-is-sent-in-parts). The run took 1,178,964 ms, and both parties exited 0 with the expected result:
+
+| Party | Peak RSS | Longest main-thread hold on the open channel |
+| --- | --- | --- |
+| Inviter, PSI sender | 12,180,897,792 bytes | 10,970 ms |
+| Acceptor, PSI receiver | 13,268,779,008 bytes | 9,929 ms |
+
+Peak RSS includes the party's PSI worker. `apps/cli/test/stress/webrtcCompletion.stress.test.ts` drives the run in the CLI's opt-in stress tier; what holds the main thread on an open channel is in [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-main-thread-on-an-open-channel).
+
 **What the sender does.** A cascade or count-only exchange holds this party's sets to the partner's ceiling at two points:
 
 - **After the terms exchange, before this party builds a set.** Where the partner's ceiling is below `MAX_PSI_DECODE_ELEMENTS`, the party counts its first round as the start-of-exchange count does ([The first round is counted at the start](#the-memory-ceiling-and-the-csv-intake-cap)), in the PSI role it resolved to, and refuses a count over the ceiling. The refusal is a `RoundSetLimitError` with `reason` `"over-partner-ceiling"`, naming its count and the ceiling, with the remedies: split the input, or have the partner run the exchange with the command-line application. A count that fails refuses the same way, with `reason` `"uncounted"` and the failure as its cause. A refusal over the ceiling sends the partner the abort reason "a PSI set is too large to send". A first round this party could not count sends "a PSI set was refused before sending", like any other refusal. Any other refusal the count raises, one the round itself would raise, propagates unchanged and sends the partner the abort reason "a PSI set was refused before sending", which states only that this party refused to send its set. A partner that resolved to the PSI sender does not wait on this check, so it may have sent its setup by then. A first round within the ceiling proceeds, however many records the partner's terms declare. Where the partner states `MAX_PSI_DECODE_ELEMENTS`, the start-of-exchange check and each round's own refusal hold the set to it already, so the party does not count again.
