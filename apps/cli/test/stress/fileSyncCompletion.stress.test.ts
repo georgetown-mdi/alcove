@@ -88,10 +88,9 @@ const MAIN_THREAD_BYTES_PER_RECORD = 754;
 // intercept. The joiner's is the CLI's own budget, the costlier role.
 const STARTER_BYTES_PER_ELEMENT = 983;
 const STARTER_FIXED_BYTES = 142_000_000;
-// The starter's whole peak measured one party per host at 2^24 on Linux,
-// 29,913,112,576 bytes (docs/spec/FILE_SYNC.md, Measured runs at 2^24), above
-// the figure the costs give; its gate takes that peak a record plus 5%.
+// The starter's measured peak a record: docs/spec/FILE_SYNC.md, Measured runs at 2^24.
 const STARTER_MEASURED_PEAK_BYTES_PER_RECORD = 29_913_112_576 / 2 ** 24;
+// 5% is an arbitrary working margin, raised or lowered on request.
 const STARTER_PEAK_MARGIN = 1.05;
 
 function partyNeedBytes(party: PartyName): number {

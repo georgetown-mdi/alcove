@@ -4,7 +4,7 @@ import {
 } from "@alcove/core";
 
 // The completion run's synthetic population and the result a run with no size
-// limit returns over it, apart from the run so a unit test can hold them.
+// limit returns over it.
 
 /** The SSN of population row `k`, one distinct value a row. */
 export function populationSsn(k: number): string {
