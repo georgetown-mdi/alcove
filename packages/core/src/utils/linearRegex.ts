@@ -33,10 +33,15 @@ const COMPILE_CACHE_MAX = 1024;
 const compileCache = new Map<string, RE2JS>();
 
 // The one definition of a pattern's weighted size, shared by the cap
-// (patternWeightedSize) and the find-all charge multiplier.
+// (patternWeightedSize) and the search charge multiplier.
 function compiledWeightedSize(re: RE2JS): number {
   return re.programSize() * (1 + re.groupCount());
 }
+
+// The weight of a one-character pattern, 3 on this build. A first pass under
+// weight w is charged w minus this per code unit, on top of the step's own read
+// of 1 unit per code unit, so it costs w - 2 per code unit in all.
+const ONE_CHARACTER_PATTERN_WEIGHT = compiledWeightedSize(RE2JS.compile("a"));
 
 function compileCached(pattern: string): RE2JS {
   const cached = compileCache.get(pattern);
@@ -55,18 +60,23 @@ function compileCached(pattern: string): RE2JS {
 }
 
 /**
- * What one find-all operation ({@link CompiledLinearRegex.replaceAll},
- * {@link CompiledLinearRegex.split}) may spend searching a value, and where it
- * reports what it spent.
+ * What one regex operation may spend searching a value, and where it reports
+ * what it spent.
  *
- * A find-all operation runs one search per match, each from where the last
- * match ended, and a pattern whose preferred alternative can stay live to the
- * end of the value scans the rest of it on every search, so the operation's
- * cost grows with the square of the value length whatever the pattern's size.
- * One pass over the value is the cost of a single match, which the
- * weighted-size cap bounds; what the operation's searches read beyond that one
- * pass is charged, in code units times the pattern's weighted size
- * ({@link patternWeightedSize}), and the operation stops at the read that would
+ * A search's cost grows with the code units it reads times the pattern's
+ * weighted size ({@link patternWeightedSize}). A find-all operation
+ * ({@link CompiledLinearRegex.replaceAll}, {@link CompiledLinearRegex.split})
+ * runs one search per match, each from where the last match ended, and a
+ * pattern whose preferred alternative can stay live to the end of the value
+ * scans the rest of it on every search, so its cost grows with the square of
+ * the value length. A first pass over the value under weight w is charged
+ * w - 3 per code unit (3 being a one-character pattern's weight), which with
+ * the step's own read of 1 unit per code unit makes w - 2 per code unit in
+ * all; every rescan is charged w per code unit it spans. A replacement also
+ * counts the text it copies out of the value against `remaining`, since a
+ * `` $` `` or `$'` reference copies a prefix or suffix for every match; those
+ * copies are charged only where they cross, as a returned replacement's output
+ * is charged by its caller. The operation stops at the read or copy that would
  * take the charge past `remaining`.
  */
 export interface ScanBudget {
@@ -85,22 +95,46 @@ class ScanAllowanceExhausted extends Error {}
 
 // The value as the engine reads it. A UTF-16 search reads it through
 // `charCodeAt` and, for a literal prefix or a required literal, `indexOf`;
-// `substring` only copies out a match or the text between matches. A search
-// spans from the lowest code unit it read to the highest, and the spans add up
-// across searches, so a rescan of text an earlier search already read counts
-// again while the engine's own re-reads within one search do not.
+// `substring` only copies out a match, a group, or the text between matches. A
+// search spans from the lowest code unit it read to the highest, and the spans
+// add up across searches, so a rescan of text an earlier search already read
+// counts again while the engine's own re-reads within one search do not.
 class SpanCountingValue {
   readonly length: number;
-  spanned = 0;
+  private spanned = 0;
+  private copied = 0;
   private readonly value: string;
+  private readonly weightedSize: number;
+  private readonly countsCopies: boolean;
   private readonly allowance: number;
   private low = 0;
   private high = -1;
 
-  constructor(value: string, allowance: number) {
+  constructor(
+    value: string,
+    weightedSize: number,
+    countsCopies: boolean,
+    allowance: number,
+  ) {
     this.value = value;
     this.length = value.length;
+    this.weightedSize = weightedSize;
+    this.countsCopies = countsCopies;
     this.allowance = allowance;
+  }
+
+  searchCharged(): number {
+    const firstPass = Math.min(this.spanned, this.length);
+    return (
+      (this.spanned - firstPass) * this.weightedSize +
+      firstPass * Math.max(0, this.weightedSize - ONE_CHARACTER_PATTERN_WEIGHT)
+    );
+  }
+
+  // The searches' charge and, where the operation counts it, what was copied
+  // out of the value.
+  charged(): number {
+    return this.searchCharged() + this.copied;
   }
 
   startSearch(): void {
@@ -122,7 +156,12 @@ class SpanCountingValue {
   }
 
   substring(start: number, end?: number): string {
-    return this.value.substring(start, end);
+    const copy = this.value.substring(start, end);
+    if (this.countsCopies) {
+      this.copied += copy.length;
+      this.stopPastAllowance();
+    }
+    return copy;
   }
 
   toString(): string {
@@ -144,7 +183,11 @@ class SpanCountingValue {
         this.high = last;
       }
     }
-    if (this.spanned > this.allowance) throw new ScanAllowanceExhausted();
+    this.stopPastAllowance();
+  }
+
+  private stopPastAllowance(): void {
+    if (this.charged() > this.allowance) throw new ScanAllowanceExhausted();
   }
 }
 
@@ -183,34 +226,36 @@ class SpanCountingInput extends MatcherInputBase {
   }
 }
 
-// Run one find-all operation over `value` under `budget`, charging what its
-// searches span beyond one pass over the value, times `weightedSize`. A crossing
-// stops the engine at the read past the allowance and is raised by the budget's
-// own charge, so the caller sees the budget's crossing and never a partial
-// result.
+// Run one regex operation over `value` under `budget`, charging what its
+// searches span, as ScanBudget states. A crossing stops the engine at the read
+// or copy past the allowance and is raised by the budget's own charge, so the
+// caller sees the budget's crossing and never a partial result. A copy charged
+// on the way is the operation's output, which the caller charges once it
+// returns, so on a return only the searches are charged here.
 function underScanBudget<T>(
   value: string,
   weightedSize: number,
   budget: ScanBudget,
-  operation: (input: MatcherInputBase) => T,
+  countsCopies: boolean,
+  operation: (input: SpanCountingInput) => T,
 ): T {
   const counted = new SpanCountingValue(
     value,
-    value.length + Math.floor(budget.remaining / weightedSize),
+    weightedSize,
+    countsCopies,
+    budget.remaining,
   );
-  const rescanned = (): number =>
-    Math.max(0, counted.spanned - value.length) * weightedSize;
   let result: T;
   try {
     result = operation(new SpanCountingInput(counted));
   } catch (err) {
     if (!(err instanceof ScanAllowanceExhausted)) throw err;
-    budget.charge(rescanned());
+    budget.charge(counted.charged());
     throw new Error(
-      "a find-all search read past its allowance but its budget did not refuse it",
+      "a regex search read past its allowance but its budget did not refuse it",
     );
   }
-  budget.charge(rescanned());
+  budget.charge(counted.searchCharged());
   return result;
 }
 
@@ -241,13 +286,15 @@ export interface CompiledLinearRegex {
    * The first capture group of the first match, or the whole match when the
    * pattern has no group, or `null` on no match or an empty result. Mirrors
    * `(m[1] ?? m[0]) || null` for `m = input.match(new RegExp(pattern))`.
+   * With a `budget`, the search is charged to it ({@link ScanBudget}).
    */
-  extractFirst(input: string): string | null;
+  extractFirst(input: string, budget?: ScanBudget): string | null;
   /**
    * Whether the pattern matches anywhere in `input` (unanchored). Mirrors
-   * `new RegExp(pattern).test(input)`.
+   * `new RegExp(pattern).test(input)`. With a `budget`, the search is charged
+   * to it ({@link ScanBudget}).
    */
-  test(input: string): boolean;
+  test(input: string, budget?: ScanBudget): boolean;
   /**
    * Whether the pattern matches the ENTIRE `input` (anchored at both ends), as
    * RE2JS `Matcher.matches`. Unlike {@link test} (an unanchored find), a
@@ -271,9 +318,10 @@ export interface CompiledLinearRegex {
    * is the whole match; an unmatched optional group is `null`), or `null` on
    * no match. Used by `parse_date`, whose source anchors with `^...$`, so the
    * first match is the whole-string match. Mirrors reading `m[i]` off
-   * `input.match(new RegExp(source))`.
+   * `input.match(new RegExp(source))`. With a `budget`, the search is charged
+   * to it ({@link ScanBudget}).
    */
-  matchGroups(input: string): (string | null)[] | null;
+  matchGroups(input: string, budget?: ScanBudget): (string | null)[] | null;
 }
 
 /**
@@ -288,40 +336,55 @@ export interface CompiledLinearRegex {
 export function compileLinearRegex(pattern: string): CompiledLinearRegex {
   const re = compileCached(pattern);
   const weightedSize = compiledWeightedSize(re);
+  const extractFirst = (input: string | MatcherInputBase): string | null => {
+    const m = re.matcher(input);
+    if (!m.find()) return null;
+    // groupCount() is the pattern's static capturing-group count, so this
+    // asks "does the pattern have a group 1?" exactly as `m[1] !==
+    // undefined` does; group(1) is null for a group that did not
+    // participate, matching m[1]'s undefined, and "" for one that matched
+    // empty, matching m[1]'s "".
+    const group1 = m.groupCount() >= 1 ? m.group(1) : null;
+    return (group1 ?? m.group(0)) || null;
+  };
+  const matchGroups = (
+    input: string | MatcherInputBase,
+  ): (string | null)[] | null => {
+    const m = re.matcher(input);
+    if (!m.find()) return null;
+    const count = m.groupCount();
+    const groups: (string | null)[] = [m.group(0)];
+    for (let i = 1; i <= count; i++) groups.push(m.group(i));
+    return groups;
+  };
   return {
     replaceAll: (input, replacement, budget) =>
       budget === undefined
         ? re.matcher(input).replaceAll(replacement)
-        : underScanBudget(input, weightedSize, budget, (counted) =>
+        : underScanBudget(input, weightedSize, budget, true, (counted) =>
             re.matcher(counted).replaceAll(replacement),
           ),
-    extractFirst: (input) => {
-      const m = re.matcher(input);
-      if (!m.find()) return null;
-      // groupCount() is the pattern's static capturing-group count, so this
-      // asks "does the pattern have a group 1?" exactly as `m[1] !==
-      // undefined` does; group(1) is null for a group that did not
-      // participate, matching m[1]'s undefined, and "" for one that matched
-      // empty, matching m[1]'s "".
-      const group1 = m.groupCount() >= 1 ? m.group(1) : null;
-      return (group1 ?? m.group(0)) || null;
-    },
-    test: (input) => re.test(input),
+    extractFirst: (input, budget) =>
+      budget === undefined
+        ? extractFirst(input)
+        : underScanBudget(input, weightedSize, budget, false, extractFirst),
+    test: (input, budget) =>
+      budget === undefined
+        ? re.test(input)
+        : underScanBudget(input, weightedSize, budget, false, (counted) =>
+            re.test(counted.asCharSequence()),
+          ),
     matches: (input) => re.matcher(input).matches(),
     split: (input, budget) =>
       budget === undefined
         ? re.split(input, -1)
-        : underScanBudget(input, weightedSize, budget, (counted) =>
+        : underScanBudget(input, weightedSize, budget, false, (counted) =>
             re.split(counted as unknown as string, -1),
           ),
-    matchGroups: (input) => {
-      const m = re.matcher(input);
-      if (!m.find()) return null;
-      const count = m.groupCount();
-      const groups: (string | null)[] = [m.group(0)];
-      for (let i = 1; i <= count; i++) groups.push(m.group(i));
-      return groups;
-    },
+    matchGroups: (input, budget) =>
+      budget === undefined
+        ? matchGroups(input)
+        : underScanBudget(input, weightedSize, budget, false, matchGroups),
   };
 }
 

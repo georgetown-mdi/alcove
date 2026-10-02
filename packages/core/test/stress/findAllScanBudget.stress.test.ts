@@ -24,8 +24,8 @@ import type {
   TransformStep,
 } from "../../src/config/linkageTermsSchema";
 
-// The figures docs/spec/CHANNEL_SECURITY.md states for the find-all rescan
-// charge and for the work budget's dearest charged unit. Rescanning shapes are
+// The figures docs/spec/CHANNEL_SECURITY.md states for the regex search charge
+// and for the work budget's dearest charged unit. Rescanning shapes are
 // timed unbudgeted and on the exchange path under the budget, which is why this
 // is the opt-in tier: unbudgeted they run for seconds. Timings are printed
 // rather than asserted, since they are the machine's; outcomes are asserted.
@@ -205,11 +205,13 @@ describe("find-all scan charge calibration", () => {
   test("the dearest charged unit among the regex steps", () => {
     // What one charged unit costs on each regex step, over the shapes that
     // cost the most per value: the at-cap alternation and case-folded window
-    // the weighted-size cap was calibrated on, the rescanning shape, and
-    // parse_date's longest format. Every step is charged what it reads and
-    // produces, and the find-all steps their rescans as well. A step that
-    // crosses the budget is read at the crossing. The residual per-row ceiling
-    // is the budget times the dearest unit.
+    // the weighted-size cap was calibrated on, the rescanning shape,
+    // parse_date's longest format, a pattern that matches at every position
+    // (one search per code unit), a one-character pattern, and a replacement
+    // copying the value's suffix for every match. Every step is charged what
+    // it reads and produces and what its searches span by the pattern's
+    // weight. A step that crosses the budget is read at the crossing. The
+    // residual per-row ceiling is the budget times the dearest unit.
     const alternation = Array.from(
       { length: 333 },
       (_unused, i) =>
@@ -220,6 +222,9 @@ describe("find-all scan charge calibration", () => {
       alternation,
       "(?i)" + ".{0,9}".repeat(55) + "z",
       RESCANNING(40),
+      "x*",
+      "(\\w)(\\w)",
+      ".",
     ];
     const steps: TransformStep[] = [
       ...patterns.flatMap((pattern): TransformStep[] => [
@@ -231,6 +236,10 @@ describe("find-all scan charge calibration", () => {
       {
         function: "parse_date",
         params: { inputFormat: "MM".repeat(128), outputFormat: "YYYYMMDD" },
+      },
+      {
+        function: "replace_regex",
+        params: { pattern: "x*", replacement: "$'".repeat(500) },
       },
     ];
     const values = [
@@ -262,6 +271,11 @@ describe("find-all scan charge calibration", () => {
           JSON.stringify({
             ...host,
             function: step.function,
+            pattern: pattern.slice(0, 24),
+            replacementLength:
+              typeof step.params?.replacement === "string"
+                ? step.params.replacement.length
+                : undefined,
             weightedSize:
               step.function === "parse_date"
                 ? undefined

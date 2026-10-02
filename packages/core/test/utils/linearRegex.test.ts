@@ -232,10 +232,12 @@ describe("linear-time execution", () => {
   });
 });
 
-// --- The find-all scan budget ------------------------------------------------
-// replaceAll and split search again after every match. Under a budget, what
-// their searches span beyond one pass over the value is charged times the
-// pattern's weighted size, and the read past the allowance stops the engine.
+// --- The scan budget ---------------------------------------------------------
+// Under a budget, what an operation's searches span is charged times the
+// pattern's weighted size, less a one-character pattern's weight on the first
+// pass over the value, and the read past the allowance stops the engine.
+// replaceAll and split search again after every match, and replaceAll also
+// counts what it copies out of the value against the allowance.
 
 class BudgetCrossed extends Error {}
 
@@ -254,9 +256,38 @@ function scanBudget(units: number): ScanBudget & { charged: number } {
 
 const WORK_BUDGET_PER_ROW = 8 * 1024 * 4096;
 const RESCANNING_PATTERN = "(?:[^#]*[^#]{0,40}#|.)";
+const ONE_CHARACTER_PATTERN_WEIGHT = 3;
+// Weight 993: the case-folded window the weighted-size cap was calibrated on.
+const AT_CAP_WINDOW = "(?i)" + ".{0,9}".repeat(55) + "z";
 
-describe("find-all operations under a scan budget", () => {
-  // Patterns over every engine route the two operations take: a literal prefix
+type SingleSearch = "extractFirst" | "test" | "matchGroups";
+const SINGLE_SEARCHES: readonly SingleSearch[] = [
+  "extractFirst",
+  "test",
+  "matchGroups",
+];
+
+function searchOnce(
+  operation: SingleSearch,
+  pattern: string,
+  input: string,
+  budget?: ScanBudget,
+): unknown {
+  const re = compileLinearRegex(pattern);
+  return operation === "extractFirst"
+    ? re.extractFirst(input, budget)
+    : operation === "test"
+      ? re.test(input, budget)
+      : re.matchGroups(input, budget);
+}
+
+describe("regex operations under a scan budget", () => {
+  test("a one-character pattern weighs what the first-pass charge leaves out", () => {
+    expect(patternWeightedSize("a")).toBe(ONE_CHARACTER_PATTERN_WEIGHT);
+    expect(patternWeightedSize(".")).toBe(ONE_CHARACTER_PATTERN_WEIGHT);
+  });
+
+  // Patterns over every engine route the operations take: a literal prefix
   // and a required literal (searched with indexOf), empty matches, capture
   // groups loaded for a replacement, named groups, case folding, and a value
   // with surrogate pairs.
@@ -278,30 +309,122 @@ describe("find-all operations under a scan budget", () => {
     "%s gives the unbudgeted result under a budget",
     (pattern, input, replacement) => {
       const re = compileLinearRegex(pattern);
-      const weight = patternWeightedSize(pattern);
       const replaced = scanBudget(WORK_BUDGET_PER_ROW);
       expect(re.replaceAll(input, replacement, replaced)).toBe(
         re.replaceAll(input, replacement),
       );
       const split = scanBudget(WORK_BUDGET_PER_ROW);
       expect(re.split(input, split)).toEqual(re.split(input));
-      for (const budget of [replaced, split])
-        expect(budget.charged % weight).toBe(0);
+      for (const operation of SINGLE_SEARCHES)
+        expect(
+          searchOnce(
+            operation,
+            pattern,
+            input,
+            scanBudget(WORK_BUDGET_PER_ROW),
+          ),
+        ).toEqual(searchOnce(operation, pattern, input));
     },
   );
 
-  test("one pass over the value is not charged", () => {
-    // A pattern with no match reads the value once, in one search: the single
-    // match the weighted-size cap already bounds.
-    const value = "a".repeat(1000);
-    for (const pattern of ["[0-9]", "z", "(?:b|c)d"]) {
+  test.each(["[0-9]", "z", "(?:b|c)d", "\\d+x", "(\\d)(\\d)"])(
+    "one pass of %s over the value is charged its weight above a one-character pattern's",
+    (pattern) => {
+      // A pattern with no match reads the value once, in one search.
+      const value = "a".repeat(1000);
+      const perUnit =
+        patternWeightedSize(pattern) - ONE_CHARACTER_PATTERN_WEIGHT;
       const replaced = scanBudget(WORK_BUDGET_PER_ROW);
       compileLinearRegex(pattern).replaceAll(value, "", replaced);
-      expect(replaced.charged).toBe(0);
+      expect(replaced.charged).toBe(1000 * perUnit);
       const split = scanBudget(WORK_BUDGET_PER_ROW);
       compileLinearRegex(pattern).split(value, split);
-      expect(split.charged).toBe(0);
-    }
+      expect(split.charged).toBe(1000 * perUnit);
+      for (const operation of SINGLE_SEARCHES) {
+        const budget = scanBudget(WORK_BUDGET_PER_ROW);
+        searchOnce(operation, pattern, value, budget);
+        expect(budget.charged).toBe(1000 * perUnit);
+      }
+    },
+  );
+
+  test.each(SINGLE_SEARCHES)(
+    "%s under the at-cap window is charged its weight for every code unit it reads",
+    (operation) => {
+      // The window matches nothing in a value without a "z", and the engine
+      // reads all of it to find that out: the single match the weighted-size
+      // cap bounds, charged by that weight rather than by volume.
+      const weight = patternWeightedSize(AT_CAP_WINDOW);
+      expect(weight).toBe(993);
+      const budget = scanBudget(WORK_BUDGET_PER_ROW);
+      searchOnce(operation, AT_CAP_WINDOW, "1".repeat(200), budget);
+      expect(budget.charged).toBe(
+        200 * (weight - ONE_CHARACTER_PATTERN_WEIGHT),
+      );
+    },
+  );
+
+  test.each(SINGLE_SEARCHES)(
+    "%s under the at-cap window crosses a lowered budget at the read past it",
+    (operation) => {
+      const perUnit =
+        patternWeightedSize(AT_CAP_WINDOW) - ONE_CHARACTER_PATTERN_WEIGHT;
+      const budget = scanBudget(100 * perUnit);
+      expect(() =>
+        searchOnce(operation, AT_CAP_WINDOW, "1".repeat(200), budget),
+      ).toThrow(BudgetCrossed);
+      expect(budget.charged).toBeGreaterThan(100 * perUnit);
+      expect(budget.charged).toBeLessThanOrEqual(101 * perUnit);
+    },
+  );
+
+  test("a search that then loads its groups is charged for both searches", () => {
+    // matchGroups finds the match, then searches again from its start for the
+    // groups' bounds, so the match is spanned twice.
+    const pattern = "(\\d+)-(\\d+)";
+    const weight = patternWeightedSize(pattern);
+    const budget = scanBudget(WORK_BUDGET_PER_ROW);
+    expect(compileLinearRegex(pattern).matchGroups("12-34", budget)).toEqual([
+      "12-34",
+      "12",
+      "34",
+    ]);
+    expect(budget.charged).toBeGreaterThan(
+      5 * (weight - ONE_CHARACTER_PATTERN_WEIGHT),
+    );
+  });
+
+  test("a replacement's prefix and suffix copies cross the budget before the engine's string-length error", () => {
+    // "x*" matches at every position of a value with no "x", and each match
+    // copies the value's prefix and suffix 250 times over: about four billion
+    // code units at 4096 characters, past the engine's longest string.
+    const re = compileLinearRegex("x*");
+    const replacement = "$`$'".repeat(250);
+    const value = "1".repeat(4096);
+    expect(() => re.replaceAll(value, replacement)).toThrow(RangeError);
+    const budget = scanBudget(WORK_BUDGET_PER_ROW);
+    expect(() => re.replaceAll(value, replacement, budget)).toThrow(
+      BudgetCrossed,
+    );
+    // Stopped at the copy past the allowance; one copy is at most the value.
+    expect(budget.charged).toBeGreaterThan(WORK_BUDGET_PER_ROW);
+    expect(budget.charged).toBeLessThanOrEqual(WORK_BUDGET_PER_ROW + 4096 + 4);
+  });
+
+  test("a replacement's copies are charged only where they cross", () => {
+    // On a return the copies are part of the operation's output, which its
+    // caller charges; the budget is charged the searches alone.
+    const replaced = scanBudget(WORK_BUDGET_PER_ROW);
+    expect(compileLinearRegex("b").replaceAll("abc", "[$`|$']", replaced)).toBe(
+      "a[a|c]c",
+    );
+    expect(replaced.charged).toBe(0);
+    // At a budget of two, the third code unit copied crosses it.
+    const lowered = scanBudget(2);
+    expect(() =>
+      compileLinearRegex("b").replaceAll("abc", "[$`|$']", lowered),
+    ).toThrow(BudgetCrossed);
+    expect(lowered.charged).toBe(3);
   });
 
   test.each([
@@ -346,13 +469,15 @@ describe("find-all operations under a scan budget", () => {
   );
 
   test.each(["(?:[^#]*#|.)", "([^#]*#|(.))"])(
-    "a budget already spent stops %s at its first read past one pass, charged its capped size",
+    "a budget already spent stops %s at its first read, charged its weight above a one-character pattern's",
     (pattern) => {
       const budget = scanBudget(0);
       expect(() =>
         compileLinearRegex(pattern).replaceAll("aaaa", "", budget),
       ).toThrow(BudgetCrossed);
-      expect(budget.charged).toBe(patternWeightedSize(pattern));
+      expect(budget.charged).toBe(
+        patternWeightedSize(pattern) - ONE_CHARACTER_PATTERN_WEIGHT,
+      );
     },
   );
 

@@ -3901,7 +3901,7 @@ describe("buildKeyStrings", () => {
       makeDataset({ last_name: tokenCell(1442), date_of_birth: "19750716" }),
       0,
     );
-    expect(spent).toBe(21161998);
+    expect(spent).toBe(25357744);
     expect(spent).toBeLessThan(WORK_BUDGET_PER_ROW);
   });
 
@@ -4142,8 +4142,106 @@ describe("buildKeyStrings", () => {
       makeDataset({ notes: valueAtTheBound() }),
       0,
     );
-    expect(spent).toBe(14563);
+    expect(spent).toBe(18659);
     expect(spent * 500).toBeLessThan(WORK_BUDGET_PER_ROW);
+  });
+
+  // --- the single-search steps' pass, charged by its pattern's weight --------
+  // extract_regex, filter_regex and parse_date search once (parse_date's
+  // groups a second time), at a cost that grows with the code units read times
+  // the pattern's weighted size. Behind ELEMENTS_UNDER_BUDGET spending elements
+  // the row has about 122,000 units left, which a 200-character read charged by
+  // volume alone would not cross.
+
+  test.each([
+    {
+      function: "extract_regex",
+      params: { pattern: "(?i)" + ".{0,9}".repeat(55) + "z" },
+      value: "1".repeat(200),
+    },
+    {
+      function: "filter_regex",
+      params: { pattern: "(?i)" + ".{0,9}".repeat(55) + "z" },
+      value: "1".repeat(200),
+    },
+    {
+      function: "parse_date",
+      params: { inputFormat: "MM".repeat(128), outputFormat: "YYYYMMDD" },
+      value: "1".repeat(256),
+    },
+  ])(
+    "an at-cap $function pass crosses a lowered budget, naming the step",
+    ({ function: functionName, params, value }) => {
+      const elements: LinkageKeyElement[] = [
+        ...amplifyingElements(ELEMENTS_UNDER_BUDGET),
+        {
+          field: "notes",
+          transform: [{ function: functionName, params } as TransformStep],
+        },
+      ];
+      const dataset = makeDataset({
+        ...spenderRow(ELEMENTS_UNDER_BUDGET),
+        notes: value,
+      });
+      let raised: unknown;
+      try {
+        buildKeyStrings({ name: "spend", elements }, dataset, 0, false, 1);
+      } catch (err) {
+        raised = err;
+      }
+      expect(raised).toBeInstanceOf(UsageError);
+      expect((raised as UsageError).message).toContain(
+        `while a regular-expression step searched the value ` +
+          `(linkageKeys[1].elements[${ELEMENTS_UNDER_BUDGET}].transform[0], "${functionName}")`,
+      );
+      // The same pass under a one-character pattern is charged by volume and
+      // derives its key.
+      const cheap: LinkageKeyElement[] = [
+        ...amplifyingElements(ELEMENTS_UNDER_BUDGET),
+        {
+          field: "notes",
+          transform: [{ function: "extract_regex", params: { pattern: "." } }],
+        },
+      ];
+      expect(
+        buildKeyStrings(
+          { name: "spend", elements: cheap },
+          dataset,
+          0,
+          false,
+          1,
+        ),
+      ).toEqual(new Set([amplifiedValue.repeat(ELEMENTS_UNDER_BUDGET) + "1"]));
+    },
+    SCAN_CROSSING_TEST_TIMEOUT_MS,
+  );
+
+  test("a replacement whose suffix copies outgrow the budget is refused by it, naming the step", () => {
+    // "x*" matches at every position, and "$'" copies the rest of the value
+    // for each match: about four billion code units at the value bound, which
+    // with no budget ends in the engine's string-length error.
+    let raised: unknown;
+    try {
+      buildKeyStrings(
+        keyOverSteps([
+          {
+            function: "replace_regex",
+            params: { pattern: "x*", replacement: "$'".repeat(500) },
+          },
+        ]),
+        makeDataset({ notes: valueAtTheBound() }),
+        0,
+        false,
+        1,
+      );
+    } catch (err) {
+      raised = err;
+    }
+    expect(raised).toBeInstanceOf(UsageError);
+    expect((raised as UsageError).message).toMatch(
+      /^a linkage key spent \d+ code units of transform work on row 0 of this party's data, above the 33554432 one row may spend deriving one key, while a regular-expression step searched the value \(linkageKeys\[1\]\.elements\[0\]\.transform\[0\], "replace_regex"\)\./,
+    );
+    expect((raised as UsageError).message).not.toContain("Gonzalez");
   });
 
   test("an unrecognized function name reaches the operator as a literal", () => {
