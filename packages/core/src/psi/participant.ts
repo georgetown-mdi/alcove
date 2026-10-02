@@ -235,9 +235,9 @@ export interface PsiProgress {
    * reports between the chunks it splits a large set into, never after the
    * last one, whose figure the `finished` report states.
    *
-   * The `computeIntersectionCardinality` operation reports `started` and
-   * `finished` and nothing between them at any size: a count-only round's
-   * match is one library call that cannot be split (see
+   * The `computeIntersectionCardinality` operation never splits the
+   * partner's response, so it reports between the setup slices a memory
+   * budget splits its match into and nothing when the match is one call (see
    * {@link ./psiEngine.PsiEngine.computeIntersectionCardinality}).
    */
   processed?: number;

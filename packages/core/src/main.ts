@@ -53,6 +53,7 @@ export type {
   PsiProcessedElementsReporter,
   InProcessPsiEngineOptions,
 } from "./psi/psiEngine";
+export { psiEngineOptionsForBackend } from "./psi/psiMatchSlices";
 export { WorkerPsiEngine, servePsiWorker } from "./psi/psiWorkerEngine";
 export type {
   PsiWorkerHandle,

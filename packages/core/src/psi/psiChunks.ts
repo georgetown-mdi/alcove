@@ -2,6 +2,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type {
   Request as PSIRequest,
   Response as PSIResponse,
+  ServerSetup as PSIServerSetup,
 } from "@openmined/psi.js/implementation/proto/psi_pb.d.ts";
 import { InternalConsistencyError } from "../errors";
 
@@ -37,7 +38,9 @@ import { InternalConsistencyError } from "../errors";
 //     masks distinctValues); for a response repeating an element across
 //     chunks the merged table holds the same pairs as the single call but
 //     orders the ties differently (measured on both backends: the single call
-//     emits [250, 16] before [50, 16], the merge the reverse).
+//     emits [250, 16] before [50, 16], the merge the reverse);
+//   - a match over a slice of the setup indexes partners within the slice, so
+//     setup slices merge by adding each slice's start to its partner indices.
 
 /** A contiguous slice of a value or element list, covered by one chunk. */
 export interface PsiChunkRange {
@@ -180,9 +183,14 @@ export function mergeSetupChunks(
   return { elements, permutation };
 }
 
-/** One chunk's association result, indexed within the chunk's own slice. */
+/**
+ * One chunk's association result, indexed within the chunk's own slice:
+ * `start` offsets its local indices (a response chunk) and `partnerStart`,
+ * 0 when absent, its partner indices (a setup slice).
+ */
 export interface PsiAssociationChunk {
   readonly start: number;
+  readonly partnerStart?: number;
   readonly localIndices: ReadonlyArray<number>;
   readonly partnerIndices: ReadonlyArray<number>;
 }
@@ -199,12 +207,14 @@ export function mergeAssociationChunks(
   // path holds the partner element list beside it. The setup merge's
   // index-array shape above is not applied here.
   const pairs: Array<[number, number]> = [];
-  for (const chunk of chunks)
+  for (const chunk of chunks) {
+    const partnerStart = chunk.partnerStart ?? 0;
     for (let index = 0; index < chunk.localIndices.length; index += 1)
       pairs.push([
         chunk.start + chunk.localIndices[index]!,
-        chunk.partnerIndices[index]!,
+        partnerStart + chunk.partnerIndices[index]!,
       ]);
+  }
   pairs.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
   return [pairs.map((pair) => pair[0]), pairs.map((pair) => pair[1])];
 }
@@ -249,16 +259,24 @@ function toElementList(elements: ReadonlyArray<Uint8Array>): Uint8Array[] {
   return [...elements];
 }
 
+/** Builds the Raw server setup message `elements` stands for. */
+export function buildSetup(
+  psi: PSILibrary,
+  elements: ReadonlyArray<Uint8Array>,
+): PSIServerSetup {
+  const raw = new psi.serverSetup.RawInfo();
+  raw.setEncryptedElementsList(toElementList(elements));
+  const setup = new psi.serverSetup();
+  setup.setRaw(raw);
+  return setup;
+}
+
 /** Builds the serialized Raw server setup a merged element list stands for. */
 export function serializeSetup(
   psi: PSILibrary,
   elements: ReadonlyArray<Uint8Array>,
 ): Uint8Array {
-  const raw = new psi.serverSetup.RawInfo();
-  raw.setEncryptedElementsList(toElementList(elements));
-  const setup = new psi.serverSetup();
-  setup.setRaw(raw);
-  return setup.serializeBinary();
+  return buildSetup(psi, elements).serializeBinary();
 }
 
 /**

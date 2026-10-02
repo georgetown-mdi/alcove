@@ -6,6 +6,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import {
   chunkIdentityValues,
+  expectBoundaryRepeatRefusedWhenSliced,
   expectChunkedCountMatchesSingleCall,
   expectChunkedRoundMatchesSingleCall,
   expectDuplicatedResponseCountMatchesSingleCall,
@@ -20,6 +21,13 @@ import {
 const TOTAL = 200;
 const CHUNK_ELEMENTS = 40;
 const BETWEEN_CHUNKS = [40, 80, 120, 160];
+const SETUP_SLICE_ELEMENTS = 40;
+// Five setup slices against five response chunks: 25 calls, each worth a
+// fifth of a response chunk, reported between calls and never after the last.
+const BETWEEN_SLICED_CALLS = Array.from(
+  { length: 24 },
+  (_, index) => 8 * (index + 1),
+);
 
 const { serverValues, clientValues } = chunkIdentityValues(TOTAL);
 
@@ -95,5 +103,70 @@ describe.each([
         clientValues,
       }),
     ).toStrictEqual({});
+  });
+
+  test("a setup-sliced round reproduces the single call's table", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    const processed = await expectChunkedRoundMatchesSingleCall({
+      library,
+      serverValues,
+      clientValues,
+      chunkElements: CHUNK_ELEMENTS,
+      setupSliceElements: SETUP_SLICE_ELEMENTS,
+    });
+    expect(processed).toStrictEqual({
+      createServerSetup: BETWEEN_CHUNKS,
+      createClientRequest: BETWEEN_CHUNKS,
+      processClientRequest: BETWEEN_CHUNKS,
+      computeAssociationTable: BETWEEN_SLICED_CALLS,
+    });
+  });
+
+  test("a setup-sliced match over an unsplit response reproduces the single call's table", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    expect(
+      await expectChunkedRoundMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        setupSliceElements: SETUP_SLICE_ELEMENTS,
+      }),
+    ).toStrictEqual({ computeAssociationTable: BETWEEN_CHUNKS });
+  });
+
+  test("a setup-sliced count-only match reports the single call's cardinality", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    // One call per slice, each against the whole response.
+    expect(
+      await expectChunkedCountMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        chunkElements: CHUNK_ELEMENTS,
+        setupSliceElements: SETUP_SLICE_ELEMENTS,
+      }),
+    ).toStrictEqual(BETWEEN_CHUNKS);
+  });
+
+  test("a setup repeating an element across a slice boundary is refused when sliced", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    await expectBoundaryRepeatRefusedWhenSliced({
+      library,
+      serverValues,
+      clientValues,
+      setupSliceElements: SETUP_SLICE_ELEMENTS,
+    });
   });
 });

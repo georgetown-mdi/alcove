@@ -2,8 +2,10 @@ import { expect } from "vitest";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-import { buildResponse } from "../../src/psi/psiChunks";
+import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
+
+import type { InProcessPsiEngineOptions } from "../../src/psi/psiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "./fixedKeyPsiLibrary";
 
 // The wire claim the chunked engine rests on: splitting one operation and
@@ -36,13 +38,18 @@ function engine(
   role: "starter" | "joiner",
   revealsIdentifiers: boolean,
   chunkElements: number | undefined,
+  setupSliceElements?: number,
 ): InProcessPsiEngine {
+  const options: InProcessPsiEngineOptions = {
+    ...(chunkElements === undefined ? {} : { chunkElements }),
+    ...(setupSliceElements === undefined ? {} : { setupSliceElements }),
+  };
   return new InProcessPsiEngine(
     fixedKeyPsiLibrary(library, SERVER_KEY, CLIENT_KEY),
     role,
     role,
     revealsIdentifiers ? "identifier-revealing" : "count-only",
-    chunkElements === undefined ? {} : { chunkElements },
+    options,
   );
 }
 
@@ -53,18 +60,26 @@ function engine(
  *
  * `chunkElements` sets the chunk size; left out, the shipped sizing policy
  * decides, which is what a run at production scale exercises.
+ * `setupSliceElements` splits the joiner's match into setup slices.
  */
 export async function expectChunkedRoundMatchesSingleCall(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
   clientValues: ReadonlyArray<string>;
   chunkElements?: number;
+  setupSliceElements?: number;
 }): Promise<Record<string, Array<number>>> {
   const { library, serverValues, clientValues, chunkElements } = params;
   const server = library.server!.createFromKey(SERVER_KEY, true);
   const client = library.client!.createFromKey(CLIENT_KEY, true);
   const starter = engine(library, "starter", true, chunkElements);
-  const joiner = engine(library, "joiner", true, chunkElements);
+  const joiner = engine(
+    library,
+    "joiner",
+    true,
+    chunkElements,
+    params.setupSliceElements,
+  );
   const processed: Record<string, Array<number>> = {};
   let operation = "";
   const observe = (target: InProcessPsiEngine): void =>
@@ -116,19 +131,27 @@ export async function expectChunkedRoundMatchesSingleCall(params: {
 /**
  * Asserts that a chunked count-only round puts the single call's response
  * bytes on the wire and reports its cardinality, and returns the processed
- * counts the match reported -- none, the match being one call at every size.
+ * counts the match reported: none for a match in one call, one between each
+ * pair of setup slices otherwise.
  */
 export async function expectChunkedCountMatchesSingleCall(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
   clientValues: ReadonlyArray<string>;
   chunkElements?: number;
+  setupSliceElements?: number;
 }): Promise<Array<number>> {
   const { library, serverValues, clientValues, chunkElements } = params;
   const server = library.server!.createFromKey(SERVER_KEY, false);
   const client = library.client!.createFromKey(CLIENT_KEY, false);
   const starter = engine(library, "starter", false, chunkElements);
-  const joiner = engine(library, "joiner", false, chunkElements);
+  const joiner = engine(
+    library,
+    "joiner",
+    false,
+    chunkElements,
+    params.setupSliceElements,
+  );
   const processed: Array<number> = [];
   try {
     const wholeSetup = server.createSetupMessage(
@@ -219,5 +242,81 @@ export async function expectDuplicatedResponseCountMatchesSingleCall(params: {
     joiner.dispose();
     server.delete();
     client.delete();
+  }
+}
+
+/**
+ * Asserts that a partner setup repeating one element across a setup slice
+ * boundary is refused by the sliced match in either mode, rather than counted
+ * or paired twice, while the one-call match over the same setup returns what
+ * the library returns for it.
+ */
+export async function expectBoundaryRepeatRefusedWhenSliced(params: {
+  library: PSILibrary;
+  serverValues: ReadonlyArray<string>;
+  clientValues: ReadonlyArray<string>;
+  setupSliceElements: number;
+}): Promise<void> {
+  const { library, serverValues, clientValues, setupSliceElements } = params;
+  for (const revealsIdentifiers of [true, false]) {
+    const server = library.server!.createFromKey(
+      SERVER_KEY,
+      revealsIdentifiers,
+    );
+    const client = library.client!.createFromKey(
+      CLIENT_KEY,
+      revealsIdentifiers,
+    );
+    const sliced = engine(
+      library,
+      "joiner",
+      revealsIdentifiers,
+      undefined,
+      setupSliceElements,
+    );
+    const whole = engine(library, "joiner", revealsIdentifiers, undefined);
+    try {
+      const elements = [
+        ...server
+          .createSetupMessage(
+            FALSE_POSITIVE_RATE,
+            CLIENT_INPUT_COUNT,
+            serverValues,
+            library.dataStructure.Raw,
+            [],
+          )
+          .getRaw()!
+          .getEncryptedElementsList_asU8(),
+      ];
+      elements[setupSliceElements] = elements[setupSliceElements - 1]!;
+      const setupBytes = serializeSetup(library, elements);
+      const responseBytes = server
+        .processRequest(client.createRequest(clientValues))
+        .serializeBinary();
+      const match = async (target: InProcessPsiEngine): Promise<unknown> =>
+        revealsIdentifiers
+          ? target.computeAssociationTable(responseBytes)
+          : target.computeIntersectionCardinality(responseBytes);
+
+      await sliced.receiveServerSetup(setupBytes);
+      await expect(match(sliced)).rejects.toThrow(
+        "joiner protocol error: PSI server setup is not in strictly ascending element order",
+      );
+
+      const setup = library.serverSetup.deserializeBinary(setupBytes);
+      const response = library.response.deserializeBinary(responseBytes);
+      let expected: unknown;
+      if (revealsIdentifiers) {
+        const table = client.getAssociationTable(setup, response);
+        expected = [table[0], table[1]];
+      } else expected = client.getIntersectionSize(setup, response);
+      await whole.receiveServerSetup(setupBytes);
+      expect(await match(whole)).toStrictEqual(expected);
+    } finally {
+      sliced.dispose();
+      whole.dispose();
+      server.delete();
+      client.delete();
+    }
   }
 }

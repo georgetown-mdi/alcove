@@ -4,6 +4,7 @@ import { parentPort, workerData } from "node:worker_threads";
 
 import {
   InternalConsistencyError,
+  psiEngineOptionsForBackend,
   sanitizeErrorForDisplay,
   servePsiWorker,
 } from "@alcove/core";
@@ -43,9 +44,12 @@ async function main(): Promise<void> {
       "PSI worker started outside a worker_threads worker",
     );
   const init = workerData as PsiWorkerInit;
-  const { library } = await loadCliPsiBackend();
-  const handle = servePsiWorker(library, init, (response: PsiWorkerResponse) =>
-    port.postMessage(response),
+  const { library, backend } = await loadCliPsiBackend();
+  const handle = servePsiWorker(
+    library,
+    init,
+    (response: PsiWorkerResponse) => port.postMessage(response),
+    psiEngineOptionsForBackend(backend),
   );
   // Messages the host posted while the backend was loading were queued on the port;
   // attaching the listener now drains them in order.

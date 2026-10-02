@@ -1,7 +1,11 @@
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_worker";
 
-import { loadPsiBackend, servePsiWorker } from "@alcove/core";
+import {
+  loadPsiBackend,
+  psiEngineOptionsForBackend,
+  servePsiWorker,
+} from "@alcove/core";
 
 import {
   createBufferingRequestRouter,
@@ -52,12 +56,15 @@ const onRequest = createBufferingRequestRouter(
     // startup. The browser always uses WASM; loadPsiBackend keeps the backend
     // selection identical to the main-thread path, which has no native addon.
     const init = decodePsiWorkerInit(scope.name);
-    const { library } = await loadPsiBackend(
+    const { library, backend } = await loadPsiBackend(
       { loadWasm: () => PSI() as Promise<PSILibrary> },
       { isNode: false },
     );
-    return servePsiWorker(library, init, (response: PsiWorkerResponse) =>
-      scope.postMessage(response),
+    return servePsiWorker(
+      library,
+      init,
+      (response: PsiWorkerResponse) => scope.postMessage(response),
+      psiEngineOptionsForBackend(backend),
     );
   },
   (id, error) => scope.postMessage({ id, ok: false, error }),
