@@ -32,7 +32,7 @@ describe("parseClientConfig", () => {
     ["3", 3],
     [" 2 ", 2],
     ["0", 0],
-    [4, 4],
+    [3, 3],
   ])("reads PEERJS_DEBUG_LEVEL %j as %d", (input, expected) => {
     expect(
       parseClientConfig({ PEERJS_DEBUG_LEVEL: input }).PEERJS_DEBUG_LEVEL,
@@ -47,6 +47,26 @@ describe("parseClientConfig", () => {
       );
     },
   );
+
+  test.each([
+    ["debug", "DEBUG"],
+    ["Warn", "WARN"],
+    ["SILENT", "SILENT"],
+  ])("reads LOG_LEVEL %j as %s", (input, expected) => {
+    expect(parseClientConfig({ LOG_LEVEL: input }).LOG_LEVEL).toBe(expected);
+  });
+
+  test.each(["", "verbose", "setLevel"])("refuses LOG_LEVEL %j", (input) => {
+    expect(() => parseClientConfig({ LOG_LEVEL: input })).toThrow(
+      /VITE_LOG_LEVEL/,
+    );
+  });
+
+  test.each(["4", "-1", "1.5"])("refuses PEERJS_DEBUG_LEVEL %j", (input) => {
+    expect(() => parseClientConfig({ PEERJS_DEBUG_LEVEL: input })).toThrow(
+      /VITE_PEERJS_DEBUG_LEVEL/,
+    );
+  });
 
   test.each(["", "Console", "appliance"])(
     "refuses DEPLOYMENT_PROFILE %j",

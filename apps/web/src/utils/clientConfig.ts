@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { LogLevel } from "loglevel";
+import type { LogLevelDesc } from "loglevel";
 import type { ZodType } from "zod";
 
 /**
@@ -36,7 +36,7 @@ export interface ClientConfig {
    * issues.
    */
   PEERJS_DEBUG_LEVEL: number;
-  LOG_LEVEL: keyof LogLevel;
+  LOG_LEVEL: (typeof LOG_LEVELS)[number];
   /**
    * `hosted` (the default) is the public browser-only deployment: the server
    * never receives a file, so the browser-only file-assurance copy holds and
@@ -65,12 +65,27 @@ const numberFromEnv = z
   .union([z.number(), z.string().trim().min(1).transform(Number)])
   .pipe(z.number());
 
+// The names loglevel's setDefaultLevel accepts, in any case.
+const LOG_LEVELS = [
+  "TRACE",
+  "DEBUG",
+  "INFO",
+  "WARN",
+  "ERROR",
+  "SILENT",
+] as const;
+
+// PeerJS's LogLevel runs from Disabled (0) to All (3).
+const PEERJS_MAX_DEBUG_LEVEL = 3;
+
 const clientConfigSchema: ZodType<ClientConfig> = z.object({
-  PEERJS_DEBUG_LEVEL: numberFromEnv.default(1),
-  LOG_LEVEL: z
-    .string()
-    .default("INFO")
-    .transform((level) => level as keyof LogLevel),
+  PEERJS_DEBUG_LEVEL: numberFromEnv
+    .pipe(z.number().int().min(0).max(PEERJS_MAX_DEBUG_LEVEL))
+    .default(1),
+  LOG_LEVEL: z.preprocess(
+    (value) => (typeof value === "string" ? value.toUpperCase() : value),
+    z.enum(LOG_LEVELS).default("INFO"),
+  ),
   DEPLOYMENT_PROFILE: z.enum(DEPLOYMENT_PROFILES).default("hosted"),
   ALCOVE_VERSION: z.string().default(""),
 });
@@ -123,7 +138,7 @@ export function alcoveVersion(): string | undefined {
 }
 
 /** The default level for the app's own loggers. */
-export function logLevel(): keyof LogLevel {
+export function logLevel(): LogLevelDesc {
   return config.LOG_LEVEL;
 }
 
