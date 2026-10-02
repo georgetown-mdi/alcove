@@ -2,7 +2,10 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { createMessagePipe } from "../../src/connection/messageConnection";
+import {
+  connectionEndReader,
+  createMessagePipe,
+} from "../../src/connection/messageConnection";
 import {
   buildRoundSet,
   groupDuplicatesAndRemoveUndefineds,
@@ -193,3 +196,35 @@ test(
     );
   },
 );
+
+test("a pacer throws what it stops on, at its next yield and not before", async () => {
+  const stop = new Error("the connection ended");
+  let stopReason: Error | undefined = undefined;
+  everyPacerReadingIsDue();
+  const pacer = new EventLoopPacer(() => stopReason);
+  await pacer.yieldWhenDue();
+  stopReason = stop;
+  await expect(pacer.yieldWhenDue()).rejects.toBe(stop);
+});
+
+test("a round's set build stops within a stretch once its connection has ended", async () => {
+  everyPacerReadingIsDue();
+  const [conn, peer] = createMessagePipe();
+  let rowsRead = 0;
+  function* rows(): Generator<KeyCandidates> {
+    for (let i = 0; i < 10 * PACED_STRETCH_RECORDS; ++i) {
+      ++rowsRead;
+      if (i === PACED_STRETCH_RECORDS) void peer.close();
+      yield `value ${i}`;
+    }
+  }
+  const build = buildRoundSet(
+    rows(),
+    read,
+    false,
+    undefined,
+    new EventLoopPacer(connectionEndReader(conn)),
+  );
+  await expect(build).rejects.toMatchObject({ kind: "transport" });
+  expect(rowsRead).toBeLessThanOrEqual(3 * PACED_STRETCH_RECORDS);
+});

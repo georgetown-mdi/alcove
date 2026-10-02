@@ -585,6 +585,16 @@ export class EncryptedMessageConnection implements MessageConnection {
     return this.inner.inboundPsiSetElementCeiling?.();
   }
 
+  // A failure this layer latched ends the inner connection with a local close,
+  // so the latched error is the one reported. An inner connection that reports
+  // no terminal state leaves this one pending for good.
+  terminated(): Promise<ConnectionError> {
+    const inner = this.inner.terminated?.();
+    return inner === undefined
+      ? new Promise<ConnectionError>(() => {})
+      : inner.then((error) => this.failed ?? error);
+  }
+
   // The envelope is added before the inner transport packs and chunks the
   // frame, so it is charged once per frame, not per chunk.
   outboundFrameOverheadBytes(): number {

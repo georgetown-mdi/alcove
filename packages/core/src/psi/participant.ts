@@ -285,7 +285,8 @@ export class PSIParticipant {
   private onProgress?: PsiProgressReporter;
   private setCeilings: PsiSetCeilings;
   // The operation now dispatched to the engine, for the mid-operation reports
-  // the engine raises against it. Undefined between operations.
+  // the engine raises against it and for operationInFlight. Undefined between
+  // operations.
   private runningOperation:
     { operation: PsiOperation; elements: number } | undefined;
 
@@ -363,6 +364,11 @@ export class PSIParticipant {
     } catch {
       // Dropped; the operation continues and its settle report follows.
     }
+  }
+
+  /** Whether a crypto operation is dispatched to the engine and not yet settled. */
+  operationInFlight(): boolean {
+    return this.runningOperation !== undefined;
   }
 
   /**
@@ -485,7 +491,14 @@ export class PSIParticipant {
     run: () => Promise<T>,
   ): Promise<T> {
     const report = this.onProgress;
-    if (report === undefined) return run();
+    if (report === undefined) {
+      this.runningOperation = { operation, elements };
+      try {
+        return await run();
+      } finally {
+        this.runningOperation = undefined;
+      }
+    }
     report({ operation, elements, state: "started" });
     const startedAt = performance.now();
     const durationMs = (): number =>

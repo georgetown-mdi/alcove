@@ -350,6 +350,44 @@ partner calls the connection lost, and the two parties' holds add up
   checking and sorting a round's matched positions. At 7,700,000 records a
   side the longest such hold measured was about 10 s, encoding and decoding
   the lists of matched records the parties exchange after the last round.
+- The PSI sender's round start, from its `linking key N / M` line to its
+  setup's encryption, is the paced set build followed by two unpaced steps:
+  finishing the set, and copying its values to the PSI worker. Measured on one
+  host over loopback (10 CPUs, 23 GiB, Linux arm64, Node v26.10.0), as the
+  longest hold the sender's lag probe recorded from `linking key 1 / 4` to the
+  end of that key's encryption, against the longest on the open channel for
+  either party:
+
+  | Records a side | Round start | Open channel, inviter and acceptor | Wall |
+  | --- | --- | --- | --- |
+  | 1,000,000 | under 1,000 ms | 1,355 ms and 1,168 ms | 229 s |
+  | 2,000,000, first run | 425 ms | 3,251 ms and 3,005 ms | 401 s |
+  | 2,000,000, second run | 533 ms | 2,437 ms and 2,484 ms | 379 s |
+  | 4,000,000 | 347 ms | 7,011 ms and 8,328 ms | 888 s |
+
+  The 1,000,000 run's probe recorded holds over 1 s only; the others recorded
+  holds over 200 ms. At every size the longest hold on the open channel came
+  after the last round, not at a round start.
+
+### A connection that ends during a round
+
+The exchange reads the connection's terminal state
+(`MessageConnection.terminated`):
+
+- A paced pass stops at its next yield with the error that ended the
+  connection, so a party whose partner is lost while it builds or resolves a
+  round fails within one stretch.
+- A crypto step already handed to the PSI worker runs to its end. Terminating
+  the worker during a native masking call aborts the process
+  ([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)),
+  so the party logs a warning naming the loss when it happens and fails with
+  the connection's error once the step returns.
+
+Measured at 4,000,000 records a side on the host above, with the acceptor
+killed: killed 2 s after the inviter's `linking key 1 / 4`, during its set
+build, the inviter exited 69 1.7 s later; killed during its encryption, it
+logged the warning 0.7 s later and exited 69 86 s later, when the encryption
+ended.
 
 ## The clean close
 

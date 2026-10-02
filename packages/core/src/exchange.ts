@@ -2981,6 +2981,19 @@ export async function runExchange(
         ? { local: localReceiveCeiling, partner: partnerReceiveCeiling }
         : undefined,
     );
+    const psiParticipant = participant;
+    // A crypto step in flight runs to its end: terminating the CLI's worker
+    // inside a native backend call aborts the process. The operator is told
+    // of the loss when it happens rather than when the step returns.
+    void conn.terminated?.().then((ended) => {
+      if (ended.kind !== "closed" && psiParticipant.operationInFlight())
+        getLogger("exchange").warn(
+          `the connection to the exchange partner ended ` +
+            `(${sanitizeErrorForDisplay(ended)}) while a PSI crypto step was ` +
+            "running; the run stops with that error once the step finishes, " +
+            "which on a large input can take minutes.",
+        );
+    });
     if (countOnly)
       // One round over one key, resolving to the intersection size and nothing that
       // names a match. The count-report leg is part of the same call: both parties

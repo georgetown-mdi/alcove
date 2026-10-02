@@ -124,6 +124,51 @@ test("finish drains a buffered frame before reporting the transport error", asyn
   expect(close).toHaveBeenCalledTimes(1);
 });
 
+// Whether `promise` has settled once pending callbacks have run.
+async function hasSettled(promise: Promise<unknown>): Promise<boolean> {
+  let settled = false;
+  void promise.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return settled;
+}
+
+test("terminated stays pending while the connection is open", async () => {
+  const { conn, controls } = makeQueued();
+  controls.deliver("frame");
+  await conn.receive();
+  await conn.send("reply");
+  expect(await hasSettled(conn.terminated())).toBe(false);
+});
+
+test("terminated resolves with the error an abnormal drop latched", async () => {
+  const { conn, controls } = makeQueued();
+  const ended = conn.terminated();
+  const dropped = new ConnectionError("dropped", "transport");
+  controls.fail(dropped);
+  expect(await ended).toBe(dropped);
+  await expect(conn.send("x")).rejects.toBe(dropped);
+});
+
+test("terminated resolves at a half-close, before the buffered frame drains", async () => {
+  const { conn, controls } = makeQueued();
+  controls.deliver("tail");
+  const closed = new ConnectionError("peer closed", "transport");
+  controls.finish(closed);
+  expect(await conn.terminated()).toBe(closed);
+  expect(await conn.receive()).toBe("tail");
+});
+
+test("terminated resolves with a closed error on a local close, and the first transition wins", async () => {
+  const { conn, controls } = makeQueued();
+  await conn.close();
+  controls.fail(new ConnectionError("late drop", "transport"));
+  const ended = await conn.terminated();
+  expect(ended.kind).toBe("closed");
+});
+
 test("a deferred half-close tears down the transport even if abandoned (F2)", () => {
   const { controls, close } = makeQueued();
   controls.deliver("buffered"); // queued, no waiter
