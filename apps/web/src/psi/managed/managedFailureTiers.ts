@@ -56,6 +56,10 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   (recovery: run the exchange with the command-line application, or the
  *   partner splits their input; never a retry, since the same partner input
  *   stops identically at the next window).
+ * - `"partner-refused-set"` -- the last run stopped because the partner's run
+ *   refused to send its first set for a cause other than its size (recovery:
+ *   ask the partner, whose own run reported the cause; never a retry, since
+ *   their run refuses identically at the next window).
  * - `"handed-off"` -- the last run met a copy an export had handed off and refused
  *   before reading the input or connecting (recovery: none here; the exchange runs
  *   wherever the hand-off took it, and every later run on this device refuses the
@@ -94,6 +98,7 @@ export type ManagedFailureTier =
   | "too-large"
   | "terms-change"
   | "partner-set-too-large"
+  | "partner-refused-set"
   | "handed-off"
   | "custody-unreadable"
   | "missed"
@@ -291,6 +296,10 @@ function recordedFailureTier(
   // and out of the transport bucket because reconnecting meets the same set.
   if (lastRun.failureKind === "partner-set-too-large")
     return "partner-set-too-large";
+  // A recorded refusal by the partner's run to send its set: benign, and out of
+  // the transport bucket because their run refuses the same way again.
+  if (lastRun.failureKind === "partner-refused-set")
+    return "partner-refused-set";
   // A recorded hand-off refusal: the copy this device held was given away, so the
   // failure is the single-owner invariant holding rather than anything to recover
   // from here -- and nothing about it is a desync or an attack.

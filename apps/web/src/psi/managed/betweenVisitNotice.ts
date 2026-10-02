@@ -28,6 +28,9 @@ import { readManagedFailure } from "./managedFailureTiers";
 import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
+  PARTNER_REFUSED_SET_PROBLEM,
+  PARTNER_REFUSED_SET_REMEDY,
+  PARTNER_REFUSED_SET_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
@@ -62,6 +65,7 @@ export type BetweenVisitNoticeKind =
   | "terms-shortfall"
   | "too-large"
   | "partner-set-too-large"
+  | "partner-refused-set"
   | "terms-change"
   | "unexplained";
 
@@ -98,7 +102,7 @@ export interface BetweenVisitNoticeInput {
   now: number;
 }
 
-/** The title over each moment. The seven failure titles are the same constants
+/** The title over each moment. The eight failure titles are the same constants
  * the next visit's own alert holds its title to
  * ({@link ../../recurring/managedRunLaunchModel.ts}), which
  * betweenVisitNotice.test.ts holds this surface's titles equal to; the
@@ -116,6 +120,7 @@ const NOTICE_TITLES: Record<
   "terms-shortfall": TERMS_SHORTFALL_FAILURE_TITLE,
   "terms-change": TERMS_CHANGE_FAILURE_TITLE,
   "partner-set-too-large": PARTNER_SET_TOO_LARGE_TITLE,
+  "partner-refused-set": PARTNER_REFUSED_SET_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
 };
 
@@ -127,6 +132,7 @@ const NOTIFIED_FAILURE_TIERS: ReadonlySet<ManagedFailureTier> = new Set([
   "too-large",
   "terms-change",
   "partner-set-too-large",
+  "partner-refused-set",
   "unexplained",
 ]);
 
@@ -293,6 +299,16 @@ function failureNotice(
         `later window stops the same way until your partner's input is ` +
         `smaller. ${PARTNER_SET_TOO_LARGE_REMEDY}`,
       tag: noticeTag(record.id, "partner-set-too-large"),
+    };
+  if (tier === "partner-refused-set")
+    return {
+      kind: "partner-refused-set",
+      title: NOTICE_TITLES["partner-refused-set"],
+      body:
+        `${name} stopped because ${PARTNER_REFUSED_SET_PROBLEM}, and every ` +
+        `later window stops the same way until your partner fixes the cause. ` +
+        PARTNER_REFUSED_SET_REMEDY,
+      tag: noticeTag(record.id, "partner-refused-set"),
     };
   if (tier === "too-large") {
     const reading: TooLargeReading = record.lastRun ?? {};

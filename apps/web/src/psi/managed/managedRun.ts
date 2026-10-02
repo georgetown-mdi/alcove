@@ -22,6 +22,7 @@ import {
   ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PeerAbortError,
   RoundCapacityError,
@@ -317,6 +318,15 @@ function isPartnerOverCeilingAbort(error: unknown): boolean {
   );
 }
 
+// The partner's abort in place of its first set, refused for any cause other
+// than its size: its own run refuses the same way at every window.
+function isPartnerRefusedSetAbort(error: unknown): boolean {
+  return (
+    error instanceof PeerAbortError &&
+    error.partnerReason === PSI_SET_REFUSED_ABORT_REASON
+  );
+}
+
 /**
  * The `lastRun` bookkeeping for a failed run the runner (not the critical
  * section) classifies, or `undefined` for a failure whose bookkeeping is owned
@@ -357,6 +367,8 @@ function isPartnerOverCeilingAbort(error: unknown): boolean {
  * part of a partner's set over this browser's ceiling. The partner's abort in
  * place of a set of its own over that ceiling records the same with
  * `refusedInRound`, since this browser's setup may have been sent by then. The
+ * partner's abort in place of its first set refused for any other cause
+ * records `partner-refused-set` with `refusedInRound` for the same reason. The
  * same partner input refuses identically at every window. `aborted` then
  * records `cancelled`. A `security`-kind
  * {@link ConnectionError} before the data exchange began records `auth`.
@@ -407,6 +419,11 @@ export function rerunFailureLastRun(
       ...failedRun(at, "failed", "partner-set-too-large"),
       refusedInRound: true,
     };
+  if (isPartnerRefusedSetAbort(error))
+    return {
+      ...failedRun(at, "failed", "partner-refused-set"),
+      refusedInRound: true,
+    };
   if (aborted) return failedRun(at, "failed", "cancelled");
   if (
     error instanceof ConnectionError &&
@@ -420,8 +437,8 @@ export function rerunFailureLastRun(
 /** The benign outcomes a surface classifies without attack framing. The first
  * six are read before any connection is attempted; `"missed"` is read after a
  * connection attempt found no partner, `"too-large"` before connecting or
- * after the terms exchange, `"partner-set-too-large"` after the terms
- * exchange, and `"relay-registration"` before connecting, once the registrar
+ * after the terms exchange, `"partner-set-too-large"` and
+ * `"partner-refused-set"` after the terms exchange, and `"relay-registration"` before connecting, once the registrar
  * did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
@@ -433,6 +450,7 @@ type BenignRerunOutcome =
   | "missed"
   | "too-large"
   | "partner-set-too-large"
+  | "partner-refused-set"
   | "relay-registration";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
@@ -501,6 +519,7 @@ export function benignRerunOutcome(
   if (isSetTooLargeError(error)) return "too-large";
   if (error instanceof RoundCapacityError || isPartnerOverCeilingAbort(error))
     return "partner-set-too-large";
+  if (isPartnerRefusedSetAbort(error)) return "partner-refused-set";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
   return undefined;

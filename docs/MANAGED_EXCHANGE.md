@@ -617,6 +617,11 @@ already defines:
   same partner input stops the same way at every window, so it is never offered
   as retryable (see [A partner's set too large for this
   browser](#a-partners-set-too-large-for-this-browser)).
+- **This needs you: the partner's run refused to send its set.** The
+  partner's run refused its first set for a cause other than its size; their
+  run refuses the same way at every window, so it is never offered as
+  retryable (see [A partner's run that refuses to send its
+  set](#a-partners-run-that-refuses-to-send-its-set)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
   ran and failed closed with no recorded benign cause (the Tier-2 case; see
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)) is the
@@ -878,6 +883,21 @@ each.
   partner sends no count.
 - **At the next visit and in the between-visit notification**, the bookkeeping
   holds the state but no count, so they state the cause and the remedy.
+
+#### A partner's run that refuses to send its set
+
+A partner's run that refuses its first set after the terms exchange tells
+this browser so in place of the set, with one of two fixed reasons: the set is
+too large to send ([above](#a-partners-set-too-large-for-this-browser)), or it
+was refused for any other cause. Neither is recorded as a connection problem,
+since the partner's run refuses the same way at every window: the first is
+the partner-set-too-large state, and the second a state of its own whose
+remedy is the partner's. Its reason states no cause, so the run screen, the
+next visit, and the between-visit notification each say that the partner's run
+refused and to ask the partner, whose own run reported why. Sets of this
+party's may already have been sent by then, so the run history states the
+same uncertain disclosure line as above. How each reason is sent: [PROTOCOL.md,
+The receive ceiling](spec/PROTOCOL.md#the-receive-ceiling).
 
 #### An input that has not changed since the last run
 

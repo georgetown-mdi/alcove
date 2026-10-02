@@ -2075,6 +2075,7 @@ describe("the rotation-in-flight marker", () => {
     "handed-off": false,
     "too-large": false,
     "partner-set-too-large": false,
+    "partner-refused-set": false,
     "terms-change": false,
     cancelled: false,
   } satisfies Record<ManagedExchangeFailureKind, boolean>;

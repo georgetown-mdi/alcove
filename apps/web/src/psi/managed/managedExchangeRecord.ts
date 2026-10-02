@@ -245,7 +245,10 @@ export type ManagedExchangeRunOutcome =
  * terms exchange, when the partner refuses to send the set or this browser
  * refuses its first part, after sets of this party's may have moved, and is
  * benign the same way: its remedy is the command-line application or a
- * smaller input on the partner's side. */
+ * smaller input on the partner's side. A `"partner-refused-set"` stop (the
+ * partner's run refused to send its first set for a cause other than its size)
+ * is met at the same point and is benign the same way: its remedy is the
+ * partner's, whose own run reported the cause. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -256,6 +259,7 @@ export type ManagedExchangeFailureKind =
   | "handed-off"
   | "too-large"
   | "partner-set-too-large"
+  | "partner-refused-set"
   | "terms-change"
   | "cancelled";
 
@@ -293,8 +297,9 @@ export interface ManagedExchangeLastRun {
   setUncounted?: true;
   /** Present only on a `"partner-set-too-large"` failure stopped inside a
    * round rather than at the terms exchange -- the partner's abort in place of
-   * its set, or this browser's refusal of the set's first part -- so sets of
-   * this party's may have been sent. The run history then states the uncertain
+   * its set, or this browser's refusal of the set's first part -- or on a
+   * `"partner-refused-set"` failure, so sets of this party's may have been
+   * sent. The run history then states the uncertain
    * disclosure line rather than that nothing was disclosed. */
   refusedInRound?: true;
 }
@@ -518,6 +523,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "handed-off",
       "too-large",
       "partner-set-too-large",
+      "partner-refused-set",
       "terms-change",
       "cancelled",
     ])

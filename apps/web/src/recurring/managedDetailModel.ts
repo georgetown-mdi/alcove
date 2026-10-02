@@ -353,8 +353,9 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * own set over the partner's ceiling after data has moved),
  * `"partner-set-too-large"` with `refusedInRound` (the partner's abort in
  * place of its set, or this browser's refusal of a set's first part, after
- * sets of this party's may have moved), `"cancelled"`, and a missing kind --
- * cannot prove it.
+ * sets of this party's may have moved), `"partner-refused-set"` (the
+ * partner's abort in place of its set, at the same point), `"cancelled"`, and
+ * a missing kind -- cannot prove it.
  */
 function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {
   const { failureKind } = lastRun;

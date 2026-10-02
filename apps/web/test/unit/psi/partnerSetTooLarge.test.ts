@@ -3,6 +3,7 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   PSIParticipant,
+  PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PeerAbortError,
   RoundCapacityError,
@@ -23,6 +24,10 @@ import {
   lastRunSchema,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  PARTNER_REFUSED_SET_TITLE,
+  PARTNER_SET_TOO_LARGE_TITLE,
+} from "@psi/managed/managedFailureCopy";
+import {
   benignRerunOutcome,
   remapLapsedRunFailure,
   rerunFailureLastRun,
@@ -36,7 +41,6 @@ import {
   lastRunMayHaveSentPayload,
   runHistoryEntries,
 } from "@recurring/managedDetailModel";
-import { PARTNER_SET_TOO_LARGE_TITLE } from "@psi/managed/managedFailureCopy";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { failureFor } from "@exchange/useInviterExchange";
@@ -347,5 +351,80 @@ describe("a managed exchange the partner stopped over this browser's ceiling", (
       ).toEqual({ at: RUN_AT, outcome: "failed", failureKind: "transport" });
       expect(benignRerunOutcome(abort, true)).toBeUndefined();
     }
+  });
+});
+
+describe("a managed exchange the partner's run refused to send its set for", () => {
+  const partnerAbort = new PeerAbortError(
+    undefined,
+    PSI_SET_REFUSED_ABORT_REASON,
+  );
+  const refusedInRound: ManagedExchangeLastRun = {
+    at: RUN_AT,
+    outcome: "failed",
+    failureKind: "partner-refused-set",
+    refusedInRound: true,
+  };
+
+  test("records the partner's abort as its own non-retryable kind, with the payload left open", () => {
+    for (const dataExchangeStarted of [false, true]) {
+      const lastRun = rerunFailureLastRun(
+        partnerAbort,
+        Date.parse(RUN_AT),
+        false,
+        dataExchangeStarted,
+      );
+      expect(lastRun).toEqual(refusedInRound);
+      expect(lastRunSchema.safeParse(lastRun).success).toBe(true);
+      expect(benignRerunOutcome(partnerAbort, dataExchangeStarted)).toBe(
+        "partner-refused-set",
+      );
+    }
+    expect(lastRunMayHaveSentPayload({ lastRun: refusedInRound })).toBe(true);
+  });
+
+  test("a live launch and the next visit state the cause and offer no retry", () => {
+    const live = classifyManagedRunFailure(
+      partnerAbort,
+      { atLaunch: record(), afterRun: record({ lastRun: refusedInRound }) },
+      undefined,
+      NOW,
+      true,
+    );
+    const recorded = managedRunFailureFromRecord(
+      record({ lastRun: refusedInRound }),
+      undefined,
+      NOW,
+    );
+    for (const failure of [live, recorded]) {
+      if (failure === undefined || failure.kind === "handed-off")
+        throw new Error("expected the partner-refused-set alert");
+      expect(failure.kind).toBe("partner-refused-set");
+      expect(failure.title).toBe(PARTNER_REFUSED_SET_TITLE);
+      expect(failure.message).toMatch(
+        /^The last run stopped because your partner's run refused to send its set of values\. .*ask your partner/,
+      );
+      expect(managedRunRetryable(failure)).toBe(false);
+    }
+  });
+
+  test("an unattended run's notification and list row name the state", () => {
+    const stored = record({ lastRun: refusedInRound });
+    expect(deriveManagedFailureTier(stored, undefined, NOW)).toBe(
+      "partner-refused-set",
+    );
+    const notice = betweenVisitNotice({
+      record: stored,
+      local: undefined,
+      caughtUpMisses: 0,
+      disposition: "failed",
+      now: NOW,
+    });
+    expect(notice?.kind).toBe("partner-refused-set");
+    expect(notice?.title).toBe(PARTNER_REFUSED_SET_TITLE);
+    expect(notice?.body).toContain("every later window stops the same way");
+    expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
+      /^Last run stopped: your partner's run refused to send its set \(.*\); ask your partner$/,
+    );
   });
 });

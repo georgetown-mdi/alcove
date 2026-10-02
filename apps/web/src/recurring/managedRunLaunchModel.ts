@@ -19,6 +19,9 @@ import {
 import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
+  PARTNER_REFUSED_SET_PROBLEM,
+  PARTNER_REFUSED_SET_REMEDY,
+  PARTNER_REFUSED_SET_TITLE,
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
@@ -87,9 +90,19 @@ export {
  *   exchange sends is over the most values the partner can receive, or the
  *   partner's set is larger than this browser can match, and the same files
  *   refuse identically every time. Not `"retry"`.
+ * - `"ask-partner"` -- the partner must fix a cause on their side: their run
+ *   refused to send its set and reported why, and it refuses identically every
+ *   time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
-  "reinvite" | "retry" | "wait" | "confirm" | "restate" | "split" | "none";
+  | "reinvite"
+  | "retry"
+  | "wait"
+  | "confirm"
+  | "restate"
+  | "split"
+  | "ask-partner"
+  | "none";
 
 /** The two readings of a record a live launch failure is classified against. They
  * differ because a failed run stamps its own `lastRun` before the host reloads, and
@@ -120,6 +133,7 @@ export interface ManagedRunFailureAlert {
     | "terms-shortfall"
     | "too-large"
     | "partner-set-too-large"
+    | "partner-refused-set"
     | "terms-change"
     | "relay-registration"
     | "custody-unreadable"
@@ -523,6 +537,20 @@ function partnerSetTooLargeFailure(error: unknown): ManagedRunFailureAlert {
   };
 }
 
+/** The benign state of a run stopped because the partner's run refused to
+ * send its set for a cause other than its size. The partner's abort states
+ * only that it refused, so a live launch and the record read back show the
+ * same copy. Not the retry state -- the partner's run refuses identically. */
+const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailureAlert = {
+  kind: "partner-refused-set",
+  title: PARTNER_REFUSED_SET_TITLE,
+  message:
+    `The last run stopped because ${PARTNER_REFUSED_SET_PROBLEM}. ` +
+    "Running it again stops the same way until your partner fixes the " +
+    `cause. ${PARTNER_REFUSED_SET_REMEDY}`,
+  recovery: "ask-partner",
+};
+
 /** The state of a run that stopped before connecting because its relay's
  * registrar did not confirm the registration the record held as pending. The
  * error's own message names the registrar, its answer, and the next step: a
@@ -669,6 +697,8 @@ export function managedRunTierFailure(
         : TERMS_CHANGE_DECLINED_FAILURE;
     case "partner-set-too-large":
       return RECORDED_PARTNER_SET_TOO_LARGE_FAILURE;
+    case "partner-refused-set":
+      return PARTNER_REFUSED_SET_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "handed-off":
@@ -784,6 +814,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "too-large": "none",
   "terms-change": "none",
   "partner-set-too-large": "none",
+  "partner-refused-set": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -853,6 +884,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "too-large": "withheld",
   "relay-registration": "withheld",
   "partner-set-too-large": "withheld",
+  "partner-refused-set": "withheld",
   "terms-change": "withheld",
   "already-running": "withheld",
   missed: "withheld",
@@ -988,6 +1020,7 @@ function classifyLaunchState(
   if (benign === "too-large") return tooLargeFailure(error);
   if (benign === "partner-set-too-large")
     return partnerSetTooLargeFailure(error);
+  if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
   if (benign === "relay-registration") return relayRegistrationFailure(error);
   const { afterRun } = records;
   const tier = deriveManagedFailureTier(afterRun, local, now);

@@ -40,7 +40,10 @@ export type {
   PsiProgressReporter,
   PsiProgressState,
 } from "./psi/participant";
-export { PSI_SET_TOO_LARGE_ABORT_REASON } from "./psi/psiBinaryFrame";
+export {
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+} from "./psi/psiBinaryFrame";
 export { loadPsiBackend } from "./psi/psiBackend";
 export type { PsiBackendOptions, PsiBackendSelection } from "./psi/psiBackend";
 export { InProcessPsiEngine } from "./psi/psiEngine";

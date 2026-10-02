@@ -179,3 +179,19 @@ export const PARTNER_SET_TOO_LARGE_REMEDY =
   "Run this exchange with the command-line application, or ask your " +
   "partner to split their input into smaller files and set up one " +
   "exchange for each.";
+
+/** The title over a run stopped because the partner's run refused to send its
+ * set; shared by a managed run's alert and the between-visit notification. */
+export const PARTNER_REFUSED_SET_TITLE =
+  "Your partner's run refused to send its set";
+
+/** What stopped a run whose partner refused to send its set, completing a
+ * sentence that ends "stopped because". */
+export const PARTNER_REFUSED_SET_PROBLEM =
+  "your partner's run refused to send its set of values";
+
+/** The remedy for a partner's refusal to send its set, in the words the
+ * next-visit alert and the between-visit notification both state it in. */
+export const PARTNER_REFUSED_SET_REMEDY =
+  "Their run reported why it refused; ask your partner to fix the cause " +
+  "on their side.";
