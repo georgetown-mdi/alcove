@@ -6,6 +6,9 @@ import PSI from "@openmined/psi.js/psi_wasm_web";
 import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  PeerAbortError,
   RoundCapacityError,
   assertFirstRoundWithinSetMaximum,
   getLogger,
@@ -58,6 +61,11 @@ import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
 import { tooLargeReadingOf } from "@psi/managed/managedRun";
 
 import {
+  PARTNER_REFUSED_SET_PROBLEM,
+  PARTNER_REFUSED_SET_REMEDY,
+  PARTNER_REFUSED_SET_TITLE,
+  PARTNER_SET_TOO_LARGE_PROBLEM,
+  PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
@@ -182,6 +190,33 @@ export function failureFor(
     ...content,
     retry: retryDispositionFor(content.category, args[1]),
   };
+}
+
+/**
+ * The copy for a partner's abort in place of its set, by the fixed reason it
+ * sent: classified `config`, since the partner's run refuses the same way
+ * however many times this one runs. Any other reason keeps the generic copy.
+ */
+function partnerRefusalCopy(
+  reason: string | undefined,
+):
+  | { title: string; problem: string; until: string; remedy: string }
+  | undefined {
+  if (reason === PSI_SET_TOO_LARGE_ABORT_REASON)
+    return {
+      title: PARTNER_SET_TOO_LARGE_TITLE,
+      problem: PARTNER_SET_TOO_LARGE_PROBLEM,
+      until: "your partner's input is smaller",
+      remedy: PARTNER_SET_TOO_LARGE_REMEDY,
+    };
+  if (reason === PSI_SET_REFUSED_ABORT_REASON)
+    return {
+      title: PARTNER_REFUSED_SET_TITLE,
+      problem: PARTNER_REFUSED_SET_PROBLEM,
+      until: "your partner fixes the cause",
+      remedy: PARTNER_REFUSED_SET_REMEDY,
+    };
+  return undefined;
 }
 
 function failureContentFor(
@@ -398,6 +433,17 @@ function failureContentFor(
       title: PARTNER_SET_TOO_LARGE_TITLE,
       message: sanitizedFailureMessage(error),
     };
+  if (error instanceof PeerAbortError) {
+    const refusal = partnerRefusalCopy(error.partnerReason);
+    if (refusal !== undefined)
+      return {
+        category: "config",
+        title: refusal.title,
+        message:
+          `The exchange stopped because ${refusal.problem}. Running it ` +
+          `again stops the same way until ${refusal.until}. ${refusal.remedy}`,
+      };
+  }
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
   // count that could not be taken. The message is fixed copy with counts, and
