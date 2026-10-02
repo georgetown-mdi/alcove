@@ -19,8 +19,9 @@ import type { MessageConnection } from "../connection/messageConnection";
 /**
  * The reason a party puts on the abort it sends the partner in place of a set
  * of its own over `MAX_PSI_DECODE_ELEMENTS` or the partner's stated
- * receive ceiling, or a first round it could not count to check against that
- * ceiling. A fixed literal, like every abort reason (see `sendAbort`).
+ * receive ceiling. A first round the party could not count sends
+ * `PSI_SET_REFUSED_ABORT_REASON` instead. A fixed literal, like every abort
+ * reason (see `sendAbort`).
  */
 export const PSI_SET_TOO_LARGE_ABORT_REASON = "a PSI set is too large to send";
 
