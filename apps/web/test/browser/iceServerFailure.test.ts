@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { expect, inject, test, vi } from "vitest";
+import { expect, inject, test } from "vitest";
 
 import Peer from "peerjs";
 
@@ -27,28 +27,6 @@ import type { PeerOptions } from "peerjs";
  * whatever the relay does, so each is held to relay candidates alone -- the
  * position of a party whose network leaves the relay as the only path.
  */
-
-/** `@psi/transport/rendezvous` reads its config through `ConfigManager` at
- * module scope, whose env read needs `process`; the schema defaults stand in
- * (the same substitution as webrtcEndpointAuthority.test.ts). */
-vi.mock("@utils/clientConfig", () => {
-  class ConfigManager {
-    load(): Promise<{
-      PEERJS_DEBUG_LEVEL: number;
-      LOG_LEVEL: string;
-      DEPLOYMENT_PROFILE: string;
-      ALCOVE_VERSION: string;
-    }> {
-      return Promise.resolve({
-        PEERJS_DEBUG_LEVEL: 1,
-        LOG_LEVEL: "INFO",
-        DEPLOYMENT_PROFILE: "hosted",
-        ALCOVE_VERSION: "",
-      });
-    }
-  }
-  return { ConfigManager };
-});
 
 const brokerPort = inject("webDevServerPort") ?? 3000;
 const brokerHost = "127.0.0.1";

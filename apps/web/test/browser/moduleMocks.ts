@@ -60,10 +60,9 @@ export function reactRouterMock(options: ReactRouterMockOptions = {}) {
 }
 
 /**
- * Stubs `@psi/transport/rendezvous`, whose import runs a top-level config load that reads
- * `process` -- absent in the browser runner, so the import throws there. A suite
- * mounting a component that transitively imports the module needs the stub even
- * when it never opens a transport.
+ * Stubs `@psi/transport/rendezvous` for a suite mounting a component that
+ * transitively imports it, so no test reaches a real signaling server and a
+ * suite can assert on the dial and listen calls.
  */
 export function rendezvousMock() {
   return {

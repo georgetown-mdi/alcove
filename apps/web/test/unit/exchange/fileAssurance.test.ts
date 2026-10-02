@@ -5,7 +5,7 @@ import {
   BROWSER_ONLY_FILE_ASSURANCE,
   fileAssuranceLine,
 } from "@exchange/fileAssurance";
-import { ConfigManager } from "@utils/clientConfig";
+import { parseClientConfig } from "@utils/clientConfig";
 
 describe("BROWSER_ONLY_FILE_ASSURANCE", () => {
   test("is the exact copy the hosted, browser-only deployment states", () => {
@@ -34,17 +34,13 @@ describe("fileAssuranceLine", () => {
 });
 
 describe("DEPLOYMENT_PROFILE default", () => {
-  test("defaults to hosted: a deployment must opt in to the console", async () => {
-    const configManager = new ConfigManager();
-    const config = await configManager.load({ data: {} });
-    expect(config.DEPLOYMENT_PROFILE).toBe("hosted");
+  test("defaults to hosted: a deployment must opt in to the console", () => {
+    expect(parseClientConfig({}).DEPLOYMENT_PROFILE).toBe("hosted");
   });
 
-  test("accepts the console profile", async () => {
-    const configManager = new ConfigManager();
-    const config = await configManager.load({
-      data: { DEPLOYMENT_PROFILE: "console" },
-    });
-    expect(config.DEPLOYMENT_PROFILE).toBe("console");
+  test("accepts the console profile", () => {
+    expect(
+      parseClientConfig({ DEPLOYMENT_PROFILE: "console" }).DEPLOYMENT_PROFILE,
+    ).toBe("console");
   });
 });

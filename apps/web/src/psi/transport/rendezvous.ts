@@ -11,7 +11,7 @@ import {
 } from "@alcove/core";
 
 import { isDiagnosticMode, whenDiagnostic } from "@utils/diagnostics";
-import { ConfigManager } from "@utils/clientConfig";
+import { peerjsDebugLevel } from "@utils/clientConfig";
 
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
@@ -29,9 +29,6 @@ import type { DataConnection, PeerOptions } from "peerjs";
 import type { WebRTCEndpoint } from "@alcove/core";
 
 const log = getLogger("rendezvous");
-
-const configManager = new ConfigManager();
-const config = await configManager.load();
 
 /** Constructs a PeerJS {@link Peer} on a chosen id; injectable so the
  * register/dial/destroy paths are unit-testable without a real broker. */
@@ -183,7 +180,7 @@ function buildPeerOptions(
     path: loc.path,
     port: loc.port,
     pingInterval: PEER_PING_INTERVAL_MS,
-    debug: resolvePeerDebugLevel(config.PEERJS_DEBUG_LEVEL, isDiagnosticMode()),
+    debug: resolvePeerDebugLevel(peerjsDebugLevel(), isDiagnosticMode()),
     logFunction: createRedactingLogFunction(redactableIds),
     config: {
       iceServers,
