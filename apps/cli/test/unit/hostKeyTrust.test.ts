@@ -614,22 +614,30 @@ const MAX_RENDERED_LINK_LENGTH =
 // The first-party copy, restated whole so a link that renders a PREFIX of it --
 // the defect this partition exists to close -- fails rather than matching a
 // phrase that happens to survive the cap.
-const REMEDY_PREFIX =
+const REFUSAL_SUMMARY =
   "no host_key_fingerprint is pinned for this SFTP server and this run is " +
-  "not interactive, so its identity cannot be confirmed; refusing to " +
-  "connect. To fix: read the server's key with 'alcove probe-host-key " +
-  "sftp://HOST[:PORT]' (HOST is the configured host below), confirm it with " +
-  "the server's administrator, then pass it as --server-host-key-fingerprint " +
-  "SHA256:...";
-const REFUSAL_WITH_CONFIG =
-  REMEDY_PREFIX +
-  ", or set connection.server.host_key_fingerprint in the configuration " +
-  "below; or run once from an interactive terminal (with docker, add -it) " +
-  "to review and pin the presented key.";
-const REFUSAL_WITHOUT_CONFIG =
-  REMEDY_PREFIX +
-  "; or run from an interactive terminal (with docker, add -it) to review " +
-  "and accept the presented key for this run only.";
+  "not interactive, so its identity cannot be confirmed; refusing to connect.";
+const PROBE_REMEDY =
+  "  - read the server's key with probe-host-key sftp://HOST[:PORT], HOST " +
+  "being the configured host below (as 'alcove probe-host-key ...', or with " +
+  "docker as 'docker run --rm IMAGE probe-host-key ...'), confirm it with " +
+  "the server's administrator, then pass it as " +
+  "--server-host-key-fingerprint SHA256:...";
+const REFUSAL_WITH_CONFIG = [
+  REFUSAL_SUMMARY,
+  "To fix, do one of:",
+  PROBE_REMEDY,
+  "  - set connection.server.host_key_fingerprint in the configuration below",
+  "  - run once from an interactive terminal (with docker, add -it) to " +
+    "review and pin the presented key",
+].join("\n");
+const REFUSAL_WITHOUT_CONFIG = [
+  REFUSAL_SUMMARY,
+  "To fix, do one of:",
+  PROBE_REMEDY,
+  "  - run from an interactive terminal (with docker, add -it) to review " +
+    "and accept the presented key for this run only",
+].join("\n");
 // Raised after the probe, itself a connection: this can only accurately
 // assure what that connection disclosed, not that none was opened. ssh2
 // refuses at host-key verification, before userauth (the assumption recorded
@@ -647,9 +655,9 @@ const CONFIG_LABEL = "configuration file: ";
 // Refuse through establishHostKeyTrust and render what the operator sees:
 // sanitizeErrorForDisplay over the whole cause chain, which is the boundary
 // every CLI sink shows a thrown error at. That each sink renders the chain
-// rather than a bare `.message` -- what delivers the labelled fragments composed
-// onto cause links -- is held by errorSinkCauseChain.test.ts. The real renderer here,
-// not a stub: the per-link cap is the whole subject.
+// rather than a bare `.message` -- what delivers the labelled fragments
+// composed onto cause links -- is held by errorSinkCauseChain.test.ts. The real
+// renderer here, not a stub: the per-link cap is the whole subject.
 async function refuse(options: {
   persistence: HostKeyPersistence;
   host?: string;
@@ -781,29 +789,23 @@ for (const [hostLabel, host, hostOverruns] of HOSTS)
       expect(connection.server.hostKeyFingerprint).toBeUndefined();
   });
 
-// The non-interactive refusal is what a scheduled run, or `docker run` without
-// -it, meets first, so its remedy names the two tools that let such a run
-// connect, on the refusal's own line rather than a "caused by:" link, and the
-// ephemeral shape does not point at a configuration it does not have.
 for (const persistence of [
   { mode: "write-now", configPath: ORDINARY_CONFIG_PATH },
   { mode: "save-with-config", configPath: ORDINARY_CONFIG_PATH },
   { mode: "ephemeral" },
 ] satisfies HostKeyPersistence[])
-  test(`the non-interactive refusal (${persistence.mode}) names probe-host-key and --server-host-key-fingerprint under "To fix:"`, async () => {
+  test(`the non-interactive refusal (${persistence.mode}) puts one remedy per line under "To fix"`, async () => {
     const { links } = await refuse({ persistence });
-    const remedy = links[0]?.slice(links[0].indexOf("To fix: ")) ?? "";
+    const lines = links[0]?.split("\n") ?? [];
 
-    expect(links[0]).toContain("refusing to connect. To fix: ");
-    expect(remedy).toContain("alcove probe-host-key sftp://HOST[:PORT]");
-    expect(remedy).toContain("--server-host-key-fingerprint SHA256:");
-    expect(remedy).toContain("interactive terminal (with docker, add -it)");
-    if (persistence.mode === "ephemeral")
+    expect(lines[0]).toBe(REFUSAL_SUMMARY);
+    expect(lines[1]).toBe("To fix, do one of:");
+    expect(lines[2]).toBe(PROBE_REMEDY);
+    expect(lines.slice(2).every((line) => line.startsWith("  - "))).toBe(true);
+    if (persistence.mode === "ephemeral") {
+      expect(lines.length).toBe(4);
       expect(links[0]).not.toContain("configuration");
-    else
-      expect(remedy).toContain(
-        "connection.server.host_key_fingerprint in the configuration below",
-      );
+    } else expect(lines.length).toBe(5);
   });
 
 for (const [hostLabel, host, hostOverruns] of HOSTS)
@@ -920,11 +922,14 @@ test("a control-laden host is escaped at the boundary and cannot forge a link", 
     `${HOST_LABEL}sftp\\x1b[31m.example.org\\x0anot-an-error: forged\\x0d` +
       `\\x0acaused by: forged\\x00\\u202e`,
   );
-  // Non-forgeable framing: the separator's newline is the only one the render
-  // contains, so a host holding `caused by: ` text of its own adds no link and
-  // cannot pass its bytes off as a further step in the chain.
+  // Non-forgeable framing: the separators' newlines and the refusal's own line
+  // breaks are the only ones the render contains, so a host holding
+  // `caused by: ` text of its own adds no link and cannot pass its bytes off
+  // as a further step in the chain.
   expect(links.length).toBe(3);
-  expect(rendered.split("\n").length).toBe(links.length);
+  expect(rendered.split("\n").length).toBe(
+    REFUSAL_WITH_CONFIG.split("\n").length + links.length - 1,
+  );
 });
 
 // The private-key redaction is fail-closed past a truncated block: it replaces

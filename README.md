@@ -90,6 +90,11 @@ To run without a terminal, as a scheduled job does, read the fingerprint first, 
 ```sh
 docker run --rm ghcr.io/georgetown-mdi/alcove:latest \
   probe-host-key sftp://sftp.example.org
+```
+
+Then paste the whole fingerprint it printed in place of `SHA256:FINGERPRINT` in the run command:
+
+```sh
 docker run \
   --rm --mount type=bind,src=/Users/me/psi-exchange,dst=/work \
   ghcr.io/georgetown-mdi/alcove:latest \
@@ -99,7 +104,7 @@ docker run \
   clients.csv matches.csv
 ```
 
-Replace `SHA256:FINGERPRINT` with the whole fingerprint `probe-host-key` printed. See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
+See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
 
 Because the only content accessible to the container is what is in `WORK_PATH`, we recommend making a new directory and placing the file you wish to link in it.
 
