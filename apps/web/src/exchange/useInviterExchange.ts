@@ -192,6 +192,33 @@ export function failureFor(
   };
 }
 
+/**
+ * The copy for a partner's abort in place of its set, by the fixed reason it
+ * sent: classified `config`, since the partner's run refuses the same way
+ * however many times this one runs. Any other reason keeps the generic copy.
+ */
+function partnerRefusalCopy(
+  reason: string | undefined,
+):
+  | { title: string; problem: string; until: string; remedy: string }
+  | undefined {
+  if (reason === PSI_SET_TOO_LARGE_ABORT_REASON)
+    return {
+      title: PARTNER_SET_TOO_LARGE_TITLE,
+      problem: PARTNER_SET_TOO_LARGE_PROBLEM,
+      until: "your partner's input is smaller",
+      remedy: PARTNER_SET_TOO_LARGE_REMEDY,
+    };
+  if (reason === PSI_SET_REFUSED_ABORT_REASON)
+    return {
+      title: PARTNER_REFUSED_SET_TITLE,
+      problem: PARTNER_REFUSED_SET_PROBLEM,
+      until: "your partner fixes the cause",
+      remedy: PARTNER_REFUSED_SET_REMEDY,
+    };
+  return undefined;
+}
+
 function failureContentFor(
   category: ExchangeErrorCategory,
   error: unknown,
@@ -406,35 +433,17 @@ function failureContentFor(
       title: PARTNER_SET_TOO_LARGE_TITLE,
       message: sanitizedFailureMessage(error),
     };
-  // The partner's abort in place of a set of its own over the ceiling this
-  // browser stated, or in place of its first set refused for another cause.
-  // The abort states no figure, so the copy is fixed. Classified `config`: the
-  // partner's run refuses the same way however many times it runs. Any other
-  // partner abort falls through to the generic copy below.
-  if (
-    error instanceof PeerAbortError &&
-    error.partnerReason === PSI_SET_TOO_LARGE_ABORT_REASON
-  )
-    return {
-      category: "config",
-      title: PARTNER_SET_TOO_LARGE_TITLE,
-      message:
-        `The exchange stopped because ${PARTNER_SET_TOO_LARGE_PROBLEM}. ` +
-        "Running it again stops the same way until your partner's input is " +
-        `smaller. ${PARTNER_SET_TOO_LARGE_REMEDY}`,
-    };
-  if (
-    error instanceof PeerAbortError &&
-    error.partnerReason === PSI_SET_REFUSED_ABORT_REASON
-  )
-    return {
-      category: "config",
-      title: PARTNER_REFUSED_SET_TITLE,
-      message:
-        `The exchange stopped because ${PARTNER_REFUSED_SET_PROBLEM}. ` +
-        "Running it again stops the same way until your partner fixes the " +
-        `cause. ${PARTNER_REFUSED_SET_REMEDY}`,
-    };
+  if (error instanceof PeerAbortError) {
+    const refusal = partnerRefusalCopy(error.partnerReason);
+    if (refusal !== undefined)
+      return {
+        category: "config",
+        title: refusal.title,
+        message:
+          `The exchange stopped because ${refusal.problem}. Running it ` +
+          `again stops the same way until ${refusal.until}. ${refusal.remedy}`,
+      };
+  }
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
   // count that could not be taken. The message is fixed copy with counts, and

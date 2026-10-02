@@ -2776,7 +2776,7 @@ test("handler: an input that cannot satisfy the agreed terms exits 64 with no ho
   }
 });
 
-test("handler: a file-sync first round over the per-set maximum exits 64 with no host-key probe", async () => {
+test("handler: a first round over the per-set maximum exits 64 with no host-key probe", async () => {
   // Over the same unpinned sftp config: the size check reads only the prepared
   // input, so its refusal ends the run with the host-key step -- and so the
   // probe that contacts the server and writes the pin -- never entered.
@@ -3289,7 +3289,7 @@ test("handler: a key-file path the preflight refuses sends no wake call", async 
   }
 });
 
-test("handler: a file-sync first round over the per-set maximum sends no wake call", async () => {
+test("handler: an sftp first round over the per-set maximum sends no wake call", async () => {
   const argv = provisionedRun(minimalSFTPConfig.connection);
   const fetch = stubProvisionFetch(200);
   vi.mocked(assertFirstRoundWithinSetMaximum).mockImplementationOnce(() => {

@@ -1064,7 +1064,7 @@ test("handler: undeclared columns are named once, before host-key trust", async 
   }
 });
 
-test("handler: a file-sync first round over the per-set maximum exits 64 with no host-key probe", async () => {
+test("handler: a first round over the per-set maximum exits 64 with no host-key probe", async () => {
   // The size check reads only the prepared input, so its refusal ends the run
   // over the same sftp URL with the host-key step never entered. The refusal
   // is planted: reaching the real bound takes millions of rows.
