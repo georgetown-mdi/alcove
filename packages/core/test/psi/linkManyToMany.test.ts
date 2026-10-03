@@ -62,6 +62,7 @@ import type { CSVRow } from "../../src/file";
 import type { AssociationTable } from "../../src/types";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
 
 // Both-sided deduplicating matching at the cascade boundary: each party keeps a
 // value several of its own records hold, contributes it once, and attributes a
@@ -534,7 +535,9 @@ test("a value m and n records hold writes m x n result rows and attests m x n", 
 // -- one contributing its whole dataset verbatim -- puts a value in the round
 // twice, so it is played by hand from the PSI primitives: identifyIntersection's
 // starter branch without the association-table check that refuses the ambiguity
-// upstream, then the two mapped-element legs a starter sends first.
+// upstream, then the two mapped-element legs a starter sends first. Every match
+// refuses its setup, which is not strictly ascending, so the joiner it plays
+// against skips that order check to reach the resolver behind it.
 
 type StarterRoundReport = (
   joinerPositions: Array<number>,
@@ -598,7 +601,7 @@ async function runAgainstNonConformingStarter(
   ).catch(() => undefined);
   const outcome = await linkViaPSI(
     { cardinality: "many-to-many" },
-    makeParticipant("joiner"),
+    setupOrderUncheckedJoiner(psiLibrary),
     joinerConn,
     joinerKeys,
     fanOutFreeBounds(joinerKeys.length, starterValues.length),

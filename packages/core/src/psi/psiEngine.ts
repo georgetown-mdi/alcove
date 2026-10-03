@@ -358,8 +358,9 @@ export class InProcessPsiEngine implements PsiEngine {
 
   // The held setup's elements, refused unless strictly ascending: a sliced
   // match equals the single call only over a setup no element of which
-  // appears in two slices.
-  private sliceableSetupElements(
+  // appears in two slices, and every match refuses the same setups whatever
+  // its size.
+  private ascendingSetupElements(
     setup: DeserializedServerSetup,
   ): Array<Uint8Array> {
     const elements = setup.getRaw()!.getEncryptedElementsList_asU8();
@@ -584,11 +585,12 @@ export class InProcessPsiEngine implements PsiEngine {
       "computeAssociationTable",
       "identifier-revealing",
     );
+    const setupElements = this.ascendingSetupElements(setup);
     const response = this.library.response.deserializeBinary(responseBytes);
     const responseCount = response.getEncryptedElementsList().length;
     const ranges = this.rangesFor(responseCount);
     const slices = this.setupSlicesFor(
-      setup.getRaw()!.getEncryptedElementsList().length,
+      setupElements.length,
       ranges.reduce(
         (largest, range) => Math.max(largest, range.end - range.start),
         0,
@@ -596,7 +598,13 @@ export class InProcessPsiEngine implements PsiEngine {
     );
     if (slices.length > 1)
       return Promise.resolve(
-        this.slicedAssociationTable(client, setup, response, ranges, slices),
+        this.slicedAssociationTable(
+          client,
+          setupElements,
+          response,
+          ranges,
+          slices,
+        ),
       );
     if (ranges.length === 1) {
       const table = client.getAssociationTable(setup, response);
@@ -625,12 +633,11 @@ export class InProcessPsiEngine implements PsiEngine {
   // response elements the operation's settle report states.
   private slicedAssociationTable(
     client: PSIClient,
-    setup: DeserializedServerSetup,
+    setupElements: ReadonlyArray<Uint8Array>,
     response: ReturnType<PSILibrary["response"]["deserializeBinary"]>,
     ranges: ReadonlyArray<PsiChunkRange>,
     slices: ReadonlyArray<PsiChunkRange>,
   ): [Array<number>, Array<number>] {
-    const setupElements = this.sliceableSetupElements(setup);
     const responseCount = ranges[ranges.length - 1]!.end;
     const responseElements = response.getEncryptedElementsList_asU8();
     const responseChunks =
@@ -680,15 +687,12 @@ export class InProcessPsiEngine implements PsiEngine {
     // across a chunk boundary once per chunk (docs/spec/PROTOCOL.md, the
     // count-only match). Setup slices of a strictly ascending setup are
     // disjoint, so each call sees the whole response and the counts add.
+    const setupElements = this.ascendingSetupElements(setup);
     const response = this.library.response.deserializeBinary(responseBytes);
     const responseCount = response.getEncryptedElementsList().length;
-    const slices = this.setupSlicesFor(
-      setup.getRaw()!.getEncryptedElementsList().length,
-      responseCount,
-    );
+    const slices = this.setupSlicesFor(setupElements.length, responseCount);
     if (slices.length === 1)
       return Promise.resolve(client.getIntersectionSize(setup, response));
-    const setupElements = this.sliceableSetupElements(setup);
     let size = 0;
     for (let s = 0; s < slices.length; s += 1) {
       const slice = slices[s]!;

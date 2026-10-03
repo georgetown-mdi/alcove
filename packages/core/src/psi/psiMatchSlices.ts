@@ -52,10 +52,11 @@ export function matchSetupSliceElements(
 
 /**
  * Refuses a partner's setup whose elements are not strictly ascending by
- * bytes. The sliced match sums or offsets per-slice results, which equals the
- * single call only when no element appears in two slices; a conforming setup
- * holds distinct masked values in the library's sort order, so only a
- * nonconforming partner is refused. The message holds no partner bytes.
+ * bytes, before every match whether sliced or not. The sliced match sums or
+ * offsets per-slice results, which equals the single call only when no
+ * element appears in two slices; a conforming setup holds distinct masked
+ * values in the library's sort order, so only a nonconforming partner is
+ * refused. The message holds no partner bytes.
  */
 export function assertStrictlyAscending(
   elements: ReadonlyArray<Uint8Array>,

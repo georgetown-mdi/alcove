@@ -4,6 +4,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
+import { isNamedDiagnosis } from "../../src/errors";
 
 import type { InProcessPsiEngineOptions } from "../../src/psi/psiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "./fixedKeyPsiLibrary";
@@ -247,11 +248,11 @@ export async function expectDuplicatedResponseCountMatchesSingleCall(params: {
 
 /**
  * Asserts that a partner setup repeating one element across a setup slice
- * boundary is refused by the sliced match in either mode, rather than counted
- * or paired twice, while the one-call match over the same setup returns what
- * the library returns for it.
+ * boundary is refused in either mode, rather than counted or paired twice,
+ * and refused alike by the sliced match and the one-call match: the same
+ * error class, the same message, the same named diagnosis.
  */
-export async function expectBoundaryRepeatRefusedWhenSliced(params: {
+export async function expectBoundaryRepeatRefused(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
   clientValues: ReadonlyArray<string>;
@@ -298,20 +299,21 @@ export async function expectBoundaryRepeatRefusedWhenSliced(params: {
           ? target.computeAssociationTable(responseBytes)
           : target.computeIntersectionCardinality(responseBytes);
 
-      await sliced.receiveServerSetup(setupBytes);
-      await expect(match(sliced)).rejects.toThrow(
-        "joiner protocol error: PSI server setup is not in strictly ascending element order",
-      );
-
-      const setup = library.serverSetup.deserializeBinary(setupBytes);
-      const response = library.response.deserializeBinary(responseBytes);
-      let expected: unknown;
-      if (revealsIdentifiers) {
-        const table = client.getAssociationTable(setup, response);
-        expected = [table[0], table[1]];
-      } else expected = client.getIntersectionSize(setup, response);
-      await whole.receiveServerSetup(setupBytes);
-      expect(await match(whole)).toStrictEqual(expected);
+      const refusal = async (target: InProcessPsiEngine): Promise<unknown> => {
+        await target.receiveServerSetup(setupBytes);
+        return match(target).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      };
+      for (const caught of [await refusal(sliced), await refusal(whole)]) {
+        expect(caught).toBeInstanceOf(Error);
+        expect((caught as Error).constructor).toBe(Error);
+        expect((caught as Error).message).toBe(
+          "joiner protocol error: PSI server setup is not in strictly ascending element order",
+        );
+        expect(isNamedDiagnosis(caught)).toBe(true);
+      }
     } finally {
       sliced.dispose();
       whole.dispose();

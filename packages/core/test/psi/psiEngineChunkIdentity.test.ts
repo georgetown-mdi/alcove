@@ -6,7 +6,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import {
   chunkIdentityValues,
-  expectBoundaryRepeatRefusedWhenSliced,
+  expectBoundaryRepeatRefused,
   expectChunkedCountMatchesSingleCall,
   expectChunkedRoundMatchesSingleCall,
   expectDuplicatedResponseCountMatchesSingleCall,
@@ -157,16 +157,39 @@ describe.each([
     ).toStrictEqual(BETWEEN_CHUNKS);
   });
 
-  test("a setup repeating an element across a slice boundary is refused when sliced", async (ctx) => {
+  test("a setup repeating an element across a slice boundary is refused sliced or not", async (ctx) => {
     if (!library) {
       ctx.skip();
       return;
     }
-    await expectBoundaryRepeatRefusedWhenSliced({
+    await expectBoundaryRepeatRefused({
       library,
       serverValues,
       clientValues,
       setupSliceElements: SETUP_SLICE_ELEMENTS,
     });
+  });
+
+  test("a conforming setup matched as one call passes the ascending check in either mode", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    expect(
+      await expectChunkedRoundMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        setupSliceElements: TOTAL,
+      }),
+    ).toStrictEqual({});
+    expect(
+      await expectChunkedCountMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        setupSliceElements: TOTAL,
+      }),
+    ).toStrictEqual([]);
   });
 });
