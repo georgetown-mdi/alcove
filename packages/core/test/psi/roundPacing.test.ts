@@ -132,7 +132,8 @@ test("the paced sweep resolves a round as the unpaced sweep does", async () => {
     roundCandidatePairSweep(senderRanks, receiverRanks, acceptance),
     new EventLoopPacer(),
   );
-  expect(yieldWhenDue).toHaveBeenCalledTimes(3);
+  // Two passes over the pairs: indexing the receivers, then the sweep.
+  expect(yieldWhenDue).toHaveBeenCalledTimes(6);
   expect(paced).toStrictEqual(
     resolveRoundCandidatePairs(senderRanks, receiverRanks, acceptance),
   );
@@ -186,10 +187,10 @@ test(
       identity,
       identity,
     ]);
-    // Each party's round asks its pacer once a stretch in each of eleven passes
-    // over the round's records: the set build, the candidate-pair pass, the
-    // sweep, both loops of each of the two position-set derivations, and the
-    // four passes that record the accepted pairs.
+    // Each party's round asks its pacer once a stretch in at least eleven
+    // passes over the round's records: the set build, the candidate-pair pass,
+    // the groupings of the matches, the sweep, the two position-set
+    // derivations, and the passes that record the accepted pairs.
     const passes = 11;
     expect(yieldWhenDue.mock.calls.length).toBeGreaterThanOrEqual(
       2 * passes * stretches,

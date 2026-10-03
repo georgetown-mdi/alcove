@@ -9,10 +9,10 @@ import { stressMemory } from "./stressMemory";
 
 // The per-row structures of a linkage round and of the entity closure, driven
 // past the 2^24 entries a V8 Map or Set holds and at a 50-million-record input
-// (docs/spec/PROTOCOL.md, The memory ceiling, and the CSV intake cap). Each
-// run is its own process, so the peak resident set it reports is its own, and
-// each throws the Map or Set RangeError from the frame the spec names. About
-// five minutes and up to 12 GB resident, which is why it is the opt-in tier.
+// (docs/spec/PROTOCOL.md, One round's matched records, and the CSV intake
+// cap). Each run is its own process, so the peak resident set it reports is
+// its own, and each completes. Minutes and up to about 13 GB resident, which
+// is why it is the opt-in tier.
 
 const PROBE = fileURLToPath(new URL("./perRowMaps.probe.ts", import.meta.url));
 const MIB = 1024 * 1024;
@@ -68,25 +68,26 @@ function measure(
   return result;
 }
 
-// Each case's peak resident set as measured in docs/spec/PROTOCOL.md, rounded
-// up to whole GiB: the free memory a case needs before it spawns.
-const cases: ReadonlyArray<[ProbeCase, number, string, number]> = [
-  ["ordinalOfRow", PAST_MAP_LIMIT, "describeLocalRoundGrouping", 2],
-  ["ordinalOfRow", TARGET, "describeLocalRoundGrouping", 4],
-  ["localRanks", PAST_MAP_LIMIT, "describeLocalRoundGrouping", 5],
-  ["localRanks", TARGET, "describeLocalRoundGrouping", 12],
-  ["partnerRanks", PAST_MAP_LIMIT, "noteMatch", 7],
-  ["partnerRanks", TARGET, "noteMatch", 10],
-  ["entityClusters", PAST_MAP_LIMIT, "RowForest.node", 3],
-  ["entityClusters", TARGET, "RowForest.node", 4],
-  ["closurePairs", PAST_MAP_LIMIT, "assertRoundDiagonalClosure", 9],
-  ["closurePairs", TARGET, "RowForest.node", 6],
+// The free memory a case needs before it spawns: its peak resident set as
+// measured in docs/spec/PROTOCOL.md, rounded up to whole GiB, and for a case
+// the spec records as not run, the 2^24 figure scaled to its size.
+const cases: ReadonlyArray<[ProbeCase, number, number]> = [
+  ["localGrouping", PAST_MAP_LIMIT, 1],
+  ["localGrouping", TARGET, 2],
+  ["localRanks", PAST_MAP_LIMIT, 4],
+  ["localRanks", TARGET, 12],
+  ["partnerRanks", PAST_MAP_LIMIT, 4],
+  ["partnerRanks", TARGET, 11],
+  ["entityClusters", PAST_MAP_LIMIT, 5],
+  ["entityClusters", TARGET, 13],
+  ["closurePairs", PAST_MAP_LIMIT, 2],
+  ["closurePairs", TARGET, 5],
 ];
 
 test.for(cases)(
-  "%s at %i entries throws at the Map or Set limit in %s",
+  "%s at %i entries completes past the Map or Set limit",
   { timeout: PROBE_TIMEOUT_MS },
-  ([probe, entries, frame, needGiB], ctx) => {
+  ([probe, entries, needGiB], ctx) => {
     const memory = stressMemory();
     ctx.skip(
       memory.bytes / GIB < needGiB,
@@ -94,16 +95,13 @@ test.for(cases)(
         `this host's ${memory.measure} is ${(memory.bytes / GIB).toFixed(1)} GiB`,
     );
     const result = measure(probe, entries);
-    expect(result.holds).toBe(false);
-    expect(result.error).toMatch(
-      /^RangeError: (Map|Set) maximum size exceeded$/,
-    );
-    expect(result.failedIn?.split(" ")[0]).toBe(frame);
+    expect(result.error).toBeUndefined();
+    expect(result.holds).toBe(true);
   },
 );
 
 test("a probe past its timeout is killed and the failure names its case and size", () => {
-  expect(() => measure("ordinalOfRow", PAST_MAP_LIMIT, 1)).toThrow(
-    `the ordinalOfRow probe at ${PAST_MAP_LIMIT} entries did not finish within 1 ms and was killed`,
+  expect(() => measure("localGrouping", PAST_MAP_LIMIT, 1)).toThrow(
+    `the localGrouping probe at ${PAST_MAP_LIMIT} entries did not finish within 1 ms and was killed`,
   );
 });

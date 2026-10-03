@@ -347,17 +347,15 @@ test("the many side drops a value two or more of the partner's records hold", ()
   // positions. The rule is applied on the partner's behalf: the value leaves the
   // round entirely rather than being resolved to either partner record, so the
   // exchange cannot silently deliver many-to-many.
-  expect([
-    ...attributableRoundMatches([0, 0, 1], [5, 6, 7]).entries(),
-  ]).toStrictEqual([[1, 7]]);
+  expect(attributableRoundMatches([0, 0, 1], [5, 6, 7])).toStrictEqual({
+    localPositions: [1],
+    partnerPositions: [7],
+  });
   // A round in which every value the partner contributed is its own is untouched.
-  expect([
-    ...attributableRoundMatches([0, 1, 2], [5, 6, 7]).entries(),
-  ]).toStrictEqual([
-    [0, 5],
-    [1, 6],
-    [2, 7],
-  ]);
+  expect(attributableRoundMatches([0, 1, 2], [5, 6, 7])).toStrictEqual({
+    localPositions: [0, 1, 2],
+    partnerPositions: [5, 6, 7],
+  });
 });
 
 test("a partner contributing one value twice is refused by the round's own table check", async () => {

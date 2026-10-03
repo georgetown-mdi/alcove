@@ -9,12 +9,21 @@ import {
   positionRowRange,
   positionsByOrdinal,
   readPartnerRoundGrouping,
+  slotOfPosition,
   type LocalRoundGrouping,
   type OrdinalPositions,
   type RoundCandidates,
   type RoundGroupingField,
   type RoundOwnership,
 } from "./roundGrouping";
+import {
+  groupDistinctByKey,
+  groupOf,
+  indexInSorted,
+  Int32Builder,
+  sortedDistinctInt32,
+  type Int32Groups,
+} from "./int32Groups";
 import {
   resolveRoundCandidatePairs,
   roundCandidatePairSweep,
@@ -613,16 +622,27 @@ function singlePassResolves(cardinality: LinkageCardinality): boolean {
 export function attributableRoundMatches(
   myIndices: ReadonlyArray<number>,
   theirIndices: ReadonlyArray<number>,
-): Map<number, number> {
-  const partnerPositionOf = new Map<number, number>();
-  const ambiguous = new Set<number>();
-  for (let ii = 0; ii < myIndices.length; ++ii) {
-    const position = myIndices[ii];
-    if (partnerPositionOf.has(position)) ambiguous.add(position);
-    else partnerPositionOf.set(position, theirIndices[ii]);
+): { localPositions: Array<number>; partnerPositions: Array<number> } {
+  let highest = -1;
+  for (const position of myIndices) {
+    if (!Number.isInteger(position) || position < 0 || position >= 2 ** 31)
+      throw new InternalConsistencyError(
+        `a linkage round matched position ${position}, which no set holds`,
+      );
+    if (position > highest) highest = position;
   }
-  for (const position of ambiguous) partnerPositionOf.delete(position);
-  return partnerPositionOf;
+  // 1 for a position named once, 2 for one named more than once.
+  const named = new Uint8Array(highest + 1);
+  for (const position of myIndices)
+    named[position] = named[position] === 0 ? 1 : 2;
+  const localPositions: Array<number> = [];
+  const partnerPositions: Array<number> = [];
+  for (let ii = 0; ii < myIndices.length; ++ii)
+    if (named[myIndices[ii]] === 1) {
+      localPositions.push(myIndices[ii]);
+      partnerPositions.push(theirIndices[ii]);
+    }
+  return { localPositions, partnerPositions };
 }
 
 /**
@@ -694,43 +714,57 @@ function roundAcceptance(
 // side's records: the positions of the other party's set each of them matched.
 // It is what keeps a partner record's other positions out of an entry.
 function* acceptedPositionSets(
-  acceptedRanks: ReadonlyArray<number>,
-  partnerRanks: ReadonlyArray<number>,
+  acceptedRanks: ArrayLike<number>,
+  partnerRanks: ArrayLike<number>,
+  rankCount: number,
   partnerPositions: OrdinalPositions,
-  matchedPositions: ReadonlyMap<number, Set<number>>,
-): PaceableSteps<Map<number, Array<number>>> {
-  const sets = new Map<number, Set<number>>();
-  for (let p = 0; p < acceptedRanks.length; ++p) {
-    if ((p + 1) % PACED_STRETCH_RECORDS === 0) yield;
-    const matched = matchedPositions.get(acceptedRanks[p]);
-    if (matched === undefined)
-      throw new InternalConsistencyError(
-        "a linkage round accepted a pair resting on no matched value",
-      );
-    let set = sets.get(acceptedRanks[p]);
-    if (set === undefined) {
-      set = new Set<number>();
-      sets.set(acceptedRanks[p], set);
+  matchedPositions: Int32Groups,
+): PaceableSteps<Int32Groups> {
+  const partnersOf = yield* groupDistinctByKey(
+    acceptedRanks,
+    partnerRanks,
+    rankCount,
+  );
+  const starts = new Int32Array(rankCount + 1);
+  const positions = new Int32Builder();
+  for (let rank = 0; rank < rankCount; ++rank) {
+    if ((rank + 1) % PACED_STRETCH_RECORDS === 0) yield;
+    const from = positions.length;
+    const partners = groupOf(partnersOf, rank);
+    if (partners.length > 0) {
+      const matched = groupOf(matchedPositions, rank);
+      if (matched.length === 0)
+        throw new InternalConsistencyError(
+          "a linkage round accepted a pair resting on no matched value",
+        );
+      for (const partner of partners)
+        for (
+          let k = partnerPositions.starts[partner];
+          k < partnerPositions.starts[partner + 1];
+          ++k
+        ) {
+          const position = partnerPositions.positions[k];
+          if (indexInSorted(matched, position) >= 0) positions.push(position);
+        }
+      if (partners.length > 1) {
+        const entry = sortedDistinctInt32(positions.finish().subarray(from));
+        positions.truncate(from);
+        for (const position of entry) positions.push(position);
+      }
     }
-    const partner = partnerRanks[p];
-    for (
-      let k = partnerPositions.starts[partner];
-      k < partnerPositions.starts[partner + 1];
-      ++k
-    ) {
-      const position = partnerPositions.positions[k];
-      if (matched.has(position)) set.add(position);
-    }
+    starts[rank + 1] = positions.length;
   }
-  const entries = new Map<number, Array<number>>();
-  for (const [rank, set] of sets) {
-    entries.set(
-      rank,
-      [...set].sort((a, b) => a - b),
-    );
-    if (entries.size % PACED_STRETCH_RECORDS === 0) yield;
-  }
-  return entries;
+  return { starts, values: positions.finish() };
+}
+
+// What each of a round's entries of the partner's mapped-element list must be,
+// in the order the partner states them: the `i`-th names the positions
+// `positions` holds for partner rank `ranks[i]`, and expands to the rows
+// `rows` holds for that rank.
+interface ExpectedRoundEntries {
+  readonly ranks: Int32Array;
+  readonly positions: Int32Groups;
+  readonly rows: Int32Groups;
 }
 
 // The positions one entry of a partner's mapped-element list names, checked
@@ -774,7 +808,7 @@ function entryPositions(
 
 function positionsEqual(
   named: ReadonlyArray<number>,
-  expected: ReadonlyArray<number>,
+  expected: ArrayLike<number>,
 ): boolean {
   if (named.length !== expected.length) return false;
   for (let i = 0; i < named.length; ++i)
@@ -997,9 +1031,7 @@ export async function linkViaPSI(
   // that omitted its grouping, whose entries name one position standing for a
   // group (docs/spec/PROTOCOL.md, Deriving one table from the exchanged
   // association maps).
-  const partnerEntriesByIter: Array<Array<ReadonlyArray<number>> | undefined> =
-    [];
-  const partnerEntryRowsByIter: Array<Array<Array<number>> | undefined> = [];
+  const partnerEntriesByIter: Array<ExpectedRoundEntries | undefined> = [];
   // A round is built and resolved on an open connection, over as many entries
   // as it holds, so each pass below yields to the event loop as it goes, and
   // stops at a yield once the connection has ended.
@@ -1083,44 +1115,36 @@ export async function linkViaPSI(
     const attributable = sides.localKeepsDuplicates
       ? attributableRoundMatches(myIndices, theirIndices)
       : undefined;
-    const localPositions = attributable
-      ? [...attributable.keys()]
-      : (myIndices as ReadonlyArray<number>);
-    const partnerPositions = attributable
-      ? [...attributable.values()]
-      : (theirIndices as ReadonlyArray<number>);
+    const localPositions: ArrayLike<number> = attributable
+      ? attributable.localPositions
+      : myIndices;
+    const partnerPositions: ArrayLike<number> = attributable
+      ? attributable.partnerPositions
+      : theirIndices;
 
     const local = round.local();
     const partner = round.partner();
-    const senderRanks: Array<number> = [];
-    const receiverRanks: Array<number> = [];
+    const localRecords = local.ownership.recordCount;
+    const partnerRecords = partner.recordCount;
+    const senderRanks = new Int32Builder();
+    const receiverRanks = new Int32Builder();
     // The round's value-level incidence, read from each side's records: the
     // positions of the OTHER party's set each record of this side matched, and
     // the mirror. The entry derivation intersects them with what an accepted
     // partner record owns.
-    const partnerPositionsMatched = new Map<number, Set<number>>();
-    const localPositionsMatched = new Map<number, Set<number>>();
+    const localRecordOfMatch = new Int32Builder();
+    const partnerPositionOfMatch = new Int32Builder();
+    const partnerRecordOfMatch = new Int32Builder();
+    const localPositionOfMatch = new Int32Builder();
     const blocks: Array<RoundBlock> = [];
     blocksByIter.push(blocks);
-    const noteMatch = (
-      matched: Map<number, Set<number>>,
-      rank: number,
-      position: number,
-    ): void => {
-      let positions = matched.get(rank);
-      if (positions === undefined) {
-        positions = new Set<number>();
-        matched.set(rank, positions);
-      }
-      positions.add(position);
-    };
     for (let m = 0; m < localPositions.length; ++m) {
       if ((m + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
       // Both groupings partition the very index lists the round's frames
       // named, so every matched position of either party has a slot.
-      const mine = local.ownership.slotOfPosition.get(localPositions[m]);
-      const theirs = partner.slotOfPosition.get(partnerPositions[m]);
-      if (mine === undefined || theirs === undefined)
+      const mine = slotOfPosition(local.ownership, localPositions[m]);
+      const theirs = slotOfPosition(partner, partnerPositions[m]);
+      if (mine < 0 || theirs < 0)
         throw new InternalConsistencyError(
           "a linkage round matched a position no grouping of the round names",
         );
@@ -1142,22 +1166,21 @@ export async function linkViaPSI(
           ],
         });
       }
-      for (let b = partner.starts[theirs]; b < partner.starts[theirs + 1]; ++b)
-        noteMatch(
-          localPositionsMatched,
-          partner.ordinals[b],
-          localPositions[m],
-        );
+      for (
+        let b = partner.starts[theirs];
+        b < partner.starts[theirs + 1];
+        ++b
+      ) {
+        partnerRecordOfMatch.push(partner.ordinals[b]);
+        localPositionOfMatch.push(localPositions[m]);
+      }
       for (
         let a = local.ownership.starts[mine];
         a < local.ownership.starts[mine + 1];
         ++a
       ) {
-        noteMatch(
-          partnerPositionsMatched,
-          local.ownership.ordinals[a],
-          partnerPositions[m],
-        );
+        localRecordOfMatch.push(local.ownership.ordinals[a]);
+        partnerPositionOfMatch.push(partnerPositions[m]);
         for (
           let b = partner.starts[theirs];
           b < partner.starts[theirs + 1];
@@ -1172,8 +1195,28 @@ export async function linkViaPSI(
         }
       }
     }
+    const partnerPositionsMatched = await runPaced(
+      groupDistinctByKey(
+        localRecordOfMatch.finish(),
+        partnerPositionOfMatch.finish(),
+        localRecords,
+      ),
+      pacer,
+    );
+    const localPositionsMatched = await runPaced(
+      groupDistinctByKey(
+        partnerRecordOfMatch.finish(),
+        localPositionOfMatch.finish(),
+        partnerRecords,
+      ),
+      pacer,
+    );
     const resolved = await runPaced(
-      roundCandidatePairSweep(senderRanks, receiverRanks, acceptance),
+      roundCandidatePairSweep(
+        senderRanks.finish(),
+        receiverRanks.finish(),
+        acceptance,
+      ),
       pacer,
     );
     const localAccepted = localIsSender
@@ -1200,6 +1243,7 @@ export async function linkViaPSI(
           acceptedPositionSets(
             localAccepted,
             partnerAccepted,
+            localRecords,
             positionsByOrdinal(partner),
             partnerPositionsMatched,
           ),
@@ -1211,81 +1255,71 @@ export async function linkViaPSI(
         acceptedPositionSets(
           partnerAccepted,
           localAccepted,
+          partnerRecords,
           positionsByOrdinal(local.ownership),
           localPositionsMatched,
         ),
         pacer,
       );
-      const rowsAcceptedWith = new Map<number, Set<number>>();
-      for (let p = 0; p < partnerAccepted.length; ++p) {
-        if ((p + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
-        let rows = rowsAcceptedWith.get(partnerAccepted[p]);
-        if (rows === undefined) {
-          rows = new Set<number>();
-          rowsAcceptedWith.set(partnerAccepted[p], rows);
-        }
-        rows.add(local.rowOfOrdinal[localAccepted[p]]);
-      }
+      const rowsAcceptedWith = await runPaced(
+        groupDistinctByKey(
+          partnerAccepted,
+          Int32Array.from(localAccepted, (rank) => local.rowOfOrdinal[rank]),
+          partnerRecords,
+        ),
+        pacer,
+      );
       // The partner states a round's entries in its own ascending row order,
       // which is ascending rank order, so the reading party takes the `i`-th
       // entry for the `i`-th of these (docs/spec/PROTOCOL.md, An entry is
       // attributed by its place in the round).
-      const ranks = [...rowsAcceptedWith.keys()].sort((a, b) => a - b);
-      const entries: Array<ReadonlyArray<number>> = [];
-      const entryRows: Array<Array<number>> = [];
-      for (const rank of ranks) {
-        entries.push(partnerEntries.get(rank)!);
-        entryRows.push([...rowsAcceptedWith.get(rank)!].sort((a, b) => a - b));
-        if (entries.length % PACED_STRETCH_RECORDS === 0)
-          await pacer.yieldWhenDue();
-      }
-      partnerEntriesByIter[j] = entries;
-      partnerEntryRowsByIter[j] = entryRows;
+      const ranks = new Int32Builder();
+      for (let rank = 0; rank < partnerRecords; ++rank)
+        if (rowsAcceptedWith.starts[rank + 1] > rowsAcceptedWith.starts[rank])
+          ranks.push(rank);
+      partnerEntriesByIter[j] = {
+        ranks: ranks.finish(),
+        positions: partnerEntries,
+        rows: rowsAcceptedWith,
+      };
     } else {
       partnerEntriesByIter[j] = undefined;
-      partnerEntryRowsByIter[j] = undefined;
     }
 
-    const lowestPartnerRank = new Map<number, number>();
-    const ranksAcceptedWith = bothSided
-      ? new Map<number, Set<number>>()
-      : undefined;
+    const lowestPartnerRank = new Int32Array(localRecords).fill(-1);
     for (let p = 0; p < localAccepted.length; ++p) {
       if ((p + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
-      const held = lowestPartnerRank.get(localAccepted[p]);
-      if (held === undefined || partnerAccepted[p] < held)
-        lowestPartnerRank.set(localAccepted[p], partnerAccepted[p]);
-      if (ranksAcceptedWith) {
-        let ranks = ranksAcceptedWith.get(localAccepted[p]);
-        if (ranks === undefined) {
-          ranks = new Set<number>();
-          ranksAcceptedWith.set(localAccepted[p], ranks);
-        }
-        ranks.add(partnerAccepted[p]);
-      }
+      const held = lowestPartnerRank[localAccepted[p]];
+      if (held < 0 || partnerAccepted[p] < held)
+        lowestPartnerRank[localAccepted[p]] = partnerAccepted[p];
     }
-    let recorded = 0;
-    for (const [rank, partnerRank] of lowestPartnerRank) {
-      if (++recorded % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
+    const ranksAcceptedWith = bothSided
+      ? await runPaced(
+          groupDistinctByKey(localAccepted, partnerAccepted, localRecords),
+          pacer,
+        )
+      : undefined;
+    for (let rank = 0; rank < localRecords; ++rank) {
+      if ((rank + 1) % PACED_STRETCH_RECORDS === 0) await pacer.yieldWhenDue();
+      const partnerRank = lowestPartnerRank[rank];
+      if (partnerRank < 0) continue;
       const row = local.rowOfOrdinal[rank];
       let theirIndex: number | Array<number>;
       if (entryPositionSets === undefined)
         theirIndex = partner.canonicalPosition[partnerRank];
       else {
-        const positions = entryPositionSets.get(rank);
-        if (positions === undefined || positions.length === 0)
+        const positions = groupOf(entryPositionSets, rank);
+        if (positions.length === 0)
           throw new InternalConsistencyError(
             "a linkage round accepted a record whose pairs rest on no position",
           );
-        theirIndex = positions.length === 1 ? positions[0] : positions;
+        theirIndex = positions.length === 1 ? positions[0] : [...positions];
       }
       indexIterationMap[row] = { theirIndex, iteration: j };
       canonicalPositionOf[row] = local.ownership.canonicalPosition[rank];
       acceptedPartnerRank[row] = partnerRank;
       if (ranksAcceptedWith)
-        acceptedPartnerRanks[row] = [...ranksAcceptedWith.get(rank)!].sort(
-          (a, b) => a - b,
-        );
+        acceptedPartnerRanks[row] = [...groupOf(ranksAcceptedWith, rank)];
     }
 
     // Every record standing in ANY of the round's candidate pairs leaves
@@ -1400,22 +1434,23 @@ export async function linkViaPSI(
       candidatePositionCount(candidates),
     );
     const expectedEntries = partnerEntriesByIter[e.iteration];
-    let rows: ReadonlyArray<number>;
+    let rows: ArrayLike<number> & Iterable<number>;
     if (expectedEntries !== undefined) {
       const place = entriesReadPerIter[e.iteration]++;
-      if (place >= expectedEntries.length)
+      if (place >= expectedEntries.ranks.length)
         throw partnerProtocolError(
           participant.id,
           "the partner's mapped-element list states more entries for a key " +
             "round than the records it accepted there",
         );
-      if (!positionsEqual(positions, expectedEntries[place]))
+      const rank = expectedEntries.ranks[place];
+      if (!positionsEqual(positions, groupOf(expectedEntries.positions, rank)))
         throw partnerProtocolError(
           participant.id,
           "the partner's mapped-element list names positions other than the " +
             "ones that round's accepted pairs rest on",
         );
-      rows = partnerEntryRowsByIter[e.iteration]![place];
+      rows = groupOf(expectedEntries.rows, rank);
     } else {
       // Each position the entry names stands for the whole GROUP of this
       // party's records behind it, and the entry expands to those groups taken
@@ -1489,7 +1524,7 @@ export async function linkViaPSI(
     const expectedEntries = partnerEntriesByIter[j];
     if (
       expectedEntries !== undefined &&
-      entriesReadPerIter[j] !== expectedEntries.length
+      entriesReadPerIter[j] !== expectedEntries.ranks.length
     )
       throw partnerProtocolError(
         participant.id,
