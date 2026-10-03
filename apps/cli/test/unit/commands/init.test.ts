@@ -578,6 +578,59 @@ test("resolveInitPositionals: an unparsable scheme-prefixed URL is refused witho
   }
 });
 
+test.each([
+  ["a file URL naming a remote host", "file://remote/pwDISTINCT7"],
+  ["an sftp URL naming no host", "sftp:///pwDISTINCT7"],
+  ["a single slash after the scheme", "sftp:/user:pwDISTINCT7@host/x"],
+  [
+    "a single slash after an upper-case scheme",
+    "SFTP:/user:pwDISTINCT7@host/x",
+  ],
+])(
+  "handler: %s is refused (exit 64) without echoing the argument",
+  async (_label, url) => {
+    const dir = scratchDir();
+    const logFile = path.join(dir, "init.log");
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => {}) as never);
+    const written: Array<string> = [];
+    const capture = (chunk: unknown): boolean => {
+      written.push(String(chunk));
+      return true;
+    };
+    vi.spyOn(process.stdout, "write").mockImplementation(capture as never);
+    vi.spyOn(process.stderr, "write").mockImplementation(capture as never);
+
+    await initHandler(
+      argvFor({
+        args: [url],
+        "config-file": path.join(dir, "alcove.yaml"),
+        "log-file": logFile,
+        "log-level": "info",
+      }),
+    );
+
+    expect(exit).toHaveBeenCalledWith(64);
+    for (const text of [written.join(""), fs.readFileSync(logFile, "utf8")])
+      expect(text).not.toContain("pwDISTINCT7");
+    expect(fs.readFileSync(logFile, "utf8")).toContain("could not use the URL");
+  },
+);
+
+test("templateConnection: a URL connectionFromURL refuses is reported without the URL", () => {
+  let message = "";
+  try {
+    templateConnection(new URL("file://remote/pwDISTINCT7"), undefined);
+  } catch (error) {
+    expect(error).toBeInstanceOf(UsageError);
+    message = (error as Error).message;
+  }
+  expect(message).toContain("three slashes");
+  expect(message).not.toContain("pwDISTINCT7");
+  expect(message).not.toContain("got:");
+});
+
 // --- templateConnection ------------------------------------------------------
 
 test("templateConnection: an sftp URL fills every field but the credential", () => {

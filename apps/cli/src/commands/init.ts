@@ -258,7 +258,7 @@ export function resolveInitPositionals(positionals: Array<unknown>): {
   const given = positionals.map(String);
   if (
     given[0] !== undefined &&
-    /^[a-z][a-z0-9+.-]*:\/\//i.test(given[0]) &&
+    /^[a-z][a-z0-9+.-]*:\//i.test(given[0]) &&
     !looksLikeUrl(given[0])
   )
     throw new UsageError(INIT_URL_UNREADABLE);
@@ -340,7 +340,16 @@ export function templateConnection(
     );
   if (url.password) throw new UsageError(INIT_URL_PASSWORD_REFUSED);
 
-  const parsed = connectionFromURL(url, {});
+  let parsed: ReturnType<typeof connectionFromURL>;
+  try {
+    parsed = connectionFromURL(url, {});
+  } catch (error) {
+    if (!(error instanceof UsageError)) throw error;
+    // connectionFromURL's refusals end in "; got: <url>", and the URL may
+    // carry a password; keep the reason alone.
+    const reason = error.message.replace(/;?\s*got: [\s\S]*$/, "");
+    throw new UsageError(`could not use the URL: ${reason}`);
+  }
   if (parsed.channel === "filedrop")
     return {
       channel: "filedrop",

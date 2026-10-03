@@ -180,6 +180,8 @@ test("accept with no terminal and no --consent-to-terms exits 64 before the term
 test.each([
   ["a space in the host", "sftp://user:pwDISTINCT7@ho st/x"],
   ["a port out of range", "sftp://user:pwDISTINCT7@host:99999/x"],
+  ["a single slash after the scheme", "sftp:/user:pwDISTINCT7@host/x"],
+  ["a file URL naming a remote host", "file://remote/pwDISTINCT7"],
 ])(
   "init refuses an unparsable URL with %s and prints none of it",
   async (_label, url) => {
@@ -193,7 +195,7 @@ test.each([
     ]);
     expect(run.exitCode, describeCliRun("init", run)).toBe(64);
     const log = fs.readFileSync(path.join(work, "run.log"), "utf8");
-    expect(log).toContain("could not read the URL");
+    expect(log).toMatch(/could not (read|use) the URL/);
     for (const text of [run.stdout, run.stderr, log])
       expect(text).not.toContain("pwDISTINCT7");
     expect(fs.existsSync(path.join(work, "alcove.yaml"))).toBe(false);
