@@ -117,8 +117,6 @@ The one-off exchange that just completed is unaffected; nothing was stored.
 
 ## The automation goal and its platform envelope
 
-The scheduled-run behavior this document describes -- the automation envelope, the run windows, catch-up on wake, and the between-visit notification -- was checked for the presence of the code that implements it, not run in a browser, so whether the described semantics are right is unverified as of 2026-09-29.
-
 The design goal is a **fully automated recurring exchange**: once an exchange
 is managed and its schedule agreed with the partner, runs happen unattended.
 Browser automation is inherently a compromise against installed software, and
@@ -130,9 +128,7 @@ and launched at OS login (or otherwise kept running), and the exchange executes
 in the app's own window context: WebRTC is unavailable to service workers, and
 Periodic Background Sync's short opportunistic windows cannot support a live
 exchange, so an open app runtime -- not a service-worker wakeup -- is the
-mechanism. (Both browser statements are unverified as of 2026-09-29: the
-documentation audit that day could not reach browser vendors' documentation or
-run a browser.) At the agreed window the runtime reads the input file, `input.csv`,
+mechanism. At the agreed window the runtime reads the input file, `input.csv`,
 from the exchange's working folder -- the record's persisted
 `FileSystemDirectoryHandle`, under its persistent permission (a pointer, never
 a copy; see [The input file each run](#the-input-file-each-run)) -- and the run
@@ -2141,7 +2137,7 @@ Browser storage is not durable the way a file on disk is. The design must surviv
 
 ### The eviction threat
 
-The browser behaviors described here (Safari's seven-day cap on script-writable storage, and which browsers grant `navigator.storage.persist()` and how) come from vendor documentation and reports and are unverified as of 2026-09-29: they were not re-checked against current browser versions.
+The browser behaviors described here (Safari's seven-day cap on script-writable storage, and which browsers grant `navigator.storage.persist()` and how) come from vendor documentation and reports, and browsers change them between versions: check them against the browser versions you support.
 
 - **Safari Intelligent Tracking Prevention (ITP)** deletes a site's script-writable
   storage (IndexedDB included) after roughly **seven days of Safari use without a

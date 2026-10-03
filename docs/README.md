@@ -10,6 +10,8 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 
 | I am a... | Start with... | Then read... |
 |-----------|--------------|--------------|
+| Analyst running one exchange in the browser | [WEB_APP.md](WEB_APP.md) | [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md), for running it again on a schedule |
+| Partner who received an invitation link | [WEB_APP.md](WEB_APP.md#accepting-an-invitation) | [PRIVACY.md](../PRIVACY.md) |
 | Program officer evaluating the software | [DESIGN.md](DESIGN.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [COMPLIANCE.md](COMPLIANCE.md) |
 | Security reviewer or auditor | [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [PROTOCOL.md](spec/PROTOCOL.md), [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md), [COMPLIANCE.md](COMPLIANCE.md) |
 | Compliance officer | [COMPLIANCE.md](COMPLIANCE.md) | [PRIVACY.md](../PRIVACY.md), [SECURITY_DESIGN.md](SECURITY_DESIGN.md) |
@@ -19,7 +21,7 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 | Operator running a recurring exchange from the browser | [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) |
 | Developer contributing to the project | [DESIGN.md](DESIGN.md) | [PROTOCOL.md](spec/PROTOCOL.md), [COMMUNICATION.md](COMMUNICATION.md), [FILE_SYNC.md](spec/FILE_SYNC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), [TESTING.md](TESTING.md) |
 | Maintainer upgrading a pinned dependency | [CONTRIBUTING.md](../CONTRIBUTING.md#dependency-policy) | [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md), [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) |
-| Partner agency setting up an exchange | [CLI.md](CLI.md) | [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
+| Partner agency whose IT staff run the command line app | [CLI.md](CLI.md#your-first-recurring-exchange) | [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
 
 ## Document inventory
 
@@ -27,6 +29,7 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 
 ### Overview (`docs/`)
 
+- [WEB_APP.md](WEB_APP.md) - running one exchange in the browser: inviting, accepting an invitation, reading the results, keeping and checking the exchange record, and how large an exchange can be on each channel
 - [DESIGN.md](DESIGN.md) - project overview, architecture, exchange specification summary, and high-level user journey
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md) - security overview, the private set intersection (PSI) privacy guarantee, threat model, authentication design, channel security, and key rotation
 - [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md) - the managed (recurring) web exchange lifecycle: who it serves, the automation goal and its platform envelope, the second-run journey, durability contract, single-device ownership, desync recovery, storage-eviction survival, the export/import credential file, and the moment-anchored backup surfaces
@@ -34,7 +37,7 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 - [COMPLIANCE.md](COMPLIANCE.md) - regulatory framings, data classification, and considerations for agency reviewers
 - [COMMUNICATION.md](COMMUNICATION.md) - channels, synchronization, error handling, and supporting services
 - [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) - complete field-level reference for exchange specification files
-- [CLI.md](CLI.md) - CLI commands, configuration files, invitation strings, and recovery
+- [CLI.md](CLI.md) - a task index, a first recurring exchange step by step, CLI commands, configuration files, invitation strings, recovery, and exit codes
 - [DEPLOYMENT.md](DEPLOYMENT.md) - operating supporting services and Docker deployment of the CLI
 - [CONSOLE.md](CONSOLE.md) - the local, single-operator graphical front end to the containerized CLI: running the container, the mounts and environment variables, where to publish its port, what an operator authors in it, and graduating a prototyped exchange to a scheduled CLI run
 - [FIPS_SFTP_PROFILE.md](FIPS_SFTP_PROFILE.md) - the SFTP deployment profile for agencies required to use FIPS-approved cryptography: the algorithm settings, what they exclude, and the host-key gap

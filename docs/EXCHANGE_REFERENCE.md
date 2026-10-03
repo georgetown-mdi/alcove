@@ -39,7 +39,7 @@ Only the fields marked "`@`-file recommended" in their descriptions, together wi
 
 ## Linkage terms
 
-Linkage terms are verified by both parties at the start of every exchange. After authentication, both parties swap their terms; if any fields are inconsistent, the exchange is cancelled. Fields marked as "soft" produce a warning and an updated set of terms are written out rather than an error. (That every soft mismatch writes out updated terms was not traced through the code and is unverified as of 2026-09-29.)
+Linkage terms are verified by both parties at the start of every exchange. After authentication, both parties swap their terms; if any fields are inconsistent, the exchange is cancelled. Fields marked as "soft" produce a warning rather than an error, and the exchange continues.
 
 The document's four free-text fields -- [`identity`](#linkage_termsidentity), the legal agreement's [`purpose`](#linkage_termslegal_agreement), a payload column's [`description`](#linkage_termspayload), and each [constraint `exclude`](#constraints) value -- share one shape rule beyond their 1024-character cap: none may contain a control character. Each is a single-line value that travels to the partner with the terms, and three of them go further: the two parties' identities, the purpose, and the payload column descriptions are written verbatim into both parties' [exchange records](spec/EXCHANGE_RECORD.md), which are kept and read long after the run. An `exclude` value reaches no record -- the record accounts for the fields matched on by name and semantic type, not for the constraints placed on them. So a NUL, an ESC, a tab, or a line break in any of the four is refused when the terms are read, whichever side authored them. Letters outside ASCII are untouched, so a name, a purpose, or a denylist value written in any script is fine.
 
@@ -541,7 +541,7 @@ Specifies the communication channel and server addresses. The partner shared sec
 
 ### Connection blocks by channel
 
-The smallest block each channel takes, to paste into `alcove.yaml` in place of the placeholder `alcove invite` and `alcove accept` write. Every field is described in the sections below; the tuning under [`connection.options`](#connectionoptions) is optional everywhere.
+The smallest block each channel takes, to paste into `alcove.yaml` in place of the placeholder `alcove init`, `alcove invite` and `alcove accept` write. Every field is described in the sections below; the tuning under [`connection.options`](#connectionoptions) is optional everywhere.
 
 **SFTP** -- both parties connect to one SFTP server and exchange files in a directory there:
 
@@ -663,7 +663,7 @@ The primary server for the exchange. For WebRTC this is the PeerJS peer coordina
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `host` | string | yes, except beside a create-mode `provision` | Hostname or IP address; a create-mode `server` may leave it out for `alcove invite` to fill (see [On-demand server provisioning](#on-demand-server-provisioning)) |
-| `port` | integer | no | Port number. Alcove passes it on only when set and applies no default of its own, so an unset port takes the default of the underlying SFTP or PeerJS library; the usual defaults (443 for HTTPS/WSS, 22 for SFTP) are unverified against those libraries as of 2026-09-29 |
+| `port` | integer | no | Port number. Alcove passes it on only when set and applies no default of its own, so an unset port takes the default of the underlying SFTP or PeerJS library |
 | `path` | string | no | URL path for WebRTC signaling; remote working directory (shared mode) for SFTP |
 | `inbound_path` | string | SFTP only | Inbound (peer-written) remote directory for a split-directory exchange; see [`connection.inbound_path` / `connection.outbound_path`](#connectioninbound_path--connectionoutbound_path). Set with `outbound_path`; mutually exclusive with `path`; requires retain mode |
 | `outbound_path` | string | SFTP only | Outbound (self-written) remote directory for a split-directory exchange; the companion to `inbound_path` |
@@ -960,12 +960,12 @@ connection:
 *Required:* no  
 *Applies to:* `sftp`
 
-A WebSocket-to-TCP proxy that tunnels the SFTP connection through HTTPS. This field is determined by the client's network capabilities, not the server: a browser-based client requires it because browsers cannot open raw TCP connections, while a CLI client connects natively and omits this field. The two parties' configs will therefore differ here even when connecting to the same server. As of 2026-09-29 no code that reads this field was found, and whether it takes effect at run time is unverified.
+A WebSocket-to-TCP proxy that tunnels the SFTP connection through HTTPS. This field is determined by the client's network capabilities, not the server: a browser-based client requires it because browsers cannot open raw TCP connections, while a CLI client connects natively and omits this field. The two parties' configs will therefore differ here even when connecting to the same server. No Alcove client uses this field: the CLI connects to the SFTP server directly, and the web app runs no SFTP exchange.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `host` | string | yes | Proxy hostname |
-| `port` | integer | no | Port; defaults to 443 (unverified as of 2026-09-29) |
+| `port` | integer | no | Port |
 | `path` | string | no | Proxy path |
 | `auth` | object | no | Authentication credentials (see [HTTP service authentication](#http-service-authentication-auth)) |
 

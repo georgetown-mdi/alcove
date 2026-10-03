@@ -21,6 +21,8 @@ Pick the one that matches who you are. All three run the same protocol, so the t
    ```
    Best for recurring or scheduled exchanges and for IT teams fitting linkage into a data pipeline. See the [CLI App Quickstart](#cli-app-quickstart).
 
+How many records each one handles, and roughly how long an exchange takes: [How large an exchange can be](docs/WEB_APP.md#how-large-an-exchange-can-be).
+
 To run the web app from source instead, see [apps/web/README.md](apps/web/README.md).
 
 ## Key features
@@ -52,6 +54,8 @@ Open [https://psi.data-bridge.org](https://psi.data-bridge.org) and choose **Cre
 To practice, each party picks one of the files in [`test_data/`](test_data/) as input.
 
 To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen; see [Managed (recurring) web exchanges](docs/MANAGED_EXCHANGE.md).
+
+The step-by-step guide, for both the party who invites and the partner who receives the link, is [docs/WEB_APP.md](docs/WEB_APP.md). It also explains the exchange record you can download at the end and how to check it.
 
 ## CLI App Quickstart
 
@@ -138,7 +142,7 @@ It prints an invitation code and waits. Send the code to your partner over a tru
 4. Each run rotates the shared secret in the key file, so keep the directory between runs.
 5. Hand that command to cron or the Windows Task Scheduler, as [Scheduling the run](docs/CLI.md#scheduling-the-run) shows.
 
-For more information, see [apps/cli](apps/cli/).
+For a first recurring exchange step by step, every command, and what each exit code means, see [docs/CLI.md](docs/CLI.md).
 
 ## Web Console Quickstart
 
@@ -256,7 +260,7 @@ docker run --rm ghcr.io/georgetown-mdi/alcove:latest --help
 
 ## Documentation
 
-The full documentation set lives in [docs/](docs/README.md) and covers the protocol, threat model, exchange specification, deployment, and operations. The role-based reading guide there points each audience (program officers, security reviewers, IT staff, contributors, partner agencies) to the most relevant documents. An agency security review starts with [docs/SHARED_RESPONSIBILITY.md](docs/SHARED_RESPONSIBILITY.md), which states the deployment model and what the project operates versus what the deploying agency operates.
+The full documentation set lives in [docs/](docs/README.md) and covers the protocol, threat model, exchange specification, deployment, and operations. The user guides are [docs/WEB_APP.md](docs/WEB_APP.md) for the web app, [docs/CONSOLE.md](docs/CONSOLE.md) for the console, and [docs/CLI.md](docs/CLI.md) for the command line app. The role-based reading guide in [docs/README.md](docs/README.md) points each audience (analysts, invited partners, program officers, security reviewers, IT staff, contributors) to the most relevant documents. An agency security review starts with [docs/SHARED_RESPONSIBILITY.md](docs/SHARED_RESPONSIBILITY.md), which states the deployment model and what the project operates versus what the deploying agency operates.
 
 Repository-level resources:
 

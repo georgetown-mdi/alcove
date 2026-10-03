@@ -8,9 +8,115 @@ This document covers the CLI commands, configuration files, invitation strings, 
 
 Before a first SFTP exchange against a server you do not administer yourself, work through the [SFTP server checklist](DEPLOYMENT.md#sftp-server): the settings covered there -- upload-triggered automation, scanning, auto-cleanup, account permissions, anti-flood bans, and session limits -- are the usual cause of an SFTP exchange that stalls, and each one reaches you as that stall rather than as a message naming it.
 
+## Find your task
+
+| I want to... | Run | Read |
+| --- | --- | --- |
+| Set up an exchange I will run again with the same partner | `alcove invite`, then `alcove exchange` | [Your first recurring exchange](#your-first-recurring-exchange) |
+| Try one exchange with no setup | `alcove URL INPUT_FILE` | [Zero-setup exchange](#zero-setup-exchange) |
+| Write a configuration to edit by hand | `alcove init` | [Initialization](#initialization) |
+| Invite a partner | `alcove invite` | [Offline invitation](#offline-invitation), [Online invitation](#online-invitation) |
+| Accept an invitation I was sent | `alcove accept` | [Offline acceptance](#offline-acceptance), [Online acceptance](#online-acceptance) |
+| Exchange with a partner who uses the web app | `alcove invite` with the web app's address | [Inviting over WebRTC](#inviting-over-webrtc) |
+| Run an exchange that is already set up | `alcove exchange` | [Recurring exchange](#recurring-exchange) |
+| Run it on a schedule | cron or the Task Scheduler | [Scheduling the run](#scheduling-the-run) |
+| Read an SFTP server's host key before a scheduled run | `alcove probe-host-key` | [Reading a host key](#reading-a-host-key-with-probe-host-key) |
+| Check a network folder before the first exchange over it | `alcove doctor` | [Checking a network file drop](#checking-a-network-file-drop) |
+| Change the agreed terms with an existing partner | `alcove update`, then `alcove apply` | [Changing the terms](#changing-the-terms-of-an-established-partnership) |
+| Check an exchange record or receipt | `alcove verify-receipt` | [Verifying a receipt](#verifying-a-receipt) |
+| Recover from a lost or out-of-sync key file | re-invite | [Recovery](#recovery) |
+| Find out how large an exchange can be | | [How large an exchange can be](WEB_APP.md#how-large-an-exchange-can-be) |
+| Understand an exit code | | [Exit codes at a glance](#exit-codes-at-a-glance) |
+
+## Your first recurring exchange
+
+Two parties, Agency A and Agency B, set up an exchange once and then run it on a schedule. Agency A invites; Agency B accepts. Each party needs an input CSV, and both need a place to exchange files: a directory on an SFTP server both can reach, or a folder both have mounted (a network share or a synced folder).
+
+The commands below use an installed `alcove`. With the container image, run each one as `docker run -it --rm -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest` followed by the same arguments (see [Running the CLI](DEPLOYMENT.md#running-the-cli)).
+
+### 1. Each party: make a directory for this partner
+
+Make one directory for this exchange and put your input file in it, then run every command below from that directory. It will hold the configuration (`alcove.yaml`), the key file (`.alcove.key`), the results, and each run's exchange record. Keep it between runs: the key file changes after every exchange.
+
+### 2. Agency A: create the invitation
+
+```sh
+alcove invite --identity "Agency A" input.csv
+```
+
+This reads the column names in `input.csv`, chooses the linkage keys and data cleaning from them, writes `alcove.yaml` and `.alcove.key`, and prints an invitation code. Send the code to Agency B over a channel you trust, such as encrypted email or a phone call.
+
+The invitation expires one hour after it is created. If Agency B cannot accept and run the first exchange within the hour, pass `--expires-in`, for example `--expires-in 2d`.
+
+### 3. Agency B: accept it
+
+```sh
+alcove accept --identity "Agency B" INVITATION_CODE input.csv
+```
+
+Alcove shows what the exchange will disclose -- the columns each party sends, who receives the result -- and asks you to confirm. Read it before answering. On yes, it writes `alcove.yaml` and `.alcove.key`; on no, it writes nothing. Giving `input.csv` checks that your file has the columns the agreed terms need.
+
+### 4. Each party: fill in the connection
+
+Both configurations have a placeholder `connection` block. Replace it with the block for your channel, from [Connection blocks by channel](EXCHANGE_REFERENCE.md#connection-blocks-by-channel). For a shared folder:
+
+```yaml
+connection:
+  channel: filedrop
+  path: /mnt/share/exchanges/agency-a-agency-b
+```
+
+For an SFTP server, give the host, the directory, the username, and the credential as an `@`-file reference so the password or key stays out of the file. Before the first exchange over a network folder, `alcove doctor` checks that it behaves as an exchange needs ([Checking a network file drop](#checking-a-network-file-drop)).
+
+### 5. Both parties: run the first exchange by hand
+
+```sh
+alcove exchange input.csv results.csv
+```
+
+Both parties run this at about the same time; each waits up to one hour for the other. Agency A must run it before the invitation expires.
+
+- **On SFTP**, the first run shows the server's host-key fingerprint and asks you to confirm it. Check it against the fingerprint your server administrator gives you; on yes, Alcove records it in `alcove.yaml` for later runs ([SFTP host-key trust](#sftp-host-key-trust)).
+- **What success looks like.** The command exits with code 0 (`echo $?` prints `0`), `results.csv` holds the matched records, and the directory holds a new exchange record and its verification keys ([The result file](#the-result-file)).
+- **What failure looks like.** The command prints the error and the next step, and exits with a code other than 0; [Exit codes at a glance](#exit-codes-at-a-glance) says what to do with each.
+
+The first run also rotates the shared secret in `.alcove.key`. After that, neither party re-invites unless a key file is lost or the two fall out of step ([Recovery](#recovery)).
+
+### 6. Each party: schedule it
+
+Agree a time with your partner, then hand the same command to your scheduler. A daily run at 02:00 under cron:
+
+```text
+0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv results.csv --log-file /srv/alcove/agency-b/exchange.log
+```
+
+A scheduled run has no terminal to ask at, so settle everything it would ask first: on SFTP, pin the host key, as the first run by hand does or with [`alcove probe-host-key`](#reading-a-host-key-with-probe-host-key). [Scheduling the run](#scheduling-the-run) covers the container form, mailing the owner on failure, the working directory, and the key file's expiry.
+
+## Exit codes at a glance
+
+Exit 64 means the command was refused because of something you supplied: a flag, an argument, a configuration or key file, your input, or terms this build cannot run. Fix what the message names. Running it again unchanged fails the same way.
+
+The other codes come from the run itself, the partner, or the machine:
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| 0 | The command completed. | Nothing. Read any warning on `stderr` when convenient. |
+| 65 | `alcove verify-receipt`: the record or receipt did not verify. | Alert. |
+| 66 | An input file does not exist; from `alcove verify-receipt`, some checks could not run. | Run again once the file is in place; alert if it stays missing. |
+| 69 | The server, folder, or partner could not be reached, or the partner never arrived. | Retry a small fixed number of times, then alert. |
+| 70 | A fault in Alcove itself. | Report it with the message. Do not retry. |
+| 73 | The exchange completed, but a local write did not. | Do not re-run. Fix the write the message names. |
+| 76 | The partner or the agreed terms refused the run. | Do not retry. Contact your partner. |
+| 77 | Authentication failed: the shared secret, the SFTP host key, or your relay's registrar. | Do not retry. Re-invite, check the host key with your administrator, or enroll again at the relay. |
+| 78 | `alcove doctor`: the checks found something to change. | Fix it and run the checks again. |
+| 130, 143 | Interrupted (Ctrl-C) or terminated. | Nothing. |
+| 1, 134, 137 | An unexpected error, or the process was aborted or killed (for example, out of memory). | Alert. |
+
+`exitCodeForError` in [`apps/cli/src/util/exit.ts`](../apps/cli/src/util/exit.ts) assigns these codes to a failed command. [Exit codes](#exit-codes) has every condition behind each code.
+
 ## Configuration
 
-Exchange details are stored in two files: a configuration file and an authentication key file. The default file names and paths are `./alcove.yaml` and `./.alcove.key`, while command line arguments to override are `--config-file` and `--key-file` respectively. When these files are first created, the application prints a notice identifying both and gives a warning that the key file should be treated as private. For Docker deployments, agencies are expected to mount one directory per exchange partner, so the working directory itself provides isolation and no subdirectory is needed. This is a recommended layout that the application does not check, and whether agencies work this way is unverified as of 2026-09-29. A configuration and key file written by a build from before the product was renamed Alcove still have the earlier product's name, which no command looks for; rename them to `alcove.yaml` and `.alcove.key` by hand.
+Exchange details are stored in two files: a configuration file and an authentication key file. The default file names and paths are `./alcove.yaml` and `./.alcove.key`, while command line arguments to override are `--config-file` and `--key-file` respectively. When these files are first created, the application prints a notice identifying both and gives a warning that the key file should be treated as private. For Docker deployments, agencies are expected to mount one directory per exchange partner, so the working directory itself provides isolation and no subdirectory is needed. This is a recommended layout that the application does not check. A configuration and key file written by a build from before the product was renamed Alcove still have the earlier product's name, which no command looks for; rename them to `alcove.yaml` and `.alcove.key` by hand.
 
 The configuration file is not intended to contain secrets and is safe to commit to version control. The shared secret and its expiration are stored in the key file instead; they never appear in the configuration file and are not user-editable because the application rotates them automatically. By default, the key file is intentionally named with a leading dot (`.alcove.key`) so that it is hidden from default directory listings and less likely to be accidentally copied or included in an archive; it should be added to `.gitignore`. All other credential fields use the `@path` convention described below.
 
@@ -141,7 +247,7 @@ A configuration file can name its rule set instead of writing the rules out: a `
 alcove init [--channel sftp|filedrop] [URL] [INPUT_FILE]
 ```
 
-This creates a configuration file and then exits - no exchange or invitation is generated, and no key file is created. The file is a commented template with every option documented inline and all defaults pre-filled (whether the template documents every option is unverified as of 2026-09-29); if an input file is provided, column metadata, linkage fields, and data standardizing transformations are inferred from it. The user can then edit the file by hand before running their first exchange.
+This creates a configuration file and then exits - no exchange or invitation is generated, and no key file is created. The file is a commented template with defaults pre-filled; [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) lists every field. If an input file is provided, column metadata, linkage fields, and data standardizing transformations are inferred from it. The user can then edit the file by hand before running their first exchange.
 
 ```sh
 # A connection block that needs only the SFTP credential added
@@ -339,7 +445,7 @@ The configuration route the duplicate-matching note names is `alcove exchange` o
 
 The full outline runs well past a terminal screen, so the facts heading it -- the columns you will send, the inviting party with its unverified-name note, the PSI algorithm with any note on it, the count-only tier's lines when the algorithm is `psi-c`, and the `exchange files` line, without the explanation beneath it, when the invitation says the exchange keeps its files -- are printed once more, unchanged, immediately before the prompt, where they are on screen when it asks. An acceptance that takes its exchange directories from the invitation prints the two directory lines once more after them.
 
-That repetition is limited by design to those facts and no others, to stay short: terms that bear on disclosure but would lengthen it -- the linkage strategy and, under single-pass, its disclosure note -- appear only in the outline above, and so does the `exchange files` explanation, which runs to about ten wrapped lines and would cost them at each printing. It is not short in every case, since it lists the columns you send one per line: past roughly nineteen disclosed columns the repetition itself runs off a standard terminal -- roughly seventeen when the invitation also discloses retained files; both counts are estimates that were not measured in a terminal as of 2026-09-29 -- and what scrolls away first is that column list. Read the outline before answering; the repetition is a reminder of what you read, not a substitute for it.
+That repetition is limited by design to those facts and no others, to stay short: terms that bear on disclosure but would lengthen it -- the linkage strategy and, under single-pass, its disclosure note -- appear only in the outline above, and so does the `exchange files` explanation, which runs to about ten wrapped lines and would cost them at each printing. It is not short in every case, since it lists the columns you send one per line: past roughly nineteen disclosed columns the repetition itself runs off a standard terminal -- roughly seventeen when the invitation also discloses retained files; both counts are estimates, not measured in a terminal -- and what scrolls away first is that column list. Read the outline before answering; the repetition is a reminder of what you read, not a substitute for it.
 
 Under `--consent-to-terms` no prompt follows, so the block is printed under a heading that repeats rather than asks. Its contents are identical either way.
 
