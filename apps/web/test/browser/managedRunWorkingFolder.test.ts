@@ -18,6 +18,7 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
@@ -117,6 +118,10 @@ describe("an exchange holding no working folder", () => {
 
 describe("a working folder holding no input file", () => {
   test("stops the run before connecting, naming the file and the folder", async () => {
+    expectConsole(
+      "error",
+      "ManagedInputError: managed exchange input could not be read at run start",
+    );
     const folder = await opfsFolder("run-surface-empty");
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: folder }),

@@ -21,6 +21,7 @@ import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel"
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -83,6 +84,10 @@ afterEach(async () => {
 });
 
 test("a run stopped after an accepted terms change shows the terms the exchange now holds", async () => {
+  expectConsole(
+    "error",
+    /^ManagedTermsChangeTakenOnError: your partner's changed linkage terms were saved /,
+  );
   const created = await createManagedExchange({
     label: "Riverbend quarterly",
     exchangeFile: composeManagedExchangeFile({

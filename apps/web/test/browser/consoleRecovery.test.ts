@@ -14,6 +14,7 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { UNTAKEN_RECORD_CONFIRM_BODY } from "@exchange/RunSurface";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { JobHandoff } from "@jobs/handoff";
 
@@ -413,6 +414,7 @@ describe("console strand recovery panel", () => {
   });
 
   test("a re-attach whose replay fails heads stopped and promises no downloads", async () => {
+    expectConsole("error", "RelayedTerminalError: the partner never connected");
     // A run that was still going when the operator left (status running); the
     // replay then delivers a FAILURE terminal (e.g. a peer-timeout while away).
     persistAttachment("job-fail");
@@ -565,6 +567,10 @@ describe("console strand recovery panel", () => {
   });
 
   test("a left-behind folder the console fails to delete says so and keeps the record", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: DELETE /api/jobs/job-gone failed with status 500",
+    );
     persistAttachment("job-gone");
     const api = stubRecoveryApi({
       jobId: "job-gone",
@@ -1092,6 +1098,11 @@ describe("console strand recovery panel run warnings", () => {
   const PARTNER_ENTRY_ESCAPED = "q1\\\\cohort\\xe9.csv";
 
   test("delivers a replayed warning to the operator who re-attached, escaped once", async () => {
+    expectConsole(
+      "warn",
+      /^server job warning: the rendezvous directory \/mnt\/rendezvous is not empty; an /,
+      `server job warning: the rendezvous directory holds ${PARTNER_ENTRY_ESCAPED}`,
+    );
     // The SSE replay is full-history, so a warning raised at launch reaches a
     // browser that attaches afterwards -- including one that never saw the launch.
     persistAttachment("job-live", "acceptor", "filedrop");

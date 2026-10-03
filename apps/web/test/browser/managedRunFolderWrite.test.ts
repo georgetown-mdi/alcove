@@ -22,6 +22,7 @@ import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { runResultsFileName } from "@psi/parkedResults";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type * as WorkingDirectory from "@psi/managed/managedWorkingDirectory";
 
@@ -244,6 +245,10 @@ describe("an attended run of an exchange holding a folder grant", () => {
   });
 
   test("keeps the download, reports a write that did not land beside it, and leaves a folder already under the results name", async () => {
+    expectConsole(
+      "error",
+      "TypeMismatchError: The path supplied exists, but was not an entry of requested type.",
+    );
     const folder = await opfsFolder("attended-write-fails");
     const fileName = runResultsFileName(LABEL, RUN_AT);
     // A folder already under the results name makes the file write refuse.
@@ -261,6 +266,7 @@ describe("an attended run of an exchange holding a folder grant", () => {
   });
 
   test("removes the results entry a write created before its bytes were refused", async () => {
+    expectConsole("error", "Error: the folder refused the bytes");
     stub.refuseBytes = true;
     const folder = await opfsFolder("attended-write-refuses-bytes");
     const created = await createManagedExchange(

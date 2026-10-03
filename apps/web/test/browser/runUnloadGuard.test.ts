@@ -17,6 +17,7 @@ import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
 
 import { createAppMount } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
@@ -167,6 +168,7 @@ describe("leaving the page during a live browser exchange", () => {
   });
 
   test("the accepting seat confirms while the run is live, and not once it fails", async () => {
+    expectConsole("error", "Error: kex failed");
     window.location.hash = await encodeAcceptToken();
     app.render(createElement(AcceptorScreen));
     await expect

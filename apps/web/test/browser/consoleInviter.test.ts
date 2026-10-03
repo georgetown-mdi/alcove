@@ -43,6 +43,7 @@ import {
 } from "../utils/unnamedColumnProfiles";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
+import { expectConsole } from "./expectedConsole";
 
 import type { CapturedDownload } from "./captureDownloads";
 import type { JobHandoff } from "@jobs/handoff";
@@ -902,6 +903,10 @@ describe("console inviter split-rendezvous retain gate", () => {
 
 describe("console inviter mint and run", () => {
   test("seeds from the profile and runs a job whose intent holds inputFile, not inputCsv", async () => {
+    expectConsole(
+      "warn",
+      "server job warning: the two parties pinned different host keys for this server",
+    );
     const api = stubJobApi({
       sftp: {
         configured: true,
@@ -1187,6 +1192,10 @@ describe("console inviter run teardown and abandonment", () => {
   });
 
   test("start over from a failed run discards it, freeing the slot", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: could not verify the partner",
+    );
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
     });
@@ -1230,6 +1239,7 @@ describe("console inviter run teardown and abandonment", () => {
   test.each(RETRY_CASES)(
     "$failure offers Try again: $offersRetry",
     async ({ terminal, offersRetry }) => {
+      expectConsole("error", `RelayedSelfExplainingError: ${terminal.message}`);
       const api = stubJobApi({
         sftp: { configured: true, host: "dr.example.gov", port: 2222 },
       });
@@ -1252,6 +1262,10 @@ describe("console inviter run teardown and abandonment", () => {
   );
 
   test("try again DELETEs the failed job before re-creating so the recreate is not 409'd", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: temporary connection problem",
+    );
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
     });
@@ -1523,6 +1537,10 @@ describe("console inviter re-attaches on a busy create", () => {
   } satisfies JobHandoff;
 
   test("a 409 at create re-attaches with recovery-style copy, not the busy alert", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // The slot is occupied: the create 409s holding the live occupant's id.
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
@@ -1623,6 +1641,10 @@ describe("console inviter re-attaches on a busy create", () => {
   });
 
   test("a busy create shows an announced reconnecting interim before the recovery view", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // Hold the liveness probe so the reconnecting interim is observable.
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
@@ -1975,6 +1997,10 @@ describe("console inviter receipt on a failed run", () => {
   }
 
   test("offers the receipt the console holds", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange completed but the result file could not be written",
+    );
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
       receipt: { requested: true, available: true },
@@ -1996,6 +2022,10 @@ describe("console inviter receipt on a failed run", () => {
   });
 
   test("states a receipt the run asked for and the console does not hold", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange completed but the result file could not be written",
+    );
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
       receipt: { requested: true, available: false },
@@ -2049,6 +2079,10 @@ describe("console inviter exchange record on a terminated run", () => {
   }
 
   test("offers the record the console holds, stamped from its own createdAt", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
       record: { createdAt: CREATED_AT, outcome: "receipt-swap-terminated" },
@@ -2081,6 +2115,10 @@ describe("console inviter exchange record on a terminated run", () => {
   });
 
   test("the retry confirms before it destroys the record, and cancelling keeps the run", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubJobApi({
       sftp: { configured: true, host: "dr.example.gov", port: 2222 },
       record: { createdAt: CREATED_AT, outcome: "receipt-swap-terminated" },
@@ -2110,6 +2148,10 @@ describe("console inviter exchange record on a terminated run", () => {
   });
 
   test("an ask that never answered confirms too, without claiming a record", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     // The console stopped answering about this run, so the seat cannot say
     // whether a record is standing -- and a run that got this far may well have
     // written one. The retry DELETEs the folder either way, so it confirms on
@@ -2144,6 +2186,10 @@ describe("console inviter exchange record on a terminated run", () => {
   }, 30_000);
 
   test("the retry confirms while the record ask is still in flight", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     // Between the failure alert appearing and the ask landing, the seat knows no
     // more than an exhausted ask does -- and on the failure this exists for, an
     // console that has stopped answering, that window is the whole of the ask's
@@ -2178,6 +2224,10 @@ describe("console inviter exchange record on a terminated run", () => {
   });
 
   test("a record the console cannot read confirms, and links no download", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     // A data root a differently-versioned Alcove wrote: a record file is in the
     // run's folder and the console cannot describe it, so it withholds both
     // halves of the pair. The seat must not read that denial as the absence of a
@@ -2220,6 +2270,10 @@ describe("console inviter exchange record on a terminated run", () => {
   });
 
   test("a confirm open when the ask arrives states the answer instead of vanishing", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     // The ask is in flight for the first seconds of a settled failed run, so it
     // can answer while the operator is reading the confirm it opened. Unmounting
     // the dialog there would take the question off the screen mid-read and leave a
@@ -2256,6 +2310,10 @@ describe("console inviter exchange record on a terminated run", () => {
   });
 
   test("a run that failed before disclosing offers nothing and retries straight through", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     // No record is owed and none was written, so the console reports none: the
     // panel renders nothing, and the recovery costs the operator nothing it has
     // not already seen, so it does not interrupt them.

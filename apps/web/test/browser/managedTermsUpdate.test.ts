@@ -44,6 +44,7 @@ import {
   CLI_TERMS_UPDATE_SECRET,
 } from "../utils/cliTermsUpdateFixture";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { Metadata } from "@alcove/core";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -238,6 +239,10 @@ describe("applying a partner's terms update", () => {
   });
 
   test("names what is wrong with a malformed update and changes nothing", async () => {
+    expectConsole(
+      "error",
+      "ManagedTermsUpdateNotAppliedError: the terms update was not applied to this exchange: format",
+    );
     const record = await storedAgencyB();
     renderSection(record, false);
 
