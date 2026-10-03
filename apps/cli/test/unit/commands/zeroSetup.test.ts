@@ -34,6 +34,7 @@ import {
   createConnection,
   handler,
   QUICK_EXCHANGE_TRUST_NOTICE,
+  QUICK_EXCHANGE_UNDECLARED_REMEDY,
   resolvePositionals,
 } from "../../../src/commands/zeroSetup";
 import { BARE_INVOCATION_SUMMARY } from "../../../src/usageHints";
@@ -1045,7 +1046,14 @@ test("handler: undeclared columns are named once, before host-key trust", async 
       "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
     );
     const undeclaredColumns = ["notes"];
-    const notice = undeclaredColumnsNotice({ undeclaredColumns });
+    // A quick exchange reads no configuration, so its notice ends with the
+    // remedy that writes one rather than one naming a file it has none of.
+    const notice = undeclaredColumnsNotice(
+      { undeclaredColumns },
+      QUICK_EXCHANGE_UNDECLARED_REMEDY,
+    );
+    expect(notice).not.toContain("the configuration's metadata block");
+    expect(notice).toContain("'alcove init'");
     const realPrepare = vi.mocked(prepareForExchange).getMockImplementation();
     if (realPrepare === undefined) throw new Error("prepare is not wrapped");
     vi.mocked(prepareForExchange).mockImplementationOnce((...args) => ({

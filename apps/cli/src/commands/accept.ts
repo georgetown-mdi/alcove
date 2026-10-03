@@ -112,6 +112,16 @@ import {
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
 
+/**
+ * The refusal an acceptance gets when it can neither ask for consent to the
+ * invitation's terms (no terminal on stdin) nor was given it in advance.
+ */
+export const ACCEPT_NEEDS_TERMINAL =
+  "accept asks you to confirm the invitation's terms, and standard input is " +
+  "not a terminal to ask at. Run it at a terminal to review the terms and " +
+  "answer, or pass --consent-to-terms to consent to them in advance for an " +
+  "unattended run.";
+
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
     addCsvDelimiterOption(cmd)
@@ -160,7 +170,8 @@ export function builder(cmd: Argv): Argv {
       "flag also authorizes connecting and transmitting unattended. Review the " +
       "terms before using it; it does not affect SSH host-key verification. It " +
       "also frees standard input, so INPUT_FILE may be `-` to read the CSV " +
-      "from stdin.",
+      "from stdin. Without it, accept refuses to run (exit 64) when standard " +
+      "input is not a terminal.",
   });
 }
 
@@ -1076,6 +1087,11 @@ export async function handler(argv: Arguments): Promise<void> {
       // it) is a definite false rather than undefined. A boolean option may be
       // repeated, so it is read directly, not via singleValue.
       const consentToTerms = argv["consent-to-terms"] === true;
+      // A confirmation that cannot be asked is refused rather than read as a
+      // decline, so a scheduled or piped acceptance fails visibly before it
+      // decodes the invitation or shows its terms.
+      if (!consentToTerms && process.stdin.isTTY !== true)
+        throw new UsageError(ACCEPT_NEEDS_TERMINAL);
       const csvDelimiter = csvDelimiterFlag(argv);
       // All validation runs before the prompt: the user is never asked to confirm
       // an invitation, URL, or input file that has not validated, and the prompt

@@ -30,6 +30,8 @@ import {
 import { controlCharacterMarker } from "@alcove/core/testing";
 import {
   applyConnectionOverrides,
+  assertNoConfigPlaceholder,
+  configPlaceholderFields,
   assertPartnerFingerprintRecordable,
   assertRetainSweepGuard,
   configWithNamedRuleSetRules,
@@ -6161,5 +6163,53 @@ describe("server.provision override", () => {
         { server: { provision } },
       ),
     ).toThrow(UsageError);
+  });
+});
+
+describe("configuration placeholders", () => {
+  test("every placeholder is named by its snake_case path, in document order", () => {
+    expect(
+      configPlaceholderFields(
+        {
+          channel: "sftp",
+          server: {
+            host: "REPLACE_WITH_SFTP_HOST",
+            port: 22,
+            privateKeyPassphrase: "fine",
+          },
+          turn: [{ url: "turn:h", username: "REPLACE_WITH_TURN_USERNAME" }],
+          path: "/REPLACE_WITH_SHARED_DIRECTORY",
+        },
+        ["connection"],
+      ),
+    ).toEqual([
+      "connection.server.host",
+      "connection.turn[0].username",
+      "connection.path",
+    ]);
+    expect(configPlaceholderFields({ host: "h" }, ["connection"])).toEqual([]);
+  });
+
+  test("the refusal names the field and the file, never the value", () => {
+    const resolvedCredential = "REPLACE_WITH_x-secret-from-a-file";
+    expect(() =>
+      assertNoConfigPlaceholder({
+        value: { server: { password: resolvedCredential } },
+        path: ["connection"],
+        configFile: "alcove.yaml",
+      }),
+    ).toThrow(
+      "config file alcove.yaml still has a REPLACE_WITH_... placeholder as " +
+        "connection.server.password.",
+    );
+    try {
+      assertNoConfigPlaceholder({
+        value: { server: { password: resolvedCredential } },
+        path: ["connection"],
+        configFile: "alcove.yaml",
+      });
+    } catch (err) {
+      expect((err as Error).message).not.toContain("secret-from-a-file");
+    }
   });
 });

@@ -58,7 +58,7 @@ Two invitation flows are supported: an offline flow where no server is involved 
 | Intent | Invocation |
 |---|---|
 | Zero-setup exchange (both parties) | `alcove URL input.csv` |
-| Generate a config file for editing | `alcove init [input.csv]` |
+| Generate a config file for editing | `alcove init [URL] [input.csv]` |
 | Start a recurring exchange relationship (offline) | `alcove invite --identity IDENTITY [input.csv]`, then share the invitation string out-of-band |
 | Start a recurring exchange relationship and exchange (server-coordinated) | `alcove invite --identity IDENTITY URL input.csv`, then share the invitation string; the exchange runs on acceptance |
 | Accept an offline invitation | `alcove accept --identity IDENTITY INVITATION [input.csv]` |

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import logLibrary from "loglevel";
 import YAML from "yaml";
@@ -77,6 +77,7 @@ vi.mock("../../../src/psiHeapRestart", async () => {
 });
 
 import {
+  ACCEPT_NEEDS_TERMINAL,
   acceptFormMayRunExchange,
   handler as acceptHandler,
   resolveAcceptPositionals,
@@ -2981,7 +2982,31 @@ function offlineAcceptFixture(): {
   };
 }
 
+/**
+ * Report the real `process.stdin` as a terminal for each test in the enclosing
+ * describe, for the handler tests whose confirmation prompt is mocked: an
+ * acceptance with no terminal and no `--consent-to-terms` is refused before
+ * its prompt. A test that swaps `process.stdin` for a stub is unaffected.
+ */
+function stdinIsTerminalForEachTest(): void {
+  let original: PropertyDescriptor | undefined;
+  beforeEach(() => {
+    original = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
+  });
+  afterEach(() => {
+    if (original !== undefined)
+      Object.defineProperty(process.stdin, "isTTY", original);
+    else delete (process.stdin as { isTTY?: boolean }).isTTY;
+  });
+}
+
 describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
+  stdinIsTerminalForEachTest();
+
   test("handler: at a terminal with no --identity, the answer lands in the config it writes", async () => {
     // The whole point of asking: the label reaches the file this acceptance
     // writes, so the later `alcove exchange` over it sends the name the operator
@@ -3025,15 +3050,16 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     }
   });
 
-  test("handler: with no terminal, an unnamed acceptance is refused, not left waiting", async () => {
+  test("handler: with no terminal and no --consent-to-terms, the acceptance is refused before its terms", async () => {
     // The unattended shape -- a pipe, a container run without -t, CI. Nothing is
-    // asked, because nothing would answer; what the operator gets is the standing
-    // refusal naming the flag, not a run blocked on a read.
+    // asked, because nothing would answer, and the terms are not shown for a
+    // question that cannot follow: the operator gets the refusal naming the
+    // flag (exit 64), not a decline that exits 0.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
-    const { stderrWrites, restore } = captureStdio();
+    const { stdoutWrites, stderrWrites, restore } = captureStdio();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
@@ -3045,14 +3071,18 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
           args: [encoded, input],
           "config-file": configFile,
           "key-file": keyFile,
-          "log-level": "error",
+          "log-level": "info",
           record: false,
         } as unknown as Arguments),
       );
       restore();
       expect(exit).toHaveBeenCalledWith(64);
-      expect(stderrWrites.join("")).toContain("no identity for this party");
+      expect(stderrWrites.join("")).toContain(ACCEPT_NEEDS_TERMINAL);
+      expect(stdoutWrites.join("") + stderrWrites.join("")).not.toContain(
+        "elements:",
+      );
       expect(promptFreeTextMock).not.toHaveBeenCalled();
+      expect(promptConfirmMock).not.toHaveBeenCalled();
       expect(fs.existsSync(configFile)).toBe(false);
       expect(fs.existsSync(keyFile)).toBe(false);
     } finally {
@@ -3909,6 +3939,8 @@ async function runOfflineAcceptCapturingStdio(params: {
 const DECLINE_LINE = "invitation declined; no files were written";
 
 describe("handler: an acceptance names the directories its invitation supplies", () => {
+  stdinIsTerminalForEachTest();
+
   // The inviter's pair; this party reads where the inviter writes and writes
   // where the inviter reads.
   const inviterIn = platformAbsolutePath("/srv/exchange/inviter-in");
@@ -4073,6 +4105,8 @@ describe("handler: an acceptance names the directories its invitation supplies",
 });
 
 describe("handler: the consent surface reaches wherever the prompt asks", () => {
+  stdinIsTerminalForEachTest();
+
   test("handler: nothing reaches the operator between the terms and the question", async () => {
     // The repeated decision block is the last thing printed, so the y/N is answered
     // against those facts rather than the tail of the key list. A line added between
@@ -4549,6 +4583,8 @@ function armoredFixture(): ReturnType<typeof offlineAcceptFixture> {
 }
 
 describe("handler: the prompt's copy has the redaction on its own", () => {
+  stdinIsTerminalForEachTest();
+
   test("handler: hostile terms leave the sink-level pass nothing to do", async () => {
     // The invariant the prompting path rests on: every partner-declared value
     // is redacted where it is composed, so the pass the log sink would have applied

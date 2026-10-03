@@ -56,8 +56,11 @@ test("a core-minted sftp YAML reaches the CLI config path with the placeholder u
 
   // The placeholder survives the mint -> serialize -> load round-trip
   // unchanged, and the load refuses it by name until the operator fills it in.
+  expect(fs.readFileSync(configFile, "utf8")).toContain(
+    `username: ${PLACEHOLDER_SSH_USERNAME}`,
+  );
   expect(() => loadConfig({ configFile, keyFile })).toThrow(
-    `still has the placeholder ${PLACEHOLDER_SSH_USERNAME} as connection.server.username`,
+    "still has a REPLACE_WITH_... placeholder as connection.server.username",
   );
   const result = loadConfig({ configFile, keyFile, serverUsername: "alice" });
   expect(result.connection.channel).toBe("sftp");

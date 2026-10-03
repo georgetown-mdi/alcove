@@ -32,15 +32,59 @@ export interface TemplateDataSpec {
    * exchange it governs reads and writes by it without a flag. Absent when the
    * run chose none. */
   csvDelimiter?: string;
+  /** The input columns the inferred metadata does not declare, in input
+   * order, written as commented metadata entries so the operator can choose
+   * to send one. Absent or empty when no input file was read, or when every
+   * column was declared. */
+  undeclaredColumns?: ReadonlyArray<string>;
 }
+
+/**
+ * The placeholder written as an SFTP connection's `server.path` when nothing
+ * names the directory.
+ */
+export const PLACEHOLDER_SFTP_PATH = "REPLACE_WITH_SHARED_DIRECTORY";
+
+/**
+ * The placeholder written as a filedrop connection's `path` when nothing names
+ * the directory. Absolute so the template still parses: the filedrop schema
+ * takes only an absolute path.
+ */
+export const PLACEHOLDER_FILEDROP_PATH = "/REPLACE_WITH_SHARED_DIRECTORY";
+
+/**
+ * The connection block a template is written with, without its tuning
+ * options: an `sftp` server (`path` absent for the login directory) or a
+ * `filedrop` directory. camelCase, like the rest of the spec the template
+ * renders.
+ */
+export type TemplateConnection =
+  | {
+      channel: "sftp";
+      server: { host: string; port: number; username: string; path?: string };
+    }
+  | { channel: "filedrop"; path: string };
+
+/** The connection a template holds when nothing names one: an `sftp` block of
+ * placeholders. */
+export const DEFAULT_TEMPLATE_CONNECTION: TemplateConnection = {
+  channel: "sftp",
+  server: {
+    host: PLACEHOLDER_SFTP_HOST,
+    port: 22,
+    username: PLACEHOLDER_SSH_USERNAME,
+    path: PLACEHOLDER_SFTP_PATH,
+  },
+};
 
 const HEADER_LINES = [
   "Alcove configuration template.",
   "",
   "Every option below is documented inline. Edit the placeholders (anything",
-  "REPLACE_WITH_...), fill in your connection credentials, and review the",
-  "linkage terms before running an exchange. The shared secret is NOT stored",
-  "here -- it lives in the key file (.alcove.key), written by invite/accept.",
+  "REPLACE_WITH_...; an exchange refuses a file still holding one), fill in",
+  "your connection credentials, and review the linkage terms before running an",
+  "exchange. The shared secret is NOT stored here -- it lives in the key file",
+  "(.alcove.key), written by invite/accept.",
   "",
   "Field reference:",
   "  https://github.com/georgetown-mdi/alcove/blob/main/docs/EXCHANGE_REFERENCE.md",
@@ -66,39 +110,11 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
     {
       path: ["connection"],
       lines: [
-        "How to reach your exchange partner. channel is sftp here (the primary CLI",
-        "transport); filedrop (a shared mounted directory) and webrtc are also",
-        "supported, and a commented webrtc block is at the end of this file. The",
-        "block each one takes is at",
+        "How to reach your exchange partner. channel is one of sftp, filedrop (a",
+        "shared mounted directory), or webrtc; a commented webrtc block is at the",
+        "end of this file. The block each one takes is at",
         CONNECTION_BLOCK_DOC_URL,
       ],
-    },
-    {
-      path: ["connection", "server"],
-      lines: [
-        "SFTP server both parties drop files on. Supply a credential by adding one",
-        "of (preferably as an @path, never a literal secret -- quote the value, as",
-        "a leading @ is reserved in YAML):",
-        '  password: "@./sftp-password.txt"',
-        '  private_key: "@~/.ssh/id_alcove"',
-        "If the server accepts keyboard-interactive but not the direct password",
-        "method, answer its prompts with the password (requires password):",
-        "  keyboard_interactive: true",
-        "Optionally pin the host key to verify the server on connect:",
-        "  host_key_fingerprint: SHA256:....",
-      ],
-    },
-    {
-      path: ["connection", "server", "host"],
-      lines: ["SFTP host name or IP."],
-    },
-    {
-      path: ["connection", "server", "port"],
-      lines: ["SSH port (default 22)."],
-    },
-    {
-      path: ["connection", "server", "username"],
-      lines: ["SSH username for the server."],
     },
     {
       path: ["connection", "options"],
@@ -241,6 +257,74 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
     },
   ];
 
+/**
+ * Per-field documentation for an `sftp` connection block, in the form of
+ * {@link FIELD_DOCS}.
+ *
+ * @internal exported so a test asserts every entry resolves in an sftp render.
+ */
+export const SFTP_FIELD_DOCS: Array<{
+  path: Array<string>;
+  lines: Array<string>;
+}> = [
+  {
+    path: ["connection", "server"],
+    lines: [
+      "SFTP server both parties drop files on. When the block has no path, the",
+      "login directory is used. Supply a credential by adding one",
+      "of (preferably as an @path, never a literal secret -- quote the value, as",
+      "a leading @ is reserved in YAML):",
+      '  password: "@./sftp-password.txt"',
+      '  private_key: "@~/.ssh/id_alcove"',
+      "If the server accepts keyboard-interactive but not the direct password",
+      "method, answer its prompts with the password (requires password):",
+      "  keyboard_interactive: true",
+      "Optionally pin the host key to verify the server on connect:",
+      "  host_key_fingerprint: SHA256:....",
+    ],
+  },
+  {
+    path: ["connection", "server", "host"],
+    lines: ["SFTP host name or IP."],
+  },
+  {
+    path: ["connection", "server", "port"],
+    lines: ["SSH port (default 22)."],
+  },
+  {
+    path: ["connection", "server", "username"],
+    lines: ["SSH username for the server."],
+  },
+  {
+    path: ["connection", "server", "path"],
+    lines: [
+      "Directory on the server that both parties use for this exchange's",
+      "files; both must name the same one. Delete the field to use the login",
+      "directory.",
+    ],
+  },
+];
+
+/**
+ * Per-field documentation for a `filedrop` connection block, in the form of
+ * {@link FIELD_DOCS}.
+ *
+ * @internal exported so a test asserts every entry resolves in a filedrop
+ * render.
+ */
+export const FILEDROP_FIELD_DOCS: Array<{
+  path: Array<string>;
+  lines: Array<string>;
+}> = [
+  {
+    path: ["connection", "path"],
+    lines: [
+      "Absolute path of the shared directory both parties mount, for example a",
+      "network share. Each party writes its own mount point here.",
+    ],
+  },
+];
+
 // Optional sections appended as commented-out examples: opt-in features with no
 // default value to pre-fill, so they are documented here for the operator to
 // uncomment and edit rather than written active. Kept in sync with the optional
@@ -251,15 +335,15 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
 // the schema -- an operator who enables a section must get a loadable config.
 export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to enable) ------------------------
 
-# A webrtc connection, in place of the sftp block above: a direct channel
-# between the two parties, set up through a peer-coordination server. role is
-# inviter on the party that issued the invitation and acceptor on the other;
-# 'alcove accept' writes this block for you. key is the coordination server's
-# API key (default peerjs). stun replaces the built-in STUN server list. turn
-# names relay servers for networks where a direct connection fails (write the
-# credential as an @path, or leave out username and credential to have each
-# run mint one from the shared secret); ice_transport_policy: relay uses those
-# relays only.
+# A webrtc connection, in place of the connection block above: a direct
+# channel between the two parties, set up through a peer-coordination server.
+# role is inviter on the party that issued the invitation and acceptor on the
+# other; 'alcove accept' writes this block for you. key is the coordination
+# server's API key (default peerjs). stun replaces the built-in STUN server
+# list. turn names relay servers for networks where a direct connection fails
+# (write the credential as an @path, or leave out username and credential to
+# have each run mint one from the shared secret); ice_transport_policy: relay
+# uses those relays only.
 # connection:
 #   channel: webrtc
 #   server:
@@ -376,27 +460,45 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
 `;
 
 /**
- * Render the commented `alcove.yaml` template `alcove init` writes: an
- * `sftp` connection scaffold with placeholder credentials, the linkage terms
- * (default or inferred), the inferred metadata/standardization when an input
- * file was given, and the optional sections documented as commented examples.
+ * The comment written after an inferred metadata block naming the input
+ * columns it does not declare, each as a commented entry that sends the
+ * column once uncommented.
+ */
+function undeclaredColumnsComment(
+  undeclaredColumns: ReadonlyArray<string>,
+): string {
+  const entries = undeclaredColumns.flatMap((name) =>
+    YAML.stringify([{ name, type: "other", role: "payload", is_payload: true }])
+      .trimEnd()
+      .split("\n"),
+  );
+  return commentBlock([
+    "Input columns not declared above, and so not sent to your partner.",
+    "Uncomment an entry to send that column for matched records, or set its",
+    "role to ignored to leave it out without a notice at each run.",
+    ...entries,
+  ]);
+}
+
+/**
+ * Render the commented `alcove.yaml` template `alcove init` writes: the
+ * connection block (`connection`, the default an `sftp` scaffold of
+ * placeholders) with its tuning options, the linkage terms (default or
+ * inferred), the inferred metadata/standardization when an input file was
+ * given, and the optional sections documented as commented examples.
  *
  * The active sections are built into one YAML document so per-field comments
  * land in the right place and the result round-trips through the schema (the
  * test parses it); the opt-in sections, which have no default to pre-fill, are
- * appended as commented text. The connection block is always a placeholder --
- * there is nothing to infer a server address from -- so the file is a scaffold
- * to hand-edit, not a runnable config.
+ * appended as commented text.
  */
-export function renderConfigTemplate(data: TemplateDataSpec): string {
+export function renderConfigTemplate(
+  data: TemplateDataSpec,
+  connection: TemplateConnection = DEFAULT_TEMPLATE_CONNECTION,
+): string {
   const spec: Record<string, unknown> = {
     connection: {
-      channel: "sftp",
-      server: {
-        host: PLACEHOLDER_SFTP_HOST,
-        port: 22,
-        username: PLACEHOLDER_SSH_USERNAME,
-      },
+      ...connection,
       options: {
         serverConnectTimeoutMs: DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
         peerTimeoutMs: DEFAULT_PEER_TIMEOUT_MS,
@@ -417,8 +519,18 @@ export function renderConfigTemplate(data: TemplateDataSpec): string {
 
   const doc = new YAML.Document(snakeizeKeys(spec));
   doc.commentBefore = commentBlock(HEADER_LINES);
-  for (const { path, lines } of FIELD_DOCS) commentKey(doc, path, lines);
+  const channelDocs =
+    connection.channel === "sftp" ? SFTP_FIELD_DOCS : FILEDROP_FIELD_DOCS;
+  for (const { path, lines } of [...FIELD_DOCS, ...channelDocs])
+    commentKey(doc, path, lines);
   annotateUnsetPayloadReceive(doc, data.linkageTerms);
+  const metadataNode = doc.get("metadata", true);
+  if (
+    data.undeclaredColumns !== undefined &&
+    data.undeclaredColumns.length > 0 &&
+    YAML.isSeq(metadataNode)
+  )
+    metadataNode.comment = undeclaredColumnsComment(data.undeclaredColumns);
 
   const sections = [doc.toString().trimEnd()];
   // When no input file seeded metadata/standardization, document them (commented)

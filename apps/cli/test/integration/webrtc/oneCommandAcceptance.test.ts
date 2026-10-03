@@ -33,8 +33,8 @@ import type { TlsBrokerFront } from "../../signaling/tlsBrokerFront";
 /**
  * The live one-command acceptance: an inviting CLI mints a webrtc invitation
  * and waits, while an accepting CLI runs the whole acceptance -- resolution,
- * the consent prompt, the dial, and the exchange -- in the single command an
- * operator types.
+ * consent, the dial, and the exchange -- in the single command an operator
+ * types.
  *
  * Both parties are real child processes, so this exercises the wiring
  * between those steps; the unit suite and
@@ -294,31 +294,31 @@ liveTest(
 
     // The acceptance an operator types: the invitation, an input file, and a
     // destination -- no URL, because the invitation names the coordination
-    // server itself. `y` answers the confirmation prompt, the one human
-    // checkpoint before this command connects and transmits.
-    const acceptor = party(
-      [
-        "accept",
-        invitation,
-        acceptInput,
-        acceptOut,
-        "--config-file",
-        acceptConfig,
-        "--key-file",
-        acceptKey,
-        "--identity",
-        "accept",
-        "--record-file",
-        acceptRecord,
-        // This acceptance runs the exchange, so its own budget bounds it: the
-        // wait for the partner at the rendezvous, and the peer waits after.
-        "--peer-timeout",
-        PARTY_RUN_BUDGET,
-        "--log-level",
-        "info",
-      ],
-      "y\n",
-    );
+    // server itself. A child process has no terminal to answer the
+    // confirmation prompt at, so consent is given in advance, as an
+    // unattended acceptance gives it; the prompt itself is covered by the
+    // handler's unit suite.
+    const acceptor = party([
+      "accept",
+      "--consent-to-terms",
+      invitation,
+      acceptInput,
+      acceptOut,
+      "--config-file",
+      acceptConfig,
+      "--key-file",
+      acceptKey,
+      "--identity",
+      "accept",
+      "--record-file",
+      acceptRecord,
+      // This acceptance runs the exchange, so its own budget bounds it: the
+      // wait for the partner at the rendezvous, and the peer waits after.
+      "--peer-timeout",
+      PARTY_RUN_BUDGET,
+      "--log-level",
+      "info",
+    ]);
 
     const [acceptRun, inviteRun] = await Promise.all([
       acceptor.finished,
@@ -346,14 +346,14 @@ liveTest(
       describeCliRun("the inviting party", inviteRun),
     ).not.toContain("still held open");
 
-    // The acceptance asked about the coordination server it actually dialed --
+    // The acceptance named the coordination server it actually dialed --
     // host and port, resolved from the invitation's endpoint by the same
-    // resolver the dial uses. This is the last checkpoint before a locator the
-    // operator never typed is connected to, so a prompt naming something else
-    // (or nothing) is a consent failure even where the exchange completes.
+    // resolver the dial uses. The operator never typed this locator, so terms
+    // naming something else (or nothing) are a consent failure even where the
+    // exchange completes.
     expect(acceptRun.stderr).toContain(
-      "Accept this invitation and run the exchange now, through " +
-        `${BROKER_HOST}:${front.port}?`,
+      "through the coordination server this invitation names: " +
+        `${BROKER_HOST}:${front.port}`,
     );
 
     // The invitation is the whole of what the inviting party puts on stdout;

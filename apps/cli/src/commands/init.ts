@@ -7,20 +7,27 @@ import {
   linkageTermsFromRuleSet,
   messageWithOperatorText,
   operatorSuppliedText,
+  PLACEHOLDER_SSH_USERNAME,
   redactAndRenderOperatorSuppliedText,
+  undeclaredColumnNames,
   UsageError,
 } from "@alcove/core";
 import type { BuiltInLinkageRuleSet } from "@alcove/core";
 
-import { DEFAULT_CONFIG_PATH } from "../config";
+import { configPlaceholderFields, DEFAULT_CONFIG_PATH } from "../config";
+import { channelForScheme, connectionFromURL } from "../connectionFromUrl";
 import {
   detectFileConflicts,
   expandTilde,
   FileExistsError,
   writeFileOwnerOnly,
 } from "../fileUtils";
-import { renderConfigTemplate } from "../configTemplate";
-import type { TemplateDataSpec } from "../configTemplate";
+import {
+  DEFAULT_TEMPLATE_CONNECTION,
+  PLACEHOLDER_FILEDROP_PATH,
+  renderConfigTemplate,
+} from "../configTemplate";
+import type { TemplateConnection, TemplateDataSpec } from "../configTemplate";
 import { openInputSource } from "../util/dataIo";
 import { runOrExit } from "../util/exit";
 import {
@@ -31,7 +38,11 @@ import {
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptConfirm, stdinAnswersPrompts } from "../util/prompt";
 import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
-import { buildDataSpec, warnSanitizedColumns } from "../onlineBootstrap";
+import {
+  buildDataSpec,
+  looksLikeUrl,
+  warnSanitizedColumns,
+} from "../onlineBootstrap";
 import {
   askIdentityAtPrompt,
   identityFromFlagOrPrompt,
@@ -50,8 +61,16 @@ export function builder(cmd: Argv): Argv {
       type: "string",
       array: true,
       describe:
-        "optional CSV [INPUT_FILE] to infer column metadata, linkage fields, " +
-        "and standardizing transformations from; `-` reads it from stdin",
+        "optional server [URL] (sftp://, ssh://, or file://) to fill the " +
+        "connection block from, then an optional CSV [INPUT_FILE] to infer " +
+        "column metadata, linkage fields, and standardizing transformations " +
+        "from; `-` reads it from stdin",
+    })
+    .option("channel", {
+      type: "string",
+      describe:
+        "channel of the connection block to write when no URL is given: " +
+        "sftp (default) or filedrop",
     })
     .option("config-file", {
       type: "string",
@@ -63,11 +82,13 @@ export function builder(cmd: Argv): Argv {
     });
   return addLoggingOptions(withoutLogging).usage(
     "Usage:\n" +
-      "  $0 init [options] [INPUT_FILE]\n\n" +
+      "  $0 init [options] [URL] [INPUT_FILE]\n\n" +
       "Write a commented alcove.yaml template -- every option documented\n" +
       "inline with defaults pre-filled -- then exit. No key file is created\n" +
-      "and no exchange is run. With an INPUT_FILE, column metadata, linkage\n" +
-      "fields, and standardizing transformations are inferred from it.\n\n" +
+      "and no exchange is run. With a URL, the connection block is filled\n" +
+      "from it, leaving only the credential to add. With an INPUT_FILE,\n" +
+      "column metadata, linkage fields, and standardizing transformations\n" +
+      "are inferred from it.\n\n" +
       "INPUT_FILE may be `-` to read the CSV from stdin.",
   );
 }
@@ -113,7 +134,11 @@ export async function handler(argv: Arguments): Promise<void> {
       // positionals rather than the top-level strictOptions; reject it here,
       // before any input read or file write.
       assertNoUnknownOptions(positionals);
-      const input = resolveInitInput(positionals);
+      const { url, input } = resolveInitPositionals(positionals);
+      const connection = templateConnection(
+        url,
+        singleValue(argv, "channel") as string | undefined,
+      );
 
       // One interactivity decision serves both questions this command can ask,
       // so the two cannot disagree about who owns stdin.
@@ -161,7 +186,7 @@ export async function handler(argv: Arguments): Promise<void> {
         DEFAULT_LINKAGE_RULE_SET,
         csvDelimiter,
       );
-      const template = renderConfigTemplate(data);
+      const template = renderConfigTemplate(data, connection);
       try {
         // Exclusive on the "create" path (the path was free at the check): if a
         // file appeared between the check and this write -- a window a `-` stdin
@@ -195,10 +220,8 @@ export async function handler(argv: Arguments): Promise<void> {
       log.info(
         `wrote a configuration template to ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(configFile),
-        )}. No key file was ` +
-          "created and no exchange was run. Edit the file -- at least the " +
-          "connection block and the identity -- then run 'alcove invite' or " +
-          "'alcove accept' to set up an exchange.",
+        )}. No key file was created and no exchange was run. ` +
+          initNextSteps(connection, identity),
       );
     });
   } finally {
@@ -211,21 +234,142 @@ export async function handler(argv: Arguments): Promise<void> {
 }
 
 /**
- * Resolve the optional INPUT_FILE positional. `init` takes at most one (the CSV,
- * or `-` for stdin); a second positional is a mistake -- most likely an
- * OUTPUT_FILE copied from another command, which `init` does not take -- so it is
- * rejected as a usage error rather than silently ignored.
+ * Resolve the optional URL and INPUT_FILE positionals, in that order. A first
+ * positional with a connection scheme ({@link looksLikeUrl}) is the URL;
+ * anything else is the input file. A further positional is a mistake -- most
+ * likely an OUTPUT_FILE copied from another command, which `init` does not
+ * take -- so it is rejected as a usage error rather than silently ignored.
  *
  * @internal exported for testing
  */
-export function resolveInitInput(
-  positionals: Array<unknown>,
-): string | undefined {
-  if (positionals.length > 1)
+export function resolveInitPositionals(positionals: Array<unknown>): {
+  url?: URL;
+  input?: string;
+} {
+  const given = positionals.map(String);
+  const url =
+    given[0] !== undefined && looksLikeUrl(given[0])
+      ? new URL(given[0])
+      : undefined;
+  const rest = url !== undefined ? given.slice(1) : given;
+  if (rest.length > 1)
     throw new UsageError(
-      "init takes at most one INPUT_FILE; usage: alcove init [INPUT_FILE]",
+      "init takes at most a URL and one INPUT_FILE; usage: alcove init " +
+        "[URL] [INPUT_FILE]",
     );
-  return positionals[0] !== undefined ? String(positionals[0]) : undefined;
+  return {
+    ...(url !== undefined ? { url } : {}),
+    ...(rest[0] !== undefined ? { input: rest[0] } : {}),
+  };
+}
+
+/** The channels `init` writes a connection block for. */
+const INIT_CHANNELS = ["sftp", "filedrop"] as const;
+
+/**
+ * The refusal a webrtc URL or `--channel webrtc` gets: a webrtc block needs
+ * the party's `role`, which only an invitation decides.
+ */
+export const INIT_WEBRTC_REFUSED =
+  "init writes an sftp or filedrop connection block. A webrtc block is " +
+  "written by 'alcove invite', which takes a ws:// or wss:// URL, and by " +
+  "'alcove accept' from the invitation; or uncomment the webrtc example at " +
+  "the end of the template.";
+
+/**
+ * The refusal a password in an sftp URL gets: `init` writes the file it
+ * reads its credential from, and a literal password would sit in it.
+ */
+export const INIT_URL_PASSWORD_REFUSED =
+  "init does not write a password from the URL into the configuration. " +
+  "Leave it out of the URL, then add it to connection.server in the file " +
+  'as an @path, e.g. password: "@./sftp-password.txt".';
+
+/**
+ * The connection block `init` writes: filled from `url` when one is given,
+ * otherwise placeholders for the `--channel` channel (default sftp). An sftp
+ * URL fills host, port, username, and the directory; only a credential is
+ * then left to add, and a URL naming no username leaves that placeholder. A
+ * URL with no directory names the login directory, so no `path` is written.
+ *
+ * @throws {UsageError} for a webrtc or unknown channel, a `--channel` that
+ *   disagrees with the URL's, or a URL holding a password.
+ * @internal exported for testing
+ */
+export function templateConnection(
+  url: URL | undefined,
+  channelFlag: string | undefined,
+): TemplateConnection {
+  if (channelFlag === "webrtc") throw new UsageError(INIT_WEBRTC_REFUSED);
+  if (
+    channelFlag !== undefined &&
+    !(INIT_CHANNELS as ReadonlyArray<string>).includes(channelFlag)
+  ) {
+    const message = messageWithOperatorText`unknown --channel ${operatorSuppliedText(
+      channelFlag,
+    )}; expected sftp or filedrop`;
+    throw keepOperatorSuppliedText(new UsageError(message.text), message);
+  }
+
+  if (url === undefined)
+    return channelFlag === "filedrop"
+      ? { channel: "filedrop", path: PLACEHOLDER_FILEDROP_PATH }
+      : DEFAULT_TEMPLATE_CONNECTION;
+
+  const urlChannel = channelForScheme(url.protocol);
+  if (urlChannel === "webrtc") throw new UsageError(INIT_WEBRTC_REFUSED);
+  if (channelFlag !== undefined && channelFlag !== urlChannel)
+    throw new UsageError(
+      `--channel ${channelFlag} does not match the URL, which names the ` +
+        `${urlChannel ?? "another"} channel; give the URL alone`,
+    );
+  if (url.password) throw new UsageError(INIT_URL_PASSWORD_REFUSED);
+
+  const parsed = connectionFromURL(url, {});
+  if (parsed.channel === "filedrop")
+    return {
+      channel: "filedrop",
+      path: parsed.path ?? PLACEHOLDER_FILEDROP_PATH,
+    };
+  return {
+    channel: "sftp",
+    server: {
+      host: parsed.server.host,
+      port: parsed.server.port ?? 22,
+      username: parsed.server.username ?? PLACEHOLDER_SSH_USERNAME,
+      ...(parsed.server.path !== undefined ? { path: parsed.server.path } : {}),
+    },
+  };
+}
+
+/**
+ * What the success notice asks the operator to do next: the placeholders the
+ * written file still holds, by field, and on sftp the credential to add.
+ */
+function initNextSteps(
+  connection: TemplateConnection,
+  identity: string,
+): string {
+  const placeholders = [
+    ...configPlaceholderFields(connection, ["connection"]),
+    ...configPlaceholderFields({ identity }, ["linkage_terms"]),
+  ];
+  const steps = [
+    ...(placeholders.length > 0
+      ? [
+          `replace the placeholder${placeholders.length > 1 ? "s" : ""} in ` +
+            placeholders.join(", "),
+        ]
+      : []),
+    ...(connection.channel === "sftp"
+      ? ["add your SFTP credential to connection.server"]
+      : []),
+  ];
+  const edit =
+    steps.length > 0
+      ? `Edit the file -- ${steps.join(", and ")} -- then run`
+      : "Review the file, then run";
+  return `${edit} 'alcove invite' or 'alcove accept' to set up an exchange.`;
 }
 
 /**
@@ -286,19 +430,28 @@ export async function buildTemplateData(
 
   warnSanitizedColumns(inferred.sanitizedColumnPositions);
 
+  const dataSpec = buildDataSpec({
+    identity,
+    ruleSet,
+    rows: {
+      rawRows: [],
+      columns: inferred.columns,
+      sanitizedColumnPositions: inferred.sanitizedColumnPositions,
+    },
+    ...(inferred.dateInputFormat !== undefined
+      ? { dateInputFormat: inferred.dateInputFormat }
+      : {}),
+  });
   return {
-    ...buildDataSpec({
-      identity,
-      ruleSet,
-      rows: {
-        rawRows: [],
-        columns: inferred.columns,
-        sanitizedColumnPositions: inferred.sanitizedColumnPositions,
-      },
-      ...(inferred.dateInputFormat !== undefined
-        ? { dateInputFormat: inferred.dateInputFormat }
-        : {}),
-    }),
+    ...dataSpec,
+    ...(dataSpec.metadata !== undefined
+      ? {
+          undeclaredColumns: undeclaredColumnNames(
+            inferred.columns,
+            dataSpec.metadata,
+          ),
+        }
+      : {}),
     ...delimiterSection,
   };
 }

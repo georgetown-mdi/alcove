@@ -366,7 +366,31 @@ test("loadConfig refuses the placeholder SSH username before reading the key", (
   fs.writeFileSync(configFile, YAML.stringify(placeholderUsernameConfig));
   expect(() => loadConfig(baseOptions())).toThrow(UsageError);
   expect(() => loadConfig(baseOptions())).toThrow(
-    "still has the placeholder REPLACE_WITH_SSH_USERNAME as connection.server.username",
+    "still has a REPLACE_WITH_... placeholder as connection.server.username. " +
+      "Set it to your account on the SFTP server, or pass --server-username",
+  );
+});
+
+test("loadConfig refuses a placeholder in any connection field, naming it", () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      ...minimalSFTPConfig,
+      connection: {
+        channel: "sftp",
+        server: {
+          host: "sftp.example.org",
+          username: "alice",
+          path: "REPLACE_WITH_SHARED_DIRECTORY",
+        },
+      },
+    }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  expect(() => loadConfig(baseOptions())).toThrow(UsageError);
+  expect(() => loadConfig(baseOptions())).toThrow(
+    "still has a REPLACE_WITH_... placeholder as connection.server.path. " +
+      "Replace it with this exchange's value",
   );
 });
 
@@ -397,14 +421,14 @@ test("loadConfig runs a placeholder username that --server-username replaces", (
   expect(result.connection.channel).toBe("sftp");
 });
 
-test("loadConfig refuses the SSH username placeholder an init template holds", () => {
+test("loadConfig refuses the placeholders an init template holds", () => {
   fs.writeFileSync(
     configFile,
     renderConfigTemplate({ linkageTerms: getDefaultLinkageTerms("Org") }),
   );
   saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
   expect(() => loadConfig(baseOptions())).toThrow(
-    "still has the placeholder REPLACE_WITH_SSH_USERNAME as connection.server.username",
+    "still has a REPLACE_WITH_... placeholder as connection.server.host",
   );
 });
 
