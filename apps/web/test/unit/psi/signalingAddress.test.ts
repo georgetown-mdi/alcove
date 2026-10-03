@@ -4,12 +4,11 @@ import { default as EventEmitter } from "eventemitter3";
 
 import { generateSharedSecret } from "@alcove/core";
 
-import {
-  INSECURE_SIGNALING_SERVER_REFUSED,
-  resolveSignalingAddress,
-} from "../../../src/psi/transport/signalingAddress.js";
+import { SIGNALING_SCHEME_MISMATCH } from "@utils/signalingScheme";
+
 import { invitationLocation } from "../../../src/psi/invitationLocation.js";
 import { listenAsInviter } from "../../../src/psi/transport/rendezvous.js";
+import { resolveSignalingAddress } from "../../../src/psi/transport/signalingAddress.js";
 import { webrtcEndpointFromAddress } from "../../../src/psi/invitation.js";
 
 import type * as ClientConfigModule from "@utils/clientConfig";
@@ -85,10 +84,28 @@ describe("resolveSignalingAddress with a setting", () => {
     ).toBe("127.0.0.1");
   });
 
+  test.each<[string, boolean]>([
+    ["https:", true],
+    ["http:", false],
+  ])("names the default port explicitly under %s", (protocol, secure) => {
+    expect(
+      resolveSignalingAddress(
+        { secure, host: "signaling.example.org", path: "/api/" },
+        { ...httpsPage, protocol },
+      ).port,
+    ).toBe(secure ? 443 : 80);
+  });
+
   test("refuses a ws: setting under an https page", () => {
     expect(() =>
       resolveSignalingAddress({ ...configured, secure: false }, httpsPage),
-    ).toThrow(INSECURE_SIGNALING_SERVER_REFUSED);
+    ).toThrow(SIGNALING_SCHEME_MISMATCH);
+  });
+
+  test("refuses a wss: setting under an http page", () => {
+    expect(() =>
+      resolveSignalingAddress(configured, { ...httpsPage, protocol: "http:" }),
+    ).toThrow(SIGNALING_SCHEME_MISMATCH);
   });
 });
 
@@ -154,6 +171,32 @@ describe("the inviter's registration and its invitation", () => {
       secure: true,
     });
     expect(invitationLocation().origin).toBe("https://app.example.org");
+  });
+
+  test("an invitation names a configured server's default port", () => {
+    setting.current = {
+      secure: true,
+      host: "signaling.example.org",
+      path: "/api/",
+    };
+    expect(
+      webrtcEndpointFromAddress(invitationLocation().signaling),
+    ).toStrictEqual({
+      channel: "webrtc",
+      host: "signaling.example.org",
+      port: 443,
+      path: "/api/",
+    });
+  });
+
+  test("an invitation omits the default port when no server is set", () => {
+    expect(
+      webrtcEndpointFromAddress(invitationLocation().signaling),
+    ).toStrictEqual({
+      channel: "webrtc",
+      host: "app.example.org",
+      path: "/api/",
+    });
   });
 
   test("an invitation never names the page's host once a server is set", () => {

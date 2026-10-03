@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { authorityMovingSignalingField } from "@alcove/core";
 
+import {
+  SIGNALING_SCHEME_MISMATCH,
+  signalingSchemeMatchesPage,
+} from "./signalingScheme";
+
 import type { LogLevelDesc } from "loglevel";
 import type { ZodType } from "zod";
 
@@ -110,10 +115,10 @@ function parseSignalingServerUrl(
     url.hostname === "" ||
     url.username !== "" ||
     url.password !== "" ||
-    url.search !== "" ||
-    url.hash !== "" ||
-    trimmed.includes("#") ||
-    trimmed.includes("?")
+    // Checked on the raw text: URL reports an empty query or fragment
+    // ("...?", "...#") as an empty string.
+    trimmed.includes("?") ||
+    trimmed.includes("#")
   ) {
     context.addIssue({ code: "custom", message: SIGNALING_SERVER_URL_SHAPE });
     return z.NEVER;
@@ -167,17 +172,31 @@ const clientConfigSchema: ZodType<ClientConfig> = z.object({
  * Resolves a {@link ClientConfig} from `data`, keyed by the unprefixed names.
  * An absent value takes its default; a value of the wrong shape is refused
  * with an error naming every offending variable, so a misconfigured build
- * fails at load rather than running under a substituted default.
+ * fails at load rather than running under a substituted default. Given the
+ * page's `pageProtocol`, a signaling server whose scheme differs from the
+ * page's is refused the same way ({@link SIGNALING_SCHEME_MISMATCH}).
  */
 export function parseClientConfig(
   data: Readonly<Record<string, unknown>>,
+  pageProtocol?: string,
 ): ClientConfig {
   const result = clientConfigSchema.safeParse(data);
-  if (result.success) return result.data;
-  const problems = result.error.issues.map(
-    (issue) => `VITE_${issue.path.map(String).join(".")}: ${issue.message}`,
-  );
-  throw new Error(`Invalid build configuration: ${problems.join("; ")}.`);
+  if (!result.success) {
+    const problems = result.error.issues.map(
+      (issue) => `VITE_${issue.path.map(String).join(".")}: ${issue.message}`,
+    );
+    throw new Error(`Invalid build configuration: ${problems.join("; ")}.`);
+  }
+  const signaling = result.data.SIGNALING_SERVER_URL;
+  if (
+    signaling !== undefined &&
+    pageProtocol !== undefined &&
+    !signalingSchemeMatchesPage(signaling, pageProtocol)
+  )
+    throw new Error(
+      `Invalid build configuration: VITE_SIGNALING_SERVER_URL: ${SIGNALING_SCHEME_MISMATCH}.`,
+    );
+  return result.data;
 }
 
 /** The `VITE_`-prefixed build-time values, keyed by their unprefixed names. */
@@ -189,7 +208,10 @@ function viteEnvData(): Record<string, unknown> {
   );
 }
 
-const config = parseClientConfig(viteEnvData());
+const config = parseClientConfig(
+  viteEnvData(),
+  typeof window === "undefined" ? undefined : window.location.protocol,
+);
 
 /** This build's {@link DeploymentProfile}, resolved once from the config. */
 export function deploymentProfile(): DeploymentProfile {

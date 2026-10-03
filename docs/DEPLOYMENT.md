@@ -35,9 +35,9 @@ To have the web application's browser parties use a peer-coordination server dep
 VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web
 ```
 
-- The value is a `ws:` or `wss:` URL whose path is the server's mount; the standalone broker's default mount is `/api`.
+- The value is a `ws:` or `wss:` URL whose path is the server's mount; the broker's mount and how to set it: [packages/peerjs-broker/README.md](../packages/peerjs-broker/README.md).
 - Unset or blank, the browser parties use the server bundled at the web application's own `/api/`.
-- A deployment served over `https` needs a `wss:` URL; a `ws:` one is refused when an invitation is created or an exchange starts.
+- The URL's scheme must match the deployment's: `wss:` for one served over `https`, `ws:` for one served over `http`. A mismatch is refused when the app loads.
 - Every browser inviter of the deployment registers there, and every invitation it creates names that server, so an accepting party dials it whatever deployment they open the invitation in.
 - The value is fixed at build time, so changing it means rebuilding and redeploying; an invitation already sent keeps naming the server it was created with.
 

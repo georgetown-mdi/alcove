@@ -209,16 +209,16 @@ setting `VITE_SIGNALING_SERVER_URL`, never from an invitation:
 
 The setting is refused when the app loads if it is not a `ws:` or `wss:` URL,
 or names a user name, password, query or fragment, or a host or path the
-delimiter rules above refuse. A `ws:` setting is refused under an `https` page
-before anything is dialed, because the browser blocks that socket. `localhost`
-is resolved to `127.0.0.1` in either case.
+delimiter rules above refuse. It is also refused when the app loads if its
+scheme does not match the page's: `wss:` under an `https` page, `ws:` under an
+`http` page. `localhost` is resolved to `127.0.0.1` in either case.
 
-The endpoint an invitation names holds the address's `host`, `path`, and its
-`port` only when that is not the scheme's default; it names no scheme. An
-acceptor resolves the scheme from its own page, as above, so an inviter whose
-setting's scheme differs from the acceptor's page -- a `wss:` server named by
-an http-served page in local development -- names a socket the acceptor dials
-with the other scheme.
+The endpoint an invitation names holds the address's `host` and `path`, and
+names no scheme: an acceptor resolves the scheme from its own page, and an
+omitted port from that scheme's default. With the setting unset, the endpoint
+names the `port` only when the page's is not the scheme's default. With the
+setting set, the endpoint always names the `port`, the scheme's default
+included, so the port an acceptor dials never depends on its own page.
 
 ### Connection attempts
 

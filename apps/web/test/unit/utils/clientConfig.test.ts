@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { SIGNALING_SCHEME_MISMATCH } from "@utils/signalingScheme";
 import { parseClientConfig } from "@utils/clientConfig";
 
 describe("parseClientConfig", () => {
@@ -130,6 +131,27 @@ describe("parseClientConfig", () => {
     expect(() => parseClientConfig({ SIGNALING_SERVER_URL: input })).toThrow(
       /VITE_SIGNALING_SERVER_URL/,
     );
+  });
+
+  test.each([
+    ["ws://signaling.example.org/api/", "https:"],
+    ["wss://signaling.example.org/api/", "http:"],
+  ])("refuses SIGNALING_SERVER_URL %j under a %s page", (input, protocol) => {
+    expect(() =>
+      parseClientConfig({ SIGNALING_SERVER_URL: input }, protocol),
+    ).toThrow(
+      `Invalid build configuration: VITE_SIGNALING_SERVER_URL: ${SIGNALING_SCHEME_MISMATCH}.`,
+    );
+  });
+
+  test.each([
+    ["wss://signaling.example.org/api/", "https:"],
+    ["ws://signaling.example.org/api/", "http:"],
+  ])("accepts SIGNALING_SERVER_URL %j under a %s page", (input, protocol) => {
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: input }, protocol)
+        .SIGNALING_SERVER_URL,
+    ).toBeDefined();
   });
 
   test("names every offending variable in one refusal", () => {
