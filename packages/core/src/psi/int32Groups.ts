@@ -1,10 +1,8 @@
 import { InternalConsistencyError } from "../errors";
 import { PACED_STRETCH_RECORDS, type PaceableSteps } from "../utils/eventLoop";
 
-// The per-record structures of a round are held in typed arrays rather than in
-// a `Map` or `Set`, which V8 caps at 2^24 entries (docs/spec/PROTOCOL.md, One
-// round's matched records). Every key here is a dense ordinal -- a rank, a
-// slot, a position -- so an array indexed by it holds the same thing.
+// Typed-array lists, groupings and sorted lookups over a round's per-record
+// data, each keyed by a dense ordinal.
 
 /**
  * An `Int32Array` grown by doubling, for a list whose length is known only once

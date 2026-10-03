@@ -617,22 +617,26 @@ function singlePassResolves(cardinality: LinkageCardinality): boolean {
  * (`identifyIntersection`), reached here on the joiner role where the local
  * half is this party's own computation.
  *
+ * Every position is below `setSize`, the size of this party's own round set:
+ * the starter role refuses a partner-sent local half outside it as a protocol
+ * error before the permutation remap, and the joiner role's local half
+ * indexes its own request.
+ *
  * @internal exported for the single-resolver-obligation test.
  */
 export function attributableRoundMatches(
   myIndices: ReadonlyArray<number>,
   theirIndices: ReadonlyArray<number>,
+  setSize: number,
 ): { localPositions: Array<number>; partnerPositions: Array<number> } {
-  let highest = -1;
-  for (const position of myIndices) {
-    if (!Number.isInteger(position) || position < 0 || position >= 2 ** 31)
+  for (const position of myIndices)
+    if (!Number.isInteger(position) || position < 0 || position >= setSize)
       throw new InternalConsistencyError(
-        `a linkage round matched position ${position}, which no set holds`,
+        `a linkage round matched position ${position}, outside this ` +
+          `party's set of ${setSize}`,
       );
-    if (position > highest) highest = position;
-  }
   // 1 for a position named once, 2 for one named more than once.
-  const named = new Uint8Array(highest + 1);
+  const named = new Uint8Array(setSize);
   for (const position of myIndices)
     named[position] = named[position] === 0 ? 1 : 2;
   const localPositions: Array<number> = [];
@@ -1113,7 +1117,7 @@ export async function linkViaPSI(
     // "many" party applies that rule on its behalf and the group behind the
     // value stays eligible for later keys.
     const attributable = sides.localKeepsDuplicates
-      ? attributableRoundMatches(myIndices, theirIndices)
+      ? attributableRoundMatches(myIndices, theirIndices, data_j.length)
       : undefined;
     const localPositions: ArrayLike<number> = attributable
       ? attributable.localPositions

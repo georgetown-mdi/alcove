@@ -22,9 +22,7 @@ interface EntityCluster {
   readonly partnerRows: ReadonlyArray<number>;
 }
 
-// A table's entity clusters, every record and pair held in typed arrays: a
-// `Map` or `Set` holds at most 2^24 entries (docs/spec/PROTOCOL.md, One
-// round's matched records). Each party's distinct rows are numbered in
+// A table's entity clusters. Each party's distinct rows are numbered in
 // ascending order, and cluster `c` holds the local rows `localRows[k]` with
 // `clusterOfLocal[k] === c` and the partner rows likewise. Clusters are
 // numbered in the order of their lowest local row.

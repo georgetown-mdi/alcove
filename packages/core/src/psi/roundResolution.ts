@@ -97,7 +97,7 @@ export function* roundCandidatePairSweep(
         "a round's candidate pairs name a rank that is not a whole number",
       );
   // The receivers, and each pair's receiver as its place among them: what the
-  // removal set and the once-only rule are kept against, in place of a `Set`.
+  // removal set and the once-only rule are kept against.
   const receivers = sortedDistinct(receiverRanks);
   const receiverOf = new Int32Array(count);
   for (let i = 0; i < count; ++i) {

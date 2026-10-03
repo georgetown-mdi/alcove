@@ -20,7 +20,7 @@ import {
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
-import { isNamedDiagnosis } from "../../src/errors";
+import { InternalConsistencyError, isNamedDiagnosis } from "../../src/errors";
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
@@ -347,15 +347,32 @@ test("the many side drops a value two or more of the partner's records hold", ()
   // positions. The rule is applied on the partner's behalf: the value leaves the
   // round entirely rather than being resolved to either partner record, so the
   // exchange cannot silently deliver many-to-many.
-  expect(attributableRoundMatches([0, 0, 1], [5, 6, 7])).toStrictEqual({
+  expect(attributableRoundMatches([0, 0, 1], [5, 6, 7], 2)).toStrictEqual({
     localPositions: [1],
     partnerPositions: [7],
   });
   // A round in which every value the partner contributed is its own is untouched.
-  expect(attributableRoundMatches([0, 1, 2], [5, 6, 7])).toStrictEqual({
+  expect(attributableRoundMatches([0, 1, 2], [5, 6, 7], 3)).toStrictEqual({
     localPositions: [0, 1, 2],
     partnerPositions: [5, 6, 7],
   });
+});
+
+test("the many side's matched positions are bounded by its own set size", () => {
+  // The largest position the set holds is accepted; one past it is not, so the
+  // buffer is sized by this party's set rather than by any matched position.
+  expect(attributableRoundMatches([4, 0], [1, 2], 5)).toStrictEqual({
+    localPositions: [4, 0],
+    partnerPositions: [1, 2],
+  });
+  let err: unknown;
+  try {
+    attributableRoundMatches([5], [0], 5);
+  } catch (caught) {
+    err = caught;
+  }
+  expect(err).toBeInstanceOf(InternalConsistencyError);
+  expect(String(err)).toMatch(/position 5, outside this party's set of 5/);
 });
 
 test("a partner contributing one value twice is refused by the round's own table check", async () => {

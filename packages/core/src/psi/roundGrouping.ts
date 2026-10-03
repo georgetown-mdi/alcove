@@ -1,3 +1,4 @@
+import { InternalConsistencyError } from "../errors";
 import { partnerProtocolError } from "../utils/partnerIndices";
 import { indexInSorted, sortedDistinctInt32 } from "./int32Groups";
 
@@ -451,13 +452,26 @@ export function describeLocalRoundGrouping(
   const starts = new Int32Array(positions.length + 1);
   for (let t = 0; t < positions.length; ++t) {
     const [from, to] = positionRowRange(candidates, positions[t]);
-    starts[t + 1] = starts[t] + to - from;
+    const start = starts[t] + to - from;
+    if ((start | 0) !== start)
+      throw new InternalConsistencyError(
+        `a round's matched positions own ${start} rows, which is not a ` +
+          "32-bit integer",
+      );
+    starts[t + 1] = start;
   }
   const rows = new Int32Array(starts[positions.length]);
   for (let t = 0; t < positions.length; ++t) {
     const [from, to] = positionRowRange(candidates, positions[t]);
-    for (let r = from; r < to; ++r)
-      rows[starts[t] + r - from] = candidates.rows[r];
+    for (let r = from; r < to; ++r) {
+      const row = candidates.rows[r];
+      if ((row | 0) !== row)
+        throw new InternalConsistencyError(
+          `a round's candidate list holds row ${row}, which is not a ` +
+            "32-bit integer",
+        );
+      rows[starts[t] + r - from] = row;
+    }
   }
   // A record's ordinal is its row's place among the distinct rows, ascending.
   const rowOfOrdinal = sortedDistinctInt32(rows);
