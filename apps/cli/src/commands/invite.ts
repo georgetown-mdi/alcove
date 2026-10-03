@@ -1583,9 +1583,8 @@ function remainingPhrase(minutes: number): string {
  * server, so accepting dials it in one command while this one waits.
  *
  * Invited through a web app's address, the partner may be a browser user, so
- * stdout holds the app's accept link with the invitation in its fragment, and
- * the instructions say which form each kind of partner takes: the link, or
- * the part after `#` for the command line.
+ * stdout holds the app's accept link with the invitation in its fragment,
+ * which both the web app and `alcove accept` take.
  *
  * The templates name the invitation by {@link INVITATION_PLACEHOLDER} rather than
  * including it.
@@ -1620,12 +1619,11 @@ function printInvitation(
   }
   if (webAppOrigin !== undefined) {
     log.info(
-      "If your partner uses the web app, send them the link printed above. " +
-        "If they use the alcove command line, send only the part after '#'; " +
-        `they accept and run the exchange with:\n  alcove accept ` +
-        `${IDENTITY_PLACEHOLDER} ${INVITATION_PLACEHOLDER} <INPUT_FILE>\nrun ` +
-        `while this command is still waiting, where ${INVITATION_PLACEHOLDER} ` +
-        "is the part of the link after '#'.",
+      "Send your partner the link printed above. In the web app they open " +
+        "it; with the alcove command line they accept and run the exchange " +
+        `with:\n  alcove accept ${IDENTITY_PLACEHOLDER} ` +
+        `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nrun while this command is ` +
+        `still waiting, where ${INVITATION_PLACEHOLDER} is the link.`,
     );
     return;
   }

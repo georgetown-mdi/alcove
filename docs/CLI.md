@@ -206,6 +206,8 @@ An invitation MAY include a connection endpoint: a public locator that tells the
 
 Because an invitation holds the shared authentication token -- and, in the web flow, the rendezvous derived from it -- treat it as confidential and forward it only over a trusted, out-of-band channel (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md)).
 
+Wherever a command reads an invitation, it also takes a web app accept link, `https://app.example.org/accept#<invitation>` (or `http://`): the invitation is the part after `#`, and nothing else of the link is used. A link with nothing after `#` is refused as a malformed invitation.
+
 Invitation strings beginning with `-` may be misinterpreted as option flags by argument parsers. On `invite`, `accept`, and `init`, a single-`-`-leading token is kept as a positional and validated against the invitation string (or file) schema, while a `--`-prefixed token -- which a positional never is -- is rejected as an unrecognized option (exit 64), so a `-`-leading invitation is identified unambiguously and a mistyped flag is still caught.
 
 ## Offline invitation
@@ -425,7 +427,7 @@ An invitation over the [`webrtc` channel](#webrtc-exchanges) names the PeerJS pe
 
   The coordination server is resolved from it as the web app resolves its own: the same host and port, the `/api/` path, and TLS (`wss://`) for an `https://` address or plaintext (`ws://`) for an `http://` one. So `https://app.example.org:8443/` names the server at `wss://app.example.org:8443/api/`. The address names only the app: one with a path other than `/` (a pasted `/accept` link, for example), a user, a query, or a fragment is a usage error (exit 64) naming both forms, before the invitation is minted.
 
-  Since a partner invited this way may use the browser, stdout holds the app's accept link, `https://app.example.org/accept#<invitation>`, in place of the bare invitation. The instructions say to send the whole link to a partner who uses the web app, and only the part after `#` to one who uses the command line, whose template is the one below.
+  Since a partner invited this way may use the browser, stdout holds the app's accept link, `https://app.example.org/accept#<invitation>`, in place of the bare invitation. Both partners take the whole link: a browser user opens it, and a command-line user passes it to `alcove accept` in place of the invitation, in the template below.
 - **The coordination server itself**, as a `ws://` or `wss://` URL such as `wss://peers.example.org/psi`, for a coordination server run on its own rather than by a web app, or mounted at a path other than `/api/`.
 
 Either way the invitation holds the resolved host, port, and path as its connection endpoint, and the configuration saved at acceptance holds the same `server` block, so a later [offline invitation](#offline-invitation) from that configuration names the same server.

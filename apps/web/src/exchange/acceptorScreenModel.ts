@@ -69,11 +69,8 @@ export type AcceptorColumnsSection = "columns" | "cleaning";
  *
  * The refusal's message and detail are rendered straight into React text
  * nodes, which neutralize HTML markup but not terminal-control, bidi-override
- * or zero-width bytes, so that render is their display sink. Declaring them
- * `Displayable` rather than
- * `string` makes filling it from a raw partner-controlled description a compile
- * error (`describeDecodeError` returns the brand; `rawDecodeErrorDescription`,
- * which the CLI composes into an error for its own sink to escape, does not).
+ * or zero-width bytes, so that render is their display sink and both are
+ * `Displayable`.
  */
 export type DecodeState =
   | { status: "pending" }

@@ -289,6 +289,44 @@ describe("a '-'-leading invitation is taken as the positional, not a flag", () =
 // --- decode + validate (the gate before the prompt) --------------------------
 
 describe("decode + validate (the gate before the prompt)", () => {
+  test("a web app accept link decodes to the token its fragment holds", async () => {
+    const token = sampleToken(new Date(Date.now() + 3_600_000).toISOString());
+    const encoded = await encodeInvitation(token);
+    for (const link of [
+      `https://app.example.org/accept#${encoded}`,
+      `http://127.0.0.1:8080/accept?q=1#${encoded}`,
+    ]) {
+      const decoded = await decodeAndValidateInvitation(link);
+      expect(decoded.sharedSecret).toBe(token.sharedSecret);
+      expect(decoded.linkageTerms.identity).toBe("Inviter Org");
+    }
+  });
+
+  test("an accept link with nothing after '#' is refused as malformed, naming nothing of the link", async () => {
+    for (const link of [
+      "https://app.example.org/accept?marker=LINKQUERY#",
+      "https://app.example.org/LINKPATH",
+    ]) {
+      const err = await decodeAndValidateInvitation(link).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(UsageError);
+      const message = (err as Error).message;
+      expect(message).toMatch(/^invalid invitation string: /);
+      expect(message).not.toMatch(/app\.example\.org|LINKQUERY|LINKPATH/);
+    }
+  });
+
+  test("a URL of another scheme is read as an invitation string, as before", async () => {
+    const token = sampleToken(new Date(Date.now() + 3_600_000).toISOString());
+    const encoded = await encodeInvitation(token);
+    const err = await decodeAndValidateInvitation(
+      `ftp://app.example.org/accept#${encoded}`,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UsageError);
+    expect((err as Error).message).toMatch(/^invalid invitation string: /);
+  });
+
   test("encode/decode round-trips an invitation at the command level", async () => {
     const token = sampleToken(new Date(Date.now() + 3_600_000).toISOString());
     const encoded = await encodeInvitation(token);

@@ -4001,9 +4001,9 @@ test("handler: the server-URL accept template names the identity too", async () 
   }
 });
 
-test("handler: a web app invite prints the accept link and says which form to send", async () => {
+test("handler: a web app invite prints the accept link for either partner", async () => {
   // A partner invited through the web app's address may accept in a browser,
-  // which opens the link; a command-line partner takes the part after '#'.
+  // which opens the link, or on the command line, which takes the same link.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
   runOnlineBootstrapMock.mockImplementation(async () => ({}));
@@ -4033,10 +4033,9 @@ test("handler: a web app invite prints the accept link and says which form to se
     const encoded = printed[0].slice(prefix.length);
     const token = await decodeInvitation(encoded);
     const stderr = stdio.stderrWrites.join("");
-    expect(stderr).toContain(
-      "If your partner uses the web app, send them the link printed above.",
-    );
-    expect(stderr).toContain("send only the part after '#'");
+    expect(stderr).toContain("Send your partner the link printed above.");
+    expect(stderr).toContain("where <INVITATION> is the link.");
+    expect(stderr).not.toContain("after '#'");
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
         "<INVITATION> <INPUT_FILE>",

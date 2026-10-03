@@ -4,6 +4,7 @@ import {
   NodeCountExceededError,
   describeDecodeError,
 } from "@alcove/core";
+import { ZodError } from "zod";
 
 import type { Displayable } from "@alcove/core";
 
@@ -33,15 +34,6 @@ const DAMAGED_FAILURES: ReadonlySet<InvitationDecodeError["failure"]> = new Set(
   ["tooShort", "notBase64Url", "checksumMismatch"],
 );
 
-function isSchemaFailure(error: unknown): boolean {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    "issues" in error &&
-    Array.isArray(error.issues)
-  );
-}
-
 /** Classify an error the accept route's decode threw. */
 export function invitationDecodeRefusal(
   error: unknown,
@@ -51,7 +43,7 @@ export function invitationDecodeRefusal(
       ? { kind: "damaged", detail: describeDecodeError(error) }
       : { kind: "unreadable", detail: describeDecodeError(error) };
   if (
-    isSchemaFailure(error) ||
+    error instanceof ZodError ||
     error instanceof NestingDepthExceededError ||
     error instanceof NodeCountExceededError
   )

@@ -77,3 +77,10 @@ test("a readable invitation the page refuses keeps its own message", () => {
     message: "This invitation has expired. Ask your partner to send a new one.",
   });
 });
+
+test("a non-Zod error holding an issues array is refused, not unreadable", () => {
+  const error = Object.assign(new Error("terms this page will not run"), {
+    issues: [{ path: ["x"], message: "bad" }],
+  });
+  expect(invitationDecodeRefusal(error).kind).toBe("refused");
+});

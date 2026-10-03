@@ -33,6 +33,7 @@ import type {
   Displayable,
   LinkageField,
   LinkageKey,
+  LinkageKeyFitness,
   LinkageTerms,
   Metadata,
   Standardization,
@@ -934,7 +935,7 @@ export function acceptorPartnerNote(
       ([text, count]) => `- ${text}${count > 1 ? ` (${count} keys)` : ""}`,
     );
   };
-  const ofFitness = (fitness: string) =>
+  const ofFitness = (fitness: LinkageKeyFitness) =>
     verdict.keys.filter((k) => k.fitness === fitness).map((k) => k.key);
   const unsatisfiable = ofFitness("unsatisfiable");
   const dead = ofFitness("dead");

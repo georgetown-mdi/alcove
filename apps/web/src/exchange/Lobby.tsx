@@ -91,8 +91,7 @@ export function Lobby() {
 
   const invitationToken = tokenFromInput(invitation);
 
-  // A link from an accept page that could not open its invitation lands here
-  // at the field's fragment, ready for the paste.
+  // Focus the field when the fragment names it.
   const invitationFieldRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (window.location.hash === `#${PASTE_INVITATION_FIELD_ID}`)
