@@ -1678,10 +1678,11 @@ export function AcceptorScreen() {
             />
             {/* The manage offer is webrtc-only (its record composes a webrtc
                 locator from the invitation's endpoint) and is skippable: leaving
-                it untouched keeps the exchange one-off. It stands from launch
-                through completion, so this party can manage the partnership. */}
+                it untouched keeps the exchange one-off. It appears once the
+                exchange completes. */}
             {decode.invitation.endpoint.channel === "webrtc" &&
               launched !== undefined &&
+              outputs !== undefined &&
               failure === undefined && (
                 <ManageExchangeOffer
                   status={manageOffer.status}

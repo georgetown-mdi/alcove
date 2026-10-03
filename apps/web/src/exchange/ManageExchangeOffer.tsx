@@ -29,6 +29,7 @@ import {
   LABEL_GUIDANCE,
   MAX_LABEL_LENGTH,
   MAX_TOKEN_MAX_AGE_DAYS,
+  SAVE_OFFER_SCHEDULE_NOTE,
   labelWithinCap,
   maxAgeCadenceNote,
   maxAgeDaysError,
@@ -58,8 +59,8 @@ function useManagedStoreAvailability(): boolean | undefined {
 }
 
 /**
- * The offer to save this exchange as a recurring one, rendered on the inviter's
- * share surface and the acceptor's completion surface. Declining is not acting:
+ * The offer to save this exchange as a recurring one, rendered on both seats'
+ * completion surface. Declining is not acting:
  * nothing is stored. Committing deposits a managed-exchange record (the standing
  * terms plus the deposited secret) through {@link onManage}; the host owns the
  * async store write and reports back through {@link status}. The panel renders
@@ -177,6 +178,7 @@ export function ManageExchangeOffer({
         run it again with the same partner, without re-inviting. Skip this to
         keep the exchange one-off: nothing is stored.
       </p>
+      <p className={styles.small}>{SAVE_OFFER_SCHEDULE_NOTE}</p>
       <TextInput
         label="Label"
         description={LABEL_GUIDANCE}

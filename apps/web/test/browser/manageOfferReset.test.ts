@@ -14,10 +14,14 @@ import {
   MAX_NAME_LENGTH,
   encodeInvitation,
   generateSharedSecret,
+  getDefaultLinkageTerms,
 } from "@alcove/core";
+import { minimalPreparedExchange } from "@alcove/core/testing";
 
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
+import { SAVE_OFFER_SCHEDULE_NOTE } from "@exchange/manageOfferModel";
+import { stagesFor } from "@exchange/exchangeRun";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
@@ -43,8 +47,23 @@ vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
 
-vi.mock("@psi/exchangeLifecycle", () => ({
-  runExchangeLifecycle: () => Promise.resolve(),
+// The run is recorded rather than run, so a test completes it by firing the
+// callbacks the real lifecycle fires: the offer appears only at completion.
+interface CapturedRun {
+  onStages: (stages: Array<unknown>) => void;
+  onResult: (outputs: {
+    kind: "matched";
+    resultsUrl: string;
+    matchedRecordCount: number;
+  }) => void;
+}
+const runs = vi.hoisted(() => ({ calls: [] as Array<unknown> }));
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  runExchangeLifecycle: (options: unknown) => {
+    runs.calls.push(options);
+    return Promise.resolve();
+  },
 }));
 
 /** A header past the wire ceiling: admitted at intake (core's inference bounds
@@ -57,10 +76,30 @@ const app = createAppMount();
 afterEach(() => {
   app.unmount();
   window.location.hash = "";
+  runs.calls.length = 0;
 });
 
 const saveButton = () =>
   page.getByRole("button", { name: "Save as a recurring exchange" });
+
+/** Complete the `count`th run the screen started with a matched result. */
+async function completeRun(count: number) {
+  await vi.waitFor(() => expect(runs.calls).toHaveLength(count));
+  const run = runs.calls[count - 1] as CapturedRun;
+  run.onStages(
+    stagesFor(
+      minimalPreparedExchange({
+        linkageTerms: getDefaultLinkageTerms("Offer reset"),
+      }),
+    ),
+  );
+  run.onResult({
+    kind: "matched",
+    resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+    matchedRecordCount: 2,
+  });
+  await expect.element(saveButton()).toBeInTheDocument();
+}
 
 /** Walk the spine to a minted invitation over a file whose last header is
  * oversized, with that column set so it is never sent. */
@@ -169,7 +208,6 @@ async function launchOverOverlongHeader() {
   );
   await userEvent.click(page.getByRole("option", { name: "Ignored" }));
   await page.getByRole("button", { name: "Start the exchange" }).click();
-  await expect.element(saveButton()).toBeInTheDocument();
 }
 
 describe("the recurring-save offer after a refused deposit", () => {
@@ -180,6 +218,7 @@ describe("the recurring-save offer after a refused deposit", () => {
       "managed exchange deposit failed: ZodError",
     );
     await mintOverOverlongHeader();
+    await completeRun(1);
 
     // The stored record bounds every declared name, sent or not, so the deposit
     // is refused over the header and the offer names the column.
@@ -199,6 +238,7 @@ describe("the recurring-save offer after a refused deposit", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Your invitation is ready");
+    await completeRun(2);
 
     // The fresh exchange's offer is open again, and the refusal it would
     // otherwise be blocked by is gone from the screen.
@@ -215,6 +255,7 @@ describe("the acceptor's offer after a refused deposit", () => {
       "managed exchange deposit failed: ZodError",
     );
     await launchOverOverlongHeader();
+    await completeRun(1);
 
     // The stored record bounds every declared name, sent or not, so the deposit
     // is refused over the header and the offer names the column.
@@ -231,10 +272,35 @@ describe("the acceptor's offer after a refused deposit", () => {
       .toBeInTheDocument();
 
     await page.getByRole("button", { name: "Start the exchange" }).click();
+    await completeRun(2);
 
     // The fresh exchange's offer is open again, and the refusal it would
     // otherwise be blocked by is gone from the screen.
     await expect.element(saveButton()).toBeEnabled();
     expect(page.getByText("Column 3", { exact: false }).query()).toBeNull();
+  });
+});
+
+describe("the recurring-save offer appears at completion", () => {
+  test("the inviter is offered it once the exchange completes, not while sharing", async () => {
+    await mintOverOverlongHeader();
+    await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
+    expect(saveButton().query()).toBeNull();
+
+    await completeRun(1);
+    await expect
+      .element(page.getByText(SAVE_OFFER_SCHEDULE_NOTE))
+      .toBeInTheDocument();
+  });
+
+  test("the acceptor is offered it once the exchange completes, not while it runs", async () => {
+    await launchOverOverlongHeader();
+    await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
+    expect(saveButton().query()).toBeNull();
+
+    await completeRun(1);
+    await expect
+      .element(page.getByText(SAVE_OFFER_SCHEDULE_NOTE))
+      .toBeInTheDocument();
   });
 });

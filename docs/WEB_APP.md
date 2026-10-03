@@ -83,7 +83,7 @@ The page reports **Verified**, **Incomplete** (some checks could not run, for ex
 
 ## Running it again
 
-To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen before you leave it. The offer is not shown for a practice run with sample data. Scheduled runs happen only in the web app installed on your computer and left running; see [Installing the app](MANAGED_EXCHANGE.md#installing-the-app) and [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md).
+To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen once the exchange completes, before you leave it. The offer is not shown for a practice run with sample data. Scheduled runs happen only in the web app installed on your computer and left running; see [Installing the app](MANAGED_EXCHANGE.md#installing-the-app) and [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md).
 
 ## How large an exchange can be
 

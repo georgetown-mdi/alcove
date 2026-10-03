@@ -24,6 +24,7 @@ import {
 
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
+import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
@@ -98,6 +99,7 @@ import {
   UNCHANGED_INPUT_TITLE,
 } from "./scheduleSurfacingModel";
 import { CHANGE_TERMS_TITLE } from "./managedTermsUpdateModel";
+import { KeepRunningSection } from "./KeepRunningSection";
 import { LocalDocumentFields } from "./LocalDocumentFields";
 import { ManagedRelayRegistration } from "./ManagedRelayRegistration";
 import { ManagedTermsUpdate } from "./ManagedTermsUpdate";
@@ -124,8 +126,8 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
  * The managed exchange detail sections composed onto the per-partnership home at
  * `/saved/$id` (below the run affordance in {@link ./ManagedRunSurface.tsx}).
  * What the exchange has been doing comes first -- the agreed run schedule where
- * one exists, the run history, and the results a scheduled run left for this
- * visit -- then the settings: the read-only configuration, the terms update,
+ * one exists with what keeping it running needs, the run history, and the
+ * results a scheduled run left for this visit -- then the settings: the read-only configuration, the terms update,
  * the relay registration where it applies, and the local-fields editor. The
  * accounting of disclosures closes the page. Derivations and copy come from
  * {@link ./managedDetailModel.ts}, {@link ./parkedResultsModel.ts}, and
@@ -278,6 +280,7 @@ export function ManagedExchangeDetail({
   return (
     <>
       <RunSchedule record={record} />
+      {scheduled && !isConsoleBuild() && <KeepRunningSection record={record} />}
       <RunHistory record={record} resultSizeWarning={resultSizeWarning} />
       <ParkedResultsView
         read={parkedResultsRead}
