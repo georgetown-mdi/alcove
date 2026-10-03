@@ -144,8 +144,10 @@ export function createWorkerThreadHandle(
       // 'messageerror', NOT 'error'; with no listener it is silently dropped and the
       // pending call would hang. Route it to onError so the call fails fast. Not
       // reachable with today's cloneable payloads (byte arrays and index lists), but
-      // a boundary hardening against a future non-cloneable reply. The worker
-      // sent that reply, so its native call is over and nothing is in flight.
+      // a boundary hardening against a future non-cloneable message. The failed
+      // message may be a reply (the native call is over) or a progress tick the
+      // worker posts between chunks (the next call has not started), so clearing
+      // the set never terminates a worker inside a native call today.
       worker.on("messageerror", (error) => {
         inFlight.clear();
         onError(error);
