@@ -47,6 +47,7 @@ vi.mock("@utils/clientConfig", () => ({
   deploymentProfile: () => "console" as const,
   isConsoleBuild: () => true,
   signalingServerSetting: () => undefined,
+  alcoveVersion: () => undefined,
 }));
 
 // The unsupported gate and the server-job accept never dial.

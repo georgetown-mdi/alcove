@@ -415,6 +415,7 @@ describe("every authorable option graduates into the hand-off", () => {
       "--linkage-strategy=single-pass",
       "--deduplicate",
       "--csv-delimiter=|",
+      "--log-file=exchange.log",
       "input.csv",
       "results.csv",
     ]);

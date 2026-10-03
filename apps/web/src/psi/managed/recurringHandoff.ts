@@ -4,6 +4,7 @@ import {
 } from "@psi/jobClient/jobApiBody";
 
 import type {
+  HandoffBindPath,
   HandoffPathsAsRead,
   HandoffSigningSetting,
   JobHandoff,
@@ -58,6 +59,7 @@ export function parseHandoff(body: unknown): JobHandoff | null {
     usedSigningIdentity,
     signingSettingsToSet,
     pathsAsRead,
+    bindPaths,
     template,
   } = body as Record<string, unknown>;
   if (mode !== "exchange" && mode !== "zeroSetup") return null;
@@ -70,6 +72,8 @@ export function parseHandoff(body: unknown): JobHandoff | null {
   if (parsedSigningSettings === null) return null;
   const parsedPathsAsRead = parsePathsAsRead(pathsAsRead);
   if (parsedPathsAsRead === null) return null;
+  const parsedBindPaths = parseBindPaths(bindPaths);
+  if (parsedBindPaths === null) return null;
   const parsedTemplate = parseTemplate(template);
   if (parsedTemplate === null) return null;
   return {
@@ -83,8 +87,23 @@ export function parseHandoff(body: unknown): JobHandoff | null {
       ? { signingSettingsToSet: parsedSigningSettings }
       : {}),
     pathsAsRead: parsedPathsAsRead,
+    bindPaths: parsedBindPaths,
     template: parsedTemplate,
   };
+}
+
+/** The bind paths, or null unless each is an absolute path and a boolean. */
+function parseBindPaths(value: unknown): Array<HandoffBindPath> | null {
+  if (!Array.isArray(value)) return null;
+  const bindPaths: Array<HandoffBindPath> = [];
+  for (const entry of value as Array<unknown>) {
+    if (entry === null || typeof entry !== "object") return null;
+    const { path, readOnly } = entry as Record<string, unknown>;
+    if (typeof path !== "string" || !path.startsWith("/")) return null;
+    if (typeof readOnly !== "boolean") return null;
+    bindPaths.push({ path, readOnly });
+  }
+  return bindPaths;
 }
 
 /** The paths-as-read record, or null unless it is an object holding exactly
@@ -200,7 +219,26 @@ export function handoffCaveats(handoff: JobHandoff): Array<string> {
       "The host key is already pinned, so scheduled runs connect without a " +
         "prompt.",
     );
+  if (handoff.bindPaths.length > 0)
+    caveats.push(bindPathsCaveat(handoff.bindPaths));
   return caveats;
+}
+
+/**
+ * The caveat for the paths outside the exchange folder the docker lines mount,
+ * which change in the line wherever they change in the configuration, and
+ * which the Task Scheduler line leaves to the operator to mount.
+ */
+function bindPathsCaveat(bindPaths: ReadonlyArray<HandoffBindPath>): string {
+  const paths = bindPaths.map(({ path }) => path).join(", ");
+  return (
+    `The Docker commands mount ${paths} at the same path inside the ` +
+    "container, so Alcove finds each where this hand-off names it. When you " +
+    "set one of these paths, set it the same way in the Docker commands. The " +
+    "Task Scheduler line mounts only the exchange folder: for each path, add " +
+    "-v followed by the folder or file on your machine, a colon, and the " +
+    "path, before the image name."
+  );
 }
 
 function parseTemplate(value: unknown): JobHandoffTemplate | null {

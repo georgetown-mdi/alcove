@@ -61,6 +61,7 @@ vi.mock("@utils/clientConfig", () => ({
   deploymentProfile: () => "console" as const,
   isConsoleBuild: () => true,
   signalingServerSetting: () => undefined,
+  alcoveVersion: () => undefined,
 }));
 
 // The unsupported gate never dials.
@@ -863,6 +864,7 @@ describe("console acceptor re-attaches on a busy create", () => {
     credentialPasted: false,
     usedSigningIdentity: false,
     pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+    bindPaths: [],
     template: {
       kind: "config",
       argv: ["alcove", "exchange", "input.csv", "results.csv"],

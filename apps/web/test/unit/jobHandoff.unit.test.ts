@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { parse as parseYaml } from "yaml";
 
-import { safeParseExchangeSpec } from "@alcove/core";
+import { parseExchangeSpec, safeParseExchangeSpec } from "@alcove/core";
 
 import {
   HANDOFF_CREDENTIAL_PATH_PLACEHOLDER,
+  HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER,
   HANDOFF_INBOUND_DIRECTORY_URL_PLACEHOLDER,
   HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
   HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
@@ -34,7 +35,9 @@ import {
   tempDataRoot,
   testSftpServerEntry,
   testSplitSftpServerEntry,
+  validInputFileIntent,
   validIntent,
+  validLinkageTerms,
   validSftpIntent,
   validZeroSetupIntent,
   validZeroSetupSftpIntent,
@@ -109,9 +112,89 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(exchange.template.argv).toEqual([
       "alcove",
       "exchange",
-      ...zeroSetup.template.argv.slice(-2),
+      "--log-file=exchange.log",
+      "input.csv",
+      "results.csv",
     ]);
+    expect(zeroSetup.template.argv.slice(-3)).toEqual(
+      exchange.template.argv.slice(-3),
+    );
     expect(exchange.template.argv.join(" ")).not.toContain(DISTINCT_SECRET);
+  });
+
+  test("the command reads the input file the run picked by its name", () => {
+    const handoff = buildJobHandoff(
+      validInputFileIntent({ name: "clients-2026.csv" }),
+      undefined,
+      { credentialPasted: false, filedropSplit: false },
+    );
+    expect(handoff.template.argv.slice(-2)).toEqual([
+      "clients-2026.csv",
+      "results.csv",
+    ]);
+  });
+
+  test("the bind paths are the absolute paths the template names outside the folder", () => {
+    const sftp = buildJobHandoff(
+      validSftpIntent(),
+      {
+        host: "sftp.example.org",
+        hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+        privateKey: "@/etc/alcove/id_ed25519",
+        privateKeyPassphrase: "@/etc/alcove/passphrase",
+      },
+      { credentialPasted: false, filedropSplit: false },
+    );
+    expect(sftp.bindPaths).toEqual([
+      { path: HANDOFF_CREDENTIAL_PATH_PLACEHOLDER.slice(1), readOnly: true },
+      { path: HANDOFF_PASSPHRASE_PATH_PLACEHOLDER.slice(1), readOnly: true },
+    ]);
+    const filedrop = buildJobHandoff(validIntent(), undefined, {
+      credentialPasted: false,
+      filedropSplit: false,
+    });
+    expect(filedrop.bindPaths).toEqual([
+      { path: HANDOFF_SHARED_DIRECTORY_PLACEHOLDER, readOnly: false },
+    ]);
+    const zeroSetup = buildJobHandoff(validZeroSetupIntent(), undefined, {
+      credentialPasted: false,
+      filedropSplit: true,
+    });
+    expect(zeroSetup.bindPaths).toEqual([
+      { path: HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER, readOnly: false },
+      { path: HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER, readOnly: false },
+    ]);
+  });
+
+  test("an opened configuration's own paths are bound, a relative one is not", () => {
+    const mountedDocument = parseExchangeSpec({
+      connection: { channel: "filedrop", path: "/srv/exchange/drop" },
+      linkageTerms: validLinkageTerms(),
+      signing: {
+        mode: "session-derived",
+        receiptOutput: "/srv/exchange/receipts/receipt.json",
+      },
+    });
+    const handoff = buildJobHandoff(validIntent(), undefined, {
+      credentialPasted: false,
+      filedropSplit: false,
+      mountedDocument,
+    });
+    expect(handoff.bindPaths).toEqual([
+      { path: "/srv/exchange/drop", readOnly: false },
+      { path: "/srv/exchange/receipts", readOnly: false },
+    ]);
+    const relative = buildJobHandoff(validIntent(), undefined, {
+      credentialPasted: false,
+      filedropSplit: false,
+      mountedDocument: {
+        ...mountedDocument,
+        signing: { mode: "session-derived", receiptOutput: "receipt.json" },
+      },
+    });
+    expect(relative.bindPaths).toEqual([
+      { path: "/srv/exchange/drop", readOnly: false },
+    ]);
   });
 
   test("an sftp exchange placeholders a private-key passphrase distinctly", () => {
@@ -441,6 +524,7 @@ describe("parseHandoff and shellJoinCommand (browser reader)", () => {
       credentialPasted: false,
       usedSigningIdentity: false,
       pathsAsRead: NO_PATHS_AS_READ,
+      bindPaths: [],
       template: {
         kind: "config",
         yaml: "connection:\n  channel: sftp\n",
@@ -519,6 +603,7 @@ describe("parseHandoff and shellJoinCommand (browser reader)", () => {
       credentialPasted: false,
       usedSigningIdentity: false,
       pathsAsRead: NO_PATHS_AS_READ,
+      bindPaths: [],
       template: {
         kind: "config",
         yaml: "connection:\n  channel: filedrop\n",
@@ -554,6 +639,7 @@ describe("parseHandoff and shellJoinCommand (browser reader)", () => {
       keyFileBesideConfiguration: false,
       credentialPasted: false,
       usedSigningIdentity: false,
+      bindPaths: [],
       template: {
         kind: "config",
         yaml: "connection:\n  channel: sftp\n",
@@ -580,6 +666,31 @@ describe("parseHandoff and shellJoinCommand (browser reader)", () => {
         ...body,
         pathsAsRead: { ...asRead, signing: "yes" },
       }),
+    ).toBeNull();
+  });
+
+  test("the bind paths round-trip, and anything else is a malformed body", () => {
+    const body = {
+      mode: "zeroSetup",
+      channel: "filedrop",
+      usedKeyFile: false,
+      keyFileBesideConfiguration: false,
+      credentialPasted: false,
+      usedSigningIdentity: false,
+      pathsAsRead: NO_PATHS_AS_READ,
+      template: {
+        kind: "command",
+        argv: ["alcove", "file:///srv/drop", "input.csv", "results.csv"],
+      },
+    };
+    const bindPaths = [{ path: "/srv/drop", readOnly: false }];
+    expect(parseHandoff({ ...body, bindPaths })?.bindPaths).toEqual(bindPaths);
+    expect(parseHandoff(body)).toBeNull();
+    expect(
+      parseHandoff({ ...body, bindPaths: [{ path: "srv", readOnly: false }] }),
+    ).toBeNull();
+    expect(
+      parseHandoff({ ...body, bindPaths: [{ path: "/srv", readOnly: "no" }] }),
     ).toBeNull();
   });
 
@@ -807,6 +918,7 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
       credentialPasted,
       usedSigningIdentity: false,
       pathsAsRead: { ...NO_PATHS_AS_READ, ...pathsAsRead },
+      bindPaths: [],
       template: {
         kind: "config",
         yaml: "connection:\n",

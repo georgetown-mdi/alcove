@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 
 import { Anchor } from "@mantine/core";
 
+import { imageReference, releaseVersion } from "@utils/alcoveImage";
+import { alcoveVersion } from "@utils/clientConfig";
+
 import {
   fetchRecurringHandoff,
   handoffCaveats,
-  shellJoinCommand,
-  windowsJoinCommand,
 } from "@psi/managed/recurringHandoff";
 
 import { CopyableCode } from "@components/CopyableCode";
@@ -14,9 +15,17 @@ import styles from "@styles/app.module.css";
 
 import { DisclosureSection } from "../components/DisclosureSection";
 
-import { cronScheduleLine, taskSchedulerLine } from "./scheduleTemplates";
+import {
+  EXCHANGE_FOLDER_PLACEHOLDER,
+  dockerCronLine,
+  dockerRunCommand,
+  dockerTaskSchedulerLine,
+  handoffInputName,
+  installedCronLine,
+} from "./scheduledRunCommand";
 
 import type { JobHandoff } from "@jobs/handoff";
+import type { ScheduledRunSource } from "./scheduledRunCommand";
 
 /** The full CLI reference the panel points at for the recurring-run details. */
 const RECURRING_EXCHANGE_DOC_URL =
@@ -96,8 +105,13 @@ function HandoffBody({
   handoff: JobHandoff;
   jobId: string;
 }) {
-  const runCommand = shellJoinCommand(handoff.template.argv);
-  const windowsScheduledCommand = windowsJoinCommand(handoff.template.argv);
+  const source: ScheduledRunSource = {
+    argv: handoff.template.argv,
+    bindPaths: handoff.bindPaths,
+    image: imageReference(releaseVersion(alcoveVersion())),
+  };
+  const runCommand = dockerRunCommand(source);
+  const inputName = handoffInputName(handoff.template.argv);
 
   return (
     <>
@@ -112,33 +126,50 @@ function HandoffBody({
         <ConfigSteps
           yaml={handoff.template.yaml}
           command={runCommand}
+          inputName={inputName}
           usedKeyFile={handoff.usedKeyFile}
           keyFileBesideConfiguration={handoff.keyFileBesideConfiguration}
           usedSigningIdentity={handoff.usedSigningIdentity}
           runFolder={jobId}
         />
       ) : (
-        <CommandSteps command={runCommand} />
+        <CommandSteps command={runCommand} inputName={inputName} />
       )}
 
       <h3 className={styles.handoffHeading}>
-        Schedule it (adjust the times and paths)
+        Schedule it (set the time you agreed with your partner)
       </h3>
-      <p className={styles.small}>cron (Linux/macOS), daily at 2am:</p>
+      <p className={styles.small}>
+        cron (Linux/macOS), daily at 2am, running Alcove from its Docker image:
+      </p>
       <CopyableCode
-        code={cronScheduleLine(runCommand)}
+        code={dockerCronLine(source)}
         ariaLabel="cron schedule line"
       />
-      <p className={styles.small}>Windows Task Scheduler, daily at 2am:</p>
+      <p className={styles.small}>
+        Windows Task Scheduler, daily at 2am, running Alcove from its Docker
+        image. This line writes results.csv each run, replacing the last
+        run&apos;s; copy it out after each run to keep it:
+      </p>
       <CopyableCode
-        code={taskSchedulerLine(windowsScheduledCommand)}
+        code={dockerTaskSchedulerLine(source)}
         ariaLabel="Windows Task Scheduler command"
       />
       <p className={styles.small}>
-        Both lines call Alcove by name. Under cron&apos;s minimal PATH or a Task
-        Scheduler service account it may not resolve, and fails quietly -- use
-        the full path to the Alcove binary, or put it on the scheduling
-        account&apos;s PATH.
+        If Alcove is installed on the scheduling machine rather than run from
+        its image, cron runs it from the exchange folder:
+      </p>
+      <CopyableCode
+        code={installedCronLine(source)}
+        ariaLabel="cron schedule line for an installed Alcove"
+      />
+      <p className={styles.small}>
+        Set {EXCHANGE_FOLDER_PLACEHOLDER} to the folder you saved the files in,
+        and /path/to/alcove to where Alcove is installed. The cron lines name
+        each run&apos;s result by its date and time, and each run adds to
+        exchange.log in that folder. A scheduled job does not use your
+        shell&apos;s PATH, so check that /usr/bin/docker is where Docker is
+        installed (command -v docker).
       </p>
 
       <Caveats handoff={handoff} />
@@ -164,6 +195,7 @@ function HandoffBody({
 function ConfigSteps({
   yaml,
   command,
+  inputName,
   usedKeyFile,
   keyFileBesideConfiguration,
   usedSigningIdentity,
@@ -171,6 +203,7 @@ function ConfigSteps({
 }: {
   yaml: string;
   command: string;
+  inputName: string;
   usedKeyFile: boolean;
   keyFileBesideConfiguration: boolean;
   usedSigningIdentity: boolean;
@@ -185,6 +218,7 @@ function ConfigSteps({
         </p>
         <CopyableCode code={yaml} ariaLabel="alcove.yaml configuration" />
       </li>
+      <InputStep inputName={inputName} />
       {usedKeyFile && (
         <li>
           <p className={styles.handoffStepLabel}>
@@ -238,10 +272,40 @@ function ConfigSteps({
   );
 }
 
-/** The zero-setup (Direct) steps: run the single command; no key file. */
-function CommandSteps({ command }: { command: string }) {
+/** The step naming the input file the command reads from the folder. */
+function InputStep({ inputName }: { inputName: string }) {
+  return (
+    <li>
+      <p className={styles.handoffStepLabel}>
+        Put your input file in that folder as {inputName}
+      </p>
+      <p className={styles.small}>
+        Each run reads {inputName} from the folder, so replace it with the
+        current data before the next scheduled run.
+      </p>
+    </li>
+  );
+}
+
+/** The zero-setup (Direct) steps: put the input in place and run the single
+ * command; no key file. */
+function CommandSteps({
+  command,
+  inputName,
+}: {
+  command: string;
+  inputName: string;
+}) {
   return (
     <>
+      <ol className={styles.handoffSteps}>
+        <li>
+          <p className={styles.handoffStepLabel}>
+            Make a folder for this exchange on the scheduling machine
+          </p>
+        </li>
+        <InputStep inputName={inputName} />
+      </ol>
       <h3 className={styles.handoffHeading}>
         Run this command on the scheduling machine
       </h3>
