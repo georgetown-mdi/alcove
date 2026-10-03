@@ -9,9 +9,11 @@
  * would force a schema bump or leak into the export.
  *
  * Currency is "taken since the last rotation," held structurally rather than
- * derived: every export binds its serialized bytes to the marker write in one
- * atomic step, and the rotation-persist write clears the marker in its own
- * cross-store transaction (see {@link ./managedExchangeStore.ts}). Marker presence
+ * derived: every download export binds its serialized bytes to the marker write
+ * in one atomic step, the folder backup a scheduled run writes stamps the marker
+ * only while the stored secret is still the one its file holds, and the
+ * rotation-persist write clears the marker in its own cross-store transaction
+ * (see {@link ./managedExchangeStore.ts}). Marker presence
  * therefore already means a current export exists; the derivation reads no secret
  * material, no rotation epoch, and no `lastRun` outcome.
  *

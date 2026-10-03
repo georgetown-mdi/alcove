@@ -2,21 +2,34 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   describeResolvedRunShape,
+  generateSharedSecret,
+  getDefaultLinkageTerms,
   getLogger,
   payloadReceiveFilledNotice,
 } from "@alcove/core";
+
+import {
+  buildManagedExchangeRecord,
+  composeManagedExchangeFile,
+} from "../../../src/psi/managed/managedExchangeRecord.js";
+import { importManagedExchangeArtifact } from "../../../src/psi/managed/managedExchangeArtifact.js";
 
 import {
   DISCLOSURE_NOT_FILED_WARNING,
   runManagedExchangeInBrowser,
 } from "../../../src/psi/managed/managedRunDriver.js";
 import {
+  backUpUnattendedRun,
   browserScheduleTickSeams,
   droppableUnattendedNotice,
   startManagedScheduleRuntime,
 } from "../../../src/psi/managed/managedScheduleRuntime.js";
+import {
+  getManagedExchange,
+  listReadableManagedExchanges,
+  markManagedBackupIfCurrent,
+} from "../../../src/psi/managed/managedExchangeStore.js";
 import { CLOSE_OUTCOME_WARNINGS } from "../../../src/psi/exchangeLifecycle.js";
-import { listReadableManagedExchanges } from "../../../src/psi/managed/managedExchangeStore.js";
 
 import {
   parkRunResults,
@@ -26,11 +39,14 @@ import {
 } from "../../../src/psi/parkedResultsStore.js";
 import { MAX_PARKED_RESULT_BYTES } from "../../../src/psi/resultSizeProjection.js";
 
+import type {
+  ManagedExchangeRecord,
+  RunnableManagedExchangeRecord,
+} from "../../../src/psi/managed/managedExchangeRecord.js";
 import type { ManagedExchangeRunResult } from "../../../src/psi/managed/managedExchangeRun.js";
 import type { ManagedRunDriverConfig } from "../../../src/psi/managed/managedRunDriver.js";
 import type { ManagedScheduleTickSeams } from "../../../src/psi/managed/managedScheduleRunner.js";
 import type { RunOutputs } from "../../../src/psi/runOutputs.js";
-import type { RunnableManagedExchangeRecord } from "../../../src/psi/managed/managedExchangeRecord.js";
 
 const log = getLogger("managedScheduleRuntime");
 
@@ -68,7 +84,21 @@ vi.mock("../../../src/psi/parkedResultsStore.js", () => ({
   recordResultsWrittenToFolder: vi.fn(),
 }));
 
+// The record store is IndexedDB too. The backup a completed run takes reads the
+// record afresh and stamps the marker through it; both are replaced here, and
+// the rest of the module is kept for the reads the tick's own boundary names.
+vi.mock(
+  "../../../src/psi/managed/managedExchangeStore.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    getManagedExchange: vi.fn(),
+    markManagedBackupIfCurrent: vi.fn(),
+  }),
+);
+
 const mockedRun = vi.mocked(runManagedExchangeInBrowser);
+const mockedRead = vi.mocked(getManagedExchange);
+const mockedMark = vi.mocked(markManagedBackupIfCurrent);
 const mockedPark = vi.mocked(parkRunResults);
 const mockedRefusal = vi.mocked(recordParkedResultsRefusal);
 const mockedWrittenNote = vi.mocked(recordResultsWrittenToFolder);
@@ -193,6 +223,9 @@ beforeEach(() => {
   // The feature detection the delivery gates the stored grant on; Node has no
   // File System Access API of its own.
   vi.stubGlobal("FileSystemDirectoryHandle", class {});
+  // The record as the store holds it after the run: folderless unless a case
+  // says otherwise, so the backup step has nowhere to write.
+  mockedRead.mockResolvedValue(RECORD);
 });
 
 afterEach(() => {
@@ -640,6 +673,119 @@ describe("the counts a run declared", () => {
       attempt(),
     );
     expect(mockedPark.mock.calls[0][1].pairTableFactors).toBeUndefined();
+  });
+});
+
+describe("the backup a completed unattended run takes", () => {
+  /** A granted folder that holds nothing yet, with a write that takes the
+   * bytes or refuses them with `failWrite`. */
+  function emptyGrantedFolder(failWrite?: Error) {
+    const files = new Map<string, string>();
+    const handle = {
+      name: "Riverbend exchange",
+      queryPermission: () => Promise.resolve("granted"),
+      requestPermission: vi.fn(() => Promise.resolve("granted")),
+      getFileHandle: (fileName: string, lookup?: { create?: boolean }) => {
+        if (lookup?.create !== true && !files.has(fileName))
+          return Promise.reject(
+            new DOMException("no such entry", "NotFoundError"),
+          );
+        return Promise.resolve({
+          createWritable: () =>
+            Promise.resolve({
+              write: async (blob: Blob) => {
+                if (failWrite !== undefined) throw failWrite;
+                files.set(fileName, await blob.text());
+              },
+              close: () => Promise.resolve(),
+              abort: () => Promise.resolve(),
+            }),
+        });
+      },
+      removeEntry: () => Promise.resolve(),
+    };
+    return { files, handle };
+  }
+
+  /** The record the store holds after the rotation: runnable, holding `handle`
+   * as its working folder. */
+  function storedAfterRun(handle: unknown): ManagedExchangeRecord {
+    return {
+      ...buildManagedExchangeRecord({
+        label: "Riverbend quarterly",
+        exchangeFile: composeManagedExchangeFile({
+          connection: { channel: "webrtc", host: "signaling.example.org" },
+          linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+        }),
+        side: "inviter",
+        sharedSecret: generateSharedSecret(),
+      }),
+      id: RECORD.id,
+      workingDirectoryHandle: handle as FileSystemDirectoryHandle,
+    };
+  }
+
+  test("lands in the granted folder and stamps the marker, with no prompt", async () => {
+    const folder = emptyGrantedFolder();
+    const stored = storedAfterRun(folder.handle);
+    mockedRead.mockResolvedValue(stored);
+    mockedMark.mockResolvedValue("marked");
+    mockedRun.mockResolvedValue(completedRun());
+
+    await browserScheduleTickSeams(new AbortController().signal).runAttempt(
+      attempt(),
+    );
+
+    const [fileName] = [...folder.files.keys()];
+    expect(fileName).toMatch(/^alcove-managed-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(
+      importManagedExchangeArtifact(folder.files.get(fileName) ?? "").record
+        .sharedSecret,
+    ).toBe(stored.sharedSecret);
+    expect(mockedMark).toHaveBeenCalledWith(
+      stored.id,
+      stored.sharedSecret,
+      expect.any(String),
+    );
+    expect(folder.handle.requestPermission).not.toHaveBeenCalled();
+  });
+
+  test("a write that fails leaves the run's outcome and its results as they were, and the marker unstamped", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const results = grantedFolder();
+    const backupFolder = emptyGrantedFolder(new Error("the disk is full"));
+    mockedRead.mockResolvedValue(storedAfterRun(backupFolder.handle));
+    mockedWrittenNote.mockResolvedValue(undefined);
+    mockedRun.mockImplementation((config) =>
+      Promise.resolve(matchedRun(config)),
+    );
+
+    await expect(
+      browserScheduleTickSeams(new AbortController().signal).runAttempt(
+        attemptFor(results.record),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(results.written).toHaveLength(1);
+    expect(mockedWrittenNote).toHaveBeenCalledTimes(1);
+    expect(backupFolder.files.size).toBe(0);
+    expect(mockedMark).not.toHaveBeenCalled();
+    expect(
+      warn.mock.calls.some((call) =>
+        String(call[0]).includes("the backup could not be written"),
+      ),
+    ).toBe(true);
+    warn.mockRestore();
+  });
+
+  test("an exchange holding no folder grant takes no backup and logs nothing", async () => {
+    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    mockedRun.mockResolvedValue(completedRun());
+
+    expect(await backUpUnattendedRun(RECORD.id)).toEqual({ kind: "no-folder" });
+    expect(mockedMark).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

@@ -21,10 +21,14 @@ import {
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
+import {
+  writeBackupToWorkingFolder,
+  writeResultsToWorkingDirectory,
+} from "@psi/managed/managedWorkingDirectory";
+import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
 import { startManagedScheduleRuntime } from "@psi/managed/managedScheduleRuntime";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
-import { writeResultsToWorkingDirectory } from "@psi/managed/managedWorkingDirectory";
 
 import {
   createServiceWorkerHarness,
@@ -219,6 +223,7 @@ function seamsForDueWindow(record: ManagedExchangeRecord): {
 afterEach(() => {
   resetAppShellUpdate();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("a scheduled run and a waiting app-shell update", () => {
@@ -384,6 +389,10 @@ function appSymbolSites(symbol: string): Array<string> {
 const RUN_RESULTS_WRITER = "writeRunResultsToWorkingFolder";
 const FOLDER_WRITE = "writeResultsToWorkingDirectory";
 
+/** The writer the backup a scheduled run takes after its rotation goes
+ * through, which never replaces a name the folder already holds. */
+const BACKUP_WRITER = "writeBackupToWorkingFolder";
+
 /** The modules that conduct a one-off exchange, none of which holds a folder
  * grant to write through. */
 const ONE_OFF_EXCHANGE_SURFACES = [
@@ -407,11 +416,18 @@ describe("writing a run's results into the granted folder", () => {
     ]);
   });
 
+  test("writes a backup there only from the scheduled run's backup step", () => {
+    expect(appSymbolSites(BACKUP_WRITER)).toEqual([
+      "psi/managed/managedScheduleRuntime.ts: browserFolderBackupDeps.writeToFolder",
+    ]);
+  });
+
   test("is reached from no one-off exchange's surface", () => {
     const reaching = new Set(
       [
         ...appSymbolSites(RUN_RESULTS_WRITER),
         ...appSymbolSites(FOLDER_WRITE),
+        ...appSymbolSites(BACKUP_WRITER),
       ].map((site) => site.slice(0, site.indexOf(":"))),
     );
     const modules = [...webSources.keys()];
@@ -594,6 +610,38 @@ describe("the working folder", () => {
     );
     expect(failed.removed).toEqual([fileName]);
     expect(disallowedAccesses(failed.accessed)).toEqual([]);
+  });
+
+  test("gives the backup write the one name it writes, and stops at a name already held", async () => {
+    // The feature detection a stored grant is followed on, which Node lacks.
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+    const fileName = managedBackupFileName(new Date("2026-01-06T14:00:00Z"));
+    const backedUp = recordingFolder();
+    await writeBackupToWorkingFolder(
+      { workingDirectoryHandle: backedUp.handle },
+      fileName,
+      new Blob(["{}\n"]),
+      grantedPermission,
+    );
+    expect(backedUp.lookups).toEqual([
+      { name: fileName, create: false },
+      { name: fileName, create: true },
+    ]);
+    expect(disallowedAccesses(backedUp.accessed)).toEqual([]);
+
+    // Held already: looked up once, and neither created nor removed.
+    const again = await writeBackupToWorkingFolder(
+      { workingDirectoryHandle: backedUp.handle },
+      fileName,
+      new Blob(["{}\n"]),
+      grantedPermission,
+    );
+    expect(again).toEqual({ kind: "name-held", fileName });
+    expect(backedUp.lookups.slice(2)).toEqual([
+      { name: fileName, create: false },
+    ]);
+    expect(backedUp.removed).toEqual([]);
+    expect(disallowedAccesses(backedUp.accessed)).toEqual([]);
   });
 
   test("never has its input file's name taken by a results write", () => {

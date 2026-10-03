@@ -681,6 +681,72 @@ export async function readRecordAndMarkBackedUp(
   }
 }
 
+/** How a checked backup mark turned out: `"marked"` where the stored secret was
+ * the one the written backup holds and the marker was stamped, `"superseded"`
+ * where the secret had moved on, and `"gone"` where no record is stored under
+ * the id. The two refusals write nothing. */
+export type ManagedBackupMarkOutcome = "marked" | "superseded" | "gone";
+
+/**
+ * Stamp the backup marker as of `backedUpAt`, but ONLY while the stored record
+ * still holds `expectedSharedSecret`, the secret a backup already written
+ * elsewhere holds. For a backup whose landing is known only after it is
+ * written, so the mark cannot be issued in the step that composed it: the read,
+ * the comparison, and the mark are one transaction spanning the record and
+ * sibling stores, so a rotation landing after the write is seen and the marker
+ * is not stamped over a secret the file does not hold. The marker only advances
+ * forward, as in {@link readRecordAndMarkBackedUp}, and any spent state is kept.
+ *
+ * @throws {ZodError} if the stored record or sibling entry is invalid; the
+ *   transaction aborts and nothing is written.
+ */
+export async function markManagedBackupIfCurrent(
+  id: string,
+  expectedSharedSecret: string,
+  backedUpAt: string,
+): Promise<ManagedBackupMarkOutcome> {
+  const db = await openManagedExchangeDatabase();
+  try {
+    return await new Promise<ManagedBackupMarkOutcome>((resolve, reject) => {
+      const transaction = db.transaction(
+        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
+        "readwrite",
+        { durability: "strict" },
+      );
+      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
+      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      const read = records.get(id);
+      const readLocal = local.get(id);
+      let outcome: ManagedBackupMarkOutcome = "superseded";
+      let failure: unknown;
+      const applyWhenReady = () => {
+        if (read.readyState !== "done" || readLocal.readyState !== "done")
+          return;
+        try {
+          if (read.result === undefined) {
+            outcome = "gone";
+            return;
+          }
+          const stored = parseManagedExchangeRecord(read.result);
+          if (stored.sharedSecret !== expectedSharedSecret) return;
+          markBackupOnLocalStore(local, id, readLocal.result, backedUpAt);
+          outcome = "marked";
+        } catch (error) {
+          failure = error;
+          transaction.abort();
+        }
+      };
+      read.onsuccess = applyWhenReady;
+      readLocal.onsuccess = applyWhenReady;
+      transaction.oncomplete = () => resolve(outcome);
+      transaction.onerror = () => reject(failure ?? transaction.error);
+      transaction.onabort = () => reject(failure ?? transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /**
  * Spend this device's copy as of `spentAt` -- under `handoff`, or as the device
  * migration when it is omitted -- but ONLY while no run of this record is in flight

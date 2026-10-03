@@ -472,7 +472,7 @@ into it are what the visit names.
 
 **A folder used for nothing else** is the practice to follow: while the grant
 stands the site can read and write everything in that folder, not only the
-input and the results it uses there (see
+input, the results, and the backup it uses there (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#metadata-at-rest-presence-and-shape)).
 The app itself reads one name there and lists nothing (see [The input file each
 run](#the-input-file-each-run)). Deleting the exchange drops the grant with the
@@ -559,7 +559,10 @@ already defines:
 - **This ran, and your backup is now stale.** An unattended run rotates the
   secret with nobody present, which flips the derived backup state to "backup
   needed" (see [Moment-anchored backup surfaces](#moment-anchored-backup-surfaces)).
-  The notification prompts the **re-export** at that moment rather than letting
+  Where the run wrote the backup into the working folder itself, the state is
+  "backed up" again and this notification does not fire (see [The backup a
+  scheduled run writes](#the-backup-a-scheduled-run-writes)); otherwise
+  the notification prompts the **re-export** at that moment rather than letting
   the standing backup silently drift stale until the next visit -- the
   between-visit form of the attended run's "download updated backup" step. It
   wires to the **existing** derived backup state and its transition; it does not
@@ -2173,8 +2176,9 @@ not sync](#exportimport-is-migration-not-sync)): an import re-establishes the on
 owner. A backup export differs only in leaving the source live.
 
 Re-export is prompted by the attended run's completion surface and by the backup
-state below; an unattended run rotates with nobody present, so its rotation flips
-the backup state to actionable at the next visit.
+state below. An unattended run rotates with nobody present: where the exchange's
+working folder can take the backup, the run writes it there itself, and
+otherwise its rotation flips the backup state to actionable at the next visit.
 
 ### Moment-anchored backup surfaces
 
@@ -2202,13 +2206,55 @@ The refresh is offered where it is natural: on an attended run, the
 run-completion surface's "download updated backup" (see [The second
 run](#the-second-run-end-to-end)) is the moment the previous backup went stale,
 so taking it there keeps that path green and quiet. An unattended scheduled run
-rotates the secret with nobody present, so a scheduled exchange's standing
-export goes stale between visits **by design**; the backup state states that
-accurately -- actionable at the next visit, a state, not a nag -- and an OS-level
-notification from the installed app prompts a re-export sooner (see [The
-between-visit notification](#the-between-visit-notification)). The frame
-throughout: every accurate statement appears at the moment it becomes true and
-actionable.
+rotates the secret with nobody present. Where the exchange's working folder can
+take it, the run writes the backup there and the exchange stays green (see [The
+backup a scheduled run writes](#the-backup-a-scheduled-run-writes)). Otherwise a
+scheduled exchange's standing export goes stale between visits **by design**;
+the backup state states that accurately -- actionable at the next visit, a
+state, not a nag -- and an OS-level notification from the installed app prompts
+a re-export sooner (see [The between-visit
+notification](#the-between-visit-notification)). The frame throughout: every
+accurate statement appears at the moment it becomes true and actionable.
+
+### The backup a scheduled run writes
+
+A scheduled run that completes has rotated the secret, so the backup the
+operator holds no longer restores the exchange. Where the exchange has a
+working folder, the run backs it up there without asking:
+
+- **When it happens.** After every scheduled run that completes, once its
+  results are delivered, and only where the folder grant still holds with
+  nobody present -- the same check the results write makes, which never
+  prompts.
+- **What it writes.** The same file "Back up this exchange" downloads, with the
+  same contents and the same name, `alcove-managed-backup-<date>.json`, dated
+  by the local calendar day it is written. It is written into the working
+  folder and nowhere else.
+- **What it changes.** Once the file is in the folder, the exchange reads
+  "backed up as of <date>", and no backup notification fires for that run.
+
+The exchange still asks for a backup, at the next visit and in the
+notification, exactly as it would without this step, when:
+
+- the exchange has no working folder, or the browser offers none;
+- the browser would ask before letting the app use the folder again, or the
+  operator revoked it;
+- the folder already holds a file under that day's backup name -- another
+  exchange's backup in a shared folder, or one saved there by hand -- which is
+  left untouched;
+- the write fails, or the secret changes again before the backup is recorded.
+
+A failure never changes the run's outcome: the run has rotated and filed its
+disclosure, and its results are delivered as before. An attended run does not
+write this file; its completion screen offers "download updated backup".
+
+Each scheduled run writes a new dated file, and the older ones stay in the
+folder. Only the newest restores the exchange; an older one holds a secret the
+partnership has rotated past (see [Desync detection and
+recovery](#desync-detection-and-recovery)). Delete the older files, and keep
+the folder used for nothing else: anyone who can read it can read the current
+secret, as with the command line's `.alcove.key` in its working directory (see
+[SECURITY_DESIGN.md](SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).
 
 The in-browser copy is treated as convenience and the exported credential
 file as the durability of record, so an operator is never surprised by a silent
