@@ -3,14 +3,12 @@ import { totalmem } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { expect, test } from "vitest";
+import { beforeAll, expect, test } from "vitest";
 
 import { WASM_MASKING_BYTES_PER_ELEMENT } from "../../src/psi/psiMatchSlices";
 
-import type {
-  MaskingOperation,
-  MaskingProbeResult,
-} from "./wasmMaskingGrowth.probe";
+import type { WasmMaskingOperation } from "../../src/psi/psiMatchSlices";
+import type { MaskingProbeResult } from "./wasmMaskingGrowth.probe";
 
 // The WebAssembly engine's linear-memory growth for one masking call, per
 // element it is handed, against the figure the engine sizes its masking
@@ -30,14 +28,14 @@ const PROBE_TIMEOUT_MS = Number(
 const SIZES = (process.env.PSI_STRESS_MASKING_SIZES ?? "262144,1048576")
   .split(",")
   .map(Number);
-const OPERATIONS: ReadonlyArray<MaskingOperation> = [
+const OPERATIONS: ReadonlyArray<WasmMaskingOperation> = [
   "createSetupMessage",
   "createRequest",
   "processRequest",
 ];
 
 async function probe(
-  operation: MaskingOperation,
+  operation: WasmMaskingOperation,
   elements: number,
 ): Promise<MaskingProbeResult> {
   const { stdout } = await promisify(execFile)(
@@ -60,11 +58,15 @@ async function probe(
   return JSON.parse(stdout.trim()) as MaskingProbeResult;
 }
 
-const results = Promise.all(
-  OPERATIONS.flatMap((operation) =>
-    SIZES.map((elements) => probe(operation, elements)),
-  ),
-);
+let results: ReadonlyArray<MaskingProbeResult> = [];
+
+beforeAll(async () => {
+  results = await Promise.all(
+    OPERATIONS.flatMap((operation) =>
+      SIZES.map((elements) => probe(operation, elements)),
+    ),
+  );
+}, PROBE_TIMEOUT_MS + 60_000);
 
 const perElement = (bytes: number, result: MaskingProbeResult): number =>
   (bytes - result.wasmBeforeBytes) / result.elements;
@@ -72,8 +74,8 @@ const perElement = (bytes: number, result: MaskingProbeResult): number =>
 test.for(OPERATIONS)(
   "%s grows the engine's memory by no more than its stated figure an element",
   { timeout: PROBE_TIMEOUT_MS + 60_000 },
-  async (operation) => {
-    for (const result of (await results).filter(
+  (operation) => {
+    for (const result of results.filter(
       (each) => each.operation === operation,
     )) {
       const below = perElement(result.wasmBeforeLastGrowthBytes, result);

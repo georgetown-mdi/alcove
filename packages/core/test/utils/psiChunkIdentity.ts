@@ -40,10 +40,12 @@ function engine(
   revealsIdentifiers: boolean,
   chunkElements: number | undefined,
   setupSliceElements?: number,
+  matchMemoryBudgetBytes?: number,
 ): InProcessPsiEngine {
   const options: InProcessPsiEngineOptions = {
     ...(chunkElements === undefined ? {} : { chunkElements }),
     ...(setupSliceElements === undefined ? {} : { setupSliceElements }),
+    ...(matchMemoryBudgetBytes === undefined ? {} : { matchMemoryBudgetBytes }),
   };
   return new InProcessPsiEngine(
     fixedKeyPsiLibrary(library, SERVER_KEY, CLIENT_KEY),
@@ -62,6 +64,7 @@ function engine(
  * `chunkElements` sets the chunk size; left out, the shipped sizing policy
  * decides, which is what a run at production scale exercises.
  * `setupSliceElements` splits the joiner's match into setup slices.
+ * `matchMemoryBudgetBytes` sizes both parties' calls to that engine memory.
  */
 export async function expectChunkedRoundMatchesSingleCall(params: {
   library: PSILibrary;
@@ -69,17 +72,32 @@ export async function expectChunkedRoundMatchesSingleCall(params: {
   clientValues: ReadonlyArray<string>;
   chunkElements?: number;
   setupSliceElements?: number;
+  matchMemoryBudgetBytes?: number;
 }): Promise<Record<string, Array<number>>> {
-  const { library, serverValues, clientValues, chunkElements } = params;
+  const {
+    library,
+    serverValues,
+    clientValues,
+    chunkElements,
+    matchMemoryBudgetBytes,
+  } = params;
   const server = library.server!.createFromKey(SERVER_KEY, true);
   const client = library.client!.createFromKey(CLIENT_KEY, true);
-  const starter = engine(library, "starter", true, chunkElements);
+  const starter = engine(
+    library,
+    "starter",
+    true,
+    chunkElements,
+    undefined,
+    matchMemoryBudgetBytes,
+  );
   const joiner = engine(
     library,
     "joiner",
     true,
     chunkElements,
     params.setupSliceElements,
+    matchMemoryBudgetBytes,
   );
   const processed: Record<string, Array<number>> = {};
   let operation = "";
@@ -141,17 +159,32 @@ export async function expectChunkedCountMatchesSingleCall(params: {
   clientValues: ReadonlyArray<string>;
   chunkElements?: number;
   setupSliceElements?: number;
+  matchMemoryBudgetBytes?: number;
 }): Promise<Array<number>> {
-  const { library, serverValues, clientValues, chunkElements } = params;
+  const {
+    library,
+    serverValues,
+    clientValues,
+    chunkElements,
+    matchMemoryBudgetBytes,
+  } = params;
   const server = library.server!.createFromKey(SERVER_KEY, false);
   const client = library.client!.createFromKey(CLIENT_KEY, false);
-  const starter = engine(library, "starter", false, chunkElements);
+  const starter = engine(
+    library,
+    "starter",
+    false,
+    chunkElements,
+    undefined,
+    matchMemoryBudgetBytes,
+  );
   const joiner = engine(
     library,
     "joiner",
     false,
     chunkElements,
     params.setupSliceElements,
+    matchMemoryBudgetBytes,
   );
   const processed: Array<number> = [];
   try {

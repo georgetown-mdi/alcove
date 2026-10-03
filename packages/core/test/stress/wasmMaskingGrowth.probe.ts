@@ -13,11 +13,10 @@ import { performance } from "node:perf_hooks";
 
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
-export type MaskingOperation =
-  "createSetupMessage" | "createRequest" | "processRequest";
+import type { WasmMaskingOperation } from "../../src/psi/psiMatchSlices";
 
 export interface MaskingProbeResult {
-  readonly operation: MaskingOperation;
+  readonly operation: WasmMaskingOperation;
   readonly elements: number;
   readonly requestBackend: "native" | "wasm" | "none";
   readonly wasmBeforeBytes: number;
@@ -69,7 +68,7 @@ function wasmBytes(): number {
 
 async function main(): Promise<void> {
   const [operationArg, elementsArg] = process.argv.slice(2);
-  const operation = operationArg as MaskingOperation;
+  const operation = operationArg as WasmMaskingOperation;
   const elements = Number(elementsArg);
 
   installWasmMemoryProbe();

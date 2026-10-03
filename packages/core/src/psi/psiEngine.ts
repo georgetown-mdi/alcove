@@ -227,12 +227,11 @@ export interface PsiEngine {
 /** Settings for an {@link InProcessPsiEngine}; the worker entry points pass them through {@link ./psiWorkerEngine.servePsiWorker}. */
 export interface InProcessPsiEngineOptions {
   /**
-   * The engine memory one library call is sized to, in bytes: the held setup is
-   * matched in contiguous slices small enough that each call fits, and a
-   * masking chunk is held to the elements that fit (psiMatchSlices.ts). Left
-   * out, every match takes the whole setup in one call and every masking
-   * operation runs at the chunk policy's sizes, which is what the native
-   * addon runs.
+   * The engine memory one library call is sized to, in bytes: a match runs
+   * over contiguous setup slices, and a masking operation over chunks, that
+   * each fit (psiMatchSlices.ts). Left out, every match is one call and every
+   * masking operation runs at the chunk policy's sizes, as the native addon
+   * runs them.
    */
   readonly matchMemoryBudgetBytes?: number;
   /**

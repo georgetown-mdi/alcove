@@ -11,11 +11,8 @@ import type { PsiChunkRange } from "./psiChunks";
 import type { InProcessPsiEngineOptions } from "./psiEngine";
 
 // Sizing each WebAssembly engine call so its linear memory stays under its
-// fixed maximum. A match call takes the whole setup and response it is handed
-// into that memory, so a large held setup is matched in contiguous slices of
-// its own sorted order, each slice one library call; a masking call takes its
-// whole chunk, so a chunk is held to what fits (docs/spec/PROTOCOL.md, "A long
-// masking operation runs as a few chunks").
+// fixed maximum, which a call's whole input must fit in (docs/spec/PROTOCOL.md,
+// "The single-pass dataset ceiling: receiver memory and masking compute").
 
 /** The WebAssembly PSI engine's fixed linear-memory maximum, in bytes. */
 export const WASM_PSI_MEMORY_MAX_BYTES = 2_147_483_648;
@@ -64,7 +61,7 @@ export type WasmMaskingOperation =
 
 /**
  * Linear-memory growth of one masking call per element it is handed: the
- * most measured up to 2^20 elements a call, rounded up.
+ * most measured at any size run, up to 3,355,444 elements a call, rounded up.
  * test/stress/wasmMaskingGrowth.stress.test.ts holds each at or above a
  * fresh measurement.
  */
@@ -72,7 +69,7 @@ export const WASM_MASKING_BYTES_PER_ELEMENT: Readonly<
   Record<WasmMaskingOperation, number>
 > = {
   createSetupMessage: 432,
-  createRequest: 368,
+  createRequest: 400,
   processRequest: 544,
 };
 

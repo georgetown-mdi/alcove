@@ -272,19 +272,25 @@ test("a masking chunk below the floor is an internal error", () => {
 });
 
 // What the budget answers to, measured on the WebAssembly engine in Node
-// (docs/spec/PROTOCOL.md, "A long masking operation runs as a few chunks"):
-// the engine starts at 16.25 MiB, a 2^24 setup matched against a 2^16
-// response in 3 slices peaked at 1,318 MiB, and answering a request at the
-// 2,960,685-element chunk the budget allows peaked at 1,424 MiB.
+// (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling: receiver memory
+// and masking compute"): the engine starts at 16.25 MiB, a 2^24 setup matched
+// against a 2^16 response in 3 slices peaked at 1,318 MiB, answering a request
+// at the 2,960,685-element chunk the budget allows peaked at 1,424 MiB, and
+// creating a setup or a request at the policy's 3,355,444-element chunk at
+// 2^24 peaked at 1,263 MiB.
 const MEASURED_ENGINE_START_BYTES = 17_039_360;
 const MEASURED_SLICED_MATCH_PEAK_BYTES = 1_318 * 1024 * 1024;
 const MEASURED_MASKING_CHUNK_PEAK_BYTES = 1_493_172_224;
+const MEASURED_POLICY_CHUNK_PEAK_BYTES = 1_324_351_488;
 
 test("the budget sits above the measured calls and inside the maximum less the engine's start", () => {
   expect(MEASURED_SLICED_MATCH_PEAK_BYTES).toBeLessThanOrEqual(
     WASM_PSI_MATCH_BUDGET_BYTES,
   );
   expect(MEASURED_MASKING_CHUNK_PEAK_BYTES).toBeLessThanOrEqual(
+    WASM_PSI_MATCH_BUDGET_BYTES,
+  );
+  expect(MEASURED_POLICY_CHUNK_PEAK_BYTES).toBeLessThanOrEqual(
     WASM_PSI_MATCH_BUDGET_BYTES,
   );
   expect(
