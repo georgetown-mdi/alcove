@@ -45,7 +45,8 @@ const PER_RUN_OUTPUT_NAME = /^([A-Za-z0-9_-]+)\.csv$/;
 /** What the lines are composed from: the hand-off's argv and bind paths, and
  * the image reference this build names. */
 export interface ScheduledRunSource {
-  /** `alcove`, its arguments, and the input and output positionals last. */
+  /** `alcove`, its command, and the input and output positionals last, as
+   * `parseHandoff` admits it. */
   argv: ReadonlyArray<string>;
   bindPaths: ReadonlyArray<HandoffBindPath>;
   image: string;
@@ -53,31 +54,71 @@ export interface ScheduledRunSource {
 
 /** The argv's arguments, without the program token it starts on. */
 function alcoveArgs(argv: ReadonlyArray<string>): Array<string> {
-  if (argv[0] !== "alcove" || argv.length < 3)
-    throw new Error("a hand-off argv starts on alcove and ends on two files");
   return argv.slice(1);
+}
+
+/** Why a bind path cannot be mounted at its own path by a `--mount` option. */
+export type UnmountableReason = "comma" | "quote" | "workFolder";
+
+/** A bind path the Docker lines cannot mount, and why. */
+export interface UnmountableBindPath {
+  path: string;
+  reason: UnmountableReason;
+}
+
+/**
+ * The bind paths a `--mount` option cannot state at their own path: `--mount`
+ * is a comma-separated list read as CSV, so a `,` ends the path and a `"`
+ * starts a quoted field, and a path at or under `/work` lands inside the
+ * exchange folder's mount.
+ */
+export function unmountableBindPaths(
+  bindPaths: ReadonlyArray<HandoffBindPath>,
+): Array<UnmountableBindPath> {
+  return bindPaths.flatMap(({ path }): Array<UnmountableBindPath> => {
+    if (path.includes(",")) return [{ path, reason: "comma" }];
+    if (path.includes('"')) return [{ path, reason: "quote" }];
+    if (
+      path === CONTAINER_WORK_FOLDER ||
+      path.startsWith(`${CONTAINER_WORK_FOLDER}/`)
+    )
+      return [{ path, reason: "workFolder" }];
+    return [];
+  });
+}
+
+/** The `--mount` option binding `source` on the host at `target`. */
+function mountOption(
+  source: string,
+  target: string,
+  readOnly: boolean,
+): Array<string> {
+  return [
+    "--mount",
+    `type=bind,src=${source},dst=${target}${readOnly ? ",readonly" : ""}`,
+  ];
 }
 
 /**
  * The `docker run` argv over `folder`: the folder mounted at the image's
  * working directory and each bind path at its own path, so every path the
  * configuration names resolves inside the container as it does outside.
+ * Undefined when a bind path cannot be mounted ({@link unmountableBindPaths}).
  */
 export function dockerRunArgv(
   { argv, bindPaths, image }: ScheduledRunSource,
   program: string,
   folder: string,
-): Array<string> {
+): Array<string> | undefined {
+  if (unmountableBindPaths(bindPaths).length > 0) return undefined;
   return [
     program,
     "run",
     "--rm",
-    "-v",
-    `${folder}:${CONTAINER_WORK_FOLDER}`,
-    ...bindPaths.flatMap(({ path, readOnly }) => [
-      "-v",
-      `${path}:${path}${readOnly ? ":ro" : ""}`,
-    ]),
+    ...mountOption(folder, CONTAINER_WORK_FOLDER, false),
+    ...bindPaths.flatMap(({ path, readOnly }) =>
+      mountOption(path, path, readOnly),
+    ),
     image,
     ...alcoveArgs(argv),
   ];
@@ -106,20 +147,30 @@ function cronLine(command: string): string {
 }
 
 /** The command a person runs once by hand: the image over the exchange folder,
- * with `docker` as their shell finds it. */
-export function dockerRunCommand(source: ScheduledRunSource): string {
-  return posixCommandLine(
-    dockerRunArgv(source, "docker", EXCHANGE_FOLDER_PLACEHOLDER),
-  );
+ * with `docker` as their shell finds it. Undefined when a bind path cannot be
+ * mounted. */
+export function dockerRunCommand(
+  source: ScheduledRunSource,
+): string | undefined {
+  const argv = dockerRunArgv(source, "docker", EXCHANGE_FOLDER_PLACEHOLDER);
+  return argv === undefined ? undefined : posixCommandLine(argv);
 }
 
-/** The crontab line running the image over the exchange folder. */
-export function dockerCronLine(source: ScheduledRunSource): string {
-  return cronLine(
-    posixCommandLine(
-      dockerRunArgv(source, POSIX_DOCKER_PROGRAM, EXCHANGE_FOLDER_PLACEHOLDER),
-    ),
+/** The command a person runs once by hand from the exchange folder with an
+ * installed `alcove`. */
+export function installedRunCommand({ argv }: ScheduledRunSource): string {
+  return posixCommandLine(["alcove", ...alcoveArgs(argv)]);
+}
+
+/** The crontab line running the image over the exchange folder. Undefined
+ * when a bind path cannot be mounted. */
+export function dockerCronLine(source: ScheduledRunSource): string | undefined {
+  const argv = dockerRunArgv(
+    source,
+    POSIX_DOCKER_PROGRAM,
+    EXCHANGE_FOLDER_PLACEHOLDER,
   );
+  return argv === undefined ? undefined : cronLine(posixCommandLine(argv));
 }
 
 /** The crontab line running an installed `alcove` from the exchange folder. */
@@ -135,21 +186,71 @@ export function installedCronLine({ argv }: ScheduledRunSource): string {
  * It mounts the folder alone, since a Windows path cannot be mounted at the
  * same path inside the container; the panel names each bind path to mount by
  * hand. `cmd` has no portable date expansion, so the output name is fixed.
+ * Undefined when a bind path cannot be mounted.
  */
-export function dockerTaskSchedulerLine(source: ScheduledRunSource): string {
+export function dockerTaskSchedulerLine(
+  source: ScheduledRunSource,
+): string | undefined {
+  if (unmountableBindPaths(source.bindPaths).length > 0) return undefined;
   return taskSchedulerLine(
-    windowsJoinCommand(
-      dockerRunArgv(
-        { ...source, bindPaths: [] },
-        "docker",
+    windowsJoinCommand([
+      "docker",
+      "run",
+      "--rm",
+      ...mountOption(
         WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER,
+        CONTAINER_WORK_FOLDER,
+        false,
       ),
-    ),
+      source.image,
+      ...alcoveArgs(source.argv),
+    ]),
   );
 }
 
 /** The input file the hand-off's command reads, which the panel asks the
- * operator to put in the exchange folder. */
+ * operator to put in the exchange folder: the positional before the output,
+ * less the `./` a name starting with `-` is given. */
 export function handoffInputName(argv: ReadonlyArray<string>): string {
-  return alcoveArgs(argv).at(-2) ?? "";
+  const positional = argv.at(-2) ?? "";
+  return positional.startsWith("./-") ? positional.slice(2) : positional;
+}
+
+/** What stops the Docker lines mounting a path, as the panel words it. */
+const UNMOUNTABLE_REASON_TEXT: Record<UnmountableReason, string> = {
+  comma: "contains a comma, which a --mount option cannot hold",
+  quote: "contains a double quote, which a --mount option cannot hold",
+  workFolder: `is inside ${CONTAINER_WORK_FOLDER}, where the image mounts the exchange folder`,
+};
+
+/** The panel's sentence naming each path the Docker lines cannot mount and why. */
+export function unmountableBindPathsNotice(
+  unmountable: ReadonlyArray<UnmountableBindPath>,
+): string {
+  const named = unmountable
+    .map(({ path, reason }) => `${path} ${UNMOUNTABLE_REASON_TEXT[reason]}`)
+    .join("; ");
+  return (
+    `The Docker commands are not shown because ${named}. To run Alcove ` +
+    "from its image, write the docker run command yourself and mount that " +
+    "path by hand, or run an installed Alcove with the commands below."
+  );
+}
+
+/**
+ * The caveat for the paths outside the exchange folder the Docker lines mount
+ * at their own path, which the Task Scheduler line leaves to the operator.
+ */
+export function bindPathsCaveat(
+  bindPaths: ReadonlyArray<HandoffBindPath>,
+): string {
+  const paths = bindPaths.map(({ path }) => path).join(", ");
+  return (
+    `The Docker commands mount ${paths} at the same path inside the ` +
+    "container, so Alcove finds each where this hand-off names it. When you " +
+    "set one of these paths, set it the same way in the Docker commands. The " +
+    "Task Scheduler line mounts only the exchange folder: for each path, add " +
+    "--mount type=bind,src=FILE,dst=PATH before the image name, with FILE " +
+    "the folder or file on your machine and PATH the path named here."
+  );
 }

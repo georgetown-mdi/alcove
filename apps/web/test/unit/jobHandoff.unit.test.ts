@@ -134,6 +134,18 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     ]);
   });
 
+  test("an input name starting with a dash is given as a path, not a flag", () => {
+    const handoff = buildJobHandoff(
+      validInputFileIntent({ name: "-x.csv" }),
+      undefined,
+      { credentialPasted: false, filedropSplit: false },
+    );
+    expect(handoff.template.argv.slice(-2)).toEqual([
+      "./-x.csv",
+      "results.csv",
+    ]);
+  });
+
   test("the bind paths are the absolute paths the template names outside the folder", () => {
     const sftp = buildJobHandoff(
       validSftpIntent(),

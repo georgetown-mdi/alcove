@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import { describe, expect, test } from "vitest";
 
 import {
@@ -6,8 +8,12 @@ import {
   dockerTaskSchedulerLine,
   handoffInputName,
   installedCronLine,
+  installedRunCommand,
   posixCommandLine,
+  unmountableBindPaths,
+  unmountableBindPathsNotice,
 } from "@recurring/scheduledRunCommand";
+import { parseHandoff } from "@psi/managed/recurringHandoff";
 
 import type { ScheduledRunSource } from "@recurring/scheduledRunCommand";
 
@@ -33,10 +39,16 @@ const SOURCE: ScheduledRunSource = {
 };
 
 const MOUNTS =
-  "-v /path/to/your/exchange-folder:/work " +
-  "-v /path/to/your/shared-directory:/path/to/your/shared-directory " +
-  "-v /path/to/your/signing-identity.json:" +
-  "/path/to/your/signing-identity.json:ro";
+  "--mount type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+  "--mount type=bind,src=/path/to/your/shared-directory," +
+  "dst=/path/to/your/shared-directory " +
+  "--mount type=bind,src=/path/to/your/signing-identity.json," +
+  "dst=/path/to/your/signing-identity.json,readonly";
+
+/** The source with `path` as its one bind path. */
+function sourceBinding(path: string): ScheduledRunSource {
+  return { ...SOURCE, bindPaths: [{ path, readOnly: false }] };
+}
 
 describe("the console hand-off's command lines", () => {
   test("the one-off command runs the image over the folder with a per-run result", () => {
@@ -73,7 +85,8 @@ describe("the console hand-off's command lines", () => {
   test("the Task Scheduler line mounts the folder alone and keeps a fixed result", () => {
     const line = dockerTaskSchedulerLine(SOURCE);
     expect(line).toContain(
-      "docker run --rm -v C:\\path\\to\\your\\exchange-folder:/work " +
+      "docker run --rm --mount " +
+        "type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work " +
         `${IMAGE} exchange --log-file=exchange.log clients.csv results.csv`,
     );
     expect(line).not.toContain("shared-directory");
@@ -87,6 +100,78 @@ describe("the console hand-off's command lines", () => {
 
   test("the input name is the positional before the output", () => {
     expect(handoffInputName(SOURCE.argv)).toBe("clients.csv");
-    expect(() => handoffInputName(["docker", "a", "b"])).toThrow();
+    expect(
+      handoffInputName(["alcove", "exchange", "./-x.csv", "results.csv"]),
+    ).toBe("-x.csv");
   });
+
+  test("a path with a colon is mounted whole", () => {
+    expect(dockerRunCommand(sourceBinding("/srv/a:b"))).toContain(
+      " --mount type=bind,src=/srv/a:b,dst=/srv/a:b ",
+    );
+  });
+
+  test("a path with a space and a single quote stays one shell token", () => {
+    const command = dockerRunCommand(sourceBinding("/srv/it's here"));
+    if (command === undefined) throw new Error("no docker command");
+    const tokens = execFileSync(
+      "/bin/sh",
+      ["-c", `printf '%s\\n' ${command}`],
+      {
+        encoding: "utf8",
+      },
+    ).split("\n");
+    expect(tokens).toContain("type=bind,src=/srv/it's here,dst=/srv/it's here");
+  });
+
+  test("a path with a comma, or under /work, leaves out every Docker line", () => {
+    for (const [path, reason] of [
+      ["/srv/a,b", "comma"],
+      ["/work", "workFolder"],
+      ["/work/shared", "workFolder"],
+    ] as const) {
+      const source = sourceBinding(path);
+      expect(unmountableBindPaths(source.bindPaths)).toEqual([
+        { path, reason },
+      ]);
+      expect(dockerRunCommand(source)).toBeUndefined();
+      expect(dockerCronLine(source)).toBeUndefined();
+      expect(dockerTaskSchedulerLine(source)).toBeUndefined();
+      expect(installedRunCommand(source)).toBe(
+        "alcove exchange --log-file=exchange.log clients.csv " +
+          "results-$(date +%Y%m%d-%H%M%S).csv",
+      );
+    }
+    expect(
+      unmountableBindPaths([{ path: "/workshop", readOnly: false }]),
+    ).toEqual([]);
+    expect(
+      unmountableBindPathsNotice([{ path: "/srv/a,b", reason: "comma" }]),
+    ).toContain("/srv/a,b contains a comma");
+  });
+});
+
+describe("a hand-off whose argv is not an alcove command line", () => {
+  test.each([[["x"]], [["alcove"]], [["alcove", "exchange", "results.csv"]]])(
+    "argv %j is a malformed body",
+    (argv) => {
+      expect(
+        parseHandoff({
+          mode: "zeroSetup",
+          channel: "filedrop",
+          usedKeyFile: false,
+          keyFileBesideConfiguration: false,
+          credentialPasted: false,
+          usedSigningIdentity: false,
+          pathsAsRead: {
+            credential: false,
+            sharedDirectory: false,
+            signing: false,
+          },
+          bindPaths: [],
+          template: { kind: "command", argv },
+        }),
+      ).toBeNull();
+    },
+  );
 });

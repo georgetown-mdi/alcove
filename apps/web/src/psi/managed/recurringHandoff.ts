@@ -219,26 +219,7 @@ export function handoffCaveats(handoff: JobHandoff): Array<string> {
       "The host key is already pinned, so scheduled runs connect without a " +
         "prompt.",
     );
-  if (handoff.bindPaths.length > 0)
-    caveats.push(bindPathsCaveat(handoff.bindPaths));
   return caveats;
-}
-
-/**
- * The caveat for the paths outside the exchange folder the docker lines mount,
- * which change in the line wherever they change in the configuration, and
- * which the Task Scheduler line leaves to the operator to mount.
- */
-function bindPathsCaveat(bindPaths: ReadonlyArray<HandoffBindPath>): string {
-  const paths = bindPaths.map(({ path }) => path).join(", ");
-  return (
-    `The Docker commands mount ${paths} at the same path inside the ` +
-    "container, so Alcove finds each where this hand-off names it. When you " +
-    "set one of these paths, set it the same way in the Docker commands. The " +
-    "Task Scheduler line mounts only the exchange folder: for each path, add " +
-    "-v followed by the folder or file on your machine, a colon, and the " +
-    "path, before the image name."
-  );
 }
 
 function parseTemplate(value: unknown): JobHandoffTemplate | null {
@@ -256,10 +237,13 @@ function parseTemplate(value: unknown): JobHandoffTemplate | null {
   return null;
 }
 
+/** Whether `argv` is an `alcove` command line the panel can show: `alcove`,
+ * a command or URL, and the input and output positionals last. */
 function isCommandArgv(argv: unknown): argv is Array<string> {
   return (
     Array.isArray(argv) &&
-    argv.length > 0 &&
+    argv.length >= 4 &&
+    argv[0] === "alcove" &&
     argv.every((token): token is string => typeof token === "string")
   );
 }

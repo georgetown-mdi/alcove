@@ -235,9 +235,17 @@ export const HANDOFF_LOG_FILE_NAME = "exchange.log";
 function handoffRunArgs(intent: JobCreateIntent): Array<string> {
   return [
     `--log-file=${HANDOFF_LOG_FILE_NAME}`,
-    intent.inputFile?.name ?? HANDOFF_UPLOADED_INPUT_NAME,
+    handoffInputPositional(
+      intent.inputFile?.name ?? HANDOFF_UPLOADED_INPUT_NAME,
+    ),
     HANDOFF_OUTPUT_NAME,
   ];
+}
+
+/** `name` as a positional the CLI reads as a file rather than a flag: a name
+ * starting with `-` is given a leading `./`. */
+function handoffInputPositional(name: string): string {
+  return name.startsWith("-") ? `./${name}` : name;
 }
 
 /**

@@ -17,11 +17,15 @@ import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
+  bindPathsCaveat,
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
   handoffInputName,
   installedCronLine,
+  installedRunCommand,
+  unmountableBindPaths,
+  unmountableBindPathsNotice,
 } from "./scheduledRunCommand";
 
 import type { JobHandoff } from "@jobs/handoff";
@@ -110,7 +114,11 @@ function HandoffBody({
     bindPaths: handoff.bindPaths,
     image: imageReference(releaseVersion(alcoveVersion())),
   };
-  const runCommand = dockerRunCommand(source);
+  const dockerCommand = dockerRunCommand(source);
+  const runCommand = dockerCommand ?? installedRunCommand(source);
+  const cronCommand = dockerCronLine(source);
+  const taskSchedulerCommand = dockerTaskSchedulerLine(source);
+  const unmountable = unmountableBindPaths(handoff.bindPaths);
   const inputName = handoffInputName(handoff.template.argv);
 
   return (
@@ -121,6 +129,11 @@ function HandoffBody({
         Scheduler (Windows). The settings from this run are filled in below; set
         the file paths for the machine that will run the schedule.
       </p>
+      {unmountable.length > 0 && (
+        <p className={styles.small}>
+          {unmountableBindPathsNotice(unmountable)}
+        </p>
+      )}
 
       {handoff.template.kind === "config" ? (
         <ConfigSteps
@@ -139,25 +152,34 @@ function HandoffBody({
       <h3 className={styles.handoffHeading}>
         Schedule it (set the time you agreed with your partner)
       </h3>
+      {cronCommand !== undefined && (
+        <>
+          <p className={styles.small}>
+            cron (Linux/macOS), daily at 2am, running Alcove from its Docker
+            image:
+          </p>
+          <CopyableCode code={cronCommand} ariaLabel="cron schedule line" />
+        </>
+      )}
+      {taskSchedulerCommand !== undefined && (
+        <>
+          <p className={styles.small}>
+            Windows Task Scheduler, daily at 2am, running Alcove from its Docker
+            image. This line writes results.csv each run, replacing the last
+            run&apos;s; copy it out after each run to keep it:
+          </p>
+          <CopyableCode
+            code={taskSchedulerCommand}
+            ariaLabel="Windows Task Scheduler command"
+          />
+        </>
+      )}
       <p className={styles.small}>
-        cron (Linux/macOS), daily at 2am, running Alcove from its Docker image:
-      </p>
-      <CopyableCode
-        code={dockerCronLine(source)}
-        ariaLabel="cron schedule line"
-      />
-      <p className={styles.small}>
-        Windows Task Scheduler, daily at 2am, running Alcove from its Docker
-        image. This line writes results.csv each run, replacing the last
-        run&apos;s; copy it out after each run to keep it:
-      </p>
-      <CopyableCode
-        code={dockerTaskSchedulerLine(source)}
-        ariaLabel="Windows Task Scheduler command"
-      />
-      <p className={styles.small}>
-        If Alcove is installed on the scheduling machine rather than run from
-        its image, cron runs it from the exchange folder:
+        {dockerCommand !== undefined
+          ? "If Alcove is installed on the scheduling machine rather than run " +
+            "from its image, cron runs it from the exchange folder:"
+          : "cron (Linux/macOS), daily at 2am, running an installed Alcove " +
+            "from the exchange folder:"}
       </p>
       <CopyableCode
         code={installedCronLine(source)}
@@ -167,12 +189,16 @@ function HandoffBody({
         Set {EXCHANGE_FOLDER_PLACEHOLDER} to the folder you saved the files in,
         and /path/to/alcove to where Alcove is installed. The cron lines name
         each run&apos;s result by its date and time, and each run adds to
-        exchange.log in that folder. A scheduled job does not use your
-        shell&apos;s PATH, so check that /usr/bin/docker is where Docker is
-        installed (command -v docker).
+        exchange.log in that folder.
+        {dockerCommand !== undefined &&
+          " A scheduled job does not use your shell's PATH, so check that " +
+            "/usr/bin/docker is where Docker is installed (command -v docker)."}
       </p>
 
-      <Caveats handoff={handoff} />
+      <Caveats
+        handoff={handoff}
+        dockerLinesShown={dockerCommand !== undefined}
+      />
 
       <p className={styles.small}>
         See the{" "}
@@ -323,13 +349,23 @@ function CommandSteps({
   );
 }
 
-/** The all-modes caveats ({@link handoffCaveats}). */
-function Caveats({ handoff }: { handoff: JobHandoff }) {
+/** The all-modes caveats ({@link handoffCaveats}), and the paths the Docker
+ * lines mount when they are shown. */
+function Caveats({
+  handoff,
+  dockerLinesShown,
+}: {
+  handoff: JobHandoff;
+  dockerLinesShown: boolean;
+}) {
+  const caveats = handoffCaveats(handoff);
+  if (dockerLinesShown && handoff.bindPaths.length > 0)
+    caveats.push(bindPathsCaveat(handoff.bindPaths));
   return (
     <>
       <h3 className={styles.handoffHeading}>Before you schedule it</h3>
       <ul className={styles.small}>
-        {handoffCaveats(handoff).map((caveat) => (
+        {caveats.map((caveat) => (
           <li key={caveat}>{caveat}</li>
         ))}
       </ul>

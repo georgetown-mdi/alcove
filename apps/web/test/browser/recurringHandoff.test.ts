@@ -137,7 +137,7 @@ describe("RecurringHandoff panel", () => {
     const text = () => app.container.textContent;
     // The command template, including the portable pin and the placeholder credential.
     expect(text()).toContain(
-      "docker run --rm -v /path/to/your/exchange-folder:/work",
+      "docker run --rm --mount type=bind,src=/path/to/your/exchange-folder,dst=/work",
     );
     expect(text()).toContain("sftp://sftp.example.gov:2222/exchange");
     expect(text()).toContain("--server-host-key-fingerprint=SHA256:");
@@ -176,7 +176,8 @@ describe("RecurringHandoff panel", () => {
     // The shared folder is mounted at its own path, and named to mount by hand
     // on Windows.
     expect(text()).toContain(
-      "-v /path/to/your/shared-directory:/path/to/your/shared-directory",
+      "--mount type=bind,src=/path/to/your/shared-directory," +
+        "dst=/path/to/your/shared-directory",
     );
     expect(text()).toContain(
       "The Docker commands mount /path/to/your/shared-directory",
@@ -242,6 +243,39 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toContain("do not run alcove fingerprint there");
     // The schedule accumulates a receipt trail rather than overwriting one file.
     expect(text()).toContain("timestamped receipt");
+  });
+
+  test("names a path Docker cannot mount and shows the installed-Alcove lines instead", async () => {
+    stubHandoff({
+      ...SPACED_COMMAND_HANDOFF,
+      bindPaths: [{ path: "/srv/a,b", readOnly: false }],
+    } satisfies JobHandoff);
+    app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
+
+    await expect
+      .element(page.getByRole("heading", { name: HANDOFF_HEADING }))
+      .toBeInTheDocument();
+
+    const text = () => app.container.textContent;
+    expect(text()).toContain(
+      "The Docker commands are not shown because /srv/a,b contains a comma",
+    );
+    expect(text()).not.toContain("docker run --rm");
+    expect(text()).not.toContain("schtasks /Create");
+    expect(text()).toContain("'--identity=Agency A' input.csv results-$(date");
+    expect(text()).toContain(
+      "cd /path/to/your/exchange-folder && /path/to/alcove",
+    );
+  });
+
+  test("renders nothing for a hand-off whose argv is not an alcove command", async () => {
+    stubHandoff({
+      ...COMMAND_HANDOFF,
+      template: { kind: "command", argv: ["x"] },
+    });
+    app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(app.container.textContent).not.toContain(HANDOFF_HEADING);
   });
 
   test("renders nothing when the hand-off is unavailable (non-blocking)", async () => {

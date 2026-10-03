@@ -22,6 +22,7 @@ import {
   INSTALLED_ALCOVE_PLACEHOLDER,
   dockerCronLine,
   dockerRunArgv,
+  handoffInputName,
   installedCronLine,
 } from "@recurring/scheduledRunCommand";
 import { HANDOFF_SHARED_DIRECTORY_PLACEHOLDER } from "@jobs/handoff";
@@ -65,8 +66,13 @@ const CONSOLE_CSV =
   "111223333,bob,smith,1990-01-01\n" +
   "222334444,carol,jones,1985-11-30\n";
 
-/** The input's name in the console's folder, which the hand-off states. */
-const CONSOLE_INPUT_NAME = "clients.csv";
+/** The input the partnership is accepted over on the command line. */
+const ACCEPT_INPUT_NAME = "clients.csv";
+
+/** The same input under the name the console run picks, which the hand-off
+ * states; its leading dash is a file name the scheduled command must not
+ * read as a flag. */
+const CONSOLE_INPUT_NAME = "-clients.csv";
 
 const CONSOLE_PAIRS: Array<[number, number]> = [
   [1, 0],
@@ -107,6 +113,7 @@ beforeEach(() => {
   ])
     mkdirSync(dir);
   writeFileSync(path.join(workspace.partnerDir, "input.csv"), PARTNER_CSV);
+  writeFileSync(path.join(workspace.mount, ACCEPT_INPUT_NAME), CONSOLE_CSV);
   writeFileSync(path.join(workspace.mount, CONSOLE_INPUT_NAME), CONSOLE_CSV);
 });
 
@@ -150,7 +157,7 @@ async function establishPartnership(): Promise<void> {
       "Agency B, b@agency-b.example",
       "--consent-to-terms",
       invitationFrom(invite),
-      CONSOLE_INPUT_NAME,
+      ACCEPT_INPUT_NAME,
     ],
     cwd: workspace.mount,
     timeoutMs: CLI_DEADLINE_MS,
@@ -272,6 +279,8 @@ describe.skipIf(!cliIsBuilt)(
         path.join(workspace.scheduleDir, ".alcove.key"),
       );
       chmodSync(path.join(workspace.scheduleDir, ".alcove.key"), 0o600);
+      expect(handoff.template.argv).toContain(`./${CONSOLE_INPUT_NAME}`);
+      expect(handoffInputName(handoff.template.argv)).toBe(CONSOLE_INPUT_NAME);
       copyFileSync(
         path.join(workspace.mount, CONSOLE_INPUT_NAME),
         path.join(workspace.scheduleDir, CONSOLE_INPUT_NAME),
@@ -328,16 +337,17 @@ describe.skipIf(!cliIsBuilt)(
         "/usr/bin/docker",
         EXCHANGE_FOLDER_PLACEHOLDER,
       );
-      expect(dockerArgv.slice(0, 7)).toEqual([
+      expect(dockerArgv?.slice(0, 7)).toEqual([
         "/usr/bin/docker",
         "run",
         "--rm",
-        "-v",
-        `${EXCHANGE_FOLDER_PLACEHOLDER}:/work`,
-        "-v",
-        `${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER}:${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER}`,
+        "--mount",
+        `type=bind,src=${EXCHANGE_FOLDER_PLACEHOLDER},dst=/work`,
+        "--mount",
+        `type=bind,src=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER},` +
+          `dst=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER}`,
       ]);
-      expect(dockerArgv.slice(8)).toEqual(handoff.template.argv.slice(1));
+      expect(dockerArgv?.slice(8)).toEqual(handoff.template.argv.slice(1));
       expect(dockerCronLine(source)).toContain(
         "results-$(date +\\%Y\\%m\\%d-\\%H\\%M\\%S).csv",
       );
