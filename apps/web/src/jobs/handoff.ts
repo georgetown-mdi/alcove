@@ -114,6 +114,14 @@ export interface JobHandoff {
    * machine, and a placeholder as one to set.
    */
   pathsAsRead: HandoffPathsAsRead;
+  /**
+   * The absolute paths outside the exchange folder the template names -- a
+   * credential file, a shared folder, the signing identity, the folder a
+   * receipt file is written into -- which a run of the published image reads
+   * only where each is mounted at the same path inside the container. A
+   * relative path resolves under the exchange folder and is not listed.
+   */
+  bindPaths: Array<HandoffBindPath>;
   /** The portable template itself: the exchange config document and the command
    * that runs it (exchange mode), or the zero-setup command tokens (zeroSetup
    * mode). */
@@ -135,6 +143,13 @@ export interface HandoffPathsAsRead {
   /** The template's `signing` block states a signing identity or receipt path
    * of the file's own. */
   signing: boolean;
+}
+
+/** A host path the scheduled container run mounts at the same path. */
+export interface HandoffBindPath {
+  path: string;
+  /** Whether the run only reads it: a credential or signing identity file. */
+  readOnly: boolean;
 }
 
 /** A setting a `certificate`-mode signing block requires, as the file spells
@@ -204,11 +219,34 @@ export const HANDOFF_INBOUND_DIRECTORY_URL_PLACEHOLDER =
 export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
   "/path/to/your/signing-identity.json";
 
-/** The input/output positionals both recurring command templates name. The
- * output is the console's own result name, the same on disk and in the
- * download. */
-const HANDOFF_INPUT_NAME = "input.csv";
+/** The input positional a template names for a run whose input was uploaded
+ * rather than picked from the work-input folder by name. */
+const HANDOFF_UPLOADED_INPUT_NAME = "input.csv";
+
+/** The output positional both templates end on: the console's own result
+ * name. The panel turns it into a per-run name on the schedule lines. */
 const HANDOFF_OUTPUT_NAME = JOB_FILE_NAMES.output;
+
+/** The log a scheduled run appends to in the folder it runs in, so an
+ * unattended failure leaves its cause on disk. */
+export const HANDOFF_LOG_FILE_NAME = "exchange.log";
+
+/** The flags and positionals both templates end on. */
+function handoffRunArgs(intent: JobCreateIntent): Array<string> {
+  return [
+    `--log-file=${HANDOFF_LOG_FILE_NAME}`,
+    handoffInputPositional(
+      intent.inputFile?.name ?? HANDOFF_UPLOADED_INPUT_NAME,
+    ),
+    HANDOFF_OUTPUT_NAME,
+  ];
+}
+
+/** `name` as a positional the CLI reads as a file rather than a flag: a name
+ * starting with `-` is given a leading `./`. */
+function handoffInputPositional(name: string): string {
+  return name.startsWith("-") ? `./${name}` : name;
+}
 
 /**
  * Rebuild the authored SFTP server entry with every container-internal
@@ -273,14 +311,76 @@ const HANDOFF_SIGNING_PATHS: JobSigningPaths = {
  * folder the command runs in.
  */
 function buildExchangeHandoffTemplate(
+  intent: JobExchangeIntent,
   handoffSpec: ExchangeSpec,
   mountedDocument: ExchangeSpec | undefined,
 ): JobHandoffTemplate {
   return {
     kind: "config",
     yaml: handoffConfigDocument(handoffSpec, mountedDocument),
-    argv: ["alcove", "exchange", HANDOFF_INPUT_NAME, HANDOFF_OUTPUT_NAME],
+    argv: ["alcove", "exchange", ...handoffRunArgs(intent)],
   };
+}
+
+/**
+ * The absolute paths `handoffSpec` names outside the folder the run starts in
+ * ({@link JobHandoff.bindPaths}): each sftp credential `@path`, each filedrop
+ * folder, the signing identity, and the folder a receipt file is written into
+ * (the file itself does not exist before the run, and a mount of a missing file
+ * is made a folder).
+ */
+function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {
+  const { connection, signing } = handoffSpec;
+  const folders =
+    connection.channel === "filedrop"
+      ? [connection.path, connection.inboundPath, connection.outboundPath]
+      : [];
+  return uniqueAbsoluteBindPaths([
+    ...(connection.channel === "sftp"
+      ? credentialBindPaths(connection.server)
+      : []),
+    ...folders.map((path) => ({ path, readOnly: false })),
+    { path: signing?.identityFile, readOnly: true },
+    { path: parentFolder(signing?.receiptOutput), readOnly: false },
+  ]);
+}
+
+/** The files a server's credential `@path` references name, read-only. */
+function credentialBindPaths(
+  server: Pick<
+    JobSftpServerEntry,
+    "password" | "privateKey" | "privateKeyPassphrase"
+  >,
+): Array<{ path: string; readOnly: boolean }> {
+  return [
+    server.password,
+    server.privateKey,
+    server.privateKeyPassphrase,
+  ].flatMap((value) =>
+    value?.startsWith("@") === true
+      ? [{ path: value.slice(1), readOnly: true }]
+      : [],
+  );
+}
+
+/** The folder holding `file`: `/` for a root-level file, undefined for no file
+ * or a bare name. */
+function parentFolder(file: string | undefined): string | undefined {
+  const cut = file?.lastIndexOf("/") ?? -1;
+  if (file === undefined || cut < 0) return undefined;
+  return cut === 0 ? "/" : file.slice(0, cut);
+}
+
+/** The stated absolute paths, each once, read-write where any use writes it. */
+function uniqueAbsoluteBindPaths(
+  candidates: ReadonlyArray<{ path: string | undefined; readOnly: boolean }>,
+): Array<HandoffBindPath> {
+  const byPath = new Map<string, boolean>();
+  for (const { path, readOnly } of candidates) {
+    if (path === undefined || !path.startsWith("/")) continue;
+    byPath.set(path, (byPath.get(path) ?? true) && readOnly);
+  }
+  return [...byPath].map(([path, readOnly]) => ({ path, readOnly }));
 }
 
 /**
@@ -696,14 +796,17 @@ function buildZeroSetupHandoffTemplate(
   intent: JobZeroSetupIntent,
   serverEntry: JobSftpServerEntry | undefined,
   filedropSplit: boolean,
-): JobHandoffTemplate {
+): { template: JobHandoffTemplate; bindPaths: Array<HandoffBindPath> } {
   let connectionArgs: Array<string>;
+  let bindPaths: Array<HandoffBindPath>;
   if (intent.channel === "sftp") {
     if (serverEntry === undefined)
       throw new Error(
         "sftp zero-setup handoff reached compose without a resolved server",
       );
-    connectionArgs = zeroSetupSftpArgv(placeholderServerEntry(serverEntry));
+    const placeholdered = placeholderServerEntry(serverEntry);
+    connectionArgs = zeroSetupSftpArgv(placeholdered);
+    bindPaths = uniqueAbsoluteBindPaths(credentialBindPaths(placeholdered));
   } else if (filedropSplit) {
     // Composed literally rather than through zeroSetupFiledropArgv: that builder
     // turns a real directory into a `file://` URL, and a placeholder is not a
@@ -712,8 +815,15 @@ function buildZeroSetupHandoffTemplate(
       HANDOFF_INBOUND_DIRECTORY_URL_PLACEHOLDER,
       `--outbound-path=${HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER}`,
     ];
+    bindPaths = [
+      { path: HANDOFF_INBOUND_DIRECTORY_PLACEHOLDER, readOnly: false },
+      { path: HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER, readOnly: false },
+    ];
   } else {
     connectionArgs = [HANDOFF_SHARED_DIRECTORY_URL_PLACEHOLDER];
+    bindPaths = [
+      { path: HANDOFF_SHARED_DIRECTORY_PLACEHOLDER, readOnly: false },
+    ];
   }
   const argv: Array<string> = [
     "alcove",
@@ -727,10 +837,9 @@ function buildZeroSetupHandoffTemplate(
     ...(intent.csvDelimiter !== undefined
       ? [`--csv-delimiter=${handoffCsvDelimiterSpelling(intent.csvDelimiter)}`]
       : []),
-    HANDOFF_INPUT_NAME,
-    HANDOFF_OUTPUT_NAME,
+    ...handoffRunArgs(intent),
   ];
-  return { kind: "command", argv };
+  return { template: { kind: "command", argv }, bindPaths };
 }
 
 /** The delimiter as the copyable command spells it: a tab is the word `tab`,
@@ -809,7 +918,7 @@ export function buildJobHandoff(
       credentialPasted: credentialPastedOnSftp,
       usedSigningIdentity: false,
       pathsAsRead: NO_PATHS_AS_READ,
-      template: buildZeroSetupHandoffTemplate(intent, serverEntry, split),
+      ...buildZeroSetupHandoffTemplate(intent, serverEntry, split),
     };
   const mergeBase =
     mountedDocument === undefined
@@ -832,6 +941,7 @@ export function buildJobHandoff(
     usedSigningIdentity: intent.signing?.mode === "certificate",
     ...(signingSettingsToSet.length > 0 ? { signingSettingsToSet } : {}),
     pathsAsRead: pathsAsReadIn(handoffSpec),
-    template: buildExchangeHandoffTemplate(handoffSpec, mergeBase),
+    bindPaths: bindPathsIn(handoffSpec),
+    template: buildExchangeHandoffTemplate(intent, handoffSpec, mergeBase),
   };
 }

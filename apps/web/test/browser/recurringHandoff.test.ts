@@ -27,6 +27,7 @@ const COMMAND_HANDOFF = {
   credentialPasted: false,
   usedSigningIdentity: false,
   pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+  bindPaths: [],
   template: {
     kind: "command",
     argv: [
@@ -51,6 +52,7 @@ const SPACED_COMMAND_HANDOFF = {
   credentialPasted: false,
   usedSigningIdentity: false,
   pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+  bindPaths: [{ path: "/path/to/your/shared-directory", readOnly: false }],
   template: {
     kind: "command",
     argv: [
@@ -73,6 +75,7 @@ const CONFIG_HANDOFF = {
   credentialPasted: false,
   usedSigningIdentity: false,
   pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+  bindPaths: [],
   template: {
     kind: "config",
     argv: ["alcove", "exchange", "input.csv", "results.csv"],
@@ -133,16 +136,24 @@ describe("RecurringHandoff panel", () => {
 
     const text = () => app.container.textContent;
     // The command template, including the portable pin and the placeholder credential.
-    expect(text()).toContain("alcove sftp://sftp.example.gov:2222/exchange");
+    expect(text()).toContain(
+      "docker run --rm --mount type=bind,src=/path/to/your/exchange-folder,dst=/work",
+    );
+    expect(text()).toContain("sftp://sftp.example.gov:2222/exchange");
     expect(text()).toContain("--server-host-key-fingerprint=SHA256:");
     expect(text()).toContain(
       "--server-password=@/path/to/your/credential-file",
     );
-    expect(text()).toContain("input.csv results.csv");
+    expect(text()).toContain("input.csv results-$(date +%Y%m%d-%H%M%S).csv");
 
-    // Both scheduler snippets, clearly templates to adjust.
-    expect(text()).toContain("0 2 * * *");
+    // Both scheduler snippets, and the line for an installed Alcove.
+    expect(text()).toContain("0 2 * * * /usr/bin/docker run");
     expect(text()).toContain("schtasks /Create");
+    expect(text()).toContain(
+      "cd /path/to/your/exchange-folder && /path/to/alcove",
+    );
+    // The input file the command reads is named as one to put in the folder.
+    expect(text()).toContain("Put your input file in that folder as input.csv");
 
     // A Direct run has no key file to copy.
     expect(text()).toContain("no shared secret");
@@ -162,6 +173,15 @@ describe("RecurringHandoff panel", () => {
     // the cmd-honored double quotes so schtasks preserves them.
     expect(text()).toContain("'--identity=Agency A'");
     expect(text()).toContain('\\"--identity=Agency A\\"');
+    // The shared folder is mounted at its own path, and named to mount by hand
+    // on Windows.
+    expect(text()).toContain(
+      "--mount type=bind,src=/path/to/your/shared-directory," +
+        "dst=/path/to/your/shared-directory",
+    );
+    expect(text()).toContain(
+      "The Docker commands mount /path/to/your/shared-directory",
+    );
   });
 
   test("shows the config template and the key-file copy step for an invitation run", async () => {
@@ -175,7 +195,9 @@ describe("RecurringHandoff panel", () => {
     const text = () => app.container.textContent;
     // The config template and the exchange command the hand-off states.
     expect(text()).toContain("channel: sftp");
-    expect(text()).toContain("alcove exchange input.csv results.csv");
+    expect(text()).toContain(
+      "exchange input.csv results-$(date +%Y%m%d-%H%M%S).csv",
+    );
     // The copy-the-key step and both scheduler snippets.
     expect(text()).toContain(".alcove.key");
     expect(text()).toContain("0 2 * * *");
@@ -200,7 +222,7 @@ describe("RecurringHandoff panel", () => {
 
     const text = () => app.container.textContent;
     expect(text()).toMatch(
-      /0 2 \* \* \* cd .* && alcove exchange clients\.csv matches\.csv/,
+      /0 2 \* \* \* \/usr\/bin\/docker run .* exchange clients\.csv matches-\$\(date/,
     );
     expect(text()).toContain("schtasks /Create");
     expect(text()).not.toContain("input.csv");
@@ -221,6 +243,39 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toContain("do not run alcove fingerprint there");
     // The schedule accumulates a receipt trail rather than overwriting one file.
     expect(text()).toContain("timestamped receipt");
+  });
+
+  test("names a path Docker cannot mount and shows the installed-Alcove lines instead", async () => {
+    stubHandoff({
+      ...SPACED_COMMAND_HANDOFF,
+      bindPaths: [{ path: "/srv/a,b", readOnly: false }],
+    } satisfies JobHandoff);
+    app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
+
+    await expect
+      .element(page.getByRole("heading", { name: HANDOFF_HEADING }))
+      .toBeInTheDocument();
+
+    const text = () => app.container.textContent;
+    expect(text()).toContain(
+      "The Docker commands are not shown because /srv/a,b contains a comma",
+    );
+    expect(text()).not.toContain("docker run --rm");
+    expect(text()).not.toContain("schtasks /Create");
+    expect(text()).toContain("'--identity=Agency A' input.csv results-$(date");
+    expect(text()).toContain(
+      "cd /path/to/your/exchange-folder && /path/to/alcove",
+    );
+  });
+
+  test("renders nothing for a hand-off whose argv is not an alcove command", async () => {
+    stubHandoff({
+      ...COMMAND_HANDOFF,
+      template: { kind: "command", argv: ["x"] },
+    });
+    app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(app.container.textContent).not.toContain(HANDOFF_HEADING);
   });
 
   test("renders nothing when the hand-off is unavailable (non-blocking)", async () => {

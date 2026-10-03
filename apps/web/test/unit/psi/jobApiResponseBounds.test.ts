@@ -291,6 +291,7 @@ describe("a hand-off body over its cap fails the reader safely", () => {
         sharedDirectory: false,
         signing: false,
       },
+      bindPaths: [{ path: "/srv/drop", readOnly: false }],
       template: {
         kind: "config",
         yaml: "version: 1\n",
@@ -414,6 +415,7 @@ describe("a well-formed body under its cap reaches the client", () => {
         sharedDirectory: false,
         signing: false,
       },
+      bindPaths: [{ path: "/srv/drop", readOnly: false }],
       template: {
         kind: "config",
         yaml: "version: 1\n",

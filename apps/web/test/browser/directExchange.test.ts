@@ -62,6 +62,7 @@ vi.mock("@utils/clientConfig", () => ({
   deploymentProfile: () => "console" as const,
   isConsoleBuild: () => true,
   signalingServerSetting: () => undefined,
+  alcoveVersion: () => undefined,
 }));
 
 // The direct flow drives no browser transport, so the rendezvous functions are
@@ -1133,6 +1134,7 @@ describe("console direct re-attaches on a busy create", () => {
     credentialPasted: false,
     usedSigningIdentity: false,
     pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+    bindPaths: [],
     template: {
       kind: "command",
       argv: ["alcove", "exchange", "clients.csv", "results.csv"],

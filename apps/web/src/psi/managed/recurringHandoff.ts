@@ -4,6 +4,7 @@ import {
 } from "@psi/jobClient/jobApiBody";
 
 import type {
+  HandoffBindPath,
   HandoffPathsAsRead,
   HandoffSigningSetting,
   JobHandoff,
@@ -58,6 +59,7 @@ export function parseHandoff(body: unknown): JobHandoff | null {
     usedSigningIdentity,
     signingSettingsToSet,
     pathsAsRead,
+    bindPaths,
     template,
   } = body as Record<string, unknown>;
   if (mode !== "exchange" && mode !== "zeroSetup") return null;
@@ -70,6 +72,8 @@ export function parseHandoff(body: unknown): JobHandoff | null {
   if (parsedSigningSettings === null) return null;
   const parsedPathsAsRead = parsePathsAsRead(pathsAsRead);
   if (parsedPathsAsRead === null) return null;
+  const parsedBindPaths = parseBindPaths(bindPaths);
+  if (parsedBindPaths === null) return null;
   const parsedTemplate = parseTemplate(template);
   if (parsedTemplate === null) return null;
   return {
@@ -83,8 +87,23 @@ export function parseHandoff(body: unknown): JobHandoff | null {
       ? { signingSettingsToSet: parsedSigningSettings }
       : {}),
     pathsAsRead: parsedPathsAsRead,
+    bindPaths: parsedBindPaths,
     template: parsedTemplate,
   };
+}
+
+/** The bind paths, or null unless each is an absolute path and a boolean. */
+function parseBindPaths(value: unknown): Array<HandoffBindPath> | null {
+  if (!Array.isArray(value)) return null;
+  const bindPaths: Array<HandoffBindPath> = [];
+  for (const entry of value as Array<unknown>) {
+    if (entry === null || typeof entry !== "object") return null;
+    const { path, readOnly } = entry as Record<string, unknown>;
+    if (typeof path !== "string" || !path.startsWith("/")) return null;
+    if (typeof readOnly !== "boolean") return null;
+    bindPaths.push({ path, readOnly });
+  }
+  return bindPaths;
 }
 
 /** The paths-as-read record, or null unless it is an object holding exactly
@@ -218,10 +237,13 @@ function parseTemplate(value: unknown): JobHandoffTemplate | null {
   return null;
 }
 
+/** Whether `argv` is an `alcove` command line the panel can show: `alcove`,
+ * a command or URL, and the input and output positionals last. */
 function isCommandArgv(argv: unknown): argv is Array<string> {
   return (
     Array.isArray(argv) &&
-    argv.length > 0 &&
+    argv.length >= 4 &&
+    argv[0] === "alcove" &&
     argv.every((token): token is string => typeof token === "string")
   );
 }

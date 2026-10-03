@@ -1556,6 +1556,7 @@ describe("console inviter re-attaches on a busy create", () => {
     credentialPasted: false,
     usedSigningIdentity: false,
     pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+    bindPaths: [],
     template: {
       kind: "config",
       argv: ["alcove", "exchange", "input.csv", "results.csv"],
@@ -1938,6 +1939,7 @@ describe("console inviter recurring hand-off availability", () => {
     credentialPasted: false,
     usedSigningIdentity: false,
     pathsAsRead: { credential: false, sharedDirectory: false, signing: false },
+    bindPaths: [],
     template: {
       kind: "config",
       argv: ["alcove", "exchange", "input.csv", "results.csv"],
@@ -1967,7 +1969,7 @@ describe("console inviter recurring hand-off availability", () => {
     expect(toggle.element().getAttribute("aria-expanded")).toBe("false");
     await toggle.click();
     await expect
-      .element(page.getByText("0 2 * * *", { exact: false }))
+      .element(page.getByText("0 2 * * * /usr/bin/docker", { exact: false }))
       .toBeVisible();
 
     // At completion it becomes the full panel under its own heading.

@@ -13,8 +13,9 @@
  * disk and handed to the partner. Two kinds of dynamic value are representable
  * here: the rendezvous locator the invitation already holds (free text held
  * to the sheet's ASCII contract by {@link printable}), and this build's public
- * release version (interpolated only in the shape {@link RELEASE_VERSION}
- * admits). Everything else is fixed text: {@link AcceptKitInput} declares only
+ * release version (interpolated only in the shape `releaseVersion` in
+ * `@utils/alcoveImage` admits). Everything else is fixed text:
+ * {@link AcceptKitInput} declares only
  * those two kinds and two selector booleans, so no secret, no invitation
  * token, and no path from the inviter's machine or container has a field to
  * arrive in.
@@ -43,6 +44,8 @@
  * described as two folders.
  */
 import { PLACEHOLDER_SSH_USERNAME } from "@alcove/core";
+
+import { imageReference, releaseVersion } from "@utils/alcoveImage";
 
 export type AcceptKitEndpoint =
   | {
@@ -101,36 +104,11 @@ type BilateralSettings = Pick<
 interface AcceptKitInput extends AcceptKitExchange {
   /** The release version this build holds, which decides both the image tag
    * the sheet's commands name and the release page it links; see
-   * {@link releaseVersion}. Absent, or in any shape but a release version, the
-   * sheet names {@link DEFAULT_ALCOVE_IMAGE_TAG} and the releases index. */
+   * `releaseVersion` (`@utils/alcoveImage`). Absent, or in any shape but a
+   * release version, the sheet names the floating image tag and the releases
+   * index. */
   version?: string;
 }
-
-/** The published image the sheet's commands run. Named with its registry in
- * full, as the release launchers are, because podman requires the registry
- * prefix and docker accepts it (see `docs/RELEASES.md`). */
-const ALCOVE_IMAGE_REPOSITORY = "ghcr.io/georgetown-mdi/alcove";
-
-/**
- * The image tag the sheet names when the build holds no release version -- a
- * development or hosted build, neither of which is a published image. It is the
- * floating tag the release publishes alongside `X.Y.Z` (`docs/RELEASES.md`),
- * the same floating tag the setup script's own `docker run` commands name.
- */
-const DEFAULT_ALCOVE_IMAGE_TAG = "latest";
-
-/**
- * The shape a release version has: `X.Y.Z` with semver's optional prerelease
- * and build suffixes (`docs/RELEASES.md`). The build's value is interpolated
- * only when it matches, so an absent, partial, or malformed one names the
- * floating tag; `0.0.0`, the marker for manifests that hold no release
- * version, is excluded with it. The image build reads the CLI manifest,
- * which never holds `0.0.0`; the carve-out guards a build mis-wired to the
- * unversioned web or root manifest, not a value the production build path
- * delivers.
- */
-const RELEASE_VERSION =
-  /^(?!0\.0\.0(?:[-+]|$))\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 /** The release page the launcher files are downloaded from; the same URL the
  * launchers themselves hold. */
@@ -239,23 +217,6 @@ function rendezvousLines(endpoint: AcceptKitEndpoint): Array<string> {
     "The invitation states the same locator. Check it against what you were",
     "told to expect before you accept.",
   ];
-}
-
-/** This build's release version, or undefined when it holds none. The one
- * gate on the value: everything below interpolates the result, so nothing the
- * build supplies reaches the sheet without matching {@link RELEASE_VERSION}. */
-function releaseVersion(version: string | undefined): string | undefined {
-  return version !== undefined && RELEASE_VERSION.test(version)
-    ? version
-    : undefined;
-}
-
-/** The image reference the sheet's `docker run` lines name. The tag is public
- * release metadata, not a disclosure: a released image is named by its own
- * version, so the partner runs the build their invitation was minted by, and
- * any other build names the floating tag. */
-function imageReference(version: string | undefined): string {
-  return `${ALCOVE_IMAGE_REPOSITORY}:${version ?? DEFAULT_ALCOVE_IMAGE_TAG}`;
 }
 
 /** The release page the launcher files are downloaded from: this build's own
