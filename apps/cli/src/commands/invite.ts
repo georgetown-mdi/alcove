@@ -3,6 +3,7 @@ import type { Argv, Arguments } from "yargs";
 import {
   getLogger,
   encodeInvitation,
+  INVITATION_ACCEPT_ROUTE_PATH,
   assertDisclosedNamesCarriable,
   assertTermsRunnable,
   termsStatingDeclaredPayloadSend,
@@ -1296,8 +1297,9 @@ export async function handler(argv: Arguments): Promise<void> {
           )} and ` +
             `wrote the key file to ${redactAndRenderOperatorSuppliedText(
               operatorSuppliedText(keyPath),
-            )} (the invitation expires at ` +
-            `${ready.expires}). Keep the key file private.`,
+            )} (${invitationExpiryNotice(ready.expires, {
+              expiresInGiven: expiresIn !== undefined,
+            })}). Keep the key file private.`,
         );
         log.info(offlineAbandonNotice(keyPath));
         if (ready.provisionedAddress !== undefined)
@@ -1332,8 +1334,9 @@ export async function handler(argv: Arguments): Promise<void> {
           operatorSuppliedText(configPath),
         )} and key file to ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(keyPath),
-        )} (the ` +
-          `invitation expires at ${ready.expires}). Keep the key file private.`,
+        )} (${invitationExpiryNotice(ready.expires, {
+          expiresInGiven: expiresIn !== undefined,
+        })}). Keep the key file private.`,
       );
       log.info(offlineAbandonNotice(keyPath));
       log.info(
@@ -1526,12 +1529,62 @@ const INVITATION_PLACEHOLDER = "<INVITATION>";
 const IDENTITY_PLACEHOLDER = "--identity <YOUR NAME, YOUR ORGANIZATION>";
 
 /**
+ * The phrase stating when an offline invitation expires: the local time with
+ * its zone, the UTC instant beside it, and the time left. Absent an
+ * `--expires-in`, it names the flag, since the one-hour default is short for a
+ * partner reached by email.
+ *
+ * @internal exported for testing
+ */
+export function invitationExpiryNotice(
+  expires: string,
+  options: { expiresInGiven: boolean; now?: Date; timeZone?: string },
+): string {
+  const instant = new Date(expires);
+  const local = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+    ...(options.timeZone !== undefined ? { timeZone: options.timeZone } : {}),
+  }).format(instant);
+  const remainingMinutes = Math.max(
+    0,
+    Math.round(
+      (instant.getTime() - (options.now ?? new Date()).getTime()) / 60_000,
+    ),
+  );
+  const notice =
+    `the invitation expires ${local} (${expires}), ` +
+    `in ${remainingPhrase(remainingMinutes)}`;
+  return options.expiresInGiven
+    ? notice
+    : `${notice}; if your partner needs longer to accept, pass --expires-in (e.g. --expires-in 2d)`;
+}
+
+/** A whole number of minutes in the largest unit that states it exactly. */
+function remainingPhrase(minutes: number): string {
+  const unit = (count: number, name: string) =>
+    `${count} ${name}${count === 1 ? "" : "s"}`;
+  if (minutes >= 1440 && minutes % 1440 === 0)
+    return unit(minutes / 1440, "day");
+  if (minutes >= 60 && minutes % 60 === 0) return unit(minutes / 60, "hour");
+  return unit(minutes, "minute");
+}
+
+/**
  * Print the invitation string (to stdout, so it is captured even at a quiet log
  * level) with the usage instructions for the partner. An online file-sync
- * invitation's accept template references the shared server the partner reaches
+ * invitation's accept template names the folder or server the partner reaches
  * it at; an online webrtc invitation's does not, since there is no shared
  * server to type -- the invitation's own endpoint names the coordination
  * server, so accepting dials it in one command while this one waits.
+ *
+ * Invited through a web app's address, the partner may be a browser user, so
+ * stdout holds the app's accept link with the invitation in its fragment,
+ * which both the web app and `alcove accept` take.
  *
  * The templates name the invitation by {@link INVITATION_PLACEHOLDER} rather than
  * including it.
@@ -1541,18 +1594,36 @@ function printInvitation(
   online: { url: URL; channel: ConnectionConfig["channel"] } | undefined,
 ): void {
   const log = getLogger("invite");
+  const webAppOrigin =
+    online !== undefined && isWebAppAddress(online.url)
+      ? online.url.origin
+      : undefined;
   log.info(
     "Share this invitation with your partner over a trusted, out-of-band " +
       "channel:",
   );
   // The invitation is the primary artifact; emit it on stdout regardless of log
   // level so it is reliably captured for copy/paste.
-  console.log(invitation);
+  console.log(
+    webAppOrigin !== undefined
+      ? webAppAcceptLink(webAppOrigin, invitation)
+      : invitation,
+  );
   if (online === undefined) {
     log.info(
       `Your partner accepts with:\n  alcove accept ${IDENTITY_PLACEHOLDER} ` +
         `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nwhere ` +
         `${INVITATION_PLACEHOLDER} is the invitation printed above.`,
+    );
+    return;
+  }
+  if (webAppOrigin !== undefined) {
+    log.info(
+      "Send your partner the link printed above. In the web app they open " +
+        "it; with the alcove command line they accept and run the exchange " +
+        `with:\n  alcove accept ${IDENTITY_PLACEHOLDER} ` +
+        `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nrun while this command is ` +
+        `still waiting, where ${INVITATION_PLACEHOLDER} is the link.`,
     );
     return;
   }
@@ -1565,12 +1636,37 @@ function printInvitation(
     );
     return;
   }
-  // Strip any credentials embedded in the URL before echoing it: the partner
-  // supplies their own, and a password must not reach the terminal or logs.
   log.info(
     `Your partner accepts and runs the exchange with:\n  alcove accept ` +
-      `${IDENTITY_PLACEHOLDER} ${redactUrlCredentials(online.url)} ` +
+      `${IDENTITY_PLACEHOLDER} ${partnerServerArgument(online.url)} ` +
       `${INVITATION_PLACEHOLDER} <INPUT_FILE>\nwhere ` +
       `${INVITATION_PLACEHOLDER} is the invitation printed above.`,
   );
+}
+
+/**
+ * The web app's accept link for `invitation`, at the app's `origin`. The
+ * invitation rides in the fragment, which a browser never sends to the server.
+ *
+ * @internal exported for testing
+ */
+export function webAppAcceptLink(origin: string, invitation: string): string {
+  return `${origin}${INVITATION_ACCEPT_ROUTE_PATH}#${invitation}`;
+}
+
+/** The folder placeholder an online file-drop accept template names: the
+ * partner reaches the shared folder at a path of their own, never this
+ * party's mount. */
+const SHARED_FOLDER_PLACEHOLDER = "file://<YOUR PATH TO THE SHARED FOLDER>";
+
+/**
+ * The server argument an online file-sync accept template names: the shared
+ * folder by placeholder, or the SFTP server with any credentials embedded in
+ * the URL stripped -- the partner supplies their own, and a password must not
+ * reach the terminal or logs.
+ */
+function partnerServerArgument(url: URL): string {
+  return url.protocol === "file:"
+    ? SHARED_FOLDER_PLACEHOLDER
+    : redactUrlCredentials(url);
 }

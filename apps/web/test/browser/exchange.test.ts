@@ -1846,8 +1846,11 @@ describe("inviter screen", () => {
     await createSealedInvitation();
 
     // A browser partner accepts by pasting the whole link, so the share
-    // screen offers ONE artifact row -- the link -- and no bare-code row.
-    expect(document.querySelectorAll(`.${styles.copyRow}`)).toHaveLength(1);
+    // screen offers the link and a message around it, and no bare-code row.
+    expect(document.querySelectorAll(`.${styles.copyRow}`)).toHaveLength(2);
+    await expect
+      .element(page.getByText("A message to send", { exact: true }))
+      .toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: "Copy invitation link" }))
       .toBeInTheDocument();

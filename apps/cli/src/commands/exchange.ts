@@ -434,7 +434,7 @@ function readConfigDocument(configFile: string): unknown {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       const message = messageWithOperatorText`config file ${operatorSuppliedText(
         configFile,
-      )} does not exist; to create one, run 'alcove invite URL ...' first`;
+      )} does not exist; to create one, run 'alcove invite --identity IDENTITY URL INPUT_FILE' first`;
       throw Object.assign(
         keepOperatorSuppliedText(new Error(message.text), message),
         { code: "ENOENT" },

@@ -5,6 +5,7 @@ import {
   encodeInvitation,
   decodeInvitation,
   hasExpiryInstantPassed,
+  InvitationDecodeError,
   isInvitationExpired,
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
@@ -718,6 +719,23 @@ test("rejects a body holding the whitespace a wrapped paste leaves", async () =>
   );
   const decoded = await decodeInvitation(stripInvitationWhitespace(wrapped));
   expect(decoded.sharedSecret).toBe(baseToken.sharedSecret);
+});
+
+test("each pre-schema decode failure names its kind on the error", async () => {
+  const encoded = await encodeInvitation(baseToken);
+  const lastChar = encoded.slice(-1);
+  const cases: Array<[string, string]> = [
+    ["a".repeat(MAX_ENCODED_INVITATION_LENGTH + 1), "tooLong"],
+    ["short", "tooShort"],
+    ["!!!!!!!!!!!!", "notBase64Url"],
+    [encoded.slice(0, -1) + (lastChar === "A" ? "B" : "A"), "checksumMismatch"],
+    [await encodeRawPayload("not json"), "notJson"],
+  ];
+  for (const [input, failure] of cases) {
+    const err = await decodeInvitation(input).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InvitationDecodeError);
+    expect((err as InvitationDecodeError).failure).toBe(failure);
+  }
 });
 
 test("stripInvitationWhitespace removes the ECMAScript whitespace class", () => {

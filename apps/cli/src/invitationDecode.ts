@@ -11,9 +11,10 @@ import { resolveAtSignRefs } from "./util/atSignRefs";
 
 /**
  * Resolve an `@path` reference, strip whitespace a hard-wrapped paste or a
- * wrapped `@`-file leaves inside the token, decode the invitation (verifying
- * the 4-byte checksum and the Zod schema), and reject an expired token by
- * name. All failures raise {@link UsageError} (CLI exit 64).
+ * wrapped `@`-file leaves inside the token, take the fragment of a web app
+ * accept link (see {@link invitationFromAcceptLink}), decode the invitation
+ * (verifying the 4-byte checksum and the Zod schema), and reject an expired
+ * token by name. All failures raise {@link UsageError} (CLI exit 64).
  *
  * Shared by `accept`'s pre-prompt gate and `exchange --invitation`'s
  * key-file provisioning, so both decode a partner-supplied invitation through
@@ -37,7 +38,9 @@ export async function decodeAndValidateInvitation(
 
   let token: InvitationToken;
   try {
-    token = await decodeInvitation(stripInvitationWhitespace(encoded));
+    token = await decodeInvitation(
+      invitationFromAcceptLink(stripInvitationWhitespace(encoded)),
+    );
   } catch (err) {
     throw new UsageError(
       "invalid invitation string: " + rawDecodeErrorDescription(err),
@@ -51,4 +54,23 @@ export async function decodeAndValidateInvitation(
     );
 
   return token;
+}
+
+/**
+ * The invitation in a web app accept link, `<origin>/accept#<invitation>`: an
+ * http(s) URL yields its fragment, which may be empty and is then refused by
+ * the decode like any malformed invitation. Nothing else of the URL is used.
+ * Any other value is returned unchanged.
+ *
+ * @internal exported for testing
+ */
+export function invitationFromAcceptLink(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return value;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return value;
+  return url.hash.slice(1);
 }

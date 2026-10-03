@@ -11,7 +11,10 @@ import { RecurringHandoff } from "@recurring/RecurringHandoff";
 import { TermsChangeRecovery } from "@console/TermsChangeRecovery";
 import styles from "@styles/app.module.css";
 
+import { isConsoleBuild } from "@utils/clientConfig";
+
 import { awaitingPartner } from "./exchangeRun";
+import { invitationMessage } from "./invitationMessage";
 import { invitationReach } from "./invitationReach";
 
 import {
@@ -55,6 +58,7 @@ import type { RunFailure } from "./useInviterExchange";
  */
 export function InviterExchangeSection({
   invitation,
+  inviterName,
   run,
   outputs,
   failure,
@@ -73,6 +77,9 @@ export function InviterExchangeSection({
   onAbandon,
 }: {
   invitation: GeneratedInvitation;
+  /** The name the inviter gave, which signs the message offered for a
+   * browser partner. */
+  inviterName: string;
   run: ExchangeRun;
   outputs: RunOutputs | undefined;
   failure: RunFailure | undefined;
@@ -324,6 +331,20 @@ export function InviterExchangeSection({
               </p>
             )}
             <CopyRow label="Invitation link" value={invitation.deepLink} />
+            {!partnerAcceptsByCli && (
+              <CopyRow
+                label="A message to send"
+                hint="The link with a note on what it is, when it expires, and where to practice first"
+                value={invitationMessage({
+                  inviterName,
+                  deepLink: invitation.deepLink,
+                  expires: invitation.expires,
+                  practiceOrigin: practiceOriginFor(invitation.deepLink),
+                })}
+                previewOf={invitation.deepLink}
+                noun="message"
+              />
+            )}
             {partnerAcceptsByCli && (
               <CopyRow
                 label="Invitation code"
@@ -334,11 +355,10 @@ export function InviterExchangeSection({
             {onDownloadAcceptKit !== undefined && (
               <>
                 <p className={styles.small}>
-                  Your partner accepts from the command line, which reads the
-                  invitation code, not the link -- send them the code, with
-                  these instructions alongside it. The sheet takes them from
-                  nothing to accepting and carries no secret, so it can travel
-                  any way that suits them.
+                  Your partner accepts from the command line -- send them the
+                  code, with these instructions alongside it. The sheet takes
+                  them from nothing to accepting and carries no secret, so it
+                  can travel any way that suits them.
                 </p>
                 <Button variant="default" onClick={onDownloadAcceptKit}>
                   Download instructions for your partner
@@ -455,4 +475,15 @@ function LimitedReachAlert({
           : "This page runs on an address inside your network, so a partner outside it cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."}
     </Alert>
   );
+}
+
+/**
+ * The site a browser partner can practice on before accepting: this one, when
+ * it is the hosted web app and reachable from beyond this network. A console's
+ * sample data writes into the operator's own folder, so it is never offered.
+ */
+function practiceOriginFor(link: string): string | undefined {
+  if (isConsoleBuild() || invitationReach(link) !== "anywhere")
+    return undefined;
+  return new URL(link).origin;
 }

@@ -19,6 +19,7 @@ import {
   acceptorLaunchBlockedReason,
   acceptorLaunchPayload,
   acceptorOverlongDisclosedColumns,
+  acceptorPartnerNote,
   acceptorPayloadDeclarationConflict,
   acceptorSendingExpectedColumnsCostsKey,
   acceptorUnsatisfiedTypes,
@@ -200,6 +201,55 @@ describe("the acceptor's date-of-birth format follows the bound column", () => {
     expect(fromProfile).toEqual(
       acceptorColumnsEditorState(retyped, dobTerms, csvRows),
     );
+  });
+});
+
+describe("acceptor note for the partner", () => {
+  test("a partial file lists keys by field type and names no column or key", () => {
+    const columns = ["first_name", "notes"];
+    const { editorState } = editorFor(columns, nameTerms);
+    const note = acceptorPartnerNote(columns, nameTerms, editorState);
+    expect(note).toContain(
+      "My file can supply 1 of the 2 agreed linkage keys.",
+    );
+    expect(note).toContain("Keys my file can supply:\n- First name");
+    expect(note).toContain("Keys my file cannot supply:\n- Last name");
+    expect(note).toContain("Field types my file does not have: Last name.");
+    for (const name of ["first_name", "notes", "firstName", "lastName"])
+      expect(note).not.toContain(name);
+    expect(note).not.toMatch(/\bfirst\b|\blast\b/);
+  });
+
+  test("a blocked file says no key can be supplied", () => {
+    const { editorState } = editorFor(["notes"], nameTerms);
+    const note = acceptorPartnerNote(["notes"], nameTerms, editorState);
+    expect(note).toContain(
+      "My file cannot supply any of the 2 agreed linkage keys.",
+    );
+    expect(note).not.toContain("Keys my file can supply:");
+  });
+
+  test("keys naming the same field types are listed once with a count", () => {
+    const terms: LinkageTerms = {
+      ...nameTerms,
+      linkageKeys: [
+        ...nameTerms.linkageKeys,
+        { name: "last again", elements: [{ field: "lastName" }] },
+      ],
+    };
+    const columns = ["first_name"];
+    const { editorState } = editorFor(columns, terms);
+    expect(acceptorPartnerNote(columns, terms, editorState)).toContain(
+      "- Last name (2 keys)",
+    );
+  });
+
+  test("a fully covered file has no note", () => {
+    const columns = ["first_name", "last_name"];
+    const { editorState } = editorFor(columns, nameTerms);
+    expect(
+      acceptorPartnerNote(columns, nameTerms, editorState),
+    ).toBeUndefined();
   });
 });
 

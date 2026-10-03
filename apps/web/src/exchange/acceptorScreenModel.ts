@@ -21,14 +21,11 @@ import type {
   AcceptorColumnsState,
 } from "./acceptorColumnsModel";
 import type { AcceptorStep } from "./acceptorModel";
+import type { InvitationDecodeRefusal } from "./invitationDecodeRefusal";
 import type { ManageOfferState } from "./manageOfferModel";
 
-import type {
-  Displayable,
-  Metadata,
-  SemanticType,
-  StandardizationStep,
-} from "@alcove/core";
+import type { Metadata, SemanticType, StandardizationStep } from "@alcove/core";
+
 import type {
   JobRendezvousConfig,
   ProfiledJobInput,
@@ -67,19 +64,17 @@ import type { SftpConnectionProjection } from "@jobs/jobManager";
 export type AcceptorColumnsSection = "columns" | "cleaning";
 
 /**
- * The async decode's outcome: pending while it runs, an error message on a bad
- * or expired invitation, or the validated invitation ready to review.
+ * The async decode's outcome: pending while it runs, the refusal of a bad or
+ * expired invitation, or the validated invitation ready to review.
  *
- * The message is rendered straight into a React text node, which neutralizes
- * HTML markup but not terminal-control, bidi-override or zero-width bytes, so
- * that render is its display sink. Declaring it `Displayable` rather than
- * `string` makes filling it from a raw partner-controlled description a compile
- * error (`describeDecodeError` returns the brand; `rawDecodeErrorDescription`,
- * which the CLI composes into an error for its own sink to escape, does not).
+ * The refusal's message and detail are rendered straight into React text
+ * nodes, which neutralize HTML markup but not terminal-control, bidi-override
+ * or zero-width bytes, so that render is their display sink and both are
+ * `Displayable`.
  */
 export type DecodeState =
   | { status: "pending" }
-  | { status: "error"; message: Displayable }
+  | { status: "error"; refusal: InvitationDecodeRefusal }
   | { status: "ready"; invitation: AcceptableInvitation };
 
 /** A titled inline error rendered beside a consent-step field when a submit slips
@@ -229,7 +224,7 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
 /** Everything that moves the acceptor console. */
 export type AcceptorScreenAction =
   /** The fragment held no invitation, or the one it held was refused. */
-  | { type: "decode-refused"; message: Displayable }
+  | { type: "decode-refused"; refusal: InvitationDecodeRefusal }
   /** The invitation validated, with the rendezvous mount read beside it: the
    * review step decides a console filedrop accept's runnability from the mount,
    * so the two land together rather than flashing "unavailable" while a fetch
@@ -353,7 +348,7 @@ export function acceptorScreenReducer(
 ): AcceptorScreenState {
   switch (action.type) {
     case "decode-refused":
-      return { ...state, decode: { status: "error", message: action.message } };
+      return { ...state, decode: { status: "error", refusal: action.refusal } };
     case "invitation-decoded":
       return {
         ...state,

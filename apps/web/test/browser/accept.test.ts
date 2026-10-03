@@ -367,6 +367,20 @@ describe("lobby: review invitation", () => {
     expect(navigation.calls).toEqual([{ to: "/accept", hash: "ABC123" }]);
   });
 
+  test("the invitation field takes focus when the page opens at its fragment", async () => {
+    window.location.hash = "accept-invitation";
+    try {
+      app.render(createElement(Lobby));
+      await vi.waitFor(() => {
+        expect(document.activeElement).toBe(
+          page.getByLabelText("Invitation").element(),
+        );
+      });
+    } finally {
+      window.location.hash = "";
+    }
+  });
+
   test("Review invitation is disabled until the field holds a usable token", async () => {
     app.render(createElement(Lobby));
     const review = page.getByRole("button", { name: "Review invitation" });
@@ -439,6 +453,44 @@ describe("acceptor screen: decode gate", () => {
     await expect
       .element(page.getByText("No invitation was found", { exact: false }))
       .toBeInTheDocument();
+  });
+
+  test("an empty fragment links to the start page's invitation field", async () => {
+    window.location.hash = "";
+    app.render(createElement(AcceptorScreen));
+    const link = page.getByRole("link", {
+      name: "Paste the invitation on the start page",
+    });
+    await expect.element(link).toBeInTheDocument();
+    expect(link.element().getAttribute("href")).toBe(
+      "/quick#accept-invitation",
+    );
+  });
+
+  test("a link changed in transit gets one plain remedy, the detail behind a disclosure", async () => {
+    const encoded = await encodeAcceptToken();
+    const last = encoded.slice(-1);
+    window.location.hash = encoded.slice(0, -1) + (last === "A" ? "B" : "A");
+    app.render(createElement(AcceptorScreen));
+    await expect
+      .element(
+        page.getByText("This link looks incomplete or changed in transit", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("link", { name: "paste it on the start page" }))
+      .toBeInTheDocument();
+    const detail = document.querySelector("details");
+    expect(detail?.open).toBe(false);
+    expect(detail?.textContent).toContain("invitation checksum mismatch");
+    // Focus still lands on the alert, so the remedy is read first.
+    await vi.waitFor(() => {
+      expect(
+        (document.activeElement as HTMLElement | null)?.textContent,
+      ).toContain("Cannot accept this invitation");
+    });
   });
 
   test("a ready decode moves focus to the terms heading", async () => {
