@@ -8,6 +8,7 @@ import {
   MAX_NAME_LENGTH,
   StandardizationSchema,
   createDateFormatInferrer,
+  isProtocolGrammarName,
   maxCodeUnits,
   readRowColumn,
   streamCSVRows,
@@ -23,6 +24,7 @@ import {
   jobCsvDelimiterSchema,
   stepPatternsWithinCap,
 } from "./intentSchemas";
+import { CONSOLE_WRITTEN_NAMES } from "./consoleOwnedFiles";
 import { JOB_DATA_ROOT_ENV } from "./gate";
 
 import type { DateFormatInferrer, Standardization } from "@alcove/core";
@@ -155,6 +157,23 @@ export interface JobInputListing {
   files: Array<JobInputFileEntry>;
 }
 
+/** Whether `name` is a file the console or an exchange writes into the folder
+ * -- a console-written name, or a file in the exchange's protocol filename
+ * grammar, which a shared-folder exchange on a one-folder console writes beside
+ * the inputs -- rather than an input. */
+export function isConsoleOrExchangeFileName(name: string): boolean {
+  return CONSOLE_WRITTEN_NAMES.has(name) || isProtocolGrammarName(name);
+}
+
+/** The realpath of `filePath`, or undefined when it cannot be resolved. */
+function realpathOrUndefined(filePath: string): string | undefined {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * List the admissible input files, or the unconfigured state when `resolvedDir` is
  * undefined. Reads the directory non-recursively, admits regular files whose name
@@ -162,9 +181,15 @@ export interface JobInputListing {
  * directory (a mis-mount) reports `readable: false` with an empty list rather than an
  * empty-but-readable directory, so the operator checks their mount instead of placing
  * a file that is already there. On any ambiguity the listing still fails toward empty.
+ *
+ * Files that are not inputs are left out: the ones the console or an exchange
+ * writes ({@link isConsoleOrExchangeFileName}), and any whose realpath is in
+ * `credentialPaths` -- the credential and signing-identity files the current
+ * connection and opened configuration reference.
  */
 export function listJobInputs(
   resolvedDir: string | undefined,
+  credentialPaths: ReadonlySet<string> = new Set(),
 ): JobInputListing {
   if (resolvedDir === undefined)
     return { configured: false, readable: true, files: [] };
@@ -176,14 +201,20 @@ export function listJobInputs(
   }
   const files: Array<JobInputFileEntry> = [];
   for (const name of names) {
-    if (!isAdmissibleInputName(name)) continue;
+    if (!isAdmissibleInputName(name) || isConsoleOrExchangeFileName(name))
+      continue;
+    const filePath = path.join(resolvedDir, name);
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(path.join(resolvedDir, name));
+      stat = fs.statSync(filePath);
     } catch {
       continue;
     }
     if (!stat.isFile()) continue;
+    if (credentialPaths.size > 0) {
+      const realPath = realpathOrUndefined(filePath);
+      if (realPath !== undefined && credentialPaths.has(realPath)) continue;
+    }
     files.push({
       name,
       sizeBytes: stat.size,

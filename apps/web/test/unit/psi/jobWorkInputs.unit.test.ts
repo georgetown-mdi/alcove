@@ -150,6 +150,37 @@ describe("listJobInputs", () => {
     expect(listing.files.map((file) => file.name)).toEqual(["linked.csv"]);
     expect(listing.files[0].sizeBytes).toBeGreaterThan(0);
   });
+
+  test("leaves out the files the console and an exchange write into the folder", () => {
+    const dir = tempDir("input");
+    writeFixture(dir, "people.csv");
+    for (const name of [
+      "alcove.yaml",
+      "alcove.yaml.previous",
+      "alcove-certificate.json",
+      "0b6c8f4e-5a1d-4c3e-9f2a-1d2e3f4a5b6c-hello.json",
+      "partner-1-512.json",
+      "partner-abort.json",
+    ])
+      fs.writeFileSync(path.join(dir, name), "{}");
+    expect(listJobInputs(dir).files.map((file) => file.name)).toEqual([
+      "people.csv",
+    ]);
+  });
+
+  test("leaves out a file whose realpath is a referenced credential, a link to it included", () => {
+    const dir = tempDir("input");
+    writeFixture(dir, "people.csv");
+    const password = path.join(dir, "sftp-password.txt");
+    fs.writeFileSync(password, "not-a-real-password");
+    fs.symlinkSync(password, path.join(dir, "password-link.txt"));
+    fs.writeFileSync(path.join(dir, "notes.txt"), "kept");
+    const listing = listJobInputs(dir, new Set([fs.realpathSync(password)]));
+    expect(listing.files.map((file) => file.name)).toEqual([
+      "notes.txt",
+      "people.csv",
+    ]);
+  });
 });
 
 describe("profileJobInput reads by the party's own delimiter", () => {

@@ -10,6 +10,7 @@ import {
   CONFIGURATION_SAVED,
   CONFIGURATION_SAVE_UNAVAILABLE,
   CONVERT_CONFIGURATION_LABEL,
+  CREATE_INVITATION_FROM_SETTINGS_LABEL,
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
   RELAY_ENROLLMENT_NOTICE,
@@ -25,13 +26,16 @@ import {
   convertedStatement,
   credentialWarningNotice,
   editedTermsWarning,
+  keyFileNotice,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
   mountedConfigurationRead,
   runWithheldReason,
+  runsOpenedConfiguration,
   termsNotAppliedNotice,
   unconvertedSigningWithheldReason,
   withConversion,
+  withNewInvitation,
   withTermsNotApplied,
   withUnavailableTransport,
 } from "@console/mountedConfiguration";
@@ -719,5 +723,59 @@ describe("the terms of an opened configuration changed here", () => {
         continuesOpenedExchange: true,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("an opened configuration whose key file would refuse its run", () => {
+  function openedWithoutKeyFile(
+    fault: "absent" | "invalid" = "absent",
+    channel: DisclosedExchangeDocument["channel"] = "sftp",
+  ) {
+    return mountedConfigurationRead({
+      ...opened({ channel }),
+      signingPathSettings: ["signing.identity_file"],
+      keyFileFault: fault,
+    } as MountedConfigurationAnswer).state;
+  }
+
+  test("is told on the load, with both ways on", () => {
+    for (const fault of ["absent", "invalid"] as const) {
+      const notice = keyFileNotice(openedWithoutKeyFile(fault));
+      expect(notice?.title).toContain(".alcove.key");
+      expect(notice?.message).toContain("open the configuration again");
+      expect(notice?.message).toContain(CREATE_INVITATION_FROM_SETTINGS_LABEL);
+    }
+  });
+
+  test("a configuration the console does not conduct names no key file", () => {
+    const state = openedWithoutKeyFile("absent", "webrtc");
+    expect(keyFileNotice(state)).toBeUndefined();
+    expect(withNewInvitation(state)).toBe(state);
+  });
+
+  test("a new invitation from its settings stops continuing the opened exchange", () => {
+    const before = openedWithoutKeyFile();
+    expect(runsOpenedConfiguration(before)).toBe(true);
+    expect(
+      unconvertedSigningWithheldReason(before, "certificate"),
+    ).toBeDefined();
+    const after = withNewInvitation(before);
+    expect(runsOpenedConfiguration(after)).toBe(false);
+    expect(keyFileNotice(after)).toBeUndefined();
+    // A new invitation's run signs with the console's own identity, so the
+    // file's signing paths hold nothing back and there is nothing to convert.
+    expect(
+      unconvertedSigningWithheldReason(after, "certificate"),
+    ).toBeUndefined();
+    expect(conversionOffered(after, false)).toBe(false);
+    expect(conversionStatement(after)).toBeUndefined();
+    expect(convertedStatement(withConversion(after))).toBeUndefined();
+  });
+
+  test("a usable key file names nothing", () => {
+    const state = mountedConfigurationRead(opened()).state;
+    expect(keyFileNotice(state)).toBeUndefined();
+    expect(runsOpenedConfiguration(state)).toBe(true);
+    expect(runsOpenedConfiguration(MOUNTED_CONFIGURATION_UNREAD)).toBe(false);
   });
 });

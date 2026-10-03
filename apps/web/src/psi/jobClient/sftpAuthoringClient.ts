@@ -114,14 +114,21 @@ function secretsEntriesOf(body: unknown): SecretsEntriesResult | null {
   };
 }
 
+/** A mount the credential picker browses: the separate secrets directory, or
+ * the working folder when none is mounted. */
+export type CredentialMount = "secrets" | "folder";
+
 /** Build the `?subPath=...&subPath=...` query: one value per path segment, never a
  * single slash-joined string, so a `/` inside a value can never compose a
  * traversal (the server enforces the same). */
-function secretsEntriesUrl(subPath: Array<string>): string {
+function mountEntriesUrl(
+  mount: CredentialMount,
+  subPath: Array<string>,
+): string {
   const params = new URLSearchParams();
   for (const segment of subPath) params.append("subPath", segment);
   const query = params.toString();
-  return `/api/jobs/mounts/secrets/entries${query === "" ? "" : `?${query}`}`;
+  return `/api/jobs/mounts/${mount}/entries${query === "" ? "" : `?${query}`}`;
 }
 
 /** List one directory of the mounted secrets directory. A 404 is the deliberate
@@ -131,8 +138,18 @@ export async function fetchSecretsEntries(
   subPath: Array<string>,
   fetchImpl: typeof fetch = fetch,
 ): Promise<SecretsEntriesResult> {
+  return fetchMountEntries("secrets", subPath, fetchImpl);
+}
+
+/** List one directory of `mount` (`GET /api/jobs/mounts/<mount>/entries`), with
+ * the outcomes {@link fetchSecretsEntries} states. */
+export async function fetchMountEntries(
+  mount: CredentialMount,
+  subPath: Array<string>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SecretsEntriesResult> {
   try {
-    const response = await fetchImpl(secretsEntriesUrl(subPath), {
+    const response = await fetchImpl(mountEntriesUrl(mount, subPath), {
       method: "GET",
     });
     if (response.status === 404) return { kind: "disabled" };

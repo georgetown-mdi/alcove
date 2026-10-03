@@ -19,6 +19,7 @@ import { Route as CancelRoute } from "../../../src/routes/api/jobs/$jobId/cancel
 import { Route as CreateRoute } from "../../../src/routes/api/jobs/index";
 import { Route as EventsRoute } from "../../../src/routes/api/jobs/$jobId/events";
 import { Route as FolderRoute } from "../../../src/routes/api/jobs/$jobId/folder";
+import { Route as InputsRoute } from "../../../src/routes/api/jobs/inputs/index";
 import { Route as JobRoute } from "../../../src/routes/api/jobs/$jobId/index";
 import { Route as KeysRoute } from "../../../src/routes/api/jobs/$jobId/keys";
 import { Route as LogRoute } from "../../../src/routes/api/jobs/$jobId/log";
@@ -2170,7 +2171,28 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
     expect(body).not.toContain(ref);
     const parsed = JSON.parse(body) as { credentialWarnings?: Array<string> };
     expect(parsed.credentialWarnings).toHaveLength(1);
-    expect(parsed.credentialWarnings?.[0]).toContain("data root");
+    expect(parsed.credentialWarnings?.[0]).toContain("mounted folder");
+  });
+
+  test("the input listing leaves out the credential file the authored connection references", async () => {
+    const dataRoot = enableJobApi();
+    fs.mkdirSync(dataRoot, { recursive: true });
+    const ref = path.join(dataRoot, "sftp-password.txt");
+    fs.writeFileSync(ref, "s3cret\n");
+    fs.writeFileSync(path.join(dataRoot, "people.csv"), "a,b\n1,2\n");
+    const listed = async (): Promise<Array<string>> => {
+      const response = (await handlersOf(InputsRoute).GET({
+        request: jobRequest("http://localhost/api/jobs/inputs"),
+        params: {},
+      })) as Response;
+      const body = (await response.json()) as {
+        files: Array<{ name: string }>;
+      };
+      return body.files.map((file) => file.name);
+    };
+    expect(await listed()).toEqual(["people.csv", "sftp-password.txt"]);
+    expect((await putSftp(authoredBody(ref))).status).toBe(200);
+    expect(await listed()).toEqual(["people.csv"]);
   });
 
   test("a non-ref credential kind is a 400", async () => {
@@ -2226,7 +2248,7 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
     expect(response.status).toBe(400);
     const text = await response.text();
     expect(text).toContain("connection.credential");
-    expect(text).toContain("secrets mount");
+    expect(text).toContain("secrets directory");
   });
 
   test.each([

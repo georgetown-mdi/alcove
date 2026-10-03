@@ -127,6 +127,7 @@ import {
   conversionStatement,
   editedTermsWarning,
   runWithheldReason,
+  runsOpenedConfiguration,
   unconvertedSigningWithheldReason,
 } from "@console/mountedConfiguration";
 import {
@@ -540,7 +541,7 @@ export function InviterScreen() {
   // A console run of the opened configuration continues the exchange it set
   // up, under the key file beside it on the server, so it sends no invitation.
   const continuesOpenedExchange =
-    mountedConfiguration.status === "opened" &&
+    runsOpenedConfiguration(mountedConfiguration) &&
     runWithheldReason(mountedConfiguration) === undefined &&
     chosenRunMode === "server-job";
   // Whether the terms this draft builds are still the ones the opened
@@ -610,8 +611,9 @@ export function InviterScreen() {
     runDiagnostics: runDiagnosticsIntentFields(runDiagnostics),
     receipts: receiptsIntentFields(receipts),
     loadedEnforcementRecords,
-    mountedConfigurationOpened: mountedConfiguration.status === "opened",
+    mountedConfigurationOpened: runsOpenedConfiguration(mountedConfiguration),
     mountedConfigurationConverted:
+      runsOpenedConfiguration(mountedConfiguration) &&
       mountedConfiguration.status === "opened" &&
       mountedConfiguration.converted === true,
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
@@ -1503,6 +1505,9 @@ export function InviterScreen() {
             onOpen={() => void openMountedConfiguration()}
             onClose={closeMountedConfiguration}
             onConvert={convertMountedConfiguration}
+            onNewInvitation={() =>
+              dispatch({ type: "mounted-configuration-new-invitation" })
+            }
           />
         )}
         {section === "file" && (

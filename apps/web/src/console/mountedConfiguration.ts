@@ -76,7 +76,11 @@ export type MountedConfigurationState =
    * operator's choice to convert: until then the hand-off states those paths as
    * read, and a signed run is withheld while `signingPaths` names any
    * ({@link unconvertedSigningWithheldReason}). `relayEnrollment` is a file
-   * naming `connection.relay_registrar` ({@link RELAY_ENROLLMENT_NOTICE}). */
+   * naming `connection.relay_registrar` ({@link RELAY_ENROLLMENT_NOTICE}).
+   * `keyFileFault` is why the `.alcove.key` beside the file would refuse its
+   * run ({@link keyFileNotice}), and `newInvitation` the operator's choice to
+   * create a new invitation from the file's settings instead
+   * ({@link withNewInvitation}). */
   | {
       status: "opened";
       carriedThrough: Array<string>;
@@ -85,6 +89,8 @@ export type MountedConfigurationState =
       folderPaths?: Array<string>;
       converted?: true;
       relayEnrollment?: true;
+      keyFileFault?: "absent" | "invalid";
+      newInvitation?: true;
       notConducted?: UnconductedChannel;
       transportUnavailable?: UnofferedChannel;
       notApplied?: Array<string>;
@@ -132,6 +138,77 @@ export const OPENED_EXCHANGE_CONTINUES =
   "This run continues the exchange your alcove.yaml set up, under the " +
   ".alcove.key beside it. No new invitation is made: your partner runs " +
   "their side as they usually do.";
+
+/** The label of the control that turns an opened configuration whose key
+ * file is missing into a new invitation built from its settings. */
+export const CREATE_INVITATION_FROM_SETTINGS_LABEL =
+  "Create an invitation from these settings";
+
+/**
+ * What the operator is told on opening a configuration whose `.alcove.key`
+ * would refuse its run, or undefined where the key file is usable or a new
+ * invitation was already chosen ({@link withNewInvitation}). Offers the two ways
+ * on: put the key file back, or make a new invitation from the settings.
+ */
+export function keyFileNotice(
+  state: MountedConfigurationState,
+): { title: string; message: string } | undefined {
+  if (
+    state.status !== "opened" ||
+    state.keyFileFault === undefined ||
+    state.newInvitation === true
+  )
+    return undefined;
+  const choice =
+    `or choose ${CREATE_INVITATION_FROM_SETTINGS_LABEL}: the steps below keep ` +
+    "this configuration's terms and connection, and your partner accepts the " +
+    "new invitation to start a new exchange with you.";
+  if (state.keyFileFault === "absent")
+    return {
+      title: "Your folder has no .alcove.key for this configuration",
+      message:
+        "A run of this configuration continues the exchange it set up, " +
+        "under the .alcove.key beside alcove.yaml, and there is none in your " +
+        "folder. Put that key file back beside alcove.yaml and open the " +
+        `configuration again, ${choice}`,
+    };
+  return {
+    title: "The .alcove.key in your folder cannot be read",
+    message:
+      "A run of this configuration continues the exchange it set up, under " +
+      "the .alcove.key beside alcove.yaml, and that file is not a key file " +
+      "Alcove can read. Check that it is a regular file with read " +
+      "permission, holding the key Alcove wrote for this exchange, and open " +
+      `the configuration again, ${choice}`,
+  };
+}
+
+/** What the operator is told once they chose a new invitation from the opened
+ * configuration's settings. */
+export const NEW_INVITATION_FROM_SETTINGS =
+  "This exchange creates a new invitation from your configuration's terms " +
+  "and connection. Send it to your partner: they accept it to start a new " +
+  "exchange with you.";
+
+/** The opened configuration taken as the settings of a new invitation rather
+ * than an exchange to continue. Any other state, and a configuration the
+ * console does not conduct, is returned unchanged. */
+export function withNewInvitation(
+  state: MountedConfigurationState,
+): MountedConfigurationState {
+  if (state.status !== "opened" || state.notConducted !== undefined)
+    return state;
+  return { ...state, newInvitation: true };
+}
+
+/** Whether a run of this exchange continues the exchange the opened
+ * configuration set up, under the key file beside it, rather than making a new
+ * invitation. */
+export function runsOpenedConfiguration(
+  state: MountedConfigurationState,
+): boolean {
+  return state.status === "opened" && state.newInvitation !== true;
+}
 
 /** The review step's start action for a run of the opened configuration. */
 export const START_OPENED_EXCHANGE_LABEL = "Start the exchange";
@@ -265,6 +342,7 @@ export function conversionOffered(
   return (
     !sealed &&
     state.status === "opened" &&
+    state.newInvitation !== true &&
     state.converted !== true &&
     pathsConversionReplaces(state).length > 0
   );
@@ -283,7 +361,12 @@ const SCHEDULED_CONFIGURATION =
 export function conversionStatement(
   state: MountedConfigurationState,
 ): string | undefined {
-  if (state.status !== "opened" || state.converted === true) return undefined;
+  if (
+    state.status !== "opened" ||
+    state.newInvitation === true ||
+    state.converted === true
+  )
+    return undefined;
   const replaced = pathsConversionReplaces(state);
   if (replaced.length === 0) return undefined;
   const signingPaths = state.signingPaths ?? [];
@@ -327,7 +410,12 @@ export function conversionStatement(
 export function convertedStatement(
   state: MountedConfigurationState,
 ): string | undefined {
-  if (state.status !== "opened" || state.converted !== true) return undefined;
+  if (
+    state.status !== "opened" ||
+    state.newInvitation === true ||
+    state.converted !== true
+  )
+    return undefined;
   const signs = (state.signingPaths ?? []).length > 0;
   return (
     "Converted: " +
@@ -368,6 +456,7 @@ export function unconvertedSigningWithheldReason(
     receiptsMode !== "certificate" ||
     state.status !== "opened" ||
     state.notConducted !== undefined ||
+    state.newInvitation === true ||
     state.converted === true
   )
     return undefined;
@@ -766,6 +855,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
             : {}),
           ...(answer.relayRegistrarNamed === true
             ? { relayEnrollment: true as const }
+            : {}),
+          ...(answer.keyFileFault !== undefined && isJobChannel(loaded.channel)
+            ? { keyFileFault: answer.keyFileFault }
             : {}),
           ...(isJobChannel(loaded.channel)
             ? {}

@@ -258,7 +258,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
       caught = error as Error;
     }
     expect(caught).toBeInstanceOf(JobApiConfigError);
-    expect(caught?.message).toContain("server.password");
+    expect(caught?.message).toContain("password file reference");
     expect(caught?.message).not.toContain(missing);
   });
 
@@ -278,7 +278,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     expect(entry.password).toBe(`@${ref}`);
     expect(credentialWarnings).toHaveLength(1);
     expect(credentialWarnings[0]).toContain("password");
-    expect(credentialWarnings[0]).toContain("data root");
+    expect(credentialWarnings[0]).toContain("mounted folder");
     expect(credentialWarnings[0]).not.toContain(ref);
   });
 
@@ -340,7 +340,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     // Lexically outside, so only the realpath arm catches it -- and it warns.
     expect(entry.password).toBe(`@${link}`);
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("data root");
+    expect(credentialWarnings[0]).toContain("mounted folder");
     expect(credentialWarnings[0]).not.toContain(link);
   });
 
@@ -526,7 +526,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
       caught = error as Error;
     }
     expect(caught).toBeInstanceOf(JobApiConfigError);
-    expect(caught?.message).toContain("connection.credential");
+    expect(caught?.message).toContain("credential file you chose");
     expect(caught?.message).not.toContain(secretsDir);
   });
 
@@ -571,7 +571,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
     }
     expect(caught).toBeInstanceOf(JobApiConfigError);
     expect(caught?.message).toContain("connection.credential");
-    expect(caught?.message).toContain("secrets mount");
+    expect(caught?.message).toContain("secrets directory");
   });
 
   test("an unknown mount id is rejected naming the field", () => {
@@ -617,7 +617,144 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
       secretsDir,
     );
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("data root");
+    expect(credentialWarnings[0]).toContain("mounted folder");
+  });
+
+  test("a folder locator resolves in the working folder with no secrets mount, and warns", () => {
+    const dir = scratchDir();
+    const dataRoot = path.join(dir, "data-root");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    fs.writeFileSync(path.join(dataRoot, "sftp-password.txt"), "x");
+    const { entry, credentialWarnings } = validateAuthoredSftpServer(
+      {
+        host: "sftp.partner.example",
+        hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+        credential: {
+          kind: "mountRef",
+          mount: "folder",
+          subPath: ["sftp-password.txt"],
+          credType: "password",
+        },
+      },
+      dataRoot,
+      [],
+      undefined,
+    );
+    expect(entry.password).toBe(
+      `@${fs.realpathSync(path.join(dataRoot, "sftp-password.txt"))}`,
+    );
+    expect(credentialWarnings).toHaveLength(1);
+    expect(credentialWarnings[0]).toContain("mounted folder");
+    expect(credentialWarnings[0]).toContain("JOB_SECRETS_DIR=/secrets");
+    expect(credentialWarnings[0]).not.toContain(dataRoot);
+  });
+
+  test.each([
+    [[".alcove.key"]],
+    [["0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11", ".alcove.key"]],
+  ])(
+    "a folder locator naming a console-owned file %j is refused, no path echoed",
+    (subPath) => {
+      const dir = scratchDir();
+      const dataRoot = path.join(dir, "data-root");
+      const jobDir = path.join(
+        dataRoot,
+        "0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11",
+      );
+      fs.mkdirSync(jobDir, { recursive: true });
+      fs.writeFileSync(path.join(dataRoot, ".alcove.key"), "secret");
+      fs.writeFileSync(path.join(jobDir, ".alcove.key"), "secret");
+      let caught: Error | null = null;
+      try {
+        validateAuthoredSftpServer(
+          {
+            host: "sftp.partner.example",
+            hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+            credential: {
+              kind: "mountRef",
+              mount: "folder",
+              subPath,
+              credType: "password",
+            },
+          },
+          dataRoot,
+          [],
+          undefined,
+        );
+      } catch (error) {
+        caught = error as Error;
+      }
+      expect(caught).toBeInstanceOf(JobApiConfigError);
+      expect(caught?.message).toContain("belongs to the console");
+      expect(caught?.message).not.toContain(dir);
+    },
+  );
+
+  test("a folder locator naming a symlink to the console's own key is refused, no path echoed", () => {
+    const dir = scratchDir();
+    const dataRoot = path.join(dir, "data-root");
+    const subfolder = path.join(dataRoot, "links");
+    fs.mkdirSync(subfolder, { recursive: true });
+    fs.writeFileSync(path.join(dataRoot, ".alcove.key"), "secret");
+    fs.symlinkSync(
+      path.join(dataRoot, ".alcove.key"),
+      path.join(subfolder, "innocent.txt"),
+    );
+    let caught: Error | null = null;
+    try {
+      validateAuthoredSftpServer(
+        {
+          host: "sftp.partner.example",
+          hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+          credential: {
+            kind: "mountRef",
+            mount: "folder",
+            subPath: ["links", "innocent.txt"],
+            credType: "password",
+          },
+        },
+        dataRoot,
+        [],
+        undefined,
+      );
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(JobApiConfigError);
+    expect(caught?.message).toContain(
+      "belongs to the console and is not a credential",
+    );
+    expect(caught?.message).not.toContain(dir);
+  });
+
+  test("a folder locator escaping the working folder is refused, no path echoed", () => {
+    const dir = scratchDir();
+    const dataRoot = path.join(dir, "data-root");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    fs.writeFileSync(path.join(dir, "outside.txt"), "x");
+    let caught: Error | null = null;
+    try {
+      validateAuthoredSftpServer(
+        {
+          host: "sftp.partner.example",
+          hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+          credential: {
+            kind: "mountRef",
+            mount: "folder",
+            subPath: ["..", "outside.txt"],
+            credType: "password",
+          },
+        },
+        dataRoot,
+        [],
+        undefined,
+      );
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(JobApiConfigError);
+    expect(caught?.message).toContain("your folder");
+    expect(caught?.message).not.toContain(dir);
   });
 });
 

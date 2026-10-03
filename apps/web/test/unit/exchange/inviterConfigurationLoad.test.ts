@@ -485,6 +485,51 @@ describe("converting an opened configuration to the console's paths", () => {
   });
 });
 
+describe("a new invitation from an opened configuration's settings", () => {
+  function openedWithoutKeyFile(): InviterScreenState {
+    return inviterScreenReducer(INVITER_SCREEN_INITIAL, {
+      type: "mounted-configuration-read",
+      answer: {
+        kind: "opened",
+        document: {
+          channel: "filedrop",
+          linkageTerms: getDefaultLinkageTerms("County Health"),
+        },
+        carriedThrough: [],
+        warnings: [],
+        keyFileFault: "absent",
+      },
+    });
+  }
+
+  test("keeps everything the load filled and marks the choice", () => {
+    const before = openedWithoutKeyFile();
+    const after = inviterScreenReducer(before, {
+      type: "mounted-configuration-new-invitation",
+    });
+    expect(after.mountedConfiguration).toMatchObject({
+      status: "opened",
+      keyFileFault: "absent",
+      newInvitation: true,
+    });
+    expect(after.loadedConfiguration).toBe(before.loadedConfiguration);
+    expect(after.exchangeFiles).toBe(before.exchangeFiles);
+    expect(after.receipts).toBe(before.receipts);
+  });
+
+  test("a sealed draft keeps what its run sends", () => {
+    const sealed: InviterScreenState = {
+      ...openedWithoutKeyFile(),
+      editor: { sealed: true } as never,
+    };
+    expect(
+      inviterScreenReducer(sealed, {
+        type: "mounted-configuration-new-invitation",
+      }),
+    ).toBe(sealed);
+  });
+});
+
 describe("a webrtc configuration opens for review with its run withheld", () => {
   const state = inviterScreenReducer(INVITER_SCREEN_INITIAL, {
     type: "mounted-configuration-read",

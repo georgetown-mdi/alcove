@@ -194,6 +194,24 @@ function stubJobApi(options: StubOptions = {}): {
       });
       if (url === "/api/jobs/inputs")
         return Promise.resolve(jsonResponse(listing));
+      if (url === "/api/jobs/inputs/samples") {
+        listing = {
+          configured: true,
+          readable: true,
+          files: [
+            {
+              name: "alcove-sample-inviter.csv",
+              sizeBytes: 600,
+              modifiedAt: 1_700_000_000_000,
+            },
+          ],
+        };
+        return Promise.resolve(
+          jsonResponse({
+            files: [{ name: "alcove-sample-inviter.csv", written: true }],
+          }),
+        );
+      }
       if (url.startsWith("/api/jobs/inputs/profile"))
         return Promise.resolve(
           options.profileErrorCode !== undefined
@@ -1506,18 +1524,26 @@ describe("console inviter picker re-profile", () => {
   });
 });
 
-describe("console inviter sample-data copy", () => {
-  test("links the deployment guide instead of promising a walkthrough", async () => {
-    stubJobApi();
+describe("console inviter sample data", () => {
+  test("adds the sample files to the folder, and the picker lists them", async () => {
+    const api = stubJobApi();
     app.render(createElement(InviterScreen));
-    const link = page.getByRole("link", { name: "deployment guide" });
-    await expect.element(link).toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Add sample files to my folder" })
+      .click();
     await expect
-      .element(link)
-      .toHaveAttribute(
-        "href",
-        "https://github.com/georgetown-mdi/alcove/blob/main/docs/DEPLOYMENT.md",
-      );
+      .element(page.getByText("are in your folder", { exact: false }))
+      .toBeInTheDocument();
+    expect(
+      api.captured.some(
+        (request) =>
+          request.url === "/api/jobs/inputs/samples" &&
+          request.method === "POST",
+      ),
+    ).toBe(true);
+    await expect
+      .element(page.getByText("alcove-sample-inviter.csv", { exact: true }))
+      .toBeInTheDocument();
   });
 });
 

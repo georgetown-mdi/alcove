@@ -6,7 +6,10 @@ import {
 
 import { isBareSftpHost } from "@psi/sftpHost";
 
-import type { AuthoredSftpConnectionRequest } from "@psi/jobClient/sftpAuthoringClient";
+import type {
+  AuthoredSftpConnectionRequest,
+  CredentialMount,
+} from "@psi/jobClient/sftpAuthoringClient";
 
 /**
  * The pure model behind the console's SFTP connection authoring form: the field
@@ -29,15 +32,17 @@ export type SftpCredentialMethod = "password" | "private_key";
 
 /**
  * Where the primary credential comes from:
- * - `mount`: a file the operator picked in the secrets browser (its path segments
- *   under the mount; the server resolves them to an absolute path).
+ * - `mount`: a file the operator picked in the credential browser -- under the
+ *   secrets directory, or under the working folder when none is mounted -- as
+ *   its path segments under that mount; the server resolves them to an
+ *   absolute path.
  * - `path`: a typed `@path` for a credential outside any listable mount.
  * - `raw`: a pasted value (the de-emphasized fallback); the server materializes it
  *   to a file on the console. It is held in component state only, never
  *   persisted to browser storage or the query cache.
  */
 type SftpCredentialSource =
-  | { kind: "mount"; subPath: Array<string> }
+  | { kind: "mount"; mount: CredentialMount; subPath: Array<string> }
   | { kind: "path"; ref: string }
   | { kind: "raw"; value: string };
 
@@ -512,8 +517,8 @@ export function sftpFormError(
     return {
       field: "credential",
       message:
-        "Enter the credential as an @-file reference to an absolute path, " +
-        "e.g. @/run/secrets/key.",
+        "Enter the credential as an @-file reference to an absolute path " +
+        "inside the console, e.g. @/secrets/sftp-password.txt.",
     };
   // A pasted value must be non-empty; whitespace is significant in a secret, so
   // it is not trimmed. An opened paste with an empty value is a raw source with an
@@ -538,8 +543,8 @@ export function sftpFormError(
     return {
       field: "passphrase",
       message:
-        "Enter the passphrase as an @-file reference, e.g. " +
-        "@/run/secrets/key.pass.",
+        "Enter the passphrase as an @-file reference to an absolute path " +
+        "inside the console, e.g. @/secrets/key-passphrase.txt.",
     };
   return undefined;
 }
@@ -644,7 +649,7 @@ export function buildAuthoringRequest(
       source.kind === "mount"
         ? {
             kind: "mountRef",
-            mount: "secrets",
+            mount: source.mount,
             subPath: source.subPath,
             credType: values.method,
           }

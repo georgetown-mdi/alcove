@@ -15,8 +15,11 @@ import { useOnlineStatus } from "@components/useOnlineStatus";
 
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 
+import { addSampleInputs } from "@psi/jobClient/workInputClient";
+
 import { AppPage } from "@components/AppPage";
 import { loadSavedExchanges } from "@recurring/savedExchangesLoad";
+import { sampleInputsFailure } from "@console/ConsoleSampleData";
 import styles from "@styles/app.module.css";
 
 import { FILE_ASSURANCE_LINE } from "./fileAssurance";
@@ -87,11 +90,28 @@ export function Lobby() {
 
   const invitationToken = tokenFromInput(invitation);
 
-  // A full navigation, not the SPA Link: the console reads `?demo=1` from the
+  const [addingSamples, setAddingSamples] = useState(false);
+  const [sampleFailure, setSampleFailure] = useState<string>();
+
+  // A full navigation, not the SPA Link: the inviter reads `?demo=1` from the
   // real URL on mount, and the route has no typed search schema to hold it.
-  function loadSample() {
-    downloadSampleCsvs();
-    window.location.assign("/exchange?demo=1");
+  // The console reads no file in the browser, so it writes the sample into its
+  // folder for the picker to list instead.
+  async function loadSample() {
+    if (!isConsoleBuild()) {
+      downloadSampleCsvs();
+      window.location.assign("/exchange?demo=1");
+      return;
+    }
+    setAddingSamples(true);
+    setSampleFailure(undefined);
+    const failure = sampleInputsFailure(await addSampleInputs());
+    setAddingSamples(false);
+    if (failure !== undefined) {
+      setSampleFailure(failure);
+      return;
+    }
+    void navigate({ to: "/exchange" });
   }
 
   return (
@@ -194,12 +214,32 @@ export function Lobby() {
         </p>
         <p className={`${styles.sub} ${styles.small}`}>
           No data to link yet?{" "}
-          <Anchor inherit component="button" type="button" onClick={loadSample}>
+          <Anchor
+            inherit
+            component="button"
+            type="button"
+            disabled={addingSamples}
+            onClick={() => void loadSample()}
+          >
             Start with sample data
           </Anchor>{" "}
-          seeds an exchange with synthetic records and downloads the two CSVs so
-          you can run both sides.
+          {isConsoleBuild()
+            ? "writes two CSVs of synthetic records into your folder and starts an exchange, so you can choose one and practice both sides."
+            : "seeds an exchange with synthetic records and downloads the two CSVs so you can run both sides."}
         </p>
+        {sampleFailure !== undefined && (
+          <p className={`${styles.sub} ${styles.small}`} role="alert">
+            {sampleFailure}{" "}
+            <Anchor
+              inherit
+              component="button"
+              type="button"
+              onClick={downloadSampleCsvs}
+            >
+              Download the CSVs
+            </Anchor>
+          </p>
+        )}
         {!isConsoleBuild() &&
           (hasSavedExchanges === undefined ? null : hasSavedExchanges ? (
             <p className={`${styles.sub} ${styles.small}`}>
@@ -233,7 +273,10 @@ export function Lobby() {
             own machine. Alcove compares cryptographic fingerprints of the
             fields you match on - a private set intersection - so only the
             records you both hold are revealed, and only to the people the terms
-            name. Your browser connects directly to your partner&apos;s.
+            name.{" "}
+            {isConsoleBuild()
+              ? "This console runs an exchange over an SFTP server or a shared folder itself, reading your file from the folder you mounted. A browser-to-browser exchange runs in the public Alcove web app instead."
+              : "Your browser connects directly to your partner's."}
           </p>
         </div>
       </main>

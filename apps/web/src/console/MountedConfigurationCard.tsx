@@ -10,7 +10,9 @@ import {
   CONFIGURATION_LOAD_SEALED,
   CONFIGURATION_READ_UNAVAILABLE,
   CONVERT_CONFIGURATION_LABEL,
+  CREATE_INVITATION_FROM_SETTINGS_LABEL,
   EDITED_TERMS_TITLE,
+  NEW_INVITATION_FROM_SETTINGS,
   NO_CONFIGURATION_IN_FOLDER,
   OPEN_CONFIGURATION_INVITATION,
   OPEN_CONFIGURATION_LABEL,
@@ -18,6 +20,7 @@ import {
   conversionOffered,
   conversionStatement,
   convertedStatement,
+  keyFileNotice,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
 } from "./mountedConfiguration";
@@ -53,7 +56,7 @@ const REFUSED_TITLE = "This configuration cannot be opened";
 function announcementFor(state: MountedConfigurationState): string {
   switch (state.status) {
     case "opened":
-      return OPENED_TITLE;
+      return keyFileNotice(state)?.title ?? OPENED_TITLE;
     case "refused":
       return REFUSED_TITLE;
     case "absent":
@@ -124,6 +127,7 @@ export function MountedConfigurationCard({
   onOpen,
   onClose,
   onConvert,
+  onNewInvitation,
 }: {
   state: MountedConfigurationState;
   /** Whether an invitation is already minted from the terms the steps below
@@ -142,6 +146,10 @@ export function MountedConfigurationCard({
    * the settings it replaces stated beside it, while the configuration names
    * paths of its own and is not converted. */
   onConvert: () => void;
+  /** Take the open configuration's settings for a new invitation instead of
+   * continuing its exchange. Offered while its key file would refuse the
+   * run. */
+  onNewInvitation: () => void;
 }) {
   const announcement = useDeferredAnnouncement(announcementFor(state));
   const notices = mountedConfigurationNotices(state, disclosure);
@@ -150,6 +158,7 @@ export function MountedConfigurationCard({
     sealed && (state.status === "unread" || state.status === "unavailable");
   const convertible = conversionOffered(state, sealed);
   const converted = convertedStatement(state);
+  const keyFile = keyFileNotice(state);
   return (
     <Stack gap="xs">
       <VisuallyHidden
@@ -200,6 +209,26 @@ export function MountedConfigurationCard({
             </>
           )}
           {converted !== undefined && <Text size="sm">{converted}</Text>}
+          {keyFile !== undefined && (
+            <Alert
+              color="yellow"
+              role="presentation"
+              icon={<IconAlertTriangle aria-hidden />}
+              title={keyFile.title}
+            >
+              <Stack gap="xs" align="flex-start">
+                <Text size="sm">{keyFile.message}</Text>
+                {!sealed && (
+                  <Button size="xs" onClick={onNewInvitation}>
+                    {CREATE_INVITATION_FROM_SETTINGS_LABEL}
+                  </Button>
+                )}
+              </Stack>
+            </Alert>
+          )}
+          {state.newInvitation === true && (
+            <Text size="sm">{NEW_INVITATION_FROM_SETTINGS}</Text>
+          )}
         </>
       )}
       <NoticesAlert notices={notices} />

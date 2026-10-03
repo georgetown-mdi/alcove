@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
@@ -25,7 +24,12 @@ import { byteSizeLabel, dateTimeLabel } from "@psi/formatting";
 
 import styles from "@styles/app.module.css";
 
-import { MountLoading, MountStateNotice, RefreshButton } from "./mountListing";
+import {
+  MountLoading,
+  MountStateNotice,
+  NoMountedFolderNotice,
+  RefreshButton,
+} from "./mountListing";
 
 import type {
   JobInputProfileResult,
@@ -69,7 +73,7 @@ const PROFILE_UNAVAILABLE_COPY: Record<
 function listingLiveMessage(listing: JobInputsResult | "loading"): string {
   if (listing === "loading") return "";
   if (listing.kind === "disabled")
-    return "The job API is disabled on this console.";
+    return "This console was started without a folder.";
   if (listing.kind === "error") return "The file listing could not be loaded.";
   const { files, configured, readable } = listing.listing;
   if (!configured) return "No work directory is configured on this console.";
@@ -119,9 +123,13 @@ export function ServerFilePicker({
   committed,
   delimiter,
   commitWithheld,
+  refreshKey,
   onUse,
   onInvalidate,
 }: {
+  /** A value the parent changes when it has put files in the folder itself,
+   * so the listing is read again. */
+  refreshKey?: number;
   /** The file currently committed to the console (its reference), so its row is
    * marked. */
   committed: WorkInputReference | undefined;
@@ -173,7 +181,7 @@ export function ServerFilePicker({
 
   useEffect(() => {
     void loadListing();
-  }, [loadListing]);
+  }, [loadListing, refreshKey]);
 
   const selectFile = useCallback(
     async (name: string) => {
@@ -301,29 +309,15 @@ function ListingView({
   if (listing === "loading")
     return <MountLoading message="Loading files from the console..." />;
 
-  // The job API is off by design (JOB_DATA_ROOT unset), a stable config state --
-  // so it displays as informational and names the variable to set, distinct from
-  // the red transient fault below whose advice is to retry.
+  // A console started without a folder is a stable config state, so it shows
+  // as informational with the start command, distinct from the red transient
+  // fault below whose advice is to retry.
   if (listing.kind === "disabled")
     return (
-      <MountStateNotice
-        color="blue"
-        title="The job API is disabled on this console"
+      <NoMountedFolderNotice
+        cannot="list or run files"
         action={refreshButton}
-      >
-        The job API is off because JOB_DATA_ROOT is not set, so this console
-        cannot list or run files. Set it to the mounted data root and restart
-        the console -- see the{" "}
-        <Anchor
-          inherit
-          href="https://github.com/georgetown-mdi/alcove/blob/main/docs/DEPLOYMENT.md"
-          target="_blank"
-          rel="noreferrer"
-        >
-          deployment guide
-        </Anchor>
-        .
-      </MountStateNotice>
+      />
     );
 
   if (listing.kind === "error")

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { Route as FolderEntriesRoute } from "../../../src/routes/api/jobs/mounts/folder/entries";
 import { Route as SecretsEntriesRoute } from "../../../src/routes/api/jobs/mounts/secrets/entries";
 
 import { STUB_CLI_PATH } from "../../utils/jobFixtures";
@@ -122,6 +123,63 @@ describe("GET /api/jobs/mounts/secrets/entries", () => {
     enable(mount);
     const response = await entries([".."]);
     expect(await response.json()).toEqual({
+      configured: true,
+      readable: false,
+      entries: [],
+    });
+  });
+});
+
+async function folderEntries(segments: Array<string> = []): Promise<Response> {
+  const url = new URL("http://localhost/api/jobs/mounts/folder/entries");
+  for (const segment of segments) url.searchParams.append("subPath", segment);
+  return (await handlersOf(FolderEntriesRoute).GET({
+    request: new Request(url, { headers: { host: "localhost" } }),
+    params: {},
+  })) as Response;
+}
+
+describe("GET /api/jobs/mounts/folder/entries", () => {
+  test("is 404 when the API is disabled", async () => {
+    vi.stubEnv("JOB_DATA_ROOT", "");
+    expect((await folderEntries()).status).toBe(404);
+  });
+
+  test("lists the working folder, whether or not a secrets mount is set", async () => {
+    const dataRoot = enable();
+    fs.writeFileSync(path.join(dataRoot, "sftp-password.txt"), "x");
+    fs.mkdirSync(path.join(dataRoot, "keys"));
+    const response = await folderEntries();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toEqual({
+      configured: true,
+      readable: true,
+      entries: [
+        { name: "keys", kind: "dir" },
+        { name: "sftp-password.txt", kind: "file" },
+      ],
+    });
+  });
+
+  test("leaves out the console's own files and job directories", async () => {
+    const dataRoot = enable();
+    fs.writeFileSync(path.join(dataRoot, ".alcove.key"), "secret");
+    fs.writeFileSync(path.join(dataRoot, "alcove.yaml"), "x");
+    fs.writeFileSync(path.join(dataRoot, "alcove.yaml.previous"), "x");
+    fs.writeFileSync(path.join(dataRoot, "alcove-certificate.json"), "x");
+    fs.mkdirSync(path.join(dataRoot, "0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11"));
+    fs.writeFileSync(path.join(dataRoot, "sftp-password.txt"), "x");
+    expect(await (await folderEntries()).json()).toEqual({
+      configured: true,
+      readable: true,
+      entries: [{ name: "sftp-password.txt", kind: "file" }],
+    });
+  });
+
+  test("an escaping subpath is readable:false, empty", async () => {
+    enable();
+    expect(await (await folderEntries([".."])).json()).toEqual({
       configured: true,
       readable: false,
       entries: [],

@@ -240,12 +240,11 @@ describe("console inputs disabled state", () => {
   test("a 404 on the inputs listing shows the API-disabled picker state", async () => {
     stubRecoveryApi({ inputsStatus: 404 });
     app.render(createElement(InviterScreen));
-    // The distinct informational state, not the red transient fault. The title and
-    // the named env var are unique to it (the file section's sample-data copy also
-    // links the deployment guide, so that link alone would not disambiguate).
+    // The distinct informational state, not the red transient fault: its title,
+    // and the start command naming the variable that mounts the folder.
     await expect
       .element(
-        page.getByText("The job API is disabled on this console", {
+        page.getByText("This console was started without a folder", {
           exact: true,
         }),
       )

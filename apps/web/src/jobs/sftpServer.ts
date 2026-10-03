@@ -17,6 +17,7 @@ import {
 } from "./sftpScratch";
 import { JobApiConfigError } from "./gate";
 import { formatIssues } from "./schemaIssueMessage";
+import { isConsoleOwnedFolderPath } from "./consoleOwnedFiles";
 import { isPathWithin } from "./pathContainment";
 import { resolveMountFile } from "./mountBrowse";
 
@@ -103,14 +104,16 @@ interface AuthoredCredentialRef {
 
 /**
  * A file-reference credential given as a locator the operator picked in the
- * secrets browser: the mount id and the path segments under it. The server -- not
- * the browser -- resolves it against `JOB_SECRETS_DIR` to an absolute `@path`, so
- * no container-absolute path ever transits the browser. Tagged with which primary
+ * credential browser: the mount id and the path segments under it. `secrets` is
+ * the separate secrets directory (`JOB_SECRETS_DIR`); `folder` is the working
+ * folder (`JOB_DATA_ROOT`), browsed when no secrets directory is mounted. The
+ * server -- not the browser -- resolves it to an absolute `@path`, so no
+ * container-absolute path ever transits the browser. Tagged with which primary
  * auth method it feeds.
  */
 interface AuthoredMountRefCredential {
   kind: "mountRef";
-  mount: "secrets";
+  mount: "secrets" | "folder";
   subPath: Array<string>;
   credType: SftpCredType;
 }
@@ -176,13 +179,12 @@ const refCredentialSchema = z.strictObject({
   credType: credTypeSchema,
 });
 
-// A single secrets mount only; a cross-mount locator is out of scope, so `mount`
-// is the literal id and an unknown id fails the parse naming the field. Each
-// subPath segment must be a non-empty string; resolveMountFile re-admits every
-// segment's shape and re-confines the realpath to the mount.
+// The two mount ids are an allowlist, so an unknown id fails the parse naming
+// the field. Each subPath segment must be a non-empty string; resolveMountFile
+// re-admits every segment's shape and re-confines the realpath to the mount.
 const mountRefCredentialSchema = z.strictObject({
   kind: z.literal("mountRef"),
-  mount: z.literal("secrets"),
+  mount: z.enum(["secrets", "folder"]),
   subPath: z.array(z.string().min(1)).min(1),
   credType: credTypeSchema,
 });
@@ -252,7 +254,7 @@ function credentialRefExclusions(
       exclusions.push({ dir: form, label, kind });
     }
   };
-  add(path.resolve(dataRoot), "the job data root", "dataRoot");
+  add(path.resolve(dataRoot), "your mounted folder", "dataRoot");
   for (const rendezvousDir of rendezvousDirs)
     add(path.resolve(rendezvousDir), "the rendezvous directory", "rendezvous");
   return exclusions;
@@ -363,7 +365,7 @@ export function validateAuthoredSftpServer(
 
   const resolved = resolveAuthoredCredential(
     rawCredential,
-    secretsDir,
+    { secrets: secretsDir, folder: dataRoot },
     scratchDir,
   );
   const credentialField =
@@ -424,8 +426,8 @@ interface ResolvedAuthoredCredential {
  * whichever form it arrived in:
  * - `kind: "ref"` -- a typed `@path`, passed through verbatim (the documented
  *   exception for a credential outside any listable mount).
- * - `kind: "mountRef"` -- a locator resolved server-side against `secretsDir`
- *   and rewritten to `@<realpath>`.
+ * - `kind: "mountRef"` -- a locator resolved server-side against the mount it
+ *   names in `mounts` and rewritten to `@<realpath>`.
  * - `kind: "raw"` -- a pasted value, materialized ONCE to a server-owned 0600
  *   file under `scratchDir` and rewritten to `@<that file>`; the value is
  *   written and dropped, never returned, logged, or placed in argv/env.
@@ -437,7 +439,7 @@ interface ResolvedAuthoredCredential {
  */
 function resolveAuthoredCredential(
   rawCredential: unknown,
-  secretsDir: string | undefined,
+  mounts: CredentialMounts,
   scratchDir: string | undefined,
 ): ResolvedAuthoredCredential {
   const kind =
@@ -461,7 +463,7 @@ function resolveAuthoredCredential(
       throw new JobApiConfigError(
         formatIssues(parsed.error.issues, "connection.credential"),
       );
-    return { credential: resolveMountRefCredential(parsed.data, secretsDir) };
+    return { credential: resolveMountRefCredential(parsed.data, mounts) };
   }
   if (kind === "raw") {
     const parsed = rawCredentialSchema.safeParse(rawCredential);
@@ -510,28 +512,58 @@ function materializeRawCredential(
   };
 }
 
+/** The directories a credential locator's mount id resolves against: the
+ * secrets mount (absent when `JOB_SECRETS_DIR` is unset) and the working
+ * folder. */
+interface CredentialMounts {
+  secrets: string | undefined;
+  folder: string;
+}
+
+/** How a credential-locator refusal names each mount to the operator. */
+const CREDENTIAL_MOUNT_LABELS: Record<
+  AuthoredMountRefCredential["mount"],
+  string
+> = { secrets: "the secrets directory", folder: "your folder" };
+
 /**
- * Turn a secrets-mount locator into an `@path` reference: resolve `subPath` under
- * the configured secrets mount to a confined regular file's realpath (never
- * reading its bytes) and tag it with the credential's auth method. The mount is
- * server-side config (`JOB_SECRETS_DIR`) with no data-root fallback; an unset
- * mount, or a subPath naming no readable regular file (or escaping the mount), is
- * a {@link JobApiConfigError} naming the field only -- never a path.
+ * Turn a credential locator into an `@path` reference: resolve `subPath` under
+ * the mount it names to a confined regular file's realpath (never reading its
+ * bytes) and tag it with the credential's auth method. Both mounts are
+ * server-side config; the secrets mount has no data-root fallback, so a
+ * `secrets` locator on a console without one is refused rather than resolved
+ * in the folder. An unset mount, or a subPath naming no readable regular file
+ * (or escaping the mount), is a {@link JobApiConfigError} naming the field and
+ * the mount only -- never a path. A `folder` credential takes the same
+ * containment warning a typed reference into the folder does.
  */
 function resolveMountRefCredential(
   credential: AuthoredMountRefCredential,
-  secretsDir: string | undefined,
+  mounts: CredentialMounts,
 ): AuthoredCredentialRef {
-  if (secretsDir === undefined)
+  const mountRoot = mounts[credential.mount];
+  if (mountRoot === undefined)
     throw new JobApiConfigError(
-      "connection.credential names the secrets mount, which is not " +
-        "configured on this console",
+      `connection.credential names ${CREDENTIAL_MOUNT_LABELS[credential.mount]}, ` +
+        "which is not mounted on this console. Choose the file again.",
     );
-  const resolved = resolveMountFile(secretsDir, credential.subPath);
+  const resolved = resolveMountFile(mountRoot, credential.subPath);
   if (resolved === null)
     throw new JobApiConfigError(
-      "connection.credential.subPath does not name a readable file in the " +
-        "secrets mount",
+      "The credential file you chose is no longer a readable file in " +
+        `${CREDENTIAL_MOUNT_LABELS[credential.mount]}. Choose it again.`,
+    );
+  if (
+    credential.mount === "folder" &&
+    isConsoleOwnedFolderPath(
+      mountRoot,
+      credential.subPath,
+      resolved.absolutePath,
+    )
+  )
+    throw new JobApiConfigError(
+      "The file you chose belongs to the console and is not a credential. " +
+        "Choose your credential file instead.",
     );
   return {
     kind: "ref",
@@ -637,7 +669,10 @@ function collectCredentialRefWarnings(
     realRef = fs.realpathSync(resolvedRef);
   } catch {
     throw new JobApiConfigError(
-      `${fieldPath} references a file that does not exist`,
+      `The ${CREDENTIAL_FIELD_LABELS[field]} file reference names no file ` +
+        "the console can see. The console looks for it inside its " +
+        "container, not on your computer, so a path on your computer is not " +
+        "found. Choose the file from your folder instead of typing it.",
     );
   }
   const excluded =
@@ -680,8 +715,10 @@ function credentialContainmentWarning(
 ): string {
   const fieldLabel = CREDENTIAL_FIELD_LABELS[field];
   const remediation =
-    "For better isolation, mount a separate read-only secrets directory " +
-    "(JOB_SECRETS_DIR) and reference the credential there instead.";
+    "For better isolation, move the file to a folder of its own, start the " +
+    "console with that folder mounted read-only as its secrets directory " +
+    "(add -v <that folder>:/secrets:ro --env JOB_SECRETS_DIR=/secrets to " +
+    "docker run), and choose the file there.";
   if (exclusion.kind === "rendezvous")
     return (
       `The ${fieldLabel} credential file is inside ${exclusion.label}, which you ` +

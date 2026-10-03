@@ -259,6 +259,38 @@ export async function fetchJobInputs(
   }
 }
 
+/** The `POST /api/jobs/inputs/samples` outcome: the sample files are in the
+ * folder (written now or already there), the console cannot write into the
+ * folder, the console was started without one (`disabled`), or a transient
+ * `error`. */
+export type AddSampleInputsResult =
+  | { kind: "added" }
+  | { kind: "unwritable" }
+  | { kind: "disabled" }
+  | { kind: "error" };
+
+/** Ask the console to write the two sample CSVs into the folder its picker
+ * lists. A file already at a sample's name is left as it is and counts as
+ * added. */
+export async function addSampleInputs(
+  fetchImpl: typeof fetch = fetch,
+): Promise<AddSampleInputsResult> {
+  try {
+    const response = await fetchImpl("/api/jobs/inputs/samples", {
+      method: "POST",
+    });
+    if (response.status === 404) return { kind: "disabled" };
+    if (response.status === 409) return { kind: "unwritable" };
+    if (!response.ok) return { kind: "error" };
+    const body = await readJsonOrNull(response, MAX_JOB_STATUS_RESPONSE_BYTES);
+    return isRecord(body) && Array.isArray(body.files)
+      ? { kind: "added" }
+      : { kind: "error" };
+  } catch {
+    return { kind: "error" };
+  }
+}
+
 /** Profile one mounted input file by its admissible name, read by the operator's own
  * field delimiter (omitted reads commas). A 404 is `not_found` (the file is gone
  * since the listing); a 400 holds a closed profile-fault code the picker names;

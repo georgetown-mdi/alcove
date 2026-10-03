@@ -1114,7 +1114,7 @@ describe("the in-app authored sftp connection", () => {
     // Authored (not rejected), holding a warning that persists to a later
     // projection (a console reload) and clears with the connection.
     expect(projection.credentialWarnings).toHaveLength(1);
-    expect(projection.credentialWarnings?.[0]).toContain("data root");
+    expect(projection.credentialWarnings?.[0]).toContain("mounted folder");
     expect(manager.sftpProjection()?.credentialWarnings).toHaveLength(1);
     manager.clearAuthoredSftpServer();
     expect(manager.sftpProjection()).toBeNull();

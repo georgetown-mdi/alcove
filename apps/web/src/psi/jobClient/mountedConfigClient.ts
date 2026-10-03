@@ -35,6 +35,9 @@ export type MountedConfigurationAnswer =
       signingPathSettings?: Array<string>;
       folderPathSettings?: Array<string>;
       relayRegistrarNamed?: true;
+      /** The `.alcove.key` beside the configuration would refuse its run: none
+       * is there, or the file is not a key file. */
+      keyFileFault?: "absent" | "invalid";
     }
   /** The console refused the file, in its own words: the route's text names the
    * settings to fix as the file spells them. */
@@ -112,14 +115,17 @@ export async function fetchMountedConfiguration(
     const warnings = namesOf(body.warnings);
     const signingPathSettings = namesOf(body.signingPathSettings);
     const folderPathSettings = namesOf(body.folderPathSettings);
-    const { relayRegistrarNamed } = body;
+    const { relayRegistrarNamed, keyFileFault } = body;
     if (
       document === null ||
       carriedThrough === null ||
       warnings === null ||
       signingPathSettings === null ||
       folderPathSettings === null ||
-      (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true)
+      (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true) ||
+      (keyFileFault !== undefined &&
+        keyFileFault !== "absent" &&
+        keyFileFault !== "invalid")
     )
       return { kind: "unavailable" };
     return {
@@ -132,6 +138,7 @@ export async function fetchMountedConfiguration(
       ...(relayRegistrarNamed === true
         ? { relayRegistrarNamed: true as const }
         : {}),
+      ...(keyFileFault !== undefined ? { keyFileFault } : {}),
     };
   } catch {
     return { kind: "unavailable" };

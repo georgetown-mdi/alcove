@@ -70,6 +70,38 @@ describe("a definitive answer", () => {
     expect(answer.folderPathSettings).toEqual([]);
   });
 
+  test("a key file fault the load named reaches the answer", async () => {
+    const { fetchImpl } = answering(200, {
+      configured: true,
+      present: true,
+      document: DOCUMENT,
+      carriedThrough: [],
+      warnings: [],
+      signingPathSettings: [],
+      folderPathSettings: [],
+      keyFileFault: "absent",
+    });
+    const answer = await fetchMountedConfiguration(fetchImpl);
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    expect(answer.keyFileFault).toBe("absent");
+  });
+
+  test("a key file fault outside the two it can be is not read", async () => {
+    const { fetchImpl } = answering(200, {
+      configured: true,
+      present: true,
+      document: DOCUMENT,
+      carriedThrough: [],
+      warnings: [],
+      signingPathSettings: [],
+      folderPathSettings: [],
+      keyFileFault: "missing",
+    });
+    expect(await fetchMountedConfiguration(fetchImpl)).toEqual({
+      kind: "unavailable",
+    });
+  });
+
   test("a webrtc configuration reads as opened, for review", async () => {
     const { fetchImpl } = answering(200, {
       configured: true,
