@@ -19,6 +19,7 @@ import { invitationReach } from "./invitationReach";
 
 import {
   AnotherExchangeFoot,
+  BROWSER_RUN_KEEP_OPEN_BODY,
   CopyRow,
   DonePanel,
   FailureAlert,
@@ -29,14 +30,18 @@ import {
   RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
   SERVER_JOB_PEER_WINDOW_BODY,
+  browserListeningBody,
+  leftBehindConfirm,
   recoveredExchangeHeading,
   untakenRecordConfirm,
+  useDownloadsLeftBehind,
 } from "./RunSurface";
 import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
 import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { reattachedRunState } from "./reattachedRunState";
+import { useBeforeUnloadPrompt } from "./useUnloadGuard";
 import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
 
@@ -71,6 +76,9 @@ export function InviterExchangeSection({
   jobId,
   reattached,
   reattaching,
+  listeningUntil,
+  resumableAfterReload = false,
+  resumed = false,
   onTryAgain,
   onStartOver,
   onReviewAppliedTerms,
@@ -127,6 +135,14 @@ export function InviterExchangeSection({
    * and shows a reconnecting notice, before it resolves to the recovery view or
    * the run's alert. */
   reattaching: boolean;
+  /** When this browser stops waiting for the partner, once it is listening;
+   * undefined before then and on a server-job run. */
+  listeningUntil?: Date;
+  /** Whether a reload offers this invitation back to wait on again. */
+  resumableAfterReload?: boolean;
+  /** Whether this run waits again on an invitation created before a reload,
+   * which heads the share screen as a wait rather than a fresh invitation. */
+  resumed?: boolean;
   onTryAgain: () => void;
   onStartOver: () => void;
   /** Leave a run whose partner's changed terms were applied to the mounted
@@ -198,9 +214,17 @@ export function InviterExchangeSection({
   // the terms-change recovery's own control is the way forward: starting over
   // without reopening the file would run the terms it no longer holds.
   const [termsApplied, setTermsApplied] = useState(false);
+
   useEffect(() => {
     setTermsApplied(false);
   }, [failure]);
+  // A browser run's files exist only in this page: until each is downloaded,
+  // leaving the completion screen asks first.
+  const { leftBehind, onDownload } = useDownloadsLeftBehind(outputs);
+  useBeforeUnloadPrompt(
+    !serverJob && phase === "done" && leftBehind.length > 0,
+  );
+
   const offersStartOver =
     !retryable &&
     !termsApplied &&
@@ -242,7 +266,7 @@ export function InviterExchangeSection({
         ? "Exchange complete"
         : phase === "running"
           ? "Exchange in progress"
-          : continuesOpenedExchange
+          : continuesOpenedExchange || resumed
             ? "Waiting for your partner"
             : "Your invitation is ready";
 
@@ -273,9 +297,21 @@ export function InviterExchangeSection({
               onReviewApplied={onReviewAppliedTerms}
             />
           )}
+          {failure.partnerNoShow === true && (
+            <p>
+              {retryable
+                ? "Your invitation can still be accepted until " +
+                  dateTimeLabel(new Date(invitation.expires)) +
+                  ". Agree a time with your partner, then choose Keep waiting."
+                : "Your invitation has expired. Start over with a fresh " +
+                  "invitation and send it to your partner."}
+            </p>
+          )}
           {retryable && (
             <FailureRecoveryButton
-              label="Try again"
+              label={
+                failure.partnerNoShow === true ? "Keep waiting" : "Try again"
+              }
               onAct={onTryAgain}
               recordConfirm={recordConfirm}
               folder={discardFolder}
@@ -379,25 +415,25 @@ export function InviterExchangeSection({
       {/* The keep-open callout drops the moment any failure lands: the run it
           describes has torn down, so it outlives no failure, not even a retryable
           one. On a server-job run the console conducts the exchange and this tab
-          only watches it, so the callout persists into the running phase -- leaving
-          does not stop the run, and the recovery panel is the way back. The browser
-          listener's copy is share-only: once the partner connects, nothing it says
-          still holds, so it does not extend past the share phase. */}
-      {(phase === "share" || (phase === "running" && serverJob)) &&
-        failure === undefined &&
-        !recovering && (
-          <div className={styles.callout}>
-            <p className={styles.calloutLead}>Keep this tab open.</p>
-            <p className={styles.small}>
-              {serverJob
-                ? SERVER_JOB_KEEP_OPEN_BODY
-                : "Your browser is listening for your partner. Closing the tab cancels the invitation; reloading starts over."}
-            </p>
-            {serverJob && phase === "share" && (
-              <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
-            )}
-          </div>
-        )}
+          only watches it -- leaving does not stop the run, and the recovery panel
+          is the way back. A browser run states its listening deadline while it
+          waits, and that leaving ends the run for both parties once the partner
+          connects. */}
+      {phase !== "done" && failure === undefined && !recovering && (
+        <div className={styles.callout}>
+          <p className={styles.calloutLead}>Keep this tab open.</p>
+          <p className={styles.small}>
+            {serverJob
+              ? SERVER_JOB_KEEP_OPEN_BODY
+              : phase === "share"
+                ? browserListeningBody(listeningUntil, resumableAfterReload)
+                : BROWSER_RUN_KEEP_OPEN_BODY}
+          </p>
+          {serverJob && phase === "share" && (
+            <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
+          )}
+        </div>
+      )}
       {phase === "done" && (
         <DonePanel outputs={outputs} finishedAt={run.finishedAt} />
       )}
@@ -408,7 +444,11 @@ export function InviterExchangeSection({
         halted={failure !== undefined}
       />
       {phase === "done" && outputs !== undefined && (
-        <RunDownloads outputs={outputs} heading="h2" />
+        <RunDownloads
+          outputs={outputs}
+          heading="h2"
+          onDownload={serverJob ? undefined : onDownload}
+        />
       )}
       <RecordDownload
         offer={recordOffer}
@@ -432,6 +472,7 @@ export function InviterExchangeSection({
         <AnotherExchangeFoot
           onNavigate={onAbandon}
           confirmBeforeLeave={serverJob}
+          leaveConfirm={serverJob ? undefined : leftBehindConfirm(leftBehind)}
           folder={discardFolder}
         />
       )}

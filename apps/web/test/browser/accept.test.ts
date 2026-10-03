@@ -1166,6 +1166,13 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     await userEvent.click(
       page.getByRole("button", { name: "Reset to defaults" }),
     );
+    const confirm = page.getByRole("dialog", { name: "Reset to defaults?" });
+    await expect
+      .element(confirm)
+      .toMatchTextContent("every column's type and use");
+    await userEvent.click(
+      confirm.getByRole("button", { name: "Reset to defaults" }),
+    );
     await expect
       .element(page.getByText("All 2 keys can match"))
       .toBeInTheDocument();
@@ -2170,10 +2177,11 @@ describe("acceptor screen: run and completion", () => {
     );
     expect(ledger.textContent).toContain("Your file never left this browser.");
 
-    const another = Array.from(document.querySelectorAll("a")).find(
-      (anchor) => anchor.textContent === "Set up another exchange",
-    );
-    expect(another?.getAttribute("href")).toBe("/quick");
+    // The downloads exist only in this page and none was taken, so leaving
+    // asks first.
+    await expect
+      .element(page.getByRole("button", { name: "Set up another exchange" }))
+      .toHaveAttribute("aria-haspopup", "dialog");
   });
 
   test("at a narrow viewport the settled share bar keeps the You sent row", async () => {

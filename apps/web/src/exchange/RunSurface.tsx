@@ -24,6 +24,7 @@ import styles from "@styles/app.module.css";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 
 import { DiscardFolderList } from "./discardFolder";
+import { timeOfDayLabel } from "./exchangeRun";
 
 import type { NoResultFileOutputs, RunOutputs } from "@psi/runOutputs";
 import type { DiscardFolder } from "./discardFolder";
@@ -40,6 +41,36 @@ import type { RunFailure } from "./useInviterExchange";
 export const SERVER_JOB_KEEP_OPEN_BODY =
   "This console is running the exchange. If you leave this page the run " +
   "keeps going; come back here to pick it up or discard it.";
+
+/**
+ * The keep-open callout body for a run this browser conducts, once the partner
+ * is connected. Shared by both seats' run columns so the two cannot drift.
+ */
+export const BROWSER_RUN_KEEP_OPEN_BODY =
+  "Your browser is running the exchange with your partner. Closing or " +
+  "reloading this tab stops it for both of you.";
+
+/**
+ * The keep-open callout body while the inviter's browser waits for the
+ * partner: the deadline the wait actually runs to, once it is listening, and
+ * what closing or reloading the tab does to the invitation. `resumable` is
+ * whether a reload offers the invitation back.
+ */
+export function browserListeningBody(
+  listeningUntil: Date | undefined,
+  resumable: boolean,
+): string {
+  const wait =
+    listeningUntil === undefined
+      ? "Your browser is getting ready to wait for your partner."
+      : `This page waits until ${timeOfDayLabel(listeningUntil)} for your ` +
+        "partner to connect.";
+  const leave = resumable
+    ? "Closing the tab cancels the invitation; if you reload, choose your " +
+      "file again to keep waiting."
+    : "Closing the tab cancels the invitation; reloading starts over.";
+  return `${wait} ${leave}`;
+}
 
 /**
  * Format a peer-timeout duration as the human phrase the copy embeds ("an hour"
@@ -215,11 +246,14 @@ export function DownloadRow({
   caveat,
   href,
   fileName,
+  onDownload,
 }: {
   label: string;
   caveat?: "keep private";
   href: string;
   fileName: string;
+  /** Fires when the operator follows the link. */
+  onDownload?: () => void;
 }) {
   return (
     <div className={styles.dlRow}>
@@ -237,6 +271,7 @@ export function DownloadRow({
         className={`${styles.linkLike} ${styles.mono}`}
         href={href}
         download={fileName}
+        onClick={onDownload}
         aria-label={`${label}${caveat === undefined ? "" : ` (${caveat})`}: ${fileName}`}
       >
         {fileName}
@@ -463,15 +498,20 @@ export function NoResultFileInset({
  * `resultNote` is shown directly under the result download, and only where
  * there is one: what else became of the result file, such as a copy written
  * into a recurring exchange's working folder.
+ *
+ * `onDownload` is told which file the operator followed a link to, for a
+ * surface that keeps its files only in this page ({@link useDownloadsLeftBehind}).
  */
 export function RunDownloads({
   outputs,
   heading,
   resultNote,
+  onDownload,
 }: {
   outputs: RunOutputs;
   heading?: "h2" | "h3";
   resultNote?: ReactNode;
+  onDownload?: (item: RunDownloadItem) => void;
 }) {
   // Capitalized so JSX reads the tag from this value rather than as an
   // intrinsic element literally named `heading`.
@@ -485,6 +525,7 @@ export function RunDownloads({
             label="Download result"
             href={outputs.resultsUrl}
             fileName={JOB_FILE_NAMES.output}
+            onDownload={() => onDownload?.("result")}
           />
           {resultNote}
         </>
@@ -497,18 +538,93 @@ export function RunDownloads({
             label="Download record (safe to share)"
             href={outputs.record.recordUrl}
             fileName={outputs.record.recordFileName}
+            onDownload={() => onDownload?.("record")}
           />
           <DownloadRow
             label="Download verification keys"
             caveat="keep private"
             href={outputs.record.keysUrl}
             fileName={outputs.record.keysFileName}
+            onDownload={() => onDownload?.("keys")}
           />
           <RecordPurposeNote />
         </>
       )}
     </>
   );
+}
+
+/** One file a completed run offers for download. */
+export type RunDownloadItem = "result" | "record" | "keys";
+
+/** The files `outputs` offers for download, in the order they are listed. */
+function offeredDownloads(outputs: RunOutputs): Array<RunDownloadItem> {
+  return [
+    ...(outputs.kind === "matched" ? (["result"] as const) : []),
+    ...(outputs.record !== undefined ? (["record", "keys"] as const) : []),
+  ];
+}
+
+/**
+ * Which of a completed browser run's files the operator has not yet
+ * downloaded. The files exist only in this page, so leaving it discards
+ * whatever is listed here. Following a download link counts as taking the
+ * file; a new set of outputs starts the count again.
+ */
+export function useDownloadsLeftBehind(outputs: RunOutputs | undefined): {
+  leftBehind: Array<RunDownloadItem>;
+  onDownload: (item: RunDownloadItem) => void;
+} {
+  const [taken, setTaken] = useState<{
+    outputs: RunOutputs | undefined;
+    items: ReadonlySet<RunDownloadItem>;
+  }>({ outputs, items: new Set() });
+  const items = taken.outputs === outputs ? taken.items : new Set();
+  const leftBehind =
+    outputs === undefined
+      ? []
+      : offeredDownloads(outputs).filter((item) => !items.has(item));
+  return {
+    leftBehind,
+    onDownload: (item) =>
+      setTaken((current) => ({
+        outputs,
+        items: new Set([
+          ...(current.outputs === outputs ? current.items : []),
+          item,
+        ]),
+      })),
+  };
+}
+
+const DOWNLOAD_ITEM_NAMES: Record<RunDownloadItem, string> = {
+  result: "the result",
+  record: "the record",
+  keys: "the verification keys",
+};
+
+/**
+ * The confirm leaving a completed browser run owes while `leftBehind` names a
+ * file not yet downloaded, or undefined once nothing would be lost.
+ */
+export function leftBehindConfirm(
+  leftBehind: ReadonlyArray<RunDownloadItem>,
+): { title: string; body: string } | undefined {
+  if (leftBehind.length === 0) return undefined;
+  const names = leftBehind.map((item) => DOWNLOAD_ITEM_NAMES[item]);
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(", ")}${names.length > 2 ? "," : ""} or ${names.at(-1)}`;
+  const [subject, object] =
+    names.length === 1 ? ["It is", "it"] : ["They are", "them"];
+  return {
+    title: "Leave without your downloads?",
+    body:
+      `You have not downloaded ${list}. ${subject} kept only on this page, ` +
+      `and leaving the page discards ${object}. Download ${object} first, ` +
+      `or leave without ${object}.`,
+  };
 }
 
 /** What the record and its keys are for, and a link to the Verify page. The
@@ -1111,6 +1227,15 @@ export function ReattachNotice({
   );
 }
 
+/** The confirm a console run owes before leaving: its results are on the
+ * console, and leaving removes them there. */
+const CONSOLE_LEAVE_CONFIRM = {
+  title: "Start another exchange?",
+  body:
+    "Starting another exchange removes this one's results from this " +
+    "console -- download anything you need first.",
+};
+
 /** The workfoot link out to a fresh exchange, shown at completion and after
  * an output failure (whose exchange already succeeded). `onNavigate` fires
  * as the operator leaves for a new exchange -- the console seat passes its
@@ -1122,21 +1247,28 @@ export function ReattachNotice({
  * On a server-job completion the result/record/keys exist only as console
  * endpoint hrefs, with no browser blob, so the discard is an irreversible
  * removal of data the operator may not have downloaded. `confirmBeforeLeave`
- * gates the leave behind a confirm there; a browser run keeps its results
- * in local blobs and needs none, so it stays false. */
+ * gates the leave behind a confirm there. A browser run keeps its files only
+ * in this page, so its seat passes `leaveConfirm` naming the files not yet
+ * downloaded ({@link leftBehindConfirm}), and nothing once every one is. */
 export function AnotherExchangeFoot({
   onNavigate,
   confirmBeforeLeave = false,
+  leaveConfirm,
   folder,
 }: {
   onNavigate?: () => void;
   confirmBeforeLeave?: boolean;
+  /** The confirm leaving owes, in place of the console's; undefined where it
+   * owes none. */
+  leaveConfirm?: { title: string; body: string };
   /** The run's folder and the files in it leaving deletes, named in the
    * confirm; undefined where the console did not say. */
   folder?: DiscardFolder;
 }) {
   const [confirming, setConfirming] = useState(false);
-  if (!confirmBeforeLeave)
+  const confirm =
+    leaveConfirm ?? (confirmBeforeLeave ? CONSOLE_LEAVE_CONFIRM : undefined);
+  if (confirm === undefined)
     return (
       <div className={styles.workFoot}>
         <Button component={Link} to="/quick" onClick={() => onNavigate?.()}>
@@ -1146,20 +1278,17 @@ export function AnotherExchangeFoot({
     );
   return (
     <div className={styles.workFoot}>
-      <Button onClick={() => setConfirming(true)}>
+      <Button aria-haspopup="dialog" onClick={() => setConfirming(true)}>
         Set up another exchange
       </Button>
       <Modal
         opened={confirming}
         onClose={() => setConfirming(false)}
-        title="Start another exchange?"
+        title={confirm.title}
         centered
         transitionProps={{ duration: 0 }}
       >
-        <p>
-          Starting another exchange removes this one&apos;s results from this
-          console -- download anything you need first.
-        </p>
+        <p>{confirm.body}</p>
         {folder !== undefined && <DiscardFolderList folder={folder} />}
         <Group mt="md">
           <Button variant="default" onClick={() => setConfirming(false)}>

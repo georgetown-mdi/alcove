@@ -45,6 +45,11 @@ import {
   acceptorWidenableDeclaredColumnCount,
 } from "./acceptorColumnsModel";
 
+import {
+  ACCEPTOR_RESET_STATEMENT,
+  ResetToDefaultsButton,
+} from "./ResetToDefaultsButton";
+
 import type {
   AcceptorColumnsState,
   AcceptorVerdictViewModel,
@@ -710,9 +715,11 @@ export function AcceptorColumnsStep({
         >
           Start the exchange
         </Button>
-        <Button variant="subtle" onClick={onReset}>
-          Reset to defaults
-        </Button>
+        <ResetToDefaultsButton
+          variant="subtle"
+          resets={ACCEPTOR_RESET_STATEMENT}
+          onReset={onReset}
+        />
         {/* Mounted whether or not it currently has content: assistive tech observes
             a live region from the moment it exists, so a reason that appears
             mid-session -- an edit above closing the gate the operator just opened --

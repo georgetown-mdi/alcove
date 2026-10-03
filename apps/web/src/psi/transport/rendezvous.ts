@@ -558,6 +558,7 @@ async function dialInviterWithRetry(
       if (remaining <= 0)
         throw new PartnerNoShowError(
           "timed out waiting for the inviter to come online",
+          new Date(deadline),
         );
       // Clamp the per-attempt open timeout to the remaining budget so an attempt
       // started near the deadline cannot run up to openTimeoutMs past it: the
@@ -567,6 +568,7 @@ async function dialInviterWithRetry(
       if (Date.now() + retryDelayMs >= deadline)
         throw new PartnerNoShowError(
           "timed out waiting for the inviter to come online",
+          new Date(deadline),
         );
       log.info("inviter not yet listening; retrying");
       await delay(retryDelayMs, signal);

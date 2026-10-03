@@ -183,6 +183,16 @@ import { TopBar } from "./TopBar";
 import { YourFileSection } from "./YourFileSection";
 import { timelineSteps } from "./exchangeRun";
 import { useInviterExchange } from "./useInviterExchange";
+
+import {
+  ResumeInvitationOffer,
+  ResumedInvitationRun,
+} from "./ResumeInvitation";
+import {
+  clearPendingInvitation,
+  readPendingInvitation,
+  usePendingInvitationRecord,
+} from "./pendingInvitation";
 import { useStepHistory } from "./useStepHistory";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
@@ -191,6 +201,7 @@ import type { RailStep } from "@psi/rail";
 
 import type {
   ConnectionEndpointRequest,
+  GeneratedInvitation,
   InvitationFileFailure,
 } from "@psi/invitation";
 import type { AlertContent } from "@components/csvIntake";
@@ -205,6 +216,7 @@ import type { ConfigurationSaveState } from "@console/mountedConfiguration";
 import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { InviterSpineStep } from "./inviterScreenModel";
 import type { ManageOfferChoices } from "./manageOfferModel";
+import type { PendingInvitation } from "./pendingInvitation";
 import type { Section } from "./stepRestore";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
 
@@ -599,6 +611,7 @@ export function InviterScreen() {
     jobId,
     reattached,
     reattaching,
+    listeningUntil,
     tryAgain,
     abandonRun,
   } = useInviterExchange({
@@ -812,6 +825,40 @@ export function InviterScreen() {
     hasFile: acquired !== undefined,
     finalized: invitation !== undefined || savedExchange !== undefined,
     demoActive,
+  });
+
+  // A hosted browser run keeps its invitation in this tab's session storage
+  // while it can still be waited on, so a reload offers to wait on it again
+  // rather than leave the partner holding a link nothing answers.
+  const [pending, setPending] = useState<PendingInvitation>();
+  const [resumed, setResumed] = useState<{
+    invitation: GeneratedInvitation;
+    pending: PendingInvitation;
+  }>();
+  useEffect(() => {
+    if (isConsoleBuild()) return;
+    let cancelled = false;
+    void readPendingInvitation(new Date()).then((read) => {
+      if (!cancelled) setPending(read);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (invitation !== undefined) setPending(undefined);
+  }, [invitation]);
+  const keepsPendingInvitation =
+    chosenRunMode === "browser" && !demoActive && !isConsoleBuild();
+  usePendingInvitationRecord({
+    invitation: keepsPendingInvitation ? invitation : undefined,
+    context: {
+      inviterName: editor?.draft.identity ?? "",
+      fileName: acquired?.fileName ?? "",
+      ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+    },
+    outputs,
+    failure,
   });
 
   // The live exchange itself, armed exactly where the guard above disarms and
@@ -1423,6 +1470,23 @@ export function InviterScreen() {
     onSelect: () => goTo(problem.target),
   }));
 
+  if (resumed !== undefined)
+    return (
+      <ResumedInvitationRun
+        invitation={resumed.invitation}
+        inviterName={resumed.pending.inviterName}
+        fileName={resumed.pending.fileName}
+        {...(resumed.pending.csvDelimiter !== undefined
+          ? { csvDelimiter: resumed.pending.csvDelimiter }
+          : {})}
+        onLeave={() => {
+          clearPendingInvitation();
+          setPending(undefined);
+          setResumed(undefined);
+        }}
+      />
+    );
+
   return (
     <WorkShell
       topBar={
@@ -1510,6 +1574,20 @@ export function InviterScreen() {
             }
           />
         )}
+        {section === "file" &&
+          invitation === undefined &&
+          pending !== undefined && (
+            <ResumeInvitationOffer
+              pending={pending}
+              onResume={(resumedOne) =>
+                setResumed({ invitation: resumedOne, pending })
+              }
+              onDiscard={() => {
+                clearPendingInvitation();
+                setPending(undefined);
+              }}
+            />
+          )}
         {section === "file" && (
           <YourFileSection
             name={name}
@@ -1798,6 +1876,8 @@ export function InviterScreen() {
               jobId={jobId}
               reattached={reattached}
               reattaching={reattaching}
+              listeningUntil={listeningUntil}
+              resumableAfterReload={keepsPendingInvitation}
               onTryAgain={tryAgain}
               onStartOver={startOver}
               onReviewAppliedTerms={reviewAppliedTerms}
