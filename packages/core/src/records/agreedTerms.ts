@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { carriedLinkageTermsSchema } from "./signedReceipt.js";
+import { safeParseStoredLinkageTerms } from "../config/linkageTermsSchema.js";
 
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 
@@ -26,12 +26,25 @@ export interface AgreedTerms {
   partnerTerms: LinkageTerms;
 }
 
-// Both halves are read through the bounded schema a receipt's carried copy
-// takes: the file sits beside a record that may have come from anyone.
-const AgreedTermsSchema: z.ZodType<AgreedTerms> = z.object({
+// Both halves are read through the bounded linkage-terms schema: the file
+// sits beside a record that may have come from anyone. The file holds what its
+// writer serialized and nothing else, so an unknown member at either level is
+// refused rather than dropped before the terms are re-hashed.
+const storedLinkageTermsSchema: z.ZodType<LinkageTerms> = z
+  .unknown()
+  .transform((raw, ctx) => {
+    const parsed = safeParseStoredLinkageTerms(raw);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) ctx.addIssue({ ...issue });
+      return z.NEVER;
+    }
+    return parsed.data;
+  });
+
+const AgreedTermsSchema: z.ZodType<AgreedTerms> = z.strictObject({
   version: z.literal(AGREED_TERMS_VERSION),
-  localTerms: carriedLinkageTermsSchema,
-  partnerTerms: carriedLinkageTermsSchema,
+  localTerms: storedLinkageTermsSchema,
+  partnerTerms: storedLinkageTermsSchema,
 });
 
 /** Serialize {@link AgreedTerms} to its on-disk form: pretty JSON with a

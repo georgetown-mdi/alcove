@@ -515,12 +515,16 @@ export const RESULT_FROM_ANOTHER_RUN_HEADLINE =
   "them, the record was altered.";
 
 /** Render the unsigned record's verification report to output lines and an exit
- * code (0 only when the verdict is verified). @internal exported for testing */
+ * code (0 only when the verdict is verified). `signatureFailed` marks a run
+ * whose dual-signed record failed a signature check: that failure governs, so
+ * the headline blaming a later run's files is withheld.
+ * @internal exported for testing */
 export function formatVerificationReport(
   report: RecordVerificationReport,
   warnings: Displayable[],
   signedRecordSupplied = false,
   supplied: SuppliedVerificationInputs = NOTHING_SUPPLIED,
+  signatureFailed = false,
 ): { lines: string[]; exitCode: number } {
   const lines: string[] = [];
   if (report.outcome === "failed")
@@ -529,7 +533,7 @@ export function formatVerificationReport(
         ? "VERIFICATION FAILED: the recorded result size disagrees with the " +
             "matched pairs the record itself commits to -- the record was " +
             "altered; the files you re-supplied check out."
-        : resuppliedFilesAreFromAnotherRun(report)
+        : !signatureFailed && resuppliedFilesAreFromAnotherRun(report)
           ? RESULT_FROM_ANOTHER_RUN_HEADLINE
           : "VERIFICATION FAILED: a check did not match -- the record may have been " +
             "altered, or a re-supplied input/result/terms does not match this exchange.",
@@ -944,6 +948,14 @@ function partnerTermsFrom(
 }
 
 /**
+ * The largest agreed-terms file read, in bytes: far above two parties' terms
+ * at every schema bound a real exchange reaches, and far below a size whose
+ * read costs the run memory or time.
+ * @internal exported for testing
+ */
+export const MAX_AGREED_TERMS_FILE_BYTES = 1024 * 1024;
+
+/**
  * The agreed-terms file the exchange wrote beside the record, read when
  * present. The operator did not name it on this command line, so an absent
  * file is no source at all, and an unreadable or invalid one is reported and
@@ -959,8 +971,18 @@ function agreedTermsBesideRecord(
     operatorSuppliedText(termsPath),
   );
   let text: string;
+  let fd: number | undefined;
   try {
-    text = fs.readFileSync(expandTilde(termsPath), "utf8");
+    fd = fs.openSync(expandTilde(termsPath), "r");
+    if (fs.fstatSync(fd).size > MAX_AGREED_TERMS_FILE_BYTES) {
+      log.warn(
+        `the agreed-terms file ${termsFileDisplay} is larger than ` +
+          `${MAX_AGREED_TERMS_FILE_BYTES} bytes, so it is not read and ` +
+          `supplies no terms`,
+      );
+      return undefined;
+    }
+    text = fs.readFileSync(fd, "utf8");
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     log.warn(
@@ -968,6 +990,8 @@ function agreedTermsBesideRecord(
         `supplies no terms: ${sanitizeErrorForDisplay(err)}`,
     );
     return undefined;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
   }
   try {
     return parseAgreedTerms(
@@ -1306,8 +1330,10 @@ export async function handler(argv: Arguments): Promise<void> {
             undefined,
             csvDelimiter,
           );
-    // The exchange record's own run wrote both parties' terms beside it; a
-    // document the operator names wins over that copy, half by half.
+    // The exchange record's own run wrote both parties' terms beside it. Each
+    // half is taken from the first source that supplies it: the flag naming
+    // it, then (for the partner's half) the dual-signed record's carried copy,
+    // then this file.
     const agreedTerms =
       artifact.kind === "record"
         ? agreedTermsBesideRecord(recordPath, log)
@@ -1316,8 +1342,7 @@ export async function handler(argv: Arguments): Promise<void> {
       localSource === undefined
         ? agreedTerms?.localTerms
         : localTermsAsTheRunStatedThem(localSource, inputParse?.meta, log);
-    const suppliedPartnerTerms =
-      partnerTermsFrom(partnerTermsFile, log) ?? agreedTerms?.partnerTerms;
+    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile, log);
     const signedRecord =
       artifact.kind === "signed"
         ? artifact.signed
@@ -1327,10 +1352,9 @@ export async function handler(argv: Arguments): Promise<void> {
     // The dual-signed record holds the partner's terms, so a run naming one
     // checks the agreed-terms hash with no second file; a file the operator
     // named wins over that copy.
-    const partnerTerms = partnerTermsForVerification(
-      suppliedPartnerTerms,
-      signedRecord,
-    );
+    const partnerTerms =
+      partnerTermsForVerification(suppliedPartnerTerms, signedRecord) ??
+      agreedTerms?.partnerTerms;
 
     if (signedRecord === undefined && partnerFingerprintArgs.length > 0)
       throw new UsageError(
@@ -1352,6 +1376,8 @@ export async function handler(argv: Arguments): Promise<void> {
     };
     const lines: string[] = [];
     let exitCode = 0;
+    let recordVerification:
+      { report: RecordVerificationReport; warnings: Displayable[] } | undefined;
 
     if (artifact.kind === "record") {
       const record = artifact.record;
@@ -1390,16 +1416,11 @@ export async function handler(argv: Arguments): Promise<void> {
       // A reproduction limitation is named only once the verdict shows it could
       // be the cause, so it joins the notes after the report, not before it.
       warnings.push(...reproductionMismatchCauses(report, data));
-      const rendered = formatVerificationReport(
-        report,
-        warnings,
-        signedRecord !== undefined,
-        supplied,
-      );
-      lines.push(...rendered.lines);
-      exitCode = worseReceiptVerdictExitCode(exitCode, rendered.exitCode);
+      recordVerification = { report, warnings };
     }
 
+    let signedRendered: { lines: string[]; exitCode: number } | undefined;
+    let signatureFailed = false;
     if (signedRecord !== undefined) {
       // This command never auto-loads a config, so a path that reaches here was
       // named on the command line.
@@ -1420,7 +1441,10 @@ export async function handler(argv: Arguments): Promise<void> {
         ...expectations,
         localIdentity: await chosenLocalIdentity(identityFileArg, signing, log),
       });
-      const rendered = formatSignedRecordReport(report, {
+      signatureFailed =
+        report.initiator.signature === "failed" ||
+        report.responder.signature === "failed";
+      signedRendered = formatSignedRecordReport(report, {
         ...supplied,
         // The note explaining a config that defines no terms belongs beside
         // the first agreed-terms line it explains, and a combined run has
@@ -1434,8 +1458,23 @@ export async function handler(argv: Arguments): Promise<void> {
           expectations.expectedTermsHash !== undefined &&
           expectations.expectedIdentities === undefined,
       });
+    }
+
+    // Rendered once the signature outcome is known, which decides its headline.
+    if (recordVerification !== undefined) {
+      const rendered = formatVerificationReport(
+        recordVerification.report,
+        recordVerification.warnings,
+        signedRecord !== undefined,
+        supplied,
+        signatureFailed,
+      );
       lines.push(...rendered.lines);
       exitCode = worseReceiptVerdictExitCode(exitCode, rendered.exitCode);
+    }
+    if (signedRendered !== undefined) {
+      lines.push(...signedRendered.lines);
+      exitCode = worseReceiptVerdictExitCode(exitCode, signedRendered.exitCode);
     }
 
     // The verdict is the command's result, so it goes to stdout; the log level

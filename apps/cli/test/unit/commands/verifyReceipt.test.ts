@@ -53,6 +53,7 @@ import {
   readVerifiableArtifact,
   readVerificationKeysFile,
   PARTNER_SEND_SET_UNKNOWN_WARNING,
+  MAX_AGREED_TERMS_FILE_BYTES,
   RESULT_FROM_ANOTHER_RUN_HEADLINE,
   SEND_SET_UNKNOWN_WARNING,
   toRetainedResult,
@@ -406,6 +407,18 @@ describe("formatVerificationReport: a result file from another run", () => {
       [],
     );
     expect(lines[0]).toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
+  });
+
+  test("a failed signature check withholds it for the two-cause headline", () => {
+    const { lines } = formatVerificationReport(
+      laterRunResult,
+      [],
+      true,
+      undefined,
+      true,
+    );
+    expect(lines[0]).not.toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
+    expect(lines[0]).toContain("the record may have been altered");
   });
 
   test.each<[string, Partial<RecordVerificationReport>]>([
@@ -1674,6 +1687,75 @@ describe("handler", () => {
         "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
       );
       expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test.each<[string, (terms: Record<string, unknown>) => unknown]>([
+      ["a member beyond the three", (terms) => ({ ...terms, padding: "x" })],
+      [
+        "a key the terms schema does not read",
+        (terms) => ({
+          ...terms,
+          localTerms: {
+            ...(terms["localTerms"] as object),
+            "note\u001b[31m": "x",
+          },
+        }),
+      ],
+    ])("a file holding %s is refused, not trimmed", async (_name, alter) => {
+      const { recordPath } = await exchangeArtifacts();
+      const termsPath = recordPath.replace(/\.json$/, ".terms.json");
+      writeAgreedTerms(recordPath);
+      writeFileSync(
+        termsPath,
+        JSON.stringify(
+          alter(JSON.parse(readFileSync(termsPath, "utf8")) as never),
+        ),
+      );
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain("rec.terms.json is not valid");
+      expect(stderr).not.toContain("\u001b");
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test("a file over the size bound is not read and supplies no terms", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      writeFileSync(
+        recordPath.replace(/\.json$/, ".terms.json"),
+        " ".repeat(MAX_AGREED_TERMS_FILE_BYTES + 1),
+      );
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain(
+        `rec.terms.json is larger than ${MAX_AGREED_TERMS_FILE_BYTES} bytes`,
+      );
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test("a dual-signed record's carried partner terms come before the file's", async () => {
+      const { recordPath, signedPath } = await exchangeArtifacts();
+      writeAgreedTerms(recordPath, {
+        partnerTerms: { ...baseInputs.partnerTerms, identity: "Party C" },
+      });
+      const { stdout, exits } = await runVerify({
+        record: recordPath,
+        "signed-record": signedPath,
+      });
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+      expect(stdout).not.toContain("agreed-terms hash: DOES NOT MATCH");
     });
 
     test("a record with none names the files that complete the check", async () => {

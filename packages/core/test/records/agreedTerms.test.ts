@@ -84,4 +84,25 @@ describe("the agreed-terms file", () => {
       }),
     ).toThrow();
   });
+
+  test("a member beyond the three the file holds is refused", () => {
+    expect(() =>
+      parseAgreedTerms({
+        version: AGREED_TERMS_VERSION,
+        localTerms,
+        partnerTerms,
+        padding: "x",
+      }),
+    ).toThrow(/padding/);
+  });
+
+  test("a key the terms schema does not read is refused, not dropped", () => {
+    expect(() =>
+      parseAgreedTerms({
+        version: AGREED_TERMS_VERSION,
+        localTerms: { ...localTerms, "note\u001b[31m": "x" },
+        partnerTerms,
+      }),
+    ).toThrow(/unrecognized|not read/i);
+  });
 });
