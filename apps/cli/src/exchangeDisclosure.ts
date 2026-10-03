@@ -30,7 +30,7 @@ import {
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
-import { readLogFileTail } from "./util/logging";
+import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type {
   InvitationRuleSetSummary,
@@ -412,19 +412,14 @@ export function lastRecordedDisclosureDigest(
 ): string | undefined {
   const tail = readLogFileTail(logFile, DISCLOSURE_DIGEST_SEARCH_BYTES);
   if (tail === undefined) return undefined;
-  const pattern = new RegExp(
-    String.raw`^\[[^\]\n]*\] \[WARN\] \[[^\]\n]*\] ` +
-      escapeRegExp(DISCLOSURE_DIGEST_LABEL) +
-      "([0-9a-f]{64})$",
-    "gm",
+  const pattern = logFileLinePattern(
+    "warn",
+    DISCLOSURE_DIGEST_LABEL,
+    /([0-9a-f]{64})/,
   );
   let last: string | undefined;
   for (const match of tail.matchAll(pattern)) last = match[1];
   return last;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /**

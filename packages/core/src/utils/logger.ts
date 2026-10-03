@@ -146,6 +146,16 @@ export const getLogger = (name: string | symbol) => {
   return result;
 };
 
+/**
+ * The `[ISO] [LEVEL] [CONTEXT]` prefix a prefixed logger puts ahead of every
+ * line, and that a consumer reading its own log back matches on.
+ */
+export const formatLogPrefix = (
+  timestamp: string,
+  methodName: logLibrary.LogLevelNames,
+  context: string,
+): string => `[${timestamp}] [${methodName.toUpperCase()}] [${context}]`;
+
 const setLogPrefixer = (logger: logLibrary.Logger) => {
   if ((logger as unknown as Record<symbol, boolean>)[PREFIXED]) return;
   (logger as unknown as Record<symbol, boolean>)[PREFIXED] = true;
@@ -158,11 +168,11 @@ const setLogPrefixer = (logger: logLibrary.Logger) => {
     const rawMethod = originalFactory(methodName, level, loggerName);
 
     return (...messageArgs) => {
-      const timestamp = new Date().toISOString();
-      const levelLabel = methodName.toUpperCase();
-      const context = String(loggerName || "root");
-
-      const prefix = `[${timestamp}] [${levelLabel}] [${context}]`;
+      const prefix = formatLogPrefix(
+        new Date().toISOString(),
+        methodName,
+        String(loggerName || "root"),
+      );
 
       // Redact private-key material from every diagnostic line here rather
       // than in a consumer's sink, so it covers both routings below: the

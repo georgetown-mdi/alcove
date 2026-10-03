@@ -16,6 +16,7 @@ import {
 
 import {
   configureLogFile,
+  logFileLinePattern,
   readLogFileTail,
   takeLogFileLossReport,
 } from "../../../src/util/logging";
@@ -398,6 +399,40 @@ test("configureLogFile: --log-level silent copies nothing to stderr", () => {
     restore();
   }
   expect(stderrWrites.join("")).toBe("");
+});
+
+test("logFileLinePattern: matches a line the file sink wrote, at its level only", () => {
+  // Written through the real logger and sink, so a change to either the
+  // prefix or the line format fails here instead of leaving a reader of the
+  // file matching nothing.
+  const logPath = path.join(tmpDir, "run.log");
+  const sink = configureLogFile(logPath);
+  logLibrary.setDefaultLevel(logLibrary.levels.INFO);
+  const log = getLogger("logfile-test-pattern");
+  log.info("marker: info-1");
+  log.warn("marker: warn-2");
+  log.warn("  marker: indented-3");
+  sink.close();
+
+  const contents = fs.readFileSync(logPath, "utf8");
+  const found = [
+    ...contents.matchAll(logFileLinePattern("warn", "marker: ", /(\S+)/)),
+  ].map((match) => match[1]);
+  expect(found).toEqual(["warn-2"]);
+});
+
+test("logFileLinePattern: a message cannot supply a prefix of its own", () => {
+  const logPath = path.join(tmpDir, "run.log");
+  const sink = configureLogFile(logPath);
+  logLibrary.setDefaultLevel(logLibrary.levels.INFO);
+  getLogger("logfile-test-forged").info("x] [WARN] [other] marker: forged");
+  sink.close();
+
+  const contents = fs.readFileSync(logPath, "utf8");
+  expect(contents).toContain("marker: forged");
+  expect([
+    ...contents.matchAll(logFileLinePattern("warn", "marker: ", /(\S+)/)),
+  ]).toEqual([]);
 });
 
 test("readLogFileTail: a window short of the whole file starts at a whole line", () => {

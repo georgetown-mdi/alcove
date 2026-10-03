@@ -10,6 +10,7 @@ import type { Arguments } from "yargs";
 
 import {
   type DiagnosticSink,
+  formatLogPrefix,
   getDiagnosticSink,
   getLogger,
   sanitizeErrorForDisplay,
@@ -146,7 +147,7 @@ function installLogSink(
 ): LogSink {
   const previousSink = getDiagnosticSink();
   setDiagnosticSink((methodName, prefix, args) =>
-    writeLine(util.format(prefix, ...args) + "\n", methodName),
+    writeLine(formatLogLine(prefix, args), methodName),
   );
   return {
     writePlain(line: string): void {
@@ -305,6 +306,42 @@ function isSameFileAsStderr(fd: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** One diagnostic line as the installed sink writes it, newline included. */
+function formatLogLine(prefix: string, args: readonly unknown[]): string {
+  return util.format(prefix, ...args) + "\n";
+}
+
+/**
+ * Matches a whole line the installed sink wrote at `methodName` whose message
+ * is `messagePrefix` followed by text matching `captured`, whose groups keep
+ * their numbers. Derived from {@link formatLogLine} and core's prefix, so a
+ * format change moves the writer and this reader together. The timestamp and
+ * logger-name wildcards stop at `]`, so text inside a message cannot pose as a
+ * prefix of its own.
+ */
+export function logFileLinePattern(
+  methodName: logLibrary.LogLevelNames,
+  messagePrefix: string,
+  captured: RegExp,
+): RegExp {
+  const timestamp = "\u0000timestamp\u0000";
+  const context = "\u0000context\u0000";
+  const message = "\u0000message\u0000";
+  const line = formatLogLine(formatLogPrefix(timestamp, methodName, context), [
+    message,
+  ]).slice(0, -1);
+  const prefixField = String.raw`[^\]\n]*`;
+  const source = escapeRegExp(line)
+    .replace(timestamp, () => prefixField)
+    .replace(context, () => prefixField)
+    .replace(message, () => escapeRegExp(messagePrefix) + captured.source);
+  return new RegExp(`^${source}$`, "gm");
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /**

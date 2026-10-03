@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 
 import {
   CONSENT_FACTS,
+  getLogger,
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
@@ -27,6 +28,7 @@ import { consentRepresentationProbes } from "@alcove/core/testing";
 
 import { prepareDataset } from "../../src/commands/exchange";
 import {
+  displayExchangeDisclosure,
   lastRecordedDisclosureDigest,
   renderExchangeDisclosure,
 } from "../../src/exchangeDisclosure";
@@ -321,6 +323,70 @@ test("lastRecordedDisclosureDigest reads the last digest line, and only a whole 
   expect(lastRecordedDisclosureDigest(path.join(dir, "absent.log"))).toBe(
     undefined,
   );
+});
+
+test("a digest the log sink wrote is the one read back", () => {
+  // Through the real logger and file sink rather than a hand-written line, so
+  // a change to the log line format cannot leave every run printing the
+  // display again.
+  const logFile = path.join(dir, "run.log");
+  const digest = "c".repeat(64);
+  const sink = configureLogFile(logFile);
+  try {
+    getLogger("exchange").warn(`Disclosure digest: sha256:${digest}`);
+  } finally {
+    sink.close();
+  }
+  expect(lastRecordedDisclosureDigest(logFile)).toBe(digest);
+});
+
+test("no name in the display puts a control character or a digest line into the log", () => {
+  // Every name below is the operator's own file text, shown by this display
+  // and copied to --log-file. A raw line break would let a name start a line
+  // of its own -- one shaped as a digest record would decide whether the next
+  // unattended run prints the display.
+  const forged = "f".repeat(64);
+  const forgedLine = `[2026-10-01T02:00:00.000Z] [WARN] [exchange] Disclosure digest: sha256:${forged}`;
+  const hostile = (base: string): string =>
+    `${base}\n${forgedLine}\r\u001b[2J${forgedLine}`;
+  const terms: LinkageTerms = {
+    ...localTerms,
+    linkageKeys: [{ ...localTerms.linkageKeys[0], name: hostile("FN_LN") }],
+  };
+  const metadata = metadataDisclosing([hostile("diagnosis")]);
+
+  const lines: string[] = [];
+  renderExchangeDisclosure((line) => lines.push(line), terms, metadata);
+  // Held non-vacuous: each hostile name is in the display, escaped.
+  const shown = lines.join("\n");
+  expect(shown).toContain("diagnosis\\x0a");
+  expect(shown).toContain("FN_LN\\x0a");
+  for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+
+  const logFile = path.join(dir, "run.log");
+  const logger = getLogger("exchange");
+  logger.setLevel("warn");
+  const sink = configureLogFile(logFile);
+  const stdio = captureStdio();
+  try {
+    displayExchangeDisclosure({
+      metadata,
+      linkageTerms: terms,
+      logFile,
+      log: logger,
+      unattended: true,
+    });
+  } finally {
+    stdio.restore();
+    sink.close();
+  }
+  const kept = fs.readFileSync(logFile, "utf8");
+  expect(kept.replaceAll("\n", "")).not.toMatch(/[\u0000-\u001f\u007f]/);
+  for (const line of kept.split("\n").filter((line) => line !== ""))
+    expect(line).toMatch(/^\[[^\]\n]*\] \[WARN\] \[exchange\] /);
+  const recorded = lastRecordedDisclosureDigest(logFile);
+  expect(recorded).toMatch(/^[0-9a-f]{64}$/);
+  expect(recorded).not.toBe(forged);
 });
 
 // --- The shapes the columns line takes ---------------------------------------
