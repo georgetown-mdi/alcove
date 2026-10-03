@@ -690,6 +690,43 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
     },
   );
 
+  test("a folder locator naming a symlink to the console's own key is refused, no path echoed", () => {
+    const dir = scratchDir();
+    const dataRoot = path.join(dir, "data-root");
+    const subfolder = path.join(dataRoot, "links");
+    fs.mkdirSync(subfolder, { recursive: true });
+    fs.writeFileSync(path.join(dataRoot, ".alcove.key"), "secret");
+    fs.symlinkSync(
+      path.join(dataRoot, ".alcove.key"),
+      path.join(subfolder, "innocent.txt"),
+    );
+    let caught: Error | null = null;
+    try {
+      validateAuthoredSftpServer(
+        {
+          host: "sftp.partner.example",
+          hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+          credential: {
+            kind: "mountRef",
+            mount: "folder",
+            subPath: ["links", "innocent.txt"],
+            credType: "password",
+          },
+        },
+        dataRoot,
+        [],
+        undefined,
+      );
+    } catch (error) {
+      caught = error as Error;
+    }
+    expect(caught).toBeInstanceOf(JobApiConfigError);
+    expect(caught?.message).toContain(
+      "belongs to the console and is not a credential",
+    );
+    expect(caught?.message).not.toContain(dir);
+  });
+
   test("a folder locator escaping the working folder is refused, no path echoed", () => {
     const dir = scratchDir();
     const dataRoot = path.join(dir, "data-root");
