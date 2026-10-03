@@ -19,6 +19,7 @@ import { cssVariablesResolver, mantineTheme } from "@theme";
 import { AppShellStatus } from "@components/AppShellStatus";
 import { DefaultCatchBoundary } from "@components/DefaultCatchBoundary";
 import { NotFound } from "@components/NotFound";
+import { PendingInvitationPrune } from "@exchange/PendingInvitationPrune";
 import { ScheduledExchangeRunner } from "@components/ScheduledExchangeRunner";
 import { seo } from "@utils/seo";
 
@@ -99,6 +100,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         >
           <AppShellStatus />
           <ScheduledExchangeRunner />
+          <PendingInvitationPrune />
           {children}
           <TanStackRouterDevtools position="bottom-right" />
           <Scripts />

@@ -3,12 +3,23 @@ import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  CSV_LINE_BYTE_CEILING,
+  MAX_ENCODED_INVITATION_LENGTH,
+  MAX_FILE_NAME_BYTES,
+  MAX_TEXT_LENGTH,
+} from "@alcove/core";
+
+import {
   clearPendingInvitation,
+  prunePendingInvitation,
   readPendingInvitation,
   resumeFromChosenFile,
   writePendingInvitation,
 } from "../../../src/exchange/pendingInvitation.js";
-import { generateInvitation } from "../../../src/psi/invitation.js";
+import {
+  deepLinkFor,
+  generateInvitation,
+} from "../../../src/psi/invitation.js";
 
 import type { InvitationLocation } from "../../../src/psi/invitation.js";
 
@@ -44,6 +55,7 @@ let storage: Storage;
 beforeEach(() => {
   storage = memoryStorage();
   vi.stubGlobal("sessionStorage", storage);
+  vi.stubGlobal("location", { origin: location.origin });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -146,11 +158,97 @@ describe("the invitation kept for a resume", () => {
 
   test.each([
     ["not JSON", "{"],
-    ["another version", JSON.stringify({ v: 1 })],
-    ["a damaged invitation", JSON.stringify({ v: 1, encoded: "x" })],
+    ["a JSON array", "[]"],
+    ["a version-1 entry", JSON.stringify({ v: 1 })],
   ])("an entry that is %s is not offered and is removed", async (_, raw) => {
     storage.setItem(STORAGE_KEY, raw);
     expect(await readPendingInvitation(new Date())).toBeUndefined();
+    expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  /** The entry the writer stores for a fresh invitation, as plain fields. */
+  async function writtenEntry(): Promise<Record<string, unknown>> {
+    writePendingInvitation(await mint(), { ...context, csvDelimiter: ";" });
+    return JSON.parse(storage.getItem(STORAGE_KEY) ?? "") as Record<
+      string,
+      unknown
+    >;
+  }
+
+  test("the entry as written reads back", async () => {
+    storage.setItem(STORAGE_KEY, JSON.stringify(await writtenEntry()));
+    expect(await readPendingInvitation(new Date())).toBeDefined();
+  });
+
+  const oversized = (length: number) => "x".repeat(length + 1);
+
+  test.each<[string, (entry: Record<string, unknown>) => void]>([
+    ["is missing a member", (entry) => delete entry.fileName],
+    ["holds an extra member", (entry) => (entry.rows = [])],
+    [
+      "holds an oversized inviter name",
+      (entry) => (entry.inviterName = oversized(MAX_TEXT_LENGTH)),
+    ],
+    [
+      "holds an oversized file name",
+      (entry) => (entry.fileName = oversized(MAX_FILE_NAME_BYTES)),
+    ],
+    [
+      "holds an oversized column name",
+      (entry) => (entry.columns = [oversized(CSV_LINE_BYTE_CEILING)]),
+    ],
+    [
+      "holds more columns than a header line can name",
+      (entry) =>
+        (entry.columns = Array.from(
+          { length: CSV_LINE_BYTE_CEILING / 2 + 1 },
+          () => "c",
+        )),
+    ],
+    ["holds no columns", (entry) => (entry.columns = [])],
+    [
+      "holds an oversized invitation",
+      (entry) => {
+        entry.encoded = oversized(MAX_ENCODED_INVITATION_LENGTH);
+        entry.deepLink = deepLinkFor(location.origin, entry.encoded as string);
+      },
+    ],
+    [
+      "holds a deep link for another origin",
+      (entry) =>
+        (entry.deepLink = deepLinkFor(
+          "https://elsewhere.example",
+          entry.encoded as string,
+        )),
+    ],
+    [
+      "holds an invitation whose decode fails",
+      (entry) => {
+        entry.encoded = "AAAA";
+        entry.deepLink = deepLinkFor(location.origin, "AAAA");
+      },
+    ],
+    ["holds a fractional row count", (entry) => (entry.rowCount = 1.5)],
+    ["holds a negative row count", (entry) => (entry.rowCount = -1)],
+    [
+      "holds a delimiter the app does not offer",
+      (entry) => (entry.csvDelimiter = ";;"),
+    ],
+  ])("an entry that %s is not offered and is removed", async (_, damage) => {
+    const entry = await writtenEntry();
+    damage(entry);
+    storage.setItem(STORAGE_KEY, JSON.stringify(entry));
+    expect(await readPendingInvitation(new Date())).toBeUndefined();
+    expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  test("pruning removes an expired entry and keeps a live one", async () => {
+    const minted = await mint();
+    writePendingInvitation(minted, context);
+    await prunePendingInvitation(new Date());
+    expect(storage.getItem(STORAGE_KEY)).not.toBeNull();
+
+    await prunePendingInvitation(new Date(Date.parse(minted.expires) + 1000));
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
   });
 

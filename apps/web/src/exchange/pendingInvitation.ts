@@ -1,16 +1,24 @@
 import { useEffect, useRef } from "react";
 
 import {
+  CSV_LINE_BYTE_CEILING,
+  MAX_ENCODED_INVITATION_LENGTH,
+  MAX_FILE_NAME_BYTES,
+  MAX_TEXT_LENGTH,
   decodeInvitation,
   getLogger,
+  isCsvDelimiterChoice,
   parseBoundedJson,
   safeParseMetadata,
   safeParseStandardization,
 } from "@alcove/core";
 
+import { deepLinkFor } from "@psi/invitation";
 import { invitationUsable } from "@psi/formatting";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 import { whenDiagnostic } from "@utils/diagnostics";
+
+import { PENDING_INVITATION_STORAGE_KEY } from "./pendingInvitationKey";
 
 import type {
   Metadata,
@@ -31,8 +39,7 @@ import type { RunOutputs } from "@psi/runOutputs";
 
 const log = getLogger("pendingInvitation");
 
-/** The sessionStorage key the entry is written under. */
-const STORAGE_KEY = "alcove-pending-invitation";
+const STORAGE_KEY = PENDING_INVITATION_STORAGE_KEY;
 
 /** The entry's schema version; any other version is treated as absent. */
 const RECORD_VERSION = 2;
@@ -118,26 +125,75 @@ export function clearPendingInvitation(): void {
   }
 }
 
-function isStringArray(value: unknown): value is Array<string> {
+/** Every member a written entry may hold; an entry with any other is refused. */
+const STORED_MEMBERS: ReadonlySet<string> = new Set(
+  Object.keys({
+    v: true,
+    encoded: true,
+    deepLink: true,
+    inviterName: true,
+    fileName: true,
+    columns: true,
+    rowCount: true,
+    csvDelimiter: true,
+    metadata: true,
+    standardization: true,
+    includeOwnColumns: true,
+  } satisfies Record<keyof StoredRecord, true>),
+);
+
+/** The most columns a header line within {@link CSV_LINE_BYTE_CEILING} names:
+ * each column has a name of at least one byte and all but the last a
+ * delimiter after it. */
+const MAX_STORED_COLUMNS = Math.ceil(CSV_LINE_BYTE_CEILING / 2);
+
+function isBoundedString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length <= maxLength;
+}
+
+function isColumnList(value: unknown): value is Array<string> {
   return (
-    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= MAX_STORED_COLUMNS &&
+    value.every((entry) => isBoundedString(entry, CSV_LINE_BYTE_CEILING))
   );
 }
 
-/** The stored fields, or undefined where any is missing or malformed. */
+/** The deep link this page builds for `encoded`, or undefined off a page. */
+function ownDeepLink(encoded: string): string | undefined {
+  const origin = (globalThis as { location?: { origin?: unknown } }).location
+    ?.origin;
+  return typeof origin === "string" ? deepLinkFor(origin, encoded) : undefined;
+}
+
+/**
+ * The stored fields, or undefined where any is missing, malformed, longer than
+ * this app writes, or not one the writer sets. Each string is bounded by what
+ * the app can write: the encoded invitation by core's decoder, the deep link
+ * by being the one this page builds, the name by a terms party identity, the
+ * file name by a filesystem name, and the column names by the header line the
+ * CSV read accepts.
+ */
 function storedRecordOf(value: unknown): StoredRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return undefined;
   const fields = value as Record<string, unknown>;
+  if (Object.keys(fields).some((key) => !STORED_MEMBERS.has(key)))
+    return undefined;
   const { v, encoded, deepLink, inviterName, fileName, columns, rowCount } =
     fields;
   if (v !== RECORD_VERSION) return undefined;
-  if (typeof encoded !== "string" || typeof deepLink !== "string")
+  if (!isBoundedString(encoded, MAX_ENCODED_INVITATION_LENGTH))
     return undefined;
-  if (!deepLink.endsWith(`#${encoded}`)) return undefined;
-  if (typeof inviterName !== "string" || typeof fileName !== "string")
+  if (typeof deepLink !== "string" || deepLink !== ownDeepLink(encoded))
     return undefined;
-  if (!isStringArray(columns) || columns.length === 0) return undefined;
+  if (
+    !isBoundedString(inviterName, MAX_TEXT_LENGTH) ||
+    !isBoundedString(fileName, MAX_FILE_NAME_BYTES)
+  )
+    return undefined;
+  if (!isColumnList(columns)) return undefined;
   if (
     typeof rowCount !== "number" ||
     !Number.isSafeInteger(rowCount) ||
@@ -145,7 +201,10 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
   )
     return undefined;
   const { csvDelimiter, includeOwnColumns } = fields;
-  if (csvDelimiter !== undefined && typeof csvDelimiter !== "string")
+  if (
+    csvDelimiter !== undefined &&
+    (typeof csvDelimiter !== "string" || !isCsvDelimiterChoice(csvDelimiter))
+  )
     return undefined;
   if (
     includeOwnColumns !== undefined &&
@@ -242,6 +301,12 @@ async function pendingInvitationOf(
       ? { csvDelimiter: stored.csvDelimiter }
       : {}),
   };
+}
+
+/** Remove a kept invitation that has expired or no longer reads, leaving one
+ * that can still be waited on. */
+export async function prunePendingInvitation(now: Date): Promise<void> {
+  await readPendingInvitation(now);
 }
 
 /** What reading the file chosen again for a resume found. */

@@ -451,6 +451,7 @@ export {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
   InvitationDecodeError,
+  MAX_ENCODED_INVITATION_LENGTH,
   MAX_INVITATION_LIFETIME_SECONDS,
   decodeInvitation,
   encodeInvitation,
@@ -666,6 +667,7 @@ export {
   unshownDeclaredNamesLine,
 } from "./consent/declaredNameBound.js";
 export {
+  CSV_LINE_BYTE_CEILING,
   loadCSVFile,
   streamCSVRows,
   readRowColumn,

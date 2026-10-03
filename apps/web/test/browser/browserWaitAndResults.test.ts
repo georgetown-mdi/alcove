@@ -22,7 +22,7 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { timeOfDayLabel } from "@exchange/exchangeRun";
 
-import { createAppMount } from "./renderApp";
+import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
 import type * as WaitForConnectionModule from "@psi/transport/waitForConnection";
@@ -421,6 +421,36 @@ describe("waiting again on an invitation after a reload", () => {
         .query(),
     ).toBeNull();
     expect(window.sessionStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  test("a failure the invitation cannot retry removes it before any start over, and a reload offers nothing", async () => {
+    expectConsole("error", "Error: kex failed");
+    await createInvitation();
+    expect(window.sessionStorage.getItem(PENDING_KEY)).not.toBeNull();
+    lifecycleCall(0).onError({
+      category: "security",
+      error: new Error("kex failed"),
+    });
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Start over with a fresh invitation",
+        }),
+      )
+      .toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(window.sessionStorage.getItem(PENDING_KEY)).toBeNull(),
+    );
+
+    app.unmount();
+    app.render(createElement(InviterScreen));
+    await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
+    await flushPendingUpdates();
+    expect(
+      page
+        .getByRole("heading", { name: "Your invitation is still open" })
+        .query(),
+    ).toBeNull();
   });
 
   test("starting over removes the kept invitation", async () => {
