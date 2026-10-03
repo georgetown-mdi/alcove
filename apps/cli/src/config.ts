@@ -86,6 +86,68 @@ import type { SensitiveFileLabel } from "./sensitiveFile";
 export const DEFAULT_CONFIG_PATH = "./alcove.yaml";
 
 /**
+ * The prefix every fill-this-in value a written configuration holds begins
+ * with: the `init` template's and the provisioning commands' host, username,
+ * directory, and identity placeholders.
+ */
+export const CONFIG_PLACEHOLDER_PREFIX = "REPLACE_WITH_";
+
+/**
+ * The dotted, snake_case paths of the string values under `value` that still
+ * hold a {@link CONFIG_PLACEHOLDER_PREFIX} placeholder, in document order.
+ * `path` names `value` itself (`["connection"]`). Matches a placeholder
+ * anywhere in the string, so a directory placeholder written as an absolute
+ * path (`/REPLACE_WITH_...`) is found too.
+ */
+export function configPlaceholderFields(
+  value: unknown,
+  path: ReadonlyArray<string>,
+): Array<string> {
+  if (typeof value === "string")
+    return value.includes(CONFIG_PLACEHOLDER_PREFIX) ? [path.join(".")] : [];
+  if (Array.isArray(value))
+    return value.flatMap((item, index) =>
+      configPlaceholderFields(item, [
+        ...path.slice(0, -1),
+        `${path.at(-1) ?? ""}[${index}]`,
+      ]),
+    );
+  if (value !== null && typeof value === "object")
+    return Object.entries(value).flatMap(([key, item]) =>
+      configPlaceholderFields(item, [...path, snakeizeKey(key)]),
+    );
+  return [];
+}
+
+/**
+ * Refuse a configuration that still holds a {@link CONFIG_PLACEHOLDER_PREFIX}
+ * value under `value`, naming the field and the file. The value itself is
+ * left out of the message: a credential read from an `@path` file is already
+ * resolved here, and its content is not echoed.
+ *
+ * `remedyFor` may return the closing sentence for a field, in place of the
+ * default, for a field a flag can also set for one run.
+ *
+ * @throws {UsageError} naming the field.
+ */
+export function assertNoConfigPlaceholder(params: {
+  value: unknown;
+  path: ReadonlyArray<string>;
+  configFile: string;
+  remedyFor?: (field: string) => string | undefined;
+}): void {
+  const field = configPlaceholderFields(params.value, params.path)[0];
+  if (field === undefined) return;
+  const remedy =
+    params.remedyFor?.(field) ??
+    `Replace it with this exchange's value before running the exchange.`;
+  const message = messageWithOperatorText`config file ${operatorSuppliedText(
+    params.configFile,
+  )} still has a ${CONFIG_PLACEHOLDER_PREFIX}... placeholder as ${field}. ${remedy}`;
+  throw keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+/**
  * The server/credential overrides {@link applyConnectionOverrides} writes into a
  * connection's `connection.server` block (host/port/credentials) and its
  * channel directory paths. Paired with the tuning/toggle

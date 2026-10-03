@@ -9,6 +9,7 @@ import {
   BUILT_IN_LINKAGE_RULE_SETS,
   DEFAULT_LINKAGE_RULE_SET,
   ExchangeSpecSchema,
+  getDefaultLinkageTerms,
   StandardizationSchema,
   UsageError,
   getDiagnosticSink,
@@ -20,15 +21,23 @@ import {
 
 import {
   FIELD_DOCS,
+  FILEDROP_FIELD_DOCS,
   INFERRED_SECTIONS_HINT,
   OPTIONAL_SECTIONS,
+  PLACEHOLDER_FILEDROP_PATH,
+  PLACEHOLDER_SFTP_PATH,
   renderConfigTemplate,
+  SFTP_FIELD_DOCS,
 } from "../../../src/configTemplate";
 import {
   buildTemplateData,
   decideOverwrite,
   handler as initHandler,
-  resolveInitInput,
+  INIT_URL_PASSWORD_REFUSED,
+  INIT_URL_UNREADABLE,
+  INIT_WEBRTC_REFUSED,
+  resolveInitPositionals,
+  templateConnection,
 } from "../../../src/commands/init";
 import { buildDataSpec, loadInputRows } from "../../../src/onlineBootstrap";
 import { warnOnLinkageRuleSetCitationDrift } from "../../../src/config";
@@ -230,11 +239,49 @@ test("renderConfigTemplate: every FIELD_DOCS entry lands a comment in the docume
   const file = path.join(dir, "in.csv");
   fs.writeFileSync(file, SAMPLE_CSV);
   const template = renderConfigTemplate(await buildTemplateData(file, "Org"));
-  for (const { path: docPath, lines } of FIELD_DOCS) {
+  for (const { path: docPath, lines } of [...FIELD_DOCS, ...SFTP_FIELD_DOCS]) {
     expect(template, `comment for ${docPath.join(".")} missing`).toContain(
       lines[0],
     );
   }
+});
+
+test("renderConfigTemplate: a filedrop block gets its own field comments and parses", () => {
+  const template = renderConfigTemplate(
+    { linkageTerms: getDefaultLinkageTerms("Org") },
+    { channel: "filedrop", path: "/mnt/share/drop" },
+  );
+  for (const { path: docPath, lines } of FILEDROP_FIELD_DOCS)
+    expect(template, `comment for ${docPath.join(".")} missing`).toContain(
+      lines[0],
+    );
+  expect(template).not.toContain(SFTP_FIELD_DOCS[0]!.lines[0]);
+  expect(parseExchangeSpec(YAML.parse(template)).connection).toMatchObject({
+    channel: "filedrop",
+    path: "/mnt/share/drop",
+  });
+});
+
+test("renderConfigTemplate: undeclared input columns are listed as commented entries", async () => {
+  const dir = scratchDir();
+  const file = path.join(dir, "in.csv");
+  fs.writeFileSync(
+    file,
+    "first_name,last_name,dob,score,free text\nA,B,1990-01-02,5,x\n",
+  );
+  const data = await buildTemplateData(file, "Org");
+  expect(data.undeclaredColumns).toEqual(["score", "free text"]);
+  const template = renderConfigTemplate(data);
+  const active = parseExchangeSpec(YAML.parse(template));
+  expect(active.metadata?.map((column) => column.name)).not.toContain("score");
+  expect(template).toContain("  # - name: score\n");
+  expect(template).toContain("  # - name: free text\n");
+});
+
+test("renderConfigTemplate: no input file lists no undeclared columns", async () => {
+  const data = await buildTemplateData(undefined, "Org");
+  expect(data.undeclaredColumns).toBeUndefined();
+  expect(renderConfigTemplate(data)).not.toContain("not declared above");
 });
 
 test("the commented metadata/standardization hint is valid when uncommented", () => {
@@ -490,16 +537,168 @@ test("buildTemplateData: an unreadable input file is a usage error (exit 64)", a
   ).rejects.toBeInstanceOf(UsageError);
 });
 
-// --- resolveInitInput --------------------------------------------------------
+// --- resolveInitPositionals --------------------------------------------------
 
-test("resolveInitInput: no positional, a file, and `-` all resolve", () => {
-  expect(resolveInitInput([])).toBeUndefined();
-  expect(resolveInitInput(["data.csv"])).toBe("data.csv");
-  expect(resolveInitInput(["-"])).toBe("-");
+test("resolveInitPositionals: no positional, a file, and `-` all resolve", () => {
+  expect(resolveInitPositionals([])).toEqual({});
+  expect(resolveInitPositionals(["data.csv"])).toEqual({ input: "data.csv" });
+  expect(resolveInitPositionals(["-"])).toEqual({ input: "-" });
 });
 
-test("resolveInitInput: a second positional is a usage error", () => {
-  expect(() => resolveInitInput(["data.csv", "out.csv"])).toThrow(UsageError);
+test("resolveInitPositionals: a leading URL is the connection, then the input", () => {
+  const resolved = resolveInitPositionals(["sftp://h/drop", "data.csv"]);
+  expect(resolved.url?.href).toBe("sftp://h/drop");
+  expect(resolved.input).toBe("data.csv");
+  expect(resolveInitPositionals(["file:///mnt/drop"]).input).toBeUndefined();
+});
+
+test("resolveInitPositionals: a further positional is a usage error", () => {
+  expect(() => resolveInitPositionals(["data.csv", "out.csv"])).toThrow(
+    UsageError,
+  );
+  expect(() =>
+    resolveInitPositionals(["sftp://h/drop", "data.csv", "out.csv"]),
+  ).toThrow(UsageError);
+});
+
+test("resolveInitPositionals: an unparsable scheme-prefixed URL is refused without echo", () => {
+  for (const bad of [
+    "sftp://user:pwDISTINCT7@ho st/x",
+    "sftp://user:pwDISTINCT7@host:99999/x",
+  ]) {
+    let message = "";
+    try {
+      resolveInitPositionals([bad]);
+    } catch (error) {
+      expect(error).toBeInstanceOf(UsageError);
+      message = (error as Error).message;
+    }
+    expect(message).toBe(INIT_URL_UNREADABLE);
+    expect(message).not.toContain("pwDISTINCT7");
+  }
+});
+
+test.each([
+  ["a file URL naming a remote host", "file://remote/pwDISTINCT7"],
+  ["an sftp URL naming no host", "sftp:///pwDISTINCT7"],
+  ["a single slash after the scheme", "sftp:/user:pwDISTINCT7@host/x"],
+  [
+    "a single slash after an upper-case scheme",
+    "SFTP:/user:pwDISTINCT7@host/x",
+  ],
+])(
+  "handler: %s is refused (exit 64) without echoing the argument",
+  async (_label, url) => {
+    const dir = scratchDir();
+    const logFile = path.join(dir, "init.log");
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => {}) as never);
+    const written: Array<string> = [];
+    const capture = (chunk: unknown): boolean => {
+      written.push(String(chunk));
+      return true;
+    };
+    vi.spyOn(process.stdout, "write").mockImplementation(capture as never);
+    vi.spyOn(process.stderr, "write").mockImplementation(capture as never);
+
+    await initHandler(
+      argvFor({
+        args: [url],
+        "config-file": path.join(dir, "alcove.yaml"),
+        "log-file": logFile,
+        "log-level": "info",
+      }),
+    );
+
+    expect(exit).toHaveBeenCalledWith(64);
+    for (const text of [written.join(""), fs.readFileSync(logFile, "utf8")])
+      expect(text).not.toContain("pwDISTINCT7");
+    expect(fs.readFileSync(logFile, "utf8")).toContain("could not use the URL");
+  },
+);
+
+test("templateConnection: a URL connectionFromURL refuses is reported without the URL", () => {
+  let message = "";
+  try {
+    templateConnection(new URL("file://remote/pwDISTINCT7"), undefined);
+  } catch (error) {
+    expect(error).toBeInstanceOf(UsageError);
+    message = (error as Error).message;
+  }
+  expect(message).toContain("three slashes");
+  expect(message).not.toContain("pwDISTINCT7");
+  expect(message).not.toContain("got:");
+});
+
+// --- templateConnection ------------------------------------------------------
+
+test("templateConnection: an sftp URL fills every field but the credential", () => {
+  expect(
+    templateConnection(
+      new URL("sftp://alice@sftp.example.org/drop"),
+      undefined,
+    ),
+  ).toEqual({
+    channel: "sftp",
+    server: {
+      host: "sftp.example.org",
+      port: 22,
+      username: "alice",
+      path: "/drop",
+    },
+  });
+});
+
+test("templateConnection: a URL with no directory names the login directory", () => {
+  const connection = templateConnection(new URL("ssh://bob@h:2200"), "sftp");
+  expect(connection).toEqual({
+    channel: "sftp",
+    server: { host: "h", port: 2200, username: "bob" },
+  });
+});
+
+test("templateConnection: a URL with no user keeps the username placeholder", () => {
+  const connection = templateConnection(new URL("sftp://h/drop"), undefined);
+  expect(connection.channel === "sftp" && connection.server.username).toBe(
+    "REPLACE_WITH_SSH_USERNAME",
+  );
+});
+
+test("templateConnection: a file URL and --channel filedrop write a filedrop block", () => {
+  expect(
+    templateConnection(new URL("file:///mnt/share/drop"), undefined),
+  ).toEqual({ channel: "filedrop", path: "/mnt/share/drop" });
+  expect(templateConnection(undefined, "filedrop")).toEqual({
+    channel: "filedrop",
+    path: PLACEHOLDER_FILEDROP_PATH,
+  });
+});
+
+test("templateConnection: no URL and no channel is the sftp placeholder block", () => {
+  const connection = templateConnection(undefined, undefined);
+  expect(connection.channel === "sftp" && connection.server.path).toBe(
+    PLACEHOLDER_SFTP_PATH,
+  );
+  expect(templateConnection(undefined, "sftp")).toEqual(connection);
+});
+
+test("templateConnection: webrtc, an unknown channel, a mismatch, and a URL password are refused", () => {
+  expect(() => templateConnection(new URL("wss://h/peers"), undefined)).toThrow(
+    INIT_WEBRTC_REFUSED,
+  );
+  expect(() => templateConnection(undefined, "webrtc")).toThrow(
+    INIT_WEBRTC_REFUSED,
+  );
+  expect(() => templateConnection(undefined, "ftp")).toThrow(
+    "unknown --channel ftp",
+  );
+  expect(() =>
+    templateConnection(new URL("sftp://h/drop"), "filedrop"),
+  ).toThrow("does not match the URL");
+  expect(() =>
+    templateConnection(new URL("sftp://alice:pw@h/drop"), undefined),
+  ).toThrow(INIT_URL_PASSWORD_REFUSED);
 });
 
 // --- decideOverwrite ---------------------------------------------------------

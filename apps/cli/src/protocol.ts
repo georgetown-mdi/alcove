@@ -232,20 +232,26 @@ export const SIGNING_WITHOUT_RECORD_WARNING =
   "evidence, or drop the signing block if you do not.";
 
 /**
+ * The remedy {@link undeclaredColumnsNotice} ends with on a run that read a
+ * configuration: the metadata block of that file.
+ */
+export const UNDECLARED_COLUMNS_CONFIG_REMEDY =
+  "To send one, declare it in the configuration's metadata block with " +
+  "is_payload: true; to leave one out without this notice, declare it " +
+  "with role: ignored.";
+
+/**
  * The notice naming the input columns this run does not send because its
- * metadata does not declare them, ending with the remedy the configuration
- * takes, or `undefined` when there are none. Composed raw: the names are the
- * input file's header, escaped once at each sink.
+ * metadata does not declare them, ending with `remedy` (by default
+ * {@link UNDECLARED_COLUMNS_CONFIG_REMEDY}), or `undefined` when there are
+ * none. Composed raw: the names are the input file's header, escaped once at
+ * each sink.
  */
 export function undeclaredColumnsNotice(
   prepared: Pick<PreparedExchange, "undeclaredColumns">,
+  remedy: string = UNDECLARED_COLUMNS_CONFIG_REMEDY,
 ): string | undefined {
-  return describeUndeclaredColumns(
-    prepared.undeclaredColumns ?? [],
-    "To send one, declare it in the configuration's metadata block with " +
-      "is_payload: true; to leave one out without this notice, declare it " +
-      "with role: ignored.",
-  );
+  return describeUndeclaredColumns(prepared.undeclaredColumns ?? [], remedy);
 }
 
 const PAYLOAD_SEND_NOTICE_LISTED_COLUMNS = 10;
@@ -1791,10 +1797,12 @@ export function warnUndeclaredColumns(params: {
   alreadyWarned: boolean;
   log: ReturnType<typeof getLogger>;
   emit: (fn: (e: EventStreamEmitter) => void) => void;
+  /** The notice's closing remedy, for a run with no configuration to edit. */
+  remedy?: string;
 }): boolean {
-  const { prepared, alreadyWarned, log, emit } = params;
+  const { prepared, alreadyWarned, log, emit, remedy } = params;
   if (alreadyWarned) return alreadyWarned;
-  const undeclaredNotice = undeclaredColumnsNotice(prepared);
+  const undeclaredNotice = undeclaredColumnsNotice(prepared, remedy);
   if (undeclaredNotice === undefined) return alreadyWarned;
   log.warn(
     redactAndSanitizeForDisplay(undeclaredNotice, {

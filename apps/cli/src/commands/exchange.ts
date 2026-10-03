@@ -11,7 +11,6 @@ import {
   retiredSettingIssue,
   getLogger,
   OperatorConfigError,
-  PLACEHOLDER_SSH_USERNAME,
   prepareForExchange,
   resolveExchangeInputs,
   sanitizeErrorForDisplay,
@@ -26,6 +25,7 @@ import type {
 import {
   applyConnectionOverrides,
   announceRetainMode,
+  assertNoConfigPlaceholder,
   assertPartnerFingerprintRecordable,
   assertRetainSweepGuard,
   configWithNamedRuleSetRules,
@@ -617,18 +617,18 @@ export function loadConfig(options: ExchangeOptions): {
     );
   }
 
-  // A minted or seeded SFTP connection holds this placeholder until the
-  // operator names their SSH account; refused here rather than sent to the
-  // server as a login attempt.
-  if (
-    connection.channel === "sftp" &&
-    connection.server.username === PLACEHOLDER_SSH_USERNAME
-  ) {
-    const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      options.configFile,
-    )} still has the placeholder ${PLACEHOLDER_SSH_USERNAME} as connection.server.username. Set it to your account on the SFTP server, or pass --server-username, before running the exchange.`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
-  }
+  // Checked after the overrides, so a flag that sets a field for this run
+  // (--server-username) stands in for the placeholder the file still holds.
+  assertNoConfigPlaceholder({
+    value: connection,
+    path: ["connection"],
+    configFile: options.configFile,
+    remedyFor: (field) =>
+      field === "connection.server.username"
+        ? "Set it to your account on the SFTP server, or pass " +
+          "--server-username, before running the exchange."
+        : undefined,
+  });
 
   // Warn when connection-per-poll is paired with a short poll interval, so a
   // wasteful setting persisted in alcove.yaml is flagged, not only a CLI
@@ -1224,6 +1224,20 @@ export async function handler(argv: Arguments): Promise<void> {
         };
     } else {
       termsIdentity = exchangeDataSpec.linkageTerms?.identity;
+    }
+    try {
+      assertNoConfigPlaceholder({
+        value: exchangeDataSpec,
+        path: [],
+        configFile: options.configFile,
+        remedyFor: (field) =>
+          field === "linkage_terms.identity"
+            ? "Replace it with this party's name, organization, and " +
+              "contact, or pass --identity, before running the exchange."
+            : undefined,
+      });
+    } catch (err) {
+      exitWithError(log, err, 64);
     }
 
     let prepared: PreparedExchange;

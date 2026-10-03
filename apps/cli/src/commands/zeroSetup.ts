@@ -112,7 +112,20 @@ export const QUICK_EXCHANGE_USAGE =
   "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FILE]\n\n" +
   "Run 'alcove COMMAND --help' for a command's own options. Without a\n" +
   "command, alcove runs a quick exchange through the server or shared\n" +
-  "folder at URL; the options below are the quick exchange's.";
+  "folder at URL; the options below are the quick exchange's. A quick\n" +
+  "exchange sends matches only: your id for each matched record, and no\n" +
+  "other column. Each step waits up to one poll interval\n" +
+  "(--polling-frequency), so even a small practice run takes a minute or\n" +
+  "more.";
+
+/**
+ * How a quick exchange's undeclared-columns notice ends: the run reads no
+ * configuration, so the remedy is to write one and run from it.
+ */
+export const QUICK_EXCHANGE_UNDECLARED_REMEDY =
+  "A quick exchange sends matches only. To send one of these columns, run " +
+  "'alcove init' with this run's URL and input file, uncomment the column's " +
+  "entry under metadata in the file it writes, and run 'alcove exchange'.";
 
 /** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
@@ -136,6 +149,11 @@ export function builder(cmd: Argv): Argv {
           "Both parties run the quick exchange against the same server URL.\n" +
           "Linkage terms are inferred from each party's input file. No\n" +
           "configuration files are required or written unless --save is given.\n" +
+          "It sends matches only: your id for each matched record, and no\n" +
+          "other column; to send columns, write a configuration with\n" +
+          "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
+          "waits up to one poll interval (--polling-frequency), so even a\n" +
+          "small practice run takes a minute or more.\n" +
           "There is no shared secret, so anyone who administers the server or\n" +
           "shared folder could stand in for your partner; set up a recurring\n" +
           "exchange with 'alcove invite' and 'alcove accept' for one protected\n" +
@@ -894,6 +912,7 @@ export async function handler(argv: Arguments): Promise<void> {
       undeclaredColumnsWarned = warnUndeclaredColumns({
         prepared,
         alreadyWarned: false,
+        remedy: QUICK_EXCHANGE_UNDECLARED_REMEDY,
         log,
         emit: (fn) => {
           if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);

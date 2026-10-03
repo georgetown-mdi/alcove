@@ -138,13 +138,21 @@ A configuration file can name its rule set instead of writing the rules out: a `
 ## Initialization
 
 ```sh
-alcove init [INPUT_FILE]
+alcove init [--channel sftp|filedrop] [URL] [INPUT_FILE]
 ```
 
 This creates a configuration file and then exits - no exchange or invitation is generated, and no key file is created. The file is a commented template with every option documented inline and all defaults pre-filled (whether the template documents every option is unverified as of 2026-09-29); if an input file is provided, column metadata, linkage fields, and data standardizing transformations are inferred from it. The user can then edit the file by hand before running their first exchange.
 
+```sh
+# A connection block that needs only the SFTP credential added
+alcove init sftp://alice@sftp.example.org/exchanges/drop input.csv
+```
+
 - **Identity.** Pass `--identity` to pre-fill the linkage-terms identity. Without it, `init` asks for one where there is a terminal to ask at and writes your answer into the template; where there is none, or where the answer is blank, a placeholder is written instead, and it is refused wherever a label is read until you replace it (see [Configuration](#configuration)).
-- **Connection.** The template's `connection` block is an `sftp` placeholder to replace: its host and `username` are marked `REPLACE_WITH_...`. `alcove exchange` refuses a configuration still holding the username placeholder (exit 64) before it connects, naming `connection.server.username`; set the field, or pass `--server-username` for one run. An offline `alcove invite` or `alcove accept` that writes an `sftp` connection writes the same username placeholder, refused the same way.
+- **Connection from a URL.** Given a URL first, `init` fills the `connection` block from it, with the same schemes as the [zero-setup exchange](#zero-setup-exchange): an `sftp://` or `ssh://` URL sets the host, port, username, and the server directory as `path` (a URL with no directory leaves `path` out, for the login directory), and a `file://` URL sets a `filedrop` block's `path`. The credential is the one thing left to add, as an `@path` under `connection.server`; a URL holding a password is refused (exit 64), so the password is not written into the file. A URL with no username leaves the username placeholder.
+- **Connection without a URL.** The block is a placeholder to replace: `--channel sftp` (the default) marks the host, `username`, and `path` `REPLACE_WITH_...`, and `--channel filedrop` marks the shared directory `path`. A `ws://` or `wss://` URL and `--channel webrtc` are refused (exit 64): a `webrtc` block is written by [`alcove invite`](#inviting-over-webrtc) or by accepting an invitation, and the template ends with a commented `webrtc` example.
+- **Placeholders are refused.** `alcove exchange` refuses a configuration still holding any `REPLACE_WITH_...` value (exit 64) before it connects, naming the field -- for example `connection.server.host` or `linkage_terms.identity`. A flag that sets the field for one run stands in for it: `--server-username` for the username, `--identity` for the identity. An offline `alcove invite` or `alcove accept` that writes an `sftp` connection writes the same username placeholder, refused the same way.
+- **Columns not declared.** With an input file, the input columns the inference does not recognize are not declared in `metadata`, so they are not sent. The template lists each one after the `metadata` block as a commented entry; uncomment it to send that column to your partner for matched records.
 - **The console as an alternative.** The [console](CONSOLE.md) is an alternative to hand-editing this template: an operator prototypes one exchange there and the console produces a recurring-run hand-off -- a filled-in `alcove.yaml` (or the zero-setup command), the `alcove exchange` command, and cron/Task Scheduler examples -- to move that run to a scheduled command-line exchange (see [Recurring exchange](#recurring-exchange)). The hand-off fills in the portable settings that carried over from the run and marks the machine-specific paths as placeholders to set; it is not a full guided-authoring wizard.
 - **Exit behavior.** On success the command prints a notice identifying the configuration file it wrote and exits 0; invalid caller input (an unreadable or malformed `INPUT_FILE`) exits 64, and the command performs no network activity on any path.
 
@@ -158,7 +166,12 @@ The identity question follows that decision, so a run that leaves the existing f
 alcove [--identity IDENTITY] [--save] [--linkage-strategy STRATEGY] [--deduplicate] [--csv-delimiter DELIM] [--sweep-exchange-files [--force-retain-sweep]] URL INPUT_FILE [OUTPUT_FILE]
 ```
 
-Both parties run this command against the same server. Linkage terms, metadata, and data standardizing transformations are inferred from each party's input file; if the inferred terms disagree, the exchange fails with an error. Users are expected to prepare files with matching schemas before running. The server coordinates their connection and the exchange proceeds immediately without any prior configuration. By default, no configuration files are written. This mode is suitable for one-off exchanges and for onboarding sessions where both parties are in direct communication. Security relies on the transport authentication layer and file system controls rather than a pre-shared secret. If there is no end-to-end encryption (e.g. SFTP or file-drop), then implicitly trust is placed in the server administrator.
+Both parties run this command against the same server. Linkage terms, metadata, and data standardizing transformations are inferred from each party's input file; if the inferred terms disagree, the exchange fails with an error.
+
+- **It sends matches only.** Each party sends the other its id for each matched record and no other column. A column the run does not send is named in a warning before it connects; to send one, write a configuration with [`alcove init URL INPUT_FILE`](#initialization), uncomment that column's entry under `metadata`, and run [`alcove exchange`](#recurring-exchange).
+- **It takes a minute or more.** Each step waits up to one poll interval (`--polling-frequency`, 5 seconds by default) for the partner's next file, so even a small practice run takes a minute or more.
+
+Users are expected to prepare files with matching schemas before running. The server coordinates their connection and the exchange proceeds immediately without any prior configuration. By default, no configuration files are written. This mode is suitable for one-off exchanges and for onboarding sessions where both parties are in direct communication. Security relies on the transport authentication layer and file system controls rather than a pre-shared secret. If there is no end-to-end encryption (e.g. SFTP or file-drop), then implicitly trust is placed in the server administrator.
 
 `--linkage-strategy STRATEGY` chooses the linkage strategy (`cascade` or `single-pass`) exactly as for [`alcove invite`](#offline-invitation), with the same `single-pass` disclosure tradeoff. Because each party infers its own terms here rather than one party authoring them for both, both parties must pass the same value: the strategy is a mandatory-consistency term, so a mismatch aborts the exchange. An unknown value is a usage error before any connection is attempted.
 
@@ -340,13 +353,13 @@ The outcome of the question is written the same way, on the same terminal at eve
 
 The no-effect notice an [`--identity`](#configuration) raises over a kept configuration is shown by the same rule, taking `warn` level where the log records it.
 
-The pairing follows the question rather than the terminal: acceptance without `--consent-to-terms` asks even where nothing can answer -- it reads end-of-file and declines -- and the terms go to standard error alongside the question it asked. `--consent-to-terms` is what keeps them off standard error, by asking nothing.
+Acceptance without `--consent-to-terms` asks only where standard input is a terminal. Where it is not -- a pipe, a redirect, a scheduled job -- the acceptance exits 64 before it shows the terms, naming the flag, rather than reading a piped line as the answer. At a terminal the terms go to standard error alongside the question; `--consent-to-terms` is what keeps them off standard error, by asking nothing.
 
 One limit of the pairing: Alcove does not verify that the terminal took what it was sent. If standard error stops accepting output partway through -- a full pipe, or a reader that closed early -- the remaining lines are dropped and the question is still asked, so a prompt that arrives after a truncated display is answered against what you can see rather than the whole surface.
 
 ### Accepting without the prompt
 
-`--consent-to-terms` records your consent to this invitation's terms in advance and skips the interactive confirmation, so `accept` can run unattended or in a script -- where there is no terminal, the prompt otherwise reads end-of-file and declines. It bypasses the one human checkpoint before the configuration and linkage key are written from the partner-supplied invitation, so review the terms before using it.
+`--consent-to-terms` records your consent to this invitation's terms in advance and skips the interactive confirmation, so `accept` can run unattended or in a script -- where there is no terminal, `accept` otherwise exits 64 before showing the terms. It bypasses the one human checkpoint before the configuration and linkage key are written from the partner-supplied invitation, so review the terms before using it.
 
 - **Running the exchange itself.** Where the acceptance [runs the exchange itself](#accepting-and-running-a-webrtc-exchange), that same checkpoint is the last one before it connects to the coordination server the invitation names and transmits, so the flag authorizes connecting and running unattended as well as writing the files.
 - **The identity question.** It also silences the identity question, for the same reason and by the same rule: the flag is what frees standard input, so nothing may read it there, and an acceptance given no `--identity` is refused rather than asked.
@@ -568,7 +581,7 @@ It asks nothing and refuses nothing: a run that is valid without it stays valid.
 
 Where your own terms leave neither party expecting a result, the display says so in place of what your partner would learn: that pair is refused at the terms exchange, so the run stops there.
 
-On a zero-setup run the display is the only statement of these facts you get, because nothing was written down for you to read: the terms and the transmitted columns are inferred from your input file as the run starts, and a column Alcove recognizes as neither a linkage nor an identifier column is sent to your partner for matched records. Check the list against what you meant to send. A column that should not be there is removed from the input file, or kept out of the transmitted set by authoring a configuration ([`alcove init`](#initialization)) and running [`alcove exchange`](#recurring-exchange) against it instead.
+On a zero-setup run the display is the only statement of these facts you get, because nothing was written down for you to read: the terms and the transmitted columns are inferred from your input file as the run starts, and a column Alcove recognizes as neither a linkage nor an identifier column is not sent. Check the list against what you meant to send. To send a column it leaves out, or to leave out one it sends, author a configuration ([`alcove init`](#initialization)) and run [`alcove exchange`](#recurring-exchange) against it instead.
 
 ### Your partner's first payload columns
 
