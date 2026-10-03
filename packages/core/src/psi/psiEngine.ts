@@ -13,7 +13,6 @@ import {
   mergeAssociationChunks,
   mergeCountOnlyResponseChunks,
   mergeSetupChunks,
-  psiChunkRanges,
   serializeResponse,
   serializeSetup,
 } from "./psiChunks";
@@ -21,10 +20,12 @@ import {
   assertStrictlyAscending,
   WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT,
   WASM_MATCH_BYTES_PER_SETUP_ELEMENT,
+  maskingChunkRanges,
   matchSetupSliceElements,
 } from "./psiMatchSlices";
 
 import type { PsiAssociationChunk, PsiChunkRange } from "./psiChunks";
+import type { WasmMaskingOperation } from "./psiMatchSlices";
 import type { Config } from "../types";
 
 // The deserialized server setup the joiner holds between receiving it and matching
@@ -226,10 +227,12 @@ export interface PsiEngine {
 /** Settings for an {@link InProcessPsiEngine}; the worker entry points pass them through {@link ./psiWorkerEngine.servePsiWorker}. */
 export interface InProcessPsiEngineOptions {
   /**
-   * The engine memory one match call is sized to, in bytes: the held setup is
-   * matched in contiguous slices small enough that each call fits
-   * (psiMatchSlices.ts). Left out, every match takes the whole setup in one
-   * call, which is what the native addon runs.
+   * The engine memory one library call is sized to, in bytes: the held setup is
+   * matched in contiguous slices small enough that each call fits, and a
+   * masking chunk is held to the elements that fit (psiMatchSlices.ts). Left
+   * out, every match takes the whole setup in one call and every masking
+   * operation runs at the chunk policy's sizes, which is what the native
+   * addon runs.
    */
   readonly matchMemoryBudgetBytes?: number;
   /**
@@ -325,10 +328,14 @@ export class InProcessPsiEngine implements PsiEngine {
   }
 
   // How one operation over `total` elements is split: the measured policy,
-  // unless a test set a chunk size of its own.
-  private rangesFor(total: number): PsiChunkRange[] {
+  // held to the memory budget for a masking `operation`, unless a test set a
+  // chunk size of its own.
+  private rangesFor(
+    total: number,
+    operation?: WasmMaskingOperation,
+  ): PsiChunkRange[] {
     return this.chunkElements === undefined
-      ? psiChunkRanges(total)
+      ? maskingChunkRanges(total, operation, this.matchMemoryBudgetBytes)
       : chunkRangesOfSize(total, this.chunkElements);
   }
 
@@ -420,7 +427,7 @@ export class InProcessPsiEngine implements PsiEngine {
     const contributed = countOnly
       ? valuesContributedExactlyOnce(values)
       : values;
-    const ranges = this.rangesFor(contributed.length);
+    const ranges = this.rangesFor(contributed.length, "createSetupMessage");
     // One chunk is the single call this operation has always been: the
     // library's own message goes out as it serialized it, with no element list
     // materialized beside it and no merge to reproduce its sort.
@@ -473,7 +480,10 @@ export class InProcessPsiEngine implements PsiEngine {
           `${modeName(request.getRevealIntersection())} mode, where this ` +
           `exchange runs ${modeName(this.revealsIdentifiers)}`,
       );
-    const ranges = this.rangesFor(request.getEncryptedElementsList().length);
+    const ranges = this.rangesFor(
+      request.getEncryptedElementsList().length,
+      "processRequest",
+    );
     // One chunk is the single call: the partner's request is re-encrypted as
     // the library deserialized it, so nothing materializes its element list.
     if (ranges.length === 1)
@@ -515,7 +525,7 @@ export class InProcessPsiEngine implements PsiEngine {
     const contributed = this.revealsIdentifiers
       ? values
       : valuesContributedExactlyOnce(values);
-    const ranges = this.rangesFor(contributed.length);
+    const ranges = this.rangesFor(contributed.length, "createRequest");
     if (ranges.length === 1)
       return Promise.resolve(
         client.createRequest(contributed).serializeBinary(),
