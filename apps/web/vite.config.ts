@@ -310,6 +310,9 @@ export default defineConfig((_configEnv) => {
             // reuses a developer's running `npm run dev` rather than starting a
             // second one. The server-less vector suites pay a reuse-aware probe.
             globalSetup: ["./test/devServer/globalSetup.ts"],
+            // A suite's tests share one page, whose session storage would otherwise
+            // carry an invitation one test minted into the next test's file step.
+            setupFiles: ["./test/browser/clearSessionStorage.ts"],
             browser: {
               // These suites name a locator by a substring of the element's
               // rendered accessible name, which vitest's default exact

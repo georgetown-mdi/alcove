@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
@@ -43,6 +43,42 @@ describe("waitForIncomingConnection", () => {
     await expect(
       waitForIncomingConnection(makePeer().peer, { timeoutMs: 10 }),
     ).rejects.toBeInstanceOf(PartnerNoShowError);
+  });
+
+  describe("with a deadline", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test("ends at that deadline and states it as the time the wait ended", async () => {
+      vi.useFakeTimers();
+      const until = new Date(Date.now() + 5000);
+      const rejection = waitForIncomingConnection(makePeer().peer, {
+        until,
+      }).catch((error: unknown) => error);
+
+      await vi.advanceTimersByTimeAsync(4999);
+      let settled = false;
+      void rejection.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const error = await rejection;
+      expect(error).toBeInstanceOf(PartnerNoShowError);
+      expect((error as PartnerNoShowError).waitedUntil).toBe(until);
+      expect(Date.now()).toBe(until.getTime());
+    });
+
+    test("a deadline already passed ends the wait at once", async () => {
+      await expect(
+        waitForIncomingConnection(makePeer().peer, {
+          until: new Date(Date.now() - 1000),
+        }),
+      ).rejects.toBeInstanceOf(PartnerNoShowError);
+    });
   });
 
   test("an aborted wait is not the no-show condition", async () => {

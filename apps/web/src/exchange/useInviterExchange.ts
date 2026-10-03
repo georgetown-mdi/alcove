@@ -48,7 +48,12 @@ import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
-import { waitForIncomingConnection } from "@psi/transport/waitForConnection";
+
+import {
+  DEFAULT_PEER_WAIT_TIMEOUT_MS,
+  PartnerNoShowError,
+  waitForIncomingConnection,
+} from "@psi/transport/waitForConnection";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { whenDiagnostic } from "@utils/diagnostics";
@@ -78,6 +83,7 @@ import {
   initialRun,
   runWithFailure,
   stagesFor,
+  timeOfDayLabel,
 } from "./exchangeRun";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -130,6 +136,9 @@ export interface RunFailure {
    * seat whose config recovery returns to its settings offers a fresh start
    * instead. */
   settingsCannotResolve?: true;
+  /** Set when the partner never connected in the time this page waited. The
+   * seat offers its retry as "Keep waiting", on the same invitation. */
+  partnerNoShow?: true;
   /** Whether the alert offers "Try again" and the seat's retry runs
    * ({@link retryDispositionFor}). Every retry control reads this rather than
    * {@link category}. */
@@ -564,6 +573,29 @@ function failureContentFor(
         "invitation.",
     };
   }
+  // The partner never arrived in the time this page waited: nothing connected,
+  // so nothing was sent, and the same invitation can be waited on again.
+  if (error instanceof PartnerNoShowError) {
+    const until = timeOfDayLabel(error.waitedUntil ?? new Date());
+    return seat === "inviter"
+      ? {
+          category: "exchange",
+          title: "Your partner did not connect",
+          message:
+            `Your partner did not connect by ${until}, so this page stopped ` +
+            "waiting. None of your data was sent.",
+          partnerNoShow: true,
+        }
+      : {
+          category: "exchange",
+          title: "Your partner's page did not answer",
+          message:
+            `Your partner's page did not answer by ${until}. It may have ` +
+            "closed, or your partner may not have opened it yet. None of " +
+            "your data was sent.",
+          partnerNoShow: true,
+        };
+  }
   // A failure whose own message states the cause and the next step -- relayed
   // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised tagged in this
   // browser, such as core's reply-cap fault: "report it; retrying will not
@@ -816,6 +848,9 @@ export function useInviterExchange({
    * share block and shows a brief reconnecting notice, before it either resolves
    * to the recovery view (`reattached`) or falls back to the run's alert. */
   reattaching: boolean;
+  /** When this browser stops waiting for the partner, once it is listening;
+   * undefined before then and on a server-job run. */
+  listeningUntil: Date | undefined;
   tryAgain: () => void;
   abandonRun: () => void;
 } {
@@ -824,6 +859,7 @@ export function useInviterExchange({
   const [failure, setFailure] = useState<RunFailure>();
   const { runRecord, offerRunRecord, clearRunRecord } = useFailedRunRecord();
   const [warnings, setWarnings] = useState<Array<string>>([]);
+  const [listeningUntil, setListeningUntil] = useState<Date>();
   // The status of an exchange this run re-attached to on a busy (409) create,
   // else undefined. Drives the run surface's recovery-style copy; reset when a run
   // restarts or the invitation is discarded.
@@ -892,6 +928,7 @@ export function useInviterExchange({
     setCurrentJobId(undefined);
     setReattached(undefined);
     setReattaching(false);
+    setListeningUntil(undefined);
 
     // Output-generation half. The URLs the build creates are revoked when the
     // outputs are replaced or the console unmounts (effect above); a throw
@@ -961,8 +998,20 @@ export function useInviterExchange({
         signal,
         relay: relayForRun(),
       });
+      // The wait ends at the partner-wait ceiling, or sooner where the
+      // invitation expires first, and the share screen states that deadline.
+      const waitUntil = new Date(
+        Math.min(
+          Date.now() + DEFAULT_PEER_WAIT_TIMEOUT_MS,
+          Date.parse(minted.expires),
+        ),
+      );
+      if (!signal.aborted) setListeningUntil(waitUntil);
       try {
-        const conn = await waitForIncomingConnection(peer, { signal });
+        const conn = await waitForIncomingConnection(peer, {
+          signal,
+          until: waitUntil,
+        });
         return { peer, conn, psi, prepared };
       } catch (error) {
         peer.destroy();
@@ -1110,6 +1159,7 @@ export function useInviterExchange({
       setCurrentJobId(undefined);
       setReattached(undefined);
       setReattaching(false);
+      setListeningUntil(undefined);
       return;
     }
     startRef.current(invitation);
@@ -1177,6 +1227,7 @@ export function useInviterExchange({
     jobId: currentJobId,
     reattached,
     reattaching,
+    listeningUntil,
     tryAgain,
     abandonRun,
   };

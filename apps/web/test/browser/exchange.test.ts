@@ -1415,8 +1415,13 @@ describe("inviter screen", () => {
     )?.parentElement;
     expect(agreementRow?.textContent).toContain("MOU-2025-0042");
 
-    // Reset discards the authored terms and announces it politely.
+    // Reset discards the authored terms, after a confirm naming what it
+    // replaces, and announces it politely.
     await page.getByRole("button", { name: "Reset to defaults" }).click();
+    await page
+      .getByRole("dialog", { name: "Reset to defaults?" })
+      .getByRole("button", { name: "Reset to defaults" })
+      .click();
     await expect
       .element(page.getByText("Reset to the default settings."))
       .toBeInTheDocument();
@@ -1921,9 +1926,12 @@ describe("inviter screen", () => {
     // running the exchange.
     await expect
       .element(
-        page.getByText("Your browser is listening for your partner", {
-          exact: false,
-        }),
+        page.getByText(
+          "Your browser is getting ready to wait for your partner",
+          {
+            exact: false,
+          },
+        ),
       )
       .toBeInTheDocument();
 
@@ -2162,10 +2170,11 @@ describe("inviter screen", () => {
     expect(ledger.textContent).toContain("1,847 matched rows + shared columns");
     expect(ledger.textContent).toContain("Your file never left this browser.");
 
-    const another = Array.from(document.querySelectorAll("a")).find(
-      (anchor) => anchor.textContent === "Set up another exchange",
-    );
-    expect(another?.getAttribute("href")).toBe("/quick");
+    // The downloads exist only in this page and none was taken, so leaving
+    // asks first.
+    await expect
+      .element(page.getByRole("button", { name: "Set up another exchange" }))
+      .toHaveAttribute("aria-haspopup", "dialog");
   });
 
   test("post-create: a one-sided exchange states the withheld-result caveat", async () => {

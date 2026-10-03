@@ -25,31 +25,45 @@ export const DEFAULT_PEER_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
  * only for this error (see {@link ./managedRun.ts}, `rerunFailureLastRun`).
  */
 export class PartnerNoShowError extends Error {
-  constructor(message: string) {
+  /** When the wait ended, where the waiting side knows its own deadline; a
+   * caller that states the time to the operator falls back to the moment the
+   * error reached it. */
+  readonly waitedUntil: Date | undefined;
+
+  constructor(message: string, waitedUntil?: Date) {
     super(message);
     this.name = "PartnerNoShowError";
+    this.waitedUntil = waitedUntil;
   }
 }
 
 /**
  * Resolves with the first incoming {@link DataConnection} on `peer`, or
- * rejects with a {@link PartnerNoShowError} on `timeoutMs`, or with a plain
+ * rejects with a {@link PartnerNoShowError} at the deadline, or with a plain
  * abort error if `signal` aborts first. A settle-once guard, independent of
  * any caller's teardown, runs cleanup exactly once for whichever of
  * {connection, timeout, abort} wins, even when two fire in the same tick.
  *
  * @param peer     The local PeerJS peer awaiting an inbound connection.
  * @param options  `timeoutMs` overrides the {@link DEFAULT_PEER_WAIT_TIMEOUT_MS}
- *                 bound; `signal` lets the owner cancel the wait (on unmount or
- *                 a sibling teardown) and settle it promptly rather than leaving
- *                 the promise pending until the timer fires.
+ *                 bound; `until` sets the deadline itself instead, for a caller
+ *                 that shows the operator the time the wait ends, and is the
+ *                 `waitedUntil` the no-show error states; `signal` lets the
+ *                 owner cancel the wait (on unmount or a sibling teardown)
+ *                 and settle it promptly rather than leaving the promise
+ *                 pending until the timer fires.
  */
 export function waitForIncomingConnection(
   peer: Peer,
-  options?: { timeoutMs?: number; signal?: AbortSignal },
+  options?: { signal?: AbortSignal } & (
+    { timeoutMs?: number; until?: never } | { until: Date; timeoutMs?: never }
+  ),
 ): Promise<DataConnection> {
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_PEER_WAIT_TIMEOUT_MS;
   const signal = options?.signal;
+  const waitedUntil =
+    options?.until ??
+    new Date(Date.now() + (options?.timeoutMs ?? DEFAULT_PEER_WAIT_TIMEOUT_MS));
+  const timeoutMs = Math.max(0, waitedUntil.getTime() - Date.now());
   return new Promise<DataConnection>((resolve, reject) => {
     let settled = false;
     const settle = (action: () => void) => {
@@ -76,6 +90,7 @@ export function waitForIncomingConnection(
           reject(
             new PartnerNoShowError(
               "timed out waiting for the other party to connect",
+              waitedUntil,
             ),
           ),
         ),

@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-09-30"
+last_reviewed: "2026-10-03"
 ---
 
 # Alcove security
@@ -174,6 +174,12 @@ The decoder also bounds the size and complexity of every attacker-influenceable 
 
 The invitation is confidential because it holds the setup secret an attacker needs to authenticate as you. In the web rendezvous flow both parties derive the coordination-server rendezvous id from that secret, so an attacker who obtains the invitation learns both the authentication secret and the rendezvous id, and could reach the meeting point first to attempt a man-in-the-middle before the intended partner arrives. In that flow the inviter's browser also holds the secret in page memory for the tab's lifetime, the same in-origin exposure as the encoded invitation the page already displays for copying (a same-origin script able to read one could read the other); the secret is never sent to a backend.
 
+So that a reload does not leave the partner holding a link nothing answers, the hosted inviter also keeps the encoded invitation in the tab's session storage while the invitation can still be waited on:
+
+- **What is kept.** The encoded invitation, with its secret, and this party's own settings for the run: its name, the file's name, column names and row count, and its cleaning and disclosure choices. Nothing the partner sent is stored, and no row of the file.
+- **When it is removed.** When the run completes or fails in a way the same invitation cannot retry, when the operator discards it or starts over, and when the invitation expires while the inviter screen is open. An invitation that expires after the operator has left that screen is removed the next time the app loads or the inviter screen opens. An expired invitation is never offered.
+- **Exposure.** Session storage is scoped to the origin and the tab, so the exposure is the in-origin one above, extended from the page's lifetime to the tab's. Two browser behaviors may extend it, neither verified against a real browser: a browser that restores closed tabs or sessions may write session storage to disk and bring it back with the tab, and a duplicated tab may receive a copy of the session storage, so two tabs could be offered the same invitation to wait on.
+
 Holding the secret also grants relay access: a party's relay credential is derived from it, so while that exchange's relay key is registered with a relay, anyone holding the secret can use that relay ([PROTOCOL.md](spec/PROTOCOL.md#relay-credential-derivation)).
 
 This is the standard out-of-band trust model: forward invitations only over a trusted channel such as secure email, and treat a leaked invitation as a compromise by generating a fresh one (see [Recovery](CLI.md#recovery)) rather than reusing it.
@@ -182,7 +188,7 @@ This is the standard out-of-band trust model: forward invitations only over a tr
 
 The web application supports the same rotating shared secret the CLI does, but the two web flows treat its persistence oppositely, and the difference is a threat-model boundary, not an implementation gap.
 
-A **one-shot** web exchange is single-use. It runs the authenticated key exchange and derives the rotated replacement secret exactly as the CLI does, then discards it: the browser holds no key-file analog, so nothing sensitive survives the tab and the exchange cannot run again. This is the conservative default.
+A **one-shot** web exchange is single-use. It runs the authenticated key exchange and derives the rotated replacement secret exactly as the CLI does, then discards it: the browser holds no key-file analog, so the rotated secret does not survive the tab and the exchange cannot run again. This is the conservative default.
 
 A **managed** web exchange instead persists the rotated secret (with the standing terms and the credential-free rendezvous locator) in browser storage, so the same partnership can run again on a schedule, unattended where the platform allows (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md)). Persisting a rotating credential at rest changes the threat model, which is why the managed lifecycle is security-review-gated. Its persistence is bounded by three properties: the secret is written durably before this party begins the data exchange (persist-before-success), so a crash cannot advance the exchange while the new secret exists only in memory; the secret is a linear resource owned by a single device, so two copies cannot fork it; and the browser at-rest posture is weaker than the CLI's on-disk key by design (see [Hosted at-rest threat model for managed exchanges](#hosted-at-rest-threat-model-for-managed-exchanges)). The record's field-by-field shape is in [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md).
 

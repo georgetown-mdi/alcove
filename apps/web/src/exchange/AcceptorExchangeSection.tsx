@@ -9,6 +9,7 @@ import styles from "@styles/app.module.css";
 
 import {
   AnotherExchangeFoot,
+  BROWSER_RUN_KEEP_OPEN_BODY,
   DonePanel,
   FailureAlert,
   FailureRecoveryButton,
@@ -18,14 +19,17 @@ import {
   RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
   SERVER_JOB_PEER_WINDOW_BODY,
+  leftBehindConfirm,
   recoveredExchangeHeading,
   untakenRecordConfirm,
+  useDownloadsLeftBehind,
 } from "./RunSurface";
 import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
 import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { reattachedRunState } from "./reattachedRunState";
+import { useBeforeUnloadPrompt } from "./useUnloadGuard";
 import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
 
@@ -151,6 +155,11 @@ export function AcceptorExchangeSection({
   // flashes while the 409 is being resolved.
   const recovering = reattaching || reattachedRun;
 
+  const { leftBehind, onDownload } = useDownloadsLeftBehind(outputs);
+  useBeforeUnloadPrompt(
+    !serverJob && phase === "done" && leftBehind.length > 0,
+  );
+
   // A retry is genuine only while the invitation can still be accepted:
   // re-dialing a lapsed credential cannot succeed, so an expired exchange failure
   // routes to the fresh-invitation link instead. A token without `expires`
@@ -224,9 +233,18 @@ export function AcceptorExchangeSection({
       />
       {failure !== undefined && (
         <FailureAlert failure={failure}>
+          {failure.partnerNoShow === true && retryable && (
+            <p>
+              Ask your partner to open their invitation page again, then choose
+              Keep waiting. If they no longer have it, ask them for a new
+              invitation.
+            </p>
+          )}
           {retryable && (
             <FailureRecoveryButton
-              label="Try again"
+              label={
+                failure.partnerNoShow === true ? "Keep waiting" : "Try again"
+              }
               onAct={onTryAgain}
               recordConfirm={recordConfirm}
               folder={discardFolder}
@@ -254,21 +272,24 @@ export function AcceptorExchangeSection({
           )}
         </FailureAlert>
       )}
-      {/* The console conducts this accept and the tab only watches it: leaving
-          does not stop the run, and the recovery panel is the way back. The callout
-          drops the moment a failure lands (the run it describes has torn down), so
-          it outlives no failure. Absent for the hosted in-browser accept, which owns
-          no such run. */}
-      {phase === "running" &&
-        failure === undefined &&
-        serverJob &&
-        !recovering && (
-          <div className={styles.callout}>
-            <p className={styles.calloutLead}>Keep this tab open.</p>
-            <p className={styles.small}>{SERVER_JOB_KEEP_OPEN_BODY}</p>
-            <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
-          </div>
-        )}
+      {/* The callout drops the moment a failure lands (the run it describes has
+          torn down), so it outlives no failure. On a server-job accept the
+          console conducts the run and the tab only watches it: leaving does not
+          stop it, and the recovery panel is the way back. An in-browser accept
+          ends for both parties if this tab closes. */}
+      {phase === "running" && failure === undefined && !recovering && (
+        <div className={styles.callout}>
+          <p className={styles.calloutLead}>Keep this tab open.</p>
+          {serverJob ? (
+            <>
+              <p className={styles.small}>{SERVER_JOB_KEEP_OPEN_BODY}</p>
+              <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
+            </>
+          ) : (
+            <p className={styles.small}>{BROWSER_RUN_KEEP_OPEN_BODY}</p>
+          )}
+        </div>
+      )}
       {phase === "done" && (
         <DonePanel outputs={outputs} finishedAt={run.finishedAt} />
       )}
@@ -279,7 +300,11 @@ export function AcceptorExchangeSection({
         halted={failure !== undefined}
       />
       {phase === "done" && outputs !== undefined && (
-        <RunDownloads outputs={outputs} heading="h2" />
+        <RunDownloads
+          outputs={outputs}
+          heading="h2"
+          onDownload={serverJob ? undefined : onDownload}
+        />
       )}
       <RecordDownload
         offer={recordOffer}
@@ -300,6 +325,7 @@ export function AcceptorExchangeSection({
         <AnotherExchangeFoot
           onNavigate={onAbandon}
           confirmBeforeLeave={serverJob}
+          leaveConfirm={serverJob ? undefined : leftBehindConfirm(leftBehind)}
           folder={discardFolder}
         />
       )}

@@ -29,7 +29,10 @@ On the start page, choose **Create an invitation**. Three steps follow.
 
 The next screen, **Your invitation is ready**, shows the invitation link and a message you can copy that explains it to your partner. Send them the link over your trusted channel.
 
-**Keep this tab open.** Your browser waits for your partner to accept; closing the tab cancels the invitation, and reloading it starts over. If your partner has not connected within 10 minutes, the exchange stops. Choose **Try again** to wait again while the invitation is still valid, or **Start over with a fresh invitation** once it has expired. Agree a time with your partner so that both of you are at your computers.
+**Keep this tab open.** Your browser waits for your partner to accept, and the screen says until what time: about 10 minutes, or until the invitation expires if that is sooner. Closing the tab cancels the invitation. Agree a time with your partner so that both of you are at your computers.
+
+- **If your partner has not connected by then**, the screen says so. Choose **Keep waiting** to wait again while the invitation is still valid, or **Start over with a fresh invitation** once it has expired.
+- **If you reload the page**, the first step offers the invitation back while it is still valid: choose the same file again to keep waiting, or discard the invitation. The file must have the same columns, in the same order, and the same number of rows as the one you created the invitation from. Alcove keeps the invitation in this tab's session storage for this, with your file's column names and row count but never its rows, and removes it when the exchange completes, when you discard it or start over, and when the invitation expires: at expiry while this page is open, and otherwise the next time Alcove loads in this tab or you come back to this page. An expired invitation is never offered.
 
 ## Accepting an invitation
 
@@ -38,6 +41,8 @@ You received a link from a partner. Open it in your browser, or paste the whole 
 1. **Review the terms.** The page shows who sent the invitation, what you would disclose, what the exchange produces, what you receive, and how records are matched. The sender's name is what your partner typed; Alcove does not verify it. If the invitation names a legal agreement, check its reference, purpose, and expiration against the agreement you signed.
 2. **Consent & your file.** Tick the box to consent to the terms, enter your name or your organization's name, and choose your CSV.
 3. **Confirm your columns.** Check how each column is used. Only the columns you mark as shared are sent to your partner. Then choose **Start the exchange**.
+
+**Keep this tab open** while the exchange runs: closing or reloading it stops the exchange for both of you. If your partner's page does not answer within about 10 minutes, the screen says so. Ask your partner to open their invitation page again and choose **Keep waiting**, or ask them for a new invitation.
 
 **If the link does not open an invitation**, the page says what went wrong:
 
@@ -57,7 +62,7 @@ When the exchange finishes, the screen shows **Exchange complete** and the numbe
 
 Under the downloads, a note says the record is a shareable account of what you and your partner agreed to and what matched, and that the keys are private and belong with the record. Its **Verify page** link opens the Verify page in a new tab, leaving this page and its downloads in place.
 
-**Download what you need before you leave the page.** The results are kept only in this page. Closing the tab, or choosing **Set up another exchange**, discards them, and the page does not ask first.
+**Download what you need before you leave the page.** The results are kept only in this page. Closing the tab, or choosing **Set up another exchange**, discards them. Until you have downloaded each file, the page asks first and names the files you have not downloaded.
 
 ### The exchange record and its keys
 

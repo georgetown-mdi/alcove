@@ -64,6 +64,11 @@ import styles from "@styles/app.module.css";
 
 import { CitationDropNotice } from "./CitationDropNotice";
 
+import {
+  INVITER_RESET_STATEMENT,
+  ResetToDefaultsButton,
+} from "./ResetToDefaultsButton";
+
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { SpineProblem, SpineTarget } from "@psi/inviterModel";
 import type { Transport } from "@psi/transportChooser";
@@ -615,9 +620,12 @@ export function ReviewCreateSection({
             ? START_OPENED_EXCHANGE_LABEL
             : "Create the invitation"}
         </Button>
-        <Button variant="default" disabled={minting} onClick={onReset}>
-          Reset to defaults
-        </Button>
+        <ResetToDefaultsButton
+          variant="default"
+          disabled={minting}
+          resets={INVITER_RESET_STATEMENT}
+          onReset={onReset}
+        />
         <p
           className={
             canCreate
