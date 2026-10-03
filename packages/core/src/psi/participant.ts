@@ -297,9 +297,11 @@ export class PSIParticipant {
   // bounds that response (docs/spec/CHANNEL_SECURITY.md, PSI set parts).
   private sentRequest: SentRequest | undefined;
   // The operation now dispatched to the engine, for the mid-operation reports
-  // the engine raises against it. Undefined between operations.
+  // the engine raises against it and for operationInFlight. Undefined between
+  // operations.
   private runningOperation:
     { operation: PsiOperation; elements: number } | undefined;
+  private stopReason: () => Error | undefined = () => undefined;
 
   constructor(
     id: string,
@@ -375,6 +377,21 @@ export class PSIParticipant {
     } catch {
       // Dropped; the operation continues and its settle report follows.
     }
+  }
+
+  /** Whether a crypto operation is dispatched to the engine and not yet settled. */
+  operationInFlight(): boolean {
+    return this.runningOperation !== undefined;
+  }
+
+  /**
+   * Refuse each later crypto operation once `stopReason` returns an error,
+   * throwing that error instead of dispatching the operation, so a step whose
+   * result can no longer be sent, such as one on a connection that has ended,
+   * does not start. An operation already dispatched runs to its end.
+   */
+  stopOperationsWhen(stopReason: () => Error | undefined): void {
+    this.stopReason = stopReason;
   }
 
   /**
@@ -526,18 +543,18 @@ export class PSIParticipant {
     elements: number,
     run: () => Promise<T>,
   ): Promise<T> {
+    const stop = this.stopReason();
+    if (stop !== undefined) throw stop;
     const report = this.onProgress;
-    if (report === undefined) return run();
+    if (report === undefined) return this.runTracked(operation, elements, run);
     report({ operation, elements, state: "started" });
     const startedAt = performance.now();
     const durationMs = (): number =>
       Math.max(0, Math.round(performance.now() - startedAt));
     let result: T;
-    this.runningOperation = { operation, elements };
     try {
-      result = await run();
+      result = await this.runTracked(operation, elements, run);
     } catch (error) {
-      this.runningOperation = undefined;
       report({
         operation,
         elements,
@@ -546,7 +563,6 @@ export class PSIParticipant {
       });
       throw error;
     }
-    this.runningOperation = undefined;
     // Outside the try: a reporter that raises on this report must not also
     // relabel the operation that already completed as failed.
     report({
@@ -556,6 +572,19 @@ export class PSIParticipant {
       durationMs: durationMs(),
     });
     return result;
+  }
+
+  private async runTracked<T>(
+    operation: PsiOperation,
+    elements: number,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    this.runningOperation = { operation, elements };
+    try {
+      return await run();
+    } finally {
+      this.runningOperation = undefined;
+    }
   }
 
   // Building-block PSI steps used by the single-pass strategy

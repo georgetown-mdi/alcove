@@ -25,6 +25,17 @@ export const PACED_STRETCH_RECORDS = 1024;
  */
 export class EventLoopPacer {
   private lastYieldAt = performance.now();
+  private readonly stopReason: () => Error | undefined;
+
+  /**
+   * @param stopReason - Read after each yield: an error it returns is thrown
+   *   from {@link yieldWhenDue}, so a loop whose result is no longer wanted,
+   *   such as a round on a connection that has ended, stops within one
+   *   stretch.
+   */
+  constructor(stopReason: () => Error | undefined = () => undefined) {
+    this.stopReason = stopReason;
+  }
 
   /**
    * Yields to the event loop once {@link EVENT_LOOP_HOLD_MS} have passed since
@@ -35,6 +46,8 @@ export class EventLoopPacer {
     if (performance.now() - this.lastYieldAt < EVENT_LOOP_HOLD_MS) return;
     await yieldToEventLoop();
     this.lastYieldAt = performance.now();
+    const stop = this.stopReason();
+    if (stop !== undefined) throw stop;
   }
 }
 

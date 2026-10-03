@@ -254,6 +254,54 @@ test("a detected gap latches the wrapper", async () => {
   expect(onReceive).toBe(first);
 });
 
+test("terminated reports the inner connection's end", async () => {
+  const [recv, peer] = await makeInjectable("responder");
+  const ended = recv.terminated();
+  await peer.close();
+  const error = await ended;
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect(error.kind).toBe("transport");
+});
+
+test("terminated reports this side's own close as a closed connection", async () => {
+  const [enc] = await makeEncryptedPair();
+  const ended = enc.terminated();
+  await enc.close();
+  const error = await ended;
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect(error.kind).toBe("closed");
+});
+
+test("terminated reports a failure the wrapper latched, not the inner close it caused", async () => {
+  const [recv, peer] = await makeInjectable("responder");
+  await peer.send(await sealRawBytes("initiator", 1, jsonPlaintext({ n: 1 })));
+  const latched = await expectSecurity(
+    recv.receive(),
+    /skipped ahead|dropped or withheld/i,
+  );
+  expect(await recv.terminated()).toBe(latched);
+});
+
+test("terminated stays pending over an inner connection that reports no end", async () => {
+  const [rawA] = createMessagePipe();
+  const inner: MessageConnection = {
+    send: (data) => rawA.send(data),
+    receive: (timeoutMs) => rawA.receive(timeoutMs),
+    close: () => rawA.close(),
+  };
+  const enc = await EncryptedMessageConnection.create(
+    inner,
+    SESSION_KEY,
+    "initiator",
+  );
+  await enc.close();
+  const outcome = await Promise.race([
+    enc.terminated().then(() => "ended"),
+    new Promise((resolve) => setTimeout(() => resolve("pending"), 10)),
+  ]);
+  expect(outcome).toBe("pending");
+});
+
 // --- Integrity / format failures (all rejected as "security") -----------------
 
 test("an envelope shorter than version + IV + tag is rejected as a security failure", async () => {

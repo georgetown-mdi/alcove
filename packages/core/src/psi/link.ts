@@ -22,6 +22,7 @@ import {
 } from "./roundResolution";
 import type { AssociationTable } from "../types";
 import {
+  connectionEndReader,
   receiveParsed,
   parseOrProtocolError,
   type MessageConnection,
@@ -289,8 +290,9 @@ class GroupedRoundSet implements RoundSet {
  * Builds a round's set from `source`, this party's rows in ascending order,
  * each read through `read`: the set {@link groupDuplicatesAndRemoveUndefineds}
  * builds where `keepsDuplicates`, else the one
- * {@link removeDuplicatesAndUndefineds} builds. Yields to the event loop as it
- * goes ({@link EventLoopPacer}), since a round is built on an open connection.
+ * {@link removeDuplicatesAndUndefineds} builds. Yields to the event loop as
+ * `pacer` says, since a round is built on an open connection, and throws what
+ * `pacer` stops on.
  *
  * @returns The set, and how many rows `source` held.
  * @internal exported for the round-construction tests.
@@ -300,12 +302,12 @@ export async function buildRoundSet(
   read: (value: KeyCandidates) => KeyCandidates,
   keepsDuplicates: boolean,
   permutation?: Array<number>,
+  pacer: EventLoopPacer = new EventLoopPacer(),
   shardEntries: number = MAX_MAP_SHARD_ENTRIES,
 ): Promise<{ set: [Array<string>, RoundCandidates]; rowCount: number }> {
   const set: RoundSet = keepsDuplicates
     ? new GroupedRoundSet(permutation, shardEntries)
     : new SingleHolderRoundSet(permutation, shardEntries);
-  const pacer = new EventLoopPacer();
   let rowCount = 0;
   for (const candidates of source) {
     set.add(rowCount, read(candidates));
@@ -998,9 +1000,10 @@ export async function linkViaPSI(
   const partnerEntriesByIter: Array<Array<ReadonlyArray<number>> | undefined> =
     [];
   const partnerEntryRowsByIter: Array<Array<Array<number>> | undefined> = [];
-  // A round is resolved on an open connection, over as many entries as it
-  // matched, so each pass below yields to the event loop as it goes.
-  const pacer = new EventLoopPacer();
+  // A round is built and resolved on an open connection, over as many entries
+  // as it holds, so each pass below yields to the event loop as it goes, and
+  // stops at a yield once the connection has ended.
+  const pacer = new EventLoopPacer(connectionEndReader(conn));
 
   for (let j = 0; j < data.length; ++j) {
     setStage(`stage ${j + 1} / ${data.length}`);
@@ -1020,6 +1023,7 @@ export async function linkViaPSI(
       readCandidates,
       sides.localKeepsDuplicates,
       unidentifiedIndices,
+      pacer,
     );
     if (j === 0) {
       indexIterationMap = Array(rowCount).fill(undefined);
@@ -1674,7 +1678,13 @@ export async function linkViaCountOnlyPSI(
 
   const {
     set: [values],
-  } = await buildRoundSet(data[0], requireSingleCandidate, false);
+  } = await buildRoundSet(
+    data[0],
+    requireSingleCandidate,
+    false,
+    undefined,
+    new EventLoopPacer(connectionEndReader(conn)),
+  );
   log.debug(
     `${participant.id}: counting the intersection over 1 key: ` +
       `${values.length} unique value(s)`,

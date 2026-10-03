@@ -218,19 +218,24 @@ function partySummary(run: PartyRun, difference: string | undefined) {
   };
 }
 
+// Soft: a hold over the bound is the usual cause of a lost connection, so a
+// run that exits 69 reports both.
 function expectConnectedLoopLagWithinBound(
   name: PartyName,
   run: PartyRun,
 ): void {
   const lagMs = connectedLoopLagMs(run);
-  if (lagMs === undefined)
-    expect.fail(
+  expect
+    .soft(
+      lagMs,
       `the ${name}'s log has no "[exchange] authenticating" line, so ` +
-        `when its channel opened is unknown`,
-    );
-  expect(lagMs, `the ${name}'s longest hold`).toBeLessThanOrEqual(
-    MAX_CONNECTED_LOOP_LAG_MS,
-  );
+        "when its channel opened is unknown",
+    )
+    .toBeDefined();
+  if (lagMs === undefined) return;
+  expect
+    .soft(lagMs, `the ${name}'s longest hold on an open channel`)
+    .toBeLessThanOrEqual(MAX_CONNECTED_LOOP_LAG_MS);
 }
 
 function runWebRtcParty(
@@ -363,11 +368,13 @@ test(
       for (const party of [inviter, acceptor])
         if (party.exitCode !== 0) console.log(party.log.slice(-4000));
 
-      expect([inviter.exitCode, acceptor.exitCode]).toEqual([0, 0]);
-      expect(inviterDifference).toBe(undefined);
-      expect(acceptorDifference).toBe(undefined);
       expectConnectedLoopLagWithinBound("inviter", inviter);
       expectConnectedLoopLagWithinBound("acceptor", acceptor);
+      expect
+        .soft([inviter.exitCode, acceptor.exitCode], "the exit codes")
+        .toEqual([0, 0]);
+      expect.soft(inviterDifference).toBe(undefined);
+      expect.soft(acceptorDifference).toBe(undefined);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -467,9 +474,9 @@ test(
         );
       if (run.exitCode !== 0) console.log(run.log.slice(-4000));
 
-      expect(run.exitCode).toBe(0);
-      expect(difference).toBe(undefined);
       expectConnectedLoopLagWithinBound(PARTY, run);
+      expect.soft(run.exitCode, "the exit code").toBe(0);
+      expect.soft(difference).toBe(undefined);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

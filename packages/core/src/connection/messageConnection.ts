@@ -103,6 +103,14 @@ export interface MessageConnection {
   /** Tears down the transport. Idempotent; always resolves on a clean close. */
   close(): Promise<void>;
   /**
+   * Optional: resolves once the connection reaches a terminal state, with the
+   * error that ended it, and stays pending while it is open. A local
+   * {@link close} resolves it with a `closed` error. Lets a caller stop local
+   * work whose result can no longer be sent, such as a pass over a round's
+   * records when the partner is lost.
+   */
+  terminated?(): Promise<ConnectionError>;
+  /**
    * Optional: bound the next inbound frame the underlying transport reads into
    * memory to `maxBytes`, replacing its static frame-size cap for subsequent
    * reads until cleared (`undefined` restores the default). Threaded straight
@@ -364,6 +372,8 @@ export class QueuedMessageConnection implements MessageConnection {
   // set (not a single handle) so a terminal path settles every in-flight send,
   // even though lockstep parks at most one at a time.
   private readonly pendingSends = new Set<SendGuard>();
+  private readonly terminal: Promise<ConnectionError>;
+  private settleTerminal!: (error: ConnectionError) => void;
 
   constructor(
     connect: TransportConnect,
@@ -376,6 +386,9 @@ export class QueuedMessageConnection implements MessageConnection {
     this.capacity = options?.capacity ?? DEFAULT_CAPACITY;
     this.inactivityTimeoutMs = options?.inactivityTimeoutMs;
     this.inactivityHint = options?.inactivityHint;
+    this.terminal = new Promise((resolve) => {
+      this.settleTerminal = resolve;
+    });
     this.hooks = connect({
       deliver: (message) => this.deliver(message),
       fail: (error) => this.fail(error),
@@ -563,6 +576,7 @@ export class QueuedMessageConnection implements MessageConnection {
   private fail(error: ConnectionError): void {
     if (this.state !== undefined) return;
     this.state = { kind: "failed", error };
+    this.settleTerminal(error);
     this.disarmIdle();
     this.failSends(error);
     this.rejectWaiters(error);
@@ -593,6 +607,7 @@ export class QueuedMessageConnection implements MessageConnection {
     // the transport's listeners/channel. The deferred error is promoted to
     // `failed` by receive() once the queue empties; teardown does not run again.
     this.state = { kind: "draining", error };
+    this.settleTerminal(error);
     // A defensive no-op here (a non-empty queue implies no parked waiter, so the
     // idle timer cannot be armed), kept so every terminal transition uniformly
     // disarms idle and a future reachable-with-timer path stays correct.
@@ -677,12 +692,17 @@ export class QueuedMessageConnection implements MessageConnection {
     // orphans; it also releases the ref'd guard, so no timer holds the loop open
     // at teardown.
     const cancelled = new ConnectionError("connection closed", "closed");
+    this.settleTerminal(cancelled);
     this.failSends(cancelled);
     this.rejectWaiters(cancelled);
     // Explicit close: ask the transport to drain buffered outbound writes
     // before tearing down. fail() closes without flush, since an error means
     // the link is already unusable.
     await this.hooks.close({ flush: true });
+  }
+
+  terminated(): Promise<ConnectionError> {
+    return this.terminal;
   }
 
   // Forward a per-exchange inbound frame cap to the transport, when it supports
@@ -775,6 +795,21 @@ export function fromEventConnection(
       inactivityHint: options?.inactivityHint,
     },
   );
+}
+
+/**
+ * Reads the error that ended `conn`, or undefined while it is open or where it
+ * reports no terminal state ({@link MessageConnection.terminated}). The reading
+ * changes only between turns of the event loop.
+ */
+export function connectionEndReader(
+  conn: MessageConnection,
+): () => ConnectionError | undefined {
+  let ended: ConnectionError | undefined;
+  void conn.terminated?.().then((error) => {
+    ended = error;
+  });
+  return () => ended;
 }
 
 /**
