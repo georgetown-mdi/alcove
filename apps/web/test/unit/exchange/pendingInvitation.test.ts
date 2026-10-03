@@ -148,6 +148,21 @@ describe("the invitation kept for a resume", () => {
     ).toMatchObject({ kind: "resumed" });
   });
 
+  test("an invitation that expired after it was offered does not resume and is removed", async () => {
+    const pending = await pendingFor(await mint());
+    const lapsed = {
+      ...pending,
+      invitation: {
+        ...pending.invitation,
+        expires: new Date(Date.now() - 1000).toISOString(),
+      },
+    };
+    expect(await resumeFromChosenFile(lapsed, Readable.from(CSV))).toEqual({
+      kind: "expired",
+    });
+    expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
   test("an expired invitation is not offered and is removed", async () => {
     const minted = await mint();
     writePendingInvitation(minted, context);
@@ -240,6 +255,20 @@ describe("the invitation kept for a resume", () => {
     storage.setItem(STORAGE_KEY, JSON.stringify(entry));
     expect(await readPendingInvitation(new Date())).toBeUndefined();
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  test("the file name is bounded by its UTF-8 bytes", async () => {
+    const entry = await writtenEntry();
+    entry.fileName = "\u00e9".repeat(200);
+    storage.setItem(STORAGE_KEY, JSON.stringify(entry));
+    expect(await readPendingInvitation(new Date())).toBeUndefined();
+    expect(storage.getItem(STORAGE_KEY)).toBeNull();
+
+    entry.fileName = "x".repeat(100);
+    storage.setItem(STORAGE_KEY, JSON.stringify(entry));
+    expect((await readPendingInvitation(new Date()))?.fileName).toBe(
+      entry.fileName,
+    );
   });
 
   test("pruning removes an expired entry and keeps a live one", async () => {

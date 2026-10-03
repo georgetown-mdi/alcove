@@ -2,6 +2,8 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { page } from "vitest/browser";
+
 import { createElement } from "react";
 
 import {
@@ -10,6 +12,7 @@ import {
   writePendingInvitation,
 } from "@exchange/pendingInvitation";
 import { PendingInvitationPrune } from "@exchange/PendingInvitationPrune";
+import { ResumeInvitationOffer } from "@exchange/ResumeInvitation";
 import { generateInvitation } from "@psi/invitation";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -151,5 +154,40 @@ describe("the app-start prune", () => {
     );
     await flushPendingUpdates();
     expect(kept()).not.toBeNull();
+  });
+});
+
+describe("the resume offer", () => {
+  test("gives way and removes the entry when the invitation expires while shown", async () => {
+    writePendingInvitation(await mint(), {
+      inviterName: "Dana Okafor",
+      fileName: "clients.csv",
+    });
+    const pending = await readPendingInvitation(new Date());
+    if (pending === undefined) throw new Error("no pending invitation");
+    const expires = new Date(Date.now() + 300).toISOString();
+
+    app.render(
+      createElement(ResumeInvitationOffer, {
+        pending: { ...pending, invitation: { ...pending.invitation, expires } },
+        onResume: () => undefined,
+        onDiscard: () => undefined,
+      }),
+    );
+    const offer = page.getByRole("heading", {
+      name: "Your invitation is still open",
+    });
+    await expect.element(offer).toBeInTheDocument();
+
+    await expect
+      .element(
+        page
+          .getByRole("status")
+          .filter({ hasText: "Your earlier invitation has expired" }),
+      )
+      .toBeInTheDocument();
+    expect(offer.query()).toBeNull();
+    expect(kept()).toBeNull();
+    expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(expires));
   });
 });

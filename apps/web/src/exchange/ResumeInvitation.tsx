@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Alert, Button, FileButton, Group } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
@@ -8,6 +8,8 @@ import { dateTimeLabel } from "@psi/formatting";
 import styles from "@styles/app.module.css";
 
 import {
+  MAX_TIMER_MS,
+  clearPendingInvitation,
   resumeFromChosenFile,
   usePendingInvitationRecord,
 } from "./pendingInvitation";
@@ -27,7 +29,8 @@ import type { PendingInvitation } from "./pendingInvitation";
  * tab created before a reload: the partner's link still works for as long as
  * the invitation does, so choosing the same file again listens on it. The
  * file must have the columns, in order, and the number of rows of the file
- * the invitation was created from.
+ * the invitation was created from. When the invitation expires, the offer
+ * removes the kept entry and gives way to a sentence saying so.
  */
 export function ResumeInvitationOffer({
   pending,
@@ -41,7 +44,22 @@ export function ResumeInvitationOffer({
   const headingId = useId();
   const [reading, setReading] = useState(false);
   const [alert, setAlert] = useState<AlertContent>();
+  const [expired, setExpired] = useState(false);
   const { fileName } = pending;
+  const { expires } = pending.invitation;
+
+  useEffect(() => {
+    const remainingMs = Date.parse(expires) - Date.now();
+    if (remainingMs > MAX_TIMER_MS) return;
+    const timer = setTimeout(
+      () => {
+        clearPendingInvitation();
+        setExpired(true);
+      },
+      Math.max(0, remainingMs),
+    );
+    return () => clearTimeout(timer);
+  }, [expires]);
 
   async function readChosenFile(file: File | null) {
     if (file === null) return;
@@ -51,6 +69,10 @@ export function ResumeInvitationOffer({
       const outcome = await resumeFromChosenFile(pending, file);
       if (outcome.kind === "resumed") {
         onResume(outcome.invitation);
+        return;
+      }
+      if (outcome.kind === "expired") {
+        setExpired(true);
         return;
       }
       setAlert(
@@ -76,6 +98,14 @@ export function ResumeInvitationOffer({
       setReading(false);
     }
   }
+
+  if (expired)
+    return (
+      <p className={styles.callout} role="status">
+        Your earlier invitation has expired, so your partner&apos;s link will
+        not connect. Create a new invitation below.
+      </p>
+    );
 
   return (
     <section className={styles.callout} aria-labelledby={headingId}>

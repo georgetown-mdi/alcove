@@ -151,6 +151,18 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
+const utf8 = new TextEncoder();
+
+/** A string whose UTF-8 encoding is at most `maxBytes` bytes long. */
+function isByteBoundedString(
+  value: unknown,
+  maxBytes: number,
+): value is string {
+  return (
+    isBoundedString(value, maxBytes) && utf8.encode(value).length <= maxBytes
+  );
+}
+
 function isColumnList(value: unknown): value is Array<string> {
   return (
     Array.isArray(value) &&
@@ -172,8 +184,8 @@ function ownDeepLink(encoded: string): string | undefined {
  * this app writes, or not one the writer sets. Each string is bounded by what
  * the app can write: the encoded invitation by core's decoder, the deep link
  * by being the one this page builds, the name by a terms party identity, the
- * file name by a filesystem name, and the column names by the header line the
- * CSV read accepts.
+ * file name by a filesystem name's UTF-8 bytes, and the column names by the
+ * header line the CSV read accepts.
  */
 function storedRecordOf(value: unknown): StoredRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -190,7 +202,7 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     return undefined;
   if (
     !isBoundedString(inviterName, MAX_TEXT_LENGTH) ||
-    !isBoundedString(fileName, MAX_FILE_NAME_BYTES)
+    !isByteBoundedString(fileName, MAX_FILE_NAME_BYTES)
   )
     return undefined;
   if (!isColumnList(columns)) return undefined;
@@ -316,18 +328,23 @@ export type ResumeFileOutcome =
   | { kind: "unreadable" }
   /** The file's columns, in order, or its number of rows differ from the
    * file the invitation was created from. */
-  | { kind: "mismatch" };
+  | { kind: "mismatch" }
+  /** The invitation has expired; the kept entry is removed. */
+  | { kind: "expired" };
 
 /**
  * Read the file the operator chose again, by the delimiter the invitation's
  * file was read by, and resume the kept invitation on its rows only where it
  * has the same columns in the same order and the same number of rows: the
- * invitation's terms and this party's settings name those columns.
+ * invitation's terms and this party's settings name those columns. An
+ * invitation that has expired, checked before and after the read, is refused
+ * and the kept entry removed.
  */
 export async function resumeFromChosenFile(
   pending: PendingInvitation,
   file: Parameters<typeof loadCSVFileOffMainThread>[0],
 ): Promise<ResumeFileOutcome> {
+  if (expiredAndRemoved(pending)) return { kind: "expired" };
   let result;
   try {
     result = await loadCSVFileOffMainThread(file, {
@@ -351,10 +368,17 @@ export async function resumeFromChosenFile(
     result.data.length !== pending.rowCount
   )
     return { kind: "mismatch" };
+  if (expiredAndRemoved(pending)) return { kind: "expired" };
   return {
     kind: "resumed",
     invitation: { ...pending.invitation, rawRows: result.data },
   };
+}
+
+function expiredAndRemoved(pending: PendingInvitation): boolean {
+  if (invitationUsable(pending.invitation.expires, new Date())) return false;
+  clearPendingInvitation();
+  return true;
 }
 
 /**
@@ -406,4 +430,4 @@ export function usePendingInvitationRecord({
 
 /** The longest delay `setTimeout` holds; an expiry further out is removed on
  * the read after it instead. */
-const MAX_TIMER_MS = 2 ** 31 - 1;
+export const MAX_TIMER_MS = 2 ** 31 - 1;
