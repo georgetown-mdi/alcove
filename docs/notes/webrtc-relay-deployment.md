@@ -406,7 +406,7 @@ Candidate members, by title:
 | question | the one thing that would determine it |
 | --- | --- |
 | Real partner and agency networks | a run from a machine on one, which the owner scoped as a follow-on rather than a blocker |
-| A browser on a restrictive network | the same exchange with the class applied to the browser's side, which needs the browser-side TURN entry first |
+| A restrictive-network browser's registrar path (the browser itself is measured) | on 2026-10-03 a staging web-app browser with outbound UDP refused, TCP admitted only to 443 of the relay and the app, accepted a CLI invitation naming the standing relay and completed over a relayed pair (local relay, relayProtocol tls), with the CLI unrestricted and with the CLI blocked the same way, relay-to-relay. The blocked CLI exited 73 because the registrar on 8443 was unreachable; what remains is the registrar on 443, which is the follow-on item for the standing broker service |
 | The standing relay across real NAT | a relayed exchange between two parties on separate networks, rather than the two on the relay host the bring-up ran |
 | A browser party against the standing relay | the same relayed exchange with a browser on one side of it |
 | coturn on Fargate | a credential granted the container service; the one used here is denied it outright |
