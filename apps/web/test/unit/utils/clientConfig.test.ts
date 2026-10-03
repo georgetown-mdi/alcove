@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { SIGNALING_SCHEME_MISMATCH } from "@utils/signalingScheme";
 import { parseClientConfig } from "@utils/clientConfig";
 
 describe("parseClientConfig", () => {
@@ -9,6 +10,7 @@ describe("parseClientConfig", () => {
       LOG_LEVEL: "INFO",
       DEPLOYMENT_PROFILE: "hosted",
       ALCOVE_VERSION: "",
+      SIGNALING_SERVER_URL: undefined,
     });
   });
 
@@ -19,12 +21,19 @@ describe("parseClientConfig", () => {
         LOG_LEVEL: "DEBUG",
         DEPLOYMENT_PROFILE: "console",
         ALCOVE_VERSION: "1.2.3",
+        SIGNALING_SERVER_URL: "wss://signaling.example.org:8443/broker/",
       }),
     ).toEqual({
       PEERJS_DEBUG_LEVEL: 3,
       LOG_LEVEL: "DEBUG",
       DEPLOYMENT_PROFILE: "console",
       ALCOVE_VERSION: "1.2.3",
+      SIGNALING_SERVER_URL: {
+        secure: true,
+        host: "signaling.example.org",
+        port: 8443,
+        path: "/broker/",
+      },
     });
   });
 
@@ -76,6 +85,93 @@ describe("parseClientConfig", () => {
       );
     },
   );
+
+  test.each(["", "   "])(
+    "reads a blank SIGNALING_SERVER_URL %j as unset",
+    (input) => {
+      expect(
+        parseClientConfig({ SIGNALING_SERVER_URL: input }).SIGNALING_SERVER_URL,
+      ).toBeUndefined();
+    },
+  );
+
+  test.each([
+    [
+      "wss://signaling.example.org",
+      { secure: true, host: "signaling.example.org", path: "/" },
+    ],
+    [
+      "wss://signaling.example.org:443/api",
+      { secure: true, host: "signaling.example.org", path: "/api/" },
+    ],
+    [
+      " ws://127.0.0.1:9000/api/ ",
+      { secure: false, host: "127.0.0.1", port: 9000, path: "/api/" },
+    ],
+    [
+      "wss://[::1]:8443/api/",
+      { secure: true, host: "[::1]", port: 8443, path: "/api/" },
+    ],
+  ])("reads SIGNALING_SERVER_URL %j", (input, expected) => {
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: input }).SIGNALING_SERVER_URL,
+    ).toStrictEqual(expected);
+  });
+
+  test.each([
+    "signaling.example.org",
+    "https://signaling.example.org/api/",
+    "wss://",
+    "wss://user:pw@signaling.example.org/",
+    "wss://signaling.example.org/api/?key=x",
+    "wss://signaling.example.org/api/?",
+    "wss://signaling.example.org/api/#x",
+    "wss://signaling.example.org/a@b/",
+  ])("refuses SIGNALING_SERVER_URL %j", (input) => {
+    expect(() => parseClientConfig({ SIGNALING_SERVER_URL: input })).toThrow(
+      /VITE_SIGNALING_SERVER_URL/,
+    );
+  });
+
+  test("refuses a SIGNALING_SERVER_URL port of 0", () => {
+    expect(() =>
+      parseClientConfig({ SIGNALING_SERVER_URL: "wss://host:0/" }),
+    ).toThrow(
+      "Invalid build configuration: VITE_SIGNALING_SERVER_URL: the port must be 1 to 65535.",
+    );
+  });
+
+  test("accepts the top SIGNALING_SERVER_URL port and folds a default port", () => {
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: "wss://host:65535/" })
+        .SIGNALING_SERVER_URL,
+    ).toStrictEqual({ secure: true, host: "host", port: 65535, path: "/" });
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: "ws://host:80/" })
+        .SIGNALING_SERVER_URL,
+    ).toStrictEqual({ secure: false, host: "host", path: "/" });
+  });
+
+  test.each([
+    ["ws://signaling.example.org/api/", "https:"],
+    ["wss://signaling.example.org/api/", "http:"],
+  ])("refuses SIGNALING_SERVER_URL %j under a %s page", (input, protocol) => {
+    expect(() =>
+      parseClientConfig({ SIGNALING_SERVER_URL: input }, protocol),
+    ).toThrow(
+      `Invalid build configuration: VITE_SIGNALING_SERVER_URL: ${SIGNALING_SCHEME_MISMATCH}.`,
+    );
+  });
+
+  test.each([
+    ["wss://signaling.example.org/api/", "https:"],
+    ["ws://signaling.example.org/api/", "http:"],
+  ])("accepts SIGNALING_SERVER_URL %j under a %s page", (input, protocol) => {
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: input }, protocol)
+        .SIGNALING_SERVER_URL,
+    ).toBeDefined();
+  });
 
   test("names every offending variable in one refusal", () => {
     expect(() =>

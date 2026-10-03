@@ -48,8 +48,12 @@ const PARTNER_ONLY: Output = { expectsOutput: false, shareWithPartner: true };
 
 const location: InvitationLocation = {
   origin: "https://example.org:8443",
-  hostname: "example.org",
-  port: "8443",
+  signaling: {
+    host: "example.org",
+    port: 8443,
+    path: "/api/",
+    secure: true,
+  },
 };
 
 const CSV = `${columns.join(",")}\n17,Alice,Smith,1990-01-02,A7\n`;

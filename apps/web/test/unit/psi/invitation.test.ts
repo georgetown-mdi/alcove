@@ -26,7 +26,7 @@ import {
   generateInvitation,
   invitationWebrtcEndpoint,
   tokenFromInput,
-  webrtcEndpointFromLocation,
+  webrtcEndpointFromAddress,
 } from "../../../src/psi/invitation.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
 import { writeOwnRelaySetting } from "../../../src/psi/transport/ownRelaySetting.js";
@@ -36,8 +36,12 @@ import type { InvitationLocation } from "../../../src/psi/invitation.js";
 
 const location: InvitationLocation = {
   origin: "https://example.org:8443",
-  hostname: "example.org",
-  port: "8443",
+  signaling: {
+    host: "example.org",
+    port: 8443,
+    path: "/api/",
+    secure: true,
+  },
 };
 
 // A CSV containing every default linkage column, so the file-derived terms keep all
@@ -1505,37 +1509,30 @@ describe("generateInvitation expiry", () => {
   });
 });
 
-describe("webrtcEndpointFromLocation", () => {
-  test("normalizes localhost to a loopback literal a peer can dial", () => {
+describe("webrtcEndpointFromAddress", () => {
+  test("names the address's host, port and path, and no scheme", () => {
     expect(
-      webrtcEndpointFromLocation({ hostname: "localhost", port: "3000" }),
+      webrtcEndpointFromAddress({
+        host: "signaling.example.org",
+        port: 8443,
+        path: "/broker/",
+        secure: true,
+      }),
     ).toStrictEqual({
       channel: "webrtc",
-      host: "127.0.0.1",
-      port: 3000,
-      path: "/api/",
+      host: "signaling.example.org",
+      port: 8443,
+      path: "/broker/",
     });
   });
 
-  test("omits the port for a default-port (empty) location", () => {
+  test("omits the port for a default-port address", () => {
     expect(
-      webrtcEndpointFromLocation({ hostname: "example.org", port: "" }),
-    ).toStrictEqual({ channel: "webrtc", host: "example.org", path: "/api/" });
-  });
-
-  test("drops an out-of-range port rather than encoding a meaningless locator", () => {
-    // Port 0 is the OS "assign an ephemeral port" sentinel, never a connect
-    // target; the endpoint schema rejects it, so it is not encoded.
-    expect(
-      webrtcEndpointFromLocation({ hostname: "example.org", port: "0" }),
-    ).toStrictEqual({ channel: "webrtc", host: "example.org", path: "/api/" });
-  });
-
-  test("drops a non-numeric port rather than truncating it", () => {
-    // Number() yields NaN for "8080abc" (parseInt would truncate to 8080), so a
-    // malformed port is omitted, not silently encoded as a wrong locator.
-    expect(
-      webrtcEndpointFromLocation({ hostname: "example.org", port: "8080abc" }),
+      webrtcEndpointFromAddress({
+        host: "example.org",
+        path: "/api/",
+        secure: true,
+      }),
     ).toStrictEqual({ channel: "webrtc", host: "example.org", path: "/api/" });
   });
 });
@@ -1543,7 +1540,7 @@ describe("webrtcEndpointFromLocation", () => {
 describe("invitationWebrtcEndpoint", () => {
   test("with no own relay, is this app's signaling locator alone", () => {
     expect(invitationWebrtcEndpoint(location, undefined)).toStrictEqual(
-      webrtcEndpointFromLocation(location),
+      webrtcEndpointFromAddress(location.signaling),
     );
   });
 
@@ -1553,7 +1550,7 @@ describe("invitationWebrtcEndpoint", () => {
       stun: ["stun:relay.example.org:3478"],
     });
     expect(endpoint).toStrictEqual({
-      ...webrtcEndpointFromLocation(location),
+      ...webrtcEndpointFromAddress(location.signaling),
       relay: {
         turn: ["turns:relay.example.org:443?transport=tcp"],
         stun: ["stun:relay.example.org:3478"],

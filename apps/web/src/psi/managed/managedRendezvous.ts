@@ -13,16 +13,19 @@
  * `connection.role`, and the document's `server` locator is likewise INERT on
  * the re-run path: the connection block is persisted for document fidelity, not
  * read (see docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field").
- * Both sides derive their signaling location from the app's own location -- the
- * inviter inside `listenAsInviter` (from `window.location`), the acceptor's dial
- * endpoint here from the same {@link webrtcEndpointFromLocation} the inviter-side
- * mint uses. Origin isolation makes this airtight: a record exists only at the
- * origin it was deposited at, so the app's own location is always the correct
- * signaling source -- it cannot go stale against a redeployment and cannot be
- * poisoned at rest. The stored connection block is read for two things: its
- * `channel` discriminant, to reject a non-webrtc record as not re-runnable in
- * the browser before any connection, and the `invitationRelay` an acceptor's
- * record keeps from the invitation it accepted.
+ * Both sides derive their signaling location from the app's own signaling
+ * address (`ownSignalingAddress`) -- the inviter inside `listenAsInviter`, the
+ * acceptor's dial endpoint here through the same
+ * {@link webrtcEndpointFromAddress} the inviter-side mint uses. Origin isolation
+ * makes this airtight: a record exists only at the origin it was deposited at,
+ * so the inviter's record always names the correct signaling source via its
+ * own deployment; the acceptor's re-run likewise uses its own deployment's
+ * address, so both deployments must name the same server. It cannot go stale
+ * against a redeployment and cannot be poisoned at rest. The stored connection
+ * block is read for two things: its `channel` discriminant, to reject a
+ * non-webrtc record as not re-runnable in the browser before any connection,
+ * and the `invitationRelay` an acceptor's record keeps from the invitation it
+ * accepted.
  *
  * The two rendezvous functions are injected (defaulting to the real
  * {@link listenAsInviter} / {@link dialAsAcceptor}) so the dispatch and the
@@ -36,7 +39,7 @@ import {
 } from "../transport/rendezvous";
 import { invitationLocation } from "../invitationLocation";
 import { relayForRun } from "../transport/ownRelaySetting";
-import { webrtcEndpointFromLocation } from "../invitation";
+import { webrtcEndpointFromAddress } from "../invitation";
 
 import type { DataConnection } from "peerjs";
 import type { ExchangeSpec } from "@alcove/core";
@@ -142,7 +145,7 @@ export async function beginManagedRendezvous(
     });
     return { side: "inviter", peer };
   }
-  const endpoint = webrtcEndpointFromLocation(invitationLocation());
+  const endpoint = webrtcEndpointFromAddress(invitationLocation().signaling);
   const [peer, conn] = await flows.dialAsAcceptor(sharedSecret, endpoint, {
     signal,
     relay,

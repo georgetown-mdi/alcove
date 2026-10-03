@@ -104,7 +104,10 @@ describe("the invitation mint's own re-parse", () => {
     const { encoded, columns, rawRows } = await generateInvitation({
       inviterName: "County Health Dept",
       file: csvStream(),
-      location: new URL("https://example.org/invite"),
+      location: {
+        origin: "https://example.org",
+        signaling: { host: "example.org", path: "/api/", secure: true },
+      },
     });
     expect(columns).toEqual(SANITIZED);
     expect(rawRows[0]).toHaveProperty("premidevil");

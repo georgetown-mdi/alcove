@@ -941,8 +941,7 @@ describe("what a mint over an offered column hands the surfaces that keep it", (
   // recurring exchange, unattended, on every run.
   const LOCATION = {
     origin: "https://example.org",
-    hostname: "example.org",
-    port: "",
+    signaling: { host: "example.org", path: "/api/", secure: true },
   };
 
   /** The invitation the screen mints for a draft, taken over profiled columns (the

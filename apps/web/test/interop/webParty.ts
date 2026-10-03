@@ -122,8 +122,12 @@ export async function inviteAsWebParty(params: {
     profiledColumns: columns,
     location: {
       origin: "http://127.0.0.1:3000",
-      hostname: "127.0.0.1",
-      port: "3000",
+      signaling: {
+        host: "127.0.0.1",
+        port: 3000,
+        path: "/api/",
+        secure: false,
+      },
     },
     connectionEndpoint: { channel: "filedrop", path: dropDir },
   });

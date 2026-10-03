@@ -18,7 +18,7 @@ import type { LiveLegCliOutcome, MatchedPair } from "./legTypes.ts";
  * puts the broker on an origin of its own: the invitation the CLI mints from
  * its `ws://` coordination-server URL names that broker's host, port and mount,
  * and the browser peer dials what the invitation names. A browser inviter would
- * name its own page's origin instead (`inviterLocationFromWindow`).
+ * name its own deployment's signaling address instead (`ownSignalingAddress`).
  *
  * Nothing here parses the CLI's output beyond two fixed things -- the
  * invitation on stdout, and the timestamp of the "closing connection" line the

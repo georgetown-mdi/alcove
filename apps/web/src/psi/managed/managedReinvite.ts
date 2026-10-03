@@ -26,9 +26,10 @@
  *   the document's metadata where it holds one.
  * - `connectionEndpoint` -- built FRESH from this app's current signaling location,
  *   not the document's stored `server` locator: the inviter derives its rendezvous
- *   from `window.location` on the re-run path, so the stored locator is inert (see
- *   docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field"). It names
- *   the inviter's own relay, passed in by the host, as a new invitation does.
+ *   from this app's signaling address on the re-run path, so the stored locator is
+ *   inert (see docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local `side` field").
+ *   It names the inviter's own relay, passed in by the host, as a new invitation
+ *   does.
  * - `sharedSecret` -- a fresh setup secret, superseding the desynced one.
  * - `expires` -- a fresh bounded setup lifetime on the TOKEN (the invitation-in-
  *   transit bound). The RECORD's own `expires` is re-derived from the max-age policy,
@@ -41,7 +42,7 @@
  * docs/MANAGED_EXCHANGE.md, "Recovery: fast re-invite").
  *
  * Pure and platform-free: this module composes the token and computes the record's
- * rotation write-back; the store write, the download, and `window.location` live in
+ * rotation write-back; the store write, the download, and the location live in
  * the host. Secret generation and token encoding are core's, injected so the
  * composition stays testable without real crypto.
  */

@@ -194,6 +194,32 @@ of them hold operator meaning: `ID-TAKEN` is the symmetric-role
 misconfiguration (both parties set the same `role`), and an `ERROR` whose
 payload names an invalid key is the wrong `server.key`.
 
+### The browser party's own signaling address
+
+A browser party resolves one address for the signaling server its own
+deployment uses, and every place that needs it reads that one value: where an
+inviter registers, the endpoint its invitation names, and where a saved
+exchange's acceptor dials on a later run. It comes from the deployment's build
+setting `VITE_SIGNALING_SERVER_URL`, never from an invitation. A fresh accept dials the endpoint its invitation names, from any deployment; a saved exchange's later runs dial each party's own deployment's address, so both parties' deployments must name the same signaling server for a re-run to connect:
+
+| Setting | Address |
+| ------- | ------- |
+| unset or blank | the page's own host and port, path `/api/`, `wss` when the page is `https` |
+| a `ws:` or `wss:` URL | that URL's host, port and path, the path ending in `/`, `wss` for `wss:` |
+
+The setting is refused when the app loads if it is not a `ws:` or `wss:` URL,
+or names a user name, password, query or fragment, or a host or path the
+delimiter rules above refuse. It is also refused when the app loads if its
+scheme does not match the page's: `wss:` under an `https` page, `ws:` under an
+`http` page. `localhost` is resolved to `127.0.0.1` in either case.
+
+The endpoint an invitation names holds the address's `host` and `path`, and
+names no scheme: an acceptor resolves the scheme from its own page, and an
+omitted port from that scheme's default. With the setting unset, the endpoint
+names the `port` only when the page's is not the scheme's default. With the
+setting set, the endpoint always names the `port`, the scheme's default
+included, so the port an acceptor dials never depends on its own page.
+
 ### Connection attempts
 
 A CLI party waits for its partner in connection attempts. Each is a fresh

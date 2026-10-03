@@ -29,7 +29,19 @@ A WebSocket-to-TCP proxy is required only when a browser-based party needs to re
 
 The web application bundles a PeerJS-compatible peer-coordination server, served under its own `/api/` route, so deploying the web application is sufficient to obtain a coordination server for parties that use it. The public PeerJS service (`api.peerjs.com`) is also usable for evaluation but routes connection-establishment metadata through a third party.
 
-Deploying a standalone peer-coordination server -- for example, as a serverless WebSocket function on AWS Lambda or Cloudflare Workers -- is not currently supported by configuration in the web application and is targeted for the 1.1 release (see [ROADMAP.md](ROADMAP.md)).
+To have the web application's browser parties use a peer-coordination server deployed apart from it -- the standalone broker (`npm start -w packages/peerjs-broker`) on a host of its own -- set `VITE_SIGNALING_SERVER_URL` when building the web application:
+
+```sh
+VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web
+```
+
+- The value is a `ws:` or `wss:` URL whose path is the server's mount; the broker's mount and how to set it: [packages/peerjs-broker/README.md](../packages/peerjs-broker/README.md).
+- Unset or blank, the browser parties use the server bundled at the web application's own `/api/`.
+- The URL's scheme must match the deployment's: `wss:` for one served over `https`, `ws:` for one served over `http`. A mismatch is refused when the app loads.
+- Every browser inviter of the deployment registers there, and every invitation it creates names that server, so a party accepting a fresh invitation dials it from whatever deployment they open it in. A saved exchange's later runs are different: each party's deployment dials its own signaling server, so both parties' deployments must name the same one for a re-run to connect.
+- The value is fixed at build time, so changing it means rebuilding and redeploying; an invitation already sent keeps naming the server it was created with.
+
+How the address is resolved, and what the invitation endpoint states: [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address).
 
 ### Hardening the signaling surface
 

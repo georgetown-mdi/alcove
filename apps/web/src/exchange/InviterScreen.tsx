@@ -21,7 +21,7 @@ import {
   InvitationFileError,
   generateInvitation,
   invitationDeclaresRetainedFiles,
-  webrtcEndpointFromLocation,
+  webrtcEndpointFromAddress,
 } from "@psi/invitation";
 import {
   emptyColumnPositions,
@@ -720,7 +720,7 @@ export function InviterScreen() {
   // Deposit a managed-exchange record for this exchange as the inviter: the
   // standing terms plus the secret embedded in the just-minted invitation, so the
   // partnership can run again later. The connection block is composed from this
-  // app's own signaling location -- the same window.location source the
+  // app's own signaling address -- the same ownSignalingAddress source the
   // invitation's endpoint was built from -- not read back off the encoded token.
   // The secret is the minted invitation's, not the one-shot run's own derived
   // rotation; only a managed re-run rotates it. Declining is simply not pressing
@@ -730,7 +730,7 @@ export function InviterScreen() {
     dispatch({ type: "manage-offer-started" });
     try {
       const connection = webrtcLocatorFromEndpoint(
-        webrtcEndpointFromLocation(invitationLocation()),
+        webrtcEndpointFromAddress(invitationLocation().signaling),
       );
       await createManagedExchange(
         buildManagedDeposit(

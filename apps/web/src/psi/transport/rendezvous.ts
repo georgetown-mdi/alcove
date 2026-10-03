@@ -17,6 +17,7 @@ import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
 } from "./waitForConnection";
+import { OWN_SIGNALING_PATH, ownSignalingAddress } from "./signalingAddress";
 import {
   createRedactingLogFunction,
   redactErrorIds,
@@ -92,11 +93,13 @@ export function brokerRegistrationTimedOutMessage(timeoutMs: number): string {
  */
 const DEFAULT_DIAL_RETRY_DELAY_MS = 1_000;
 
-/** A reachable host/port/path the PeerJS client dials the signaling server at. */
+/** A reachable host/port/path the PeerJS client dials the signaling server
+ * at. `secure` absent leaves PeerJS to take the scheme from the page. */
 interface SignalingLocation {
   host: string;
   port: number;
   path: string;
+  secure?: boolean;
 }
 
 /**
@@ -179,6 +182,7 @@ function buildPeerOptions(
     host: loc.host,
     path: loc.path,
     port: loc.port,
+    ...(loc.secure !== undefined ? { secure: loc.secure } : {}),
     pingInterval: PEER_PING_INTERVAL_MS,
     debug: resolvePeerDebugLevel(peerjsDebugLevel(), isDiagnosticMode()),
     logFunction: createRedactingLogFunction(redactableIds),
@@ -191,17 +195,18 @@ function buildPeerOptions(
 }
 
 /**
- * This app's own signaling location, for the inviter listening on its derived id.
- * `localhost` is normalized to a loopback literal a peer can dial, and an empty
- * (default-port) location resolves to 443/80 by scheme.
+ * This app's own signaling location, for the inviter listening on its derived
+ * id: the same address its invitation names ({@link ownSignalingAddress}),
+ * with a default port resolved to 443/80 by the address's own scheme.
  */
-function inviterLocationFromWindow(): SignalingLocation {
-  let host = window.location.hostname;
-  if (host === "localhost") host = "127.0.0.1";
-  const port =
-    Number(window.location.port) ||
-    (window.location.protocol === "https:" ? 443 : 80);
-  return { host, port, path: "/api/" };
+function inviterSignalingLocation(): SignalingLocation {
+  const address = ownSignalingAddress();
+  return {
+    host: address.host,
+    port: address.port ?? (address.secure ? 443 : 80),
+    path: address.path,
+    secure: address.secure,
+  };
 }
 
 /**
@@ -246,7 +251,7 @@ function endpointRefusal(message: string): ConnectionError {
 /**
  * The inviter's signaling location, read off the invitation endpoint, for the
  * acceptor to dial. The host was already normalized when the invitation was
- * built (`webrtcEndpointFromLocation`). The endpoint omits the port only for a
+ * built (`webrtcEndpointFromAddress`). The endpoint omits the port only for a
  * default-port deployment, so when absent it is resolved by the acceptor's own
  * scheme (acceptor and inviter run the same app, typically the same origin).
  *
@@ -270,7 +275,7 @@ function acceptorLocationFromEndpoint(
   const location = {
     host: endpoint.host,
     port: endpoint.port ?? (window.location.protocol === "https:" ? 443 : 80),
-    path: endpoint.path ?? "/api/",
+    path: endpoint.path ?? OWN_SIGNALING_PATH,
   };
   const moved = authorityMovingSignalingField(location);
   if (moved === "host") throw endpointRefusal(WEBRTC_ENDPOINT_HOST_REFUSED);
@@ -365,7 +370,7 @@ export async function listenAsInviter(
     deriveRendezvousPeerId(sharedSecret, "acceptor"),
     buildIceServers(options?.relay, sharedSecret, new Date()),
   ]);
-  const loc = inviterLocationFromWindow();
+  const loc = inviterSignalingLocation();
   // Short-circuit before any broker contact. Placed after the (fast) async
   // derivation above so an abort during it is still caught: no peer is
   // constructed and no derived id registered when the caller already aborted.
