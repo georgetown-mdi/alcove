@@ -169,6 +169,36 @@ export function recordAlterationIsTheOnlyExplanation(
   );
 }
 
+/**
+ * Whether a failed {@link RecordVerificationReport} is best explained by
+ * re-supplied files from another run of the exchange. The terms hash, the
+ * one check that reads no re-supplied file, re-derived; every failure is a
+ * commitment opened against those files; and at least one of them is a
+ * commitment the result file reproduces. A later run overwriting a fixed
+ * result path is the common case. It is still not proof: an altered
+ * commitment fails the same way, so a caller states record alteration as
+ * the remaining explanation.
+ *
+ * Every commitment must have opened or mismatched, and the result size
+ * must not be at fault -- a missing salt or a figure the opened pairing
+ * contradicts is not something another run's files explain.
+ */
+export function resuppliedFilesAreFromAnotherRun(
+  report: RecordVerificationReport,
+): boolean {
+  const { commitments } = report;
+  return (
+    report.outcome === "failed" &&
+    report.termsHash === "verified" &&
+    report.resultSize !== "mismatch" &&
+    Object.values(commitments).every(
+      (status) => status === "verified" || status === "mismatch",
+    ) &&
+    (commitments.partnerPayloadReceived === "mismatch" ||
+      commitments.associationTable === "mismatch")
+  );
+}
+
 const ALL_COMMITMENTS: readonly CommitmentName[] = [
   "localPayloadSent",
   "partnerPayloadReceived",

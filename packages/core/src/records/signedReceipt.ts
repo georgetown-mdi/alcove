@@ -431,7 +431,9 @@ const SignedReceiptPartySchema: z.ZodType<SignedReceiptParty> = z.object({
 // before that walk runs. The non-throwing helper keeps this schema's
 // `.safeParse()` contract, its bound refusals arriving as issues rather than
 // as a throw out of the enclosing parse.
-const carriedLinkageTermsSchema: z.ZodType<LinkageTerms> = z
+/** The bounded schema every stored copy of a party's linkage terms is read
+ * through: the receipt's envelope here, and the agreed-terms file. */
+export const carriedLinkageTermsSchema: z.ZodType<LinkageTerms> = z
   .unknown()
   .transform((raw, ctx) => {
     const parsed = safeParseLinkageTerms(raw);

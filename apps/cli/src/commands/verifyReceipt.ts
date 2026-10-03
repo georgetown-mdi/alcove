@@ -11,6 +11,7 @@ import {
   FINGERPRINT_REGEX,
   InternalConsistencyError,
   loadCSVFile,
+  parseAgreedTerms,
   parseDualSignedRecord,
   parseExchangeRecord,
   parseVerificationKeys,
@@ -23,6 +24,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   reproductionMismatchCauses,
+  resuppliedFilesAreFromAnotherRun,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
   SIGNED_RECEIPT_VERSION,
@@ -34,6 +36,7 @@ import {
   verifyExchangeRecord,
 } from "@alcove/core";
 import type {
+  AgreedTerms,
   AnchoredCertificateStatus,
   AssertedIdentityStatus,
   CertificateBindingStatus,
@@ -63,7 +66,7 @@ import {
 } from "../config";
 import { expandTilde } from "../fileUtils";
 import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
-import { keysPathFor } from "../recordFile";
+import { agreedTermsPathFor, keysPathFor } from "../recordFile";
 import { parseSensitiveJson, parseSensitiveYaml } from "../sensitiveFile";
 import { loadSigningCertificate } from "../signingIdentityFile";
 import { openInputSource } from "../util/dataIo";
@@ -82,9 +85,10 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 // two artifacts an exchange produces, separately or together:
 //
 //   - The self-attested exchange record (UNSIGNED): internal consistency. Its
-//     commitments open against the holder's re-supplied data, and (when both
-//     parties' terms are supplied) its agreed-terms hash re-derives. This proves
-//     nothing about the partner.
+//     commitments open against the holder's re-supplied data, and its
+//     agreed-terms hash re-derives from both parties' terms -- the agreed-terms
+//     file the exchange wrote beside it, or the documents the operator names.
+//     This proves nothing about the partner.
 //   - The dual-signed record (SIGNED): evidence against the partner. Each party's
 //     receipt signature is checked against the certificate the record holds, each
 //     certificate's identity binding is checked, and each certificate is checked
@@ -165,15 +169,17 @@ export function builder(cmd: Argv): Argv {
     .option("config-file", {
       type: "string",
       describe:
-        "this party's exchange config, for its linkage terms (with " +
-        "--partner-terms, checks the agreed-terms hash). Not auto-loaded.",
+        "this party's exchange config, for its signing settings and its " +
+        "linkage terms, which take the place of the copy in the record's " +
+        "agreed-terms file. Not auto-loaded.",
     })
     .option("partner-terms", {
       type: "string",
       describe:
         "the partner's linkage terms (config or exported terms), for the " +
-        "agreed-terms hash check; a dual-signed record holds the partner's " +
-        "terms, and this stands in for one that does not",
+        "agreed-terms hash check; the record's agreed-terms file " +
+        "(<record>.terms.json) and a dual-signed record hold them, and this " +
+        "stands in for a record with neither",
     });
   return addLoggingOptions(beforeLogging);
 }
@@ -499,6 +505,15 @@ function verdictExitCode(
   }
 }
 
+/** The headline of a failure that re-supplied files from another run of the
+ * exchange explain ({@link resuppliedFilesAreFromAnotherRun}). */
+export const RESULT_FROM_ANOTHER_RUN_HEADLINE =
+  "VERIFICATION FAILED: the result file does not belong to this record's " +
+  "run -- most often, a later run overwrote it. The agreed terms match the " +
+  "record; only the checks against your input and result files failed. " +
+  "Supply the input and result files from this record's run; if these are " +
+  "them, the record was altered.";
+
 /** Render the unsigned record's verification report to output lines and an exit
  * code (0 only when the verdict is verified). @internal exported for testing */
 export function formatVerificationReport(
@@ -514,7 +529,9 @@ export function formatVerificationReport(
         ? "VERIFICATION FAILED: the recorded result size disagrees with the " +
             "matched pairs the record itself commits to -- the record was " +
             "altered; the files you re-supplied check out."
-        : "VERIFICATION FAILED: a check did not match -- the record may have been " +
+        : resuppliedFilesAreFromAnotherRun(report)
+          ? RESULT_FROM_ANOTHER_RUN_HEADLINE
+          : "VERIFICATION FAILED: a check did not match -- the record may have been " +
             "altered, or a re-supplied input/result/terms does not match this exchange.",
     );
   else if (report.outcome === "incomplete")
@@ -927,6 +944,48 @@ function partnerTermsFrom(
 }
 
 /**
+ * The agreed-terms file the exchange wrote beside the record, read when
+ * present. The operator did not name it on this command line, so an absent
+ * file is no source at all, and an unreadable or invalid one is reported and
+ * left out rather than refused: the terms hash then waits on the flags that
+ * supply the same terms.
+ */
+function agreedTermsBesideRecord(
+  recordPath: string,
+  log: { warn: (message: string) => void },
+): AgreedTerms | undefined {
+  const termsPath = agreedTermsPathFor(recordPath);
+  const termsFileDisplay = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(termsPath),
+  );
+  let text: string;
+  try {
+    text = fs.readFileSync(expandTilde(termsPath), "utf8");
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    log.warn(
+      `the agreed-terms file ${termsFileDisplay} could not be read, so it ` +
+        `supplies no terms: ${sanitizeErrorForDisplay(err)}`,
+    );
+    return undefined;
+  }
+  try {
+    return parseAgreedTerms(
+      parseSensitiveJson(
+        text,
+        messageWithOperatorText`agreed-terms file ${operatorSuppliedText(termsPath)}`,
+      ),
+    );
+  } catch (err) {
+    log.warn(
+      `the agreed-terms file ${termsFileDisplay} is not valid, so it ` +
+        `supplies no terms: ${sanitizeForDisplay(firstIssue(err))}`,
+    );
+    return undefined;
+  }
+}
+
+/**
  * The `signing` block of an exchange config, read once per invocation and shared
  * by the two fields this command takes from it: the config is a secret-bearing
  * document, so it is read and parsed once rather than once per field. It holds
@@ -1247,11 +1306,18 @@ export async function handler(argv: Arguments): Promise<void> {
             undefined,
             csvDelimiter,
           );
+    // The exchange record's own run wrote both parties' terms beside it; a
+    // document the operator names wins over that copy, half by half.
+    const agreedTerms =
+      artifact.kind === "record"
+        ? agreedTermsBesideRecord(recordPath, log)
+        : undefined;
     const localTerms =
       localSource === undefined
-        ? undefined
+        ? agreedTerms?.localTerms
         : localTermsAsTheRunStatedThem(localSource, inputParse?.meta, log);
-    const suppliedPartnerTerms = partnerTermsFrom(partnerTermsFile, log);
+    const suppliedPartnerTerms =
+      partnerTermsFrom(partnerTermsFile, log) ?? agreedTerms?.partnerTerms;
     const signedRecord =
       artifact.kind === "signed"
         ? artifact.signed

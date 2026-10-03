@@ -33,14 +33,20 @@ vi.mock("@alcove/core", async (importActual) => {
 });
 
 import {
+  AGREED_TERMS_VERSION,
+  getDefaultLinkageTerms,
+  parseAgreedTerms,
   parseExchangeRecord,
   parseVerificationKeys,
+  type AgreedTerms,
   type ExchangeRecord,
   type VerificationKeys,
 } from "@alcove/core";
 
 import {
+  agreedTermsPathFor,
   keysPathFor,
+  recordDirectoryIsShared,
   recordPathsFor,
   resolveRecordOutput,
   writeExchangeRecord,
@@ -293,4 +299,116 @@ test("a terminated run's lost record is not reported as a completed exchange", (
   expect(
     logCapture.warnings.some((m) => m.includes("disclosed before it failed")),
   ).toBe(true);
+});
+
+// --- The agreed-terms file -----------------------------------------------------
+
+const agreedTerms: AgreedTerms = {
+  version: AGREED_TERMS_VERSION,
+  localTerms: getDefaultLinkageTerms("Party A"),
+  partnerTerms: getDefaultLinkageTerms("Party B"),
+};
+
+test("agreedTermsPathFor pairs the file with its record as the keys file is", () => {
+  expect(agreedTermsPathFor("/tmp/rec.json")).toBe("/tmp/rec.terms.json");
+  expect(agreedTermsPathFor("./alcove-record-X.json")).toBe(
+    "./alcove-record-X.terms.json",
+  );
+  expect(agreedTermsPathFor("/tmp/rec")).toBe("/tmp/rec.terms.json");
+});
+
+test("writeExchangeRecord writes the agreed terms beside the record, owner-only", () => {
+  const recordFilePath = path.join(dir, "rec.json");
+  const termsFilePath = agreedTermsPathFor(recordFilePath);
+  expect(
+    writeExchangeRecord({ recordFile: recordFilePath }, record, keys, "test", {
+      terms: agreedTerms,
+      channelDirectories: [path.join(dir, "drop")],
+    }).kind,
+  ).toBe("written");
+  expect(
+    parseAgreedTerms(JSON.parse(fs.readFileSync(termsFilePath, "utf8"))),
+  ).toEqual(agreedTerms);
+  if (process.platform !== "win32")
+    expect(fs.statSync(termsFilePath).mode & 0o777).toBe(0o600);
+  expect(logCapture.infos.join("\n")).toContain(
+    `wrote both parties' agreed terms to ${termsFilePath}`,
+  );
+  expect(logCapture.warnings).toEqual([]);
+});
+
+test.each([
+  ["is", (shared: string) => shared],
+  ["is inside", (shared: string) => path.join(shared, "records")],
+])(
+  "no agreed-terms file is written where the record directory %s the shared folder",
+  (_how, recordDirectory) => {
+    const shared = path.join(dir, "shared");
+    fs.mkdirSync(shared);
+    const recordFilePath = path.join(recordDirectory(shared), "rec.json");
+    expect(
+      writeExchangeRecord(
+        { recordFile: recordFilePath },
+        record,
+        keys,
+        "test",
+        {
+          terms: agreedTerms,
+          channelDirectories: [shared],
+        },
+      ).kind,
+    ).toBe("written");
+    expect(fs.existsSync(recordFilePath)).toBe(true);
+    expect(fs.existsSync(agreedTermsPathFor(recordFilePath))).toBe(false);
+    expect(logCapture.warnings).toHaveLength(1);
+    expect(logCapture.warnings[0]).toContain(
+      "the record is in the folder this exchange shares with the partner",
+    );
+    expect(logCapture.warnings[0]).toContain("--partner-terms");
+  },
+);
+
+test.skipIf(process.platform === "win32")(
+  "a shared folder reached through a symbolic link is still recognized",
+  () => {
+    const shared = path.join(dir, "shared");
+    fs.mkdirSync(shared);
+    const link = path.join(dir, "link");
+    fs.symlinkSync(shared, link);
+    expect(recordDirectoryIsShared(path.join(link, "rec.json"), [shared])).toBe(
+      true,
+    );
+    expect(recordDirectoryIsShared(path.join(shared, "rec.json"), [link])).toBe(
+      true,
+    );
+  },
+);
+
+test("a folder beside the shared one, or holding it, is not shared", () => {
+  const shared = path.join(dir, "shared");
+  expect(recordDirectoryIsShared(path.join(dir, "rec.json"), [shared])).toBe(
+    false,
+  );
+  expect(
+    recordDirectoryIsShared(path.join(`${shared}-records`, "rec.json"), [
+      shared,
+    ]),
+  ).toBe(false);
+  expect(recordDirectoryIsShared(path.join(dir, "rec.json"), [])).toBe(false);
+});
+
+test("an agreed-terms write that fails leaves the record written and says what to pass", () => {
+  const recordFilePath = path.join(dir, "rec.json");
+  // A directory where the file would go makes its rename fail.
+  fs.mkdirSync(agreedTermsPathFor(recordFilePath));
+  expect(
+    writeExchangeRecord({ recordFile: recordFilePath }, record, keys, "test", {
+      terms: agreedTerms,
+      channelDirectories: [],
+    }).kind,
+  ).toBe("written");
+  expect(fs.existsSync(recordFilePath)).toBe(true);
+  expect(logCapture.warnings).toHaveLength(1);
+  expect(logCapture.warnings[0]).toContain("could not be written");
+  expect(logCapture.warnings[0]).toContain("the record is unaffected");
 });

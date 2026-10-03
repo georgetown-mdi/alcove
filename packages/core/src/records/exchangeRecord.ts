@@ -31,6 +31,9 @@ import {
   resolvedMatchingFromTerms,
 } from "../linkageTermsPolicy.js";
 
+import { AGREED_TERMS_VERSION } from "./agreedTerms.js";
+
+import type { AgreedTerms } from "./agreedTerms.js";
 import type { CanonicalValue } from "../utils/canonical.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { ResolvedMatching } from "../linkageTermsPolicy.js";
@@ -906,11 +909,15 @@ export interface ExchangeRecordRandomness {
   salts: Partial<Record<CommitmentName, Uint8Array<ArrayBuffer>>>;
 }
 
-/** The two artifacts {@link buildExchangeRecord} produces: the shareable record
- * and its private verification keys. */
+/** What {@link buildExchangeRecord} produces: the shareable record, its
+ * private verification keys, and the agreed terms its `termsHash` is computed
+ * over. */
 export interface BuiltExchangeRecord {
   record: ExchangeRecord;
   keys: VerificationKeys;
+  /** Set by every build; optional so a record assembled elsewhere need not
+   * state it. */
+  agreedTerms?: AgreedTerms;
 }
 
 /**
@@ -1213,7 +1220,12 @@ export async function buildExchangeRecord(
     version: EXCHANGE_KEYS_VERSION,
     salts: commitmentSalts as CommitmentSalts,
   };
-  return { record, keys };
+  const agreedTerms: AgreedTerms = {
+    version: AGREED_TERMS_VERSION,
+    localTerms: inputs.localTerms,
+    partnerTerms: inputs.partnerTerms,
+  };
+  return { record, keys, agreedTerms };
 }
 
 // --- Serialize / parse -------------------------------------------------------

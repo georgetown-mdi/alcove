@@ -1,12 +1,20 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import {
   getLogger,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
+  serializeAgreedTerms,
   serializeExchangeRecord,
   serializeVerificationKeys,
 } from "@alcove/core";
-import type { ExchangeRecord, VerificationKeys } from "@alcove/core";
+import type {
+  AgreedTerms,
+  ExchangeRecord,
+  VerificationKeys,
+} from "@alcove/core";
 
 import { writeFileOwnerOnly } from "./fileUtils";
 
@@ -37,6 +45,17 @@ export function keysPathFor(recordPath: string): string {
   return recordPath.endsWith(".json")
     ? `${recordPath.slice(0, -".json".length)}.keys.json`
     : `${recordPath}.keys.json`;
+}
+
+/**
+ * Derive the agreed-terms path from a record path, as {@link keysPathFor}
+ * derives the keys path: a `.terms.json` suffix in place of a trailing `.json`.
+ * `alcove verify-receipt` looks for the file here.
+ */
+export function agreedTermsPathFor(recordPath: string): string {
+  return recordPath.endsWith(".json")
+    ? `${recordPath.slice(0, -".json".length)}.terms.json`
+    : `${recordPath}.terms.json`;
 }
 
 /**
@@ -99,6 +118,89 @@ export type RecordWriteResult =
   { kind: "written"; paths: RecordPaths } | { kind: "failed"; message: string };
 
 /**
+ * The agreed terms a record's hash is computed over, to be written beside it,
+ * and the local directories this run's channel shares with the partner.
+ */
+export interface AgreedTermsBesideRecord {
+  terms: AgreedTerms;
+  /** A filedrop channel's directories; empty for every other channel. */
+  channelDirectories: readonly string[];
+}
+
+// The path as symlinks resolve it, or as given when it does not resolve.
+function realPathOrResolved(target: string): string {
+  const resolved = path.resolve(target);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function isSameOrInside(child: string, parent: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+/** Whether `recordFilePath`'s directory is, or is inside, one of
+ * `channelDirectories`. @internal exported for testing */
+export function recordDirectoryIsShared(
+  recordFilePath: string,
+  channelDirectories: readonly string[],
+): boolean {
+  const fold = (value: string): string =>
+    process.platform === "win32" ? value.toLowerCase() : value;
+  const recordDirectory = fold(
+    realPathOrResolved(path.dirname(recordFilePath)),
+  );
+  return channelDirectories.some((directory) =>
+    isSameOrInside(recordDirectory, fold(realPathOrResolved(directory))),
+  );
+}
+
+// Written only after the record, and never into a directory the partner
+// reads through: the file is a convenience for verify-receipt, so a skip or
+// a failed write leaves the record whole and costs only the flags that
+// supply the same terms.
+function writeAgreedTermsBesideRecord(
+  recordFilePath: string,
+  agreedTerms: AgreedTermsBesideRecord,
+  loggerName: string,
+): void {
+  const log = getLogger(loggerName);
+  const termsFilePath = agreedTermsPathFor(recordFilePath);
+  const termsFileDisplay = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(termsFilePath),
+  );
+  const remedy =
+    "to check the record's agreed-terms hash, pass alcove verify-receipt " +
+    "--config-file and --partner-terms";
+  if (recordDirectoryIsShared(recordFilePath, agreedTerms.channelDirectories)) {
+    log.warn(
+      `the agreed terms were not written to ${termsFileDisplay}: the record ` +
+        "is in the folder this exchange shares with the partner. Write " +
+        `records elsewhere with --record-file; ${remedy}`,
+    );
+    return;
+  }
+  try {
+    writeFileOwnerOnly(termsFilePath, serializeAgreedTerms(agreedTerms.terms));
+    log.info(
+      `wrote both parties' agreed terms to ${termsFileDisplay}, for alcove ` +
+        "verify-receipt to check the record's agreed-terms hash",
+    );
+  } catch (err) {
+    log.warn(
+      `the agreed terms could not be written to ${termsFileDisplay} ` +
+        `(${sanitizeErrorForDisplay(err)}); the record is unaffected; ${remedy}`,
+    );
+  }
+}
+
+/**
  * Write the record (shareable) and its verification keys (private) to disk,
  * each atomically and owner-only via {@link writeFileOwnerOnly} -- keys
  * first, so a mid-write death leaves the salts recoverable even when the
@@ -107,13 +209,16 @@ export type RecordWriteResult =
  * as a `failed` result's message, composed RAW for the caller's own
  * event-stream escaping (docs/spec/CLI_EVENTS.md, `warning`), and handles a
  * completed run's record and a terminated one identically
- * (docs/spec/EXCHANGE_RECORD.md, When a record is owed).
+ * (docs/spec/EXCHANGE_RECORD.md, When a record is owed). Given
+ * `agreedTerms`, a record that was written gets the agreed-terms file beside
+ * it (docs/spec/EXCHANGE_RECORD.md, Agreed-terms file).
  */
 export function writeExchangeRecord(
   output: RecordOutput,
   record: ExchangeRecord,
   keys: VerificationKeys,
   loggerName: string,
+  agreedTerms?: AgreedTermsBesideRecord,
 ): RecordWriteResult {
   const log = getLogger(loggerName);
   const { recordFilePath, keysFilePath } = recordPathsFor(
@@ -162,6 +267,8 @@ export function writeExchangeRecord(
             "record is what they claimed and not what this run confirmed"
           : ""),
     );
+    if (agreedTerms !== undefined)
+      writeAgreedTermsBesideRecord(recordFilePath, agreedTerms, loggerName);
     return { kind: "written", paths: { recordFilePath, keysFilePath } };
   } catch (err) {
     log.warn(

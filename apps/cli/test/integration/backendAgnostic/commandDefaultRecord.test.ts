@@ -19,7 +19,11 @@ import {
 import { saveConfig } from "../../../src/config";
 import { UNNAMED_PARTNER_ACCOUNTING_NOTE } from "../../../src/protocol";
 import { saveKeyFile } from "../../../src/keyFile";
-import { DEFAULT_RECORD_BASENAME, keysPathFor } from "../../../src/recordFile";
+import {
+  agreedTermsPathFor,
+  DEFAULT_RECORD_BASENAME,
+  keysPathFor,
+} from "../../../src/recordFile";
 import { captureStdio } from "../../loggingTestSupport";
 
 // Net-new coverage: the per-command-handler wiring that turns the default-on
@@ -170,9 +174,9 @@ async function runBoth(argvA: string[], argvB: string[]): Promise<void> {
 }
 
 // Locate the single default-path record the asserted party wrote in `dir`. The
-// default basename is shared by the record (`<base>-<stamp>.json`) and its
-// verification keys (`<base>-<stamp>.keys.json`), so exclude the keys to find the
-// record itself. Exactly one is expected, since only the asserted party records.
+// default basename is shared by the record (`<base>-<stamp>.json`), its
+// verification keys (`<base>-<stamp>.keys.json`), and its agreed terms
+// (`<base>-<stamp>.terms.json`), so exclude those two to find the record itself. Exactly one is expected, since only the asserted party records.
 function findDefaultRecord(dir: string): string {
   const matches = fs
     .readdirSync(dir)
@@ -180,7 +184,8 @@ function findDefaultRecord(dir: string): string {
       (name) =>
         name.startsWith(`${DEFAULT_RECORD_BASENAME}-`) &&
         name.endsWith(".json") &&
-        !name.endsWith(".keys.json"),
+        !name.endsWith(".keys.json") &&
+        !name.endsWith(".terms.json"),
     );
   // Explicit guard rather than `expect(...).toHaveLength(1)` then `matches[0]`:
   // the throw is what makes the subsequent index access safe, so state it
@@ -207,6 +212,8 @@ function expectDefaultRecord(
   const recordFile = findDefaultRecord(dir);
   const keysFile = keysPathFor(recordFile);
   expect(fs.existsSync(keysFile)).toBe(true);
+  const termsFile = agreedTermsPathFor(recordFile);
+  expect(fs.existsSync(termsFile)).toBe(true);
   // Both files are written through the command handler's default record path
   // and must be owner-only (0600): the verification keys are private
   // commitment salts and the record discloses the exchange's participants and
@@ -217,6 +224,7 @@ function expectDefaultRecord(
   if (process.platform !== "win32") {
     expect(fs.statSync(recordFile).mode & 0o077).toBe(0);
     expect(fs.statSync(keysFile).mode & 0o077).toBe(0);
+    expect(fs.statSync(termsFile).mode & 0o077).toBe(0);
   }
   const record = JSON.parse(fs.readFileSync(recordFile, "utf8")) as {
     version?: unknown;
