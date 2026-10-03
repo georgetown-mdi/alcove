@@ -1,6 +1,13 @@
-import { PeerErrorType } from "peerjs";
-
 import type Peer from "peerjs";
+import type { PeerErrorType } from "peerjs";
+
+/**
+ * PeerJS's `server-error` type, spelled as a literal: peerjs ships CommonJS,
+ * so Node's ESM loader cannot link a named import of the enum during a
+ * server render.
+ */
+const SERVER_ERROR =
+  "server-error" satisfies `${PeerErrorType.ServerError}` as PeerErrorType.ServerError;
 
 /**
  * Largest inbound signaling frame accepted, in UTF-8 bytes, before PeerJS
@@ -78,7 +85,7 @@ export function boundPeerSignaling(peer: Peer): Peer {
 
   const refuseOversizedFrame = (): void => {
     peer.emitError(
-      PeerErrorType.ServerError,
+      SERVER_ERROR,
       `the signaling server sent a frame larger than the ` +
         `${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
     );
