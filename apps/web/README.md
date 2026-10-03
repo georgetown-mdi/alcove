@@ -2,22 +2,25 @@
 
 The browser-based Alcove app: two parties run a peer-to-peer exchange over WebRTC using ephemeral invitation links.
 
-## Quickstart
+## Running from source
 
-Node and NPM must be installed. From the repository root, run:
+Most users do not need this: the hosted web app at [https://psi.data-bridge.org](https://psi.data-bridge.org) runs the same code with nothing to install. Run it from source to develop it or to try a change.
 
-1. `npm install . -w packages/core -w apps/web`
-2. `npm run -w packages/core build`
+1. Clone this repository: `git clone https://github.com/georgetown-mdi/alcove.git` and `cd` into it.
+2. Install Node.js 26 or later, with npm.
+   * On a Mac: install [Homebrew](https://brew.sh/) and run `brew install node`.
+   * Elsewhere, see [the Node.js download page](https://nodejs.org/en/download/package-manager/all), and check that `node --version` reports 26 or later: a distribution's own package can be older.
+3. From the repository root, run `npm install . -w packages/core -w apps/web`.
+4. Run `npm run -w packages/core build`.
+5. Start the development server:
 
-## Development
+   ```sh
+   npm run -w apps/web dev
+   ```
 
-Start the development server:
+6. Visit [http://localhost:3000](http://localhost:3000).
 
-```sh
-npm run -w apps/web dev
-```
-
-Then visit [http://localhost:3000](http://localhost:3000).
+An invitation created on this server carries `localhost` as its address, so it only works on this computer, and the share screen says so. To practice a full exchange, play both parties in two browser windows on the same machine, each with one of the files in [`test_data/`](../../test_data/).
 
 ## Source layout
 

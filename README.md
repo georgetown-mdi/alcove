@@ -4,12 +4,31 @@ Alcove: Open Source Encrypted Matching and Sharing
 
 Alcove is an open-source tool that lets two organizations find the records (individuals) they have in common with the option of exchanging data about those shared records, without either organization revealing anything about the records they do not share. It performs privacy-preserving record linkage (PPRL) using a cryptographic protocol called private set intersection (PSI).
 
+## Three ways to use Alcove
+
+Pick the one that matches who you are. All three run the same protocol, so the two parties do not have to pick the same one.
+
+1. **You have a spreadsheet and a browser.** Open [https://psi.data-bridge.org](https://psi.data-bridge.org). Nothing to install: your files are read and matched inside your browser, which exchanges directly with your partner's. Best for first-time and occasional exchanges. See [Web app](#web-app).
+2. **You run Docker and want a guided screen for an exchange over your own SFTP server.** Start the console from the directory holding your input file, then visit [http://127.0.0.1:3000](http://127.0.0.1:3000):
+   ```sh
+   docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest serve
+   ```
+   On Windows, use the Windows form in the [Web Console Quickstart](#web-console-quickstart).
+   For an exchange through a shared folder, add the folder as the [Web Console Quickstart](#web-console-quickstart) shows.
+3. **You automate exchanges from the command line.** Run the containerized command line app against an SFTP server, a shared folder, or a partner's browser:
+   ```sh
+   docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FILE
+   ```
+   Best for recurring or scheduled exchanges and for IT teams fitting linkage into a data pipeline. See the [CLI App Quickstart](#cli-app-quickstart).
+
+To run the web app from source instead, see [apps/web/README.md](apps/web/README.md).
+
 ## Key features
 
 - **Match without disclosure.** Each party keeps its full dataset private; the protocol reveals only which records the two parties have in common.
 - **Optional data exchange for matched records.** Beyond identifying matches, parties can share selected columns (for example, program enrollment dates or contact information).
 - **Configurable matching.** Records are matched on linkage keys built from identifier fields such as name, date of birth, or SSN, with built-in data cleaning and standardization so both parties' data is compared consistently.
-- **No third party holds your data.** The web app exchanges data directly between the two parties' browsers; the command line app uses an SFTP server or file drop that you control.
+- **No third party holds your data.** The web app exchanges data directly between the two parties' browsers; the command line app uses an SFTP server or file drop that you control, or exchanges directly with a partner's browser.
 - **A record of every exchange.** Each completed exchange produces a local record of what was shared, which you can retain for disclosure documentation.
 
 ## Example use cases
@@ -18,34 +37,21 @@ Alcove is an open-source tool that lets two organizations find the records (indi
 - Two service providers with a data sharing agreement determine which clients they serve in common without disclosing their full caseloads to each other.
 - An agency IT team runs a recurring, scheduled exchange with a partner as part of a monthly data pipeline, using the command line app.
 
-## Two ways to use this tool
-
-1. **Web app**: runs in your browser with a guided, step-by-step interface. Your data files are read and processed locally in the browser; PII used for matching is encrypted by the browser before leaving your machine. Best for first-time and occasional exchanges, or for evaluating the tool. See the [Web App Quickstart](#web-app-quickstart).
-2. **Docker container (command line app)**: a containerized command line application that connects through an SFTP server or file drop. Best for recurring or automated exchanges, or for IT teams integrating linkage into existing data processes. See the [CLI App Quickstart](#cli-app-quickstart).
-
-Both applications implement the same protocol and can be mixed: a first exchange set up in the web app can be exported and automated later with the command line app.
-
-A third option combines the two: the same Docker image can serve the web interface from a machine you control (the web console), so operators get the guided browser experience while SFTP and shared-directory exchanges run on that machine. See the [Web Console Quickstart](#web-console-quickstart).
-
 ## Test data
 
-This repository includes two synthetic datasets you can use to try the tool without touching real records: [`test_data/fake_data_1.csv`](test_data/fake_data_1.csv) and [`test_data/fake_data_2.csv`](test_data/fake_data_2.csv). Each contains fabricated names, SSNs, and dates of birth, with partial overlap between the two files, so you can run a complete practice exchange. One party uses each file and one initiates and then provides the generated link to the other party (e.g., via Slack or email).
+This repository includes two synthetic datasets you can use to try the tool without touching real records: [`test_data/fake_data_1.csv`](test_data/fake_data_1.csv) and [`test_data/fake_data_2.csv`](test_data/fake_data_2.csv). Each contains fabricated names, SSNs, and dates of birth, with partial overlap between the two files, so you can run a complete practice exchange. One party uses each file. What the partner needs depends on how you run it:
 
-## Web App Quickstart
+- **Web app**: a browser and the other file. You create the invitation at the web app's address and send your partner the link (for example, by secure email); they open it and pick their file.
+- **Console**: the other file, and the same SFTP server or shared folder you chose. Your partner runs the command line app or a console of their own, and accepts with the invitation code you send them.
+- **Command line app**: the other file, and the same SFTP server or shared folder. For an exchange with a browser partner, they need only a browser and the invitation you send them (see [Exchanging with a browser partner](#exchanging-with-a-browser-partner)).
 
-1. Clone this repository: `git clone https://github.com/georgetown-mdi/alcove.git` and `cd` into it
-2. Install Node.js and NPM
-   * On a Mac: Install [Homebrew](https://brew.sh/) and execute `brew install node`
-   * On Alpine Linux: `apk add nodejs npm`
-   * On other Linux variants, see [here](https://nodejs.org/en/download/package-manager/all).
-3. Run `npm install . -w packages/core -w apps/web`
-4. Run `npm run -w packages/core build`
-5. Run `npm run -w apps/web dev`
-6. Visit [http://localhost:3000](http://localhost:3000)
+## Web app
 
-To try it out, use the files in [`test_data/`](test_data/) as each party's input.
+Open [https://psi.data-bridge.org](https://psi.data-bridge.org) and choose **Create an invitation**. Send the link it gives you to your partner, who opens it in their own browser. Keep your tab open until the exchange completes.
 
-See [apps/web](apps/web) for more details.
+To practice, each party picks one of the files in [`test_data/`](test_data/) as input.
+
+To exchange with the same partner on a schedule, choose **Save as a recurring exchange** on the exchange screen; see [Managed (recurring) web exchanges](docs/MANAGED_EXCHANGE.md).
 
 ## CLI App Quickstart
 
@@ -108,11 +114,29 @@ See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-wi
 
 Because the only content accessible to the container is what is in `WORK_PATH`, we recommend making a new directory and placing the file you wish to link in it.
 
-The container runs unprivileged, as uid 1000. Docker Desktop -- on Mac, Windows, or Linux -- arranges for the mounted directory to be reachable by it, so the commands above work as written. Under Docker Engine on Linux the directory keeps its own ownership, so give it to that uid once -- `sudo chown 1000:1000 WORK_PATH` -- if your account is not itself uid 1000. If an earlier Alcove image has already written into that directory, the files it left belong to root, and the directory needs `sudo chown -R 1000:1000 WORK_PATH` to hand those over as well. See [The user the image runs as](docs/DEPLOYMENT.md#the-user-the-image-runs-as) for both, and for the alternative of running the container as your own account.
+If you use Docker Desktop -- on Mac, Windows, or Linux -- skip this paragraph: it makes the mounted directory reachable by the container, so the commands above work as written. The container runs unprivileged, as uid 1000. Under Docker Engine on Linux the directory keeps its own ownership, so give it to that uid once -- `sudo chown 1000:1000 WORK_PATH` -- if your account is not itself uid 1000. If an earlier Alcove image has already written into that directory, the files it left belong to root, and the directory needs `sudo chown -R 1000:1000 WORK_PATH` to hand those over as well. See [The user the image runs as](docs/DEPLOYMENT.md#the-user-the-image-runs-as) for both, and for the alternative of running the container as your own account.
 
 The output file is a CSV giving the linkage between the two parties' records. See [Output](docs/spec/PROTOCOL.md#output) for the exact column layout and naming rules.
 
 To practice before using real data, the repository provides two synthetic input files in [`test_data/`](test_data/); each party uses one.
+
+### Exchanging with a browser partner
+
+The command line app also exchanges over WebRTC with a partner who uses the web app, with no SFTP server or shared folder between you. Invite them from the directory holding your input, replacing `Agency A` with your organization's name:
+
+```sh
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches.csv
+```
+
+It prints an invitation code and waits. Send the code to your partner over a trusted channel; they paste it under **Accept an invitation you were sent** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
+
+### Running it on a schedule
+
+1. Set the exchange up once with `invite` on one side and `accept` on the other.
+2. That writes `alcove.yaml` and a key file into your working directory.
+3. Each later run is `exchange INPUT_FILE OUTPUT_FILE` from the same directory, with no further coordination.
+4. Each run rotates the shared secret in the key file, so keep the directory between runs.
+5. Hand that command to cron or the Windows Task Scheduler, as [Scheduling the run](docs/CLI.md#scheduling-the-run) shows.
 
 For more information, see [apps/cli](apps/cli/).
 

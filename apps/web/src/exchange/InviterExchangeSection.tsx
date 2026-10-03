@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@mantine/core";
+import { Alert, Button } from "@mantine/core";
+import { IconAlertTriangle } from "@tabler/icons-react";
 
 import { describeResolvedMatching } from "@alcove/core";
 
@@ -11,6 +12,7 @@ import { TermsChangeRecovery } from "@console/TermsChangeRecovery";
 import styles from "@styles/app.module.css";
 
 import { awaitingPartner } from "./exchangeRun";
+import { invitationReach } from "./invitationReach";
 
 import {
   AnotherExchangeFoot,
@@ -294,6 +296,10 @@ export function InviterExchangeSection({
         !recovering && (
           <>
             <h2>Share this invitation</h2>
+            <LimitedReachAlert
+              link={invitation.deepLink}
+              partnerAcceptsByCli={partnerAcceptsByCli}
+            />
             {partnerAcceptsByCli ? (
               <p>
                 Send one of these to your partner over a trusted channel (for
@@ -402,5 +408,43 @@ export function InviterExchangeSection({
         />
       )}
     </>
+  );
+}
+
+/**
+ * The warning a share screen shows when its invitation link was created on an
+ * address a partner elsewhere cannot open. A partner accepting from the command
+ * line reads the code, which names no address of this page, so only the link
+ * is limited for them.
+ */
+function LimitedReachAlert({
+  link,
+  partnerAcceptsByCli,
+}: {
+  link: string;
+  partnerAcceptsByCli: boolean;
+}) {
+  const reach = invitationReach(link);
+  if (reach === "anywhere") return null;
+  const where =
+    reach === "thisComputer" ? "this computer" : "your local network";
+  return (
+    <Alert
+      color="yellow"
+      icon={<IconAlertTriangle aria-hidden />}
+      title={
+        partnerAcceptsByCli
+          ? `The invitation link only works on ${where}`
+          : `This invitation only works on ${where}`
+      }
+      role="status"
+      mb="md"
+    >
+      {partnerAcceptsByCli
+        ? "Send your partner the invitation code instead of the link."
+        : reach === "thisComputer"
+          ? "This page runs on your own computer, so a partner on another computer cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."
+          : "This page runs on an address inside your network, so a partner outside it cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."}
+    </Alert>
   );
 }
