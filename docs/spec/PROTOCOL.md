@@ -247,7 +247,7 @@ Each party states on the terms exchange the most values one PSI set it receives 
 | Inviter, PSI sender | 12,180,897,792 bytes | 10,970 ms |
 | Acceptor, PSI receiver | 13,268,779,008 bytes | 9,929 ms |
 
-Peak RSS includes the party's PSI worker. `apps/cli/test/stress/webrtcCompletion.stress.test.ts` drives the run in the CLI's opt-in stress tier; what holds the main thread on an open channel is in [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-main-thread-on-an-open-channel).
+Peak RSS includes the party's PSI worker. `apps/cli/test/stress/webrtcCompletion.stress.test.ts` drives the run in the CLI's opt-in stress tier; what holds the main thread on an open channel is in [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-main-thread-on-an-open-channel). The same round with one party on each of two hosts is in [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#a-round-between-two-hosts).
 
 **What the sender does.** A cascade or count-only exchange holds this party's sets to the partner's ceiling at two points:
 
