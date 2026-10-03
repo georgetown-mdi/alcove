@@ -95,24 +95,49 @@ import {
   provisionLeftConfigOnDisk,
 } from "./provision";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
+import { BARE_INVOCATION_SUMMARY, unknownCommandMessage } from "../usageHints";
+
+/**
+ * The top-level usage text: the command form and the quick-exchange form,
+ * whose options are the ones the top-level help lists.
+ */
+export const QUICK_EXCHANGE_USAGE =
+  "Usage:\n" +
+  "  $0 COMMAND [options]\n" +
+  "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FILE]\n\n" +
+  "Run 'alcove COMMAND --help' for a command's own options. Without a\n" +
+  "command, alcove runs a quick exchange through the server or shared\n" +
+  "folder at URL; the options below are the quick exchange's.";
+
+/**
+ * Logged when a quick exchange starts: what a run without a shared secret
+ * relies on, and how to set up one that has a secret.
+ */
+export const QUICK_EXCHANGE_TRUST_NOTICE =
+  "This quick exchange has no shared secret, so anyone who administers the " +
+  "server or shared folder could stand in for your partner. For an exchange " +
+  "protected by a shared secret, set one up with 'alcove invite' and " +
+  "'alcove accept'.";
 
 // channelFromURL is used by the handler's pre-connection flag-warning path (and
 // by zeroSetup.test.ts); re-export it so both keep importing it from this module.
 export { channelFromURL };
 
 export function builder(cmd: Argv): Argv {
-  return addCommonBootstrapOptions(
+  const built = addCommonBootstrapOptions(
     addCsvDelimiterOption(cmd)
-      .usage(
-        "Usage:\n" +
-          "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FILE]\n\n" +
-          "Arguments:\n" +
+      .epilog(
+        "Quick exchange arguments:\n" +
           "  URL          server URL (sftp://, ssh://, or file://)\n" +
           "  INPUT_FILE   CSV to link; use `-` to read from stdin\n" +
           "  OUTPUT_FILE  where to write results; defaults to stdout\n\n" +
-          "Both parties run this command against the same server URL. Linkage\n" +
-          "terms are inferred from each party's input file. No configuration\n" +
-          "files are required or written by default.",
+          "Both parties run the quick exchange against the same server URL.\n" +
+          "Linkage terms are inferred from each party's input file. No\n" +
+          "configuration files are required or written unless --save is given.\n" +
+          "There is no shared secret, so anyone who administers the server or\n" +
+          "shared folder could stand in for your partner; set up a recurring\n" +
+          "exchange with 'alcove invite' and 'alcove accept' for one protected\n" +
+          "by a shared secret.",
       )
       .option("save", {
         type: "boolean",
@@ -144,9 +169,11 @@ export function builder(cmd: Argv): Argv {
         "folder both parties reach -- along with the plaintext rendezvous " +
         "metadata that accompanies them. Intended for sync-mediated " +
         "transports that do not propagate deletions and for audit use cases. " +
-        "Requires --timestamp-in-filename. Both parties must set this flag " +
-        "identically -- a mismatch is detected at rendezvous and fails fast on " +
-        "both sides with a clear error naming each side's setting, rather than " +
+        "Turns on --timestamp-in-filename and --lockless-rendezvous, which it " +
+        "needs; setting either to false with it is an error. Both parties " +
+        "must set this flag identically -- a mismatch is detected at " +
+        "rendezvous and fails fast on both sides with a clear error naming " +
+        "each side's setting, rather than " +
         "stalling until the inactivity timeout. A fresh " +
         "directory is required for each exchange and is enforced: reusing a " +
         "directory with retained files from a prior session is rejected with " +
@@ -200,17 +227,89 @@ export function builder(cmd: Argv): Argv {
         "parties must select the same value or the exchange aborts. See " +
         "https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
         "EXCHANGE_REFERENCE.md (linkage_terms.linkage_strategy).",
-    })
-    .demand(1);
+    });
+  for (const [heading, keys] of ZERO_SETUP_OPTION_GROUPS)
+    built.group([...keys], heading);
+  return built;
 }
 
-// The common bootstrap options plus the zero-setup-specific positionals, --save,
+/**
+ * The quick exchange's options in the groups its help lists them under. Help
+ * and version stay under yargs' own "Options:" heading.
+ */
+export const ZERO_SETUP_OPTION_GROUPS: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  [
+    "Exchange:",
+    [
+      "identity",
+      "save",
+      "config-file",
+      "key-file",
+      "csv-delimiter",
+      "deduplicate",
+      "linkage-strategy",
+      "record",
+      "record-file",
+    ],
+  ],
+  [
+    "SFTP server:",
+    [
+      "server-port",
+      "server-username",
+      "server-password",
+      "server-private-key",
+      "server-private-key-passphrase",
+      "server-keyboard-interactive",
+      "server-host-key-fingerprint",
+      "server-provision",
+      "server-provision-bearer",
+      "server-provision-username",
+      "server-provision-password",
+    ],
+  ],
+  [
+    "Waiting and retries:",
+    [
+      "connection-timeout",
+      "peer-timeout",
+      "polling-frequency",
+      "max-reconnect-attempts",
+      "connection-per-poll",
+    ],
+  ],
+  [
+    "Exchange directory (advanced):",
+    [
+      "lockless-rendezvous",
+      "timestamp-in-filename",
+      "retain-files",
+      "outbound-path",
+      "peer-id",
+      "sweep-exchange-files",
+      "force-retain-sweep",
+    ],
+  ],
+  [
+    "Logging and output:",
+    [
+      "log-level",
+      "log-file",
+      "verbose",
+      "event-stream",
+      "allow-memory-shortfall",
+    ],
+  ],
+];
+
+// The common bootstrap options plus the zero-setup-specific --save,
 // and the CLI-only sweep controls. The connection-override subset handed to
 // createConnection is CommonBootstrapOptions' server-*/tuning fields; the fields
 // below are excluded from that path -- the sweep controls never reach the config
 // schema, and --linkage-strategy shapes the linkage terms, not the connection.
 interface ZeroSetupArgs extends CommonBootstrapOptions {
-  positionals: Array<string | number>;
   save: boolean;
   // CLI-only sweep controls (see protocol.FileSyncRuntimeOptions).
   sweepExchangeFiles: boolean;
@@ -242,7 +341,6 @@ function parseArgs(argv: Arguments): ZeroSetupArgs {
     configFile: expandTilde(common.configFile),
     keyFile: expandTilde(common.keyFile),
     recordFile: expandTilde(common.recordFile),
-    positionals: argv._,
     save: (argv["save"] as boolean | undefined) ?? false,
     // CLI-only, never persisted: resolve to a definite boolean here since there
     // is no config layer to merge with (unlike the file-sync flags above).
@@ -263,16 +361,14 @@ function tryParseURL(raw: string, errorMsg: string): URL {
   try {
     return new URL(raw);
   } catch (cause) {
-    // Object.assign rather than `new Error(msg, { cause })`: the second-arg
-    // ErrorOptions form requires lib ES2022, but the runtime preserves the
-    // assigned property either way.
-    throw Object.assign(new Error(errorMsg), { cause });
+    throw new UsageError(errorMsg, { cause });
   }
 }
 
 /**
  * Resolves the positional CLI arguments to a server URL, input path, and
- * optional output path. Throws with a user-facing message on bad input.
+ * optional output path. Throws a {@link UsageError} on bad input, naming the
+ * command a mistyped command name most likely stands for.
  * @internal exported for testing
  */
 export function resolvePositionals(positionals: Array<unknown>): {
@@ -286,16 +382,22 @@ export function resolvePositionals(positionals: Array<unknown>): {
   const arg2 =
     positionals[2] !== undefined ? String(positionals[2]) : undefined;
 
+  const isFile = fs.existsSync(arg0);
+  if (!isFile) {
+    const unknownCommand = unknownCommandMessage(arg0);
+    if (unknownCommand !== undefined) throw new UsageError(unknownCommand);
+  }
+
   if (arg1 === undefined) {
     // Single positional: might be a file (user forgot the subcommand) or a URL
     // with no input file.
-    if (fs.existsSync(arg0)) {
-      throw new Error(
+    if (isFile) {
+      throw new UsageError(
         "input file provided without a server URL; " +
           "did you mean 'alcove exchange INPUT_FILE'?",
       );
     }
-    throw new Error(
+    throw new UsageError(
       "input file not specified; usage: alcove URL INPUT_FILE [OUTPUT_FILE]",
     );
   }
@@ -310,6 +412,17 @@ export function resolvePositionals(positionals: Array<unknown>): {
     // for the offending value, which the operator just typed.
     "unable to parse server URL; usage: alcove URL INPUT_FILE [OUTPUT_FILE]",
   );
+  // A ws:// or wss:// URL maps to a channel and is refused later with its own
+  // reason; any other unmapped scheme is refused here, naming only the
+  // schemes a quick exchange runs over.
+  try {
+    channelFromURL(server);
+  } catch {
+    throw new UsageError(
+      `unsupported URL scheme: ${server.protocol}; a quick exchange takes ` +
+        "sftp://, ssh://, or file://",
+    );
+  }
   return { server, input: arg1, output: arg2 };
 }
 
@@ -612,18 +725,22 @@ function unsavedBootstrapNotice(params: {
 }
 
 export async function handler(argv: Arguments): Promise<void> {
-  // A URL and an input file: fewer is a usage error, which needs no restart.
-  if (argv._.length >= 2)
-    await restartUnderPsiHeapCeiling({
-      passEventStreamFd: argv["event-stream"] === true,
-    });
   // parseArgs resolves the log level and reads every option, so it runs before
   // the logger exists. parseOrExit reports its usage errors -- a repeated
   // single-value flag or an unrecognized log-level -- on stderr and exits 64,
   // and lets any other (unexpected) failure propagate to the top-level handler.
   const parsed = parseOrExit(() => parseArgs(argv));
+  // The positionals are checked ahead of the heap restart and every check
+  // that logs: a bare `alcove` or a mistyped command name is not an exchange.
+  if (argv._.length === 0) {
+    console.error(BARE_INVOCATION_SUMMARY);
+    process.exit(64);
+  }
+  const resolved = parseOrExit(() => resolvePositionals(argv._));
+  await restartUnderPsiHeapCeiling({
+    passEventStreamFd: argv["event-stream"] === true,
+  });
   const {
-    positionals,
     logLevel,
     logFile,
     verbosity,
@@ -653,20 +770,6 @@ export async function handler(argv: Arguments): Promise<void> {
   try {
     try {
       assertRetainSweepGuard(sweepExchangeFiles, forceRetainSweep);
-    } catch (err) {
-      exitWithError(log, err, 64);
-    }
-
-    log.warn(
-      "WARNING: this exchange relies on transport-layer authentication only. " +
-        "You must trust the server administrator. " +
-        "Run 'alcove invite' / 'alcove accept' to establish a recurring " +
-        "exchange with application-layer encryption.",
-    );
-
-    let resolved: ReturnType<typeof resolvePositionals>;
-    try {
-      resolved = resolvePositionals(positionals);
     } catch (err) {
       exitWithError(log, err, 64);
     }
@@ -824,6 +927,9 @@ export async function handler(argv: Arguments): Promise<void> {
       // a run refused from its own input shows no account of an exchange it
       // does not conduct.
       displayZeroSetupDisclosure({ prepared, logFile, log });
+      // Printed once the run has passed every check of its own inputs, so a
+      // run refused for a usage fault does not carry it.
+      log.warn(QUICK_EXCHANGE_TRUST_NOTICE);
       // Establish first-use SSH host-key trust on the ORIGINAL `connection`
       // (before the clone below), so the pin reaches both the live connect and,
       // under --save, the persisted config. A pinned connection is a no-op; an

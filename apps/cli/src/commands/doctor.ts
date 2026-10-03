@@ -49,11 +49,23 @@ export function mountHandler(argv: Arguments): Promise<void> {
 
 export function builder(cmd: Argv): Argv {
   return cmd
-    .usage("Usage: $0 doctor <probe | mount DIRECTORY> [options]")
+    .usage(
+      "Usage: $0 doctor <probe | mount DIRECTORY> [options]\n\n" +
+        "Check a network file drop before an exchange: doctor probe over the\n" +
+        "network, doctor mount through the mounted folder. Run both.",
+    )
     .command(
       "probe",
       "Check the file drop over the network, without mounting it",
-      (probe) => commonOptions(probe).usage("Usage: $0 doctor probe [options]"),
+      (probe) =>
+        commonOptions(probe)
+          .usage("Usage: $0 doctor probe [options]")
+          .epilog(
+            "Reads the connection from the environment, not from flags: " +
+              "SMB_SERVER, SMB_SHARE and SMB_USER are required; SMB_PASS, " +
+              "SMB_PATH, SMB_DOMAIN, SMB_DIALECT, SMB_MARKER and SMB_TOKEN " +
+              "are optional. See docs/CLI.md, Checking a network file drop.",
+          ),
       probeHandler,
     )
     .command(
@@ -62,6 +74,11 @@ export function builder(cmd: Argv): Argv {
       (mount) =>
         commonOptions(mount)
           .usage("Usage: $0 doctor mount DIRECTORY [options]")
+          .epilog(
+            "Reads SMB_MARKER and SMB_TOKEN from the environment to find the " +
+              "marker a doctor probe left; without them the cross-check is " +
+              "skipped. See docs/CLI.md, Checking a network file drop.",
+          )
           .positional("directory", {
             type: "string",
             describe: "the mounted file-drop directory to check",

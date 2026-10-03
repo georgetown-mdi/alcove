@@ -152,8 +152,9 @@ export function builder(cmd: Argv): Argv {
         "Usage:\n" +
           "  $0 invite [options] [INPUT_FILE]                       (offline)\n" +
           "  $0 invite [options] URL INPUT_FILE [OUTPUT_FILE]       (online)\n\n" +
-          "Offline: generate an invitation string and key file to share with a\n" +
-          "partner out-of-band. Online: also connect, wait for the partner to\n" +
+          "Offline: print an invitation string to send your partner over a\n" +
+          "channel you trust, and write the configuration and key file this\n" +
+          "party keeps. Online: also connect, wait for the partner to\n" +
           "accept, and run the exchange. Offline, linkage terms are taken from a\n" +
           "pre-existing configuration file when present (the INPUT_FILE, if given,\n" +
           "is checked against it) and inferred from INPUT_FILE otherwise.\n\n" +

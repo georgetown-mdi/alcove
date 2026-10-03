@@ -9,6 +9,7 @@ import { sanitizeForDisplay } from "@alcove/core";
 import {
   builder as zeroSetupBuilder,
   handler as zeroSetupHandler,
+  QUICK_EXCHANGE_USAGE,
 } from "./commands/zeroSetup";
 import {
   builder as exchangeBuilder,
@@ -51,6 +52,11 @@ import {
   builder as enrollRelayBuilder,
   handler as enrollRelayHandler,
 } from "./commands/enrollRelay";
+import {
+  describeUnknownOptions,
+  longOptionNames,
+  unknownLongOptions,
+} from "./usageHints";
 
 /**
  * Read this package's own version from its co-located package.json, resolved
@@ -72,6 +78,32 @@ function readCliVersion(): string {
 }
 
 /**
+ * The option table of the command `parser` is parsing: yargs exposes it at
+ * runtime as `getOptions()`, which its type declarations leave out. The
+ * unknown-option tests in cliParser.test.ts exercise it.
+ */
+function optionTable(parser: Argv): Parameters<typeof longOptionNames>[0] {
+  return (
+    parser as unknown as {
+      getOptions(): Parameters<typeof longOptionNames>[0];
+    }
+  ).getOptions();
+}
+
+/**
+ * Report a command-line usage fault and exit 64 (EX_USAGE). The message comes
+ * from this operator's own command line but still routes through the
+ * display-boundary sanitizer; the trailing hint is fixed text, kept outside
+ * the sanitize call to preserve its literal newline.
+ */
+function failUsage(message: string): never {
+  console.error(
+    `${sanitizeForDisplay(message)}\nRun with --help to see the available options.`,
+  );
+  process.exit(64);
+}
+
+/**
  * Build the configured Alcove yargs parser for `argv`, up to but NOT including
  * `.parseAsync()`. Kept separate from the entry point (`index.ts`) so importing
  * it has no side effect: the entry point drives it against the real process argv,
@@ -80,14 +112,16 @@ function readCliVersion(): string {
  * a test may parse repeatedly.
  */
 export function buildCli(argv: string[]): Argv {
+  const cli = yargs(argv);
   return (
-    yargs(argv)
+    cli
       .scriptName("alcove")
       .version(readCliVersion())
+      .usage(QUICK_EXCHANGE_USAGE)
       .command(
         "$0",
-        "Quick exchange (no shared secret; trusts the server): Alcove " +
-          "[--save] URL INPUT_FILE [OUTPUT_FILE]",
+        "Quick exchange with no setup and no shared secret: " +
+          "alcove [--save] URL INPUT_FILE [OUTPUT_FILE]",
         zeroSetupBuilder,
         zeroSetupHandler,
       )
@@ -110,6 +144,12 @@ export function buildCli(argv: string[]): Argv {
         acceptHandler,
       )
       .command(
+        "exchange <input> [output]",
+        "Run a recurring exchange from alcove.yaml and its key file",
+        exchangeBuilder,
+        exchangeHandler,
+      )
+      .command(
         "update",
         "Make a terms update for an established partnership (no new secret)",
         updateBuilder,
@@ -122,34 +162,30 @@ export function buildCli(argv: string[]): Argv {
         applyHandler,
       )
       .command(
-        "exchange <input> [output]",
-        "Execute a recurring exchange",
-        exchangeBuilder,
-        exchangeHandler,
-      )
-      .command(
-        "enroll-relay",
-        "Enroll this exchange's relay key at its relay registrar (asks for the relay-owner token)",
-        enrollRelayBuilder,
-        enrollRelayHandler,
-      )
-      .command(
         "fingerprint",
-        "Show (and lazily create) this party's signing certificate fingerprint",
+        "Print this party's signing certificate fingerprint, creating the " +
+          "signing identity if it does not exist",
         fingerprintBuilder,
         fingerprintHandler,
       )
       .command(
-        "probe-host-key <sftp-url>",
-        "Read and print an SFTP server's host-key fingerprint (no credential sent)",
-        probeHostKeyBuilder,
-        probeHostKeyHandler,
+        "enroll-relay",
+        "Register this exchange's relay key with its relay (asks for the " +
+          "relay owner's token)",
+        enrollRelayBuilder,
+        enrollRelayHandler,
       )
       .command(
         "verify-receipt <record> [input-file] [result-file]",
         "Verify a stored exchange record and open its commitments (read-only)",
         verifyReceiptBuilder,
         verifyReceiptHandler,
+      )
+      .command(
+        "probe-host-key <sftp-url>",
+        "Read and print an SFTP server's host-key fingerprint (no credential sent)",
+        probeHostKeyBuilder,
+        probeHostKeyHandler,
       )
       // Registered with a builder and no handler: the builder demands one of the
       // `probe` / `mount` subcommands, so there is no bare `alcove doctor` for a
@@ -159,33 +195,41 @@ export function buildCli(argv: string[]): Argv {
         "Check a network file drop before an exchange (probe | mount)",
         doctorBuilder,
       )
-      .usage("$0 [command] [options]")
       // Fail fast on a misspelled option (e.g. --server-user for
       // --server-username): otherwise yargs drops it unread into argv,
       // silently ignoring a typo'd credential or path override. strictOptions
       // (not strict) validates flags only, leaving the zero-setup/exchange
       // commands' argv._ positionals (URL/input/output) untouched; full
-      // strict would reject those as unknown arguments. invite/accept/init
-      // instead set unknown-options-as-args (to admit a `-`-leading
-      // invitation string as a positional), so a mistyped option there is
-      // absorbed as a positional and caught by the command's own validation
-      // instead.
+      // strict would reject those as unknown arguments.
       .strictOptions()
+      // invite/accept/init/apply set unknown-options-as-args (to admit a
+      // `-`-leading invitation string as a positional), so strictOptions lets
+      // a mistyped `--` option through to their positionals. This runs after
+      // validation and before any handler, so it reports that option the way
+      // the failure handler below does for the other commands.
+      .middleware(() => {
+        const unknown = unknownLongOptions(
+          argv,
+          longOptionNames(optionTable(cli)),
+        );
+        if (unknown.length > 0) failUsage(describeUnknownOptions(unknown));
+      })
       .fail((msg, err) => {
         // yargs invokes this for a parse/validation failure (msg set, err
         // null) and for an error thrown while parsing or in a handler (err
         // set); a thrown error propagates to the caller's catch, which
-        // sanitizes partner-/server-controlled bytes before display. An
-        // unrecognized option is a usage error: exit 64 (EX_USAGE), matching
-        // the CLI's other usage-error exits. `msg` comes from this operator's
-        // own command line but still routes through the display-boundary
-        // sanitizer. The trailing hint is fixed text, kept outside the
-        // sanitize call to preserve its literal newline.
+        // sanitizes partner-/server-controlled bytes before display. Every
+        // failure here is a usage error. An unrecognized `--` option is
+        // reported in place of yargs' own message, whatever that message is:
+        // yargs counts required positionals before it checks options, so
+        // `exchange --retain-file in.csv` would otherwise be told its input
+        // file is missing.
         if (err) throw err;
-        console.error(
-          `${sanitizeForDisplay(msg)}\nRun with --help to see the available options.`,
+        const unknown = unknownLongOptions(
+          argv,
+          longOptionNames(optionTable(cli)),
         );
-        process.exit(64);
+        failUsage(unknown.length > 0 ? describeUnknownOptions(unknown) : msg);
       })
       .help("h")
       .alias("h", "help")

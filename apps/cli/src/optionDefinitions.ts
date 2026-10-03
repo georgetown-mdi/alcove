@@ -493,8 +493,9 @@ export function addCommonBootstrapOptions(
           "deleting them after consumption. They persist in the shared " +
           "directory -- a directory on the remote SFTP host, or the shared " +
           "folder both parties reach -- along with the plaintext rendezvous " +
-          "metadata that accompanies them. Requires --timestamp-in-filename. " +
-          "Both parties must set this flag identically",
+          "metadata that accompanies them. Turns on --timestamp-in-filename " +
+          "and --lockless-rendezvous, which it needs; setting either to false " +
+          "with it is an error. Both parties must set this flag identically",
     })
     .option("connection-per-poll", {
       type: "boolean",

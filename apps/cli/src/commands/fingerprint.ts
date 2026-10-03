@@ -73,7 +73,13 @@ const NO_IDENTITY_PATH_REFUSAL =
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = cmd
-    .usage("Usage: $0 fingerprint [options]")
+    .usage(
+      "Usage: $0 fingerprint [options]\n\n" +
+        "Print the fingerprint of this party's signing certificate, creating\n" +
+        "the signing identity at --identity-file (or signing.identity_file)\n" +
+        "first if it does not exist yet. Send the fingerprint to your partner\n" +
+        "over a channel you trust, so they can check the receipts you sign.",
+    )
     .option("identity", {
       type: "string",
       describe:

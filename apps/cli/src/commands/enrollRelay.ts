@@ -27,7 +27,14 @@ import { loadConfig } from "./exchange";
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = cmd
-    .usage("Usage: $0 enroll-relay [options]")
+    .usage(
+      "Usage: $0 enroll-relay [options]\n\n" +
+        "Register this exchange's relay key with the relay named in\n" +
+        "alcove.yaml. Asks for the relay owner's token on the terminal, or\n" +
+        "reads it from the first line of standard input, and stores it\n" +
+        "nowhere. Run it once after invite or accept, before the first\n" +
+        "scheduled exchange.",
+    )
     .option("config-file", {
       type: "string",
       describe: `exchange configuration file (default: ${DEFAULT_CONFIG_PATH})`,
