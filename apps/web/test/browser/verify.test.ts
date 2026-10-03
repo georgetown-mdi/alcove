@@ -234,7 +234,7 @@ async function mountVerifyScreen() {
   app.render(createElement(VerifyReceiptScreen));
   await expect
     .element(page.getByRole("heading", { level: 1 }))
-    .toMatchTextContent("Verify a receipt");
+    .toMatchTextContent("Verify an exchange record");
 }
 
 afterEach(async () => {

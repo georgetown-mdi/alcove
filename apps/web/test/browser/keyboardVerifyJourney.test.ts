@@ -113,7 +113,7 @@ async function loadRecord(record: ExchangeRecord, keysJson: string) {
   app.render(createElement(VerifyReceiptScreen));
   await expect
     .element(page.getByRole("heading", { level: 1 }))
-    .toMatchTextContent("Verify a receipt");
+    .toMatchTextContent("Verify an exchange record");
   await chooseFile(
     "Exchange record",
     new File([serializeExchangeRecord(record)], "alcove-record-x.json", {

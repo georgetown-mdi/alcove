@@ -52,8 +52,8 @@ import type {
 } from "@alcove/core";
 
 /**
- * The pure model behind the "Verify a receipt" console: it turns each supplied JSON
- * document into either a named parse failure or a parsed artifact, and each of
+ * The pure model behind the "Verify an exchange record" console: it turns each
+ * supplied JSON document into either a named parse failure or a parsed artifact, and each of
  * core's two verification reports -- the unsigned {@link RecordVerificationReport}
  * and the {@link DualSignedRecordVerificationReport} -- into a plain-language
  * verdict view-model. It is React-free and free of any I/O, so the copy discipline

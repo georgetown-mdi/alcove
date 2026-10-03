@@ -149,7 +149,7 @@ const SCANNED_STATES: Array<ScannedState> = [
   {
     route: "/verify",
     state: "nothing loaded",
-    heading: "Verify a receipt",
+    heading: "Verify an exchange record",
     node: () => Promise.resolve(createElement(VerifyReceiptScreen)),
   },
   {
