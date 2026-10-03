@@ -1000,6 +1000,7 @@ describe("import, edit, and export on every channel", () => {
     },
   );
 });
+
 describe("a signing block this app cannot run", () => {
   // Every field the block can hold, each with a value the round trip must not
   // touch: an `@` in a local path is text here, never a file reference.

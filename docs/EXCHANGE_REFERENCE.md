@@ -1635,7 +1635,7 @@ Steps following `split_on` are applied element-wise across all parts. Null-produ
 
 ## Where each setting is edited
 
-Each of Alcove's three applications opens a configuration, and every setting in it has an editor. On the command line the editor is `alcove.yaml` itself, which `alcove init` writes with every optional section, so a command-line cell states only whether a command, flag, or prompt also sets the value. The console and the web application edit what they can run, keep the rest as your file states it and write it back unchanged, and refuse only what they cannot run at all. The table below states what each application does with each setting when it opens a configuration.
+Each of Alcove's three applications opens a configuration, and every setting in it has an editor. On the command line the editor is `alcove.yaml` itself, which `alcove init` writes with every optional section present as a commented example, so a command-line cell states only whether a command, flag, or prompt also sets the value. The console and the web application edit what they can run, keep the rest as your file states it and write it back unchanged, and refuse a setting they cannot run or cannot write back unchanged; the reasons are under the table. The table below states what each application does with each setting when it opens a configuration.
 
 The columns:
 
@@ -1737,9 +1737,9 @@ The cells:
 
 A refused cell has one of these reasons:
 
-- **The web application stores no credential.** A stored exchange's connection holds only the locator the invitation named, so a setting that holds a credential or a file path the browser cannot read -- a `turn` entry, `ice_provision`, `provider_options`, the broker `key`, `username`, and `provision`, `authentication.shared_secret` -- is refused on import. The other connection settings outside that locator (`stun`, `ice_transport_policy`, `secure`, the connection timeouts) are refused with them, since a run here connects with this browser's own settings ([MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-connection-block-credential-free-by-composition)).
-- **The console writes the connection block whole.** A run composes the sftp connection from its own controls, so a setting inside that block with no control -- `connection.proxy`, `connection.provider_options`, `connection.server.provision` -- could not be written back, and the console refuses the file rather than drop it ([SERVER_JOB_API.md](spec/SERVER_JOB_API.md#what-it-refuses)).
-- **No application runs it.** `connection.ice_provision` names an endpoint neither application calls ([`connection.ice_provision`](#connectionice_provision)), and `authentication.shared_secret` and `authentication.expires` belong in the key file beside the configuration, not in the configuration.
+- **The web application stores no credential and connects with this browser's own settings**, so a connection setting outside the locator the invitation named is refused on import; which settings and why: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-connection-block-credential-free-by-composition).
+- **The console writes the sftp connection block whole from its own controls**, so a setting inside that block with no control cannot be written back and the file is refused rather than the setting dropped; which settings: [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#what-it-refuses).
+- **No application runs it.** [`connection.ice_provision`](#connectionice_provision) names an endpoint neither application calls, and `authentication.shared_secret` and `authentication.expires` belong in the key file beside the configuration, not in the configuration.
 
 ---
 
