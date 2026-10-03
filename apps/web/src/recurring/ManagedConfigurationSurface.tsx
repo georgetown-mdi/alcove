@@ -86,7 +86,7 @@ export function ManagedConfigurationSurface({
   return (
     <AppPage>
       <main className={styles.work}>
-        <h1>
+        <h1 tabIndex={-1}>
           {record.label === "" ? UNNAMED_CONFIGURATION_TITLE : record.label}
         </h1>
         <p className={styles.sub}>{configurationOnlyLead(record)}</p>
@@ -179,6 +179,7 @@ function ConfigurationExportPanel({
   if (state.kind === "refused")
     return (
       <Alert
+        role="alert"
         color="red"
         title="This configuration cannot be exported"
         mt="sm"
@@ -347,7 +348,13 @@ function ConfigurationSettingsEditor({
       )}
       <LocalDocumentFields draft={draft} />
       {failed && (
-        <Alert color="red" title="That could not be saved" mt="sm" mb="sm">
+        <Alert
+          role="alert"
+          color="red"
+          title="That could not be saved"
+          mt="sm"
+          mb="sm"
+        >
           These settings were not saved. Nothing changed; try again.
         </Alert>
       )}

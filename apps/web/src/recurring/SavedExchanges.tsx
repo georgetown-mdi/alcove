@@ -10,6 +10,8 @@ import {
 } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { alertRoleFor } from "@theme";
+
 import {
   MAX_IMPORT_FILE_BYTES,
   ManagedImportAlreadyHeldError,
@@ -528,7 +530,12 @@ export function DeleteExchangeButton({
           </p>
         )}
         {deleteFailed && (
-          <Alert color="red" title="That exchange could not be removed" mb="sm">
+          <Alert
+            role="alert"
+            color="red"
+            title="That exchange could not be removed"
+            mb="sm"
+          >
             Removing it from this browser failed. Nothing was deleted; try
             again.
           </Alert>
@@ -1189,7 +1196,12 @@ function ImportOutcomeAlerts({
         </Alert>
       )}
       {failure !== undefined && (
-        <Alert color={failure.color} title={failure.title} mb="sm">
+        <Alert
+          color={failure.color}
+          role={alertRoleFor(failure.color)}
+          title={failure.title}
+          mb="sm"
+        >
           {failure.reason}
         </Alert>
       )}

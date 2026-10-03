@@ -16,7 +16,7 @@ const CREDENTIAL_WARNING_TITLE = "Credential file location";
  *
  * The polite region is mounted in every phase and announces the title alone; the
  * visible Alert holds the warnings and takes `role="presentation"` to displace
- * Mantine's `role="alert"` default, which would announce the same warnings a
+ * the Alert's live-region default, which would announce the same warnings a
  * second time. Nothing visible renders while there are no warnings.
  */
 export function SftpCredentialWarnings({

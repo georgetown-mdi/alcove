@@ -108,7 +108,7 @@ export function SaveExchangeSection({
         />
       )}
 
-      <Alert variant="light" color="blue" mt="md">
+      <Alert variant="light" color="blue" role="note" mt="md">
         {credentialAlertCopy(transport)}
       </Alert>
 
@@ -136,6 +136,7 @@ export function SaveExchangeSection({
 
       {alert !== undefined && (
         <Alert
+          role="alert"
           color="red"
           title={alert.title}
           icon={<IconAlertCircle aria-hidden />}

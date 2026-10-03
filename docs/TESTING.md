@@ -391,6 +391,29 @@ was logged, so a failure path that stops logging or changes its text is
 reported. A line no test declared prints as usual -- a console line in a
 browser run is one nobody expected.
 
+### Accessibility checks
+
+Three kinds of browser test hold the web app's accessibility, each covering
+what the others cannot:
+
+- The contrast sweep (`themeContrastSweep.test.ts`) measures every rendered
+  text element against the WCAG AA floor at each primary route's first screen,
+  in both color schemes.
+- The rule scan (`accessibilityRules.ts`, run by
+  `accessibilityRuleScan.test.ts`) checks a fixed set of DOM-decidable rules --
+  unique ids, resolving label and description references, named controls and
+  images, heading order, list structure, a page h1. It runs on a state of every
+  route the router declares, and the test fails when a route has none. It is
+  in-house rather than axe-core, so a clean scan is not a WCAG conformance
+  claim; the file header lists the rules.
+- The keyboard-only journeys (`keyboardInviteJourney.test.ts`,
+  `keyboardAcceptJourney.test.ts`, `keyboardVerifyJourney.test.ts`) drive the
+  invite, accept, verify and recurring setup flows by Tab, Enter and Space
+  alone through `keyboardOnly.ts`, assert where focus lands on each step
+  change, and run the rule scan on each step and on the result and failure
+  states. A native file chooser cannot be driven, so a journey tabs to the file
+  control and hands the file to its input.
+
 ## Cross-runtime interop suite
 
 The CLI and the web app share no code but `@alcove/core`, and their own suites

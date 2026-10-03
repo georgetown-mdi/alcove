@@ -10,6 +10,8 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
 
+import { alertRoleFor } from "@theme";
+
 import type { ReactNode } from "react";
 
 /**
@@ -60,7 +62,12 @@ export function MountStateNotice({
 }) {
   return (
     <Stack gap="sm">
-      <Alert color={color} icon={<IconAlertCircle />} title={title}>
+      <Alert
+        color={color}
+        role={alertRoleFor(color)}
+        icon={<IconAlertCircle />}
+        title={title}
+      >
         {children}
       </Alert>
       {action}

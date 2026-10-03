@@ -289,6 +289,7 @@ export function DirectConfirmSection({
 
       {overlongAlert !== undefined && (
         <Alert
+          role="alert"
           color="red"
           icon={<IconAlertCircle aria-hidden />}
           title={overlongAlert.title}
@@ -323,6 +324,7 @@ export function DirectConfirmSection({
           />
         ) : (
           <Alert
+            role="alert"
             color="red"
             icon={<IconAlertCircle aria-hidden />}
             title={unlinkable.title}

@@ -223,6 +223,7 @@ export function ConnectionTuningCard({
 
         {problems.length > 0 && (
           <Alert
+            role="alert"
             color="red"
             icon={<IconAlertTriangle aria-hidden />}
             title="These settings cannot be used"

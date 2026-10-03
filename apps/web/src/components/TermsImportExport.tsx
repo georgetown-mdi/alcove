@@ -155,6 +155,7 @@ export function TermsImportExport({
           at the end so it is not missed when newly mounted. */}
       {error !== undefined && (
         <Alert
+          role="alert"
           color="red"
           icon={<IconAlertCircle aria-hidden />}
           title="Could not import these terms"

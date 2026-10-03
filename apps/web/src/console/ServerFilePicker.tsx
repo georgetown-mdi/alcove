@@ -553,7 +553,12 @@ function ConfirmPanel({
     const copy = PROFILE_UNAVAILABLE_COPY[profile.reason];
     return (
       <Stack gap="sm">
-        <Alert color="red" icon={<IconAlertCircle />} title={copy.title}>
+        <Alert
+          role="alert"
+          color="red"
+          icon={<IconAlertCircle />}
+          title={copy.title}
+        >
           {copy.body}
         </Alert>
         <Group>

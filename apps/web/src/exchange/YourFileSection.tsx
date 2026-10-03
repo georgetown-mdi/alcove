@@ -262,6 +262,7 @@ export function YourFileSection({
       )}
       {alert !== undefined && (
         <Alert
+          role="alert"
           color="red"
           title={alert.title}
           icon={<IconAlertCircle />}

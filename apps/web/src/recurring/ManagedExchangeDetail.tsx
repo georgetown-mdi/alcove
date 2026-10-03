@@ -415,6 +415,7 @@ function ConfigurationView({
         <>
           {reinviteFailed && (
             <Alert
+              role="alert"
               color="red"
               title="Could not create a fresh invitation"
               mb="sm"
@@ -692,7 +693,13 @@ function LocalFieldsEditor({
       </p>
       <LocalDocumentFields draft={draft} />
       {failed && (
-        <Alert color="red" title="That could not be saved" mt="sm" mb="sm">
+        <Alert
+          role="alert"
+          color="red"
+          title="That could not be saved"
+          mt="sm"
+          mb="sm"
+        >
           These settings were not saved. Nothing changed; try again.
         </Alert>
       )}
@@ -1198,7 +1205,13 @@ function ClearParkedResultsControl({
           no other copy of results kept here.
         </p>
         {clearFailed && (
-          <Alert color="red" title="Nothing was cleared" mt="sm" mb="sm">
+          <Alert
+            role="alert"
+            color="red"
+            title="Nothing was cleared"
+            mt="sm"
+            mb="sm"
+          >
             What is kept here was not removed. Nothing changed; try again.
           </Alert>
         )}
@@ -1841,7 +1854,7 @@ function UnreadableAccountingRecovery({
 
   return (
     <>
-      <Alert color="red" title="This accounting could not be read">
+      <Alert role="alert" color="red" title="This accounting could not be read">
         <p>
           The disclosure records stored for this exchange could not be read, so
           they are not shown. This does not mean nothing was disclosed. An app
@@ -1934,6 +1947,7 @@ function UnreadableAccountingRecovery({
         )}
         {resetFailed && (
           <Alert
+            role="alert"
             color="red"
             title="That accounting could not be reset"
             mt="sm"

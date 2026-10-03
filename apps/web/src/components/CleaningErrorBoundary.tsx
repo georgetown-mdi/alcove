@@ -119,6 +119,7 @@ export function CleaningErrorBoundary({
       }
       fallback={(reset, ref) => (
         <Alert
+          role="alert"
           ref={ref}
           tabIndex={-1}
           color="red"

@@ -174,6 +174,7 @@ function LeftoverFolderNotice({
       </p>
       {discardFailed && (
         <Alert
+          role="alert"
           color="red"
           icon={<IconAlertCircle aria-hidden />}
           title="The folder was not deleted"
@@ -451,6 +452,7 @@ export function RecoveredExchangePanel() {
       <p className={styles.small}>{recoveryLead(runState, adoptedFromProbe)}</p>
       {failure !== undefined && (
         <Alert
+          role="alert"
           color="red"
           icon={<IconAlertCircle aria-hidden />}
           title={failure.title}

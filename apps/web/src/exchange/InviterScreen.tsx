@@ -1667,6 +1667,7 @@ export function InviterScreen() {
               />
               {createAlert !== undefined && (
                 <Alert
+                  role="alert"
                   color="red"
                   title={createAlert.title}
                   icon={<IconAlertCircle />}

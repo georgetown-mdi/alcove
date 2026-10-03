@@ -239,6 +239,7 @@ export function ManagedCronExportPanel({
                 </p>
                 {failed && dispatch === undefined && (
                   <Alert
+                    role="alert"
                     color="red"
                     title="Could not export the command-line files"
                     mb="sm"
@@ -344,6 +345,7 @@ export function ManagedCronExportPanel({
                 </p>
                 {failed && (
                   <Alert
+                    role="alert"
                     color="red"
                     title="Could not hand off this exchange"
                     mb="sm"

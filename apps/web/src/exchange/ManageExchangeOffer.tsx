@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Alert,
@@ -91,12 +91,22 @@ export function ManageExchangeOffer({
   const [retentionNote, setRetentionNote] = useState("");
   const storeAvailable = useManagedStoreAvailability();
 
+  // The save replaces the form, and the button that had focus with it, so focus
+  // moves to the confirmation that stands in its place.
+  const confirmationRef = useRef<HTMLParagraphElement>(null);
+  const previousStatus = useRef(status);
+  useEffect(() => {
+    if (status === "deposited" && previousStatus.current !== "deposited")
+      confirmationRef.current?.focus();
+    previousStatus.current = status;
+  }, [status]);
+
   // A deposit only succeeds against a store this browser opened, so the
   // confirmation stands whatever the availability probe below reports.
   if (status === "deposited")
     return (
       <div className={styles.callout}>
-        <p className={styles.calloutLead}>
+        <p className={styles.calloutLead} ref={confirmationRef} tabIndex={-1}>
           <IconCircleCheck
             size={18}
             aria-hidden
@@ -222,6 +232,7 @@ export function ManageExchangeOffer({
       </p>
       {status === "error" && (
         <Alert
+          role="alert"
           color="red"
           title={refusal?.title ?? "Could not save this recurring exchange"}
           mt="sm"

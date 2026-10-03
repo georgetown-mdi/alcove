@@ -143,13 +143,12 @@ describe("KeysTab: the dropped-citation notice", () => {
     // The visible notice contains the title and the full cause; the persistent live
     // region announces only the short headline (that title), so a screen-reader
     // user is not read the whole body twice -- once live, once in reading order.
+    const notice = page.getByRole("note").filter({
+      hasText: "The imported rule-set citation will not be included",
+    });
+    await expect.element(notice).toBeInTheDocument();
     await expect
-      .element(page.getByRole("note"))
-      .toMatchTextContent(
-        "The imported rule-set citation will not be included",
-      );
-    await expect
-      .element(page.getByRole("note"))
+      .element(notice)
       .toMatchTextContent("the citation cannot be verified");
     await expect
       .element(page.getByRole("status"))

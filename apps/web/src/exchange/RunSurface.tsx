@@ -650,6 +650,7 @@ export function FailureAlert({
   }, []);
   return (
     <Alert
+      role="alert"
       color="red"
       icon={<IconAlertCircle aria-hidden />}
       title={failure.title}
@@ -917,7 +918,7 @@ function runWarningsAnnouncement(count: number): string {
  *
  * The polite region is mounted through every phase of the run and announces
  * the headline alone; the visible Alert holds the messages and takes
- * `role="presentation"` to displace Mantine's `role="alert"` default, which
+ * `role="presentation"` to displace the Alert's live-region default, which
  * would announce each message a second time. Nothing visible renders while no
  * warning has arrived.
  */

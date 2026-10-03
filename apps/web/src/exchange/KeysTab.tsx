@@ -299,7 +299,7 @@ export function KeysTab({
           announce={announce}
         />
       ) : (
-        <Alert variant="light" color="gray">
+        <Alert variant="light" color="gray" role="note">
           Turn on Expert authoring to edit keys element by element and to import
           or export the terms.
         </Alert>

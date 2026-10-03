@@ -133,6 +133,7 @@ export function RunDiagnosticsCard({
 
         {problems.length > 0 && (
           <Alert
+            role="alert"
             color="red"
             icon={<IconAlertTriangle aria-hidden />}
             title="This run cannot start yet"

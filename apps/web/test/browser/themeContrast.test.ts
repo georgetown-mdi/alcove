@@ -458,11 +458,11 @@ describe("rendered resolver-owned token contrast (WCAG 2.1 AA)", () => {
           ),
           { forceColorScheme: scheme },
         );
-        const alert = await waitForEl('[role="alert"]');
+        const alert = await waitForEl(".mantine-Alert-root");
         // Scope the title lookup to the alert and poll for it, so a Mantine markup
         // change shows as a clear waitForEl timeout rather than a getComputedStyle
         // TypeError on a null cast.
-        const title = await waitForEl('[role="alert"] [class*="title"]');
+        const title = await waitForEl('.mantine-Alert-root [class*="title"]');
         const titleColor = getComputedStyle(title).color;
         const bg = getComputedStyle(alert).backgroundColor;
         // Pin the resolved status colour: unlike the other tokens, red's Mantine
