@@ -2227,9 +2227,9 @@ working folder, the run backs it up there without asking:
   nobody present -- the same check the results write makes, which never
   prompts.
 - **What it writes.** The same file "Back up this exchange" downloads, with the
-  same contents and the same name, `alcove-managed-backup-<date>.json`, dated
-  by the local calendar day it is written. It is written into the working
-  folder and nowhere else.
+  same contents, under a name stating the date and time it was written (the
+  exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
+  It is written into the working folder and nowhere else.
 - **What it changes.** Once the file is in the folder, the exchange reads
   "backed up as of <date>", and no backup notification fires for that run.
 
@@ -2239,17 +2239,17 @@ notification, exactly as it would without this step, when:
 - the exchange has no working folder, or the browser offers none;
 - the browser would ask before letting the app use the folder again, or the
   operator revoked it;
-- the folder already holds a file under that day's backup name -- another
-  exchange's backup in a shared folder, or one saved there by hand -- which is
-  left untouched;
+- the folder already holds a file under the backup's name -- one saved there
+  by hand, or another exchange's backup written in the same second in a shared
+  folder -- which is left untouched;
 - the write fails, or the secret changes again before the backup is recorded.
 
 A failure never changes the run's outcome: the run has rotated and filed its
 disclosure, and its results are delivered as before. An attended run does not
 write this file; its completion screen offers "download updated backup".
 
-Each scheduled run writes a new dated file, and the older ones stay in the
-folder. Only the newest restores the exchange; an older one holds a secret the
+Each scheduled run that completes writes a new file, and the older ones stay
+in the folder. Only the newest restores the exchange; an older one holds a secret the
 partnership has rotated past (see [Desync detection and
 recovery](#desync-detection-and-recovery)). Delete the older files, and keep
 the folder used for nothing else: anyone who can read it can read the current

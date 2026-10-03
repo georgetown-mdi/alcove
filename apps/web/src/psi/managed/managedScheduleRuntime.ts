@@ -511,47 +511,35 @@ export async function backUpUnattendedRun(
   deps: ManagedFolderBackupDeps = browserFolderBackupDeps(),
 ): Promise<ManagedFolderBackup> {
   const backup = await backUpManagedExchangeToFolder(id, deps);
-  const run = `scheduled managed exchange ${id}`;
+  const notBackedUp = (cause: string) =>
+    `scheduled managed exchange ${id} not backed up into its working folder: ` +
+    `${cause}; it asks for a backup`;
   switch (backup.kind) {
     case "backed-up":
       log.debug(
-        `${run}: backed up into the working folder as ${backup.fileName}`,
+        `scheduled managed exchange ${id} backed up into its working folder ` +
+          `as ${backup.fileName}`,
       );
       break;
     case "no-folder":
       break;
     case "ungranted":
-      log.warn(
-        `${run}: the working folder reports permission ${backup.state} with ` +
-          `nobody present, so no backup was written to it; the exchange asks ` +
-          `for a backup`,
-      );
+      log.warn(notBackedUp(`folder permission is ${backup.state}`));
       break;
     case "name-held":
-      log.warn(
-        `${run}: the working folder already holds ${backup.fileName}, which ` +
-          `was left as it is, so no backup was written; the exchange asks ` +
-          `for a backup`,
-      );
+      log.warn(notBackedUp(`${backup.fileName} already exists, left as it is`));
       break;
     case "write-failed":
-      log.warn(
-        `${run}: the backup could not be written to the working folder; the ` +
-          `exchange asks for a backup:`,
-        backup.error,
-      );
+      log.warn(notBackedUp("the write failed"), backup.error);
       break;
     case "superseded":
       log.warn(
-        `${run}: the backup written to the working folder as ` +
-          `${backup.fileName} no longer holds the exchange's current secret; ` +
-          `the exchange asks for a backup`,
+        notBackedUp(`the secret changed after ${backup.fileName} was written`),
       );
       break;
     case "failed":
       log.warn(
-        `${run}: the backup into the working folder was not taken; the ` +
-          `exchange asks for a backup:`,
+        notBackedUp("the record could not be read, serialized, or marked"),
         backup.error,
       );
       break;

@@ -60,14 +60,13 @@ import type { ManagedBackupMarkOutcome } from "./managedExchangeStore";
 import type { ManagedCronExport } from "./managedCronExport";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
-/** The download filename `alcove-managed-backup-<date>.json`, the date the local
- * calendar day of `at`, mirroring the exchange-file filename discipline so repeated
- * exports have distinct dates. */
+/** The name every backup file is saved under, downloaded or written into the
+ * working folder: `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`, the UTC
+ * instant of `at` to the second, so two backups a second apart never share it. */
 export function managedBackupFileName(at: Date): string {
-  const year = at.getFullYear();
-  const month = String(at.getMonth() + 1).padStart(2, "0");
-  const day = String(at.getDate()).padStart(2, "0");
-  return `alcove-managed-backup-${year}-${month}-${day}.json`;
+  const iso = at.toISOString();
+  const time = iso.slice(11, 19).replaceAll(":", "");
+  return `alcove-managed-backup-${iso.slice(0, 10)}T${time}Z.json`;
 }
 
 /** The platform boundaries a backup export drives, injected so the intent stays
@@ -273,23 +272,14 @@ export interface ManagedFolderBackupDeps {
     expectedSharedSecret: string,
     backedUpAt: string,
   ) => Promise<ManagedBackupMarkOutcome>;
-  /** The moment of the backup, for the marker and the file name's date. */
+  /** The moment of the backup, for the marker and the file name. */
   now: () => Date;
 }
 
 /** How the backup a scheduled run takes after its rotation turned out. Only
- * `"backed-up"` stamps the backup marker; every other outcome leaves the
- * exchange needing a backup, so the prompt for one stands as it would have
- * without this backup:
- *
- * - `"no-folder"`, `"ungranted"`: no grant this run can use without a prompt,
- *   so nothing was written.
- * - `"name-held"`: the folder already holds an entry under the backup's name,
- *   left as it was.
- * - `"write-failed"`: the folder was granted and the write did not land.
- * - `"superseded"`: the file was written, and the stored secret moved past it
- *   before the marker could be stamped.
- * - `"failed"`: the record could not be read, backed up, or marked. */
+ * `"backed-up"` stamps the backup marker, so every other outcome leaves the
+ * exchange asking for a backup. `"superseded"`: the file was written, and the
+ * stored secret moved past it before the marker could be stamped. */
 export type ManagedFolderBackup =
   | {
       kind: "backed-up";

@@ -204,25 +204,19 @@ export async function writeResultsToWorkingDirectory(
   });
 }
 
-/** How one write into the granted folder turned out: the folder's own outcomes,
- * and `"name-held"` where the write was told to keep an entry already held under
- * its name, which it left as it was. */
+/** How one {@link writeEntry} turned out. */
 type EntryWrite = ResultsDelivery | { kind: "name-held"; fileName: string };
 
-/** The options of one {@link writeEntry}: whether an entry already held under
- * the name is replaced, and the injectable permission layer. */
+/** The options of one {@link writeEntry}. */
 interface EntryWriteOptions<TReplaceHeld extends boolean> {
   replaceHeld: TReplaceHeld;
   permission: HandlePermissionQuery | undefined;
 }
 
 /**
- * The one platform write into a granted folder, under the query-never-prompt
- * permission rule and the failed-write cleanup that
- * {@link writeResultsToWorkingDirectory} states. With `replaceHeld` false it
- * stops before creating anything where the name is already held, so it never
- * replaces a file it did not write; with `replaceHeld` true it cannot report
- * the name held. Never rejects.
+ * The one platform write into a granted folder, under the permission rule and
+ * cleanup {@link writeResultsToWorkingDirectory} states. With `replaceHeld`
+ * false it creates nothing where the name is already held. Never rejects.
  */
 async function writeEntry(
   directory: FileSystemDirectoryHandle,
@@ -331,9 +325,9 @@ export type BackupFolderWrite = { kind: "no-folder" } | EntryWrite;
 /**
  * Write a backup file into the working folder its record holds, under
  * `fileName`. It never replaces an entry the folder already holds under that
- * name: the backup's name holds a date and no exchange, so a held name may be
- * another exchange's backup in a shared folder, and the folder is not read to
- * tell which.
+ * name: the backup's name holds an instant and no exchange, so a held name may
+ * be another exchange's backup in a shared folder, and the folder is not read
+ * to tell which.
  *
  * Never rejects, and never prompts ({@link writeEntry}).
  */

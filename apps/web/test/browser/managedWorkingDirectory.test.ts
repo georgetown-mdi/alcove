@@ -8,6 +8,10 @@ import {
 } from "@alcove/core";
 
 import {
+  backUpUnattendedRun,
+  browserFolderBackupDeps,
+} from "@psi/managed/managedScheduleRuntime";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
@@ -15,7 +19,6 @@ import {
   persistManagedExchangeRotation,
   persistManagedExchangeWorkingDirectory,
 } from "@psi/managed/managedExchangeStore";
-import { backUpUnattendedRun } from "@psi/managed/managedScheduleRuntime";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
@@ -305,13 +308,19 @@ describe("the backup a scheduled run takes after its rotation", () => {
   test("leaves a file already held under its name, and the exchange asking for a backup", async () => {
     const folder = await trackedOpfsDirectory("backup-name-held");
     const { rotated } = await rotatedExchangeIn(folder);
-    const fileName = managedBackupFileName(new Date());
+    const backedUpAt = new Date();
+    const fileName = managedBackupFileName(backedUpAt);
     const standing = await folder.getFileHandle(fileName, { create: true });
     const opening = await standing.createWritable();
     await opening.write(new Blob(["another exchange's backup"]));
     await opening.close();
 
-    expect(await backUpUnattendedRun(rotated.id)).toEqual({
+    expect(
+      await backUpUnattendedRun(rotated.id, {
+        ...browserFolderBackupDeps(),
+        now: () => backedUpAt,
+      }),
+    ).toEqual({
       kind: "name-held",
       fileName,
     });

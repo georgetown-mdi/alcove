@@ -737,7 +737,9 @@ describe("the backup a completed unattended run takes", () => {
     );
 
     const [fileName] = [...folder.files.keys()];
-    expect(fileName).toMatch(/^alcove-managed-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(fileName).toMatch(
+      /^alcove-managed-backup-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/,
+    );
     expect(
       importManagedExchangeArtifact(folder.files.get(fileName) ?? "").record
         .sharedSecret,
@@ -772,7 +774,7 @@ describe("the backup a completed unattended run takes", () => {
     expect(mockedMark).not.toHaveBeenCalled();
     expect(
       warn.mock.calls.some((call) =>
-        String(call[0]).includes("the backup could not be written"),
+        String(call[0]).includes("the write failed"),
       ),
     ).toBe(true);
     warn.mockRestore();

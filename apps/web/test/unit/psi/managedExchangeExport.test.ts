@@ -85,9 +85,9 @@ function backupDeps(rec: ManagedExchangeRecord): ManagedExportDeps & {
 }
 
 describe("managedBackupFileName", () => {
-  test("names the file by the export's calendar day", () => {
-    expect(managedBackupFileName(new Date("2026-07-14T12:00:00.000Z"))).toBe(
-      "alcove-managed-backup-2026-07-14.json",
+  test("names the file by the export's UTC instant to the second", () => {
+    expect(managedBackupFileName(new Date("2026-07-14T09:05:03.250Z"))).toBe(
+      "alcove-managed-backup-2026-07-14T090503Z.json",
     );
   });
 });
@@ -596,7 +596,7 @@ describe("dispatchManagedCronExport", () => {
 
 describe("backUpManagedExchangeToFolder", () => {
   const BACKED_UP_AT = "2026-07-14T12:00:00.000Z";
-  const FILE_NAME = "alcove-managed-backup-2026-07-14.json";
+  const FILE_NAME = "alcove-managed-backup-2026-07-14T120000Z.json";
 
   /** A permission layer reporting a fixed state, recording whether it was asked
    * to prompt, which a run with nobody present may never do. */
@@ -759,7 +759,7 @@ describe("backUpManagedExchangeToFolder", () => {
 
   test("a file already held under the backup's name is left as it is", async () => {
     // Another exchange sharing the folder may have written its backup under the
-    // same dated name the same day.
+    // same name in the same second.
     const folder = fakeFolder({ holding: { [FILE_NAME]: "another backup" } });
     const rec = { ...record(), workingDirectoryHandle: folder.handle };
     const { deps, markIfCurrent } = folderBackupDeps(
@@ -773,6 +773,46 @@ describe("backUpManagedExchangeToFolder", () => {
     });
     expect(folder.files.get(FILE_NAME)).toBe("another backup");
     expect(markIfCurrent).not.toHaveBeenCalled();
+  });
+
+  test("two backups a second apart on one day both land, and the newer one is marked", async () => {
+    const folder = fakeFolder();
+    const stored = { ...record(), workingDirectoryHandle: folder.handle };
+    const permission = fakePermission("granted");
+    let marker: { secret: string; at: string } | undefined;
+    let clock = new Date("2026-07-14T12:00:00.000Z");
+    const deps: ManagedFolderBackupDeps = {
+      readRecord: () => Promise.resolve(stored),
+      writeToFolder: (rec, fileName, content) =>
+        writeBackupToWorkingFolder(rec, fileName, content, permission),
+      markIfCurrent: (_id, expectedSharedSecret, backedUpAt) => {
+        if (stored.sharedSecret !== expectedSharedSecret)
+          return Promise.resolve("superseded");
+        marker = { secret: expectedSharedSecret, at: backedUpAt };
+        return Promise.resolve("marked");
+      },
+      now: () => clock,
+    };
+
+    const first = await backUpManagedExchangeToFolder(stored.id, deps);
+    stored.sharedSecret = generateSharedSecret();
+    clock = new Date("2026-07-14T12:00:01.000Z");
+    const second = await backUpManagedExchangeToFolder(stored.id, deps);
+
+    const firstName = "alcove-managed-backup-2026-07-14T120000Z.json";
+    const secondName = "alcove-managed-backup-2026-07-14T120001Z.json";
+    expect(first).toMatchObject({ kind: "backed-up", fileName: firstName });
+    expect(second).toMatchObject({ kind: "backed-up", fileName: secondName });
+    expect([...folder.files.keys()].sort()).toEqual([firstName, secondName]);
+    const secretIn = (name: string) =>
+      importManagedExchangeArtifact(folder.files.get(name) ?? "").record
+        .sharedSecret;
+    expect(secretIn(secondName)).toBe(stored.sharedSecret);
+    expect(secretIn(firstName)).not.toBe(stored.sharedSecret);
+    expect(marker).toEqual({
+      secret: stored.sharedSecret,
+      at: "2026-07-14T12:00:01.000Z",
+    });
   });
 
   test("a secret that moved on after the write leaves the marker unstamped", async () => {
