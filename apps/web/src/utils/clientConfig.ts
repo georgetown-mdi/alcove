@@ -130,6 +130,13 @@ function parseSignalingServerUrl(
     context.addIssue({ code: "custom", message: SIGNALING_SERVER_URL_SHAPE });
     return z.NEVER;
   }
+  if (url.port !== "" && (Number(url.port) < 1 || Number(url.port) > 65535)) {
+    context.addIssue({
+      code: "custom",
+      message: "the port must be 1 to 65535",
+    });
+    return z.NEVER;
+  }
   const setting: SignalingServerSetting = {
     secure: url.protocol === "wss:",
     host: url.hostname,

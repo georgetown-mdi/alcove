@@ -18,9 +18,10 @@
  * acceptor's dial endpoint here through the same
  * {@link webrtcEndpointFromAddress} the inviter-side mint uses. Origin isolation
  * makes this airtight: a record exists only at the origin it was deposited at,
- * so the deployment serving that origin always names the correct signaling
- * source -- it cannot go stale against a redeployment and cannot be poisoned at
- * rest. The stored connection block is read for two things: its
+ * so the inviter's record always names the correct signaling source via its
+ * own deployment; the acceptor's re-run likewise uses its own deployment's
+ * address, so both deployments must name the same server. It cannot go stale
+ * against a redeployment and cannot be poisoned at rest. The stored connection block is read for two things: its
  * `channel` discriminant, to reject a non-webrtc record as not re-runnable in
  * the browser before any connection, and the `invitationRelay` an acceptor's
  * record keeps from the invitation it accepted.

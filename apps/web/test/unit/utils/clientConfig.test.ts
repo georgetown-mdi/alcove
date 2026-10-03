@@ -133,6 +133,25 @@ describe("parseClientConfig", () => {
     );
   });
 
+  test("refuses a SIGNALING_SERVER_URL port of 0", () => {
+    expect(() =>
+      parseClientConfig({ SIGNALING_SERVER_URL: "wss://host:0/" }),
+    ).toThrow(
+      "Invalid build configuration: VITE_SIGNALING_SERVER_URL: the port must be 1 to 65535.",
+    );
+  });
+
+  test("accepts the top SIGNALING_SERVER_URL port and folds a default port", () => {
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: "wss://host:65535/" })
+        .SIGNALING_SERVER_URL,
+    ).toStrictEqual({ secure: true, host: "host", port: 65535, path: "/" });
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: "ws://host:80/" })
+        .SIGNALING_SERVER_URL,
+    ).toStrictEqual({ secure: false, host: "host", path: "/" });
+  });
+
   test.each([
     ["ws://signaling.example.org/api/", "https:"],
     ["wss://signaling.example.org/api/", "http:"],

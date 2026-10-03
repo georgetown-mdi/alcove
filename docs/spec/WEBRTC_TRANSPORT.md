@@ -200,7 +200,7 @@ A browser party resolves one address for the signaling server its own
 deployment uses, and every place that needs it reads that one value: where an
 inviter registers, the endpoint its invitation names, and where a saved
 exchange's acceptor dials on a later run. It comes from the deployment's build
-setting `VITE_SIGNALING_SERVER_URL`, never from an invitation:
+setting `VITE_SIGNALING_SERVER_URL`, never from an invitation. A fresh accept dials the endpoint its invitation names, from any deployment; a saved exchange's later runs dial each party's own deployment's address, so both parties' deployments must name the same signaling server for a re-run to connect:
 
 | Setting | Address |
 | ------- | ------- |
