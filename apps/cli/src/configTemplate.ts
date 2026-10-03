@@ -482,8 +482,8 @@ function undeclaredColumnsComment(
 
 /**
  * Render the commented `alcove.yaml` template `alcove init` writes: the
- * connection block (`connection`, the default an `sftp` scaffold of
- * placeholders) with its tuning options, the linkage terms (default or
+ * connection block (`sftp` placeholders unless `connection` names
+ * another) with its tuning options, the linkage terms (default or
  * inferred), the inferred metadata/standardization when an input file was
  * given, and the optional sections documented as commented examples.
  *

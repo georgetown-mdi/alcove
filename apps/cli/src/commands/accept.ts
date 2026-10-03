@@ -1087,9 +1087,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // it) is a definite false rather than undefined. A boolean option may be
       // repeated, so it is read directly, not via singleValue.
       const consentToTerms = argv["consent-to-terms"] === true;
-      // A confirmation that cannot be asked is refused rather than read as a
-      // decline, so a scheduled or piped acceptance fails visibly before it
-      // decodes the invitation or shows its terms.
+      // Refused, not read as a decline, so an unattended acceptance fails visibly.
       if (!consentToTerms && process.stdin.isTTY !== true)
         throw new UsageError(ACCEPT_NEEDS_TERMINAL);
       const csvDelimiter = csvDelimiterFlag(argv);
