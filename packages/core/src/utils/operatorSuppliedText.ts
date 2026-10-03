@@ -194,6 +194,21 @@ function composedSpans(value: unknown): ReadonlyArray<DisplaySpan> | undefined {
 }
 
 /**
+ * The spans of `message` where {@link messageWithOperatorText} composed it, and
+ * otherwise its `text` as one span nobody marked, which the sink escapes.
+ */
+export function spansOfMessage(
+  message: MessageWithOperatorText,
+): ReadonlyArray<DisplaySpan> {
+  return (
+    composedSpans(message) ??
+    (message.text === ""
+      ? []
+      : [{ text: message.text, operatorSupplied: false }])
+  );
+}
+
+/**
  * The string inside an {@link OperatorSuppliedText}, or `undefined` for a
  * value holding no mark -- which is what the renderers read to decide between
  * showing bytes as the operator typed them and escaping them

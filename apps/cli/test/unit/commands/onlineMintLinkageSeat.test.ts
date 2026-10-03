@@ -97,8 +97,7 @@ test("the online mint states a draft shortfall without claiming an agreement", a
   // A UsageError subclass, so the CLI's error->exit boundary reports exit 64.
   expect(thrown).toBeInstanceOf(UsageError);
   // The refusal composes its tokens raw; render it the way the CLI's error
-  // boundary does, since the remedy sits on a cause link `.message` does not
-  // hold.
+  // boundary does.
   const rendered = sanitizeErrorForDisplay(thrown);
   expect(rendered).toContain(
     "the input file's linkage terms declare no linkage key",
@@ -106,13 +105,13 @@ test("the online mint states a draft shortfall without claiming an agreement", a
   // The operator authored no terms document here, so the remedy is the one the
   // input side can act on, and it names the file the terms came from.
   expect(rendered).toContain(
-    "Provide a CSV that covers the required field types, then generate the " +
+    "To fix: provide a CSV that covers the required field types, then generate the " +
       "invitation again; these terms are derived from the CSV input " +
       `${pathAsDisplayed(input)}.`,
   );
   // Nobody has agreed to these terms and nobody has seen them, so the refusal
   // may neither call them agreed nor send the operator to renegotiate.
-  expect(rendered).not.toContain("Agree linkage terms");
+  expect(rendered).not.toContain("agree linkage terms");
   expect(rendered).not.toContain("agreed");
   expect(rendered).not.toContain("your partner");
   expect(rendered).not.toContain("out of band");
@@ -146,7 +145,7 @@ test("the online mint names the stdin source, not the `-` sentinel, when the inp
   // The input positional may be the stdin sentinel `-`; the remedy names what
   // it stands for rather than the sentinel itself.
   expect(rendered).toContain(
-    "Provide a CSV that covers the required field types, then generate the " +
+    "To fix: provide a CSV that covers the required field types, then generate the " +
       "invitation again; these terms are derived from the CSV read from " +
       "stdin.",
   );

@@ -553,6 +553,33 @@ export function unsatisfiedLinkageFields(
   standardization?: Standardization,
   metadata?: ColumnMetadata[],
 ): LinkageField[] {
+  return unsatisfiedFieldColumns(columns, terms, standardization, metadata).map(
+    ({ field }) => field,
+  );
+}
+
+/**
+ * A linkage field the input cannot produce, beside the column the resolution
+ * bound it to and the input lacks, or `undefined` where no column of the
+ * field's type is roled for linkage.
+ */
+export interface UnsatisfiedFieldColumn {
+  /** The field the input cannot produce. */
+  field: LinkageField;
+  /** The column the field is read from, absent from the input. */
+  column: string | undefined;
+}
+
+/**
+ * {@link unsatisfiedLinkageFields}, each field beside the column it expects
+ * ({@link UnsatisfiedFieldColumn}).
+ */
+export function unsatisfiedFieldColumns(
+  columns: string[],
+  terms: LinkageTerms,
+  standardization?: Standardization,
+  metadata?: ColumnMetadata[],
+): UnsatisfiedFieldColumn[] {
   const present = new Set(columns);
   const resolution = resolveFieldColumns(
     terms,
@@ -564,9 +591,11 @@ export function unsatisfiedLinkageFields(
   // in the input. The binding rules (explicit-preempts-fallback, first-match type
   // fallback) live in resolveFieldColumns, not here, so this verdict cannot drift
   // from the builder's.
-  return terms.linkageFields.filter((f) => {
-    const column = resolution.get(f.name)?.column;
-    return column === undefined || !present.has(column);
+  return terms.linkageFields.flatMap((field) => {
+    const column = resolution.get(field.name)?.column;
+    return column === undefined || !present.has(column)
+      ? [{ field, column }]
+      : [];
   });
 }
 
@@ -1609,6 +1638,8 @@ export interface LinkageTermsVerdict {
    * declared field -- including when keys are still unsatisfiable, which happens
    * when a key element references a field the terms never declare. */
   unsatisfiedFields: LinkageField[];
+  /** {@link unsatisfiedFields}, each beside the column it expects. */
+  unsatisfiedFieldColumns: UnsatisfiedFieldColumn[];
 }
 
 /**
@@ -1634,12 +1665,13 @@ export function decideLinkageTermsVerdict(
   standardization?: Standardization,
   metadata?: ColumnMetadata[],
 ): LinkageTermsVerdict {
-  const unsatisfiedFields = unsatisfiedLinkageFields(
+  const missing = unsatisfiedFieldColumns(
     columns,
     terms,
     standardization,
     metadata,
   );
+  const unsatisfiedFields = missing.map(({ field }) => field);
   const unsatisfiedNames = new Set(unsatisfiedFields.map((f) => f.name));
   // The set of field names that are BOTH declared and producible. A key element
   // referencing a name absent from this set is unsatisfiable -- whether the field
@@ -1690,6 +1722,7 @@ export function decideLinkageTermsVerdict(
     unsatisfiableKeys,
     deadKeys,
     unsatisfiedFields,
+    unsatisfiedFieldColumns: missing,
   };
 }
 

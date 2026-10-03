@@ -2136,7 +2136,9 @@ test("validateInvite: a config plus a disagreeing input is refused before mintin
     // keys without calling them agreed.
     expect(rendered).not.toContain("agreed linkage key");
     expect(rendered).toContain("linkage key the CSV cannot produce: SSN");
-    expect(rendered).toContain("unsatisfied field: ssn (ssn)");
+    expect(rendered).toContain(
+      "this CSV has no column of type ssn for linkage field ssn",
+    );
     // The mint states what generating would cost and points at the operator's
     // own authoring, naming the file the terms came from: there is no partner to
     // renegotiate with until this invitation is sent.
@@ -2145,7 +2147,7 @@ test("validateInvite: a config plus a disagreeing input is refused before mintin
         "configuration's own exchange refuses to run",
     );
     expect(rendered).toContain(
-      "Provide a CSV that covers the required field types, then generate the " +
+      "To fix: provide a CSV that covers the required field types, then generate the " +
         `invitation again; these terms come from ${pathAsDisplayed(configPath)}.`,
     );
     expect(rendered).not.toContain("ask your partner");
@@ -2171,10 +2173,10 @@ test("validateInvite: a config whose key cleaning drops every record is refused 
     // The remedy is terms-side only: no column is missing, so nothing asks for a
     // different CSV.
     expect(rendered).toContain(
-      "Correct the cleaning steps those keys declare, then generate the " +
+      "To fix: correct the cleaning steps those keys declare, then generate the " +
         `invitation again; these terms come from ${pathAsDisplayed(configPath)}.`,
     );
-    expect(rendered).not.toContain("Provide a CSV");
+    expect(rendered).not.toContain("provide a CSV");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

@@ -1236,11 +1236,6 @@ test("the value-free diagnostics contain no delimiter at all", () => {
       { ...base, output: { expectsOutput: false, shareWithPartner: false } },
       { ...base, output: { expectsOutput: false, shareWithPartner: false } },
     ).errors,
-    validateCompatibility(base, {
-      ...base,
-      linkageFields: [{ name: "dob", type: "date_of_birth" }],
-      linkageKeys: [{ name: "SSN", elements: [{ field: "dob" }] }],
-    }).errors,
     validateCompatibility(
       withAgreement(base, "MOU-001", "Care coordination"),
       base,
@@ -1254,6 +1249,54 @@ test("the value-free diagnostics contain no delimiter at all", () => {
   expect(valueFree.length).toBeGreaterThan(0);
   for (const message of valueFree)
     expect(message).not.toContain(TERMS_VALUE_DELIMITER);
+});
+
+test("a field or key mismatch names, delimited, each entry that differs", () => {
+  const withDob: LinkageTerms = {
+    ...base,
+    linkageFields: [...sharedFields, { name: "dob", type: "date_of_birth" }],
+    linkageKeys: [
+      ...sharedKeys,
+      { name: "SSN + DOB", elements: [{ field: "ssn" }, { field: "dob" }] },
+    ],
+  };
+  expect(validateCompatibility(withDob, base).errors).toEqual([
+    'linkage fields do not match: only local declares "dob"',
+    'linkage keys do not match: only local declares "SSN + DOB"',
+  ]);
+  expect(validateCompatibility(base, withDob).errors).toEqual([
+    'linkage fields do not match: only partner declares "dob"',
+    'linkage keys do not match: only partner declares "SSN + DOB"',
+  ]);
+
+  const retyped: LinkageTerms = {
+    ...base,
+    linkageFields: [{ name: "ssn", type: "ssn4" }],
+    linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
+  };
+  expect(validateCompatibility(base, retyped).errors).toEqual([
+    'linkage fields do not match: local and partner declare "ssn" differently',
+  ]);
+
+  const reordered: LinkageTerms = {
+    ...withDob,
+    linkageKeys: [...withDob.linkageKeys].reverse(),
+  };
+  expect(validateCompatibility(withDob, reordered).errors).toEqual([
+    "linkage keys do not match: local and partner declare the same keys in a different order",
+  ]);
+
+  // A name that spells the clause structure stays inside its own run.
+  const forged: LinkageTerms = {
+    ...base,
+    linkageFields: [
+      ...sharedFields,
+      { name: 'x"; only partner declares "y', type: "first_name" },
+    ],
+  };
+  expect(validateCompatibility(forged, base).errors[0]).toBe(
+    'linkage fields do not match: only local declares "x""; only partner declares ""y"',
+  );
 });
 
 test("each output-mismatch branch displays as a whole sentence", () => {

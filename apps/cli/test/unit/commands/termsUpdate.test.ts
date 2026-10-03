@@ -28,6 +28,7 @@ import { handler as applyHandler } from "../../../src/commands/apply";
 import { handler as updateHandler } from "../../../src/commands/update";
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
+import { termsProposalPath } from "../../../src/termsChange";
 import { promptConfirm } from "../../../src/util/prompt";
 import { captureProcessExit } from "../../exitCapture";
 import { captureStdio } from "../../loggingTestSupport";
@@ -497,6 +498,48 @@ describe("alcove apply", () => {
     expect(stderr).toContain("refused by the partnership check");
     expect(promptConfirmMock).not.toHaveBeenCalled();
     expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
+
+  test("a partnership refusal points at the terms proposal an exchange wrote beside the configuration", async () => {
+    const stale = await encodeTermsUpdate(
+      { linkageTerms: partnership.aTerms },
+      generateSharedSecret(),
+    );
+    const proposal = termsProposalPath(partnership.b.config);
+    fs.writeFileSync(
+      proposal,
+      `${await encodeTermsUpdate(
+        { linkageTerms: partnership.aTerms },
+        partnership.secret,
+      )}\n`,
+    );
+
+    const { exit, stderr } = await runApply(stale);
+    expect(exit).toBe("exit:64");
+    expect(stderr).toContain("refused by the partnership check");
+    expect(stderr).not.toContain("\\x0a");
+    const lines = stderr.split("\n");
+    expect(lines).toContain(
+      `To fix, apply the terms your last exchange with your partner wrote to ${proposal}:`,
+    );
+    expect(lines).toContain(
+      `  alcove apply --config-file ${partnership.b.config} --key-file ${partnership.b.key} @${proposal}`,
+    );
+    expect(lines).toContain(
+      "If those are not the terms you expect, ask your partner to run " +
+        "'alcove update' again from the configuration and key file they use " +
+        "with you.",
+    );
+
+    // The proposal itself, applied, takes no such pointer to itself.
+    const { exit: proposalExit } = await runApply(
+      `@${proposal}`,
+      partnership.b,
+      {
+        "consent-to-terms": true,
+      },
+    );
+    expect(proposalExit).toBeUndefined();
   });
 
   test("an update made from this party's own configuration is refused", async () => {

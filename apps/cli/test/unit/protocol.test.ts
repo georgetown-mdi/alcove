@@ -374,6 +374,7 @@ import {
   describeResolvedMatching,
   describeResolvedRunShape,
   getDefaultLinkageTerms,
+  getLogger,
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   operatorSuppliedSpans,
@@ -434,6 +435,7 @@ import {
   describeExchangeOutcome,
   zeroMatchWarning,
 } from "../../src/exchangeOutcome";
+import { termsChangeHandler } from "../../src/termsChange";
 import { LocalFSClient } from "../../src/connection/localFSClient";
 
 // 32 zero bytes in base64url (43 chars, no padding).
@@ -5125,6 +5127,86 @@ test.each([
   },
   20_000,
 );
+
+test("runProtocol after rotation prints no retry line beneath a terms-change refusal", async () => {
+  // An unattended run that meets its partner's changed terms refuses them and
+  // writes them as a proposal. The refusal states its own next step (apply the
+  // proposal), so the generic "retry without re-inviting" advisory, which a
+  // retry against the same changed terms cannot satisfy, is not printed.
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+
+  const refuseChangeAfterRotation =
+    (keyPath: string, configPath: string) => async (): Promise<never> => {
+      await waitForBothKeysRotated(keyFileA, keyFileB);
+      const terms = getDefaultLinkageTerms("Partner");
+      await termsChangeHandler({
+        configPath,
+        keyPath,
+        interactive: false,
+        log: getLogger("terms-change"),
+        logFile: undefined,
+      })({
+        delta: {
+          received: { added: ["county"], removed: [] },
+          sent: undefined,
+          partnerDeduplicate: undefined,
+          otherTerms: [],
+        },
+        partnerTerms: terms,
+        adoptedTerms: terms,
+        continuable: true,
+      });
+      throw new Error("the terms-change handler did not refuse");
+    };
+  vi.mocked(runExchange)
+    .mockImplementationOnce(
+      refuseChangeAfterRotation(keyFileA, path.join(tmpDir, "a.yaml")),
+    )
+    .mockImplementationOnce(
+      refuseChangeAfterRotation(keyFileB, path.join(tmpDir, "b.yaml")),
+    );
+
+  const run = (keyFilePath: string, loggerName: string) =>
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: { sharedSecret: TOKEN_A, keyFilePath },
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName,
+    });
+  const [resultA, resultB] = await Promise.allSettled([
+    run(keyFileA, "test-a"),
+    run(keyFileB, "test-b"),
+  ]);
+  expect(resultA.status).toBe("rejected");
+  expect(resultB.status).toBe("rejected");
+  const reason = (resultA as PromiseRejectedResult).reason;
+  expect(reason).toBeInstanceOf(OperatorConfigError);
+  expect(
+    mockState.errors.some((m) =>
+      m.includes("Retry the exchange without re-inviting"),
+    ),
+  ).toBe(false);
+  const rendered = renderFailureForOperator(reason);
+  expect(rendered).not.toContain("\\x0a");
+  // Which party's mock ran first is not fixed, so the paths are read by shape.
+  const lines = rendered.split("\n");
+  expect(lines).toHaveLength(3);
+  expect(lines[1]).toBe(
+    "To fix, review and apply them, then run the exchange again:",
+  );
+  expect(lines[2]).toMatch(
+    /^ {2}alcove apply --config-file \S+\.yaml --key-file \S+\.key @\S+\.proposed-terms$/,
+  );
+}, 20_000);
 
 test.each([
   {

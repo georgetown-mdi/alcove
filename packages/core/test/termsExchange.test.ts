@@ -1149,10 +1149,9 @@ const reasonLabel = (position: number): string =>
 // The rendered opening of the first abort reason on a link: the renderer's
 // cause-link separator, then that label.
 const REASON_LINK = `\ncaused by: ${reasonLabel(1)}`;
-// The opening of the next reason packed on that same link: the escape's own
-// token for the line breaks the elimination places between two reasons, then
-// the label the second reason has.
-const PACKED_REASON = `\\x0a\\x0a${reasonLabel(2)}`;
+// The opening of the next reason packed on that same link: the line break the
+// elimination places between two reasons, then the label the second reason has.
+const PACKED_REASON = `\n${reasonLabel(2)}`;
 const BEGIN_MARKER = "-----BEGIN OPENSSH PRIVATE KEY-----";
 const END_MARKER = "-----END OPENSSH PRIVATE KEY-----";
 const REDACTION = "[redacted private key]";
@@ -1203,6 +1202,38 @@ test("a lone END marker in an abort reason deletes nothing", async () => {
       `partner aborted linkage terms exchange${REASON_LINK}${END_MARKER}` +
         `${PACKED_REASON}the second reason`,
     );
+});
+
+test("a field one party declares and the other does not is named on both sides", async () => {
+  // Each side of a zero-setup run infers its terms from its own header, so a
+  // file without an SSN column yields terms without the ssn field. The
+  // responder states the difference; the initiator reads it as the reasons on
+  // the responder's abort, each on a line of its own.
+  const dobOnly: LinkageTerms = {
+    ...termsB,
+    linkageFields: [{ name: "dob", type: "date_of_birth" }],
+    linkageKeys: [{ name: "DOB", elements: [{ field: "dob" }] }],
+  };
+  const withSsn: LinkageTerms = {
+    ...termsA,
+    linkageFields: [...dobOnly.linkageFields, ...sharedFields],
+    linkageKeys: [...dobOnly.linkageKeys, ...sharedKeys],
+  };
+  const [a, b] = await runExchange(withSsn, dobOnly);
+  const rendered = (settled: PromiseSettledResult<unknown>): string =>
+    sanitizeErrorForDisplay((settled as PromiseRejectedResult).reason);
+
+  expect(rendered(b)).toBe(
+    "linkage terms are incompatible: " +
+      'linkage fields do not match: only partner declares "ssn"; ' +
+      'linkage keys do not match: only partner declares "SSN"',
+  );
+  expect(rendered(a)).toBe(
+    `partner aborted linkage terms exchange${REASON_LINK}` +
+      'linkage fields do not match: only partner declares "ssn"' +
+      `${PACKED_REASON}linkage keys do not match: only partner declares "SSN"`,
+  );
+  expect(rendered(a)).not.toContain("\\x0a");
 });
 
 test("a plain abort reason displays as its own text", async () => {

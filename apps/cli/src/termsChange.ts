@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   DISPLAY_TRUNCATION_MARKER,
   encodeTermsUpdate,
+  keepFirstPartyLinesWithOperatorText,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   OperatorConfigError,
@@ -60,7 +61,7 @@ export function termsProposalPath(configPath: string): string {
 }
 
 /** The `alcove apply` invocation that applies the proposal for `paths`. */
-function applyCommand(paths: {
+export function applyCommand(paths: {
   configPath: string;
   keyPath: string;
   proposalPath: string;
@@ -143,32 +144,45 @@ const NOT_CONTINUABLE_REFUSAL =
 
 /**
  * The refusal of a change this run did not take on, naming the operator's own
- * paths, marked as theirs.
+ * paths, marked as theirs, with the command that applies the proposal on a
+ * line of its own.
  */
 function proposalRefusal(
   change: TermsChange,
   paths: { configPath: string; keyPath: string; proposalPath: string },
 ): OperatorConfigError {
-  const message = messageWithOperatorText`${change.continuable ? UNATTENDED_REFUSAL : NOT_CONTINUABLE_REFUSAL} Your partner's terms were written to ${operatorSuppliedText(
+  const refused = messageWithOperatorText`${change.continuable ? UNATTENDED_REFUSAL : NOT_CONTINUABLE_REFUSAL} Your partner's terms were written to ${operatorSuppliedText(
     paths.proposalPath,
-  )}. Review and apply them, then run the exchange again:\n  ${operatorSuppliedText(
+  )}.`;
+  const toFix = messageWithOperatorText`To fix, review and apply them, then run the exchange again:`;
+  const command = messageWithOperatorText`  ${operatorSuppliedText(
     applyCommand(paths),
   )}`;
-  const refusal = keepOperatorSuppliedText(
-    new OperatorConfigError(message.text),
-    message,
+  return notTaken(
+    keepFirstPartyLinesWithOperatorText(
+      new OperatorConfigError(
+        `${refused.text}\n${toFix.text}\n${command.text}`,
+      ),
+      [refused, toFix, command],
+    ),
+    change.delta,
+    true,
   );
-  recordTermsChangeNotTaken(refusal, {
-    delta: change.delta,
-    proposalWritten: true,
-  });
-  return refusal;
 }
 
-/** `refusal`, recorded as ending its run on `delta` with no proposal written. */
-function notTaken<E extends Error>(refusal: E, delta: TermsDelta): E {
-  recordTermsChangeNotTaken(refusal, { delta, proposalWritten: false });
-  return refusal;
+/**
+ * `refusal`, recorded as ending its run on `delta`, and tagged as stating its
+ * own next step: a terms change is settled by the operator or the partner, so
+ * the retry the generic post-rotation advisory prescribes cannot succeed.
+ */
+function notTaken<E extends Error>(
+  refusal: E,
+  delta: TermsDelta,
+  proposalWritten = false,
+): E {
+  const tagged = Object.assign(refusal, { alcoveRecoveryHintEmitted: true });
+  recordTermsChangeNotTaken(tagged, { delta, proposalWritten });
+  return tagged;
 }
 
 /**

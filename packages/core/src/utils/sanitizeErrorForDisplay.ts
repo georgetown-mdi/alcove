@@ -2,8 +2,13 @@ import { errorMessage } from "../connection/messageConnection";
 import {
   operatorSuppliedSpans,
   operatorSuppliedValue,
+  spansOfMessage,
 } from "./operatorSuppliedText";
-import type { DisplaySpan, OperatorSuppliedText } from "./operatorSuppliedText";
+import type {
+  DisplaySpan,
+  MessageWithOperatorText,
+  OperatorSuppliedText,
+} from "./operatorSuppliedText";
 import {
   boundRawFragmentForFit,
   clipToRenderedCost,
@@ -436,6 +441,76 @@ export function keepFirstPartyLineBreaks<E extends Error>(
 }
 
 /**
+ * Where {@link keepFirstPartyLinesWithOperatorText} keeps the spans of each
+ * line, registered and symbol-keyed for the reasons
+ * {@link FIRST_PARTY_LINE_BREAK_TEXT} gives.
+ */
+const FIRST_PARTY_LINE_SPANS = Symbol.for(
+  "alcove.errorDisplay.firstPartyLineSpans",
+);
+
+/**
+ * {@link keepFirstPartyLineBreaks} for lines composed with
+ * {@link ./operatorSuppliedText.messageWithOperatorText}: the breaks BETWEEN
+ * `lines` render as line breaks, and inside each line the spans the operator
+ * supplied render as they typed them while every other span takes the escape,
+ * as on a link marked by
+ * {@link ./operatorSuppliedText.keepOperatorSuppliedText}.
+ *
+ * The breaks kept are the ones between `lines` and no other: a line break
+ * inside a span is escaped, or replaced by its marker in a span the operator
+ * supplied, so no fragment opens a line of its own. Pass the error whose
+ * message is `lines` joined with `\n`; the renderer checks that join and
+ * escapes the message whole where it does not hold.
+ */
+export function keepFirstPartyLinesWithOperatorText<E extends Error>(
+  error: E,
+  lines: ReadonlyArray<MessageWithOperatorText>,
+): E {
+  const spanLines = lines.map(spansOfMessage);
+  if (spanLines.every((line) => line.length === 0)) return error;
+  Object.defineProperty(error, FIRST_PARTY_LINE_SPANS, {
+    value: spanLines,
+    enumerable: false,
+    configurable: true,
+  });
+  return error;
+}
+
+/**
+ * The lines {@link keepFirstPartyLinesWithOperatorText} left on `link` whose
+ * text joins back to `message`, or `undefined` for a link that asked for no
+ * such treatment or whose mark does not describe its message.
+ */
+function firstPartyLineSpans(
+  link: unknown,
+  message: string,
+): ReadonlyArray<ReadonlyArray<DisplaySpan>> | undefined {
+  if (typeof link !== "object" || link === null) return undefined;
+  if (!Object.hasOwn(link, FIRST_PARTY_LINE_SPANS)) return undefined;
+  const marked = (link as Record<symbol, unknown>)[FIRST_PARTY_LINE_SPANS];
+  if (!Array.isArray(marked)) return undefined;
+  const lines: DisplaySpan[][] = [];
+  for (const line of marked as unknown[]) {
+    if (!Array.isArray(line)) return undefined;
+    const spans: DisplaySpan[] = [];
+    for (const span of line as unknown[]) {
+      if (typeof span !== "object" || span === null) return undefined;
+      const { text, operatorSupplied } = span as Partial<DisplaySpan>;
+      if (typeof text !== "string" || typeof operatorSupplied !== "boolean")
+        return undefined;
+      spans.push({ text, operatorSupplied });
+    }
+    lines.push(spans);
+  }
+  return lines
+    .map((line) => line.map((span) => span.text).join(""))
+    .join("\n") === message
+    ? lines
+    : undefined;
+}
+
+/**
  * The text {@link ERROR_CAUSE_SEPARATOR} puts behind its newline, read off
  * that constant so the opening this refuses is the one the join writes.
  */
@@ -565,10 +640,13 @@ function renderFirstPartyLineBreaks(text: string): string {
  * who names a path with one loses the path and not the sentence telling them
  * what to do about it.
  */
-function renderSpans(spans: ReadonlyArray<DisplaySpan>): string {
+function renderSpans(
+  spans: ReadonlyArray<DisplaySpan>,
+  budget: number = COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+): string {
   let rendered = "";
   for (const span of spans) {
-    const room = COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH - rendered.length;
+    const room = budget - rendered.length;
     if (room <= 0) break;
     const text = redactPrivateKeyMaterial(span.text);
     const shown = span.operatorSupplied
@@ -580,6 +658,41 @@ function renderSpans(spans: ReadonlyArray<DisplaySpan>): string {
     if (shown.length > room) break;
   }
   return rendered;
+}
+
+/**
+ * Render one link {@link keepFirstPartyLinesWithOperatorText} marked: each line
+ * span by span ({@link renderSpans}) and joined with the break, under the
+ * link's one budget the way {@link renderFirstPartyLineBreaks} spends it. A
+ * line opening on the cause separator's text is led by a backslash, which the
+ * escape doubles, as {@link refuseCauseSeparatorOpening} does.
+ */
+function renderLinesOfSpans(
+  lines: ReadonlyArray<ReadonlyArray<DisplaySpan>>,
+): string {
+  const rendered: string[] = [];
+  let spent = 0;
+  for (const line of lines) {
+    const room = COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH - spent;
+    if (room <= 0) {
+      rendered[rendered.length - 1] += DISPLAY_TRUNCATION_MARKER;
+      break;
+    }
+    const opensOnSeparator = line
+      .map((span) => span.text)
+      .join("")
+      .startsWith(CAUSE_SEPARATOR_LINE_OPENING);
+    const shown = renderSpans(
+      opensOnSeparator
+        ? [{ text: "\\", operatorSupplied: false }, ...line]
+        : line,
+      room,
+    );
+    rendered.push(shown);
+    if (shown.length > room) break;
+    spent += shown.length + 1;
+  }
+  return rendered.join("\n");
 }
 
 /**
@@ -610,6 +723,9 @@ function renderSpans(spans: ReadonlyArray<DisplaySpan>): string {
  * copy back, and every other span is escaped as it is on an unmarked link.
  * The mark is read only where its spans join back to the link's own message,
  * so a link whose mark describes some other text is escaped whole.
+ *
+ * A link marked by {@link keepFirstPartyLinesWithOperatorText} takes both
+ * treatments: it is rendered line by line, and span by span within a line.
  *
  * This is the display-boundary call site for rendering a raw error
  * INSTANCE to a human. The transport and message layers preserve the
@@ -657,6 +773,7 @@ export function sanitizeErrorForDisplay(err: unknown): string {
     message: string;
     kept: string | undefined;
     spans: ReadonlyArray<DisplaySpan> | undefined;
+    lineSpans: ReadonlyArray<ReadonlyArray<DisplaySpan>> | undefined;
   }> = [];
   const seen = new Set<unknown>();
   let current: unknown = err;
@@ -669,6 +786,7 @@ export function sanitizeErrorForDisplay(err: unknown): string {
     let message: string;
     let kept: string | undefined;
     let spans: ReadonlyArray<DisplaySpan> | undefined;
+    let lineSpans: ReadonlyArray<ReadonlyArray<DisplaySpan>> | undefined;
     try {
       const raw = errorMessage(current);
       message = typeof raw === "string" ? raw : String(raw);
@@ -692,16 +810,23 @@ export function sanitizeErrorForDisplay(err: unknown): string {
     } catch {
       spans = undefined;
     }
+    try {
+      lineSpans = firstPartyLineSpans(current, message);
+    } catch {
+      lineSpans = undefined;
+    }
     // Suppress a link that repeats the previous link's raw message: a wrapper
     // built by asConnectionError has its cause's message verbatim, so the
     // outer and first inner links are usually byte-identical. The kept link is
     // the marked one of the two, so an unmarked wrapper over a marked cause of
     // the same text still reaches the operator as the block it was written as.
     const previous = rawLinks[rawLinks.length - 1];
-    if (previous?.message !== message) rawLinks.push({ message, kept, spans });
+    if (previous?.message !== message)
+      rawLinks.push({ message, kept, spans, lineSpans });
     else {
       if (previous.kept === undefined) previous.kept = kept;
       if (previous.spans === undefined) previous.spans = spans;
+      if (previous.lineSpans === undefined) previous.lineSpans = lineSpans;
     }
     seen.add(current);
     // Follow `.cause` on any object link, like {@link causeChainSome}; a
@@ -729,17 +854,20 @@ export function sanitizeErrorForDisplay(err: unknown): string {
     }
     current = next;
   }
-  // A link marked both ways renders through the line-break form, which escapes
+  // The line-and-span mark describes a link completely, so it wins. Otherwise a
+  // link marked both ways renders through the line-break form, which escapes
   // every span: two marks over one link describe it two ways, and the escape is
   // the treatment a link gets by asking for nothing.
-  const links: string[] = rawLinks.map(({ message, kept, spans }) =>
-    kept !== undefined
-      ? renderFirstPartyLineBreaks(kept)
-      : spans !== undefined
-        ? renderSpans(spans)
-        : sanitizeForDisplay(redactPrivateKeyMaterial(message), {
-            maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
-          }),
+  const links: string[] = rawLinks.map(({ message, kept, spans, lineSpans }) =>
+    lineSpans !== undefined
+      ? renderLinesOfSpans(lineSpans)
+      : kept !== undefined
+        ? renderFirstPartyLineBreaks(kept)
+        : spans !== undefined
+          ? renderSpans(spans)
+          : sanitizeForDisplay(redactPrivateKeyMaterial(message), {
+              maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
+            }),
   );
   // Appended after the escape and the cap, like the truncation marker inside
   // sanitizeForDisplay: the marker is this module's own fixed ASCII, and a link
