@@ -3,10 +3,15 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
+  serializeAgreedTerms,
   serializeExchangeRecord,
   serializeVerificationKeys,
 } from "@alcove/core";
-import type { ExchangeRecord, VerificationKeys } from "@alcove/core";
+import type {
+  AgreedTerms,
+  ExchangeRecord,
+  VerificationKeys,
+} from "@alcove/core";
 
 import { writeFileOwnerOnly } from "./fileUtils";
 
@@ -37,6 +42,17 @@ export function keysPathFor(recordPath: string): string {
   return recordPath.endsWith(".json")
     ? `${recordPath.slice(0, -".json".length)}.keys.json`
     : `${recordPath}.keys.json`;
+}
+
+/**
+ * Derive the agreed-terms path from a record path, as {@link keysPathFor}
+ * derives the keys path: a `.terms.json` suffix in place of a trailing `.json`.
+ * `alcove verify-receipt` looks for the file here.
+ */
+export function agreedTermsPathFor(recordPath: string): string {
+  return recordPath.endsWith(".json")
+    ? `${recordPath.slice(0, -".json".length)}.terms.json`
+    : `${recordPath}.terms.json`;
 }
 
 /**
@@ -98,6 +114,36 @@ export function recordPathsFor(
 export type RecordWriteResult =
   { kind: "written"; paths: RecordPaths } | { kind: "failed"; message: string };
 
+// Written only after the record: the file is a convenience for
+// verify-receipt, so a failed write leaves the record whole and costs only
+// the flags that supply the same terms.
+function writeAgreedTermsBesideRecord(
+  recordFilePath: string,
+  agreedTerms: AgreedTerms,
+  loggerName: string,
+): void {
+  const log = getLogger(loggerName);
+  const termsFilePath = agreedTermsPathFor(recordFilePath);
+  const termsFileDisplay = redactAndRenderOperatorSuppliedText(
+    operatorSuppliedText(termsFilePath),
+  );
+  const remedy =
+    "to check the record's agreed-terms hash, pass alcove verify-receipt " +
+    "--config-file and --partner-terms";
+  try {
+    writeFileOwnerOnly(termsFilePath, serializeAgreedTerms(agreedTerms));
+    log.info(
+      `wrote both parties' agreed terms to ${termsFileDisplay}, for alcove ` +
+        "verify-receipt to check the record's agreed-terms hash",
+    );
+  } catch (err) {
+    log.warn(
+      `the agreed terms could not be written to ${termsFileDisplay} ` +
+        `(${sanitizeErrorForDisplay(err)}); the record is unaffected; ${remedy}`,
+    );
+  }
+}
+
 /**
  * Write the record (shareable) and its verification keys (private) to disk,
  * each atomically and owner-only via {@link writeFileOwnerOnly} -- keys
@@ -107,13 +153,16 @@ export type RecordWriteResult =
  * as a `failed` result's message, composed RAW for the caller's own
  * event-stream escaping (docs/spec/CLI_EVENTS.md, `warning`), and handles a
  * completed run's record and a terminated one identically
- * (docs/spec/EXCHANGE_RECORD.md, When a record is owed).
+ * (docs/spec/EXCHANGE_RECORD.md, When a record is owed). Given
+ * `agreedTerms`, a record that was written gets the agreed-terms file beside
+ * it (docs/spec/EXCHANGE_RECORD.md, Agreed-terms file).
  */
 export function writeExchangeRecord(
   output: RecordOutput,
   record: ExchangeRecord,
   keys: VerificationKeys,
   loggerName: string,
+  agreedTerms?: AgreedTerms,
 ): RecordWriteResult {
   const log = getLogger(loggerName);
   const { recordFilePath, keysFilePath } = recordPathsFor(
@@ -162,6 +211,8 @@ export function writeExchangeRecord(
             "record is what they claimed and not what this run confirmed"
           : ""),
     );
+    if (agreedTerms !== undefined)
+      writeAgreedTermsBesideRecord(recordFilePath, agreedTerms, loggerName);
     return { kind: "written", paths: { recordFilePath, keysFilePath } };
   } catch (err) {
     log.warn(

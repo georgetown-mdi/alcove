@@ -1797,6 +1797,21 @@ export function safeParseLinkageTerms(raw: unknown) {
 }
 
 /**
+ * {@link safeParseLinkageTerms} for a stored copy whose writer serialized a
+ * parse result, so every key it holds is one the schema reads: a key the
+ * schema would drop is refused ({@link droppedSettingIssues}) rather than
+ * trimmed, so the terms re-hashed are the terms the file states.
+ */
+export function safeParseStoredLinkageTerms(raw: unknown) {
+  return safeParseCamelized(
+    LinkageTermsSchema,
+    raw,
+    PARAMS_WIDTH_BOUND,
+    (camelized, parsed) => droppedSettingIssues(raw, camelized, parsed),
+  );
+}
+
+/**
  * {@link safeParseLinkageTerms} for a document the reading party WROTE -- the
  * `linkage_terms` block of an operator's own configuration file. A param
  * declared as the wrong text type is refused with the remedy that fits a

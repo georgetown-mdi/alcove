@@ -2496,6 +2496,7 @@ async function writeExchangeOutputs(params: {
       audit.record,
       audit.keys,
       loggerName,
+      audit.agreedTerms,
     );
     if (written.kind === "failed") {
       missingArtifacts.push(written.message);
@@ -3421,6 +3422,7 @@ export async function runProtocol(
           disclosedRecord.record,
           disclosedRecord.keys,
           loggerName,
+          disclosedRecord.agreedTerms,
         );
         if (written.kind === "failed")
           emit((e) => e.warning("terminatedRunRecord", written.message));

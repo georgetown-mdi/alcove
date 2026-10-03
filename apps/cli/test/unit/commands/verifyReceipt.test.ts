@@ -8,6 +8,7 @@ import type { Argv } from "yargs";
 import YAML from "yaml";
 
 import {
+  AGREED_TERMS_VERSION,
   buildExchangeRecord,
   computeCertificateFingerprint,
   DEFAULT_LINKAGE_RULE_SET,
@@ -17,6 +18,7 @@ import {
   firstPartyNote,
   generateSigningIdentity,
   getDefaultLinkageTerms,
+  serializeAgreedTerms,
   serializeDualSignedRecord,
   serializeExchangeRecord,
   serializeSigningIdentity,
@@ -26,6 +28,7 @@ import {
   UsageError,
 } from "@alcove/core";
 import type {
+  AgreedTerms,
   CommittedPayload,
   DualSignedRecord,
   DualSignedRecordVerificationReport,
@@ -50,6 +53,8 @@ import {
   readVerifiableArtifact,
   readVerificationKeysFile,
   PARTNER_SEND_SET_UNKNOWN_WARNING,
+  MAX_AGREED_TERMS_FILE_BYTES,
+  RESULT_FROM_ANOTHER_RUN_HEADLINE,
   SEND_SET_UNKNOWN_WARNING,
   toRetainedResult,
 } from "../../../src/commands/verifyReceipt";
@@ -361,6 +366,92 @@ describe("formatVerificationReport: the recorded result size", () => {
       [],
     );
     expect(lines[0]).toContain("the record may have been altered");
+  });
+});
+
+describe("formatVerificationReport: a result file from another run", () => {
+  // What a later run's result checked against an earlier record yields: the
+  // agreed terms re-derive, and the commitments the files reproduce do not.
+  const laterRunResult: RecordVerificationReport = {
+    outcome: "failed",
+    termsHash: "verified",
+    commitments: {
+      localPayloadSent: "mismatch",
+      partnerPayloadReceived: "verified",
+      associationTable: "mismatch",
+    },
+    resultSize: "unopenable",
+  };
+
+  test("leads with the result not belonging to this run, and exits 65", () => {
+    const { lines, exitCode } = formatVerificationReport(laterRunResult, []);
+    expect(lines[0]).toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
+    expect(lines[0]).toContain("does not belong to this record's run");
+    expect(lines[0]).not.toContain("may have been altered");
+    expect(lines.join("\n")).toContain(
+      "commitment associationTable: DOES NOT MATCH",
+    );
+    expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
+  });
+
+  test("a received payload that does not reproduce is the same case", () => {
+    const { lines } = formatVerificationReport(
+      {
+        outcome: "failed",
+        termsHash: "verified",
+        commitments: {
+          localPayloadSent: "verified",
+          partnerPayloadReceived: "mismatch",
+        },
+      },
+      [],
+    );
+    expect(lines[0]).toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
+  });
+
+  test("a failed signature check withholds it for the two-cause headline", () => {
+    const { lines } = formatVerificationReport(
+      laterRunResult,
+      [],
+      true,
+      undefined,
+      true,
+    );
+    expect(lines[0]).not.toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
+    expect(lines[0]).toContain("the record may have been altered");
+  });
+
+  test.each<[string, Partial<RecordVerificationReport>]>([
+    ["the terms hash was not checked", { termsHash: "not-checked" }],
+    ["the terms hash does not match", { termsHash: "mismatch" }],
+    [
+      "only the sent payload, which the input reproduces, failed",
+      {
+        commitments: {
+          localPayloadSent: "mismatch",
+          partnerPayloadReceived: "verified",
+          associationTable: "verified",
+        },
+        resultSize: "verified",
+      },
+    ],
+    [
+      "a commitment could not be opened",
+      {
+        commitments: {
+          localPayloadSent: "unopenable",
+          partnerPayloadReceived: "verified",
+          associationTable: "mismatch",
+        },
+      },
+    ],
+  ])("keeps the two-cause headline when %s", (_case, overrides) => {
+    const { lines, exitCode } = formatVerificationReport(
+      { ...laterRunResult, ...overrides },
+      [],
+    );
+    expect(lines[0]).toContain("the record may have been altered");
+    expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
 });
 
@@ -1516,6 +1607,220 @@ describe("handler", () => {
     expect(stdout).toContain("partner receipt signatures are not checked here");
     expect(stdout).not.toContain("SIGNED RECEIPT");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+  });
+
+  describe("the agreed-terms file beside the record", () => {
+    const writeAgreedTerms = (
+      recordPath: string,
+      overrides: Partial<AgreedTerms> = {},
+    ): void =>
+      writeFileSync(
+        recordPath.replace(/\.json$/, ".terms.json"),
+        serializeAgreedTerms({
+          version: AGREED_TERMS_VERSION,
+          localTerms: baseInputs.localTerms,
+          partnerTerms: baseInputs.partnerTerms,
+          ...overrides,
+        }),
+      );
+
+    test("re-derives the agreed-terms hash with no terms named", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      writeAgreedTerms(recordPath);
+      const { stdout, exits } = await runVerify({ record: recordPath });
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+    });
+
+    test("a terms document named on the command line wins, half by half", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      const otherParty: LinkageTerms = {
+        ...baseInputs.partnerTerms,
+        identity: "Party C",
+      };
+      writeAgreedTerms(recordPath, {
+        localTerms: otherParty,
+        partnerTerms: otherParty,
+      });
+      const fromFileAlone = await runVerify({ record: recordPath });
+      expect(fromFileAlone.stdout).toContain(
+        "agreed-terms hash: DOES NOT MATCH",
+      );
+
+      const named = await runVerify({
+        record: recordPath,
+        "config-file": writeYaml(
+          YAML.stringify({ linkage_terms: baseInputs.localTerms }),
+        ),
+        "partner-terms": writeYaml(
+          YAML.stringify({ linkage_terms: baseInputs.partnerTerms }),
+          "partner.yaml",
+        ),
+      });
+      expect(named.stdout).toContain(
+        "agreed-terms hash: re-derives and matches",
+      );
+
+      const partnerOnly = await runVerify({
+        record: recordPath,
+        "partner-terms": writeYaml(
+          YAML.stringify({ linkage_terms: baseInputs.partnerTerms }),
+          "partner.yaml",
+        ),
+      });
+      expect(partnerOnly.stdout).toContain("agreed-terms hash: DOES NOT MATCH");
+    });
+
+    test("an invalid file is reported and supplies no terms", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      writeFileSync(
+        recordPath.replace(/\.json$/, ".terms.json"),
+        JSON.stringify({ version: "alcove-agreed-terms-file/v0" }),
+      );
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain("rec.terms.json is not valid");
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test.each<[string, (terms: Record<string, unknown>) => unknown]>([
+      ["a member beyond the three", (terms) => ({ ...terms, padding: "x" })],
+      [
+        "a key the terms schema does not read",
+        (terms) => ({
+          ...terms,
+          localTerms: {
+            ...(terms["localTerms"] as object),
+            "note\u001b[31m": "x",
+          },
+        }),
+      ],
+    ])("a file holding %s is refused, not trimmed", async (_name, alter) => {
+      const { recordPath } = await exchangeArtifacts();
+      const termsPath = recordPath.replace(/\.json$/, ".terms.json");
+      writeAgreedTerms(recordPath);
+      writeFileSync(
+        termsPath,
+        JSON.stringify(
+          alter(JSON.parse(readFileSync(termsPath, "utf8")) as never),
+        ),
+      );
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain("rec.terms.json is not valid");
+      expect(stderr).not.toContain("\u001b");
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test("a file over the size bound is not read and supplies no terms", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      writeFileSync(
+        recordPath.replace(/\.json$/, ".terms.json"),
+        " ".repeat(MAX_AGREED_TERMS_FILE_BYTES + 1),
+      );
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain(
+        `rec.terms.json is larger than ${MAX_AGREED_TERMS_FILE_BYTES} bytes`,
+      );
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test("a directory at the file's path is not read and supplies no terms", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      fs.mkdirSync(recordPath.replace(/\.json$/, ".terms.json"));
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain("is not a regular file");
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test("a failed signature withholds the another-run headline", async () => {
+      const { recordPath, signedPath, identityPath, pin } =
+        await exchangeArtifacts({
+          associationTable: [[0], [0]],
+          partnerPayloadReceived: { columns: ["status"], rows: [["active"]] },
+        });
+      writeAgreedTerms(recordPath);
+      const dir = tmp();
+      const inputPath = join(dir, "input.csv");
+      writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
+      const resultPath = join(dir, "result.csv");
+      writeFileSync(resultPath, "pid,row_id,status\nP0,0,inactive\n");
+      const args = {
+        record: recordPath,
+        "input-file": inputPath,
+        "result-file": resultPath,
+        "signed-record": signedPath,
+        "partner-fingerprint": pin,
+        "identity-file": identityPath,
+      };
+      const intact = await runVerify(args);
+      expect(intact.stdout).toContain("does not belong to this record's run");
+
+      const signed = JSON.parse(readFileSync(signedPath, "utf8")) as {
+        initiator: { signature: string };
+      };
+      signed.initiator.signature = signed.initiator.signature.replace(
+        /^./,
+        (c) => (c === "A" ? "B" : "A"),
+      );
+      writeFileSync(signedPath, JSON.stringify(signed));
+      const { stdout, exits } = await runVerify(args);
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("receipt signature: DOES NOT VERIFY");
+      expect(stdout).not.toContain("does not belong to this record's run");
+    });
+
+    test("a dual-signed record's carried partner terms come before the file's", async () => {
+      const { recordPath, signedPath } = await exchangeArtifacts();
+      writeAgreedTerms(recordPath, {
+        partnerTerms: { ...baseInputs.partnerTerms, identity: "Party C" },
+      });
+      const { stdout, exits } = await runVerify({
+        record: recordPath,
+        "signed-record": signedPath,
+      });
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("agreed-terms hash: re-derives and matches");
+      expect(stdout).not.toContain("agreed-terms hash: DOES NOT MATCH");
+    });
+
+    test("a record with none names the files that complete the check", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      const { stdout, stderr } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(stderr).not.toContain("terms.json");
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+    });
   });
 
   test("a received null the result wrote as an empty cell is named as the cause", async () => {

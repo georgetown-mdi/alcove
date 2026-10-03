@@ -766,6 +766,12 @@ export type {
   EntityClusterSummary,
 } from "./psi/entityClosure";
 export {
+  AGREED_TERMS_VERSION,
+  parseAgreedTerms,
+  serializeAgreedTerms,
+} from "./records/agreedTerms";
+export type { AgreedTerms } from "./records/agreedTerms";
+export {
   EXCHANGE_KEYS_VERSION,
   EXCHANGE_RECORD_OUTCOMES,
   EXCHANGE_RECORD_VERSION,
@@ -808,6 +814,7 @@ export {
   recordAlterationIsTheOnlyExplanation,
   recordedVersionMatches,
   reproductionMismatchCauses,
+  resuppliedFilesAreFromAnotherRun,
   toRetainedResult,
   verifyExchangeRecord,
 } from "./records/recordVerification";

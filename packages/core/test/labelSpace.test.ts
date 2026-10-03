@@ -60,6 +60,7 @@ const OTHER_ALCOVE_STRINGS: readonly string[] = [
   "alcove-commit-payload-sent/v2",
   "alcove-commit-payload-received/v2",
   "alcove-agreed-terms/v3",
+  "alcove-agreed-terms-file/v1",
   "alcove-signing-keypair-probe/v2",
 ];
 

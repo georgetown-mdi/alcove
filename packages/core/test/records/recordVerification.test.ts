@@ -9,6 +9,7 @@ import {
   reconstructCommittedData,
   recordAlterationIsTheOnlyExplanation,
   reproductionMismatchCauses,
+  resuppliedFilesAreFromAnotherRun,
   toRetainedResult,
   verifyExchangeRecord,
 } from "../../src/records/recordVerification";
@@ -510,6 +511,92 @@ describe("verifyExchangeRecord checks the recorded result size", () => {
 // a verdict that did not fail are all shapes no core-built report reaches,
 // and an accusation may not rest on a sweep that passes because there was
 // nothing to sweep.
+describe("resuppliedFilesAreFromAnotherRun", () => {
+  // Another run of the same exchange: the same parties and terms, a
+  // different match.
+  const anotherRunData: Record<string, CanonicalValue> = {
+    localPayloadSent: { columns: ["dose"], rows: [["10mg"]] },
+    partnerPayloadReceived: { columns: ["status"], rows: [["active"]] },
+    associationTable: [[0], [1]] as unknown as CanonicalValue,
+  };
+
+  test("another run's files against this record's terms are that case", async () => {
+    const { record, keys } = await buildExchangeRecord(baseInputs);
+    const report = await verifyExchangeRecord(record, keys, {
+      data: anotherRunData,
+      localTerms: termsA,
+      partnerTerms: termsB,
+    });
+    expect(report.outcome).toBe("failed");
+    expect(resuppliedFilesAreFromAnotherRun(report)).toBe(true);
+  });
+
+  test("the same files with the terms unchecked are not", async () => {
+    const { record, keys } = await buildExchangeRecord(baseInputs);
+    const report = await verifyExchangeRecord(record, keys, {
+      data: anotherRunData,
+    });
+    expect(resuppliedFilesAreFromAnotherRun(report)).toBe(false);
+  });
+
+  const notThatCase: Array<[string, RecordVerificationReport]> = [
+    [
+      "a verdict that verified",
+      {
+        outcome: "verified",
+        termsHash: "verified",
+        commitments: { partnerPayloadReceived: "verified" },
+      },
+    ],
+    [
+      "terms that do not re-derive the hash",
+      {
+        outcome: "failed",
+        termsHash: "mismatch",
+        commitments: { partnerPayloadReceived: "mismatch" },
+      },
+    ],
+    [
+      "a recorded size the opened pairing contradicts",
+      {
+        outcome: "failed",
+        termsHash: "verified",
+        commitments: {
+          partnerPayloadReceived: "mismatch",
+          associationTable: "verified",
+        },
+        resultSize: "mismatch",
+      },
+    ],
+    [
+      "a commitment with no salt to open it",
+      {
+        outcome: "failed",
+        termsHash: "verified",
+        commitments: {
+          localPayloadSent: "unopenable",
+          associationTable: "mismatch",
+        },
+      },
+    ],
+    [
+      "only the sent payload failing",
+      {
+        outcome: "failed",
+        termsHash: "verified",
+        commitments: {
+          localPayloadSent: "mismatch",
+          partnerPayloadReceived: "verified",
+          associationTable: "verified",
+        },
+      },
+    ],
+  ];
+  test.each(notThatCase)("%s is not that case", (_label, report) => {
+    expect(resuppliedFilesAreFromAnotherRun(report)).toBe(false);
+  });
+});
+
 describe("recordAlterationIsTheOnlyExplanation", () => {
   const onlyTheFigureAtFault: RecordVerificationReport = {
     outcome: "failed",
