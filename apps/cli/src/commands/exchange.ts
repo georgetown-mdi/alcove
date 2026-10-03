@@ -828,6 +828,7 @@ export async function prepareDataset(
   identity: string | undefined,
   input: string,
   logFile: string | undefined,
+  connection: ProtocolConnectionConfig,
   csvDelimiter?: string,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
@@ -876,6 +877,7 @@ export async function prepareDataset(
   displayExchangeDisclosure({
     metadata: resolved.metadata,
     linkageTerms: resolved.linkageTerms,
+    connection,
     logFile,
     log,
     unattended: !stdinAnswersPrompts(input),
@@ -1234,6 +1236,7 @@ export async function handler(argv: Arguments): Promise<void> {
         termsIdentity,
         input,
         logFile,
+        connection,
         csvDelimiter,
       );
     } catch (err) {

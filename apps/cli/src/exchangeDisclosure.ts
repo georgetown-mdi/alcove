@@ -30,8 +30,10 @@ import {
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
+import { redactUrlCredentials } from "./util/connectionUrl";
 import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
+import type { ProtocolConnectionConfig } from "./protocol";
 import type {
   InvitationRuleSetSummary,
   LinkageTerms,
@@ -355,17 +357,23 @@ export function renderExchangeDisclosure(
  * records the display, where the last display recorded there is this one
  * ({@link lastRecordedDisclosureDigest}). A scheduler mails whatever reaches
  * stderr, so an unchanged display would reach its owner on every run.
+ *
+ * The digest also covers the party identity and the connection destination,
+ * which the display does not render, so a run whose partner-facing identity or
+ * destination changed is not silenced.
  */
 function showDisclosure(params: {
   render: (emit: ConsentSurfaceSink) => void;
+  linkageTerms: LinkageTerms;
+  connection: ProtocolConnectionConfig;
   logFile: string | undefined;
   log: ReturnType<typeof getLogger>;
   unattended: boolean;
 }): void {
-  const { render, logFile, log, unattended } = params;
+  const { render, linkageTerms, connection, logFile, log, unattended } = params;
   const lines: string[] = [];
   render((line) => lines.push(line));
-  const digest = disclosureDigest(lines);
+  const digest = disclosureDigest(lines, linkageTerms, connection);
   const logRecordsDisplay =
     logFile !== undefined && log.getLevel() <= logLibrary.levels.WARN;
   const logCopyOnly =
@@ -396,8 +404,68 @@ const DISCLOSURE_DIGEST_LABEL = "Disclosure digest: sha256:";
  */
 const DISCLOSURE_DIGEST_SEARCH_BYTES = 8 * 1024 * 1024;
 
-function disclosureDigest(lines: readonly string[]): string {
-  return createHash("sha256").update(lines.join("\n"), "utf8").digest("hex");
+/**
+ * Where the connection points, with every credential removed: an sftp server's
+ * scheme, host, port and path, a filedrop's path, a webrtc signaling endpoint.
+ * Hashed but never displayed.
+ *
+ * @internal exported for testing
+ */
+export function disclosureDestination(
+  connection: ProtocolConnectionConfig,
+): string {
+  const locate = (
+    scheme: string,
+    host: string,
+    port: number | undefined,
+    paths: readonly (string | undefined)[],
+  ): string => {
+    const authority = port === undefined ? host : `${host}:${port}`;
+    const [first, ...rest] = paths.filter((p) => p !== undefined);
+    const raw = `${scheme}://${authority}/${(first ?? "").replace(/^\//, "")}`;
+    let located: string;
+    try {
+      located = redactUrlCredentials(new URL(raw));
+    } catch {
+      located = raw;
+    }
+    return [located, ...rest].join(" ");
+  };
+  switch (connection.channel) {
+    case "sftp": {
+      const { host, port, path, inboundPath, outboundPath } = connection.server;
+      return locate("sftp", host, port, [path, inboundPath, outboundPath]);
+    }
+    case "filedrop": {
+      const { path, inboundPath, outboundPath } = connection;
+      return ["filedrop", path, inboundPath, outboundPath]
+        .filter((p) => p !== undefined)
+        .join(" ");
+    }
+    case "webrtc": {
+      const { host, port, path, secure } = connection.server;
+      return locate(secure === false ? "ws" : "wss", host, port, [path]);
+    }
+  }
+}
+
+/**
+ * The digest of the display's lines plus two fixed-label lines the display
+ * does not render: the party identity and the connection destination.
+ *
+ * @internal exported for testing
+ */
+export function disclosureDigest(
+  lines: readonly string[],
+  linkageTerms: LinkageTerms,
+  connection: ProtocolConnectionConfig,
+): string {
+  const hashed = [
+    ...lines,
+    `party identity: ${linkageTerms.identity}`,
+    `connection destination: ${disclosureDestination(connection)}`,
+  ];
+  return createHash("sha256").update(hashed.join("\n"), "utf8").digest("hex");
 }
 
 /**
@@ -431,15 +499,20 @@ export function displayExchangeDisclosure(params: {
   metadata: Metadata;
   /** The terms this run resolved, which decide what it matches on. */
   linkageTerms: LinkageTerms;
+  /** The connection this run uses; only its destination is hashed. */
+  connection: ProtocolConnectionConfig;
   /** The operator's `--log-file`, so the log keeps a copy of the surface. */
   logFile: string | undefined;
   log: ReturnType<typeof getLogger>;
   /** No terminal can answer a question on this run. */
   unattended: boolean;
 }): void {
-  const { metadata, linkageTerms, logFile, log, unattended } = params;
+  const { metadata, linkageTerms, connection, logFile, log, unattended } =
+    params;
   showDisclosure({
     render: (emit) => renderExchangeDisclosure(emit, linkageTerms, metadata),
+    linkageTerms,
+    connection,
     logFile,
     log,
     unattended,
@@ -464,16 +537,20 @@ export function displayZeroSetupDisclosure(params: {
   /** The exchange this run prepared -- the source of what it transmits and
    * what it matches on. */
   prepared: PreparedExchange;
+  /** The connection this run uses; only its destination is hashed. */
+  connection: ProtocolConnectionConfig;
   /** The operator's `--log-file`, so the log keeps a copy of the surface. */
   logFile: string | undefined;
   log: ReturnType<typeof getLogger>;
   /** No terminal can answer a question on this run. */
   unattended: boolean;
 }): void {
-  const { prepared, logFile, log, unattended } = params;
+  const { prepared, connection, logFile, log, unattended } = params;
   showDisclosure({
     render: (emit) =>
       renderExchangeDisclosure(emit, prepared.linkageTerms, prepared.metadata),
+    linkageTerms: prepared.linkageTerms,
+    connection,
     logFile,
     log,
     unattended,

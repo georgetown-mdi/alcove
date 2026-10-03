@@ -28,10 +28,13 @@ import { consentRepresentationProbes } from "@alcove/core/testing";
 
 import { prepareDataset } from "../../src/commands/exchange";
 import {
+  disclosureDestination,
+  disclosureDigest,
   displayExchangeDisclosure,
   lastRecordedDisclosureDigest,
   renderExchangeDisclosure,
 } from "../../src/exchangeDisclosure";
+import type { ProtocolConnectionConfig } from "../../src/protocol";
 import { configureLogFile } from "../../src/util/logging";
 import {
   captureStdio,
@@ -40,6 +43,11 @@ import {
 import { streamOf, ttyStream, withStdin } from "../stdinStream";
 
 snapshotDiagnosticSinkAndLevel();
+
+const TEST_CONNECTION: ProtocolConnectionConfig = {
+  channel: "filedrop",
+  path: "/tmp/alcove-test-exchange",
+};
 
 const DISCLOSURE_HEADING =
   "What this exchange sends and matches on. Nothing has been sent yet:";
@@ -135,7 +143,13 @@ async function prepare(
   const stdio = captureStdio();
   try {
     return await withStdin(interactive ? ttyStream() : streamOf(""), () =>
-      prepareDataset(spec, "County Health", input, logFile).then(
+      prepareDataset(
+        spec,
+        "County Health",
+        input,
+        logFile,
+        TEST_CONNECTION,
+      ).then(
         () => undefined,
         (e: unknown) => e,
       ),
@@ -372,6 +386,7 @@ test("no name in the display puts a control character or a digest line into the 
     displayExchangeDisclosure({
       metadata,
       linkageTerms: terms,
+      connection: TEST_CONNECTION,
       logFile,
       log: logger,
       unattended: true,
@@ -867,5 +882,91 @@ test("the display represents every consent-relevant linkage term, bar the record
       .filter((probe) => probe.unrepresented.exchangeDisclosure !== undefined)
       .map((probe) => probe.path)
       .sort(),
+  );
+});
+
+// --- What the digest covers ---------------------------------------------------
+
+const sftpConnection = (host: string, password?: string) =>
+  ({
+    channel: "sftp",
+    server: {
+      host,
+      port: 2222,
+      path: "/drop",
+      username: "alice",
+      ...(password === undefined ? {} : { password }),
+    },
+  }) as ProtocolConnectionConfig;
+
+test("the digest changes with the party identity, which the display never renders", () => {
+  const other = { ...localTerms, identity: "Another Agency" };
+  expect(rendered(other)).toEqual(rendered(localTerms));
+  expect(disclosureDigest([], other, TEST_CONNECTION)).not.toBe(
+    disclosureDigest([], localTerms, TEST_CONNECTION),
+  );
+});
+
+test("the digest changes with the connection destination", () => {
+  expect(
+    disclosureDigest([], localTerms, sftpConnection("a.example.org")),
+  ).not.toBe(disclosureDigest([], localTerms, sftpConnection("b.example.org")));
+  expect(
+    disclosureDigest([], localTerms, sftpConnection("a.example.org")),
+  ).toBe(disclosureDigest([], localTerms, sftpConnection("a.example.org")));
+});
+
+test("the hashed destination holds no credential", () => {
+  const destination = disclosureDestination(
+    sftpConnection("a.example.org", "hunter2-secret"),
+  );
+  expect(destination).toBe("sftp://a.example.org:2222/drop");
+  expect(destination).not.toContain("hunter2-secret");
+  expect(destination).not.toContain("alice");
+  expect(
+    disclosureDestination({
+      channel: "webrtc",
+      server: {
+        host: "sig.example.org",
+        port: 443,
+        path: "/p",
+        key: "k-secret",
+      },
+    }),
+  ).toBe("wss://sig.example.org:443/p");
+});
+
+test("a different identity or destination prints a display an unattended run had silenced", async () => {
+  const logFile = path.join(dir, "digest.log");
+  const run = (
+    terms: LinkageTerms,
+    connection: ProtocolConnectionConfig,
+  ): string => {
+    const logger = getLogger("exchange");
+    logger.setLevel("warn");
+    const sink = configureLogFile(logFile);
+    const stdio = captureStdio();
+    try {
+      displayExchangeDisclosure({
+        metadata: metadataDisclosing([]),
+        linkageTerms: terms,
+        connection,
+        logFile,
+        log: logger,
+        unattended: true,
+      });
+      return stdio.stderrWrites.join("");
+    } finally {
+      stdio.restore();
+      sink.close();
+    }
+  };
+  expect(run(localTerms, TEST_CONNECTION)).toContain(DISCLOSURE_HEADING);
+  expect(run(localTerms, TEST_CONNECTION)).not.toContain(DISCLOSURE_HEADING);
+  expect(
+    run({ ...localTerms, identity: "Another Agency" }, TEST_CONNECTION),
+  ).toContain(DISCLOSURE_HEADING);
+  expect(run(localTerms, sftpConnection("a.example.org"))).toContain(
+    DISCLOSURE_HEADING,
   );
 });

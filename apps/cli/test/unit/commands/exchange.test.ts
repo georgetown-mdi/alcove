@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import yargs, { type Arguments } from "yargs";
+
+import type { ProtocolConnectionConfig } from "../../../src/protocol";
 import YAML from "yaml";
 import {
   InternalConsistencyError,
@@ -67,6 +69,11 @@ import { renderConfigTemplate } from "../../../src/configTemplate";
 import { streamOf, ttyStream, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
 import { ERROR_CLASS_EXIT_CODES } from "../../exitCodeCases";
+
+const TEST_CONNECTION: ProtocolConnectionConfig = {
+  channel: "filedrop",
+  path: "/tmp/alcove-test-exchange",
+};
 
 const mockState = vi.hoisted(() => ({
   warnings: [] as string[],
@@ -3469,6 +3476,7 @@ test("prepareDataset: a header the strip emptied names the removal, not the trai
       "Test Party",
       input,
       undefined,
+      TEST_CONNECTION,
     ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UsageError);
     const message = (err as Error).message;
@@ -3491,7 +3499,7 @@ test("prepareDataset: the read's stripped positions reach prepareForExchange", a
   // an escape so a fixture about invisible characters is readable.
   const input = writeInput("id,d\u202eob,city\n1,1990-01-02,Rome\n");
   vi.mocked(prepareForExchange).mockClear();
-  await prepareDataset({}, "Test Party", input, undefined);
+  await prepareDataset({}, "Test Party", input, undefined, TEST_CONNECTION);
   expect(vi.mocked(prepareForExchange).mock.calls[0][4]).toEqual([2]);
 });
 
@@ -3504,6 +3512,7 @@ test("prepareDataset: refuses (UsageError) naming the field when the CSV satisfi
     "Test Party",
     input,
     undefined,
+    TEST_CONNECTION,
   ).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(UsageError);
   expect((err as Error).message).toMatch(
@@ -3527,6 +3536,7 @@ test("prepareDataset: refuses when only some of the committed keys are satisfiab
     "Test Party",
     input,
     undefined,
+    TEST_CONNECTION,
   ).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(UsageError);
   const rendered = sanitizeErrorForDisplay(err);
@@ -3549,6 +3559,7 @@ test("prepareDataset: an explicit standardization remap satisfies a field the co
       "Test Party",
       input,
       undefined,
+      TEST_CONNECTION,
     ),
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
@@ -3576,6 +3587,7 @@ test("prepareDataset: an explicit standardization remap satisfies a field the co
     "Test Party",
     input,
     undefined,
+    TEST_CONNECTION,
   );
   expect(prepared).toBeDefined();
   expect(mockState.warnings).toHaveLength(0);
@@ -3591,6 +3603,7 @@ test("prepareDataset: an explicit metadata type satisfies a column whose name do
       "Test Party",
       input,
       undefined,
+      TEST_CONNECTION,
     ),
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
@@ -3614,6 +3627,7 @@ test("prepareDataset: an explicit metadata type satisfies a column whose name do
     "Test Party",
     input,
     undefined,
+    TEST_CONNECTION,
   );
   expect(prepared).toBeDefined();
   expect(mockState.warnings).toHaveLength(0);
@@ -3637,6 +3651,7 @@ test("prepareDataset: an explicit metadata type that retypes the column away blo
       "Test Party",
       input,
       undefined,
+      TEST_CONNECTION,
     ),
   ).rejects.toThrow(
     /cannot satisfy every linkage key the configuration declares/,
@@ -3660,6 +3675,7 @@ test("prepareDataset: the config's expectedPartnerDeduplicate is restored onto t
       "Test Party",
       input,
       undefined,
+      TEST_CONNECTION,
     );
     expect(prepared.expectedPartnerDeduplicate).toBe(declared);
   }
@@ -3676,6 +3692,7 @@ test("prepareDataset: a config with no declaration binds nothing (the two-config
     "Test Party",
     input,
     undefined,
+    TEST_CONNECTION,
   );
   expect(prepared.expectedPartnerDeduplicate).toBeUndefined();
 });

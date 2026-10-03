@@ -926,6 +926,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // does not conduct.
       displayZeroSetupDisclosure({
         prepared,
+        connection: connection as ProtocolConnectionConfig,
         logFile,
         log,
         unattended: !stdinAnswersPrompts(input),
