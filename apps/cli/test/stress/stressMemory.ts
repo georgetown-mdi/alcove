@@ -25,21 +25,33 @@ export function availableBytesFromMemoryPressure(
   );
 }
 
-// macOS counts its reclaimable cache as used, so os.freemem() there reads a
-// fraction of what a run can have; the gate takes free plus reclaimable pages.
-/** The memory this host's stress cases gate on. */
+/**
+ * The memory this host's stress cases gate on. macOS counts its reclaimable
+ * cache as used, so os.freemem() there reads a fraction of what a run can
+ * have; the gate takes free plus reclaimable pages when memory_pressure answers.
+ */
 export function stressMemory(): StressMemory {
   if (platform() === "darwin") {
+    let output: string | undefined;
     try {
-      const bytes = availableBytesFromMemoryPressure(
-        execFileSync("memory_pressure", { encoding: "utf8" }),
-      );
-      if (bytes !== undefined) {
-        return { bytes, measure: "available memory (macOS)" };
-      }
+      output = execFileSync("memory_pressure", {
+        encoding: "utf8",
+        timeout: 5_000,
+      });
     } catch {
-      // memory_pressure is unavailable: fall through to the free reading.
+      output = undefined;
     }
+    const bytes =
+      output === undefined
+        ? undefined
+        : availableBytesFromMemoryPressure(output);
+    if (bytes !== undefined) {
+      return { bytes, measure: "available memory (macOS)" };
+    }
+    return {
+      bytes: freemem(),
+      measure: "free memory (memory_pressure gave no reading)",
+    };
   }
   return { bytes: freemem(), measure: "free memory" };
 }
