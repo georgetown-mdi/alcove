@@ -111,10 +111,17 @@ export function CopyRow({
   label,
   hint,
   value,
+  previewOf = value,
+  noun,
 }: {
   label: string;
   hint?: string;
   value: string;
+  /** The secret the preview elides, where the value holds more than it (a
+   * message around a link); the value itself otherwise. */
+  previewOf?: string;
+  /** What the reveal toggle names; the label's last word otherwise. */
+  noun?: string;
 }) {
   const [copyStatus, setCopyStatus] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -129,7 +136,7 @@ export function CopyRow({
     );
   }
   // "link" / "code", for the reveal toggle's name.
-  const noun = label.split(" ").at(-1)?.toLowerCase() ?? "value";
+  const revealNoun = noun ?? label.split(" ").at(-1)?.toLowerCase() ?? "value";
   return (
     <div className={styles.copyRow}>
       <span className={styles.copyLabel}>{label}</span>
@@ -138,7 +145,7 @@ export function CopyRow({
         <div
           className={`${styles.codeBlock} ${styles.mono} ${styles.copyPreview}`}
         >
-          {previewFor(value)}
+          {previewFor(previewOf)}
         </div>
         {
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -175,7 +182,7 @@ export function CopyRow({
         aria-expanded={revealed}
         onClick={() => setRevealed((current) => !current)}
       >
-        Show full {noun}
+        Show full {revealNoun}
       </Button>
       {revealed && (
         <textarea

@@ -32,6 +32,7 @@ import type {
   CSVRow,
   Displayable,
   LinkageField,
+  LinkageKey,
   LinkageTerms,
   Metadata,
   Standardization,
@@ -888,4 +889,90 @@ export function acceptorCleaningAttention(
         ? `${deadKeyCount} key${deadKeyCount === 1 ? "" : "s"} to review`
         : "Coverage unavailable";
   return { needsAttention, failingFieldCount, railValue };
+}
+
+/**
+ * The note an acceptor whose file cannot cover the agreed keys copies to send
+ * the inviter, or undefined while every key is covered. It names each key by
+ * the field types its elements draw on -- never a key or field name from the
+ * terms, a column header, or a value -- since it leaves this page outside the
+ * exchange. Keys naming the same types are listed once with a count.
+ */
+export function acceptorPartnerNote(
+  columns: Array<string>,
+  linkageTerms: LinkageTerms,
+  editorState: { metadata: Metadata; standardization: Standardization },
+): string | undefined {
+  const verdict = decideLinkageTermsVerdict(
+    columns,
+    linkageTerms,
+    editorState.standardization,
+    editorState.metadata,
+  );
+  const total = verdict.keys.length;
+  const supplied = verdict.keys.filter((k) => k.fitness === "satisfiable");
+  if (total === 0 || supplied.length === total) return undefined;
+  const typeOf = new Map(
+    linkageTerms.linkageFields.map((field) => [field.name, field.type]),
+  );
+  const describe = (key: LinkageKey): string =>
+    key.elements
+      .map((element) => {
+        const type = typeOf.get(element.field);
+        return type !== undefined
+          ? SEMANTIC_TYPE_LABELS[type]
+          : "a field the terms do not declare";
+      })
+      .join(" + ");
+  const listed = (keys: Array<LinkageKey>): Array<string> => {
+    const counts = new Map<string, number>();
+    for (const key of keys) {
+      const text = describe(key);
+      counts.set(text, (counts.get(text) ?? 0) + 1);
+    }
+    return [...counts].map(
+      ([text, count]) => `- ${text}${count > 1 ? ` (${count} keys)` : ""}`,
+    );
+  };
+  const ofFitness = (fitness: string) =>
+    verdict.keys.filter((k) => k.fitness === fitness).map((k) => k.key);
+  const unsatisfiable = ofFitness("unsatisfiable");
+  const dead = ofFitness("dead");
+  const lines = [
+    "About the Alcove invitation you sent me:",
+    "",
+    supplied.length === 0
+      ? `My file cannot supply any of the ${total} agreed linkage keys.`
+      : `My file can supply ${supplied.length} of the ${total} agreed linkage keys.`,
+  ];
+  if (supplied.length > 0)
+    lines.push(
+      "",
+      "Keys my file can supply:",
+      ...listed(supplied.map((k) => k.key)),
+    );
+  if (unsatisfiable.length > 0)
+    lines.push("", "Keys my file cannot supply:", ...listed(unsatisfiable));
+  if (dead.length > 0)
+    lines.push(
+      "",
+      "Keys whose agreed cleaning removes every value:",
+      ...listed(dead),
+    );
+  const missing = [
+    ...new Set(
+      verdict.unsatisfiedFields.map(
+        (field) => SEMANTIC_TYPE_LABELS[field.type],
+      ),
+    ),
+  ];
+  if (missing.length > 0)
+    lines.push("", `Field types my file does not have: ${missing.join(", ")}.`);
+  lines.push(
+    "",
+    supplied.length === 0
+      ? "Could you send a new invitation with keys built from field types my file has?"
+      : "Could you send a new invitation that uses only the keys my file can supply?",
+  );
+  return lines.join("\n");
 }

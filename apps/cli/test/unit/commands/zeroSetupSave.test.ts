@@ -309,9 +309,11 @@ test("neither-saved: saves nothing and emits the standard recurring hint", () =>
 
   expect(fs.existsSync(configFile)).toBe(false);
   expect(fs.existsSync(keyFile)).toBe(false);
-  expect(messages.some((m) => m.includes("alcove invite URL INPUT_FILE"))).toBe(
-    true,
-  );
+  expect(
+    messages.some((m) =>
+      m.includes("alcove invite --identity IDENTITY URL INPUT_FILE"),
+    ),
+  ).toBe(true);
 });
 
 // --- post-exchange conflict re-check (TOCTOU window) -------------------------

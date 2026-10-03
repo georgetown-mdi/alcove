@@ -7,14 +7,19 @@ import {
   useState,
 } from "react";
 
-import { Alert, Button, Checkbox, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Button,
+  Checkbox,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { Dropzone } from "@mantine/dropzone";
 import { IconAlertCircle } from "@tabler/icons-react";
 
 import {
   deriveAcceptedLinkageTerms,
-  describeDecodeError,
-  displayText,
   getLogger,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
@@ -94,6 +99,10 @@ import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice"
 
 import styles from "@styles/app.module.css";
 
+import { PASTE_INVITATION_FIELD_ID } from "@psi/invitation";
+
+import { invitationDecodeRefusal } from "./invitationDecodeRefusal";
+
 import {
   ACCEPTOR_COLUMNS_LEDGER_FOOTER,
   ACCEPTOR_LEDGER_FOOTER,
@@ -143,6 +152,8 @@ import { acceptorTimelineSteps } from "./exchangeRun";
 import { restorablePosition } from "./stepRestore";
 import { useAcceptorExchange } from "./useAcceptorExchange";
 import { useStepHistory } from "./useStepHistory";
+
+import type { InvitationDecodeRefusal } from "./invitationDecodeRefusal";
 
 import type {
   AcceptorColumnsSection,
@@ -274,10 +285,7 @@ export function AcceptorScreen() {
   useEffect(() => {
     const encoded = window.location.hash.replace(/^#/, "");
     if (encoded === "") {
-      dispatch({
-        type: "decode-refused",
-        message: displayText`No invitation was found in this link. Paste the code into the accept form instead.`,
-      });
+      dispatch({ type: "decode-refused", refusal: { kind: "noToken" } });
       return;
     }
     const controller = new AbortController();
@@ -302,7 +310,7 @@ export function AcceptorScreen() {
         if (!controller.signal.aborted)
           dispatch({
             type: "decode-refused",
-            message: describeDecodeError(error),
+            refusal: invitationDecodeRefusal(error),
           });
       }
     })();
@@ -1178,7 +1186,7 @@ export function AcceptorScreen() {
             tabIndex={-1}
             style={{ whiteSpace: "pre-line" }}
           >
-            {decode.message}
+            <DecodeRefusalBody refusal={decode.refusal} />
           </Alert>
         )}
         {decode.status === "ready" && step === "review" && (
@@ -1676,5 +1684,58 @@ export function AcceptorScreen() {
         )}
       </div>
     </WorkShell>
+  );
+}
+
+const PASTE_INVITATION_HREF = `/quick#${PASTE_INVITATION_FIELD_ID}`;
+
+/**
+ * The body of the alert a refused decode shows: one plain remedy for a link
+ * that holds no invitation, arrived damaged, or cannot be read, with the
+ * decoder's own description behind a disclosure; a readable invitation this
+ * page refuses keeps the message that states its remedy.
+ */
+function DecodeRefusalBody({ refusal }: { refusal: InvitationDecodeRefusal }) {
+  switch (refusal.kind) {
+    case "noToken":
+      return (
+        <>
+          No invitation was found in this link.{" "}
+          <Anchor href={PASTE_INVITATION_HREF} inherit>
+            Paste the invitation on the start page
+          </Anchor>{" "}
+          instead.
+        </>
+      );
+    case "damaged":
+      return (
+        <>
+          This link looks incomplete or changed in transit. Copy the whole link
+          from your partner&apos;s message again and{" "}
+          <Anchor href={PASTE_INVITATION_HREF} inherit>
+            paste it on the start page
+          </Anchor>
+          , or ask your partner to send it again.
+          <DecodeRefusalDetail detail={refusal.detail} />
+        </>
+      );
+    case "unreadable":
+      return (
+        <>
+          This invitation could not be read. Ask your partner to send a new one.
+          <DecodeRefusalDetail detail={refusal.detail} />
+        </>
+      );
+    case "refused":
+      return <>{refusal.message}</>;
+  }
+}
+
+function DecodeRefusalDetail({ detail }: { detail: string }) {
+  return (
+    <details className={styles.small}>
+      <summary>Technical detail</summary>
+      {detail}
+    </details>
   );
 }

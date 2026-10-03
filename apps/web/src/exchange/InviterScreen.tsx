@@ -1782,6 +1782,7 @@ export function InviterScreen() {
           <>
             <InviterExchangeSection
               invitation={invitation}
+              inviterName={editor?.draft.identity ?? ""}
               run={run}
               outputs={outputs}
               failure={failure}

@@ -668,8 +668,8 @@ export function finalizeBootstrap(params: {
 
   log.info(
     "To establish a recurring exchange with this partner, run 'alcove " +
-      "invite URL INPUT_FILE' and share the invitation string, or coordinate " +
-      "with your partner to re-run with --save.",
+      "invite --identity IDENTITY URL INPUT_FILE' and share the invitation it " +
+      "prints, or coordinate with your partner to re-run with --save.",
   );
 }
 

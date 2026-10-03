@@ -447,7 +447,9 @@ export type {
   TransformStep,
 } from "./config/linkageTermsSchema";
 export {
+  INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
+  InvitationDecodeError,
   MAX_INVITATION_LIFETIME_SECONDS,
   decodeInvitation,
   encodeInvitation,
@@ -474,6 +476,7 @@ export {
 export type {
   ConnectionEndpoint,
   FileDropEndpoint,
+  InvitationDecodeFailure,
   InvitationToken,
   SFTPEndpoint,
   WebRTCEndpoint,

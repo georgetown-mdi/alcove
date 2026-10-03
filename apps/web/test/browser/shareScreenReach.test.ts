@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { createElement } from "react";
 
@@ -37,6 +37,7 @@ function renderShareScreen(origin: string, partnerAcceptsByCli = false): void {
   app.render(
     createElement(InviterExchangeSection, {
       invitation: invitationAt(origin),
+      inviterName: "County Health Department",
       run: initialRun("inviter"),
       outputs: undefined,
       failure: undefined,
@@ -100,5 +101,33 @@ describe("share screen reach warning", () => {
       .element(page.getByRole("heading", { name: "Share this invitation" }))
       .toBeInTheDocument();
     expect(app.container.textContent).not.toContain("only works on");
+  });
+});
+
+describe("share screen message", () => {
+  test("a browser partner's invitation offers a message holding the link", async () => {
+    renderShareScreen("https://psi.data-bridge.org");
+    await expect
+      .element(page.getByText("A message to send"))
+      .toBeInTheDocument();
+    await userEvent.click(
+      page.getByRole("button", { name: "Show full message" }),
+    );
+    const message = (
+      page
+        .getByRole("textbox", { name: "A message to send" })
+        .element() as HTMLTextAreaElement
+    ).value;
+    expect(message).toContain("https://psi.data-bridge.org/accept#TOKEN");
+    expect(message).toContain("https://psi.data-bridge.org/quick");
+    expect(message).toContain("County Health Department");
+  });
+
+  test("a command-line partner's invitation offers no browser message", async () => {
+    renderShareScreen("https://psi.data-bridge.org", true);
+    await expect
+      .element(page.getByRole("heading", { name: "Share this invitation" }))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("A message to send");
   });
 });

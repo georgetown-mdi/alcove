@@ -657,6 +657,13 @@ const MintedInvitationTokenSchema: z.ZodType<InvitationToken> =
 // --- Lifetime policy ---------------------------------------------------------
 
 /**
+ * The web app's accept route: a link of the form `<app origin>` + this path +
+ * `#` + the encoded invitation opens the invitation in the browser, the token
+ * riding in the fragment so it never reaches the server.
+ */
+export const INVITATION_ACCEPT_ROUTE_PATH = "/accept";
+
+/**
  * Default invitation lifetime in seconds: one hour. An invitation minted with no
  * explicit lifetime takes this bound, per the "default expiration window of 1
  * hour" in docs/SECURITY_DESIGN.md. Both inviters -- the CLI's `alcove invite`
@@ -818,6 +825,29 @@ export function stripInvitationWhitespace(input: string): string {
 }
 
 /**
+ * Why {@link decodeInvitation} could not read a string as an invitation before
+ * schema validation: a transcription fault (`tooShort`, `notBase64Url`,
+ * `checksumMismatch` -- the shapes a link wrapped or cut by a mail client
+ * takes), or a string that is intact but not one this build reads
+ * (`tooLong`, `notJson`).
+ */
+export type InvitationDecodeFailure =
+  "tooLong" | "tooShort" | "notBase64Url" | "checksumMismatch" | "notJson";
+
+/**
+ * The error {@link decodeInvitation} throws for an {@link InvitationDecodeFailure},
+ * so a surface can choose its remedy from `failure` rather than the message text.
+ */
+export class InvitationDecodeError extends Error {
+  readonly failure: InvitationDecodeFailure;
+  constructor(failure: InvitationDecodeFailure, message: string) {
+    super(message);
+    this.name = "InvitationDecodeError";
+    this.failure = failure;
+  }
+}
+
+/**
  * Decodes an invitation string produced by {@link encodeInvitation}, verifying
  * the checksum and validating the payload against the {@link InvitationToken}
  * schema.
@@ -829,9 +859,10 @@ export function stripInvitationWhitespace(input: string): string {
  * for comparing `token.expires` against the current time (see
  * {@link isInvitationExpired}).
  *
- * @throws {Error} if the string exceeds {@link MAX_ENCODED_INVITATION_LENGTH}
- *   (checked at the boundary before any other work), is too short to hold a
- *   checksum, fails the checksum, or is invalid base64url.
+ * @throws {InvitationDecodeError} if the string exceeds
+ *   {@link MAX_ENCODED_INVITATION_LENGTH} (checked at the boundary before any
+ *   other work), is too short to hold a checksum, is invalid base64url, fails
+ *   the checksum, or holds no JSON.
  * @throws {ZodError} on schema validation failure.
  * @throws {NestingDepthExceededError|NodeCountExceededError} if the token's
  *   `transform.params` is too deeply nested or too wide for the bounded camelCase
@@ -846,13 +877,17 @@ export async function decodeInvitation(
   // detector with no security guarantee), so this cap is the only thing that
   // stops a checksum-valid multi-megabyte token; see MAX_ENCODED_INVITATION_LENGTH.
   if (encoded.length > MAX_ENCODED_INVITATION_LENGTH) {
-    throw new Error(
+    throw new InvitationDecodeError(
+      "tooLong",
       "invitation string exceeds the maximum length of " +
         `${MAX_ENCODED_INVITATION_LENGTH} characters`,
     );
   }
   if (encoded.length <= CHECKSUM_CHARS) {
-    throw new Error("invitation string is too short");
+    throw new InvitationDecodeError(
+      "tooShort",
+      "invitation string is too short",
+    );
   }
   const body = encoded.slice(0, -CHECKSUM_CHARS);
   const receivedChecksum = encoded.slice(-CHECKSUM_CHARS);
@@ -865,13 +900,19 @@ export async function decodeInvitation(
     // swallow the JSON parse below applies: nothing derived from a
     // partner-supplied body reaches an operator-facing display through this
     // rejection.
-    throw new Error("invitation string is not valid base64url");
+    throw new InvitationDecodeError(
+      "notBase64Url",
+      "invitation string is not valid base64url",
+    );
   }
   const hashBuf = await globalThis.crypto.subtle.digest("SHA-256", bytes);
   const expectedChecksum = toBase64Url(new Uint8Array(hashBuf).slice(0, 4));
 
   if (receivedChecksum !== expectedChecksum) {
-    throw new Error("invitation checksum mismatch");
+    throw new InvitationDecodeError(
+      "checksumMismatch",
+      "invitation checksum mismatch",
+    );
   }
 
   let raw: unknown;
@@ -882,7 +923,10 @@ export async function decodeInvitation(
     // here as the same fixed-text rejection.
     raw = parseBoundedJson(bytes);
   } catch {
-    throw new Error("invitation payload is not valid JSON");
+    throw new InvitationDecodeError(
+      "notJson",
+      "invitation payload is not valid JSON",
+    );
   }
   // InvitationTokenSchema normalizes transform.params key casing to camelCase as
   // it validates (via InvitationLinkageTermsSchema), so a decoded token's params

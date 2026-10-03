@@ -1,4 +1,5 @@
 import {
+  INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
   assertFanOutImplemented,
@@ -59,7 +60,11 @@ type InvitationCSVInput = Parameters<typeof loadCSVFileOffMainThread>[0];
  * {@link deepLinkFor}), so the contract this constant encodes is "path plus
  * fragment", which the accept route must read in lockstep.
  */
-export const ACCEPT_ROUTE_PATH = "/accept";
+export const ACCEPT_ROUTE_PATH = INVITATION_ACCEPT_ROUTE_PATH;
+
+/** The start page's paste-an-invitation field, which takes focus when the page
+ * opens at this fragment: `/quick#` + this id. */
+export const PASTE_INVITATION_FIELD_ID = "accept-invitation";
 
 /**
  * The location inputs an invitation needs: the deep-link origin and the

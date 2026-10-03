@@ -72,11 +72,13 @@ vi.mock("../../../src/config", async () => {
 
 import {
   handler as inviteHandler,
+  invitationExpiryNotice,
   offlineAbandonNotice,
   onlineWaitInvalidationNotice,
   persistedPeerBudgetNotice,
   resolveInvitePositionals,
   validateInvite,
+  webAppAcceptLink,
 } from "../../../src/commands/invite";
 import { loadConfigLinkageSource, saveConfig } from "../../../src/config";
 import { DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS } from "../../../src/connection/webrtc/webrtcMessageConnection";
@@ -3996,6 +3998,160 @@ test("handler: the server-URL accept template names the identity too", async () 
     stdio.restore();
     exit.mockRestore();
     runOnlineBootstrapMock.mockReset();
+  }
+});
+
+test("handler: a web app invite prints the accept link and says which form to send", async () => {
+  // A partner invited through the web app's address may accept in a browser,
+  // which opens the link; a command-line partner takes the part after '#'.
+  const { input, options } = onlineFixture();
+  const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  const exit = vi
+    .spyOn(process, "exit")
+    .mockImplementation((() => undefined) as never);
+  const stdio = captureStdio();
+  const printed: string[] = [];
+  const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    printed.push(args.map(String).join(" "));
+  });
+  try {
+    await inviteHandler({
+      _: [],
+      $0: "alcove",
+      identity: "Agency A",
+      args: ["https://app.example.org/", input],
+      "config-file": options.configFile,
+      "key-file": options.keyFile,
+      "log-level": "info",
+      record: false,
+    } as unknown as Arguments);
+    expect(exit).not.toHaveBeenCalled();
+    expect(printed).toHaveLength(1);
+    const prefix = "https://app.example.org/accept#";
+    expect(printed[0].startsWith(prefix)).toBe(true);
+    const encoded = printed[0].slice(prefix.length);
+    const token = await decodeInvitation(encoded);
+    const stderr = stdio.stderrWrites.join("");
+    expect(stderr).toContain(
+      "If your partner uses the web app, send them the link printed above.",
+    );
+    expect(stderr).toContain("send only the part after '#'");
+    expect(stderr).toContain(
+      "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
+        "<INVITATION> <INPUT_FILE>",
+    );
+    expect(stderr).not.toContain(encoded);
+    expect(stderr).not.toContain(token.sharedSecret);
+  } finally {
+    stdio.restore();
+    logSpy.mockRestore();
+    exit.mockRestore();
+    runOnlineBootstrapMock.mockReset();
+  }
+});
+
+test("webAppAcceptLink: the invitation rides in the accept route's fragment", () => {
+  expect(webAppAcceptLink("http://localhost:3000", "abc")).toBe(
+    "http://localhost:3000/accept#abc",
+  );
+});
+
+test("handler: an online file-drop accept template names the partner's folder by placeholder", async () => {
+  // The partner mounts the shared folder at a path of their own; echoing this
+  // party's mount would hand them a path that does not exist on their side.
+  const { input, options } = onlineFixture();
+  const drop = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-drop-"));
+  tmpDirs.push(drop);
+  const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  const exit = vi
+    .spyOn(process, "exit")
+    .mockImplementation((() => undefined) as never);
+  const stdio = captureStdio();
+  try {
+    await inviteHandler({
+      _: [],
+      $0: "alcove",
+      identity: "Agency A",
+      args: [`file://${drop}`, input],
+      "config-file": options.configFile,
+      "key-file": options.keyFile,
+      "log-level": "info",
+      record: false,
+    } as unknown as Arguments);
+    const stderr = stdio.stderrWrites.join("");
+    expect(exit).not.toHaveBeenCalled();
+    expect(stderr).toContain(
+      "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
+        "file://<YOUR PATH TO THE SHARED FOLDER> <INVITATION> <INPUT_FILE>",
+    );
+    expect(stderr).not.toContain(
+      `alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> file://${drop}`,
+    );
+  } finally {
+    stdio.restore();
+    exit.mockRestore();
+    runOnlineBootstrapMock.mockReset();
+  }
+});
+
+test("invitationExpiryNotice: states local time, the instant, the time left, and the flag", () => {
+  const now = new Date("2026-10-02T18:32:26Z");
+  const notice = invitationExpiryNotice("2026-10-02T19:32:26Z", {
+    expiresInGiven: false,
+    now,
+    timeZone: "America/New_York",
+  });
+  expect(notice).toContain("3:32");
+  expect(notice).toContain("EDT");
+  expect(notice).toContain("(2026-10-02T19:32:26Z)");
+  expect(notice).toContain("in 1 hour");
+  expect(notice).toContain("--expires-in 2d");
+  const given = invitationExpiryNotice("2026-10-04T18:32:26Z", {
+    expiresInGiven: true,
+    now,
+    timeZone: "UTC",
+  });
+  expect(given).toContain("in 2 days");
+  expect(given).not.toContain("--expires-in");
+  expect(
+    invitationExpiryNotice("2026-10-02T20:02:26Z", {
+      expiresInGiven: true,
+      now,
+    }),
+  ).toContain("in 90 minutes");
+});
+
+test("handler: an offline invite states the expiry with the --expires-in hint", async () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-expiry-"));
+  tmpDirs.push(dir);
+  const input = writeCsv(dir, "first_name,last_name,dob,ssn");
+  const stdio = captureStdio();
+  const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  const exit = vi
+    .spyOn(process, "exit")
+    .mockImplementation((() => undefined) as never);
+  try {
+    await inviteHandler({
+      _: [],
+      $0: "alcove",
+      identity: "Agency A",
+      args: [input],
+      "config-file": path.join(dir, "alcove.yaml"),
+      "key-file": path.join(dir, ".alcove.key"),
+      "log-level": "info",
+      record: false,
+    } as unknown as Arguments);
+    expect(exit).not.toHaveBeenCalled();
+    const stderr = stdio.stderrWrites.join("");
+    expect(stderr).toContain(
+      "in 1 hour; if your partner needs longer to accept, pass --expires-in",
+    );
+  } finally {
+    stdio.restore();
+    logSpy.mockRestore();
+    exit.mockRestore();
   }
 });
 

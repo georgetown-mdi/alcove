@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Anchor, Button, Textarea, VisuallyHidden } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -8,7 +8,8 @@ import {
   openManagedExchangeDatabase,
 } from "@psi/managed/managedExchangeStore";
 import { listManagedLocalState } from "@psi/managed/managedLocalState";
-import { tokenFromInput } from "@psi/invitation";
+
+import { PASTE_INVITATION_FIELD_ID, tokenFromInput } from "@psi/invitation";
 
 import { isConsoleBuild } from "@utils/clientConfig";
 import { useOnlineStatus } from "@components/useOnlineStatus";
@@ -90,6 +91,14 @@ export function Lobby() {
 
   const invitationToken = tokenFromInput(invitation);
 
+  // A link from an accept page that could not open its invitation lands here
+  // at the field's fragment, ready for the paste.
+  const invitationFieldRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (window.location.hash === `#${PASTE_INVITATION_FIELD_ID}`)
+      invitationFieldRef.current?.focus();
+  }, []);
+
   const [addingSamples, setAddingSamples] = useState(false);
   const [sampleFailure, setSampleFailure] = useState<string>();
 
@@ -147,6 +156,8 @@ export function Lobby() {
           <div className={styles.actionCard}>
             <h3>Accept an invitation you were sent</h3>
             <Textarea
+              id={PASTE_INVITATION_FIELD_ID}
+              ref={invitationFieldRef}
               aria-label="Invitation"
               description="Paste the invitation your partner sent to you"
               placeholder="https://...#... or the bare code"

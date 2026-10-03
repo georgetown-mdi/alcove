@@ -24,6 +24,7 @@ import {
 } from "@alcove/core";
 
 import { ColumnName, isolatedColumnName } from "@components/ColumnName";
+import { CopyableCode } from "@components/CopyableCode";
 import { MetadataGrid } from "@components/MetadataGrid";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 import { useOnlineStatus } from "@components/useOnlineStatus";
@@ -36,6 +37,7 @@ import {
   acceptorDisclosedColumns,
   acceptorLaunchBlockedReason,
   acceptorOverlongDisclosedColumns,
+  acceptorPartnerNote,
   acceptorPayloadDeclarationConflict,
   acceptorSendingExpectedColumnsCostsKey,
   acceptorStandardizationValid,
@@ -209,6 +211,10 @@ export function AcceptorColumnsStep({
     linkageTerms,
     editorState,
   );
+  const partnerNote =
+    verdict.kind === "allClear"
+      ? undefined
+      : acceptorPartnerNote(columns, linkageTerms, editorState);
   const disclosed = acceptorDisclosedColumns(editorState.metadata);
   // Whether the payload step transmits anything at all from this machine: it
   // sends only to a partner entitled to the result, so an invitation giving the
@@ -385,6 +391,19 @@ export function AcceptorColumnsStep({
             </Alert>
           )}
         </div>
+        {partnerNote !== undefined && (
+          <div>
+            <Text size="sm" mb="xs">
+              If your file cannot cover these keys, send your partner this note.
+              It names the keys by field type only, with no data or column
+              names.
+            </Text>
+            <CopyableCode
+              code={partnerNote}
+              ariaLabel="a note for your partner"
+            />
+          </div>
+        )}
         {/* The verdict's announcement channel: a stable polite region whose deferred
             text reaches assistive tech without fighting the heading focus on mount. */}
         <VisuallyHidden

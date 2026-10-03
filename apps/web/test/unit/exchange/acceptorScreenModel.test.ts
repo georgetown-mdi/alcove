@@ -1,7 +1,5 @@
 import { describe, expect, test } from "vitest";
 
-import { displayText } from "@alcove/core";
-
 import { setColumnDisclosure } from "@psi/metadataEditing";
 
 import {
@@ -160,9 +158,12 @@ describe("the invitation the console reviews", () => {
   test("a refused decode names what the operator can do", () => {
     const state = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
       type: "decode-refused",
-      message: displayText`No invitation was found in this link.`,
+      refusal: { kind: "noToken" },
     });
-    expect(state.decode.status).toBe("error");
+    expect(state.decode).toEqual({
+      status: "error",
+      refusal: { kind: "noToken" },
+    });
   });
 
   test("the rendezvous mount arrives with the terms it decides runnability for", () => {
