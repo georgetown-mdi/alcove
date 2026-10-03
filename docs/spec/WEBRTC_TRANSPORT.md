@@ -425,17 +425,20 @@ sent after it.
   round fails within one stretch.
 - A crypto step does not start once the connection has ended: the party fails
   at once with the error that ended it.
-- A crypto step already handed to the PSI worker runs to its end. Terminating
-  the worker during a native masking call aborts the process
-  ([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)),
-  so the party logs a warning naming the loss when it happens and fails with
-  the connection's error once the step returns.
+- A crypto step already handed to the PSI worker stops at its next chunk
+  or match call boundary, so the party logs a warning naming the loss when
+  it happens and fails with the connection's error within one masking chunk
+  during encryption, or at the end of the current match call during the
+  match -- for a match that runs as one call, such as a count-only match
+  without setup slices, the whole match. The worker is not terminated inside
+  a native call, which aborts the process
+  ([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)
+  states the stop mechanism). A browser party without `SharedArrayBuffer`
+  runs the step to its end before failing.
 
 Measured at 4,000,000 records a side on the host above, with the acceptor
-killed: killed 2 s after the inviter's `linking key 1 / 4`, during its set
-build, the inviter exited 69 1.7 s later; killed during its encryption, it
-logged the warning 0.7 s later and exited 69 86 s later, when the encryption
-ended.
+killed 2 s after the inviter's `linking key 1 / 4`, during its set build: the
+inviter exited 69 1.7 s later.
 
 ## The clean close
 

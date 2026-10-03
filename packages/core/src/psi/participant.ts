@@ -31,6 +31,7 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
+import { PsiOperationStoppedError } from "./psiWorkerEngine";
 import {
   ownSetOverPartnerCeilingMessage,
   ownSetTooLargeMessage,
@@ -388,10 +389,20 @@ export class PSIParticipant {
    * Refuse each later crypto operation once `stopReason` returns an error,
    * throwing that error instead of dispatching the operation, so a step whose
    * result can no longer be sent, such as one on a connection that has ended,
-   * does not start. An operation already dispatched runs to its end.
+   * does not start. An operation already dispatched runs to its end unless
+   * {@link stopOperationInFlight} cuts it short.
    */
   stopOperationsWhen(stopReason: () => Error | undefined): void {
     this.stopReason = stopReason;
+  }
+
+  /**
+   * Ask the operation in flight to stop at its next chunk boundary, and
+   * return whether it will (see {@link PsiEngine.stopInFlight}). It then fails
+   * with the error {@link stopOperationsWhen} reports, where that has one.
+   */
+  stopOperationInFlight(): boolean {
+    return this.engine.stopInFlight?.() ?? false;
   }
 
   /**
@@ -582,6 +593,10 @@ export class PSIParticipant {
     this.runningOperation = { operation, elements };
     try {
       return await run();
+    } catch (error) {
+      if (error instanceof PsiOperationStoppedError)
+        throw this.stopReason() ?? error;
+      throw error;
     } finally {
       this.runningOperation = undefined;
     }

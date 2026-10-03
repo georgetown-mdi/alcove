@@ -213,6 +213,13 @@ export interface PsiEngine {
    */
   observeProcessedElements?(report: PsiProcessedElementsReporter): void;
   /**
+   * Ask the operation in flight to stop at its next chunk boundary, where it
+   * rejects with a {@link ./psiWorkerEngine.PsiOperationStoppedError} instead
+   * of running on, and return whether it will. A no-op returning false between
+   * operations. Optional: an engine without it runs each operation to its end.
+   */
+  stopInFlight?(): boolean;
+  /**
    * Release engine resources. The in-process engine frees the library's server /
    * client objects -- embind wrappers over WASM-heap C++ state, including the
    * generated secret key, which JS garbage collection does NOT reclaim (only their

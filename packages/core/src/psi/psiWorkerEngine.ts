@@ -65,6 +65,20 @@ type PsiWorkerRequestBody =
 export interface PsiWorkerRequest {
   id: number;
   body: PsiWorkerRequestBody;
+  /**
+   * Shared memory the host sets nonzero to stop the operation at its next
+   * chunk boundary. Absent where the runtime has no `SharedArrayBuffer`; the
+   * operation then runs to its end.
+   */
+  stopFlag?: Int32Array;
+}
+
+/** The failure a PSI operation stopped by {@link PsiEngine.stopInFlight} rejects with. */
+export class PsiOperationStoppedError extends Error {
+  constructor() {
+    super("PSI operation stopped before it finished");
+    this.name = "PsiOperationStoppedError";
+  }
 }
 
 /**
@@ -90,6 +104,7 @@ export type PsiWorkerResponse =
        * worker entry point that never reached the engine.
        */
       namedDiagnosis?: boolean;
+      stopped?: boolean;
     };
 
 /**
@@ -99,6 +114,9 @@ export type PsiWorkerResponse =
  * Worker; a test implements it in-process. Kept minimal by design so the two
  * worker APIs (`postMessage` + `on("message")` vs `postMessage` + `onmessage`)
  * collapse to one shape here and nothing above forks on runtime.
+ *
+ * `terminate` may defer the stop until the request in flight replies
+ * (docs/spec/DEPENDENCY_PINS.md, "Terminating a worker during a masking call").
  *
  * `onError` reports the worker's own death -- an exit code, an uncaught worker
  * error, a reply that failed structured-clone delivery. Its message becomes the
@@ -155,6 +173,10 @@ export class WorkerPsiEngine implements PsiEngine {
   private disposed = false;
   private terminalError: Error | undefined;
   private onProcessed: PsiProcessedElementsReporter | undefined;
+  private readonly stopFlag: Int32Array | undefined =
+    typeof SharedArrayBuffer === "function"
+      ? new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
+      : undefined;
 
   constructor(handle: PsiWorkerHandle) {
     this.handle = handle;
@@ -224,7 +246,7 @@ export class WorkerPsiEngine implements PsiEngine {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      this.handle.postMessage({ id, body });
+      this.handle.postMessage({ id, body, stopFlag: this.stopFlag });
     });
   }
 
@@ -259,9 +281,19 @@ export class WorkerPsiEngine implements PsiEngine {
     });
   }
 
+  stopInFlight(): boolean {
+    if (this.pending.size === 0 || this.stopFlag === undefined) return false;
+    // Never cleared: a stop ends the engine's use, so a request posted after
+    // it, racing the stopped one's reply, stops too.
+    Atomics.store(this.stopFlag, 0, 1);
+    return true;
+  }
+
+  /** Stop the operation in flight, fail every pending call, and terminate the worker. */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.stopInFlight();
     this.failAll(new Error(DISPOSED_MESSAGE));
     this.handle.terminate();
   }
@@ -315,9 +347,14 @@ export function servePsiWorker(
     // tick carries the id of the call it belongs to. The worker's thread is
     // inside the crypto when it posts, which is exactly when the host, whose
     // own thread is free, needs it.
-    engine.observeProcessedElements((processed) =>
-      post({ id: request.id, processed }),
-    );
+    // A stop is raised from inside the engine's chunk loop, where this sink
+    // is called, so it unwinds the operation the same way a failure does.
+    const stopFlag = request.stopFlag;
+    engine.observeProcessedElements((processed) => {
+      if (stopFlag !== undefined && Atomics.load(stopFlag, 0) !== 0)
+        throw new PsiOperationStoppedError();
+      post({ id: request.id, processed });
+    });
     // run() may throw synchronously (an engine role guard) or reject; either way it
     // becomes a `{ ok: false }` reply, never an unhandled rejection in the worker.
     void Promise.resolve()
@@ -340,6 +377,7 @@ export function servePsiWorker(
             ok: false,
             error: error instanceof Error ? error.message : String(error),
             namedDiagnosis: isNamedDiagnosis(error),
+            stopped: error instanceof PsiOperationStoppedError,
           }),
       );
   };
@@ -352,7 +390,9 @@ export function servePsiWorker(
 function rebuildWorkerFailure(response: {
   error: string;
   namedDiagnosis?: boolean;
+  stopped?: boolean;
 }): Error {
+  if (response.stopped === true) return new PsiOperationStoppedError();
   const failure = new Error(response.error);
   return response.namedDiagnosis === true
     ? markNamedDiagnosis(failure)

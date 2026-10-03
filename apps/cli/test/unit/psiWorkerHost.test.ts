@@ -5,7 +5,13 @@ import {
   type PsiWorkerResponse,
 } from "@alcove/core";
 
-import { createWorkerThreadHandle } from "../../src/psiWorkerHost";
+import {
+  PSI_WORKER_EXIT_WAIT_NOTICE,
+  createWorkerThreadHandle,
+  offerExitAtOnceWhilePsiWorkersStop,
+  stopPsiWorkersBeforeExit,
+  trackWorkerPsiEngine,
+} from "../../src/psiWorkerHost";
 
 // createWorkerThreadHandle is the single definition of the host-side worker wiring
 // (psiWorkerHost.ts). Production, the integration test, and these tests all wrap a
@@ -24,6 +30,22 @@ class FakeWorker {
     const list = this.listeners.get(event) ?? [];
     list.push(listener as (arg: unknown) => void);
     this.listeners.set(event, list);
+  }
+
+  once(event: string, listener: (arg: never) => void): void {
+    const wrapped = (arg: unknown): void => {
+      this.off(event, wrapped);
+      (listener as (arg: unknown) => void)(arg);
+    };
+    this.on(event, wrapped);
+  }
+
+  private off(event: string, listener: (arg: unknown) => void): void {
+    const list = this.listeners.get(event) ?? [];
+    this.listeners.set(
+      event,
+      list.filter((entry) => entry !== listener),
+    );
   }
 
   postMessage(request: PsiWorkerRequest): void {
@@ -96,6 +118,31 @@ describe("createWorkerThreadHandle", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  test("terminate() during a request waits for its reply, which dispose() asks to come early", () => {
+    const fake = new FakeWorker();
+    const engine = new WorkerPsiEngine(createWorkerThreadHandle(fake));
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+
+    // Terminating the worker inside a native masking call aborts the
+    // process, so the worker is left running until it replies.
+    engine.dispose();
+    expect(fake.terminateCalls).toBe(0);
+    expect(Atomics.load(request.stopFlag!, 0)).not.toBe(0);
+
+    // A progress tick is not the reply: the call is still inside the worker.
+    fake.emit("message", { id: request.id, processed: 1 });
+    expect(fake.terminateCalls).toBe(0);
+
+    fake.emit("message", {
+      id: request.id,
+      ok: false,
+      error: "PSI operation stopped before it finished",
+      stopped: true,
+    });
+    expect(fake.terminateCalls).toBe(1);
+  });
+
   test("a messageerror fails the engine's pending call fast instead of hanging", async () => {
     const fake = new FakeWorker();
     const engine = new WorkerPsiEngine(createWorkerThreadHandle(fake));
@@ -108,5 +155,147 @@ describe("createWorkerThreadHandle", () => {
     // reject with that cause rather than hang on a reply that will never arrive.
     fake.emit("messageerror", new Error("could not be deserialized"));
     await expect(pending).rejects.toThrow(/could not be deserialized/);
+  });
+
+  test("a messageerror does not leave dispose() waiting to terminate the worker", async () => {
+    const fake = new FakeWorker();
+    const engine = new WorkerPsiEngine(createWorkerThreadHandle(fake));
+    const pending = engine.createClientRequest(["x"]);
+    fake.emit("messageerror", new Error("could not be deserialized"));
+    await expect(pending).rejects.toThrow(/could not be deserialized/);
+
+    engine.dispose();
+    expect(fake.terminateCalls).toBe(1);
+  });
+});
+
+describe("a signal exit while a PSI worker request is in flight", () => {
+  test.each(["SIGINT", "SIGTERM"] as const)(
+    "the first signal waits and prints the notice; a further %s exits at once",
+    async (signal) => {
+      const fake = new FakeWorker();
+      const engine = trackWorkerPsiEngine(fake);
+      void engine.createClientRequest(["x"]).catch(() => {});
+      const request = fake.posted[0]!;
+      const announce = vi.fn();
+      const exitAtOnce = vi.fn();
+      const sigintListenersBefore = process.listenerCount("SIGINT");
+      const sigtermListenersBefore = process.listenerCount("SIGTERM");
+      const options = {
+        announce,
+        isRepeatedDelivery: () => false,
+        exitAtOnce,
+      };
+
+      offerExitAtOnceWhilePsiWorkersStop(options);
+      expect(announce).toHaveBeenCalledExactlyOnceWith(
+        PSI_WORKER_EXIT_WAIT_NOTICE,
+      );
+
+      let stopped = false;
+      const stopping = stopPsiWorkersBeforeExit(options).then(() => {
+        stopped = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(stopped).toBe(false);
+      expect(fake.terminateCalls).toBe(0);
+      expect(announce).toHaveBeenCalledOnce();
+      expect(exitAtOnce).not.toHaveBeenCalled();
+
+      process.emit(signal);
+      expect(exitAtOnce).toHaveBeenCalledExactlyOnceWith(signal);
+
+      // With process.exit mocked away the wait still ends normally once the
+      // worker reaches its chunk boundary, and the listeners come off.
+      fake.emit("message", {
+        id: request.id,
+        ok: false,
+        error: "PSI operation stopped before it finished",
+        stopped: true,
+      });
+      expect(fake.terminateCalls).toBe(1);
+      fake.emit("exit", 1);
+      await stopping;
+      expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+      expect(process.listenerCount("SIGTERM")).toBe(sigtermListenersBefore);
+    },
+  );
+
+  test("a request in flight only once the wait begins still gets the notice and the exit at once", async () => {
+    const fake = new FakeWorker();
+    const engine = trackWorkerPsiEngine(fake);
+    const announce = vi.fn();
+    const exitAtOnce = vi.fn();
+    const options = { announce, isRepeatedDelivery: () => false, exitAtOnce };
+
+    offerExitAtOnceWhilePsiWorkersStop(options);
+    expect(announce).not.toHaveBeenCalled();
+
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+    const stopping = stopPsiWorkersBeforeExit(options);
+    expect(announce).toHaveBeenCalledExactlyOnceWith(
+      PSI_WORKER_EXIT_WAIT_NOTICE,
+    );
+    process.emit("SIGTERM");
+    expect(exitAtOnce).toHaveBeenCalledExactlyOnceWith("SIGTERM");
+
+    fake.emit("message", {
+      id: request.id,
+      ok: false,
+      error: "PSI operation stopped before it finished",
+      stopped: true,
+    });
+    fake.emit("exit", 1);
+    await stopping;
+  });
+
+  test("a repeated delivery of the first signal does not exit at once", async () => {
+    const fake = new FakeWorker();
+    const engine = trackWorkerPsiEngine(fake);
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+    const exitAtOnce = vi.fn();
+    const options = {
+      announce: vi.fn(),
+      isRepeatedDelivery: () => true,
+      exitAtOnce,
+    };
+
+    offerExitAtOnceWhilePsiWorkersStop(options);
+    const stopping = stopPsiWorkersBeforeExit(options);
+    process.emit("SIGINT");
+    process.emit("SIGTERM");
+    expect(exitAtOnce).not.toHaveBeenCalled();
+
+    fake.emit("message", {
+      id: request.id,
+      ok: true,
+      result: new Uint8Array(),
+    });
+    fake.emit("exit", 1);
+    await stopping;
+  });
+
+  test("with no request in flight there is no notice and no extra listener", async () => {
+    const fake = new FakeWorker();
+    trackWorkerPsiEngine(fake);
+    const announce = vi.fn();
+    const sigintListenersBefore = process.listenerCount("SIGINT");
+    const sigtermListenersBefore = process.listenerCount("SIGTERM");
+    const options = {
+      announce,
+      isRepeatedDelivery: () => false,
+      exitAtOnce: vi.fn(),
+    };
+
+    offerExitAtOnceWhilePsiWorkersStop(options);
+    const stopping = stopPsiWorkersBeforeExit(options);
+    expect(announce).not.toHaveBeenCalled();
+    expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermListenersBefore);
+    expect(fake.terminateCalls).toBe(1);
+    fake.emit("exit", 1);
+    await stopping;
   });
 });

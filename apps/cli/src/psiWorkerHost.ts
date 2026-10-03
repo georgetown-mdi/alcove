@@ -88,6 +88,17 @@ interface WorkerThreadLike {
   terminate(): unknown;
 }
 
+// A worker the host tracks until it exits: {@link WorkerThreadLike} plus the
+// one-shot exit listener the tracking registers.
+interface TrackedWorkerThreadLike extends WorkerThreadLike {
+  once(event: "exit", listener: () => void): void;
+}
+
+/** {@link PsiWorkerHandle} plus whether a request has not yet had its reply. */
+interface WorkerThreadHandle extends PsiWorkerHandle {
+  requestInFlight(): boolean;
+}
+
 /**
  * Wrap a worker_threads Worker as the runtime-agnostic {@link PsiWorkerHandle} the
  * {@link WorkerPsiEngine} drives. This is the single definition of the host-side
@@ -98,7 +109,7 @@ interface WorkerThreadLike {
  */
 export function createWorkerThreadHandle(
   worker: WorkerThreadLike,
-): PsiWorkerHandle {
+): WorkerThreadHandle {
   // Set when dispose() drives the teardown, so the worker's own 'exit' event is
   // recognized as the expected stop rather than a crash. terminate() reports the
   // same nonzero code (1) that psiWorker.worker.ts's startup failure exits with,
@@ -106,19 +117,42 @@ export function createWorkerThreadHandle(
   // dispose() initiated it can. dispose() has already failed every pending call
   // before terminating, so an expected exit must not re-enter onError.
   let terminating = false;
+  // Terminating the worker inside a native masking call aborts the whole
+  // process, so a terminate() while a request is in flight waits for that
+  // request's reply; dispose() has asked the operation to stop at its next
+  // masking chunk or match call boundary.
+  const inFlight = new Set<number>();
+  let terminated = false;
+  const terminateWhenIdle = (): void => {
+    if (!terminating || terminated || inFlight.size > 0) return;
+    terminated = true;
+    void worker.terminate();
+  };
   return {
-    postMessage: (request: PsiWorkerRequest) => worker.postMessage(request),
+    postMessage: (request: PsiWorkerRequest) => {
+      inFlight.add(request.id);
+      worker.postMessage(request);
+    },
     setHandlers: ({ onMessage, onError }) => {
-      worker.on("message", (response: PsiWorkerResponse) =>
-        onMessage(response),
-      );
+      worker.on("message", (response: PsiWorkerResponse) => {
+        if ("ok" in response) inFlight.delete(response.id);
+        onMessage(response);
+        terminateWhenIdle();
+      });
       worker.on("error", (error) => onError(error));
       // A message that fails structured-clone deserialization is emitted as
       // 'messageerror', NOT 'error'; with no listener it is silently dropped and the
       // pending call would hang. Route it to onError so the call fails fast. Not
       // reachable with today's cloneable payloads (byte arrays and index lists), but
-      // a boundary hardening against a future non-cloneable reply.
-      worker.on("messageerror", (error) => onError(error));
+      // a boundary hardening against a future non-cloneable message. The failed
+      // message may be a reply (the native call is over) or a progress tick the
+      // worker posts between chunks (the next call has not started), so clearing
+      // the set never terminates a worker inside a native call today.
+      worker.on("messageerror", (error) => {
+        inFlight.clear();
+        onError(error);
+        terminateWhenIdle();
+      });
       worker.on("exit", (code) => {
         // A worker that exits on its own -- a failed startup or a crash -- must fail
         // the exchange rather than let it hang on a dead worker. A terminate()'d
@@ -130,10 +164,17 @@ export function createWorkerThreadHandle(
     },
     terminate: () => {
       terminating = true;
-      void worker.terminate();
+      terminateWhenIdle();
     },
+    requestInFlight: () => inFlight.size > 0,
   };
 }
+
+// Every PSI worker this process has spawned that has not exited.
+const liveWorkers = new Map<
+  WorkerPsiEngine,
+  { exited: Promise<void>; requestInFlight: () => boolean }
+>();
 
 function spawnWorkerPsiEngine(
   entry: string,
@@ -147,10 +188,117 @@ function spawnWorkerPsiEngine(
   // The worker exposes gc() for the single-pass memory relief itself, at startup
   // (see psiWorker.worker.ts): --expose-gc cannot be passed through a worker's
   // execArgv (Node rejects it), so nothing gc-related is set here.
-  const worker = startPsiWorkerThread(entry, init);
   // The worker is not unref'd: while crypto is in flight the process must stay
   // alive, exactly as the synchronous masking kept it. dispose() (driven by the
   // exchange's teardown finally) calls terminate(), which releases the process
   // at the end, so a ref'd worker handle never outlives the exchange.
-  return new WorkerPsiEngine(createWorkerThreadHandle(worker));
+  return trackWorkerPsiEngine(startPsiWorkerThread(entry, init));
+}
+
+/**
+ * Wrap `worker` as a {@link WorkerPsiEngine} that
+ * {@link stopPsiWorkersBeforeExit} waits for until the worker exits.
+ * @internal
+ */
+export function trackWorkerPsiEngine(
+  worker: TrackedWorkerThreadLike,
+): WorkerPsiEngine {
+  const handle = createWorkerThreadHandle(worker);
+  const engine = new WorkerPsiEngine(handle);
+  liveWorkers.set(engine, {
+    exited: new Promise<void>((resolve) =>
+      worker.once("exit", () => {
+        liveWorkers.delete(engine);
+        resolve();
+      }),
+    ),
+    requestInFlight: handle.requestInFlight,
+  });
+  return engine;
+}
+
+/**
+ * The line a signal handler prints when it waits for a PSI worker's current
+ * native call before exiting.
+ */
+export const PSI_WORKER_EXIT_WAIT_NOTICE =
+  "finishing the current PSI step before exiting (up to one encryption " +
+  "chunk, or the whole match); press Ctrl-C again or send the signal " +
+  "again to exit at once, which can end with a different exit code";
+
+/** The signals whose repeat ends the wait for a PSI worker at once. */
+export type PsiWorkerExitSignal = "SIGINT" | "SIGTERM";
+
+const EXIT_SIGNALS: readonly PsiWorkerExitSignal[] = ["SIGINT", "SIGTERM"];
+
+/** How a signal handler reports and ends the wait for a PSI worker. */
+export interface PsiWorkerExitWaitOptions {
+  announce: (line: string) => void;
+  /** Whether `signal` is the same delivery seen again, not a new signal. */
+  isRepeatedDelivery: (signal: PsiWorkerExitSignal) => boolean;
+  exitAtOnce: (signal: PsiWorkerExitSignal) => void;
+}
+
+let exitAtOnceListeners: Map<PsiWorkerExitSignal, () => void> | undefined;
+
+/**
+ * Called by a signal handler as it begins, and again by
+ * {@link stopPsiWorkersBeforeExit}: when a PSI worker has a request in
+ * flight, print {@link PSI_WORKER_EXIT_WAIT_NOTICE} through `announce` and,
+ * until {@link stopPsiWorkersBeforeExit} finishes, call `exitAtOnce` on a
+ * further SIGINT or SIGTERM that `isRepeatedDelivery` does not discount.
+ * The operator is the bound on the wait: there is no timeout.
+ */
+export function offerExitAtOnceWhilePsiWorkersStop(
+  options: PsiWorkerExitWaitOptions,
+): void {
+  if (exitAtOnceListeners !== undefined) return;
+  const inFlight = [...liveWorkers.values()].some((worker) =>
+    worker.requestInFlight(),
+  );
+  if (!inFlight) return;
+  options.announce(PSI_WORKER_EXIT_WAIT_NOTICE);
+  exitAtOnceListeners = new Map();
+  for (const signal of EXIT_SIGNALS) {
+    const listener = (): void => {
+      if (options.isRepeatedDelivery(signal)) return;
+      options.exitAtOnce(signal);
+    };
+    exitAtOnceListeners.set(signal, listener);
+    // Ahead of the exchange's own handler, which would otherwise print its
+    // interrupt lines again before this exit.
+    process.prependListener(signal, listener);
+  }
+}
+
+/**
+ * Dispose every live PSI worker engine and resolve once each worker has
+ * exited. A signal handler awaits this before `process.exit`, which would
+ * otherwise tear a worker down inside a native call and abort the process.
+ * An operation in flight stops at its next boundary: at most one masking
+ * chunk during encryption, the end of the current match call during the
+ * match -- for a count-only or unsliced match, the whole match. When it has
+ * to wait, a repeated signal ends the wait as
+ * {@link offerExitAtOnceWhilePsiWorkersStop} describes. Never rejects.
+ */
+export async function stopPsiWorkersBeforeExit(
+  options: PsiWorkerExitWaitOptions,
+): Promise<void> {
+  offerExitAtOnceWhilePsiWorkersStop(options);
+  const exits = [...liveWorkers].map(([engine, { exited }]) => {
+    // The caller exits once this settles, so a dispose that throws must not
+    // reject it; there is then no stop to wait for.
+    try {
+      engine.dispose();
+      return exited;
+    } catch {
+      return Promise.resolve();
+    }
+  });
+  await Promise.all(exits);
+  if (exitAtOnceListeners !== undefined) {
+    for (const [signal, listener] of exitAtOnceListeners)
+      process.off(signal, listener);
+    exitAtOnceListeners = undefined;
+  }
 }
