@@ -327,8 +327,8 @@ function failureContentFor(
         "your alcove.yaml set up, under the .alcove.key beside it, and " +
         "there is none in your working folder. Put this exchange's " +
         ".alcove.key back beside alcove.yaml, then start the run again. If " +
-        "you no longer have it, close the configuration and create a new " +
-        "invitation for your partner.",
+        "you no longer have it, start over, open the configuration again and " +
+        "choose Create an invitation from these settings.",
     };
   if (
     error instanceof JobApiRequestError &&
@@ -342,8 +342,8 @@ function failureContentFor(
         "alcove.yaml in your working folder is not a key file Alcove can " +
         "read. Check that it is a regular file with read permission, holding " +
         "the key Alcove wrote for this exchange, then start the run again. " +
-        "If you no longer have that key, close the configuration and create a " +
-        "new invitation for your partner.",
+        "If you no longer have that key, start over, open the configuration " +
+        "again and choose Create an invitation from these settings.",
     };
   if (
     error instanceof JobApiRequestError &&

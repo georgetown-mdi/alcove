@@ -424,6 +424,7 @@ function CredentialField({
   const source = values.source;
   const typedRef = source?.kind === "path" ? source.ref : "";
   const picked = source?.kind === "mount" ? source.subPath : undefined;
+  const pickedFrom = source?.kind === "mount" ? source.mount : undefined;
   const pastedValue = source?.kind === "raw" ? source.value : "";
   // Paste is the active credential source once it holds a raw value (including an
   // opened-but-empty one): the blocking credential error then renders on the paste
@@ -487,7 +488,7 @@ function CredentialField({
         <Group gap="xs" align="center">
           <Text size="sm">Selected:</Text>
           <span className={styles.mono}>
-            secrets /{" "}
+            {pickedFrom === "folder" ? "your folder" : "secrets"} /{" "}
             {picked.map((segment) => sanitizeForDisplay(segment)).join(" / ")}
           </span>
           <Button
@@ -505,8 +506,9 @@ function CredentialField({
         <div ref={pickerRef} tabIndex={-1} style={{ outline: "none" }}>
           <Stack gap="xs">
             <SecretsFilePicker
-              onSelect={(subPath) => {
-                onChange({ source: { kind: "mount", subPath } });
+              folderFallback
+              onSelect={(subPath, mount) => {
+                onChange({ source: { kind: "mount", mount, subPath } });
                 onPickerClose();
               }}
             />
@@ -529,7 +531,7 @@ function CredentialField({
         >
           {picked !== undefined
             ? "Choose a different file"
-            : "Choose a file from the secrets mount"}
+            : "Choose the credential file"}
         </Button>
       )}
 
@@ -537,7 +539,7 @@ function CredentialField({
 
       <TextInput
         label="File reference"
-        description="Type an @-file reference to a credential file's absolute path, e.g. @/run/secrets/key. A file in a separate read-only secrets mount is more isolated, but a file in your mounted folder works too."
+        description="For a file you cannot choose above. Type an @ and the file's absolute path inside the console's container, such as @/secrets/sftp-password.txt for a secrets directory mounted at /secrets. A path on your computer is not found."
         classNames={{ input: styles.mono }}
         value={typedRef}
         error={picked === undefined && !pasteActive ? error : undefined}

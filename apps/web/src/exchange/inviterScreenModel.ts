@@ -15,6 +15,7 @@ import {
   MOUNTED_CONFIGURATION_UNREAD,
   mountedConfigurationRead,
   withConversion,
+  withNewInvitation,
   withTermsNotApplied,
   withUnavailableTransport,
 } from "@console/mountedConfiguration";
@@ -438,6 +439,9 @@ export type InviterScreenAction =
   /** The operator converted the open configuration to the console's own
    * paths. */
   | { type: "mounted-configuration-converted" }
+  /** The operator chose to make a new invitation from the open
+   * configuration's settings rather than continue its exchange. */
+  | { type: "mounted-configuration-new-invitation" }
   /** The operator closed the open configuration: it stops being an input, so
    * every card and draft it seeded returns to its own authoring default along
    * with the terms, the records, the connection form and the notices, and the
@@ -837,6 +841,13 @@ function applyAction(
       return {
         ...state,
         mountedConfiguration: withConversion(state.mountedConfiguration),
+      };
+    case "mounted-configuration-new-invitation":
+      // A sealed draft has already decided what its run sends.
+      if (state.editor?.sealed === true) return state;
+      return {
+        ...state,
+        mountedConfiguration: withNewInvitation(state.mountedConfiguration),
       };
     case "loaded-configuration-discarded":
       // A sealed draft is an invitation already minted over the records the

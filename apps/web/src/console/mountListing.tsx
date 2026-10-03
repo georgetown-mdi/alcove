@@ -1,4 +1,13 @@
-import { Alert, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Button,
+  Code,
+  Group,
+  Loader,
+  Stack,
+  Text,
+} from "@mantine/core";
 import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
 
 import type { ReactNode } from "react";
@@ -68,5 +77,59 @@ export function MountLoading({ message }: { message: string }) {
         {message}
       </Text>
     </Group>
+  );
+}
+
+/** The console guide's section on starting the container with a folder
+ * mounted. */
+export const RUNNING_THE_CONTAINER_URL =
+  "https://github.com/georgetown-mdi/alcove/blob/main/docs/CONSOLE.md#running-the-container";
+
+/** The one-folder start command the notice below shows, with the folder left
+ * for the operator to fill in. */
+export const SINGLE_FOLDER_RUN_COMMAND =
+  "docker run --rm -p 127.0.0.1:3000:3000 -v <your folder>:/work " +
+  "--env JOB_DATA_ROOT=/work ghcr.io/georgetown-mdi/alcove serve";
+
+/**
+ * The state both pickers show when the console was started without a working
+ * folder (its job routes answer 404): what it cannot do, and the command that
+ * starts it with one.
+ */
+export function NoMountedFolderNotice({
+  cannot,
+  action,
+}: {
+  /** What the console cannot do without the folder, as a verb phrase. */
+  cannot: string;
+  action?: ReactNode;
+}) {
+  return (
+    <MountStateNotice
+      color="blue"
+      title="This console was started without a folder"
+      action={action}
+    >
+      <Stack gap="xs">
+        <Text size="sm">
+          The console has no mounted folder, so it cannot {cannot}. Stop it and
+          start it again with your folder mounted:
+        </Text>
+        <Code block>{SINGLE_FOLDER_RUN_COMMAND}</Code>
+        <Text size="sm">
+          Replace {"<your folder>"} with the folder holding your files. Other
+          layouts are in{" "}
+          <Anchor
+            inherit
+            href={RUNNING_THE_CONTAINER_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Running the container
+          </Anchor>
+          .
+        </Text>
+      </Stack>
+    </MountStateNotice>
   );
 }

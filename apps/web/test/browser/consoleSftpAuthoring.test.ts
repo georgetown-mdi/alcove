@@ -96,6 +96,9 @@ interface StubOptions {
    * probe is in flight (the real one runs for as long as ~15s). A
    * probe past the end of the list settles immediately. */
   probeGates?: Array<Promise<void>>;
+  /** Answer the secrets listing as a console with no secrets directory, so the
+   * credential picker browses the working folder. */
+  noSecretsMount?: boolean;
 }
 
 /** One held-open probe response, standing in for the seconds the real probe
@@ -145,6 +148,21 @@ function stubJobApi(options: StubOptions = {}): {
         return Promise.resolve(jsonResponse({ rates: [] }));
       if (url === "/api/jobs/rendezvous")
         return Promise.resolve(jsonResponse({ configured: false }));
+      if (
+        options.noSecretsMount === true &&
+        url.startsWith("/api/jobs/mounts/secrets/entries")
+      )
+        return Promise.resolve(
+          jsonResponse({ configured: false, readable: true, entries: [] }),
+        );
+      if (url.startsWith("/api/jobs/mounts/folder/entries"))
+        return Promise.resolve(
+          jsonResponse({
+            configured: true,
+            readable: true,
+            entries: [{ name: "sftp-password.txt", kind: "file" }],
+          }),
+        );
       if (url.startsWith("/api/jobs/mounts/secrets/entries")) {
         const params = new URL(url, "http://localhost").searchParams;
         const subPath = params.getAll("subPath");
@@ -461,7 +479,7 @@ describe("console SFTP connection authoring", () => {
 
     // Browse the secrets mount and pick the credential file.
     await page
-      .getByRole("button", { name: "Choose a file from the secrets mount" })
+      .getByRole("button", { name: "Choose the credential file" })
       .click();
     await page.getByRole("button", { name: "Use partner-password" }).click();
     // The picked file is shown as a relative locator, never an absolute path.
@@ -723,6 +741,37 @@ describe("console SFTP connection authoring", () => {
     await expect
       .element(page.getByText("Enter a port number between 0 and 65535"))
       .toBeVisible();
+  });
+
+  test("with no secrets directory, the picker browses the working folder", async () => {
+    const api = stubJobApi({ noSecretsMount: true });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await openAndFillForm();
+    await page
+      .getByRole("button", { name: "Choose the credential file" })
+      .click();
+    await expect
+      .element(
+        page.getByText("This console has no separate secrets directory", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Use sftp-password.txt" }).click();
+    await expect
+      .element(page.getByText("your folder / sftp-password.txt"))
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Save connection" }).click();
+    const put = api.captured.find(
+      (request) => request.url === "/api/jobs/sftp" && request.method === "PUT",
+    );
+    expect(JSON.parse(put?.body ?? "{}").credential).toEqual({
+      kind: "mountRef",
+      mount: "folder",
+      subPath: ["sftp-password.txt"],
+      credType: "password",
+    });
   });
 
   test("a credential warning renders below the authored connection", async () => {

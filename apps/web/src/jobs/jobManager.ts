@@ -75,6 +75,7 @@ import { buildJobHandoff } from "./handoff";
 import { checkedMountedKeyFilePath } from "./mountedKeyFile";
 import { formatFirstIssue } from "./schemaIssueMessage";
 import { probeSftpHostKey } from "./sftpProbe";
+import { referencedCredentialPaths } from "./referencedCredentialFiles";
 import { removeSftpCredentialFile } from "./sftpScratch";
 import { runTermsProposalApply } from "./termsProposal";
 import { validateAuthoredSftpServer } from "./sftpServer";
@@ -943,6 +944,17 @@ export class JobManager {
       removeSftpCredentialFile(this.authoredMaterializedCredentialPath);
       this.authoredMaterializedCredentialPath = undefined;
     }
+  }
+
+  /** The credential and signing-identity files the authored connection and
+   * the opened configuration reference, which the input listing leaves out
+   * ({@link referencedCredentialPaths}). */
+  referencedCredentialPaths(): Set<string> {
+    return referencedCredentialPaths(
+      this.dataRoot,
+      this.authoredSftpServer,
+      this.openedConfiguration?.document,
+    );
   }
 
   /**

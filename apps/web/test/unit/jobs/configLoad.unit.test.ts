@@ -517,6 +517,44 @@ describe("a configuration on a channel the console does not conduct", () => {
   });
 });
 
+describe("the key file beside an opened configuration", () => {
+  const dirs: Array<string> = [];
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0))
+      fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  function mountHolding(document: Record<string, unknown>): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-configload-"));
+    dirs.push(dir);
+    fs.writeFileSync(path.join(dir, "alcove.yaml"), stringifyYaml(document));
+    return dir;
+  }
+
+  test("names an absent key file on the load of a conducted configuration", () => {
+    const dir = mountHolding(savedSftpDocument());
+    expect(loadMountedConfiguration(dir).keyFileFault).toBe("absent");
+  });
+
+  test("names a key file that is not one, and sends nothing read from it", () => {
+    const dir = mountHolding(savedSftpDocument());
+    fs.writeFileSync(path.join(dir, ".alcove.key"), "not-json-but-a-secret");
+    const response = loadMountedConfiguration(dir);
+    expect(response.keyFileFault).toBe("invalid");
+    expect(JSON.stringify(response)).not.toContain("not-json-but-a-secret");
+  });
+
+  test("names nothing where the key file is usable", () => {
+    const dir = mountHolding(savedSftpDocument());
+    fs.writeFileSync(
+      path.join(dir, ".alcove.key"),
+      JSON.stringify({ sharedSecret: "A".repeat(43) }),
+    );
+    expect(loadMountedConfiguration(dir).keyFileFault).toBeUndefined();
+  });
+});
+
 describe("what the load refuses", () => {
   test("a schema violation, naming the setting in the file's snake_case", () => {
     const document = savedSftpDocument();

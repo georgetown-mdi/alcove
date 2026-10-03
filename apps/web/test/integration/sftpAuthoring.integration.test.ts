@@ -270,7 +270,7 @@ describe.skipIf(!hasBuild)("SFTP connection authoring (server side)", () => {
       }),
     });
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain("connection.credential");
+    expect(await response.text()).toContain("credential file you chose");
   });
 
   test("a host with userinfo and a path is refused, naming the field only", async () => {
@@ -316,7 +316,7 @@ describe.skipIf(!hasBuild)("SFTP connection authoring (server side)", () => {
     expect(text).not.toContain(ref);
     const parsed = JSON.parse(text) as { credentialWarnings?: Array<string> };
     expect(parsed.credentialWarnings).toHaveLength(1);
-    expect(parsed.credentialWarnings?.[0]).toContain("data root");
+    expect(parsed.credentialWarnings?.[0]).toContain("mounted folder");
     // Clean up so the connection does not leak into a later test.
     await fetch(`http://127.0.0.1:${port}/api/jobs/sftp`, { method: "DELETE" });
   });

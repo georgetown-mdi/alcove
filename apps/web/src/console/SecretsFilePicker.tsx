@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  Anchor,
   Badge,
   Button,
   Group,
@@ -13,26 +12,51 @@ import {
 
 import { sanitizeForDisplay } from "@alcove/core";
 
-import { fetchSecretsEntries } from "@psi/jobClient/sftpAuthoringClient";
+import { fetchMountEntries } from "@psi/jobClient/sftpAuthoringClient";
 
 import styles from "@styles/app.module.css";
 
-import { MountLoading, MountStateNotice, RefreshButton } from "./mountListing";
+import {
+  MountLoading,
+  MountStateNotice,
+  NoMountedFolderNotice,
+  RefreshButton,
+} from "./mountListing";
 import { breadcrumbTrail, enterSubdir, fileSubPath } from "./mountNavigation";
 
+import type {
+  CredentialMount,
+  SecretsEntriesResult,
+} from "@psi/jobClient/sftpAuthoringClient";
 import type { ReactNode } from "react";
-import type { SecretsEntriesResult } from "@psi/jobClient/sftpAuthoringClient";
 
-/** The mount-root breadcrumb label. */
-const ROOT_LABEL = "secrets";
+/** How each mount is named: the breadcrumb's root label, and the phrase the
+ * picker's sentences use. */
+const MOUNT_NAMES: Record<CredentialMount, { root: string; phrase: string }> = {
+  secrets: { root: "secrets", phrase: "the secrets directory" },
+  folder: { root: "your folder", phrase: "your folder" },
+};
+
+/** What the credential picker says above a browse of the working folder, which
+ * it offers when no separate secrets directory is mounted. */
+export const FOLDER_CREDENTIAL_NOTICE =
+  "This console has no separate secrets directory, so choose the file from " +
+  "your mounted folder. That works, and the console warns you once the " +
+  "connection is saved: Alcove writes exchange files and results into this " +
+  "folder. For better isolation, start the console with " +
+  "-v <secrets folder>:/secrets:ro --env JOB_SECRETS_DIR=/secrets and choose " +
+  "the file there.";
 
 /** What the aria-live status region announces once a listing resolves. */
-function secretsLiveMessage(listing: SecretsEntriesResult | "loading"): string {
+function secretsLiveMessage(
+  listing: SecretsEntriesResult | "loading",
+  mount: CredentialMount,
+): string {
   if (listing === "loading") return "";
   if (listing.kind === "disabled")
-    return "The job API is disabled on this console.";
+    return "This console was started without a folder.";
   if (listing.kind === "error")
-    return "The secrets directory could not be read.";
+    return `${capitalized(MOUNT_NAMES[mount].phrase)} could not be read.`;
   if (!listing.configured)
     return "No secrets directory is configured on this console.";
   if (!listing.readable) return "This directory could not be read.";
@@ -42,33 +66,39 @@ function secretsLiveMessage(listing: SecretsEntriesResult | "loading"): string {
 
 /**
  * The console's secrets-mount file picker: a navigable browse of the
- * operator-mounted secrets directory ({@link fetchSecretsEntries}), used to point
+ * operator-mounted secrets directory ({@link fetchMountEntries}), used to point
  * an SFTP connection at a credential file and to point the signing identity at
  * the file that holds it. It lists the directory's subdirectories and files,
- * descends into a `dir` entry (breadcrumb to go back), and yields a
- * `{ mount: "secrets", subPath }` locator when the operator picks a `file` -- the
- * server resolves that locator against its own mount, so no container-absolute
- * path is ever shown or sent. No file bytes are read; this is a name browse only
- * (SSH key material, password files, and the signing identity, none profiled).
+ * descends into a `dir` entry (breadcrumb to go back), and yields the picked
+ * file's subPath and mount when the operator picks a `file` -- the server
+ * resolves that locator against its own mount, so no container-absolute path is
+ * ever shown or sent. No file bytes are read; this is a name browse only (SSH
+ * key material, password files, and the signing identity, none profiled).
  *
- * A missing or unreadable secrets mount is shown as a named config gap (name
- * `JOB_SECRETS_DIR`), not a dead end, reusing the shared listing shell
- * ({@link MountStateNotice}). The remedy differs by caller, so an unconfigured
- * mount's copy is the caller's ({@link unconfiguredNotice}). A polite status
+ * A missing secrets mount is, for a caller passing {@link folderFallback}, a
+ * browse of the working folder instead. For any other caller it is shown as a
+ * named config gap (name `JOB_SECRETS_DIR`), not a dead end, reusing the shared
+ * listing shell ({@link MountStateNotice}). The remedy differs by caller, so an
+ * unconfigured mount's copy is the caller's ({@link unconfiguredNotice}). A polite status
  * region announces each resolved listing, and focus follows a navigation so a
  * screen-reader user is not stranded.
  */
 export function SecretsFilePicker({
   onSelect,
   unconfiguredNotice,
+  folderFallback = false,
 }: {
   /** Commit a picked credential file's locator subPath (the directory segments
-   * plus the file name). */
-  onSelect: (subPath: Array<string>) => void;
+   * plus the file name) and the mount it is under. */
+  onSelect: (subPath: Array<string>, mount: CredentialMount) => void;
   /** What the "no separate secrets directory" notice says, when the caller has
    * a different remedy from the credential field's typed `@`-file fallback. */
   unconfiguredNotice?: ReactNode;
+  /** Browse the working folder instead when no secrets directory is mounted,
+   * with {@link FOLDER_CREDENTIAL_NOTICE} above it. */
+  folderFallback?: boolean;
 }) {
+  const [mount, setMount] = useState<CredentialMount>("secrets");
   const [subPath, setSubPath] = useState<Array<string>>([]);
   const [listing, setListing] = useState<SecretsEntriesResult | "loading">(
     "loading",
@@ -85,16 +115,31 @@ export function SecretsFilePicker({
     };
   }, []);
 
-  const load = useCallback(async (path: Array<string>) => {
-    const id = ++listingId.current;
-    setListing("loading");
-    const result = await fetchSecretsEntries(path);
-    if (mounted.current && id === listingId.current) setListing(result);
-  }, []);
+  // An unmounted secrets directory is answered at its root, so the folder is
+  // browsed from its root too.
+  const load = useCallback(
+    async (from: CredentialMount, path: Array<string>) => {
+      const id = ++listingId.current;
+      setListing("loading");
+      const result = await fetchMountEntries(from, path);
+      if (!mounted.current || id !== listingId.current) return;
+      if (
+        folderFallback &&
+        from === "secrets" &&
+        result.kind === "entries" &&
+        !result.configured
+      ) {
+        setMount("folder");
+        return;
+      }
+      setListing(result);
+    },
+    [folderFallback],
+  );
 
   useEffect(() => {
-    void load(subPath);
-  }, [subPath, load]);
+    void load(mount, subPath);
+  }, [mount, subPath, load]);
 
   // Focus the stage once a navigation resolves so a screen-reader user is not
   // stranded on a control that unmounted; skipped on mount so initial focus stays
@@ -106,18 +151,26 @@ export function SecretsFilePicker({
     stageMounted.current = true;
   }, [subPath]);
 
-  const refresh = useCallback(() => void load(subPath), [load, subPath]);
+  const refresh = useCallback(
+    () => void load(mount, subPath),
+    [load, mount, subPath],
+  );
 
   return (
     <Stack gap="sm" mt="sm">
       <VisuallyHidden role="status" aria-live="polite">
-        {secretsLiveMessage(listing)}
+        {secretsLiveMessage(listing, mount)}
       </VisuallyHidden>
+      {mount === "folder" && (
+        <Text size="sm" c="dimmed">
+          {FOLDER_CREDENTIAL_NOTICE}
+        </Text>
+      )}
       <div ref={stageRef} tabIndex={-1} style={{ outline: "none" }}>
-        {renderListing(listing, subPath, unconfiguredNotice, {
+        {renderListing(listing, mount, subPath, unconfiguredNotice, {
           onEnter: (name) => setSubPath(enterSubdir(subPath, name)),
           onNavigate: (next) => setSubPath(next),
-          onSelect: (name) => onSelect(fileSubPath(subPath, name)),
+          onSelect: (name) => onSelect(fileSubPath(subPath, name), mount),
           onRefresh: refresh,
         })}
       </div>
@@ -125,8 +178,14 @@ export function SecretsFilePicker({
   );
 }
 
+/** `phrase` with its first letter in upper case. */
+function capitalized(phrase: string): string {
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
 function renderListing(
   listing: SecretsEntriesResult | "loading",
+  mount: CredentialMount,
   subPath: Array<string>,
   unconfiguredNotice: ReactNode,
   actions: {
@@ -137,39 +196,24 @@ function renderListing(
   },
 ) {
   const refresh = <RefreshButton onRefresh={actions.onRefresh} />;
+  const names = MOUNT_NAMES[mount];
 
   if (listing === "loading")
-    return <MountLoading message="Loading the secrets directory..." />;
+    return <MountLoading message={`Loading ${names.phrase}...`} />;
 
-  // The whole job API is off (JOB_DATA_ROOT unset): a stable config state, so it
-  // is shown as informational and names the variable to set.
   if (listing.kind === "disabled")
     return (
-      <MountStateNotice
-        color="blue"
-        title="The job API is disabled on this console"
+      <NoMountedFolderNotice
+        cannot="browse for a credential file"
         action={refresh}
-      >
-        The job API is off because JOB_DATA_ROOT is not set, so this console
-        cannot browse the secrets directory. Set it to the mounted data root and
-        restart the console -- see the{" "}
-        <Anchor
-          inherit
-          href="https://github.com/georgetown-mdi/alcove/blob/main/docs/DEPLOYMENT.md"
-          target="_blank"
-          rel="noreferrer"
-        >
-          deployment guide
-        </Anchor>
-        .
-      </MountStateNotice>
+      />
     );
 
   if (listing.kind === "error")
     return (
       <MountStateNotice
         color="red"
-        title="Could not read the secrets directory"
+        title={`Could not read ${names.phrase}`}
         action={refresh}
       >
         The console did not return a listing. Check that the job API is
@@ -200,9 +244,9 @@ function renderListing(
       </MountStateNotice>
     );
 
-  const trail = breadcrumbTrail(ROOT_LABEL, subPath);
+  const trail = breadcrumbTrail(names.root, subPath);
   const breadcrumb = (
-    <nav aria-label="Secrets directory path">
+    <nav aria-label={`Path in ${names.phrase}`}>
       <Group gap={4} align="center">
         {trail.map((crumb, index) => {
           const isCurrent = index === trail.length - 1;
@@ -247,9 +291,8 @@ function renderListing(
           title="Could not read this directory"
           action={refresh}
         >
-          This directory in the secrets mount could not be read. It may have
-          been removed since the listing. Step back with the path above, or
-          refresh.
+          This directory in {names.phrase} could not be read. It may have been
+          removed since the listing. Step back with the path above, or refresh.
         </MountStateNotice>
       </Stack>
     );
@@ -264,8 +307,8 @@ function renderListing(
           action={refresh}
         >
           This folder has no files or subdirectories. Step back with the path
-          above and pick another, or place your credential file in the secrets
-          mount and refresh.
+          above and pick another, or place your credential file in{" "}
+          {names.phrase} and refresh.
         </MountStateNotice>
       </Stack>
     );
@@ -279,7 +322,7 @@ function renderListing(
       <Table
         highlightOnHover
         withRowBorders={false}
-        aria-label="Secrets directory entries"
+        aria-label={`Entries in ${names.phrase}`}
       >
         <Table.Thead>
           <Table.Tr>

@@ -15,6 +15,10 @@ import { jobJsonResponse } from "@jobs/gate";
  * configured-but-unreadable mount is `readable: false` with an empty list, distinct
  * from an empty-but-readable directory, so the console tells the operator to check the
  * mount rather than to place a file that may already be there.
+ *
+ * The listing leaves out the files in the folder that are not inputs: the
+ * configuration and the other files the console or an exchange writes, and the
+ * credential files the authored connection or opened configuration reference.
  */
 export const Route = createFileRoute("/api/jobs/inputs/")({
   server: {
@@ -22,7 +26,12 @@ export const Route = createFileRoute("/api/jobs/inputs/")({
       GET: ({ request }) => {
         const gate = gateJobRoute(request);
         if (gate.kind === "response") return gate.response;
-        return jobJsonResponse(listJobInputs(useJobInputDir()));
+        return jobJsonResponse(
+          listJobInputs(
+            useJobInputDir(),
+            gate.manager.referencedCredentialPaths(),
+          ),
+        );
       },
     },
   },

@@ -538,7 +538,9 @@ describe("failureFor", () => {
       expect(failure.category).toBe("config");
       expect(failure.title).toBe(title);
       expect(failure.message).toContain("beside alcove.yaml");
-      expect(failure.message).toContain("create a new invitation");
+      expect(failure.message).toContain(
+        "Create an invitation from these settings",
+      );
     },
   );
 

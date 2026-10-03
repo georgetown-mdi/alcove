@@ -84,3 +84,21 @@ export function checkedMountedKeyFilePath(dataRoot: string): string {
     throw new MountedKeyFileRefusedError("invalid");
   return filePath;
 }
+
+/**
+ * Which of the two faults {@link checkedMountedKeyFilePath} would refuse a run
+ * of the mounted configuration with, or undefined where the key file beside it
+ * is usable: read when the configuration is opened, so the operator learns of
+ * it then rather than when the run starts.
+ */
+export function mountedKeyFileFault(
+  dataRoot: string,
+): MountedKeyFileFault | undefined {
+  try {
+    checkedMountedKeyFilePath(dataRoot);
+    return undefined;
+  } catch (error) {
+    if (error instanceof MountedKeyFileRefusedError) return error.fault;
+    throw error;
+  }
+}

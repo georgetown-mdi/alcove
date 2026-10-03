@@ -92,7 +92,7 @@ function connectionForm(
     host: "sftp.partner.example",
     username: "linkage",
     hostKeyFingerprint: `SHA256:${"A".repeat(43)}`,
-    source: { kind: "mount", subPath: ["partner-password"] },
+    source: { kind: "mount", mount: "secrets", subPath: ["partner-password"] },
     ...overrides,
   };
 }

@@ -12,6 +12,7 @@ import { MAX_COVERAGE_BODY_BYTES } from "@jobs/workInputs";
 import { Route as CoverageRoute } from "../../../src/routes/api/jobs/inputs/coverage";
 import { Route as InputsRoute } from "../../../src/routes/api/jobs/inputs/index";
 import { Route as ProfileRoute } from "../../../src/routes/api/jobs/inputs/profile";
+import { Route as SamplesRoute } from "../../../src/routes/api/jobs/inputs/samples";
 
 import { STUB_CLI_PATH } from "../../utils/jobFixtures";
 
@@ -418,4 +419,75 @@ describe("POST /api/jobs/inputs/coverage", () => {
     })) as Response;
     expect(response.status).toBe(499);
   });
+});
+
+async function addSamples(): Promise<Response> {
+  return (await handlersOf(SamplesRoute).POST({
+    request: new Request("http://localhost/api/jobs/inputs/samples", {
+      method: "POST",
+      headers: { host: "localhost" },
+    }),
+    params: {},
+  })) as Response;
+}
+
+describe("POST /api/jobs/inputs/samples", () => {
+  test("is 404 when the API is disabled", async () => {
+    vi.stubEnv("JOB_DATA_ROOT", "");
+    expect((await addSamples()).status).toBe(404);
+  });
+
+  test("writes the sample CSVs where the listing reads, and lists them", async () => {
+    const dataRoot = enable();
+    const response = await addSamples();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      files: [
+        { name: "alcove-sample-inviter.csv", written: true },
+        { name: "alcove-sample-partner.csv", written: true },
+      ],
+    });
+    expect(fs.readdirSync(dataRoot).sort()).toEqual([
+      "alcove-sample-inviter.csv",
+      "alcove-sample-partner.csv",
+    ]);
+    const body = (await (await listing()).json()) as {
+      files: Array<{ name: string }>;
+    };
+    expect(body.files.map((file) => file.name)).toEqual([
+      "alcove-sample-inviter.csv",
+      "alcove-sample-partner.csv",
+    ]);
+  });
+
+  test("a cross-site browser request is refused before anything is written", async () => {
+    const dataRoot = enable();
+    const response = (await handlersOf(SamplesRoute).POST({
+      request: new Request("http://localhost/api/jobs/inputs/samples", {
+        method: "POST",
+        headers: { host: "localhost", "sec-fetch-site": "cross-site" },
+      }),
+      params: {},
+    })) as Response;
+    expect(response.status).toBe(403);
+    expect(fs.readdirSync(dataRoot)).toEqual([]);
+  });
+
+  test.skipIf(process.getuid?.() === 0)(
+    "a folder the console cannot write into is a 409 naming no path",
+    async () => {
+      const inputDir = tempDir("readonly-inputs");
+      fs.chmodSync(inputDir, 0o500);
+      enable({ inputDir });
+      try {
+        const response = await addSamples();
+        expect(response.status).toBe(409);
+        const text = await response.text();
+        expect(JSON.parse(text)).toEqual({ error: "unwritable" });
+        expect(text).not.toContain(inputDir);
+      } finally {
+        fs.chmodSync(inputDir, 0o700);
+      }
+    },
+  );
 });

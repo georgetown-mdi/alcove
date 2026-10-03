@@ -15,7 +15,7 @@ import {
   SAMPLE_INVITER_FILE_NAME,
   SAMPLE_PARTNER_CSV,
   SAMPLE_PARTNER_FILE_NAME,
-} from "@exchange/sampleData";
+} from "@psi/sampleData";
 import { editorFromCsv } from "@psi/inviterEditor";
 
 import type { AcquiredCsv } from "@psi/inviterEditor";

@@ -5,10 +5,11 @@ import path from "node:path";
  * console browses when authoring an SFTP connection's file-reference credential
  * (a password file, an SSH private key, a key passphrase). Unlike
  * `JOB_INPUT_DIR` and `JOB_RENDEZVOUS_DIR`, it has NO `JOB_DATA_ROOT` fallback:
- * when it is unset the secrets mount is simply unavailable. A fallback would
- * default the secrets surface into the data root, which is client-writable per
- * job -- the one place a credential-bearing directory must never be. The mount
- * is server-side configuration, never a browser-sent path.
+ * when it is unset the secrets mount is unavailable, so the data root, which
+ * every job writes into, is never treated as a secrets directory. The
+ * credential picker browses the data root through a listing of its own
+ * instead, under the containment warning. The mount is server-side
+ * configuration, never a browser-sent path.
  */
 export const JOB_SECRETS_DIR_ENV = "JOB_SECRETS_DIR";
 

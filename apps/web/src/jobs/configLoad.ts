@@ -59,6 +59,7 @@ import {
 } from "@psi/exchangeDocumentRefusal";
 
 import { JOB_FILE_NAMES, isJobChannel } from "./intentSchemas";
+import { mountedKeyFileFault } from "./mountedKeyFile";
 import { readBoundedMountedFile } from "./boundedMountedFile";
 
 import { composeConfigDocument, composeSftpConfigSpec } from "./intentConfig";
@@ -75,6 +76,7 @@ import type {
   JobSftpExchangeIntent,
 } from "./intentSchemas";
 import type { JobSftpServerEntry } from "./sftpServer";
+import type { MountedKeyFileFault } from "./mountedKeyFile";
 
 /**
  * Upper bound, in bytes, on the configuration file this load will read, applied
@@ -212,6 +214,11 @@ export interface LoadedConfigurationResponse {
   folderPathSettings?: Array<string>;
   /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
+  /** Why the `.alcove.key` beside a configuration on a conducted channel
+   * would refuse its run: no file at the name, or one that is not a key file.
+   * Absent where the key file is usable, and for a channel the console does
+   * not run. Nothing read from the file is sent. */
+  keyFileFault?: MountedKeyFileFault;
 }
 
 /**
@@ -941,8 +948,14 @@ export function openMountedConfiguration(dataRoot: string): {
       opened: undefined,
     };
   const document = mountedConfigurationDocument(source);
+  const keyFileFault = isJobChannel(document.connection.channel)
+    ? mountedKeyFileFault(dataRoot)
+    : undefined;
   return {
-    response: responseFor(document),
+    response: {
+      ...responseFor(document),
+      ...(keyFileFault !== undefined ? { keyFileFault } : {}),
+    },
     opened: {
       source,
       document: isJobChannel(document.connection.channel)

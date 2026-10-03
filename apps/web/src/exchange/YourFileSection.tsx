@@ -16,6 +16,7 @@ import { isConsoleBuild } from "@utils/clientConfig";
 
 import { fileCardMeta } from "@psi/formatting";
 
+import { ConsoleSampleData } from "@console/ConsoleSampleData";
 import { ServerFilePicker } from "@console/ServerFilePicker";
 import styles from "@styles/app.module.css";
 
@@ -96,12 +97,14 @@ export function YourFileSection({
   onInvalidate?: () => void;
   onContinue: () => void;
   /** Seed the synthetic sample into this exchange in place. Hosted build only -- the
-   * console cannot read an in-browser file, so its sample path is download-only. */
+   * console cannot read an in-browser file, so it writes the sample into its folder. */
   onLoadSample: () => void;
   /** Download the two sample CSVs client-side, uploading nothing. */
   onDownloadSamples: () => void;
 }) {
   const consoleBuild = isConsoleBuild();
+  // Bumped each time the sample files are added, so the picker lists them.
+  const [samplesAdded, setSamplesAdded] = useState(0);
   const assuranceLine = consoleBuild
     ? APPLIANCE_FILE_ASSURANCE
     : FILE_ASSURANCE_LINE;
@@ -163,32 +166,15 @@ export function YourFileSection({
           <ServerFilePicker
             committed={committed}
             delimiter={delimiterResolution}
+            refreshKey={samplesAdded}
             onUse={(profile) => onCommit?.(profile)}
             onInvalidate={() => onInvalidate?.()}
           />
           {acquired === undefined && (
-            <p className={`${styles.small} ${styles.sub}`}>
-              Use sample data:{" "}
-              <Anchor
-                inherit
-                component="button"
-                type="button"
-                onClick={onDownloadSamples}
-              >
-                download the CSVs
-              </Anchor>
-              , then place one in this console&apos;s mounted work directory --
-              see the{" "}
-              <Anchor
-                inherit
-                href="https://github.com/georgetown-mdi/alcove/blob/main/docs/DEPLOYMENT.md"
-                target="_blank"
-                rel="noreferrer"
-              >
-                deployment guide
-              </Anchor>
-              .
-            </p>
+            <ConsoleSampleData
+              onAdded={() => setSamplesAdded((count) => count + 1)}
+              onDownloadSamples={onDownloadSamples}
+            />
           )}
         </>
       ) : (

@@ -1724,6 +1724,44 @@ describe("console lobby recurring-exchange surface", () => {
   });
 });
 
+describe("console lobby copy and sample data", () => {
+  test("says what the console runs, not that the browser connects directly", async () => {
+    stubJobApi();
+    app.render(createElement(Lobby));
+    await expect
+      .element(
+        page.getByText("This console runs an exchange over an SFTP server", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByText("connects directly", { exact: false }).query(),
+    ).toBeNull();
+  });
+
+  test("asks the console to write the samples, and offers the download when it cannot", async () => {
+    const api = stubJobApi();
+    app.render(createElement(Lobby));
+    await page.getByRole("button", { name: "Start with sample data" }).click();
+    await expect
+      .element(
+        page.getByText("nowhere to write the sample files", { exact: false }),
+      )
+      .toBeInTheDocument();
+    expect(
+      api.captured.some(
+        (request) =>
+          request.url === "/api/jobs/inputs/samples" &&
+          request.method === "POST",
+      ),
+    ).toBe(true);
+    await expect
+      .element(page.getByRole("button", { name: "Download the CSVs" }))
+      .toBeInTheDocument();
+  });
+});
+
 describe("the re-attachment announcement", () => {
   test("the region is mounted empty and the same node takes each notice", async () => {
     app.render(

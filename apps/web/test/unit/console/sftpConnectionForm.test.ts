@@ -32,7 +32,7 @@ function validForm(
     host: "sftp.partner.example",
     username: "linkage",
     hostKeyFingerprint: FINGERPRINT,
-    source: { kind: "mount", subPath: ["partner-password"] },
+    source: { kind: "mount", mount: "secrets", subPath: ["partner-password"] },
     ...overrides,
   };
 }
@@ -226,7 +226,9 @@ describe("sftpFormError", () => {
       "credential",
     );
     expect(
-      formError(validForm({ source: { kind: "mount", subPath: [] } }))?.field,
+      formError(
+        validForm({ source: { kind: "mount", mount: "secrets", subPath: [] } }),
+      )?.field,
     ).toBe("credential");
   });
 
@@ -442,7 +444,11 @@ describe("buildAuthoringRequest", () => {
       validForm({
         port: "2022",
         remoteDirectory: "/drop",
-        source: { kind: "mount", subPath: [".ssh", "id_ed25519"] },
+        source: {
+          kind: "mount",
+          mount: "secrets",
+          subPath: [".ssh", "id_ed25519"],
+        },
         method: "private_key",
       }),
     );
@@ -458,6 +464,24 @@ describe("buildAuthoringRequest", () => {
         subPath: [".ssh", "id_ed25519"],
         credType: "private_key",
       },
+    });
+  });
+
+  test("builds a folder mountRef credential from a file picked in the working folder", () => {
+    const body = authoringRequest(
+      validForm({
+        source: {
+          kind: "mount",
+          mount: "folder",
+          subPath: ["sftp-password.txt"],
+        },
+      }),
+    );
+    expect(body?.credential).toEqual({
+      kind: "mountRef",
+      mount: "folder",
+      subPath: ["sftp-password.txt"],
+      credType: "password",
     });
   });
 
@@ -620,7 +644,11 @@ describe("sftpFormFromLocator (accept-side pre-fill)", () => {
       }),
       username: "linkage",
       hostKeyFingerprint: FINGERPRINT,
-      source: { kind: "mount", subPath: ["partner-password"] },
+      source: {
+        kind: "mount",
+        mount: "secrets",
+        subPath: ["partner-password"],
+      },
     });
     // The locator rides through as the connection's host/port/path; the operator's
     // username, fingerprint, and credential are the only source of those fields.
