@@ -14,13 +14,18 @@ import { Link } from "@tanstack/react-router";
 import { downloadBlob, triggerBlobDownload } from "@components/blobDownload";
 
 import {
+  MAX_RECENT_RUNS,
+  runnableManagedExchange,
+} from "@psi/managed/managedExchangeRecord";
+import {
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
 } from "@psi/managed/managedWorkingDirectory";
-import { runnableManagedExchange } from "@psi/managed/managedExchangeRecord";
 
+import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import { isInstalledRuntime } from "@utils/installedRuntime";
+import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { dateLabel } from "@psi/formatting";
 
@@ -39,6 +44,7 @@ import {
   connectionRows,
   lastRunMayHaveSentPayload,
   linkageTermsRows,
+  relayRegistrationOffered,
   runHistoryEntries,
   scheduleView,
 } from "./managedDetailModel";
@@ -116,10 +122,12 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 
 /**
  * The managed exchange detail sections composed onto the per-partnership home at
- * `/saved/$id` (below the run affordance in {@link ./ManagedRunSurface.tsx}): the
- * read-only configuration, the local-fields editor, the agreed run schedule
- * where one exists, the run history, the results a scheduled run left for this
- * visit, and the accounting of disclosures. Derivations and copy come from
+ * `/saved/$id` (below the run affordance in {@link ./ManagedRunSurface.tsx}).
+ * What the exchange has been doing comes first -- the agreed run schedule where
+ * one exists, the run history, and the results a scheduled run left for this
+ * visit -- then the settings: the read-only configuration, the terms update,
+ * the relay registration where it applies, and the local-fields editor. The
+ * accounting of disclosures closes the page. Derivations and copy come from
  * {@link ./managedDetailModel.ts}, {@link ./parkedResultsModel.ts}, and
  * {@link ./disclosureAccountingModel.ts}.
  *
@@ -265,6 +273,14 @@ export function ManagedExchangeDetail({
     : undefined;
   return (
     <>
+      <RunSchedule record={record} />
+      <RunHistory record={record} resultSizeWarning={resultSizeWarning} />
+      <ParkedResultsView
+        read={parkedResultsRead}
+        scheduled={scheduled}
+        onRetryRead={onRetryParkedResultsRead}
+        onClear={onClearParkedResults}
+      />
       <ConfigurationView
         record={record}
         onReinviteToChangeTerms={onReinviteToChangeTerms}
@@ -282,27 +298,20 @@ export function ManagedExchangeDetail({
           onChanged={onTermsChanged}
         />
       )}
-      {runnableManagedExchange(record) && (
-        <ManagedRelayRegistration
-          record={record}
-          runInFlight={runInFlight}
-          onChanged={onRelayRegistrationChanged}
-        />
-      )}
+      {runnableManagedExchange(record) &&
+        relayRegistrationOffered(record, readOwnRelaySetting()) && (
+          <ManagedRelayRegistration
+            record={record}
+            runInFlight={runInFlight}
+            onChanged={onRelayRegistrationChanged}
+          />
+        )}
       <LocalFieldsEditor
         record={record}
         resultSizeWarning={resultSizeWarning}
         onSave={onSaveLocalFields}
         onGrantWorkingFolder={onGrantWorkingFolder}
         onStopUsingWorkingFolder={onStopUsingWorkingFolder}
-      />
-      <RunSchedule record={record} />
-      <RunHistory record={record} resultSizeWarning={resultSizeWarning} />
-      <ParkedResultsView
-        read={parkedResultsRead}
-        scheduled={scheduled}
-        onRetryRead={onRetryParkedResultsRead}
-        onClear={onClearParkedResults}
       />
       <DisclosureAccountingView
         read={accountingRead}
@@ -909,7 +918,7 @@ function WorkingFolderGrantField({
  * and, once misses have accumulated, the coordination prompt.
  *
  * A record with no agreed schedule renders nothing here: it is attended-only,
- * and the local-fields editor above is where a schedule is entered. Such a
+ * and the local-fields editor below is where a schedule is entered. Such a
  * record's input file is not read either -- the one reading this section makes
  * of the platform is made only where there is a section to hold it.
  *
@@ -958,19 +967,27 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
       <p className={`${styles.small} ${styles.sub}`}>
         This schedule is what you and your partner agreed out of band; it is
         kept only in this browser and is never sent anywhere. Change it under
-        Local settings above.
+        Local settings below.
       </p>
+      <h3 className={styles.eyebrow}>Copy this schedule for your partner</h3>
+      <p className={`${styles.small} ${styles.sub}`}>
+        Send this to your partner so both sides open the same windows. It holds
+        no secret and no invitation.
+      </p>
+      <CopyableCode
+        code={view.partnerText}
+        ariaLabel="schedule for your partner"
+      />
     </div>
   );
 }
 
 /**
- * The run history: what the most recent run DID, whether or not it completed.
- * The record's own bookkeeping keeps only that one run (see
- * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `lastRun` row), so this section is
- * scoped to it. Every run that sent this party's payload files its disclosure in
- * the accounting below, whether or not it finished, and raises a notice when the
- * filing fails ({@link ../psi/managed/managedRunDriver.ts}); a run that stopped
+ * The run history: what each of the last runs the record keeps DID, newest
+ * first, whether or not it completed, with the failure kind it recorded (see
+ * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `recentRuns` row). Every run that
+ * sent this party's payload files its disclosure in the accounting below,
+ * whether or not it finished, and raises a notice when the filing fails ({@link ../psi/managed/managedRunDriver.ts}); a run that stopped
  * before disclosing never enters it. A saved-but-never-run exchange renders the
  * plain empty state.
  */
@@ -1006,18 +1023,23 @@ function RunHistory({
       ) : (
         <>
           <p className={`${styles.small} ${styles.sub}`}>
-            Only the most recent run&apos;s outcome is kept. Every run that sent
-            your payload files its disclosure in the accounting below, whether
-            or not it finished, and warns you if it cannot.
+            The last {MAX_RECENT_RUNS} runs are kept here, newest first. Every
+            run that sent your payload files its disclosure in the accounting
+            below, whether or not it finished, and warns you if it cannot.
           </p>
-          {entries.map((entry) => (
-            <div key={entry.at} className={styles.dlRow}>
-              <span className={styles.dlLabel}>
-                {entry.when} - {entry.outcome}
-              </span>
-              <span>{entry.disclosure}</span>
-            </div>
-          ))}
+          <ol aria-label="Recent runs" className={styles.runHistoryList}>
+            {entries.map((entry, index) => (
+              <li key={`${String(index)}-${entry.at}`} className={styles.dlRow}>
+                <span className={styles.dlLabel}>
+                  {entry.outcome}
+                  {entry.failure !== undefined
+                    ? `: ${entry.failure}`
+                    : ""} - {entry.when}
+                </span>
+                <span>{entry.disclosure}</span>
+              </li>
+            ))}
+          </ol>
         </>
       )}
     </div>
@@ -1045,7 +1067,7 @@ function RunHistory({
  *
  * An exchange with no schedule renders nothing at all where the read FOUND
  * nothing: it produces no unattended results, and the local-fields editor
- * above is where a schedule is entered. The read still being in flight is the
+ * below is where a schedule is entered. The read still being in flight is the
  * same absence for a first visit -- there is nothing yet to show either way,
  * so a visit to an unscheduled exchange never flashes the loading state only
  * to collapse once the read lands on nothing. Once the section has shown
@@ -1558,10 +1580,10 @@ function UnrecordedRunAlert({ onShown }: { onShown: () => void }) {
         material.
       </p>
       <p>
-        The run history above keeps only the most recent run, so the run this is
-        about may not be named there. The other place to look is this
-        browser&apos;s diagnostic log, where the run reported the failure as it
-        happened, for as long as this browser keeps that log.
+        The run history above keeps only the last {MAX_RECENT_RUNS} runs, so the
+        run this is about may not be named there. The other place to look is
+        this browser&apos;s diagnostic log, where the run reported the failure
+        as it happened, for as long as this browser keeps that log.
       </p>
       <p>
         The run&apos;s record could not be stored. If this browser is low on

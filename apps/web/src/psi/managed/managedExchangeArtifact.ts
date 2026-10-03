@@ -23,6 +23,10 @@
  *   saying the source held a working folder), cleanly separable and ignorable
  *   by the CLI toolchain.
  *
+ * `recentRuns` is left out: it is the list of earlier outcomes this device's
+ * page shows, and an imported record starts it again from the `lastRun` the
+ * artifact holds.
+ *
  * The working-folder handle is absent by design (a device- and profile-local
  * platform object with no file serialization), so the folder is granted again
  * after an import. What the artifact does hold is a marker saying the source

@@ -1080,6 +1080,14 @@
   flex: 1 1 220px;
 }
 
+/* The run history's entries: an ordered list for assistive technology, laid out
+   as the rows around it with no markers or indent. */
+.runHistoryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 /* A configuration row's caveat: a full-width basis so the wrapping row breaks
    before it and the qualification sits under the value it qualifies, rather than
    competing with it for the value column's width. */

@@ -192,6 +192,10 @@ export const MAX_SCHEDULE_INTERVAL_DAYS = 366;
  */
 export const MAX_SCHEDULE_WINDOW_SECONDS = 43_200;
 
+/** How many run outcomes {@link ManagedExchangeRecord.recentRuns} keeps; the
+ * oldest falls off as each new one is recorded. */
+export const MAX_RECENT_RUNS = 10;
+
 /** The recurrence period, run window, and miss bookkeeping the unattended path
  * executes. Every field is a timestamp, an integer duration, or a count -- no
  * free text, so the object cannot accumulate schedule narrative. */
@@ -437,6 +441,12 @@ export interface ManagedExchangeRecord {
   schedule?: ManagedExchangeSchedule;
   /** Run bookkeeping; absent until the first run records an outcome. */
   lastRun?: ManagedExchangeLastRun;
+  /** The outcomes recorded in {@link lastRun}, newest first and at most
+   * {@link MAX_RECENT_RUNS}, kept for the exchange's page to show. Every
+   * `lastRun` write puts its entry at the head; nothing that drops `lastRun`
+   * drops these. Absent on a record no run has written since the field was
+   * added. Display only: no run, tier, or gate reads it. */
+  recentRuns?: ReadonlyArray<ManagedExchangeLastRun>;
   /** ISO 8601 UTC instant a run began a key exchange that has not saved its
    * rotated secret: written before the key exchange starts and removed by the
    * write that stores the rotated secret, so it outlives a run that stopped
@@ -698,6 +708,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     tokenMaxAgeDays: tokenMaxAgeDaysSchema.optional(),
     schedule: scheduleSchema.optional(),
     lastRun: lastRunSchema.optional(),
+    recentRuns: z.array(lastRunSchema).max(MAX_RECENT_RUNS).optional(),
     rotationInFlightSince: z.iso.datetime().optional(),
     relayRegistrar: RelayRegistrarSchema.optional(),
     relayRegistrationPendingSince: z.iso.datetime().optional(),
@@ -721,6 +732,7 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
       (record.expires === undefined &&
         record.schedule === undefined &&
         record.lastRun === undefined &&
+        record.recentRuns === undefined &&
         record.rotationInFlightSince === undefined &&
         record.relayRegistrar === undefined &&
         record.relayRegistrationPendingSince === undefined &&
@@ -728,8 +740,8 @@ const ManagedExchangeRecordSchema: ZodType<ManagedExchangeRecord> = z
     {
       message:
         "a record without a sharedSecret is configuration only and must hold " +
-        "no expires, schedule, lastRun, rotationInFlightSince, relayRegistrar, " +
-        "relayRegistrationPendingSince, or platform handle",
+        "no expires, schedule, lastRun, recentRuns, rotationInFlightSince, " +
+        "relayRegistrar, relayRegistrationPendingSince, or platform handle",
     },
   )
   .refine(
@@ -1679,7 +1691,37 @@ export function applyManagedExchangeLastRun(
     Date.parse(stored.at) >= runStartedAtMs
   )
     return parseManagedExchangeRecord(raised);
-  return parseManagedExchangeRecord({ ...raised, lastRun });
+  return parseManagedExchangeRecord(withRecordedRun(raised, lastRun));
+}
+
+/** `record` with `lastRun` set to `entry` and `entry` put at the head of
+ * `recentRuns`, the oldest beyond {@link MAX_RECENT_RUNS} dropped. A record
+ * written before `recentRuns` existed starts the list from the `lastRun` it
+ * holds. An earlier entry the schema refuses is left out rather than failing
+ * the write: `lastRun` is the bookkeeping, and the list only displays it. The
+ * input record is not mutated. */
+function withRecordedRun(
+  record: ManagedExchangeRecord,
+  entry: ManagedExchangeLastRun,
+): ManagedExchangeRecord {
+  const earlier = recentRunsOf(record).filter(
+    (run) => lastRunSchema.safeParse(run).success,
+  );
+  return {
+    ...record,
+    lastRun: entry,
+    recentRuns: [entry, ...earlier].slice(0, MAX_RECENT_RUNS),
+  };
+}
+
+/** The run outcomes the exchange's page lists, newest first: the record's
+ * `recentRuns`, or for a record written before that field existed, the one
+ * `lastRun` it holds. */
+export function recentRunsOf(
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
+): ReadonlyArray<ManagedExchangeLastRun> {
+  if (record.recentRuns !== undefined) return record.recentRuns;
+  return record.lastRun !== undefined ? [record.lastRun] : [];
 }
 
 /** The stored entry the `lastRun` write rules compare against: `undefined`
@@ -1905,7 +1947,7 @@ export function applyManagedExchangeScheduleAdvance(
     stored.consecutiveMisses !== advance.fromConsecutiveMisses
   )
     return parseManagedExchangeRecord(record);
-  const next: ManagedExchangeRecord = {
+  const advanced: ManagedExchangeRecord = {
     ...withStandingCondition(record, advance.standingCondition),
     schedule: advance.schedule,
   };
@@ -1919,8 +1961,10 @@ export function applyManagedExchangeScheduleAdvance(
       storedAtMs > parseStoredInstant(advance.lastRun.at) && storedAtMs <= nowMs
     )
   )
-    next.lastRun = advance.lastRun;
-  return parseManagedExchangeRecord(next);
+    return parseManagedExchangeRecord(
+      withRecordedRun(advanced, advance.lastRun),
+    );
+  return parseManagedExchangeRecord(advanced);
 }
 
 /**

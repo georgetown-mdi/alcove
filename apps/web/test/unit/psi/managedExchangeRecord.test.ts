@@ -15,6 +15,7 @@ import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirecto
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   MAX_LABEL_LENGTH,
+  MAX_RECENT_RUNS,
   MAX_SCHEDULE_INTERVAL_DAYS,
   NO_STANDING_CONDITION,
   applyManagedExchangeCompromiseResponse,
@@ -34,6 +35,7 @@ import {
   keyFileFieldsSchema,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
+  recentRunsOf,
   runnableManagedExchange,
   runnableManagedExchangeOrRefuse,
   safeParseManagedExchangeRecord,
@@ -1350,6 +1352,149 @@ describe("applyManagedExchangeScheduleAdvance", () => {
         fromConsecutiveMisses: schedule.consecutiveMisses,
       }),
     ).toThrow();
+  });
+});
+
+describe("the recent runs list", () => {
+  function run(
+    day: number,
+    overrides: Partial<ManagedExchangeLastRun> = {},
+  ): ManagedExchangeLastRun {
+    return {
+      at: new Date(Date.UTC(2026, 6, day, 9)).toISOString(),
+      outcome: "failed",
+      failureKind: "transport",
+      ...overrides,
+    };
+  }
+
+  function record(): ManagedExchangeRecord {
+    return buildManagedExchangeRecord(newExchange({ schedule }));
+  }
+
+  function applyStamped(
+    stored: ManagedExchangeRecord,
+    entry: ManagedExchangeLastRun,
+  ): ManagedExchangeRecord {
+    return applyManagedExchangeLastRun(
+      stored,
+      entry,
+      Date.parse(entry.at),
+      Date.parse("2026-12-31T00:00:00.000Z"),
+    );
+  }
+
+  test("round-trips through parse unchanged, every kind of entry included", () => {
+    const recentRuns = [
+      run(5, {
+        failureKind: "partner-set-too-large",
+        refusedInRound: true,
+      }),
+      run(4, { failureKind: "too-large", tooLargeBound: "partner-ceiling" }),
+      run(3, { failureKind: "terms-shortfall", singleColumnInput: true }),
+      { at: run(2).at, outcome: "missed" as const },
+      { at: run(1).at, outcome: "succeeded" as const },
+    ];
+    const stored = { ...record(), lastRun: recentRuns[0], recentRuns };
+    expect(parseManagedExchangeRecord(stored)).toEqual(stored);
+  });
+
+  test("refuses a list longer than the bound rather than trimming it at read", () => {
+    const recentRuns = Array.from({ length: MAX_RECENT_RUNS + 1 }, (_, index) =>
+      run(index + 1),
+    );
+    expect(() =>
+      parseManagedExchangeRecord({ ...record(), recentRuns }),
+    ).toThrow();
+  });
+
+  test("refuses an entry holding a value the bookkeeping does not admit", () => {
+    expect(() =>
+      parseManagedExchangeRecord({
+        ...record(),
+        recentRuns: [{ ...run(1), failureKind: "timeout" }],
+      }),
+    ).toThrow();
+  });
+
+  test("each recorded outcome goes to the head, and the oldest falls off at the bound", () => {
+    let stored = record();
+    for (let day = 1; day <= MAX_RECENT_RUNS + 3; day += 1)
+      stored = applyStamped(stored, run(day));
+    expect(stored.recentRuns).toHaveLength(MAX_RECENT_RUNS);
+    expect(stored.recentRuns?.[0]).toEqual(stored.lastRun);
+    expect(stored.recentRuns?.map((entry) => entry.at)).toEqual(
+      Array.from(
+        { length: MAX_RECENT_RUNS },
+        (_, index) => run(MAX_RECENT_RUNS + 3 - index).at,
+      ),
+    );
+  });
+
+  test("a record written before the list existed starts it from the run it holds", () => {
+    const older = parseManagedExchangeRecord({ ...record(), lastRun: run(1) });
+    expect(older).not.toHaveProperty("recentRuns");
+    expect(recentRunsOf(older)).toEqual([run(1)]);
+
+    const success: ManagedExchangeLastRun = {
+      at: run(2).at,
+      outcome: "succeeded",
+    };
+    const next = applyStamped(older, success);
+    expect(next.recentRuns).toEqual([success, run(1)]);
+  });
+
+  test("a record no run has written lists nothing", () => {
+    expect(recentRunsOf(record())).toEqual([]);
+  });
+
+  test("an entry the write rules drop does not join the list", () => {
+    const stored = applyStamped(record(), run(2));
+    const unchanged = applyStamped(stored, run(1));
+    expect(unchanged.recentRuns).toEqual([run(2)]);
+  });
+
+  test("a schedule advance holding an entry adds it to the list", () => {
+    const stored = applyStamped(record(), run(1));
+    const missed: ManagedExchangeLastRun = {
+      at: "2026-07-14T17:00:00.000Z",
+      outcome: "missed",
+    };
+    const advanced = applyManagedExchangeScheduleAdvance(
+      stored,
+      {
+        schedule: { ...schedule, consecutiveMisses: 1 },
+        fromNextWindow: schedule.nextWindow,
+        fromConsecutiveMisses: schedule.consecutiveMisses,
+        lastRun: missed,
+      },
+      Date.parse("2026-12-31T00:00:00.000Z"),
+    );
+    expect(advanced.recentRuns).toEqual([missed, run(1)]);
+  });
+
+  test("a re-invite drops the last run but keeps the list", () => {
+    const stored = runnableManagedExchangeOrRefuse(
+      applyStamped(record(), run(1, { failureKind: "auth" })),
+    );
+    const rotated = applyManagedExchangeReinviteRotation(stored, {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+    });
+    expect(rotated).not.toHaveProperty("lastRun");
+    expect(rotated.recentRuns).toEqual([run(1, { failureKind: "auth" })]);
+  });
+
+  test("a configuration-only record holds no list", () => {
+    const configurationOnly = buildManagedExchangeRecord(
+      newExchange({ sharedSecret: undefined }),
+    );
+    expect(() =>
+      parseManagedExchangeRecord({
+        ...configurationOnly,
+        recentRuns: [run(1)],
+      }),
+    ).toThrow(/recentRuns/);
   });
 });
 

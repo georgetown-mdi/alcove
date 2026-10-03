@@ -149,6 +149,51 @@ export function scheduleCadenceLine(schedule: ManagedExchangeSchedule): string {
   return `A run window opens ${every} and stays open ${lifetimeNoun(schedule.windowSeconds)}.`;
 }
 
+/** An instant as the partner's copy of the schedule states it: UTC, to the
+ * minute, with seconds only where the instant has them. */
+function utcInstantLabel(ms: number): string {
+  const iso = new Date(ms).toISOString();
+  const clock = iso.endsWith(":00.000Z")
+    ? iso.slice(11, 16)
+    : iso.slice(11, 19);
+  return `${iso.slice(0, 10)} ${clock} UTC`;
+}
+
+/**
+ * The agreed schedule as plain text for the operator to send their partner:
+ * the next window in UTC, so each side converts it to their own clock rather
+ * than reading the other's, the repeat and the window length, and what the
+ * partner must have running while each window is open. It names no secret, no
+ * invitation, and nothing about the exchange's terms.
+ *
+ * @throws {RangeError} if the schedule's lattice is unusable (see
+ *   {@link scheduleDueness}).
+ */
+export function partnerScheduleText(
+  schedule: ManagedExchangeSchedule,
+  now: number,
+): string {
+  const next = nextManagedScheduleWindowAfter(schedule, now);
+  const every =
+    schedule.intervalDays === 1
+      ? "every day"
+      : `every ${String(schedule.intervalDays)} days`;
+  return [
+    "Schedule for our recurring Alcove exchange",
+    "",
+    `Next run window opens: ${utcInstantLabel(next.opensAtMs)}`,
+    `Repeats: ${every}`,
+    `Each window stays open: ${lifetimeNoun(schedule.windowSeconds)}`,
+    "",
+    "On your side, enter that window as the first one, converted to your own " +
+      "clock, with the same repeat and length. Then have your side running " +
+      "while each window is open: in a browser, the installed Alcove app left " +
+      "running with this exchange saved and its working folder chosen; on the " +
+      "command line, a scheduled alcove exchange run that starts inside the " +
+      "window.",
+  ].join("\n");
+}
+
 /**
  * What an INSTALLED app runtime does with an agreed schedule. The unattended
  * runner starts only there, so this is the one reading on which "runs on its own"

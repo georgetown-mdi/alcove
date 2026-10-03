@@ -31,6 +31,7 @@ import {
 } from "@psi/managed/managedExchangeStore";
 import {
   MAX_LABEL_LENGTH,
+  MAX_RECENT_RUNS,
   MAX_SCHEDULE_INTERVAL_DAYS,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
@@ -632,6 +633,24 @@ describe("field-scoped lastRun write", () => {
     // The lastRun read the freshest record: the rotated secret survives.
     expect(updated.sharedSecret).toBe(rotatedSecret);
     expect(updated.lastRun?.failureKind).toBe("storage");
+  });
+  test("each outcome joins the stored run history, newest first and bounded", async () => {
+    const created = await createRunnableExchange(newExchange());
+    const stamps = Array.from({ length: MAX_RECENT_RUNS + 2 }, (_, index) =>
+      new Date(Date.UTC(2026, 6, 1 + index, 9)).toISOString(),
+    );
+    for (const at of stamps)
+      await recordManagedExchangeLastRun(
+        created.id,
+        { at, outcome: "failed", failureKind: "transport" },
+        Date.parse(at),
+      );
+
+    const stored = await getManagedExchange(created.id);
+    expect(stored?.recentRuns?.map((run) => run.at)).toEqual(
+      stamps.slice(-MAX_RECENT_RUNS).reverse(),
+    );
+    expect(stored?.lastRun?.at).toBe(stamps.at(-1));
   });
 });
 

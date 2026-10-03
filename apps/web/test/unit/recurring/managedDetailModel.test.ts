@@ -13,12 +13,14 @@ import {
   connectionRows,
   lastRunMayHaveSentPayload,
   linkageTermsRows,
+  relayRegistrationOffered,
   runHistoryEntries,
   scheduleView,
 } from "@recurring/managedDetailModel";
 import {
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import { managedExchangeLapsed } from "@psi/managed/managedExpiry";
 
@@ -31,8 +33,8 @@ import type {
 import type { WebRTCExchangeLocator } from "@alcove/core";
 
 // The pure derivation behind the managed exchange detail view, tested in Node: the
-// read-only configuration rows (both sides), the run-history entries around the most
-// recent run, and their accurate disclosure/framing. The copy is the model's; the
+// read-only configuration rows (both sides), the run-history entries for the kept
+// recent runs, and their accurate disclosure/framing. The copy is the model's; the
 // components render it.
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
@@ -235,7 +237,7 @@ describe("SIDE_LABELS", () => {
   });
 });
 
-describe("runHistoryEntries renders around the most recent run", () => {
+describe("runHistoryEntries renders each kept run", () => {
   test("a never-run exchange has no entries", () => {
     expect(runHistoryEntries(record("inviter"))).toEqual([]);
   });
@@ -630,5 +632,169 @@ describe("scheduleView", () => {
     expect(view?.cadence).toMatch(/^A run window opens every day/);
     expect(view?.dueLine).toMatch(/^Run window open now, until /);
     expect(view?.attendanceNote).toMatch(/installed/i);
+  });
+});
+
+describe("runHistoryEntries lists the runs the record keeps", () => {
+  test("lists each kept run newest first, naming the failure kind it recorded", () => {
+    const recentRuns: Array<ManagedExchangeLastRun> = [
+      { at: "2026-07-03T09:00:00.000Z", outcome: "missed" },
+      {
+        at: "2026-07-02T09:00:00.000Z",
+        outcome: "failed",
+        failureKind: "input",
+      },
+      { at: "2026-07-01T09:00:00.000Z", outcome: "succeeded" },
+    ];
+    const entries = runHistoryEntries(
+      parseManagedExchangeRecord({
+        ...record("inviter"),
+        lastRun: recentRuns[0],
+        recentRuns,
+      }),
+    );
+    expect(entries.map((entry) => entry.at)).toEqual(
+      recentRuns.map((run) => run.at),
+    );
+    expect(entries.map((entry) => entry.outcome)).toEqual([
+      "Partner did not arrive",
+      "Failed",
+      "Succeeded",
+    ]);
+    expect(entries.map((entry) => entry.failure)).toEqual([
+      undefined,
+      "your input file could not be used",
+      undefined,
+    ]);
+  });
+
+  test.each([
+    { failureKind: "auth", failure: /authenticate your partner/ },
+    { failureKind: "transport", failure: /connection failed/ },
+    { failureKind: "storage", failure: /new secret could not be saved/ },
+    { failureKind: "custody-unreadable", failure: /stored copy/ },
+    { failureKind: "terms-shortfall", failure: /every agreed key/ },
+    { failureKind: "handed-off", failure: /handed off/ },
+    { failureKind: "too-large", failure: /too large to send/ },
+    { failureKind: "partner-set-too-large", failure: /partner's set/ },
+    { failureKind: "partner-refused-set", failure: /refused to send/ },
+    { failureKind: "terms-change", failure: /terms changed/ },
+    { failureKind: "cancelled", failure: /you stopped the run/ },
+  ] as const)("names a $failureKind failure", ({ failureKind, failure }) => {
+    const lastRun: ManagedExchangeLastRun = {
+      at: "2026-07-01T09:00:00.000Z",
+      outcome: "failed",
+      failureKind,
+    };
+    expect(
+      runHistoryEntries(record("inviter", { lastRun }))[0].failure,
+    ).toMatch(failure);
+  });
+});
+
+describe("scheduleView's copy for the partner", () => {
+  const NOW = Date.parse("2026-07-14T12:00:00.000Z");
+  const weekly: ManagedExchangeSchedule = {
+    anchor: "2026-07-07T14:30:00.000Z",
+    intervalDays: 7,
+    windowSeconds: 10_800,
+    nextWindow: "2026-07-14T14:30:00.000Z",
+    consecutiveMisses: 0,
+  };
+
+  test("states the next window in UTC, the repeat and the length, and what to have running", () => {
+    const view = scheduleView(
+      record("inviter", { schedule: weekly }),
+      true,
+      false,
+      NOW,
+    );
+    expect(view?.partnerText).toBe(
+      [
+        "Schedule for our recurring Alcove exchange",
+        "",
+        "Next run window opens: 2026-07-14 14:30 UTC",
+        "Repeats: every 7 days",
+        "Each window stays open: 3 hours",
+        "",
+        "On your side, enter that window as the first one, converted to your own clock, with the same repeat and length. Then have your side running while each window is open: in a browser, the installed Alcove app left running with this exchange saved and its working folder chosen; on the command line, a scheduled alcove exchange run that starts inside the window.",
+      ].join("\n"),
+    );
+  });
+
+  test("names the window after the one open now, with seconds where the anchor has them", () => {
+    const view = scheduleView(
+      record("inviter", {
+        schedule: {
+          ...weekly,
+          anchor: "2026-07-14T11:00:05.000Z",
+          intervalDays: 1,
+        },
+      }),
+      true,
+      false,
+      NOW,
+    );
+    expect(view?.partnerText).toContain(
+      "Next run window opens: 2026-07-15 11:00:05 UTC",
+    );
+    expect(view?.partnerText).toContain("Repeats: every day");
+  });
+
+  test("holds no secret, label, or connection detail", () => {
+    const stored = record("inviter", { schedule: weekly });
+    const text = scheduleView(stored, true, false, NOW)?.partnerText ?? "";
+    expect(text).not.toContain(stored.sharedSecret ?? "unreachable");
+    expect(text).not.toContain(stored.label);
+    expect(text).not.toContain(webrtcLocator.host);
+  });
+});
+
+describe("relayRegistrationOffered", () => {
+  const stored = record("inviter");
+
+  test("is withheld with no relay set in this browser and nothing enrolled", () => {
+    expect(relayRegistrationOffered(stored, { kind: "none" })).toBe(false);
+    expect(relayRegistrationOffered(stored, { kind: "unreadable" })).toBe(
+      false,
+    );
+  });
+
+  test("is withheld where this browser's relay names only STUN", () => {
+    expect(
+      relayRegistrationOffered(stored, {
+        kind: "set",
+        relay: { turn: [], stun: ["stun:stun.example.org:3478"] },
+      }),
+    ).toBe(false);
+  });
+
+  test("is offered where this browser's relay names a TURN url", () => {
+    expect(
+      relayRegistrationOffered(stored, {
+        kind: "set",
+        relay: { turn: ["turn:relay.example.org:3478"], stun: [] },
+      }),
+    ).toBe(true);
+  });
+
+  test("stays offered for an enrolled or pending exchange with no relay set", () => {
+    expect(
+      relayRegistrationOffered(
+        {
+          relayRegistrar: {
+            url: "https://relay.example.org:8443",
+            exchangeId: "riverbend-q3",
+          },
+        },
+        { kind: "none" },
+      ),
+    ).toBe(true);
+    expect(
+      relayRegistrationOffered(
+        { relayRegistrationPendingSince: "2026-07-01T09:00:00.000Z" },
+        { kind: "none" },
+      ),
+    ).toBe(true);
   });
 });

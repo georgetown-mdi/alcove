@@ -302,6 +302,11 @@ wire; there is no server-side coordination anywhere in the design.
 
 The cost of local-only entry is that each side types the same values by hand, so
 a mistyped cadence or window on one side produces windows that never overlap.
+Once one side has entered the schedule, the Run schedule section of its page
+offers it as plain text to send the partner: the next window in UTC, the repeat
+and the window length, and what the partner must have running during each
+window. It holds no secret and no invitation, and the partner converts the UTC
+instant to their own clock as they enter it.
 That failure is benign and self-announcing: it shows up as mutual missed windows
 (below), which the operators resolve out-of-band where they agreed the schedule
 in the first place -- the same channel, the same reconciliation as any other
@@ -1274,7 +1279,9 @@ A relay run from the reference deployment accepts only credentials minted from
 the relay key it holds for each exchange, and that key changes each time the
 shared secret rotates. When the relay in this browser's relay settings runs the
 Alcove relay registrar, enroll the exchange there once, under **Relay
-registration** on its page: the registrar's address, the exchange id to hold
+registration** on its page, which shows that section only while this browser's
+relay settings name a TURN relay, or the exchange is already enrolled or has a
+registration pending: the registrar's address, the exchange id to hold
 the key under, and the relay-owner token. The token is sent with that one
 request and kept nowhere. Leave it empty when the registrar already holds the
 exchange's current key, as after enrolling it from the command line.
@@ -2040,7 +2047,7 @@ its record.
 
 The marker names the exchange and nothing else, so finding which run it stands
 for takes two places, neither of them certain. The run history keeps only the
-most recent run, so a marker written for an earlier one is not named there. The
+last ten runs, so a marker written for an earlier one is not named there. The
 run also reported the failure to the browser's diagnostic log as it happened --
 the developer-tools console, whose detail
 [DEPLOYMENT.md](DEPLOYMENT.md#diagnosing-web-connection-failures) describes --
