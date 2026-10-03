@@ -25,8 +25,10 @@ import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
 import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
+import { discardFolderFor } from "./discardFolder";
 import { reattachedRunState } from "./reattachedRunState";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
+import { useJobFolder } from "./useJobFolder";
 
 import type { AvailableRecordOffer, RunOutputs } from "@psi/runOutputs";
 import type { AcceptableInvitation } from "@psi/acceptInvitation";
@@ -123,6 +125,12 @@ export function AcceptorExchangeSection({
     settled && outputs?.record === undefined,
   );
   const recordConfirm = untakenRecordConfirm(jobRecordOffer);
+  // The run's folder and what in it a discard deletes, for every confirm
+  // below that discards the run to name.
+  const discardFolder = discardFolderFor(
+    serverJob ? jobId : undefined,
+    useJobFolder(serverJob ? jobId : undefined, settled),
+  );
   // A failed browser run's record confirms nothing on recovery: the confirm
   // speaks of the console's folder, and the panel itself states what discards
   // this page's copy.
@@ -215,6 +223,7 @@ export function AcceptorExchangeSection({
               label="Try again"
               onAct={onTryAgain}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
           {/* The acceptor cannot mint a fresh invitation, so the fresh-start
@@ -232,6 +241,7 @@ export function AcceptorExchangeSection({
                 onAct={onAbandon}
                 to="/quick"
                 recordConfirm={recordConfirm}
+                folder={discardFolder}
               />
             )}
           {/* A prepare-time fault in this party's own settings: the acceptor
@@ -242,6 +252,7 @@ export function AcceptorExchangeSection({
               label="Back to your columns"
               onAct={onFixColumns}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
         </FailureAlert>
@@ -292,6 +303,7 @@ export function AcceptorExchangeSection({
         <AnotherExchangeFoot
           onNavigate={onAbandon}
           confirmBeforeLeave={serverJob}
+          folder={discardFolder}
         />
       )}
     </>

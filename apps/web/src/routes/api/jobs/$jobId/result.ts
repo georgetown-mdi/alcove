@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { jobEmptyResponse } from "@jobs/gate";
 import { jobFileDownloadResponse } from "@jobs/jobFileDownload";
 import { resultFileExists } from "@jobs/workdir";
@@ -10,9 +11,9 @@ import { resultFileExists } from "@jobs/workdir";
  *
  * Feature-gated and id-validated, served only after the job succeeded. The path is
  * the job's server-chosen output file inside its workdir -- never derived from
- * client input. Content-Type and Content-Disposition are set explicitly with a
- * fixed download name, and the nosniff and no-store headers are set. A job that
- * has not succeeded, or whose result is missing, is 404 rather than leaking
+ * client input. Content-Type and Content-Disposition are set explicitly, the
+ * download named as the file is on disk, and the nosniff and no-store headers
+ * are set. A job that has not succeeded, or whose result is missing, is 404 rather than leaking
  * whether an unfinished job exists.
  */
 export const Route = createFileRoute("/api/jobs/$jobId/result")({
@@ -31,7 +32,7 @@ export const Route = createFileRoute("/api/jobs/$jobId/result")({
 
         return jobFileDownloadResponse(view.outputPath, {
           contentType: "text/csv; charset=utf-8",
-          fileName: `result-${view.id}.csv`,
+          fileName: JOB_FILE_NAMES.output,
         });
       },
     },

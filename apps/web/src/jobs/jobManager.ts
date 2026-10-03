@@ -30,6 +30,7 @@ import {
   composeSftpConfigDocument,
 } from "./intentConfig";
 import { JOB_FILE_NAMES } from "./intentSchemas";
+import { readJobFolderContents } from "./jobFolder";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
 import {
@@ -101,6 +102,7 @@ import type {
   LoadedConfigurationResponse,
   OpenedMountedConfiguration,
 } from "./configLoad";
+import type { JobFolderView } from "./jobFolder";
 import type { JobHandoff } from "./handoff";
 import type { JobSftpServerEntry } from "./sftpServer";
 import type { RendezvousLeg } from "./jobRendezvous";
@@ -1426,6 +1428,22 @@ export class JobManager {
   getJobView(id: string): JobView | null {
     const record = this.getJob(id);
     return record !== undefined ? liveJobView(record) : null;
+  }
+
+  /**
+   * What a job's folder holds, for the exchange the console holds or for a
+   * folder a restart left behind under a valid id, or null when there is no such
+   * folder. The slot's own id while it is starting or deleted is null too: its
+   * folder belongs to a child that is not done with it. The leftover arm applies
+   * the same containment and real-directory guards the disk-only DELETE does.
+   */
+  async describeJobFolder(id: string): Promise<JobFolderView | null> {
+    const live = this.getJob(id) !== undefined;
+    if (!live && this.slotId() === id) return null;
+    const workdir = resolveWorkdir(this.dataRoot, id);
+    if (workdir === null) return null;
+    if (!(await workdirDirectoryExists(workdir))) return null;
+    return { live, contents: readJobFolderContents(workdir) };
   }
 
   /**
