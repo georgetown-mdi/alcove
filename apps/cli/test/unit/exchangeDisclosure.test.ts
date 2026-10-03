@@ -26,7 +26,10 @@ import type {
 import { consentRepresentationProbes } from "@alcove/core/testing";
 
 import { prepareDataset } from "../../src/commands/exchange";
-import { renderExchangeDisclosure } from "../../src/exchangeDisclosure";
+import {
+  lastRecordedDisclosureDigest,
+  renderExchangeDisclosure,
+} from "../../src/exchangeDisclosure";
 import { configureLogFile } from "../../src/util/logging";
 import {
   captureStdio,
@@ -231,6 +234,93 @@ test("a log file keeps the display at a level that drops diagnostics", async () 
   expect(kept).toContain(DISCLOSURE_HEADING);
   expect(kept).toContain("columns you will send (enforced):");
   expect(kept).toContain("    - diagnosis");
+});
+
+// --- A scheduled run whose display has not changed ----------------------------
+
+/**
+ * Prepare `spec` with `--log-file` at `logFile`, the sink installed around the
+ * run as a command handler installs it.
+ */
+async function prepareLogged(
+  spec: ExchangeDataSpec,
+  interactive: boolean,
+  logFile: string,
+): Promise<void> {
+  const sink = configureLogFile(logFile);
+  try {
+    expect(await prepare(spec, interactive, logFile)).toBe(undefined);
+  } finally {
+    sink.close();
+  }
+}
+
+function occurrences(text: string, fragment: string): number {
+  return text.split(fragment).length - 1;
+}
+
+test("an unattended run whose display matches the log's last one writes it to the log alone", async () => {
+  // Cron mails whatever reaches stderr: the same display every night teaches
+  // its owner to skip the mail, so only a change reaches it.
+  const logFile = path.join(dir, "run.log");
+  const spec = {
+    linkageTerms: localTerms,
+    metadata: metadataDisclosing(["diagnosis"]),
+  };
+  await prepareLogged(spec, false, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+
+  await prepareLogged(spec, false, logFile);
+  expect(promptWrites).toBe("");
+  const kept = fs.readFileSync(logFile, "utf8");
+  expect(occurrences(kept, DISCLOSURE_HEADING)).toBe(2);
+  expect(occurrences(kept, "Disclosure digest: sha256:")).toBe(2);
+});
+
+test("an unattended run whose display changed prints it again", async () => {
+  const logFile = path.join(dir, "run.log");
+  await prepareLogged(
+    { linkageTerms: localTerms, metadata: metadataDisclosing(["diagnosis"]) },
+    false,
+    logFile,
+  );
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+  expect(promptWrites).toContain("columns you will send (enforced):");
+});
+
+test("an attended run prints the display even when the log already holds it", async () => {
+  const logFile = path.join(dir, "run.log");
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  await prepareLogged({ linkageTerms: localTerms }, true, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+});
+
+test("a run whose log level keeps no copy prints the display every time", async () => {
+  // At error the log records none of the display, so writing it to the log
+  // alone would show it nowhere.
+  const logFile = path.join(dir, "run.log");
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  logLibrary.getLogger("exchange").setLevel("error");
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+});
+
+test("lastRecordedDisclosureDigest reads the last digest line, and only a whole log line", () => {
+  const logFile = path.join(dir, "run.log");
+  const first = "a".repeat(64);
+  const second = "b".repeat(64);
+  fs.writeFileSync(
+    logFile,
+    `[2026-10-01T02:00:00.000Z] [WARN] [exchange] Disclosure digest: sha256:${first}\n` +
+      `[2026-10-02T02:00:00.000Z] [WARN] [exchange] Disclosure digest: sha256:${second}\n` +
+      `  Disclosure digest: sha256:${first}\n` +
+      `[2026-10-02T02:00:01.000Z] [INFO] [exchange] Disclosure digest: sha256:${first}\n`,
+  );
+  expect(lastRecordedDisclosureDigest(logFile)).toBe(second);
+  expect(lastRecordedDisclosureDigest(path.join(dir, "absent.log"))).toBe(
+    undefined,
+  );
 });
 
 // --- The shapes the columns line takes ---------------------------------------

@@ -971,7 +971,7 @@ test.each(["ENXIO", "EINVAL"])(
     });
     expect(() => assertEventStreamFdOpen()).toThrow(UsageError);
     expect(() => assertEventStreamFdOpen()).toThrow(
-      /file descriptor 3 is not open for writing; spawn Alcove/,
+      /file descriptor 3 is not open for writing; from a shell, add 3>events\.ndjson /,
     );
   },
 );

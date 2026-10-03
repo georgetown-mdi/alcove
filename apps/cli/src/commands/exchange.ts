@@ -878,6 +878,7 @@ export async function prepareDataset(
     linkageTerms: resolved.linkageTerms,
     logFile,
     log,
+    unattended: !stdinAnswersPrompts(input),
   });
 
   const prepared = prepareForExchange(

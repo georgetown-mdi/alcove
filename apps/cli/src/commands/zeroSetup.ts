@@ -924,7 +924,12 @@ export async function handler(argv: Arguments): Promise<void> {
       // server. Placed after every check that reads this party's own files, so
       // a run refused from its own input shows no account of an exchange it
       // does not conduct.
-      displayZeroSetupDisclosure({ prepared, logFile, log });
+      displayZeroSetupDisclosure({
+        prepared,
+        logFile,
+        log,
+        unattended: !stdinAnswersPrompts(input),
+      });
       // Printed once the run has passed every check of its own inputs, so a
       // run refused for a usage fault does not carry it.
       log.warn(QUICK_EXCHANGE_TRUST_NOTICE);

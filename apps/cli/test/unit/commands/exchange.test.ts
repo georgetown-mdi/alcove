@@ -78,6 +78,7 @@ vi.mock("@alcove/core", async (importActual) => {
   return {
     ...actual,
     getLogger: (_name: string) => ({
+      getLevel: () => actual.getLogger("exchange-test").getLevel(),
       info: () => {},
       debug: () => {},
       trace: () => {},

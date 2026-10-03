@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,6 +16,7 @@ import {
 
 import {
   configureLogFile,
+  readLogFileTail,
   takeLogFileLossReport,
 } from "../../../src/util/logging";
 import { parseCommonBootstrapArgs } from "../../../src/optionDefinitions";
@@ -76,18 +78,26 @@ test("configureLogFile: a first-party block reaches the file on its own lines", 
     "the configuration file disagrees with the invitation:",
     '  - algorithm: existing "psi-c" vs required "psi"',
   ];
+  const stdio = captureStdio();
   const sink = configureLogFile(logPath);
   logLibrary.setDefaultLevel(logLibrary.levels.ERROR);
-  getLogger("logfile-test-block").error(
-    sanitizeErrorForDisplay(
-      keepFirstPartyLineBreaks(new UsageError(lines.join("\n")), lines),
-    ),
-  );
-  sink.close();
+  try {
+    getLogger("logfile-test-block").error(
+      sanitizeErrorForDisplay(
+        keepFirstPartyLineBreaks(new UsageError(lines.join("\n")), lines),
+      ),
+    );
+  } finally {
+    sink.close();
+    stdio.restore();
+  }
 
   const written = fs.readFileSync(logPath, "utf8").split("\n");
   expect(written[0].endsWith(lines[0])).toBe(true);
   expect(written[1]).toBe(lines[1]);
+  const mailed = stdio.stderrWrites.join("").split("\n");
+  expect(mailed[0].endsWith(lines[0])).toBe(true);
+  expect(mailed[1]).toBe(lines[1]);
 });
 
 test("configureLogFile: opens in append mode, preserving existing content", () => {
@@ -324,3 +334,89 @@ test("parseCommonBootstrapArgs: a repeated --log-file is a usage error naming th
     parseCommonBootstrapArgs(argv({ "log-file": ["a.log", "b.log"] })),
   ).toThrow("--log-file may be given only once");
 });
+
+// --- (c) what a scheduler mailing stderr receives ----------------------------
+
+test("configureLogFile: an error-level line reaches stderr as well as the file, and no other level does", () => {
+  // Cron mails stderr, so a failed run's error and next step must reach it
+  // even though every line goes to the file.
+  const logPath = path.join(tmpDir, "errors.log");
+  const { stderrWrites, restore } = captureStdio();
+  const sink = configureLogFile(logPath);
+  logLibrary.setDefaultLevel(logLibrary.levels.TRACE);
+  try {
+    const log = getLogger("logfile-test-errors");
+    log.trace("trace stays in the file");
+    log.debug("debug stays in the file");
+    log.info("info stays in the file");
+    log.warn("warn stays in the file");
+    log.error("the run failed; do this next");
+  } finally {
+    sink.close();
+    restore();
+  }
+  expect(stderrWrites.join("")).toMatch(
+    /^\[[^\]]+\] \[ERROR\] \[logfile-test-errors\] the run failed; do this next\n$/,
+  );
+  expect(fs.readFileSync(logPath, "utf8")).toContain(
+    "[ERROR] [logfile-test-errors] the run failed; do this next",
+  );
+});
+
+test("configureLogFile: a log file that is stderr itself gets each error line once", () => {
+  // `--log-file /dev/stderr` resolves to the descriptor stderr already holds;
+  // the descriptor identity is faked, since the runner owns this process's fd 2.
+  const logPath = path.join(tmpDir, "is-stderr.log");
+  const realFstat = fs.fstatSync;
+  const fstat = vi
+    .spyOn(fs, "fstatSync")
+    .mockImplementation(((fd: number) =>
+      Object.assign(realFstat(fd), { dev: 1, ino: 1 })) as typeof fs.fstatSync);
+  const { stderrWrites, restore } = captureStdio();
+  const sink = configureLogFile(logPath);
+  logLibrary.setDefaultLevel(logLibrary.levels.ERROR);
+  try {
+    getLogger("logfile-test-is-stderr").error("written once");
+  } finally {
+    sink.close();
+    restore();
+    fstat.mockRestore();
+  }
+  expect(stderrWrites.join("")).toBe("");
+  expect(fs.readFileSync(logPath, "utf8")).toContain("written once");
+});
+
+test("configureLogFile: --log-level silent copies nothing to stderr", () => {
+  const logPath = path.join(tmpDir, "silent.log");
+  const { stderrWrites, restore } = captureStdio();
+  const sink = configureLogFile(logPath);
+  logLibrary.setDefaultLevel(logLibrary.levels.SILENT);
+  try {
+    getLogger("logfile-test-silent").error("dropped by the level");
+  } finally {
+    sink.close();
+    restore();
+  }
+  expect(stderrWrites.join("")).toBe("");
+});
+
+test("readLogFileTail: a window short of the whole file starts at a whole line", () => {
+  const logPath = path.join(tmpDir, "tail.log");
+  fs.writeFileSync(logPath, "first line\nsecond line\nthird\n");
+  expect(readLogFileTail(logPath, 1024)).toBe(
+    "first line\nsecond line\nthird\n",
+  );
+  expect(readLogFileTail(logPath, 15)).toBe("third\n");
+  expect(readLogFileTail(path.join(tmpDir, "absent.log"), 1024)).toBe(
+    undefined,
+  );
+});
+
+test.skipIf(process.platform === "win32")(
+  "readLogFileTail: a FIFO named as the log file is not read",
+  () => {
+    const fifo = path.join(tmpDir, "log.fifo");
+    execFileSync("mkfifo", [fifo]);
+    expect(readLogFileTail(fifo, 1024)).toBe(undefined);
+  },
+);

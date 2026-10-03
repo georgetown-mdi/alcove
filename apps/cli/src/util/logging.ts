@@ -141,12 +141,12 @@ const stderrSinkAfterClose: DiagnosticSink = (_methodName, prefix, args) =>
  * core's per-level `console` routing.
  */
 function installLogSink(
-  writeLine: (line: string) => void,
+  writeLine: (line: string, methodName?: logLibrary.LogLevelNames) => void,
   onClose?: () => void,
 ): LogSink {
   const previousSink = getDiagnosticSink();
-  setDiagnosticSink((_methodName, prefix, args) =>
-    writeLine(util.format(prefix, ...args) + "\n"),
+  setDiagnosticSink((methodName, prefix, args) =>
+    writeLine(util.format(prefix, ...args) + "\n", methodName),
   );
   return {
     writePlain(line: string): void {
@@ -169,6 +169,10 @@ function installLogSink(
  * the terminal, returning a {@link LogSink} the caller closes after the
  * exchange. Omitting the flag leaves logging on the terminal untouched -- a
  * handler only calls this when `--log-file` was given.
+ *
+ * An error-level line is also written to stderr, so a scheduler that mails
+ * stderr reports a failed run's error and next step rather than nothing. The
+ * copy is skipped when the file is stderr itself.
  *
  * The redirect is core's process-wide {@link DiagnosticSink} (installed via
  * {@link installLogSink}), resolved at each log CALL, so it captures every
@@ -209,7 +213,7 @@ export function configureLogFile(logFilePath: string): LogSink {
   // (the Windows-path convention in CONTRIBUTING.md -- normalize backslashes
   // wherever a user can supply a local path) so a backslash or UNC form opens the
   // intended file.
-  const normalized = logFilePath.replace(/\\/g, "/");
+  const normalized = normalizeLogFilePath(logFilePath);
 
   let fd: number;
   try {
@@ -254,8 +258,10 @@ export function configureLogFile(logFilePath: string): LogSink {
 
   const loss: LogFileLoss = { path: normalized, lost: 0, reported: 0 };
   activeLogFileLoss = loss;
+  const copyErrorsToStderr = !isSameFileAsStderr(fd);
   return installLogSink(
-    (line) => {
+    (line, methodName) => {
+      if (methodName === "error" && copyErrorsToStderr) writeStderrLine(line);
       try {
         writeAll(fd, line);
       } catch (err) {
@@ -287,6 +293,76 @@ export function configureLogFile(logFilePath: string): LogSink {
       }
     },
   );
+}
+
+// A `--log-file` naming stderr itself (`/dev/stderr`, or a path stderr is
+// redirected to) would print each error-level line twice.
+function isSameFileAsStderr(fd: number): boolean {
+  try {
+    const file = fs.fstatSync(fd);
+    const stderr = fs.fstatSync(2);
+    return file.dev === stderr.dev && file.ino === stderr.ino;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The `--log-file` path as {@link configureLogFile} opens it, with Windows
+ * backslashes folded to forward slashes.
+ */
+export function normalizeLogFilePath(logFilePath: string): string {
+  return logFilePath.replace(/\\/g, "/");
+}
+
+/**
+ * The last `maxBytes` of the regular file at `logFilePath`, decoded as UTF-8
+ * and starting at the first whole line inside that window; `undefined` when
+ * the path is not a regular file or cannot be read. Opened non-blocking and
+ * checked on the descriptor before any read, so a FIFO or device named as the
+ * log file is never read from.
+ */
+export function readLogFileTail(
+  logFilePath: string,
+  maxBytes: number,
+): string | undefined {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(
+      normalizeLogFilePath(logFilePath),
+      fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0),
+    );
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return undefined;
+    const length = Math.min(stat.size, maxBytes);
+    const start = stat.size - length;
+    const buf = Buffer.alloc(length);
+    let offset = 0;
+    while (offset < length) {
+      const read = fs.readSync(
+        fd,
+        buf,
+        offset,
+        length - offset,
+        start + offset,
+      );
+      if (read === 0) break;
+      offset += read;
+    }
+    const text = buf.subarray(0, offset).toString("utf8");
+    if (start === 0) return text;
+    const firstBreak = text.indexOf("\n");
+    return firstBreak === -1 ? "" : text.slice(firstBreak + 1);
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined)
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Best-effort: the read result does not depend on the close.
+      }
+  }
 }
 
 interface LogFileLoss {
