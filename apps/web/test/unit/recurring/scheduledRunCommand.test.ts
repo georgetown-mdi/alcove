@@ -124,9 +124,35 @@ describe("the console hand-off's command lines", () => {
     expect(tokens).toContain("type=bind,src=/srv/it's here,dst=/srv/it's here");
   });
 
+  test.each(["/srv/$HOME dir", "/srv/it's here"])(
+    "a path %s stays one argument in the installed cron command",
+    (path) => {
+      const line = installedCronLine({
+        ...SOURCE,
+        argv: [
+          "alcove",
+          "exchange",
+          `--outbound-path=${path}`,
+          "in.csv",
+          "r.csv",
+        ],
+      });
+      const command = line
+        .slice(line.indexOf("&& ") + 3)
+        .replaceAll("\\%", "%");
+      const tokens = execFileSync(
+        "/bin/sh",
+        ["-c", `printf '%s\\n' ${command}`],
+        { encoding: "utf8" },
+      ).split("\n");
+      expect(tokens).toContain(`--outbound-path=${path}`);
+    },
+  );
+
   test("a path with a comma, or under /work, leaves out every Docker line", () => {
     for (const [path, reason] of [
       ["/srv/a,b", "comma"],
+      ['/srv/a"b', "quote"],
       ["/work", "workFolder"],
       ["/work/shared", "workFolder"],
     ] as const) {

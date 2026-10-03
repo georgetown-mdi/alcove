@@ -207,6 +207,18 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(relative.bindPaths).toEqual([
       { path: "/srv/exchange/drop", readOnly: false },
     ]);
+    const rootLevel = buildJobHandoff(validIntent(), undefined, {
+      credentialPasted: false,
+      filedropSplit: false,
+      mountedDocument: {
+        ...mountedDocument,
+        signing: { mode: "session-derived", receiptOutput: "/receipt.json" },
+      },
+    });
+    expect(rootLevel.bindPaths).toEqual([
+      { path: "/srv/exchange/drop", readOnly: false },
+      { path: "/", readOnly: false },
+    ]);
   });
 
   test("an sftp exchange placeholders a private-key passphrase distinctly", () => {
@@ -427,6 +439,10 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       `--server-password=${HANDOFF_CREDENTIAL_PATH_PLACEHOLDER}`,
     );
     expect(line).not.toContain(CONTAINER_CREDENTIAL_PATH);
+    expect(line).not.toContain(CONTAINER_CREDENTIAL_PATH.slice(1));
+    expect(handoff.bindPaths).toEqual([
+      { path: HANDOFF_CREDENTIAL_PATH_PLACEHOLDER.slice(1), readOnly: true },
+    ]);
     expect(argv.slice(-2)).toEqual(["input.csv", "results.csv"]);
   });
 
@@ -893,8 +909,12 @@ describe("GET /api/jobs/:jobId/handoff", () => {
     const response = await getHandoff(id);
     const body = await response.text();
     expect(body).not.toContain(credentialRef);
+    expect(body).not.toContain(credentialRef.slice(1));
     const parsed = parseHandoff(JSON.parse(body));
     expect(parsed?.mode).toBe("zeroSetup");
+    expect(parsed?.bindPaths).toEqual([
+      { path: HANDOFF_CREDENTIAL_PATH_PLACEHOLDER.slice(1), readOnly: true },
+    ]);
     const argv =
       parsed?.template.kind === "command" ? parsed.template.argv : [];
     const line = shellJoinCommand(argv);

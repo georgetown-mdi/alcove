@@ -363,10 +363,12 @@ function credentialBindPaths(
   );
 }
 
-/** The folder holding `file`, or undefined for no file or a bare name. */
+/** The folder holding `file`: `/` for a root-level file, undefined for no file
+ * or a bare name. */
 function parentFolder(file: string | undefined): string | undefined {
   const cut = file?.lastIndexOf("/") ?? -1;
-  return file === undefined || cut <= 0 ? undefined : file.slice(0, cut);
+  if (file === undefined || cut < 0) return undefined;
+  return cut === 0 ? "/" : file.slice(0, cut);
 }
 
 /** The stated absolute paths, each once, read-write where any use writes it. */
