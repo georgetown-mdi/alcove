@@ -8,6 +8,7 @@ import {
   appendChunkElements,
   buildRequest,
   buildResponse,
+  buildSetup,
   chunkRangesOfSize,
   mergeAssociationChunks,
   mergeCountOnlyResponseChunks,
@@ -16,8 +17,14 @@ import {
   serializeResponse,
   serializeSetup,
 } from "./psiChunks";
+import {
+  assertStrictlyAscending,
+  WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT,
+  WASM_MATCH_BYTES_PER_SETUP_ELEMENT,
+  matchSetupSliceElements,
+} from "./psiMatchSlices";
 
-import type { PsiChunkRange } from "./psiChunks";
+import type { PsiAssociationChunk, PsiChunkRange } from "./psiChunks";
 import type { Config } from "../types";
 
 // The deserialized server setup the joiner holds between receiving it and matching
@@ -107,10 +114,9 @@ export function valuesContributedExactlyOnce(
  * its settle report states. A count and nothing else crosses this boundary: no
  * element, no value, no index.
  *
- * One operation reports nothing at all:
- * {@link PsiEngine.computeIntersectionCardinality} runs as a single call
- * whatever its size, so a count-only round's match has a start and a finish
- * and no figure in between.
+ * {@link PsiEngine.computeIntersectionCardinality} never splits the
+ * response, so it reports only between the setup slices a memory budget
+ * splits its match into, and nothing at all when the match is one call.
  */
 export type PsiProcessedElementsReporter = (processed: number) => void;
 
@@ -192,8 +198,10 @@ export interface PsiEngine {
    * preceding {@link receiveServerSetup} -- no identifier, no pairing, no matched
    * position. Client role; throws if no setup is held. Count-only mode only: an
    * identifier-revealing engine refuses, so the disclosure a round produces stays
-   * the one its key was created for. Runs as one library call at every size, so
-   * it is the one operation reporting no processed count while it runs.
+   * the one its key was created for. The response is never split: the match
+   * runs as one library call, or under a memory budget as one call per setup
+   * slice against the whole response, reporting a processed count only
+   * between slices.
    */
   computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number>;
   /**
@@ -215,8 +223,22 @@ export interface PsiEngine {
   dispose(): void;
 }
 
-/** Settings only a test varies; exported so the public signatures that take it name a public type. */
+/** Settings for an {@link InProcessPsiEngine}; the worker entry points pass them through {@link ./psiWorkerEngine.servePsiWorker}. */
 export interface InProcessPsiEngineOptions {
+  /**
+   * The engine memory one match call is sized to, in bytes: the held setup is
+   * matched in contiguous slices small enough that each call fits
+   * (psiMatchSlices.ts). Left out, every match takes the whole setup in one
+   * call, which is what the native addon runs.
+   */
+  readonly matchMemoryBudgetBytes?: number;
+  /**
+   * @internal
+   *
+   * The setup slice size each match splits at, in place of the size the
+   * memory budget derives.
+   */
+  readonly setupSliceElements?: number;
   /**
    * @internal
    *
@@ -266,6 +288,8 @@ export class InProcessPsiEngine implements PsiEngine {
   // watches (see observeProcessedElements).
   private onProcessed: PsiProcessedElementsReporter | undefined;
   private readonly chunkElements: number | undefined;
+  private readonly matchMemoryBudgetBytes: number | undefined;
+  private readonly setupSliceElements: number | undefined;
 
   constructor(
     library: PSILibrary,
@@ -284,6 +308,8 @@ export class InProcessPsiEngine implements PsiEngine {
     this.id = id;
     this.revealsIdentifiers = modeRevealsIdentifiers(mode);
     this.chunkElements = options.chunkElements;
+    this.matchMemoryBudgetBytes = options.matchMemoryBudgetBytes;
+    this.setupSliceElements = options.setupSliceElements;
     // Generate the fresh secret key for this exchange, held inside the
     // library's server / client object. An unresolved ("either") role
     // creates neither; the role-guarded methods below then reject.
@@ -304,6 +330,42 @@ export class InProcessPsiEngine implements PsiEngine {
     return this.chunkElements === undefined
       ? psiChunkRanges(total)
       : chunkRangesOfSize(total, this.chunkElements);
+  }
+
+  // The setup slices a match over `setupCount` setup elements runs in, beside
+  // `responseElementsPerCall` response elements a call: one range covering
+  // the whole setup unless a budget or a test sets a smaller slice.
+  private setupSlicesFor(
+    setupCount: number,
+    responseElementsPerCall: number,
+  ): PsiChunkRange[] {
+    const wholeSetup = [{ start: 0, end: setupCount }];
+    const budget = this.matchMemoryBudgetBytes;
+    if (
+      this.setupSliceElements === undefined &&
+      (budget === undefined ||
+        setupCount * WASM_MATCH_BYTES_PER_SETUP_ELEMENT +
+          responseElementsPerCall * WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT <=
+          budget)
+    )
+      return wholeSetup;
+    const sliceElements =
+      this.setupSliceElements ??
+      matchSetupSliceElements(responseElementsPerCall, budget!);
+    if (sliceElements >= setupCount) return wholeSetup;
+    return chunkRangesOfSize(setupCount, sliceElements);
+  }
+
+  // The held setup's elements, refused unless strictly ascending: a sliced
+  // match equals the single call only over a setup no element of which
+  // appears in two slices, and every match refuses the same setups whatever
+  // its size.
+  private ascendingSetupElements(
+    setup: DeserializedServerSetup,
+  ): Array<Uint8Array> {
+    const elements = setup.getRaw()!.getEncryptedElementsList_asU8();
+    assertStrictlyAscending(elements, this.id);
+    return elements;
   }
 
   // Runs `maskChunk` over each range in turn, reporting the running processed
@@ -523,8 +585,27 @@ export class InProcessPsiEngine implements PsiEngine {
       "computeAssociationTable",
       "identifier-revealing",
     );
+    const setupElements = this.ascendingSetupElements(setup);
     const response = this.library.response.deserializeBinary(responseBytes);
-    const ranges = this.rangesFor(response.getEncryptedElementsList().length);
+    const responseCount = response.getEncryptedElementsList().length;
+    const ranges = this.rangesFor(responseCount);
+    const slices = this.setupSlicesFor(
+      setupElements.length,
+      ranges.reduce(
+        (largest, range) => Math.max(largest, range.end - range.start),
+        0,
+      ),
+    );
+    if (slices.length > 1)
+      return Promise.resolve(
+        this.slicedAssociationTable(
+          client,
+          setupElements,
+          response,
+          ranges,
+          slices,
+        ),
+      );
     if (ranges.length === 1) {
       const table = client.getAssociationTable(setup, response);
       return Promise.resolve([table[0], table[1]]);
@@ -547,18 +628,84 @@ export class InProcessPsiEngine implements PsiEngine {
     );
   }
 
+  // Each setup slice against each response chunk, one library call apiece,
+  // reporting between calls a count scaled from the k * R call units to the R
+  // response elements the operation's settle report states.
+  private slicedAssociationTable(
+    client: PSIClient,
+    setupElements: ReadonlyArray<Uint8Array>,
+    response: ReturnType<PSILibrary["response"]["deserializeBinary"]>,
+    ranges: ReadonlyArray<PsiChunkRange>,
+    slices: ReadonlyArray<PsiChunkRange>,
+  ): [Array<number>, Array<number>] {
+    const responseCount = ranges[ranges.length - 1]!.end;
+    const responseElements = response.getEncryptedElementsList_asU8();
+    const responseChunks =
+      ranges.length === 1
+        ? [response]
+        : ranges.map((range) =>
+            buildResponse(
+              this.library,
+              responseElements.slice(range.start, range.end),
+            ),
+          );
+    const chunks: Array<PsiAssociationChunk> = [];
+    for (let s = 0; s < slices.length; s += 1) {
+      const slice = slices[s]!;
+      const sliceSetup = buildSetup(
+        this.library,
+        setupElements.slice(slice.start, slice.end),
+      );
+      for (let r = 0; r < ranges.length; r += 1) {
+        const table = client.getAssociationTable(
+          sliceSetup,
+          responseChunks[r]!,
+        );
+        chunks.push({
+          start: ranges[r]!.start,
+          partnerStart: slice.start,
+          localIndices: table[0]!,
+          partnerIndices: table[1]!,
+        });
+        if (s < slices.length - 1 || r < ranges.length - 1)
+          this.onProcessed?.(
+            Math.floor((s * responseCount + ranges[r]!.end) / slices.length),
+          );
+      }
+    }
+    return mergeAssociationChunks(chunks);
+  }
+
   computeIntersectionCardinality(responseBytes: Uint8Array): Promise<number> {
     const { client, setup } = this.beginMatch(
       "computeIntersectionCardinality",
       "count-only",
     );
-    // One call over the whole response, never split, so this step reports no
-    // processed count: the library deduplicates the response it is handed
-    // before sizing the intersection, and the response is the PARTNER's, so a
-    // sum over chunks counts a value it repeated across a chunk boundary once
-    // per chunk (docs/spec/PROTOCOL.md, the count-only match).
+    // The response is never split: the library deduplicates the response it
+    // is handed before sizing the intersection, and the response is the
+    // PARTNER's, so a sum over response chunks counts a value it repeated
+    // across a chunk boundary once per chunk (docs/spec/PROTOCOL.md, the
+    // count-only match). Setup slices of a strictly ascending setup are
+    // disjoint, so each call sees the whole response and the counts add.
+    const setupElements = this.ascendingSetupElements(setup);
     const response = this.library.response.deserializeBinary(responseBytes);
-    return Promise.resolve(client.getIntersectionSize(setup, response));
+    const responseCount = response.getEncryptedElementsList().length;
+    const slices = this.setupSlicesFor(setupElements.length, responseCount);
+    if (slices.length === 1)
+      return Promise.resolve(client.getIntersectionSize(setup, response));
+    let size = 0;
+    for (let s = 0; s < slices.length; s += 1) {
+      const slice = slices[s]!;
+      size += client.getIntersectionSize(
+        buildSetup(this.library, setupElements.slice(slice.start, slice.end)),
+        response,
+      );
+      if (s < slices.length - 1)
+        this.onProcessed?.(
+          Math.floor((responseCount * (s + 1)) / slices.length),
+        );
+    }
+    return Promise.resolve(size);
   }
 
   dispose(): void {

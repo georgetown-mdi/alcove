@@ -8,7 +8,11 @@ import {
   ConnectionError,
   createMessagePipe,
 } from "../../src/connection/messageConnection";
-import type { PsiEngine } from "../../src/psi/psiEngine";
+import { InProcessPsiEngine } from "../../src/psi/psiEngine";
+import type {
+  InProcessPsiEngineOptions,
+  PsiEngine,
+} from "../../src/psi/psiEngine";
 import { isNamedDiagnosis } from "../../src/errors";
 import {
   WorkerPsiEngine,
@@ -32,12 +36,14 @@ const psiLibrary = await PSI();
 function inProcessWorkerEngine(
   role: Config["role"],
   id: string,
+  options: InProcessPsiEngineOptions = {},
 ): WorkerPsiEngine {
   let deliver: (response: PsiWorkerResponse) => void = () => {};
   const dispatch = servePsiWorker(
     psiLibrary,
     { role, id, mode: "identifier-revealing" },
     (response) => deliver(structuredClone(response)),
+    options,
   );
   const handle: PsiWorkerHandle = {
     postMessage: (request) => dispatch(structuredClone(request)),
@@ -337,4 +343,46 @@ test("a second concurrent call is rejected as a lockstep violation", async () =>
   // A caller bug on this side, so the frame boundary above states it rather
   // than re-labeling it a decode failure.
   expect(isNamedDiagnosis(failure)).toBe(true);
+});
+
+test("a worker serves its engine options: a setup-sliced match equals the in-process one", async () => {
+  const values = Array.from({ length: 200 }, (_, index) => `v-${index}`);
+  const joinerValues = values.map((value, index) =>
+    index % 2 === 0 ? value : `joiner-only-${index}`,
+  );
+  const starter = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "starter",
+    "identifier-revealing",
+  );
+  const sliced = inProcessWorkerEngine("joiner", "sliced", {
+    setupSliceElements: 40,
+  });
+  const whole = new InProcessPsiEngine(
+    psiLibrary,
+    "joiner",
+    "whole",
+    "identifier-revealing",
+  );
+  const ticks: Array<number> = [];
+  sliced.observeProcessedElements((processed) => ticks.push(processed));
+  try {
+    const { setup } = await starter.createServerSetup(values);
+    const match = async (joiner: PsiEngine) => {
+      const response = await starter.processClientRequest(
+        await joiner.createClientRequest(joinerValues),
+      );
+      await joiner.receiveServerSetup(setup);
+      return joiner.computeAssociationTable(response);
+    };
+    const expected = await match(whole);
+    expect(expected[0]).toHaveLength(100);
+    expect(await match(sliced)).toStrictEqual(expected);
+    expect(ticks).toStrictEqual([40, 80, 120, 160]);
+  } finally {
+    starter.dispose();
+    sliced.dispose();
+    whole.dispose();
+  }
 });

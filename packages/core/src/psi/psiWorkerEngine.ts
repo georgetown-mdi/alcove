@@ -284,7 +284,7 @@ export function servePsiWorker(
   library: PSILibrary,
   init: PsiWorkerInit,
   post: (response: PsiWorkerResponse) => void,
-  /** @internal Settings only a test varies; see {@link InProcessPsiEngineOptions}. */
+  /** The engine's settings; a worker entry point passes {@link ./psiMatchSlices.psiEngineOptionsForBackend} for its backend. */
   options: InProcessPsiEngineOptions = {},
 ): (request: PsiWorkerRequest) => void {
   const engine = new InProcessPsiEngine(

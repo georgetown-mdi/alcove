@@ -20,10 +20,12 @@ import {
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
+import { isNamedDiagnosis } from "../../src/errors";
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { recordingConnection } from "../utils/recordingConnection";
 
@@ -363,7 +365,8 @@ test("a partner contributing one value twice is refused by the round's own table
   // round whose association table names one position twice is refused where the
   // table is validated, so a partner that does not deduplicate cannot widen the
   // exchange past the resolver either. Driven on the primitive, since no linkViaPSI
-  // cardinality contributes a value twice.
+  // cardinality contributes a value twice, against a joiner that skips the setup
+  // order check so the ambiguous table reaches the starter's check.
   const [starterConn, joinerConn] = createMessagePipe();
   const starterRound = makeParticipant("starter")
     .identifyIntersection(starterConn, ["V", "V", "W"])
@@ -371,7 +374,7 @@ test("a partner contributing one value twice is refused by the round's own table
       (table) => table,
       (err: unknown) => err,
     );
-  const joinerRound = makeParticipant("joiner")
+  const joinerRound = setupOrderUncheckedJoiner(psiLibrary)
     .identifyIntersection(joinerConn, ["V", "W"])
     .then(
       (table) => table,
@@ -389,6 +392,36 @@ test("a partner contributing one value twice is refused by the round's own table
   // ambiguous table and would otherwise be the one to resolve it, takes no
   // matches from it either.
   expect(joinerOutcome).toBeInstanceOf(Error);
+});
+
+test("a partner setup holding one value twice is refused before the joiner's match", async () => {
+  // The joiner's first line against the same partner: its setup holds "V" twice,
+  // so it is not strictly ascending, and every match refuses it before any table
+  // is computed (docs/spec/PROTOCOL.md, every match refuses a setup that is not
+  // strictly ascending). The starter is released by the joiner closing its end.
+  const [starterConn, joinerConn] = createMessagePipe();
+  const starterRound = makeParticipant("starter")
+    .identifyIntersection(starterConn, ["V", "V", "W"])
+    .then(
+      (table) => table,
+      (err: unknown) => err,
+    );
+  const joinerOutcome = await makeParticipant("joiner")
+    .identifyIntersection(joinerConn, ["V", "W"])
+    .then(
+      (table) => table,
+      (err: unknown) => err,
+    );
+  await joinerConn.close();
+  const starterOutcome = await starterRound;
+
+  expect(joinerOutcome).toBeInstanceOf(Error);
+  expect((joinerOutcome as Error).constructor).toBe(Error);
+  expect((joinerOutcome as Error).message).toBe(
+    "client protocol error: PSI server setup is not in strictly ascending element order",
+  );
+  expect(isNamedDiagnosis(joinerOutcome)).toBe(true);
+  expect(starterOutcome).toBeInstanceOf(Error);
 });
 
 // --- the resolver, end to end -------------------------------------------------
@@ -430,7 +463,9 @@ const attributableMatches: StarterRoundReport = (joinerPositions) => {
 // variant the joiner's resolver exists for. No cardinality produces such a party,
 // so it is played by hand from the PSI primitives -- identifyIntersection's
 // starter branch without the association-table check that refuses the ambiguity
-// upstream, then the two mapped-element legs a starter sends first.
+// upstream, then the two mapped-element legs a starter sends first. Every match
+// refuses its setup, which is not strictly ascending, so the joiner it plays
+// against skips that order check to reach the resolver behind it.
 async function runNonConformingStarter(
   conn: MessageConnection,
   values: Array<string>,
@@ -481,7 +516,7 @@ async function runAgainstNonConformingStarter(
   ).catch(() => undefined);
   const outcome = await linkViaPSI(
     { cardinality: "many-to-one" },
-    makeParticipant("joiner"),
+    setupOrderUncheckedJoiner(psiLibrary),
     joinerConn,
     joinerKeys,
     fanOutFreeBounds(joinerKeys.length, starterValues.length),
@@ -1162,7 +1197,7 @@ async function runManyKeysAgainstNonConformingStarter(
 
   const outcome = await linkViaPSI(
     { cardinality: "many-to-one" },
-    makeParticipant("joiner"),
+    setupOrderUncheckedJoiner(psiLibrary),
     joinerConn,
     joinerKeys,
     fanOutFreeBounds(joinerKeys.length, starterColumns[0].length),
