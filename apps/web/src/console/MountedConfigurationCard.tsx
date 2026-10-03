@@ -39,7 +39,7 @@ import type {
  * copy lives; this holds the rendering and the live region. The polite region
  * announces the state's own heading alone -- the notices stay in reading order
  * below it -- and each visible Alert takes `role="presentation"` to displace
- * Mantine's `role="alert"` default, which would announce the same text twice.
+ * the Alert's live-region default, which would announce the same text twice.
  *
  * The refusal text is the console's own, composed around setting names taken
  * from the operator's file, so it is escaped once here at the sink it is

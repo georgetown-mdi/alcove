@@ -9,6 +9,8 @@ import {
 } from "@tabler/icons-react";
 import { Dropzone } from "@mantine/dropzone";
 
+import { alertRoleFor } from "@theme";
+
 import {
   deriveOurIdColumn,
   getLogger,
@@ -237,6 +239,7 @@ function ParseAlert({ title, message }: { title: string; message: string }) {
   }, [message]);
   return (
     <Alert
+      role="alert"
       color="red"
       title={title}
       icon={<IconAlertCircle aria-hidden />}
@@ -676,6 +679,7 @@ export function VerifyReceiptScreen() {
       <div ref={verdictRef} tabIndex={-1} data-testid="verdict">
         {verifyError !== undefined && (
           <Alert
+            role="alert"
             color="red"
             title="Verification could not run"
             icon={<IconAlertCircle aria-hidden />}
@@ -688,6 +692,7 @@ export function VerifyReceiptScreen() {
           <Stack gap="sm" mt="md">
             <Alert
               color={TONE_COLOR[verdict.headline.tone]}
+              role={alertRoleFor(TONE_COLOR[verdict.headline.tone])}
               icon={toneIcon(verdict.headline.tone)}
               title={verdict.headline.title}
             >
@@ -723,6 +728,7 @@ export function VerifyReceiptScreen() {
           <Stack gap="sm" mt="md">
             <Alert
               color={TONE_COLOR[signedVerdict.headline.tone]}
+              role={alertRoleFor(TONE_COLOR[signedVerdict.headline.tone])}
               icon={toneIcon(signedVerdict.headline.tone)}
               title={signedVerdict.headline.title}
             >

@@ -283,7 +283,12 @@ export function ManagedRelayRegistration({
         </p>
       )}
       {outcome?.kind === "failed" && (
-        <Alert color="red" title={FAILURE_TITLE[outcome.action]} mt="sm">
+        <Alert
+          role="alert"
+          color="red"
+          title={FAILURE_TITLE[outcome.action]}
+          mt="sm"
+        >
           {outcome.message}
         </Alert>
       )}

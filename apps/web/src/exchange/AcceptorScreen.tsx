@@ -18,6 +18,8 @@ import {
 import { Dropzone } from "@mantine/dropzone";
 import { IconAlertCircle } from "@tabler/icons-react";
 
+import { alertRoleFor } from "@theme";
+
 import {
   deriveAcceptedLinkageTerms,
   getLogger,
@@ -1178,16 +1180,20 @@ export function AcceptorScreen() {
             moves focus to the terms, the block, or the error alert. */}
         {decode.status === "pending" && <p>Reading your invitation...</p>}
         {decode.status === "error" && (
-          <Alert
-            color="red"
-            icon={<IconAlertCircle aria-hidden />}
-            title="Cannot accept this invitation"
-            ref={errorRef}
-            tabIndex={-1}
-            style={{ whiteSpace: "pre-line" }}
-          >
-            <DecodeRefusalBody refusal={decode.refusal} />
-          </Alert>
+          <>
+            <h1>Accept an invitation</h1>
+            <Alert
+              role="alert"
+              color="red"
+              icon={<IconAlertCircle aria-hidden />}
+              title="Cannot accept this invitation"
+              ref={errorRef}
+              tabIndex={-1}
+              style={{ whiteSpace: "pre-line" }}
+            >
+              <DecodeRefusalBody refusal={decode.refusal} />
+            </Alert>
+          </>
         )}
         {decode.status === "ready" && step === "review" && (
           <>
@@ -1213,6 +1219,7 @@ export function AcceptorScreen() {
             {reviewBlock !== undefined ? (
               <Alert
                 color={reviewBlock.color}
+                role={alertRoleFor(reviewBlock.color)}
                 icon={<IconAlertCircle aria-hidden />}
                 title={reviewBlock.title}
                 ref={reviewBlockRef}
@@ -1443,6 +1450,7 @@ export function AcceptorScreen() {
             )}
             {fieldErrors.file === true && (
               <Alert
+                role="alert"
                 color="red"
                 title="Choose a data file"
                 icon={<IconAlertCircle aria-hidden />}
@@ -1455,6 +1463,7 @@ export function AcceptorScreen() {
             )}
             {parseAlert !== undefined && (
               <Alert
+                role="alert"
                 color="red"
                 title={parseAlert.title}
                 icon={<IconAlertCircle aria-hidden />}

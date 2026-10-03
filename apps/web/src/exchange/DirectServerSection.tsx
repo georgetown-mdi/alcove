@@ -243,6 +243,7 @@ export function DirectServerSection({
 
       {splitDirectoryProblem !== undefined && (
         <Alert
+          role="alert"
           color="red"
           icon={<IconAlertTriangle aria-hidden />}
           title="This connection needs retain mode"

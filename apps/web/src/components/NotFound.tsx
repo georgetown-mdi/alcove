@@ -12,6 +12,7 @@ export function NotFound({ children }: { children?: ReactNode }) {
   return (
     <AppPage>
       <Stack component="main" gap="sm" p="xl">
+        <h1>Page not found</h1>
         {children ?? (
           <Text c="dimmed">The page you are looking for does not exist.</Text>
         )}

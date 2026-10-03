@@ -1526,6 +1526,7 @@ export function InvitationTerms({
                 whether or not this invitation admits a control. */}
               {acceptorDeduplicate?.refusal !== undefined && (
                 <Alert
+                  role="alert"
                   color="red"
                   icon={<IconAlertCircle aria-hidden />}
                   title="These two settings cannot run together"

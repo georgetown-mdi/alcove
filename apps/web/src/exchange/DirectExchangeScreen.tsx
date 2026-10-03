@@ -344,6 +344,7 @@ export function DirectExchangeScreen() {
             )}
             {fileRefusal !== undefined && (
               <Alert
+                role="alert"
                 color="red"
                 icon={<IconAlertCircle aria-hidden />}
                 title={fileRefusal.title}

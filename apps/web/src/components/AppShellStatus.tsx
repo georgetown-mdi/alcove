@@ -45,9 +45,9 @@ function useAppShellUpdateReady(): boolean {
  * ANNOUNCING. The polite region lives as long as the shell, holding nothing in
  * the ordinary case, so a strip that appears mid-session reaches an assistive
  * technology as a change to a region it is already observing rather than as a
- * freshly inserted node. Each Alert takes `role="presentation"` to displace Mantine's
- * `role="alert"` default, which would announce the same strip a second time and
- * interrupt.
+ * freshly inserted node. Each Alert takes `role="presentation"` to displace the
+ * Alert's live-region default, which would announce the same strip a second
+ * time.
  *
  * Nothing is shown when the browser is online and no update is waiting, which is
  * the ordinary case.

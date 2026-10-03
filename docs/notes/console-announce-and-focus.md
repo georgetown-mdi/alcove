@@ -36,7 +36,7 @@ One panelist argued the opposite: that the focus move alone should announce, on 
 What the convention comes to on the SFTP authoring form's probe surface:
 
 - The probe's own polite region is mounted in every phase, first in the result's DOM order, and holds a fixed console sentence per phase. It interpolates nothing, which is what makes the containment property [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md) specifies structural rather than an escaping argument: no byte a peer chose can be in the announced run because no value reaches it at all.
-- The visible failure alert has no live role. Mantine's `Alert` defaults to `role="alert"`, so the surface passes `role="presentation"` to displace that default rather than merely not passing it -- an attribute the convention makes inert is removed, never left in place asserting a behavior nothing holds. What holds the property is the ABSENCE of an alert or live role rather than the presentational role applying: ARIA's presentational-role-conflict resolution ignores `role="presentation"` on an element with global `aria-*` attributes, which Mantine sets on the alert root, so the element is exposed as generic. The prop stays required all the same -- drop it and the `role="alert"` default returns -- and the browser test measures that outcome (no alert or live role anywhere in the probe result) together with the assumption this reasoning rests on (the alert root does have those global attributes), rather than the presentational role itself.
+- The visible failure alert has no live role. An `Alert` defaults to a live role (`role="status"`, set for every Alert by the app theme in `apps/web/src/theme.ts`), so the surface passes `role="presentation"` to displace that default rather than merely not passing it -- an attribute the convention makes inert is removed, never left in place asserting a behavior nothing holds. What holds the property is the ABSENCE of an alert or live role rather than the presentational role applying: ARIA's presentational-role-conflict resolution ignores `role="presentation"` on an element with global `aria-*` attributes, which Mantine sets on the alert root, so the element is exposed as generic. The prop stays required all the same -- drop it and the live-role default returns -- and the browser test measures that outcome (no alert or live role anywhere in the probe result) together with the assumption this reasoning rests on (the alert root does have those global attributes), rather than the presentational role itself.
 - The failure settle restores focus to the probe trigger. That is repair, not announcement: the trigger is disabled while the probe runs, so the browser has already dropped focus to `<body>`.
 - The presented-result panel has no live semantics either, but keeps its focus move, because that move is repair in the strict sense -- the trigger the operator pressed unmounts when the panel replaces it. The panel is named from its own visible lead line, so what focus lands on is not an anonymous `div`.
 
@@ -62,10 +62,11 @@ what each settled on; a test on each surface holds the choice.
 | `exchange/AcceptorScreen.tsx`, "Reading your invitation..." | Role dropped. The decode runs once on mount, so the sentence is initial page content that no later change reaches, and the settle moves focus to the terms, the block, or the error alert. A live role there asserted an announcement nothing performs. |
 | `components/AppShellStatus.tsx` | Mount ahead. The region lives as long as the shell rather than being rebuilt on each online or update-ready flip, and holds the strip's title; each Alert takes `role="presentation"`. |
 
-`role="alert"` sites are outside this: the convention displaces that default
-where a polite region takes the announcement over (above), and leaves the
-alerts that announce on their own -- the mechanism the acknowledged risk above
-names as the most reliably special-cased.
+An Alert's own live role is outside this: the app theme gives every Alert
+`role="status"`, and an error Alert sets `role="alert"` itself. The convention
+displaces that role where a polite region takes the announcement over (above),
+and leaves the alerts that announce on their own -- for an error, the mechanism
+the acknowledged risk above names as the most reliably special-cased.
 
 ## Considered and left alone
 

@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -62,6 +63,20 @@ const CONTAINER_SIZES = {
  * and the route's content to it, so neither side names a raw pixel width.
  */
 type ContainerWidth = keyof typeof CONTAINER_SIZES;
+
+/**
+ * The role an Alert takes when its call site sets none: a polite live region,
+ * not Mantine's assertive `alert`.
+ */
+export const ALERT_DEFAULT_ROLE = "status";
+
+/**
+ * The role for an Alert whose color is chosen at runtime: an error (red)
+ * interrupts with `alert`; any other color takes {@link ALERT_DEFAULT_ROLE}.
+ */
+export function alertRoleFor(color: string): "alert" | undefined {
+  return color === "red" ? "alert" : undefined;
+}
 
 export const mantineTheme: MantineThemeOverride = createTheme({
   fontSizes: {
@@ -177,6 +192,11 @@ export const mantineTheme: MantineThemeOverride = createTheme({
     Select: Select.extend({
       defaultProps: {
         checkIconPosition: "right",
+      },
+    }),
+    Alert: Alert.extend({
+      defaultProps: {
+        role: ALERT_DEFAULT_ROLE,
       },
     }),
   },

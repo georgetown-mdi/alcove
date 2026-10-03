@@ -10,6 +10,8 @@ import {
 } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { alertRoleFor } from "@theme";
+
 import { describeResolvedMatching, getLogger } from "@alcove/core";
 
 import { triggerBlobDownload } from "@components/blobDownload";
@@ -1169,12 +1171,41 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setParkedResultsReads((reads) => reads + 1);
   }
 
+  // Which of the surface's views the main column shows, in the order the render
+  // below chooses them. A change replaces the whole column, so focus moves to the
+  // incoming h1 (each has tabIndex -1) rather than staying on a control that no
+  // longer exists. The first settle out of loading is the page arriving, not a
+  // step, so it leaves focus at the top of the document.
+  const surfaceView =
+    loadFailure ??
+    (configuration !== undefined
+      ? "configuration"
+      : record === undefined
+        ? "loading"
+        : outputs !== undefined
+          ? "complete"
+          : commandLineHandoff !== undefined
+            ? "command-line"
+            : migrated
+              ? "migrated"
+              : migrationDispatch !== undefined
+                ? "confirm-move"
+                : "run");
+  const surfaceRef = useRef<HTMLElement>(null);
+  const previousSurfaceView = useRef(surfaceView);
+  useEffect(() => {
+    const previous = previousSurfaceView.current;
+    previousSurfaceView.current = surfaceView;
+    if (previous === surfaceView || previous === "loading") return;
+    surfaceRef.current?.querySelector("h1")?.focus();
+  }, [surfaceView]);
+
   return (
     <AppPage>
-      <main className={styles.lobby}>
+      <main className={styles.lobby} ref={surfaceRef}>
         {loadFailure === "missing" ? (
           <>
-            <h1>Exchange not found</h1>
+            <h1 tabIndex={-1}>Exchange not found</h1>
             <p className={styles.sub}>
               This exchange&apos;s browser copy was not found. It may have been
               deleted or cleared.
@@ -1183,7 +1214,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
           </>
         ) : loadFailure === "unloadable" ? (
           <>
-            <h1>This exchange cannot be loaded</h1>
+            <h1 tabIndex={-1}>This exchange cannot be loaded</h1>
             <p className={styles.sub}>
               This exchange&apos;s stored copy can no longer be loaded by this
               version of the app. Re-invite your partner to set up the exchange
@@ -1209,12 +1240,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
           />
         ) : record === undefined ? (
           <>
-            <h1>Loading exchange</h1>
+            <h1 tabIndex={-1}>Loading exchange</h1>
             <Loader />
           </>
         ) : outputs !== undefined ? (
           <>
-            <h1>Run complete</h1>
+            <h1 tabIndex={-1}>Run complete</h1>
             <DonePanel outputs={outputs} finishedAt={finishedAt} />
             <RunWarningsAlert warnings={runWarnings} />
             <RunDownloads
@@ -1239,7 +1270,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   over an unencrypted channel.
                 </p>
                 {exportFailed && (
-                  <Alert color="red" title="Could not save the backup" mb="sm">
+                  <Alert
+                    role="alert"
+                    color="red"
+                    title="Could not save the backup"
+                    mb="sm"
+                  >
                     Nothing changed here; try again.
                   </Alert>
                 )}
@@ -1256,7 +1292,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
           </>
         ) : commandLineHandoff !== undefined ? (
           <>
-            <h1>Handed off to the command line</h1>
+            <h1 tabIndex={-1}>Handed off to the command line</h1>
             <p className={styles.sub}>
               You exported this exchange&apos;s alcove.yaml and .alcove.key, so
               it no longer runs here. Run it on the machine you saved them to:
@@ -1270,7 +1306,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
           </>
         ) : migrated ? (
           <>
-            <h1>Handed off to another device</h1>
+            <h1 tabIndex={-1}>Handed off to another device</h1>
             <p className={styles.sub}>
               You downloaded this exchange&apos;s backup to take over on another
               device, so it no longer runs here. Import that backup on the other
@@ -1280,7 +1316,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
           </>
         ) : migrationDispatch !== undefined ? (
           <>
-            <h1>Confirm the move</h1>
+            <h1 tabIndex={-1}>Confirm the move</h1>
             <p className={styles.sub}>
               Your exchange&apos;s backup file was downloaded. Confirm you saved
               it before this device gives up its copy: once you confirm, this
@@ -1289,6 +1325,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             {exportFailed && (
               <Alert
+                role="alert"
                 color="red"
                 title="Could not hand off this exchange"
                 mb="md"
@@ -1351,7 +1388,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
           </>
         ) : (
           <>
-            <h1>{record.label === "" ? "Run this exchange" : record.label}</h1>
+            <h1 tabIndex={-1}>
+              {record.label === "" ? "Run this exchange" : record.label}
+            </h1>
             <p className={styles.sub}>
               Run this exchange again with the same partner, without a new
               invitation. Your partner must run their side at the same time.
@@ -1369,7 +1408,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             ) : (
               failure !== undefined && (
                 <>
-                  <Alert color="red" title={failure.title} mb="md">
+                  <Alert role="alert" color="red" title={failure.title} mb="md">
                     <FailureBody failure={failure} />
                   </Alert>
                   {/* Below the failure, not in place of it: a run that stopped
@@ -1631,7 +1670,7 @@ function FailureRecovery({
  * taken from. */
 function ClearFailureAlert() {
   return (
-    <Alert color="red" title="Could not clear this" mt="sm">
+    <Alert role="alert" color="red" title="Could not clear this" mt="sm">
       Nothing changed here, so this still stands. Try again.
     </Alert>
   );
@@ -1671,7 +1710,7 @@ function CompromiseResponsePanel({
           {COMPROMISE_RESPONSE_UNSAVED_REASON}
         </Alert>
       )}
-      <Alert color="red" title={COMPROMISE_RESPONSE_TITLE} mb="md">
+      <Alert role="alert" color="red" title={COMPROMISE_RESPONSE_TITLE} mb="md">
         <span style={{ whiteSpace: "pre-line" }}>
           {COMPROMISE_RESPONSE_MESSAGE}
         </span>
@@ -1765,10 +1804,12 @@ function StandingConditionSection({
       />
     ) : null;
   if (view === undefined) return null;
+  const color = view.clearance === "confirmation" ? "red" : "yellow";
   return (
     <>
       <Alert
-        color={view.clearance === "confirmation" ? "red" : "yellow"}
+        color={color}
+        role={alertRoleFor(color)}
         title={view.title}
         mb="md"
       >
@@ -1851,6 +1892,7 @@ function ReinviteRecovery({
         <>
           {reinviteFailed && (
             <Alert
+              role="alert"
               color="red"
               title="Could not create a fresh invitation"
               mb="sm"
@@ -2059,7 +2101,12 @@ function BackupPanel({
         unencrypted channel.
       </p>
       {failed && (
-        <Alert color="red" title="Could not save the backup" mb="sm">
+        <Alert
+          role="alert"
+          color="red"
+          title="Could not save the backup"
+          mb="sm"
+        >
           Nothing changed here; try again.
         </Alert>
       )}
@@ -2145,7 +2192,7 @@ function SpentSurface({
   if (spent === undefined)
     return (
       <>
-        <h1>This exchange was handed off</h1>
+        <h1 tabIndex={-1}>This exchange was handed off</h1>
         <p className={styles.sub}>
           This browser&apos;s copy of this exchange was handed off, so it no
           longer runs here. It runs where you handed it over to -- the device
@@ -2159,7 +2206,7 @@ function SpentSurface({
   const on = ` on ${dateLabel(new Date(spent.spentAt))}`;
   return spent.handoff === "command-line" ? (
     <>
-      <h1>This exchange was handed off</h1>
+      <h1 tabIndex={-1}>This exchange was handed off</h1>
       <p className={styles.sub}>
         You handed this exchange to the command line{on}, so it no longer runs
         here. It runs from the alcove.yaml and .alcove.key you saved, on the
@@ -2176,7 +2223,7 @@ function SpentSurface({
     </>
   ) : (
     <>
-      <h1>This exchange was handed off</h1>
+      <h1 tabIndex={-1}>This exchange was handed off</h1>
       <p className={styles.sub}>
         You exported this exchange to take over on another device{on}, so it can
         no longer run here. Import the backup to run it on this device again.

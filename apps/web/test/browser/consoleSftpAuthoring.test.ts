@@ -967,12 +967,15 @@ describe("console SFTP connection authoring", () => {
     await expectAnnounced(ANNOUNCED_SENTENCE.error);
     expect(probeAnnouncement()).toBe(region);
     // One channel announces: within the probe result nothing else holds live
-    // semantics, and the visible alert is not one (Mantine's Alert defaults to
-    // role="alert", so this also holds the explicit override in place).
+    // semantics, and the visible alert is not one (an Alert defaults to a
+    // live-region role, so this also holds the explicit override in place).
     expect(Array.from(probeResult().querySelectorAll("[aria-live]"))).toEqual([
       region,
     ]);
     expect(probeResult().querySelector('[role="alert"]')).toBeNull();
+    expect(
+      Array.from(probeResult().querySelectorAll('[role="status"]')),
+    ).toEqual([region]);
     // What the override displaces is the default; the presentational role it
     // names does not itself apply, because ARIA's presentational-role-conflict
     // resolution ignores it on an element holding a GLOBAL aria-* state or

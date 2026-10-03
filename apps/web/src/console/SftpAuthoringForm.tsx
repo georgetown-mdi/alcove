@@ -295,6 +295,7 @@ export function SftpAuthoringForm({
 
       {submitError !== undefined && (
         <Alert
+          role="alert"
           color="red"
           icon={<IconAlertCircle aria-hidden />}
           title="Could not save the connection"
@@ -905,8 +906,8 @@ function HostKeyProbe({
           </div>
           {state.phase === "error" && (
             <>
-              {/* Visible only: Mantine's Alert defaults to role="alert", which
-                  would announce this a second time and interrupt, so the prop
+              {/* Visible only: the Alert defaults to a live-region role, which
+                  would announce this a second time, so the prop
                   displaces that default. The presentational role itself does
                   not apply -- ARIA's conflict resolution ignores it on an
                   element holding global aria-* attributes, which Mantine sets
