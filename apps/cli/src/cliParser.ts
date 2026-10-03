@@ -78,16 +78,22 @@ function readCliVersion(): string {
 }
 
 /**
- * The option table of the command `parser` is parsing: yargs exposes it at
- * runtime as `getOptions()`, which its type declarations leave out. The
- * unknown-option tests in cliParser.test.ts exercise it.
+ * The unknown long options in the command line `parser` is parsing, read from
+ * the command's option table and the argv yargs parsed for it. yargs exposes
+ * both at runtime (`getOptions()`, `parsed`) but leaves them out of its type
+ * declarations; `parsedArgv` defaults to that parsed argv.
  */
-function optionTable(parser: Argv): Parameters<typeof longOptionNames>[0] {
-  return (
-    parser as unknown as {
-      getOptions(): Parameters<typeof longOptionNames>[0];
-    }
-  ).getOptions();
+function unknownOptionsIn(
+  parser: Argv,
+  parsedArgv?: Readonly<Record<string, unknown>>,
+): ReturnType<typeof unknownLongOptions> {
+  const internals = parser as unknown as {
+    getOptions(): Parameters<typeof longOptionNames>[0];
+    parsed: { argv: Record<string, unknown> } | false;
+  };
+  const argv =
+    parsedArgv ?? (internals.parsed === false ? {} : internals.parsed.argv);
+  return unknownLongOptions(argv, longOptionNames(internals.getOptions()));
 }
 
 /**
@@ -205,30 +211,17 @@ export function buildCli(argv: string[]): Argv {
       // invite/accept/init/apply set unknown-options-as-args (to admit a
       // `-`-leading invitation string as a positional), so strictOptions lets
       // a mistyped `--` option through to their positionals. This runs after
-      // validation and before any handler, so it reports that option the way
-      // the failure handler below does for the other commands.
-      .middleware(() => {
-        const unknown = unknownLongOptions(
-          argv,
-          longOptionNames(optionTable(cli)),
-        );
+      // validation and before any handler.
+      .middleware((parsedArgv) => {
+        const unknown = unknownOptionsIn(cli, parsedArgv);
         if (unknown.length > 0) failUsage(describeUnknownOptions(unknown));
       })
       .fail((msg, err) => {
-        // yargs invokes this for a parse/validation failure (msg set, err
-        // null) and for an error thrown while parsing or in a handler (err
-        // set); a thrown error propagates to the caller's catch, which
-        // sanitizes partner-/server-controlled bytes before display. Every
-        // failure here is a usage error. An unrecognized `--` option is
-        // reported in place of yargs' own message, whatever that message is:
-        // yargs counts required positionals before it checks options, so
-        // `exchange --retain-file in.csv` would otherwise be told its input
-        // file is missing.
+        // A thrown error propagates to the caller's catch, which sanitizes it.
+        // yargs counts required positionals before it checks options, so an
+        // unknown option is reported in place of whatever yargs' message is.
         if (err) throw err;
-        const unknown = unknownLongOptions(
-          argv,
-          longOptionNames(optionTable(cli)),
-        );
+        const unknown = unknownOptionsIn(cli);
         failUsage(unknown.length > 0 ? describeUnknownOptions(unknown) : msg);
       })
       .help("h")

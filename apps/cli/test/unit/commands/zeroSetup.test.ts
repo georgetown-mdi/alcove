@@ -37,6 +37,7 @@ import {
   resolvePositionals,
 } from "../../../src/commands/zeroSetup";
 import { BARE_INVOCATION_SUMMARY } from "../../../src/usageHints";
+import { channelForScheme } from "../../../src/connectionFromUrl";
 import type { ConnectionOverrideOptions } from "../../../src/optionDefinitions";
 import { resolveConnectionCredentials } from "../../../src/util/atSignRefs";
 import { redactUrlCredentials } from "../../../src/util/connectionUrl";
@@ -205,6 +206,13 @@ test("unsupported URL scheme throws a UsageError", () => {
   expect(() => channelFromURL(new URL("https://example.org/path"))).toThrow(
     "unsupported URL scheme",
   );
+});
+
+test("channelForScheme maps each supported scheme and nothing else", () => {
+  expect(channelForScheme("ssh:")).toBe("sftp");
+  expect(channelForScheme("wss:")).toBe("webrtc");
+  expect(channelForScheme("file:")).toBe("filedrop");
+  expect(channelForScheme("https:")).toBe(undefined);
 });
 
 // --- resolvePositionals ------------------------------------------------------

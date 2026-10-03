@@ -98,13 +98,16 @@ function camelCase(name: string): string {
 }
 
 /**
- * The `--`-prefixed tokens in `tokens` that name no option in `known`, each
- * paired with the option it most likely stands for. Scanning stops at a bare
- * `--`, after which every token is a positional. A `--no-NAME` token is known
- * when NAME is, and a camelCase spelling of a known option is known.
+ * The long options yargs parsed for a command that name no option in `known`,
+ * each paired with the option it most likely stands for: every key of the
+ * parsed `argv` other than yargs' own `_`, `$0` and `--`, plus each
+ * `--`-leading token in the `args` positional, where the commands that take
+ * unknown options as arguments collect them. yargs adds a camelCase copy of
+ * each dashed key, so that copy is skipped; a one-character key comes from a
+ * short flag and is left to yargs' own message.
  */
 export function unknownLongOptions(
-  tokens: readonly string[],
+  argv: Readonly<Record<string, unknown>>,
   known: readonly string[],
 ): Array<{ option: string; suggestion: string | undefined }> {
   const accepted = new Set<string>();
@@ -112,14 +115,24 @@ export function unknownLongOptions(
     accepted.add(name);
     accepted.add(camelCase(name));
   }
+  const keys = Object.keys(argv);
+  const camelCopies = new Set(
+    keys.filter((key) => key.includes("-")).map(camelCase),
+  );
+  const names = keys.filter(
+    (key) =>
+      !["_", "$0", "--"].includes(key) &&
+      key.length > 1 &&
+      !camelCopies.has(key),
+  );
+  const positionals = Array.isArray(argv.args) ? argv.args : [];
+  for (const token of positionals) {
+    if (typeof token === "string" && token.startsWith("--") && token !== "--")
+      names.push(token.slice(2).split("=", 1)[0]);
+  }
   const unknown: Array<{ option: string; suggestion: string | undefined }> = [];
-  for (const token of tokens) {
-    if (token === "--") break;
-    if (!token.startsWith("--")) continue;
-    const name = token.slice(2).split("=", 1)[0];
-    if (name.length === 0) continue;
+  for (const name of names) {
     if (accepted.has(name)) continue;
-    if (name.startsWith("no-") && accepted.has(name.slice(3))) continue;
     if (unknown.some((entry) => entry.option === `--${name}`)) continue;
     const suggestion = closestMatch(name, known);
     unknown.push({

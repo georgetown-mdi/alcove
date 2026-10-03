@@ -125,11 +125,13 @@ export function coordinationServerURLFromWebAppAddress(address: URL): URL {
 }
 
 /**
- * Maps a server URL protocol to a connection channel identifier.
- * @internal exported for testing
+ * The connection channel a server URL protocol (`sftp:`, `file:`, ...) maps
+ * to, or undefined for a protocol no channel takes.
  */
-export function channelFromURL(url: URL): ConnectionConfig["channel"] {
-  switch (url.protocol) {
+export function channelForScheme(
+  protocol: string,
+): ConnectionConfig["channel"] | undefined {
+  switch (protocol) {
     case "sftp:":
     case "ssh:":
       return "sftp";
@@ -139,12 +141,23 @@ export function channelFromURL(url: URL): ConnectionConfig["channel"] {
     case "file:":
       return "filedrop";
     default:
-      // Invalid caller input (exit 64), not a transport failure.
-      throw new UsageError(
-        `unsupported URL scheme: ${url.protocol}; expected sftp://, ` +
-          "ssh://, ws://, wss://, or file://",
-      );
+      return undefined;
   }
+}
+
+/**
+ * Maps a server URL protocol to a connection channel identifier.
+ * @internal exported for testing
+ */
+export function channelFromURL(url: URL): ConnectionConfig["channel"] {
+  const channel = channelForScheme(url.protocol);
+  if (channel === undefined)
+    // Invalid caller input (exit 64), not a transport failure.
+    throw new UsageError(
+      `unsupported URL scheme: ${url.protocol}; expected sftp://, ` +
+        "ssh://, ws://, wss://, or file://",
+    );
+  return channel;
 }
 
 // The directory a file:// URL names on THIS platform. `fileURLToPath` rejects

@@ -30,20 +30,29 @@ test("closestMatch suggests nothing past two edits", () => {
   expect(closestMatch("zzzzzz", ["exchange", "invite"])).toBe(undefined);
 });
 
-test("unknownLongOptions accepts known, camelCase and --no- spellings", () => {
+test("unknownLongOptions accepts known keys and yargs' camelCase copies", () => {
   const known = ["retain-files", "record", "log-level"];
   expect(
     unknownLongOptions(
-      ["--retain-files", "--retainFiles", "--no-record", "--log-level=info"],
+      {
+        _: ["exchange"],
+        $0: "alcove",
+        "--": ["--anything"],
+        "retain-files": true,
+        retainFiles: true,
+        record: false,
+        "log-level": "info",
+        logLevel: "info",
+      },
       known,
     ),
   ).toEqual([]);
 });
 
-test("unknownLongOptions names each unknown option once, with a suggestion", () => {
+test("unknownLongOptions names each unknown key once, with a suggestion", () => {
   expect(
     unknownLongOptions(
-      ["--retain-file", "x", "--retain-file", "--zzzzzz"],
+      { _: [], "retain-file": "x", retainFile: "x", zzzzzz: true },
       ["retain-files"],
     ),
   ).toEqual([
@@ -52,8 +61,25 @@ test("unknownLongOptions names each unknown option once, with a suggestion", () 
   ]);
 });
 
-test("unknownLongOptions stops at a bare --", () => {
-  expect(unknownLongOptions(["--", "--anything"], [])).toEqual([]);
+test("unknownLongOptions reads a value yargs gave a known option as that value", () => {
+  expect(
+    unknownLongOptions({ _: [], "server-password": "--abc" }, [
+      "server-password",
+    ]),
+  ).toEqual([]);
+});
+
+test("unknownLongOptions names a `--` token in the args positional, not one in `_`", () => {
+  expect(
+    unknownLongOptions(
+      { _: ["accept", "--after-separator"], args: ["--identiy=x", "-AbC"] },
+      ["identity", "args"],
+    ),
+  ).toEqual([{ option: "--identiy", suggestion: "--identity" }]);
+});
+
+test("unknownLongOptions leaves a one-character key to yargs", () => {
+  expect(unknownLongOptions({ _: [], x: true }, [])).toEqual([]);
 });
 
 test("unknownCommandMessage leaves anything that is not a bare word to the URL checks", () => {

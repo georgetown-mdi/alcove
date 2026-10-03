@@ -76,6 +76,20 @@ test("an unknown option is named ahead of the positional it took as its value", 
   expect(stderr).not.toContain("non-option arguments");
 });
 
+test("a `--`-leading value given with = is the known option's value, not an unknown option", async () => {
+  const { exit, stderr } = await parse([
+    "exchange",
+    "--server-password=--abc",
+    "--config-file=--no-such-config.yaml",
+    "--zzzzzz",
+    "in.csv",
+  ]);
+  expect(exit).toBe("exit:64");
+  expect(stderr).toContain("Unknown option --zzzzzz.");
+  expect(stderr).not.toContain("--abc");
+  expect(stderr).not.toContain("--no-such-config");
+});
+
 test("an unknown option on a command taking `-`-leading positionals is named with a suggestion", async () => {
   const { exit, stderr } = await parse(["invite", "--identiy", "Org"]);
   expect(exit).toBe("exit:64");

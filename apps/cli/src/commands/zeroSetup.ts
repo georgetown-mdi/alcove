@@ -63,7 +63,11 @@ import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
-import { channelFromURL, connectionFromURL } from "../connectionFromUrl";
+import {
+  channelForScheme,
+  channelFromURL,
+  connectionFromURL,
+} from "../connectionFromUrl";
 import {
   addCommonBootstrapOptions,
   addCsvDelimiterOption,
@@ -109,10 +113,7 @@ export const QUICK_EXCHANGE_USAGE =
   "command, alcove runs a quick exchange through the server or shared\n" +
   "folder at URL; the options below are the quick exchange's.";
 
-/**
- * Logged when a quick exchange starts: what a run without a shared secret
- * relies on, and how to set up one that has a secret.
- */
+/** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
   "This quick exchange has no shared secret, so anyone who administers the " +
   "server or shared folder could stand in for your partner. For an exchange " +
@@ -413,16 +414,12 @@ export function resolvePositionals(positionals: Array<unknown>): {
     "unable to parse server URL; usage: alcove URL INPUT_FILE [OUTPUT_FILE]",
   );
   // A ws:// or wss:// URL maps to a channel and is refused later with its own
-  // reason; any other unmapped scheme is refused here, naming only the
-  // schemes a quick exchange runs over.
-  try {
-    channelFromURL(server);
-  } catch {
+  // reason, so this message names only the schemes a quick exchange runs over.
+  if (channelForScheme(server.protocol) === undefined)
     throw new UsageError(
       `unsupported URL scheme: ${server.protocol}; a quick exchange takes ` +
         "sftp://, ssh://, or file://",
     );
-  }
   return { server, input: arg1, output: arg2 };
 }
 
