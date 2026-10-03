@@ -447,7 +447,7 @@ The modelled needs are each party's PSI round ([The measured costs](#the-measure
 - **Both parties on one host**, over a local directory: the default, for sizes that fit one host.
 - **One party on this host**, against a partner on another (`ALCOVE_STRESS_COMPLETION_PARTY` set to `starter` or `joiner`, `ALCOVE_STRESS_COMPLETION_URL` naming the shared directory as a `file://` or `sftp://` URL). The joiner is the party that arrives second, so on a `file://` directory the joiner waits for the starter's hello before it starts; either party stops as soon as it logs a role other than its own. It writes the party's figures and its host to a summary file.
 
-Each skips where the memory is under what it needs: the free memory, or on macOS, whose free figure leaves out the cache it can reclaim, the total memory. `ALCOVE_STRESS_COMPLETION_ROWS` lowers the row count; the test file's header lists the other settings.
+Each skips where the memory is under what it needs: the free memory, or on macOS, whose free figure leaves out the cache it can reclaim, the available memory `memory_pressure` reports: free, inactive and speculative pages. `ALCOVE_STRESS_COMPLETION_ROWS` lowers the row count; the test file's header lists the other settings.
 
 ### Preparing the input at 2^24
 
