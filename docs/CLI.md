@@ -512,7 +512,7 @@ Until your partner applies the update, an exchange between you meets the differe
 `UPDATE` is the update string, or an `@path` to a file holding it. `alcove apply` checks it against the shared secret in your key file before it shows anything:
 
 - **The expiry check** refuses, before the update is decoded, when the shared secret in your key file has expired -- the same expiry [making an update](#making-an-update) refuses on. Re-establish the partnership as in [Out-of-sync tokens](#out-of-sync-tokens) instead.
-- **The partnership check** refuses an update made under a different shared secret: one made for another partnership, or one made before an exchange between you replaced the secret. Ask your partner to run `alcove update` again.
+- **The partnership check** refuses an update made under a different shared secret: one made for another partnership, or one made before an exchange between you replaced the secret. Ask your partner to run `alcove update` again. Where an exchange that met your partner's changed terms already wrote them beside the configuration ([When your partner's terms change](#when-your-partners-terms-change)), the refusal names that file and the `alcove apply` command that applies it as well: that file was written under the shared secret the exchange rotated to.
 - **The MAC check** refuses an update whose content was changed after it was made.
 - An update made from your own configuration is refused: applying it would swap your side of the terms for your partner's.
 
@@ -581,13 +581,13 @@ Nothing is asked where your partner declares no column, or where you hold a list
 A partner that changed its terms since your last exchange -- most often by adding or dropping a payload column in its input -- just runs. Your run meets the change at the terms exchange, before any linkage key or data moves, and shows it: the columns your partner now sends you or no longer sends you, the columns you send that its terms do not receive (its decision, shown for your information), and each other term that differs. A dropped column is decided exactly as an added one. What counts as a change, and which party decides which part of it: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#when-your-partners-terms-change).
 
 - **At a terminal**, the run asks whether to accept your partner's terms. Yes writes them into the configuration through the write [`alcove apply`](#applying-an-update) makes -- `linkage_terms` and the records that follow from them, except that `expected_partner_deduplicate` is left as it was -- and the same run continues under them. No ends the run before any key moves (exit 64), and the configuration is not changed. Terms your configuration would not load under are refused before you are asked (exit 64), naming the setting they would make invalid.
-- **Unattended** -- no terminal on stdin, or an `INPUT_FILE` of `-` -- the run refuses (exit 64) before any key or data moves. It writes your partner's terms beside the configuration as a terms update, `alcove.proposed-terms` beside `alcove.yaml` (named after the configuration file), and its error names the command that applies it:
+- **Unattended** -- no terminal on stdin, or an `INPUT_FILE` of `-` -- the run refuses (exit 64) before any key or data moves. It writes your partner's terms beside the configuration as a terms update, `alcove.proposed-terms` beside `alcove.yaml` (named after the configuration file), and its error names, under "To fix", the command that applies it:
 
   ```sh
   alcove apply @alcove.proposed-terms
   ```
 
-  with `--config-file` and `--key-file` added where you run from other paths. `alcove apply` shows the change and asks, as for any [terms update](#applying-an-update); once it is applied, run the exchange again.
+  with `--config-file` and `--key-file` added where you run from other paths. `alcove apply` shows the change and asks, as for any [terms update](#applying-an-update); once it is applied, run the exchange again. This step replaces the generic advice to retry ([CLI_EVENTS.md](spec/CLI_EVENTS.md#a-partner-terms-change-the-run-did-not-take-on)).
 - **A change the run cannot continue under** -- to the linkage fields, keys, algorithm, strategy, output direction, or version, which your input was prepared under, or to your partner's `deduplicate`, which widens what your records disclose -- is refused (exit 64) and written as a proposal whether or not a terminal is attached. `alcove apply` shows a changed `deduplicate` among the changes it asks about.
 
 Your partner's run ends with a partner refusal (exit 76) when you decline or your run is unattended; it is not asked anything. To settle a change ahead of the next scheduled run instead, the party that made it sends an [`alcove update`](#changing-the-terms-of-an-established-partnership).

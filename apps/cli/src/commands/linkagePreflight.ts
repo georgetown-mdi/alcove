@@ -4,6 +4,7 @@ import {
   disclosedColumnNames,
   getLogger,
   inferMetadata,
+  keepFirstPartyLineBreaks,
   LinkageTermsUnsatisfiableError,
   MAX_ERROR_CAUSE_DEPTH,
   redactAndSanitizeForDisplay,
@@ -34,7 +35,7 @@ export interface LinkagePreflightMessaging {
    * instead, where what a block prevents is disclosing an invitation rather than
    * running a short exchange. */
   blockConsequence: string;
-  /** Clause closing the block error's remedy link after the remedy lead the
+  /** Clause closing the block error's "To fix:" line after the remedy lead the
    * verdict selects. Accept and exchange point at renegotiating the terms out
    * of band; invite points at the operator's own authoring, since no partner
    * has seen the terms yet. */
@@ -63,12 +64,6 @@ export interface LinkagePreflightMessaging {
 export const COVER_REQUIRED_FIELD_TYPES =
   "provide a CSV that covers the required field types";
 
-/** A remedy lead as it opens its cause link. The leads are written lowercase so
- * they can be joined into one, and the link states the result as a sentence. */
-function asSentenceLead(remedy: string): string {
-  return `${remedy.charAt(0).toUpperCase()}${remedy.slice(1)}`;
-}
-
 /**
  * The consequence a block states on the paths whose next step is the exchange
  * itself. Shared rather than written out at each of them, so the accept and
@@ -81,11 +76,11 @@ export const RUN_BLOCK_CONSEQUENCE =
 /**
  * How many cause links a block's name enumeration may occupy. The display
  * boundary walks at most {@link MAX_ERROR_CAUSE_DEPTH} links; each block
- * {@link checkLinkageSatisfiability} raises spends two of them before any name
- * (the summary and the chained remedy). A name beyond this budget is not
- * rendered, so the last link reports the overflow instead of naming one more.
+ * {@link checkLinkageSatisfiability} raises spends one of them before any name
+ * (the summary, with its remedy). A name beyond this budget is not rendered,
+ * so the last link reports the overflow instead of naming one more.
  */
-const REFUSAL_DETAIL_LINK_BUDGET = MAX_ERROR_CAUSE_DEPTH - 2;
+const REFUSAL_DETAIL_LINK_BUDGET = MAX_ERROR_CAUSE_DEPTH - 1;
 
 /**
  * Fit an ordered enumeration of labelled detail fragments to
@@ -144,80 +139,76 @@ export function checkLinkageSatisfiability(
   );
   if (verdict.fullySatisfied) return;
 
-  if (verdict.keys.length === 0)
-    // The clause closes this message instead of leading into another sentence
-    // -- the remedy rides the cause link below -- so the trailing space it
-    // leaves for one is dropped before the renderer joins the links.
-    throw new LinkageTermsUnsatisfiableError(
+  if (verdict.keys.length === 0) {
+    const lines = [
       (
         `the ${messaging.source}'s linkage terms declare no linkage key, so this ` +
         "exchange has nothing to match on and would produce a result " +
         "indistinguishable from a legitimately empty intersection. " +
         singleColumnDelimiterClause(columns.length)
       ).trimEnd(),
-      {
-        cause: chainDetailCauses([
-          // Declaring a key is an agreement on the seats a partner is already
-          // held to, and this operator's own edit on the seat that authors its
-          // terms; a seat that derives them from its columns states its own.
-          `${asSentenceLead(
-            messaging.keylessRemedyLead ??
-              (messaging.termsStanding === "agreed"
-                ? "agree linkage terms declaring at least one linkage key"
-                : "declare at least one linkage key in these terms"),
-          )}, ${messaging.blockRemedy}`,
-        ]),
-      },
+      // Agreed terms change with the partner, authored ones by this operator.
+      `To fix: ${
+        messaging.keylessRemedyLead ??
+        (messaging.termsStanding === "agreed"
+          ? "agree linkage terms declaring at least one linkage key"
+          : "declare at least one linkage key in these terms")
+      }, ${messaging.blockRemedy}`,
+    ];
+    throw keepFirstPartyLineBreaks(
+      new LinkageTermsUnsatisfiableError(lines.join("\n")),
+      lines,
     );
+  }
 
   // Each name gets its own raw cause link: the renderer escapes each link
   // independently, so batching names into one sentence risks one long name
-  // spending the whole link's budget. The remedy leads, ahead of the names,
-  // since the renderer's depth bound reaches it first. Dead keys precede
-  // unsatisfiable keys (only a corrected terms document fixes either), and
-  // fields follow, naming only the fields an unsatisfiable key references.
+  // spending the whole link's budget. The fields the CSV lacks a column for
+  // lead, since the renderer's depth bound reaches them first and they name
+  // what to add; dead keys and unsatisfiable keys follow.
   const blockingFieldNames = new Set(
     verdict.unsatisfiableKeys.flatMap((key) =>
       key.elements.map((element) => element.field),
     ),
   );
   const details = [
+    ...verdict.unsatisfiedFieldColumns
+      .filter(({ field }) => blockingFieldNames.has(field.name))
+      .map(({ field, column }) =>
+        column === undefined
+          ? `this CSV has no column of type ${field.type} for linkage field ${field.name}`
+          : `this CSV has no column ${column}, which linkage field ${field.name} (${field.type}) reads`,
+      ),
     ...verdict.deadKeys.map(
       (key) => `linkage key that drops every record: ${key.name}`,
     ),
     ...verdict.unsatisfiableKeys.map(
       (key) => `linkage key the CSV cannot produce: ${key.name}`,
     ),
-    ...verdict.unsatisfiedFields
-      .filter((field) => blockingFieldNames.has(field.name))
-      .map((field) => `unsatisfied field: ${field.name} (${field.type})`),
   ];
 
-  // The remedy lead names the step each shortfall takes: a missing column is
-  // fixed in the CSV, a dead key only in the terms, so a refusal covering both
-  // names both. `blockRemedy` then closes with what fixes terms this input
-  // cannot satisfy at all, which differs by where the terms came from.
-  const remedyLeads: string[] = [];
+  // A missing column is fixed in the CSV and a dead key only in the terms.
+  const remedies: string[] = [];
   if (verdict.unsatisfiableKeys.length > 0)
-    remedyLeads.push(COVER_REQUIRED_FIELD_TYPES);
+    remedies.push(COVER_REQUIRED_FIELD_TYPES);
   if (verdict.deadKeys.length > 0)
-    remedyLeads.push("correct the cleaning steps those keys declare");
-  const remedy = remedyLeads.join(" and ");
+    remedies.push("correct the cleaning steps those keys declare");
 
-  throw new LinkageTermsUnsatisfiableError(
+  const lines = [
     `this CSV cannot satisfy every linkage key the ${messaging.source} ` +
       `declares: ${summarizeLinkageShortfall(verdict, messaging.termsStanding)}. ` +
       singleColumnDelimiterClause(columns.length) +
       messaging.blockConsequence,
-    {
-      cause: chainDetailCauses([
-        `${asSentenceLead(remedy)}, ${messaging.blockRemedy}`,
-        ...fitDetailLinks(
-          details,
-          "details of the terms this CSV cannot satisfy",
-        ),
-      ]),
-    },
+    `To fix: ${remedies.join(" and ")}, ${messaging.blockRemedy}`,
+  ];
+  throw keepFirstPartyLineBreaks(
+    new LinkageTermsUnsatisfiableError(lines.join("\n"), {
+      cause: chainDetailCauses(
+        fitDetailLinks(details, "details of the terms this CSV cannot satisfy"),
+        undefined,
+      ),
+    }),
+    lines,
   );
 }
 

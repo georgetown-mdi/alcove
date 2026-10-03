@@ -3263,7 +3263,7 @@ describe("decideLinkageTermsVerdict", () => {
     ]);
     expect(verdict.unsatisfiableKeys).toEqual([]);
     expect(verdict.deadKeys).toEqual([]);
-    expect(verdict.unsatisfiedFields).toEqual([]);
+    expect(verdict.unsatisfiedFieldColumns).toEqual([]);
   });
 
   test("one unsatisfiable key among satisfiable ones -> refused", () => {
@@ -3275,7 +3275,9 @@ describe("decideLinkageTermsVerdict", () => {
     ]);
     expect(verdict.unsatisfiableKeys.map((k) => k.name)).toEqual(["KEY1"]);
     expect(verdict.deadKeys).toEqual([]);
-    expect(verdict.unsatisfiedFields.map((f) => f.name)).toEqual(["ssn"]);
+    expect(verdict.unsatisfiedFieldColumns).toEqual([
+      { field: expect.objectContaining({ name: "ssn" }), column: undefined },
+    ]);
   });
 
   test("one dead key among live ones -> refused", () => {
@@ -3292,7 +3294,7 @@ describe("decideLinkageTermsVerdict", () => {
     expect(verdict.keys.map((k) => k.fitness)).toEqual(["dead", "satisfiable"]);
     expect(verdict.deadKeys.map((k) => k.name)).toEqual(["KEY0"]);
     expect(verdict.unsatisfiableKeys).toEqual([]);
-    expect(verdict.unsatisfiedFields).toEqual([]);
+    expect(verdict.unsatisfiedFieldColumns).toEqual([]);
   });
 
   test("no satisfiable key -> refused", () => {
@@ -3306,10 +3308,9 @@ describe("decideLinkageTermsVerdict", () => {
       "KEY0",
       "KEY1",
     ]);
-    expect(verdict.unsatisfiedFields.map((f) => f.name)).toEqual([
-      "dob",
-      "ssn",
-    ]);
+    expect(
+      verdict.unsatisfiedFieldColumns.map(({ field }) => field.name),
+    ).toEqual(["dob", "ssn"]);
   });
 
   test("every satisfiable key dead -> refused", () => {
@@ -3372,7 +3373,9 @@ describe("decideLinkageTermsVerdict", () => {
       verdict.keys.length - verdict.unsatisfiableKeys.length,
     );
     expect(deadKeys).toEqual(verdict.deadKeys);
-    expect(unsatisfied).toEqual(verdict.unsatisfiedFields);
+    expect(unsatisfied).toEqual(
+      verdict.unsatisfiedFieldColumns.map(({ field }) => field),
+    );
   });
 });
 

@@ -1,13 +1,14 @@
 import {
+  keepFirstPartyLineBreaks,
   MAX_ERROR_CAUSE_DEPTH,
   redactPrivateKeyMaterial,
+  renderedDisplayCostKeepingLineBreaks,
 } from "./sanitizeErrorForDisplay";
 import {
   clipToRenderedCost,
   clipToRenderedCostKeepingEnd,
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
   DEFAULT_MAX_DISPLAY_LENGTH,
-  renderedDisplayCost,
   replaceControlCharactersForDisplay,
 } from "./sanitizeForDisplay";
 
@@ -115,25 +116,21 @@ export const PARTNER_LABELLED_VALUE_BUDGET =
   PARTNER_LABEL_BUDGET + PARTNER_VALUE_BUDGET;
 
 /**
- * The separator between two labelled values on one link: two line breaks,
- * placed by this composition and by nothing else.
+ * The separator between two labelled values on one link: a line break, placed
+ * by this composition and by nothing else, so each value reaches the operator
+ * on a line of its own.
  *
  * No value can forge it. Each is control-replaced before it is packed, so a
- * control character it holds arrives as the replacement's `<0a>` marker rather
- * than as the escape's `\xHH` token, and the sink's escape doubles a literal
- * backslash the value spells itself -- a value writing `\x0a` renders as
- * `\\x0a`. That doubling still leaves ONE token spellable as a substring of
- * the value's own rendering, which is why the separator is two: a rendered
- * lone backslash only ever opens an escape for a code point outside printable
- * ASCII, and the code point that would spell this token is a control character
- * the replacement has already taken out, so a second token can never follow
- * the first.
+ * line break it holds arrives as the replacement's `<0a>` marker, and the link
+ * is marked with the lines it was packed from ({@link keepFirstPartyLineBreaks}),
+ * so the renderer breaks only between those lines and escapes each one whole.
+ * Every line the renderer emits opens on a first-party label; the browser seat
+ * may open a further line before a value's `<0a>` marker, never before a label.
  *
- * It cannot forge a link boundary either. The renderer joins its links after
- * escaping them, so the raw line breaks here are escaped into text, while the
- * boundary is a raw one the join adds afterwards.
+ * It cannot forge a link boundary: the renderer joins its links with a break
+ * followed by `caused by: `, and a line here opens on a label instead.
  */
-const PARTNER_VALUE_SEPARATOR = "\n\n";
+const PARTNER_VALUE_SEPARATOR = "\n";
 
 /**
  * How many labelled values one link carries: as many as the three budgets
@@ -157,10 +154,11 @@ const PARTNER_VALUE_SEPARATOR = "\n\n";
 const PARTNER_VALUES_PER_LINK = Math.max(
   1,
   Math.floor(
-    (PARTNER_LINK_BUDGET + renderedDisplayCost(PARTNER_VALUE_SEPARATOR)) /
+    (PARTNER_LINK_BUDGET +
+      renderedDisplayCostKeepingLineBreaks(PARTNER_VALUE_SEPARATOR)) /
       (PARTNER_LABEL_BUDGET +
         PARTNER_VALUE_BUDGET +
-        renderedDisplayCost(PARTNER_VALUE_SEPARATOR)),
+        renderedDisplayCostKeepingLineBreaks(PARTNER_VALUE_SEPARATOR)),
   ),
 );
 
@@ -317,7 +315,7 @@ export function errorWithPartnerCauseLinks(
   const scalar = typeof raw === "string";
   const values = scalar ? [raw] : raw;
   const keep = options?.keep ?? "start";
-  const links: string[] = [];
+  const links: string[][] = [];
   const shown = Math.min(values.length, MAX_PARTNER_VALUES_SHOWN);
   for (let i = 0; i < shown; i += PARTNER_VALUES_PER_LINK) {
     const packed: string[] = [];
@@ -329,16 +327,19 @@ export function errorWithPartnerCauseLinks(
           keep,
         ),
       );
-    links.push(packed.join(PARTNER_VALUE_SEPARATOR));
+    links.push(packed);
   }
   if (values.length > shown)
-    links.push(elidedValuesLink(values.length - shown));
+    links.push([elidedValuesLink(values.length - shown)]);
   let cause: Error | undefined;
-  for (let i = links.length - 1; i >= 0; i--)
-    cause =
-      cause === undefined
-        ? new Error(links[i]!)
-        : new Error(links[i]!, { cause });
+  for (let i = links.length - 1; i >= 0; i--) {
+    const lines = links[i]!;
+    const text = lines.join(PARTNER_VALUE_SEPARATOR);
+    cause = keepFirstPartyLineBreaks(
+      cause === undefined ? new Error(text) : new Error(text, { cause }),
+      lines,
+    );
+  }
   return cause === undefined
     ? new Error(message)
     : new Error(message, { cause });

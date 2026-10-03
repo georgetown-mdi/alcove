@@ -15,6 +15,7 @@ import {
 import {
   CAUSE_DEPTH_ELISION_MARKER,
   MAX_ERROR_CAUSE_DEPTH,
+  keepFirstPartyLineBreaks,
   sanitizeErrorForDisplay,
 } from "../src/utils/sanitizeErrorForDisplay";
 
@@ -107,13 +108,12 @@ const CAUSE_SEPARATOR = sanitizeErrorForDisplay(
 ).slice(1, -1);
 
 // The separator between two reasons packed on one link, read back the same
-// way: the line breaks the elimination places, as the sink's escape renders
-// them. A reason cannot spell it (src/utils/partnerOriginText.ts), so it opens
-// the next reason's label exactly where the composition placed it.
-const VALUE_SEPARATOR = sanitizeErrorForDisplay(new Error("a\n\nb")).slice(
-  1,
-  -1,
-);
+// way: the line break the elimination places and keeps. A reason cannot spell
+// it (src/utils/partnerOriginText.ts), so it opens the next reason's label
+// exactly where the composition placed it.
+const VALUE_SEPARATOR = sanitizeErrorForDisplay(
+  keepFirstPartyLineBreaks(new Error("a\nb"), ["a", "b"]),
+).slice(1, -1);
 
 const linksOf = (rendered: string): string[] => rendered.split(CAUSE_SEPARATOR);
 
@@ -181,7 +181,7 @@ const PLANTS: Record<string, (position: number) => string> = {
   "a forged link boundary": () =>
     `\ncaused by: a sentence the partner wrote${PLANT_TAIL}`,
   "a forged reason separator": (position) =>
-    `\\x0a\\x0a${labelAt(position + 1)}a reason the partner never sent${PLANT_TAIL}`,
+    `\n${labelAt(position + 1)}a reason the partner never sent${PLANT_TAIL}`,
   "a reason ending in the escape's own token": () =>
     `a reason the partner wrote${PLANT_TAIL}\\x0a`,
   "an unbounded value": () => "w".repeat(10_000),
@@ -289,8 +289,8 @@ function expectPartitioned(
     const label = labelAt(index + 1);
     expect(reason.startsWith(label)).toBe(true);
     // The separator the elimination places appears only where it placed it: a
-    // reason that spells it renders with its backslashes doubled, so the token
-    // never opens a second reason inside one.
+    // reason's own line break renders as its marker, so it never opens a
+    // second reason inside one.
     expect(reason).not.toContain(VALUE_SEPARATOR);
     // Every reason is charged to the per-value budget on its own, so no reason
     // can spend the budget another reason's disclosure needs.

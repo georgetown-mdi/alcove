@@ -1,9 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import type { Argv, Arguments } from "yargs";
 
 import {
   assertTermsRunnable,
   decodeTermsUpdate,
   disclosedColumnNames,
+  keepFirstPartyLinesWithOperatorText,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
@@ -25,6 +29,7 @@ import {
   diffLinkageTerms,
   persistTermsUpdate,
 } from "../config";
+import { expandTilde } from "../fileUtils";
 import {
   consentSurfaceSink,
   displayInvitation,
@@ -37,6 +42,7 @@ import {
   readPartnershipConfig,
   readPartnershipSecret,
 } from "../termsUpdateFiles";
+import { applyCommand, termsProposalPath } from "../termsChange";
 import { resolveAtSignRefs } from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, singleValue } from "../util/flags";
@@ -102,11 +108,25 @@ function readUpdateArgument(raw: string): string {
   return stripInvitationWhitespace(resolved);
 }
 
+/** Whether `updateArgument` is an `@path` naming the file at `filePath`. */
+function namesFile(updateArgument: string, filePath: string): boolean {
+  return (
+    updateArgument.startsWith("@") &&
+    path.resolve(expandTilde(updateArgument.slice(1))) ===
+      path.resolve(filePath)
+  );
+}
+
 /**
- * The refusal an update the decode refused is reported as, naming the check
- * that refused it and what to do.
+ * The refusal an update the decode refused is reported as. A partnership
+ * refusal names the terms proposal beside the configuration where there is
+ * one: the exchange that wrote it rotated the shared secret, so an update
+ * made before it no longer verifies.
  */
-function refusalOf(err: TermsUpdateRefusedError, keyPath: string): UsageError {
+function refusalOf(
+  err: TermsUpdateRefusedError,
+  paths: { configPath: string; keyPath: string; updateArgument: string },
+): UsageError {
   const unchanged = " Nothing was changed.";
   switch (err.check) {
     case "format":
@@ -116,9 +136,33 @@ function refusalOf(err: TermsUpdateRefusedError, keyPath: string): UsageError {
           "whole output.",
       );
     case "partnership": {
-      const message = messageWithOperatorText`the terms update was refused by the partnership check: it was made under a shared secret other than the one in ${operatorSuppliedText(
-        keyPath,
-      )}, so it is for a different partnership, or an exchange between you has replaced the secret since it was made.${unchanged} Ask your partner to run 'alcove update' again from the configuration and key file they use with you.`;
+      const refused = messageWithOperatorText`the terms update was refused by the partnership check: it was made under a shared secret other than the one in ${operatorSuppliedText(
+        paths.keyPath,
+      )}, so it is for a different partnership, or an exchange between you has replaced the secret since it was made.${unchanged}`;
+      const askAgain =
+        "your partner to run 'alcove update' again from the configuration " +
+        "and key file they use with you.";
+      const proposalPath = termsProposalPath(paths.configPath);
+      if (
+        !namesFile(paths.updateArgument, proposalPath) &&
+        fs.existsSync(proposalPath)
+      ) {
+        const lines = [
+          refused,
+          messageWithOperatorText`To fix, apply the terms your last exchange with your partner wrote to ${operatorSuppliedText(
+            proposalPath,
+          )}:`,
+          messageWithOperatorText`  ${operatorSuppliedText(
+            applyCommand({ ...paths, proposalPath }),
+          )}`,
+          messageWithOperatorText`If those are not the terms you expect, ask ${askAgain}`,
+        ];
+        return keepFirstPartyLinesWithOperatorText(
+          new UsageError(lines.map((line) => line.text).join("\n")),
+          lines,
+        );
+      }
+      const message = messageWithOperatorText`${refused} Ask ${askAgain}`;
       return keepOperatorSuppliedText(new UsageError(message.text), message);
     }
     case "authentication":
@@ -259,7 +303,11 @@ export async function handler(argv: Arguments): Promise<void> {
         update = await decodeTermsUpdate(encoded, sharedSecret);
       } catch (err) {
         if (err instanceof TermsUpdateRefusedError)
-          throw refusalOf(err, keyPath);
+          throw refusalOf(err, {
+            configPath,
+            keyPath,
+            updateArgument: positionals[0] as string,
+          });
         throw err;
       }
       if (update.linkageTerms.identity === identity)

@@ -13,6 +13,7 @@ import {
 } from "../../src/utils/sanitizeForDisplay";
 import {
   CAUSE_DEPTH_ELISION_MARKER,
+  keepFirstPartyLineBreaks,
   sanitizeErrorForDisplay,
 } from "../../src/utils/sanitizeErrorForDisplay";
 
@@ -33,12 +34,10 @@ const CAUSE_SEPARATOR = sanitizeErrorForDisplay(
 ).slice(1, -1);
 
 // The separator between two values packed on one link, read back the same way:
-// the two line breaks a first-party composition places, as the sink's escape
-// renders them.
-const VALUE_SEPARATOR = sanitizeErrorForDisplay(new Error("a\n\nb")).slice(
-  1,
-  -1,
-);
+// the line break a first-party composition places and keeps.
+const VALUE_SEPARATOR = sanitizeErrorForDisplay(
+  keepFirstPartyLineBreaks(new Error("a\nb"), ["a", "b"]),
+).slice(1, -1);
 
 const linksOf = (error: Error): string[] =>
   sanitizeErrorForDisplay(error).split(CAUSE_SEPARATOR);
@@ -287,16 +286,16 @@ test("a control character is replaced, so no link boundary can be forged", () =>
   ]);
 });
 
-// The separator's other half: a value that spells the escape's own token still
-// cannot open a value of its own, because the sink doubles the backslash it
-// spelled and two tokens in a row are unspellable.
+// The separator's other half: a value's own line break, or one it spells as the
+// escape's token, cannot open a value of its own. The break arrives as its
+// marker, and the sink doubles the backslash a spelled token holds.
 test("a value cannot forge the separator between two values", () => {
-  const forged = `\\x0a\\x0a${labelAt(2)}a reason the partner never sent`;
+  const forged = `\n${labelAt(2)}a reason the partner never sent\\x0a`;
   const values = valuesOf(abortOver([forged, "the second reason"]));
 
   expect(values).toHaveLength(2);
   expect(values[0]).toBe(
-    `${labelAt(1)}\\\\x0a\\\\x0a${labelAt(2)}a reason the partner never sent`,
+    `${labelAt(1)}<0a>${labelAt(2)}a reason the partner never sent\\\\x0a`,
   );
   expect(values[1]).toBe(`${labelAt(2)}the second reason`);
 });

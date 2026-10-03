@@ -100,6 +100,10 @@ function refusalRenderedForDisplay(
   return sanitizeErrorForDisplay(thrown);
 }
 
+// The remedy line closing the refusal's own message, under "To fix:".
+const remedyOf = (links: string[]): string | undefined =>
+  links[0]!.split("\n").at(-1);
+
 // The rendered refusal split into the cause links the operator reads, in order.
 function refusalLinks(
   columns: string[],
@@ -125,7 +129,7 @@ test("refuses by name when the only linkage key's parse_date drops every record"
   // The column is present, so the column verdict passes -- yet the one key it
   // satisfies is dead, so the run could emit no key string and would write a
   // guaranteed-empty result at exit 0. It is refused instead, naming the key on a
-  // link of its own behind the terms-side remedy.
+  // link of its own behind the message that states the terms-side remedy.
   const links = refusalLinks(
     ["dob"],
     dobTerms([{ function: "parse_date", params: { inputFormat: "MM/DD" } }]),
@@ -136,8 +140,8 @@ test("refuses by name when the only linkage key's parse_date drops every record"
   expect(links[0]).toContain(
     "the cleaning declared for the one agreed linkage key drops every record",
   );
-  expect(links[1]).toBe(
-    `Correct the cleaning steps those keys declare, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: correct the cleaning steps those keys declare, ${messaging.blockRemedy}`,
   );
   expect(links).toContain("linkage key that drops every record: DOB");
 });
@@ -162,8 +166,8 @@ test("a dead key beside a live one is refused, not warned", () => {
     "the cleaning declared for 1 of the 2 agreed linkage keys drops every " +
       "record",
   );
-  expect(links[1]).toBe(
-    `Correct the cleaning steps those keys declare, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: correct the cleaning steps those keys declare, ${messaging.blockRemedy}`,
   );
   expect(links).toContain("linkage key that drops every record: DOB");
 });
@@ -187,11 +191,34 @@ test("an input satisfying only some of the declared keys is refused", () => {
     "1 of the 2 agreed linkage keys cannot be produced from this input's " +
       "columns",
   );
-  expect(links[1]).toBe(
-    `Provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
   );
-  expect(links).toContain("unsatisfied field: email (email_address)");
+  expect(links).toContain(
+    "this CSV has no column of type email_address for linkage field email",
+  );
   expect(links).toContain("linkage key the CSV cannot produce: EMAIL");
+});
+
+test("a column the configuration's metadata names and the CSV lacks is named, with the remedy under To fix", () => {
+  let thrown: unknown;
+  try {
+    checkLinkageSatisfiability(["ssn"], dobTerms(), messaging, undefined, [
+      { name: "DOB", type: "date_of_birth", role: "linkage", isPayload: false },
+      { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+    ]);
+  } catch (err) {
+    thrown = err;
+  }
+  const links = sanitizeErrorForDisplay(thrown).split("\ncaused by: ");
+  expect(links[1]).toBe(
+    "this CSV has no column DOB, which linkage field dob (date_of_birth) reads",
+  );
+  expect(links[0]!.split("\n")).toHaveLength(2);
+  expect(remedyOf(links)).toBe(
+    `To fix: provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
+  );
+  expect(links.join("\n")).not.toContain("\\x0a");
 });
 
 test("a dead key beside a column-unsatisfiable one is refused, naming both causes", () => {
@@ -218,12 +245,14 @@ test("a dead key beside a column-unsatisfiable one is refused, naming both cause
     "the cleaning declared for 1 of the 2 agreed linkage keys drops every " +
       "record",
   );
-  expect(links[1]).toBe(
-    "Provide a CSV that covers the required field types and correct the " +
+  expect(remedyOf(links)).toBe(
+    "To fix: provide a CSV that covers the required field types and correct the " +
       `cleaning steps those keys declare, ${messaging.blockRemedy}`,
   );
   expect(links).toContain("linkage key that drops every record: DOB");
-  expect(links).toContain("unsatisfied field: ssn (ssn)");
+  expect(links).toContain(
+    "this CSV has no column of type ssn for linkage field ssn",
+  );
 });
 
 // --- the standing each seat states -------------------------------------------
@@ -255,8 +284,8 @@ test("the mint seat states the same shortfall without claiming an agreement", ()
   // fragment nor the remedy may address a partnership that does not exist yet.
   expect(links[0]).not.toContain("agreed linkage key");
   expect(links.join("\n")).not.toContain("ask your partner");
-  expect(links[1]).toBe(
-    `Correct the cleaning steps those keys declare, ${mintMessaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: correct the cleaning steps those keys declare, ${mintMessaging.blockRemedy}`,
   );
 });
 
@@ -269,8 +298,8 @@ test("the mint seat's keyless refusal asks the operator to declare, not to agree
   expect(links[0]).toContain(
     "the configuration's linkage terms declare no linkage key",
   );
-  expect(links[1]).toBe(
-    "Declare at least one linkage key in these terms, " +
+  expect(remedyOf(links)).toBe(
+    "To fix: declare at least one linkage key in these terms, " +
       mintMessaging.blockRemedy,
   );
 });
@@ -306,8 +335,8 @@ test("terms declaring no linkage key at all are refused", () => {
   expect(links[0]).toContain(
     "the invitation's linkage terms declare no linkage key",
   );
-  expect(links[1]).toBe(
-    `Agree linkage terms declaring at least one linkage key, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: agree linkage terms declaring at least one linkage key, ${messaging.blockRemedy}`,
   );
 });
 
@@ -332,11 +361,11 @@ test("the dead-key refusal reports the keys it could not name, with the total", 
     `the cleaning declared for all ${total} agreed linkage keys drops every ` +
       "record",
   );
-  expect(links[1]).toBe(
-    `Correct the cleaning steps those keys declare, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: correct the cleaning steps those keys declare, ${messaging.blockRemedy}`,
   );
 
-  const named = links.slice(2, -1);
+  const named = links.slice(1, -1);
   expect(named.length).toBeGreaterThan(0);
   named.forEach((link, index) =>
     expect(link).toBe(`linkage key that drops every record: KEY_${index}`),
@@ -468,8 +497,8 @@ test("a key blocked for a missing column is not also reported as dead", () => {
     ["other_column"],
     dobTerms([{ function: "parse_date", params: { inputFormat: "MM/DD" } }]),
   );
-  expect(links[1]).toBe(
-    `Provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
   );
   expect(links.join("\n")).not.toContain("drops every record");
 });
@@ -495,10 +524,12 @@ test.each([
   );
   // The remedy whole, not a prefix of it: a wide name sharing its link is what
   // would deliver one.
-  expect(links).toContain(
-    `Provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
   );
-  const nameLink = links.find((link) => link.startsWith("unsatisfied field: "));
+  const nameLink = links.find((link) =>
+    link.startsWith("this CSV has no column of type ssn for linkage field "),
+  );
   expect(nameLink).toBeDefined();
   expect(nameLink).toContain("w".repeat(64));
 });
@@ -536,17 +567,18 @@ test("the refusal reports the details it could not name, with the total", () => 
   expect(links[0]).toContain(
     "cannot satisfy every linkage key the invitation declares",
   );
-  expect(links[1]).toBe(
-    `Provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
+  expect(remedyOf(links)).toBe(
+    `To fix: provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
   );
 
-  // What truncation spends the budget on is the failing keys: they are what the
-  // verdict blocks on, and a field named ahead of one would push it past the
-  // depth bound.
-  const named = links.slice(2, -1);
+  // What truncation spends the budget on is the missing columns: they name
+  // what the operator adds to the CSV, and the keys they cost follow.
+  const named = links.slice(1, -1);
   expect(named.length).toBeGreaterThan(0);
   named.forEach((link, index) =>
-    expect(link).toBe(`linkage key the CSV cannot produce: KEY_field${index}`),
+    expect(link).toBe(
+      `this CSV has no column of type ssn for linkage field field${index}`,
+    ),
   );
   expect(links[links.length - 1]).toBe(
     `and ${details - named.length} more details of the terms this CSV cannot ` +
@@ -557,29 +589,31 @@ test("the refusal reports the details it could not name, with the total", () => 
   // name the operator would search the output for.
   const rendered = links.join("\n");
   for (let index = named.length; index < total; index++)
-    expect(rendered).not.toContain(`KEY_field${index}`);
-  expect(rendered).not.toContain("unsatisfied field: ");
+    expect(rendered).not.toContain(`field field${index}`);
+  expect(rendered).not.toContain("linkage key the CSV cannot produce");
   // The composition fits the depth bound, so the renderer's generic marker --
   // which cannot report a count -- never has to stand in for it.
   expect(rendered).not.toContain(CAUSE_DEPTH_ELISION_MARKER);
 });
 
 test("the refusal names every detail when they all fit the link budget", () => {
-  // One detail per link the renderer reaches after the summary and the remedy:
-  // the widest enumeration that needs no overflow link at all. Each field costs
-  // two links (the key it collapses, then the field), so half as many fields.
-  const fields = (MAX_ERROR_CAUSE_DEPTH - 2) / 2;
+  // One detail per link the renderer reaches after the summary: the widest
+  // enumeration that needs no overflow link at all. Each field costs two links
+  // (the missing column, then the key it collapses), so half as many fields,
+  // rounded down.
+  const fields = Math.floor((MAX_ERROR_CAUSE_DEPTH - 1) / 2);
   const links = refusalLinks(["other_column"], unsatisfiableTerms(fields));
 
-  expect(links.length).toBe(MAX_ERROR_CAUSE_DEPTH);
-  expect(links.slice(2)).toEqual([
+  expect(links.length).toBe(1 + fields * 2);
+  expect(links.slice(1)).toEqual([
     ...Array.from(
       { length: fields },
-      (_, index) => `linkage key the CSV cannot produce: KEY_field${index}`,
+      (_, index) =>
+        `this CSV has no column of type ssn for linkage field field${index}`,
     ),
     ...Array.from(
       { length: fields },
-      (_, index) => `unsatisfied field: field${index} (ssn)`,
+      (_, index) => `linkage key the CSV cannot produce: KEY_field${index}`,
     ),
   ]);
   const rendered = links.join("\n");
@@ -602,7 +636,9 @@ test("a declared field no linkage key references is not named", () => {
   };
   const links = refusalLinks(["dob"], terms);
   expect(links).toContain("linkage key the CSV cannot produce: SSN");
-  expect(links).toContain("unsatisfied field: ssn (ssn)");
+  expect(links).toContain(
+    "this CSV has no column of type ssn for linkage field ssn",
+  );
   expect(links.join("\n")).not.toContain("unreferenced");
 });
 
@@ -614,5 +650,5 @@ test("a dead key's refusal names the key and no field at all", () => {
     ["dob"],
     dobTerms([{ function: "parse_date", params: { inputFormat: "MM/DD" } }]),
   );
-  expect(links.slice(2)).toEqual(["linkage key that drops every record: DOB"]);
+  expect(links.slice(1)).toEqual(["linkage key that drops every record: DOB"]);
 });

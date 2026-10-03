@@ -300,7 +300,7 @@ export function acceptorUnsatisfiedTypes(
     editorState.metadata,
   );
   const seen = new Map<LinkageField["type"], string>();
-  for (const field of verdict.unsatisfiedFields)
+  for (const { field } of verdict.unsatisfiedFieldColumns)
     seen.set(field.type, SEMANTIC_TYPE_LABELS[field.type]);
   return [...seen.entries()].map(([type, label]) => ({ type, label }));
 }

@@ -3512,7 +3512,7 @@ test("prepareDataset: refuses (UsageError) naming the field when the CSV satisfi
   // partner-chosen on the sibling accept path -- so it is the rendered chain the
   // operator reads that has to hold it, not the summary.
   expect(sanitizeErrorForDisplay(err)).toContain(
-    "unsatisfied field: ssn (ssn)",
+    "this CSV has no column of type ssn for linkage field ssn",
   );
 });
 
@@ -3533,7 +3533,9 @@ test("prepareDataset: refuses when only some of the committed keys are satisfiab
     "1 of the 2 agreed linkage keys cannot be produced from this input's " +
       "columns",
   );
-  expect(rendered).toContain("unsatisfied field: ssn (ssn)");
+  expect(rendered).toContain(
+    "this CSV has no column of type ssn for linkage field ssn",
+  );
   expect(rendered).toContain("linkage key the CSV cannot produce: SSN");
   expect(mockState.warnings).toHaveLength(0);
 });

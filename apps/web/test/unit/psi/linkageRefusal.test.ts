@@ -11,7 +11,11 @@ import { unlinkableFileAlert } from "@components/UnlinkableFileAlert";
 
 import { linkageRefusalFor } from "@psi/linkageRefusal";
 
-import type { LinkageTerms } from "@alcove/core";
+import type {
+  LinkageField,
+  LinkageTerms,
+  LinkageTermsVerdict,
+} from "@alcove/core";
 
 // The one reading of core's linkage-terms verdict every console pre-launch seat
 // holds, and the copy the seats that render an alert share. The seats' own gates
@@ -35,6 +39,10 @@ function termsNamed(keyName: string, fieldName: string): LinkageTerms {
   };
 }
 
+function fieldsOf(verdict: LinkageTermsVerdict): Array<LinkageField> {
+  return verdict.unsatisfiedFieldColumns.map(({ field }) => field);
+}
+
 describe("linkageRefusalFor", () => {
   test("a satisfied verdict has no refusal, so a seat with none does not block", () => {
     const columns = ["first_name"];
@@ -44,7 +52,7 @@ describe("linkageRefusalFor", () => {
     );
     expect(verdict.fullySatisfied).toBe(true);
     expect(
-      linkageRefusalFor(verdict, verdict.unsatisfiedFields, columns),
+      linkageRefusalFor(verdict, fieldsOf(verdict), columns),
     ).toBeUndefined();
   });
 
@@ -56,10 +64,9 @@ describe("linkageRefusalFor", () => {
     const narrowed = getDefaultLinkageTerms("x", inferMetadata(columns, []));
     expect(narrowed.linkageKeys).toEqual([]);
     const verdict = decideLinkageTermsVerdict(columns, narrowed);
-    const missing = decideLinkageTermsVerdict(
-      columns,
-      getDefaultLinkageTerms("x"),
-    ).unsatisfiedFields;
+    const missing = fieldsOf(
+      decideLinkageTermsVerdict(columns, getDefaultLinkageTerms("x")),
+    );
     const refusal = linkageRefusalFor(verdict, missing, columns);
     expect(refusal?.kind).toBe("no-linkable-key");
     if (refusal?.kind !== "no-linkable-key") throw new Error("unreachable");
@@ -71,9 +78,7 @@ describe("linkageRefusalFor", () => {
       ["notes"],
       termsNamed("k", "first_name"),
     );
-    const refusal = linkageRefusalFor(verdict, verdict.unsatisfiedFields, [
-      "notes",
-    ]);
+    const refusal = linkageRefusalFor(verdict, fieldsOf(verdict), ["notes"]);
     expect(refusal?.kind).toBe("shortfall");
     if (refusal?.kind !== "shortfall") throw new Error("unreachable");
     expect(refusal.verdict).toBe(verdict);
@@ -114,10 +119,9 @@ describe("unlinkableFileAlert", () => {
     const columns = ["notes"];
     const alert = unlinkableFileAlert({
       kind: "no-linkable-key",
-      missingFields: decideLinkageTermsVerdict(
-        columns,
-        getDefaultLinkageTerms("x"),
-      ).unsatisfiedFields,
+      missingFields: fieldsOf(
+        decideLinkageTermsVerdict(columns, getDefaultLinkageTerms("x")),
+      ),
       singleColumn: false,
     });
     expect(alert.title).toBe("This file cannot be linked");

@@ -553,6 +553,33 @@ export function unsatisfiedLinkageFields(
   standardization?: Standardization,
   metadata?: ColumnMetadata[],
 ): LinkageField[] {
+  return unsatisfiedFieldColumns(columns, terms, standardization, metadata).map(
+    ({ field }) => field,
+  );
+}
+
+/**
+ * A linkage field the input cannot produce, beside the column the resolution
+ * bound it to and the input lacks, or `undefined` where no column of the
+ * field's type is roled for linkage.
+ */
+export interface UnsatisfiedFieldColumn {
+  /** The field the input cannot produce. */
+  field: LinkageField;
+  /** The column the field is read from, absent from the input. */
+  column: string | undefined;
+}
+
+/**
+ * {@link unsatisfiedLinkageFields}, each field beside the column it expects
+ * ({@link UnsatisfiedFieldColumn}).
+ */
+export function unsatisfiedFieldColumns(
+  columns: string[],
+  terms: LinkageTerms,
+  standardization?: Standardization,
+  metadata?: ColumnMetadata[],
+): UnsatisfiedFieldColumn[] {
   const present = new Set(columns);
   const resolution = resolveFieldColumns(
     terms,
@@ -564,9 +591,11 @@ export function unsatisfiedLinkageFields(
   // in the input. The binding rules (explicit-preempts-fallback, first-match type
   // fallback) live in resolveFieldColumns, not here, so this verdict cannot drift
   // from the builder's.
-  return terms.linkageFields.filter((f) => {
-    const column = resolution.get(f.name)?.column;
-    return column === undefined || !present.has(column);
+  return terms.linkageFields.flatMap((field) => {
+    const column = resolution.get(field.name)?.column;
+    return column === undefined || !present.has(column)
+      ? [{ field, column }]
+      : [];
   });
 }
 
@@ -1549,7 +1578,7 @@ export function assessLinkageSatisfiability(
     metadata,
   );
   return {
-    unsatisfied: verdict.unsatisfiedFields,
+    unsatisfied: verdict.unsatisfiedFieldColumns.map(({ field }) => field),
     satisfiableKeyCount: verdict.keys.length - verdict.unsatisfiableKeys.length,
     deadKeys: verdict.deadKeys,
   };
@@ -1604,11 +1633,12 @@ export interface LinkageTermsVerdict {
   unsatisfiableKeys: LinkageKey[];
   /** The declared keys graded `dead`, in declaration order. */
   deadKeys: LinkageKey[];
-  /** The linkage fields the columns cannot produce (see
-   * {@link unsatisfiedLinkageFields}). Empty when the input satisfies every
-   * declared field -- including when keys are still unsatisfiable, which happens
-   * when a key element references a field the terms never declare. */
-  unsatisfiedFields: LinkageField[];
+  /** The linkage fields the columns cannot produce, each beside the column it
+   * expects (see {@link unsatisfiedFieldColumns}). Empty when the input
+   * satisfies every declared field -- including when keys are still
+   * unsatisfiable, which happens when a key element references a field the
+   * terms never declare. */
+  unsatisfiedFieldColumns: UnsatisfiedFieldColumn[];
 }
 
 /**
@@ -1634,16 +1664,16 @@ export function decideLinkageTermsVerdict(
   standardization?: Standardization,
   metadata?: ColumnMetadata[],
 ): LinkageTermsVerdict {
-  const unsatisfiedFields = unsatisfiedLinkageFields(
+  const missing = unsatisfiedFieldColumns(
     columns,
     terms,
     standardization,
     metadata,
   );
-  const unsatisfiedNames = new Set(unsatisfiedFields.map((f) => f.name));
+  const unsatisfiedNames = new Set(missing.map(({ field }) => field.name));
   // The set of field names that are BOTH declared and producible. A key element
   // referencing a name absent from this set is unsatisfiable -- whether the field
-  // is declared-but-unproducible (in `unsatisfiedFields`) or not declared at all.
+  // is declared-but-unproducible (in `unsatisfiedFieldColumns`) or not declared at all.
   // The latter is rejected upstream by LinkageTermsSchema's referential-integrity
   // refine (a key element `field` must name a declared linkage field), so a
   // schema-validated terms set cannot reach here with an undeclared reference;
@@ -1689,7 +1719,7 @@ export function decideLinkageTermsVerdict(
     keys,
     unsatisfiableKeys,
     deadKeys,
-    unsatisfiedFields,
+    unsatisfiedFieldColumns: missing,
   };
 }
 
@@ -1823,12 +1853,12 @@ export function assertLinkageTermsSatisfiable(
   // marker's fail-closed reach stays inside that name's own run rather than
   // taking the names behind it with it (see redactPrivateKeyMaterial).
   const details: string[] = [];
-  if (verdict.unsatisfiedFields.length > 0)
+  if (verdict.unsatisfiedFieldColumns.length > 0)
     details.push(
-      `unsatisfied linkage fields (${verdict.unsatisfiedFields.length}): ` +
-        verdict.unsatisfiedFields
+      `unsatisfied linkage fields (${verdict.unsatisfiedFieldColumns.length}): ` +
+        verdict.unsatisfiedFieldColumns
           .map(
-            (field) =>
+            ({ field }) =>
               `${redactPrivateKeyMaterial(field.name)} (${field.type})`,
           )
           .join(", "),

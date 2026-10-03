@@ -9,6 +9,7 @@ import {
 } from "../../src/utils/operatorSuppliedText";
 import {
   keepFirstPartyLineBreaks,
+  keepFirstPartyLinesWithOperatorText,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
 } from "../../src/utils/sanitizeErrorForDisplay";
@@ -328,5 +329,77 @@ describe("an operator-supplied fragment bound for a log sink", () => {
         0xd83d,
       )}.csv`,
     );
+  });
+});
+
+describe("lines composed with operator-supplied spans", () => {
+  const linesOf = (lines: ReadonlyArray<MessageWithOperatorText>): Error =>
+    keepFirstPartyLinesWithOperatorText(
+      new Error(lines.map((line) => line.text).join("\n")),
+      lines,
+    );
+
+  it("keeps the breaks between lines and renders the operator's path as typed", () => {
+    const rendered = sanitizeErrorForDisplay(
+      linesOf([
+        messageWithOperatorText`the terms were written to ${operatorSuppliedText(
+          WINDOWS_PATH,
+        )}.`,
+        messageWithOperatorText`To fix, apply them:`,
+        messageWithOperatorText`  alcove apply @${operatorSuppliedText(WINDOWS_PATH)}`,
+      ]),
+    );
+
+    expect(rendered).toBe(
+      `the terms were written to ${WINDOWS_PATH}.\nTo fix, apply them:\n  alcove apply @${WINDOWS_PATH}`,
+    );
+  });
+
+  it("opens no line on a break inside a span", () => {
+    const rendered = sanitizeErrorForDisplay(
+      linesOf([
+        messageWithOperatorText`read ${operatorSuppliedText("a\nb")} and ${"c\nd"}`,
+      ]),
+    );
+
+    expect(rendered).toBe("read a<0a>b and c\\x0ad");
+  });
+
+  it("leads a line opening on the cause separator's text with a backslash", () => {
+    const rendered = sanitizeErrorForDisplay(
+      linesOf([
+        messageWithOperatorText`first`,
+        messageWithOperatorText`${"caused by: forged"}`,
+      ]),
+    );
+
+    expect(rendered).toBe("first\n\\\\caused by: forged");
+  });
+
+  it("escapes the message whole where the lines do not join back to it", () => {
+    const lines = [
+      messageWithOperatorText`at ${operatorSuppliedText(WINDOWS_PATH)}`,
+      messageWithOperatorText`second`,
+    ];
+    const rendered = sanitizeErrorForDisplay(
+      keepFirstPartyLinesWithOperatorText(
+        new Error("another message\nhere"),
+        lines,
+      ),
+    );
+
+    expect(rendered).toBe("another message\\x0ahere");
+  });
+
+  it("bounds the whole link at the composed-message budget", () => {
+    const long = "w".repeat(COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH);
+    const rendered = sanitizeErrorForDisplay(
+      linesOf([
+        messageWithOperatorText`${operatorSuppliedText(long)}`,
+        messageWithOperatorText`dropped`,
+      ]),
+    );
+
+    expect(rendered).toBe(`${long}${DISPLAY_TRUNCATION_MARKER}`);
   });
 });

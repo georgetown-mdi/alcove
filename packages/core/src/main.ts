@@ -231,6 +231,7 @@ export {
   sanitizeErrorChainLinks,
   joinErrorCauseChain,
   keepFirstPartyLineBreaks,
+  keepFirstPartyLinesWithOperatorText,
   renderedDisplayCostKeepingLineBreaks,
   redactPrivateKeyMaterial,
   redactAndSanitizeForDisplay,
@@ -605,6 +606,7 @@ export type {
   LinkageTermsStanding,
   LinkageTermsVerdict,
   TransformRefusal,
+  UnsatisfiedFieldColumn,
 } from "./linkageSatisfiability";
 
 // The one display model both acceptance surfaces render the inviter's proposed

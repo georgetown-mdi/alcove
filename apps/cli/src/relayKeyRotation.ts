@@ -28,6 +28,7 @@ import {
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
 import { AUTHENTICATION_FAILED_EXIT_CODE } from "./util/exit";
+import { withRecoveryHintTag } from "./util/recoveryHint";
 
 export {
   registerRelayKey,
@@ -100,17 +101,16 @@ export function relayRegistrationError(
       : " The rotated shared secret is kept.";
   switch (outcome.kind) {
     case "refused":
-      return Object.assign(
-        new Error(
-          `${what} (${detail}): the registrar does not hold the key this ` +
-            `run signed with.${sent} Until the registrar holds this ` +
-            `exchange's current key, the relay refuses this party's runs; ` +
-            `${RELAY_REENROLLMENT_STEP}.`,
+      return withRecoveryHintTag(
+        Object.assign(
+          new Error(
+            `${what} (${detail}): the registrar does not hold the key this ` +
+              `run signed with.${sent} Until the registrar holds this ` +
+              `exchange's current key, the relay refuses this party's runs; ` +
+              `${RELAY_REENROLLMENT_STEP}.`,
+          ),
+          { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
         ),
-        {
-          exitCode: AUTHENTICATION_FAILED_EXIT_CODE,
-          alcoveRecoveryHintEmitted: true,
-        },
       );
     case "unavailable":
       return new ConnectionError(

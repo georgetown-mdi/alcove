@@ -15,6 +15,10 @@ import {
   ruleSetCitation,
 } from "../../src/config/compatibilityMessage";
 import { validateCompatibility } from "../../src/linkageTermsNegotiation";
+import {
+  MAX_NAME_LENGTH,
+  parseLinkageTerms,
+} from "../../src/config/linkageTermsSchema";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import {
   redactAndSanitizeForDisplay,
@@ -1236,11 +1240,6 @@ test("the value-free diagnostics contain no delimiter at all", () => {
       { ...base, output: { expectsOutput: false, shareWithPartner: false } },
       { ...base, output: { expectsOutput: false, shareWithPartner: false } },
     ).errors,
-    validateCompatibility(base, {
-      ...base,
-      linkageFields: [{ name: "dob", type: "date_of_birth" }],
-      linkageKeys: [{ name: "SSN", elements: [{ field: "dob" }] }],
-    }).errors,
     validateCompatibility(
       withAgreement(base, "MOU-001", "Care coordination"),
       base,
@@ -1254,6 +1253,79 @@ test("the value-free diagnostics contain no delimiter at all", () => {
   expect(valueFree.length).toBeGreaterThan(0);
   for (const message of valueFree)
     expect(message).not.toContain(TERMS_VALUE_DELIMITER);
+});
+
+test("a field or key mismatch names, delimited, each entry that differs", () => {
+  const withDob: LinkageTerms = {
+    ...base,
+    linkageFields: [...sharedFields, { name: "dob", type: "date_of_birth" }],
+    linkageKeys: [
+      ...sharedKeys,
+      { name: "SSN + DOB", elements: [{ field: "ssn" }, { field: "dob" }] },
+    ],
+  };
+  expect(validateCompatibility(withDob, base).errors).toEqual([
+    'linkage fields do not match: "dob" is declared by one party only',
+    'linkage keys do not match: "SSN + DOB" is declared by one party only',
+  ]);
+  // The same words from either side: a reason is relayed to the other party.
+  expect(validateCompatibility(base, withDob).errors).toEqual(
+    validateCompatibility(withDob, base).errors,
+  );
+
+  const withSsn4: LinkageTerms = {
+    ...base,
+    linkageFields: [...sharedFields, { name: "ssn4", type: "ssn4" }],
+  };
+  expect(validateCompatibility(withDob, withSsn4).errors[0]).toBe(
+    'linkage fields do not match: "dob","ssn4" are declared by one party only',
+  );
+  expect(validateCompatibility(withSsn4, withDob).errors).toEqual(
+    validateCompatibility(withDob, withSsn4).errors,
+  );
+
+  const retyped: LinkageTerms = {
+    ...base,
+    linkageFields: [{ name: "ssn", type: "ssn4" }],
+    linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
+  };
+  expect(validateCompatibility(base, retyped).errors).toEqual([
+    'linkage fields do not match: local and partner declare "ssn" differently',
+  ]);
+
+  const reordered: LinkageTerms = {
+    ...withDob,
+    linkageKeys: [...withDob.linkageKeys].reverse(),
+  };
+  expect(validateCompatibility(withDob, reordered).errors).toEqual([
+    "linkage keys do not match: local and partner declare the same keys in a different order",
+  ]);
+
+  // A name that spells the clause structure stays inside its own run.
+  const forged: LinkageTerms = {
+    ...base,
+    linkageFields: [
+      ...sharedFields,
+      { name: 'x" is declared by one party only; "y', type: "first_name" },
+    ],
+  };
+  expect(validateCompatibility(forged, base).errors[0]).toBe(
+    'linkage fields do not match: "x"" is declared by one party only; ""y" is declared by one party only',
+  );
+});
+
+test("a name at the length ceiling holding a quote and a backslash is quoted as one element", () => {
+  const hostile = 'a"\\' + "b".repeat(MAX_NAME_LENGTH - 3);
+  expect(hostile).toHaveLength(MAX_NAME_LENGTH);
+  const withHostile: LinkageTerms = {
+    ...base,
+    linkageFields: [...sharedFields, { name: hostile, type: "first_name" }],
+  };
+  expect(() => parseLinkageTerms(withHostile)).not.toThrow();
+  const [message] = validateCompatibility(withHostile, base).errors;
+  expect(message).toContain("is declared by one party only");
+  expect(readMessage(message!).values).toEqual([hostile]);
+  expect(message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
 });
 
 test("each output-mismatch branch displays as a whole sentence", () => {

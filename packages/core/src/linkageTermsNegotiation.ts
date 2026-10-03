@@ -260,6 +260,87 @@ export function describeRuleSet(
 const linkageFieldsByName = (a: LinkageField, b: LinkageField): number =>
   a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
+/**
+ * The clause naming how two lists of named terms entries -- linkage fields or
+ * linkage keys -- differ: the names only one party declares, then the names
+ * both declare with different content, each list opened by `: ` and separated
+ * by `; `. Empty where no name differs; for two lists holding the same entries
+ * in a different order, it says so, which only the ordered keys can reach.
+ *
+ * An entry is compared by canonical form, the comparison that found the lists
+ * unequal; one that cannot be encoded counts as differing, its encoding error
+ * reported beside this clause.
+ */
+function namedEntryDifferences(
+  local: ReadonlyArray<{ readonly name: string }>,
+  partner: ReadonlyArray<{ readonly name: string }>,
+  noun: CompatibilityMessageFragment,
+): CompatibilityMessageFragment {
+  const canonicalOrUndefined = (entry: unknown): string | undefined => {
+    try {
+      return canonicalString(entry);
+    } catch (err) {
+      if (err instanceof CanonicalEncodingError) return undefined;
+      throw err;
+    }
+  };
+  const byName = (
+    entries: ReadonlyArray<{ readonly name: string }>,
+  ): Map<string, unknown> => {
+    const map = new Map<string, unknown>();
+    for (const entry of entries)
+      if (!map.has(entry.name)) map.set(entry.name, entry);
+    return map;
+  };
+  const localByName = byName(local);
+  const partnerByName = byName(partner);
+  // Names are listed in code-unit order so both parties render the same text.
+  const byCodeUnit = (a: string, b: string): number =>
+    a < b ? -1 : a > b ? 1 : 0;
+  const oneSideOnly = [
+    ...[...localByName.keys()].filter((name) => !partnerByName.has(name)),
+    ...[...partnerByName.keys()].filter((name) => !localByName.has(name)),
+  ].sort(byCodeUnit);
+  const differing = [...localByName.keys()]
+    .filter((name) => {
+      if (!partnerByName.has(name)) return false;
+      const localCanonical = canonicalOrUndefined(localByName.get(name));
+      return (
+        localCanonical === undefined ||
+        localCanonical !== canonicalOrUndefined(partnerByName.get(name))
+      );
+    })
+    .sort(byCodeUnit);
+  const clauses: CompatibilityMessageFragment[] = [];
+  // A reason is relayed to the other party, so a clause holds from either side.
+  if (oneSideOnly.length > 0)
+    clauses.push(
+      oneSideOnly.length === 1
+        ? compatibilityMessage`${quoteTermsValueList(oneSideOnly)} is declared by one party only`
+        : compatibilityMessage`${quoteTermsValueList(oneSideOnly)} are declared by one party only`,
+    );
+  if (differing.length > 0)
+    clauses.push(
+      compatibilityMessage`local and partner declare ${quoteTermsValueList(differing)} differently`,
+    );
+  if (
+    clauses.length === 0 &&
+    local.length === partner.length &&
+    localByName.size === local.length &&
+    partnerByName.size === partner.length
+  )
+    clauses.push(
+      compatibilityMessage`local and partner declare the same ${noun} in a different order`,
+    );
+  if (clauses.length === 0) return compatibilityMessage``;
+  return clauses
+    .slice(1)
+    .reduce(
+      (joined, clause) => compatibilityMessage`${joined}; ${clause}`,
+      compatibilityMessage`: ${clauses[0]!}`,
+    );
+}
+
 /** The fields of {@link LinkageTerms} a partner's copy may differ in without
  * refusing the exchange: `identity` is each party's own name, and a `date`
  * mismatch only warns ({@link validateCompatibility}). */
@@ -545,7 +626,13 @@ export function compareTerms(
     partnerFieldsCanonical !== null &&
     localFieldsCanonical !== partnerFieldsCanonical
   ) {
-    errors.push(compatibilityMessage`linkage fields do not match`);
+    errors.push(
+      compatibilityMessage`linkage fields do not match${namedEntryDifferences(
+        localFields,
+        partnerFields,
+        compatibilityMessage`fields`,
+      )}`,
+    );
   }
 
   const localKeysCanonical = canonicalOrError(
@@ -561,7 +648,13 @@ export function compareTerms(
     partnerKeysCanonical !== null &&
     localKeysCanonical !== partnerKeysCanonical
   ) {
-    errors.push(compatibilityMessage`linkage keys do not match`);
+    errors.push(
+      compatibilityMessage`linkage keys do not match${namedEntryDifferences(
+        local.linkageKeys,
+        partner.linkageKeys,
+        compatibilityMessage`keys`,
+      )}`,
+    );
   }
 
   // The rule-set citation, checked only where BOTH parties declare one. It
