@@ -7,6 +7,7 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PeerAbortError,
   RoundCapacityError,
+  RoundSetLimitError,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
@@ -107,6 +108,7 @@ describe("a one-shot exchange", () => {
     expect(failure.message).toBe(refusal.message);
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.retry).toBe("withheld");
+    expect(failure.settingsCannotResolve).toBe(true);
   });
 
   test("states a partner's abort over this browser's ceiling, with no retry", () => {
@@ -121,6 +123,7 @@ describe("a one-shot exchange", () => {
     );
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.retry).toBe("withheld");
+    expect(failure.settingsCannotResolve).toBe(true);
   });
 
   test("states a partner's refusal of its own set, with no retry", () => {
@@ -135,6 +138,7 @@ describe("a one-shot exchange", () => {
     );
     expect(failure.reportedCause).toBeUndefined();
     expect(failure.retry).toBe("withheld");
+    expect(failure.settingsCannotResolve).toBe(true);
   });
 
   test("keeps the generic copy for any other partner abort", () => {
@@ -142,12 +146,28 @@ describe("a one-shot exchange", () => {
     expect(generic.category).toBe("exchange");
     expect(generic.title).toBe("Exchange failed");
     expect(generic.retry).toBe("offered");
+    expect(generic.settingsCannotResolve).toBeUndefined();
     expect(
       failureFor(
         "exchange",
         new PeerAbortError(undefined, PARTNER_SET_OVER_CAPACITY_ABORT_REASON),
       ),
     ).toEqual(generic);
+  });
+
+  test("a one-shot set of this party's own too large to send is one no settings change resolves", () => {
+    const failure = failureFor(
+      "exchange",
+      new RoundSetLimitError("too many values", "over-set-maximum"),
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.settingsCannotResolve).toBe(true);
+  });
+
+  test("a one-shot config fault in this party's settings leaves its settings recovery", () => {
+    const failure = failureFor("config", new Error("a settings fault"));
+    expect(failure.category).toBe("config");
+    expect(failure.settingsCannotResolve).toBeUndefined();
   });
 });
 

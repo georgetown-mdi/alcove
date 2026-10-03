@@ -125,6 +125,11 @@ export interface RunFailure {
   /** The partner terms change a console run stopped on, shown beside the
    * alert's copy; absent on every other failure. */
   termsChange?: RelayedTermsChange;
+  /** Set on a `config` failure that no change to this party's exchange
+   * settings resolves: the partner's refusal, or a set over a size ceiling. A
+   * seat whose config recovery returns to its settings offers a fresh start
+   * instead. */
+  settingsCannotResolve?: true;
   /** Whether the alert offers "Try again" and the seat's retry runs
    * ({@link retryDispositionFor}). Every retry control reads this rather than
    * {@link category}. */
@@ -432,6 +437,7 @@ function failureContentFor(
       category: "config",
       title: PARTNER_SET_TOO_LARGE_TITLE,
       message: sanitizedFailureMessage(error),
+      settingsCannotResolve: true,
     };
   if (error instanceof PeerAbortError) {
     const refusal = partnerRefusalCopy(error.partnerReason);
@@ -442,6 +448,7 @@ function failureContentFor(
         message:
           `The exchange stopped because ${refusal.problem}. Running it ` +
           `again stops the same way until ${refusal.until}. ${refusal.remedy}`,
+        settingsCannotResolve: true,
       };
   }
   // A set of this party's own over the most values the partner can receive, or
@@ -455,6 +462,7 @@ function failureContentFor(
       category: "config",
       title: tooLargeFailureTitle(tooLargeReadingOf(error)),
       message: sanitizedFailureMessage(error),
+      settingsCannotResolve: true,
     };
   if (error instanceof LinkageTermsUnsatisfiableError) {
     // The pre-connection refusal for a file that cannot supply every linkage key
