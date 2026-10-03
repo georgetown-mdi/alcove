@@ -1,5 +1,3 @@
-import { posix } from "node:path";
-
 import {
   shellJoinCommand,
   windowsJoinCommand,
@@ -59,17 +57,19 @@ function alcoveArgs(argv: ReadonlyArray<string>): Array<string> {
   return argv.slice(1);
 }
 
-/** A bind path as the mount states it: `.` and `..` segments resolved and a
- * trailing slash dropped, so the checks and the rendered mount agree. */
-function normalizedBindPath(bindPath: string): string {
-  const normalized = posix.normalize(bindPath);
-  return normalized.length > 1 && normalized.endsWith("/")
-    ? normalized.slice(0, -1)
-    : normalized;
+/** Whether a bind path is written plainly: no `.` or `..` segment, no
+ * repeated slash, and no trailing slash other than the root itself. */
+function isPlainBindPath(bindPath: string): boolean {
+  if (bindPath === "/") return true;
+  return bindPath
+    .split("/")
+    .slice(1)
+    .every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
 /** Why a bind path cannot be mounted at its own path by a `--mount` option. */
-export type UnmountableReason = "comma" | "quote" | "workFolder" | "root";
+export type UnmountableReason =
+  "comma" | "quote" | "dots" | "workFolder" | "root";
 
 /** A bind path the Docker lines cannot mount, and why. */
 export interface UnmountableBindPath {
@@ -82,21 +82,23 @@ export interface UnmountableBindPath {
  * is a comma-separated list read as CSV, so a `,` ends the path and a `"`
  * starts a quoted field, and a path at or under `/work` lands inside the
  * exchange folder's mount. The filesystem root `/` is refused too: binding it
- * would give the container the whole host filesystem.
+ * would give the container the whole host filesystem. A path not written
+ * plainly is refused rather than rewritten, so the mount binds exactly the
+ * path the configuration names.
  */
 export function unmountableBindPaths(
   bindPaths: ReadonlyArray<HandoffBindPath>,
 ): Array<UnmountableBindPath> {
-  return bindPaths.flatMap(({ path: raw }): Array<UnmountableBindPath> => {
-    const bound = normalizedBindPath(raw);
-    if (bound.includes(",")) return [{ path: raw, reason: "comma" }];
-    if (bound.includes('"')) return [{ path: raw, reason: "quote" }];
-    if (bound === "/") return [{ path: raw, reason: "root" }];
+  return bindPaths.flatMap(({ path }): Array<UnmountableBindPath> => {
+    if (path.includes(",")) return [{ path, reason: "comma" }];
+    if (path.includes('"')) return [{ path, reason: "quote" }];
+    if (!isPlainBindPath(path)) return [{ path, reason: "dots" }];
+    if (path === "/") return [{ path, reason: "root" }];
     if (
-      bound === CONTAINER_WORK_FOLDER ||
-      bound.startsWith(`${CONTAINER_WORK_FOLDER}/`)
+      path === CONTAINER_WORK_FOLDER ||
+      path.startsWith(`${CONTAINER_WORK_FOLDER}/`)
     )
-      return [{ path: raw, reason: "workFolder" }];
+      return [{ path, reason: "workFolder" }];
     return [];
   });
 }
@@ -130,10 +132,9 @@ export function dockerRunArgv(
     "run",
     "--rm",
     ...mountOption(folder, CONTAINER_WORK_FOLDER, false),
-    ...bindPaths.flatMap(({ path: raw, readOnly }) => {
-      const bound = normalizedBindPath(raw);
-      return mountOption(bound, bound, readOnly);
-    }),
+    ...bindPaths.flatMap(({ path, readOnly }) =>
+      mountOption(path, path, readOnly),
+    ),
     image,
     ...alcoveArgs(argv),
   ];
@@ -235,6 +236,7 @@ export function handoffInputName(argv: ReadonlyArray<string>): string {
 const UNMOUNTABLE_REASON_TEXT: Record<UnmountableReason, string> = {
   comma: "contains a comma, which a --mount option cannot hold",
   quote: "contains a double quote, which a --mount option cannot hold",
+  dots: "is not a plain path: write the path without . or .. segments, repeated slashes, or a trailing slash",
   root: "is the filesystem root, which is too broad to mount",
   workFolder: `is inside ${CONTAINER_WORK_FOLDER}, where the image mounts the exchange folder`,
 };

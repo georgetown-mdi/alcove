@@ -181,23 +181,29 @@ describe("the console hand-off's command lines", () => {
   });
 
   test.each([
-    ["/.", "root"],
-    ["/srv/..", "root"],
-    ["/work/./x", "workFolder"],
-    ["/work/", "workFolder"],
-  ] as const)(
-    "the path %s is refused as %s once normalized",
-    (path, reason) => {
-      const source = sourceBinding(path);
-      expect(unmountableBindPaths(source.bindPaths)).toEqual([
-        { path, reason },
-      ]);
-      expect(dockerRunCommand(source)).toBeUndefined();
-    },
-  );
+    "/.",
+    "/..",
+    "/srv/..",
+    "/srv/a/../b",
+    "/work/./x",
+    "/work/",
+    "//",
+    "/srv//b",
+  ])("the path %s, not written plainly, is refused", (path) => {
+    const source = sourceBinding(path);
+    expect(unmountableBindPaths(source.bindPaths)).toEqual([
+      { path, reason: "dots" },
+    ]);
+    expect(dockerRunCommand(source)).toBeUndefined();
+    expect(dockerCronLine(source)).toBeUndefined();
+    expect(dockerTaskSchedulerLine(source)).toBeUndefined();
+    expect(
+      unmountableBindPathsNotice(unmountableBindPaths(source.bindPaths)),
+    ).toContain("without . or .. segments");
+  });
 
-  test("a path with dot segments is mounted normalized", () => {
-    const source = sourceBinding("/srv/a/../b");
+  test("a plain path is mounted at the path as written", () => {
+    const source = sourceBinding("/srv/b");
     expect(unmountableBindPaths(source.bindPaths)).toEqual([]);
     expect(dockerRunCommand(source)).toContain(
       "--mount type=bind,src=/srv/b,dst=/srv/b",
