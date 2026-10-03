@@ -444,8 +444,8 @@ export interface ManagedExchangeRecord {
   /** The outcomes recorded in {@link lastRun}, newest first and at most
    * {@link MAX_RECENT_RUNS}, kept for the exchange's page to show. Every
    * `lastRun` write puts its entry at the head; nothing that drops `lastRun`
-   * drops these. Absent on a record no run has written since the field was
-   * added. Display only: no run, tier, or gate reads it. */
+   * drops these. Optional: where absent, the list starts from `lastRun`.
+   * Display only: no run, tier, or gate reads it. */
   recentRuns?: ReadonlyArray<ManagedExchangeLastRun>;
   /** ISO 8601 UTC instant a run began a key exchange that has not saved its
    * rotated secret: written before the key exchange starts and removed by the
@@ -1696,8 +1696,7 @@ export function applyManagedExchangeLastRun(
 
 /** `record` with `lastRun` set to `entry` and `entry` put at the head of
  * `recentRuns`, the oldest beyond {@link MAX_RECENT_RUNS} dropped. A record
- * written before `recentRuns` existed starts the list from the `lastRun` it
- * holds. An earlier entry the schema refuses is left out rather than failing
+ * without `recentRuns` starts the list from the `lastRun` it holds. An earlier entry the schema refuses is left out rather than failing
  * the write: `lastRun` is the bookkeeping, and the list only displays it. The
  * input record is not mutated. */
 function withRecordedRun(
@@ -1715,8 +1714,7 @@ function withRecordedRun(
 }
 
 /** The run outcomes the exchange's page lists, newest first: the record's
- * `recentRuns`, or for a record written before that field existed, the one
- * `lastRun` it holds. */
+ * `recentRuns`, or where that field is absent, the one `lastRun` it holds. */
 export function recentRunsOf(
   record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
 ): ReadonlyArray<ManagedExchangeLastRun> {

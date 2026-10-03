@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Alert,
@@ -271,6 +271,10 @@ export function ManagedExchangeDetail({
           storedWorkingDirectoryUsable(record.workingDirectoryHandle),
       )
     : undefined;
+  const relayRegistrationShown = useMemo(
+    () => relayRegistrationOffered(record, readOwnRelaySetting()),
+    [record],
+  );
   return (
     <>
       <RunSchedule record={record} />
@@ -298,14 +302,13 @@ export function ManagedExchangeDetail({
           onChanged={onTermsChanged}
         />
       )}
-      {runnableManagedExchange(record) &&
-        relayRegistrationOffered(record, readOwnRelaySetting()) && (
-          <ManagedRelayRegistration
-            record={record}
-            runInFlight={runInFlight}
-            onChanged={onRelayRegistrationChanged}
-          />
-        )}
+      {runnableManagedExchange(record) && relayRegistrationShown && (
+        <ManagedRelayRegistration
+          record={record}
+          runInFlight={runInFlight}
+          onChanged={onRelayRegistrationChanged}
+        />
+      )}
       <LocalFieldsEditor
         record={record}
         resultSizeWarning={resultSizeWarning}
@@ -983,13 +986,12 @@ function RunSchedule({ record }: { record: ManagedExchangeRecord }) {
 }
 
 /**
- * The run history: what each of the last runs the record keeps DID, newest
- * first, whether or not it completed, with the failure kind it recorded (see
- * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `recentRuns` row). Every run that
- * sent this party's payload files its disclosure in the accounting below,
- * whether or not it finished, and raises a notice when the filing fails ({@link ../psi/managed/managedRunDriver.ts}); a run that stopped
- * before disclosing never enters it. A saved-but-never-run exchange renders the
- * plain empty state.
+ * The run history: what each of the runs the record keeps DID, newest first,
+ * whether or not it completed, with the failure kind it recorded (see
+ * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `recentRuns` row). The disclosure
+ * filing it points to is {@link ../psi/managed/managedRunDriver.ts}'s; a run
+ * that stopped before disclosing never enters the accounting. A
+ * saved-but-never-run exchange renders the plain empty state.
  */
 function RunHistory({
   record,

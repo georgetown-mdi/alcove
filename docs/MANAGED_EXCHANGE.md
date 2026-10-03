@@ -302,15 +302,14 @@ wire; there is no server-side coordination anywhere in the design.
 
 The cost of local-only entry is that each side types the same values by hand, so
 a mistyped cadence or window on one side produces windows that never overlap.
-Once one side has entered the schedule, the Run schedule section of its page
-offers it as plain text to send the partner: the next window in UTC, the repeat
-and the window length, and what the partner must have running during each
-window. It holds no secret and no invitation, and the partner converts the UTC
-instant to their own clock as they enter it.
 That failure is benign and self-announcing: it shows up as mutual missed windows
 (below), which the operators resolve out-of-band where they agreed the schedule
 in the first place -- the same channel, the same reconciliation as any other
 schedule drift.
+
+To make matching entries easier, the Run schedule section of a page that holds
+a schedule offers it as plain text to send the partner, so both sides open the
+same windows; it holds no secret and no invitation.
 
 ### When a window opens and closes
 
@@ -2047,7 +2046,9 @@ its record.
 
 The marker names the exchange and nothing else, so finding which run it stands
 for takes two places, neither of them certain. The run history keeps only the
-last ten runs, so a marker written for an earlier one is not named there. The
+most recent runs (the bound is the `recentRuns` row of
+[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)), so a marker
+written for an earlier one is not named there. The
 run also reported the failure to the browser's diagnostic log as it happened --
 the developer-tools console, whose detail
 [DEPLOYMENT.md](DEPLOYMENT.md#diagnosing-web-connection-failures) describes --

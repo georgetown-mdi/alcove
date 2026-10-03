@@ -1431,7 +1431,7 @@ describe("the recent runs list", () => {
     );
   });
 
-  test("a record written before the list existed starts it from the run it holds", () => {
+  test("a record without recentRuns starts it from the run it holds", () => {
     const older = parseManagedExchangeRecord({ ...record(), lastRun: run(1) });
     expect(older).not.toHaveProperty("recentRuns");
     expect(recentRunsOf(older)).toEqual([run(1)]);

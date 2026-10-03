@@ -1607,7 +1607,7 @@ describe("managed exchange detail recent runs, partner schedule, and relay secti
       .toBeInTheDocument();
   });
 
-  test("a record written before the list existed shows the one run it holds", async () => {
+  test("a record without recentRuns shows the one run it holds", async () => {
     renderDetail(
       record("inviter", {
         lastRun: {
