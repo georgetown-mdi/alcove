@@ -20,7 +20,6 @@ import {
   GB,
   LOG_DIR,
   RUN_TIMEOUT_MS,
-  cliPartyNeedBytes,
   hostDescription,
   hostMemory,
   maxLoopLagSince,
@@ -69,7 +68,8 @@ import type { PartyRun } from "./completionRun";
 //   to each party's command line.
 // - ALCOVE_STRESS_COMPLETION_LOG_DIR, a directory the test creates, keeps each
 //   party's log there as it runs (party-<name>.log), each time its event loop
-//   ran over a second late (loop-lag-<name>.log), and a summary of the run
+//   ran over a second late (loop-lag-<name>.log), its memory sampled every
+//   200 ms (memory-<name>.log, peakMemoryReport.mjs), and a summary of the run
 //   (webrtc-completion.json, or party-<name>.json in one-party mode). A
 //   summary names the candidate pair the channel opened over when the party
 //   logs at debug level (--log-level debug in the CLI arguments).
@@ -110,6 +110,32 @@ function partyFromEnvironment(): PartyName | undefined {
   );
 }
 const PARTY = partyFromEnvironment();
+
+type PsiRole = "sender" | "receiver";
+// With equal record counts the inviter resolves as the PSI sender; each run
+// checks it against the role the party logs.
+const ROLE_OF_PARTY: Record<PartyName, PsiRole> = {
+  inviter: "sender",
+  acceptor: "receiver",
+};
+
+// A WebRTC party's peak resident set, PSI worker included, as a fixed part
+// plus a cost a record, per PSI role: docs/spec/WEBRTC_TRANSPORT.md, A party's
+// memory.
+const WEBRTC_PARTY_MEMORY: Record<
+  PsiRole,
+  { fixedBytes: number; bytesPerRecord: number }
+> = {
+  sender: { fixedBytes: 1_184_000_000, bytesPerRecord: 1_902 },
+  receiver: { fixedBytes: 630_000_000, bytesPerRecord: 2_141 },
+};
+
+function webrtcPartyNeedBytes(party: PartyName): number {
+  const { fixedBytes, bytesPerRecord } =
+    WEBRTC_PARTY_MEMORY[ROLE_OF_PARTY[party]];
+  return fixedBytes + bytesPerRecord * ROWS;
+}
+
 const STUN = process.env.ALCOVE_STRESS_COMPLETION_STUN ?? "stun:127.0.0.1:3478";
 
 function connectionBlock(role: PartyName, peerTimeoutMs?: number): string {
@@ -238,6 +264,12 @@ function expectConnectedLoopLagWithinBound(
     .toBeLessThanOrEqual(MAX_CONNECTED_LOOP_LAG_MS);
 }
 
+function expectRoleOfParty(name: PartyName, run: PartyRun): void {
+  expect
+    .soft(run.loggedRole, `the ${name}'s PSI role`)
+    .toBe(ROLE_OF_PARTY[name]);
+}
+
 function runWebRtcParty(
   dir: string,
   name: PartyName,
@@ -290,7 +322,8 @@ test(
       !existsSync(CLI),
       "the completion run drives the built CLI; run npm run build -w apps/cli",
     );
-    const need = 2 * cliPartyNeedBytes(ROWS);
+    const need =
+      webrtcPartyNeedBytes("inviter") + webrtcPartyNeedBytes("acceptor");
     const memory = hostMemory();
     ctx.skip(
       memory.bytes < need,
@@ -370,6 +403,8 @@ test(
 
       expectConnectedLoopLagWithinBound("inviter", inviter);
       expectConnectedLoopLagWithinBound("acceptor", acceptor);
+      expectRoleOfParty("inviter", inviter);
+      expectRoleOfParty("acceptor", acceptor);
       expect
         .soft([inviter.exitCode, acceptor.exitCode], "the exit codes")
         .toEqual([0, 0]);
@@ -402,7 +437,7 @@ test(
       !existsSync(CLI),
       "the completion run drives the built CLI; run npm run build -w apps/cli",
     );
-    const need = cliPartyNeedBytes(ROWS);
+    const need = webrtcPartyNeedBytes(PARTY);
     const memory = hostMemory();
     ctx.skip(
       memory.bytes < need,
@@ -475,6 +510,7 @@ test(
       if (run.exitCode !== 0) console.log(run.log.slice(-4000));
 
       expectConnectedLoopLagWithinBound(PARTY, run);
+      expectRoleOfParty(PARTY, run);
       expect.soft(run.exitCode, "the exit code").toBe(0);
       expect.soft(difference).toBe(undefined);
     } finally {

@@ -52,7 +52,8 @@ import type { PartyRun } from "./completionRun";
 // default); ALCOVE_STRESS_COMPLETION_CLI_ARGS adds arguments, separated by
 // whitespace, to each party's command line, as SFTP credentials need;
 // ALCOVE_STRESS_COMPLETION_LOG_DIR, a directory the test creates, keeps each
-// party's log there as it runs (party-<name>.log) and, in one-party mode, a
+// party's log there as it runs (party-<name>.log), its memory sampled every
+// 200 ms (memory-<name>.log, peakMemoryReport.mjs) and, in one-party mode, a
 // summary of the run (party-<name>.json).
 
 const ROWS = Number(process.env.ALCOVE_STRESS_COMPLETION_ROWS ?? 2 ** 24);

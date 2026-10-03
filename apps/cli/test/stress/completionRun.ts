@@ -69,8 +69,9 @@ export const GB = 1e9;
 export const MAIN_THREAD_BYTES_PER_RECORD = 754;
 
 /**
- * A party's need at `rows` records under the CLI's own round budget, the main
- * thread's peak beside it: the file-sync joiner's figure, the costlier role.
+ * A file-sync party's need at `rows` records under the CLI's own round budget,
+ * the main thread's peak beside it: the joiner's figure, the costlier role. A
+ * WebRTC party has a measured figure of its own (webrtcCompletion.stress.test.ts).
  */
 export function cliPartyNeedBytes(rows: number): number {
   return psiRoundMemoryNeedBytes(rows) + MAIN_THREAD_BYTES_PER_RECORD * rows;
@@ -162,7 +163,11 @@ export function runParty(options: {
     LOG_DIR === undefined
       ? join(dir, "loop-lag")
       : join(LOG_DIR, `loop-lag-${name}.log`);
+  if (LOG_DIR !== undefined) mkdirSync(LOG_DIR, { recursive: true });
   rmSync(lagFile, { force: true });
+  const memorySampleFile =
+    LOG_DIR === undefined ? undefined : join(LOG_DIR, `memory-${name}.log`);
+  if (memorySampleFile !== undefined) rmSync(memorySampleFile, { force: true });
   const startedAt = performance.now();
   const child = spawn(process.execPath, ["--expose-gc", CLI, ...args], {
     cwd: dir,
@@ -173,12 +178,14 @@ export function runParty(options: {
         `--import=${LOOP_LAG_REPORT}`,
       ALCOVE_STRESS_PEAK_RSS_FILE: peakFile,
       ALCOVE_STRESS_LOOP_LAG_FILE: lagFile,
+      ...(memorySampleFile === undefined
+        ? {}
+        : { ALCOVE_STRESS_MEMORY_SAMPLE_FILE: memorySampleFile }),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const logPath =
     LOG_DIR === undefined ? undefined : join(LOG_DIR, `party-${name}.log`);
-  if (LOG_DIR !== undefined) mkdirSync(LOG_DIR, { recursive: true });
   const logFile =
     logPath === undefined ? undefined : createWriteStream(logPath);
   let logError: Error | undefined;
