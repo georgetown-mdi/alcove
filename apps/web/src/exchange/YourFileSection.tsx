@@ -103,7 +103,6 @@ export function YourFileSection({
   onDownloadSamples: () => void;
 }) {
   const consoleBuild = isConsoleBuild();
-  // Bumped each time the sample files are added, so the picker lists them.
   const [samplesAdded, setSamplesAdded] = useState(0);
   const assuranceLine = consoleBuild
     ? APPLIANCE_FILE_ASSURANCE

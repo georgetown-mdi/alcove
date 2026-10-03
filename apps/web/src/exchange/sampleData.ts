@@ -8,7 +8,7 @@ import {
 } from "@psi/sampleData";
 
 /** Download both sample CSVs (inviter then partner) client-side. Nothing is
- * uploaded; the bytes come from {@link ../psi/sampleData}. */
+ * uploaded; the bytes come from the shared `@psi/sampleData` module. */
 export function downloadSampleCsvs(): void {
   triggerBlobDownload(SAMPLE_INVITER_FILE_NAME, SAMPLE_INVITER_CSV, "text/csv");
   triggerBlobDownload(SAMPLE_PARTNER_FILE_NAME, SAMPLE_PARTNER_CSV, "text/csv");

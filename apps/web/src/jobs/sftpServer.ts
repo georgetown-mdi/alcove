@@ -543,8 +543,8 @@ function resolveMountRefCredential(
   const mountRoot = mounts[credential.mount];
   if (mountRoot === undefined)
     throw new JobApiConfigError(
-      "connection.credential names the secrets directory, which is not " +
-        "mounted on this console. Choose the file again.",
+      `connection.credential names ${CREDENTIAL_MOUNT_LABELS[credential.mount]}, ` +
+        "which is not mounted on this console. Choose the file again.",
     );
   const resolved = resolveMountFile(mountRoot, credential.subPath);
   if (resolved === null)

@@ -75,8 +75,8 @@ function secretsLiveMessage(
  * ever shown or sent. No file bytes are read; this is a name browse only (SSH
  * key material, password files, and the signing identity, none profiled).
  *
- * A missing secrets mount is, for a caller passing {@link folderFallback}, a
- * browse of the working folder instead. For any other caller it is shown as a
+ * A missing secrets mount is a browse of the working folder for a caller passing
+ * `folderFallback` (see that prop). For any other caller it is shown as a
  * named config gap (name `JOB_SECRETS_DIR`), not a dead end, reusing the shared
  * listing shell ({@link MountStateNotice}). The remedy differs by caller, so an
  * unconfigured mount's copy is the caller's ({@link unconfiguredNotice}). A polite status
