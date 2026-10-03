@@ -11,7 +11,7 @@
 // that reads `Worker` off the module when it starts one, as the bundled CLI
 // does; samples that list no worker during a round mean it did not.
 import { appendFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { isMainThread } from "node:worker_threads";
 
 const target = process.env.ALCOVE_STRESS_PEAK_RSS_FILE;
@@ -32,6 +32,7 @@ if (isMainThread && sampleFile !== undefined) {
       this.once("exit", () => liveWorkers.delete(this));
     }
   };
+  syncBuiltinESMExports();
   let sampling = false;
   const sample = async () => {
     if (sampling) return;

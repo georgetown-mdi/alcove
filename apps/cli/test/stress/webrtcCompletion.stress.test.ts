@@ -264,7 +264,6 @@ function expectConnectedLoopLagWithinBound(
     .toBeLessThanOrEqual(MAX_CONNECTED_LOOP_LAG_MS);
 }
 
-// Soft: the memory gate weighed the party at this role's figure.
 function expectRoleOfParty(name: PartyName, run: PartyRun): void {
   expect
     .soft(run.loggedRole, `the ${name}'s PSI role`)
