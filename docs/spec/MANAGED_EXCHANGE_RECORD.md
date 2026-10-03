@@ -434,7 +434,8 @@ web composes has no `role` at all -- the locator expansion writes only
 browser record runs is knowable only from `side`.
 
 On the webrtc re-run path the document's `server` locator is likewise inert: the
-inviter derives its signaling location from `window.location`, and the
+inviter derives its signaling location from the deployment's own signaling
+address (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address)), and the
 acceptor's came from the invitation endpoint at accept time. The connection
 block is persisted for document fidelity -- the document is kept verbatim, per
 the CLI-parity contract above -- not because the webrtc re-run reads it; the

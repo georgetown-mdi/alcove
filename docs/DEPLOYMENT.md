@@ -29,7 +29,19 @@ A WebSocket-to-TCP proxy is required only when a browser-based party needs to re
 
 The web application bundles a PeerJS-compatible peer-coordination server, served under its own `/api/` route, so deploying the web application is sufficient to obtain a coordination server for parties that use it. The public PeerJS service (`api.peerjs.com`) is also usable for evaluation but routes connection-establishment metadata through a third party.
 
-Deploying a standalone peer-coordination server -- for example, as a serverless WebSocket function on AWS Lambda or Cloudflare Workers -- is not currently supported by configuration in the web application and is targeted for the 1.1 release (see [ROADMAP.md](ROADMAP.md)).
+To have the web application's browser parties use a peer-coordination server deployed apart from it -- the standalone broker (`npm start -w packages/peerjs-broker`) on a host of its own -- set `VITE_SIGNALING_SERVER_URL` when building the web application:
+
+```sh
+VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web
+```
+
+- The value is a `ws:` or `wss:` URL whose path is the server's mount; the standalone broker's default mount is `/api`.
+- Unset or blank, the browser parties use the server bundled at the web application's own `/api/`.
+- A deployment served over `https` needs a `wss:` URL; a `ws:` one is refused when an invitation is created or an exchange starts.
+- Every browser inviter of the deployment registers there, and every invitation it creates names that server, so an accepting party dials it whatever deployment they open the invitation in.
+- The value is fixed at build time, so changing it means rebuilding and redeploying; an invitation already sent keeps naming the server it was created with.
+
+How the address is resolved, and what the invitation endpoint states: [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address).
 
 ### Hardening the signaling surface
 

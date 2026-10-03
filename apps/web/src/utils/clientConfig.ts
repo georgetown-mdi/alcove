@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { authorityMovingSignalingField } from "@alcove/core";
+
 import type { LogLevelDesc } from "loglevel";
 import type { ZodType } from "zod";
 
@@ -18,6 +20,19 @@ const DEPLOYMENT_PROFILES = [
   "hosted",
   "console",
 ] as const satisfies ReadonlyArray<DeploymentProfile>;
+
+/**
+ * A signaling server this deployment names in place of its own origin: the
+ * parsed `VITE_SIGNALING_SERVER_URL`. `path` is the mount the PeerJS client
+ * dials, ending in `/`; `port` is absent when the URL names its scheme's
+ * default.
+ */
+export interface SignalingServerSetting {
+  secure: boolean;
+  host: string;
+  port?: number;
+  path: string;
+}
 
 /**
  * The client's build-time configuration. Each field is read from the
@@ -57,6 +72,14 @@ export interface ClientConfig {
    * that this build is that release.
    */
   ALCOVE_VERSION: string;
+  /**
+   * The signaling server this deployment's browser parties register with, and
+   * the one an invitation it mints names: a `ws:` or `wss:` URL whose path is
+   * the server's mount (`wss://signaling.example.org/api/`). Unset or blank,
+   * the parties use this app's own server at its origin's `/api/`. Fixed by
+   * the deployment, never read from an invitation.
+   */
+  SIGNALING_SERVER_URL: SignalingServerSetting | undefined;
 }
 
 // Vite hands every env value over as a string, so a number arrives as its
@@ -64,6 +87,52 @@ export interface ClientConfig {
 const numberFromEnv = z
   .union([z.number(), z.string().trim().min(1).transform(Number)])
   .pipe(z.number());
+
+const SIGNALING_SERVER_URL_SHAPE =
+  "must be a ws: or wss: URL naming a host and an optional port and path, " +
+  "with no user name, password, query or fragment";
+
+function parseSignalingServerUrl(
+  value: string,
+  context: z.RefinementCtx,
+): SignalingServerSetting | undefined {
+  const trimmed = value.trim();
+  if (trimmed === "") return undefined;
+  let url: URL | undefined;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    url = undefined;
+  }
+  if (
+    url === undefined ||
+    (url.protocol !== "ws:" && url.protocol !== "wss:") ||
+    url.hostname === "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    trimmed.includes("#") ||
+    trimmed.includes("?")
+  ) {
+    context.addIssue({ code: "custom", message: SIGNALING_SERVER_URL_SHAPE });
+    return z.NEVER;
+  }
+  const path = url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`;
+  if (
+    authorityMovingSignalingField({ host: url.hostname, path }) !== undefined
+  ) {
+    context.addIssue({ code: "custom", message: SIGNALING_SERVER_URL_SHAPE });
+    return z.NEVER;
+  }
+  const setting: SignalingServerSetting = {
+    secure: url.protocol === "wss:",
+    host: url.hostname,
+    path,
+  };
+  if (url.port !== "") setting.port = Number(url.port);
+  return setting;
+}
 
 // The names loglevel's setDefaultLevel accepts, in any case.
 const LOG_LEVELS = [
@@ -88,6 +157,10 @@ const clientConfigSchema: ZodType<ClientConfig> = z.object({
   ),
   DEPLOYMENT_PROFILE: z.enum(DEPLOYMENT_PROFILES).default("hosted"),
   ALCOVE_VERSION: z.string().default(""),
+  SIGNALING_SERVER_URL: z
+    .string()
+    .default("")
+    .transform(parseSignalingServerUrl),
 });
 
 /**
@@ -140,6 +213,12 @@ export function alcoveVersion(): string | undefined {
 /** The default level for the app's own loggers. */
 export function logLevel(): LogLevelDesc {
   return config.LOG_LEVEL;
+}
+
+/** The signaling server this deployment names, or undefined when its
+ * browser parties use this app's own origin. */
+export function signalingServerSetting(): SignalingServerSetting | undefined {
+  return config.SIGNALING_SERVER_URL;
 }
 
 /** The PeerJS client's log level before diagnostic mode raises it. */

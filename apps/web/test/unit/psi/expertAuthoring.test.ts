@@ -36,8 +36,12 @@ const ALL_COLUMNS_CSV =
   "ssn,ssn4,first_name,last_name,dob\n123456789,6789,Alice,Smith,1990-01-02\n";
 const location: InvitationLocation = {
   origin: "https://example.org:8443",
-  hostname: "example.org",
-  port: "8443",
+  signaling: {
+    host: "example.org",
+    port: 8443,
+    path: "/api/",
+    secure: true,
+  },
 };
 function csvStream(content: string = ALL_COLUMNS_CSV): Readable {
   return Readable.from(content);

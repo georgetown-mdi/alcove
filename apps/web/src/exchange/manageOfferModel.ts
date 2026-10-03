@@ -73,7 +73,8 @@ export const MANAGE_OFFER_IDLE: ManageOfferState = { status: "idle" };
  * Build the credential-free {@link WebRTCExchangeLocator} the managed record's
  * connection block is composed from, out of a webrtc {@link WebRTCEndpoint}. The
  * acceptor's endpoint is the invitation's own endpoint; the inviter's is the one
- * {@link webrtcEndpointFromLocation} built for the token from this app's location.
+ * {@link webrtcEndpointFromAddress} built for the token from this app's signaling
+ * address.
  * Both are already the invitation's `WebRTCEndpointSchema` shape (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, "The connection block"); this only drops
  * an absent optional the composer's strict parse would otherwise reject as

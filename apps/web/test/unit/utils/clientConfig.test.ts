@@ -9,6 +9,7 @@ describe("parseClientConfig", () => {
       LOG_LEVEL: "INFO",
       DEPLOYMENT_PROFILE: "hosted",
       ALCOVE_VERSION: "",
+      SIGNALING_SERVER_URL: undefined,
     });
   });
 
@@ -19,12 +20,19 @@ describe("parseClientConfig", () => {
         LOG_LEVEL: "DEBUG",
         DEPLOYMENT_PROFILE: "console",
         ALCOVE_VERSION: "1.2.3",
+        SIGNALING_SERVER_URL: "wss://signaling.example.org:8443/broker/",
       }),
     ).toEqual({
       PEERJS_DEBUG_LEVEL: 3,
       LOG_LEVEL: "DEBUG",
       DEPLOYMENT_PROFILE: "console",
       ALCOVE_VERSION: "1.2.3",
+      SIGNALING_SERVER_URL: {
+        secure: true,
+        host: "signaling.example.org",
+        port: 8443,
+        path: "/broker/",
+      },
     });
   });
 
@@ -76,6 +84,53 @@ describe("parseClientConfig", () => {
       );
     },
   );
+
+  test.each(["", "   "])(
+    "reads a blank SIGNALING_SERVER_URL %j as unset",
+    (input) => {
+      expect(
+        parseClientConfig({ SIGNALING_SERVER_URL: input }).SIGNALING_SERVER_URL,
+      ).toBeUndefined();
+    },
+  );
+
+  test.each([
+    [
+      "wss://signaling.example.org",
+      { secure: true, host: "signaling.example.org", path: "/" },
+    ],
+    [
+      "wss://signaling.example.org:443/api",
+      { secure: true, host: "signaling.example.org", path: "/api/" },
+    ],
+    [
+      " ws://127.0.0.1:9000/api/ ",
+      { secure: false, host: "127.0.0.1", port: 9000, path: "/api/" },
+    ],
+    [
+      "wss://[::1]:8443/api/",
+      { secure: true, host: "[::1]", port: 8443, path: "/api/" },
+    ],
+  ])("reads SIGNALING_SERVER_URL %j", (input, expected) => {
+    expect(
+      parseClientConfig({ SIGNALING_SERVER_URL: input }).SIGNALING_SERVER_URL,
+    ).toStrictEqual(expected);
+  });
+
+  test.each([
+    "signaling.example.org",
+    "https://signaling.example.org/api/",
+    "wss://",
+    "wss://user:pw@signaling.example.org/",
+    "wss://signaling.example.org/api/?key=x",
+    "wss://signaling.example.org/api/?",
+    "wss://signaling.example.org/api/#x",
+    "wss://signaling.example.org/a@b/",
+  ])("refuses SIGNALING_SERVER_URL %j", (input) => {
+    expect(() => parseClientConfig({ SIGNALING_SERVER_URL: input })).toThrow(
+      /VITE_SIGNALING_SERVER_URL/,
+    );
+  });
 
   test("names every offending variable in one refusal", () => {
     expect(() =>

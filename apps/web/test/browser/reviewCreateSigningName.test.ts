@@ -38,6 +38,7 @@ import type { ReceiptsDraft } from "@psi/receiptsModel";
 vi.mock("@utils/clientConfig", () => ({
   deploymentProfile: () => "console" as const,
   isConsoleBuild: () => true,
+  signalingServerSetting: () => undefined,
   alcoveVersion: () => undefined,
 }));
 

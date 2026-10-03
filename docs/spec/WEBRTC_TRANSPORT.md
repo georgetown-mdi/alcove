@@ -194,6 +194,32 @@ of them hold operator meaning: `ID-TAKEN` is the symmetric-role
 misconfiguration (both parties set the same `role`), and an `ERROR` whose
 payload names an invalid key is the wrong `server.key`.
 
+### The browser party's own signaling address
+
+A browser party resolves one address for the signaling server its own
+deployment uses, and every place that needs it reads that one value: where an
+inviter registers, the endpoint its invitation names, and where a saved
+exchange's acceptor dials on a later run. It comes from the deployment's build
+setting `VITE_SIGNALING_SERVER_URL`, never from an invitation:
+
+| Setting | Address |
+| ------- | ------- |
+| unset or blank | the page's own host and port, path `/api/`, `wss` when the page is `https` |
+| a `ws:` or `wss:` URL | that URL's host, port and path, the path ending in `/`, `wss` for `wss:` |
+
+The setting is refused when the app loads if it is not a `ws:` or `wss:` URL,
+or names a user name, password, query or fragment, or a host or path the
+delimiter rules above refuse. A `ws:` setting is refused under an `https` page
+before anything is dialed, because the browser blocks that socket. `localhost`
+is resolved to `127.0.0.1` in either case.
+
+The endpoint an invitation names holds the address's `host`, `path`, and its
+`port` only when that is not the scheme's default; it names no scheme. An
+acceptor resolves the scheme from its own page, as above, so an inviter whose
+setting's scheme differs from the acceptor's page -- a `wss:` server named by
+an http-served page in local development -- names a socket the acceptor dials
+with the other scheme.
+
 ### Connection attempts
 
 A CLI party waits for its partner in connection attempts. Each is a fresh

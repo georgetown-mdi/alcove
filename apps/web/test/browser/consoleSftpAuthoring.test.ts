@@ -27,6 +27,7 @@ vi.mock("@tanstack/react-router", async () =>
 vi.mock("@utils/clientConfig", () => ({
   deploymentProfile: () => "console" as const,
   isConsoleBuild: () => true,
+  signalingServerSetting: () => undefined,
   alcoveVersion: () => undefined,
 }));
 

@@ -49,8 +49,12 @@ const FRESH_SECRET = freshDistinctSecret();
 
 const location: InvitationLocation = {
   origin: "https://example.org:3000",
-  hostname: "example.org",
-  port: "3000",
+  signaling: {
+    host: "example.org",
+    port: 3000,
+    path: "/api/",
+    secure: true,
+  },
 };
 
 function inviterRecord(

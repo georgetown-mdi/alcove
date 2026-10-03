@@ -41,6 +41,7 @@ import type {
 import type { LinkageRefusal } from "./linkageRefusal";
 import type { OwnColumnsChoice } from "./ownColumnsModel";
 import type { RelayUrls } from "./transport/ownRelaySetting";
+import type { SignalingAddress } from "./transport/signalingAddress";
 
 /**
  * The CSV input {@link generateInvitation} parses: exactly what
@@ -49,15 +50,6 @@ import type { RelayUrls } from "./transport/ownRelaySetting";
  * wrapper's own signature rather than importing papaparse's `LocalFile` directly, so
  * this module takes on no papaparse dependency beyond the one core already owns. */
 type InvitationCSVInput = Parameters<typeof loadCSVFileOffMainThread>[0];
-
-/**
- * Path a PeerJS client dials this app's signaling server at. Matches the dial
- * path used in `psi/rendezvous.ts` (`path: "/api/"`), which the server -- mounted
- * at `/api` by `apps/web/src/peerServer.ts` -- accepts. The acceptor reads this
- * off the endpoint and dials it the same way a client does, so it must be the
- * client's dial path (trailing slash included), not the server's mount path.
- */
-const PEERJS_SIGNALING_PATH = "/api/";
 
 /**
  * Route the deep-link targets: the acceptor's accept/reject consent screen. The
@@ -70,18 +62,17 @@ const PEERJS_SIGNALING_PATH = "/api/";
 export const ACCEPT_ROUTE_PATH = "/accept";
 
 /**
- * The browser-location inputs an invitation needs: the deep-link origin and the
- * host/port the acceptor reaches the PeerJS signaling server at. Passed in rather
- * than read from `window` inside assembly so {@link generateInvitation} stays
- * pure and unit-testable; the caller supplies `window.location` values.
+ * The location inputs an invitation needs: the deep-link origin and the
+ * signaling address the acceptor reaches the inviter's PeerJS server at.
+ * Passed in rather than read from `window` inside assembly so
+ * {@link generateInvitation} stays pure and unit-testable; the caller supplies
+ * `invitationLocation()`.
  */
 export interface InvitationLocation {
   /** Deep-link origin, e.g. `https://example.org:3000` (no trailing slash). */
   origin: string;
-  /** Hostname for the signaling endpoint, as `window.location.hostname`. */
-  hostname: string;
-  /** Port as `window.location.port` gives it: a string, `""` for the protocol default. */
-  port: string;
+  /** Where this app's inviter registers (`ownSignalingAddress`). */
+  signaling: SignalingAddress;
 }
 
 /**
@@ -260,45 +251,34 @@ export class InvitationFileError extends Error {
 }
 
 /**
- * Build the credential-free WebRTC signaling locator the acceptor uses to
- * reach this app's PeerJS server, from the inviter's browser location.
- * Mirrors the acceptor's dial-location handling (`psi/rendezvous.ts`):
- * `localhost` is normalized to a loopback literal a peer can dial, and a
- * default-port location omits the port. The endpoint schema requires a
- * reachable 1-65535 port when present; a blank or out-of-range port is
- * dropped.
+ * The credential-free WebRTC signaling locator the acceptor uses to reach the
+ * signaling server at `address`. It names no scheme: the acceptor resolves ws
+ * or wss from its own page, and an omitted port from that same scheme.
  */
-export function webrtcEndpointFromLocation(loc: {
-  hostname: string;
-  port: string;
-}): WebRTCEndpoint {
-  const host = loc.hostname === "localhost" ? "127.0.0.1" : loc.hostname;
+export function webrtcEndpointFromAddress(
+  address: SignalingAddress,
+): WebRTCEndpoint {
   const endpoint: WebRTCEndpoint = {
     channel: "webrtc",
-    host,
-    path: PEERJS_SIGNALING_PATH,
+    host: address.host,
+    path: address.path,
   };
-  // Number() rather than parseInt: a non-numeric port like "8080abc" becomes NaN
-  // and is dropped instead of being truncated to 8080, and an empty default-port
-  // location becomes 0, which the `>= 1` guard rejects -- so the port is omitted.
-  const port = Number(loc.port);
-  if (Number.isInteger(port) && port >= 1 && port <= 65535)
-    endpoint.port = port;
+  if (address.port !== undefined) endpoint.port = address.port;
   return endpoint;
 }
 
 /**
  * The webrtc endpoint a web invitation holds: this app's signaling locator
- * ({@link webrtcEndpointFromLocation}) plus the inviter's own relay, composed
+ * ({@link webrtcEndpointFromAddress}) plus the inviter's own relay, composed
  * by core's `relayLocatorFromOwnRelay` and omitted when there is none. The one
  * place a web inviter's relay reaches an invitation; both mint paths -- a new
  * invitation and a managed re-invite -- call it.
  */
 export function invitationWebrtcEndpoint(
-  loc: { hostname: string; port: string },
+  loc: InvitationLocation,
   ownRelay: RelayUrls | undefined,
 ): WebRTCEndpoint {
-  const endpoint = webrtcEndpointFromLocation(loc);
+  const endpoint = webrtcEndpointFromAddress(loc.signaling);
   const relay = relayLocatorFromOwnRelay(ownRelay);
   return relay !== undefined ? { ...endpoint, relay } : endpoint;
 }
@@ -346,7 +326,7 @@ export type ConnectionEndpointRequest =
 
 /**
  * Resolve a {@link ConnectionEndpointRequest} to the {@link ConnectionEndpoint}
- * the token holds. The webrtc request is built from the inviter's browser
+ * the token holds. The webrtc request is built from the inviter's
  * {@link InvitationLocation} and names the relay this inviter's own run gathers
  * against ({@link relayForRun}); an sftp/filedrop request passes through verbatim
  * (its locator fields were authored by the caller). No credential can appear

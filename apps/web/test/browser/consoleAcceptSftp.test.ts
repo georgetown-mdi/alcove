@@ -46,6 +46,7 @@ vi.mock("@tanstack/react-router", async () =>
 vi.mock("@utils/clientConfig", () => ({
   deploymentProfile: () => "console" as const,
   isConsoleBuild: () => true,
+  signalingServerSetting: () => undefined,
 }));
 
 // The unsupported gate and the server-job accept never dial.

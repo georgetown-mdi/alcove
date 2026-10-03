@@ -13,7 +13,8 @@ import {
 import { HANDSHAKE_ROLE_FOR_SIDE } from "../../../src/psi/handshakeRole.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
-import { webrtcEndpointFromLocation } from "../../../src/psi/invitation.js";
+import { resolveSignalingAddress } from "../../../src/psi/transport/signalingAddress.js";
+import { webrtcEndpointFromAddress } from "../../../src/psi/invitation.js";
 
 import type { DataConnection, PeerOptions } from "peerjs";
 import type {
@@ -151,9 +152,14 @@ describe("the signaling locator the web app mints", () => {
   test("reproduces the endpoint vector from the inviter's browser location", () => {
     // What the CLI acceptor seeds its connection block from. The endpoint names
     // no scheme by design; each side resolves ws vs wss locally.
-    expect(webrtcEndpointFromLocation(signalingLocation)).toEqual(
-      vectors.signaling.endpoint,
-    );
+    expect(
+      webrtcEndpointFromAddress(
+        resolveSignalingAddress(undefined, {
+          ...signalingLocation,
+          protocol: "https:",
+        }),
+      ),
+    ).toEqual(vectors.signaling.endpoint);
   });
 
   test("the inviter listens at the locator it minted", async () => {
