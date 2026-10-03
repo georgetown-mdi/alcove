@@ -18,6 +18,7 @@ import { STOPPED_DISCLOSURE_NOT_FILED_WARNING } from "@psi/managed/managedRunDri
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
@@ -108,6 +109,7 @@ afterEach(async () => {
 
 describe("a notice raised by a run that then failed", () => {
   test("shows beside the failure, so a disclosure that could not be filed is not lost with the run", async () => {
+    expectConsole("error", "Error: the data channel closed");
     raised.notice = STOPPED_DISCLOSURE_NOT_FILED_WARNING;
 
     await runUntilItFails();
@@ -127,6 +129,7 @@ describe("a notice raised by a run that then failed", () => {
   });
 
   test("leaves the failure alone on a run that raised none", async () => {
+    expectConsole("error", "Error: the data channel closed");
     await runUntilItFails();
 
     expect(app.container.textContent).not.toContain(

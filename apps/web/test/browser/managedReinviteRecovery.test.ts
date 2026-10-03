@@ -44,6 +44,8 @@ import { managedRunFailureFromRecord } from "@recurring/managedRunLaunchModel";
 import { reinviteManagedExchange } from "@psi/managed/managedReinviteDriver";
 import { relayRegistrationPendingLine } from "@recurring/savedExchangesModel";
 
+import { expectConsole } from "./expectedConsole";
+
 import type { RelayRegistrar, WebRTCExchangeLocator } from "@alcove/core";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
@@ -354,6 +356,10 @@ describe("a re-invite of an exchange enrolled at a relay registrar", () => {
   });
 
   test("with the registrar unavailable, the record states the re-enrollment step and the next run stops on it without a request", async () => {
+    expectConsole(
+      "warn",
+      /^The re-invite replaced the exchange's shared secret, and the relay registrar at /,
+    );
     const enrolled = await enrolledRecord();
     const registrar = registrarAnswering([]);
 

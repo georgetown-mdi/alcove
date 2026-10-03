@@ -17,6 +17,7 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
@@ -119,6 +120,10 @@ afterEach(async () => {
 
 describe("the run surface reports its own data-exchange boundary", () => {
   test("a no-show before the boundary renders the no-show state", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     await runUntilItFails();
 
     await expect
@@ -128,6 +133,10 @@ describe("the run surface reports its own data-exchange boundary", () => {
   });
 
   test("a no-show past the boundary renders the neutral transport state", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     // Payload could have flowed, so the run cannot attest that nothing left this
     // device -- whatever the error's own type says.
     phase.dataExchangeStarted = true;
@@ -144,6 +153,10 @@ describe("the run surface reports its own data-exchange boundary", () => {
   });
 
   test("asks for no peer-wait bound of its own", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     // The bound the driver takes is one policy's: the scheduled runner clamps
     // its wait to the agreed window's close, so the window ends as the partner
     // no-show it is rather than as this operator's cancellation. An attended run

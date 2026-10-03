@@ -36,6 +36,7 @@ import {
 } from "./runLockReadings";
 import { captureDownloads } from "./captureDownloads";
 import { createAppMount } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { DownloadCapture } from "./captureDownloads";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -216,6 +217,7 @@ afterEach(async () => {
 
 describe("a hand-off across a run of the same exchange", () => {
   test("the command-line hand-off waits for the run, then refuses what it superseded", async () => {
+    expectConsole("error", "Error: the test ended the run");
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: await workingFolder() }),
     );
@@ -261,6 +263,7 @@ describe("a hand-off across a run of the same exchange", () => {
   });
 
   test("a command-line download taken after the run confirms and spends", async () => {
+    expectConsole("error", "Error: the test ended the run");
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: await workingFolder() }),
     );

@@ -381,6 +381,16 @@ or a regular expression. `toHaveTextContent` beside it matches the element's
 whole text content exactly, so an assertion naming one sentence of a panel
 takes the first.
 
+### Console output a failure path logs
+
+The app logs a caught run or exchange failure to the console in a development
+build, so a test that injects one also produces the line. The test declares it
+with `expectConsole(level, ...lines)` from `apps/web/test/browser/expectedConsole.ts`:
+a declared line is kept off the run output, and the test fails if no such line
+was logged, so a failure path that stops logging or changes its text is
+reported. A line no test declared prints as usual -- a console line in a
+browser run is one nobody expected.
+
 ## Cross-runtime interop suite
 
 The CLI and the web app share no code but `@alcove/core`, and their own suites

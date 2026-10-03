@@ -40,6 +40,7 @@ import {
   holdRunLockElsewhere,
   stalePollUntilClick,
 } from "./runLockReadings";
+import { expectConsole } from "./expectedConsole";
 
 import type * as ManagedExchangeStore from "@psi/managed/managedExchangeStore";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -250,6 +251,10 @@ afterEach(async () => {
 
 describe("a live no-show is read against the evidence standing at launch", () => {
   test("a standing persist failure outranks the no-show and offers re-invite", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     const id = await runUntilItNoShows();
 
     await expect
@@ -276,6 +281,11 @@ describe("a live no-show is read against the evidence standing at launch", () =>
   });
 
   test("a persist failure earlier in this visit outranks a later run's no-show", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+      "RotationPersistError: failed to persist the rotated shared secret",
+    );
     // Two runs in one mounted visit, which the run control allows: the first
     // rotates and cannot save, the second meets the no-show that a pair left on
     // different secrets produces every time. Nothing is seeded, so the only
@@ -375,6 +385,10 @@ describe("a standing condition at the next visit", () => {
 
 describe("a cleared standing condition beside this visit's own failure", () => {
   test("keeps its re-invite after a run in the same visit no-shows", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     // Clearing the condition settles what an earlier run raised; it does not
     // re-establish the secret, so the re-invite it offers stands whatever this
     // visit's run then does. The storage condition is raised by a run two stamps
@@ -433,6 +447,10 @@ describe("a cleared standing condition beside this visit's own failure", () => {
 
 describe("a compromise response the operator has reached", () => {
   test("leaves the live failure no re-invite to offer beside it", async () => {
+    expectConsole(
+      "error",
+      "ManagedExchangeExpiredError: managed exchange stored secret has lapsed; re-invite to run again",
+    );
     // The standing gate is answered "something does not add up" while the live
     // failure is a lapsed bound, whose own recovery is a fresh invitation. The
     // compromise response says not to send one on this channel, so the page must
@@ -486,6 +504,7 @@ describe("a compromise response the operator has reached", () => {
   });
 
   test("holds the recovery region when a later run fails the same way", async () => {
+    expectConsole("error", "Error: the handshake failed closed");
     // The standing gate is answered "something does not add up", and the next run
     // fails closed the same way the condition was raised over. The section stands
     // down for a live failure of its own tier, so the response has to hold the
@@ -548,6 +567,7 @@ describe("a compromise response the operator has reached", () => {
   });
 
   test("holds a live gate's response over a later run in the same visit", async () => {
+    expectConsole("error", "Error: the handshake failed closed");
     // The live failure's own gate is answered "something does not add up", and the
     // operator runs again into the same failed-closed handshake. The answer is one
     // per visit, whichever gate asked it: the question is not put again, and nothing
@@ -613,6 +633,7 @@ describe("a compromise response the operator has reached", () => {
   });
 
   test("leaves a later failure in the same visit its own gate", async () => {
+    expectConsole("error", "Error: the handshake failed closed");
     // The answer covers the failure it was given at. A second run fails closed the
     // same way, and first raise wins, so the record's condition is still the first
     // failure's -- the acknowledgement clears that one and settles nothing about
@@ -778,6 +799,7 @@ describe("a compromise response the operator has reached", () => {
   });
 
   test("leaves a settled condition no re-invite to offer under it", async () => {
+    expectConsole("error", "Error: the handshake failed closed");
     // The other way round: the condition was cleared earlier in this visit, so the
     // section below holds the re-invite on its own, and this visit's run then lands
     // on the unexplained state whose gate the operator answers as a compromise.
@@ -859,6 +881,7 @@ describe("a compromise response this device could not save", () => {
   }
 
   test("holds the page, says what it cost, and asks again at the next visit", async () => {
+    expectConsole("error", "Error: the write failed");
     // A write this device refused is the side to fail to: the answer holds the
     // page as a saved one does, and the page states how far that reaches rather
     // than letting the operator read it as recorded.
@@ -894,6 +917,11 @@ describe("a compromise response this device could not save", () => {
   });
 
   test("a fresh run in the same visit is not held behind it", async () => {
+    expectConsole(
+      "error",
+      "Error: the write failed",
+      "ManagedExchangeExpiredError: managed exchange stored secret has lapsed; re-invite to run again",
+    );
     // The unsaved answer stands until a run starts, not over whatever the page
     // shows next. A run since then has a failure of its own, classified
     // differently, and the panel whose one control clears the record's standing
@@ -1011,6 +1039,7 @@ describe("a clear-and-acknowledge write still in flight", () => {
 
 describe("a clear-and-acknowledge write that rejects", () => {
   test("states what happened on the gate's confirming leg, not only the short control", async () => {
+    expectConsole("error", "Error: the write failed");
     // The confirming option takes the same store write the acknowledge control does.
     // When it rejects, the condition stays raised -- so the operator has to be told,
     // or the click reads as having settled something it did not.
@@ -1046,6 +1075,10 @@ describe("a clear-and-acknowledge write that rejects", () => {
 
 describe("a standing condition beside a live failure of another tier", () => {
   test("leaves the re-invite to the live failure rather than offering a second", async () => {
+    expectConsole(
+      "error",
+      "ManagedExchangeExpiredError: managed exchange stored secret has lapsed; re-invite to run again",
+    );
     // A lapsed bound over a standing persist failure: two states, one recovery
     // between them -- a single fresh invitation minted from this record. The
     // condition keeps its own words and its clearance; the offer is the live
@@ -1214,6 +1247,10 @@ describe("a compromise response the operator gave at an earlier visit", () => {
   });
 
   test("a benign no-show later in the same visit does not take it", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     // The run stamps a no-show, which records no failure kind at all, and nothing
     // refreshes the page's own copy of the record. The answer is not a reading of
     // the last run, so neither costs it.
@@ -1306,6 +1343,7 @@ describe("a compromise response written after this page read the record", () => 
 
 describe("a live gate answered where no condition stands", () => {
   test("raises the condition that holds the answer, and it stands at the next visit", async () => {
+    expectConsole("error", "Error: the handshake failed closed");
     // The handshake failed closed and the store refused the run's own bookkeeping
     // write, so the failure being answered raised nothing to answer. The answer
     // still needs a carrier, or the gate is put again at the next visit.
@@ -1370,6 +1408,10 @@ describe("a live gate answered where no condition stands", () => {
 
 describe("a re-invite control while a run is in flight", () => {
   test("both wait the run out and come back when it ends", async () => {
+    expectConsole(
+      "error",
+      "PartnerNoShowError: timed out waiting for the other party",
+    );
     // A re-invite replaces the secret the run in progress is connecting on, so
     // neither control is live for the length of it -- and both return whatever the
     // run turned out to be.

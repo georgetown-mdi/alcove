@@ -19,6 +19,7 @@ import { REPORTED_CAUSE_LABEL } from "@exchange/RunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
@@ -133,6 +134,7 @@ async function failedRun(): Promise<{
 }
 
 test("the transport state's cause stands under the label, not in the seat's own copy", async () => {
+  expectConsole("error", "Error: the data channel closed");
   const { message, label, report } = await failedRun();
 
   // There at all, or every placement assertion below passes on an alert showing
@@ -156,6 +158,10 @@ test("the transport state's cause stands under the label, not in the seat's own 
 });
 
 test("the unreadable-custody state's cause finishes the seat's own copy, under no label", async () => {
+  expectConsole(
+    "error",
+    /^ManagedExchangeCustodyUnreadableError: managed exchange abc has an unreadable /,
+  );
   runRejection = new ManagedExchangeCustodyUnreadableError(
     "abc",
     new Error(PLANTED_READ_FAULT),

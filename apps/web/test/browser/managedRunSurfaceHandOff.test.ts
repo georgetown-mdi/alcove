@@ -29,6 +29,7 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 
 import { createAppMount } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type {
   NewManagedExchange,
@@ -231,6 +232,10 @@ describe("the re-take on a spent copy's own surface", () => {
 
 describe("a run pressed after the hand-off arrived", () => {
   test("the refusal fixes the surface on the spent state, with no reload", async () => {
+    expectConsole(
+      "error",
+      /^ManagedExchangeSpentError: managed exchange [0-9a-f-]{36} was handed off, so this device's copy no longer runs it$/,
+    );
     // The surface reads the spent state when it loads, and this operator's
     // surface loaded before the hand-off was confirmed in another tab -- so the
     // Run button in front of them is live over a copy that is no longer theirs.
@@ -288,6 +293,11 @@ describe("a run pressed after the hand-off arrived", () => {
   });
 
   test("a refusal whose reload did not answer names no hand-off it cannot read", async () => {
+    expectConsole(
+      "error",
+      /^ManagedExchangeSpentError: managed exchange [0-9a-f-]{36} was handed off, so this device's copy no longer runs it$/,
+      "managed run failure reload failed",
+    );
     // The state is the refusal's; the hand-off's form and date are the reload's,
     // and the reload can come back with neither -- it reads the record and the
     // sibling entry under one catch, so either rejecting costs both. What the

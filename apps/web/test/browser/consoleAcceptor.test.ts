@@ -35,6 +35,7 @@ import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvous
 import { CONTROLS_ONLY_HEADER_PROFILE } from "../utils/unnamedColumnProfiles";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type {
   ConnectionEndpoint,
@@ -869,6 +870,10 @@ describe("console acceptor re-attaches on a busy create", () => {
   } satisfies JobHandoff;
 
   test("a 409 at accept re-attaches with recovery copy and shows completion affordances", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // The slot is occupied: the accept's create 409s holding the live occupant's id.
     const api = stubServerJobAccept({
       conflict: { jobId: "job-live", status: "running" },
@@ -950,6 +955,10 @@ describe("console acceptor re-attaches on a busy create", () => {
   });
 
   test("a busy create shows an announced reconnecting interim before the recovery view", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // Hold the liveness probe so the reconnecting interim is observable.
     const api = stubServerJobAccept({
       conflict: { jobId: "job-live", status: "running", holdProbe: true },
@@ -1015,6 +1024,11 @@ const PARTNER_ENTRY_ESCAPED = "q1\\\\cohort\\xe9.csv";
 
 describe("console acceptor run warnings", () => {
   test("puts the console's preflight warnings in front of the accepting operator", async () => {
+    expectConsole(
+      "warn",
+      /^server job warning: the rendezvous directory \/mnt\/rendezvous is not empty; an /,
+      `server job warning: the rendezvous directory holds ${PARTNER_ENTRY_ESCAPED}`,
+    );
     const api = stubServerJobAccept();
     window.location.hash = await encodeToken(FILEDROP_ENDPOINT);
     app.render(createElement(AcceptorScreen));
@@ -1058,6 +1072,14 @@ describe("console acceptor run warnings", () => {
   });
 
   test("keeps the warning up when the run it preceded then fails", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the rendezvous directory is not empty",
+    );
+    expectConsole(
+      "warn",
+      /^server job warning: the rendezvous directory \/mnt\/rendezvous is not empty; an /,
+    );
     const api = stubServerJobAccept();
     window.location.hash = await encodeToken(FILEDROP_ENDPOINT);
     app.render(createElement(AcceptorScreen));
@@ -1121,6 +1143,7 @@ describe("console acceptor recoveries against the run's exchange record", () => 
   test.each(RETRY_CASES)(
     "$failure offers Try again: $offersRetry",
     async ({ terminal, offersRetry }) => {
+      expectConsole("error", `RelayedSelfExplainingError: ${terminal.message}`);
       const api = stubServerJobAccept({ jobStatus: "failed" });
       window.location.hash = await encodeToken(FILEDROP_ENDPOINT);
       app.render(createElement(AcceptorScreen));
@@ -1145,6 +1168,10 @@ describe("console acceptor recoveries against the run's exchange record", () => 
   );
 
   test("offers the record the console holds and confirms before destroying it", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubServerJobAccept({
       jobStatus: "failed",
       record: { createdAt: CREATED_AT, outcome: "receipt-swap-terminated" },
@@ -1174,6 +1201,10 @@ describe("console acceptor recoveries against the run's exchange record", () => 
   });
 
   test("states the certificate mismatch the record holds beside the outcome", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubServerJobAccept({
       jobStatus: "failed",
       record: {
@@ -1195,6 +1226,10 @@ describe("console acceptor recoveries against the run's exchange record", () => 
   });
 
   test("says nothing about a certificate the record states no mismatch for", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubServerJobAccept({
       jobStatus: "failed",
       record: { createdAt: CREATED_AT, outcome: "receipt-swap-terminated" },
@@ -1212,6 +1247,10 @@ describe("console acceptor recoveries against the run's exchange record", () => 
   });
 
   test("a record the console cannot read confirms, and links no download", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubServerJobAccept({
       jobStatus: "failed",
       recordUnavailable: "undescribable-record",
@@ -1240,6 +1279,10 @@ describe("console acceptor recoveries against the run's exchange record", () => 
   });
 
   test("the console's own no-record answer retries straight through", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
     const api = stubServerJobAccept({ jobStatus: "failed" });
     await acceptToExchangeFailure(api);
 

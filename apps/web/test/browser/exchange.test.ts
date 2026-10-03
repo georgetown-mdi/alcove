@@ -37,6 +37,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
+import { expectConsole } from "./expectedConsole";
 
 import type {
   LinkageTerms,
@@ -1012,6 +1013,7 @@ describe("inviter screen", () => {
   });
 
   test("Back after a start-over lands on review, not a blank share column", async () => {
+    expectConsole("error", "Error: kex failed");
     // Reaching the share screen pushes a `share` history entry; start-over then
     // clears the invitation the share work column reads and routes to a fresh
     // review. The `share` entry is now backed by nothing -- pressing Back must
@@ -1052,6 +1054,7 @@ describe("inviter screen", () => {
   });
 
   test("the unload prompt arms with the file and lets go once the invitation exists and its run is over", async () => {
+    expectConsole("error", "Error: kex failed");
     // A cancelable beforeunload dispatched at the window is answered by the
     // same listener the browser consults on a real unload; dispatchEvent
     // returning false means the guard called preventDefault (prompt armed).
@@ -1410,6 +1413,7 @@ describe("inviter screen", () => {
   });
 
   test("intake reports rejections and gates on an in-flight parse", async () => {
+    expectConsole("warn", 'rejected 1 file(s): ["file-invalid-type"]');
     app.render(createElement(InviterScreen));
 
     await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
@@ -1449,6 +1453,11 @@ describe("inviter screen", () => {
   });
 
   test("a failed mint leaves the terms editable and create retryable", async () => {
+    expectConsole(
+      "error",
+      "invitation creation failed (detail): Error: internal mint failure",
+      "invitation creation failed: Error",
+    );
     app.render(createElement(InviterScreen));
 
     await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
@@ -1644,6 +1653,15 @@ describe("inviter screen", () => {
   ];
 
   test("a mint failure the check did not tag keeps the fixed message at the create click", async () => {
+    expectConsole(
+      "error",
+      "invitation creation failed (detail): Error: mint failed",
+      "invitation creation failed (detail): OperatorConfigError: config fault ZZTRANSFORMMARK",
+      /^invitation creation failed \(detail\): UsageError: checking that every transform /,
+      "invitation creation failed: Error",
+      "invitation creation failed: OperatorConfigError",
+      "invitation creation failed: UsageError",
+    );
     await reachReviewCreate();
     const createButton = page.getByRole("button", {
       name: "Create the invitation",
@@ -1671,6 +1689,15 @@ describe("inviter screen", () => {
   });
 
   test("a mint failure the check did not tag keeps the fixed message at the save click", async () => {
+    expectConsole(
+      "error",
+      "exchange file save failed (detail): Error: mint failed",
+      "exchange file save failed (detail): OperatorConfigError: config fault ZZTRANSFORMMARK",
+      /^exchange file save failed \(detail\): UsageError: checking that every transform /,
+      "exchange file save failed: Error",
+      "exchange file save failed: OperatorConfigError",
+      "exchange file save failed: UsageError",
+    );
     await reachReviewCreate();
     await page
       .getByLabelText("Over SFTP, run by the Alcove command-line tool")
@@ -2241,6 +2268,7 @@ describe("inviter screen", () => {
   });
 
   test("post-create: a retryable failure offers one more try on the same invitation", async () => {
+    expectConsole("error", "Error: transport");
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onError({
@@ -2281,6 +2309,7 @@ describe("inviter screen", () => {
   });
 
   test("post-create: an output failure offers no re-run, only a fresh setup", async () => {
+    expectConsole("error", "Error: blob quota exceeded");
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onStage("confirming protocol");
@@ -2314,6 +2343,10 @@ describe("inviter screen", () => {
   });
 
   test("post-create: a config failure shows its message and starts over", async () => {
+    expectConsole(
+      "error",
+      "Error: standardization output name contradicts the terms",
+    );
     await createSealedInvitation();
     lifecycleCall(0).onError({
       category: "config",
@@ -2344,6 +2377,10 @@ describe("inviter screen", () => {
   });
 
   test("post-create: an expired invitation names itself, not the partner", async () => {
+    expectConsole(
+      "error",
+      "Error: shared secret expired at 2026-07-08T19:32:00.000Z; obtain a new invitation",
+    );
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
     // The tagged expiry error core's guards raise (the tag marks its message
@@ -2379,6 +2416,7 @@ describe("inviter screen", () => {
   });
 
   test("post-create: an exchange failure past expiry swaps retry for start-over", async () => {
+    expectConsole("error", "Error: transport");
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
 
@@ -2418,6 +2456,7 @@ describe("inviter screen", () => {
   });
 
   test("post-create: a security failure forces a fresh invitation, inputs intact", async () => {
+    expectConsole("error", "Error: kex failed");
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onError({

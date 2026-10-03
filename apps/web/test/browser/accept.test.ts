@@ -47,6 +47,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 import { applyDisclosure } from "@psi/metadataEditing";
 
 import { createAppMount } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 import { openDisclosure } from "./collapsePanels";
 import { visualOrderWithin } from "./visualOrder";
 
@@ -2360,6 +2361,7 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("a retryable exchange failure offers Try again on the same invitation", async () => {
+    expectConsole("error", "Error: transport");
     await reachRun();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onError({
@@ -2382,6 +2384,7 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("an exchange failure past expiry swaps Try again for start-over", async () => {
+    expectConsole("error", "Error: transport");
     await reachRun();
     lifecycleCall(0).onStage("waiting for peer");
 
@@ -2420,6 +2423,7 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("a security failure forbids retry and links to a fresh invitation", async () => {
+    expectConsole("error", "Error: kex failed");
     await reachRun();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onError({
@@ -2442,6 +2446,10 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("an expired-invitation security failure names itself, not the partner", async () => {
+    expectConsole(
+      "error",
+      "Error: shared secret expired at 2026-07-08T19:32:00.000Z; obtain a new invitation",
+    );
     await reachRun();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onError({
@@ -2470,6 +2478,10 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("a config failure shows its message and returns to the columns step", async () => {
+    expectConsole(
+      "error",
+      "Error: standardization output name contradicts the terms",
+    );
     await reachRun();
     lifecycleCall(0).onError({
       category: "config",
@@ -2495,6 +2507,10 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("Back after a back-to-columns recovery lands on columns, not the dead run surface", async () => {
+    expectConsole(
+      "error",
+      "Error: standardization output name contradicts the terms",
+    );
     // Reaching the run pushes a `launched` history entry; the config-failure
     // recovery then clears the launch that entry's work column reads and pushes
     // a fresh columns entry. The `launched` entry is now backed by nothing --
@@ -2552,6 +2568,7 @@ describe("acceptor screen: run and completion", () => {
   });
 
   test("an output failure offers no re-run, only a fresh setup", async () => {
+    expectConsole("error", "Error: blob quota exceeded");
     await reachRun();
     lifecycleCall(0).onStage("waiting for peer");
     lifecycleCall(0).onStage("confirming protocol");

@@ -17,6 +17,7 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 
@@ -99,6 +100,7 @@ afterEach(async () => {
 
 describe("leaving the page during a managed re-run", () => {
   test("is confirmed while the run is live, and unguarded once it ends", async () => {
+    expectConsole("error", "Error: the test ended the run");
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: await workingFolder() }),
     );

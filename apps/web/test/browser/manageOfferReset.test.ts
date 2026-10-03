@@ -22,6 +22,7 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { isolatedColumnName } from "@components/ColumnName";
 
 import { createAppMount } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
@@ -173,6 +174,11 @@ async function launchOverOverlongHeader() {
 
 describe("the recurring-save offer after a refused deposit", () => {
   test("a re-mint reached by browser Back opens the offer clear", async () => {
+    expectConsole(
+      "error",
+      /^managed exchange deposit failed \(detail\): ZodError: /,
+      "managed exchange deposit failed: ZodError",
+    );
     await mintOverOverlongHeader();
 
     // The stored record bounds every declared name, sent or not, so the deposit
@@ -203,6 +209,11 @@ describe("the recurring-save offer after a refused deposit", () => {
 
 describe("the acceptor's offer after a refused deposit", () => {
   test("a re-launch reached by browser Back opens the offer clear", async () => {
+    expectConsole(
+      "error",
+      /^managed exchange deposit failed \(detail\): ZodError: /,
+      "managed exchange deposit failed: ZodError",
+    );
     await launchOverOverlongHeader();
 
     // The stored record bounds every declared name, sent or not, so the deposit

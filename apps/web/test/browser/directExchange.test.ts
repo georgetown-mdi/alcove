@@ -48,6 +48,7 @@ import { CONTROLS_ONLY_HEADER_PROFILE } from "../utils/unnamedColumnProfiles";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectCommittedText } from "./collapsePanels";
+import { expectConsole } from "./expectedConsole";
 
 import type { JobHandoff } from "@jobs/handoff";
 
@@ -836,6 +837,10 @@ describe("direct exchange confirm and run", () => {
   });
 
   test("a terms mismatch shows clearly through the job-error path", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: linkage terms do not match the partner's inferred terms",
+    );
     const api = stubJobApi({ sftp: CONFIGURED_SFTP });
     app.render(createElement(DirectExchangeScreen));
     await reachConfirm();
@@ -864,6 +869,10 @@ describe("direct exchange confirm and run", () => {
   });
 
   test("Start over after a terminal failure frees the slot and re-enables Run", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: linkage terms do not match the partner's inferred terms",
+    );
     const api = stubJobApi({ sftp: CONFIGURED_SFTP, jobStatus: "failed" });
     app.render(createElement(DirectExchangeScreen));
     await reachConfirm();
@@ -1130,6 +1139,10 @@ describe("console direct re-attaches on a busy create", () => {
   } satisfies JobHandoff;
 
   test("a 409 at run re-attaches with recovery copy, not the busy alert", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // The slot is occupied: the create 409s holding the live occupant's id.
     const api = stubJobApi({
       sftp: CONFIGURED_SFTP,
@@ -1221,6 +1234,10 @@ describe("console direct re-attaches on a busy create", () => {
   });
 
   test("a busy create shows an announced reconnecting interim before the recovery view", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // Hold the liveness probe so the reconnecting interim is observable.
     const api = stubJobApi({
       sftp: CONFIGURED_SFTP,
@@ -1275,6 +1292,10 @@ describe("console direct re-attaches on a busy create", () => {
   });
 
   test("falls back to the busy alert when the occupant is not live", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 409",
+    );
     // The 409 names an occupant, but the liveness probe 404s (gone): no live
     // exchange to re-attach to, so the surface falls back to today's busy alert.
     stubJobApi({
@@ -1630,6 +1651,10 @@ describe("direct-exchange recoveries against the run's exchange record", () => {
   }
 
   test("offers the record the console holds and confirms before destroying it", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: linkage terms do not match the partner's inferred terms",
+    );
     const api = stubJobApi({
       sftp: CONFIGURED_SFTP,
       jobStatus: "failed",
@@ -1657,6 +1682,10 @@ describe("direct-exchange recoveries against the run's exchange record", () => {
   });
 
   test("a record the console cannot read confirms, and links no download", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: linkage terms do not match the partner's inferred terms",
+    );
     const api = stubJobApi({
       sftp: CONFIGURED_SFTP,
       jobStatus: "failed",
@@ -1811,6 +1840,7 @@ describe("direct exchange retry on a relayed internal fault", () => {
   ])(
     "$failure offers Try again: $offersRetry",
     async ({ terminal, offersRetry }) => {
+      expectConsole("error", `RelayedSelfExplainingError: ${terminal.message}`);
       const api = stubJobApi({ sftp: CONFIGURED_SFTP, jobStatus: "failed" });
       app.render(createElement(DirectExchangeScreen));
       await reachConfirm();
@@ -1868,6 +1898,7 @@ describe("direct exchange retry on a relayed internal fault", () => {
   ])(
     "on $failure the hook's retry guard lets a retry run: $retries",
     async ({ terminal, retries }) => {
+      expectConsole("error", `RelayedSelfExplainingError: ${terminal.message}`);
       const api = stubJobApi({ sftp: CONFIGURED_SFTP, jobStatus: "failed" });
       app.render(createElement(RetryHarness));
       await page.getByRole("button", { name: "Run" }).click();
