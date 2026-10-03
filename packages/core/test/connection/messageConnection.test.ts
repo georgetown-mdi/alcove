@@ -6,6 +6,7 @@ import {
   DEFAULT_INACTIVITY_TIMEOUT_MS,
   QueuedMessageConnection,
   asConnectionError,
+  connectionEndReader,
   createMessagePipe,
   errorMessage,
   fromEventConnection,
@@ -15,6 +16,7 @@ import {
 } from "../../src/connection/messageConnection";
 
 import type { TransportControls } from "../../src/connection/messageConnection";
+import { EVENT_LOOP_HOLD_MS, EventLoopPacer } from "../../src/utils/eventLoop";
 
 import { expectRejectionKind } from "../utils/expectRejection";
 import { PassthroughConnection } from "../utils/passthroughConnection";
@@ -159,6 +161,28 @@ test("terminated resolves at a half-close, before the buffered frame drains", as
   controls.finish(closed);
   expect(await conn.terminated()).toBe(closed);
   expect(await conn.receive()).toBe("tail");
+});
+
+// A half-close tears the transport down at once and rejects every later send,
+// so a paced step has nowhere to send its result and stops there.
+test("a paced step stops at a half-close although a frame remains buffered", async () => {
+  let clock = 0;
+  const now = vi
+    .spyOn(performance, "now")
+    .mockImplementation(() => (clock += EVENT_LOOP_HOLD_MS));
+  try {
+    const { conn, controls, close } = makeQueued();
+    const pacer = new EventLoopPacer(connectionEndReader(conn));
+    await pacer.yieldWhenDue();
+    controls.deliver("tail");
+    const closed = new ConnectionError("peer closed", "transport");
+    controls.finish(closed);
+    await expect(pacer.yieldWhenDue()).rejects.toBe(closed);
+    expect(close).toHaveBeenCalledTimes(1);
+    await expect(conn.send("result")).rejects.toBe(closed);
+  } finally {
+    now.mockRestore();
+  }
 });
 
 test("terminated resolves with a closed error on a local close, and the first transition wins", async () => {

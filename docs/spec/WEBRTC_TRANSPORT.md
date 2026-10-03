@@ -372,11 +372,15 @@ partner calls the connection lost, and the two parties' holds add up
 ### A connection that ends during a round
 
 The exchange reads the connection's terminal state
-(`MessageConnection.terminated`):
+(`MessageConnection.terminated`). A half-close counts as ended even while
+frames the partner sent before it remain to be read, because nothing can be
+sent after it.
 
 - A paced pass stops at its next yield with the error that ended the
   connection, so a party whose partner is lost while it builds or resolves a
   round fails within one stretch.
+- A crypto step does not start once the connection has ended: the party fails
+  at once with the error that ended it.
 - A crypto step already handed to the PSI worker runs to its end. Terminating
   the worker during a native masking call aborts the process
   ([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)),

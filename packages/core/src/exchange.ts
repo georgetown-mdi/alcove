@@ -128,7 +128,10 @@ import type {
   Prettify,
   Algorithm,
 } from "./types.js";
-import { ConnectionError } from "./connection/messageConnection.js";
+import {
+  ConnectionError,
+  connectionEndReader,
+} from "./connection/messageConnection.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
 import type { PresentedHostKey } from "./connection/fileSyncConnection.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -2981,10 +2984,13 @@ export async function runExchange(
         ? { local: localReceiveCeiling, partner: partnerReceiveCeiling }
         : undefined,
     );
-    const psiParticipant = participant;
-    // A crypto step in flight runs to its end: terminating the CLI's worker
-    // inside a native backend call aborts the process. The operator is told
-    // of the loss when it happens rather than when the step returns.
+    // A crypto step does not start once the connection has ended, since its
+    // result has nowhere to go. One in flight runs to its end: terminating
+    // the CLI's worker inside a native backend call aborts the process. The
+    // operator is told of the loss when it happens rather than when the step
+    // returns.
+    participant.stopOperationsWhen(connectionEndReader(conn));
+    const psiParticipant = participant; // narrowed for closure
     void conn.terminated?.().then((ended) => {
       if (ended.kind !== "closed" && psiParticipant.operationInFlight())
         getLogger("exchange").warn(

@@ -11,6 +11,7 @@ import { InProcessPsiEngine } from "../src/psi/psiEngine";
 import { getLogger } from "../src/utils/logger";
 
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
+import type { MessageConnection } from "../src/connection/messageConnection";
 import type { PsiEngine } from "../src/psi/psiEngine";
 
 // A partner lost while this party's crypto step is in flight: the step runs to
@@ -86,7 +87,12 @@ function heldSenderEngine() {
 
 // Runs both parties over one pipe. `sender` and `receiver` resolve to the
 // connections of the parties that resolved to those PSI roles.
-function runPair(senderEngine?: PsiEngine) {
+// `onSenderEngine` takes the receiver's connection once the sender's engine is
+// built, before the sender's first crypto step.
+function runPair(
+  senderEngine?: PsiEngine,
+  onSenderEngine?: (receiver: MessageConnection) => void,
+) {
   const [connInitiator, connResponder] = createMessagePipe();
   const conns = { sender: connInitiator, receiver: connResponder };
   const factoryFor =
@@ -95,6 +101,7 @@ function runPair(senderEngine?: PsiEngine) {
       if (role === "starter") {
         conns.sender = conn;
         conns.receiver = other;
+        onSenderEngine?.(other);
         if (senderEngine !== undefined) return senderEngine;
       }
       return new InProcessPsiEngine(
@@ -179,4 +186,26 @@ test("a run that completes reports no loss when its connection closes", async ()
   await conns.receiver.close();
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(lossNotices(warn)).toHaveLength(0);
+});
+
+test("a partner lost before the sender's setup starts fails the run without starting it", async () => {
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  const held = heldSenderEngine();
+  let setupStarted = false;
+  void held.started.then(() => (setupStarted = true));
+  const { outcomes } = runPair(held.engine, (receiver) => {
+    void receiver.close();
+  });
+
+  const settled = await outcomes;
+  for (const outcome of settled) expect(outcome.status).toBe("rejected");
+  expect(
+    settled.some(
+      (outcome) =>
+        (outcome as PromiseRejectedResult).reason instanceof ConnectionError,
+    ),
+  ).toBe(true);
+  expect(setupStarted).toBe(false);
+  expect(lossNotices(warn)).toHaveLength(0);
+  expect(held.isDisposed()).toBe(true);
 });

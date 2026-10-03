@@ -218,8 +218,8 @@ function partySummary(run: PartyRun, difference: string | undefined) {
   };
 }
 
-// Soft, like the exit-code assertion beside it: a hold over the bound is the
-// usual cause of a lost connection, so a run that exits 69 reports both.
+// Soft: a hold over the bound is the usual cause of a lost connection, so a
+// run that exits 69 reports both.
 function expectConnectedLoopLagWithinBound(
   name: PartyName,
   run: PartyRun,
