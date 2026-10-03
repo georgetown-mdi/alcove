@@ -13,6 +13,10 @@ import "@mantine/core/styles.css";
 
 import {
   CONSENT_FACTS,
+  PSI_SET_REFUSED_ABORT_REASON,
+  PSI_SET_TOO_LARGE_ABORT_REASON,
+  PeerAbortError,
+  RoundSetLimitError,
   describeDeduplicatePair,
   describeResolvedMatching,
   encodeInvitation,
@@ -32,6 +36,11 @@ import { AcceptorScreen } from "@exchange/AcceptorScreen";
 
 import { AcceptorColumnsStep } from "@exchange/AcceptorColumnsStep";
 import { STEP_STATE_KEY } from "@exchange/stepHistory";
+
+import {
+  PARTNER_REFUSED_SET_TITLE,
+  PARTNER_SET_TOO_LARGE_TITLE,
+} from "@psi/managed/managedFailureCopy";
 
 import { Lobby } from "@exchange/Lobby";
 import { stagesFor } from "@exchange/exchangeRun";
@@ -2556,6 +2565,65 @@ describe("acceptor screen: run and completion", () => {
     await expect
       .element(page.getByRole("heading", { name: "Confirm your columns" }))
       .toBeInTheDocument();
+  });
+
+  // A failure no column change resolves: the alert takes focus, offers the
+  // fresh-invitation link as its only recovery, and neither a retry nor a
+  // return to the columns step.
+  async function expectFreshInvitationOnly(title: string) {
+    await expect
+      .element(page.getByText(title, { exact: true }))
+      .toBeInTheDocument();
+    await vi.waitFor(() => {
+      expect(
+        (document.activeElement as HTMLElement | null)?.textContent,
+      ).toContain(title);
+    });
+    const link = Array.from(document.querySelectorAll("a")).find(
+      (anchor) => anchor.textContent === "Start over with a fresh invitation",
+    );
+    expect(link?.getAttribute("href")).toBe("/quick");
+    expect(page.getByRole("button", { name: "Try again" }).query()).toBeNull();
+    expect(
+      page.getByRole("button", { name: "Back to your columns" }).query(),
+    ).toBeNull();
+  }
+
+  test("a partner's refusal to send its set offers start-over, not the columns step", async () => {
+    expectConsole("error", /^PeerAbortError: /);
+    await reachRun();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "exchange",
+      error: new PeerAbortError(undefined, PSI_SET_REFUSED_ABORT_REASON),
+    });
+
+    await expectFreshInvitationOnly(PARTNER_REFUSED_SET_TITLE);
+  });
+
+  test("a partner's abort over this browser's ceiling offers start-over, not the columns step", async () => {
+    expectConsole("error", /^PeerAbortError: /);
+    await reachRun();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "exchange",
+      error: new PeerAbortError(undefined, PSI_SET_TOO_LARGE_ABORT_REASON),
+    });
+
+    await expectFreshInvitationOnly(PARTNER_SET_TOO_LARGE_TITLE);
+  });
+
+  test("a set of its own too large to send offers start-over, not the columns step", async () => {
+    expectConsole("error", "RoundSetLimitError: too many values");
+    await reachRun();
+    lifecycleCall(0).onError({
+      category: "config",
+      error: new RoundSetLimitError("too many values", "over-partner-ceiling"),
+    });
+
+    await expectFreshInvitationOnly(
+      "Your file is too large for your partner to receive",
+    );
   });
 
   test("Back after a back-to-columns recovery lands on columns, not the dead run surface", async () => {

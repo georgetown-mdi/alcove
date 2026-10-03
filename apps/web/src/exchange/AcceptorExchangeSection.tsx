@@ -49,8 +49,10 @@ import type { RunFailure } from "./useInviterExchange";
  * A failed run renders the failure vocabulary's alert for its category, each
  * with its one concrete way forward -- an acceptor seat cannot mint, so every
  * non-retryable recovery is a link to the quick path to paste a fresh
- * invitation, and a config fault returns to the confirm-columns step. No failure
- * clears any operator input.
+ * invitation, and a config fault returns to the confirm-columns step unless no
+ * settings change resolves it (a partner's refusal, a set over a size
+ * ceiling), which takes the fresh-invitation link. No failure clears any
+ * operator input.
  */
 export function AcceptorExchangeSection({
   invitation,
@@ -158,6 +160,14 @@ export function AcceptorExchangeSection({
   const retryable =
     failure?.retry === "offered" &&
     (expires === undefined || invitationUsable(expires, new Date()));
+  const columnsCanResolve =
+    failure?.category === "config" && failure.settingsCannotResolve !== true;
+  const offersFreshInvitation =
+    failure !== undefined &&
+    !retryable &&
+    (failure.category === "security" ||
+      failure.category === "exchange" ||
+      (failure.category === "config" && !columnsCanResolve));
 
   // The section-level focus throughline. On mount the h1 is focused (this is the
   // entry move -- the acceptor pressed "Start the exchange", whose button
@@ -225,26 +235,24 @@ export function AcceptorExchangeSection({
           )}
           {/* The acceptor cannot mint a fresh invitation, so the fresh-start
               recovery is a link to the quick path, where a new invitation is
-              pasted. Offered for a security failure and an exchange failure
-              that withholds its retry (an expired invitation, an internal
-              fault) -- everything except a config fault (which the acceptor
-              fixes in place) and an output fault (whose exchange already
-              succeeded). */}
-          {!retryable &&
-            (failure.category === "security" ||
-              failure.category === "exchange") && (
-              <FailureRecoveryButton
-                label="Start over with a fresh invitation"
-                onAct={onAbandon}
-                to="/quick"
-                recordConfirm={recordConfirm}
-                folder={discardFolder}
-              />
-            )}
+              pasted. Offered for a security failure, an exchange failure that
+              withholds its retry (an expired invitation, an internal fault),
+              and a config fault no settings change resolves -- not for one the
+              acceptor fixes in place, nor an output fault (whose exchange
+              already succeeded). */}
+          {offersFreshInvitation && (
+            <FailureRecoveryButton
+              label="Start over with a fresh invitation"
+              onAct={onAbandon}
+              to="/quick"
+              recordConfirm={recordConfirm}
+              folder={discardFolder}
+            />
+          )}
           {/* A prepare-time fault in this party's own settings: the acceptor
               fixes it on the confirm-columns step with every input intact, so
               the recovery returns there rather than re-running as-is. */}
-          {failure.category === "config" && (
+          {columnsCanResolve && (
             <FailureRecoveryButton
               label="Back to your columns"
               onAct={onFixColumns}
