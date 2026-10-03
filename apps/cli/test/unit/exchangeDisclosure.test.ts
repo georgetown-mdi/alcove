@@ -933,7 +933,7 @@ test("the hashed destination holds no credential", () => {
         key: "k-secret",
       },
     }),
-  ).toBe("wss://sig.example.org:443/p");
+  ).toBe("wss://sig.example.org/p");
 });
 
 test("a different identity or destination prints a display an unattended run had silenced", async () => {
