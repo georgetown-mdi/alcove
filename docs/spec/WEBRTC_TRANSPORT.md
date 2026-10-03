@@ -348,8 +348,10 @@ partner calls the connection lost, and the two parties' holds add up
 - What still holds the thread on an open channel is bounded by one frame or
   one index list rather than paced: encoding and decoding a frame, and
   checking and sorting a round's matched positions. At 7,700,000 records a
-  side the longest such hold measured was about 10 s, encoding and decoding
-  the lists of matched records the parties exchange after the last round.
+  side the longest such hold measured was about 10 s on one host and about
+  12 s between two ([A round between two hosts](#a-round-between-two-hosts)),
+  encoding and decoding the lists of matched records the parties exchange
+  after the last round.
 - The PSI sender's round start, from its `linking key N / M` line to its
   setup's encryption, is the paced set build followed by two unpaced steps:
   finishing the set, and copying its values to the PSI worker. Measured on one
@@ -368,6 +370,48 @@ partner calls the connection lost, and the two parties' holds add up
   The 1,000,000 run's probe recorded holds over 1 s only; the others recorded
   holds over 200 ms. At every size the longest hold on the open channel came
   after the last round, not at a round start.
+
+### A round between two hosts
+
+On 2026-10-03 two `alcove exchange` parties, one on each of two hosts on one
+LAN, ran a cascade over `channel: webrtc` at 7,700,000 records a side through
+the repository's broker, on commit 85704c19c. Both exited 0 with the expected
+result. Each first-round set was past one frame, so it went in
+[parts](PROTOCOL.md#a-psi-set-is-sent-in-parts); the logs do not state how
+many. The same round with both parties on one host is in
+[PROTOCOL.md](PROTOCOL.md#the-receive-ceiling).
+
+- **Hosts.** The inviter, PSI sender, on a Linux container (Intel i3-14100,
+  6 CPUs, 29 GiB); the acceptor, PSI receiver, on macOS (Apple M1 Max,
+  10 CPUs, 32 GiB, on Wi-Fi). Node v26.8.2 on both.
+- **Path.** Each party logged its data channel as opened over a host
+  candidate pair, local host to remote host, across the LAN. No STUN or TURN
+  path was exercised.
+- **Round-trip time**, sender to receiver over 20 pings: 37 ms on average,
+  211 ms at most.
+- **Rounds.** The first round took 9 min 32 s and each later one about
+  4 min 20 s; the fourth key's start to the connection's close took about
+  6 min.
+
+| Party | Wall time | Peak RSS | Longest main-thread hold on the open channel |
+| --- | --- | --- | --- |
+| Inviter, PSI sender, Linux | 1,488,196 ms | 15,325,048,832 bytes | 12,131 ms |
+| Acceptor, PSI receiver, macOS | 1,486,794 ms | 17,052,188,672 bytes | 10,278 ms |
+
+Peak RSS includes the party's PSI worker. Both longest holds came in the last
+70 s of the run, after the fourth key's sets, and both are under the stress
+test's 15,000 ms bound (`MAX_CONNECTED_LOOP_LAG_MS`), the sender's by under
+3 s.
+
+The stress test admits a host on a per-party memory need of 15,132,000,000
+bytes at this size (`cliPartyNeedBytes`,
+`apps/cli/test/stress/completionRun.ts`), the file-sync joiner's figure
+rather than one measured for a WebRTC party. The sender's peak came within
+2% of it and the receiver's exceeded it by about 13%, so the check can admit
+a host too small for the WebRTC receiver.
+
+`apps/cli/test/stress/webrtcCompletion.stress.test.ts` drives the run in its
+one-party-per-host mode, each host running its own party against the other.
 
 ### A connection that ends during a round
 
