@@ -720,8 +720,10 @@ export function assertEventStreamFdOpen(): void {
   } catch {
     throw new UsageError(
       `--event-stream was given but file descriptor ${EVENT_STREAM_FD} is ` +
-        "not open for writing; spawn Alcove with that descriptor wired to the " +
-        "write end of a pipe your supervisor reads, or drop --event-stream. " +
+        "not open for writing; from a shell, add 3>events.ndjson to the " +
+        "command line to write the events to that file, or spawn Alcove with " +
+        "that descriptor wired to the write end of a pipe your supervisor " +
+        "reads; otherwise drop --event-stream. " +
         "Format: https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
         "spec/CLI_EVENTS.md",
     );

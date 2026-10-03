@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 
 import {
   CONSENT_FACTS,
+  getLogger,
   COUNT_ONLY_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
@@ -26,7 +27,14 @@ import type {
 import { consentRepresentationProbes } from "@alcove/core/testing";
 
 import { prepareDataset } from "../../src/commands/exchange";
-import { renderExchangeDisclosure } from "../../src/exchangeDisclosure";
+import {
+  disclosureDestination,
+  disclosureDigest,
+  displayExchangeDisclosure,
+  lastRecordedDisclosureDigest,
+  renderExchangeDisclosure,
+} from "../../src/exchangeDisclosure";
+import type { ProtocolConnectionConfig } from "../../src/protocol";
 import { configureLogFile } from "../../src/util/logging";
 import {
   captureStdio,
@@ -35,6 +43,11 @@ import {
 import { streamOf, ttyStream, withStdin } from "../stdinStream";
 
 snapshotDiagnosticSinkAndLevel();
+
+const TEST_CONNECTION: ProtocolConnectionConfig = {
+  channel: "filedrop",
+  path: "/tmp/alcove-test-exchange",
+};
 
 const DISCLOSURE_HEADING =
   "What this exchange sends and matches on. Nothing has been sent yet:";
@@ -130,7 +143,13 @@ async function prepare(
   const stdio = captureStdio();
   try {
     return await withStdin(interactive ? ttyStream() : streamOf(""), () =>
-      prepareDataset(spec, "County Health", input, logFile).then(
+      prepareDataset(
+        spec,
+        "County Health",
+        input,
+        logFile,
+        TEST_CONNECTION,
+      ).then(
         () => undefined,
         (e: unknown) => e,
       ),
@@ -231,6 +250,158 @@ test("a log file keeps the display at a level that drops diagnostics", async () 
   expect(kept).toContain(DISCLOSURE_HEADING);
   expect(kept).toContain("columns you will send (enforced):");
   expect(kept).toContain("    - diagnosis");
+});
+
+// --- A scheduled run whose display has not changed ----------------------------
+
+/**
+ * Prepare `spec` with `--log-file` at `logFile`, the sink installed around the
+ * run as a command handler installs it.
+ */
+async function prepareLogged(
+  spec: ExchangeDataSpec,
+  interactive: boolean,
+  logFile: string,
+): Promise<void> {
+  const sink = configureLogFile(logFile);
+  try {
+    expect(await prepare(spec, interactive, logFile)).toBe(undefined);
+  } finally {
+    sink.close();
+  }
+}
+
+function occurrences(text: string, fragment: string): number {
+  return text.split(fragment).length - 1;
+}
+
+test("an unattended run whose display matches the log's last one writes it to the log alone", async () => {
+  // Cron mails whatever reaches stderr: the same display every night teaches
+  // its owner to skip the mail, so only a change reaches it.
+  const logFile = path.join(dir, "run.log");
+  const spec = {
+    linkageTerms: localTerms,
+    metadata: metadataDisclosing(["diagnosis"]),
+  };
+  await prepareLogged(spec, false, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+
+  await prepareLogged(spec, false, logFile);
+  expect(promptWrites).toBe("");
+  const kept = fs.readFileSync(logFile, "utf8");
+  expect(occurrences(kept, DISCLOSURE_HEADING)).toBe(2);
+  expect(occurrences(kept, "Disclosure digest: sha256:")).toBe(2);
+});
+
+test("an unattended run whose display changed prints it again", async () => {
+  const logFile = path.join(dir, "run.log");
+  await prepareLogged(
+    { linkageTerms: localTerms, metadata: metadataDisclosing(["diagnosis"]) },
+    false,
+    logFile,
+  );
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+  expect(promptWrites).toContain("columns you will send (enforced):");
+});
+
+test("an attended run prints the display even when the log already holds it", async () => {
+  const logFile = path.join(dir, "run.log");
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  await prepareLogged({ linkageTerms: localTerms }, true, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+});
+
+test("a run whose log level keeps no copy prints the display every time", async () => {
+  // At error the log records none of the display, so writing it to the log
+  // alone would show it nowhere.
+  const logFile = path.join(dir, "run.log");
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  logLibrary.getLogger("exchange").setLevel("error");
+  await prepareLogged({ linkageTerms: localTerms }, false, logFile);
+  expect(promptWrites).toContain(DISCLOSURE_HEADING);
+});
+
+test("lastRecordedDisclosureDigest reads the last digest line, and only a whole log line", () => {
+  const logFile = path.join(dir, "run.log");
+  const first = "a".repeat(64);
+  const second = "b".repeat(64);
+  fs.writeFileSync(
+    logFile,
+    `[2026-10-01T02:00:00.000Z] [WARN] [exchange] Disclosure digest: sha256:${first}\n` +
+      `[2026-10-02T02:00:00.000Z] [WARN] [exchange] Disclosure digest: sha256:${second}\n` +
+      `  Disclosure digest: sha256:${first}\n` +
+      `[2026-10-02T02:00:01.000Z] [INFO] [exchange] Disclosure digest: sha256:${first}\n`,
+  );
+  expect(lastRecordedDisclosureDigest(logFile)).toBe(second);
+  expect(lastRecordedDisclosureDigest(path.join(dir, "absent.log"))).toBe(
+    undefined,
+  );
+});
+
+test("a digest the log sink wrote is the one read back", () => {
+  // Through the real logger and file sink rather than a hand-written line, so
+  // a change to the log line format cannot leave every run printing the
+  // display again.
+  const logFile = path.join(dir, "run.log");
+  const digest = "c".repeat(64);
+  const sink = configureLogFile(logFile);
+  try {
+    getLogger("exchange").warn(`Disclosure digest: sha256:${digest}`);
+  } finally {
+    sink.close();
+  }
+  expect(lastRecordedDisclosureDigest(logFile)).toBe(digest);
+});
+
+test("no name in the display puts a control character or a digest line into the log", () => {
+  // Every name below is the operator's own file text, shown by this display
+  // and copied to --log-file. A raw line break would let a name start a line
+  // of its own -- one shaped as a digest record would decide whether the next
+  // unattended run prints the display.
+  const forged = "f".repeat(64);
+  const forgedLine = `[2026-10-01T02:00:00.000Z] [WARN] [exchange] Disclosure digest: sha256:${forged}`;
+  const hostile = (base: string): string =>
+    `${base}\n${forgedLine}\r\u001b[2J${forgedLine}`;
+  const terms: LinkageTerms = {
+    ...localTerms,
+    linkageKeys: [{ ...localTerms.linkageKeys[0], name: hostile("FN_LN") }],
+  };
+  const metadata = metadataDisclosing([hostile("diagnosis")]);
+
+  const lines: string[] = [];
+  renderExchangeDisclosure((line) => lines.push(line), terms, metadata);
+  // Held non-vacuous: each hostile name is in the display, escaped.
+  const shown = lines.join("\n");
+  expect(shown).toContain("diagnosis\\x0a");
+  expect(shown).toContain("FN_LN\\x0a");
+  for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+
+  const logFile = path.join(dir, "run.log");
+  const logger = getLogger("exchange");
+  logger.setLevel("warn");
+  const sink = configureLogFile(logFile);
+  const stdio = captureStdio();
+  try {
+    displayExchangeDisclosure({
+      metadata,
+      linkageTerms: terms,
+      connection: TEST_CONNECTION,
+      logFile,
+      log: logger,
+      unattended: true,
+    });
+  } finally {
+    stdio.restore();
+    sink.close();
+  }
+  const kept = fs.readFileSync(logFile, "utf8");
+  expect(kept.replaceAll("\n", "")).not.toMatch(/[\u0000-\u001f\u007f]/);
+  for (const line of kept.split("\n").filter((line) => line !== ""))
+    expect(line).toMatch(/^\[[^\]\n]*\] \[WARN\] \[exchange\] /);
+  const recorded = lastRecordedDisclosureDigest(logFile);
+  expect(recorded).toMatch(/^[0-9a-f]{64}$/);
+  expect(recorded).not.toBe(forged);
 });
 
 // --- The shapes the columns line takes ---------------------------------------
@@ -711,5 +882,91 @@ test("the display represents every consent-relevant linkage term, bar the record
       .filter((probe) => probe.unrepresented.exchangeDisclosure !== undefined)
       .map((probe) => probe.path)
       .sort(),
+  );
+});
+
+// --- What the digest covers ---------------------------------------------------
+
+const sftpConnection = (host: string, password?: string) =>
+  ({
+    channel: "sftp",
+    server: {
+      host,
+      port: 2222,
+      path: "/drop",
+      username: "alice",
+      ...(password === undefined ? {} : { password }),
+    },
+  }) as ProtocolConnectionConfig;
+
+test("the digest changes with the party identity, which the display never renders", () => {
+  const other = { ...localTerms, identity: "Another Agency" };
+  expect(rendered(other)).toEqual(rendered(localTerms));
+  expect(disclosureDigest([], other, TEST_CONNECTION)).not.toBe(
+    disclosureDigest([], localTerms, TEST_CONNECTION),
+  );
+});
+
+test("the digest changes with the connection destination", () => {
+  expect(
+    disclosureDigest([], localTerms, sftpConnection("a.example.org")),
+  ).not.toBe(disclosureDigest([], localTerms, sftpConnection("b.example.org")));
+  expect(
+    disclosureDigest([], localTerms, sftpConnection("a.example.org")),
+  ).toBe(disclosureDigest([], localTerms, sftpConnection("a.example.org")));
+});
+
+test("the hashed destination holds no credential", () => {
+  const destination = disclosureDestination(
+    sftpConnection("a.example.org", "hunter2-secret"),
+  );
+  expect(destination).toBe("sftp://a.example.org:2222/drop");
+  expect(destination).not.toContain("hunter2-secret");
+  expect(destination).not.toContain("alice");
+  expect(
+    disclosureDestination({
+      channel: "webrtc",
+      server: {
+        host: "sig.example.org",
+        port: 443,
+        path: "/p",
+        key: "k-secret",
+      },
+    }),
+  ).toBe("wss://sig.example.org/p");
+});
+
+test("a different identity or destination prints a display an unattended run had silenced", async () => {
+  const logFile = path.join(dir, "digest.log");
+  const run = (
+    terms: LinkageTerms,
+    connection: ProtocolConnectionConfig,
+  ): string => {
+    const logger = getLogger("exchange");
+    logger.setLevel("warn");
+    const sink = configureLogFile(logFile);
+    const stdio = captureStdio();
+    try {
+      displayExchangeDisclosure({
+        metadata: metadataDisclosing([]),
+        linkageTerms: terms,
+        connection,
+        logFile,
+        log: logger,
+        unattended: true,
+      });
+      return stdio.stderrWrites.join("");
+    } finally {
+      stdio.restore();
+      sink.close();
+    }
+  };
+  expect(run(localTerms, TEST_CONNECTION)).toContain(DISCLOSURE_HEADING);
+  expect(run(localTerms, TEST_CONNECTION)).not.toContain(DISCLOSURE_HEADING);
+  expect(
+    run({ ...localTerms, identity: "Another Agency" }, TEST_CONNECTION),
+  ).toContain(DISCLOSURE_HEADING);
+  expect(run(localTerms, sftpConnection("a.example.org"))).toContain(
+    DISCLOSURE_HEADING,
   );
 });

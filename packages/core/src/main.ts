@@ -145,6 +145,7 @@ export { encodeBinaryPackValue } from "./connection/binaryPackEncode";
 // framing chunks at the same threshold the check charges for.
 export { PEERJS_CHUNK_MTU } from "./connection/webrtcOutboundBound";
 export {
+  formatLogPrefix,
   getLogger,
   getLoggerForVerbosity,
   setLogLevel,
