@@ -29,6 +29,8 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { stagesFor } from "@exchange/exchangeRun";
 import styles from "@styles/app.module.css";
 
+import { WEB_APP_GUIDE_URL } from "@exchange/userGuide";
+
 // The ledger and demotion-notice expectations derive their form from this
 // function, so they pin that those sinks have the same form step 2's chips do,
 // not what that form is; the literal FSI/PDI expectations live in
@@ -401,6 +403,10 @@ describe("quick path", () => {
     );
     expect(setUpLink?.getAttribute("href")).toBe("/exchange");
 
+    const guide = page.getByRole("link", { name: "user guide" });
+    await expect.element(guide).toHaveAttribute("href", WEB_APP_GUIDE_URL);
+    await expect.element(guide).toHaveAttribute("target", "_blank");
+
     await expect.element(page.getByLabelText("Invitation")).toBeInTheDocument();
   });
 
@@ -453,6 +459,15 @@ describe("inviter screen", () => {
 
     const nav = document.querySelector('nav[aria-label="Exchange setup"]');
     expect(nav).not.toBeNull();
+
+    // The wordmark is a full-page link home, so leaving through it unloads
+    // the page and meets the armed unload prompt; Help opens in a new tab.
+    await expect
+      .element(page.getByRole("link", { name: "Alcove home" }))
+      .toHaveAttribute("href", "/");
+    const help = page.getByRole("link", { name: "Help" });
+    await expect.element(help).toHaveAttribute("href", WEB_APP_GUIDE_URL);
+    await expect.element(help).toHaveAttribute("target", "_blank");
 
     // The step indicators share the button's text content, so the current
     // step's identity is read off its label node.
@@ -2119,6 +2134,22 @@ describe("inviter screen", () => {
       "Download verification keys (keep private): " +
         "alcove-record-2026-07-08T14-32.keys.json",
     );
+
+    // Under the downloads, what the record and keys are for, and a link to the
+    // Verify page that leaves this page and its downloads in place.
+    await expect
+      .element(
+        page.getByText(
+          "The record is a shareable account of what you and your partner",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    const verifyLink = page.getByRole("link", {
+      name: "Verify page (opens in a new tab)",
+    });
+    await expect.element(verifyLink).toHaveAttribute("href", "/verify");
+    await expect.element(verifyLink).toHaveAttribute("target", "_blank");
 
     // The timeline finishes whole, and the ledger fixes what happened: the
     // invitation is consumed and the receive row reports the actual count.

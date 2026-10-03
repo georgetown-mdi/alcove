@@ -25,6 +25,7 @@ import styles from "@styles/app.module.css";
 
 import { FILE_ASSURANCE_LINE } from "./fileAssurance";
 import { downloadSampleCsvs } from "./sampleData";
+import { userGuideUrl } from "./userGuide";
 
 /**
  * The quick path's screen: two primary actions side by side -- invite someone to a
@@ -210,17 +211,16 @@ export function Lobby() {
           </p>
         )}
         <p className={`${styles.sub} ${styles.small}`}>
-          First time here?{" "}
+          First time here? The{" "}
           <Anchor
             inherit
-            href="https://github.com/georgetown-mdi/alcove#readme"
+            href={userGuideUrl()}
             target="_blank"
             rel="noreferrer"
           >
-            Instructions and documentation
+            user guide
           </Anchor>{" "}
-          cover what Alcove does, how to run an exchange, and the sample data
-          for practicing.
+          walks through running an exchange step by step.
         </p>
         <p className={`${styles.sub} ${styles.small}`}>
           No data to link yet?{" "}

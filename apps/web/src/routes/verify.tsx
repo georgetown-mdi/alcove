@@ -10,8 +10,9 @@ export const Route = createFileRoute("/verify")({
   component: VerifyReceiptScreen,
   head: () => ({
     meta: seo({
-      title: "Verify a receipt - Alcove",
-      description: "Check a signed receipt against the exchange it records.",
+      title: "Verify an exchange record - Alcove",
+      description:
+        "Check an exchange record you kept against the exchange it describes.",
     }),
   }),
 });

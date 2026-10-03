@@ -2,6 +2,7 @@ import { Stepper } from "@mantine/core";
 
 import styles from "@styles/app.module.css";
 import { useNarrowViewport } from "./narrowViewport";
+import { userGuideUrl } from "./userGuide";
 
 import type { RailStep } from "@psi/rail";
 
@@ -78,14 +79,21 @@ function StepStrip({ steps }: { steps: ReadonlyArray<RailStep> }) {
 }
 
 /**
- * The console's top bar: the wordmark, a `<nav>` landmark named by `navLabel`
- * wrapping the required-spine or protocol-timeline Stepper, and the
- * right-aligned transport note -- pure wayfinding; the optional Customize
- * surfaces live on the disclosure ledger. See {@link WorkShell}.
+ * The console's top bar: the wordmark linking home, a `<nav>` landmark named
+ * by `navLabel` wrapping the required-spine or protocol-timeline Stepper, and
+ * the right-aligned transport note and Help link -- pure wayfinding; the
+ * optional Customize surfaces live on the disclosure ledger. See {@link
+ * WorkShell}.
+ *
+ * The wordmark is a plain anchor because the leave-page prompt is the
+ * browser's `beforeunload` ({@link useUnloadGuard}), which only a full
+ * navigation arms.
  *
  * At or below the narrow cut-over the Stepper compresses to a {@link
  * StepStrip}; the switch is by conditional render, not `display`, so only one
- * spine is ever in the accessibility tree.
+ * spine is ever in the accessibility tree. The wordmark and Help are left out
+ * as controls there so the ledger's share bar stays the page's first
+ * interactive element.
  */
 export function TopBar({
   navLabel,
@@ -101,13 +109,31 @@ export function TopBar({
   const narrow = useNarrowViewport();
   return (
     <div className={styles.topBar}>
-      <div className={styles.wordmark}>Alcove</div>
+      {narrow ? (
+        <div className={styles.wordmark}>Alcove</div>
+      ) : (
+        <a href="/" className={styles.wordmark} aria-label="Alcove home">
+          Alcove
+        </a>
+      )}
       <nav aria-label={navLabel} className={styles.topBarNav}>
         {narrow ? <StepStrip steps={steps} /> : <StepRail steps={steps} />}
       </nav>
-      {transportNote !== undefined && (
-        <p className={styles.topBarNote}>{transportNote}</p>
-      )}
+      <div className={styles.topBarEnd}>
+        {transportNote !== undefined && (
+          <p className={styles.topBarNote}>{transportNote}</p>
+        )}
+        {!narrow && (
+          <a
+            className={styles.topBarHelp}
+            href={userGuideUrl()}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Help
+          </a>
+        )}
+      </div>
     </div>
   );
 }
