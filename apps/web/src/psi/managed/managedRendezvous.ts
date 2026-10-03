@@ -21,10 +21,11 @@
  * so the inviter's record always names the correct signaling source via its
  * own deployment; the acceptor's re-run likewise uses its own deployment's
  * address, so both deployments must name the same server. It cannot go stale
- * against a redeployment and cannot be poisoned at rest. The stored connection block is read for two things: its
- * `channel` discriminant, to reject a non-webrtc record as not re-runnable in
- * the browser before any connection, and the `invitationRelay` an acceptor's
- * record keeps from the invitation it accepted.
+ * against a redeployment and cannot be poisoned at rest. The stored connection
+ * block is read for two things: its `channel` discriminant, to reject a
+ * non-webrtc record as not re-runnable in the browser before any connection,
+ * and the `invitationRelay` an acceptor's record keeps from the invitation it
+ * accepted.
  *
  * The two rendezvous functions are injected (defaulting to the real
  * {@link listenAsInviter} / {@link dialAsAcceptor}) so the dispatch and the
