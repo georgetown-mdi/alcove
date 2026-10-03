@@ -649,6 +649,47 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
     expect(credentialWarnings[0]).not.toContain(dataRoot);
   });
 
+  test.each([
+    [[".alcove.key"]],
+    [["0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11", ".alcove.key"]],
+  ])(
+    "a folder locator naming a console-owned file %j is refused, no path echoed",
+    (subPath) => {
+      const dir = scratchDir();
+      const dataRoot = path.join(dir, "data-root");
+      const jobDir = path.join(
+        dataRoot,
+        "0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11",
+      );
+      fs.mkdirSync(jobDir, { recursive: true });
+      fs.writeFileSync(path.join(dataRoot, ".alcove.key"), "secret");
+      fs.writeFileSync(path.join(jobDir, ".alcove.key"), "secret");
+      let caught: Error | null = null;
+      try {
+        validateAuthoredSftpServer(
+          {
+            host: "sftp.partner.example",
+            hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+            credential: {
+              kind: "mountRef",
+              mount: "folder",
+              subPath,
+              credType: "password",
+            },
+          },
+          dataRoot,
+          [],
+          undefined,
+        );
+      } catch (error) {
+        caught = error as Error;
+      }
+      expect(caught).toBeInstanceOf(JobApiConfigError);
+      expect(caught?.message).toContain("belongs to the console");
+      expect(caught?.message).not.toContain(dir);
+    },
+  );
+
   test("a folder locator escaping the working folder is refused, no path echoed", () => {
     const dir = scratchDir();
     const dataRoot = path.join(dir, "data-root");

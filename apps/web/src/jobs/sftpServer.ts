@@ -17,6 +17,7 @@ import {
 } from "./sftpScratch";
 import { JobApiConfigError } from "./gate";
 import { formatIssues } from "./schemaIssueMessage";
+import { isConsoleOwnedFolderPath } from "./consoleOwnedFiles";
 import { isPathWithin } from "./pathContainment";
 import { resolveMountFile } from "./mountBrowse";
 
@@ -551,6 +552,18 @@ function resolveMountRefCredential(
     throw new JobApiConfigError(
       "The credential file you chose is no longer a readable file in " +
         `${CREDENTIAL_MOUNT_LABELS[credential.mount]}. Choose it again.`,
+    );
+  if (
+    credential.mount === "folder" &&
+    isConsoleOwnedFolderPath(
+      mountRoot,
+      credential.subPath,
+      resolved.absolutePath,
+    )
+  )
+    throw new JobApiConfigError(
+      "The file you chose belongs to the console and is not a credential. " +
+        "Choose your credential file instead.",
     );
   return {
     kind: "ref",

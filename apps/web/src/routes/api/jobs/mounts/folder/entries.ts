@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { jobJsonResponse, readJobApiConfig } from "@jobs/gate";
 import { gateJobRoute } from "@jobs/routeSupport";
+import { isConsoleOwnedFolderName } from "@jobs/consoleOwnedFiles";
 import { listMountEntries } from "@jobs/mountBrowse";
 
 /**
@@ -15,7 +16,10 @@ import { listMountEntries } from "@jobs/mountBrowse";
  *
  * The body is `{ configured: true, readable, entries }`, the secrets listing's
  * shape; the working folder is always configured while the API is on. No file
- * bytes are read.
+ * bytes are read. The console's own top-level files -- the key file, the
+ * configuration and its saved copy, the signing certificate, and the job
+ * working directories -- are left out, so the picker never offers the
+ * exchange's secret as a credential.
  */
 export const Route = createFileRoute("/api/jobs/mounts/folder/entries")({
   server: {
@@ -24,9 +28,16 @@ export const Route = createFileRoute("/api/jobs/mounts/folder/entries")({
         const gate = gateJobRoute(request);
         if (gate.kind === "response") return gate.response;
         const subPath = new URL(request.url).searchParams.getAll("subPath");
+        const listing = listMountEntries(readJobApiConfig().dataRoot, subPath);
         return jobJsonResponse({
           configured: true,
-          ...listMountEntries(readJobApiConfig().dataRoot, subPath),
+          readable: listing.readable,
+          entries:
+            subPath.length === 0
+              ? listing.entries.filter(
+                  (entry) => !isConsoleOwnedFolderName(entry.name),
+                )
+              : listing.entries,
         });
       },
     },

@@ -17,17 +17,15 @@ import {
 import { PREVIEW_SAMPLE_SIZE } from "@psi/columnSamples";
 import { createFieldCoverageAccumulator } from "@psi/workers/nonEmptyAggregate";
 
+import { MAX_INPUT_NAME_LENGTH, isAdmissibleInputName } from "./workInputName";
 import {
-  JOB_FILE_NAMES,
   MAX_STANDARDIZATION_STEPS,
   MAX_STANDARDIZATION_TRANSFORMATIONS,
-  PREVIOUS_CONFIGURATION_FILE_NAME,
   jobCsvDelimiterSchema,
   stepPatternsWithinCap,
 } from "./intentSchemas";
-import { MAX_INPUT_NAME_LENGTH, isAdmissibleInputName } from "./workInputName";
+import { CONSOLE_WRITTEN_NAMES } from "./consoleOwnedFiles";
 import { JOB_DATA_ROOT_ENV } from "./gate";
-import { SIGNING_CERTIFICATE_FILE_NAME } from "./signingIdentity";
 
 import type { DateFormatInferrer, Standardization } from "@alcove/core";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
@@ -158,15 +156,6 @@ export interface JobInputListing {
   readable: boolean;
   files: Array<JobInputFileEntry>;
 }
-
-/** The names the console writes into the working folder itself, none of them
- * an input: the configuration, the copy kept by saving it back, and the
- * exported signing certificate. */
-const CONSOLE_WRITTEN_NAMES: ReadonlySet<string> = new Set([
-  JOB_FILE_NAMES.config,
-  PREVIOUS_CONFIGURATION_FILE_NAME,
-  SIGNING_CERTIFICATE_FILE_NAME,
-]);
 
 /** Whether `name` is a file the console or an exchange writes into the folder
  * -- a console-written name, or a file in the exchange's protocol filename

@@ -162,6 +162,21 @@ describe("GET /api/jobs/mounts/folder/entries", () => {
     });
   });
 
+  test("leaves out the console's own files and job directories", async () => {
+    const dataRoot = enable();
+    fs.writeFileSync(path.join(dataRoot, ".alcove.key"), "secret");
+    fs.writeFileSync(path.join(dataRoot, "alcove.yaml"), "x");
+    fs.writeFileSync(path.join(dataRoot, "alcove.yaml.previous"), "x");
+    fs.writeFileSync(path.join(dataRoot, "alcove-certificate.json"), "x");
+    fs.mkdirSync(path.join(dataRoot, "0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11"));
+    fs.writeFileSync(path.join(dataRoot, "sftp-password.txt"), "x");
+    expect(await (await folderEntries()).json()).toEqual({
+      configured: true,
+      readable: true,
+      entries: [{ name: "sftp-password.txt", kind: "file" }],
+    });
+  });
+
   test("an escaping subpath is readable:false, empty", async () => {
     enable();
     expect(await (await folderEntries([".."])).json()).toEqual({
