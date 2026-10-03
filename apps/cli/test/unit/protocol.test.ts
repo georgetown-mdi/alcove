@@ -2254,9 +2254,14 @@ test("reports a count-only exchange's count instead of treating it as withheld",
 
   expect(fs.existsSync(output)).toBe(false);
   expect(vi.mocked(buildOutputTable)).not.toHaveBeenCalled();
-  expect(
-    mockState.infos.some((line) => line.includes("7 record(s) in common")),
-  ).toBe(true);
+  const countLines = mockState.infos.filter((line) =>
+    line.includes("7 records in common"),
+  );
+  expect(countLines).toHaveLength(2);
+  for (const line of countLines)
+    expect(line).toContain(
+      "exchange complete: 7 records in common, no result file (count only)",
+    );
   expect(
     mockState.infos.some((line) => line.includes("you receive no result")),
   ).toBe(false);
@@ -2265,7 +2270,7 @@ test("reports a count-only exchange's count instead of treating it as withheld",
   // own clause: the rendezvous lines name the partner too, in the ordinary way.
   expect(
     mockState.infos.some((line) =>
-      line.includes("Only your partner computed the count"),
+      line.includes("only your partner computed this count"),
     ),
   ).toBe(false);
 }, 20_000);
@@ -2280,12 +2285,17 @@ test("caveats a count-only count the partner reported rather than computed", asy
   await runBothHalves(output);
 
   expect(fs.existsSync(output)).toBe(false);
-  const line = mockState.infos.find((entry) =>
-    entry.includes("7 record(s) in common"),
+  const countLines = mockState.infos.filter((entry) =>
+    entry.includes("7 records in common"),
   );
-  expect(line).toContain("your partner reported 7 record(s) in common");
-  expect(line).toContain("Alcove does not check a count it is sent");
-  expect(line).toContain("no result file was written");
+  expect(countLines).toHaveLength(2);
+  for (const line of countLines) {
+    expect(line).toContain(
+      "exchange complete: your partner reported 7 records in common (only " +
+        "your partner computed this count; Alcove does not check it against " +
+        "a run of its own), no result file (count only)",
+    );
+  }
 }, 20_000);
 
 // --- Expired token via runProtocol -------------------------------------------
@@ -2974,7 +2984,7 @@ test("a completed run ends with one outcome line naming the count, the paths and
   ]);
   expect(mockState.warnings).toEqual([]);
   const result = emitted.find((e) => e.event === "result");
-  expect(result?.args[4]).toEqual({ matchedRows: 2, resultPath: outputA });
+  expect(result?.args[3]).toEqual({ matchedRows: 2, resultPath: outputA });
 }, 20_000);
 
 test("an unauthenticated run with nothing matched warns and states that no secret rotated", async () => {
@@ -7372,12 +7382,11 @@ test("an emitter passed instead of the flag receives every event, and no second 
 
   // The whole run reported through the caller's object, terminal event included.
   // A one-to-one matched run passes neither a count nor a cluster summary, so
-  // the terminal call has the written flag, what the deduplicate pair resolved
-  // to, and both optional arguments absent (the builder omits their fields
-  // entirely for it).
+  // the terminal call has what the deduplicate pair resolved to, both optional
+  // arguments absent (the builder omits their fields entirely for it), and the
+  // written table.
   expect(emitted.map((e) => e.event)).toEqual(["stages", "metrics", "result"]);
   expect(emitted[2].args).toEqual([
-    true,
     STUB_MATCHING,
     undefined,
     undefined,

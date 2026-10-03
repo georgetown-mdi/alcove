@@ -2,7 +2,6 @@ import fs from "node:fs";
 
 import {
   ConnectionError,
-  InternalConsistencyError,
   OperatorConfigError,
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
@@ -549,25 +548,20 @@ export function buildMetricsEvent(
  * for, and is omitted entirely otherwise and where the summary holds more
  * shapes than {@link EVENT_RESULT_CLUSTER_SHAPES_MAX}.
  *
- * `table` is passed exactly when `resultWritten` is true: the matched row
- * count, and the result file's absolute path unless it went to stdout.
+ * `table` is passed exactly when a result table was written, and is what
+ * `resultWritten` is read off: the matched row count, and the result file's
+ * absolute path unless it went to stdout.
  */
 export function buildResultEvent(
-  resultWritten: boolean,
   matching: ResolvedMatching,
   count?: { intersectionCount: number; reportedByPartner: boolean },
   entityClusters?: EntityClusterSummary,
   table?: ResultTableDelivery,
 ): ResultEvent {
-  if ((table !== undefined) !== resultWritten)
-    throw new InternalConsistencyError(
-      "a result event's table delivery must be given exactly when a result " +
-        "table was written",
-    );
   return {
     v: EVENT_STREAM_VERSION,
     type: "result",
-    resultWritten,
+    resultWritten: table !== undefined,
     ...(table !== undefined
       ? {
           matchedRows: toCount(table.matchedRows),
@@ -822,7 +816,6 @@ export interface EventStreamEmitter {
     reconnects: number,
   ): void;
   result(
-    resultWritten: boolean,
     matching: ResolvedMatching,
     count?: { intersectionCount: number; reportedByPartner: boolean },
     entityClusters?: EntityClusterSummary,
@@ -858,10 +851,8 @@ function createEventStreamEmitter(): EventStreamEmitter {
       writer.emit(
         buildMetricsEvent(recordsProcessed, transportRetries, reconnects),
       ),
-    result: (resultWritten, matching, count, entityClusters, table) =>
-      writer.emit(
-        buildResultEvent(resultWritten, matching, count, entityClusters, table),
-      ),
+    result: (matching, count, entityClusters, table) =>
+      writer.emit(buildResultEvent(matching, count, entityClusters, table)),
     error: (error, phase) => writer.emit(buildErrorEvent(error, phase)),
   };
 }

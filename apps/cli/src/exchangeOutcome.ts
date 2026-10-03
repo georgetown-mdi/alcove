@@ -48,11 +48,16 @@ function resultClause(result: ResultDelivery): string {
         "standard output"
       );
     case "count":
-      return (
-        (result.reportedByPartner ? "your partner reported " : "") +
-        `${records(result.intersectionCount)} in common, no result file ` +
-        "(count only)"
-      );
+      // The sender seat's count arrived over the partner's count-report leg
+      // rather than from a round it ran, so its line says whose figure it is
+      // where the number is read, not only at consent time. The receiver seat
+      // computed its own count, so the caveat would be false there.
+      return result.reportedByPartner
+        ? `your partner reported ${records(result.intersectionCount)} in ` +
+            "common (only your partner computed this count; Alcove does not " +
+            "check it against a run of its own), no result file (count only)"
+        : `${records(result.intersectionCount)} in common, no result file ` +
+            "(count only)";
     case "withheld":
       return "no result file for you under the agreed terms";
   }

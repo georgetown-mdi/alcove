@@ -181,16 +181,16 @@ test("every event type validates against the schema and has a version", () => {
     buildStageEndEvent("stage 1 / 2", 1234),
     buildWarningEvent("termsExchange", "a terms warning"),
     buildMetricsEvent(1000, 2, 1),
-    buildResultEvent(true, ONE_TO_ONE, undefined, undefined, TABLE),
-    buildResultEvent(true, ONE_TO_ONE, undefined, undefined, {
+    buildResultEvent(ONE_TO_ONE, undefined, undefined, TABLE),
+    buildResultEvent(ONE_TO_ONE, undefined, undefined, {
       matchedRows: 0,
     }),
-    buildResultEvent(false, ONE_TO_ONE),
-    buildResultEvent(false, ONE_TO_ONE, {
+    buildResultEvent(ONE_TO_ONE),
+    buildResultEvent(ONE_TO_ONE, {
       intersectionCount: 7,
       reportedByPartner: false,
     }),
-    buildResultEvent(false, ONE_TO_ONE, {
+    buildResultEvent(ONE_TO_ONE, {
       intersectionCount: 7,
       reportedByPartner: true,
     }),
@@ -233,7 +233,7 @@ test("the result event has a count-only run's count, and omits the field otherwi
   // The field's PRESENCE is the discriminant between the two resultWritten:false
   // outcomes, so a zero count must be emitted as a present zero rather than
   // collapsing into the withheld shape a missing field means.
-  const counted = buildResultEvent(false, ONE_TO_ONE, {
+  const counted = buildResultEvent(ONE_TO_ONE, {
     intersectionCount: 0,
     reportedByPartner: false,
   });
@@ -243,12 +243,12 @@ test("the result event has a count-only run's count, and omits the field otherwi
   expect(counted.intersectionCount).toBe(0);
   expect(counted.countReportedByPartner).toBe(false);
 
-  const withheld = buildResultEvent(false, ONE_TO_ONE);
+  const withheld = buildResultEvent(ONE_TO_ONE);
   expect(validateEvent(withheld)).toBe(true);
   expect("intersectionCount" in withheld).toBe(false);
   expect("countReportedByPartner" in withheld).toBe(false);
 
-  const written = buildResultEvent(true, ONE_TO_ONE, undefined, undefined, {
+  const written = buildResultEvent(ONE_TO_ONE, undefined, undefined, {
     matchedRows: 2,
   });
   expect("intersectionCount" in written).toBe(false);
@@ -273,9 +273,9 @@ test("the result event states what the agreed deduplicate pair resolved to", () 
     cardinality: "one-to-many",
   } as const;
   for (const event of [
-    buildResultEvent(true, matching, undefined, undefined, TABLE),
-    buildResultEvent(false, matching),
-    buildResultEvent(false, matching, {
+    buildResultEvent(matching, undefined, undefined, TABLE),
+    buildResultEvent(matching),
+    buildResultEvent(matching, {
       intersectionCount: 3,
       reportedByPartner: false,
     }),
@@ -319,7 +319,6 @@ test("the result event has the cluster summary, and omits the field otherwise", 
   // route a console seat or a supervisor reading fd 3 has to it: neither sees
   // the info line the CLI states the same figures on.
   const grouped = buildResultEvent(
-    true,
     ONE_TO_ONE,
     undefined,
     CLUSTER_SUMMARY,
@@ -330,13 +329,7 @@ test("the result event has the cluster summary, and omits the field otherwise", 
 
   // Every other cardinality leaves core composing none, which the event omits
   // entirely rather than stating as a null a consumer has to read past.
-  const ungrouped = buildResultEvent(
-    true,
-    ONE_TO_ONE,
-    undefined,
-    undefined,
-    TABLE,
-  );
+  const ungrouped = buildResultEvent(ONE_TO_ONE, undefined, undefined, TABLE);
   expect("entityClusters" in ungrouped).toBe(false);
   expect(JSON.parse(JSON.stringify(ungrouped))).toEqual({
     v: EVENT_STREAM_VERSION,
@@ -353,7 +346,6 @@ test("the cluster summary is copied field by field and floored", () => {
   // past this stream's closed contract, and the floor is the one every numeric
   // field of this stream takes.
   const widened = buildResultEvent(
-    true,
     ONE_TO_ONE,
     undefined,
     {
@@ -386,7 +378,6 @@ test("a distribution wider than the cap drops the field, keeping the terminal ev
   // per-line bound, costing the run the outcome the event reports. The field
   // drops instead, and every other field of the event still lands.
   const atCap = buildResultEvent(
-    true,
     ONE_TO_ONE,
     undefined,
     summaryOfWidth(EVENT_RESULT_CLUSTER_SHAPES_MAX),
@@ -397,7 +388,6 @@ test("a distribution wider than the cap drops the field, keeping the terminal ev
   );
 
   const overCap = buildResultEvent(
-    true,
     ONE_TO_ONE,
     undefined,
     summaryOfWidth(EVENT_RESULT_CLUSTER_SHAPES_MAX + 1),
@@ -414,40 +404,25 @@ test("a distribution wider than the cap drops the field, keeping the terminal ev
 test("a written result states its row count and path, and stdout omits the path", () => {
   // A supervisor reading fd 3 alone learns how many records matched and where
   // the result is, without parsing the outcome line on stderr.
-  const toFile = buildResultEvent(
-    true,
-    ONE_TO_ONE,
-    undefined,
-    undefined,
-    TABLE,
-  );
+  const toFile = buildResultEvent(ONE_TO_ONE, undefined, undefined, TABLE);
   expect(validateEvent(toFile)).toBe(true);
   expect(toFile.matchedRows).toBe(3);
   expect(toFile.resultPath).toBe("/data/matched.csv");
 
-  const toStdout = buildResultEvent(true, ONE_TO_ONE, undefined, undefined, {
+  const toStdout = buildResultEvent(ONE_TO_ONE, undefined, undefined, {
     matchedRows: 0,
   });
   expect(validateEvent(toStdout)).toBe(true);
   expect(toStdout.matchedRows).toBe(0);
   expect("resultPath" in toStdout).toBe(false);
 
-  const withheld = buildResultEvent(false, ONE_TO_ONE);
+  const withheld = buildResultEvent(ONE_TO_ONE);
   expect("matchedRows" in withheld).toBe(false);
   expect("resultPath" in withheld).toBe(false);
 });
 
-test("the table delivery is refused unless it matches resultWritten", () => {
-  expect(() => buildResultEvent(true, ONE_TO_ONE)).toThrow(
-    InternalConsistencyError,
-  );
-  expect(() =>
-    buildResultEvent(false, ONE_TO_ONE, undefined, undefined, TABLE),
-  ).toThrow(InternalConsistencyError);
-});
-
 test("the result path is escaped for display and the row count floored", () => {
-  const event = buildResultEvent(true, ONE_TO_ONE, undefined, undefined, {
+  const event = buildResultEvent(ONE_TO_ONE, undefined, undefined, {
     matchedRows: -2.5,
     resultPath: `/data/${ESC_INJECTION}.csv`,
   });
@@ -459,7 +434,7 @@ test("the result path is escaped for display and the row count floored", () => {
 
 test("a deep result path is not cut at the per-value display default", () => {
   const deep = "/" + "d".repeat(1000) + "/matched.csv";
-  const event = buildResultEvent(true, ONE_TO_ONE, undefined, undefined, {
+  const event = buildResultEvent(ONE_TO_ONE, undefined, undefined, {
     matchedRows: 1,
     resultPath: deep,
   });
@@ -470,7 +445,7 @@ test("a malformed count is floored like every other numeric field", () => {
   // The count is the one numeric field a partner can influence (the count-report
   // leg), so the builder floors it rather than trusting the value it is handed.
   const floored = (intersectionCount: number) =>
-    buildResultEvent(false, ONE_TO_ONE, {
+    buildResultEvent(ONE_TO_ONE, {
       intersectionCount,
       reportedByPartner: false,
     }).intersectionCount;
@@ -904,7 +879,7 @@ test("every event is written to fd 3 as a printable-ASCII line", () => {
   emitter.payloadReceiveTaken(hostile as Displayable, [hostile], 1);
   emitter.logFileLoss(hostile, 3);
   emitter.metrics(1000, 2, 1);
-  emitter.result(false, ONE_TO_ONE, {
+  emitter.result(ONE_TO_ONE, {
     intersectionCount: 7,
     reportedByPartner: true,
   });
@@ -1117,7 +1092,7 @@ test("emits one NDJSON object per line to fd 3, each a valid event", () => {
   emitter.stageEnd("stage 1 / 1", 42);
   emitter.warning("termsExchange", "a warning");
   emitter.metrics(500, 1, 2);
-  emitter.result(true, ONE_TO_ONE, undefined, undefined, TABLE);
+  emitter.result(ONE_TO_ONE, undefined, undefined, TABLE);
 
   const lines = cap.lines();
   expect(lines).toHaveLength(6);
@@ -1172,7 +1147,7 @@ test("a broken pipe stops the writer without throwing into the exchange", () => 
   }) as unknown as typeof fs.writeSync);
 
   expect(() =>
-    emitter.result(true, ONE_TO_ONE, undefined, undefined, TABLE),
+    emitter.result(ONE_TO_ONE, undefined, undefined, TABLE),
   ).not.toThrow();
   // A later emit does not retry the write once the stream is marked broken.
   emitter.warning("termsExchange", "raised after the broken write");
@@ -1187,7 +1162,7 @@ test("no event is written after the terminal event", () => {
   const cap = captureFd3Writes();
   const emitter = openEventStreamWithFdWired();
   emitter.warning("termsExchange", "raised before the outcome");
-  emitter.result(true, ONE_TO_ONE, undefined, undefined, TABLE);
+  emitter.result(ONE_TO_ONE, undefined, undefined, TABLE);
   emitter.warning("termsExchange", "raised while the transport closed");
   emitter.metrics(1, 0, 0);
   emitter.error(new Error("a fault raised during teardown"), "output");

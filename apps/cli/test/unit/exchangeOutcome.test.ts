@@ -48,8 +48,9 @@ describe("describeExchangeOutcome", () => {
       rotatedKeyFilePath: undefined,
     });
     expect(count).toContain(
-      "exchange complete: 42 records in common, no result file",
+      "exchange complete: 42 records in common, no result file (count only)",
     );
+    expect(count).not.toContain("only your partner computed");
     expect(count).toContain("exchange record not written");
 
     expect(
@@ -63,7 +64,9 @@ describe("describeExchangeOutcome", () => {
         rotatedKeyFilePath: undefined,
       }),
     ).toContain(
-      "exchange complete: your partner reported 42 records in common",
+      "exchange complete: your partner reported 42 records in common (only " +
+        "your partner computed this count; Alcove does not check it against " +
+        "a run of its own), no result file (count only)",
     );
 
     expect(
