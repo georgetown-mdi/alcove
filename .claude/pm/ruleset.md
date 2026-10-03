@@ -427,6 +427,11 @@ Ratified by the owner:
   the size reached and its time and memory recorded in `docs/spec/`, and
   every per-row structure from intake to result file measured at that size,
   with any remaining limit stated in `docs/spec/`.
+- **User experience** (board 9) -- Done is: a person can reach a completed
+  exchange, and then a dependable recurring one, from the user docs alone;
+  every run states its outcome; the same failure reads the same, with its
+  remedy, in every application; and moving an exchange from one application
+  to another loses nothing the person agreed to or configured.
 
 Drafted, pending the owner's ratification:
 
