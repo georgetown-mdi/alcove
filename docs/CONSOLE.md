@@ -309,7 +309,7 @@ Each run gets a folder of its own in the mounted working directory (`JOB_DATA_RO
 - `run.log` -- the diagnostic log, for a run that recorded one.
 - `alcove.yaml` and `input.csv` -- the configuration the console composed for the run, and your input when you supplied it inline rather than from the work-input directory.
 
-Discarding a run deletes its folder. Every confirm before a discard names the folder and lists which of these files it holds, the shared secret included, so you can copy out what you need first.
+Discarding a run deletes its folder. When the console can read the folder, the confirm before a discard names it and lists which of these files it holds, the shared secret included, so you can copy out what you need first. When that check gets no answer, the confirm shows only its general wording: check the folder yourself before discarding.
 
 ## Restarting cancels and forgets the exchange
 
