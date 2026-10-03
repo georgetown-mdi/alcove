@@ -15,6 +15,10 @@ import {
   ruleSetCitation,
 } from "../../src/config/compatibilityMessage";
 import { validateCompatibility } from "../../src/linkageTermsNegotiation";
+import {
+  MAX_NAME_LENGTH,
+  parseLinkageTerms,
+} from "../../src/config/linkageTermsSchema";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import {
   redactAndSanitizeForDisplay,
@@ -1276,6 +1280,9 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
   expect(validateCompatibility(withDob, withSsn4).errors[0]).toBe(
     'linkage fields do not match: "dob","ssn4" are declared by one party only',
   );
+  expect(validateCompatibility(withSsn4, withDob).errors).toEqual(
+    validateCompatibility(withDob, withSsn4).errors,
+  );
 
   const retyped: LinkageTerms = {
     ...base,
@@ -1305,6 +1312,20 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
   expect(validateCompatibility(forged, base).errors[0]).toBe(
     'linkage fields do not match: "x"" is declared by one party only; ""y" is declared by one party only',
   );
+});
+
+test("a name at the length ceiling holding a quote and a backslash is quoted as one element", () => {
+  const hostile = 'a"\\' + "b".repeat(MAX_NAME_LENGTH - 3);
+  expect(hostile).toHaveLength(MAX_NAME_LENGTH);
+  const withHostile: LinkageTerms = {
+    ...base,
+    linkageFields: [...sharedFields, { name: hostile, type: "first_name" }],
+  };
+  expect(() => parseLinkageTerms(withHostile)).not.toThrow();
+  const [message] = validateCompatibility(withHostile, base).errors;
+  expect(message).toContain("is declared by one party only");
+  expect(readMessage(message!).values).toEqual([hostile]);
+  expect(message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
 });
 
 test("each output-mismatch branch displays as a whole sentence", () => {

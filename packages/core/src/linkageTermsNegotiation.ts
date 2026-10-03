@@ -294,18 +294,23 @@ function namedEntryDifferences(
   };
   const localByName = byName(local);
   const partnerByName = byName(partner);
+  // Names are listed in code-unit order so both parties render the same text.
+  const byCodeUnit = (a: string, b: string): number =>
+    a < b ? -1 : a > b ? 1 : 0;
   const oneSideOnly = [
     ...[...localByName.keys()].filter((name) => !partnerByName.has(name)),
     ...[...partnerByName.keys()].filter((name) => !localByName.has(name)),
-  ];
-  const differing = [...localByName.keys()].filter((name) => {
-    if (!partnerByName.has(name)) return false;
-    const localCanonical = canonicalOrUndefined(localByName.get(name));
-    return (
-      localCanonical === undefined ||
-      localCanonical !== canonicalOrUndefined(partnerByName.get(name))
-    );
-  });
+  ].sort(byCodeUnit);
+  const differing = [...localByName.keys()]
+    .filter((name) => {
+      if (!partnerByName.has(name)) return false;
+      const localCanonical = canonicalOrUndefined(localByName.get(name));
+      return (
+        localCanonical === undefined ||
+        localCanonical !== canonicalOrUndefined(partnerByName.get(name))
+      );
+    })
+    .sort(byCodeUnit);
   const clauses: CompatibilityMessageFragment[] = [];
   // A reason is relayed to the other party, so a clause holds from either side.
   if (oneSideOnly.length > 0)
