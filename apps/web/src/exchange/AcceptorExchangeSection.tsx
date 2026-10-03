@@ -25,10 +25,9 @@ import { DiagnosticLogPanel } from "./DiagnosticLogPanel";
 import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
-import { discardFolderFor } from "./discardFolder";
 import { reattachedRunState } from "./reattachedRunState";
+import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
-import { useJobFolder } from "./useJobFolder";
 
 import type { AvailableRecordOffer, RunOutputs } from "@psi/runOutputs";
 import type { AcceptableInvitation } from "@psi/acceptInvitation";
@@ -125,11 +124,9 @@ export function AcceptorExchangeSection({
     settled && outputs?.record === undefined,
   );
   const recordConfirm = untakenRecordConfirm(jobRecordOffer);
-  // The run's folder and what in it a discard deletes, for every confirm
-  // below that discards the run to name.
-  const discardFolder = discardFolderFor(
+  const discardFolder = useDiscardFolder(
     serverJob ? jobId : undefined,
-    useJobFolder(serverJob ? jobId : undefined, settled),
+    settled,
   );
   // A failed browser run's record confirms nothing on recovery: the confirm
   // speaks of the console's folder, and the panel itself states what discards

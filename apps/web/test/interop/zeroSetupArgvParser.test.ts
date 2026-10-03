@@ -23,6 +23,7 @@ import {
   zeroSetupOptionsArgv,
   zeroSetupSftpArgv,
 } from "@jobs/intentArgv";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import {
   CHILD_EXIT_TIMEOUT_MS,
@@ -182,7 +183,7 @@ describe.skipIf(!cliIsBuilt)(
       expect(argv[0]).toBe(RENDEZVOUS_URL);
       expect(argv.slice(1, 1 + optionArgs.length)).toEqual(optionArgs);
       expect(argv[argv.length - 2].endsWith("input.csv")).toBe(true);
-      expect(argv[argv.length - 1].endsWith("output.csv")).toBe(true);
+      expect(argv[argv.length - 1].endsWith(JOB_FILE_NAMES.output)).toBe(true);
 
       const parsed = parseWithRealCli(argv, dir);
       // The parser took every token: no unknown-option refusal, and not the usage
@@ -566,7 +567,7 @@ describe.skipIf(!cliIsBuilt)(
             connectionArgs: [RENDEZVOUS_URL],
             optionArgs: retainModeFileSyncArgs(),
             inputPath: path.join(dir, "input.csv"),
-            outputPath: path.join(dir, "output.csv"),
+            outputPath: path.join(dir, JOB_FILE_NAMES.output),
             recordPath: path.join(dir, "record.json"),
             workdir: dir,
             eventStream: true,

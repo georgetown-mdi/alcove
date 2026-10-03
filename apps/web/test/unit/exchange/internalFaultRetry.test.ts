@@ -11,6 +11,7 @@ import {
   createFetchJobApiClient,
   createServerJobReattachDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { failureFor } from "@exchange/useInviterExchange";
 import { renderSseFrame } from "@jobs/sse";
 import { spawnExchangeJob } from "@jobs/cliDriver";
@@ -63,7 +64,7 @@ async function relayFromChild(
       configPath: path.join(workdir, "alcove.yaml"),
       keyPath: path.join(workdir, ".alcove.key"),
       inputPath: path.join(workdir, "input.csv"),
-      outputPath: path.join(workdir, "output.csv"),
+      outputPath: path.join(workdir, JOB_FILE_NAMES.output),
       recordPath: path.join(workdir, "record.json"),
       workdir,
       eventStream: true,

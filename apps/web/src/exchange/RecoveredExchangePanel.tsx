@@ -31,7 +31,11 @@ import {
 } from "./exchangeRun";
 import { failureFor } from "./useInviterExchange";
 
-import { DiscardFolderList, discardFolderFor } from "./discardFolder";
+import {
+  DiscardFolderList,
+  discardFolderFor,
+  useDiscardFolder,
+} from "./discardFolder";
 import {
   FailureBody,
   RunDownloads,
@@ -45,7 +49,6 @@ import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { reattachedRunState } from "./reattachedRunState";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
-import { useJobFolder } from "./useJobFolder";
 
 import type { ConsoleJobSeat } from "@psi/jobClient/consoleJobAttachment";
 import type { DiscardFolder } from "./discardFolder";
@@ -131,8 +134,9 @@ export const LEFTOVER_FOLDER_HEADING =
 /**
  * A folder an exchange this browser started left behind when the console
  * restarted: the console no longer runs or serves that exchange, and its files
- * stay on disk until the operator chooses. Keep forgets the folder here and leaves
- * it where it is; Discard deletes it, behind a confirm naming what it holds.
+ * stay on disk until the operator chooses. Keep forgets the folder here and
+ * leaves it where it is; Discard deletes it, behind a confirm naming what it
+ * holds. `onDiscard` resolves false when the folder was not deleted.
  */
 function LeftoverFolderNotice({
   folder,
@@ -141,14 +145,21 @@ function LeftoverFolderNotice({
 }: {
   folder: DiscardFolder;
   onKeep: () => void;
-  onDiscard: () => Promise<void>;
+  onDiscard: () => Promise<boolean>;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState(false);
   function discard() {
     if (discarding) return;
     setDiscarding(true);
-    void onDiscard().finally(() => setDiscarding(false));
+    setDiscardFailed(false);
+    void onDiscard().then((deleted) => {
+      setDiscarding(false);
+      if (deleted) return;
+      setConfirming(false);
+      setDiscardFailed(true);
+    });
   }
   return (
     <section className={styles.callout} aria-label={LEFTOVER_FOLDER_HEADING}>
@@ -160,6 +171,17 @@ function LeftoverFolderNotice({
         download them. Keep the folder to copy files out of it yourself, or
         discard it.
       </p>
+      {discardFailed && (
+        <Alert
+          color="red"
+          icon={<IconAlertCircle aria-hidden />}
+          title="The folder was not deleted"
+          mt="md"
+        >
+          The console could not delete the folder <code>{folder.name}</code>.
+          You can delete it yourself from the console&apos;s working directory.
+        </Alert>
+      )}
       <Group mt="md">
         <Button variant="default" onClick={onKeep}>
           Keep the folder
@@ -210,29 +232,31 @@ function LeftoverFolderNotice({
  *
  * On mount it resolves the exchange to recover -- the persisted attachment when
  * this browser holds one, else an occupancy probe of the console's single slot
- * (`GET /api/jobs/slot`) so a browser that never started it still finds it -- then
- * probes `GET /api/jobs/:id`. Nothing to recover renders nothing. A probe-adopted
- * id is held in state only, never persisted, until the operator acts (re-attach or
- * discard). A CONFIRMED-gone id (an HTTP 404: deleted, or a restart forgot it)
- * whose folder is still on disk renders the leftover-folder notice, which deletes
- * nothing until the operator chooses Discard; a gone id with no folder clears any
+ * (`GET /api/jobs/slot`) so a browser that never started it still finds it --
+ * then probes `GET /api/jobs/:id`. Nothing to recover renders nothing. A
+ * probe-adopted id is held in state only, never persisted, until the operator
+ * acts (re-attach or discard). A CONFIRMED-gone id (an HTTP 404: deleted, or a
+ * restart forgot it) whose folder is still on disk renders the leftover-folder
+ * notice, which deletes nothing until the operator chooses Discard; a gone id
+ * with no folder, or with a folder holding none of the run's files, clears any
  * stored record and renders nothing. A transient/unreachable probe (a network
- * error or non-404 fault) renders nothing but LEAVES the record intact, so a blip never destroys the way back to a live
- * exchange. A live id renders the panel: one of three headings -- still running,
- * finished, or stopped (failed/cancelled) -- the run's non-fatal warnings, the
- * re-attached run's timeline (replayed through the same run-state fold the hooks
- * use), the console download hrefs on a finished run only, the collapsed "run
- * this on a schedule" graduation hand-off on any run that is not stopped
- * (self-gated away when the hand-off is unavailable), "Stop this exchange" while
- * running, and "Discard" (behind a confirm, since it is an irreversible removal
- * of console-only data -- naming the exchange record instead of the results
- * where the run may have left one standing) always.
+ * error or non-404 fault) renders nothing but LEAVES the record intact, so a
+ * blip never destroys the way back to a live exchange. A live id renders the
+ * panel: one of three headings -- still running, finished, or stopped
+ * (failed/cancelled) -- the run's non-fatal warnings, the re-attached run's
+ * timeline (replayed through the same run-state fold the hooks use), the
+ * console download hrefs on a finished run only, the collapsed "run this on a
+ * schedule" graduation hand-off on any run that is not stopped (self-gated away
+ * when the hand-off is unavailable), "Stop this exchange" while running, and
+ * "Discard" (behind a confirm, since it is an irreversible removal of
+ * console-only data -- naming the exchange record instead of the results where
+ * the run may have left one standing) always.
  *
  * Unmounting the panel aborts only its own stream consumption -- it has no
  * cancel intent, so the console's run keeps going and the panel is the way back
- * on the next visit. Only Discard (and the consoles' deliberate-leave paths) cancel
- * or delete. The re-attached outputs are console ENDPOINT hrefs, so the panel
- * creates no object URLs and there is nothing to revoke.
+ * on the next visit. Only Discard (and the consoles' deliberate-leave paths)
+ * cancel or delete. The re-attached outputs are console ENDPOINT hrefs, so the
+ * panel creates no object URLs and there is nothing to revoke.
  */
 export function RecoveredExchangePanel() {
   // undefined = probing (render nothing); null = nothing to recover (render
@@ -287,7 +311,9 @@ export function RecoveredExchangePanel() {
         const folder = await fetchJobFolder(target.jobId, controller.signal);
         if (aborted()) return;
         if (folder.kind === "present" && !folder.live) {
-          setLeftover({ name: target.jobId, contents: folder });
+          const keepable = discardFolderFor(target.jobId, folder);
+          if (keepable !== undefined) setLeftover(keepable);
+          else clearAttachment();
           setAttachment(null);
           return;
         }
@@ -387,10 +413,7 @@ export function RecoveredExchangePanel() {
   // the confirm says which artifact is at stake instead of the generic wording
   // below, which names only the exchange and its results.
   const recordConfirm = untakenRecordConfirm(recordOffer);
-  const discardFolder = discardFolderFor(
-    attachment?.jobId,
-    useJobFolder(attachment?.jobId, !running),
-  );
+  const discardFolder = useDiscardFolder(attachment?.jobId, !running);
 
   if (leftover !== undefined)
     return (
@@ -405,10 +428,11 @@ export function RecoveredExchangePanel() {
             await client.deleteJob(leftover.name);
           } catch (error) {
             whenDiagnostic(() => console.error(error));
-            return;
+            return false;
           }
           clearAttachment();
           setLeftover(undefined);
+          return true;
         }}
       />
     );

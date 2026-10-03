@@ -2,6 +2,8 @@ import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import { folderHoldsKeepableFiles } from "@psi/jobClient/jobFolder";
 
+import { useJobFolder } from "./useJobFolder";
+
 import type { JobFolderAnswer } from "@psi/jobClient/jobFolder";
 import type { JobFolderContents } from "@jobs/jobFolder";
 
@@ -24,6 +26,18 @@ export function discardFolderFor(
   if (jobId === undefined || answer?.kind !== "present") return undefined;
   if (!folderHoldsKeepableFiles(answer)) return undefined;
   return { name: jobId, contents: answer };
+}
+
+/**
+ * The run's folder and what in it a discard deletes, for every confirm that
+ * discards the run to name. `jobId` undefined means no console job. Undefined
+ * until the console answers for this job and phase (see {@link useJobFolder}).
+ */
+export function useDiscardFolder(
+  jobId: string | undefined,
+  settled: boolean,
+): DiscardFolder | undefined {
+  return discardFolderFor(jobId, useJobFolder(jobId, settled));
 }
 
 /** One line per file the folder holds, each naming the file as it is on disk

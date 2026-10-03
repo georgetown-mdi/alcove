@@ -317,7 +317,8 @@ Job state is memory-only, so restarting the server cancels an exchange still run
 
 - Reopening the console from the browser that started the exchange shows the folder the run left behind, by name, with **Keep the folder** and **Discard the folder**.
 - **Keep the folder** leaves it where it is for you to copy files out of, and the console stops offering it.
-- **Discard the folder** deletes it, after a confirm listing what it holds.
+- **Discard the folder** deletes it, after a confirm listing what it holds. If the console cannot delete it, it says so, and the folder stays for you to remove by hand.
+- A folder holding nothing beyond `alcove.yaml` and `input.csv` is not offered.
 - A folder no browser offers you stays until you remove it by hand.
 
 Within one server lifetime the console re-attaches instead: reloading or reopening the console from the same browser finds an exchange still running and picks it back up, and discarding it in the console is what removes its files. Leaving the page does not stop the exchange -- only discarding it does.

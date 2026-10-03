@@ -9,6 +9,7 @@ import {
   attachFd3Reader,
   spawnExchangeJob,
 } from "@jobs/cliDriver";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 
 import {
@@ -77,7 +78,7 @@ async function degradationsFromChild(options: {
       configPath: path.join(workdir, "alcove.yaml"),
       keyPath: path.join(workdir, ".alcove.key"),
       inputPath: path.join(workdir, "input.csv"),
-      outputPath: path.join(workdir, "output.csv"),
+      outputPath: path.join(workdir, JOB_FILE_NAMES.output),
       recordPath: path.join(workdir, "record.json"),
       workdir,
       eventStream: true,

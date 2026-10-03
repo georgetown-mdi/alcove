@@ -6,6 +6,7 @@ import { getDefaultLinkageTerms } from "@alcove/core";
 import { parse as parseYaml } from "yaml";
 
 import { spawnExchangeJob, spawnZeroSetupJob } from "@jobs/cliDriver";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import type { CliRunControls, JobTerminalState } from "@jobs/cliDriver";
 import type {
@@ -306,7 +307,7 @@ export async function captureExchangeArgv(args: {
         configPath: path.join(workdir, "alcove.yaml"),
         keyPath: path.join(workdir, ".alcove.key"),
         inputPath: path.join(workdir, "input.csv"),
-        outputPath: path.join(workdir, "output.csv"),
+        outputPath: path.join(workdir, JOB_FILE_NAMES.output),
         recordPath: path.join(workdir, "record.json"),
         workdir,
         eventStream: args.eventStream,
@@ -360,7 +361,7 @@ export async function captureZeroSetupArgv(args: {
         connectionArgs: args.connectionArgs,
         optionArgs: args.optionArgs ?? [],
         inputPath: path.join(workdir, "input.csv"),
-        outputPath: path.join(workdir, "output.csv"),
+        outputPath: path.join(workdir, JOB_FILE_NAMES.output),
         recordPath: path.join(workdir, "record.json"),
         workdir,
         eventStream: args.eventStream,

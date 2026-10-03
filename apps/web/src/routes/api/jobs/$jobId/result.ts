@@ -9,12 +9,12 @@ import { resultFileExists } from "@jobs/workdir";
 /**
  * `GET /api/jobs/:jobId/result` -- serve the job's matched-result CSV.
  *
- * Feature-gated and id-validated, served only after the job succeeded. The path is
- * the job's server-chosen output file inside its workdir -- never derived from
- * client input. Content-Type and Content-Disposition are set explicitly, the
- * download named as the file is on disk, and the nosniff and no-store headers
- * are set. A job that has not succeeded, or whose result is missing, is 404 rather than leaking
- * whether an unfinished job exists.
+ * Feature-gated and id-validated, served only after the job succeeded. The
+ * path is the job's server-chosen output file inside its workdir -- never
+ * derived from client input. Content-Type and Content-Disposition are set
+ * explicitly, the download named as the file is on disk, and the nosniff and
+ * no-store headers are set. A job that has not succeeded, or whose result is
+ * missing, is 404 rather than leaking whether an unfinished job exists.
  */
 export const Route = createFileRoute("/api/jobs/$jobId/result")({
   server: {

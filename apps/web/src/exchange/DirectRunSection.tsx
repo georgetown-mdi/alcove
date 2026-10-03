@@ -22,10 +22,9 @@ import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { awaitingPartner } from "./exchangeRun";
-import { discardFolderFor } from "./discardFolder";
 import { reattachedRunState } from "./reattachedRunState";
+import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
-import { useJobFolder } from "./useJobFolder";
 
 import type { ExchangeRun } from "./exchangeRun";
 import type { JobRunStatus } from "@psi/jobClient/serverJobExchangeDriver";
@@ -98,9 +97,7 @@ export function DirectRunSection({
     settled && outputs?.record === undefined,
   );
   const recordConfirm = untakenRecordConfirm(recordOffer);
-  // The run's folder and what in it a discard deletes, for every confirm
-  // below that discards the run to name.
-  const discardFolder = discardFolderFor(jobId, useJobFolder(jobId, settled));
+  const discardFolder = useDiscardFolder(jobId, settled);
   const awaiting = awaitingPartner(run);
   // A retryable failure is a transport/exchange fault other than an internal
   // fault; the terms mismatch is a config failure, which -- like a security

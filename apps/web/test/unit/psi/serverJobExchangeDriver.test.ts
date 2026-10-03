@@ -1914,6 +1914,15 @@ describe("createFetchJobApiClient deleteJob and fetchJobStatus", () => {
     expect(calls).toEqual([{ url: "/api/jobs/job-5", method: "DELETE" }]);
   });
 
+  test("deleteJob rejects when the console does not answer 2xx", async () => {
+    const fetchImpl = (() =>
+      Promise.resolve(new Response(null, { status: 500 }))) as typeof fetch;
+
+    await expect(
+      createFetchJobApiClient(fetchImpl).deleteJob("job-5"),
+    ).rejects.toThrow("500");
+  });
+
   test("fetchJobStatus reads a terminal status off a 200 as live", async () => {
     const signal = new AbortController().signal;
     await expect(

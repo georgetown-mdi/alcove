@@ -43,6 +43,7 @@ import {
   MountedKeyFileRefusedError,
 } from "@jobs/mountedKeyFile";
 import { generateJobId, writeJobFile } from "@jobs/workdir";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL } from "@jobs/jobCreateRefusal";
@@ -2032,7 +2033,7 @@ describe("the disk-only DELETE arm", () => {
     const id = generateJobId();
     const workdir = path.join(root, id);
     fs.mkdirSync(workdir, { recursive: true });
-    fs.writeFileSync(path.join(workdir, "output.csv"), "id\n1\n");
+    fs.writeFileSync(path.join(workdir, JOB_FILE_NAMES.output), "id\n1\n");
 
     const manager = bareManager(root);
     expect(await manager.deleteJob(id)).toBe(true);
@@ -2047,7 +2048,7 @@ describe("the disk-only DELETE arm", () => {
     const outside = tempDataRoot("orphan-outside");
     roots.push(outside);
     fs.mkdirSync(outside, { recursive: true });
-    fs.writeFileSync(path.join(outside, "output.csv"), "id\n1\n");
+    fs.writeFileSync(path.join(outside, JOB_FILE_NAMES.output), "id\n1\n");
     const linkId = generateJobId();
     fs.symlinkSync(outside, path.join(root, linkId), "dir");
 
@@ -2055,7 +2056,7 @@ describe("the disk-only DELETE arm", () => {
     // lstat sees a symlink, not a directory, so the leaf is refused and its
     // outside target is never removed.
     expect(await manager.deleteJob(linkId)).toBe(false);
-    expect(fs.existsSync(path.join(outside, "output.csv"))).toBe(true);
+    expect(fs.existsSync(path.join(outside, JOB_FILE_NAMES.output))).toBe(true);
   });
 
   test("a malformed id resolves nothing and is false", async () => {

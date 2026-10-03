@@ -180,10 +180,10 @@ export interface JobApiClient {
   /** `POST /api/jobs/:id/cancel`; best-effort, errors are swallowed by the
    * caller since a cancel races a naturally-terminating job. */
   cancelJob: (jobId: string) => Promise<void>;
-  /** `DELETE /api/jobs/:id`; the one operation that removes the workdir. The
-   * caller swallows errors (best-effort, like {@link cancelJob}): a discard
-   * races a job the operator has already left, and a 404 for an already-gone id
-   * is a no-op. */
+  /** `DELETE /api/jobs/:id`; the one operation that removes the workdir.
+   * Rejects when the console does not answer 2xx, so a caller can tell the
+   * operator the folder is still there. A discard of a job the operator has
+   * already left swallows that rejection, like {@link cancelJob}'s. */
   deleteJob: (jobId: string) => Promise<void>;
   /** `GET /api/jobs/:id`, resolving a {@link JobStatusProbe} the recovery probe
    * and the discard poll both read. See {@link JobStatusProbe} for how `gone`
@@ -450,7 +450,13 @@ export function createFetchJobApiClient(
       await fetchImpl(`/api/jobs/${jobId}/cancel`, { method: "POST" });
     },
     deleteJob: async (jobId) => {
-      await fetchImpl(`/api/jobs/${jobId}`, { method: "DELETE" });
+      const response = await fetchImpl(`/api/jobs/${jobId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok)
+        throw new Error(
+          `DELETE /api/jobs/${jobId} failed with status ${response.status}`,
+        );
     },
     fetchJobStatus: async (jobId, signal) => {
       let response: Response;
