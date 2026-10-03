@@ -49,10 +49,9 @@ import type { RunFailure } from "./useInviterExchange";
  * A failed run renders the failure vocabulary's alert for its category, each
  * with its one concrete way forward -- an acceptor seat cannot mint, so every
  * non-retryable recovery is a link to the quick path to paste a fresh
- * invitation, and a config fault returns to the confirm-columns step unless no
- * settings change resolves it (a partner's refusal, a set over a size
- * ceiling), which takes the fresh-invitation link. No failure clears any
- * operator input.
+ * invitation, and a config fault returns to the confirm-columns step. A fault
+ * no settings change resolves takes the fresh-invitation link instead. No
+ * failure clears any operator input.
  */
 export function AcceptorExchangeSection({
   invitation,
@@ -233,13 +232,6 @@ export function AcceptorExchangeSection({
               folder={discardFolder}
             />
           )}
-          {/* The acceptor cannot mint a fresh invitation, so the fresh-start
-              recovery is a link to the quick path, where a new invitation is
-              pasted. Offered for a security failure, an exchange failure that
-              withholds its retry (an expired invitation, an internal fault),
-              and a config fault no settings change resolves -- not for one the
-              acceptor fixes in place, nor an output fault (whose exchange
-              already succeeded). */}
           {offersFreshInvitation && (
             <FailureRecoveryButton
               label="Start over with a fresh invitation"

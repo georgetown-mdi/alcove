@@ -154,6 +154,7 @@ describe("a one-shot exchange", () => {
       ),
     ).toEqual(generic);
   });
+
   test("a one-shot set of this party's own too large to send is one no settings change resolves", () => {
     const failure = failureFor(
       "exchange",
