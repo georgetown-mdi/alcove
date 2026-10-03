@@ -175,6 +175,33 @@ describe("the console hand-off's command lines", () => {
     expect(
       unmountableBindPathsNotice([{ path: "/srv/a,b", reason: "comma" }]),
     ).toContain("/srv/a,b contains a comma");
+    expect(
+      unmountableBindPathsNotice([{ path: "/", reason: "root" }]),
+    ).toContain("too broad to mount");
+  });
+
+  test.each([
+    ["/.", "root"],
+    ["/srv/..", "root"],
+    ["/work/./x", "workFolder"],
+    ["/work/", "workFolder"],
+  ] as const)(
+    "the path %s is refused as %s once normalized",
+    (path, reason) => {
+      const source = sourceBinding(path);
+      expect(unmountableBindPaths(source.bindPaths)).toEqual([
+        { path, reason },
+      ]);
+      expect(dockerRunCommand(source)).toBeUndefined();
+    },
+  );
+
+  test("a path with dot segments is mounted normalized", () => {
+    const source = sourceBinding("/srv/a/../b");
+    expect(unmountableBindPaths(source.bindPaths)).toEqual([]);
+    expect(dockerRunCommand(source)).toContain(
+      "--mount type=bind,src=/srv/b,dst=/srv/b",
+    );
   });
 });
 

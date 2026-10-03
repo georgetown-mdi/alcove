@@ -1,3 +1,5 @@
+import { posix } from "node:path";
+
 import {
   shellJoinCommand,
   windowsJoinCommand,
@@ -57,6 +59,15 @@ function alcoveArgs(argv: ReadonlyArray<string>): Array<string> {
   return argv.slice(1);
 }
 
+/** A bind path as the mount states it: `.` and `..` segments resolved and a
+ * trailing slash dropped, so the checks and the rendered mount agree. */
+function normalizedBindPath(bindPath: string): string {
+  const normalized = posix.normalize(bindPath);
+  return normalized.length > 1 && normalized.endsWith("/")
+    ? normalized.slice(0, -1)
+    : normalized;
+}
+
 /** Why a bind path cannot be mounted at its own path by a `--mount` option. */
 export type UnmountableReason = "comma" | "quote" | "workFolder" | "root";
 
@@ -76,15 +87,16 @@ export interface UnmountableBindPath {
 export function unmountableBindPaths(
   bindPaths: ReadonlyArray<HandoffBindPath>,
 ): Array<UnmountableBindPath> {
-  return bindPaths.flatMap(({ path }): Array<UnmountableBindPath> => {
-    if (path.includes(",")) return [{ path, reason: "comma" }];
-    if (path.includes('"')) return [{ path, reason: "quote" }];
-    if (path === "/") return [{ path, reason: "root" }];
+  return bindPaths.flatMap(({ path: raw }): Array<UnmountableBindPath> => {
+    const bound = normalizedBindPath(raw);
+    if (bound.includes(",")) return [{ path: raw, reason: "comma" }];
+    if (bound.includes('"')) return [{ path: raw, reason: "quote" }];
+    if (bound === "/") return [{ path: raw, reason: "root" }];
     if (
-      path === CONTAINER_WORK_FOLDER ||
-      path.startsWith(`${CONTAINER_WORK_FOLDER}/`)
+      bound === CONTAINER_WORK_FOLDER ||
+      bound.startsWith(`${CONTAINER_WORK_FOLDER}/`)
     )
-      return [{ path, reason: "workFolder" }];
+      return [{ path: raw, reason: "workFolder" }];
     return [];
   });
 }
@@ -118,9 +130,10 @@ export function dockerRunArgv(
     "run",
     "--rm",
     ...mountOption(folder, CONTAINER_WORK_FOLDER, false),
-    ...bindPaths.flatMap(({ path, readOnly }) =>
-      mountOption(path, path, readOnly),
-    ),
+    ...bindPaths.flatMap(({ path: raw, readOnly }) => {
+      const bound = normalizedBindPath(raw);
+      return mountOption(bound, bound, readOnly);
+    }),
     image,
     ...alcoveArgs(argv),
   ];
