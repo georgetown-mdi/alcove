@@ -132,11 +132,12 @@ export function builder(cmd: Argv): Argv {
         "Usage:\n" +
           "  $0 accept [options] INVITATION [INPUT_FILE] [OUTPUT_FILE]    (offline)\n" +
           "  $0 accept [options] URL INVITATION INPUT_FILE [OUTPUT_FILE]  (online)\n\n" +
-          "INVITATION is a base64url string or an @path reference to a file\n" +
-          "containing one. Offline: decode, confirm, and write config and key\n" +
-          "files; an invitation naming a webrtc coordination server, given an\n" +
-          "INPUT_FILE, also runs the exchange it accepts. Online: connect,\n" +
-          "complete the handshake, and run the exchange.",
+          "INVITATION is the invitation string your partner sent, or an @path\n" +
+          "reference to a file containing it. Offline: show its terms, ask you\n" +
+          "to confirm, and write config and key files; an invitation naming a\n" +
+          "webrtc coordination server, given an INPUT_FILE, also runs the\n" +
+          "exchange it accepts. Online: connect, complete the handshake, and\n" +
+          "run the exchange.",
       ),
     // --consent-to-terms records advance consent to this invitation's disclosed
     // terms, skipping the interactive prompt so accept can run unattended. It is

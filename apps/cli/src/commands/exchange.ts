@@ -116,7 +116,12 @@ import type { SigningConfig } from "@alcove/core";
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
     addCsvDelimiterOption(cmd)
-      .usage("Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FILE]")
+      .usage(
+        "Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FILE]\n\n" +
+          "Run a recurring exchange from alcove.yaml and the shared secret in\n" +
+          "the key file, both written by invite, accept, or a quick exchange\n" +
+          "run with --save. Each run replaces the secret the key file holds.",
+      )
       .positional("input", {
         type: "string",
         describe: "CSV to link; use `-` to read from stdin",
@@ -169,9 +174,11 @@ export function builder(cmd: Argv): Argv {
         "folder both parties reach -- along with the plaintext rendezvous " +
         "metadata that accompanies them. Intended for sync-mediated " +
         "transports that do not propagate deletions and for audit use cases. " +
-        "Requires --timestamp-in-filename. Both parties must set this flag " +
-        "identically -- a mismatch is detected at rendezvous and fails fast on " +
-        "both sides with a clear error naming each side's setting, rather than " +
+        "Turns on --timestamp-in-filename and --lockless-rendezvous, which it " +
+        "needs; setting either to false with it is an error. Both parties " +
+        "must set this flag identically -- a mismatch is detected at " +
+        "rendezvous and fails fast on both sides with a clear error naming " +
+        "each side's setting, rather than " +
         "stalling until the inactivity timeout. A fresh " +
         "directory is required for each exchange and is enforced: reusing a " +
         "directory with retained files from a prior session is rejected with " +

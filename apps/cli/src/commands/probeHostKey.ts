@@ -57,7 +57,11 @@ const REAL_DEPS: ProbeHostKeyDeps = {
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = cmd
-    .usage("Usage: $0 probe-host-key SFTP_URL [options]")
+    .usage(
+      "Usage: $0 probe-host-key SFTP_URL [options]\n\n" +
+        "Connect to an SFTP server and print its host-key fingerprint, without\n" +
+        "sending a credential, so you can pin it in the configuration.",
+    )
     .positional("sftp-url", {
       type: "string",
       describe: "sftp://host[:port] server to read the host key from",

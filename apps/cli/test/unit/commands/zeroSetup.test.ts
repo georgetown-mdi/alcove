@@ -33,8 +33,11 @@ import {
   channelFromURL,
   createConnection,
   handler,
+  QUICK_EXCHANGE_TRUST_NOTICE,
   resolvePositionals,
 } from "../../../src/commands/zeroSetup";
+import { BARE_INVOCATION_SUMMARY } from "../../../src/usageHints";
+import { channelForScheme } from "../../../src/connectionFromUrl";
 import type { ConnectionOverrideOptions } from "../../../src/optionDefinitions";
 import { resolveConnectionCredentials } from "../../../src/util/atSignRefs";
 import { redactUrlCredentials } from "../../../src/util/connectionUrl";
@@ -205,6 +208,13 @@ test("unsupported URL scheme throws a UsageError", () => {
   );
 });
 
+test("channelForScheme maps each supported scheme and nothing else", () => {
+  expect(channelForScheme("ssh:")).toBe("sftp");
+  expect(channelForScheme("wss:")).toBe("webrtc");
+  expect(channelForScheme("file:")).toBe("filedrop");
+  expect(channelForScheme("https:")).toBe(undefined);
+});
+
 // --- resolvePositionals ------------------------------------------------------
 
 test("two positionals return server URL and input path", () => {
@@ -240,14 +250,44 @@ test("single positional that is a file throws hint to use exchange subcommand", 
 
 test("single positional that is not a file throws input-not-specified error", () => {
   existsSyncSpy.mockReturnValue(false);
-  expect(() => resolvePositionals(["not-a-url"])).toThrow(
+  expect(() => resolvePositionals(["./not-a-url"])).toThrow(
     "input file not specified",
   );
 });
 
 test("invalid server URL with two positionals throws a parse error", () => {
-  expect(() => resolvePositionals(["not-a-url", "input.csv"])).toThrow(
+  expect(() => resolvePositionals(["./not-a-url", "input.csv"])).toThrow(
     "unable to parse server URL",
+  );
+});
+
+test("a mistyped command name is refused, naming the command it is closest to", () => {
+  existsSyncSpy.mockReturnValue(false);
+  expect(() => resolvePositionals(["exchnage", "input.csv"])).toThrow(
+    "'exchnage' is not an alcove command; did you mean 'alcove exchange'?",
+  );
+  expect(() => resolvePositionals(["exchnage", "input.csv"])).toThrow(
+    UsageError,
+  );
+});
+
+test("a word that is neither a command nor a URL is refused as such", () => {
+  existsSyncSpy.mockReturnValue(false);
+  expect(() => resolvePositionals(["frobnicate", "input.csv"])).toThrow(
+    "'frobnicate' is not an alcove command or a server URL",
+  );
+});
+
+test("a word naming an existing file is not taken for a mistyped command", () => {
+  existsSyncSpy.mockReturnValue(true);
+  expect(() => resolvePositionals(["exchnage"])).toThrow(
+    "did you mean 'alcove exchange INPUT_FILE'?",
+  );
+});
+
+test("a URL scheme a quick exchange cannot use is refused, naming the ones it can", () => {
+  expect(() => resolvePositionals(["http://host/path", "input.csv"])).toThrow(
+    "unsupported URL scheme: http:; a quick exchange takes sftp://, ssh://, or file://",
   );
 });
 
@@ -1436,12 +1476,54 @@ test("handler: the run states what it transmits and what it matches on", async (
   expect(stderr).toContain("matched on");
   expect(stderr).toContain("linkage keys");
   // The run was quieted to the level that drops every ordinary diagnostic, so
-  // the transport-trust warning the handler opens with is absent -- which is
-  // what makes the lines above a surface a raised --log-level cannot suppress
-  // rather than one that happened to print.
-  expect(stderr).not.toContain(
-    "this exchange relies on transport-layer authentication only",
+  // the trust notice is absent -- which is what makes the lines above a
+  // surface a raised --log-level cannot suppress rather than one that
+  // happened to print.
+  expect(stderr).not.toContain(QUICK_EXCHANGE_TRUST_NOTICE);
+});
+
+test("handler: the trust notice prints once, after the display and before the server is contacted", async () => {
+  const { stderr, atFirstContact, contacted } = await zeroSetupRunOutput(
+    CSV_WITH_TRANSMITTED_COLUMN,
+    { "log-level": "warn" },
   );
+  expect(contacted).toBe(true);
+  expect(stderr.split(QUICK_EXCHANGE_TRUST_NOTICE)).toHaveLength(2);
+  expect(atFirstContact.indexOf(QUICK_EXCHANGE_TRUST_NOTICE)).toBeGreaterThan(
+    atFirstContact.indexOf("What this exchange sends and matches on."),
+  );
+  expect(atFirstContact).not.toContain("WARNING:");
+});
+
+test("handler: a usage fault in the positionals exits 64 without the trust notice", async () => {
+  const printed: string[] = [];
+  const errSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation((...args: unknown[]) => {
+      printed.push(args.map(String).join(" "));
+    });
+  const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    printed.push(String(chunk));
+    return true;
+  }) as never);
+  const exitSpy = captureProcessExit();
+  try {
+    for (const positionals of [[], ["exchnage", "input.csv"]]) {
+      await expect(
+        handler({ _: positionals, $0: "alcove" } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
+    }
+  } finally {
+    errSpy.mockRestore();
+    stderrSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+  const output = printed.join("\n");
+  expect(output).toContain(BARE_INVOCATION_SUMMARY);
+  expect(output).toContain("did you mean 'alcove exchange'?");
+  expect(output).not.toContain(QUICK_EXCHANGE_TRUST_NOTICE);
 });
 
 test("handler: a run transmitting no column of its own says so", async () => {

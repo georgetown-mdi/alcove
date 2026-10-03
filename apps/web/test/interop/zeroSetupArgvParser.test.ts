@@ -188,7 +188,7 @@ describe.skipIf(!cliIsBuilt)(
       const parsed = parseWithRealCli(argv, dir);
       // The parser took every token: no unknown-option refusal, and not the usage
       // exit it takes on one (the negative control below drives that path).
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       // Parsing ran to completion rather than short-circuiting: the run reached the
       // input file, which this argv does not create.
@@ -210,7 +210,7 @@ describe.skipIf(!cliIsBuilt)(
       expect(argv[0]).toBe("exchange");
 
       const parsed = parseWithRealCli(argv, dir);
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       // Parsing ran to completion: the run reached the config file this argv
       // does not create, and reported it into the log file the diagnostic
       // tokens pointed the CLI at rather than to stderr.
@@ -244,7 +244,7 @@ describe.skipIf(!cliIsBuilt)(
       expect(argv).not.toContain("--force-retain-sweep");
 
       const parsed = parseWithRealCli(argv, dir);
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       // The run reached the input file, so every token parsed -- and the CLI
       // opened the log file it was pointed at rather than refusing the path.
@@ -275,7 +275,7 @@ describe.skipIf(!cliIsBuilt)(
       expect(argv).not.toContain("--deduplicate=true");
 
       const parsed = parseWithRealCli(argv, dir);
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       expect(parsed.stderr).toContain("input.csv does not exist");
     });
@@ -295,7 +295,7 @@ describe.skipIf(!cliIsBuilt)(
       expect(argv).toContain("--csv-delimiter=|");
 
       const parsed = parseWithRealCli(argv, dir);
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       expect(parsed.stderr).toContain("input.csv does not exist");
     });
@@ -325,7 +325,7 @@ describe.skipIf(!cliIsBuilt)(
       });
 
       const parsed = parseWithRealCli(argv, dir);
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       // Parsing ran to completion: every duration value was in its flag's
       // grammar, so the run reached the input file this argv does not create.
@@ -408,7 +408,7 @@ describe.skipIf(!cliIsBuilt)(
           timeoutMs: CHILD_EXIT_TIMEOUT_MS,
         });
         const parsed = parseWithRealCli(argv, dir);
-        expect(parsed.stderr).not.toContain("Unknown argument");
+        expect(parsed.stderr).not.toContain("Unknown option");
         expect(parsed.status).not.toBe(EXIT_USAGE);
         expect(parsed.stderr).toContain("input.csv does not exist");
       },
@@ -458,7 +458,7 @@ describe.skipIf(!cliIsBuilt)(
 
       const parsed = parseWithRealCli(mistyped, dir);
       expect(parsed.status).toBe(EXIT_USAGE);
-      expect(parsed.stderr).toContain("Unknown arguments: retain-file");
+      expect(parsed.stderr).toContain("Unknown option --retain-file;");
     });
 
     test("the foreign-file policy has no flag, which is why zero-setup withholds it", async () => {
@@ -472,7 +472,7 @@ describe.skipIf(!cliIsBuilt)(
       ]);
       const parsed = parseWithRealCli(argv, dir);
       expect(parsed.status).toBe(EXIT_USAGE);
-      expect(parsed.stderr).toContain("Unknown arguments: unexpected-files");
+      expect(parsed.stderr).toContain("Unknown option --unexpected-files");
     });
 
     test("a split-directory sftp argv survives a real parse under retain mode", async () => {
@@ -493,7 +493,7 @@ describe.skipIf(!cliIsBuilt)(
       const parsed = parseWithRealCli(argv, dir);
       // The parser took every token, and the run got past the connection
       // overrides to the input file this argv does not create.
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       expect(parsed.stderr).toContain("input.csv does not exist");
     });
@@ -534,7 +534,7 @@ describe.skipIf(!cliIsBuilt)(
       const parsed = parseWithRealCli(argv, dir);
       // The parser took every token, and the run got past the connection
       // overrides to the input file this argv does not create.
-      expect(parsed.stderr).not.toContain("Unknown argument");
+      expect(parsed.stderr).not.toContain("Unknown option");
       expect(parsed.status).not.toBe(EXIT_USAGE);
       expect(parsed.stderr).toContain("input.csv does not exist");
     });

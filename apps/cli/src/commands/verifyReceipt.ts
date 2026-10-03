@@ -110,7 +110,10 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 export function builder(cmd: Argv): Argv {
   const beforeLogging = addCsvDelimiterOption(cmd)
     .usage(
-      "Usage: $0 verify-receipt <record> [input-file] [result-file] [options]",
+      "Usage: $0 verify-receipt <record> [input-file] [result-file] [options]\n\n" +
+        "Check a stored exchange record or dual-signed receipt and, given the\n" +
+        "input and result files the run used, open its commitments. Reads\n" +
+        "only; writes nothing.",
     )
     .positional("record", {
       type: "string",
