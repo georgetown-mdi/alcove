@@ -29,9 +29,8 @@ export interface ReactRouterMockOptions {
 
 /**
  * Stubs `@tanstack/react-router` down to the boundary the component suites touch:
- * `Link` as a plain anchor exposing `to` as its `href` and `reloadDocument` as
- * `data-reload-document`, and `useNavigate` as a function returning a navigate
- * that does nothing beyond `onNavigate`.
+ * `Link` as a plain anchor exposing `to` as its `href`, and `useNavigate` as a
+ * function returning a navigate that does nothing beyond `onNavigate`.
  *
  * A real `RouterProvider` trips a duplicate-React dispatcher error in the browser
  * runner, so the router is stubbed, forwarding remaining props so a styled Link
@@ -42,21 +41,15 @@ export function reactRouterMock(options: ReactRouterMockOptions = {}) {
     Link: ({
       to,
       children,
-      reloadDocument,
       ...rest
     }: {
       to?: string;
       children?: ReactNode;
-      reloadDocument?: boolean;
       [prop: string]: unknown;
     }) =>
       createElement(
         "a",
-        {
-          ...rest,
-          href: typeof to === "string" ? to : "#",
-          "data-reload-document": reloadDocument === true ? "" : undefined,
-        },
+        { ...rest, href: typeof to === "string" ? to : "#" },
         children,
       ),
     useNavigate: () => (navigateOptions: unknown) => {

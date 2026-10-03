@@ -460,11 +460,11 @@ describe("inviter screen", () => {
     const nav = document.querySelector('nav[aria-label="Exchange setup"]');
     expect(nav).not.toBeNull();
 
-    // The wordmark reloads the document, so leaving through it meets the
-    // armed unload prompt; Help opens in a new tab.
-    const home = page.getByRole("link", { name: "Alcove home" });
-    await expect.element(home).toHaveAttribute("href", "/");
-    await expect.element(home).toHaveAttribute("data-reload-document");
+    // The wordmark is a full-page link home, so leaving through it unloads
+    // the page and meets the armed unload prompt; Help opens in a new tab.
+    await expect
+      .element(page.getByRole("link", { name: "Alcove home" }))
+      .toHaveAttribute("href", "/");
     const help = page.getByRole("link", { name: "Help" });
     await expect.element(help).toHaveAttribute("href", WEB_APP_GUIDE_URL);
     await expect.element(help).toHaveAttribute("target", "_blank");

@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { Stepper } from "@mantine/core";
 
 import styles from "@styles/app.module.css";
@@ -86,9 +85,9 @@ function StepStrip({ steps }: { steps: ReadonlyArray<RailStep> }) {
  * optional Customize surfaces live on the disclosure ledger. See {@link
  * WorkShell}.
  *
- * The wordmark's link reloads the document so the `beforeunload` prompt a
- * screen arms ({@link useUnloadGuard}) still asks before a loaded file or a
- * live run is dropped; a client-side navigation would skip it.
+ * The wordmark is a plain anchor because the leave-page prompt is the
+ * browser's `beforeunload` ({@link useUnloadGuard}), which only a full
+ * navigation arms.
  *
  * At or below the narrow cut-over the Stepper compresses to a {@link
  * StepStrip}; the switch is by conditional render, not `display`, so only one
@@ -113,14 +112,9 @@ export function TopBar({
       {narrow ? (
         <div className={styles.wordmark}>Alcove</div>
       ) : (
-        <Link
-          to="/"
-          reloadDocument
-          className={styles.wordmark}
-          aria-label="Alcove home"
-        >
+        <a href="/" className={styles.wordmark} aria-label="Alcove home">
           Alcove
-        </Link>
+        </a>
       )}
       <nav aria-label={navLabel} className={styles.topBarNav}>
         {narrow ? <StepStrip steps={steps} /> : <StepRail steps={steps} />}
