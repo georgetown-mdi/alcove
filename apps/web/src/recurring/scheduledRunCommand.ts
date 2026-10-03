@@ -58,7 +58,7 @@ function alcoveArgs(argv: ReadonlyArray<string>): Array<string> {
 }
 
 /** Why a bind path cannot be mounted at its own path by a `--mount` option. */
-export type UnmountableReason = "comma" | "quote" | "workFolder";
+export type UnmountableReason = "comma" | "quote" | "workFolder" | "root";
 
 /** A bind path the Docker lines cannot mount, and why. */
 export interface UnmountableBindPath {
@@ -70,7 +70,8 @@ export interface UnmountableBindPath {
  * The bind paths a `--mount` option cannot state at their own path: `--mount`
  * is a comma-separated list read as CSV, so a `,` ends the path and a `"`
  * starts a quoted field, and a path at or under `/work` lands inside the
- * exchange folder's mount.
+ * exchange folder's mount. The filesystem root `/` is refused too: binding it
+ * would give the container the whole host filesystem.
  */
 export function unmountableBindPaths(
   bindPaths: ReadonlyArray<HandoffBindPath>,
@@ -78,6 +79,7 @@ export function unmountableBindPaths(
   return bindPaths.flatMap(({ path }): Array<UnmountableBindPath> => {
     if (path.includes(",")) return [{ path, reason: "comma" }];
     if (path.includes('"')) return [{ path, reason: "quote" }];
+    if (path === "/") return [{ path, reason: "root" }];
     if (
       path === CONTAINER_WORK_FOLDER ||
       path.startsWith(`${CONTAINER_WORK_FOLDER}/`)
@@ -220,6 +222,7 @@ export function handoffInputName(argv: ReadonlyArray<string>): string {
 const UNMOUNTABLE_REASON_TEXT: Record<UnmountableReason, string> = {
   comma: "contains a comma, which a --mount option cannot hold",
   quote: "contains a double quote, which a --mount option cannot hold",
+  root: "is the filesystem root, which is too broad to mount",
   workFolder: `is inside ${CONTAINER_WORK_FOLDER}, where the image mounts the exchange folder`,
 };
 

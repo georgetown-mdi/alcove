@@ -153,6 +153,7 @@ describe("the console hand-off's command lines", () => {
     for (const [path, reason] of [
       ["/srv/a,b", "comma"],
       ['/srv/a"b', "quote"],
+      ["/", "root"],
       ["/work", "workFolder"],
       ["/work/shared", "workFolder"],
     ] as const) {

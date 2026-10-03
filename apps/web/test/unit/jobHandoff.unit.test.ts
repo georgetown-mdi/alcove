@@ -18,6 +18,14 @@ import {
   buildJobHandoff,
 } from "@jobs/handoff";
 import {
+  dockerCronLine,
+  dockerRunCommand,
+  dockerTaskSchedulerLine,
+  installedCronLine,
+  installedRunCommand,
+  unmountableBindPaths,
+} from "@recurring/scheduledRunCommand";
+import {
   handoffCaveats,
   parseHandoff,
   shellJoinCommand,
@@ -219,6 +227,21 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       { path: "/srv/exchange/drop", readOnly: false },
       { path: "/", readOnly: false },
     ]);
+    const rootSource = {
+      argv: ["alcove", "exchange", "in.csv", "out.csv"],
+      bindPaths: rootLevel.bindPaths,
+      image: "ghcr.io/georgetown-mdi/alcove:1.2.3",
+    };
+    expect(unmountableBindPaths(rootLevel.bindPaths)).toEqual([
+      { path: "/", reason: "root" },
+    ]);
+    expect(dockerRunCommand(rootSource)).toBeUndefined();
+    expect(dockerCronLine(rootSource)).toBeUndefined();
+    expect(dockerTaskSchedulerLine(rootSource)).toBeUndefined();
+    expect(installedRunCommand(rootSource)).toBe(
+      "alcove exchange in.csv out-$(date +%Y%m%d-%H%M%S).csv",
+    );
+    expect(installedCronLine(rootSource)).toContain("alcove exchange in.csv");
   });
 
   test("an sftp exchange placeholders a private-key passphrase distinctly", () => {
