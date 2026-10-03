@@ -962,8 +962,8 @@ export function acceptorPartnerNote(
     );
   const missing = [
     ...new Set(
-      verdict.unsatisfiedFields.map(
-        (field) => SEMANTIC_TYPE_LABELS[field.type],
+      verdict.unsatisfiedFieldColumns.map(
+        ({ field }) => SEMANTIC_TYPE_LABELS[field.type],
       ),
     ),
   ];
