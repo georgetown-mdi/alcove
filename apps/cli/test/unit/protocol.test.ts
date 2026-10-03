@@ -430,6 +430,10 @@ import {
   runOrExit,
 } from "../../src/util/exit";
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";
+import {
+  describeExchangeOutcome,
+  zeroMatchWarning,
+} from "../../src/exchangeOutcome";
 import { LocalFSClient } from "../../src/connection/localFSClient";
 
 // 32 zero bytes in base64url (43 chars, no padding).
@@ -1107,6 +1111,12 @@ test("names a deduplicating cardinality and warns on an over-bound projection", 
   expect(lines[2].source).toBe("pairTableAdvisory");
 }, 20_000);
 
+/** Both parties' warning for the stubbed empty result table. */
+const ZERO_MATCH_WARNINGS = [
+  zeroMatchWarning({ kind: "stdout", matchedRows: 0 }),
+  zeroMatchWarning({ kind: "stdout", matchedRows: 0 }),
+];
+
 test("leaves the pre-round boundary silent on a one-to-one run", async () => {
   // The cardinality that adds no multiplicity is the one every consent surface
   // already describes, so naming it here would be noise on the ordinary run.
@@ -1149,7 +1159,9 @@ test("leaves the pre-round boundary silent on a one-to-one run", async () => {
     }),
   ]);
 
-  expect(mockState.warnings).toStrictEqual([]);
+  // The stubbed result table is empty, so each party's zero-match warning is
+  // the one warning expected here.
+  expect(mockState.warnings).toStrictEqual(ZERO_MATCH_WARNINGS);
 }, 20_000);
 
 test("an unnamed partner on a record-filing run takes its own warning class", async () => {
@@ -1436,7 +1448,7 @@ test("states the partner's deduplicate value and the resolved cardinality on eve
     cardinality: "one-to-one",
   });
   expect(mockState.infos).toContain(expected);
-  expect(mockState.warnings).toStrictEqual([]);
+  expect(mockState.warnings).toStrictEqual(ZERO_MATCH_WARNINGS);
 }, 20_000);
 
 test("tells a non-receiving party what the run's completion tells it too", async () => {
@@ -2242,9 +2254,14 @@ test("reports a count-only exchange's count instead of treating it as withheld",
 
   expect(fs.existsSync(output)).toBe(false);
   expect(vi.mocked(buildOutputTable)).not.toHaveBeenCalled();
-  expect(
-    mockState.infos.some((line) => line.includes("7 record(s) in common")),
-  ).toBe(true);
+  const countLines = mockState.infos.filter((line) =>
+    line.includes("7 records in common"),
+  );
+  expect(countLines).toHaveLength(2);
+  for (const line of countLines)
+    expect(line).toContain(
+      "exchange complete: 7 records in common, no result file (count only)",
+    );
   expect(
     mockState.infos.some((line) => line.includes("you receive no result")),
   ).toBe(false);
@@ -2253,7 +2270,7 @@ test("reports a count-only exchange's count instead of treating it as withheld",
   // own clause: the rendezvous lines name the partner too, in the ordinary way.
   expect(
     mockState.infos.some((line) =>
-      line.includes("Only your partner computed the count"),
+      line.includes("only your partner computed this count"),
     ),
   ).toBe(false);
 }, 20_000);
@@ -2268,12 +2285,17 @@ test("caveats a count-only count the partner reported rather than computed", asy
   await runBothHalves(output);
 
   expect(fs.existsSync(output)).toBe(false);
-  const line = mockState.infos.find((entry) =>
-    entry.includes("7 record(s) in common"),
+  const countLines = mockState.infos.filter((entry) =>
+    entry.includes("7 records in common"),
   );
-  expect(line).toContain("your partner reported 7 record(s) in common");
-  expect(line).toContain("Alcove does not check a count it is sent");
-  expect(line).toContain("no result file was written");
+  expect(countLines).toHaveLength(2);
+  for (const line of countLines) {
+    expect(line).toContain(
+      "exchange complete: your partner reported 7 records in common (only " +
+        "your partner computed this count; Alcove does not check it against " +
+        "a run of its own), no result file (count only)",
+    );
+  }
 }, 20_000);
 
 // --- Expired token via runProtocol -------------------------------------------
@@ -2878,6 +2900,127 @@ test("both key files hold the same rotated token after a successful exchange", a
   // Rotation tokens have no expiry.
   expect(loadedA?.expires).toBeUndefined();
   expect(loadedB?.expires).toBeUndefined();
+}, 20_000);
+
+test("a completed run ends with one outcome line naming the count, the paths and the rotation", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  vi.mocked(runExchange).mockImplementation(runExchangeWithAudit as never);
+  vi.mocked(buildOutputTable).mockReturnValue({
+    headers: ["id"],
+    rows: [["1"], ["2"]],
+  });
+  const recordA = path.join(tmpDir, "rec-a.json");
+  const outputA = path.join(tmpDir, "out-a.csv");
+  const linesA: string[] = [];
+  const linesB: string[] = [];
+  const emitted: Array<{ event: string; args: unknown[] }> = [];
+  const record =
+    (event: string) =>
+    (...args: unknown[]): void => {
+      emitted.push({ event, args });
+    };
+  const emitter: EventStreamEmitter = {
+    stages: record("stages"),
+    stage: record("stage"),
+    stageEnd: record("stageEnd"),
+    warning: record("warning"),
+    payloadReceiveTaken: record("payloadReceiveTaken"),
+    logFileLoss: record("logFileLoss"),
+    metrics: record("metrics"),
+    result: record("result"),
+    error: record("error"),
+  };
+  try {
+    await Promise.all([
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileA },
+        prepared: minimalPrepared,
+        output: outputA,
+        verbosity: -1,
+        loggerName: "test-a",
+        recordOutput: { recordFile: recordA },
+        fileSyncRuntime: { eventStream: emitter },
+        writeOutcomeLine: (line) => linesA.push(line),
+      }),
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileB },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-b",
+        writeOutcomeLine: (line) => linesB.push(line),
+      }),
+    ]);
+  } finally {
+    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+  }
+
+  expect(linesA).toEqual([
+    describeExchangeOutcome({
+      result: { kind: "file", matchedRows: 2, path: outputA },
+      record: { kind: "written", path: recordA },
+      rotatedKeyFilePath: keyFileA,
+    }),
+  ]);
+  expect(linesB).toEqual([
+    describeExchangeOutcome({
+      result: { kind: "stdout", matchedRows: 2 },
+      record: { kind: "disabled" },
+      rotatedKeyFilePath: keyFileB,
+    }),
+  ]);
+  expect(mockState.warnings).toEqual([]);
+  const result = emitted.find((e) => e.event === "result");
+  expect(result?.args[3]).toEqual({ matchedRows: 2, resultPath: outputA });
+}, 20_000);
+
+test("an unauthenticated run with nothing matched warns and states that no secret rotated", async () => {
+  const lines: string[] = [];
+  await Promise.all([
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: null,
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test-a",
+      writeOutcomeLine: (line) => lines.push(line),
+    }),
+    runProtocol({
+      connection: {
+        channel: "filedrop",
+        path: dropDir,
+        options: TWO_PARTY_OPTIONS,
+      },
+      auth: null,
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test-b",
+    }),
+  ]);
+  expect(lines).toEqual([
+    "exchange complete: 0 records matched, result written to standard " +
+      "output; no exchange record (--no-record); no shared secret was rotated",
+  ]);
+  expect(mockState.warnings).toStrictEqual(ZERO_MATCH_WARNINGS);
 }, 20_000);
 
 test("the key exchange marks each key file before the rotation and the rotated save clears it", async () => {
@@ -7239,11 +7382,16 @@ test("an emitter passed instead of the flag receives every event, and no second 
 
   // The whole run reported through the caller's object, terminal event included.
   // A one-to-one matched run passes neither a count nor a cluster summary, so
-  // the terminal call has the written flag, what the deduplicate pair resolved
-  // to, and both optional arguments absent (the builder omits their fields
-  // entirely for it).
+  // the terminal call has what the deduplicate pair resolved to, both optional
+  // arguments absent (the builder omits their fields entirely for it), and the
+  // written table.
   expect(emitted.map((e) => e.event)).toEqual(["stages", "metrics", "result"]);
-  expect(emitted[2].args).toEqual([true, STUB_MATCHING, undefined, undefined]);
+  expect(emitted[2].args).toEqual([
+    STUB_MATCHING,
+    undefined,
+    undefined,
+    { matchedRows: 0 },
+  ]);
   // Nothing re-ran the preflight and nothing reached the descriptor: the
   // already-preflighted emitter was reused rather than re-opened.
   expect(fd3.preflightProbes).toBe(0);

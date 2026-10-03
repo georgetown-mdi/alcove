@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   FileSyncConnection,
   fromEventConnection,
@@ -76,6 +78,12 @@ import {
   relayCredentialPerAttempt,
 } from "./connection/webrtc/weriftPeer";
 import { persistPartnerFingerprint } from "./config";
+import {
+  describeExchangeOutcome,
+  zeroMatchWarning,
+  type RecordDelivery,
+  type ResultDelivery,
+} from "./exchangeOutcome";
 import {
   buildRotatedKeyFile,
   clearRotationInFlight,
@@ -2295,7 +2303,7 @@ async function writeExchangeOutputs(params: {
   eventStream: EventStreamEmitter | undefined;
   onOutputComplete: FileSyncRuntimeOptions["onOutputComplete"];
   onRemoteFollowUp: FileSyncRuntimeOptions["onRemoteFollowUp"];
-}): Promise<boolean> {
+}): Promise<ExchangeOutputs> {
   const {
     outcome,
     prepared,
@@ -2325,31 +2333,23 @@ async function writeExchangeOutputs(params: {
   // artifacts below have been written. A box rather than the error itself,
   // since a thrower may raise any value, `undefined` included.
   let resultFailure: { error: unknown; notice: string } | undefined;
+  let result: ResultDelivery = { kind: "withheld" };
 
   // A count-only exchange produces no matched pairing for either party,
   // so there is no result file to write and nothing was withheld from
-  // this party: its whole result is the count, reported here. Checked
-  // first, since a count-only receiver holds no association table
-  // either and would otherwise be told it receives nothing.
-  //
-  // The sender seat's copy adds the trust-contingent caveat at the
-  // moment the number is read: its count arrived over the partner's
-  // count-report leg rather than from a round it ran, and psi-c is the
-  // instrument parties reach for before an agreement, so the reminder
-  // belongs here too, not only at consent time. The receiver seat
-  // computed its own count under an enforced mode, so the same caveat
-  // there would be false.
+  // this party: its whole result is the count, which the outcome line
+  // states (describeExchangeOutcome). Checked first, since a count-only
+  // receiver holds no association table either and would otherwise be
+  // told it receives nothing.
   if (intersectionCount !== undefined) {
-    log.info(
-      countIsPartnerReported({ intersectionCount, resolvedRole })
-        ? `exchange complete: your partner reported ${intersectionCount} ` +
-            "record(s) in common. Only your partner computed the count; " +
-            "Alcove does not check a count it is sent against a run of its " +
-            "own. The agreed terms asked for a count only, so no result file " +
-            "was written."
-        : `exchange complete: ${intersectionCount} record(s) in common. The ` +
-            "agreed terms asked for a count only, so no result file was written.",
-    );
+    result = {
+      kind: "count",
+      intersectionCount,
+      reportedByPartner: countIsPartnerReported({
+        intersectionCount,
+        resolvedRole,
+      }),
+    };
   }
   // The result table is withheld (associationTable undefined) when this
   // party's agreed terms give it no output -- a one-sided exchange
@@ -2360,7 +2360,7 @@ async function writeExchangeOutputs(params: {
   // helper's record does not bind the table).
   else if (associationTable === undefined) {
     log.info(
-      "exchange complete: your records contributed to the match, but by the " +
+      "your records contributed to the match, but by the " +
         "agreed terms you receive no result, so no result file was written.",
     );
   } else {
@@ -2395,7 +2395,7 @@ async function writeExchangeOutputs(params: {
       };
     }
     try {
-      if (table !== undefined)
+      if (table !== undefined) {
         await writeOutput(
           output,
           table.headers,
@@ -2404,6 +2404,15 @@ async function writeExchangeOutputs(params: {
           undefined,
           resultDelimiter,
         );
+        result =
+          output === undefined
+            ? { kind: "stdout", matchedRows: table.rows.length }
+            : {
+                kind: "file",
+                matchedRows: table.rows.length,
+                path: path.resolve(output),
+              };
+      }
     } catch (err) {
       // The result did not reach where it was owed -- a file that did
       // not reach disk, or a stdout reader that stopped taking it before
@@ -2459,19 +2468,30 @@ async function writeExchangeOutputs(params: {
   // runExchange did not return is a record that could not be built
   // (warned there, with the cause), so it reports as a missing artifact
   // exactly as a failed write does.
-  if (recordOutput !== undefined) {
-    const failure =
-      audit === undefined
-        ? "no audit record could be built for this exchange, so none was " +
-          "written; the exchange and its results succeeded and need not be " +
-          "re-run"
-        : writeExchangeRecord(
-            recordOutput,
-            audit.record,
-            audit.keys,
-            loggerName,
-          );
-    if (failure !== undefined) missingArtifacts.push(failure);
+  let record: RecordDelivery;
+  if (recordOutput === undefined) record = { kind: "disabled" };
+  else if (audit === undefined) {
+    missingArtifacts.push(
+      "no audit record could be built for this exchange, so none was " +
+        "written; the exchange and its results succeeded and need not be " +
+        "re-run",
+    );
+    record = { kind: "notWritten" };
+  } else {
+    const written = writeExchangeRecord(
+      recordOutput,
+      audit.record,
+      audit.keys,
+      loggerName,
+    );
+    if (written.kind === "failed") {
+      missingArtifacts.push(written.message);
+      record = { kind: "notWritten" };
+    } else
+      record = {
+        kind: "written",
+        path: path.resolve(written.paths.recordFilePath),
+      };
   }
 
   // Persist the dual-signed record after the self-attested record.
@@ -2577,7 +2597,17 @@ async function writeExchangeOutputs(params: {
     }
   }
 
-  return everyArtifactOnDisk;
+  return { everyArtifactOnDisk, result, record };
+}
+
+/** What {@link writeExchangeOutputs} delivered, for the run's outcome line. */
+interface ExchangeOutputs {
+  /** Whether every artifact the stage owed reached disk. */
+  everyArtifactOnDisk: boolean;
+  /** Where this party's result went. */
+  result: ResultDelivery;
+  /** What became of the exchange record. */
+  record: RecordDelivery;
 }
 
 const REPEATED_SIGNAL_DELIVERY_MS = 500;
@@ -2691,6 +2721,12 @@ export interface RunProtocolOptions {
    * neither.
    */
   memoryBudgetReported?: boolean;
+  /**
+   * Writes the line a completed run ends with ({@link describeExchangeOutcome}):
+   * a command passes its unfiltered writer so the line reaches the operator at
+   * every `--log-level` but `silent`. Omit it to log the line at info level.
+   */
+  writeOutcomeLine?: (line: string) => void;
 }
 
 /**
@@ -2788,6 +2824,8 @@ export async function runProtocol(
     memoryBudgetReported = false,
   } = options;
   const log = getLogger(loggerName);
+  const writeOutcomeLine =
+    options.writeOutcomeLine ?? ((line: string) => log.info(line));
 
   // The opt-in machine-interface emitter (fd-3 NDJSON), constructed only under
   // --event-stream; undefined otherwise, so no line is ever written to fd 3
@@ -3168,14 +3206,8 @@ export async function runProtocol(
     // operator must not re-run it, so the catch classifies it as "output".
     terminalPhase = "output";
 
-    const {
-      associationTable,
-      intersectionCount,
-      entityClusters,
-      matching,
-      resolvedRole,
-    } = outcome;
-    run.outputsWritten = await writeExchangeOutputs({
+    const { entityClusters, matching } = outcome;
+    const delivered = await writeExchangeOutputs({
       outcome,
       prepared,
       output,
@@ -3188,6 +3220,7 @@ export async function runProtocol(
       onOutputComplete: fileSyncRuntime.onOutputComplete,
       onRemoteFollowUp: fileSyncRuntime.onRemoteFollowUp,
     });
+    run.outputsWritten = delivered.everyArtifactOnDisk;
 
     // onAuthenticatedError is set only when a post-handshake hook failed
     // but the exchange above still succeeded (a hook failure followed by
@@ -3213,20 +3246,23 @@ export async function runProtocol(
     // may run to its ceiling. The transport is torn down after, and what that
     // costs goes to the operator log alone.
     emitMetrics();
+    const { result } = delivered;
     emit((e) =>
       e.result(
-        associationTable !== undefined,
         matching,
-        intersectionCount === undefined
-          ? undefined
-          : {
-              intersectionCount,
-              reportedByPartner: countIsPartnerReported({
-                intersectionCount,
-                resolvedRole,
-              }),
-            },
+        result.kind === "count"
+          ? {
+              intersectionCount: result.intersectionCount,
+              reportedByPartner: result.reportedByPartner,
+            }
+          : undefined,
         entityClusters,
+        result.kind === "file" || result.kind === "stdout"
+          ? {
+              matchedRows: result.matchedRows,
+              ...(result.kind === "file" && { resultPath: result.path }),
+            }
+          : undefined,
       ),
     );
     // A close that throws past its own per-layer catch is logged at debug, as
@@ -3242,6 +3278,18 @@ export async function runProtocol(
         sanitizeErrorForDisplay(cleanupErr),
       );
     }
+    const noMatch = zeroMatchWarning(delivered.result);
+    if (noMatch !== undefined) log.warn(noMatch);
+    writeOutcomeLine(
+      describeExchangeOutcome({
+        result: delivered.result,
+        record: delivered.record,
+        rotatedKeyFilePath:
+          run.tokenRotated && build.trimmedKeyFilePath !== undefined
+            ? path.resolve(build.trimmedKeyFilePath)
+            : undefined,
+      }),
+    );
     return { onAuthenticatedError: run.onAuthenticatedError };
   } catch (err) {
     // tokenRotated=true means this party's saveKeyFile succeeded; the
@@ -3354,14 +3402,14 @@ export async function runProtocol(
       // The completed path reports the same pair through missingArtifacts
       // above.
       if (disclosedRecord !== undefined) {
-        const failure = writeExchangeRecord(
+        const written = writeExchangeRecord(
           recordOutput,
           disclosedRecord.record,
           disclosedRecord.keys,
           loggerName,
         );
-        if (failure !== undefined)
-          emit((e) => e.warning("terminatedRunRecord", failure));
+        if (written.kind === "failed")
+          emit((e) => e.warning("terminatedRunRecord", written.message));
       } else if (exchangeRecordOwedButUnbuilt(err)) {
         emit((e) =>
           e.warning("terminatedRunRecord", TERMINATED_RECORD_UNBUILT_WARNING),

@@ -243,21 +243,28 @@ export function psiMemoryShortfallOverrideWarning(
 }
 
 /**
- * Log this run's memory statement and hold its need to what the process has:
- * a need over it is a {@link UsageError} naming both figures and the
- * override, or, with `allowShortfall`, a warning passed to `onShortfallWarning`
- * and the run continues. Returns the assessment.
+ * Log this run's memory statement -- at debug when the process has what the
+ * round needs, at info when it does not -- and hold its need to what the
+ * process has: a need over it is a {@link UsageError} naming both figures and
+ * the override, or, with `allowShortfall`, a warning passed to
+ * `onShortfallWarning` and the run continues. Returns the assessment.
  */
 export function checkPsiMemoryBudget(params: {
   records: number;
   allowShortfall: boolean;
   readings: MemoryReadings;
-  log: { info: (message: string) => void };
+  log: {
+    debug: (message: string) => void;
+    info: (message: string) => void;
+  };
   onShortfallWarning: (message: string) => void;
 }): PsiMemoryAssessment {
   const assessment = assessPsiMemory(params.records, params.readings);
+  if (assessment.needBytes <= assessment.availableBytes) {
+    params.log.debug(psiMemoryStatement(assessment));
+    return assessment;
+  }
   params.log.info(psiMemoryStatement(assessment));
-  if (assessment.needBytes <= assessment.availableBytes) return assessment;
   if (!params.allowShortfall)
     throw new UsageError(psiMemoryShortfallMessage(assessment));
   params.onShortfallWarning(psiMemoryShortfallOverrideWarning(assessment));

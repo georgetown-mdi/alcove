@@ -92,22 +92,29 @@ export function recordPathsFor(
 }
 
 /**
+ * What {@link writeExchangeRecord} did: the paths both files reached, or the
+ * message stating the failure.
+ */
+export type RecordWriteResult =
+  { kind: "written"; paths: RecordPaths } | { kind: "failed"; message: string };
+
+/**
  * Write the record (shareable) and its verification keys (private) to disk,
  * each atomically and owner-only via {@link writeFileOwnerOnly} -- keys
  * first, so a mid-write death leaves the salts recoverable even when the
  * record is not (crash-ordering scope: docs/spec/CREDENTIAL_STORAGE.md).
  * Non-fatal by design: a write failure is logged as a warning and returned
- * as a message, composed RAW for the caller's own event-stream escaping
- * (docs/spec/CLI_EVENTS.md, `warning`), and handles a completed run's
- * record and a terminated one identically (docs/spec/EXCHANGE_RECORD.md,
- * When a record is owed).
+ * as a `failed` result's message, composed RAW for the caller's own
+ * event-stream escaping (docs/spec/CLI_EVENTS.md, `warning`), and handles a
+ * completed run's record and a terminated one identically
+ * (docs/spec/EXCHANGE_RECORD.md, When a record is owed).
  */
 export function writeExchangeRecord(
   output: RecordOutput,
   record: ExchangeRecord,
   keys: VerificationKeys,
   loggerName: string,
-): string | undefined {
+): RecordWriteResult {
   const log = getLogger(loggerName);
   const { recordFilePath, keysFilePath } = recordPathsFor(
     output,
@@ -155,7 +162,7 @@ export function writeExchangeRecord(
             "record is what they claimed and not what this run confirmed"
           : ""),
     );
-    return undefined;
+    return { kind: "written", paths: { recordFilePath, keysFilePath } };
   } catch (err) {
     log.warn(
       (terminated
@@ -182,12 +189,15 @@ export function writeExchangeRecord(
           "still private -- delete them or keep them private",
       );
     }
-    return terminated
-      ? `the audit record could not be written to ${recordFilePath}; the ` +
+    return {
+      kind: "failed",
+      message: terminated
+        ? `the audit record could not be written to ${recordFilePath}; the ` +
           "exchange disclosed before it failed, so that disclosure has no " +
           "record"
-      : `the audit record could not be written to ${recordFilePath}; the ` +
-          "exchange and its results succeeded and need not be re-run, so this " +
-          "exchange has no record";
+        : `the audit record could not be written to ${recordFilePath}; the ` +
+          "exchange and its results succeeded and need not be re-run, so " +
+          "this exchange has no record",
+    };
   }
 }

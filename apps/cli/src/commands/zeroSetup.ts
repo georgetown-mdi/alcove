@@ -31,6 +31,7 @@ import {
   type EventStreamEmitter,
 } from "../eventStream";
 import { displayZeroSetupDisclosure } from "../exchangeDisclosure";
+import { outcomeLineWriter } from "../exchangeOutcome";
 import { assertFirstRoundFits } from "../firstRoundFits";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
 import {
@@ -916,6 +917,7 @@ export async function handler(argv: Arguments): Promise<void> {
         }),
         undeclaredColumnsWarned,
         memoryBudgetReported,
+        writeOutcomeLine: outcomeLineWriter(log, writePlainLine),
         fileSyncRuntime: {
           sweepExchangeFiles,
           forceRetainSweep,

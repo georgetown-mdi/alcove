@@ -165,8 +165,8 @@ test("a both-sided result writes a cluster's whole product and attests the pair 
     createdAt: "2026-01-02T03:04:05.000Z",
   });
   expect(
-    writeExchangeRecord({ recordFile: recordPath }, record, keys, "test"),
-  ).toBeUndefined();
+    writeExchangeRecord({ recordFile: recordPath }, record, keys, "test").kind,
+  ).toBe("written");
 
   // The figure on disk is the pair count: neither this party's matched-record
   // count (3), nor the clusters (2), nor the rows either party exposed.

@@ -149,7 +149,7 @@ test("writeExchangeRecord writes both files, parseable and owner-only", () => {
   const keysFilePath = keysPathFor(recordFilePath);
   expect(
     writeExchangeRecord({ recordFile: recordFilePath }, record, keys, "test"),
-  ).toBeUndefined();
+  ).toEqual({ kind: "written", paths: { recordFilePath, keysFilePath } });
 
   // Both files exist and round-trip through the schema parsers.
   expect(
@@ -184,15 +184,17 @@ test("writeExchangeRecord is non-fatal when the destination is unwritable", () =
   const blocker = path.join(dir, "blocker");
   fs.writeFileSync(blocker, "x");
   const recordFilePath = path.join(blocker, "rec.json"); // parent is a file
-  let failure: string | undefined;
+  let written: ReturnType<typeof writeExchangeRecord> | undefined;
   expect(() => {
-    failure = writeExchangeRecord(
+    written = writeExchangeRecord(
       { recordFile: recordFilePath },
       record,
       keys,
       "test",
     );
   }).not.toThrow();
+  expect(written?.kind).toBe("failed");
+  const failure = written?.kind === "failed" ? written.message : undefined;
   expect(failure).toContain("the audit record could not be written to");
   expect(failure).toContain(recordFilePath);
   expect(failure).toContain("need not be re-run");
@@ -223,8 +225,8 @@ test("a terminated run's record is written to the same destination", () => {
       terminatedRecord,
       keys,
       "test",
-    ),
-  ).toBeUndefined();
+    ).kind,
+  ).toBe("written");
   expect(
     parseExchangeRecord(JSON.parse(fs.readFileSync(recordFilePath, "utf8"))),
   ).toEqual(terminatedRecord);
@@ -259,8 +261,8 @@ test("a record stating an observed certificate mismatch says so where the file i
       { ...terminatedRecord, certificateMismatchObserved: true },
       keys,
       "test",
-    ),
-  ).toBeUndefined();
+    ).kind,
+  ).toBe("written");
 
   const wrote = logCapture.infos.find((m) =>
     m.includes("wrote self-attested exchange record"),
@@ -277,12 +279,14 @@ test("a terminated run's lost record is not reported as a completed exchange", (
   const blocker = path.join(dir, "blocker");
   fs.writeFileSync(blocker, "x");
   const recordFilePath = path.join(blocker, "rec.json");
-  const failure = writeExchangeRecord(
+  const written = writeExchangeRecord(
     { recordFile: recordFilePath },
     terminatedRecord,
     keys,
     "test",
   );
+  expect(written.kind).toBe("failed");
+  const failure = written.kind === "failed" ? written.message : undefined;
   expect(failure).toContain("the audit record could not be written to");
   expect(failure).toContain("disclosed before it failed");
   expect(failure).not.toContain("need not be re-run");

@@ -46,6 +46,7 @@ import {
   persistFilledPayloadReceive,
   saveConfig,
 } from "./config";
+import { outcomeLineWriter } from "./exchangeOutcome";
 import { detectFileConflicts, FileExistsError } from "./fileUtils";
 import { writeAcceptanceRecordReportingLoss } from "./acceptedTermsRecords";
 import {
@@ -1002,6 +1003,10 @@ export async function runOnlineBootstrap(params: {
       recordOutput: params.recordOutput,
       undeclaredColumnsWarned,
       memoryBudgetReported,
+      writeOutcomeLine: outcomeLineWriter(
+        getLogger(params.loggerName),
+        params.writePlainLine,
+      ),
       // Persist the configuration exactly at acceptance: runProtocol invokes this
       // once, after the rotated token is saved to the key file and before the
       // data exchange begins. Writing here (rather than after runProtocol

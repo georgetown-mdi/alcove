@@ -153,6 +153,7 @@ describe("the check", () => {
   };
 
   function run(records: number, allowShortfall: boolean) {
+    const debugs: string[] = [];
     const infos: string[] = [];
     const warnings: string[] = [];
     const outcome = (() => {
@@ -161,21 +162,25 @@ describe("the check", () => {
           records,
           allowShortfall,
           readings: smallHost,
-          log: { info: (m) => infos.push(m) },
+          log: {
+            debug: (m) => debugs.push(m),
+            info: (m) => infos.push(m),
+          },
           onShortfallWarning: (m) => warnings.push(m),
         });
       } catch (error) {
         return error;
       }
     })();
-    return { outcome, infos, warnings };
+    return { outcome, debugs, infos, warnings };
   }
 
-  it("passes a small input on a small container, stating the figures once", () => {
-    const { outcome, infos, warnings } = run(1_000, false);
+  it("passes a small input on a small container, stating the figures once at debug", () => {
+    const { outcome, debugs, infos, warnings } = run(1_000, false);
     expect(outcome).not.toBeInstanceOf(Error);
     expect(warnings).toEqual([]);
-    expect(infos).toEqual([
+    expect(infos).toEqual([]);
+    expect(debugs).toEqual([
       "memory: the PSI engine runs on this process's main thread under a " +
         "heap limit of 4.40 GB; a round over this run's 1,000 records needs " +
         "about 0.27 GB, and this process has 0.51 GB (host memory 2.00 GB, " +
