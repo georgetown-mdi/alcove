@@ -218,8 +218,6 @@ export function InviterExchangeSection({
   useEffect(() => {
     setTermsApplied(false);
   }, [failure]);
-  // A browser run's files exist only in this page: until each is downloaded,
-  // leaving the completion screen asks first.
   const { leftBehind, onDownload } = useDownloadsLeftBehind(outputs);
   useBeforeUnloadPrompt(
     !serverJob && phase === "done" && leftBehind.length > 0,

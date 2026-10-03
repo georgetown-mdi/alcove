@@ -13,15 +13,19 @@ import "@mantine/core/styles.css";
 
 import { encodeInvitation, generateSharedSecret } from "@alcove/core";
 
+import {
+  PartnerNoShowError,
+  waitForIncomingConnection,
+} from "@psi/transport/waitForConnection";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
-import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { listenAsInviter } from "@psi/transport/rendezvous";
 import { timeOfDayLabel } from "@exchange/exchangeRun";
 
 import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
+import type * as WaitForConnectionModule from "@psi/transport/waitForConnection";
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
 // The browser seats' waiting, resuming, and leaving: the listening deadline the
@@ -37,6 +41,14 @@ vi.mock("@tanstack/react-router", async () =>
 vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
+
+vi.mock("@psi/transport/waitForConnection", async (importOriginal) => {
+  const actual = await importOriginal<typeof WaitForConnectionModule>();
+  return {
+    ...actual,
+    waitForIncomingConnection: vi.fn(actual.waitForIncomingConnection),
+  };
+});
 
 // Stub the run lifecycle so a run never dials: each invocation's options are
 // captured so a test can drive the same callbacks the real lifecycle fires, and
@@ -225,7 +237,6 @@ describe("the inviting seat's wait for its partner", () => {
     vi.mocked(listenAsInviter).mockResolvedValue(peer as never);
 
     const controller = new AbortController();
-    const before = Date.now();
     const waiting = lifecycleCall(0)
       .acquire({
         signal: controller.signal,
@@ -236,22 +247,22 @@ describe("the inviting seat's wait for its partner", () => {
       })
       .catch(() => undefined);
     await vi.waitFor(() => expect(peer.once).toHaveBeenCalled());
-    const after = Date.now();
 
+    const until = vi.mocked(waitForIncomingConnection).mock.lastCall?.[1]
+      ?.until;
+    if (until === undefined) throw new Error("the wait was given no deadline");
     const tenMinutes = 10 * 60 * 1000;
-    const candidates = [before, after].map((at) =>
-      timeOfDayLabel(new Date(at + tenMinutes)),
+    expect(Math.abs(until.getTime() - (Date.now() + tenMinutes))).toBeLessThan(
+      60 * 1000,
     );
     const callout = page.getByText(/^This page waits until /);
     await expect.element(callout).toBeInTheDocument();
     expect(
-      candidates.some((label) =>
-        callout
-          .element()
-          .textContent.startsWith(
-            `This page waits until ${label} for your partner to connect.`,
-          ),
-      ),
+      callout
+        .element()
+        .textContent.startsWith(
+          `This page waits until ${timeOfDayLabel(until)} for your partner to connect.`,
+        ),
     ).toBe(true);
 
     controller.abort();
@@ -400,7 +411,7 @@ describe("waiting again on an invitation after a reload", () => {
     await expect
       .element(page.getByRole("alert"))
       .toMatchTextContent(
-        containing("This file's columns are not the ones the invitation uses"),
+        containing("This file does not match the invitation"),
       );
 
     await page.getByRole("button", { name: "Discard the invitation" }).click();

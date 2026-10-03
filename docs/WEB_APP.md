@@ -32,7 +32,7 @@ The next screen, **Your invitation is ready**, shows the invitation link and a m
 **Keep this tab open.** Your browser waits for your partner to accept, and the screen says until what time: about 10 minutes, or until the invitation expires if that is sooner. Closing the tab cancels the invitation. Agree a time with your partner so that both of you are at your computers.
 
 - **If your partner has not connected by then**, the screen says so. Choose **Keep waiting** to wait again while the invitation is still valid, or **Start over with a fresh invitation** once it has expired.
-- **If you reload the page**, the first step offers the invitation back while it is still valid: choose the same file again to keep waiting, or discard the invitation. Alcove keeps the invitation in this tab's session storage for this, never your file's contents, and removes it when the invitation expires, the exchange completes, or you discard it or start over.
+- **If you reload the page**, the first step offers the invitation back while it is still valid: choose the same file again to keep waiting, or discard the invitation. The file must have the same columns, in the same order, and the same number of rows as the one you created the invitation from. Alcove keeps the invitation in this tab's session storage for this, with your file's column names and row count but never its rows, and removes it when the invitation expires, the exchange completes, or you discard it or start over.
 
 ## Accepting an invitation
 

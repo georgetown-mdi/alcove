@@ -9,10 +9,10 @@ import {
 } from "@alcove/core";
 
 import { invitationUsable } from "@psi/formatting";
+import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import type {
-  CSVRow,
   Metadata,
   OwnColumnSelection,
   Standardization,
@@ -35,7 +35,7 @@ const log = getLogger("pendingInvitation");
 const STORAGE_KEY = "alcove-pending-invitation";
 
 /** The entry's schema version; any other version is treated as absent. */
-const RECORD_VERSION = 1;
+const RECORD_VERSION = 2;
 
 /** What a resume needs beside the file the operator chooses again. */
 export interface PendingInvitation {
@@ -45,6 +45,8 @@ export interface PendingInvitation {
   inviterName: string;
   /** The name of the file the invitation was created from. */
   fileName: string;
+  /** The number of data rows that file held. */
+  rowCount: number;
   /** The field delimiter that file was read by; absent for a comma. */
   csvDelimiter?: string;
 }
@@ -56,6 +58,7 @@ interface StoredRecord {
   inviterName: string;
   fileName: string;
   columns: Array<string>;
+  rowCount: number;
   csvDelimiter?: string;
   metadata?: Metadata;
   standardization?: Standardization;
@@ -85,6 +88,7 @@ export function writePendingInvitation(
     inviterName: context.inviterName,
     fileName: context.fileName,
     columns: invitation.columns,
+    rowCount: invitation.rawRows.length,
     ...(context.csvDelimiter !== undefined
       ? { csvDelimiter: context.csvDelimiter }
       : {}),
@@ -125,7 +129,8 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return undefined;
   const fields = value as Record<string, unknown>;
-  const { v, encoded, deepLink, inviterName, fileName, columns } = fields;
+  const { v, encoded, deepLink, inviterName, fileName, columns, rowCount } =
+    fields;
   if (v !== RECORD_VERSION) return undefined;
   if (typeof encoded !== "string" || typeof deepLink !== "string")
     return undefined;
@@ -133,6 +138,12 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
   if (typeof inviterName !== "string" || typeof fileName !== "string")
     return undefined;
   if (!isStringArray(columns) || columns.length === 0) return undefined;
+  if (
+    typeof rowCount !== "number" ||
+    !Number.isSafeInteger(rowCount) ||
+    rowCount < 0
+  )
+    return undefined;
   const { csvDelimiter, includeOwnColumns } = fields;
   if (csvDelimiter !== undefined && typeof csvDelimiter !== "string")
     return undefined;
@@ -161,6 +172,7 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     inviterName,
     fileName,
     columns,
+    rowCount,
     ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),
@@ -225,28 +237,59 @@ async function pendingInvitationOf(
     },
     inviterName: stored.inviterName,
     fileName: stored.fileName,
+    rowCount: stored.rowCount,
     ...(stored.csvDelimiter !== undefined
       ? { csvDelimiter: stored.csvDelimiter }
       : {}),
   };
 }
 
+/** What reading the file chosen again for a resume found. */
+export type ResumeFileOutcome =
+  | { kind: "resumed"; invitation: GeneratedInvitation }
+  /** The file could not be read, or its parse reported a fault. */
+  | { kind: "unreadable" }
+  /** The file's columns, in order, or its number of rows differ from the
+   * file the invitation was created from. */
+  | { kind: "mismatch" };
+
 /**
- * The kept invitation with the rows of the file chosen again, or undefined
- * where that file's columns are not the ones the invitation was created from:
- * its terms and this party's settings name those columns.
+ * Read the file the operator chose again, by the delimiter the invitation's
+ * file was read by, and resume the kept invitation on its rows only where it
+ * has the same columns in the same order and the same number of rows: the
+ * invitation's terms and this party's settings name those columns.
  */
-export function resumedInvitation(
+export async function resumeFromChosenFile(
   pending: PendingInvitation,
-  { rawRows, columns }: { rawRows: Array<CSVRow>; columns: Array<string> },
-): GeneratedInvitation | undefined {
+  file: Parameters<typeof loadCSVFileOffMainThread>[0],
+): Promise<ResumeFileOutcome> {
+  let result;
+  try {
+    result = await loadCSVFileOffMainThread(file, {
+      ...(pending.csvDelimiter !== undefined
+        ? { delimiter: pending.csvDelimiter }
+        : {}),
+    });
+  } catch (error) {
+    whenDiagnostic(() => log.warn("resume file read failed:", error));
+    return { kind: "unreadable" };
+  }
+  // A single-column file reports UndetectableDelimiter, and the invitation's
+  // own read accepted it; any other code is a fault.
+  if (result.errors.some((error) => error.code !== "UndetectableDelimiter"))
+    return { kind: "unreadable" };
+  const columns = result.meta.fields ?? [];
   const expected = pending.invitation.columns;
   if (
     columns.length !== expected.length ||
-    columns.some((column, index) => column !== expected[index])
+    columns.some((column, index) => column !== expected[index]) ||
+    result.data.length !== pending.rowCount
   )
-    return undefined;
-  return { ...pending.invitation, rawRows };
+    return { kind: "mismatch" };
+  return {
+    kind: "resumed",
+    invitation: { ...pending.invitation, rawRows: result.data },
+  };
 }
 
 /**

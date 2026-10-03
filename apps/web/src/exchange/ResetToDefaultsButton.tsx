@@ -21,25 +21,14 @@ export function ResetToDefaultsButton({
   const [confirming, setConfirming] = useState(false);
   return (
     <>
-      {variant === "default" ? (
-        <Button
-          variant="default"
-          disabled={disabled}
-          aria-haspopup="dialog"
-          onClick={() => setConfirming(true)}
-        >
-          Reset to defaults
-        </Button>
-      ) : (
-        <Button
-          variant="subtle"
-          disabled={disabled}
-          aria-haspopup="dialog"
-          onClick={() => setConfirming(true)}
-        >
-          Reset to defaults
-        </Button>
-      )}
+      <Button
+        variant={variant === "subtle" ? "subtle" : "default"}
+        disabled={disabled}
+        aria-haspopup="dialog"
+        onClick={() => setConfirming(true)}
+      >
+        Reset to defaults
+      </Button>
       <Modal
         opened={confirming}
         onClose={() => setConfirming(false)}

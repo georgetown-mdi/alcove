@@ -1000,18 +1000,17 @@ export function useInviterExchange({
       });
       // The wait ends at the partner-wait ceiling, or sooner where the
       // invitation expires first, and the share screen states that deadline.
-      const waitMs = Math.max(
-        0,
+      const waitUntil = new Date(
         Math.min(
-          DEFAULT_PEER_WAIT_TIMEOUT_MS,
-          Date.parse(minted.expires) - Date.now(),
+          Date.now() + DEFAULT_PEER_WAIT_TIMEOUT_MS,
+          Date.parse(minted.expires),
         ),
       );
-      if (!signal.aborted) setListeningUntil(new Date(Date.now() + waitMs));
+      if (!signal.aborted) setListeningUntil(waitUntil);
       try {
         const conn = await waitForIncomingConnection(peer, {
           signal,
-          timeoutMs: waitMs,
+          until: waitUntil,
         });
         return { peer, conn, psi, prepared };
       } catch (error) {

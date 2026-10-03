@@ -249,6 +249,7 @@ const dynamicImportLiteralBan = {
 const rawRowsConsumers = [
   "src/exchange/AcceptorScreen.tsx",
   "src/exchange/InviterScreen.tsx",
+  "src/exchange/pendingInvitation.ts",
   "src/exchange/useInviterExchange.ts",
   "src/psi/inviterEditor.ts",
   "src/psi/runOutputs.ts",

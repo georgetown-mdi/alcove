@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   clearPendingInvitation,
   readPendingInvitation,
-  resumedInvitation,
+  resumeFromChosenFile,
   writePendingInvitation,
 } from "../../../src/exchange/pendingInvitation.js";
 import { generateInvitation } from "../../../src/psi/invitation.js";
@@ -76,24 +76,64 @@ describe("the invitation kept for a resume", () => {
     expect(pending?.fileName).toBe(context.fileName);
   });
 
-  test("resumes only on the columns the invitation was created from", async () => {
-    const minted = await mint();
+  async function pendingFor(minted: Awaited<ReturnType<typeof mint>>) {
     writePendingInvitation(minted, context);
     const pending = await readPendingInvitation(new Date());
     if (pending === undefined) throw new Error("no pending invitation");
+    return pending;
+  }
 
+  test("the same file resumes on its rows", async () => {
+    const minted = await mint();
+    const pending = await pendingFor(minted);
+    expect(pending.rowCount).toBe(1);
+
+    expect(await resumeFromChosenFile(pending, Readable.from(CSV))).toEqual({
+      kind: "resumed",
+      invitation: minted,
+    });
+  });
+
+  test.each([
+    [
+      "columns in another order",
+      "dob,last_name,first_name\n1990-01-02,Smith,Alice\n",
+    ],
+    ["other columns", "first_name,last_name\nAlice,Smith\n"],
+    [
+      "the same columns and another number of rows",
+      `${CSV}Bob,Jones,1985-03-04\n`,
+    ],
+  ])("a file with %s does not resume", async (_, csv) => {
+    const pending = await pendingFor(await mint());
+    expect(await resumeFromChosenFile(pending, Readable.from(csv))).toEqual({
+      kind: "mismatch",
+    });
+  });
+
+  test("a file whose parse reports a fault does not resume", async () => {
+    const pending = await pendingFor(await mint());
     expect(
-      resumedInvitation(pending, {
-        rawRows: minted.rawRows,
-        columns: minted.columns,
-      }),
-    ).toEqual(minted);
+      await resumeFromChosenFile(
+        pending,
+        Readable.from('first_name,last_name,dob\n"Alice,Smith,1990-01-02\n'),
+      ),
+    ).toEqual({ kind: "unreadable" });
+  });
+
+  test("a single-column file, whose parse reports no delimiter, resumes", async () => {
+    const pending = await pendingFor(await mint());
+    const singleColumn = {
+      ...pending,
+      invitation: { ...pending.invitation, columns: ["ssn"] },
+      rowCount: 2,
+    };
     expect(
-      resumedInvitation(pending, {
-        rawRows: minted.rawRows,
-        columns: [...minted.columns].reverse(),
-      }),
-    ).toBeUndefined();
+      await resumeFromChosenFile(
+        singleColumn,
+        Readable.from("ssn\n123-45-6789\n987-65-4321\n"),
+      ),
+    ).toMatchObject({ kind: "resumed" });
   });
 
   test("an expired invitation is not offered and is removed", async () => {
@@ -106,7 +146,7 @@ describe("the invitation kept for a resume", () => {
 
   test.each([
     ["not JSON", "{"],
-    ["another version", JSON.stringify({ v: 2 })],
+    ["another version", JSON.stringify({ v: 1 })],
     ["a damaged invitation", JSON.stringify({ v: 1, encoded: "x" })],
   ])("an entry that is %s is not offered and is removed", async (_, raw) => {
     storage.setItem(STORAGE_KEY, raw);

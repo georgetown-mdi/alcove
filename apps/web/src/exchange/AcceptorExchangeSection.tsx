@@ -155,8 +155,6 @@ export function AcceptorExchangeSection({
   // flashes while the 409 is being resolved.
   const recovering = reattaching || reattachedRun;
 
-  // A browser run's files exist only in this page: until each is downloaded,
-  // leaving the completion screen asks first.
   const { leftBehind, onDownload } = useDownloadsLeftBehind(outputs);
   useBeforeUnloadPrompt(
     !serverJob && phase === "done" && leftBehind.length > 0,

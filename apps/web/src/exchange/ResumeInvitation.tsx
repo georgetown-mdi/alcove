@@ -3,15 +3,12 @@ import { useId, useState } from "react";
 import { Alert, Button, FileButton, Group } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
-import { sanitizeErrorForDisplay } from "@alcove/core";
-
 import { alertRoleFor } from "@theme";
 import { dateTimeLabel } from "@psi/formatting";
-import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 import styles from "@styles/app.module.css";
 
 import {
-  resumedInvitation,
+  resumeFromChosenFile,
   usePendingInvitationRecord,
 } from "./pendingInvitation";
 import { InviterExchangeSection } from "./InviterExchangeSection";
@@ -29,8 +26,8 @@ import type { PendingInvitation } from "./pendingInvitation";
  * The offer, on the inviter's file step, to wait again on an invitation this
  * tab created before a reload: the partner's link still works for as long as
  * the invitation does, so choosing the same file again listens on it. The
- * file is read here, by the delimiter it was first read by, and must have the
- * columns the invitation was created from.
+ * file must have the columns, in order, and the number of rows of the file
+ * the invitation was created from.
  */
 export function ResumeInvitationOffer({
   pending,
@@ -51,31 +48,30 @@ export function ResumeInvitationOffer({
     setReading(true);
     setAlert(undefined);
     try {
-      const result = await loadCSVFileOffMainThread(file, {
-        ...(pending.csvDelimiter !== undefined
-          ? { delimiter: pending.csvDelimiter }
-          : {}),
-      });
-      const resumed = resumedInvitation(pending, {
-        rawRows: result.data,
-        columns: result.meta.fields ?? [],
-      });
-      if (resumed === undefined) {
-        setAlert({
-          title: "This file's columns are not the ones the invitation uses",
-          message:
-            `The invitation was created from ${fileName}, and this file's ` +
-            "columns differ from it. Choose that file, or discard the " +
-            "invitation and create a new one.",
-        });
+      const outcome = await resumeFromChosenFile(pending, file);
+      if (outcome.kind === "resumed") {
+        onResume(outcome.invitation);
         return;
       }
-      onResume(resumed);
-    } catch (error) {
-      setAlert({
-        title: "The file could not be read",
-        message: sanitizeErrorForDisplay(error),
-      });
+      setAlert(
+        outcome.kind === "unreadable"
+          ? {
+              title: "The file could not be read",
+              message:
+                "Alcove could not read this file as a CSV. Choose " +
+                `${fileName}, the file the invitation was created from, or ` +
+                "discard the invitation and create a new one.",
+            }
+          : {
+              title: "This file does not match the invitation",
+              message:
+                `The invitation was created from ${fileName}, and this ` +
+                "file's columns or number of rows differ from it. Choose " +
+                "the file with the same columns, in the same order, and the " +
+                "same number of rows, or discard the invitation and create " +
+                "a new one.",
+            },
+      );
     } finally {
       setReading(false);
     }
@@ -90,7 +86,8 @@ export function ResumeInvitationOffer({
           {dateTimeLabel(new Date(pending.invitation.expires))}
         </span>
         . To wait for your partner again, choose the file you created it from,{" "}
-        <span className={styles.mono}>{fileName}</span>.
+        <span className={styles.mono}>{fileName}</span>. It must have the same
+        columns, in the same order, and the same number of rows.
       </p>
       <Group>
         <FileButton
