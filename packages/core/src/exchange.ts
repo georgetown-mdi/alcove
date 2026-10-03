@@ -113,7 +113,6 @@ import {
   causeChainSome,
 } from "./errors.js";
 import { SPLIT_INPUT_REMEDY } from "./connection/fileSyncOutboundBound.js";
-import { MAX_JSON_ARRAY_ELEMENTS } from "./utils/boundedJson.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
 import type { Standardization } from "./config/standardizationSchema.js";
 import {
@@ -1560,51 +1559,6 @@ export function roundOneSetOverMaximumMessage(
 }
 
 /**
- * The most records one list of matched records can name in a cascade, from the
- * two declared record counts and the cardinality this party resolved: a
- * record of the side that keeps its distinctness pairs with one record of the
- * other side, so under `one-to-one` neither side matches more records than the
- * smaller count, and a side that keeps its duplicates matches up to all of its
- * own (docs/spec/PROTOCOL.md, One list of matched records per message). Both
- * parties hold the same two counts and mirror cardinalities, so both reach the
- * same figure.
- */
-export function mostMatchedRecordsOneSide(
-  cardinality: LinkageCardinality,
-  localRecordCount: number,
-  partnerRecordCount: number,
-): number {
-  switch (cardinality) {
-    case "one-to-one":
-      return Math.min(localRecordCount, partnerRecordCount);
-    case "many-to-one":
-      return localRecordCount;
-    case "one-to-many":
-      return partnerRecordCount;
-    case "many-to-many":
-      return Math.max(localRecordCount, partnerRecordCount);
-  }
-}
-
-/**
- * The refusal a file-sync cascade raises after the terms exchange, before
- * anything else is sent, when one side could match more records than one
- * message's list holds: `mostMatchedRecords` is
- * {@link mostMatchedRecordsOneSide}, `maxListEntries` the most entries a
- * received list may hold.
- */
-export function matchedRecordsOverMessageMessage(
-  mostMatchedRecords: number,
-  maxListEntries: number = MAX_JSON_ARRAY_ELEMENTS,
-): string {
-  return (
-    "Too large for a file-sync exchange: these record counts could match " +
-    `up to ${mostMatchedRecords} records on one side, and one message lists ` +
-    `at most ${maxListEntries}. Nothing was sent. ${SPLIT_INPUT_REMEDY}`
-  );
-}
-
-/**
  * The refusal raised after the terms exchange, before any linkage key is
  * sent, when this party's first round holds more values than the partner
  * stated it can receive: `elementCount` is the fewest values that round
@@ -2778,27 +2732,6 @@ export async function runExchange(
   // parties here -- before the bootstrap frame and the PSI round -- rather than
   // starting a round one side would refuse. See resolveCountOnlyRun.
   const countOnly = resolveCountOnlyRun(linkageTerms, partnerTerms);
-
-  // A file-sync cascade sends each list of matched records in one message,
-  // which a receiver holds to MAX_JSON_ARRAY_ELEMENTS entries, so terms whose
-  // record counts could match more on one side are refused here, from the same
-  // symmetric state on both parties, before the bootstrap frame and any key.
-  if (
-    linkageTerms.linkageStrategy !== "single-pass" &&
-    !countOnly &&
-    conn.outboundFileSyncFrameBound?.() !== undefined
-  ) {
-    const mostMatchedRecords = mostMatchedRecordsOneSide(
-      cardinality,
-      declaredRecordCount,
-      partnerRecordCount,
-    );
-    if (mostMatchedRecords > MAX_JSON_ARRAY_ELEMENTS)
-      throw Object.assign(
-        new UsageError(matchedRecordsOverMessageMessage(mostMatchedRecords)),
-        { alcoveRecoveryHintEmitted: true },
-      );
-  }
 
   // Resolve what each party discloses to the other, at the same point and for
   // the same reason as the cardinality above: the resolution is symmetric and
