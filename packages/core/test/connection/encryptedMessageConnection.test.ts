@@ -263,6 +263,15 @@ test("terminated reports the inner connection's end", async () => {
   expect(error.kind).toBe("transport");
 });
 
+test("terminated reports this side's own close as a closed connection", async () => {
+  const [enc] = await makeEncryptedPair();
+  const ended = enc.terminated();
+  await enc.close();
+  const error = await ended;
+  expect(error).toBeInstanceOf(ConnectionError);
+  expect(error.kind).toBe("closed");
+});
+
 test("terminated reports a failure the wrapper latched, not the inner close it caused", async () => {
   const [recv, peer] = await makeInjectable("responder");
   await peer.send(await sealRawBytes("initiator", 1, jsonPlaintext({ n: 1 })));

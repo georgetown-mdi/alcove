@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { prepareForExchange, runExchange } from "../src/exchange";
+import { EncryptedMessageConnection } from "../src/connection/encryptedMessageConnection";
 import {
   ConnectionError,
   createMessagePipe,
@@ -85,6 +86,20 @@ function heldSenderEngine() {
   };
 }
 
+const SESSION_KEY = new Uint8Array(32).fill(0x42) as Uint8Array<ArrayBuffer>;
+
+// Both ends of one pipe, each wrapped in the encrypted channel the CLI runs an
+// exchange over.
+async function encryptedPipe(): Promise<
+  [MessageConnection, MessageConnection]
+> {
+  const [rawA, rawB] = createMessagePipe();
+  return Promise.all([
+    EncryptedMessageConnection.create(rawA, SESSION_KEY, "initiator"),
+    EncryptedMessageConnection.create(rawB, SESSION_KEY, "responder"),
+  ]);
+}
+
 // Runs both parties over one pipe. `sender` and `receiver` resolve to the
 // connections of the parties that resolved to those PSI roles.
 // `onSenderEngine` takes the receiver's connection once the sender's engine is
@@ -92,8 +107,9 @@ function heldSenderEngine() {
 function runPair(
   senderEngine?: PsiEngine,
   onSenderEngine?: (receiver: MessageConnection) => void,
+  pipe: [MessageConnection, MessageConnection] = createMessagePipe(),
 ) {
-  const [connInitiator, connResponder] = createMessagePipe();
+  const [connInitiator, connResponder] = pipe;
   const conns = { sender: connInitiator, receiver: connResponder };
   const factoryFor =
     (conn: typeof connInitiator, other: typeof connInitiator) =>
@@ -174,6 +190,30 @@ test("a local close during the sender's setup reports no partner loss", async ()
   await new Promise((resolve) => setTimeout(resolve, 0));
   held.finish();
   for (const outcome of await outcomes) expect(outcome.status).toBe("rejected");
+  expect(lossNotices(warn)).toHaveLength(0);
+});
+
+test("a local close of the encrypted channel during the sender's setup reports no partner loss", async () => {
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  const held = heldSenderEngine();
+  const { conns, outcomes } = runPair(
+    held.engine,
+    undefined,
+    await encryptedPipe(),
+  );
+
+  await held.started;
+  await conns.sender.close();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  held.finish();
+  const settled = await outcomes;
+  for (const outcome of settled) expect(outcome.status).toBe("rejected");
+  const senderOutcome = settled.find(
+    (outcome) =>
+      (outcome as PromiseRejectedResult).reason instanceof ConnectionError &&
+      (outcome as PromiseRejectedResult).reason.kind === "usage",
+  );
+  expect(senderOutcome).toBeDefined();
   expect(lossNotices(warn)).toHaveLength(0);
 });
 

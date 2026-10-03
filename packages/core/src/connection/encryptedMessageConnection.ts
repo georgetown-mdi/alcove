@@ -127,6 +127,12 @@ export class EncryptedMessageConnection implements MessageConnection {
   // the single in-flight/settled inner.close() promise. Makes inner teardown
   // run exactly once whether triggered by a terminal failure or by close().
   private innerClosed: Promise<void> | undefined = undefined;
+  // The latch close() sets, kept so terminated() can tell this side's own
+  // close from a failure the wrapper detected.
+  private readonly closeLatch = new ConnectionError(
+    "EncryptedMessageConnection: cannot use a closed connection",
+    "usage",
+  );
 
   private constructor(
     inner: MessageConnection,
@@ -555,12 +561,7 @@ export class EncryptedMessageConnection implements MessageConnection {
     // kind "closed", not by this latch. Going through
     // closeInner() makes this idempotent and reuses any teardown a prior fail()
     // already started, so inner.close() runs once no matter how this is reached.
-    this.fail(
-      new ConnectionError(
-        "EncryptedMessageConnection: cannot use a closed connection",
-        "usage",
-      ),
-    );
+    this.fail(this.closeLatch);
     await this.closeInner();
   }
 
@@ -585,14 +586,20 @@ export class EncryptedMessageConnection implements MessageConnection {
     return this.inner.inboundPsiSetElementCeiling?.();
   }
 
-  // A failure this layer latched ends the inner connection with a local close,
-  // so the latched error is the one reported. An inner connection that reports
-  // no terminal state leaves this one pending for good.
+  // A failure this layer detected ends the inner connection with a local
+  // close, so that failure is the one reported. This side's own close reports
+  // the inner connection's end, kind "closed" unless the inner connection had
+  // already ended. An inner connection that reports no terminal state leaves
+  // this one pending for good.
   terminated(): Promise<ConnectionError> {
     const inner = this.inner.terminated?.();
     return inner === undefined
       ? new Promise<ConnectionError>(() => {})
-      : inner.then((error) => this.failed ?? error);
+      : inner.then((error) =>
+          this.failed === undefined || this.failed === this.closeLatch
+            ? error
+            : this.failed,
+        );
   }
 
   // The envelope is added before the inner transport packs and chunks the
