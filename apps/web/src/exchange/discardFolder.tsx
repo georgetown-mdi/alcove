@@ -63,6 +63,8 @@ export function discardFolderItems(contents: JobFolderContents): Array<{
     items.push({ files: JOB_FILE_NAMES.receipt, what: "the signed receipt" });
   if (contents.log)
     items.push({ files: JOB_FILE_NAMES.log, what: "the diagnostic log" });
+  if (contents.input)
+    items.push({ files: JOB_FILE_NAMES.input, what: "your input file" });
   return items;
 }
 

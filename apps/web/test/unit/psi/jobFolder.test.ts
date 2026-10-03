@@ -10,6 +10,7 @@ const FULL = {
   sharedSecret: true,
   receipt: true,
   log: true,
+  input: true,
 };
 
 function answering(response: Response | Error): typeof fetch {
@@ -62,6 +63,7 @@ describe("discardFolderItems", () => {
       ".alcove.key",
       "receipt.json",
       "run.log",
+      "input.csv",
     ]);
   });
 
@@ -73,6 +75,7 @@ describe("discardFolderItems", () => {
         sharedSecret: false,
         receipt: false,
         log: false,
+        input: false,
       }),
     ).toEqual([]);
   });

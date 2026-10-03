@@ -20,6 +20,9 @@ export interface JobFolderContents {
   receipt: boolean;
   /** The diagnostic log. */
   log: boolean;
+  /** The operator's input written for an inline intent,
+   * {@link JOB_FILE_NAMES.input}. */
+  input: boolean;
 }
 
 /**
@@ -43,5 +46,6 @@ export function readJobFolderContents(workdir: string): JobFolderContents {
     sharedSecret: present(JOB_FILE_NAMES.key),
     receipt: present(JOB_FILE_NAMES.receipt),
     log: present(JOB_FILE_NAMES.log),
+    input: present(JOB_FILE_NAMES.input),
   };
 }

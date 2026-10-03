@@ -25,6 +25,7 @@ const CONTENT_FIELDS = [
   "sharedSecret",
   "receipt",
   "log",
+  "input",
 ] as const satisfies ReadonlyArray<keyof JobFolderContents>;
 
 /** Validate a folder body, or null when any field is missing or not a

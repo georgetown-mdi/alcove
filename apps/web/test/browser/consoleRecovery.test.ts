@@ -79,6 +79,7 @@ function folderBody(live: boolean): object {
     sharedSecret: true,
     receipt: false,
     log: false,
+    input: false,
   };
 }
 
@@ -594,7 +595,68 @@ describe("console strand recovery panel", () => {
     expect(window.localStorage.getItem(ATTACHMENT_KEY)).not.toBeNull();
   });
 
-  test("a left-behind folder holding none of the run's files offers nothing and clears the record", async () => {
+  test("a left-behind folder already gone when the DELETE lands counts as discarded", async () => {
+    persistAttachment("job-gone");
+    const api = stubRecoveryApi({
+      jobId: "job-gone",
+      statusCode: 404,
+      folder: folderBody(false),
+      deleteStatus: 404,
+    });
+    app.render(createElement(InviterScreen));
+
+    await page.getByRole("button", { name: "Discard the folder" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Discard the folder" })
+      .click();
+    await vi.waitFor(() =>
+      expect(
+        api.captured.some(
+          (r) => r.url === "/api/jobs/job-gone" && r.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+    await vi.waitFor(() =>
+      expect(window.localStorage.getItem(ATTACHMENT_KEY)).toBeNull(),
+    );
+    await vi.waitFor(() =>
+      expect(
+        page.getByText("Files from an exchange before a restart").query(),
+      ).toBeNull(),
+    );
+    expect(page.getByText("The folder was not deleted").query()).toBeNull();
+  });
+
+  test("a left-behind folder holding only the inline input is offered, and the confirm names it", async () => {
+    persistAttachment("job-gone");
+    stubRecoveryApi({
+      jobId: "job-gone",
+      statusCode: 404,
+      folder: {
+        live: false,
+        results: false,
+        record: false,
+        sharedSecret: false,
+        receipt: false,
+        log: false,
+        input: true,
+      },
+    });
+    app.render(createElement(InviterScreen));
+
+    await expect
+      .element(page.getByText("Files from an exchange before a restart"))
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Discard the folder" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect.element(dialog.getByText("input.csv")).toBeInTheDocument();
+    await expect
+      .element(dialog.getByText("your input file", { exact: false }))
+      .toBeInTheDocument();
+  });
+
+  test("a left-behind folder holding only the configuration offers nothing and clears the record", async () => {
     persistAttachment("job-gone");
     const api = stubRecoveryApi({
       jobId: "job-gone",
@@ -606,6 +668,7 @@ describe("console strand recovery panel", () => {
         sharedSecret: false,
         receipt: false,
         log: false,
+        input: false,
       },
     });
     app.render(createElement(InviterScreen));

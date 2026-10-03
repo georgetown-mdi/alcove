@@ -18,6 +18,7 @@ import {
   replaceControlCharactersForDisplay,
 } from "@alcove/core";
 
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { dateTimeLabel } from "@psi/formatting";
 import styles from "@styles/app.module.css";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
@@ -476,7 +477,7 @@ export function RunDownloads({
           <DownloadRow
             label="Download result"
             href={outputs.resultsUrl}
-            fileName="results.csv"
+            fileName={JOB_FILE_NAMES.output}
           />
           {resultNote}
         </>

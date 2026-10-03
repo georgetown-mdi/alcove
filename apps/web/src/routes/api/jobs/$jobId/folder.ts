@@ -10,7 +10,7 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
  * Feature-gated and id-validated. Answers for the exchange the console holds and
  * for a folder a server restart left behind under a valid id, so the console can
  * offer to keep or discard that folder and name what a discard deletes. The body
- * is `{ live, results, record, sharedSecret, receipt, log }`, every field a
+ * is `{ live, results, record, sharedSecret, receipt, log, input }`, every field a
  * boolean: presence only, never a file's content, size, or path. `404` when no
  * such folder exists.
  */

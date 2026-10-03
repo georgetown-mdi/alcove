@@ -1918,9 +1918,10 @@ describe("createFetchJobApiClient deleteJob and fetchJobStatus", () => {
     const fetchImpl = (() =>
       Promise.resolve(new Response(null, { status: 500 }))) as typeof fetch;
 
-    await expect(
-      createFetchJobApiClient(fetchImpl).deleteJob("job-5"),
-    ).rejects.toThrow("500");
+    const rejection = createFetchJobApiClient(fetchImpl).deleteJob("job-5");
+    await expect(rejection).rejects.toThrow("500");
+    await expect(rejection).rejects.toBeInstanceOf(JobApiRequestError);
+    await expect(rejection).rejects.toMatchObject({ status: 500 });
   });
 
   test("fetchJobStatus reads a terminal status off a 200 as live", async () => {

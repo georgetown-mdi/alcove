@@ -2987,6 +2987,7 @@ describe("GET /api/jobs/:id/folder names what a run's folder holds", () => {
       sharedSecret: true,
       receipt: false,
       log: false,
+      input: true,
     });
   });
 
@@ -2996,6 +2997,7 @@ describe("GET /api/jobs/:id/folder names what a run's folder holds", () => {
     fs.mkdirSync(folder, { recursive: true });
     fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.output), "id\n1\n");
     fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.key), "secret");
+    fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.config), "connection:\n");
 
     const response = await getFolder(LEFTOVER_ID);
     expect(response.status).toBe(200);
@@ -3006,6 +3008,7 @@ describe("GET /api/jobs/:id/folder names what a run's folder holds", () => {
       sharedSecret: true,
       receipt: false,
       log: false,
+      input: false,
     });
     expect(fs.existsSync(folder)).toBe(true);
 

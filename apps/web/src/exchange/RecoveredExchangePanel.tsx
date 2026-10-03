@@ -6,15 +6,16 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import {
-  clearAttachment,
-  discardServerJob,
-  readAttachment,
-} from "@psi/jobClient/consoleJobAttachment";
-import {
+  JobApiRequestError,
   createFetchJobApiClient,
   createServerJobReattachDriver,
   fetchSlotOccupancy,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import {
+  clearAttachment,
+  discardServerJob,
+  readAttachment,
+} from "@psi/jobClient/consoleJobAttachment";
 
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 import { fetchJobFolder } from "@psi/jobClient/jobFolder";
@@ -427,8 +428,13 @@ export function RecoveredExchangePanel() {
           try {
             await client.deleteJob(leftover.name);
           } catch (error) {
-            whenDiagnostic(() => console.error(error));
-            return false;
+            // A 404 is a folder already gone, which is what Discard asked for.
+            const alreadyGone =
+              error instanceof JobApiRequestError && error.status === 404;
+            if (!alreadyGone) {
+              whenDiagnostic(() => console.error(error));
+              return false;
+            }
           }
           clearAttachment();
           setLeftover(undefined);

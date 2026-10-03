@@ -181,8 +181,9 @@ export interface JobApiClient {
    * caller since a cancel races a naturally-terminating job. */
   cancelJob: (jobId: string) => Promise<void>;
   /** `DELETE /api/jobs/:id`; the one operation that removes the workdir.
-   * Rejects when the console does not answer 2xx, so a caller can tell the
-   * operator the folder is still there. A discard of a job the operator has
+   * Rejects with a {@link JobApiRequestError} holding the status when the
+   * console does not answer 2xx, so a caller can tell a folder already gone
+   * (404) from one still there. A discard of a job the operator has
    * already left swallows that rejection, like {@link cancelJob}'s. */
   deleteJob: (jobId: string) => Promise<void>;
   /** `GET /api/jobs/:id`, resolving a {@link JobStatusProbe} the recovery probe
@@ -454,7 +455,8 @@ export function createFetchJobApiClient(
         method: "DELETE",
       });
       if (!response.ok)
-        throw new Error(
+        throw new JobApiRequestError(
+          response.status,
           `DELETE /api/jobs/${jobId} failed with status ${response.status}`,
         );
     },
