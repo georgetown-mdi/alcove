@@ -1635,7 +1635,7 @@ Steps following `split_on` are applied element-wise across all parts. Null-produ
 
 ## Where each setting is edited
 
-Each of Alcove's three applications opens a configuration, and the aim is that you can change every setting in it in whichever application you opened it in. The table below states what each application does with each setting when it opens a configuration; a cell other than authored, and a carried cell above all, is a gap still to close.
+Each of Alcove's three applications opens a configuration, and every setting in it has an editor. On the command line the editor is `alcove.yaml` itself, which `alcove init` writes with every optional section present as a commented example, so a command-line cell states only whether a command, flag, or prompt also sets the value. The console and the web application edit what they can run, keep the rest as your file states it and write it back unchanged, and refuse a setting they cannot run or cannot write back unchanged; the reasons are under the table. The table below states what each application does with each setting when it opens a configuration.
 
 The columns:
 
@@ -1721,7 +1721,7 @@ The cells:
 | `authentication.expires` | not applicable | refused | refused |
 | `authentication.token_max_age_days` | carried | authored | authored |
 | **[Signing](#signing)** | | | |
-| `signing.mode` | carried | authored | opens and is carried with a notice, but refused at run |
+| `signing.mode` | carried | authored | opens and is carried with a notice, but refused at run (a mode of `none` asks for no receipt and runs) |
 | `signing.identity_file` | carried | carried with a notice (a signed run waits for converting, which replaces it with a location you pick in the console) | opens and is carried with a notice, but refused at run |
 | `signing.partner_fingerprint` | authored (pinned on first contact) | authored | opens and is carried with a notice, but refused at run |
 | `signing.receipt_output` | carried | carried with a notice (a signed run waits for converting, which replaces it with the console's own) | opens and is carried with a notice, but refused at run |
@@ -1734,6 +1734,12 @@ The cells:
 | `metadata` (`description`) | carried | carried | carried with a notice |
 | **[Data standardizing transformations](#data-standardizing-transformations)** | | | |
 | `standardization` | authored (inferred) | authored | carried with a notice |
+
+A refused cell has one of these reasons:
+
+- **The web application stores no credential and connects with this browser's own settings**, so a connection setting outside the locator the invitation named is refused on import; which settings and why: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-connection-block-credential-free-by-composition).
+- **The console writes the sftp connection block whole from its own controls**, so a setting inside that block with no control cannot be written back and the file is refused rather than the setting dropped; which settings: [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#what-it-refuses).
+- **No application runs it.** [`connection.ice_provision`](#connectionice_provision) names an endpoint neither application calls, and `authentication.shared_secret` and `authentication.expires` belong in the key file beside the configuration, not in the configuration.
 
 ---
 

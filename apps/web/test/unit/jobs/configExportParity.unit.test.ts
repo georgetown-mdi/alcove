@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { stringify as stringifyYaml } from "yaml";
 
 import {
   ExchangeSpecSchema,
@@ -16,7 +17,13 @@ import {
   buildJobHandoff,
 } from "@jobs/handoff";
 
-import { COMPOSED_BLOCKS, carriedThroughFields } from "@jobs/configLoad";
+import {
+  COMPOSED_BLOCKS,
+  carriedThroughFields,
+  disclosedDocument,
+  mountedConfigurationDocument,
+} from "@jobs/configLoad";
+import { authoringStateFromDocument } from "@console/loadedConfig";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
@@ -87,6 +94,16 @@ describe("the settings a loaded configuration keeps in the export", () => {
       authentication,
       ...rest,
     });
+  }
+
+  /** The same document as the console's load reads it out of the file. */
+  function openedThroughTheConsole(
+    authentication: Record<string, unknown>,
+    rest: Record<string, unknown>,
+  ): ExchangeSpec {
+    return mountedConfigurationDocument(
+      stringifyYaml(snakeizeKeys(mountedDocument(authentication, rest))),
+    );
   }
 
   /** The export of a file-drop run composed over that document, which the
@@ -418,6 +435,102 @@ describe("the settings a loaded configuration keeps in the export", () => {
       linkageTerms: validLinkageTerms(),
     });
     expect(handoffOver(document).pathsAsRead.sharedDirectory).toBe(false);
+  });
+
+  test("an unconverted export of a document with every setting edited is that document with exactly those edits", () => {
+    const metadata = (description: string) =>
+      [
+        { name: "ssn", type: "ssn", role: "linkage", isPayload: false },
+        {
+          name: "program",
+          type: "other",
+          role: "payload",
+          isPayload: true,
+          description,
+        },
+      ] as const;
+    const standardization = (input: string) => [
+      { output: "ssn", input, steps: [{ function: "trim" }] },
+    ];
+    const document = openedThroughTheConsole(
+      { tokenMaxAgeDays: 30 },
+      {
+        connection: {
+          channel: "filedrop",
+          path: MOUNTED_RENDEZVOUS_PATH,
+          options: {
+            ...RETAIN_OPTIONS,
+            pollIntervalMs: 2_000,
+            peerId: "county",
+          },
+        },
+        metadata: metadata("Program enrolled in"),
+        standardization: standardization("SSN"),
+        expectedPartnerDeduplicate: true,
+        includeOwnColumns: "disclosed",
+        csvDelimiter: "|",
+        retentionDisposition: "Filed for seven years.",
+        signing: MOUNTED_SIGNING,
+      },
+    );
+    const terms = document.linkageTerms;
+    const edits = {
+      linkageTerms: {
+        ...terms,
+        identity: "County Health West",
+        linkageStrategy: "single-pass" as const,
+        output: { expectsOutput: true, shareWithPartner: false },
+        deduplicate: true,
+        linkageKeys: terms.linkageKeys.slice(1),
+        payload: {
+          send: [{ name: "program" }],
+          receive: [{ name: "outcome" }],
+        },
+        legalAgreement: {
+          reference: "MOU-2026-0043",
+          purpose: "Program audit",
+          expirationDate: "2028-06-30",
+        },
+      },
+      metadata: metadata("Program at intake"),
+      standardization: standardization("SOCIAL"),
+      includeOwnColumns: "all" as const,
+      csvDelimiter: "\t",
+      retentionDisposition: "Destroyed after 90 days.",
+    };
+    const options = {
+      ...RETAIN_OPTIONS,
+      pollIntervalMs: 5_000,
+      peerId: "county-west",
+      peerTimeoutMs: 900_000,
+      serverConnectTimeoutMs: 45_000,
+      unexpectedFiles: "ignore" as const,
+    };
+
+    const exported = exportOver(document, {
+      ...edits,
+      metadata: [...edits.metadata],
+      ...authoringStateFromDocument(disclosedDocument(document)).records,
+      options,
+      signing: {
+        mode: "certificate",
+        partnerFingerprint: CONSOLE_PARTNER_FINGERPRINT,
+      },
+      tokenMaxAgeDays: 90,
+    });
+
+    expect(
+      parseExchangeSpec(parseSensitiveYaml(exported, "export parity")),
+    ).toEqual({
+      ...document,
+      ...edits,
+      connection: { ...document.connection, options },
+      signing: {
+        ...MOUNTED_SIGNING,
+        partnerFingerprint: CONSOLE_PARTNER_FINGERPRINT,
+      },
+      authentication: { tokenMaxAgeDays: 90 },
+    });
   });
 
   test("a shared secret in the document reaches no export", () => {

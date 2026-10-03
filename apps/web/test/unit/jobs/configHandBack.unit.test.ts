@@ -271,6 +271,77 @@ describe("a webrtc configuration handed back with edits", () => {
   });
 });
 
+describe("a webrtc configuration with every setting the hand-back edits edited", () => {
+  const metadata = (description: string) => [
+    {
+      name: "case_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: false,
+    },
+    {
+      name: "program",
+      type: "other",
+      role: "payload",
+      isPayload: true,
+      description,
+    },
+  ];
+  const standardization = (input: string) => [
+    { output: "ssn", input, steps: [{ function: "trim" }] },
+  ];
+
+  test("comes back as the opened document with exactly those edits", () => {
+    const dir = mountHolding(
+      webrtcDocument({
+        metadata: snakeizeKeys(metadata("Program enrolled in")),
+        standardization: standardization("SSN"),
+      }),
+    );
+    const opened = readBack(dir);
+    const terms = opened.linkageTerms;
+    const editedFields = {
+      linkageTerms: {
+        ...terms,
+        identity: "County Health West",
+        linkageStrategy: "single-pass" as const,
+        output: { expectsOutput: true, shareWithPartner: false },
+        deduplicate: true,
+        linkageKeys: terms.linkageKeys.slice(1),
+        payload: {
+          send: [{ name: "program" }],
+          receive: [{ name: "outcome" }],
+        },
+        legalAgreement: {
+          reference: "MOU-2026-0043",
+          purpose: "Program audit",
+          expirationDate: "2028-06-30",
+        },
+      },
+      metadata: metadata("Program at intake"),
+      standardization: standardization("SOCIAL"),
+      includeOwnColumns: "disclosed" as const,
+      csvDelimiter: "\t",
+      retentionDisposition: "Destroyed after 90 days.",
+    };
+    const pin = "E".repeat(42) + "A";
+
+    handBackMountedConfiguration(
+      dir,
+      jobConfigurationHandBackSchema.parse({
+        ...editedFields,
+        signing: { mode: "certificate", partnerFingerprint: pin },
+      }),
+    );
+
+    expect(readBack(dir)).toEqual({
+      ...opened,
+      ...editedFields,
+      signing: { ...opened.signing, partnerFingerprint: pin },
+    });
+  });
+});
+
 describe("a webrtc configuration naming a relay registrar", () => {
   const RELAY_REGISTRAR = {
     url: "https://registrar.example.org:8443",

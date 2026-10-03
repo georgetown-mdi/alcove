@@ -23,6 +23,7 @@ import {
 import {
   applyManagedExchangeLocalEdits,
   buildManagedExchangeRecord,
+  channelThisAppDoesNotRun,
   composeManagedExchangeFile,
   documentPartsThisAppDoesNotRun,
   runnableManagedExchange,
@@ -881,9 +882,21 @@ describe("import then export", () => {
 });
 
 describe("import, edit, and export on every channel", () => {
-  /** Every setting a stored document can hold that has no editor here, so a
+  /** Every setting a stored document can hold outside the connection, so a
    * round trip that dropped one would show. */
   const heldSettings = {
+    linkageTerms: {
+      ...linkageTerms,
+      payload: {
+        send: [{ name: "program", description: "Program enrolled in" }],
+        receive: [{ name: "outcome" }],
+      },
+      legalAgreement: {
+        reference: "MOU-2026-0042",
+        purpose: "Program evaluation",
+        expirationDate: "2027-06-30",
+      },
+    },
     metadata: [
       {
         name: "case_id",
@@ -891,13 +904,31 @@ describe("import, edit, and export on every channel", () => {
         role: "identifier",
         isPayload: false,
       },
-      { name: "program", type: "other", role: "payload", isPayload: true },
+      {
+        name: "program",
+        type: "other",
+        role: "payload",
+        isPayload: true,
+        description: "Program enrolled in",
+      },
+    ],
+    standardization: [
+      { output: "ssn", input: "SSN", steps: [{ function: "trim" }] },
     ],
     expectedPartnerDeduplicate: true,
-    includeOwnColumns: "all",
+    includeOwnColumns: "disclosed",
     csvDelimiter: ";",
     retentionDisposition: "Filed with the program office for seven years.",
+    authentication: { tokenMaxAgeDays: 90 },
   };
+
+  /** A value for every setting this app edits, each unlike the one above. */
+  const edits = {
+    includeOwnColumns: "all",
+    csvDelimiter: "\t",
+    retentionDisposition: "Destroyed after 90 days.",
+    tokenMaxAgeDays: 30,
+  } as const;
 
   const webrtcDocument = {
     ...composedDocument(),
@@ -914,8 +945,17 @@ describe("import, edit, and export on every channel", () => {
       server: {
         ...sftpConnection.server,
         password: "@secret.txt",
+        keyboardInteractive: true,
         hostKeyFingerprint: `SHA256:${"B".repeat(42)}A`,
       },
+      proxy: { host: "proxy.example.org", port: 8443, path: "/sftp" },
+      options: {
+        ...sftpConnection.options,
+        peerTimeoutMs: 600_000,
+        unexpectedFiles: "warn",
+        connectionPerPoll: true,
+      },
+      providerOptions: { readyTimeout: 20_000 },
     },
   };
 
@@ -928,14 +968,14 @@ describe("import, edit, and export on every channel", () => {
     ],
     ["filedrop", documentOn(filedropLocator, heldSettings)],
   ] as const)(
-    "a %s configuration comes back with the edits and nothing dropped",
-    (_channel, document) => {
+    "a %s configuration comes back with every edit and nothing dropped",
+    (channel, document) => {
       const source = configText(document);
       const imported = readManagedCommandLineConfiguration(source);
 
       const edited = applyManagedExchangeLocalEdits(imported, {
         label: "Riverbend quarterly",
-        tokenMaxAgeDays: 30,
+        ...edits,
       });
       const exported = parseExchangeSpec(
         parseSensitiveYaml(
@@ -945,9 +985,17 @@ describe("import, edit, and export on every channel", () => {
       );
 
       expect(edited.label).toBe("Riverbend quarterly");
+      expect(runnableManagedExchange(edited)).toBe(false);
+      expect(channelThisAppDoesNotRun(edited.exchangeFile)).toBe(
+        channel === "webrtc"
+          ? undefined
+          : edited.exchangeFile.connection.channel,
+      );
+      const { tokenMaxAgeDays, ...documentEdits } = edits;
       expect(exported).toEqual({
         ...parseExchangeSpec(parseSensitiveYaml(source, "import")),
-        authentication: { tokenMaxAgeDays: 30 },
+        ...documentEdits,
+        authentication: { tokenMaxAgeDays },
       });
     },
   );
