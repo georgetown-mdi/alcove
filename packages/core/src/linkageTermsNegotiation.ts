@@ -294,12 +294,10 @@ function namedEntryDifferences(
   };
   const localByName = byName(local);
   const partnerByName = byName(partner);
-  const localOnly = [...localByName.keys()].filter(
-    (name) => !partnerByName.has(name),
-  );
-  const partnerOnly = [...partnerByName.keys()].filter(
-    (name) => !localByName.has(name),
-  );
+  const oneSideOnly = [
+    ...[...localByName.keys()].filter((name) => !partnerByName.has(name)),
+    ...[...partnerByName.keys()].filter((name) => !localByName.has(name)),
+  ];
   const differing = [...localByName.keys()].filter((name) => {
     if (!partnerByName.has(name)) return false;
     const localCanonical = canonicalOrUndefined(localByName.get(name));
@@ -309,13 +307,12 @@ function namedEntryDifferences(
     );
   });
   const clauses: CompatibilityMessageFragment[] = [];
-  if (localOnly.length > 0)
+  // A reason is relayed to the other party, so a clause holds from either side.
+  if (oneSideOnly.length > 0)
     clauses.push(
-      compatibilityMessage`only local declares ${quoteTermsValueList(localOnly)}`,
-    );
-  if (partnerOnly.length > 0)
-    clauses.push(
-      compatibilityMessage`only partner declares ${quoteTermsValueList(partnerOnly)}`,
+      oneSideOnly.length === 1
+        ? compatibilityMessage`${quoteTermsValueList(oneSideOnly)} is declared by one party only`
+        : compatibilityMessage`${quoteTermsValueList(oneSideOnly)} are declared by one party only`,
     );
   if (differing.length > 0)
     clauses.push(

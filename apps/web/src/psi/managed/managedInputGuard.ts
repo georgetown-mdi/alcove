@@ -160,7 +160,7 @@ export function assessManagedInputColumns(
   if (verdict.fullySatisfied) return undefined;
   return {
     reason: "columns",
-    unsatisfied: verdict.unsatisfiedFields,
+    unsatisfied: verdict.unsatisfiedFieldColumns.map(({ field }) => field),
     singleColumn: columns.length === 1,
   };
 }

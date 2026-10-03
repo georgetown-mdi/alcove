@@ -6,7 +6,6 @@ import {
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  causeChainSome,
   getLogger,
   redactAndSanitizeForDisplay,
   redactAndFitUnescaped,
@@ -28,6 +27,7 @@ import {
 } from "./util/exit";
 import { asciiSafeJsonText } from "./util/jsonLine";
 import { takeLogFileLossReport } from "./util/logging";
+import { holdsRecoveryHintTag } from "./util/recoveryHint";
 import { termsChangeNotTakenOf } from "./termsChangeNotTaken";
 
 const log = getLogger("event-stream");
@@ -631,12 +631,7 @@ function copyClusterSummary(
  * @internal exported for testing
  */
 export function errorStatesItsOwnNextStep(error: unknown): boolean {
-  return causeChainSome(
-    error,
-    (link) =>
-      (link as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted === true,
-  );
+  return holdsRecoveryHintTag(error);
 }
 
 /** Build the classified failure terminal event. */

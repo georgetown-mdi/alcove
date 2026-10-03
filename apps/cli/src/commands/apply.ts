@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 
 import type { Argv, Arguments } from "yargs";
 
@@ -28,6 +29,7 @@ import {
   diffLinkageTerms,
   persistTermsUpdate,
 } from "../config";
+import { expandTilde } from "../fileUtils";
 import {
   consentSurfaceSink,
   displayInvitation,
@@ -106,12 +108,20 @@ function readUpdateArgument(raw: string): string {
   return stripInvitationWhitespace(resolved);
 }
 
+/** Whether `updateArgument` is an `@path` naming the file at `filePath`. */
+function namesFile(updateArgument: string, filePath: string): boolean {
+  return (
+    updateArgument.startsWith("@") &&
+    path.resolve(expandTilde(updateArgument.slice(1))) ===
+      path.resolve(filePath)
+  );
+}
+
 /**
- * The refusal an update the decode refused is reported as, naming the check
- * that refused it and what to do. A partnership refusal points at the terms
- * proposal beside the configuration where one is there: an exchange that
- * refused the partner's changed terms wrote it under the shared secret that
- * exchange rotated to, which an update made before it does not hold.
+ * The refusal an update the decode refused is reported as. A partnership
+ * refusal names the terms proposal beside the configuration where there is
+ * one: the exchange that wrote it rotated the shared secret, so an update
+ * made before it no longer verifies.
  */
 function refusalOf(
   err: TermsUpdateRefusedError,
@@ -134,7 +144,7 @@ function refusalOf(
         "and key file they use with you.";
       const proposalPath = termsProposalPath(paths.configPath);
       if (
-        paths.updateArgument !== `@${proposalPath}` &&
+        !namesFile(paths.updateArgument, proposalPath) &&
         fs.existsSync(proposalPath)
       ) {
         const lines = [

@@ -616,7 +616,7 @@ export async function generateInvitation(params: {
     );
     const refusal = linkageRefusalFor(
       verdict,
-      verdict.unsatisfiedFields,
+      verdict.unsatisfiedFieldColumns.map(({ field }) => field),
       columns,
     );
     if (refusal !== undefined)

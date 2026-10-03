@@ -1225,13 +1225,13 @@ test("a field one party declares and the other does not is named on both sides",
 
   expect(rendered(b)).toBe(
     "linkage terms are incompatible: " +
-      'linkage fields do not match: only partner declares "ssn"; ' +
-      'linkage keys do not match: only partner declares "SSN"',
+      'linkage fields do not match: "ssn" is declared by one party only; ' +
+      'linkage keys do not match: "SSN" is declared by one party only',
   );
   expect(rendered(a)).toBe(
     `partner aborted linkage terms exchange${REASON_LINK}` +
-      'linkage fields do not match: only partner declares "ssn"' +
-      `${PACKED_REASON}linkage keys do not match: only partner declares "SSN"`,
+      'linkage fields do not match: "ssn" is declared by one party only' +
+      `${PACKED_REASON}linkage keys do not match: "SSN" is declared by one party only`,
   );
   expect(rendered(a)).not.toContain("\\x0a");
 });

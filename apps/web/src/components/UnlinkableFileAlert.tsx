@@ -81,7 +81,9 @@ export function unlinkableFileAlert(refusal: LinkageRefusal): AlertContent {
     message:
       "An exchange runs every linkage key its terms declare, and " +
       `${summarizeLinkageShortfall(refusal.verdict, "draft")}` +
-      missingFieldsDetail(refusal.verdict.unsatisfiedFields) +
+      missingFieldsDetail(
+        refusal.verdict.unsatisfiedFieldColumns.map(({ field }) => field),
+      ) +
       ". It would be refused before any data left this device. Choose a file " +
       "that satisfies every linkage key in the terms, or set terms that " +
       "declare only the keys the files on both sides can supply." +

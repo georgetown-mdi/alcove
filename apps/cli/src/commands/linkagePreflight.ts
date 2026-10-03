@@ -147,9 +147,7 @@ export function checkLinkageSatisfiability(
         "indistinguishable from a legitimately empty intersection. " +
         singleColumnDelimiterClause(columns.length)
       ).trimEnd(),
-      // Declaring a key is an agreement on the seats a partner is already
-      // held to, and this operator's own edit on the seat that authors its
-      // terms; a seat that derives them from its columns states its own.
+      // Agreed terms change with the partner, authored ones by this operator.
       `To fix: ${
         messaging.keylessRemedyLead ??
         (messaging.termsStanding === "agreed"
@@ -189,10 +187,7 @@ export function checkLinkageSatisfiability(
     ),
   ];
 
-  // The remedy names the step each shortfall takes: a missing column is
-  // fixed in the CSV, a dead key only in the terms, so a refusal covering both
-  // names both. `blockRemedy` then closes with what fixes terms this input
-  // cannot satisfy at all, which differs by where the terms came from.
+  // A missing column is fixed in the CSV and a dead key only in the terms.
   const remedies: string[] = [];
   if (verdict.unsatisfiableKeys.length > 0)
     remedies.push(COVER_REQUIRED_FIELD_TYPES);

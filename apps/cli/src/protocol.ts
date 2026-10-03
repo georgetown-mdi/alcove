@@ -128,6 +128,7 @@ import {
 } from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
+import { holdsRecoveryHintTag, withRecoveryHintTag } from "./util/recoveryHint";
 import { logRuntimeEnv } from "./util/runtimeEnv";
 import {
   PERSISTENCE_LOSS_EXIT_CODE,
@@ -1278,9 +1279,8 @@ async function authenticateRun(params: {
     const message = messageWithOperatorText`${ROTATION_MARK_PREAMBLE}${operatorSuppliedText(
       keyFilePath,
     )}: ${err instanceof Error ? err.message : String(err)}${ROTATION_MARK_REMEDY}`;
-    throw Object.assign(
+    throw withRecoveryHintTag(
       keepOperatorSuppliedText(new Error(message.text), message),
-      { alcoveRecoveryHintEmitted: true },
     );
   }
   // Set synchronously before the await so a signal arriving during the
@@ -1362,12 +1362,11 @@ async function authenticateRun(params: {
     const message = messageWithOperatorText`${ROTATED_TOKEN_SAVE_PREAMBLE}${operatorSuppliedText(
       keyFilePath,
     )}: ${err instanceof Error ? err.message : String(err)}${ROTATED_TOKEN_SAVE_REMEDY}`;
-    throw Object.assign(
-      keepOperatorSuppliedText(new Error(message.text), message),
-      {
-        alcoveRecoveryHintEmitted: true,
-        exitCode: AUTHENTICATION_FAILED_EXIT_CODE,
-      },
+    throw withRecoveryHintTag(
+      Object.assign(
+        keepOperatorSuppliedText(new Error(message.text), message),
+        { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
+      ),
     );
   }
 
@@ -3337,17 +3336,7 @@ export async function runProtocol(
     // is what the operator needs whatever the next step says. An
     // authentication failure (exit 77) rules out a retry too, but no fixed
     // step prints beneath it, so its authStarted line states the step.
-    //
-    // The walk follows `cause` so a future wrap (e.g. `new Error('outer: '
-    // + inner.message, { cause: inner })`) still suppresses the generic
-    // advisory when an inner error already holds the recovery hint.
-    const isHintTagged = (e: unknown): boolean =>
-      causeChainSome(
-        e,
-        (link) =>
-          (link as { alcoveRecoveryHintEmitted?: unknown })
-            .alcoveRecoveryHintEmitted === true,
-      );
+
     // Walks the `cause` chain for a PeerAbortError, so the echo gate below
     // still recognizes one even behind a future wrap. The critical
     // barrier is actually the sticky first-error latch in the bridge and
@@ -3457,7 +3446,7 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
-    const hintAlreadyEmitted = isHintTagged(err);
+    const hintAlreadyEmitted = holdsRecoveryHintTag(err);
     const authenticationFailed =
       exitCodeForError(err) === AUTHENTICATION_FAILED_EXIT_CODE;
     const retryRuledOut =

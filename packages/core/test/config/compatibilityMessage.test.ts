@@ -1261,13 +1261,21 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
     ],
   };
   expect(validateCompatibility(withDob, base).errors).toEqual([
-    'linkage fields do not match: only local declares "dob"',
-    'linkage keys do not match: only local declares "SSN + DOB"',
+    'linkage fields do not match: "dob" is declared by one party only',
+    'linkage keys do not match: "SSN + DOB" is declared by one party only',
   ]);
-  expect(validateCompatibility(base, withDob).errors).toEqual([
-    'linkage fields do not match: only partner declares "dob"',
-    'linkage keys do not match: only partner declares "SSN + DOB"',
-  ]);
+  // The same words from either side: a reason is relayed to the other party.
+  expect(validateCompatibility(base, withDob).errors).toEqual(
+    validateCompatibility(withDob, base).errors,
+  );
+
+  const withSsn4: LinkageTerms = {
+    ...base,
+    linkageFields: [...sharedFields, { name: "ssn4", type: "ssn4" }],
+  };
+  expect(validateCompatibility(withDob, withSsn4).errors[0]).toBe(
+    'linkage fields do not match: "dob","ssn4" are declared by one party only',
+  );
 
   const retyped: LinkageTerms = {
     ...base,
@@ -1291,11 +1299,11 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
     ...base,
     linkageFields: [
       ...sharedFields,
-      { name: 'x"; only partner declares "y', type: "first_name" },
+      { name: 'x" is declared by one party only; "y', type: "first_name" },
     ],
   };
   expect(validateCompatibility(forged, base).errors[0]).toBe(
-    'linkage fields do not match: only local declares "x""; only partner declares ""y"',
+    'linkage fields do not match: "x"" is declared by one party only; ""y" is declared by one party only',
   );
 });
 

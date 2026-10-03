@@ -8,7 +8,6 @@
 
 import {
   AuthenticationError,
-  causeChainSome,
   ConnectionError,
   getLogger,
   InternalConsistencyError,
@@ -19,6 +18,8 @@ import {
   sanitizeErrorForDisplay,
   UsageError,
 } from "@alcove/core";
+
+import { holdsRecoveryHintTag } from "./recoveryHint";
 
 /**
  * The process exit code for a failure in this implementation rather than in
@@ -88,15 +89,6 @@ export function partnerRefusalNextStep(err: unknown): string | undefined {
  */
 export function fixedNextStep(err: unknown): string | undefined {
   return internalFaultNextStep(err) ?? partnerRefusalNextStep(err);
-}
-
-function holdsRecoveryHintTag(err: unknown): boolean {
-  return causeChainSome(
-    err,
-    (link) =>
-      (link as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted === true,
-  );
 }
 
 /**

@@ -542,6 +542,36 @@ describe("alcove apply", () => {
     expect(proposalExit).toBeUndefined();
   });
 
+  test.each([
+    ["an absolute", (proposal: string) => proposal],
+    [
+      "a relative",
+      (proposal: string) => path.relative(process.cwd(), proposal),
+    ],
+    [
+      "a ./-relative",
+      (proposal: string) =>
+        `.${path.sep}${path.relative(process.cwd(), proposal)}`,
+    ],
+  ])(
+    "a refused proposal named by %s path takes no pointer to itself",
+    async (_spelling, spell) => {
+      const proposal = termsProposalPath(partnership.b.config);
+      fs.writeFileSync(
+        proposal,
+        `${await encodeTermsUpdate(
+          { linkageTerms: partnership.aTerms },
+          generateSharedSecret(),
+        )}\n`,
+      );
+
+      const { exit, stderr } = await runApply(`@${spell(proposal)}`);
+      expect(exit).toBe("exit:64");
+      expect(stderr).toContain("refused by the partnership check");
+      expect(stderr).not.toContain("To fix, apply the terms");
+    },
+  );
+
   test("an update made from this party's own configuration is refused", async () => {
     editAgencyA();
     const update = await runUpdate();

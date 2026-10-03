@@ -587,7 +587,7 @@ A partner that changed its terms since your last exchange -- most often by addin
   alcove apply @alcove.proposed-terms
   ```
 
-  with `--config-file` and `--key-file` added where you run from other paths. `alcove apply` shows the change and asks, as for any [terms update](#applying-an-update); once it is applied, run the exchange again. The error states this step in place of the generic advice to retry after the shared secret was rotated, which a retry against the same changed terms cannot follow.
+  with `--config-file` and `--key-file` added where you run from other paths. `alcove apply` shows the change and asks, as for any [terms update](#applying-an-update); once it is applied, run the exchange again. This step replaces the generic advice to retry ([CLI_EVENTS.md](spec/CLI_EVENTS.md#a-partner-terms-change-the-run-did-not-take-on)).
 - **A change the run cannot continue under** -- to the linkage fields, keys, algorithm, strategy, output direction, or version, which your input was prepared under, or to your partner's `deduplicate`, which widens what your records disclose -- is refused (exit 64) and written as a proposal whether or not a terminal is attached. `alcove apply` shows a changed `deduplicate` among the changes it asks about.
 
 Your partner's run ends with a partner refusal (exit 76) when you decline or your run is unattended; it is not asked anything. To settle a change ahead of the next scheduled run instead, the party that made it sends an [`alcove update`](#changing-the-terms-of-an-established-partnership).
