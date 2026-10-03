@@ -13,6 +13,7 @@ Pick the one that matches who you are. All three run the same protocol, so the t
    ```sh
    docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "$PWD":/work ghcr.io/georgetown-mdi/alcove:latest serve
    ```
+   On Windows, use the Windows form in the [Web Console Quickstart](#web-console-quickstart).
    For an exchange through a shared folder, add the folder as the [Web Console Quickstart](#web-console-quickstart) shows.
 3. **You automate exchanges from the command line.** Run the containerized command line app against an SFTP server, a shared folder, or a partner's browser:
    ```sh

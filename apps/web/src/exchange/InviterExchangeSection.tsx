@@ -437,7 +437,7 @@ function LimitedReachAlert({
           ? `The invitation link only works on ${where}`
           : `This invitation only works on ${where}`
       }
-      role="presentation"
+      role="status"
       mb="md"
     >
       {partnerAcceptsByCli

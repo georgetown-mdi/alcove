@@ -15,7 +15,7 @@ export type InvitationReach = "thisComputer" | "localNetwork" | "anywhere";
 export function invitationReach(link: string): InvitationReach {
   let hostname: string;
   try {
-    hostname = new URL(link).hostname;
+    hostname = new URL(link).hostname.replace(/\.$/, "");
   } catch {
     return "anywhere";
   }

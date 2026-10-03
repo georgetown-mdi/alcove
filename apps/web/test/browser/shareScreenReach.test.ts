@@ -61,6 +61,13 @@ describe("share screen reach warning", () => {
     await expect
       .element(page.getByText("This invitation only works on this computer"))
       .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByRole("status", {
+          name: "This invitation only works on this computer",
+        }),
+      )
+      .toBeInTheDocument();
   });
 
   test("an invitation created on a private address says it only works on the local network", async () => {
