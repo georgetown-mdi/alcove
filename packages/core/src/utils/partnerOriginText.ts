@@ -124,7 +124,8 @@ export const PARTNER_LABELLED_VALUE_BUDGET =
  * line break it holds arrives as the replacement's `<0a>` marker, and the link
  * is marked with the lines it was packed from ({@link keepFirstPartyLineBreaks}),
  * so the renderer breaks only between those lines and escapes each one whole.
- * Every line opens on a first-party label, so no value opens a line either.
+ * Every line the renderer emits opens on a first-party label; the browser seat
+ * may open a further line before a value's `<0a>` marker, never before a label.
  *
  * It cannot forge a link boundary: the renderer joins its links with a break
  * followed by `caused by: `, and a line here opens on a label instead.
