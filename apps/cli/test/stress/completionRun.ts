@@ -7,7 +7,7 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
-import { arch, cpus, freemem, platform, release, totalmem } from "node:os";
+import { arch, cpus, platform, release, totalmem } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -22,6 +22,7 @@ import {
   nulledPopulationRows,
   populationSsn,
 } from "./completionPopulation";
+import { stressMemory } from "./stressMemory";
 
 // What the completion runs share: the built CLI they drive, the host-memory
 // gate, the input they write, how a party is run and logged, and the check of
@@ -50,6 +51,13 @@ export const EXTRA_CLI_ARGS = (
 )
   .split(/\s+/)
   .filter((arg) => arg !== "");
+/**
+ * The memory the host-memory gate compares a run's need against. The CLI's
+ * test tsconfig cannot import packages/core/test/stress/stressMemory.ts
+ * (rootDir), so ./stressMemory.ts is a copy that a unit test holds identical.
+ */
+export const hostMemory = stressMemory;
+
 /** Bytes in a gigabyte, as the runs report them. */
 export const GB = 1e9;
 
@@ -66,20 +74,6 @@ export const MAIN_THREAD_BYTES_PER_RECORD = 754;
  */
 export function cliPartyNeedBytes(rows: number): number {
   return psiRoundMemoryNeedBytes(rows) + MAIN_THREAD_BYTES_PER_RECORD * rows;
-}
-
-/**
- * The memory the host-memory gate compares a run's need against. macOS counts
- * its reclaimable cache as used, so os.freemem() there reads a fraction of
- * what a run can have; the gate takes the total memory there. A copy of
- * stressMemory() in packages/core/test/stress/stressMemory.ts, which the core
- * cases share: the CLI's test tsconfig cannot import it (rootDir), so the two
- * must match.
- */
-export function hostMemory(): { bytes: number; measure: string } {
-  return platform() === "darwin"
-    ? { bytes: totalmem(), measure: "total memory (macOS)" }
-    : { bytes: freemem(), measure: "free memory" };
 }
 
 /** The host a run's summary names. */
