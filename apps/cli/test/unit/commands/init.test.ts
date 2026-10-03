@@ -34,6 +34,7 @@ import {
   decideOverwrite,
   handler as initHandler,
   INIT_URL_PASSWORD_REFUSED,
+  INIT_URL_UNREADABLE,
   INIT_WEBRTC_REFUSED,
   resolveInitPositionals,
   templateConnection,
@@ -558,6 +559,23 @@ test("resolveInitPositionals: a further positional is a usage error", () => {
   expect(() =>
     resolveInitPositionals(["sftp://h/drop", "data.csv", "out.csv"]),
   ).toThrow(UsageError);
+});
+
+test("resolveInitPositionals: an unparsable scheme-prefixed URL is refused without echo", () => {
+  for (const bad of [
+    "sftp://user:pwDISTINCT7@ho st/x",
+    "sftp://user:pwDISTINCT7@host:99999/x",
+  ]) {
+    let message = "";
+    try {
+      resolveInitPositionals([bad]);
+    } catch (error) {
+      expect(error).toBeInstanceOf(UsageError);
+      message = (error as Error).message;
+    }
+    expect(message).toBe(INIT_URL_UNREADABLE);
+    expect(message).not.toContain("pwDISTINCT7");
+  }
 });
 
 // --- templateConnection ------------------------------------------------------

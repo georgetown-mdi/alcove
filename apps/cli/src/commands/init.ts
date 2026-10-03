@@ -234,9 +234,18 @@ export async function handler(argv: Arguments): Promise<void> {
 }
 
 /**
+ * The refusal a first positional that starts like a URL but does not parse
+ * gets. It names no part of the argument: the argument may carry a password.
+ */
+export const INIT_URL_UNREADABLE =
+  "could not read the URL. A valid form is sftp://[user@]host[:port]/path " +
+  "or file:///path, with a port from 1 to 65535 and no spaces.";
+
+/**
  * Resolve the optional URL and INPUT_FILE positionals, in that order. A first
  * positional with a connection scheme ({@link looksLikeUrl}) is the URL;
- * anything else is the input file. A further positional is a mistake -- most
+ * anything else is the input file, except an argument that starts with a
+ * scheme but does not parse, which is refused without being echoed. A further positional is a mistake -- most
  * likely an OUTPUT_FILE copied from another command, which `init` does not
  * take -- so it is rejected as a usage error rather than silently ignored.
  *
@@ -247,6 +256,12 @@ export function resolveInitPositionals(positionals: Array<unknown>): {
   input?: string;
 } {
   const given = positionals.map(String);
+  if (
+    given[0] !== undefined &&
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(given[0]) &&
+    !looksLikeUrl(given[0])
+  )
+    throw new UsageError(INIT_URL_UNREADABLE);
   const url =
     given[0] !== undefined && looksLikeUrl(given[0])
       ? new URL(given[0])
