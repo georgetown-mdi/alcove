@@ -4,7 +4,7 @@ title: "Alcove Web App"
 
 # Using the Alcove web app
 
-The web app runs an exchange between two browsers. Your file is read and matched inside your browser and is never uploaded; your browser connects directly to your partner's. Open it at [https://psi.data-bridge.org](https://psi.data-bridge.org). There is nothing to install.
+The web app runs an exchange between two browsers. Your file is read and matched inside your browser and is never uploaded; your browser connects directly to your partner's. Open it at [https://psi.data-bridge.org](https://psi.data-bridge.org). There is nothing to install. While you set up or run an exchange, **Help** in the top bar opens this guide in a new tab.
 
 This guide covers one exchange: creating an invitation, accepting one you were sent, reading the results, and keeping and checking the exchange record. Intended readers are analysts and program staff at either party. To run the same exchange again on a schedule, see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md); to run exchanges from the command line or over an SFTP server, see [CLI.md](CLI.md).
 
@@ -55,6 +55,8 @@ When the exchange finishes, the screen shows **Exchange complete** and the numbe
 - **Download record (safe to share)** - `alcove-record-<date>.json`, the exchange record.
 - **Download verification keys (keep private)** - `alcove-record-<date>.keys.json`, the keys that go with the record.
 
+Under the downloads, a note says the record is a shareable account of what you and your partner agreed to and what matched, and that the keys are private and belong with the record. Its **Verify page** link opens the Verify page in a new tab, leaving this page and its downloads in place.
+
 **Download what you need before you leave the page.** The results are kept only in this page. Closing the tab, or choosing **Set up another exchange**, discards them, and the page does not ask first.
 
 ### The exchange record and its keys
@@ -67,7 +69,7 @@ Keep the record, the keys, your input, and your result together, for as long as 
 
 ## Checking a record later
 
-The Verify page, at [https://psi.data-bridge.org/verify](https://psi.data-bridge.org/verify) and titled **Verify a receipt**, checks a record in your browser without uploading anything.
+The Verify page, at [https://psi.data-bridge.org/verify](https://psi.data-bridge.org/verify) and titled **Verify an exchange record**, checks a record in your browser without uploading anything. The completion screen links to it under the record downloads.
 
 1. Choose the record and its verification keys, and choose **Verify**. This checks the files' structure.
 2. To check the record against the data, also supply your input CSV and your result CSV under **Re-supply your files to open the commitments**, and choose **Verify with these files**.

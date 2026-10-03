@@ -68,15 +68,16 @@ const log = getLogger("VerifyReceiptScreen");
 
 /**
  * The console's "Verify an exchange record" surface: a read-only, browser-only
- * check of the artifacts an exchange leaves behind. The user loads the exchange record and its
- * keys, and optionally re-supplies their retained input, result, and both parties'
- * linkage terms to open the commitments and re-derive the agreed-terms hash. When
- * the exchange was signed, the dual-signed record is checked in the same run,
- * anchored by the partner's pinned fingerprint and by this party's own EXPORTED
- * certificate -- no private signing key is accepted, required, or used here. The
- * verdicts are accurate -- a mismatch is stated as "altered or the wrong file",
- * never as tamper alone, and an unanchored certificate holds the signed verdict
- * short of verified (see {@link verifyReceiptModel}) -- and nothing is uploaded.
+ * check of the artifacts an exchange leaves behind. The user loads the exchange
+ * record and its keys, and optionally re-supplies their retained input, result, and
+ * both parties' linkage terms to open the commitments and re-derive the
+ * agreed-terms hash. When the exchange was signed, the dual-signed record is
+ * checked in the same run, anchored by the partner's pinned fingerprint and by this
+ * party's own EXPORTED certificate -- no private signing key is accepted, required,
+ * or used here. The verdicts are accurate -- a mismatch is stated as "altered or
+ * the wrong file", never as tamper alone, and an unanchored certificate holds the
+ * signed verdict short of verified (see {@link verifyReceiptModel}) -- and nothing
+ * is uploaded.
  *
  * The pure parsing and the verdict copy live in {@link verifyReceiptModel}; this
  * component owns the file inputs, the re-run gating, and the designed alert
@@ -840,18 +841,15 @@ export function VerifyReceiptScreen() {
         >
           <Stack gap="lg" mt="sm">
             <Text size="sm" c="dimmed">
-              A dual-signed record comes from an exchange run with the
-              command-line tool or the console; an exchange run in this browser
-              app writes none.
-            </Text>
-            <Text size="sm" c="dimmed">
               A dual-signed record is the evidence against your partner: both
-              parties signed the same receipt content. Signatures alone prove
-              only that the holders of the two certificates inside it signed,
-              and anyone can mint two certificates of their own -- so each
-              certificate must be anchored to a party you know from outside the
-              record. Enter your partner&apos;s fingerprint, pinned out-of-band,
-              and load your own exported certificate for the slot that is yours.
+              parties signed the same receipt content. Only an exchange run with
+              the command-line tool or the console writes one; an exchange run
+              in this browser app does not. Signatures alone prove only that the
+              holders of the two certificates inside it signed, and anyone can
+              mint two certificates of their own -- so each certificate must be
+              anchored to a party you know from outside the record. Enter your
+              partner&apos;s fingerprint, pinned out-of-band, and load your own
+              exported certificate for the slot that is yours.
             </Text>
             <JsonDropzone
               label="Dual-signed record"

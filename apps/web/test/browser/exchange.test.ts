@@ -29,7 +29,6 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { stagesFor } from "@exchange/exchangeRun";
 import styles from "@styles/app.module.css";
 
-import { RECORD_PURPOSE_NOTE } from "@exchange/RunSurface";
 import { WEB_APP_GUIDE_URL } from "@exchange/userGuide";
 
 // The ledger and demotion-notice expectations derive their form from this
@@ -461,11 +460,11 @@ describe("inviter screen", () => {
     const nav = document.querySelector('nav[aria-label="Exchange setup"]');
     expect(nav).not.toBeNull();
 
-    // The wordmark is a full-page link home, so leaving through it unloads
-    // the page and meets the armed unload prompt; Help opens in a new tab.
-    await expect
-      .element(page.getByRole("link", { name: "Alcove home" }))
-      .toHaveAttribute("href", "/");
+    // The wordmark reloads the document, so leaving through it meets the
+    // armed unload prompt; Help opens in a new tab.
+    const home = page.getByRole("link", { name: "Alcove home" });
+    await expect.element(home).toHaveAttribute("href", "/");
+    await expect.element(home).toHaveAttribute("data-reload-document");
     const help = page.getByRole("link", { name: "Help" });
     await expect.element(help).toHaveAttribute("href", WEB_APP_GUIDE_URL);
     await expect.element(help).toHaveAttribute("target", "_blank");
@@ -2139,7 +2138,12 @@ describe("inviter screen", () => {
     // Under the downloads, what the record and keys are for, and a link to the
     // Verify page that leaves this page and its downloads in place.
     await expect
-      .element(page.getByText(RECORD_PURPOSE_NOTE, { exact: false }))
+      .element(
+        page.getByText(
+          "The record is a shareable account of what you and your partner",
+          { exact: false },
+        ),
+      )
       .toBeInTheDocument();
     const verifyLink = page.getByRole("link", {
       name: "Verify page (opens in a new tab)",

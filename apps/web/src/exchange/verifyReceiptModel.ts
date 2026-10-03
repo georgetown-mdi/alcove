@@ -53,14 +53,15 @@ import type {
 
 /**
  * The pure model behind the "Verify an exchange record" console: it turns each
- * supplied JSON document into either a named parse failure or a parsed artifact, and each of
- * core's two verification reports -- the unsigned {@link RecordVerificationReport}
- * and the {@link DualSignedRecordVerificationReport} -- into a plain-language
- * verdict view-model. It is React-free and free of any I/O, so the copy discipline
- * the console requires -- the accurate ambiguity of a failed verdict, the "supply your
- * files" framing of an unopened commitment, the wrong-keys signal distinct from
- * tamper, and the anchoring sentences an unanchored certificate does and does not
- * support -- is tested here directly rather than through the DOM.
+ * supplied JSON document into either a named parse failure or a parsed artifact,
+ * and each of core's two verification reports -- the unsigned
+ * {@link RecordVerificationReport} and the {@link DualSignedRecordVerificationReport}
+ * -- into a plain-language verdict view-model. It is React-free and free of any I/O,
+ * so the copy discipline the console requires -- the accurate ambiguity of a failed
+ * verdict, the "supply your files" framing of an unopened commitment, the
+ * wrong-keys signal distinct from tamper, and the anchoring sentences an unanchored
+ * certificate does and does not support -- is tested here directly rather than
+ * through the DOM.
  *
  * Both verdicts come from `@alcove/core` as-is. Neither the assignment of
  * anchoring values over the dual-signed record's two certificate slots nor the

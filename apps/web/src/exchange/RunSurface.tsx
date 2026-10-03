@@ -511,23 +511,16 @@ export function RunDownloads({
   );
 }
 
-/** What the record and its keys are for, said under their downloads, ahead of
- * the link to the Verify page that ends the sentence. */
-export const RECORD_PURPOSE_NOTE =
-  "The record is a shareable account of what you and your partner agreed " +
-  "to and what matched. The verification keys open it for checking against " +
-  "your files, so keep them private and store them with the record; you or " +
-  "a records officer can check both later on the";
-
-/**
- * {@link RECORD_PURPOSE_NOTE} and its link to the Verify page. The link opens
- * a new tab: the page holding a one-off run's downloads has their only copy,
- * and navigating it away would discard them.
- */
+/** What the record and its keys are for, and a link to the Verify page. The
+ * link opens a new tab: navigating this page away would discard a one-off
+ * run's only copy of its downloads. */
 function RecordPurposeNote() {
   return (
     <p className={styles.small}>
-      {RECORD_PURPOSE_NOTE}{" "}
+      The record is a shareable account of what you and your partner agreed to
+      and what matched. The verification keys open it for checking against your
+      files, so keep them private and store them with the record; you or a
+      records officer can check both later on the{" "}
       <Link to="/verify" target="_blank" rel="noreferrer">
         Verify page
         <VisuallyHidden> (opens in a new tab)</VisuallyHidden>

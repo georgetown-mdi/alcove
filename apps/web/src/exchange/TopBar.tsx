@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Stepper } from "@mantine/core";
 
 import styles from "@styles/app.module.css";
@@ -85,16 +86,15 @@ function StepStrip({ steps }: { steps: ReadonlyArray<RailStep> }) {
  * optional Customize surfaces live on the disclosure ledger. See {@link
  * WorkShell}.
  *
- * The wordmark is a plain anchor rather than a router link: following it
- * unloads the page, so the `beforeunload` prompt a screen arms (see
- * {@link useUnloadGuard}) asks before a loaded file or a live run is dropped.
- * Help opens in a new tab and leaves this page as it is.
+ * The wordmark's link reloads the document so the `beforeunload` prompt a
+ * screen arms ({@link useUnloadGuard}) still asks before a loaded file or a
+ * live run is dropped; a client-side navigation would skip it.
  *
  * At or below the narrow cut-over the Stepper compresses to a {@link
  * StepStrip}; the switch is by conditional render, not `display`, so only one
- * spine is ever in the accessibility tree. The bar then holds no control at
- * all -- the wordmark is plain text and Help is left out -- so the ledger's
- * share bar stays the page's first interactive element.
+ * spine is ever in the accessibility tree. The wordmark and Help are left out
+ * as controls there so the ledger's share bar stays the page's first
+ * interactive element.
  */
 export function TopBar({
   navLabel,
@@ -113,9 +113,14 @@ export function TopBar({
       {narrow ? (
         <div className={styles.wordmark}>Alcove</div>
       ) : (
-        <a href="/" className={styles.wordmark} aria-label="Alcove home">
+        <Link
+          to="/"
+          reloadDocument
+          className={styles.wordmark}
+          aria-label="Alcove home"
+        >
           Alcove
-        </a>
+        </Link>
       )}
       <nav aria-label={navLabel} className={styles.topBarNav}>
         {narrow ? <StepStrip steps={steps} /> : <StepRail steps={steps} />}
