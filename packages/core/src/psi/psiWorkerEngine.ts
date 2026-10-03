@@ -66,20 +66,14 @@ export interface PsiWorkerRequest {
   id: number;
   body: PsiWorkerRequestBody;
   /**
-   * One 32-bit cell of memory shared with the host, which the host sets
-   * nonzero to ask the operation to stop. The worker reads it between chunks,
-   * the only points at which its thread is not inside a library call. Absent
-   * where the runtime has no shared memory (a browser page that is not
-   * cross-origin isolated); the operation then runs to its end.
+   * Shared memory the host sets nonzero to stop the operation at its next
+   * chunk boundary. Absent where the runtime has no `SharedArrayBuffer`; the
+   * operation then runs to its end.
    */
   stopFlag?: Int32Array;
 }
 
-/**
- * The failure a PSI operation rejects with when it stopped at a chunk
- * boundary on request ({@link PsiEngine.stopInFlight}) rather than ran to its
- * end.
- */
+/** The failure a PSI operation stopped by {@link PsiEngine.stopInFlight} rejects with. */
 export class PsiOperationStoppedError extends Error {
   constructor() {
     super("PSI operation stopped before it finished");
@@ -110,7 +104,6 @@ export type PsiWorkerResponse =
        * worker entry point that never reached the engine.
        */
       namedDiagnosis?: boolean;
-      /** Whether the operation stopped on request ({@link PsiOperationStoppedError}). */
       stopped?: boolean;
     };
 
@@ -122,10 +115,8 @@ export type PsiWorkerResponse =
  * worker APIs (`postMessage` + `on("message")` vs `postMessage` + `onmessage`)
  * collapse to one shape here and nothing above forks on runtime.
  *
- * `terminate` may defer the stop until the request in flight replies: a
- * worker torn down inside a native library call aborts the whole process, so
- * the CLI's handle waits for the reply, which a stop request bounds to one
- * chunk (see {@link WorkerPsiEngine.dispose}).
+ * `terminate` may defer the stop until the request in flight replies
+ * (docs/spec/DEPENDENCY_PINS.md, "Terminating a worker during a masking call").
  *
  * `onError` reports the worker's own death -- an exit code, an uncaught worker
  * error, a reply that failed structured-clone delivery. Its message becomes the
@@ -255,7 +246,6 @@ export class WorkerPsiEngine implements PsiEngine {
         resolve: resolve as (value: unknown) => void,
         reject,
       });
-      if (this.stopFlag !== undefined) Atomics.store(this.stopFlag, 0, 0);
       this.handle.postMessage({ id, body, stopFlag: this.stopFlag });
     });
   }
@@ -293,15 +283,13 @@ export class WorkerPsiEngine implements PsiEngine {
 
   stopInFlight(): boolean {
     if (this.pending.size === 0 || this.stopFlag === undefined) return false;
+    // Never cleared: a stop ends the engine's use, so a request posted after
+    // it, racing the stopped one's reply, stops too.
     Atomics.store(this.stopFlag, 0, 1);
     return true;
   }
 
-  /**
-   * Fail every pending call and terminate the worker. An operation in flight
-   * is asked to stop first, so a handle that defers termination until the
-   * worker replies ({@link PsiWorkerHandle}) waits at most one chunk.
-   */
+  /** Stop the operation in flight, fail every pending call, and terminate the worker. */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

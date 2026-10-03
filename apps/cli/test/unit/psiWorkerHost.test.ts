@@ -5,7 +5,13 @@ import {
   type PsiWorkerResponse,
 } from "@alcove/core";
 
-import { createWorkerThreadHandle } from "../../src/psiWorkerHost";
+import {
+  PSI_WORKER_EXIT_WAIT_NOTICE,
+  createWorkerThreadHandle,
+  offerExitAtOnceWhilePsiWorkersStop,
+  stopPsiWorkersBeforeExit,
+  trackWorkerPsiEngine,
+} from "../../src/psiWorkerHost";
 
 // createWorkerThreadHandle is the single definition of the host-side worker wiring
 // (psiWorkerHost.ts). Production, the integration test, and these tests all wrap a
@@ -24,6 +30,22 @@ class FakeWorker {
     const list = this.listeners.get(event) ?? [];
     list.push(listener as (arg: unknown) => void);
     this.listeners.set(event, list);
+  }
+
+  once(event: string, listener: (arg: never) => void): void {
+    const wrapped = (arg: unknown): void => {
+      this.off(event, wrapped);
+      (listener as (arg: unknown) => void)(arg);
+    };
+    this.on(event, wrapped);
+  }
+
+  private off(event: string, listener: (arg: unknown) => void): void {
+    const list = this.listeners.get(event) ?? [];
+    this.listeners.set(
+      event,
+      list.filter((entry) => entry !== listener),
+    );
   }
 
   postMessage(request: PsiWorkerRequest): void {
@@ -133,5 +155,96 @@ describe("createWorkerThreadHandle", () => {
     // reject with that cause rather than hang on a reply that will never arrive.
     fake.emit("messageerror", new Error("could not be deserialized"));
     await expect(pending).rejects.toThrow(/could not be deserialized/);
+  });
+});
+
+describe("a signal exit while a PSI worker request is in flight", () => {
+  test("the first signal waits and prints the notice; a second SIGINT exits at once", async () => {
+    const fake = new FakeWorker();
+    const engine = trackWorkerPsiEngine(fake);
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+    const announce = vi.fn();
+    const exitAtOnce = vi.fn();
+    const sigintListenersBefore = process.listenerCount("SIGINT");
+
+    offerExitAtOnceWhilePsiWorkersStop({
+      announce,
+      isRepeatedInterrupt: () => false,
+      exitAtOnce,
+    });
+    expect(announce).toHaveBeenCalledExactlyOnceWith(
+      PSI_WORKER_EXIT_WAIT_NOTICE,
+    );
+
+    let stopped = false;
+    const stopping = stopPsiWorkersBeforeExit().then(() => {
+      stopped = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stopped).toBe(false);
+    expect(fake.terminateCalls).toBe(0);
+    expect(exitAtOnce).not.toHaveBeenCalled();
+
+    process.emit("SIGINT");
+    expect(exitAtOnce).toHaveBeenCalledOnce();
+
+    // With process.exit mocked away the wait still ends normally once the
+    // worker reaches its chunk boundary, and the listener comes off.
+    fake.emit("message", {
+      id: request.id,
+      ok: false,
+      error: "PSI operation stopped before it finished",
+      stopped: true,
+    });
+    expect(fake.terminateCalls).toBe(1);
+    fake.emit("exit", 1);
+    await stopping;
+    expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+  });
+
+  test("a repeated delivery of the first signal does not exit at once", async () => {
+    const fake = new FakeWorker();
+    const engine = trackWorkerPsiEngine(fake);
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+    const exitAtOnce = vi.fn();
+
+    offerExitAtOnceWhilePsiWorkersStop({
+      announce: vi.fn(),
+      isRepeatedInterrupt: () => true,
+      exitAtOnce,
+    });
+    const stopping = stopPsiWorkersBeforeExit();
+    process.emit("SIGINT");
+    expect(exitAtOnce).not.toHaveBeenCalled();
+
+    fake.emit("message", {
+      id: request.id,
+      ok: true,
+      result: new Uint8Array(),
+    });
+    fake.emit("exit", 1);
+    await stopping;
+  });
+
+  test("with no request in flight there is no notice and no extra listener", async () => {
+    const fake = new FakeWorker();
+    trackWorkerPsiEngine(fake);
+    const announce = vi.fn();
+    const sigintListenersBefore = process.listenerCount("SIGINT");
+
+    offerExitAtOnceWhilePsiWorkersStop({
+      announce,
+      isRepeatedInterrupt: () => false,
+      exitAtOnce: vi.fn(),
+    });
+    expect(announce).not.toHaveBeenCalled();
+    expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+
+    const stopping = stopPsiWorkersBeforeExit();
+    expect(fake.terminateCalls).toBe(1);
+    fake.emit("exit", 1);
+    await stopping;
   });
 });

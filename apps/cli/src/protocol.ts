@@ -99,6 +99,7 @@ import {
 } from "./psiMemoryBudget";
 import {
   createPsiEngine,
+  offerExitAtOnceWhilePsiWorkersStop,
   psiEngineRunsInWorker,
   stopPsiWorkersBeforeExit,
 } from "./psiWorkerHost";
@@ -3004,6 +3005,13 @@ export async function runProtocol(
       );
     }
   }
+  function offerExitAtOnceDuringPsiWait(): void {
+    offerExitAtOnceWhilePsiWorkersStop({
+      announce: (line) => log.info(line),
+      isRepeatedInterrupt: () => isRepeatedDelivery("SIGINT"),
+      exitAtOnce: () => process.exit(130),
+    });
+  }
   async function onSigint(): Promise<void> {
     if (isRepeatedDelivery("SIGINT")) return;
     // Must be set synchronously, before the first await, so the runProtocol
@@ -3022,6 +3030,7 @@ export async function runProtocol(
     psiProgress.close();
     try {
       log.info("caught SIGINT, exiting");
+      offerExitAtOnceDuringPsiWait();
       logRotationStateOnInterrupt("the exchange was interrupted");
       await doCleanup();
     } catch (cleanupErr: unknown) {
@@ -3048,6 +3057,7 @@ export async function runProtocol(
     psiProgress.close();
     try {
       log.info("caught SIGTERM, exiting");
+      offerExitAtOnceDuringPsiWait();
       logRotationStateOnInterrupt("the exchange was interrupted");
       await doCleanup();
     } catch (cleanupErr: unknown) {

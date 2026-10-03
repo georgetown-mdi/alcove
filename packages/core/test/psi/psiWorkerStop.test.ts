@@ -8,6 +8,7 @@ import {
   WorkerPsiEngine,
   servePsiWorker,
   type PsiWorkerHandle,
+  type PsiWorkerRequest,
   type PsiWorkerResponse,
 } from "../../src/psi/psiWorkerEngine";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
@@ -122,5 +123,29 @@ test("a participant's stopped operation fails with the stop reason it was given"
     );
   } finally {
     participant.dispose();
+  }
+});
+
+test("a stop flag once set is not cleared by a later request", async () => {
+  const posted: Array<PsiWorkerRequest> = [];
+  let deliver: (response: PsiWorkerResponse) => void = () => {};
+  const engine = new WorkerPsiEngine({
+    postMessage: (request) => posted.push(request),
+    setHandlers: ({ onMessage }) => {
+      deliver = onMessage;
+    },
+    terminate: () => {},
+  });
+  try {
+    const first = engine.createClientRequest(["x"]);
+    expect(engine.stopInFlight()).toBe(true);
+    deliver({ id: posted[0]!.id, ok: true, result: new Uint8Array() });
+    await first;
+
+    void engine.createClientRequest(["y"]).catch(() => {});
+    expect(posted).toHaveLength(2);
+    expect(Atomics.load(posted[1]!.stopFlag!, 0)).not.toBe(0);
+  } finally {
+    engine.dispose();
   }
 });
