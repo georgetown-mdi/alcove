@@ -2986,19 +2986,24 @@ export async function runExchange(
         : undefined,
     );
     // A crypto step does not start once the connection has ended, since its
-    // result has nowhere to go. One in flight runs to its end: terminating
-    // the CLI's worker inside a native backend call aborts the process. The
+    // result has nowhere to go, and one in flight stops at its next chunk
+    // boundary: terminating the CLI's worker inside a native backend call
+    // aborts the process, so the worker stops itself between calls. The
     // operator is told of the loss when it happens rather than when the step
     // returns.
     participant.stopOperationsWhen(connectionEndReader(conn));
     const psiParticipant = participant; // narrowed for closure
     void conn.terminated?.().then((ended) => {
-      if (ended.kind !== "closed" && psiParticipant.operationInFlight())
+      const inFlight = psiParticipant.operationInFlight();
+      const stopsAtChunk = psiParticipant.stopOperationInFlight();
+      if (ended.kind !== "closed" && inFlight)
         getLogger("exchange").warn(
           `the connection to the exchange partner ended ` +
             `(${sanitizeErrorForDisplay(ended)}) while a PSI crypto step was ` +
-            "running; the run stops with that error once the step finishes, " +
-            "which on a large input can take minutes.",
+            "running; the run stops with that error " +
+            (stopsAtChunk
+              ? "when the step's current chunk finishes."
+              : "once the step finishes, which on a large input can take minutes."),
         );
     });
     if (countOnly)

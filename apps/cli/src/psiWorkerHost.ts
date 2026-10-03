@@ -106,12 +106,28 @@ export function createWorkerThreadHandle(
   // dispose() initiated it can. dispose() has already failed every pending call
   // before terminating, so an expected exit must not re-enter onError.
   let terminating = false;
+  // Terminating the worker inside a native masking call aborts the whole
+  // process, so a terminate() while a request is in flight waits for that
+  // request's reply; dispose() has asked the operation to stop at its next
+  // chunk boundary, which bounds the wait to one chunk.
+  const inFlight = new Set<number>();
+  let terminated = false;
+  const terminateWhenIdle = (): void => {
+    if (!terminating || terminated || inFlight.size > 0) return;
+    terminated = true;
+    void worker.terminate();
+  };
   return {
-    postMessage: (request: PsiWorkerRequest) => worker.postMessage(request),
+    postMessage: (request: PsiWorkerRequest) => {
+      inFlight.add(request.id);
+      worker.postMessage(request);
+    },
     setHandlers: ({ onMessage, onError }) => {
-      worker.on("message", (response: PsiWorkerResponse) =>
-        onMessage(response),
-      );
+      worker.on("message", (response: PsiWorkerResponse) => {
+        if ("ok" in response) inFlight.delete(response.id);
+        onMessage(response);
+        terminateWhenIdle();
+      });
       worker.on("error", (error) => onError(error));
       // A message that fails structured-clone deserialization is emitted as
       // 'messageerror', NOT 'error'; with no listener it is silently dropped and the
@@ -130,10 +146,14 @@ export function createWorkerThreadHandle(
     },
     terminate: () => {
       terminating = true;
-      void worker.terminate();
+      terminateWhenIdle();
     },
   };
 }
+
+// Every PSI worker this process has spawned that has not exited, with the
+// promise its exit resolves.
+const liveWorkerEngines = new Map<WorkerPsiEngine, Promise<void>>();
 
 function spawnWorkerPsiEngine(
   entry: string,
@@ -152,5 +172,36 @@ function spawnWorkerPsiEngine(
   // alive, exactly as the synchronous masking kept it. dispose() (driven by the
   // exchange's teardown finally) calls terminate(), which releases the process
   // at the end, so a ref'd worker handle never outlives the exchange.
-  return new WorkerPsiEngine(createWorkerThreadHandle(worker));
+  const engine = new WorkerPsiEngine(createWorkerThreadHandle(worker));
+  liveWorkerEngines.set(
+    engine,
+    new Promise<void>((resolve) =>
+      worker.once("exit", () => {
+        liveWorkerEngines.delete(engine);
+        resolve();
+      }),
+    ),
+  );
+  return engine;
+}
+
+/**
+ * Dispose every live PSI worker engine and resolve once each worker has
+ * exited. A signal handler awaits this before `process.exit`, which would
+ * otherwise tear a worker down inside a native masking call and abort the
+ * process; an operation in flight stops at its next chunk boundary, so the
+ * wait is at most one chunk. Never rejects.
+ */
+export async function stopPsiWorkersBeforeExit(): Promise<void> {
+  const exits = [...liveWorkerEngines].map(([engine, exited]) => {
+    // The caller exits once this settles, so a dispose that throws must not
+    // reject it; there is then no stop to wait for.
+    try {
+      engine.dispose();
+      return exited;
+    } catch {
+      return Promise.resolve();
+    }
+  });
+  await Promise.all(exits);
 }

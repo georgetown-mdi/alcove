@@ -9,6 +9,7 @@ import {
   createMessagePipe,
 } from "../src/connection/messageConnection";
 import { InProcessPsiEngine } from "../src/psi/psiEngine";
+import { PsiOperationStoppedError } from "../src/psi/psiWorkerEngine";
 import { getLogger } from "../src/utils/logger";
 
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
@@ -46,13 +47,15 @@ const rows = [
 
 // The PSI sender's engine, whose setup finishes only when the test says so: it
 // stands for a masking that takes minutes. `started` resolves when the setup
-// is asked for.
-function heldSenderEngine() {
+// is asked for. A `stoppable` engine ends the held setup when asked to stop,
+// as the worker-backed engine does at its next chunk boundary.
+function heldSenderEngine({ stoppable = false } = {}) {
   let markStarted!: () => void;
   const started = new Promise<void>((resolve) => {
     markStarted = resolve;
   });
   let finish!: () => void;
+  let stop: (() => void) | undefined;
   let disposed = false;
   const inner = new InProcessPsiEngine(
     psiLibrary,
@@ -65,8 +68,17 @@ function heldSenderEngine() {
       markStarted();
       return new Promise((resolve, reject) => {
         finish = () => inner.createServerSetup(values).then(resolve, reject);
+        stop = () => reject(new PsiOperationStoppedError());
       });
     },
+    ...(stoppable && {
+      stopInFlight: () => {
+        if (stop === undefined) return false;
+        stop();
+        stop = undefined;
+        return true;
+      },
+    }),
     processClientRequest: (bytes) => inner.processClientRequest(bytes),
     createClientRequest: (values) => inner.createClientRequest(values),
     receiveServerSetup: (bytes) => inner.receiveServerSetup(bytes),
@@ -247,5 +259,34 @@ test("a partner lost before the sender's setup starts fails the run without star
   ).toBe(true);
   expect(setupStarted).toBe(false);
   expect(lossNotices(warn)).toHaveLength(0);
+  expect(held.isDisposed()).toBe(true);
+});
+
+test("a partner lost during a stoppable sender's setup stops the step and fails the run without waiting for it", async () => {
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  const held = heldSenderEngine({ stoppable: true });
+  const { conns, outcomes } = runPair(held.engine);
+
+  await held.started;
+  await conns.receiver.close();
+  const settled = await outcomes;
+  for (const outcome of settled) expect(outcome.status).toBe("rejected");
+  expect(
+    settled.some(
+      (outcome) =>
+        (outcome as PromiseRejectedResult).reason instanceof ConnectionError,
+    ),
+  ).toBe(true);
+  expect(
+    settled.some(
+      (outcome) =>
+        (outcome as PromiseRejectedResult).reason instanceof
+        PsiOperationStoppedError,
+    ),
+  ).toBe(false);
+  expect(lossNotices(warn)).toHaveLength(1);
+  expect(String(lossNotices(warn)[0]![0])).toContain(
+    "when the step's current chunk finishes",
+  );
   expect(held.isDisposed()).toBe(true);
 });

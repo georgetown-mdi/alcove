@@ -96,6 +96,31 @@ describe("createWorkerThreadHandle", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  test("terminate() during a request waits for its reply, which dispose() asks to come early", () => {
+    const fake = new FakeWorker();
+    const engine = new WorkerPsiEngine(createWorkerThreadHandle(fake));
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+
+    // Terminating the worker inside a native masking call aborts the
+    // process, so the worker is left running until it replies.
+    engine.dispose();
+    expect(fake.terminateCalls).toBe(0);
+    expect(Atomics.load(request.stopFlag!, 0)).not.toBe(0);
+
+    // A progress tick is not the reply: the call is still inside the worker.
+    fake.emit("message", { id: request.id, processed: 1 });
+    expect(fake.terminateCalls).toBe(0);
+
+    fake.emit("message", {
+      id: request.id,
+      ok: false,
+      error: "PSI operation stopped before it finished",
+      stopped: true,
+    });
+    expect(fake.terminateCalls).toBe(1);
+  });
+
   test("a messageerror fails the engine's pending call fast instead of hanging", async () => {
     const fake = new FakeWorker();
     const engine = new WorkerPsiEngine(createWorkerThreadHandle(fake));
