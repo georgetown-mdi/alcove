@@ -1744,6 +1744,58 @@ describe("handler", () => {
       expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
     });
 
+    test("a directory at the file's path is not read and supplies no terms", async () => {
+      const { recordPath } = await exchangeArtifacts();
+      fs.mkdirSync(recordPath.replace(/\.json$/, ".terms.json"));
+      const { stdout, stderr, exits, exitCode } = await runVerify({
+        record: recordPath,
+        "log-level": "warn",
+      });
+      expect(exits).toEqual([]);
+      expect(stderr).toContain("is not a regular file");
+      expect(stdout).toContain(
+        "agreed-terms hash: not checked (pass --config-file and --partner-terms)",
+      );
+      expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
+    });
+
+    test("a failed signature withholds the another-run headline", async () => {
+      const { recordPath, signedPath, identityPath, pin } =
+        await exchangeArtifacts({
+          associationTable: [[0], [0]],
+          partnerPayloadReceived: { columns: ["status"], rows: [["active"]] },
+        });
+      writeAgreedTerms(recordPath);
+      const dir = tmp();
+      const inputPath = join(dir, "input.csv");
+      writeFileSync(inputPath, "pid,dose\nP0,10mg\n");
+      const resultPath = join(dir, "result.csv");
+      writeFileSync(resultPath, "pid,row_id,status\nP0,0,inactive\n");
+      const args = {
+        record: recordPath,
+        "input-file": inputPath,
+        "result-file": resultPath,
+        "signed-record": signedPath,
+        "partner-fingerprint": pin,
+        "identity-file": identityPath,
+      };
+      const intact = await runVerify(args);
+      expect(intact.stdout).toContain("does not belong to this record's run");
+
+      const signed = JSON.parse(readFileSync(signedPath, "utf8")) as {
+        initiator: { signature: string };
+      };
+      signed.initiator.signature = signed.initiator.signature.replace(
+        /^./,
+        (c) => (c === "A" ? "B" : "A"),
+      );
+      writeFileSync(signedPath, JSON.stringify(signed));
+      const { stdout, exits } = await runVerify(args);
+      expect(exits).toEqual([]);
+      expect(stdout).toContain("receipt signature: DOES NOT VERIFY");
+      expect(stdout).not.toContain("does not belong to this record's run");
+    });
+
     test("a dual-signed record's carried partner terms come before the file's", async () => {
       const { recordPath, signedPath } = await exchangeArtifacts();
       writeAgreedTerms(recordPath, {

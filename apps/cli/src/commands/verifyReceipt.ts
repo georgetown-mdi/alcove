@@ -974,7 +974,27 @@ function agreedTermsBesideRecord(
   let fd: number | undefined;
   try {
     fd = fs.openSync(expandTilde(termsPath), "r");
-    if (fs.fstatSync(fd).size > MAX_AGREED_TERMS_FILE_BYTES) {
+    if (!fs.fstatSync(fd).isFile()) {
+      log.warn(
+        `the agreed-terms file ${termsFileDisplay} is not a regular file, ` +
+          `so it is not read and supplies no terms`,
+      );
+      return undefined;
+    }
+    const buffer = Buffer.allocUnsafe(MAX_AGREED_TERMS_FILE_BYTES + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const read = fs.readSync(
+        fd,
+        buffer,
+        length,
+        buffer.length - length,
+        null,
+      );
+      if (read === 0) break;
+      length += read;
+    }
+    if (length > MAX_AGREED_TERMS_FILE_BYTES) {
       log.warn(
         `the agreed-terms file ${termsFileDisplay} is larger than ` +
           `${MAX_AGREED_TERMS_FILE_BYTES} bytes, so it is not read and ` +
@@ -982,7 +1002,7 @@ function agreedTermsBesideRecord(
       );
       return undefined;
     }
-    text = fs.readFileSync(fd, "utf8");
+    text = buffer.toString("utf8", 0, length);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     log.warn(
