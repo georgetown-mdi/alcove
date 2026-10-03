@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   FileSyncConnection,
   fromEventConnection,
@@ -77,6 +79,12 @@ import {
 } from "./connection/webrtc/weriftPeer";
 import { persistPartnerFingerprint } from "./config";
 import {
+  describeExchangeOutcome,
+  zeroMatchWarning,
+  type RecordDelivery,
+  type ResultDelivery,
+} from "./exchangeOutcome";
+import {
   buildRotatedKeyFile,
   clearRotationInFlight,
   markRotationInFlight,
@@ -98,7 +106,11 @@ import {
   readMemory,
 } from "./psiMemoryBudget";
 import { createPsiEngine, psiEngineRunsInWorker } from "./psiWorkerHost";
-import { writeExchangeRecord, type RecordOutput } from "./recordFile";
+import {
+  recordPathsFor,
+  writeExchangeRecord,
+  type RecordOutput,
+} from "./recordFile";
 import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
 import {
   closeWithinCeiling,
@@ -2295,7 +2307,7 @@ async function writeExchangeOutputs(params: {
   eventStream: EventStreamEmitter | undefined;
   onOutputComplete: FileSyncRuntimeOptions["onOutputComplete"];
   onRemoteFollowUp: FileSyncRuntimeOptions["onRemoteFollowUp"];
-}): Promise<boolean> {
+}): Promise<ExchangeOutputs> {
   const {
     outcome,
     prepared,
@@ -2325,6 +2337,7 @@ async function writeExchangeOutputs(params: {
   // artifacts below have been written. A box rather than the error itself,
   // since a thrower may raise any value, `undefined` included.
   let resultFailure: { error: unknown; notice: string } | undefined;
+  let result: ResultDelivery = { kind: "withheld" };
 
   // A count-only exchange produces no matched pairing for either party,
   // so there is no result file to write and nothing was withheld from
@@ -2340,14 +2353,19 @@ async function writeExchangeOutputs(params: {
   // computed its own count under an enforced mode, so the same caveat
   // there would be false.
   if (intersectionCount !== undefined) {
+    const reportedByPartner = countIsPartnerReported({
+      intersectionCount,
+      resolvedRole,
+    });
+    result = { kind: "count", intersectionCount, reportedByPartner };
     log.info(
-      countIsPartnerReported({ intersectionCount, resolvedRole })
-        ? `exchange complete: your partner reported ${intersectionCount} ` +
+      reportedByPartner
+        ? `your partner reported ${intersectionCount} ` +
             "record(s) in common. Only your partner computed the count; " +
             "Alcove does not check a count it is sent against a run of its " +
             "own. The agreed terms asked for a count only, so no result file " +
             "was written."
-        : `exchange complete: ${intersectionCount} record(s) in common. The ` +
+        : `${intersectionCount} record(s) in common. The ` +
             "agreed terms asked for a count only, so no result file was written.",
     );
   }
@@ -2360,7 +2378,7 @@ async function writeExchangeOutputs(params: {
   // helper's record does not bind the table).
   else if (associationTable === undefined) {
     log.info(
-      "exchange complete: your records contributed to the match, but by the " +
+      "your records contributed to the match, but by the " +
         "agreed terms you receive no result, so no result file was written.",
     );
   } else {
@@ -2395,7 +2413,7 @@ async function writeExchangeOutputs(params: {
       };
     }
     try {
-      if (table !== undefined)
+      if (table !== undefined) {
         await writeOutput(
           output,
           table.headers,
@@ -2404,6 +2422,15 @@ async function writeExchangeOutputs(params: {
           undefined,
           resultDelimiter,
         );
+        result =
+          output === undefined
+            ? { kind: "stdout", matchedRows: table.rows.length }
+            : {
+                kind: "file",
+                matchedRows: table.rows.length,
+                path: path.resolve(output),
+              };
+      }
     } catch (err) {
       // The result did not reach where it was owed -- a file that did
       // not reach disk, or a stdout reader that stopped taking it before
@@ -2448,6 +2475,7 @@ async function writeExchangeOutputs(params: {
   // Every audit artifact this run was asked for and could not produce,
   // as the messages the machine-interface stream states below.
   const missingArtifacts: string[] = [];
+  let record: RecordDelivery = { kind: "disabled" };
 
   // Persist the self-attested record after the results: a secondary
   // audit artifact, written last, whose failure is non-fatal (see
@@ -2472,6 +2500,16 @@ async function writeExchangeOutputs(params: {
             loggerName,
           );
     if (failure !== undefined) missingArtifacts.push(failure);
+    record =
+      audit === undefined || failure !== undefined
+        ? { kind: "notWritten" }
+        : {
+            kind: "written",
+            path: path.resolve(
+              recordPathsFor(recordOutput, audit.record.createdAt)
+                .recordFilePath,
+            ),
+          };
   }
 
   // Persist the dual-signed record after the self-attested record.
@@ -2577,7 +2615,17 @@ async function writeExchangeOutputs(params: {
     }
   }
 
-  return everyArtifactOnDisk;
+  return { everyArtifactOnDisk, result, record };
+}
+
+/** What {@link writeExchangeOutputs} delivered, for the run's outcome line. */
+interface ExchangeOutputs {
+  /** Whether every artifact the stage owed reached disk. */
+  everyArtifactOnDisk: boolean;
+  /** Where this party's result went. */
+  result: ResultDelivery;
+  /** What became of the exchange record. */
+  record: RecordDelivery;
 }
 
 const REPEATED_SIGNAL_DELIVERY_MS = 500;
@@ -2691,6 +2739,12 @@ export interface RunProtocolOptions {
    * neither.
    */
   memoryBudgetReported?: boolean;
+  /**
+   * Writes the line a completed run ends with ({@link describeExchangeOutcome}):
+   * a command passes its unfiltered writer so the line reaches the operator at
+   * every `--log-level` but `silent`. Omit it to log the line at info level.
+   */
+  writeOutcomeLine?: (line: string) => void;
 }
 
 /**
@@ -2788,6 +2842,8 @@ export async function runProtocol(
     memoryBudgetReported = false,
   } = options;
   const log = getLogger(loggerName);
+  const writeOutcomeLine =
+    options.writeOutcomeLine ?? ((line: string) => log.info(line));
 
   // The opt-in machine-interface emitter (fd-3 NDJSON), constructed only under
   // --event-stream; undefined otherwise, so no line is ever written to fd 3
@@ -3175,7 +3231,7 @@ export async function runProtocol(
       matching,
       resolvedRole,
     } = outcome;
-    run.outputsWritten = await writeExchangeOutputs({
+    const delivered = await writeExchangeOutputs({
       outcome,
       prepared,
       output,
@@ -3188,6 +3244,7 @@ export async function runProtocol(
       onOutputComplete: fileSyncRuntime.onOutputComplete,
       onRemoteFollowUp: fileSyncRuntime.onRemoteFollowUp,
     });
+    run.outputsWritten = delivered.everyArtifactOnDisk;
 
     // onAuthenticatedError is set only when a post-handshake hook failed
     // but the exchange above still succeeded (a hook failure followed by
@@ -3227,6 +3284,14 @@ export async function runProtocol(
               }),
             },
         entityClusters,
+        delivered.result.kind === "file" || delivered.result.kind === "stdout"
+          ? {
+              matchedRows: delivered.result.matchedRows,
+              ...(delivered.result.kind === "file" && {
+                resultPath: delivered.result.path,
+              }),
+            }
+          : undefined,
       ),
     );
     // A close that throws past its own per-layer catch is logged at debug, as
@@ -3242,6 +3307,18 @@ export async function runProtocol(
         sanitizeErrorForDisplay(cleanupErr),
       );
     }
+    const noMatch = zeroMatchWarning(delivered.result);
+    if (noMatch !== undefined) log.warn(noMatch);
+    writeOutcomeLine(
+      describeExchangeOutcome({
+        result: delivered.result,
+        record: delivered.record,
+        rotatedKeyFilePath:
+          run.tokenRotated && build.trimmedKeyFilePath !== undefined
+            ? path.resolve(build.trimmedKeyFilePath)
+            : undefined,
+      }),
+    );
     return { onAuthenticatedError: run.onAuthenticatedError };
   } catch (err) {
     // tokenRotated=true means this party's saveKeyFile succeeded; the

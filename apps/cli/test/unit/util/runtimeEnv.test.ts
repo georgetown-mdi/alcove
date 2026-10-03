@@ -62,21 +62,21 @@ describe("readRuntimeEnv", () => {
 });
 
 describe("logRuntimeEnv", () => {
-  test("logs the banner at info level on success", () => {
-    const log = { info: vi.fn(), warn: vi.fn() };
+  test("logs the banner at debug level on success", () => {
+    const log = { debug: vi.fn(), warn: vi.fn() };
     logRuntimeEnv(log, () => base);
-    expect(log.info).toHaveBeenCalledOnce();
-    expect(log.info.mock.calls[0][0]).toContain("Node v26.3.0");
+    expect(log.debug).toHaveBeenCalledOnce();
+    expect(log.debug.mock.calls[0][0]).toContain("Node v26.3.0");
     expect(log.warn).not.toHaveBeenCalled();
   });
 
   test("warns and swallows when probing the runtime throws", () => {
-    const log = { info: vi.fn(), warn: vi.fn() };
+    const log = { debug: vi.fn(), warn: vi.fn() };
     const boom = (): RuntimeEnvSnapshot => {
       throw new Error("no constrainedMemory here");
     };
     expect(() => logRuntimeEnv(log, boom)).not.toThrow();
-    expect(log.info).not.toHaveBeenCalled();
+    expect(log.debug).not.toHaveBeenCalled();
     expect(log.warn).toHaveBeenCalledOnce();
     expect(log.warn.mock.calls[0][0]).toContain("environment probe failed");
     expect(log.warn.mock.calls[0][0]).toContain("no constrainedMemory here");

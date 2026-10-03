@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 import {
   ConnectionError,
+  InternalConsistencyError,
   OperatorConfigError,
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
@@ -238,6 +239,20 @@ export interface MetricsEvent extends EventBase {
   reconnects: number;
 }
 
+/**
+ * The display cap on the `result` event's `resultPath`: a path up to Linux's
+ * `PATH_MAX`, so a deep path is not cut at the per-value default.
+ */
+const RESULT_PATH_MAX_DISPLAY_LENGTH = 4096;
+
+/** Where a written result table went, for the `result` event. */
+export interface ResultTableDelivery {
+  /** The number of matched rows in the table. */
+  matchedRows: number;
+  /** The result file's absolute path; absent when it went to stdout. */
+  resultPath?: string;
+}
+
 /** The success terminal event. Exactly one terminal event fires per run. */
 export interface ResultEvent extends EventBase {
   type: "result";
@@ -257,6 +272,17 @@ export interface ResultEvent extends EventBase {
    * promised; without it, the terms withheld the result table.
    */
   intersectionCount?: number;
+  /**
+   * The number of matched rows in the result table this party received,
+   * present exactly when {@link resultWritten} is true.
+   */
+  matchedRows?: number;
+  /**
+   * The absolute path the result table was written to, escaped for display,
+   * present when {@link resultWritten} is true and the result went to a file
+   * rather than to stdout.
+   */
+  resultPath?: string;
   /**
    * Whether {@link intersectionCount} arrived as the partner's report rather than
    * as a figure this party computed -- true for the PSI sender seat of a
@@ -522,17 +548,38 @@ export function buildMetricsEvent(
  * `entityClusters` is passed only for a run core composed a cluster summary
  * for, and is omitted entirely otherwise and where the summary holds more
  * shapes than {@link EVENT_RESULT_CLUSTER_SHAPES_MAX}.
+ *
+ * `table` is passed exactly when `resultWritten` is true: the matched row
+ * count, and the result file's absolute path unless it went to stdout.
  */
 export function buildResultEvent(
   resultWritten: boolean,
   matching: ResolvedMatching,
   count?: { intersectionCount: number; reportedByPartner: boolean },
   entityClusters?: EntityClusterSummary,
+  table?: ResultTableDelivery,
 ): ResultEvent {
+  if ((table !== undefined) !== resultWritten)
+    throw new InternalConsistencyError(
+      "a result event's table delivery must be given exactly when a result " +
+        "table was written",
+    );
   return {
     v: EVENT_STREAM_VERSION,
     type: "result",
     resultWritten,
+    ...(table !== undefined
+      ? {
+          matchedRows: toCount(table.matchedRows),
+          ...(table.resultPath !== undefined
+            ? {
+                resultPath: redactAndSanitizeForDisplay(table.resultPath, {
+                  maxLength: RESULT_PATH_MAX_DISPLAY_LENGTH,
+                }),
+              }
+            : {}),
+        }
+      : {}),
     // Copied field by field, so a caller's object holding anything beyond the
     // three cannot widen the emitted line past this stream's closed contract.
     matching: {
@@ -779,6 +826,7 @@ export interface EventStreamEmitter {
     matching: ResolvedMatching,
     count?: { intersectionCount: number; reportedByPartner: boolean },
     entityClusters?: EntityClusterSummary,
+    table?: ResultTableDelivery,
   ): void;
   error(error: unknown, phase: ErrorPhase): void;
 }
@@ -810,9 +858,9 @@ function createEventStreamEmitter(): EventStreamEmitter {
       writer.emit(
         buildMetricsEvent(recordsProcessed, transportRetries, reconnects),
       ),
-    result: (resultWritten, matching, count, entityClusters) =>
+    result: (resultWritten, matching, count, entityClusters, table) =>
       writer.emit(
-        buildResultEvent(resultWritten, matching, count, entityClusters),
+        buildResultEvent(resultWritten, matching, count, entityClusters, table),
       ),
     error: (error, phase) => writer.emit(buildErrorEvent(error, phase)),
   };

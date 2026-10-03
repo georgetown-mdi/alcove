@@ -36,6 +36,7 @@ import {
   persistFilledPayloadReceive,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
+import { outcomeLineWriter } from "../exchangeOutcome";
 import { expandTilde } from "../fileUtils";
 import {
   assertHostKeyTrustCanBeEstablished,
@@ -1407,6 +1408,7 @@ export async function handler(argv: Arguments): Promise<void> {
         undeclaredColumnsWarned,
         allowMemoryShortfall,
         memoryBudgetReported,
+        writeOutcomeLine: outcomeLineWriter(log, writePlainLine),
       });
     } catch (err) {
       // Capture rather than exit here so the expiry advisory below can run on the
