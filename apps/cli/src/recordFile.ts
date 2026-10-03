@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import {
   getLogger,
   operatorSuppliedText,
@@ -117,57 +114,12 @@ export function recordPathsFor(
 export type RecordWriteResult =
   { kind: "written"; paths: RecordPaths } | { kind: "failed"; message: string };
 
-/**
- * The agreed terms a record's hash is computed over, to be written beside it,
- * and the local directories this run's channel shares with the partner.
- */
-export interface AgreedTermsBesideRecord {
-  terms: AgreedTerms;
-  /** A filedrop channel's directories; empty for every other channel. */
-  channelDirectories: readonly string[];
-}
-
-// The path as symlinks resolve it, or as given when it does not resolve.
-function realPathOrResolved(target: string): string {
-  const resolved = path.resolve(target);
-  try {
-    return fs.realpathSync(resolved);
-  } catch {
-    return resolved;
-  }
-}
-
-function isSameOrInside(child: string, parent: string): boolean {
-  const relative = path.relative(parent, child);
-  return (
-    relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
-  );
-}
-
-/** Whether `recordFilePath`'s directory is, or is inside, one of
- * `channelDirectories`. @internal exported for testing */
-export function recordDirectoryIsShared(
-  recordFilePath: string,
-  channelDirectories: readonly string[],
-): boolean {
-  const fold = (value: string): string =>
-    process.platform === "win32" ? value.toLowerCase() : value;
-  const recordDirectory = fold(
-    realPathOrResolved(path.dirname(recordFilePath)),
-  );
-  return channelDirectories.some((directory) =>
-    isSameOrInside(recordDirectory, fold(realPathOrResolved(directory))),
-  );
-}
-
-// Written only after the record, and never into a directory the partner
-// reads through: the file is a convenience for verify-receipt, so a skip or
-// a failed write leaves the record whole and costs only the flags that
-// supply the same terms.
+// Written only after the record: the file is a convenience for
+// verify-receipt, so a failed write leaves the record whole and costs only
+// the flags that supply the same terms.
 function writeAgreedTermsBesideRecord(
   recordFilePath: string,
-  agreedTerms: AgreedTermsBesideRecord,
+  agreedTerms: AgreedTerms,
   loggerName: string,
 ): void {
   const log = getLogger(loggerName);
@@ -178,16 +130,8 @@ function writeAgreedTermsBesideRecord(
   const remedy =
     "to check the record's agreed-terms hash, pass alcove verify-receipt " +
     "--config-file and --partner-terms";
-  if (recordDirectoryIsShared(recordFilePath, agreedTerms.channelDirectories)) {
-    log.warn(
-      `the agreed terms were not written to ${termsFileDisplay}: the record ` +
-        "is in the folder this exchange shares with the partner. Write " +
-        `records elsewhere with --record-file; ${remedy}`,
-    );
-    return;
-  }
   try {
-    writeFileOwnerOnly(termsFilePath, serializeAgreedTerms(agreedTerms.terms));
+    writeFileOwnerOnly(termsFilePath, serializeAgreedTerms(agreedTerms));
     log.info(
       `wrote both parties' agreed terms to ${termsFileDisplay}, for alcove ` +
         "verify-receipt to check the record's agreed-terms hash",
@@ -218,7 +162,7 @@ export function writeExchangeRecord(
   record: ExchangeRecord,
   keys: VerificationKeys,
   loggerName: string,
-  agreedTerms?: AgreedTermsBesideRecord,
+  agreedTerms?: AgreedTerms,
 ): RecordWriteResult {
   const log = getLogger(loggerName);
   const { recordFilePath, keysFilePath } = recordPathsFor(

@@ -46,7 +46,6 @@ import {
 import {
   agreedTermsPathFor,
   keysPathFor,
-  recordDirectoryIsShared,
   recordPathsFor,
   resolveRecordOutput,
   writeExchangeRecord,
@@ -321,10 +320,13 @@ test("writeExchangeRecord writes the agreed terms beside the record, owner-only"
   const recordFilePath = path.join(dir, "rec.json");
   const termsFilePath = agreedTermsPathFor(recordFilePath);
   expect(
-    writeExchangeRecord({ recordFile: recordFilePath }, record, keys, "test", {
-      terms: agreedTerms,
-      channelDirectories: [path.join(dir, "drop")],
-    }).kind,
+    writeExchangeRecord(
+      { recordFile: recordFilePath },
+      record,
+      keys,
+      "test",
+      agreedTerms,
+    ).kind,
   ).toBe("written");
   expect(
     parseAgreedTerms(JSON.parse(fs.readFileSync(termsFilePath, "utf8"))),
@@ -337,64 +339,23 @@ test("writeExchangeRecord writes the agreed terms beside the record, owner-only"
   expect(logCapture.warnings).toEqual([]);
 });
 
-test.each([
-  ["is", (shared: string) => shared],
-  ["is inside", (shared: string) => path.join(shared, "records")],
-])(
-  "no agreed-terms file is written where the record directory %s the shared folder",
-  (_how, recordDirectory) => {
-    const shared = path.join(dir, "shared");
-    fs.mkdirSync(shared);
-    const recordFilePath = path.join(recordDirectory(shared), "rec.json");
-    expect(
-      writeExchangeRecord(
-        { recordFile: recordFilePath },
-        record,
-        keys,
-        "test",
-        {
-          terms: agreedTerms,
-          channelDirectories: [shared],
-        },
-      ).kind,
-    ).toBe("written");
-    expect(fs.existsSync(recordFilePath)).toBe(true);
-    expect(fs.existsSync(agreedTermsPathFor(recordFilePath))).toBe(false);
-    expect(logCapture.warnings).toHaveLength(1);
-    expect(logCapture.warnings[0]).toContain(
-      "the record is in the folder this exchange shares with the partner",
-    );
-    expect(logCapture.warnings[0]).toContain("--partner-terms");
-  },
-);
-
-test.skipIf(process.platform === "win32")(
-  "a shared folder reached through a symbolic link is still recognized",
-  () => {
-    const shared = path.join(dir, "shared");
-    fs.mkdirSync(shared);
-    const link = path.join(dir, "link");
-    fs.symlinkSync(shared, link);
-    expect(recordDirectoryIsShared(path.join(link, "rec.json"), [shared])).toBe(
-      true,
-    );
-    expect(recordDirectoryIsShared(path.join(shared, "rec.json"), [link])).toBe(
-      true,
-    );
-  },
-);
-
-test("a folder beside the shared one, or holding it, is not shared", () => {
-  const shared = path.join(dir, "shared");
-  expect(recordDirectoryIsShared(path.join(dir, "rec.json"), [shared])).toBe(
-    false,
-  );
+test("a terminated run's record gets the agreed-terms file beside it", () => {
+  const recordFilePath = path.join(dir, "terminated.json");
   expect(
-    recordDirectoryIsShared(path.join(`${shared}-records`, "rec.json"), [
-      shared,
-    ]),
-  ).toBe(false);
-  expect(recordDirectoryIsShared(path.join(dir, "rec.json"), [])).toBe(false);
+    writeExchangeRecord(
+      { recordFile: recordFilePath },
+      terminatedRecord,
+      keys,
+      "test",
+      agreedTerms,
+    ).kind,
+  ).toBe("written");
+  expect(
+    parseAgreedTerms(
+      JSON.parse(fs.readFileSync(agreedTermsPathFor(recordFilePath), "utf8")),
+    ),
+  ).toEqual(agreedTerms);
+  expect(logCapture.warnings).toEqual([]);
 });
 
 test("an agreed-terms write that fails leaves the record written and says what to pass", () => {
@@ -402,10 +363,13 @@ test("an agreed-terms write that fails leaves the record written and says what t
   // A directory where the file would go makes its rename fail.
   fs.mkdirSync(agreedTermsPathFor(recordFilePath));
   expect(
-    writeExchangeRecord({ recordFile: recordFilePath }, record, keys, "test", {
-      terms: agreedTerms,
-      channelDirectories: [],
-    }).kind,
+    writeExchangeRecord(
+      { recordFile: recordFilePath },
+      record,
+      keys,
+      "test",
+      agreedTerms,
+    ).kind,
   ).toBe("written");
   expect(fs.existsSync(recordFilePath)).toBe(true);
   expect(logCapture.warnings).toHaveLength(1);

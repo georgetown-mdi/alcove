@@ -45,7 +45,6 @@ import {
 } from "@alcove/core";
 import type {
   Authentication,
-  BuiltExchangeRecord,
   ConnectionConfig,
   HandshakeRole,
   MessageConnection,
@@ -113,11 +112,7 @@ import {
   stopPsiWorkersBeforeExit,
   type PsiWorkerExitWaitOptions,
 } from "./psiWorkerHost";
-import {
-  writeExchangeRecord,
-  type AgreedTermsBesideRecord,
-  type RecordOutput,
-} from "./recordFile";
+import { writeExchangeRecord, type RecordOutput } from "./recordFile";
 import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
 import {
   closeWithinCeiling,
@@ -436,32 +431,6 @@ export const WEBRTC_RENDEZVOUS_SECRET_REQUIRED =
   "signaling ids they meet at from it, so without one there is no address to " +
   "dial. Establish one with 'alcove invite' and 'alcove accept', then run " +
   "'alcove exchange'.";
-
-/**
- * The local directories a connection shares with the partner: a filedrop
- * channel's shared folder, or its inbound and outbound pair. Empty for SFTP,
- * whose directory is on the server, and for WebRTC, which has none.
- */
-export function sharedChannelDirectories(
-  connection: ProtocolConnectionConfig,
-): string[] {
-  if (connection.channel !== "filedrop") return [];
-  return [
-    connection.path,
-    connection.inboundPath,
-    connection.outboundPath,
-  ].filter((directory): directory is string => directory !== undefined);
-}
-
-// The agreed-terms file the record write puts beside a record core built.
-function agreedTermsBesideRecord(
-  built: BuiltExchangeRecord,
-  channelDirectories: readonly string[],
-): AgreedTermsBesideRecord | undefined {
-  return built.agreedTerms === undefined
-    ? undefined
-    : { terms: built.agreedTerms, channelDirectories };
-}
 
 /**
  * The refusal a webrtc connection with no `role` gets.
@@ -2341,7 +2310,6 @@ async function writeExchangeOutputs(params: {
   output: string | undefined;
   csvDelimiter: string | undefined;
   recordOutput: RecordOutput | undefined;
-  channelDirectories: readonly string[];
   signing: SigningPersist | null;
   loggerName: string;
   log: ReturnType<typeof getLogger>;
@@ -2355,7 +2323,6 @@ async function writeExchangeOutputs(params: {
     output,
     csvDelimiter,
     recordOutput,
-    channelDirectories,
     signing,
     loggerName,
     log,
@@ -2529,7 +2496,7 @@ async function writeExchangeOutputs(params: {
       audit.record,
       audit.keys,
       loggerName,
-      agreedTermsBesideRecord(audit, channelDirectories),
+      audit.agreedTerms,
     );
     if (written.kind === "failed") {
       missingArtifacts.push(written.message);
@@ -3271,7 +3238,6 @@ export async function runProtocol(
       output,
       csvDelimiter,
       recordOutput,
-      channelDirectories: sharedChannelDirectories(connection),
       signing,
       loggerName,
       log,
@@ -3456,10 +3422,7 @@ export async function runProtocol(
           disclosedRecord.record,
           disclosedRecord.keys,
           loggerName,
-          agreedTermsBesideRecord(
-            disclosedRecord,
-            sharedChannelDirectories(connection),
-          ),
+          disclosedRecord.agreedTerms,
         );
         if (written.kind === "failed")
           emit((e) => e.warning("terminatedRunRecord", written.message));

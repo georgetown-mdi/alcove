@@ -384,6 +384,8 @@ import {
   prepareForExchange,
   RoundCapacityError,
   RoundSetLimitError,
+  AGREED_TERMS_VERSION,
+  parseAgreedTerms,
 } from "@alcove/core";
 import {
   AEAD_ENVELOPE_VERSION,
@@ -394,6 +396,7 @@ import {
 } from "@alcove/core/testing";
 import type {
   AssociationTable,
+  BuiltExchangeRecord,
   DualSignedRecord,
   ExchangeRecord,
   PartnerPayload,
@@ -419,7 +422,11 @@ import {
   reportPersistenceLoss,
   type EventStreamEmitter,
 } from "../../src/eventStream";
-import { keysPathFor, type RecordOutput } from "../../src/recordFile";
+import {
+  agreedTermsPathFor,
+  keysPathFor,
+  type RecordOutput,
+} from "../../src/recordFile";
 import { configureLogFile } from "../../src/util/logging";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
@@ -3915,13 +3922,18 @@ test(
 // under --no-record it writes nothing, and the record itself is what says the run
 // terminated.
 
-const terminatedAudit = {
+const terminatedAudit: BuiltExchangeRecord = {
   record: {
     ...sampleRecord,
     outcome: "receipt-swap-terminated" as const,
     receiptBinder: "YmluZGVy",
   },
   keys: sampleKeys,
+  agreedTerms: {
+    version: AGREED_TERMS_VERSION,
+    localTerms: getDefaultLinkageTerms("Party A"),
+    partnerTerms: getDefaultLinkageTerms("Party B"),
+  },
 };
 
 test(
@@ -3965,6 +3977,11 @@ test(
           JSON.parse(fs.readFileSync(keysPathFor(recordPath), "utf8")),
         ),
       ).toEqual(sampleKeys);
+      expect(
+        parseAgreedTerms(
+          JSON.parse(fs.readFileSync(agreedTermsPathFor(recordPath), "utf8")),
+        ),
+      ).toEqual(terminatedAudit.agreedTerms);
     }
     // No dual-signed receipt accompanies it: a terminated swap persists no
     // partial artifact.

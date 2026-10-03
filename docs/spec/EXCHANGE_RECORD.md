@@ -372,11 +372,22 @@ The agreed-terms hash needs both parties' terms to re-derive, and the record hol
 
 - **Shape.** A JSON object with exactly three members: `version` (`alcove-agreed-terms-file/v1`, a single recognized literal a reader rejects rather than migrates), `localTerms`, and `partnerTerms`. Each terms member is the linkage-terms document exactly as the run passed it to `computeTermsHash` -- this party's terms as it stated them, and the partner's as received -- in the camelCase spelling the record format writes, as the receipt's [`partnerTerms`](#dual-signed-record-file) is. A reader parses each under the same bounded linkage-terms schema, and a file either member of which that schema refuses is refused whole.
 - **Name and custody.** The record path with a `.terms.json` suffix in place of a trailing `.json` (`alcove-record-<stamp>.terms.json` by default), the rule the keys file's `.keys.json` follows. Written after the record, owner-only and atomically like it, and serialized the same way (pretty JSON with a trailing newline).
-- **Never into a shared channel directory.** The file is not written when the record's own directory is, or is inside, a directory this run's `filedrop` connection shares with the partner (`path`, `inbound_path`, or `outbound_path`, each compared as given and as symbolic links resolve it). The run warns instead, naming `--record-file` and the verification flags that supply the same terms. The record itself is written where it was directed either way.
-- **Non-fatal.** A skipped or failed write leaves the record and keys as written and is reported as a warning, not as a missing artifact: the file holds nothing the verifier cannot be given another way.
+- **Wherever the record is written.** The file follows the record to any directory, a `filedrop` connection's shared folder included. It holds only what both parties already hold from the terms exchange, and it is not a secret: the record beside it is the file the operator chose to place there, so the same choice places the terms file.
+- **Non-fatal.** A failed write leaves the record and keys as written and is reported as a warning, not as a missing artifact: the file holds nothing the verifier cannot be given another way.
 - **Not covered by anything.** No signature or commitment covers the file. It stands on the hash it reproduces: a verifier recomputes the record's `termsHash` from the two documents and reports a mismatch when they disagree, so a file that does not belong to the record cannot verify it.
 
 A verifier reads the file beside the exchange record it is given, when one is there. A terms document the operator names takes the place of the file's copy, half by half: `--config-file` for `localTerms`, `--partner-terms` for `partnerTerms`. A file that cannot be read or parsed is reported and supplies neither half. The web app writes no such file.
+
+### Re-supplied files from another run
+
+A failed verification is attributed to re-supplied files from another run of the exchange -- most often a result file a later run overwrote -- when all of the following hold:
+
+- the agreed-terms hash re-derived (`verified`), the one check that reads no re-supplied file;
+- every commitment opened, and each either matches or does not match: none is unopened and no salt is missing;
+- at least one non-matching commitment is the received-payload commitment (`partnerPayloadReceived`) or the pairing commitment (`associationTable`), the two the result file reproduces;
+- the recorded result size is not contradicted by the opened pairing.
+
+The CLI then leads its verdict with `VERIFICATION FAILED: the result file does not belong to this record's run` and asks for the files from that run; the exit code is that of any failed verification. The attribution is not proof: an altered commitment fails the same way, so the verdict names record alteration as the remaining explanation. Any other failure keeps the general headline.
 
 ### No data snapshot in the keys (data minimization)
 
@@ -398,7 +409,7 @@ One case reaches that unopenable state whatever is written, and the default does
 
 Privacy of the record itself: it stores the terms hash, each `identity` string that was supplied, this party's exposed-record count, the result size (when present), any retention/disposition pointer, the run's `outcome` and `certificateMismatchObserved`, and the governance metadata above (the agreement reference, purpose, and expiration, the algorithm, and the data categories) in cleartext. Anyone who reads it therefore learns that an exchange with that partner occurred, under which agreement, over what categories of data, how many records this party exposed, where it filed the result (when a pointer is configured), whether the run ran to completion, whether it observed that the partner's certificate was not the pinned identity, and -- when both sides were entitled to it -- its size. It holds no protected values. The `outcome` adds one fact about the run's own conduct and none about the data: both of its values describe a disclosure that occurred, and they differ only in whether the run got through the steps after it and left this party a receipt. `certificateMismatchObserved` adds one more fact of the same kind, about what the run found when it checked the partner's certificate against a fingerprint this party had already pinned: it names no certificate, no fingerprint, and no party the record does not already name, and it discloses nothing about the data or the people in it. The `receiptBinder`, when present, adds only that the exchange produced a signed receipt and the means to tell whether a given receipt is that run's; it is a one-way value over the session key and discloses nothing about the data ([Pairing a receipt to one run](#pairing-a-receipt-to-one-run)). As with the receipt, retention and access control of the record (and the strict protection of the verification keys) are the holder's responsibility.
 
-The [agreed-terms file](#agreed-terms-file) beside the record holds both parties' linkage terms in cleartext: the linkage fields and keys, the payload columns each side stated, the governing agreement, and each supplied `identity`. It holds no data values. Its custody is the record's: owner-only, and never written into a directory the exchange shares with the partner.
+The [agreed-terms file](#agreed-terms-file) beside the record holds both parties' linkage terms in cleartext: the linkage fields and keys, the payload columns each side stated, the governing agreement, and each supplied `identity`. It holds no data values. Its custody is the record's: owner-only, in the directory the operator chose for the record.
 
 ## See also
 

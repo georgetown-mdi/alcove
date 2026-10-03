@@ -176,7 +176,8 @@ async function runBoth(argvA: string[], argvB: string[]): Promise<void> {
 // Locate the single default-path record the asserted party wrote in `dir`. The
 // default basename is shared by the record (`<base>-<stamp>.json`), its
 // verification keys (`<base>-<stamp>.keys.json`), and its agreed terms
-// (`<base>-<stamp>.terms.json`), so exclude those two to find the record itself. Exactly one is expected, since only the asserted party records.
+// (`<base>-<stamp>.terms.json`), so exclude those two to find the record
+// itself. Exactly one is expected, since only the asserted party records.
 function findDefaultRecord(dir: string): string {
   const matches = fs
     .readdirSync(dir)

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  AGREED_TERMS_VERSION,
   ConnectionError,
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
@@ -1146,6 +1147,12 @@ describe("naming what the agreed terms resolved to", () => {
   });
 });
 
+const disclosureAgreedTerms: BuiltExchangeRecord["agreedTerms"] = {
+  version: AGREED_TERMS_VERSION,
+  localTerms: getDefaultLinkageTerms("Disclosure-record local fixture"),
+  partnerTerms: getDefaultLinkageTerms("Disclosure-record partner fixture"),
+};
+
 describe("filing the run's disclosure", () => {
   /** Make this run's exchange produce a real self-attested record, the way a
    * completed exchange does. Only the audit fields the assertions read are
@@ -1167,6 +1174,7 @@ describe("filing the run's disclosure", () => {
               partnerPayloadReceived: "partner-payload-salt",
             },
           },
+          agreedTerms: disclosureAgreedTerms,
         },
       }),
     );
@@ -1389,6 +1397,7 @@ describe("filing a stopped run's disclosure", () => {
           partnerPayloadReceived: "partner-payload-salt",
         },
       },
+      agreedTerms: disclosureAgreedTerms,
     };
   }
 
@@ -1461,6 +1470,7 @@ describe("filing a stopped run's disclosure", () => {
           partnerPayloadReceived: "partner-payload-salt",
         },
       },
+      agreedTerms: disclosureAgreedTerms,
     } satisfies BuiltExchangeRecord;
     mockedRecordFromFailure.mockReturnValueOnce(audit);
     let fileEntry: (() => void) | undefined;

@@ -915,9 +915,7 @@ export interface ExchangeRecordRandomness {
 export interface BuiltExchangeRecord {
   record: ExchangeRecord;
   keys: VerificationKeys;
-  /** Set by every build; optional so a record assembled elsewhere need not
-   * state it. */
-  agreedTerms?: AgreedTerms;
+  agreedTerms: AgreedTerms;
 }
 
 /**
