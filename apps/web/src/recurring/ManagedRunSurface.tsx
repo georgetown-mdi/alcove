@@ -10,6 +10,8 @@ import {
 } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 
+import { alertRoleFor } from "@theme";
+
 import { describeResolvedMatching, getLogger } from "@alcove/core";
 
 import { triggerBlobDownload } from "@components/blobDownload";
@@ -1802,11 +1804,12 @@ function StandingConditionSection({
       />
     ) : null;
   if (view === undefined) return null;
+  const color = view.clearance === "confirmation" ? "red" : "yellow";
   return (
     <>
       <Alert
-        color={view.clearance === "confirmation" ? "red" : "yellow"}
-        role={view.clearance === "confirmation" ? "alert" : undefined}
+        color={color}
+        role={alertRoleFor(color)}
         title={view.title}
         mb="md"
       >

@@ -194,9 +194,6 @@ export const mantineTheme: MantineThemeOverride = createTheme({
         checkIconPosition: "right",
       },
     }),
-    // Mantine gives every Alert role="alert", which interrupts a screen reader
-    // for a static hint. An error Alert (red) sets role="alert" itself, or
-    // through alertRoleFor when its color is chosen at runtime.
     Alert: Alert.extend({
       defaultProps: {
         role: ALERT_DEFAULT_ROLE,
