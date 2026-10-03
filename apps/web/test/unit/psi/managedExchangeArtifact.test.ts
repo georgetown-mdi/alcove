@@ -133,6 +133,24 @@ describe("export/import round-trip", () => {
     expect(restored.lastRun).toEqual(withRun.lastRun);
   });
 
+  test("the run history stays out of the artifact and the import has none", () => {
+    const record = runnableRecord(newExchange());
+    const recentRuns = [
+      { at: "2026-07-12T09:00:00.000Z", outcome: "succeeded" as const },
+      { at: "2026-07-11T09:00:00.000Z", outcome: "succeeded" as const },
+      { at: "2026-07-10T09:00:00.000Z", outcome: "succeeded" as const },
+    ];
+    const withHistory = {
+      ...record,
+      lastRun: recentRuns[0],
+      recentRuns,
+    };
+    const artifact = encodeManagedExchangeArtifact(withHistory);
+    expect(artifact.local).not.toHaveProperty("recentRuns");
+    const restored = reconstructRecordFromArtifact(artifact);
+    expect(restored).not.toHaveProperty("recentRuns");
+  });
+
   test("keeps a standing condition across the round trip", () => {
     // An export that dropped it would be a fourth way to clear one, and only the
     // operator's acknowledgement, a re-invite, and a delete may.

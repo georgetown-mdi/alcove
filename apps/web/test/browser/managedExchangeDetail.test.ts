@@ -19,8 +19,11 @@ import {
   appendDisclosureRecord,
 } from "@psi/disclosureAccounting";
 import {
+  MAX_RECENT_RUNS,
+  applyManagedExchangeLastRun,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
+  parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import {
   clearManagedExchanges,
@@ -30,6 +33,10 @@ import {
   updateManagedExchangeLocalFields,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedExchangeDetail } from "@recurring/ManagedExchangeDetail";
+
+import { RELAY_REGISTRATION_TITLE } from "@recurring/ManagedRelayRegistration";
+import { dateTimeLabel } from "@psi/formatting";
+import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import {
   FILEABLE_DISCLOSURE_NOTE,
@@ -56,9 +63,12 @@ import {
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
+import { expectNoAccessibilityViolations } from "./accessibilityRules";
 
 import type {
+  ManagedExchangeFailureKind,
   ManagedExchangeLocalEdits,
+  ManagedExchangeRecord,
   ManagedExchangeSchedule,
   ManagedExchangeSide,
   NewManagedExchange,
@@ -1194,11 +1204,11 @@ describe("managed exchange detail run schedule", () => {
         page.getByText("never runs this exchange on its own", { exact: false }),
       )
       .toBeInTheDocument();
-    // The cadence is editable, in the local-fields form above, and the section
+    // The cadence is editable, in the local-fields form below, and the section
     // names where rather than implying it is nowhere.
     await expect
       .element(
-        page.getByText("Change it under Local settings above", {
+        page.getByText("Change it under Local settings below", {
           exact: false,
         }),
       )
@@ -1498,6 +1508,229 @@ describe("managed exchange detail run history", () => {
     await expect
       .element(page.getByText("no run was started", { exact: false }))
       .toBeInTheDocument();
+  });
+});
+
+describe("managed exchange detail recent runs, partner schedule, and relay section", () => {
+  function renderDetail(shown: ManagedExchangeRecord) {
+    app.render(
+      createElement(ManagedExchangeDetail, {
+        record: shown,
+        parkedResultsRead: { kind: "none" },
+        accountingRead: { kind: "none" },
+        onResetAccounting: () => Promise.resolve(),
+        onRetryAccountingRead: () => undefined,
+        onRetryParkedResultsRead: () => undefined,
+        onClearParkedResults: () => Promise.resolve(),
+        onGrantWorkingFolder: () => Promise.resolve(),
+        onStopUsingWorkingFolder: () => Promise.resolve(),
+        onSaveLocalFields: () => Promise.resolve(),
+        onTermsChanged: () => undefined,
+        onRelayRegistrationChanged: () => undefined,
+        onReinviteToChangeTerms: () => undefined,
+        canReinvite: true,
+        reinviting: false,
+        reinviteFailed: false,
+        compromiseResponse: false,
+        runInFlight: false,
+        runHoldsReinvite: false,
+        unfiledDisclosureRead: { kind: "none" },
+        unrecordedRunFlagged: false,
+        onUnrecordedRunFlagShown: () => undefined,
+        onFileUnfiledDisclosures: () => Promise.resolve(),
+      }),
+    );
+  }
+
+  /** A record that has recorded `count` runs through the store's own write,
+   * one a day from 1 July 2026, each a failure of `kind`. */
+  function recordWithRuns(
+    count: number,
+    kind: ManagedExchangeFailureKind = "transport",
+  ): ManagedExchangeRecord {
+    let stored: ManagedExchangeRecord = record("inviter");
+    for (let day = 1; day <= count; day += 1) {
+      const at = new Date(Date.UTC(2026, 6, day, 9)).toISOString();
+      stored = applyManagedExchangeLastRun(
+        stored,
+        { at, outcome: "failed", failureKind: kind },
+        Date.parse(at),
+      );
+    }
+    return stored;
+  }
+
+  function historyItems(): Array<Element> {
+    return page
+      .getByRole("list", { name: "Recent runs" })
+      .getByRole("listitem")
+      .elements();
+  }
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  test("lists the kept runs newest first, each with its failure kind, up to the bound", async () => {
+    const stored = applyManagedExchangeLastRun(
+      recordWithRuns(MAX_RECENT_RUNS + 2),
+      { at: "2026-07-20T09:00:00.000Z", outcome: "missed" },
+      Date.parse("2026-07-20T09:00:00.000Z"),
+    );
+    renderDetail(stored);
+
+    await expect
+      .element(page.getByRole("list", { name: "Recent runs" }))
+      .toBeInTheDocument();
+    const items = historyItems();
+    expect(items).toHaveLength(MAX_RECENT_RUNS);
+    expect(items[0].textContent).toMatch(/^Partner did not arrive - /);
+    expect(items[1].textContent).toMatch(/^Failed: the connection failed - /);
+    const kept = stored.recentRuns ?? [];
+    expect(kept.map((run) => run.at)).toEqual(
+      [...kept.map((run) => run.at)].sort().reverse(),
+    );
+    items.forEach((item, index) => {
+      expect(item.textContent).toContain(
+        dateTimeLabel(new Date(kept[index].at)),
+      );
+    });
+    await expect
+      .element(
+        page.getByText(
+          `The last ${String(MAX_RECENT_RUNS)} runs are kept here`,
+          {
+            exact: false,
+          },
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("a record without recentRuns shows the one run it holds", async () => {
+    renderDetail(
+      record("inviter", {
+        lastRun: {
+          at: "2026-07-01T09:00:00.000Z",
+          outcome: "failed",
+          failureKind: "terms-change",
+        },
+      }),
+    );
+
+    await expect
+      .element(page.getByRole("list", { name: "Recent runs" }))
+      .toBeInTheDocument();
+    const items = historyItems();
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toMatch(
+      /^Failed: your partner's terms changed - /,
+    );
+  });
+
+  test("the run history and the schedule come before the settings", async () => {
+    renderDetail(
+      parseManagedExchangeRecord({
+        ...recordWithRuns(1, "input"),
+        schedule: {
+          anchor: "2026-07-01T09:00:00.000Z",
+          intervalDays: 7,
+          windowSeconds: 10_800,
+          nextWindow: "2026-07-01T09:00:00.000Z",
+          consecutiveMisses: 0,
+        },
+      }),
+    );
+
+    await expect
+      .element(page.getByRole("heading", { name: "Run history" }))
+      .toBeInTheDocument();
+    const headings = page
+      .getByRole("heading", { level: 2 })
+      .elements()
+      .map((heading) => heading.textContent);
+    const at = (name: string) => {
+      const index = headings.indexOf(name);
+      expect(index, name).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    expect(at("Run schedule")).toBeLessThan(at("Run history"));
+    expect(at("Run history")).toBeLessThan(at("Configuration"));
+    expect(at("Run history")).toBeLessThan(at("Local settings"));
+  });
+
+  test("the relay registration section is hidden while this browser sets no relay", async () => {
+    renderDetail(record("inviter"));
+
+    await expect
+      .element(page.getByRole("heading", { name: "Run history" }))
+      .toBeInTheDocument();
+    expect(
+      page.getByRole("heading", { name: RELAY_REGISTRATION_TITLE }).query(),
+    ).toBeNull();
+  });
+
+  test("the relay registration section is shown once this browser sets a TURN relay", async () => {
+    writeOwnRelaySetting({
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      stun: [],
+    });
+    renderDetail(record("inviter"));
+
+    await expect
+      .element(page.getByRole("heading", { name: RELAY_REGISTRATION_TITLE }))
+      .toBeInTheDocument();
+  });
+
+  test("copies the schedule for the partner as plain text holding no secret", async () => {
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+    try {
+      const stored = record("inviter", {
+        schedule: {
+          anchor: "2026-07-07T14:30:00.000Z",
+          intervalDays: 7,
+          windowSeconds: 10_800,
+          nextWindow: "2026-07-07T14:30:00.000Z",
+          consecutiveMisses: 0,
+        },
+      });
+      renderDetail(stored);
+
+      await expect
+        .element(
+          page.getByRole("heading", {
+            name: "Copy this schedule for your partner",
+          }),
+        )
+        .toBeInTheDocument();
+      await page
+        .getByRole("button", { name: "Copy schedule for your partner" })
+        .click();
+      await vi.waitFor(() => {
+        expect(writeText).toHaveBeenCalledTimes(1);
+      });
+      const scheduleSection = page
+        .getByRole("heading", { name: "Run schedule" })
+        .element()
+        .closest("div");
+      expect(scheduleSection).not.toBeNull();
+      if (scheduleSection !== null)
+        expectNoAccessibilityViolations(scheduleSection);
+      const copied = String(writeText.mock.calls[0][0]);
+      expect(copied).toMatch(/^Schedule for our recurring Alcove exchange\n/);
+      expect(copied).toMatch(
+        /Next run window opens: \d{4}-\d{2}-\d{2} 14:30 UTC/,
+      );
+      expect(copied).toContain("Repeats: every 7 days");
+      expect(copied).toContain("Each window stays open: 3 hours");
+      expect(copied).not.toContain(stored.sharedSecret ?? "unreachable");
+      expect(copied).not.toContain(stored.label);
+      expect(copied).not.toContain("#");
+    } finally {
+      writeText.mockRestore();
+    }
   });
 });
 
@@ -3701,9 +3934,7 @@ describe("a run whose record never reached the accounting", () => {
     // The run history may not name the run the flag stands for, so the alert
     // names the other place it is stated rather than that one alone.
     await expect
-      .element(
-        page.getByText("keeps only the most recent run", { exact: false }),
-      )
+      .element(page.getByText("keeps only the last 10 runs", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(page.getByText("diagnostic log", { exact: false }))

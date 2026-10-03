@@ -307,6 +307,10 @@ That failure is benign and self-announcing: it shows up as mutual missed windows
 in the first place -- the same channel, the same reconciliation as any other
 schedule drift.
 
+To make matching entries easier, the Run schedule section of a page that holds
+a schedule offers it as plain text to send the partner, so both sides open the
+same windows; it holds no secret and no invitation.
+
 ### When a window opens and closes
 
 The recurrence is an anchor instant plus a whole-day interval, and each window
@@ -1274,7 +1278,9 @@ A relay run from the reference deployment accepts only credentials minted from
 the relay key it holds for each exchange, and that key changes each time the
 shared secret rotates. When the relay in this browser's relay settings runs the
 Alcove relay registrar, enroll the exchange there once, under **Relay
-registration** on its page: the registrar's address, the exchange id to hold
+registration** on its page, which shows that section only while this browser's
+relay settings name a TURN relay, or the exchange is already enrolled or has a
+registration pending: the registrar's address, the exchange id to hold
 the key under, and the relay-owner token. The token is sent with that one
 request and kept nowhere. Leave it empty when the registrar already holds the
 exchange's current key, as after enrolling it from the command line.
@@ -2040,7 +2046,9 @@ its record.
 
 The marker names the exchange and nothing else, so finding which run it stands
 for takes two places, neither of them certain. The run history keeps only the
-most recent run, so a marker written for an earlier one is not named there. The
+most recent runs (the bound is the `recentRuns` row of
+[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)), so a marker
+written for an earlier one is not named there. The
 run also reported the failure to the browser's diagnostic log as it happened --
 the developer-tools console, whose detail
 [DEPLOYMENT.md](DEPLOYMENT.md#diagnosing-web-connection-failures) describes --

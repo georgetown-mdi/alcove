@@ -23,9 +23,12 @@ import {
 } from "@alcove/core";
 
 import { dateTimeLabel } from "@psi/formatting";
+import { recentRunsOf } from "@psi/managed/managedExchangeRecord";
+import { tooLargeFailureClause } from "@psi/managed/managedFailureCopy";
 
 import {
   SCHEDULE_INPUT_RESELECTION_NOTE,
+  partnerScheduleText,
   repeatedMissCoordination,
   scheduleAttendanceNote,
   scheduleCadenceLine,
@@ -36,10 +39,12 @@ import {
 
 import type { Displayable, ExchangeSpec } from "@alcove/core";
 import type {
+  ManagedExchangeFailureKind,
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
   ManagedExchangeSide,
 } from "@psi/managed/managedExchangeRecord";
+import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 import type { RepeatedMissCoordination } from "./scheduleSurfacingModel";
 
 /** The operator-facing name for each side of the partnership. */
@@ -230,6 +235,9 @@ interface ScheduleView {
    * run, so the next run would link that run's data again. Advisory: it bars no
    * run and pauses no schedule. */
   unchangedInputNote?: string;
+  /** The schedule as plain text for the partner, holding no secret and no
+   * invitation (see {@link partnerScheduleText}). */
+  partnerText: string;
 }
 
 /**
@@ -262,6 +270,7 @@ export function scheduleView(
     cadence: scheduleCadenceLine(schedule),
     dueLine: scheduleDueLine(scheduleDueness(schedule, now)),
     attendanceNote: scheduleAttendanceNote(installedRuntime),
+    partnerText: partnerScheduleText(schedule, now),
     ...(coordination !== undefined ? { coordination } : {}),
     ...(hasWorkingFolder
       ? {}
@@ -273,12 +282,12 @@ export function scheduleView(
 }
 
 /**
- * One run-history entry: what a single run did and what it disclosed. The record's
- * own bookkeeping (`lastRun`) keeps only the most recent run, so exactly one entry
- * is derivable here. A completed run's disclosure is not read from this bookkeeping
- * at all -- it is the run's own exchange record, filed in the exchange's accounting
- * of disclosures (see {@link ./disclosureAccountingModel.ts}); this entry covers
- * the runs that accounting cannot, the ones that did not complete.
+ * One run-history entry: what a single run did, why it failed where it did, and
+ * what it disclosed. A completed run's disclosure is not read from this
+ * bookkeeping at all -- it is the run's own exchange record, filed in the
+ * exchange's accounting of disclosures (see {@link ./disclosureAccountingModel.ts});
+ * this entry covers the runs that accounting cannot, the ones that did not
+ * complete.
  */
 interface RunHistoryEntry {
   /** ISO 8601 UTC instant of the run. */
@@ -287,6 +296,9 @@ interface RunHistoryEntry {
   when: string;
   /** The outcome phrased for display, e.g. "Succeeded", "Partner did not arrive". */
   outcome: string;
+  /** The recorded failure kind phrased for display; absent where the entry
+   * records none. */
+  failure?: string;
   /** The plain, accurate disclosure line for this entry. The run bookkeeping holds
    * no match result, count, or row value (it is closed enums and a timestamp), so
    * this states what the record can accurately say, not a fabricated disclosure. */
@@ -303,6 +315,34 @@ const OUTCOME_LABELS: Record<ManagedExchangeLastRun["outcome"], string> = {
   missed: "Partner did not arrive",
   skipped: "Skipped",
 };
+
+/** The display phrase for each recorded failure kind, completing a sentence
+ * that starts with the outcome. */
+const FAILURE_KIND_LABELS: Record<
+  Exclude<ManagedExchangeFailureKind, "too-large">,
+  string
+> = {
+  auth: "the handshake could not authenticate your partner",
+  transport: "the connection failed",
+  storage: "the new secret could not be saved in this browser",
+  "custody-unreadable": "part of this exchange's stored copy could not be read",
+  input: "your input file could not be used",
+  "terms-shortfall": "your input file does not cover every agreed key",
+  "handed-off": "this exchange had been handed off",
+  "partner-set-too-large": "your partner's set is too large for this browser",
+  "partner-refused-set": "your partner's run refused to send its set",
+  "terms-change": "your partner's terms changed",
+  cancelled: "you stopped the run",
+};
+
+/** The failure kind an entry records, phrased for display. */
+function failureLabel(entry: ManagedExchangeLastRun): string | undefined {
+  const kind = entry.failureKind;
+  if (kind === undefined) return undefined;
+  return kind === "too-large"
+    ? tooLargeFailureClause(entry)
+    : FAILURE_KIND_LABELS[kind];
+}
 
 /** The disclosure line for a succeeded run. */
 const SUCCEEDED_DISCLOSURE =
@@ -399,31 +439,31 @@ function nonSucceededDisclosure(lastRun: ManagedExchangeLastRun): string {
 }
 
 /**
- * The run-history entries for the detail view, derived from the record's
- * `lastRun` bookkeeping: an empty list when no run has been recorded, otherwise
- * a single entry for the most recent run (see {@link nonSucceededDisclosure} for
- * the disclosure line). Every run that disclosed has its own record in the
- * accounting of disclosures, not here.
+ * The run-history entries for the detail view, newest first: one per outcome
+ * the record keeps ({@link recentRunsOf}), and an empty list when no run has
+ * been recorded (see {@link nonSucceededDisclosure} for the disclosure line).
+ * Every run that disclosed has its own record in the accounting of
+ * disclosures, not here.
  */
 export function runHistoryEntries(
-  record: Pick<ManagedExchangeRecord, "lastRun">,
+  record: Pick<ManagedExchangeRecord, "lastRun" | "recentRuns">,
 ): Array<RunHistoryEntry> {
-  const { lastRun } = record;
-  if (lastRun === undefined) return [];
-  const disclosure =
-    lastRun.outcome === "succeeded"
-      ? SUCCEEDED_DISCLOSURE
-      : lastRun.outcome === "skipped"
-        ? SKIPPED_DISCLOSURE
-        : nonSucceededDisclosure(lastRun);
-  return [
-    {
-      at: lastRun.at,
-      when: dateTimeLabel(new Date(lastRun.at)),
-      outcome: OUTCOME_LABELS[lastRun.outcome],
+  return recentRunsOf(record).map((entry) => {
+    const disclosure =
+      entry.outcome === "succeeded"
+        ? SUCCEEDED_DISCLOSURE
+        : entry.outcome === "skipped"
+          ? SKIPPED_DISCLOSURE
+          : nonSucceededDisclosure(entry);
+    const failure = failureLabel(entry);
+    return {
+      at: entry.at,
+      when: dateTimeLabel(new Date(entry.at)),
+      outcome: OUTCOME_LABELS[entry.outcome],
+      ...(failure !== undefined ? { failure } : {}),
       disclosure,
-    },
-  ];
+    };
+  });
 }
 
 /**
@@ -435,7 +475,7 @@ export function runHistoryEntries(
  * entries without touching the record, and export/import moves the exchange
  * without its accounting.
  *
- * ONE-WAY in two directions. The record keeps only the most recent run (see
+ * ONE-WAY in two directions. It reads only the most recent run (see
  * docs/spec/MANAGED_EXCHANGE_RECORD.md, the `lastRun` row), so `false` means only
  * that the retained run is not a completed one. And a run that stopped after
  * sending its payload files an entry as well, which the bookkeeping stamps
@@ -458,7 +498,7 @@ export function completedRunRecorded(
  * {@link completedRunRecorded} first, so a completed run takes its own reading
  * there and never this one.
  *
- * ONE-WAY, as {@link completedRunRecorded} is: the record keeps only the most
+ * ONE-WAY, as {@link completedRunRecorded} is: it reads only the most
  * recent run (see docs/spec/MANAGED_EXCHANGE_RECORD.md, the `lastRun` row), so
  * `false` speaks for the retained run alone.
  */
@@ -469,4 +509,25 @@ export function lastRunMayHaveSentPayload(
   if (lastRun === undefined) return false;
   if (lastRun.outcome === "succeeded") return true;
   return sendNotRuledOut(lastRun);
+}
+
+/**
+ * Whether the exchange's page offers its relay registration section: where this
+ * browser's own relay settings name a TURN relay a run could relay through, or
+ * where the record already holds an enrollment or a pending registration the
+ * section states and acts on. Elsewhere the registrar form has nothing a run
+ * would use, so it is not shown.
+ */
+export function relayRegistrationOffered(
+  record: Pick<
+    ManagedExchangeRecord,
+    "relayRegistrar" | "relayRegistrationPendingSince"
+  >,
+  ownRelay: OwnRelayRead,
+): boolean {
+  return (
+    record.relayRegistrar !== undefined ||
+    record.relayRegistrationPendingSince !== undefined ||
+    (ownRelay.kind === "set" && ownRelay.relay.turn.length > 0)
+  );
 }

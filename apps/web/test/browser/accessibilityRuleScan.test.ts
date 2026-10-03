@@ -19,6 +19,7 @@ import { SavedExchanges, SavedExchangesHome } from "@recurring/SavedExchanges";
 import {
   clearManagedExchanges,
   createManagedExchange,
+  recordManagedExchangeLastRun,
 } from "@psi/managed/managedExchangeStore";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
@@ -29,6 +30,7 @@ import { NotFound } from "@components/NotFound";
 import { RelaySettingsScreen } from "@exchange/RelaySettingsScreen";
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
+import { writeOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import {
@@ -87,6 +89,40 @@ async function savedExchangeId(): Promise<string> {
     side: "inviter",
     sharedSecret: generateSharedSecret(),
   });
+  return created.id;
+}
+
+/** A saved exchange with three recorded runs, opened in a browser whose own
+ * relay names a TURN url: the state that shows the run history list and the
+ * relay registration section. */
+async function exchangeWithRunsId(): Promise<string> {
+  writeOwnRelaySetting({
+    turn: ["turns:relay.example.org:443?transport=tcp"],
+    stun: [],
+  });
+  const created = await createManagedExchange({
+    label: "Riverbend quarterly",
+    exchangeFile: composeManagedExchangeFile({
+      connection: { channel: "webrtc", host: "signaling.example.org" },
+      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+    }),
+    side: "inviter",
+    sharedSecret: generateSharedSecret(),
+  });
+  for (const [at, failureKind] of [
+    ["2026-07-01T10:00:00.000Z", "input"],
+    ["2026-07-08T10:00:00.000Z", "transport"],
+  ] as const)
+    await recordManagedExchangeLastRun(
+      created.id,
+      { at, outcome: "failed", failureKind },
+      Date.parse(at),
+    );
+  await recordManagedExchangeLastRun(
+    created.id,
+    { at: "2026-07-15T10:00:00.000Z", outcome: "missed" },
+    Date.parse("2026-07-15T10:00:00.000Z"),
+  );
   return created.id;
 }
 
@@ -182,6 +218,13 @@ const SCANNED_STATES: Array<ScannedState> = [
   },
   {
     route: "/saved/$id",
+    state: "an exchange with recorded runs and a relay set",
+    heading: "Riverbend quarterly",
+    node: async () =>
+      createElement(ManagedRunSurface, { id: await exchangeWithRunsId() }),
+  },
+  {
+    route: "/saved/$id",
     state: "an exchange that is not stored",
     heading: "Exchange not found",
     node: () =>
@@ -225,6 +268,7 @@ afterEach(async () => {
   await flushPendingUpdates();
   app.unmount();
   window.location.hash = "";
+  window.localStorage.clear();
   await clearManagedExchanges();
 });
 
