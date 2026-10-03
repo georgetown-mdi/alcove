@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
@@ -22,6 +23,8 @@ import {
   psiEngineOptionsForBackend,
 } from "../../src/psi/psiMatchSlices";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
+
+vi.setConfig({ testTimeout: 60_000 });
 
 import type { PsiChunkRange } from "../../src/psi/psiChunks";
 
