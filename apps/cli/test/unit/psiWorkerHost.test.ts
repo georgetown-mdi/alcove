@@ -156,51 +156,98 @@ describe("createWorkerThreadHandle", () => {
     fake.emit("messageerror", new Error("could not be deserialized"));
     await expect(pending).rejects.toThrow(/could not be deserialized/);
   });
+
+  test("a messageerror does not leave dispose() waiting to terminate the worker", async () => {
+    const fake = new FakeWorker();
+    const engine = new WorkerPsiEngine(createWorkerThreadHandle(fake));
+    const pending = engine.createClientRequest(["x"]);
+    fake.emit("messageerror", new Error("could not be deserialized"));
+    await expect(pending).rejects.toThrow(/could not be deserialized/);
+
+    engine.dispose();
+    expect(fake.terminateCalls).toBe(1);
+  });
 });
 
 describe("a signal exit while a PSI worker request is in flight", () => {
-  test("the first signal waits and prints the notice; a second SIGINT exits at once", async () => {
+  test.each(["SIGINT", "SIGTERM"] as const)(
+    "the first signal waits and prints the notice; a further %s exits at once",
+    async (signal) => {
+      const fake = new FakeWorker();
+      const engine = trackWorkerPsiEngine(fake);
+      void engine.createClientRequest(["x"]).catch(() => {});
+      const request = fake.posted[0]!;
+      const announce = vi.fn();
+      const exitAtOnce = vi.fn();
+      const sigintListenersBefore = process.listenerCount("SIGINT");
+      const sigtermListenersBefore = process.listenerCount("SIGTERM");
+      const options = {
+        announce,
+        isRepeatedDelivery: () => false,
+        exitAtOnce,
+      };
+
+      offerExitAtOnceWhilePsiWorkersStop(options);
+      expect(announce).toHaveBeenCalledExactlyOnceWith(
+        PSI_WORKER_EXIT_WAIT_NOTICE,
+      );
+
+      let stopped = false;
+      const stopping = stopPsiWorkersBeforeExit(options).then(() => {
+        stopped = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(stopped).toBe(false);
+      expect(fake.terminateCalls).toBe(0);
+      expect(announce).toHaveBeenCalledOnce();
+      expect(exitAtOnce).not.toHaveBeenCalled();
+
+      process.emit(signal);
+      expect(exitAtOnce).toHaveBeenCalledExactlyOnceWith(signal);
+
+      // With process.exit mocked away the wait still ends normally once the
+      // worker reaches its chunk boundary, and the listeners come off.
+      fake.emit("message", {
+        id: request.id,
+        ok: false,
+        error: "PSI operation stopped before it finished",
+        stopped: true,
+      });
+      expect(fake.terminateCalls).toBe(1);
+      fake.emit("exit", 1);
+      await stopping;
+      expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+      expect(process.listenerCount("SIGTERM")).toBe(sigtermListenersBefore);
+    },
+  );
+
+  test("a request in flight only once the wait begins still gets the notice and the exit at once", async () => {
     const fake = new FakeWorker();
     const engine = trackWorkerPsiEngine(fake);
-    void engine.createClientRequest(["x"]).catch(() => {});
-    const request = fake.posted[0]!;
     const announce = vi.fn();
     const exitAtOnce = vi.fn();
-    const sigintListenersBefore = process.listenerCount("SIGINT");
+    const options = { announce, isRepeatedDelivery: () => false, exitAtOnce };
 
-    offerExitAtOnceWhilePsiWorkersStop({
-      announce,
-      isRepeatedInterrupt: () => false,
-      exitAtOnce,
-    });
+    offerExitAtOnceWhilePsiWorkersStop(options);
+    expect(announce).not.toHaveBeenCalled();
+
+    void engine.createClientRequest(["x"]).catch(() => {});
+    const request = fake.posted[0]!;
+    const stopping = stopPsiWorkersBeforeExit(options);
     expect(announce).toHaveBeenCalledExactlyOnceWith(
       PSI_WORKER_EXIT_WAIT_NOTICE,
     );
+    process.emit("SIGTERM");
+    expect(exitAtOnce).toHaveBeenCalledExactlyOnceWith("SIGTERM");
 
-    let stopped = false;
-    const stopping = stopPsiWorkersBeforeExit().then(() => {
-      stopped = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(stopped).toBe(false);
-    expect(fake.terminateCalls).toBe(0);
-    expect(exitAtOnce).not.toHaveBeenCalled();
-
-    process.emit("SIGINT");
-    expect(exitAtOnce).toHaveBeenCalledOnce();
-
-    // With process.exit mocked away the wait still ends normally once the
-    // worker reaches its chunk boundary, and the listener comes off.
     fake.emit("message", {
       id: request.id,
       ok: false,
       error: "PSI operation stopped before it finished",
       stopped: true,
     });
-    expect(fake.terminateCalls).toBe(1);
     fake.emit("exit", 1);
     await stopping;
-    expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
   });
 
   test("a repeated delivery of the first signal does not exit at once", async () => {
@@ -209,14 +256,16 @@ describe("a signal exit while a PSI worker request is in flight", () => {
     void engine.createClientRequest(["x"]).catch(() => {});
     const request = fake.posted[0]!;
     const exitAtOnce = vi.fn();
-
-    offerExitAtOnceWhilePsiWorkersStop({
+    const options = {
       announce: vi.fn(),
-      isRepeatedInterrupt: () => true,
+      isRepeatedDelivery: () => true,
       exitAtOnce,
-    });
-    const stopping = stopPsiWorkersBeforeExit();
+    };
+
+    offerExitAtOnceWhilePsiWorkersStop(options);
+    const stopping = stopPsiWorkersBeforeExit(options);
     process.emit("SIGINT");
+    process.emit("SIGTERM");
     expect(exitAtOnce).not.toHaveBeenCalled();
 
     fake.emit("message", {
@@ -233,16 +282,18 @@ describe("a signal exit while a PSI worker request is in flight", () => {
     trackWorkerPsiEngine(fake);
     const announce = vi.fn();
     const sigintListenersBefore = process.listenerCount("SIGINT");
-
-    offerExitAtOnceWhilePsiWorkersStop({
+    const sigtermListenersBefore = process.listenerCount("SIGTERM");
+    const options = {
       announce,
-      isRepeatedInterrupt: () => false,
+      isRepeatedDelivery: () => false,
       exitAtOnce: vi.fn(),
-    });
+    };
+
+    offerExitAtOnceWhilePsiWorkersStop(options);
+    const stopping = stopPsiWorkersBeforeExit(options);
     expect(announce).not.toHaveBeenCalled();
     expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
-
-    const stopping = stopPsiWorkersBeforeExit();
+    expect(process.listenerCount("SIGTERM")).toBe(sigtermListenersBefore);
     expect(fake.terminateCalls).toBe(1);
     fake.emit("exit", 1);
     await stopping;

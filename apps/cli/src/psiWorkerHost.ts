@@ -120,7 +120,7 @@ export function createWorkerThreadHandle(
   // Terminating the worker inside a native masking call aborts the whole
   // process, so a terminate() while a request is in flight waits for that
   // request's reply; dispose() has asked the operation to stop at its next
-  // chunk boundary, which bounds the wait to one chunk.
+  // masking chunk or match call boundary.
   const inFlight = new Set<number>();
   let terminated = false;
   const terminateWhenIdle = (): void => {
@@ -144,8 +144,13 @@ export function createWorkerThreadHandle(
       // 'messageerror', NOT 'error'; with no listener it is silently dropped and the
       // pending call would hang. Route it to onError so the call fails fast. Not
       // reachable with today's cloneable payloads (byte arrays and index lists), but
-      // a boundary hardening against a future non-cloneable reply.
-      worker.on("messageerror", (error) => onError(error));
+      // a boundary hardening against a future non-cloneable reply. The worker
+      // sent that reply, so its native call is over and nothing is in flight.
+      worker.on("messageerror", (error) => {
+        inFlight.clear();
+        onError(error);
+        terminateWhenIdle();
+      });
       worker.on("exit", (code) => {
         // A worker that exits on its own -- a failed startup or a crash -- must fail
         // the exchange rather than let it hang on a dead worker. A terminate()'d
@@ -212,51 +217,72 @@ export function trackWorkerPsiEngine(
 
 /**
  * The line a signal handler prints when it waits for a PSI worker's current
- * chunk before exiting.
+ * native call before exiting.
  */
 export const PSI_WORKER_EXIT_WAIT_NOTICE =
-  "finishing the current encryption chunk before exiting; press Ctrl-C " +
-  "again to exit at once (that stops the encryption mid-call and can end " +
-  "with a different exit code)";
+  "finishing the current PSI step before exiting (up to one encryption " +
+  "chunk, or the whole match); press Ctrl-C again or send the signal " +
+  "again to exit at once, which can end with a different exit code";
 
-let exitAtOnceOnInterrupt: (() => void) | undefined;
+/** The signals whose repeat ends the wait for a PSI worker at once. */
+export type PsiWorkerExitSignal = "SIGINT" | "SIGTERM";
+
+const EXIT_SIGNALS: readonly PsiWorkerExitSignal[] = ["SIGINT", "SIGTERM"];
+
+/** How a signal handler reports and ends the wait for a PSI worker. */
+export interface PsiWorkerExitWaitOptions {
+  announce: (line: string) => void;
+  /** Whether `signal` is the same delivery seen again, not a new signal. */
+  isRepeatedDelivery: (signal: PsiWorkerExitSignal) => boolean;
+  exitAtOnce: (signal: PsiWorkerExitSignal) => void;
+}
+
+let exitAtOnceListeners: Map<PsiWorkerExitSignal, () => void> | undefined;
 
 /**
- * Called by a signal handler as it begins: when a PSI worker has a request in
+ * Called by a signal handler as it begins, and again by
+ * {@link stopPsiWorkersBeforeExit}: when a PSI worker has a request in
  * flight, print {@link PSI_WORKER_EXIT_WAIT_NOTICE} through `announce` and,
  * until {@link stopPsiWorkersBeforeExit} finishes, call `exitAtOnce` on a
- * further SIGINT that `isRepeatedInterrupt` does not discount. The operator
- * is the bound on the wait: there is no timeout.
+ * further SIGINT or SIGTERM that `isRepeatedDelivery` does not discount.
+ * The operator is the bound on the wait: there is no timeout.
  */
-export function offerExitAtOnceWhilePsiWorkersStop(options: {
-  announce: (line: string) => void;
-  isRepeatedInterrupt: () => boolean;
-  exitAtOnce: () => void;
-}): void {
-  if (exitAtOnceOnInterrupt !== undefined) return;
+export function offerExitAtOnceWhilePsiWorkersStop(
+  options: PsiWorkerExitWaitOptions,
+): void {
+  if (exitAtOnceListeners !== undefined) return;
   const inFlight = [...liveWorkers.values()].some((worker) =>
     worker.requestInFlight(),
   );
   if (!inFlight) return;
   options.announce(PSI_WORKER_EXIT_WAIT_NOTICE);
-  const listener = (): void => {
-    if (options.isRepeatedInterrupt()) return;
-    options.exitAtOnce();
-  };
-  exitAtOnceOnInterrupt = listener;
-  // Ahead of the exchange's own SIGINT handler, which would otherwise print
-  // its interrupt lines again before this exit.
-  process.prependListener("SIGINT", listener);
+  exitAtOnceListeners = new Map();
+  for (const signal of EXIT_SIGNALS) {
+    const listener = (): void => {
+      if (options.isRepeatedDelivery(signal)) return;
+      options.exitAtOnce(signal);
+    };
+    exitAtOnceListeners.set(signal, listener);
+    // Ahead of the exchange's own handler, which would otherwise print its
+    // interrupt lines again before this exit.
+    process.prependListener(signal, listener);
+  }
 }
 
 /**
  * Dispose every live PSI worker engine and resolve once each worker has
  * exited. A signal handler awaits this before `process.exit`, which would
- * otherwise tear a worker down inside a native masking call and abort the
- * process; an operation in flight stops at its next chunk boundary, so the
- * wait is at most one chunk. Never rejects.
+ * otherwise tear a worker down inside a native call and abort the process.
+ * An operation in flight stops at its next boundary: at most one masking
+ * chunk during encryption, the end of the current match call during the
+ * match -- for a count-only or unsliced match, the whole match. When it has
+ * to wait, a repeated signal ends the wait as
+ * {@link offerExitAtOnceWhilePsiWorkersStop} describes. Never rejects.
  */
-export async function stopPsiWorkersBeforeExit(): Promise<void> {
+export async function stopPsiWorkersBeforeExit(
+  options: PsiWorkerExitWaitOptions,
+): Promise<void> {
+  offerExitAtOnceWhilePsiWorkersStop(options);
   const exits = [...liveWorkers].map(([engine, { exited }]) => {
     // The caller exits once this settles, so a dispose that throws must not
     // reject it; there is then no stop to wait for.
@@ -268,8 +294,9 @@ export async function stopPsiWorkersBeforeExit(): Promise<void> {
     }
   });
   await Promise.all(exits);
-  if (exitAtOnceOnInterrupt !== undefined) {
-    process.off("SIGINT", exitAtOnceOnInterrupt);
-    exitAtOnceOnInterrupt = undefined;
+  if (exitAtOnceListeners !== undefined) {
+    for (const [signal, listener] of exitAtOnceListeners)
+      process.off(signal, listener);
+    exitAtOnceListeners = undefined;
   }
 }
