@@ -81,7 +81,7 @@ interface BannerLogger {
 
 /**
  * Emit the runtime banner ({@link formatRuntimeEnv} of {@link readRuntimeEnv})
- * at debug level; a run short of memory states the same figures at info
+ * at debug level; a run short of memory states its memory figures at info
  * level in its memory statement (`checkPsiMemoryBudget`). Reading the runtime
  * globals is best-effort: should it ever throw, the failure is reported at
  * warn level and swallowed rather than propagated, because this banner only
