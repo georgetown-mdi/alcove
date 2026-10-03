@@ -337,11 +337,21 @@ broker belongs beside it rather than mounted inside the app the browser loads
 its code from. The broker is already a workspace of its own with a standalone
 entry point, so nothing has to be extracted for that to be possible.
 
-The measurement does not prove it. The run stood the broker up by deploying the
-web app's own image and using its mounted signaling path, so the standalone
-entry point was never exercised on the account. Running that entry point beside
-coturn and completing one exchange against it is the one thing that would
-determine it.
+The bring-up stood the broker up by deploying the web app's own image and using
+its mounted signaling path. A later measurement exercised the standalone entry
+point. On 2026-10-03 the broker workspace's standalone entry point ran on the
+standing relay instance beside coturn under systemd, behind an nginx TLS front
+at its own name on port 8443, a measurement port because coturn holds 443. A
+browser inviter built with `VITE_SIGNALING_SERVER_URL`, a CLI-to-CLI exchange
+and an invite/accept pair each completed one exchange through it. The
+deployment was then removed; the 443 question and the standing service stay
+with the follow-on item for the standing broker service.
+
+Two operational facts came with it. The relay instance is a t4g.nano with
+412 MB, which carried coturn, the broker and nginx with no headroom. A
+full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
+8 s), so any install there must be scoped to the broker workspace or built
+elsewhere.
 
 If it does leave, the standing constraint in
 [web-server-runtime-role.md](web-server-runtime-role.md) reaches its trigger:
@@ -402,7 +412,7 @@ Candidate members, by title:
 | coturn on Fargate | a credential granted the container service; the one used here is denied it outright |
 | Whether the account's real cost matches the computed figure | reading Cost Explorer a day later, once its lag has passed |
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
-| The standalone broker | deploying the broker workspace's own entry point beside the relay and completing one exchange against it |
+| The standalone broker at its standing name on 443 | the follow-on item for the standing broker service; the standalone entry point itself completed exchanges beside coturn on 8443 on 2026-10-03, then was removed |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |
 
 ## Stated limits
