@@ -298,9 +298,30 @@ An SFTP or shared-directory exchange puts the partner on the command line, so th
 
 Its full contents and invariants are in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-partner-accept-kit).
 
+## Where a run's files land
+
+Each run gets a folder of its own in the mounted working directory (`JOB_DATA_ROOT`), named by the run's id -- the same id the run screen's discard confirm names. The folder holds what the run wrote:
+
+- `results.csv` -- the matched result. The download is saved as `results.csv` too, and the scheduled-run command the console hands you writes `results.csv`, so the one name follows the result from this console to the command line.
+- `record.json` and `record.keys.json` -- the exchange record and its verification keys, for a run that disclosed.
+- `.alcove.key` -- the shared secret, for a run that created or accepted an invitation. Your next run of this exchange with your partner needs it, so copy it out before you discard the run (see [Graduating to a scheduled run](#graduating-to-a-scheduled-run)). A run of a configuration you opened uses the `.alcove.key` beside `alcove.yaml` instead, and discarding the run leaves that file alone.
+- `receipt.json` -- the signed receipt, for a run that asked for one.
+- `run.log` -- the diagnostic log, for a run that recorded one.
+- `alcove.yaml` and `input.csv` -- the configuration the console composed for the run, and your input when you supplied it inline rather than from the work-input directory.
+
+Discarding a run deletes its folder. When the console can read the folder, the confirm before a discard names it and lists which of these files it holds, the shared secret included, so you can copy out what you need first. When that check gets no answer, the confirm shows only its general wording: check the folder yourself before discarding.
+
 ## Restarting cancels and forgets the exchange
 
-Job state is memory-only, so restarting the server cancels an exchange still running -- rerun it, since the exchange protocol cannot resume mid-run -- and forgets it entirely: the restarted server no longer reports its status or serves its files. The exchange's directory stays on disk under `JOB_DATA_ROOT` until you delete it through the API or remove it by hand; nothing is auto-deleted. Within one server lifetime, though, the console re-attaches: reloading or reopening the console from the same browser finds an exchange still running and picks it back up, and discarding it in the console is what removes its files. Leaving the page does not stop the exchange -- only discarding it does.
+Job state is memory-only, so restarting the server cancels an exchange still running -- rerun it, since the exchange protocol cannot resume mid-run -- and forgets it: the restarted server no longer reports its status or serves its files. Its folder stays on disk. Nothing is deleted without you choosing it:
+
+- Reopening the console from the browser that started the exchange shows the folder the run left behind, by name, with **Keep the folder** and **Discard the folder**.
+- **Keep the folder** leaves it where it is for you to copy files out of, and the console stops offering it.
+- **Discard the folder** deletes it, after a confirm listing what it holds. If the console cannot delete it, it says so, and the folder stays for you to remove by hand.
+- A folder holding nothing but `alcove.yaml` is not offered.
+- A folder no browser offers you stays until you remove it by hand.
+
+Within one server lifetime the console re-attaches instead: reloading or reopening the console from the same browser finds an exchange still running and picks it back up, and discarding it in the console is what removes its files. Leaving the page does not stop the exchange -- only discarding it does.
 
 The endpoint contract, the request schema, the working-directory layout and file permissions, and the exact gate and startup rules are specified in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md).
 

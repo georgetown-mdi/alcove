@@ -26,6 +26,7 @@ import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { reattachedRunState } from "./reattachedRunState";
+import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
 
 import type { AvailableRecordOffer, RunOutputs } from "@psi/runOutputs";
@@ -123,6 +124,10 @@ export function AcceptorExchangeSection({
     settled && outputs?.record === undefined,
   );
   const recordConfirm = untakenRecordConfirm(jobRecordOffer);
+  const discardFolder = useDiscardFolder(
+    serverJob ? jobId : undefined,
+    settled,
+  );
   // A failed browser run's record confirms nothing on recovery: the confirm
   // speaks of the console's folder, and the panel itself states what discards
   // this page's copy.
@@ -215,6 +220,7 @@ export function AcceptorExchangeSection({
               label="Try again"
               onAct={onTryAgain}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
           {/* The acceptor cannot mint a fresh invitation, so the fresh-start
@@ -232,6 +238,7 @@ export function AcceptorExchangeSection({
                 onAct={onAbandon}
                 to="/quick"
                 recordConfirm={recordConfirm}
+                folder={discardFolder}
               />
             )}
           {/* A prepare-time fault in this party's own settings: the acceptor
@@ -242,6 +249,7 @@ export function AcceptorExchangeSection({
               label="Back to your columns"
               onAct={onFixColumns}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
         </FailureAlert>
@@ -292,6 +300,7 @@ export function AcceptorExchangeSection({
         <AnotherExchangeFoot
           onNavigate={onAbandon}
           confirmBeforeLeave={serverJob}
+          folder={discardFolder}
         />
       )}
     </>

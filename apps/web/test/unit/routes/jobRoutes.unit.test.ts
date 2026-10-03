@@ -18,6 +18,7 @@ import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { Route as CancelRoute } from "../../../src/routes/api/jobs/$jobId/cancel";
 import { Route as CreateRoute } from "../../../src/routes/api/jobs/index";
 import { Route as EventsRoute } from "../../../src/routes/api/jobs/$jobId/events";
+import { Route as FolderRoute } from "../../../src/routes/api/jobs/$jobId/folder";
 import { Route as JobRoute } from "../../../src/routes/api/jobs/$jobId/index";
 import { Route as KeysRoute } from "../../../src/routes/api/jobs/$jobId/keys";
 import { Route as LogRoute } from "../../../src/routes/api/jobs/$jobId/log";
@@ -969,7 +970,7 @@ describe("the result, record and keys downloads stream a file larger than one re
       result: {
         route: ResultRoute,
         contentType: "text/csv; charset=utf-8",
-        disposition: `attachment; filename="result-${id}.csv"`,
+        disposition: `attachment; filename="${JOB_FILE_NAMES.output}"`,
       },
       record: {
         route: RecordRoute,
@@ -2959,5 +2960,78 @@ describe("POST /api/jobs and the signing identity in the rendezvous", () => {
       params: {},
     })) as Response;
     expect(response.status).toBe(201);
+  });
+});
+
+async function getFolder(jobId: string): Promise<Response> {
+  return (await handlersOf(FolderRoute).GET({
+    request: jobRequest(`http://localhost/api/jobs/${jobId}/folder`),
+    params: { jobId },
+  })) as Response;
+}
+
+describe("GET /api/jobs/:id/folder names what a run's folder holds", () => {
+  const LEFTOVER_ID = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+
+  test("the console's own run is live, with its results and shared secret", async () => {
+    const id = await createSucceededJob({
+      STUB_OUTPUT_FILE: "id\n1\n",
+      STUB_RECORD_JSON: recordJson("2026-07-08T14:32:00.000Z"),
+    });
+    const response = await getFolder(id);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      live: true,
+      results: true,
+      record: true,
+      sharedSecret: true,
+      receipt: false,
+      log: false,
+      input: true,
+    });
+  });
+
+  test("a folder a restart left behind is reported, not live, and DELETE removes it", async () => {
+    const root = enableJobApi();
+    const folder = path.join(root, LEFTOVER_ID);
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.output), "id\n1\n");
+    fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.key), "secret");
+    fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.config), "connection:\n");
+
+    const response = await getFolder(LEFTOVER_ID);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      live: false,
+      results: true,
+      record: false,
+      sharedSecret: true,
+      receipt: false,
+      log: false,
+      input: false,
+    });
+    expect(fs.existsSync(folder)).toBe(true);
+
+    const del = (await handlersOf(JobRoute).DELETE({
+      request: jobRequest(`http://localhost/api/jobs/${LEFTOVER_ID}`, {
+        method: "DELETE",
+      }),
+      params: { jobId: LEFTOVER_ID },
+    })) as Response;
+    expect(del.status).toBe(204);
+    expect((await getFolder(LEFTOVER_ID)).status).toBe(404);
+  });
+
+  test("no folder, a malformed id, and a symlinked leaf are 404", async () => {
+    const root = enableJobApi();
+    expect((await getFolder(LEFTOVER_ID)).status).toBe(404);
+    expect((await getFolder("../../etc")).status).toBe(404);
+    const outside = tempDataRoot("routes-outside");
+    roots.push(outside);
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(outside, JOB_FILE_NAMES.key), "secret");
+    fs.mkdirSync(root, { recursive: true });
+    fs.symlinkSync(outside, path.join(root, LEFTOVER_ID));
+    expect((await getFolder(LEFTOVER_ID)).status).toBe(404);
   });
 });

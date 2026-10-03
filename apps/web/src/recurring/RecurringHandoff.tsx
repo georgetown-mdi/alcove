@@ -71,7 +71,7 @@ export function RecurringHandoff({
         open={open}
         onToggle={setOpen}
       >
-        <HandoffBody handoff={handoff} />
+        <HandoffBody handoff={handoff} jobId={jobId} />
       </DisclosureSection>
     );
 
@@ -81,7 +81,7 @@ export function RecurringHandoff({
       aria-labelledby="recurring-handoff-title"
     >
       <h2 id="recurring-handoff-title">Run this exchange on a schedule</h2>
-      <HandoffBody handoff={handoff} />
+      <HandoffBody handoff={handoff} jobId={jobId} />
     </section>
   );
 }
@@ -89,7 +89,13 @@ export function RecurringHandoff({
 /** The hand-off's content -- template, schedule snippets, and caveats -- shared by
  * the default expanded panel (under its own heading) and the collapsible
  * disclosure (under the toggle summary). */
-function HandoffBody({ handoff }: { handoff: JobHandoff }) {
+function HandoffBody({
+  handoff,
+  jobId,
+}: {
+  handoff: JobHandoff;
+  jobId: string;
+}) {
   const runCommand = shellJoinCommand(handoff.template.argv);
   const windowsScheduledCommand = windowsJoinCommand(handoff.template.argv);
 
@@ -109,6 +115,7 @@ function HandoffBody({ handoff }: { handoff: JobHandoff }) {
           usedKeyFile={handoff.usedKeyFile}
           keyFileBesideConfiguration={handoff.keyFileBesideConfiguration}
           usedSigningIdentity={handoff.usedSigningIdentity}
+          runFolder={jobId}
         />
       ) : (
         <CommandSteps command={runCommand} />
@@ -160,12 +167,15 @@ function ConfigSteps({
   usedKeyFile,
   keyFileBesideConfiguration,
   usedSigningIdentity,
+  runFolder,
 }: {
   yaml: string;
   command: string;
   usedKeyFile: boolean;
   keyFileBesideConfiguration: boolean;
   usedSigningIdentity: boolean;
+  /** The name of this run's own folder in the console's working directory. */
+  runFolder: string;
 }) {
   return (
     <ol className={styles.handoffSteps}>
@@ -186,7 +196,8 @@ function ConfigSteps({
                 "working folder and wrote its new shared secret back to that " +
                 "file."
               : "This run writes its shared secret to .alcove.key in the " +
-                "exchange folder."}{" "}
+                `folder ${runFolder} in the console's working directory, ` +
+                "which discarding the run deletes."}{" "}
             Copy that file into the same folder as alcove.yaml, readable only by
             you (chmod 600 on Linux/macOS). The secret rotates at each run's
             handshake, before any data moves -- even a run that later failed has

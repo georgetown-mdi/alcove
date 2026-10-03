@@ -1432,7 +1432,7 @@ export const JOB_FILE_NAMES = {
   /** The client's input CSV content. */
   input: "input.csv",
   /** The CLI's matched-result output. */
-  output: "output.csv",
+  output: "results.csv",
   /** The self-attested exchange record, pinned so the server knows its path
    * (the CLI's `--record-file` target). */
   record: "record.json",

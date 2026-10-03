@@ -224,7 +224,7 @@ describe("the argv a diagnostic or sweeping run drives", () => {
     // The controls land before the trailing positionals, so the input and output
     // paths stay where the CLI reads them.
     expect(argv[argv.length - 2].endsWith("input.csv")).toBe(true);
-    expect(argv[argv.length - 1].endsWith("output.csv")).toBe(true);
+    expect(argv[argv.length - 1].endsWith(JOB_FILE_NAMES.output)).toBe(true);
   });
 
   test("a sweeping exchange run passes the CLI's flag and never its escalation", async () => {

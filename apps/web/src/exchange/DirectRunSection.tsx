@@ -23,6 +23,7 @@ import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { awaitingPartner } from "./exchangeRun";
 import { reattachedRunState } from "./reattachedRunState";
+import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
 
 import type { ExchangeRun } from "./exchangeRun";
@@ -96,6 +97,7 @@ export function DirectRunSection({
     settled && outputs?.record === undefined,
   );
   const recordConfirm = untakenRecordConfirm(recordOffer);
+  const discardFolder = useDiscardFolder(jobId, settled);
   const awaiting = awaitingPartner(run);
   // A retryable failure is a transport/exchange fault other than an internal
   // fault; the terms mismatch is a config failure, which -- like a security
@@ -170,6 +172,7 @@ export function DirectRunSection({
               label="Try again"
               onAct={onTryAgain}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
           {offersStartOver && (
@@ -177,6 +180,7 @@ export function DirectRunSection({
               label="Start over"
               onAct={onStartOver}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
         </FailureAlert>
@@ -214,7 +218,11 @@ export function DirectRunSection({
         <RecurringHandoff jobId={jobId} collapsible={!done} />
       )}
       {(done || failure?.category === "output") && (
-        <AnotherExchangeFoot onNavigate={onAbandon} confirmBeforeLeave />
+        <AnotherExchangeFoot
+          onNavigate={onAbandon}
+          confirmBeforeLeave
+          folder={discardFolder}
+        />
       )}
     </>
   );

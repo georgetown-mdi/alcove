@@ -34,6 +34,7 @@ import { ReceiptDownload } from "./ReceiptDownload";
 import { RecordDownload } from "./RecordDownload";
 import { StatusPanel } from "./StatusPanel";
 import { reattachedRunState } from "./reattachedRunState";
+import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
 
 import type { AvailableRecordOffer, RunOutputs } from "@psi/runOutputs";
@@ -148,6 +149,10 @@ export function InviterExchangeSection({
     settled && outputs?.record === undefined,
   );
   const recordConfirm = untakenRecordConfirm(jobRecordOffer);
+  const discardFolder = useDiscardFolder(
+    serverJob ? jobId : undefined,
+    settled,
+  );
   // A failed browser run's record confirms nothing on recovery: the confirm
   // speaks of the console's folder, and the panel itself states what discards
   // this page's copy.
@@ -266,6 +271,7 @@ export function InviterExchangeSection({
               label="Try again"
               onAct={onTryAgain}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
           {offersStartOver && (
@@ -277,6 +283,7 @@ export function InviterExchangeSection({
               }
               onAct={onStartOver}
               recordConfirm={recordConfirm}
+              folder={discardFolder}
             />
           )}
         </FailureAlert>
@@ -405,6 +412,7 @@ export function InviterExchangeSection({
         <AnotherExchangeFoot
           onNavigate={onAbandon}
           confirmBeforeLeave={serverJob}
+          folder={discardFolder}
         />
       )}
     </>

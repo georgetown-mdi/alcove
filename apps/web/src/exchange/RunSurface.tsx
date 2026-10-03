@@ -18,11 +18,15 @@ import {
   replaceControlCharactersForDisplay,
 } from "@alcove/core";
 
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { dateTimeLabel } from "@psi/formatting";
 import styles from "@styles/app.module.css";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 
+import { DiscardFolderList } from "./discardFolder";
+
 import type { NoResultFileOutputs, RunOutputs } from "@psi/runOutputs";
+import type { DiscardFolder } from "./discardFolder";
 import type { JobExchangeRecordOfferState } from "./useJobExchangeRecordOffer";
 import type { ReactNode } from "react";
 import type { RunFailure } from "./useInviterExchange";
@@ -473,7 +477,7 @@ export function RunDownloads({
           <DownloadRow
             label="Download result"
             href={outputs.resultsUrl}
-            fileName="results.csv"
+            fileName={JOB_FILE_NAMES.output}
           />
           {resultNote}
         </>
@@ -804,6 +808,7 @@ export function FailureRecoveryButton({
   onAct,
   to,
   recordConfirm,
+  folder,
 }: {
   label: string;
   /** Fires once the operator has committed to the recovery -- immediately when
@@ -815,6 +820,9 @@ export function FailureRecoveryButton({
   /** The confirm this run's record offer calls for, or undefined where the
    * recovery destroys no record the seat can name or suspect. */
   recordConfirm: UntakenRecordConfirm | undefined;
+  /** The run's folder and the files in it the recovery deletes, named in the
+   * confirm when it shows; undefined where the console did not say. */
+  folder?: DiscardFolder;
 }) {
   const [confirming, setConfirming] = useState(false);
   const commit = (marginTop: string | undefined) =>
@@ -866,6 +874,7 @@ export function FailureRecoveryButton({
         transitionProps={{ duration: 0 }}
       >
         <p>{confirm.body}</p>
+        {folder !== undefined && <DiscardFolderList folder={folder} />}
         <Group mt="md">
           <Button variant="default" onClick={() => setConfirming(false)}>
             Cancel
@@ -1090,9 +1099,13 @@ export function ReattachNotice({
 export function AnotherExchangeFoot({
   onNavigate,
   confirmBeforeLeave = false,
+  folder,
 }: {
   onNavigate?: () => void;
   confirmBeforeLeave?: boolean;
+  /** The run's folder and the files in it leaving deletes, named in the
+   * confirm; undefined where the console did not say. */
+  folder?: DiscardFolder;
 }) {
   const [confirming, setConfirming] = useState(false);
   if (!confirmBeforeLeave)
@@ -1119,6 +1132,7 @@ export function AnotherExchangeFoot({
           Starting another exchange removes this one&apos;s results from this
           console -- download anything you need first.
         </p>
+        {folder !== undefined && <DiscardFolderList folder={folder} />}
         <Group mt="md">
           <Button variant="default" onClick={() => setConfirming(false)}>
             Cancel

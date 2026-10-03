@@ -16,7 +16,7 @@ import {
   composeSftpConfigSpec,
 } from "./intentConfig";
 
-import { isJobChannel } from "./intentSchemas";
+import { JOB_FILE_NAMES, isJobChannel } from "./intentSchemas";
 
 import type { ExchangeSpec, SigningConfig } from "@alcove/core";
 import type {
@@ -204,10 +204,11 @@ export const HANDOFF_INBOUND_DIRECTORY_URL_PLACEHOLDER =
 export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
   "/path/to/your/signing-identity.json";
 
-/** The input/output positionals both recurring command templates name, matching
- * the console's `results.csv` download name so the two flows read consistently. */
+/** The input/output positionals both recurring command templates name. The
+ * output is the console's own result name, the same on disk and in the
+ * download. */
 const HANDOFF_INPUT_NAME = "input.csv";
-const HANDOFF_OUTPUT_NAME = "results.csv";
+const HANDOFF_OUTPUT_NAME = JOB_FILE_NAMES.output;
 
 /**
  * Rebuild the authored SFTP server entry with every container-internal

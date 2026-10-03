@@ -15,6 +15,7 @@ import {
   resolveCliBinaryPath,
   validateAndSanitizeEvent,
 } from "@jobs/cliDriver";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import {
   STUB_CLI_PATH,
@@ -270,7 +271,7 @@ describe("spawnZeroSetupJob drives the literal $0 form", () => {
     expect(argv).not.toContain("--record-file");
     // The two trailing positionals are input then output.
     expect(argv[argv.length - 2].endsWith("input.csv")).toBe(true);
-    expect(argv[argv.length - 1].endsWith("output.csv")).toBe(true);
+    expect(argv[argv.length - 1].endsWith(JOB_FILE_NAMES.output)).toBe(true);
   });
 
   test("never a subcommand token, --config-file, --key-file, or --save", async () => {
