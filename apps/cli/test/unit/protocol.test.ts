@@ -2996,6 +2996,63 @@ test("a completed run ends with one outcome line naming the count, the paths and
   expect(result?.args[3]).toEqual({ matchedRows: 2, resultPath: outputA });
 }, 20_000);
 
+test("a run with no record stamps a folder result from the output stage's start", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  vi.mocked(buildOutputTable).mockReturnValue({
+    headers: ["id"],
+    rows: [["1"]],
+  });
+  const resultsDir = path.join(tmpDir, "results");
+  fs.mkdirSync(resultsDir);
+  const before = Date.now();
+  try {
+    await Promise.all([
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileA },
+        prepared: minimalPrepared,
+        output: `${resultsDir}/`,
+        verbosity: -1,
+        loggerName: "test-a",
+      }),
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileB },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: "test-b",
+      }),
+    ]);
+  } finally {
+    vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
+  }
+  const after = Date.now();
+
+  const written = fs.readdirSync(resultsDir);
+  expect(written).toHaveLength(1);
+  const match =
+    /^alcove-results-(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})-(\d{3}Z)\.csv$/.exec(
+      written[0],
+    );
+  expect(match).not.toBeNull();
+  const [, dateHour, minute, second, millis] = match!;
+  const stampedAt = Date.parse(`${dateHour}:${minute}:${second}.${millis}`);
+  expect(stampedAt).toBeGreaterThanOrEqual(before);
+  expect(stampedAt).toBeLessThanOrEqual(after);
+}, 20_000);
+
 test("an unauthenticated run with nothing matched warns and states that no secret rotated", async () => {
   const lines: string[] = [];
   await Promise.all([

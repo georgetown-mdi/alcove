@@ -67,11 +67,16 @@ describe("resultFilePath", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "a symbolic link to a directory names a folder",
+    "a symbolic link to a directory takes the folder form",
     () => {
+      const target = path.join(dir, "target");
+      fs.mkdirSync(target);
       const link = path.join(dir, "link");
-      fs.symlinkSync(dir, link);
+      fs.symlinkSync(target, link);
       expect(outputNamesFolder(link)).toBe(true);
+      expect(resultFilePath(link, CREATED_AT)).toBe(
+        path.join(link, STAMPED_NAME),
+      );
     },
   );
 });

@@ -15,9 +15,7 @@ import type { HandoffBindPath } from "@jobs/handoff";
  *
  * Every scheduled line names its program by absolute path and appends to a log
  * file, so a scheduled run does not fail to find its program under the
- * scheduler's PATH. Each run's own result file comes from the hand-off's
- * output positional, a folder the CLI names each result in, so the same
- * arguments serve every scheduler.
+ * scheduler's PATH.
  */
 
 /** The exchange folder placeholder on a POSIX scheduling machine. */

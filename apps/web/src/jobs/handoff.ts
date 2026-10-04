@@ -223,9 +223,8 @@ export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
  * rather than picked from the work-input folder by name. */
 const HANDOFF_UPLOADED_INPUT_NAME = "input.csv";
 
-/** The output positional both templates end on: the folder the run starts in,
- * where the CLI writes each run's result as `alcove-results-<stamp>.csv`
- * under the stamp of that run's record, with no shell feature involved. */
+/** The output positional both templates end on: the folder the run starts in
+ * (docs/spec/EXCHANGE_RECORD.md, Result file name). */
 export const HANDOFF_OUTPUT_FOLDER = "./";
 
 /** The log a scheduled run appends to in the folder it runs in, so an

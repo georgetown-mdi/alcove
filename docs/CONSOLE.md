@@ -306,7 +306,7 @@ Its full contents and invariants are in [SERVER_JOB_API.md](spec/SERVER_JOB_API.
 
 Each run gets a folder of its own in the mounted working directory (`JOB_DATA_ROOT`), named by the run's id -- the same id the run screen's discard confirm names. The folder holds what the run wrote:
 
-- `results.csv` -- the matched result. The download is saved as `results.csv` too. The scheduled-run command the console hands you writes each run's result as `alcove-results-<stamp>.csv` instead, beside that run's exchange record, so a schedule keeps every run's result.
+- `results.csv` -- the matched result. The download is saved as `results.csv` too. The scheduled-run command the console hands you writes each run's result as `alcove-results-<stamp>.csv` instead, with the stamp of that run's exchange record, so a schedule keeps every run's result.
 - `record.json` and `record.keys.json` -- the exchange record and its verification keys, for a run that disclosed.
 - `.alcove.key` -- the shared secret, for a run that created or accepted an invitation. Your next run of this exchange with your partner needs it, so copy it out before you discard the run (see [Graduating to a scheduled run](#graduating-to-a-scheduled-run)). A run of a configuration you opened uses the `.alcove.key` beside `alcove.yaml` instead, and discarding the run leaves that file alone.
 - `receipt.json` -- the signed receipt, for a run that asked for one.

@@ -188,9 +188,9 @@ function HandoffBody({
         Set {EXCHANGE_FOLDER_PLACEHOLDER} to the folder you saved the files in,
         and /path/to/alcove to where Alcove is installed. The ./ at the end of
         each command is the folder the result goes in: each run writes its
-        result there as alcove-results-&lt;time&gt;.csv, beside the exchange
-        record alcove-record-&lt;time&gt;.json with the same time, and adds to
-        exchange.log in that folder.
+        result there as alcove-results-&lt;time&gt;.csv, with the same time as
+        that run&apos;s exchange record alcove-record-&lt;time&gt;.json, and
+        adds to exchange.log in that folder.
         {dockerCommand !== undefined &&
           " A scheduled job does not use your shell's PATH, so check that " +
             "/usr/bin/docker is where Docker is installed (command -v docker)."}
