@@ -56,6 +56,10 @@ import { parseManagedLocalState } from "./managedLocalStateShape";
 import type { RelayRegistrar } from "@alcove/core";
 
 import type {
+  ManagedBackupLocation,
+  ManagedBackupMarker,
+} from "./managedBackupState";
+import type {
   ManagedExchangeDiagnosticEssentials,
   ManagedExchangeLastRun,
   ManagedExchangeLocalEdits,
@@ -641,6 +645,7 @@ export async function readRecordAndMarkBackedUp(
   id: string,
   backedUpAt: string,
   composeExport: (record: ManagedExchangeRecord) => void,
+  savedAs?: ManagedBackupLocation,
 ): Promise<ManagedExchangeRecord> {
   const db = await openManagedExchangeDatabase();
   try {
@@ -664,7 +669,10 @@ export async function readRecordAndMarkBackedUp(
             throw new Error(`no managed exchange with id ${id}`);
           record = parseManagedExchangeRecord(read.result);
           composeExport(record);
-          markBackupOnLocalStore(local, id, readLocal.result, backedUpAt);
+          markBackupOnLocalStore(local, id, readLocal.result, {
+            backedUpAt,
+            ...(savedAs !== undefined ? { savedAs } : {}),
+          });
         } catch (error) {
           failure = error;
           transaction.abort();
@@ -673,6 +681,76 @@ export async function readRecordAndMarkBackedUp(
       read.onsuccess = applyWhenReady;
       readLocal.onsuccess = applyWhenReady;
       transaction.oncomplete = () => resolve(record);
+      transaction.onerror = () => reject(failure ?? transaction.error);
+      transaction.onabort = () => reject(failure ?? transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** How a checked backup mark turned out: `"marked"` where the stored secret was
+ * the one the written backup holds and the marker was stamped, `"superseded"`
+ * where the secret had moved on, and `"gone"` where no record is stored under
+ * the id. The two refusals write nothing. */
+export type ManagedBackupMarkOutcome = "marked" | "superseded" | "gone";
+
+/**
+ * Stamp the backup marker as of `backedUpAt`, but ONLY while the stored record
+ * still holds `expectedSharedSecret`, the secret a backup already written
+ * elsewhere holds. For a backup whose landing is known only after it is
+ * written, so the mark cannot be issued in the step that composed it: the read,
+ * the comparison, and the mark are one transaction spanning the record and
+ * sibling stores, so a rotation landing after the write is seen and the marker
+ * is not stamped over a secret the file does not hold. The marker only advances
+ * forward, as in {@link readRecordAndMarkBackedUp}, and any spent state is kept.
+ *
+ * @throws {ZodError} if the stored record or sibling entry is invalid; the
+ *   transaction aborts and nothing is written.
+ */
+export async function markManagedBackupIfCurrent(
+  id: string,
+  expectedSharedSecret: string,
+  backedUpAt: string,
+  savedAs?: ManagedBackupLocation,
+): Promise<ManagedBackupMarkOutcome> {
+  const db = await openManagedExchangeDatabase();
+  try {
+    return await new Promise<ManagedBackupMarkOutcome>((resolve, reject) => {
+      const transaction = db.transaction(
+        [MANAGED_EXCHANGE_STORE_NAME, MANAGED_EXCHANGE_LOCAL_STORE_NAME],
+        "readwrite",
+        { durability: "strict" },
+      );
+      const records = transaction.objectStore(MANAGED_EXCHANGE_STORE_NAME);
+      const local = transaction.objectStore(MANAGED_EXCHANGE_LOCAL_STORE_NAME);
+      const read = records.get(id);
+      const readLocal = local.get(id);
+      let outcome: ManagedBackupMarkOutcome = "superseded";
+      let failure: unknown;
+      const applyWhenReady = () => {
+        if (read.readyState !== "done" || readLocal.readyState !== "done")
+          return;
+        try {
+          if (read.result === undefined) {
+            outcome = "gone";
+            return;
+          }
+          const stored = parseManagedExchangeRecord(read.result);
+          if (stored.sharedSecret !== expectedSharedSecret) return;
+          markBackupOnLocalStore(local, id, readLocal.result, {
+            backedUpAt,
+            ...(savedAs !== undefined ? { savedAs } : {}),
+          });
+          outcome = "marked";
+        } catch (error) {
+          failure = error;
+          transaction.abort();
+        }
+      };
+      read.onsuccess = applyWhenReady;
+      readLocal.onsuccess = applyWhenReady;
+      transaction.oncomplete = () => resolve(outcome);
       transaction.onerror = () => reject(failure ?? transaction.error);
       transaction.onabort = () => reject(failure ?? transaction.error);
     });
@@ -985,25 +1063,27 @@ function clearSpentOnLocalStore(
 }
 
 /**
- * Advance the backup marker on a record's sibling entry to `backedUpAt`, on an
+ * Advance the backup marker on a record's sibling entry to `marker`, on an
  * already-open local-state object store inside a live transaction, preserving any
  * spent state. The marker only moves forward: a stamp older than the stored marker
  * is a no-op, so a slow export's late mark cannot revert a newer one. Compared as
  * parsed instants, since the schema admits ISO stamps of differing precision.
+ * The merged entry is validated before it is written, so a marker the reader
+ * would reject throws here and leaves the stored entry as it was.
  */
 function markBackupOnLocalStore(
   store: IDBObjectStore,
   id: string,
   raw: unknown,
-  backedUpAt: string,
+  marker: ManagedBackupMarker,
 ): void {
   const current = raw === undefined ? undefined : parseManagedLocalState(raw);
   if (
     current?.backup !== undefined &&
-    Date.parse(current.backup.backedUpAt) > Date.parse(backedUpAt)
+    Date.parse(current.backup.backedUpAt) > Date.parse(marker.backedUpAt)
   )
     return;
-  store.put({ ...current, backup: { backedUpAt } }, id);
+  store.put(parseManagedLocalState({ ...current, backup: marker }), id);
 }
 
 /**

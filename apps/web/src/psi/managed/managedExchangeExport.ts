@@ -7,6 +7,10 @@
  * - A BACKUP export reads the current record, serializes it, and stamps the
  *   backup marker in one atomic store step, then downloads exactly those
  *   bytes. The source is left live.
+ * - A FOLDER backup, which a scheduled run takes after its rotation, writes
+ *   the same bytes under the same name into the granted working folder, and
+ *   stamps the marker after the write lands, only while the stored secret is
+ *   still the one the file holds.
  * - A MIGRATION export ("take over on another device") downloads the
  *   artifact the same way, then spends the source only on the operator's
  *   attestation that the file is saved: `anchor.click()` gives no landing
@@ -34,11 +38,14 @@
  */
 
 import {
+  MANAGED_EXCHANGE_ARTIFACT_MIME,
   encodeManagedExchangeArtifact,
   serializeManagedExchangeArtifact,
 } from "./managedExchangeArtifact";
+import { backupLocationNameFits } from "./managedLocalStateShape";
 import { composeManagedCronExport } from "./managedCronExport";
 import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
+import { storedWorkingDirectoryUsable } from "./managedWorkingDirectory";
 
 import type {
   ManagedExchangeRecord,
@@ -48,29 +55,34 @@ import type {
   ManagedSpendOutcome,
   ManagedSpentHandoff,
 } from "./managedLocalStateShape";
+import type { BackupFolderWrite } from "./managedWorkingDirectory";
+import type { HandlePermissionState } from "./managedInputHandle";
+import type { ManagedBackupLocation } from "./managedBackupState";
+import type { ManagedBackupMarkOutcome } from "./managedExchangeStore";
 import type { ManagedCronExport } from "./managedCronExport";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
-/** The download filename `alcove-managed-backup-<date>.json`, the date the local
- * calendar day of `at`, mirroring the exchange-file filename discipline so repeated
- * exports have distinct dates. */
+/** The name every backup file is saved under, downloaded or written into the
+ * working folder: `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`, the UTC
+ * instant of `at` to the second, so two backups a second apart never share it. */
 export function managedBackupFileName(at: Date): string {
-  const year = at.getFullYear();
-  const month = String(at.getMonth() + 1).padStart(2, "0");
-  const day = String(at.getDate()).padStart(2, "0");
-  return `alcove-managed-backup-${year}-${month}-${day}.json`;
+  const iso = at.toISOString();
+  const time = iso.slice(11, 19).replaceAll(":", "");
+  return `alcove-managed-backup-${iso.slice(0, 10)}T${time}Z.json`;
 }
 
 /** The platform boundaries a backup export drives, injected so the intent stays
  * pure and testable. */
 export interface ManagedExportDeps {
   /** Read the current stored record for `id`, run `composeExport` on it, and stamp
-   * its backup marker as of `backedUpAt` in one atomic step, returning the record
-   * read. `composeExport` throwing aborts the whole step, writing no marker. */
+   * its backup marker as of `backedUpAt`, saved as `savedAs`, in one atomic step,
+   * returning the record read. `composeExport` throwing aborts the whole step,
+   * writing no marker. */
   readAndMark: (
     id: string,
     backedUpAt: string,
     composeExport: (record: ManagedExchangeRecord) => void,
+    savedAs: ManagedBackupLocation,
   ) => Promise<ManagedExchangeRecord>;
   /** Trigger a client-side download of the serialized artifact under `fileName`. */
   download: (fileName: string, content: string) => void;
@@ -176,6 +188,16 @@ async function spendIfArtifactIsCurrent(
   );
 }
 
+/** The bytes of a backup of `record`: the one composition every backup file
+ * holds, downloaded or written into the working folder.
+ *
+ * @throws {Error} if the record holds a configuration only. */
+function backupArtifactBytes(record: ManagedExchangeRecord): string {
+  return serializeManagedExchangeArtifact(
+    encodeManagedExchangeArtifact(runnableManagedExchangeOrRefuse(record)),
+  );
+}
+
 /** The atomic export step's result: the fresh read-and-mark instant (threaded so the
  * host renders and any follow-on write use the one clock read) and the record read,
  * so the caller need not re-read to know what was exported. */
@@ -202,22 +224,22 @@ async function readMarkAndDownload(
   deps: ManagedExportDeps,
 ): Promise<ManagedBackupResult> {
   const backedUpAt = deps.now();
+  const fileName = managedBackupFileName(backedUpAt);
   let serialized: string | undefined;
   const record = await deps.readAndMark(
     id,
     backedUpAt.toISOString(),
     (read) => {
-      serialized = serializeManagedExchangeArtifact(
-        encodeManagedExchangeArtifact(runnableManagedExchangeOrRefuse(read)),
-      );
+      serialized = backupArtifactBytes(read);
     },
+    { kind: "downloaded", fileName },
   );
   if (serialized === undefined)
     throw new Error(
       "the read-and-mark step resolved without serializing the export, so its " +
         "backup marker would attest bytes nothing produced",
     );
-  deps.download(managedBackupFileName(backedUpAt), serialized);
+  deps.download(fileName, serialized);
   return { backedUpAt, record: runnableManagedExchangeOrRefuse(record) };
 }
 
@@ -234,6 +256,112 @@ export async function exportManagedBackup(
   deps: ManagedExportDeps,
 ): Promise<ManagedBackupResult> {
   return readMarkAndDownload(id, deps);
+}
+
+/** The platform boundaries the backup a scheduled run takes after its rotation
+ * drives, injected so the decision is testable without a store or a folder. */
+export interface ManagedFolderBackupDeps {
+  /** Read the current stored record for `id`, or `undefined` when none is
+   * stored. */
+  readRecord: (id: string) => Promise<ManagedExchangeRecord | undefined>;
+  /** Write the backup into the record's working folder, querying its
+   * permission and never prompting, and never replacing a held name. */
+  writeToFolder: (
+    record: ManagedExchangeRecord,
+    fileName: string,
+    content: Blob,
+  ) => Promise<BackupFolderWrite>;
+  /** Stamp the backup marker as of `backedUpAt`, saved as `savedAs`, only while
+   * the stored record still holds `expectedSharedSecret`. */
+  markIfCurrent: (
+    id: string,
+    expectedSharedSecret: string,
+    backedUpAt: string,
+    savedAs: ManagedBackupLocation,
+  ) => Promise<ManagedBackupMarkOutcome>;
+  /** The moment of the backup, for the marker and the file name. */
+  now: () => Date;
+}
+
+/** How the backup a scheduled run takes after its rotation turned out. Only
+ * `"backed-up"` stamps the backup marker, so every other outcome leaves the
+ * exchange asking for a backup. `"superseded"`: the file was written, and the
+ * stored secret moved past it before the marker could be stamped. */
+export type ManagedFolderBackup =
+  | {
+      kind: "backed-up";
+      fileName: string;
+      directoryName: string;
+      backedUpAt: Date;
+    }
+  | { kind: "no-folder" }
+  | { kind: "ungranted"; state: HandlePermissionState }
+  | { kind: "name-held"; fileName: string }
+  | { kind: "write-failed"; error: unknown }
+  | { kind: "superseded"; fileName: string; directoryName: string }
+  | { kind: "failed"; error: unknown };
+
+/**
+ * Back up a record into its working folder with nobody present: the bytes a
+ * manual backup downloads, under the name it downloads them as, written into
+ * the granted folder, and the backup marker stamped once the file has landed
+ * and only while the stored secret is still the one the file holds.
+ *
+ * The order differs from the manual backup's, which stamps before it downloads
+ * because a download reports no landing: a folder write does report one, so a
+ * write that did not land stamps nothing, and the marker is checked against
+ * the stored secret instead of being stamped in the step that read it.
+ *
+ * Never rejects: it runs after a completed run, which nothing here may fail.
+ */
+export async function backUpManagedExchangeToFolder(
+  id: string,
+  deps: ManagedFolderBackupDeps,
+): Promise<ManagedFolderBackup> {
+  try {
+    const record = await deps.readRecord(id);
+    if (record === undefined)
+      return {
+        kind: "failed",
+        error: new Error(`no managed exchange with id ${id}`),
+      };
+    if (!storedWorkingDirectoryUsable(record.workingDirectoryHandle))
+      return { kind: "no-folder" };
+    const runnable = runnableManagedExchangeOrRefuse(record);
+    const content = new Blob([backupArtifactBytes(runnable)], {
+      type: MANAGED_EXCHANGE_ARTIFACT_MIME,
+    });
+    const backedUpAt = deps.now();
+    const written = await deps.writeToFolder(
+      runnable,
+      managedBackupFileName(backedUpAt),
+      content,
+    );
+    if (written.kind !== "written") return written;
+    const { fileName, directoryName } = written;
+    const marked = await deps.markIfCurrent(
+      id,
+      runnable.sharedSecret,
+      backedUpAt.toISOString(),
+      {
+        kind: "folder",
+        ...(backupLocationNameFits(directoryName)
+          ? { folderName: directoryName }
+          : {}),
+        fileName,
+      },
+    );
+    if (marked === "marked")
+      return { kind: "backed-up", fileName, directoryName, backedUpAt };
+    if (marked === "superseded")
+      return { kind: "superseded", fileName, directoryName };
+    return {
+      kind: "failed",
+      error: new Error(`managed exchange ${id} is no longer stored`),
+    };
+  } catch (error) {
+    return { kind: "failed", error };
+  }
 }
 
 /** A dispatched migration awaiting the operator's "the file is saved" confirmation.

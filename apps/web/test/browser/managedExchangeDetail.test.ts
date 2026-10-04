@@ -610,8 +610,16 @@ describe("managed exchange detail schedule entry", () => {
     await scheduleCheckbox().click();
 
     await expect
-      .element(page.getByText("results-granted", { exact: false }))
+      .element(page.getByText("results-granted", { exact: false }).first())
       .toBeInTheDocument();
+    const grantNote = page.getByText("so keep results-granted readable only", {
+      exact: false,
+    });
+    await expect.element(grantNote).toBeInTheDocument();
+    expect(grantNote.element().textContent).toContain(
+      "including its shared secret",
+    );
+    expect(grantNote.element().textContent).toContain("delete older backups");
     await page
       .getByRole("button", { name: "Choose a different folder" })
       .click();

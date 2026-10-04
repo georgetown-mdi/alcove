@@ -12,7 +12,9 @@
  * {@link ./managedInputHandle.ts}, in `readwrite` mode for the results write.
  *
  * The folder is never enumerated: the results write looks up and creates only
- * the one name it writes, and removes only an entry that write created.
+ * the one name it writes, and removes only an entry that write created. The
+ * backup a scheduled run writes after its rotation goes through the same write,
+ * which for it never replaces an entry already held under its name.
  *
  * Delivery is total: every outcome classifies rather than throwing
  * ({@link ResultsDelivery}), because the run it belongs to has already rotated
@@ -196,12 +198,50 @@ export async function writeResultsToWorkingDirectory(
   csv: Blob,
   permission?: HandlePermissionQuery,
 ): Promise<ResultsDelivery> {
+  return writeEntry(directory, fileName, csv, {
+    replaceHeld: true,
+    permission,
+  });
+}
+
+/** How one {@link writeEntry} turned out. */
+type EntryWrite = ResultsDelivery | { kind: "name-held"; fileName: string };
+
+/** The options of one {@link writeEntry}. */
+interface EntryWriteOptions<TReplaceHeld extends boolean> {
+  replaceHeld: TReplaceHeld;
+  permission: HandlePermissionQuery | undefined;
+}
+
+/**
+ * The one platform write into a granted folder, under the permission rule and
+ * cleanup {@link writeResultsToWorkingDirectory} states. With `replaceHeld`
+ * false it creates nothing where the name is already held. Never rejects.
+ */
+async function writeEntry(
+  directory: FileSystemDirectoryHandle,
+  fileName: string,
+  content: Blob,
+  options: EntryWriteOptions<true>,
+): Promise<ResultsDelivery>;
+async function writeEntry(
+  directory: FileSystemDirectoryHandle,
+  fileName: string,
+  content: Blob,
+  options: EntryWriteOptions<false>,
+): Promise<EntryWrite>;
+async function writeEntry(
+  directory: FileSystemDirectoryHandle,
+  fileName: string,
+  content: Blob,
+  options: EntryWriteOptions<boolean>,
+): Promise<EntryWrite> {
   try {
     await ensureHandlePermission(
       directory,
       "unattended",
       "readwrite",
-      permission,
+      options.permission,
     );
   } catch (error) {
     return {
@@ -213,9 +253,11 @@ export async function writeResultsToWorkingDirectory(
   let heldAlready = true;
   try {
     heldAlready = await entryHeldAlready(directory, fileName);
+    if (heldAlready && !options.replaceHeld)
+      return { kind: "name-held", fileName };
     const file = await directory.getFileHandle(fileName, { create: true });
     writable = await file.createWritable();
-    await writable.write(csv);
+    await writable.write(content);
     await writable.close();
     return { kind: "written", fileName, directoryName: directory.name };
   } catch (error) {
@@ -271,4 +313,35 @@ export async function writeRunResultsToWorkingFolder(
     csv,
     permission,
   );
+}
+
+/** How writing a backup file into an exchange's working folder turned out:
+ * `"no-folder"` where the record holds no grant this runtime can follow, so
+ * nothing was attempted, `"name-held"` where the folder already holds an entry
+ * under the backup's name, left untouched, and otherwise the folder's own
+ * {@link ResultsDelivery}. */
+export type BackupFolderWrite = { kind: "no-folder" } | EntryWrite;
+
+/**
+ * Write a backup file into the working folder its record holds, under
+ * `fileName`. It never replaces an entry the folder already holds under that
+ * name: the backup's name holds an instant and no exchange, so a held name may
+ * be another exchange's backup in a shared folder, and the folder is not read
+ * to tell which.
+ *
+ * Never rejects, and never prompts ({@link writeEntry}).
+ */
+export async function writeBackupToWorkingFolder(
+  record: Pick<ManagedExchangeRecord, "workingDirectoryHandle">,
+  fileName: string,
+  content: Blob,
+  permission?: HandlePermissionQuery,
+): Promise<BackupFolderWrite> {
+  const directory = record.workingDirectoryHandle;
+  if (directory === undefined || !storedWorkingDirectoryUsable(directory))
+    return { kind: "no-folder" };
+  return writeEntry(directory, fileName, content, {
+    replaceHeld: false,
+    permission,
+  });
 }

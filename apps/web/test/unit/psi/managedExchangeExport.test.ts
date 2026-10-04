@@ -1,12 +1,13 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   assembleExchangeSpec,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
-import { describe, expect, test, vi } from "vitest";
 
 import {
   ManagedHandoffRefusedError,
+  backUpManagedExchangeToFolder,
   dispatchManagedCronExport,
   dispatchManagedMigration,
   exportManagedBackup,
@@ -21,15 +22,20 @@ import {
   parseManagedExchangeArtifact,
 } from "@psi/managed/managedExchangeArtifact";
 
+import { writeBackupToWorkingFolder } from "@psi/managed/managedWorkingDirectory";
+
 import type {
   ManagedCronExportDeps,
   ManagedExportDeps,
+  ManagedFolderBackupDeps,
   ManagedMigrationDeps,
 } from "@psi/managed/managedExchangeExport";
 import type {
   ManagedSpendOutcome,
   ManagedSpentHandoff,
 } from "@psi/managed/managedLocalState";
+import type { HandlePermissionQuery } from "@psi/managed/managedInputHandle";
+import type { ManagedBackupMarkOutcome } from "@psi/managed/managedExchangeStore";
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
@@ -79,9 +85,9 @@ function backupDeps(rec: ManagedExchangeRecord): ManagedExportDeps & {
 }
 
 describe("managedBackupFileName", () => {
-  test("names the file by the export's calendar day", () => {
-    expect(managedBackupFileName(new Date("2026-07-14T12:00:00.000Z"))).toBe(
-      "alcove-managed-backup-2026-07-14.json",
+  test("names the file by the export's UTC instant to the second", () => {
+    expect(managedBackupFileName(new Date("2026-07-14T09:05:03.250Z"))).toBe(
+      "alcove-managed-backup-2026-07-14T090503Z.json",
     );
   });
 });
@@ -97,6 +103,10 @@ describe("exportManagedBackup", () => {
       rec.id,
       "2026-07-14T12:00:00.000Z",
       expect.any(Function),
+      {
+        kind: "downloaded",
+        fileName: "alcove-managed-backup-2026-07-14T120000Z.json",
+      },
     );
     // The result threads the one clock read and the record exported.
     expect(result.backedUpAt.toISOString()).toBe("2026-07-14T12:00:00.000Z");
@@ -203,6 +213,10 @@ describe("dispatchManagedMigration", () => {
       rec.id,
       "2026-07-14T12:00:00.000Z",
       expect.any(Function),
+      {
+        kind: "downloaded",
+        fileName: "alcove-managed-backup-2026-07-14T120000Z.json",
+      },
     );
     // The spend is operator-attested: not written until confirm() is called.
     expect(deps.spendIfCurrent).not.toHaveBeenCalled();
@@ -586,4 +600,297 @@ describe("dispatchManagedCronExport", () => {
       expect(rec).toEqual(before);
     },
   );
+});
+
+describe("backUpManagedExchangeToFolder", () => {
+  const BACKED_UP_AT = "2026-07-14T12:00:00.000Z";
+  const FILE_NAME = "alcove-managed-backup-2026-07-14T120000Z.json";
+
+  /** A permission layer reporting a fixed state, recording whether it was asked
+   * to prompt, which a run with nobody present may never do. */
+  function fakePermission(state: "granted" | "denied" | "prompt") {
+    const seam = {
+      requested: false,
+      query: () => Promise.resolve(state),
+      request: () => {
+        seam.requested = true;
+        return Promise.resolve(state);
+      },
+    };
+    return seam as typeof seam & HandlePermissionQuery;
+  }
+
+  /** A granted folder built to the calls the write makes: a lookup without
+   * `create` for whether the name is held, one with it for the entry written,
+   * and the writable the bytes go through. `holding` maps the names it already
+   * has to their contents; `failWrite` makes the stream refuse the bytes. */
+  function fakeFolder(
+    options: {
+      holding?: Record<string, string>;
+      failWrite?: Error;
+      name?: string;
+    } = {},
+  ) {
+    const files = new Map(Object.entries(options.holding ?? {}));
+    const handle = {
+      name: options.name ?? "Riverbend exchange",
+      getFileHandle: (fileName: string, lookup?: { create?: boolean }) => {
+        if (lookup?.create !== true && !files.has(fileName))
+          return Promise.reject(
+            new DOMException("no such entry", "NotFoundError"),
+          );
+        if (!files.has(fileName)) files.set(fileName, "");
+        return Promise.resolve({
+          createWritable: () =>
+            Promise.resolve({
+              write: async (blob: Blob) => {
+                if (options.failWrite !== undefined) throw options.failWrite;
+                files.set(fileName, await blob.text());
+              },
+              close: () => Promise.resolve(),
+              abort: () => Promise.resolve(),
+            }),
+        });
+      },
+      removeEntry: (fileName: string) => {
+        files.delete(fileName);
+        return Promise.resolve();
+      },
+    };
+    return { files, handle: handle as unknown as FileSystemDirectoryHandle };
+  }
+
+  /** The decision's boundaries over the real folder write: the record the
+   * store holds after the run, the folder write through `permission`, and a
+   * checked mark answering `markOutcome`. */
+  function folderBackupDeps(
+    stored: ManagedExchangeRecord | undefined,
+    permission: HandlePermissionQuery,
+    markOutcome: ManagedBackupMarkOutcome = "marked",
+  ) {
+    const markIfCurrent = vi.fn(() => Promise.resolve(markOutcome));
+    const deps: ManagedFolderBackupDeps = {
+      readRecord: () => Promise.resolve(stored),
+      writeToFolder: (rec, fileName, content) =>
+        writeBackupToWorkingFolder(rec, fileName, content, permission),
+      markIfCurrent,
+      now: () => new Date(BACKED_UP_AT),
+    };
+    return { deps, markIfCurrent };
+  }
+
+  /** What the manual backup downloads for `rec` at the same instant. */
+  async function manualBackup(rec: ManagedExchangeRecord) {
+    const manual = backupDeps(rec);
+    await exportManagedBackup(rec.id, manual);
+    return manual.downloaded[0];
+  }
+
+  beforeEach(() => {
+    // The feature detection a stored grant is followed on; Node has no File
+    // System Access API of its own.
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("a granted folder takes the manual backup's file, and the marker is stamped without a prompt", async () => {
+    const folder = fakeFolder();
+    const rec = { ...record(), workingDirectoryHandle: folder.handle };
+    const permission = fakePermission("granted");
+    const { deps, markIfCurrent } = folderBackupDeps(rec, permission);
+
+    const backup = await backUpManagedExchangeToFolder(rec.id, deps);
+
+    expect(backup).toEqual({
+      kind: "backed-up",
+      fileName: FILE_NAME,
+      directoryName: "Riverbend exchange",
+      backedUpAt: new Date(BACKED_UP_AT),
+    });
+    // The same name and the same bytes the manual backup downloads.
+    const manual = await manualBackup(rec);
+    expect(manual.fileName).toBe(FILE_NAME);
+    expect(folder.files.get(FILE_NAME)).toBe(manual.content);
+    expect(markIfCurrent).toHaveBeenCalledWith(
+      rec.id,
+      rec.sharedSecret,
+      BACKED_UP_AT,
+      {
+        kind: "folder",
+        folderName: "Riverbend exchange",
+        fileName: FILE_NAME,
+      },
+    );
+    expect(permission.requested).toBe(false);
+  });
+
+  test("a folder name outside the stored bound is left off the marker, which is still stamped", async () => {
+    // The marker's reader rejects a name outside 1-255 code units, so storing
+    // one would leave the exchange's local state unreadable on this device.
+    for (const name of ["x".repeat(256), ""]) {
+      const folder = fakeFolder({ name });
+      const rec = { ...record(), workingDirectoryHandle: folder.handle };
+      const { deps, markIfCurrent } = folderBackupDeps(
+        rec,
+        fakePermission("granted"),
+      );
+
+      expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+        kind: "backed-up",
+        fileName: FILE_NAME,
+        directoryName: name,
+        backedUpAt: new Date(BACKED_UP_AT),
+      });
+      expect(markIfCurrent).toHaveBeenCalledWith(
+        rec.id,
+        rec.sharedSecret,
+        BACKED_UP_AT,
+        { kind: "folder", fileName: FILE_NAME },
+      );
+    }
+  });
+
+  test("a grant that would need the operator's gesture writes nothing, prompts for nothing, and stamps nothing", async () => {
+    for (const state of ["prompt", "denied"] as const) {
+      const folder = fakeFolder();
+      const rec = { ...record(), workingDirectoryHandle: folder.handle };
+      const permission = fakePermission(state);
+      const { deps, markIfCurrent } = folderBackupDeps(rec, permission);
+
+      expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+        kind: "ungranted",
+        state,
+      });
+      expect(folder.files.size).toBe(0);
+      expect(markIfCurrent).not.toHaveBeenCalled();
+      expect(permission.requested).toBe(false);
+    }
+  });
+
+  test("an exchange holding no folder grant writes nothing and stamps nothing", async () => {
+    const rec = record();
+    const { deps, markIfCurrent } = folderBackupDeps(
+      rec,
+      fakePermission("granted"),
+    );
+
+    expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+      kind: "no-folder",
+    });
+    expect(markIfCurrent).not.toHaveBeenCalled();
+  });
+
+  test("a write the folder refuses is reported, stamps nothing, and does not reject", async () => {
+    const refusal = new Error("the disk is full");
+    const folder = fakeFolder({ failWrite: refusal });
+    const rec = { ...record(), workingDirectoryHandle: folder.handle };
+    const { deps, markIfCurrent } = folderBackupDeps(
+      rec,
+      fakePermission("granted"),
+    );
+
+    expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+      kind: "write-failed",
+      error: refusal,
+    });
+    expect(folder.files.has(FILE_NAME)).toBe(false);
+    expect(markIfCurrent).not.toHaveBeenCalled();
+  });
+
+  test("a file already held under the backup's name is left as it is", async () => {
+    // Another exchange sharing the folder may have written its backup under the
+    // same name in the same second.
+    const folder = fakeFolder({ holding: { [FILE_NAME]: "another backup" } });
+    const rec = { ...record(), workingDirectoryHandle: folder.handle };
+    const { deps, markIfCurrent } = folderBackupDeps(
+      rec,
+      fakePermission("granted"),
+    );
+
+    expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+      kind: "name-held",
+      fileName: FILE_NAME,
+    });
+    expect(folder.files.get(FILE_NAME)).toBe("another backup");
+    expect(markIfCurrent).not.toHaveBeenCalled();
+  });
+
+  test("two backups a second apart on one day both land, and the newer one is marked", async () => {
+    const folder = fakeFolder();
+    const stored = { ...record(), workingDirectoryHandle: folder.handle };
+    const permission = fakePermission("granted");
+    let marker: { secret: string; at: string } | undefined;
+    let clock = new Date("2026-07-14T12:00:00.000Z");
+    const deps: ManagedFolderBackupDeps = {
+      readRecord: () => Promise.resolve(stored),
+      writeToFolder: (rec, fileName, content) =>
+        writeBackupToWorkingFolder(rec, fileName, content, permission),
+      markIfCurrent: (_id, expectedSharedSecret, backedUpAt) => {
+        if (stored.sharedSecret !== expectedSharedSecret)
+          return Promise.resolve("superseded");
+        marker = { secret: expectedSharedSecret, at: backedUpAt };
+        return Promise.resolve("marked");
+      },
+      now: () => clock,
+    };
+
+    const first = await backUpManagedExchangeToFolder(stored.id, deps);
+    stored.sharedSecret = generateSharedSecret();
+    clock = new Date("2026-07-14T12:00:01.000Z");
+    const second = await backUpManagedExchangeToFolder(stored.id, deps);
+
+    const firstName = "alcove-managed-backup-2026-07-14T120000Z.json";
+    const secondName = "alcove-managed-backup-2026-07-14T120001Z.json";
+    expect(first).toMatchObject({ kind: "backed-up", fileName: firstName });
+    expect(second).toMatchObject({ kind: "backed-up", fileName: secondName });
+    expect([...folder.files.keys()].sort()).toEqual([firstName, secondName]);
+    const secretIn = (name: string) =>
+      importManagedExchangeArtifact(folder.files.get(name) ?? "").record
+        .sharedSecret;
+    expect(secretIn(secondName)).toBe(stored.sharedSecret);
+    expect(secretIn(firstName)).not.toBe(stored.sharedSecret);
+    expect(marker).toEqual({
+      secret: stored.sharedSecret,
+      at: "2026-07-14T12:00:01.000Z",
+    });
+  });
+
+  test("a secret that moved on after the write leaves the marker unstamped", async () => {
+    const folder = fakeFolder();
+    const rec = { ...record(), workingDirectoryHandle: folder.handle };
+    const { deps } = folderBackupDeps(
+      rec,
+      fakePermission("granted"),
+      "superseded",
+    );
+
+    expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+      kind: "superseded",
+      fileName: FILE_NAME,
+      directoryName: "Riverbend exchange",
+    });
+  });
+
+  test("a record that is gone, or holds no secret to back up, is reported rather than thrown", async () => {
+    const gone = folderBackupDeps(undefined, fakePermission("granted"));
+    expect(await backUpManagedExchangeToFolder("gone", gone.deps)).toEqual({
+      kind: "failed",
+      error: expect.any(Error),
+    });
+
+    const folder = fakeFolder();
+    const { sharedSecret: _withheld, ...configOnly } = {
+      ...record(),
+      workingDirectoryHandle: folder.handle,
+    };
+    const held = folderBackupDeps(configOnly, fakePermission("granted"));
+    expect(
+      await backUpManagedExchangeToFolder(configOnly.id, held.deps),
+    ).toMatchObject({ kind: "failed" });
+    expect(folder.files.size).toBe(0);
+    expect(held.markIfCurrent).not.toHaveBeenCalled();
+  });
 });

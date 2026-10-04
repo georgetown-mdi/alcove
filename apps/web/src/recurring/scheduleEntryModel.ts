@@ -466,20 +466,27 @@ export const WORKING_FOLDER_UNSUPPORTED_NOTE =
   "This browser cannot give a site a folder, so you choose the input file " +
   "each time you run this exchange, and no run can happen with nobody present.";
 
-/** What the operator is told about a folder they have granted: what it is used
- * for, and that it stands until they change it. */
+/** What the operator is told about a folder they have granted: what runs read
+ * and write there, including the secret-bearing backups that build up, and
+ * that it stands until they change it. */
 export function workingFolderGrantedNote(name: string): string {
   return (
-    `Runs read ${MANAGED_INPUT_FILE_NAME} from ${name}, and scheduled runs ` +
-    `write their results there. That folder stands until you choose another ` +
-    `or stop using it; deleting this exchange drops it too.`
+    `Runs read ${MANAGED_INPUT_FILE_NAME} from ${name} and write their ` +
+    `results there, and each scheduled run that succeeds also writes a backup ` +
+    `of this exchange there, including its shared secret, so keep ${name} ` +
+    `readable only by you on this device and delete older backups once you no ` +
+    `longer need them. That folder stands until you choose another or stop ` +
+    `using it; deleting this exchange drops it too.`
   );
 }
 
-/** The guidance the grant carries on which folder to choose. A folder granted to
- * this site is readable and writable by it, so a folder of its own is the
- * practice worth stating where the choice is made. */
+/** The guidance the grant carries on which folder to choose, stated before the
+ * request so the operator grants it knowing a secret-bearing backup lands
+ * there and the site can reach everything in it. */
 export const WORKING_FOLDER_SCOPE_NOTE =
-  "Choose a folder used for nothing else. While the grant stands, this site can " +
-  "read and write everything in the folder you choose, not only the files this " +
-  "exchange uses.";
+  "After each scheduled run that succeeds, a backup of this exchange, " +
+  "including its shared secret, is written into this folder, so choose one " +
+  "only you can read on this device, use it for nothing else, and delete " +
+  "older backups once you no longer need them. While the " +
+  "grant stands, this site can read and write everything in the folder you " +
+  "choose, not only the files this exchange uses.";

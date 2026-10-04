@@ -33,6 +33,7 @@ import {
   ManagedHandoffRefusedError,
   dispatchManagedMigration,
   exportManagedBackup,
+  managedBackupFileName,
 } from "@psi/managed/managedExchangeExport";
 import {
   ManagedReinviteWithheldError,
@@ -167,6 +168,10 @@ import type { ResolvedMatching, TermsChange } from "@alcove/core";
 import type { Ref } from "react";
 
 import type {
+  ManagedBackupLocation,
+  ManagedBackupMarker,
+} from "@psi/managed/managedBackupState";
+import type {
   ManagedExchangeLocalEdits,
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
@@ -180,7 +185,6 @@ import type {
   ManagedSpentState,
 } from "@psi/managed/managedLocalState";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
-import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRetakeRefusal } from "./managedRetakeModel";
@@ -803,9 +807,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setExportBusy(true);
     setExportFailed(false);
     void exportManagedBackup(record.id, exportDeps)
-      .then((result) =>
-        setBackupMarker({ backedUpAt: result.backedUpAt.toISOString() }),
-      )
+      .then((result) => setBackupMarker(downloadedMarker(result.backedUpAt)))
       .catch(() => setExportFailed(true))
       .finally(() => setExportBusy(false));
   }
@@ -822,7 +824,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
       spendIfCurrent: spendManagedExchangeIfCurrent,
     })
       .then((dispatch) => {
-        setBackupMarker({ backedUpAt: dispatch.backedUpAt.toISOString() });
+        setBackupMarker(downloadedMarker(dispatch.backedUpAt));
         setMigrationDispatch(dispatch);
       })
       .catch(() => setExportFailed(true))
@@ -2057,6 +2059,31 @@ function ReinvitePanel({
   );
 }
 
+/** The marker a download export stamped as of `backedUpAt`, for the panel to show
+ * without a second store read. */
+function downloadedMarker(backedUpAt: Date): ManagedBackupMarker {
+  return {
+    backedUpAt: backedUpAt.toISOString(),
+    savedAs: {
+      kind: "downloaded",
+      fileName: managedBackupFileName(backedUpAt),
+    },
+  };
+}
+
+/** Where the latest backup is, appended to the backed-up line; empty where the
+ * marker stands for an imported file. */
+function backupLocationClause(
+  savedAs: ManagedBackupLocation | undefined,
+): string {
+  if (savedAs === undefined) return "";
+  if (savedAs.kind === "downloaded")
+    return `, downloaded as ${savedAs.fileName}`;
+  return savedAs.folderName === undefined
+    ? `, written to the folder as ${savedAs.fileName}`
+    : `, written to the folder ${savedAs.folderName} as ${savedAs.fileName}`;
+}
+
 /** The pre-run backup panel: the derived backup state ("backed up as of <date>" or
  * the actionable "Back up this exchange") plus the two export intents that download
  * the artifact this browser restores from. A backup export leaves this exchange live;
@@ -2089,7 +2116,8 @@ function BackupPanel({
     <div className={styles.callout}>
       {state.kind === "backed-up" ? (
         <p className={`${styles.small} ${styles.statusLineOk}`}>
-          Backed up as of {dateLabel(new Date(state.backedUpAt))}.
+          Backed up as of {dateLabel(new Date(state.backedUpAt))}
+          {backupLocationClause(state.savedAs)}.
         </p>
       ) : (
         <p className={styles.calloutLead}>Back up this exchange.</p>

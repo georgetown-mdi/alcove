@@ -8,12 +8,22 @@ import {
 } from "@alcove/core";
 
 import {
+  backUpUnattendedRun,
+  browserFolderBackupDeps,
+} from "@psi/managed/managedScheduleRuntime";
+import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
+  markManagedBackupIfCurrent,
+  persistManagedExchangeRotation,
   persistManagedExchangeWorkingDirectory,
 } from "@psi/managed/managedExchangeStore";
+import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
+import { getManagedLocalState } from "@psi/managed/managedLocalState";
+import { importManagedExchangeArtifact } from "@psi/managed/managedExchangeArtifact";
+import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
 import { writeResultsToWorkingDirectory } from "@psi/managed/managedWorkingDirectory";
 
@@ -247,5 +257,105 @@ describe("a write into a real granted folder that fails", () => {
     expect(await entryNames(folder)).toEqual([fileName]);
     const kept = await folder.getFileHandle(fileName);
     expect(await (await kept.getFile()).text()).toBe(earlier);
+  });
+});
+
+describe("the backup a scheduled run takes after its rotation", () => {
+  /** A stored exchange holding `folder` as its working folder, rotated once
+   * the way a completed run rotates it, which clears any backup marker. */
+  async function rotatedExchangeIn(folder: FileSystemDirectoryHandle) {
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    const rotated = await persistManagedExchangeRotation(created.id, {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+    });
+    return { created, rotated };
+  }
+
+  test("lands in the granted folder, and the exchange reads backed up with no backup notice", async () => {
+    const folder = await trackedOpfsDirectory("backup-written");
+    const { rotated } = await rotatedExchangeIn(folder);
+    expect((await getManagedLocalState(rotated.id))?.backup).toBeUndefined();
+
+    const backup = await backUpUnattendedRun(rotated.id);
+
+    expect(backup.kind).toBe("backed-up");
+    if (backup.kind !== "backed-up") return;
+    expect(await entryNames(folder)).toEqual([backup.fileName]);
+    const file = await folder.getFileHandle(backup.fileName);
+    const { record: restored } = importManagedExchangeArtifact(
+      await (await file.getFile()).text(),
+    );
+    expect(restored.sharedSecret).toBe(rotated.sharedSecret);
+
+    const local = await getManagedLocalState(rotated.id);
+    expect(local?.backup).toEqual({
+      backedUpAt: backup.backedUpAt.toISOString(),
+      savedAs: {
+        kind: "folder",
+        folderName: folder.name,
+        fileName: backup.fileName,
+      },
+    });
+    const stored = await getManagedExchange(rotated.id);
+    if (stored === undefined) throw new Error("the record is gone");
+    expect(
+      betweenVisitNotice({
+        record: stored,
+        local,
+        caughtUpMisses: 0,
+        disposition: "succeeded",
+        now: Date.now(),
+      }),
+    ).toBeUndefined();
+  });
+
+  test("leaves a file already held under its name, and the exchange asking for a backup", async () => {
+    const folder = await trackedOpfsDirectory("backup-name-held");
+    const { rotated } = await rotatedExchangeIn(folder);
+    const backedUpAt = new Date();
+    const fileName = managedBackupFileName(backedUpAt);
+    const standing = await folder.getFileHandle(fileName, { create: true });
+    const opening = await standing.createWritable();
+    await opening.write(new Blob(["another exchange's backup"]));
+    await opening.close();
+
+    expect(
+      await backUpUnattendedRun(rotated.id, {
+        ...browserFolderBackupDeps(),
+        now: () => backedUpAt,
+      }),
+    ).toEqual({
+      kind: "name-held",
+      fileName,
+    });
+    const kept = await folder.getFileHandle(fileName);
+    expect(await (await kept.getFile()).text()).toBe(
+      "another exchange's backup",
+    );
+    expect((await getManagedLocalState(rotated.id))?.backup).toBeUndefined();
+  });
+
+  test("stamps no marker over a secret the written file does not hold", async () => {
+    const folder = await trackedOpfsDirectory("backup-superseded");
+    const { created, rotated } = await rotatedExchangeIn(folder);
+
+    expect(
+      await markManagedBackupIfCurrent(
+        rotated.id,
+        created.sharedSecret ?? "",
+        new Date().toISOString(),
+      ),
+    ).toBe("superseded");
+    expect((await getManagedLocalState(rotated.id))?.backup).toBeUndefined();
+    expect(
+      await markManagedBackupIfCurrent(
+        "no-such-exchange",
+        rotated.sharedSecret,
+        new Date().toISOString(),
+      ),
+    ).toBe("gone");
   });
 });

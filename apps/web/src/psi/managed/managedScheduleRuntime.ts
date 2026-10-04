@@ -29,7 +29,9 @@
  * either way -- nobody is present to download one, and a runtime that stays open
  * for weeks would accumulate them -- so the written file or the parked copy is
  * what the operator returns to. The record pair is neither written nor parked:
- * the run's disclosure record is already in the accounting.
+ * the run's disclosure record is already in the accounting. Last, the rotated
+ * exchange is backed up into that folder where its grant holds with nobody
+ * present ({@link backUpUnattendedRun}), and otherwise left asking for a backup.
  *
  * WHAT A WAKE TELLS THE OPERATOR: each wake's entries are read for the
  * between-visit notification ({@link ./betweenVisitNotice.ts}), off the
@@ -60,8 +62,10 @@ import { runResultsFileName } from "../parkedResults";
 
 import {
   unallocatedResultsMessage,
+  writeBackupToWorkingFolder,
   writeRunResultsToWorkingFolder,
 } from "./managedWorkingDirectory";
+import { backUpManagedExchangeToFolder } from "./managedExchangeExport";
 
 import {
   betweenVisitNotificationsArmed,
@@ -72,6 +76,7 @@ import { betweenVisitNotice } from "./betweenVisitNotice";
 import {
   getManagedExchange,
   listReadableManagedExchanges,
+  markManagedBackupIfCurrent,
   persistManagedExchangeScheduleAdvance,
 } from "./managedExchangeStore";
 import { listReadableManagedLocalState } from "./managedLocalState";
@@ -87,6 +92,10 @@ import type {
   ManagedExchangeReadableRecords,
   ManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type {
+  ManagedFolderBackup,
+  ManagedFolderBackupDeps,
+} from "./managedExchangeExport";
 import type { BetweenVisitNotice } from "./betweenVisitNotice";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
 import type { ManagedLocalState } from "./managedLocalStateShape";
@@ -380,6 +389,7 @@ async function runUnattendedAttempt(
       created,
       pairTableFactors,
     );
+    await backUpUnattendedRun(attempt.record.id);
   } finally {
     for (const url of created.keys()) window.URL.revokeObjectURL(url);
   }
@@ -471,6 +481,74 @@ async function deliverUnattendedResults(
       error,
     );
   }
+}
+
+/** The browser's boundaries for the backup a completed scheduled run takes:
+ * the store's read and checked mark, the folder write, and the clock. */
+export function browserFolderBackupDeps(): ManagedFolderBackupDeps {
+  return {
+    readRecord: getManagedExchange,
+    writeToFolder: (record, fileName, content) =>
+      writeBackupToWorkingFolder(record, fileName, content),
+    markIfCurrent: markManagedBackupIfCurrent,
+    now: () => new Date(),
+  };
+}
+
+/**
+ * Back up a completed scheduled run's exchange into its working folder, so the
+ * rotation the run just made leaves the exchange backed up rather than asking
+ * the operator for a backup. A run that cannot back up this way leaves the
+ * backup marker unstamped, so the exchange asks for a backup at the next visit
+ * and, where notifications are on, in the notice for this window, as it would
+ * have without this step. Every such outcome but the no-folder one also reaches
+ * the diagnostic log.
+ *
+ * Never rejects: the run has rotated and filed its disclosure already.
+ */
+export async function backUpUnattendedRun(
+  id: string,
+  deps: ManagedFolderBackupDeps = browserFolderBackupDeps(),
+): Promise<ManagedFolderBackup> {
+  const backup = await backUpManagedExchangeToFolder(id, deps);
+  const notBackedUp = (cause: string) =>
+    `scheduled managed exchange ${id} not backed up into its working folder: ` +
+    `${cause}; it asks for a backup`;
+  switch (backup.kind) {
+    case "backed-up":
+      log.debug(
+        `scheduled managed exchange ${id} backed up into its working folder ` +
+          `as ${backup.fileName}`,
+      );
+      break;
+    case "no-folder":
+      break;
+    case "ungranted":
+      log.warn(notBackedUp(`folder permission is ${backup.state}`));
+      break;
+    case "name-held":
+      log.warn(notBackedUp(`${backup.fileName} already exists, left as it is`));
+      break;
+    case "write-failed":
+      log.warn(notBackedUp("the write failed"), backup.error);
+      break;
+    case "superseded":
+      log.warn(
+        notBackedUp(`the secret changed after ${backup.fileName} was written`),
+      );
+      break;
+    case "failed":
+      log.warn(
+        notBackedUp("the record could not be read, serialized, or marked"),
+        backup.error,
+      );
+      break;
+    default: {
+      const unreachable: never = backup;
+      return unreachable;
+    }
+  }
+  return backup;
 }
 
 /** What a run's entry holds beside the delivery itself: the row count where the

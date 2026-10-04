@@ -9,9 +9,11 @@
  * would force a schema bump or leak into the export.
  *
  * Currency is "taken since the last rotation," held structurally rather than
- * derived: every export binds its serialized bytes to the marker write in one
- * atomic step, and the rotation-persist write clears the marker in its own
- * cross-store transaction (see {@link ./managedExchangeStore.ts}). Marker presence
+ * derived: every download export binds its serialized bytes to the marker write
+ * in one atomic step, the folder backup a scheduled run writes stamps the marker
+ * only while the stored secret is still the one its file holds, and the
+ * rotation-persist write clears the marker in its own cross-store transaction
+ * (see {@link ./managedExchangeStore.ts}). Marker presence
  * therefore already means a current export exists; the derivation reads no secret
  * material, no rotation epoch, and no `lastRun` outcome.
  *
@@ -29,7 +31,17 @@
 export interface ManagedBackupMarker {
   /** ISO 8601 UTC instant a backup was last taken for this record. */
   backedUpAt: string;
+  /** Where that backup was saved, so the operator can find it; absent where the
+   * marker stands for an imported file rather than a backup this app saved. */
+  savedAs?: ManagedBackupLocation;
 }
+
+/** Where a backup was saved: downloaded under `fileName`, or written into the
+ * working folder under `fileName`. `folderName` names that folder where its
+ * name fits the stored bound, and is absent where it does not. */
+export type ManagedBackupLocation =
+  | { kind: "downloaded"; fileName: string }
+  | { kind: "folder"; folderName?: string; fileName: string };
 
 /** The derived backup state the UI shows:
  *
@@ -40,7 +52,8 @@ export interface ManagedBackupMarker {
  *   the last one and cleared it): one actionable "Back up this exchange".
  */
 type ManagedBackupState =
-  { kind: "backed-up"; backedUpAt: string } | { kind: "backup-needed" };
+  | { kind: "backed-up"; backedUpAt: string; savedAs?: ManagedBackupLocation }
+  | { kind: "backup-needed" };
 
 /**
  * Derive the backup state for a record given its local backup marker (or its
@@ -53,5 +66,9 @@ export function deriveManagedBackupState(
   marker: ManagedBackupMarker | undefined,
 ): ManagedBackupState {
   if (marker === undefined) return { kind: "backup-needed" };
-  return { kind: "backed-up", backedUpAt: marker.backedUpAt };
+  return {
+    kind: "backed-up",
+    backedUpAt: marker.backedUpAt,
+    ...(marker.savedAs !== undefined ? { savedAs: marker.savedAs } : {}),
+  };
 }
