@@ -16,8 +16,11 @@ import { exceedsJsonStructureBound } from "./jsonStructureBound";
 // MAX_JSON_ARRAY_ELEMENTS caps the elements of any one array. Legitimate
 // array-bearing messages (PSI association indices, payload rows / row
 // indices, mapped-element pairs) are sized by the matched record count,
-// itself transport-bounded to a few million, so this sits above any real
-// array and below the engine's array length limit.
+// itself bounded on file-sync by the message that lists it (this cap and
+// MAX_FRAME_SIZE_BYTES, which binds first at about 14.1 million
+// one-position entries; docs/spec/PROTOCOL.md, One list of matched records
+// per message), so this sits at the engine's array length limit rather
+// than above any real array.
 //
 // MAX_JSON_NESTING_DEPTH caps structural nesting. Legitimate messages
 // nest only a few levels (the parsed-config ceiling is camelizeKeys' 256),

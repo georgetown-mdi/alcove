@@ -23,7 +23,7 @@ import type { AssociationTable } from "../../src/types";
 import type { LinkageCardinality } from "../../src/psi/link";
 
 export const PROBE_CASES = [
-  "ordinalOfRow",
+  "localGrouping",
   "localRanks",
   "partnerRanks",
   "entityClusters",
@@ -59,7 +59,7 @@ function grouped(rowCount: number): {
   return { rows: Array.from({ length: rowCount }, (_, i) => i), groupStarts };
 }
 
-function ordinalOfRow(entries: number): void {
+function localGrouping(entries: number): void {
   const candidates = grouped(entries);
   const matched = Array.from(
     { length: candidates.groupStarts.length - 1 },
@@ -158,8 +158,8 @@ function closurePairs(entries: number): void {
 
 async function run(probe: ProbeCase, entries: number): Promise<void> {
   switch (probe) {
-    case "ordinalOfRow":
-      return ordinalOfRow(entries);
+    case "localGrouping":
+      return localGrouping(entries);
     case "localRanks":
       return linkRound("many-to-one", entries, 1);
     case "partnerRanks":

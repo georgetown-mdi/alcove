@@ -1,4 +1,6 @@
+import { InternalConsistencyError } from "../errors";
 import { partnerProtocolError } from "../utils/partnerIndices";
+import { indexInSorted, sortedDistinctInt32 } from "./int32Groups";
 
 /**
  * One round's `(record, value)` incidence for this party: position `k` of the
@@ -77,8 +79,6 @@ export interface RoundOwnership {
   readonly ordinals: Int32Array;
   /** Slot boundaries into `ordinals`, one more entry than there are slots. */
   readonly starts: Int32Array;
-  /** The slot each matched position occupies. */
-  readonly slotOfPosition: Map<number, number>;
   /**
    * The lowest matched position each ordinal owns. It is the one position a
    * round names a record by where the reading party holds no exact partition
@@ -191,11 +191,17 @@ function sortedPositions(
   return positions;
 }
 
-function slotIndex(positions: Int32Array): Map<number, number> {
-  const slotOfPosition = new Map<number, number>();
-  for (let t = 0; t < positions.length; ++t)
-    slotOfPosition.set(positions[t], t);
-  return slotOfPosition;
+/**
+ * The slot `position` occupies in `ownership`, or -1 where the round did not
+ * match it.
+ *
+ * @internal
+ */
+export function slotOfPosition(
+  ownership: RoundOwnership,
+  position: number,
+): number {
+  return indexInSorted(ownership.positions, position);
 }
 
 // The canonical position of every ordinal: the lowest matched position it
@@ -229,7 +235,6 @@ function oneOwnerPerPosition(positions: Int32Array): RoundOwnership {
     positions,
     ordinals,
     starts,
-    slotOfPosition: slotIndex(positions),
     canonicalPosition: Int32Array.from(positions),
   };
 }
@@ -291,7 +296,6 @@ function readRunLengths(
     positions,
     ordinals,
     starts,
-    slotOfPosition: slotIndex(positions),
     canonicalPosition: canonicalPositions(
       positions,
       ordinals,
@@ -385,7 +389,6 @@ function readOwnerLists(
     positions,
     ordinals,
     starts,
-    slotOfPosition: slotIndex(positions),
     canonicalPosition: canonicalPositions(
       positions,
       ordinals,
@@ -445,33 +448,42 @@ export function describeLocalRoundGrouping(
   matchedPositions: ReadonlyArray<number>,
   ownerLists: boolean,
 ): LocalRoundGrouping {
-  const positions = Int32Array.from(new Set(matchedPositions)).sort();
-  const ordinalOfRow = new Map<number, number>();
-  const rows: Array<number> = [];
-  for (const position of positions) {
-    const [from, to] = positionRowRange(candidates, position);
-    for (let r = from; r < to; ++r) rows.push(candidates.rows[r]);
-  }
-  rows.sort((a, b) => a - b);
-  for (const row of rows)
-    if (!ordinalOfRow.has(row)) ordinalOfRow.set(row, ordinalOfRow.size);
-
+  const positions = sortedDistinctInt32(matchedPositions);
   const starts = new Int32Array(positions.length + 1);
-  const flattened: Array<number> = [];
   for (let t = 0; t < positions.length; ++t) {
     const [from, to] = positionRowRange(candidates, positions[t]);
-    for (let r = from; r < to; ++r)
-      flattened.push(ordinalOfRow.get(candidates.rows[r])!);
-    starts[t + 1] = flattened.length;
+    const start = starts[t] + to - from;
+    if ((start | 0) !== start)
+      throw new InternalConsistencyError(
+        `a round's matched positions own ${start} rows, which is not a ` +
+          "32-bit integer",
+      );
+    starts[t + 1] = start;
   }
-  const ordinals = Int32Array.from(flattened);
-  const recordCount = ordinalOfRow.size;
+  const rows = new Int32Array(starts[positions.length]);
+  for (let t = 0; t < positions.length; ++t) {
+    const [from, to] = positionRowRange(candidates, positions[t]);
+    for (let r = from; r < to; ++r) {
+      const row = candidates.rows[r];
+      if ((row | 0) !== row)
+        throw new InternalConsistencyError(
+          `a round's candidate list holds row ${row}, which is not a ` +
+            "32-bit integer",
+        );
+      rows[starts[t] + r - from] = row;
+    }
+  }
+  // A record's ordinal is its row's place among the distinct rows, ascending.
+  const rowOfOrdinal = sortedDistinctInt32(rows);
+  const ordinals = new Int32Array(rows.length);
+  for (let a = 0; a < rows.length; ++a)
+    ordinals[a] = indexInSorted(rowOfOrdinal, rows[a]);
+  const recordCount = rowOfOrdinal.length;
   const ownership: RoundOwnership = {
     recordCount,
     positions,
     ordinals,
     starts,
-    slotOfPosition: slotIndex(positions),
     canonicalPosition: canonicalPositions(
       positions,
       ordinals,
@@ -479,8 +491,6 @@ export function describeLocalRoundGrouping(
       recordCount,
     ),
   };
-  const rowOfOrdinal = new Int32Array(recordCount);
-  for (const [row, ordinal] of ordinalOfRow) rowOfOrdinal[ordinal] = row;
   return {
     field: groupingField(ownership, ownerLists),
     ownership,
@@ -517,7 +527,7 @@ function groupingField(
       ]);
     return owners;
   }
-  const runs: Array<number> = new Array<number>(ownership.recordCount).fill(0);
+  const runs = new Int32Array(ownership.recordCount);
   for (const ordinal of ownership.ordinals) ++runs[ordinal];
-  return runs;
+  return Array.from(runs);
 }

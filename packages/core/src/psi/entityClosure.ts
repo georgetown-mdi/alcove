@@ -1,5 +1,11 @@
 import { InternalConsistencyError } from "../errors";
 import type { AssociationTable } from "../types";
+import { runUnpaced } from "../utils/eventLoop";
+import {
+  groupDistinctByKey,
+  indexInSorted,
+  sortedDistinct,
+} from "./int32Groups";
 
 /**
  * One entity cluster of an association table: a connected component of the
@@ -16,63 +22,102 @@ interface EntityCluster {
   readonly partnerRows: ReadonlyArray<number>;
 }
 
-interface MutableCluster {
-  localRows: Array<number>;
-  partnerRows: Array<number>;
+// A table's entity clusters. Each party's distinct rows are numbered in
+// ascending order, and cluster `c` holds the local rows `localRows[k]` with
+// `clusterOfLocal[k] === c` and the partner rows likewise. Clusters are
+// numbered in the order of their lowest local row.
+interface ClusterIndex {
+  readonly localRows: Float64Array;
+  readonly partnerRows: Float64Array;
+  readonly clusterOfLocal: Int32Array;
+  readonly clusterOfPartner: Int32Array;
+  readonly clusterCount: number;
 }
 
-// Disjoint-set forest over the two row spaces at once: a local row and a partner
-// row get separate nodes, so a row index shared by the two parties is two vertices
-// rather than one. Nodes are allocated on first appearance, so an unmatched record
-// occupies nothing.
-class RowForest {
-  private readonly parent: Array<number> = [];
-  private readonly localNode = new Map<number, number>();
-  private readonly partnerNode = new Map<number, number>();
+function assertSameLength(table: AssociationTable): void {
+  if (table[0].length !== table[1].length)
+    throw new InternalConsistencyError(
+      "the association table's halves have different lengths: " +
+        `${table[0].length} vs ${table[1].length}. Each entry is one ` +
+        "matched pair, so the two halves are read together.",
+    );
+}
 
-  nodeForLocal(row: number): number {
-    return this.node(this.localNode, row);
+function find(parent: Int32Array, node: number): number {
+  let root = node;
+  while (parent[root] !== root) root = parent[root];
+  let walk = node;
+  while (parent[walk] !== root) {
+    const next = parent[walk];
+    parent[walk] = root;
+    walk = next;
   }
+  return root;
+}
 
-  nodeForPartner(row: number): number {
-    return this.node(this.partnerNode, row);
+// The connected components of the bipartite graph over the two row spaces: a
+// local row and a partner row are separate vertices, so a row index shared by
+// the two parties is two vertices rather than one.
+function clusterIndex(table: AssociationTable): ClusterIndex {
+  const localRows = sortedDistinct(table[0]);
+  const partnerRows = sortedDistinct(table[1]);
+  const localCount = localRows.length;
+  const parent = new Int32Array(localCount + partnerRows.length);
+  for (let node = 0; node < parent.length; ++node) parent[node] = node;
+  for (let i = 0; i < table[0].length; ++i) {
+    const a = find(parent, indexInSorted(localRows, table[0][i]));
+    const b = find(
+      parent,
+      localCount + indexInSorted(partnerRows, table[1][i]),
+    );
+    if (a !== b) parent[a] = b;
   }
+  const clusterOfRoot = new Int32Array(parent.length).fill(-1);
+  const clusterOfLocal = new Int32Array(localCount);
+  let clusterCount = 0;
+  for (let k = 0; k < localCount; ++k) {
+    const root = find(parent, k);
+    if (clusterOfRoot[root] < 0) clusterOfRoot[root] = clusterCount++;
+    clusterOfLocal[k] = clusterOfRoot[root];
+  }
+  const clusterOfPartner = new Int32Array(partnerRows.length);
+  for (let k = 0; k < partnerRows.length; ++k)
+    clusterOfPartner[k] = clusterOfRoot[find(parent, localCount + k)];
+  return {
+    localRows,
+    partnerRows,
+    clusterOfLocal,
+    clusterOfPartner,
+    clusterCount,
+  };
+}
 
-  union(a: number, b: number): void {
-    const rootA = this.find(a);
-    const rootB = this.find(b);
-    if (rootA !== rootB) this.parent[rootA] = rootB;
-  }
+// How many of `clusterOf`'s rows each cluster holds.
+function clusterSizes(clusterOf: Int32Array, clusterCount: number): Int32Array {
+  const sizes = new Int32Array(clusterCount);
+  for (const cluster of clusterOf) ++sizes[cluster];
+  return sizes;
+}
 
-  find(node: number): number {
-    let root = node;
-    while (this.parent[root] !== root) root = this.parent[root];
-    let walk = node;
-    while (this.parent[walk] !== root) {
-      const next = this.parent[walk];
-      this.parent[walk] = root;
-      walk = next;
-    }
-    return root;
+// Each cluster's rows, ascending: `rows` ascends, so filling the clusters in
+// its order keeps each one's rows in that order. Each array is allocated at
+// its final length, the one-row clusters most tables hold costing one slot.
+function rowsByCluster(
+  rows: Float64Array,
+  clusterOf: Int32Array,
+  clusterCount: number,
+): Array<Array<number>> {
+  const sizes = clusterSizes(clusterOf, clusterCount);
+  const byCluster = Array.from(
+    { length: clusterCount },
+    (_, cluster): Array<number> => new Array<number>(sizes[cluster]),
+  );
+  const filled = new Int32Array(clusterCount);
+  for (let k = 0; k < rows.length; ++k) {
+    const cluster = clusterOf[k];
+    byCluster[cluster][filled[cluster]++] = rows[k];
   }
-
-  localRows(): IterableIterator<[number, number]> {
-    return this.localNode.entries();
-  }
-
-  partnerRows(): IterableIterator<[number, number]> {
-    return this.partnerNode.entries();
-  }
-
-  private node(index: Map<number, number>, row: number): number {
-    let node = index.get(row);
-    if (node === undefined) {
-      node = this.parent.length;
-      this.parent.push(node);
-      index.set(row, node);
-    }
-    return node;
-  }
+  return byCluster;
 }
 
 /**
@@ -99,42 +144,22 @@ class RowForest {
  *   one.
  */
 export function entityClusters(table: AssociationTable): Array<EntityCluster> {
-  const [localRows, partnerRows] = table;
-  if (localRows.length !== partnerRows.length)
-    throw new InternalConsistencyError(
-      "the association table's halves have different lengths: " +
-        `${localRows.length} vs ${partnerRows.length}. Each entry is one ` +
-        "matched pair, so the two halves are read together.",
-    );
-
-  const forest = new RowForest();
-  for (let i = 0; i < localRows.length; ++i)
-    forest.union(
-      forest.nodeForLocal(localRows[i]),
-      forest.nodeForPartner(partnerRows[i]),
-    );
-
-  const byRoot = new Map<number, MutableCluster>();
-  const clusterFor = (node: number): MutableCluster => {
-    const root = forest.find(node);
-    let cluster = byRoot.get(root);
-    if (cluster === undefined) {
-      cluster = { localRows: [], partnerRows: [] };
-      byRoot.set(root, cluster);
-    }
-    return cluster;
-  };
-  for (const [row, node] of forest.localRows())
-    clusterFor(node).localRows.push(row);
-  for (const [row, node] of forest.partnerRows())
-    clusterFor(node).partnerRows.push(row);
-
-  const ascending = (a: number, b: number): number => a - b;
-  const clusters = Array.from(byRoot.values(), (cluster) => ({
-    localRows: cluster.localRows.sort(ascending),
-    partnerRows: cluster.partnerRows.sort(ascending),
+  assertSameLength(table);
+  const index = clusterIndex(table);
+  const local = rowsByCluster(
+    index.localRows,
+    index.clusterOfLocal,
+    index.clusterCount,
+  );
+  const partner = rowsByCluster(
+    index.partnerRows,
+    index.clusterOfPartner,
+    index.clusterCount,
+  );
+  return local.map((localRows, cluster) => ({
+    localRows,
+    partnerRows: partner[cluster],
   }));
-  return clusters.sort((a, b) => a.localRows[0] - b.localRows[0]);
 }
 
 /**
@@ -246,51 +271,70 @@ export function assertRoundDiagonalClosure(
         `label(s) for ${table[0].length} matched pair(s)`,
     );
 
-  const clusters = entityClusters(table);
-  const clusterOfLocalRow = new Map<number, number>();
-  const clusterOfPartnerRow = new Map<number, number>();
-  clusters.forEach((cluster, index) => {
-    for (const row of cluster.localRows) clusterOfLocalRow.set(row, index);
-    for (const row of cluster.partnerRows) clusterOfPartnerRow.set(row, index);
-  });
+  assertSameLength(table);
+  const index = clusterIndex(table);
+  const { localRows, partnerRows, clusterOfLocal, clusterOfPartner } = index;
+  const pairCount = table[0].length;
+  const localOfPair = new Int32Array(pairCount);
+  const partnerOfPair = new Int32Array(pairCount);
+  for (let i = 0; i < pairCount; ++i) {
+    localOfPair[i] = indexInSorted(localRows, table[0][i]);
+    partnerOfPair[i] = indexInSorted(partnerRows, table[1][i]);
+  }
+  const clusterOfRow =
+    (rows: Float64Array, clusterOf: Int32Array) =>
+    (row: number): number => {
+      const k = indexInSorted(rows, row);
+      return k < 0 ? -1 : clusterOf[k];
+    };
+  const clusterOfLocalRow = clusterOfRow(localRows, clusterOfLocal);
+  const clusterOfPartnerRow = clusterOfRow(partnerRows, clusterOfPartner);
+  const lowestLocalRow = new Float64Array(index.clusterCount);
+  for (let k = localRows.length - 1; k >= 0; --k)
+    lowestLocalRow[clusterOfLocal[k]] = localRows[k];
 
-  const roundOfCluster = new Array<number | undefined>(clusters.length).fill(
-    undefined,
-  );
-  for (let i = 0; i < roundOfPair.length; ++i) {
-    const cluster = clusterOfLocalRow.get(table[0][i])!;
+  const roundOfCluster = new Float64Array(index.clusterCount).fill(-1);
+  for (let i = 0; i < pairCount; ++i) {
+    const cluster = clusterOfLocal[localOfPair[i]];
     const round = roundOfCluster[cluster];
-    if (round === undefined) roundOfCluster[cluster] = roundOfPair[i];
+    if (round < 0) roundOfCluster[cluster] = roundOfPair[i];
     else if (round !== roundOfPair[i])
       throw notRoundDiagonal(
         id,
-        `the cluster holding this party's record ${clusters[cluster].localRows[0]} ` +
+        `the cluster holding this party's record ${lowestLocalRow[cluster]} ` +
           "joins pairs matched on two different linkage keys, where a record " +
           "standing in any of a key's candidate pairs leaves candidacy for " +
           "every later key",
       );
   }
 
-  const partnerRowsOf = new Map<number, Set<number>>();
-  for (let i = 0; i < table[0].length; ++i) {
-    let rows = partnerRowsOf.get(table[0][i]);
-    if (rows === undefined) {
-      rows = new Set<number>();
-      partnerRowsOf.set(table[0][i], rows);
-    }
-    rows.add(table[1][i]);
-  }
+  // The table's pairs grouped by local row, each group's partner rows
+  // ascending and distinct, and which of them a block holds.
+  const partnersOfLocal = runUnpaced(
+    groupDistinctByKey(localOfPair, partnerOfPair, localRows.length),
+  );
+  const coveredByBlocks = new Uint8Array(partnersOfLocal.values.length);
+  const pairPlace = (local: number, partner: number): number => {
+    const l = indexInSorted(localRows, local);
+    const p = indexInSorted(partnerRows, partner);
+    if (l < 0 || p < 0) return -1;
+    return indexInSorted(
+      partnersOfLocal.values,
+      p,
+      partnersOfLocal.starts[l],
+      partnersOfLocal.starts[l + 1],
+    );
+  };
 
-  const valuesOfCluster = new Array<number>(clusters.length).fill(0);
-  const pairsCoveredByBlocks = new Set<string>();
+  const valuesOfCluster = new Int32Array(index.clusterCount);
   for (const block of blocks) {
     if (block.localRows.length === 0 || block.partnerRows.length === 0)
       throw new InternalConsistencyError(
         `${id}: the closure check was given a block with no record on one ` +
           "side, where a block is the records that contributed one matched value",
       );
-    const cluster = clusterOfLocalRow.get(block.localRows[0]);
-    if (cluster === undefined)
+    const cluster = clusterOfLocalRow(block.localRows[0]);
+    if (cluster < 0)
       throw notRoundDiagonal(
         id,
         `one matched value's block names this party's record ` +
@@ -299,14 +343,14 @@ export function assertRoundDiagonalClosure(
       );
     ++valuesOfCluster[cluster];
     for (const row of block.localRows)
-      if (clusterOfLocalRow.get(row) !== cluster)
+      if (clusterOfLocalRow(row) !== cluster)
         throw notRoundDiagonal(
           id,
           "one matched value's pairs are split across the clusters holding " +
             `this party's records ${block.localRows[0]} and ${row}`,
         );
     for (const row of block.partnerRows)
-      if (clusterOfPartnerRow.get(row) !== cluster)
+      if (clusterOfPartnerRow(row) !== cluster)
         throw notRoundDiagonal(
           id,
           "one matched value's pairs are split across the cluster holding " +
@@ -314,9 +358,9 @@ export function assertRoundDiagonalClosure(
             `the partner's record ${row}`,
         );
     for (const local of block.localRows) {
-      const held = partnerRowsOf.get(local);
       for (const partner of block.partnerRows) {
-        if (held?.has(partner) !== true)
+        const place = pairPlace(local, partner);
+        if (place < 0)
           throw notRoundDiagonal(
             id,
             `the block of one matched value covers ${block.localRows.length} ` +
@@ -325,13 +369,13 @@ export function assertRoundDiagonalClosure(
               `record ${local} and the partner's ${partner}, where a block ` +
               "holds every pair between the records that contributed its value",
           );
-        pairsCoveredByBlocks.add(pairKey(local, partner));
+        coveredByBlocks[place] = 1;
       }
     }
   }
 
-  for (let i = 0; i < table[0].length; ++i)
-    if (!pairsCoveredByBlocks.has(pairKey(table[0][i], table[1][i])))
+  for (let i = 0; i < pairCount; ++i)
+    if (coveredByBlocks[pairPlace(table[0][i], table[1][i])] !== 1)
       throw notRoundDiagonal(
         id,
         `the table pairs this party's record ${table[0][i]} with the ` +
@@ -340,25 +384,30 @@ export function assertRoundDiagonalClosure(
           "produce",
       );
 
-  return summarizeClusters(clusters, valuesOfCluster);
+  return summarizeClusters(
+    clusterSizes(clusterOfLocal, index.clusterCount),
+    clusterSizes(clusterOfPartner, index.clusterCount),
+    valuesOfCluster,
+  );
 }
 
 // The shape distribution over the checked clusters, keyed on all three of a
 // cluster's figures so merging two clusters into one entry never averages a
 // value count.
 function summarizeClusters(
-  clusters: ReadonlyArray<EntityCluster>,
-  valuesOfCluster: ReadonlyArray<number>,
+  localRowsOfCluster: Int32Array,
+  partnerRowsOfCluster: Int32Array,
+  valuesOfCluster: Int32Array,
 ): EntityClusterSummary {
   const byShape = new Map<string, EntityClusterShape>();
   let localRows = 0;
   let partnerRows = 0;
-  clusters.forEach((cluster, index) => {
-    localRows += cluster.localRows.length;
-    partnerRows += cluster.partnerRows.length;
+  for (let index = 0; index < localRowsOfCluster.length; ++index) {
+    localRows += localRowsOfCluster[index];
+    partnerRows += partnerRowsOfCluster[index];
     const shape = {
-      localRows: cluster.localRows.length,
-      partnerRows: cluster.partnerRows.length,
+      localRows: localRowsOfCluster[index],
+      partnerRows: partnerRowsOfCluster[index],
       distinctValues: valuesOfCluster[index],
     };
     const key = `${shape.localRows},${shape.partnerRows},${shape.distinctValues}`;
@@ -367,7 +416,7 @@ function summarizeClusters(
       ...shape,
       clusters: (held?.clusters ?? 0) + 1,
     });
-  });
+  }
   const shapes = [...byShape.values()].sort(
     (a, b) =>
       b.localRows + b.partnerRows - (a.localRows + a.partnerRows) ||
@@ -375,11 +424,12 @@ function summarizeClusters(
       b.partnerRows - a.partnerRows ||
       b.distinctValues - a.distinctValues,
   );
-  return { clusterCount: clusters.length, localRows, partnerRows, shapes };
-}
-
-function pairKey(local: number, partner: number): string {
-  return `${local},${partner}`;
+  return {
+    clusterCount: localRowsOfCluster.length,
+    localRows,
+    partnerRows,
+    shapes,
+  };
 }
 
 function notRoundDiagonal(
