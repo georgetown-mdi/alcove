@@ -119,7 +119,12 @@ because silent coercion is the classic way two implementations diverge:
   which can yield a different value on each read. These checks cover the
   properties of plain objects and arrays; an exotic object such as a Proxy,
   whose reads need not match its property descriptors, is outside the domain
-  the encoder is given.
+  the encoder is given. On an array too large for the engine to list every own
+  property name (Node refuses to enumerate 2^24 or more keys), the encoder
+  checks the enumerable string keys instead, so a non-enumerable named
+  property on such an array is not detected; every value this implementation
+  encodes is built by its own code or parsed from JSON, neither of which
+  produces one.
 - A string -- a value or an object key -- holding a lone UTF-16 surrogate. It is
   not a Unicode scalar value and has no UTF-8 encoding (see
   [Strings](#strings)).

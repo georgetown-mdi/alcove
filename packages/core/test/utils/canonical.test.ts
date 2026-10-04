@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   canonicalBytes,
@@ -336,6 +336,97 @@ describe("values outside the canonical domain are rejected", () => {
     expect(() => canonicalString({ a: arr })).toThrow(
       /symbol-keyed array property/,
     );
+  });
+});
+
+describe("an array of length 2^24", () => {
+  // Sparse: three elements and a hole-filled tail keep the case cheap and under
+  // the engine's key-listing limit, which counts keys, not length. The dense
+  // cases past that limit are test/stress/canonicalLargeArray.stress.test.ts.
+  const long = (): unknown[] => {
+    const arr: unknown[] = [1, 2, 3];
+    arr.length = 2 ** 24;
+    return arr;
+  };
+
+  test("with a named property is rejected", () => {
+    const arr = long();
+    (arr as unknown as Record<string, unknown>).foo = "bar";
+    (arr as unknown as Record<string, unknown>).baz = "qux";
+    expect(() => canonicalString({ a: arr })).toThrow(
+      /\$\.a: non-index array property \("foo"\)/,
+    );
+  });
+
+  test("with a symbol-keyed property is rejected", () => {
+    const arr = long();
+    (arr as unknown as { [k: symbol]: unknown })[Symbol("s")] = 1;
+    expect(() => canonicalString({ a: arr })).toThrow(
+      /\$\.a: symbol-keyed array property/,
+    );
+  });
+
+  test("with a non-enumerable named property is rejected", () => {
+    const arr = long();
+    Object.defineProperty(arr, "foo", { value: "bar", enumerable: false });
+    expect(() => canonicalString({ a: arr })).toThrow(
+      /\$\.a: non-index array property \("foo"\)/,
+    );
+  });
+
+  test("with only elements passes the key checks and is refused at its first hole", () => {
+    expect(() => canonicalString({ a: long() })).toThrow(
+      /\$\.a\[3\]: sparse array hole/,
+    );
+  });
+});
+
+describe("an array whose own property names the engine refuses to list", () => {
+  const refuseArrays = (error: Error) => {
+    const listNames = Object.getOwnPropertyNames;
+    return vi
+      .spyOn(Object, "getOwnPropertyNames")
+      .mockImplementation((value: unknown) => {
+        if (Array.isArray(value)) throw error;
+        return listNames(value);
+      });
+  };
+
+  test("misses a non-enumerable named property, checking enumerable keys", () => {
+    const arr: unknown[] = [1, 2, 3];
+    Object.defineProperty(arr, "foo", { value: "bar", enumerable: false });
+    const spy = refuseArrays(
+      new RangeError("Too many properties to enumerate"),
+    );
+    try {
+      expect(canonicalString({ a: arr })).toBe('{"a":[1,2,3]}');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("still rejects an enumerable named property", () => {
+    const arr: unknown[] = [1, 2, 3];
+    (arr as unknown as Record<string, unknown>).foo = "bar";
+    const spy = refuseArrays(
+      new RangeError("Too many properties to enumerate"),
+    );
+    try {
+      expect(() => canonicalString({ a: arr })).toThrow(
+        /\$\.a: non-index array property \("foo"\)/,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("propagates an error other than a RangeError", () => {
+    const spy = refuseArrays(new TypeError("not a RangeError"));
+    try {
+      expect(() => canonicalString({ a: [1] })).toThrow(/not a RangeError/);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
