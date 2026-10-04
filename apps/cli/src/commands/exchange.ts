@@ -1295,17 +1295,17 @@ export async function handler(argv: Arguments): Promise<void> {
 
     // Every refusal above and here is decided from local inputs alone, so all
     // of them come before the wake call and the host-key probe, the run's
-    // first network contact: an unpinned SFTP host on a non-interactive run,
-    // then runProtocol's own local checks (the --event-stream fd-3 preflight,
-    // the shared secret, the key-file path, the memory the round needs, the
-    // first round's size, and the webrtc rendezvous), which runProtocol runs
-    // again.
+    // first network contact: runProtocol's own local checks (the
+    // --event-stream fd-3 preflight, the shared secret, the key-file path, the
+    // memory the round needs, the first round's size, and the webrtc
+    // rendezvous), which runProtocol runs again, then an unpinned SFTP host on
+    // a non-interactive run, refused with the stream open so the refusal is
+    // its terminal event.
     let openedEventStream: EventStreamEmitter | undefined;
     let signingWithoutRecordWarned = false;
     let undeclaredColumnsWarned = false;
     let memoryBudgetReported = false;
     try {
-      assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
       ({
         eventStream: openedEventStream,
         signingWithoutRecordWarned,
@@ -1323,6 +1323,7 @@ export async function handler(argv: Arguments): Promise<void> {
         eventStream,
         allowMemoryShortfall,
       }));
+      assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
     } catch (err) {
       exitWithError(log, err, exitCodeForError(err));
     }

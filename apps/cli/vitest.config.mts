@@ -24,6 +24,7 @@ import { configDefaults, defineConfig } from "vitest/config";
 const integrationSetupFiles = [
   "./test/integration/capturedLogs.setup.ts",
   "./test/integration/consoleSentinel.setup.ts",
+  "./test/terminalFailureReporter.setup.ts",
 ];
 
 // The WebRTC suite's home. It is transport-agnostic to the SFTP setup -- two
@@ -87,6 +88,7 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["test/unit/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
+          setupFiles: ["./test/terminalFailureReporter.setup.ts"],
         },
       },
       {

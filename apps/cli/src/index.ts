@@ -1,9 +1,8 @@
 import { hideBin } from "yargs/helpers";
 
-import { sanitizeErrorForDisplay } from "@alcove/core";
-
 import { buildCli } from "./cliParser";
 import { allowPsiHeapRestart } from "./psiHeapRestart";
+import { exitOnUncaughtError } from "./util/exit";
 import { armProcessReturnGate } from "./util/exitGate";
 
 allowPsiHeapRestart();
@@ -18,13 +17,10 @@ buildCli(hideBin(process.argv))
     armProcessReturnGate();
   })
   .catch((err: unknown) => {
-    // Last-resort printer for an error that escaped every command handler.
-    // Routes through the display-boundary sanitizer rather than
+    // Last-resort exit for an error that escaped every command handler. It is
+    // rendered through the display-boundary sanitizer rather than
     // console.error(err): a raw transport error can hold partner- or
-    // server-controlled bytes (e.g. a hostile message-file path) in its
-    // message or cause chain, which console.error would print unescaped.
-    // Sanitizing renders the message and cause chain only; the stack frames
+    // server-controlled bytes in its message or cause chain. The stack frames
     // are dropped as the trade at this catch-all boundary.
-    console.error(sanitizeErrorForDisplay(err));
-    process.exit(1);
+    exitOnUncaughtError(err);
   });

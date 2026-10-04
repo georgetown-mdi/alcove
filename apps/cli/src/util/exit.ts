@@ -308,7 +308,55 @@ export function exitWithError(
   code: number,
 ): never {
   log.error(renderFailureForOperator(err));
-  process.exit(code);
+  return exitOnFailure(err, code);
+}
+
+/**
+ * Where the exit boundary reports the failure it ends the process on, with
+ * the exit code it ends it with. Installed by the machine-interface stream
+ * once its fd-3 preflight has passed ({@link installTerminalFailureReporter}),
+ * so every failure reaching a boundary after that point is reported on the
+ * stream; `undefined` while no stream is open.
+ */
+let terminalFailureReporter:
+  ((err: unknown, exitCode: number) => void) | undefined;
+
+/**
+ * Install the function {@link exitOnFailure} hands each failure to before
+ * the process exits, replacing any installed before it; `undefined` removes
+ * it. Called by the machine-interface stream when it opens.
+ */
+export function installTerminalFailureReporter(
+  reporter: ((err: unknown, exitCode: number) => void) | undefined,
+): void {
+  terminalFailureReporter = reporter;
+}
+
+/**
+ * Report `err` to the installed terminal-failure reporter, when one is
+ * installed, and exit the process with `code` even if the reporter throws, in
+ * which case its failure is written to stderr on one line.
+ */
+function exitOnFailure(err: unknown, code: number): never {
+  try {
+    terminalFailureReporter?.(err, code);
+  } catch (reportErr) {
+    process.stderr.write(
+      `Could not write the failure to the event stream: ${sanitizeErrorForDisplay(reportErr).replace(/\s+/g, " ")}\n`,
+    );
+  } finally {
+    process.exit(code);
+  }
+}
+
+/**
+ * The last-resort exit for an error that escaped every command handler:
+ * shown through {@link renderFailureForOperator} on stderr, reported as
+ * {@link exitWithError} reports a failure, and exit 1.
+ */
+export function exitOnUncaughtError(err: unknown): never {
+  console.error(renderFailureForOperator(err));
+  return exitOnFailure(err, 1);
 }
 
 /**
@@ -332,6 +380,6 @@ export async function runOrExit(
     await body();
   } catch (err) {
     getLogger(loggerName).error(renderFailureForOperator(err));
-    process.exit(exitCodeForError(err));
+    exitOnFailure(err, exitCodeForError(err));
   }
 }

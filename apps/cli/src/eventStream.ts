@@ -22,6 +22,7 @@ import type {
 import {
   exitCodeForError,
   fixedNextStep,
+  installTerminalFailureReporter,
   INTERNAL_FAULT_EXIT_CODE,
   renderFailureForOperator,
 } from "./util/exit";
@@ -342,13 +343,18 @@ export interface ErrorEvent extends EventBase {
    */
   recoveryHint?: true;
   /**
-   * Present and `true` exactly when the command boundary exits this failure
-   * with {@link INTERNAL_FAULT_EXIT_CODE} (70), read off the same
-   * {@link exitCodeForError} classification: a fault in Alcove itself, which
-   * a retry reaches again. A supervisor offering a retry for the `exchange`
+   * Present and `true` exactly when {@link exitCode} is
+   * {@link INTERNAL_FAULT_EXIT_CODE} (70): a fault in Alcove itself, which a
+   * retry reaches again. A supervisor offering a retry for the `exchange`
    * category withholds it here. Omitted rather than emitted `false`.
    */
   internalFault?: true;
+  /**
+   * The code the process exits with on this failure. Optional on the wire
+   * (docs/spec/CLI_EVENTS.md): a consumer reads its absence as an emitter
+   * older than the field, never as success.
+   */
+  exitCode: number;
   /**
    * Present when the run ended on a partner terms change it did not take on
    * ({@link termsChangeNotTakenOf}): how the partner's terms differ, each
@@ -634,8 +640,17 @@ export function errorStatesItsOwnNextStep(error: unknown): boolean {
   return holdsRecoveryHintTag(error);
 }
 
-/** Build the classified failure terminal event. */
-export function buildErrorEvent(error: unknown, phase: ErrorPhase): ErrorEvent {
+/**
+ * Build the classified failure terminal event for a process that exits
+ * `exitCode`, by default the code {@link exitCodeForError} classifies
+ * `error` to -- the classification every command boundary whose errors vary
+ * exits with.
+ */
+export function buildErrorEvent(
+  error: unknown,
+  phase: ErrorPhase,
+  exitCode: number = exitCodeForError(error),
+): ErrorEvent {
   return {
     v: EVENT_STREAM_VERSION,
     type: "error",
@@ -647,9 +662,10 @@ export function buildErrorEvent(error: unknown, phase: ErrorPhase): ErrorEvent {
     ...(errorStatesItsOwnNextStep(error) || fixedNextStep(error) !== undefined
       ? { recoveryHint: true as const }
       : {}),
-    ...(exitCodeForError(error) === INTERNAL_FAULT_EXIT_CODE
+    ...(exitCode === INTERNAL_FAULT_EXIT_CODE
       ? { internalFault: true as const }
       : {}),
+    exitCode,
     ...termsChangeFieldOf(error),
   };
 }
@@ -754,6 +770,11 @@ class EventStreamWriter {
   private broken = false;
   private terminated = false;
 
+  /** Whether this run's terminal event has been raised. */
+  get terminalEventRaised(): boolean {
+    return this.terminated;
+  }
+
   /** Serialize `event` to one NDJSON line and flush it to fd 3. */
   emit(event: StreamEvent): void {
     if (this.broken) return;
@@ -829,8 +850,9 @@ export interface EventStreamEmitter {
  * Module-private, with {@link openEventStream} its only caller: see the fusion
  * property recorded there.
  */
-function createEventStreamEmitter(): EventStreamEmitter {
-  const writer = new EventStreamWriter();
+function createEventStreamEmitter(
+  writer: EventStreamWriter,
+): EventStreamEmitter {
   return {
     stages: (stages) => writer.emit(buildStagesEvent(stages)),
     stage: (id, label) => writer.emit(buildStageEvent(id, label)),
@@ -864,13 +886,26 @@ function createEventStreamEmitter(): EventStreamEmitter {
  * online bootstrap, which reports persistence losses of its own (see
  * {@link reportPersistenceLoss}). The writer and the emitter factory are
  * module-private, so no route to a writer exists that can skip the preflight.
+ *
+ * An opened stream is also what the exit boundary reports to
+ * (`installTerminalFailureReporter`, `./util/exit`): a failure that reaches
+ * the boundary before this run's terminal event becomes that event, with the
+ * code the process exits with, after any `--log-file` loss report. One the
+ * lifecycle already reported is not reported again.
  */
 export function openEventStream(
   enabled: boolean | undefined,
 ): EventStreamEmitter | undefined {
   if (enabled !== true) return undefined;
   assertEventStreamFdOpen();
-  return createEventStreamEmitter();
+  const writer = new EventStreamWriter();
+  const emitter = createEventStreamEmitter(writer);
+  installTerminalFailureReporter((error, exitCode) => {
+    if (writer.terminalEventRaised) return;
+    reportLogFileLoss(emitter);
+    writer.emit(buildErrorEvent(error, "prepare", exitCode));
+  });
+  return emitter;
 }
 
 // --- Persistence loss on a completed run -------------------------------------
