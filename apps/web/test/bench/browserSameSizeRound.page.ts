@@ -48,13 +48,25 @@ async function download(name: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+// Chromium hands the DevTools client every request body it sends, and a
+// body past a few hundred MB overflows the string Playwright decodes it into,
+// so a set goes up in pieces the bench server joins.
+const UPLOAD_PIECE_BYTES = 8 * 1024 * 1024;
+
 async function upload(name: string, bytes: Uint8Array): Promise<number> {
-  const response = await fetch(`/set/${name}`, {
-    method: "POST",
-    body: bytes as Uint8Array<ArrayBuffer>,
-  });
-  if (!response.ok)
-    throw new Error(`the bench refused the ${name} set (${response.status})`);
+  const count = Math.max(1, Math.ceil(bytes.byteLength / UPLOAD_PIECE_BYTES));
+  for (let piece = 0; piece < count; piece++) {
+    const last = piece === count - 1 ? "&last" : "";
+    const response = await fetch(`/set/${name}?piece=${piece}${last}`, {
+      method: "POST",
+      body: bytes.subarray(
+        piece * UPLOAD_PIECE_BYTES,
+        (piece + 1) * UPLOAD_PIECE_BYTES,
+      ) as Uint8Array<ArrayBuffer>,
+    });
+    if (!response.ok)
+      throw new Error(`the bench refused the ${name} set (${response.status})`);
+  }
   return bytes.byteLength;
 }
 
