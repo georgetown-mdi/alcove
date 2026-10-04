@@ -1193,8 +1193,6 @@ test("synchronize() lock starter: aborts with a distinct transport error within 
   expect((err as Error).message).toMatch(
     /failed after announcing its arrival but before publishing its hello/,
   );
-  // Tagged with the waiting party's actual role rather than the uninitialized
-  // "unknown role" sentinel value.
   expect((err as Error).message).toMatch(/^The partner began arriving/);
   // Transport failure (CLI exit 69), not a usage error (exit 64).
   expect(err).not.toBeInstanceOf(UsageError);
