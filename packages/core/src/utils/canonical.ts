@@ -131,6 +131,46 @@ function assertNoToJson(value: object, path: string): void {
     );
 }
 
+// The array length at which V8 (Node 26) throws "Too many properties to
+// enumerate" from Object.getOwnPropertyNames; Object.keys still lists the keys.
+const OWN_PROPERTY_NAMES_LIMIT = 2 ** 24;
+
+/**
+ * Refuse an array's own string key other than an element index or `length`
+ * (`arr.foo`): canonicalize serializes only elements [0, length), so it would
+ * be dropped without a trace.
+ *
+ * Reads the key list from its end. An array lists its element indices first,
+ * ascending, then its other string keys in creation order (ECMA-262
+ * OrdinaryOwnPropertyKeys), so every named key follows the last index and the
+ * scan stops there. Below {@link OWN_PROPERTY_NAMES_LIMIT} elements the list is
+ * Object.getOwnPropertyNames, which holds non-enumerable keys too. At or above
+ * it that call throws, so the list is Object.keys, and a non-enumerable named
+ * key is not seen.
+ */
+function assertOnlyElementKeys(value: readonly unknown[], path: string): void {
+  const keys =
+    value.length < OWN_PROPERTY_NAMES_LIMIT
+      ? Object.getOwnPropertyNames(value)
+      : Object.keys(value);
+  let named: string | undefined;
+  for (let at = keys.length - 1; at >= 0; at--) {
+    const key = keys[at];
+    if (key === "length") continue;
+    const index = Number(key);
+    if (
+      Number.isInteger(index) &&
+      index >= 0 &&
+      index < value.length &&
+      String(index) === key
+    )
+      break;
+    named = key;
+  }
+  if (named !== undefined)
+    fail(`non-index array property (${JSON.stringify(named)})`, path);
+}
+
 /**
  * Recursively assert that `value` is within the canonical domain, throwing a
  * {@link CanonicalEncodingError} otherwise. Runs before delegating to
@@ -175,22 +215,10 @@ function assertCanonical(value: unknown, path: string): void {
             path,
           );
         assertNoToJson(value, path);
-        // canonicalize serializes only elements [0, length), so any own
-        // property it cannot reach -- a non-index string key
-        // (`arr.foo`, enumerable or not) or a symbol key -- would be silently
-        // dropped. Reject them so the array case is as complete as the object
-        // case below. (`length` is the intrinsic own property, not an element.)
-        for (const key of Object.getOwnPropertyNames(value)) {
-          if (key === "length") continue;
-          const index = Number(key);
-          if (
-            !Number.isInteger(index) ||
-            index < 0 ||
-            index >= value.length ||
-            String(index) !== key
-          )
-            fail(`non-index array property (${JSON.stringify(key)})`, path);
-        }
+        // canonicalize serializes only elements [0, length), so it would drop a
+        // named or symbol-keyed own property. Object.getOwnPropertySymbols
+        // lists symbols only and holds at any length.
+        assertOnlyElementKeys(value, path);
         if (Object.getOwnPropertySymbols(value).length > 0)
           fail("symbol-keyed array property", path);
         // Index loop, not forEach/for-of: both skip sparse holes (`[1,,3]`),

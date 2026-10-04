@@ -339,6 +339,40 @@ describe("values outside the canonical domain are rejected", () => {
   });
 });
 
+describe("an array of length 2^24", () => {
+  // Past Object.getOwnPropertyNames' limit, so the key check takes its other
+  // listing. Three elements and a hole-filled tail keep the case cheap; the
+  // dense 2^24-element case is test/stress/canonicalLargeArray.stress.test.ts.
+  const long = (): unknown[] => {
+    const arr: unknown[] = [1, 2, 3];
+    arr.length = 2 ** 24;
+    return arr;
+  };
+
+  test("with a named property is rejected", () => {
+    const arr = long();
+    (arr as unknown as Record<string, unknown>).foo = "bar";
+    (arr as unknown as Record<string, unknown>).baz = "qux";
+    expect(() => canonicalString({ a: arr })).toThrow(
+      /\$\.a: non-index array property \("foo"\)/,
+    );
+  });
+
+  test("with a symbol-keyed property is rejected", () => {
+    const arr = long();
+    (arr as unknown as { [k: symbol]: unknown })[Symbol("s")] = 1;
+    expect(() => canonicalString({ a: arr })).toThrow(
+      /\$\.a: symbol-keyed array property/,
+    );
+  });
+
+  test("with only elements passes the key checks", () => {
+    expect(() => canonicalString({ a: long() })).toThrow(
+      /\$\.a\[3\]: sparse array hole/,
+    );
+  });
+});
+
 describe("values the encoder would read differently from the validator", () => {
   test("an Array subclass is rejected, not encoded as a plain array", () => {
     class Tagged extends Array<number> {}
