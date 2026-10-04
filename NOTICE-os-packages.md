@@ -7,11 +7,13 @@ binaries is published, and how to retrieve it at the versions a published image
 holds.
 
 The packages themselves are listed beside this file, one row per installed
-package with the version and the license string the image's own package manager
-declares: [`NOTICE-os-packages-default.tsv`](NOTICE-os-packages-default.tsv)
-and [`NOTICE-os-packages-fips.tsv`](NOTICE-os-packages-fips.tsv), plus the relay image's
-[`NOTICE-os-packages-relay.tsv`](NOTICE-os-packages-relay.tsv), which is
-measured by hand rather than generated. [`NOTICE`](NOTICE)
+package with the version and, where the image's own package manager declares
+one, its license string:
+[`NOTICE-os-packages-default.tsv`](NOTICE-os-packages-default.tsv) and
+[`NOTICE-os-packages-fips.tsv`](NOTICE-os-packages-fips.tsv), plus the relay
+image's [`NOTICE-os-packages-relay.tsv`](NOTICE-os-packages-relay.tsv), which is
+measured by hand rather than generated and carries no license column because
+dpkg declares none (see its section below). [`NOTICE`](NOTICE)
 covers this repository's npm tree and reaches no OS package. How the lists are
 derived, and what they do and do not measure, is in
 [`docs/spec/CONTAINER_IMAGES.md`](docs/spec/CONTAINER_IMAGES.md#the-os-layer-attribution-lists).
