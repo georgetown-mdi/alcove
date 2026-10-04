@@ -41,6 +41,10 @@ import type { RoundProbe } from "./browserSameSizeRound.page";
 // --role joiner runs createClientRequest, receiveServerSetup and the match in
 // the browser; --role starter runs createServerSetup and processClientRequest
 // there. The partner runs on the native addon where one ships.
+//
+// Above about 6 million a side, run it as `node --max-old-space-size=19075`
+// (the command-line application's heap ceiling, docs/spec/FILE_SYNC.md): the
+// Node partner's answer to the request outgrows Node's default heap.
 
 const WORKER_ENTRY = fileURLToPath(
   new URL("../../src/psi/workers/psiCrypto.worker.ts", import.meta.url),
