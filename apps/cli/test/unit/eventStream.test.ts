@@ -158,7 +158,11 @@ function validateEvent(event: unknown): event is StreamEvent {
       return (
         typeof event.message === "string" &&
         typeof event.category === "string" &&
-        CATEGORIES.has(event.category)
+        CATEGORIES.has(event.category) &&
+        // Every error event this build emits states the process exit code.
+        typeof event.exitCode === "number" &&
+        Number.isInteger(event.exitCode) &&
+        event.exitCode > 0
       );
     default:
       return false;
@@ -612,6 +616,7 @@ test.each([
 ])("$failure exits 70 and is marked an internal fault", ({ err }) => {
   expect(exitCodeForError(err)).toBe(70);
   expect(buildErrorEvent(err, "run").internalFault).toBe(true);
+  expect(buildErrorEvent(err, "run").exitCode).toBe(70);
 });
 
 test.each([
@@ -636,6 +641,7 @@ test.each([
 ])("$failure is not marked an internal fault", ({ err, code }) => {
   expect(exitCodeForError(err)).toBe(code);
   expect("internalFault" in buildErrorEvent(err, "run")).toBe(false);
+  expect(buildErrorEvent(err, "run").exitCode).toBe(code);
 });
 
 test("a partner refusal with a bare message gets one next step, marked", () => {

@@ -9304,5 +9304,8 @@ test(
     const errorLine = lines.find((l) => l.type === "error")!;
     expect(errorLine.category).toBe("exchange");
     expect(String(errorLine.message)).toContain("simulated mid-run transport");
+    expect(errorLine.exitCode).toBe(
+      exitCodeForError((resA as PromiseRejectedResult).reason),
+    );
   },
 );
