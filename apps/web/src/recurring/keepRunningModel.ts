@@ -41,6 +41,7 @@ export const INSTALL_OFFER_COPY: Record<InstallOffer, string> = {
 /** One line of the keep-running checklist. `done` is present only for an item
  * this page can see; the others are the operator's to keep. */
 export interface KeepRunningItem {
+  id: "install" | "startAtSignIn" | "stayAwake" | "browserProfile" | "folder";
   instruction: string;
   done?: boolean;
 }
@@ -57,27 +58,33 @@ export function keepRunningChecklist(options: {
 }): Array<KeepRunningItem> {
   return [
     {
+      id: "install",
       instruction: "Install Alcove as an app and open this exchange in it.",
       done: options.installedRuntime,
     },
     {
+      id: "startAtSignIn",
       instruction:
         "Turn on start at sign-in from the installed app's menu, or open the app before each window.",
     },
     {
+      id: "stayAwake",
       instruction:
         "Keep this computer awake and online while each window is open.",
     },
     {
+      id: "browserProfile",
       instruction:
         "Use this same browser profile in an ordinary window, not an Incognito or Guest window.",
     },
     options.folderGrantSupported
       ? {
+          id: "folder",
           instruction: `Choose this exchange's folder under Local settings and put each period's file in it as ${MANAGED_INPUT_FILE_NAME}.`,
           done: options.hasWorkingFolder,
         }
       : {
+          id: "folder",
           instruction:
             "This browser cannot give a site a folder, so each run needs you to choose the file. Use Chrome or Edge to have runs happen with nobody present.",
           done: false,
@@ -107,11 +114,12 @@ export interface ReadinessReport {
 
 /** One line of the readiness result. */
 export interface ReadinessLine {
+  id: "installedRuntime" | "folder" | "signaling";
   ok: boolean;
   message: string;
 }
 
-const FOLDER_LINES: Record<FolderReadiness, ReadinessLine> = {
+const FOLDER_LINES: Record<FolderReadiness, Omit<ReadinessLine, "id">> = {
   ready: {
     ok: true,
     message: `The folder can be read and holds ${MANAGED_INPUT_FILE_NAME}.`,
@@ -142,12 +150,15 @@ const FOLDER_LINES: Record<FolderReadiness, ReadinessLine> = {
   },
 };
 
-const SIGNALING_LINES: Record<SignalingReadiness, ReadinessLine> = {
-  answered: { ok: true, message: "The signaling server answered." },
+const SIGNALING_LINES: Record<SignalingReadiness, Omit<ReadinessLine, "id">> = {
+  answered: {
+    ok: true,
+    message: "This browser connected to the signaling server.",
+  },
   noAnswer: {
     ok: false,
     message:
-      "The signaling server did not answer. Check your network connection and try again; if it still does not answer, ask your IT team whether this network blocks it.",
+      "This browser could not connect to the signaling server. Check your network connection and try again; if it still cannot connect, ask your IT team whether this network blocks it.",
   },
   offline: {
     ok: false,
@@ -160,14 +171,19 @@ const SIGNALING_LINES: Record<SignalingReadiness, ReadinessLine> = {
 export function readinessLines(report: ReadinessReport): Array<ReadinessLine> {
   return [
     report.installedRuntime
-      ? { ok: true, message: "This page is the installed app." }
+      ? {
+          id: "installedRuntime",
+          ok: true,
+          message: "This page is the installed app.",
+        }
       : {
+          id: "installedRuntime",
           ok: false,
           message:
             "This page is a browser tab, which does not run this exchange on its own. Open this exchange in the installed app.",
         },
-    FOLDER_LINES[report.folder],
-    SIGNALING_LINES[report.signaling],
+    { id: "folder", ...FOLDER_LINES[report.folder] },
+    { id: "signaling", ...SIGNALING_LINES[report.signaling] },
   ];
 }
 

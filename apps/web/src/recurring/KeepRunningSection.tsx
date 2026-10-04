@@ -104,7 +104,7 @@ export function KeepRunningSection({
       <h3 className={styles.eyebrow}>For runs with nobody present</h3>
       <ul className={styles.small}>
         {checklist.map((item) => (
-          <li key={item.instruction}>
+          <li key={item.id}>
             {item.instruction}
             {item.done !== undefined && (
               <strong>{item.done ? " Done." : " Not yet."}</strong>
@@ -129,7 +129,7 @@ export function KeepRunningSection({
         >
           <ul className={styles.small}>
             {readinessLines(report).map((line) => (
-              <li key={line.message}>
+              <li key={line.id}>
                 <strong>{line.ok ? "Ready: " : "Not ready: "}</strong>
                 {line.message}
               </li>

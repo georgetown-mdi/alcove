@@ -90,7 +90,7 @@ describe("readiness result", () => {
     [{ folder: "inputMissing" as const }, "no file named input.csv"],
     [{ folder: "unreadable" as const }, "could not be read"],
     [{ folder: "unsupported" as const }, "cannot give a site a folder"],
-    [{ signaling: "noAnswer" as const }, "did not answer"],
+    [{ signaling: "noAnswer" as const }, "could not connect"],
     [{ signaling: "offline" as const }, "offline"],
   ])("a failing check names its remedy (%o)", (change, phrase) => {
     const report = { ...ready, ...change };

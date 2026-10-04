@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  SIGNALING_PROBE_TIMEOUT_MS,
   probeSignalingServer,
   runReadinessCheck,
   signalingSocketUrl,
@@ -74,6 +75,16 @@ describe("probeSignalingServer", () => {
     expect(socket.closed).toBe(1);
   });
 
+  test("a connection the server opens and then closes is an answer", async () => {
+    const socket = fakeSocket();
+    const answer = probeSignalingServer(address, {
+      createSocket: () => socket,
+    });
+    socket.fire("open");
+    socket.fire("close");
+    await expect(answer).resolves.toBe(true);
+  });
+
   test("an error before the connection opens is no answer", async () => {
     const socket = fakeSocket();
     const answer = probeSignalingServer(address, {
@@ -94,6 +105,22 @@ describe("probeSignalingServer", () => {
     });
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(answer).resolves.toBe(false);
+    expect(socket.closed).toBe(1);
+  });
+
+  test("silence past the default bound is no answer", async () => {
+    vi.useFakeTimers();
+    const socket = fakeSocket();
+    let settled: boolean | undefined;
+    void probeSignalingServer(address, {
+      createSocket: () => socket,
+    }).then((answered) => {
+      settled = answered;
+    });
+    await vi.advanceTimersByTimeAsync(SIGNALING_PROBE_TIMEOUT_MS - 1);
+    expect(settled).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(false);
     expect(socket.closed).toBe(1);
   });
 

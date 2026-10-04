@@ -234,10 +234,9 @@ A scheduled exchange's page has a **Keep it running** section:
   The section marks the items the page can see (installed, folder chosen).
 - **Check readiness for the next window** reports whether this page is the
   installed app, whether the folder can be read without a prompt and holds
-  `input.csv`, and whether the signaling server accepts a connection. It starts
-  no run: it does not contact the partner, test the relay, derive the run's
-  rendezvous id, or register with the signaling server, so it changes nothing
-  the next window depends on.
+  `input.csv`, and whether this browser can connect to the signaling server.
+  It starts no run, does not contact the partner or test the relay, and changes
+  nothing the next window depends on.
 
 ### What works with no network
 

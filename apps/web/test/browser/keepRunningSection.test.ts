@@ -214,7 +214,9 @@ describe("the readiness check", () => {
       .element(page.getByRole("status"))
       .toMatchTextContent(/^Ready for the next window/);
     await expect
-      .element(page.getByText("The signaling server answered."))
+      .element(
+        page.getByText("This browser connected to the signaling server."),
+      )
       .toBeInTheDocument();
     await expect
       .element(
@@ -251,9 +253,12 @@ describe("the readiness check", () => {
       .toBeInTheDocument();
     await expect
       .element(
-        page.getByText("The signaling server did not answer", {
-          exact: false,
-        }),
+        page.getByText(
+          "This browser could not connect to the signaling server",
+          {
+            exact: false,
+          },
+        ),
       )
       .toBeInTheDocument();
     expectNoAccessibilityViolations(app.container);

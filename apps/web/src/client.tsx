@@ -9,7 +9,6 @@ import { setDefaultLevel } from "loglevel";
 
 setDefaultLevel(logLevel());
 
-// Held before hydration: the browser fires its install offer once, early.
 if (!isConsoleBuild()) captureInstallPrompt(window);
 
 hydrateRoot(

@@ -47,9 +47,12 @@ interface ProbeSocket {
 }
 
 /**
- * Whether the signaling server at `address` accepts a connection within
- * `timeoutMs`. The connection names no peer id, so the server refuses it
- * without registering anything; the accepted connection is the answer.
+ * Whether the signaling server at `address` answers within `timeoutMs`. The
+ * broker completes the upgrade of a connection that names no peer id, then
+ * sends an error and closes it without registering a peer
+ * (test/liveWebrtc/signalingProbe.test.ts), so the opened connection is the
+ * answer and a close after it does not change that. A browser reports a
+ * refused upgrade and a network failure alike, so both are no answer.
  */
 export function probeSignalingServer(
   address: SignalingAddress,

@@ -127,9 +127,10 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
  * `/saved/$id` (below the run affordance in {@link ./ManagedRunSurface.tsx}).
  * What the exchange has been doing comes first -- the agreed run schedule where
  * one exists with what keeping it running needs, the run history, and the
- * results a scheduled run left for this visit -- then the settings: the read-only configuration, the terms update,
- * the relay registration where it applies, and the local-fields editor. The
- * accounting of disclosures closes the page. Derivations and copy come from
+ * results a scheduled run left for this visit -- then the settings: the
+ * read-only configuration, the terms update, the relay registration where it
+ * applies, and the local-fields editor. The accounting of disclosures closes the
+ * page. Derivations and copy come from
  * {@link ./managedDetailModel.ts}, {@link ./parkedResultsModel.ts}, and
  * {@link ./disclosureAccountingModel.ts}.
  *
