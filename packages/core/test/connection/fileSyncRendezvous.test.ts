@@ -642,6 +642,7 @@ function makeParty(
     log: () => log,
     options: () => options,
     channel: () => "filedrop",
+    arrivalBudgetMs: () => undefined,
     signal: () => controller.signal,
     wait: (ms) => cancellableDelay(ms, controller.signal),
     peerId: () => state.peerId,

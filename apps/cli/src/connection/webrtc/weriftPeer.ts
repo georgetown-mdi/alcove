@@ -6,6 +6,7 @@ import {
   ConnectionError,
   DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
   failureCauseSentence,
+  formatWaitDuration,
   InternalConsistencyError,
   markFailureCause,
   UsageError,
@@ -881,7 +882,7 @@ export async function openWebRtcPeerSession(
     log.debug(
       `the exchange partner did not ` +
         `${role === "acceptor" ? "answer" : "offer"} within ` +
-        budgetSeconds(rendezvousTimeoutMs),
+        formatWaitDuration(rendezvousTimeoutMs),
     );
     return markFailureCause(
       new ConnectionError(failureCauseSentence(cause), "transport"),

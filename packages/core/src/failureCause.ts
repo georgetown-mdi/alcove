@@ -4,6 +4,8 @@
 // keyed on FailureCauseKind, so a cause added here fails to compile in an app
 // that has no remedy for it. No flag, control or command name belongs here.
 
+import { formatCount } from "./utils/formatCount";
+
 /** Where the two parties were to meet when a partner did not arrive. */
 export type PartnerMeetingChannel = "filedrop" | "sftp" | "webrtc";
 
@@ -19,7 +21,8 @@ export type FailureCause =
   | {
       /** The partner did not arrive before this party stopped waiting. */
       readonly kind: "partner-never-arrived";
-      readonly channel: PartnerMeetingChannel;
+      /** Unset when the raise site cannot tell; the sentence then names no place. */
+      readonly channel?: PartnerMeetingChannel;
       /** How long this party waited, when the raise site knows it. */
       readonly waitedMs?: number;
     }
@@ -70,29 +73,33 @@ export function failureCauseOf(error: unknown): FailureCause | undefined {
   return undefined;
 }
 
-const plural = (count: number, unit: string): string =>
-  `${count} ${unit}${count === 1 ? "" : "s"}`;
-
-// A duration in the largest whole unit that states it exactly: hours, then
-// minutes, else seconds, fractional seconds kept.
-/** @internal */
+/**
+ * A wait as a count and a unit, in the largest whole unit that states it
+ * exactly -- hours, then minutes, else seconds with any fraction kept -- the
+ * count grouped by {@link formatCount}: "1 hour", "90 seconds", "0.15 seconds".
+ */
 export function formatWaitDuration(ms: number): string {
-  if (ms > 0 && ms % 3_600_000 === 0) return plural(ms / 3_600_000, "hour");
-  if (ms > 0 && ms % 60_000 === 0) return plural(ms / 60_000, "minute");
-  return plural(ms / 1000, "second");
+  const [count, unit] =
+    ms > 0 && ms % 3_600_000 === 0
+      ? [ms / 3_600_000, "hour"]
+      : ms > 0 && ms % 60_000 === 0
+        ? [ms / 60_000, "minute"]
+        : [ms / 1000, "second"];
+  return `${formatCount(count)} ${unit}${count === 1 ? "" : "s"}`;
 }
 
-const MEETING_PLACE: Record<PartnerMeetingChannel, string> = {
+const MEETING_PLACE: Record<PartnerMeetingChannel | "unknown", string> = {
   filedrop: "arrive in the shared folder",
   sftp: "arrive in the shared folder on the SFTP server",
   webrtc: "connect",
+  unknown: "arrive",
 };
 
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
   "partner-never-arrived": ({ channel, waitedMs }) =>
-    `Your partner did not ${MEETING_PLACE[channel]} ` +
+    `Your partner did not ${MEETING_PLACE[channel ?? "unknown"]} ` +
     (waitedMs === undefined
       ? "in the time this run waited."
       : `within ${formatWaitDuration(waitedMs)}.`),

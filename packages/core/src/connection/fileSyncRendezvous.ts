@@ -585,6 +585,13 @@ export interface RendezvousOptions {
   joinerRecoveryMs: number;
 }
 
+const partnerNeverArrived = (deps: RendezvousDeps): Error =>
+  failureCauseError({
+    kind: "partner-never-arrived",
+    channel: deps.channel(),
+    waitedMs: deps.arrivalBudgetMs(),
+  });
+
 // The connection-owned state the coordinator reads and writes across this
 // boundary. Three kinds:
 //   - SHARED OBJECT REFERENCES (never copies): responsibleFiles and
@@ -607,7 +614,11 @@ export interface RendezvousDeps {
   outbound: () => string | undefined;
   log: () => ReturnType<typeof getLoggerForVerbosity>;
   options: () => RendezvousOptions;
-  channel: () => "filedrop" | "sftp";
+  // The configured channel and arrival budget, for the partner-never-arrived
+  // sentence; either is unset when the connection has no config to read it
+  // from, and the sentence then leaves that part out.
+  channel: () => "filedrop" | "sftp" | undefined;
+  arrivalBudgetMs: () => number | undefined;
   signal: () => AbortSignal;
   wait: (ms: number) => Promise<void>;
   peerId: () => string | undefined;
@@ -1710,12 +1721,7 @@ export class FileSyncRendezvous {
         // never arrived, where hello-filename order may make this party the
         // joiner, so the role is indeterminate here.
         deps.log().debug("synchronization has timed out");
-        throw markPeerWaitTimeout(
-          failureCauseError({
-            kind: "partner-never-arrived",
-            channel: deps.channel(),
-          }),
-        );
+        throw markPeerWaitTimeout(partnerNeverArrived(deps));
       }
 
       // Lock path.
@@ -2234,12 +2240,7 @@ export class FileSyncRendezvous {
         );
       }
       deps.log().debug("[starter] synchronization has timed out");
-      throw markPeerWaitTimeout(
-        failureCauseError({
-          kind: "partner-never-arrived",
-          channel: deps.channel(),
-        }),
-      );
+      throw markPeerWaitTimeout(partnerNeverArrived(deps));
     };
     try {
       await waitForPeer();

@@ -30,6 +30,7 @@ stands, from a direction still open to a decision taken and built.
 | [cross-workspace-test-material.md](cross-workspace-test-material.md) | Decided and built. |
 | [deduplicate-matching-semantics.md](deduplicate-matching-semantics.md) | Specified, and run end to end: the one-sided cardinalities under both linkage strategies, the both-sided one under `cascade`. |
 | [default-linkage-rule-set.md](default-linkage-rule-set.md) | Decided and built. |
+| [failure-cause-catalog.md](failure-cause-catalog.md) | Decided and built. |
 | [fan-out-matching-resolution.md](fan-out-matching-resolution.md) | Built under `single-pass`; the cascade realization stays open work. |
 | [fips-provider-surface.md](fips-provider-surface.md) | Measurement, plus two decisions taken on it; whether to pursue a FIPS claim at all remains open. |
 | [fips-variant-image.md](fips-variant-image.md) | Decided, built, and published. |

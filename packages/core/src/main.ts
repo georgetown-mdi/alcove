@@ -36,6 +36,7 @@ export type { RoundSetLimitReason } from "./errors";
 export {
   failureCauseOf,
   failureCauseSentence,
+  formatWaitDuration,
   markFailureCause,
 } from "./failureCause";
 export type {

@@ -21,6 +21,8 @@ const SAMPLES: {
     { kind: "partner-never-arrived", channel: "sftp" },
     { kind: "partner-never-arrived", channel: "webrtc" },
     { kind: "partner-never-arrived", channel: "webrtc", waitedMs: 80_000 },
+    { kind: "partner-never-arrived", channel: "filedrop", waitedMs: 3_600_000 },
+    { kind: "partner-never-arrived", waitedMs: 90_000 },
   ],
   "folder-missing": [
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
@@ -53,6 +55,8 @@ describe("the failure-cause catalog", () => {
       "Your partner did not arrive in the shared folder on the SFTP server in the time this run waited.",
       "Your partner did not connect in the time this run waited.",
       "Your partner did not connect within 80 seconds.",
+      "Your partner did not arrive in the shared folder within 1 hour.",
+      "Your partner did not arrive within 90 seconds.",
     ]);
     expect(
       SAMPLES["folder-missing"].map((cause) => failureCauseSentence(cause)),
@@ -80,6 +84,11 @@ describe("formatWaitDuration", () => {
     [3_600_000, "1 hour"],
     [7_200_000, "2 hours"],
     [90_000, "90 seconds"],
+    [0, "0 seconds"],
+    [86_400_000, "24 hours"],
+    [4_500_000, "75 minutes"],
+    [1_234_500, "1,234.5 seconds"],
+    [3_600_000_000, "1,000 hours"],
   ])("%d ms is %s", (ms, text) => {
     expect(formatWaitDuration(ms)).toBe(text);
   });

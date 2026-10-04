@@ -76,12 +76,22 @@ const ARRIVAL_WAIT_TAG = "alcoveArrivalWait";
 
 /**
  * Record on `err` which flag bounded this run's wait for the partner, so the
- * command boundary that renders it names that flag. A non-object is returned
- * unchanged.
+ * command boundary that renders it names that flag. Only an error carrying the
+ * partner-never-arrived cause is tagged; any other error, and one that cannot
+ * take the property (frozen, sealed), is returned unchanged.
  */
 export function markArrivalWait<E>(err: E, arrivalWait: ArrivalWait): E {
-  if (typeof err === "object" && err !== null)
-    Object.assign(err, { [ARRIVAL_WAIT_TAG]: arrivalWait });
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    failureCauseOf(err)?.kind === "partner-never-arrived"
+  )
+    Reflect.defineProperty(err, ARRIVAL_WAIT_TAG, {
+      value: arrivalWait,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    });
   return err;
 }
 

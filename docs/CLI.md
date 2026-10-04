@@ -1471,7 +1471,8 @@ Two other conditions on the path are refused on the first attempt, without retry
 
 - **Nothing at the path (`ENOENT`)** exits 66: a typo, or a share not mounted yet. Run again once the folder is in place, and alert if it stays missing.
 - **The path names something other than a folder (`ENOTDIR`)** exits 64. Correct the path.
- The shared directory's state among the [exit 64 mid-run](#exit-64-mid-run-a-refusal-the-next-attempt-repeats) refusals is a different condition: that one is about what appears in a rendezvous directory the run already reached.
+
+The shared directory's state among the [exit 64 mid-run](#exit-64-mid-run-a-refusal-the-next-attempt-repeats) refusals is a different condition: that one is about what appears in a rendezvous directory the run already reached.
 
 ### Exit 73: the exchange completed, a local write did not
 

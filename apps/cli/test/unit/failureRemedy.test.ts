@@ -113,3 +113,30 @@ test("an error with no catalog cause gets no remedy line", () => {
     "something else",
   );
 });
+
+test("an error without the partner-never-arrived cause is not tagged", () => {
+  const plain = new Error("something else");
+  expect(markArrivalWait(plain, "online-invitation")).toBe(plain);
+  expect(Object.keys(plain)).toEqual([]);
+
+  const folder = markFailureCause(
+    new Error("missing"),
+    SAMPLES["folder-missing"][0],
+  );
+  const keysBefore = Object.keys(folder);
+  markArrivalWait(folder, "online-invitation");
+  expect(Object.keys(folder)).toEqual(keysBefore);
+});
+
+test("a frozen error is returned unchanged rather than throwing", () => {
+  const cause = SAMPLES["partner-never-arrived"][2];
+  const err = Object.freeze(
+    markFailureCause(new Error(failureCauseSentence(cause)), cause),
+  );
+  expect(markArrivalWait(err, "online-invitation")).toBe(err);
+  expect(renderFailureForOperator(err)).toBe(
+    "Your partner did not connect within 10 minutes.\n" +
+      "Check that your partner has started their side, then run again; " +
+      "--peer-timeout sets how long to wait.",
+  );
+});

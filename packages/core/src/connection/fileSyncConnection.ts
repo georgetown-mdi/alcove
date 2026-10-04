@@ -502,6 +502,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // sets it from the config. See docs/spec/FILE_SYNC.md (Split directories).
   outbound: string | undefined;
   private config: SFTPConnectionConfig | FileDropConnectionConfig | undefined;
+  // The partner-arrival budget open() derived timeToLive from; unset when the
+  // constructor supplied timeToLive, whose budget is not known.
+  private arrivalBudgetMs: number | undefined;
 
   peerId: string | undefined;
   handshakeRole: HandshakeRole | undefined;
@@ -729,7 +732,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       outbound: () => this.outbound,
       log: () => this.log,
       options: () => this.options,
-      channel: () => this.config?.channel ?? "filedrop",
+      channel: () => this.config?.channel,
+      arrivalBudgetMs: () => this.arrivalBudgetMs,
       signal: () => this.abortController.signal,
       wait: (ms) => this.wait(ms),
       peerId: () => this.peerId,
@@ -1185,6 +1189,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     if (this.options.timeToLive === undefined) {
       const ttlMs = config.options?.peerTimeoutMs ?? DEFAULT_PEER_TIMEOUT_MS;
       this.options.timeToLive = new Date(Date.now() + ttlMs);
+      this.arrivalBudgetMs = ttlMs;
     }
     this.log.debug(`[${this.role}] connected`);
   }

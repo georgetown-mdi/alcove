@@ -86,7 +86,9 @@ describe.each(CHANNELS)("on $channel", ({ config }) => {
     await vi.advanceTimersByTimeAsync(BOUND_MS - 2_000);
     expect(failure()).toBeUndefined();
     await vi.advanceTimersByTimeAsync(4_000);
-    expect(String(failure())).toMatch(/Your partner did not arrive/);
+    expect(String(failure())).toMatch(
+      /Your partner did not arrive in the shared folder.* within 1 minute\./,
+    );
     await conn.close();
   });
 
@@ -179,10 +181,10 @@ describe("each timeout failure ends with the guidance the caller supplied", () =
       expect(failureCauseOf(err)).toEqual({
         kind: "partner-never-arrived",
         channel: "filedrop",
+        waitedMs: BOUND_MS,
       });
       expect((err as Error).message).toBe(
-        "Your partner did not arrive in the shared folder in the time this " +
-          "run waited.",
+        "Your partner did not arrive in the shared folder within 1 minute.",
       );
     },
   );

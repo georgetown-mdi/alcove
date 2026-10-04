@@ -1296,7 +1296,6 @@ test("synchronize() lock starter: a sentinel visible when the TTL expires yields
   expect((err as Error).message).toMatch(
     /the exchange timed out before it completed/,
   );
-  // NOT the generic bare timeout the pre-fix path produced.
   expect((err as Error).message).not.toMatch(/Your partner did not arrive/);
   // Not a peer-wait timeout either: the peer did arrive and then stalled, and
   // this error already has its own diagnosis and next step, so a consumer
@@ -1418,8 +1417,8 @@ test("synchronize() lock starter: TTL expiry with no joiner produces the partner
   // The lock-path TTL fallback when no peer hello and no sentinel were ever
   // seen: the lone starter polled until the TTL. Pins the exact catalog
   // sentence, with no role tag, and that this is a transport failure, not a
-  // usage error. With Issue-1's fix the bare timeout is reached only when no sentinel
-  // was tracked at exit, so this complements the stuck-joiner-at-TTL test above.
+  // usage error. The sentence is reached only when no sentinel was tracked at
+  // exit, so this complements the stuck-joiner-at-TTL test above.
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
     pollingFrequency: 10,
@@ -1844,7 +1843,8 @@ test("synchronize() lockless timeout message has no role prefix", async () => {
   // (it can occur after the peer hello was seen and acked, where filename order
   // may make this party the joiner), so the message has no [role] prefix --
   // unlike the lock TTL fallback, which is reachable only as the lone starter.
-  // Pins the exact catalog sentence.
+  // Pins the exact catalog sentence; with no config opened the channel and
+  // the budget are unknown, so the sentence names neither.
   const { client } = makeMockClient();
   const conn = new FileSyncConnection(client, {
     pollingFrequency: 10,
@@ -1861,7 +1861,7 @@ test("synchronize() lockless timeout message has no role prefix", async () => {
   expect(err).toBeInstanceOf(Error);
   expect(err).not.toBeInstanceOf(UsageError);
   expect((err as Error).message).toBe(
-    "Your partner did not arrive in the shared folder in the time this run waited.",
+    "Your partner did not arrive in the time this run waited.",
   );
   // Tagged as a peer-wait timeout so a consumer that also knows the run swept
   // the shared folder at entry can offer that as the likely cause.

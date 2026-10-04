@@ -2459,8 +2459,8 @@ test("runProtocol writes no key when the partner never arrives (accept-timeout)"
     arrivalWait: "online-invitation",
   }).catch((e: unknown) => e);
   expect(renderFailureForOperator(err)).toBe(
-    "Your partner did not arrive in the shared folder in the time this run " +
-      "waited.\nRun alcove invite again and have your partner accept the new " +
+    "Your partner did not arrive in the shared folder within 2 seconds.\n" +
+      "Run alcove invite again and have your partner accept the new " +
       "invitation while it waits; --accept-timeout sets how long to wait.",
   );
   expect(fs.existsSync(keyFile)).toBe(false);
@@ -2812,8 +2812,8 @@ test("a file-sync run whose partner never arrives names --peer-timeout alone, wi
   const err = await runLonePartyWithNoPartner();
   expect(isPeerWaitTimeout(err)).toBe(true);
   expect(renderFailureForOperator(err)).toBe(
-    "Your partner did not arrive in the shared folder in the time this run " +
-      "waited.\nCheck that you and your partner use the same folder and " +
+    "Your partner did not arrive in the shared folder within 2 seconds.\n" +
+      "Check that you and your partner use the same folder and " +
       "that it is syncing, then run again; --peer-timeout sets how long to " +
       "wait.",
   );
@@ -2821,8 +2821,7 @@ test("a file-sync run whose partner never arrives names --peer-timeout alone, wi
 
 test("a file-sync run hands its connection the guidance naming the inactivity setting", async () => {
   // Core appends it to its per-operation and send-wait timeout failures
-  // (pinned in core's fileSyncPeerWaits.test.ts); a partner that never arrives
-  // is named through the failure-cause catalog instead.
+  // (pinned in core's fileSyncPeerWaits.test.ts).
   let guidance: { inactivityTimeoutGuidance?: string } | undefined;
   const openSpy = vi
     .spyOn(FileSyncConnection.prototype, "open")
