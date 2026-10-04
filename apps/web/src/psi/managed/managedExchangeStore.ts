@@ -56,6 +56,10 @@ import { parseManagedLocalState } from "./managedLocalStateShape";
 import type { RelayRegistrar } from "@alcove/core";
 
 import type {
+  ManagedBackupLocation,
+  ManagedBackupMarker,
+} from "./managedBackupState";
+import type {
   ManagedExchangeDiagnosticEssentials,
   ManagedExchangeLastRun,
   ManagedExchangeLocalEdits,
@@ -641,6 +645,7 @@ export async function readRecordAndMarkBackedUp(
   id: string,
   backedUpAt: string,
   composeExport: (record: ManagedExchangeRecord) => void,
+  savedAs?: ManagedBackupLocation,
 ): Promise<ManagedExchangeRecord> {
   const db = await openManagedExchangeDatabase();
   try {
@@ -664,7 +669,10 @@ export async function readRecordAndMarkBackedUp(
             throw new Error(`no managed exchange with id ${id}`);
           record = parseManagedExchangeRecord(read.result);
           composeExport(record);
-          markBackupOnLocalStore(local, id, readLocal.result, backedUpAt);
+          markBackupOnLocalStore(local, id, readLocal.result, {
+            backedUpAt,
+            ...(savedAs !== undefined ? { savedAs } : {}),
+          });
         } catch (error) {
           failure = error;
           transaction.abort();
@@ -704,6 +712,7 @@ export async function markManagedBackupIfCurrent(
   id: string,
   expectedSharedSecret: string,
   backedUpAt: string,
+  savedAs?: ManagedBackupLocation,
 ): Promise<ManagedBackupMarkOutcome> {
   const db = await openManagedExchangeDatabase();
   try {
@@ -729,7 +738,10 @@ export async function markManagedBackupIfCurrent(
           }
           const stored = parseManagedExchangeRecord(read.result);
           if (stored.sharedSecret !== expectedSharedSecret) return;
-          markBackupOnLocalStore(local, id, readLocal.result, backedUpAt);
+          markBackupOnLocalStore(local, id, readLocal.result, {
+            backedUpAt,
+            ...(savedAs !== undefined ? { savedAs } : {}),
+          });
           outcome = "marked";
         } catch (error) {
           failure = error;
@@ -1051,7 +1063,7 @@ function clearSpentOnLocalStore(
 }
 
 /**
- * Advance the backup marker on a record's sibling entry to `backedUpAt`, on an
+ * Advance the backup marker on a record's sibling entry to `marker`, on an
  * already-open local-state object store inside a live transaction, preserving any
  * spent state. The marker only moves forward: a stamp older than the stored marker
  * is a no-op, so a slow export's late mark cannot revert a newer one. Compared as
@@ -1061,15 +1073,15 @@ function markBackupOnLocalStore(
   store: IDBObjectStore,
   id: string,
   raw: unknown,
-  backedUpAt: string,
+  marker: ManagedBackupMarker,
 ): void {
   const current = raw === undefined ? undefined : parseManagedLocalState(raw);
   if (
     current?.backup !== undefined &&
-    Date.parse(current.backup.backedUpAt) > Date.parse(backedUpAt)
+    Date.parse(current.backup.backedUpAt) > Date.parse(marker.backedUpAt)
   )
     return;
-  store.put({ ...current, backup: { backedUpAt } }, id);
+  store.put({ ...current, backup: marker }, id);
 }
 
 /**

@@ -103,6 +103,10 @@ describe("exportManagedBackup", () => {
       rec.id,
       "2026-07-14T12:00:00.000Z",
       expect.any(Function),
+      {
+        kind: "downloaded",
+        fileName: "alcove-managed-backup-2026-07-14T120000Z.json",
+      },
     );
     // The result threads the one clock read and the record exported.
     expect(result.backedUpAt.toISOString()).toBe("2026-07-14T12:00:00.000Z");
@@ -209,6 +213,10 @@ describe("dispatchManagedMigration", () => {
       rec.id,
       "2026-07-14T12:00:00.000Z",
       expect.any(Function),
+      {
+        kind: "downloaded",
+        fileName: "alcove-managed-backup-2026-07-14T120000Z.json",
+      },
     );
     // The spend is operator-attested: not written until confirm() is called.
     expect(deps.spendIfCurrent).not.toHaveBeenCalled();
@@ -706,6 +714,11 @@ describe("backUpManagedExchangeToFolder", () => {
       rec.id,
       rec.sharedSecret,
       BACKED_UP_AT,
+      {
+        kind: "folder",
+        folderName: "Riverbend exchange",
+        fileName: FILE_NAME,
+      },
     );
     expect(permission.requested).toBe(false);
   });

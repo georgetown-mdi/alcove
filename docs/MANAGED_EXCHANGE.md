@@ -2188,7 +2188,9 @@ collapses persistence status into **one derived backup state**, shown at the
 moments it changes rather than as standing chrome:
 
 - **Backed up.** A current export exists (taken since the last rotation): the
-  exchange shows a quiet, green "backed up as of <date>" and nothing else. The
+  exchange shows a quiet, green "backed up as of <date>", naming where that
+  backup went -- downloaded as its file name, or written to the working folder
+  under it -- and nothing else. The
   browser's storage grant (`navigator.storage.persisted()`) is never its own
   displayed line -- the operator cannot act on it except by exporting, which
   the backup state already covers -- and on WebKit a granted `persisted()` must
@@ -2231,7 +2233,13 @@ working folder, the run backs it up there without asking:
   exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
   It is written into the working folder and nowhere else.
 - **What it changes.** Once the file is in the folder, the exchange reads
-  "backed up as of <date>", and no backup notification fires for that run.
+  "backed up as of <date>, written to the folder <name> as <file name>", and
+  no backup notification fires for that run.
+- **What the operator is told.** The file holds the exchange's shared secret,
+  and the files from earlier runs stay in the folder. Both where the folder is
+  chosen and once it is granted, the exchange says so, and asks for a folder
+  only the operator can read on this device and for older backups to be
+  deleted once no longer needed.
 
 The exchange still asks for a backup, at the next visit and in the
 notification, exactly as it would without this step, when:

@@ -291,7 +291,14 @@ describe("the backup a scheduled run takes after its rotation", () => {
     expect(restored.sharedSecret).toBe(rotated.sharedSecret);
 
     const local = await getManagedLocalState(rotated.id);
-    expect(local?.backup?.backedUpAt).toBe(backup.backedUpAt.toISOString());
+    expect(local?.backup).toEqual({
+      backedUpAt: backup.backedUpAt.toISOString(),
+      savedAs: {
+        kind: "folder",
+        folderName: folder.name,
+        fileName: backup.fileName,
+      },
+    });
     const stored = await getManagedExchange(rotated.id);
     if (stored === undefined) throw new Error("the record is gone");
     expect(

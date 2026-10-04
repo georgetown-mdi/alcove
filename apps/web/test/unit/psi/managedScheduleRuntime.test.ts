@@ -748,6 +748,7 @@ describe("the backup a completed unattended run takes", () => {
       stored.id,
       stored.sharedSecret,
       expect.any(String),
+      expect.objectContaining({ kind: "folder" }),
     );
     expect(folder.handle.requestPermission).not.toHaveBeenCalled();
   });

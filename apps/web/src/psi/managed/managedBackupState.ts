@@ -31,7 +31,16 @@
 export interface ManagedBackupMarker {
   /** ISO 8601 UTC instant a backup was last taken for this record. */
   backedUpAt: string;
+  /** Where that backup was saved, so the operator can find it; absent where the
+   * marker stands for an imported file rather than a backup this app saved. */
+  savedAs?: ManagedBackupLocation;
 }
+
+/** Where a backup was saved: downloaded under `fileName`, or written into the
+ * working folder `folderName` under `fileName`. */
+export type ManagedBackupLocation =
+  | { kind: "downloaded"; fileName: string }
+  | { kind: "folder"; folderName: string; fileName: string };
 
 /** The derived backup state the UI shows:
  *
@@ -42,7 +51,8 @@ export interface ManagedBackupMarker {
  *   the last one and cleared it): one actionable "Back up this exchange".
  */
 type ManagedBackupState =
-  { kind: "backed-up"; backedUpAt: string } | { kind: "backup-needed" };
+  | { kind: "backed-up"; backedUpAt: string; savedAs?: ManagedBackupLocation }
+  | { kind: "backup-needed" };
 
 /**
  * Derive the backup state for a record given its local backup marker (or its
@@ -55,5 +65,9 @@ export function deriveManagedBackupState(
   marker: ManagedBackupMarker | undefined,
 ): ManagedBackupState {
   if (marker === undefined) return { kind: "backup-needed" };
-  return { kind: "backed-up", backedUpAt: marker.backedUpAt };
+  return {
+    kind: "backed-up",
+    backedUpAt: marker.backedUpAt,
+    ...(marker.savedAs !== undefined ? { savedAs: marker.savedAs } : {}),
+  };
 }

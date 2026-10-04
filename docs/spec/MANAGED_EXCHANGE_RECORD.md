@@ -1678,7 +1678,12 @@ contents**: three of derived-backup, migration, and restore state, and this
 device's pending decision on a partner's changed terms. The four:
 
 - **The backup marker** (`backedUpAt`, an ISO 8601 UTC instant) records when a
-  backup was last taken. It is the input to the derived backup state the UI
+  backup was last taken, and `savedAs`, where present, where it was saved:
+  `{ kind: "downloaded", fileName }` for a download, or `{ kind: "folder",
+  folderName, fileName }` for a working-folder write, each name a non-empty
+  string of at most 255 code units. The backed-up state names that place. A
+  marker an import stamps has no `savedAs`, since its file is the one
+  imported, not one this app saved. It is the input to the derived backup state the UI
   surfaces (see [Moment-anchored backup
   surfaces](../MANAGED_EXCHANGE.md#moment-anchored-backup-surfaces)), which is
   simply **marker present / absent**: a present marker is "backed up", no marker is
@@ -1700,8 +1705,10 @@ device's pending decision on a partner's changed terms. The four:
     never prompting, and never replacing an entry already held under that name.
     Both backups name the file `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`
     (`managedBackupFileName`), the UTC instant the backup is taken to the
-    second, so successive backups never share a name and a held name is a clash
-    with a file the backup did not write.
+    second. Two backups taken in different seconds never share a name; a manual
+    download and a folder write taken in the same UTC second do, and the folder
+    write then finds the name held and writes nothing, as it does for any file
+    already there under that name.
     A download reports no landing, so the export stamps the marker first; a
     folder write does report one, so this backup stamps the marker only after
     the write lands, in one cross-store transaction that compares the stored
@@ -1709,7 +1716,7 @@ device's pending decision on a partner's changed terms. The four:
     has moved on (`markManagedBackupIfCurrent`). A grant that does not hold
     with nobody present, a held name, a failed write, or a moved secret leaves
     the marker absent, so the derived state stays "backup needed". None of these
-    changes the run's recorded outcome, and no record or sibling field is added.
+    changes the run's recorded outcome, and no record field is added.
   - **The command-line export marks nothing.** What it writes is the CLI's own
     `alcove.yaml` and `.alcove.key`. The import takes that pair back ([Importing
     the key file beside a configuration](#importing-the-key-file-beside-a-configuration)),

@@ -14,14 +14,17 @@
 
 import { z } from "zod";
 
-import { LinkageTermsSchema } from "@alcove/core";
+import { LinkageTermsSchema, maxCodeUnits } from "@alcove/core";
 
 import type {
   LinkageTerms,
   PartnerDeduplicateChange,
   PayloadColumnsChange,
 } from "@alcove/core";
-import type { ManagedBackupMarker } from "./managedBackupState";
+import type {
+  ManagedBackupLocation,
+  ManagedBackupMarker,
+} from "./managedBackupState";
 import type { ZodType } from "zod";
 
 /** Which export handed a spent copy off, where that is not the device migration.
@@ -146,6 +149,31 @@ export const managedTermsProposalSchema: ZodType<ManagedTermsProposal> = z
   })
   .strict();
 
+/** The longest folder or file name a backup location holds: the common
+ * file-system limit on one path component. */
+const MAX_BACKUP_LOCATION_NAME_LENGTH = 255;
+
+const backupLocationNameSchema = z
+  .string()
+  .min(1)
+  .check(maxCodeUnits(MAX_BACKUP_LOCATION_NAME_LENGTH));
+
+const backupLocationSchema: ZodType<ManagedBackupLocation> = z.union([
+  z
+    .object({
+      kind: z.literal("downloaded"),
+      fileName: backupLocationNameSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("folder"),
+      folderName: backupLocationNameSchema,
+      fileName: backupLocationNameSchema,
+    })
+    .strict(),
+]);
+
 /**
  * The sibling-state validator: reader-rejects-unknown at every level, so a
  * corrupted or app-upgrade-invalidated entry rejects rather than loading. The
@@ -157,7 +185,13 @@ export const managedTermsProposalSchema: ZodType<ManagedTermsProposal> = z
 export const managedLocalStateSchema: ZodType<ManagedLocalState> = z
   .object({
     termsProposal: z.unknown().optional(),
-    backup: z.object({ backedUpAt: z.iso.datetime() }).strict().optional(),
+    backup: z
+      .object({
+        backedUpAt: z.iso.datetime(),
+        savedAs: backupLocationSchema.optional(),
+      })
+      .strict()
+      .optional(),
     spent: z
       .object({
         spentAt: z.iso.datetime(),

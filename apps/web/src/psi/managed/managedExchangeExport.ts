@@ -56,6 +56,7 @@ import type {
 } from "./managedLocalStateShape";
 import type { BackupFolderWrite } from "./managedWorkingDirectory";
 import type { HandlePermissionState } from "./managedInputHandle";
+import type { ManagedBackupLocation } from "./managedBackupState";
 import type { ManagedBackupMarkOutcome } from "./managedExchangeStore";
 import type { ManagedCronExport } from "./managedCronExport";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
@@ -73,12 +74,14 @@ export function managedBackupFileName(at: Date): string {
  * pure and testable. */
 export interface ManagedExportDeps {
   /** Read the current stored record for `id`, run `composeExport` on it, and stamp
-   * its backup marker as of `backedUpAt` in one atomic step, returning the record
-   * read. `composeExport` throwing aborts the whole step, writing no marker. */
+   * its backup marker as of `backedUpAt`, saved as `savedAs`, in one atomic step,
+   * returning the record read. `composeExport` throwing aborts the whole step,
+   * writing no marker. */
   readAndMark: (
     id: string,
     backedUpAt: string,
     composeExport: (record: ManagedExchangeRecord) => void,
+    savedAs: ManagedBackupLocation,
   ) => Promise<ManagedExchangeRecord>;
   /** Trigger a client-side download of the serialized artifact under `fileName`. */
   download: (fileName: string, content: string) => void;
@@ -220,6 +223,7 @@ async function readMarkAndDownload(
   deps: ManagedExportDeps,
 ): Promise<ManagedBackupResult> {
   const backedUpAt = deps.now();
+  const fileName = managedBackupFileName(backedUpAt);
   let serialized: string | undefined;
   const record = await deps.readAndMark(
     id,
@@ -227,13 +231,14 @@ async function readMarkAndDownload(
     (read) => {
       serialized = backupArtifactBytes(read);
     },
+    { kind: "downloaded", fileName },
   );
   if (serialized === undefined)
     throw new Error(
       "the read-and-mark step resolved without serializing the export, so its " +
         "backup marker would attest bytes nothing produced",
     );
-  deps.download(managedBackupFileName(backedUpAt), serialized);
+  deps.download(fileName, serialized);
   return { backedUpAt, record: runnableManagedExchangeOrRefuse(record) };
 }
 
@@ -265,12 +270,13 @@ export interface ManagedFolderBackupDeps {
     fileName: string,
     content: Blob,
   ) => Promise<BackupFolderWrite>;
-  /** Stamp the backup marker as of `backedUpAt`, only while the stored record
-   * still holds `expectedSharedSecret`. */
+  /** Stamp the backup marker as of `backedUpAt`, saved as `savedAs`, only while
+   * the stored record still holds `expectedSharedSecret`. */
   markIfCurrent: (
     id: string,
     expectedSharedSecret: string,
     backedUpAt: string,
+    savedAs: ManagedBackupLocation,
   ) => Promise<ManagedBackupMarkOutcome>;
   /** The moment of the backup, for the marker and the file name. */
   now: () => Date;
@@ -331,12 +337,13 @@ export async function backUpManagedExchangeToFolder(
       content,
     );
     if (written.kind !== "written") return written;
+    const { fileName, directoryName } = written;
     const marked = await deps.markIfCurrent(
       id,
       runnable.sharedSecret,
       backedUpAt.toISOString(),
+      { kind: "folder", folderName: directoryName, fileName },
     );
-    const { fileName, directoryName } = written;
     if (marked === "marked")
       return { kind: "backed-up", fileName, directoryName, backedUpAt };
     if (marked === "superseded")

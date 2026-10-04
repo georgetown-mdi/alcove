@@ -13,6 +13,7 @@ import {
   clearManagedExchanges,
   createManagedExchange,
   getManagedExchange,
+  markManagedBackupIfCurrent,
 } from "@psi/managed/managedExchangeStore";
 import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -92,6 +93,15 @@ describe("an exchange holding no working folder", () => {
       .element(page.getByText("Choose this exchange's folder."))
       .toBeInTheDocument();
     await expect
+      .element(
+        page
+          .getByText("a backup of this exchange, including its shared secret", {
+            exact: false,
+          })
+          .first(),
+      )
+      .toBeInTheDocument();
+    await expect
       .element(page.getByRole("button", { name: "Run exchange" }))
       .toBeDisabled();
     expect(page.getByText("Choose your input file.").query()).toBeNull();
@@ -113,6 +123,35 @@ describe("an exchange holding no working folder", () => {
     expect(await stored?.workingDirectoryHandle?.isSameEntry(folder)).toBe(
       true,
     );
+  });
+});
+
+describe("a backup a scheduled run wrote into the working folder", () => {
+  test("the backed-up line names the folder and the file", async () => {
+    const folder = await opfsFolder("run-surface-backed-up");
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    const fileName = "alcove-managed-backup-2026-07-14T120000Z.json";
+    expect(
+      await markManagedBackupIfCurrent(
+        created.id,
+        created.sharedSecret ?? "",
+        "2026-07-14T12:00:00.000Z",
+        { kind: "folder", folderName: folder.name, fileName },
+      ),
+    ).toBe("marked");
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(
+        page.getByText(
+          `written to the folder run-surface-backed-up as ${fileName}`,
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
   });
 });
 

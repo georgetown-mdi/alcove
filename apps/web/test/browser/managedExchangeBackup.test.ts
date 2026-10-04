@@ -573,13 +573,19 @@ describe("importing a spent secret-match revives in place", () => {
     const source = await createRunnableExchange(newExchange());
     const deps = {
       downloaded: [] as Array<string>,
+      fileNames: [] as Array<string>,
       readAndMark: readRecordAndMarkBackedUp,
-      download: (_fileName: string, content: string) =>
-        deps.downloaded.push(content),
+      download: (fileName: string, content: string) => {
+        deps.fileNames.push(fileName);
+        deps.downloaded.push(content);
+      },
       now: () => new Date(),
     };
     await exportManagedBackup(source.id, deps);
-    expect((await getManagedLocalState(source.id))?.backup).toBeDefined();
+    expect((await getManagedLocalState(source.id))?.backup?.savedAs).toEqual({
+      kind: "downloaded",
+      fileName: deps.fileNames[0],
+    });
 
     await deleteManagedExchange(source.id);
     const { record: restored } = await importManagedExchange(
