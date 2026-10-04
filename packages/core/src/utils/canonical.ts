@@ -131,10 +131,6 @@ function assertNoToJson(value: object, path: string): void {
     );
 }
 
-// The array length at which V8 (Node 26) throws "Too many properties to
-// enumerate" from Object.getOwnPropertyNames; Object.keys still lists the keys.
-const OWN_PROPERTY_NAMES_LIMIT = 2 ** 24;
-
 /**
  * Refuse an array's own string key other than an element index or `length`
  * (`arr.foo`): canonicalize serializes only elements [0, length), so it would
@@ -143,16 +139,20 @@ const OWN_PROPERTY_NAMES_LIMIT = 2 ** 24;
  * Reads the key list from its end. An array lists its element indices first,
  * ascending, then its other string keys in creation order (ECMA-262
  * OrdinaryOwnPropertyKeys), so every named key follows the last index and the
- * scan stops there. Below {@link OWN_PROPERTY_NAMES_LIMIT} elements the list is
- * Object.getOwnPropertyNames, which holds non-enumerable keys too. At or above
- * it that call throws, so the list is Object.keys, and a non-enumerable named
- * key is not seen.
+ * scan stops there. The list is Object.getOwnPropertyNames, which holds
+ * non-enumerable keys too; when the engine throws a RangeError because the
+ * array has too many keys to list, it is Object.keys instead. So an array the
+ * engine cannot enumerate in full is checked against its enumerable string
+ * keys, and a non-enumerable named property on such an array is not detected.
  */
 function assertOnlyElementKeys(value: readonly unknown[], path: string): void {
-  const keys =
-    value.length < OWN_PROPERTY_NAMES_LIMIT
-      ? Object.getOwnPropertyNames(value)
-      : Object.keys(value);
+  let keys: string[];
+  try {
+    keys = Object.getOwnPropertyNames(value);
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    keys = Object.keys(value);
+  }
   let named: string | undefined;
   for (let at = keys.length - 1; at >= 0; at--) {
     const key = keys[at];
@@ -215,9 +215,6 @@ function assertCanonical(value: unknown, path: string): void {
             path,
           );
         assertNoToJson(value, path);
-        // canonicalize serializes only elements [0, length), so it would drop a
-        // named or symbol-keyed own property. Object.getOwnPropertySymbols
-        // lists symbols only and holds at any length.
         assertOnlyElementKeys(value, path);
         if (Object.getOwnPropertySymbols(value).length > 0)
           fail("symbol-keyed array property", path);

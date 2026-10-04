@@ -8,7 +8,7 @@ import { canonicalString } from "../../src/utils/canonical";
 import type { ProbeResult } from "./exchangeRecordLarge.probe";
 import { stressMemory } from "./stressMemory";
 
-// Arrays at and past 2^24 elements, the length at which V8's
+// Arrays of 2^24 elements, past the key count at which V8's
 // Object.getOwnPropertyNames throws, through the canonical encoder and through
 // the exchange record and receipt built over a result that large. Several GB
 // resident and tens of seconds, which is why it is the opt-in tier.
@@ -50,6 +50,13 @@ test("an array of 2^24 elements with a named property is rejected", () => {
   expect(() => canonicalString({ a: values })).toThrow(
     /\$\.a: non-index array property \("foo"\)/,
   );
+});
+
+test("an array of 2^24 elements with a non-enumerable named property passes the key check", () => {
+  const values: unknown[] = Array.from({ length: 2 ** 24 }, () => 0);
+  Object.defineProperty(values, "foo", { value: "bar", enumerable: false });
+  expect(() => Object.getOwnPropertyNames(values)).toThrow(RangeError);
+  expect(canonicalString(values).length).toBe(2 * 2 ** 24 + 1);
 });
 
 test(
