@@ -1828,8 +1828,14 @@ export class FileSyncRendezvous {
               // waiting for a joiner -- the joiner takes the entry
               // fast-path and never enters this loop -- even though
               // `this.role` is not committed until rendezvous succeeds.
+              deps
+                .log()
+                .debug(
+                  "[starter] partner began arriving but did not complete " +
+                    "within the recovery window",
+                );
               throw new Error(
-                `[starter] peer began arriving ` +
+                `The partner began arriving ` +
                   `(${redactPrivateKeyMaterial(joiningName)}) but did ` +
                   "not complete within the recovery window; it appears to " +
                   "have failed after announcing its arrival but before " +
@@ -2231,8 +2237,14 @@ export class FileSyncRendezvous {
       // that coupling type-enforced and degrades gracefully to the bare
       // timeout if they ever diverged.
       if (joiningSeenAt !== undefined && joiningSeenName !== undefined) {
+        deps
+          .log()
+          .debug(
+            "[starter] partner began arriving but the exchange timed out " +
+              "before it completed",
+          );
         throw new Error(
-          `[starter] peer began arriving ` +
+          `The partner began arriving ` +
             `(${redactPrivateKeyMaterial(joiningSeenName)}) but the ` +
             "exchange timed out before it completed; it appears to have " +
             "failed after announcing its arrival but before publishing its " +

@@ -1195,7 +1195,7 @@ test("synchronize() lock starter: aborts with a distinct transport error within 
   );
   // Tagged with the waiting party's actual role rather than the uninitialized
   // "unknown role" sentinel value.
-  expect((err as Error).message).toMatch(/^\[starter\]/);
+  expect((err as Error).message).toMatch(/^The partner began arriving/);
   // Transport failure (CLI exit 69), not a usage error (exit 64).
   expect(err).not.toBeInstanceOf(UsageError);
   // Bounded by the recovery window, far below the 5 s TTL.
@@ -1254,7 +1254,7 @@ test("synchronize() lock starter: aborts on a stuck sentinel even while its own 
   expect((err as Error).message).toMatch(
     /failed after announcing its arrival but before publishing its hello/,
   );
-  expect((err as Error).message).toMatch(/^\[starter\]/);
+  expect((err as Error).message).toMatch(/^The partner began arriving/);
   // Bounded by the recovery window, far below the 5 s TTL.
   expect(elapsed).toBeLessThan(2_000);
 });
@@ -1291,7 +1291,7 @@ test("synchronize() lock starter: a sentinel visible when the TTL expires yields
   // Names the stuck sentinel and the mid-arrival failure like the bounded-window
   // abort, but via the TTL fallback ("the exchange timed out before it
   // completed" rather than "within the recovery window").
-  expect((err as Error).message).toMatch(/^\[starter\] peer began arriving/);
+  expect((err as Error).message).toMatch(/^The partner began arriving/);
   expect((err as Error).message).toContain(joiningName);
   expect((err as Error).message).toMatch(
     /the exchange timed out before it completed/,
