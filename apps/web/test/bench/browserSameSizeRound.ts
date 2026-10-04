@@ -237,7 +237,10 @@ function parseHeapTrace(
       : [];
   });
   const first = collections.find((each) => each.forced);
-  if (!first) return { workerSteps: [] };
+  if (!first)
+    throw new Error(
+      "the heap trace holds no forced collection: the V8 trace line this bench parses has changed, so no worker heap figure can be read",
+    );
   const worker = collections.filter((c) => c.isolate === first.isolate);
   const alignment = worker
     .filter((c) => c.forced && c.atMs <= first.atMs + ALIGNMENT_SPAN_MS)
