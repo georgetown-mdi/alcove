@@ -129,7 +129,10 @@ export function builder(cmd: Argv): Argv {
       })
       .positional("output", {
         type: "string",
-        describe: "where to write results; defaults to stdout",
+        describe:
+          "where to write results; defaults to stdout. A folder, or a path " +
+          "ending in /, gets a new alcove-results-<stamp>.csv each run, " +
+          "stamped like that run's alcove-record-<stamp>.json",
       }),
     // exchange reads a config and has no URL, so the config/key files are read
     // (not written) and the server-* / peer-id overrides apply to the config.

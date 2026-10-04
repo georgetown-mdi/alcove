@@ -268,8 +268,10 @@ export function ManagedCronExportPanel({
                 </p>
                 <p className={styles.small}>
                   The command below reads input.csv from the folder it runs in
-                  and writes results.csv beside it. Name your file to match, or
-                  change the names in the command.
+                  and writes each run&apos;s result beside it as
+                  alcove-results-&lt;time&gt;.csv, next to that run&apos;s
+                  exchange record. Name your file to match, or change the name
+                  in the command.
                 </p>
               </li>
               <li>

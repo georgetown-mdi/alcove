@@ -18,7 +18,7 @@ import {
   CRON_EXPORT_CONFIG_FILE_NAME,
   CRON_EXPORT_INPUT_FILE_NAME,
   CRON_EXPORT_KEY_FILE_NAME,
-  CRON_EXPORT_OUTPUT_FILE_NAME,
+  CRON_EXPORT_OUTPUT_FOLDER,
   composeManagedCronExport,
   composeManagedCronExportConfig,
 } from "@psi/managed/managedCronExport";
@@ -139,7 +139,7 @@ describe("the two files the CLI opens", () => {
     // `alcove exchange [options] INPUT_FILE [OUTPUT_FILE]` with the config and
     // key read at their defaults: no flag the CLI does not have, and no path.
     expect(composeManagedCronExport(managedRecord()).command).toBe(
-      `alcove exchange ${CRON_EXPORT_INPUT_FILE_NAME} ${CRON_EXPORT_OUTPUT_FILE_NAME}`,
+      `alcove exchange ${CRON_EXPORT_INPUT_FILE_NAME} ${CRON_EXPORT_OUTPUT_FOLDER}`,
     );
   });
 });

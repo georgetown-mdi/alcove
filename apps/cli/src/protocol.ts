@@ -113,6 +113,7 @@ import {
   type PsiWorkerExitWaitOptions,
 } from "./psiWorkerHost";
 import { writeExchangeRecord, type RecordOutput } from "./recordFile";
+import { resultFilePath } from "./resultFile";
 import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
 import {
   closeWithinCeiling,
@@ -2341,6 +2342,13 @@ async function writeExchangeOutputs(params: {
     signedReceipt,
   } = outcome;
 
+  // The one timestamp this run's file names share: the record's createdAt when
+  // there is one, so a result named per run, the record, and the receipt pair
+  // by name.
+  const runCreatedAt = audit?.record.createdAt ?? new Date().toISOString();
+  const resultPath =
+    output === undefined ? undefined : resultFilePath(output, runCreatedAt);
+
   // The result's failure -- a table that could not be built from the partner's
   // payload, or a write that did not deliver it -- held until the audit
   // artifacts below have been written. A box rather than the error itself,
@@ -2410,7 +2418,7 @@ async function writeExchangeOutputs(params: {
     try {
       if (table !== undefined) {
         await writeOutput(
-          output,
+          resultPath,
           table.headers,
           table.rows,
           log,
@@ -2418,12 +2426,12 @@ async function writeExchangeOutputs(params: {
           resultDelimiter,
         );
         result =
-          output === undefined
+          resultPath === undefined
             ? { kind: "stdout", matchedRows: table.rows.length }
             : {
                 kind: "file",
                 matchedRows: table.rows.length,
-                path: path.resolve(output),
+                path: path.resolve(resultPath),
               };
       }
     } catch (err) {
@@ -2516,14 +2524,12 @@ async function writeExchangeOutputs(params: {
   // self-attested record: core signs the receipt from the
   // mutually-verifiable facts regardless of whether this party's local
   // record built, so a record-build failure must not discard it. Its
-  // timestamp is the record's createdAt when there is one, so the
-  // record and receipt files for one exchange share a stamp. Non-fatal,
-  // like the record write.
+  // stamp is the run's shared one above. Non-fatal, like the record write.
   if (signing !== null && signedReceipt !== undefined) {
     const failure = writeDualSignedRecord(
       signing.receiptOutput,
       signedReceipt,
-      audit?.record.createdAt ?? new Date().toISOString(),
+      runCreatedAt,
       loggerName,
     );
     if (failure !== undefined) missingArtifacts.push(failure);

@@ -512,7 +512,9 @@ export const RESULT_FROM_ANOTHER_RUN_HEADLINE =
   "run -- most often, a later run overwrote it. The agreed terms match the " +
   "record; only the checks against your input and result files failed. " +
   "Supply the input and result files from this record's run; if these are " +
-  "them, the record was altered.";
+  "them, the record was altered. To keep every run's result, give the " +
+  "exchange a folder as its output (for example ./): each run then writes " +
+  "alcove-results-<stamp>.csv with its record's stamp.";
 
 /** Render the unsigned record's verification report to output lines and an exit
  * code (0 only when the verdict is verified). `signatureFailed` marks a run

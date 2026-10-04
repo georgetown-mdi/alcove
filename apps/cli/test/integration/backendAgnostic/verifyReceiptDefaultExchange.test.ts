@@ -22,6 +22,7 @@ import {
   agreedTermsPathFor,
   DEFAULT_RECORD_BASENAME,
 } from "../../../src/recordFile";
+import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
 import { RECEIPT_VERIFICATION_FAILED_EXIT_CODE } from "../../../src/util/exit";
 
 // A default (unsigned) exchange verified the way its operator would: the
@@ -245,4 +246,94 @@ test("a default exchange's record verifies from the record, input, and result al
     "agreed-terms hash: re-derives and matches",
   );
   expect(overwritten.exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
+}, 120_000);
+
+test("a folder output names each run's result after its record, and each record verifies against its own", async () => {
+  const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
+  const inputA = path.join(work, "a-input.csv");
+  fs.writeFileSync(inputA, PARTY_A_CSV);
+  const inputB = path.join(work, "b-input.csv");
+  fs.writeFileSync(inputB, PARTY_B_FIRST_CSV);
+  const outB = path.join(work, "b-out.csv");
+
+  const prepared = prepareForExchange({}, "config", PROVISION_ROWS, CSV_FIELDS);
+  const spec: ExchangeSpec = {
+    connection: {
+      channel: "filedrop",
+      path: dropDir,
+      options: { pollIntervalMs: 1 },
+    },
+    linkageTerms: prepared.linkageTerms,
+    metadata: prepared.metadata,
+  };
+  const configA = path.join(work, "a.yaml");
+  const configB = path.join(work, "b.yaml");
+  saveConfig(configA, spec);
+  saveConfig(configB, spec);
+  const keyA = path.join(work, "a.key");
+  const keyB = path.join(work, "b.key");
+  saveKeyFile(keyA, { sharedSecret: INITIAL_SECRET });
+  saveKeyFile(keyB, { sharedSecret: INITIAL_SECRET });
+
+  const exchangeA = [
+    "exchange",
+    inputA,
+    "./",
+    "--config-file",
+    configA,
+    "--key-file",
+    keyA,
+    "--identity",
+    "party-a",
+    "--peer-timeout",
+    `${PEER_TIMEOUT_SECONDS}s`,
+    "--log-level",
+    "silent",
+  ];
+  const exchangeB = [
+    "exchange",
+    inputB,
+    outB,
+    "--config-file",
+    configB,
+    "--key-file",
+    keyB,
+    "--identity",
+    "party-b",
+    "--no-record",
+    "--peer-timeout",
+    `${PEER_TIMEOUT_SECONDS}s`,
+    "--log-level",
+    "silent",
+  ];
+
+  await runBoth(exchangeA, exchangeB);
+  fs.writeFileSync(inputB, PARTY_B_SECOND_CSV);
+  await runBoth(exchangeA, exchangeB);
+
+  const records = recordsIn(work);
+  expect(records).toHaveLength(2);
+  const results = records.map((record) =>
+    path.join(
+      work,
+      path
+        .basename(record)
+        .replace(`${DEFAULT_RECORD_BASENAME}-`, `${DEFAULT_RESULT_BASENAME}-`)
+        .replace(/\.json$/, ".csv"),
+    ),
+  );
+  for (const result of results) {
+    expect(fs.existsSync(result)).toBe(true);
+    if (process.platform !== "win32")
+      expect(fs.statSync(result).mode & 0o077).toBe(0);
+  }
+  expect(fs.readFileSync(results[0], "utf8")).not.toBe(
+    fs.readFileSync(results[1], "utf8"),
+  );
+
+  for (const [index, record] of records.entries()) {
+    const verdict = await verify([record, inputA, results[index]]);
+    expect(verdict.stdout).toMatch(/^VERIFIED/);
+    expect(verdict.exitCode).toBe(0);
+  }
 }, 120_000);

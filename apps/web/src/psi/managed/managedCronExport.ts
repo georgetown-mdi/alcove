@@ -110,11 +110,13 @@ export const CRON_EXPORT_KEY_FILE_NAME = ".alcove.key";
  * configuration. */
 export const CRON_EXPORT_INPUT_FILE_NAME = MANAGED_INPUT_FILE_NAME;
 
-/** The results file the emitted command writes. Passing an output path (rather
- * than defaulting to stdout) is what gets the matched-records CSV the owner-only
- * treatment the key file gets -- a shell redirect leaves it at the umask (see
- * docs/SECURITY_DESIGN.md, "Key file security", Result CSV output). */
-export const CRON_EXPORT_OUTPUT_FILE_NAME = "results.csv";
+/** The output the emitted command names: the folder it runs in, where the CLI
+ * writes each run's result as `alcove-results-<stamp>.csv` under the stamp of
+ * that run's record, so no run overwrites the last. Passing an output path
+ * (rather than defaulting to stdout) is what gets the matched-records CSV the
+ * owner-only treatment the key file gets -- a shell redirect leaves it at the
+ * umask (see docs/SECURITY_DESIGN.md, "Key file security", Result CSV output). */
+export const CRON_EXPORT_OUTPUT_FOLDER = "./";
 
 /** The media type the configuration half is written to disk under: the exchange
  * document is the YAML the CLI's config loader reads. */
@@ -395,7 +397,7 @@ export function composeManagedCronExportConfig(
     },
     command:
       `alcove exchange ${CRON_EXPORT_INPUT_FILE_NAME} ` +
-      CRON_EXPORT_OUTPUT_FILE_NAME,
+      CRON_EXPORT_OUTPUT_FOLDER,
   };
 }
 

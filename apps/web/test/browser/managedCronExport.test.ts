@@ -164,7 +164,7 @@ describe("the command-line export hands over two files", () => {
     // The ready-to-run invocation and both schedule lines are on the panel.
     await expect
       .element(
-        page.getByText("alcove exchange input.csv results.csv", {
+        page.getByText("alcove exchange input.csv ./", {
           exact: true,
         }),
       )

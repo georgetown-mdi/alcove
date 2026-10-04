@@ -13,10 +13,11 @@ import type { HandoffBindPath } from "@jobs/handoff";
  * operator's exchange folder by default, since that is how a console user has
  * Alcove, and an installed `alcove` as the alternative.
  *
- * Every scheduled line names its program by absolute path, appends to a log
- * file, and gives each run its own result file, so a scheduled run neither
- * fails to find its program under the scheduler's PATH nor overwrites the last
- * run's result.
+ * Every scheduled line names its program by absolute path and appends to a log
+ * file, so a scheduled run does not fail to find its program under the
+ * scheduler's PATH. Each run's own result file comes from the hand-off's
+ * output positional, a folder the CLI names each result in, so the same
+ * arguments serve every scheduler.
  */
 
 /** The exchange folder placeholder on a POSIX scheduling machine. */
@@ -38,9 +39,6 @@ export const INSTALLED_ALCOVE_PLACEHOLDER = "/path/to/alcove";
 /** The schedule the lines use: daily at 2am, which the operator changes to the
  * time agreed with their partner. */
 const CRON_SCHEDULE = "0 2 * * *";
-
-/** An output positional the POSIX lines give a per-run name. */
-const PER_RUN_OUTPUT_NAME = /^([A-Za-z0-9_-]+)\.csv$/;
 
 /** What the lines are composed from: the hand-off's argv and bind paths, and
  * the image reference this build names. */
@@ -140,24 +138,9 @@ export function dockerRunArgv(
   ];
 }
 
-/**
- * `argv` joined for a POSIX shell with its last token, the output file, given
- * the run's date and time: `results.csv` becomes
- * `results-$(date +%Y%m%d-%H%M%S).csv`, which the shell expands at each run.
- * An output name of another shape is kept as it is.
- */
-export function posixCommandLine(argv: ReadonlyArray<string>): string {
-  const output = argv.at(-1) ?? "";
-  const stem = PER_RUN_OUTPUT_NAME.exec(output)?.[1];
-  const outputToken =
-    stem === undefined
-      ? shellJoinCommand([output])
-      : `${stem}-$(date +%Y%m%d-%H%M%S).csv`;
-  return `${shellJoinCommand(argv.slice(0, -1))} ${outputToken}`;
-}
-
 /** A crontab line running `command`. cron ends a command at an unescaped `%`
- * and passes the rest as its input, so each is escaped. */
+ * and passes the rest as its input, so each one an argument holds is
+ * escaped. */
 function cronLine(command: string): string {
   return `${CRON_SCHEDULE} ${command.replaceAll("%", "\\%")}`;
 }
@@ -169,13 +152,13 @@ export function dockerRunCommand(
   source: ScheduledRunSource,
 ): string | undefined {
   const argv = dockerRunArgv(source, "docker", EXCHANGE_FOLDER_PLACEHOLDER);
-  return argv === undefined ? undefined : posixCommandLine(argv);
+  return argv === undefined ? undefined : shellJoinCommand(argv);
 }
 
 /** The command a person runs once by hand from the exchange folder with an
  * installed `alcove`. */
 export function installedRunCommand({ argv }: ScheduledRunSource): string {
-  return posixCommandLine(["alcove", ...alcoveArgs(argv)]);
+  return shellJoinCommand(["alcove", ...alcoveArgs(argv)]);
 }
 
 /** The crontab line running the image over the exchange folder. Undefined
@@ -186,14 +169,14 @@ export function dockerCronLine(source: ScheduledRunSource): string | undefined {
     POSIX_DOCKER_PROGRAM,
     EXCHANGE_FOLDER_PLACEHOLDER,
   );
-  return argv === undefined ? undefined : cronLine(posixCommandLine(argv));
+  return argv === undefined ? undefined : cronLine(shellJoinCommand(argv));
 }
 
 /** The crontab line running an installed `alcove` from the exchange folder. */
 export function installedCronLine({ argv }: ScheduledRunSource): string {
   return cronLine(
     `cd ${EXCHANGE_FOLDER_PLACEHOLDER} && ` +
-      posixCommandLine([INSTALLED_ALCOVE_PLACEHOLDER, ...alcoveArgs(argv)]),
+      shellJoinCommand([INSTALLED_ALCOVE_PLACEHOLDER, ...alcoveArgs(argv)]),
   );
 }
 
@@ -201,8 +184,7 @@ export function installedCronLine({ argv }: ScheduledRunSource): string {
  * The Task Scheduler registration running the image over the exchange folder.
  * It mounts the folder alone, since a Windows path cannot be mounted at the
  * same path inside the container; the panel names each bind path to mount by
- * hand. `cmd` has no portable date expansion, so the output name is fixed.
- * Undefined when a bind path cannot be mounted.
+ * hand. Undefined when a bind path cannot be mounted.
  */
 export function dockerTaskSchedulerLine(
   source: ScheduledRunSource,

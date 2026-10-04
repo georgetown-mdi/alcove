@@ -19,14 +19,20 @@ import { writeFileOwnerOnly } from "./fileUtils";
 export const DEFAULT_RECORD_BASENAME = "alcove-record";
 
 /**
+ * The stamp a run's file names share: the record's own `createdAt` timestamp
+ * made filesystem-safe (colons and the fractional-second dot replaced with
+ * hyphens).
+ */
+export function recordFileStamp(createdAt: string): string {
+  return createdAt.replace(/[:.]/g, "-");
+}
+
+/**
  * Default path for the self-attested record: `./alcove-record-<stamp>.json` in
- * the working directory, where `<stamp>` is the record's own `createdAt`
- * timestamp made filesystem-safe (colons and the fractional-second dot replaced
- * with hyphens).
+ * the working directory, with the stamp {@link recordFileStamp} derives.
  */
 export function defaultRecordPath(createdAt: string): string {
-  const stamp = createdAt.replace(/[:.]/g, "-");
-  return `./${DEFAULT_RECORD_BASENAME}-${stamp}.json`;
+  return `./${DEFAULT_RECORD_BASENAME}-${recordFileStamp(createdAt)}.json`;
 }
 
 /**

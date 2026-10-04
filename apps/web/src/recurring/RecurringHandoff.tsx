@@ -165,8 +165,7 @@ function HandoffBody({
         <>
           <p className={styles.small}>
             Windows Task Scheduler, daily at 2am, running Alcove from its Docker
-            image. This line writes results.csv each run, replacing the last
-            run&apos;s; copy it out after each run to keep it:
+            image:
           </p>
           <CopyableCode
             code={taskSchedulerCommand}
@@ -187,8 +186,10 @@ function HandoffBody({
       />
       <p className={styles.small}>
         Set {EXCHANGE_FOLDER_PLACEHOLDER} to the folder you saved the files in,
-        and /path/to/alcove to where Alcove is installed. The cron lines name
-        each run&apos;s result by its date and time, and each run adds to
+        and /path/to/alcove to where Alcove is installed. The ./ at the end of
+        each command is the folder the result goes in: each run writes its
+        result there as alcove-results-&lt;time&gt;.csv, beside the exchange
+        record alcove-record-&lt;time&gt;.json with the same time, and adds to
         exchange.log in that folder.
         {dockerCommand !== undefined &&
           " A scheduled job does not use your shell's PATH, so check that " +

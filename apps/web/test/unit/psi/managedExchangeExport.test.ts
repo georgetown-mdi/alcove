@@ -449,9 +449,7 @@ describe("dispatchManagedCronExport", () => {
     // The spend is operator-attested: not written until confirm() is called.
     expect(deps.spendIfCurrent).not.toHaveBeenCalled();
     expect(dispatch.record).toBe(rec);
-    expect(dispatch.composed.command).toBe(
-      "alcove exchange input.csv results.csv",
-    );
+    expect(dispatch.composed.command).toBe("alcove exchange input.csv ./");
   });
 
   test("composes against the relay settings read it is given, the one the panel composed with", async () => {

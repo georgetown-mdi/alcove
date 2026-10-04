@@ -71,13 +71,13 @@ For an SFTP server, give the host, the directory, the username, and the credenti
 ### 5. Both parties: run the first exchange by hand
 
 ```sh
-alcove exchange input.csv results.csv
+alcove exchange input.csv ./
 ```
 
 Both parties run this at about the same time; each waits up to one hour for the other. Agency A must run it before the invitation expires.
 
 - **On SFTP**, the first run shows the server's host-key fingerprint and asks you to confirm it. Check it against the fingerprint your server administrator gives you; on yes, Alcove records it in `alcove.yaml` for later runs ([SFTP host-key trust](#sftp-host-key-trust)).
-- **What success looks like.** The command exits with code 0 (`echo $?` prints `0`), `results.csv` holds the matched records, and the directory holds a new exchange record and its verification keys ([The result file](#the-result-file)).
+- **What success looks like.** The command exits with code 0 (`echo $?` prints `0`), and the directory holds the run's matched records as `alcove-results-<stamp>.csv` beside its exchange record `alcove-record-<stamp>.json` and verification keys, both named with the same stamp. The `./` names the folder the result goes in, so each run adds a file rather than overwriting the last ([The result file](#the-result-file)).
 - **What failure looks like.** The command prints the error and the next step, and exits with a code other than 0; [Exit codes at a glance](#exit-codes-at-a-glance) says what to do with each.
 
 The first run also rotates the shared secret in `.alcove.key`. After that, neither party re-invites unless a key file is lost or the two fall out of step ([Recovery](#recovery)).
@@ -87,7 +87,7 @@ The first run also rotates the shared secret in `.alcove.key`. After that, neith
 Agree a time with your partner, then hand the same command to your scheduler. A daily run at 02:00 under cron:
 
 ```text
-0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv results.csv --log-file /srv/alcove/agency-b/exchange.log
+0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv ./ --log-file /srv/alcove/agency-b/exchange.log
 ```
 
 A scheduled run has no terminal to ask at, so settle everything it would ask first: on SFTP, pin the host key, as the first run by hand does or with [`alcove probe-host-key`](#reading-a-host-key-with-probe-host-key). [Scheduling the run](#scheduling-the-run) covers the container form, mailing the owner on failure, the working directory, and the key file's expiry.
@@ -861,6 +861,8 @@ An exchange writes its matched records to the `OUTPUT_FILE` path it was given, a
 
 How the headers are derived, what fixes the column order, and how a deduplicating cardinality shapes the row count are in [PROTOCOL.md](spec/PROTOCOL.md#output).
 
+**A folder gets a new result file each run.** Where `OUTPUT_FILE` names a folder -- it ends in `/`, as `./` does, or it is an existing directory -- the run writes its result in that folder as `alcove-results-<stamp>.csv`, with the same stamp as that run's `alcove-record-<stamp>.json`. Each run adds a file, and `alcove verify-receipt` takes the result whose stamp the record's name has. Any other path is the result file itself, overwritten by each run. The folder must exist; Alcove does not create it. The rule and the stamp's source: [EXCHANGE_RECORD.md, Result file name](spec/EXCHANGE_RECORD.md#result-file-name).
+
 **A value holding a comma, a quote, or a line break survives the round trip.** Every header and value is written as an RFC 4180 field: one holding the [field delimiter](#the-field-delimiter), a double quote, CR, or LF is wrapped in double quotes with its embedded quotes doubled, and any other value is written bare. So a payload cell holding an address with commas, or a whole JSON document, comes back byte-identical when the file is read again -- which is what lets `alcove verify-receipt` re-supply the result and reproduce what the exchange committed to. A committed null and a committed empty string are the one exception: both are written as an empty cell and both read back as an empty string (see [Verifying a receipt](#verifying-a-receipt)).
 
 **One CSV line may not exceed 8 MiB.** Alcove reads a CSV a line at a time and refuses any single logical line -- a data row, or the whole header -- past that ceiling, naming the limit rather than growing to the span. The bound is on the reads: your input file, on every command that reads one, and the result file `alcove verify-receipt` re-supplies. What it guards, and why 8 MiB, are in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#csv-read-single-line-byte-ceiling).
@@ -956,20 +958,20 @@ This covers every SFTP connection Alcove makes: `probe-host-key`, the first-use 
 A daily run at 02:00, from the directory holding this exchange's files:
 
 ```text
-0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv results.csv --log-file /srv/alcove/agency-b/exchange.log
+0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv ./ --log-file /srv/alcove/agency-b/exchange.log
 ```
 
 The container form mounts that directory at the image's working directory (`/work`) and so needs no `cd` (see [Running the CLI](DEPLOYMENT.md#running-the-cli)):
 
 ```text
-0 2 * * * /usr/bin/docker run --rm -v /srv/alcove/agency-b:/work ghcr.io/georgetown-mdi/alcove exchange input.csv results.csv --log-file exchange.log
+0 2 * * * /usr/bin/docker run --rm -v /srv/alcove/agency-b:/work ghcr.io/georgetown-mdi/alcove exchange input.csv ./ --log-file exchange.log
 ```
 
 To be told when a run fails, let cron mail what the job prints, and have the job print one line when the exit code is not 0:
 
 ```text
 MAILTO=alcove-owner@example.org
-0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv results.csv --log-file /srv/alcove/agency-b/exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/agency-b/exchange.log"
+0 2 * * * cd /srv/alcove/agency-b && /usr/local/bin/alcove exchange input.csv ./ --log-file /srv/alcove/agency-b/exchange.log || echo "alcove exchange failed with exit code $?; see /srv/alcove/agency-b/exchange.log"
 ```
 
 With `--log-file`, a run that succeeds prints nothing, except the [display of what it sends](#what-the-run-shows-before-it-starts) on the first run and whenever that display changes. A run that fails prints its error and the next step on stderr -- the error-level lines, which `--log-file` also records -- and the `echo` adds the exit code, so the mail states what failed, what to do, and the code [What a supervisor does with each code](#what-a-supervisor-does-with-each-code) reads. To mail the `echo` line alone, add `2>/dev/null` before the `||`; the error stays in the log file, and so does a changed display, which is then mailed to nobody. Cron mails only where the host can deliver mail; where it cannot, put a command that alerts you in place of the `echo`.
@@ -986,7 +988,7 @@ Everything else the run reads or writes by a relative path resolves the same way
 
 That directory has to be writable by the scheduling account, not merely readable: each successful run rewrites `.alcove.key` with the rotated secret, and an SFTP run may edit `alcove.yaml` to record a host-key pin. The run verifies up front that the key file can be written, before any key exchange, so a mis-owned directory stops the run rather than desynchronizing the two parties' tokens.
 
-Give the results an `OUTPUT_FILE` path rather than redirecting `stdout`: Alcove creates that file owner-only, while a shell `>` redirect leaves it at the scheduling account's umask (see [Key file security](SECURITY_DESIGN.md#key-file-security)). A fixed output path is overwritten by each run. The exchange record and its verification keys default to a per-run timestamped name and so accumulate in the working directory, as does a receipt when the configuration names no `signing.receipt_output`; rotating and archiving what accumulates is an operator responsibility. A fixed `--record-file` or `signing.receipt_output` is overwritten by each run, like `OUTPUT_FILE`, so it holds only the latest exchange's record or receipt: copy it out after each run where the history matters (see [DEPLOYMENT.md](DEPLOYMENT.md#mounting-the-signing-identity)).
+Give the results an `OUTPUT_FILE` path rather than redirecting `stdout`: Alcove creates that file owner-only, while a shell `>` redirect leaves it at the scheduling account's umask (see [Key file security](SECURITY_DESIGN.md#key-file-security)). A folder as `OUTPUT_FILE` (`./` above) gives each run's result its own timestamped name ([The result file](#the-result-file)); a file path is overwritten by each run. The exchange record and its verification keys default to a per-run timestamped name and so accumulate in the working directory, as does a receipt when the configuration names no `signing.receipt_output`; rotating and archiving what accumulates is an operator responsibility. A fixed `--record-file` or `signing.receipt_output` is overwritten by each run, like `OUTPUT_FILE`, so it holds only the latest exchange's record or receipt: copy it out after each run where the history matters (see [DEPLOYMENT.md](DEPLOYMENT.md#mounting-the-signing-identity)).
 
 ### The key file on the scheduling machine
 
@@ -1034,7 +1036,7 @@ Whatever supervises the schedule acts on the [exit code](#exit-codes) alone, not
 The same rules apply under the Task Scheduler, with the account the task runs as in place of the cron account: it must own `.alcove.key` under an owner-only ACL, own the working directory, and reach the program -- by its full path, or by having it on that account's `PATH`. The equivalent of the daily cron line above, which assumes Alcove is on the task account's `PATH` (name it by full path there otherwise):
 
 ```cmd
-schtasks /Create /TN "alcove exchange" /SC DAILY /ST 02:00 /TR "cmd /c cd /d C:\alcove\agency-b && alcove exchange input.csv results.csv"
+schtasks /Create /TN "alcove exchange" /SC DAILY /ST 02:00 /TR "cmd /c cd /d C:\alcove\agency-b && alcove exchange input.csv ./"
 ```
 
 An exchange folder that lives on a Windows network location -- a mapped drive, a UNC path, or a DFS namespace -- is not bind-mountable into the container by its drive letter: the container reaches it through a CIFS volume instead, which the Windows file-drop setup script provisions with the ownership the image needs (see [The user the image runs as](DEPLOYMENT.md#the-user-the-image-runs-as)).
@@ -1156,7 +1158,7 @@ With neither `INPUT_FILE` nor `RESULT_FILE`, the command still runs -- the third
 
 The verdict distinguishes a commitment that **opened and matches**, one that was **not opened** (its data was not re-supplied), and one that **does not match** -- and the result-size line reads the same three ways -- rolling up to `VERIFIED` (everything checked and passed), `INCOMPLETE` (nothing contradicted, but not everything could be checked), or `VERIFICATION FAILED` (a check did not match). The command exits 0 only on `VERIFIED`: a definite failure exits 65 (`EX_DATAERR`), and `INCOMPLETE` exits 66 (`EX_NOINPUT`), so a script gating on exit 0 accepts only a record that was fully checked. A failed opening is reported as "the record may have been altered, or a re-supplied input/result/terms does not match this exchange", never asserted as tampering, since the two are indistinguishable. Where the recorded result size is the only thing at fault -- every commitment opened and the agreed-terms hash re-derived -- the headline drops that hedge and says what is established: the record's figure disagrees with the pairing it commits to, and the files you re-supplied check out. When no dual-signed record was supplied, the output says so rather than implying it checked the partner's signatures.
 
-**A result file from another run.** Where records accumulate one per run, the common failed opening is a result file a later run of the same exchange overwrote. When the failures fit that cause, the headline says so first -- `VERIFICATION FAILED: the result file does not belong to this record's run -- most often, a later run overwrote it` -- and the exit code is still 65. Supply the input and result files from this record's run; if those are the files you gave, the record was altered. The exact conditions: [EXCHANGE_RECORD.md, Re-supplied files from another run](spec/EXCHANGE_RECORD.md#re-supplied-files-from-another-run).
+**A result file from another run.** Where records accumulate one per run, the common failed opening is a result file a later run of the same exchange overwrote. When the failures fit that cause, the headline says so first -- `VERIFICATION FAILED: the result file does not belong to this record's run -- most often, a later run overwrote it` -- and the exit code is still 65. Supply the input and result files from this record's run; if those are the files you gave, the record was altered. A folder as the exchange's `OUTPUT_FILE` keeps every run's result under its record's stamp ([The result file](#the-result-file)). The exact conditions: [EXCHANGE_RECORD.md, Re-supplied files from another run](spec/EXCHANGE_RECORD.md#re-supplied-files-from-another-run).
 
 ### Verifying the signed record
 
@@ -1242,7 +1244,7 @@ Leave `signing.partner_fingerprint` out to let the first contact record it, or w
 ### Run the first signed exchange
 
 ```sh
-alcove exchange input.csv results.csv
+alcove exchange input.csv ./
 ```
 
 Both parties present their signing certificate during the authenticated setup step that opens the exchange, before the first linkage key or payload row crosses. With no `signing.partner_fingerprint` on file, your side pins the certificate it was presented, records the fingerprint in the `alcove.yaml` this command was given, and states four things: the value, the file it went into, what the pin is authenticated by, and the comparison to make. That line also rides the [machine-readable event stream](#machine-readable-event-stream) under `partnerCertificatePinned`, so a scheduled run that discards stderr still reports it.
@@ -1270,10 +1272,10 @@ A partner presenting a different certificate ends the run before any linkage key
 
 ### Check a receipt
 
-Keep the input file and the result file the run was given: the record commits to them rather than holding them, and verification re-supplies them from your own copies.
+Keep the input file and the result file the run wrote: the record commits to them rather than holding them, and verification re-supplies them from your own copies. The result is the `alcove-results-<stamp>.csv` with the record's stamp.
 
 ```sh
-alcove verify-receipt alcove-record-<stamp>.json input.csv results.csv \
+alcove verify-receipt alcove-record-<stamp>.json input.csv alcove-results-<stamp>.csv \
   --signed-record alcove-receipt-<stamp>.json \
   --config-file alcove.yaml
 ```

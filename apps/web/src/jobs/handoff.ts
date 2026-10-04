@@ -16,7 +16,7 @@ import {
   composeSftpConfigSpec,
 } from "./intentConfig";
 
-import { JOB_FILE_NAMES, isJobChannel } from "./intentSchemas";
+import { isJobChannel } from "./intentSchemas";
 
 import type { ExchangeSpec, SigningConfig } from "@alcove/core";
 import type {
@@ -223,9 +223,10 @@ export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
  * rather than picked from the work-input folder by name. */
 const HANDOFF_UPLOADED_INPUT_NAME = "input.csv";
 
-/** The output positional both templates end on: the console's own result
- * name. The panel turns it into a per-run name on the schedule lines. */
-const HANDOFF_OUTPUT_NAME = JOB_FILE_NAMES.output;
+/** The output positional both templates end on: the folder the run starts in,
+ * where the CLI writes each run's result as `alcove-results-<stamp>.csv`
+ * under the stamp of that run's record, with no shell feature involved. */
+export const HANDOFF_OUTPUT_FOLDER = "./";
 
 /** The log a scheduled run appends to in the folder it runs in, so an
  * unattended failure leaves its cause on disk. */
@@ -238,7 +239,7 @@ function handoffRunArgs(intent: JobCreateIntent): Array<string> {
     handoffInputPositional(
       intent.inputFile?.name ?? HANDOFF_UPLOADED_INPUT_NAME,
     ),
-    HANDOFF_OUTPUT_NAME,
+    HANDOFF_OUTPUT_FOLDER,
   ];
 }
 

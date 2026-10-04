@@ -297,7 +297,10 @@ describe.skipIf(!cliIsBuilt)(
         bindPaths: handoff.bindPaths,
         image: "ghcr.io/georgetown-mdi/alcove:latest",
       };
-      const line = installedCronLine(source)
+      const handedOffLine = installedCronLine(source);
+      expect(handedOffLine).not.toContain("$(");
+      expect(handedOffLine).not.toContain("%");
+      const line = handedOffLine
         .replace(EXCHANGE_FOLDER_PLACEHOLDER, workspace.scheduleDir)
         .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);
 
@@ -314,13 +317,27 @@ describe.skipIf(!cliIsBuilt)(
             scheduled.output,
         );
 
-      const results = readdirSync(workspace.scheduleDir).filter((name) =>
-        /^results-\d{8}-\d{6}\.csv$/.test(name),
+      // The result is named with its record's stamp, and the record verifies
+      // against it and the input the run read.
+      const scheduledFiles = readdirSync(workspace.scheduleDir);
+      const results = scheduledFiles.filter((name) =>
+        /^alcove-results-.+\.csv$/.test(name),
       );
       expect(results).toHaveLength(1);
       expect(
         pairsFromResultCsv(path.join(workspace.scheduleDir, results[0])),
       ).toEqual(CONSOLE_PAIRS);
+      const record = results[0]
+        .replace(/^alcove-results-/, "alcove-record-")
+        .replace(/\.csv$/, ".json");
+      expect(scheduledFiles).toContain(record);
+      const verified = await startCli({
+        args: ["verify-receipt", record, `./${CONSOLE_INPUT_NAME}`, results[0]],
+        cwd: workspace.scheduleDir,
+        timeoutMs: CLI_DEADLINE_MS,
+      });
+      expectCliSucceeded(verified, "verify-receipt");
+      expect(verified.output).toMatch(/^VERIFIED/m);
       expect(existsSync(path.join(workspace.scheduleDir, "exchange.log"))).toBe(
         true,
       );
@@ -348,9 +365,7 @@ describe.skipIf(!cliIsBuilt)(
           `dst=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER}`,
       ]);
       expect(dockerArgv?.slice(8)).toEqual(handoff.template.argv.slice(1));
-      expect(dockerCronLine(source)).toContain(
-        "results-$(date +\\%Y\\%m\\%d-\\%H\\%M\\%S).csv",
-      );
+      expect(dockerCronLine(source)).toMatch(/ \.\/$/);
     });
   },
 );
