@@ -201,6 +201,12 @@ export const ALLOWLIST = [
       "dummy base handed to `new URL()` so a request path can be parsed; never dereferenced",
   },
   {
+    url: "http://127.0.0.1",
+    match: "exact",
+    reason:
+      "fixed origin the console server builds each request's URL on so the request target can be parsed; never dereferenced",
+  },
+  {
     url: "https://peerjs.com/",
     match: "exact",
     reason:
