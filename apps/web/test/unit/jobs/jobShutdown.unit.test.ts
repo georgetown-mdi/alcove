@@ -10,6 +10,11 @@ import { JobManager } from "@jobs/jobManager";
 import { registerJobManagerShutdown } from "@jobs/index";
 
 import {
+  createCloseHooks,
+  installGracefulShutdown,
+} from "../../../server/console/shutdown";
+
+import {
   STUB_CLI_PATH,
   tempDataRoot,
   validIntent,
@@ -128,7 +133,29 @@ describe("JobManager.shutdown waits for the running child", () => {
   });
 });
 
-describe("the server's graceful shutdown", () => {
+/** Each server entry's wiring of the job manager into its graceful shutdown. */
+const SERVER_SHUTDOWNS: ReadonlyArray<
+  [name: string, install: (server: http.Server) => void]
+> = [
+  [
+    "the Nitro server",
+    (server) => {
+      const hooks = createHooks();
+      registerJobManagerShutdown(hooks);
+      setupGracefulShutdown(server, { hooks } as unknown as NitroApp);
+    },
+  ],
+  [
+    "the console server",
+    (server) => {
+      const hooks = createCloseHooks();
+      registerJobManagerShutdown(hooks);
+      installGracefulShutdown(server, hooks, { timeoutMs: 30_000 });
+    },
+  ],
+];
+
+describe.each(SERVER_SHUTDOWNS)("%s's graceful shutdown", (_name, install) => {
   test("exits the process only after the running child has exited", async () => {
     const { manager, record, cleanupFile } = await runningJob({
       STUB_SIGTERM_CLEANUP_MS: "400",
@@ -148,9 +175,7 @@ describe("the server's graceful shutdown", () => {
       server.listen(0, "127.0.0.1", resolve),
     );
     try {
-      const hooks = createHooks();
-      registerJobManagerShutdown(hooks);
-      setupGracefulShutdown(server, { hooks } as unknown as NitroApp);
+      install(server);
 
       let childExitedAtProcessExit: boolean | undefined;
       const processExited = new Promise<void>((resolve) => {

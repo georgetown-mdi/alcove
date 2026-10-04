@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite dev",
     "dev:console": "VITE_DEPLOYMENT_PROFILE=console vite dev",
+    "console-server:dev": "VITE_DEPLOYMENT_PROFILE=console node server/console/dev.ts",
     "build": "vite build",
     "lint": "npx eslint src server",
     "type-check": "tsc --noEmit",
