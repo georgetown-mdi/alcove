@@ -19,6 +19,7 @@ import {
   UsageError,
 } from "@alcove/core";
 
+import { failureRemedy } from "../failureRemedy";
 import { holdsRecoveryHintTag } from "./recoveryHint";
 
 /**
@@ -94,12 +95,13 @@ export function fixedNextStep(err: unknown): string | undefined {
 /**
  * The display-safe text a command boundary shows for a failure: the
  * sanitized error chain, followed on its own line by {@link fixedNextStep}
- * when that applies. The terminal event's `message` is this same text, so
- * stderr and the event stream state the same step.
+ * when that applies, else by the CLI's remedy for a catalog cause the chain
+ * holds ({@link failureRemedy}). The terminal event's `message` is this same
+ * text, so stderr and the event stream state the same step.
  */
 export function renderFailureForOperator(err: unknown): string {
   const text = sanitizeErrorForDisplay(err);
-  const nextStep = fixedNextStep(err);
+  const nextStep = fixedNextStep(err) ?? failureRemedy(err);
   return nextStep === undefined ? text : `${text}\n${nextStep}`;
 }
 

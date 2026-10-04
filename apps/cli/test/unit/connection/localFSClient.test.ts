@@ -7,12 +7,14 @@ import { execFileSync, spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   DirectoryListingBoundsError,
+  failureCauseOf,
   FrameSizeExceededError,
   TimeoutError,
   UsageError,
 } from "@alcove/core";
 
 import { LocalFSClient } from "../../../src/connection/localFSClient";
+import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import {
   MAX_DIRECTORY_ENTRIES,
   MAX_FILENAME_LENGTH,
@@ -73,10 +75,47 @@ test("connect resolves for an accessible directory", async () => {
   await expect(client.connect({ path: dir })).resolves.toBeUndefined();
 });
 
-test("connect rejects when directory does not exist", async () => {
-  await expect(
-    client.connect({ path: path.join(dir, "nonexistent") }),
-  ).rejects.toThrow("cannot read/write filedrop directory");
+test("connect refuses a directory that does not exist at once, as an input not found", async () => {
+  const missing = path.join(dir, "nonexistent");
+  const err: unknown = await client
+    .connect({ path: missing, maxReconnectAttempts: 3 })
+    .catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(InputNotFoundError);
+  expect((err as Error).message).toBe(
+    `The shared folder ${missing} does not exist (ENOENT).`,
+  );
+  expect(failureCauseOf(err)).toEqual({
+    kind: "folder-missing",
+    path: missing,
+    code: "ENOENT",
+  });
+  expect(exitCodeForError(err)).toBe(66);
+  // Refused on the first attempt: no retry delay was spent.
+  expect(client.connectRetryCount).toBe(0);
+});
+
+test("connect refuses a path that names a file, as a configuration error", async () => {
+  const file = path.join(dir, "a-file");
+  await fs.writeFile(file, "");
+  const err: unknown = await client
+    .connect({ path: file, maxReconnectAttempts: 3 })
+    .catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(UsageError);
+  expect((err as Error).message).toBe(
+    `The shared folder path ${file} does not name a folder (ENOTDIR).`,
+  );
+  expect(exitCodeForError(err)).toBe(64);
+  expect(client.connectRetryCount).toBe(0);
+});
+
+test("connect refuses a path beneath a file as ENOTDIR", async () => {
+  const file = path.join(dir, "a-file");
+  await fs.writeFile(file, "");
+  const err: unknown = await client
+    .connect({ path: path.join(file, "below") })
+    .catch((e: unknown) => e);
+  expect(failureCauseOf(err)).toMatchObject({ code: "ENOTDIR" });
+  expect(exitCodeForError(err)).toBe(64);
 });
 
 test("connect counts a transient reconnect and reports the count", async () => {

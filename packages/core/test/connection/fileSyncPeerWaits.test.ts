@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
+import { failureCauseOf } from "../../src/failureCause";
 import { MAX_TIMEOUT_SECONDS } from "../../src/config/connection";
 import {
   makeMockClient,
@@ -85,7 +86,7 @@ describe.each(CHANNELS)("on $channel", ({ config }) => {
     await vi.advanceTimersByTimeAsync(BOUND_MS - 2_000);
     expect(failure()).toBeUndefined();
     await vi.advanceTimersByTimeAsync(4_000);
-    expect(String(failure())).toMatch(/timed out/);
+    expect(String(failure())).toMatch(/Your partner did not arrive/);
     await conn.close();
   });
 
@@ -131,7 +132,6 @@ describe.each(CHANNELS)("on $channel", ({ config }) => {
 });
 
 describe("each timeout failure ends with the guidance the caller supplied", () => {
-  const PEER_TIMEOUT_GUIDANCE = "peer_timeout_ms sets the arrival wait";
   const INACTIVITY_TIMEOUT_GUIDANCE =
     "inactivity_timeout_ms sets the inactivity wait";
 
@@ -142,14 +142,10 @@ describe("each timeout failure ends with the guidance the caller supplied", () =
       retainFiles?: boolean;
       timestampInFilename?: boolean;
     },
-    guided = true,
   ): Promise<FileSyncConnection> {
     const conn = new FileSyncConnection(client, {
       verbose: -1,
-      ...(guided && {
-        peerTimeoutGuidance: PEER_TIMEOUT_GUIDANCE,
-        inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
-      }),
+      inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
     });
     await conn.open({
       channel: "filedrop",
@@ -159,45 +155,37 @@ describe("each timeout failure ends with the guidance the caller supplied", () =
     return conn;
   }
 
-  async function arrivalFailure(
-    locklessRendezvous: boolean,
-    guided: boolean,
-  ): Promise<string> {
+  async function arrivalFailure(locklessRendezvous: boolean): Promise<unknown> {
     vi.useFakeTimers();
     const { client } = makeMockClient();
-    const conn = await openGuided(
-      client,
-      {
-        peerTimeoutMs: BOUND_MS,
-        inactivityTimeoutMs: CEILING_MS,
-        locklessRendezvous,
-      },
-      guided,
-    );
+    const conn = await openGuided(client, {
+      peerTimeoutMs: BOUND_MS,
+      inactivityTimeoutMs: CEILING_MS,
+      locklessRendezvous,
+    });
     const failure = track(conn.synchronize());
     await vi.advanceTimersByTimeAsync(BOUND_MS + 2_000);
     await conn.close();
-    return String(failure());
+    return failure();
   }
 
   test.each([
     ["lock", false],
     ["lockless", true],
   ])(
-    "an arrival timeout on the %s rendezvous names peer_timeout_ms",
+    "an arrival timeout on the %s rendezvous is the partner-never-arrived sentence alone",
     async (_, lockless) => {
-      const message = await arrivalFailure(lockless, true);
-      expect(message).toContain(
-        `synchronization has timed out. ${PEER_TIMEOUT_GUIDANCE}`,
+      const err = await arrivalFailure(lockless);
+      expect(failureCauseOf(err)).toEqual({
+        kind: "partner-never-arrived",
+        channel: "filedrop",
+      });
+      expect((err as Error).message).toBe(
+        "Your partner did not arrive in the shared folder in the time this " +
+          "run waited.",
       );
-      expect(message).not.toContain(INACTIVITY_TIMEOUT_GUIDANCE);
     },
   );
-
-  test("an arrival timeout with no guidance supplied is the bare message", async () => {
-    const message = await arrivalFailure(false, false);
-    expect(message).toMatch(/synchronization has timed out$/);
-  });
 
   test("a transport operation timeout names inactivity_timeout_ms", async () => {
     vi.useFakeTimers();

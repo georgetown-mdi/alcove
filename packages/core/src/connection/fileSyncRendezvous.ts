@@ -45,6 +45,7 @@ import {
   FrameSizeExceededError,
   markPeerWaitTimeout,
 } from "../errors";
+import { failureCauseError } from "../failureCause";
 import {
   ADVERTISE_HELLO_RETRY_ATTEMPTS,
   cancellableDelay,
@@ -582,16 +583,7 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
-  peerTimeoutGuidance?: string;
 }
-
-const withPeerTimeoutGuidance = (
-  message: string,
-  options: RendezvousOptions,
-): string =>
-  options.peerTimeoutGuidance === undefined
-    ? message
-    : `${message}. ${options.peerTimeoutGuidance}`;
 
 // The connection-owned state the coordinator reads and writes across this
 // boundary. Three kinds:
@@ -615,6 +607,7 @@ export interface RendezvousDeps {
   outbound: () => string | undefined;
   log: () => ReturnType<typeof getLoggerForVerbosity>;
   options: () => RendezvousOptions;
+  channel: () => "filedrop" | "sftp";
   signal: () => AbortSignal;
   wait: (ms: number) => Promise<void>;
   peerId: () => string | undefined;
@@ -1712,18 +1705,16 @@ export class FileSyncRendezvous {
           return;
         }
 
-        // No role tag: this lockless timeout can fire after the peer hello
-        // was seen and acked but the peer's return ack never arrived, where
-        // hello-filename order may make this party the joiner. The role is
-        // indeterminate here, so emit no `[role]` prefix (unlike the lock
-        // timeout below, which is reachable only as the lone starter).
+        // No role tag even in the debug line: this lockless timeout can fire
+        // after the peer hello was seen and acked but the peer's return ack
+        // never arrived, where hello-filename order may make this party the
+        // joiner, so the role is indeterminate here.
+        deps.log().debug("synchronization has timed out");
         throw markPeerWaitTimeout(
-          new Error(
-            withPeerTimeoutGuidance(
-              "synchronization has timed out",
-              deps.options(),
-            ),
-          ),
+          failureCauseError({
+            kind: "partner-never-arrived",
+            channel: deps.channel(),
+          }),
         );
       }
 
@@ -2242,13 +2233,12 @@ export class FileSyncRendezvous {
             "hello. Retry the exchange.",
         );
       }
+      deps.log().debug("[starter] synchronization has timed out");
       throw markPeerWaitTimeout(
-        new Error(
-          withPeerTimeoutGuidance(
-            "[starter] synchronization has timed out",
-            deps.options(),
-          ),
-        ),
+        failureCauseError({
+          kind: "partner-never-arrived",
+          channel: deps.channel(),
+        }),
       );
     };
     try {

@@ -10,11 +10,9 @@ import { captureProcessExit } from "../../exitCapture";
 import { captureStdio } from "../../loggingTestSupport";
 
 // A filedrop directory that is not there is the likeliest filedrop
-// misconfiguration, and it is the run that never establishes a connection at
-// all: every attempt the client makes is a dial that failed. The end-of-run
-// summary must therefore report those attempts as retried dials, never as
-// re-establishments -- which would tell the operator the link was flaky when
-// the directory simply does not exist.
+// misconfiguration. The run refuses it on the first attempt, with exit 66 (an
+// input that is not there yet) and the shared folder sentence plus the CLI's
+// remedy, and reports no connection retries: there were none.
 //
 // Driven through the real parser (buildCli, the zero-setup command as `$0`)
 // rather than runProtocol, because the operator's reading of it comes off the
@@ -25,10 +23,8 @@ import { captureStdio } from "../../loggingTestSupport";
 // reaches the connection rather than being refused before it.
 const INPUT_CSV = "FirstName,LastName,DOB\nJames,Heard,7/16/1975\n";
 
-// One retry short of the default, so the run spends one 1-second retry delay
-// instead of three and the asserted count is the flag's, not a default that
-// could move.
-const MAX_RECONNECT_ATTEMPTS = "1";
+// A retry budget the run must not spend on a missing folder.
+const MAX_RECONNECT_ATTEMPTS = "3";
 
 let work: string;
 let exitSpy: ReturnType<typeof captureProcessExit> | undefined;
@@ -48,7 +44,7 @@ afterEach(() => {
   }
 });
 
-test("a run that never connected reports its dials as retries, not re-establishments", async () => {
+test("a run whose shared folder does not exist fails at once with exit 66", async () => {
   const input = path.join(work, "in.csv");
   fs.writeFileSync(input, INPUT_CSV);
   // Never created: the directory the URL names must not exist when the run
@@ -80,14 +76,11 @@ test("a run that never connected reports its dials as retries, not re-establishm
   }
 
   const stderr = stdio.stderrWrites.join("");
-  // The run failed on the missing directory itself, so what follows is that
-  // failure's summary and not some earlier refusal's.
-  expect(exit).toBe("exit:69");
-  expect(stderr).toContain("cannot read/write filedrop directory");
-  expect(stderr).toContain(missing);
-
+  expect(exit).toBe("exit:66");
   expect(stderr).toContain(
-    "connecting was retried 1 time during this exchange",
+    `The shared folder ${missing} does not exist (ENOENT).\n` +
+      "Create or mount the folder, or correct its path, then run again.",
   );
+  expect(stderr).not.toContain("connecting was retried");
   expect(stderr).not.toContain("re-established");
 });

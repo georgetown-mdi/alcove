@@ -5,7 +5,9 @@ import {
   chainDetailCauses,
   ConnectionError,
   DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
+  failureCauseSentence,
   InternalConsistencyError,
+  markFailureCause,
   UsageError,
   deriveRendezvousPeerId,
   getLogger,
@@ -17,7 +19,6 @@ import {
 } from "@alcove/core";
 
 import { REPORT_LIBRARY_INCOMPATIBILITY } from "../libraryIncompatibility";
-import { PEER_TIMEOUT_GUIDANCE } from "../timeoutGuidance";
 import {
   BROKER_MESSAGE,
   BrokerIdTakenError,
@@ -871,13 +872,22 @@ export async function openWebRtcPeerSession(
   const startedAt = Date.now();
   const deadline = startedAt + rendezvousTimeoutMs;
 
-  const arrivalTimeout = (): ConnectionError =>
-    new ConnectionError(
+  const arrivalTimeout = (): ConnectionError => {
+    const cause = {
+      kind: "partner-never-arrived",
+      channel: "webrtc",
+      waitedMs: rendezvousTimeoutMs,
+    } as const;
+    log.debug(
       `the exchange partner did not ` +
         `${role === "acceptor" ? "answer" : "offer"} within ` +
-        `${budgetSeconds(rendezvousTimeoutMs)}; ${PEER_TIMEOUT_GUIDANCE}`,
-      "transport",
+        budgetSeconds(rendezvousTimeoutMs),
     );
+    return markFailureCause(
+      new ConnectionError(failureCauseSentence(cause), "transport"),
+      cause,
+    );
+  };
   const cancelled = (): ConnectionError =>
     new ConnectionError("the WebRTC rendezvous was cancelled", "closed");
 

@@ -291,10 +291,9 @@ interface Options {
   // the public config; defaults to DEFAULT_JOINER_RECOVERY_MS. Tests lower it to
   // exercise the abort path without a real-time wait.
   joinerRecoveryMs: number;
-  // Sentences the caller appends to a timeout failure to name the setting
-  // that bounds the wait: the partner's arrival (the rendezvous), and every
-  // wait the peer-inactivity budget bounds. Unset leaves the message bare.
-  peerTimeoutGuidance?: string;
+  // A sentence the caller appends to a timeout failure to name the setting
+  // that bounds every wait the peer-inactivity budget bounds. Unset leaves the
+  // message bare.
   inactivityTimeoutGuidance?: string;
 }
 
@@ -730,6 +729,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       outbound: () => this.outbound,
       log: () => this.log,
       options: () => this.options,
+      channel: () => this.config?.channel ?? "filedrop",
       signal: () => this.abortController.signal,
       wait: (ms) => this.wait(ms),
       peerId: () => this.peerId,

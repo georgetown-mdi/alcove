@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
+  failureCauseOf,
+  failureCauseSentence,
   InternalConsistencyError,
+  markFailureCause,
   retryPromise,
   withTimeout,
   TimeoutError,
@@ -13,11 +16,13 @@ import {
 import type {
   FileInfo,
   FileTransportClient,
+  FolderMissingCode,
   GetOptions,
   PutOptions,
   PutSource,
 } from "@alcove/core";
 
+import { InputNotFoundError } from "../util/exit";
 import { frameSizeExceededError } from "./frameSizeGuard";
 import {
   MAX_DIRECTORY_ENTRIES,
@@ -40,6 +45,47 @@ const OPEN_FLAGS = {
   a: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND,
   wx: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
 } as const;
+
+/**
+ * The refusal for a shared folder that is not usable as one, holding core's
+ * `folder-missing` cause. A path with nothing at it is an input that is not
+ * there yet ({@link InputNotFoundError}, exit 66); a path naming something
+ * other than a folder is a configuration error ({@link UsageError}, exit 64).
+ */
+function folderMissingError(dirPath: string, code: FolderMissingCode): Error {
+  const cause = {
+    kind: "folder-missing",
+    path: redactPrivateKeyMaterial(dirPath),
+    code,
+  } as const;
+  const message = failureCauseSentence(cause);
+  return markFailureCause(
+    code === "ENOENT"
+      ? new InputNotFoundError(message)
+      : new UsageError(message),
+    cause,
+  );
+}
+
+// Fails with folderMissingError when nothing usable as a folder is at
+// `dirPath`, else with the generic access failure the connect loop retries.
+async function checkFiledropDirectory(dirPath: string): Promise<void> {
+  try {
+    await fs.access(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+    if (!(await fs.stat(dirPath)).isDirectory())
+      throw folderMissingError(dirPath, "ENOTDIR");
+  } catch (err: unknown) {
+    if (failureCauseOf(err) !== undefined) throw err;
+    const code = (err as { code?: unknown } | null)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR")
+      throw folderMissingError(dirPath, code);
+    throw new Error(
+      `cannot read/write filedrop directory: ` +
+        `${redactPrivateKeyMaterial(dirPath)}: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  }
+}
 
 /**
  * Opens `filePath` with the numeric equivalent of the string `flag` plus
@@ -196,11 +242,13 @@ export class LocalFSClient implements FileTransportClient {
 
   /**
    * Verifies read/write access to the directory specified by `options.path`.
-   * Enforces `options.connectTimeoutMs` (default: 30s) per attempt. A fast
-   * transient failure (e.g. the share or its permissions still settling) is
-   * retried up to `options.maxReconnectAttempts` times (default: 3) with a
-   * hard-coded 1-second delay; a per-attempt TIMEOUT is terminal and is NOT
-   * retried (see the shouldRetry predicate for why).
+   * Enforces `options.connectTimeoutMs` (default: 30s) per attempt. A path
+   * with nothing at it, or naming something other than a folder, is refused
+   * at once ({@link folderMissingError}). Any other fast failure (e.g. the
+   * share's permissions still settling) is retried up to
+   * `options.maxReconnectAttempts` times (default: 3) with a hard-coded
+   * 1-second delay; a per-attempt TIMEOUT is terminal and is NOT retried (see
+   * the shouldRetry predicate for why).
    */
   async connect(options: Record<string, unknown>): Promise<void> {
     const dirPath = options["path"];
@@ -236,15 +284,7 @@ export class LocalFSClient implements FileTransportClient {
         if (attempted) this.reconnectAttempts += 1;
         attempted = true;
         return withTimeout(
-          fs
-            .access(dirPath, fs.constants.R_OK | fs.constants.W_OK)
-            .catch((err: unknown) => {
-              throw new Error(
-                `cannot read/write filedrop directory: ` +
-                  `${redactPrivateKeyMaterial(dirPath)}: ` +
-                  (err instanceof Error ? err.message : String(err)),
-              );
-            }),
+          checkFiledropDirectory(dirPath),
           connectTimeoutMs,
           `timed out opening ${dirPath}`,
         );
@@ -252,15 +292,17 @@ export class LocalFSClient implements FileTransportClient {
       maxReconnects,
       1_000,
       // A TimeoutError means the mount did not answer within the budget; the
-      // abandoned fs.access keeps its thread-pool worker (fs.access ignores
+      // abandoned stat/access keeps its thread-pool worker (neither takes an
       // AbortSignal, and libuv cannot cancel already-dispatched work), so a
       // retry would only strand another worker toward exhausting the
-      // default 4-thread pool. A timeout is therefore terminal; every other
-      // (fast) error is the transient the retry budget exists for
-      // (EACCES/ENOENT while a share is still settling). The name check
-      // alongside `instanceof` is a fallback for `@alcove/core` loaded as
-      // two module copies, where `instanceof` alone would silently fail.
+      // default 4-thread pool. A timeout is therefore terminal, as is a
+      // missing folder, which a scheduled retry of the run handles; every
+      // other (fast) error is the transient the retry budget exists for
+      // (EACCES while a share is still settling). The name check alongside
+      // `instanceof` is a fallback for `@alcove/core` loaded as two module
+      // copies, where `instanceof` alone would silently fail.
       (err) =>
+        failureCauseOf(err) === undefined &&
         !(
           err instanceof TimeoutError ||
           (err instanceof Error && err.name === "TimeoutError")

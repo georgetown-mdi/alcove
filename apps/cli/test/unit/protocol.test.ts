@@ -2437,28 +2437,32 @@ test("runProtocol rejects an already-expired token before opening any connection
 
 test("runProtocol writes no key when the partner never arrives (accept-timeout)", async () => {
   // A lone inviter waits at the rendezvous and the accept-timeout (modeled by
-  // the lone-party peerTimeoutMs) elapses with no peer. The run rejects with a
-  // timeout that names --accept-timeout, and must persist nothing: the key file
-  // is never created.
+  // the lone-party peerTimeoutMs) elapses with no peer. The failure is shown
+  // with the remedy naming --accept-timeout alone, and the run must persist
+  // nothing: the key file is never created.
   const keyFile = path.join(tmpDir, "a.key");
-  await expect(
-    runProtocol({
-      connection: {
-        channel: "filedrop",
-        path: dropDir,
-        options: {
-          pollIntervalMs: 1,
-          peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-          inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
-        },
+  const err: unknown = await runProtocol({
+    connection: {
+      channel: "filedrop",
+      path: dropDir,
+      options: {
+        pollIntervalMs: 1,
+        peerTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
+        inactivityTimeoutMs: LONE_PARTY_PEER_BUDGET_MS,
       },
-      auth: { sharedSecret: TOKEN_A, keyFilePath: keyFile },
-      prepared: minimalPrepared,
-      output: undefined,
-      verbosity: -1,
-      loggerName: "test-a",
-    }),
-  ).rejects.toThrow(/timed out.*--accept-timeout for an online invitation/i);
+    },
+    auth: { sharedSecret: TOKEN_A, keyFilePath: keyFile },
+    prepared: minimalPrepared,
+    output: undefined,
+    verbosity: -1,
+    loggerName: "test-a",
+    arrivalWait: "online-invitation",
+  }).catch((e: unknown) => e);
+  expect(renderFailureForOperator(err)).toBe(
+    "Your partner did not arrive in the shared folder in the time this run " +
+      "waited.\nRun alcove invite again and have your partner accept the new " +
+      "invitation while it waits; --accept-timeout sets how long to wait.",
+  );
   expect(fs.existsSync(keyFile)).toBe(false);
 });
 
@@ -2760,7 +2764,7 @@ test("the both-swept advice appears on a flagged run that fails waiting for the 
   const err = await runLonePartyWithNoPartner({
     sweepExchangeFiles: true,
   });
-  expect((err as Error).message).toContain("synchronization has timed out");
+  expect((err as Error).message).toContain("Your partner did not arrive");
   expect(mockState.errors).toContain(BOTH_SWEPT_GUIDANCE);
 });
 
@@ -2772,7 +2776,7 @@ test("the both-swept advice appears on a flagged run that fails in the key excha
 
 test("the both-swept advice is absent from an unflagged run that fails the same two ways", async () => {
   const waitErr = await runLonePartyWithNoPartner();
-  expect((waitErr as Error).message).toContain("synchronization has timed out");
+  expect((waitErr as Error).message).toContain("Your partner did not arrive");
   expect(mockState.errors).not.toContain(BOTH_SWEPT_GUIDANCE);
 
   fs.rmSync(dropDir, { recursive: true, force: true });
@@ -2804,18 +2808,22 @@ test("the both-swept advice is absent when the sweep could not delete every file
   }
 });
 
-test("a file-sync run whose partner never arrives names --peer-timeout", async () => {
+test("a file-sync run whose partner never arrives names --peer-timeout alone, with no role tag", async () => {
   const err = await runLonePartyWithNoPartner();
   expect(isPeerWaitTimeout(err)).toBe(true);
-  expect(renderFailureForOperator(err)).toContain("--peer-timeout");
+  expect(renderFailureForOperator(err)).toBe(
+    "Your partner did not arrive in the shared folder in the time this run " +
+      "waited.\nCheck that you and your partner use the same folder and " +
+      "that it is syncing, then run again; --peer-timeout sets how long to " +
+      "wait.",
+  );
 });
 
-test("a file-sync run hands its connection the guidance naming each timeout setting", async () => {
-  // Core appends these to its arrival, per-operation and send-wait timeout
-  // failures (pinned in core's fileSyncPeerWaits.test.ts).
-  let guidance:
-    | { peerTimeoutGuidance?: string; inactivityTimeoutGuidance?: string }
-    | undefined;
+test("a file-sync run hands its connection the guidance naming the inactivity setting", async () => {
+  // Core appends it to its per-operation and send-wait timeout failures
+  // (pinned in core's fileSyncPeerWaits.test.ts); a partner that never arrives
+  // is named through the failure-cause catalog instead.
+  let guidance: { inactivityTimeoutGuidance?: string } | undefined;
   const openSpy = vi
     .spyOn(FileSyncConnection.prototype, "open")
     .mockImplementation(async function (this: FileSyncConnection) {
@@ -2836,7 +2844,7 @@ test("a file-sync run hands its connection the guidance naming each timeout sett
   } finally {
     openSpy.mockRestore();
   }
-  expect(guidance?.peerTimeoutGuidance).toContain("--peer-timeout");
+  expect(guidance).not.toHaveProperty("peerTimeoutGuidance");
   expect(guidance?.inactivityTimeoutGuidance).toContain(
     "inactivity_timeout_ms under connection.options",
   );

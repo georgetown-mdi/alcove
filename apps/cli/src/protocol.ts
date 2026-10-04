@@ -61,12 +61,10 @@ import type {
 } from "@alcove/core";
 
 import { LocalFSClient } from "./connection/localFSClient";
+import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
 import { assertFirstRoundFits } from "./firstRoundFits";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
-import {
-  INACTIVITY_TIMEOUT_GUIDANCE,
-  PEER_TIMEOUT_GUIDANCE,
-} from "./connection/timeoutGuidance";
+import { INACTIVITY_TIMEOUT_GUIDANCE } from "./connection/timeoutGuidance";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
 import { describeIceTransportPolicy } from "./connection/webrtc/iceDiagnostics";
 import { openWebRtcMessageConnection } from "./connection/webrtc/webrtcMessageConnection";
@@ -2248,7 +2246,6 @@ async function prepareTransport(
       ...(fileSyncRuntime.forceRetainSweep !== undefined && {
         forceRetainSweep: fileSyncRuntime.forceRetainSweep,
       }),
-      peerTimeoutGuidance: PEER_TIMEOUT_GUIDANCE,
       inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
     });
     build.fileSync = fileSyncConn;
@@ -2741,6 +2738,12 @@ export interface RunProtocolOptions {
    * every `--log-level` but `silent`. Omit it to log the line at info level.
    */
   writeOutcomeLine?: (line: string) => void;
+  /**
+   * Which flag bounds this run's wait for the partner, named in the remedy a
+   * no-show failure is shown with ({@link markArrivalWait}). Omit it for a run
+   * bounded by `--peer-timeout`.
+   */
+  arrivalWait?: ArrivalWait;
 }
 
 /**
@@ -2836,6 +2839,7 @@ export async function runProtocol(
     undeclaredColumnsWarned = false,
     allowMemoryShortfall = false,
     memoryBudgetReported = false,
+    arrivalWait = "exchange",
   } = options;
   const log = getLogger(loggerName);
   const writeOutcomeLine =
@@ -3317,6 +3321,7 @@ export async function runProtocol(
     );
     return { onAuthenticatedError: run.onAuthenticatedError };
   } catch (err) {
+    markArrivalWait(err, arrivalWait);
     // tokenRotated=true means this party's saveKeyFile succeeded; the
     // partner independently derived the same new token from the session
     // key, but their disk write cannot be verified from here. "Retry

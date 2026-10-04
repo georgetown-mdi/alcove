@@ -1266,7 +1266,7 @@ test("synchronize() lock starter: a sentinel visible when the TTL expires yields
   // Here joinerRecoveryMs (10 s) far exceeds the TTL (150 ms), so the recovery
   // check never fires and the loop exits via the TTL while the sentinel is still
   // tracked. The fallback must still report the actionable stuck-joiner cause,
-  // not the generic "synchronization has timed out".
+  // not the generic partner-never-arrived sentence.
   const idB = "00000000-0000-4000-8000-000000000001";
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {
@@ -1297,7 +1297,7 @@ test("synchronize() lock starter: a sentinel visible when the TTL expires yields
     /the exchange timed out before it completed/,
   );
   // NOT the generic bare timeout the pre-fix path produced.
-  expect((err as Error).message).not.toMatch(/synchronization has timed out/);
+  expect((err as Error).message).not.toMatch(/Your partner did not arrive/);
   // Not a peer-wait timeout either: the peer did arrive and then stalled, and
   // this error already has its own diagnosis and next step, so a consumer
   // must not layer a second, contradicting likely cause onto it.
@@ -1414,12 +1414,11 @@ test("synchronize() lock starter: a different-id sentinel replacing an earlier o
   expect(conn.peerId).toBe(idC);
 });
 
-test("synchronize() lock starter: TTL expiry with no joiner produces the bare [starter] timeout", async () => {
+test("synchronize() lock starter: TTL expiry with no joiner produces the partner-never-arrived sentence", async () => {
   // The lock-path TTL fallback when no peer hello and no sentinel were ever
-  // seen: the lone starter polled until the TTL. Pins the exact "[starter]
-  // synchronization has timed out" text (a regression swapping or stripping the
-  // tag would be caught) and that this is a transport failure, not a usage
-  // error. With Issue-1's fix the bare timeout is reached only when no sentinel
+  // seen: the lone starter polled until the TTL. Pins the exact catalog
+  // sentence, with no role tag, and that this is a transport failure, not a
+  // usage error. With Issue-1's fix the bare timeout is reached only when no sentinel
   // was tracked at exit, so this complements the stuck-joiner-at-TTL test above.
   const { client } = makeMockClient();
   const conn = await makeConnectedConn(client, {
@@ -1433,7 +1432,7 @@ test("synchronize() lock starter: TTL expiry with no joiner produces the bare [s
   expect(err).toBeInstanceOf(Error);
   expect(err).not.toBeInstanceOf(UsageError);
   expect((err as Error).message).toBe(
-    "[starter] synchronization has timed out",
+    "Your partner did not arrive in the shared folder in the time this run waited.",
   );
   // Tagged as a peer-wait timeout so a consumer that also knows the run swept
   // the shared folder at entry can offer that as the likely cause.
@@ -1475,7 +1474,7 @@ test("synchronize() lock starter: a bare -joining.json injected mid-rendezvous d
   // The bare timeout, proving the empty-id sentinel never started the recovery
   // window: the stuck-joiner path produces a different, distinct message.
   expect((err as Error).message).toBe(
-    "[starter] synchronization has timed out",
+    "Your partner did not arrive in the shared folder in the time this run waited.",
   );
   expect((err as Error).message).not.toMatch(/recovery window/);
   expect((err as Error).message).not.toMatch(/began arriving/);
@@ -1845,7 +1844,7 @@ test("synchronize() lockless timeout message has no role prefix", async () => {
   // (it can occur after the peer hello was seen and acked, where filename order
   // may make this party the joiner), so the message has no [role] prefix --
   // unlike the lock TTL fallback, which is reachable only as the lone starter.
-  // Pins the exact bare "synchronization has timed out" text.
+  // Pins the exact catalog sentence.
   const { client } = makeMockClient();
   const conn = new FileSyncConnection(client, {
     pollingFrequency: 10,
@@ -1861,7 +1860,9 @@ test("synchronize() lockless timeout message has no role prefix", async () => {
   const err = await conn.synchronize().catch((e: unknown) => e);
   expect(err).toBeInstanceOf(Error);
   expect(err).not.toBeInstanceOf(UsageError);
-  expect((err as Error).message).toBe("synchronization has timed out");
+  expect((err as Error).message).toBe(
+    "Your partner did not arrive in the shared folder in the time this run waited.",
+  );
   // Tagged as a peer-wait timeout so a consumer that also knows the run swept
   // the shared folder at entry can offer that as the likely cause.
   expect(isPeerWaitTimeout(err)).toBe(true);
@@ -2403,7 +2404,7 @@ test("synchronize() leaves a temp-free directory unaffected by the sweep", async
   // Proceeded past the guard into the rendezvous wait (a timeout Error), rather
   // than being rejected there with the strict-empty UsageError.
   expect(err).not.toBeInstanceOf(UsageError);
-  expect(String(err)).toContain("timed out");
+  expect(String(err)).toContain("Your partner did not arrive");
   expect(safeDeleted.filter((p) => p.endsWith(".tmp"))).toHaveLength(0);
 });
 
@@ -3295,7 +3296,7 @@ test("synchronize() (split): an orphaned temp in the OUTBOUND directory is swept
   );
   expect(err).toBeInstanceOf(Error);
   expect(err).not.toBeInstanceOf(UsageError);
-  expect((err as Error).message).toContain("timed out");
+  expect((err as Error).message).toContain("Your partner did not arrive");
   expect(files.has(`/out/${tempName}`)).toBe(false);
 });
 
@@ -3334,7 +3335,7 @@ test("synchronize() (split): an accepted entry sweeps the orphaned temps in both
     (e: unknown) => e,
   );
   expect(err).not.toBeInstanceOf(UsageError);
-  expect((err as Error).message).toContain("timed out");
+  expect((err as Error).message).toContain("Your partner did not arrive");
   expect(files.has(inTemp)).toBe(false);
   expect(files.has(outTemp)).toBe(false);
 });
