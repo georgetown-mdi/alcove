@@ -779,6 +779,16 @@ generation, the query the rows came from, and the architectures compared.
 reaches no OS package, so these two files are where an image's OS layer is
 attributed.
 
+The relay image `infra/relay/Dockerfile` pins has a third list,
+[`NOTICE-os-packages-relay.tsv`](../../NOTICE-os-packages-relay.tsv): package,
+version, source package, source version and homepage, with no licence column.
+It came from a host run of `dpkg-query` against the pinned digest on
+2026-10-04 at `linux/arm64`, not from the generator, and `check:all` neither
+regenerates nor checks it. The generator does not cover dpkg images: it fails a
+package that declares no licence, and dpkg declares none (each package ships a
+`/usr/share/doc/<package>/copyright` file instead). How the generator should
+treat that is an open design question and is not answered here.
+
 Beside them,
 [`NOTICE-os-packages.md`](../../NOTICE-os-packages.md) states where the
 corresponding source for the listed binaries is published -- Alpine's aports
