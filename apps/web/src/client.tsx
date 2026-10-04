@@ -3,10 +3,13 @@ import { StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 
 import { isConsoleBuild, logLevel } from "@utils/clientConfig";
+import { captureInstallPrompt } from "@utils/installPrompt";
 import { registerAppShell } from "@utils/appShellUpdate";
 import { setDefaultLevel } from "loglevel";
 
 setDefaultLevel(logLevel());
+
+if (!isConsoleBuild()) captureInstallPrompt(window);
 
 hydrateRoot(
   document,

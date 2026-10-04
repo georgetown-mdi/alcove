@@ -219,6 +219,25 @@ A browser that does not offer it cannot be made to, and nothing here claims
 otherwise -- that platform's degradation is the operator-initiated run named
 under [The automation goal](#the-automation-goal-and-its-platform-envelope).
 
+### Setting it up from an exchange's page
+
+A scheduled exchange's page has a **Keep it running** section:
+
+- **Install.** Where the browser has offered to install the app, the section
+  shows an **Install Alcove** button that opens the browser's own install
+  prompt. Only Chromium-based browsers make that offer to a page; elsewhere the
+  section says to install from the browser's menu.
+- **The checklist** of what a run with nobody present needs: the installed app
+  with this exchange in it, start at sign-in or the app opened before each
+  window, the computer awake and online during the window, the same browser
+  profile in an ordinary window, and the exchange's folder holding `input.csv`.
+  The section marks the items the page can see (installed, folder chosen).
+- **Check readiness for the next window** reports whether this page is the
+  installed app, whether the folder can be read without a prompt and holds
+  `input.csv`, and whether this browser can connect to the signaling server.
+  It starts no run, does not contact the partner or test the relay, and changes
+  nothing the next window depends on.
+
 ### What works with no network
 
 The service worker caches the app shell and the build's static assets, so with no

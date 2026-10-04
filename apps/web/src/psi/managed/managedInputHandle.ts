@@ -72,7 +72,7 @@ export class ManagedInputFileMissingError extends Error {
  * {@link ManagedInputFileMissingError}; any other refusal is rethrown as the
  * platform raised it.
  */
-async function inputFileHandleIn(
+export async function inputFileHandleIn(
   directory: FileSystemDirectoryHandle,
 ): Promise<FileSystemFileHandle> {
   try {

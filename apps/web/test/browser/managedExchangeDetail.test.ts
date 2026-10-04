@@ -1166,6 +1166,24 @@ describe("managed exchange detail run schedule", () => {
     expect(
       page.getByRole("heading", { name: "Run schedule" }).query(),
     ).toBeNull();
+    expect(
+      page.getByRole("heading", { name: "Keep it running" }).query(),
+    ).toBeNull();
+  });
+
+  test("an agreed schedule is followed by what keeping it running needs", async () => {
+    renderWithSchedule(schedule(2 * 60 * 60 * 1000));
+
+    await expect
+      .element(page.getByRole("heading", { name: "Keep it running" }))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByRole("button", {
+          name: "Check readiness for the next window",
+        }),
+      )
+      .toBeInTheDocument();
   });
 
   test("an open window is named as open, beside the agreed cadence", async () => {
