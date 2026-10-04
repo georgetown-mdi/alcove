@@ -122,7 +122,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       "exchange",
       "--log-file=exchange.log",
       "input.csv",
-      "results.csv",
+      "./",
     ]);
     expect(zeroSetup.template.argv.slice(-3)).toEqual(
       exchange.template.argv.slice(-3),
@@ -136,10 +136,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       undefined,
       { credentialPasted: false, filedropSplit: false },
     );
-    expect(handoff.template.argv.slice(-2)).toEqual([
-      "clients-2026.csv",
-      "results.csv",
-    ]);
+    expect(handoff.template.argv.slice(-2)).toEqual(["clients-2026.csv", "./"]);
   });
 
   test("an input name starting with a dash is given as a path, not a flag", () => {
@@ -148,10 +145,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       undefined,
       { credentialPasted: false, filedropSplit: false },
     );
-    expect(handoff.template.argv.slice(-2)).toEqual([
-      "./-x.csv",
-      "results.csv",
-    ]);
+    expect(handoff.template.argv.slice(-2)).toEqual(["./-x.csv", "./"]);
   });
 
   test("the bind paths are the absolute paths the template names outside the folder", () => {
@@ -239,7 +233,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(dockerCronLine(rootSource)).toBeUndefined();
     expect(dockerTaskSchedulerLine(rootSource)).toBeUndefined();
     expect(installedRunCommand(rootSource)).toBe(
-      "alcove exchange in.csv out-$(date +%Y%m%d-%H%M%S).csv",
+      "alcove exchange in.csv out.csv",
     );
     expect(installedCronLine(rootSource)).toContain("alcove exchange in.csv");
   });
@@ -421,7 +415,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(argv).toContain(
       `--outbound-path=${HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER}`,
     );
-    expect(argv.slice(-2)).toEqual(["input.csv", "results.csv"]);
+    expect(argv.slice(-2)).toEqual(["input.csv", "./"]);
   });
 
   test("the split flag is read on the filedrop channel alone", () => {
@@ -466,7 +460,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(handoff.bindPaths).toEqual([
       { path: HANDOFF_CREDENTIAL_PATH_PLACEHOLDER.slice(1), readOnly: true },
     ]);
-    expect(argv.slice(-2)).toEqual(["input.csv", "results.csv"]);
+    expect(argv.slice(-2)).toEqual(["input.csv", "./"]);
   });
 
   test("a filedrop zero-setup run composes a placeholder file:// locator command", () => {
@@ -478,7 +472,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     const argv =
       handoff.template.kind === "command" ? handoff.template.argv : [];
     expect(argv).toContain(HANDOFF_SHARED_DIRECTORY_URL_PLACEHOLDER);
-    expect(argv.slice(-2)).toEqual(["input.csv", "results.csv"]);
+    expect(argv.slice(-2)).toEqual(["input.csv", "./"]);
   });
 
   // The hand-off is what the operator graduates to cron with, so a run that kept
@@ -537,7 +531,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     // so the command displays (and parses) as the CLI's own form.
     expect(argv[0]).toBe("alcove");
     expect(argv[1]).toBe(HANDOFF_SHARED_DIRECTORY_URL_PLACEHOLDER);
-    expect(argv.slice(-2)).toEqual(["input.csv", "results.csv"]);
+    expect(argv.slice(-2)).toEqual(["input.csv", "./"]);
   });
 
   test("credentialPasted is preserved for an sftp run but forced false for filedrop", () => {

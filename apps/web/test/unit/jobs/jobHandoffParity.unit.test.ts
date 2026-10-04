@@ -417,7 +417,7 @@ describe("every authorable option graduates into the hand-off", () => {
       "--csv-delimiter=|",
       "--log-file=exchange.log",
       "input.csv",
-      "results.csv",
+      "./",
     ]);
   });
 

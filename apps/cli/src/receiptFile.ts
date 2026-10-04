@@ -8,6 +8,7 @@ import {
 import type { DualSignedRecord } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "./fileUtils";
+import { recordFileStamp } from "./recordFile";
 
 // File custody for the dual-signed exchange record (the signed-receipt step's
 // output). Mirrors recordFile.ts: a timestamped default path, atomic owner-only
@@ -24,8 +25,7 @@ export const DEFAULT_RECEIPT_BASENAME = "alcove-receipt";
  * uses) so the receipt and record files for one exchange share a timestamp.
  */
 export function defaultReceiptPath(createdAt: string): string {
-  const stamp = createdAt.replace(/[:.]/g, "-");
-  return `./${DEFAULT_RECEIPT_BASENAME}-${stamp}.json`;
+  return `./${DEFAULT_RECEIPT_BASENAME}-${recordFileStamp(createdAt)}.json`;
 }
 
 /**

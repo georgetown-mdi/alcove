@@ -37,7 +37,7 @@ const COMMAND_HANDOFF = {
       "--server-host-key-fingerprint=SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       "--server-password=@/path/to/your/credential-file",
       "input.csv",
-      "results.csv",
+      "./",
     ],
   },
 } satisfies JobHandoff;
@@ -60,7 +60,7 @@ const SPACED_COMMAND_HANDOFF = {
       "file:///path/to/your/shared-directory",
       "--identity=Agency A",
       "input.csv",
-      "results.csv",
+      "./",
     ],
   },
 } satisfies JobHandoff;
@@ -78,7 +78,7 @@ const CONFIG_HANDOFF = {
   bindPaths: [],
   template: {
     kind: "config",
-    argv: ["alcove", "exchange", "input.csv", "results.csv"],
+    argv: ["alcove", "exchange", "input.csv", "./"],
     yaml:
       "connection:\n  channel: sftp\n  server:\n    host: sftp.example.gov\n" +
       "    password: '@/path/to/your/credential-file'\n",
@@ -144,7 +144,8 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toContain(
       "--server-password=@/path/to/your/credential-file",
     );
-    expect(text()).toContain("input.csv results-$(date +%Y%m%d-%H%M%S).csv");
+    expect(text()).toContain("input.csv ./");
+    expect(text()).not.toContain("$(date");
 
     // Both scheduler snippets, and the line for an installed Alcove.
     expect(text()).toContain("0 2 * * * /usr/bin/docker run");
@@ -195,9 +196,8 @@ describe("RecurringHandoff panel", () => {
     const text = () => app.container.textContent;
     // The config template and the exchange command the hand-off states.
     expect(text()).toContain("channel: sftp");
-    expect(text()).toContain(
-      "exchange input.csv results-$(date +%Y%m%d-%H%M%S).csv",
-    );
+    expect(text()).toContain("exchange input.csv ./");
+    expect(text()).toContain("alcove-results-<time>.csv");
     // The copy-the-key step and both scheduler snippets.
     expect(text()).toContain(".alcove.key");
     expect(text()).toContain("0 2 * * *");
@@ -222,7 +222,7 @@ describe("RecurringHandoff panel", () => {
 
     const text = () => app.container.textContent;
     expect(text()).toMatch(
-      /0 2 \* \* \* \/usr\/bin\/docker run .* exchange clients\.csv matches-\$\(date/,
+      /0 2 \* \* \* \/usr\/bin\/docker run .* exchange clients\.csv matches\.csv/,
     );
     expect(text()).toContain("schtasks /Create");
     expect(text()).not.toContain("input.csv");
@@ -262,7 +262,7 @@ describe("RecurringHandoff panel", () => {
     );
     expect(text()).not.toContain("docker run --rm");
     expect(text()).not.toContain("schtasks /Create");
-    expect(text()).toContain("'--identity=Agency A' input.csv results-$(date");
+    expect(text()).toContain("'--identity=Agency A' input.csv ./");
     expect(text()).toContain(
       "cd /path/to/your/exchange-folder && /path/to/alcove",
     );

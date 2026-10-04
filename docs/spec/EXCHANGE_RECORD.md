@@ -378,6 +378,18 @@ The agreed-terms hash needs both parties' terms to re-derive, and the record hol
 
 A verifier reads the file beside the exchange record it is given, when one is there. Each half comes from the first source that supplies it: a terms document the operator names (`--config-file` for `localTerms`, `--partner-terms` for `partnerTerms`), then, for `partnerTerms`, the copy a dual-signed record named with `--signed-record` carries, then the file. A file that cannot be read or parsed, or is over the size bound, is reported and supplies neither half. The web app writes no such file.
 
+### Result file name
+
+The CLI's `OUTPUT_FILE` positional names either a file or a folder, and which one decides where the result goes:
+
+- **A folder.** A path ending in `/` (or, on Windows, `\`, which the tests, run on Linux, do not exercise), or a path that is an existing directory, names a folder. The run writes its result there as `alcove-results-<stamp>.csv`, a new file each run.
+- **A file.** Any other path is the result file itself, written as given and overwritten by each run.
+- **The stamp's source.** `<stamp>` is the record's own `createdAt` with colons and the fractional-second dot replaced by hyphens -- the stamp in the default `alcove-record-<stamp>.json` name and in `alcove-receipt-<stamp>.json`. A run that built no record takes the stamp from the time its output stage began, as the receipt does. A result written to a folder thus pairs with its record, keys, terms file and receipt by name, and `verify-receipt RECORD INPUT_FILE RESULT_FILE` takes the result whose stamp the record's name has.
+- **No shell feature.** The folder form is an ordinary argument: the per-run name comes from the CLI, not from command substitution or any other shell feature.
+- **No folder is created.** A folder path that does not exist fails the result write like a file path in a missing directory: after the exchange, with the persistence-loss exit code.
+
+The record's format is unchanged: it does not name the result file.
+
 ### Re-supplied files from another run
 
 A failed verification is attributed to re-supplied files from another run of the exchange -- most often a result file a later run overwrote -- when all of the following hold:

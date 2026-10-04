@@ -220,9 +220,10 @@ function ConfigurationExportPanel({
         Download {configFile.fileName}
       </Button>
       <p className={styles.small}>
-        The command reads input.csv from the folder it runs in and writes
-        results.csv beside it. Name your file to match, or change the names in
-        the command.
+        The command reads input.csv from the folder it runs in and writes each
+        run&apos;s result into that folder as alcove-results-&lt;time&gt;.csv,
+        with the same time as that run&apos;s exchange record. Name your file to
+        match, or change the name in the command.
       </p>
       <CopyableCode code={composed.command} ariaLabel="exchange command" />
       <DisclosureSection
