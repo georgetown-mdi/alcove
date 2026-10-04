@@ -9,19 +9,25 @@ holds.
 The packages themselves are listed beside this file, one row per installed
 package with the version and the license string the image's own package manager
 declares: [`NOTICE-os-packages-default.tsv`](NOTICE-os-packages-default.tsv)
-and [`NOTICE-os-packages-fips.tsv`](NOTICE-os-packages-fips.tsv). [`NOTICE`](NOTICE)
+and [`NOTICE-os-packages-fips.tsv`](NOTICE-os-packages-fips.tsv), plus the relay image's
+[`NOTICE-os-packages-relay.tsv`](NOTICE-os-packages-relay.tsv), which is
+measured by hand rather than generated. [`NOTICE`](NOTICE)
 covers this repository's npm tree and reaches no OS package. How the lists are
 derived, and what they do and do not measure, is in
 [`docs/spec/CONTAINER_IMAGES.md`](docs/spec/CONTAINER_IMAGES.md#the-os-layer-attribution-lists).
 
 ## Scope
 
-It covers both images this repository builds, on the same terms:
+It covers both images this repository builds, and the relay image it pins, on
+the same terms:
 
 - The default image, built from `Dockerfile` and published as
   `ghcr.io/georgetown-mdi/alcove:X.Y.Z` and the floating tags beside it.
 - The FIPS variant, built from `Dockerfile.fips` and published as
   `ghcr.io/georgetown-mdi/alcove:X.Y.Z-fips` and the floating tags beside it.
+- The relay image, which `infra/relay/Dockerfile` pins as
+  `docker.io/coturn/coturn:4.18.0` by digest. The Dockerfile adds no package,
+  so the digest fixes the package set.
 
 Coverage of the variant is not conditional on a tag: this statement holds for
 any image built from either Dockerfile at the pins its list records, whether or
@@ -80,12 +86,20 @@ The pinned base digest resolves to Alpine 3.24.2, which the list's
   package directory holds an `APKBUILD` naming the upstream source, with any
   Alpine patch beside it.
 - **Upstream sources**: the tarball each `APKBUILD` names, mirrored by Alpine at
-  `https://distfiles.alpinelinux.org/distfiles/`.
+  `https://distfiles.alpinelinux.org/distfiles/v<major.minor>/<tarball>`, for
+  example `v3.24/` for Alpine 3.24. The bare `/distfiles/<tarball>` path answers
+  404.
 - **At a list row's version**: the version column is `pkgver-r<pkgrel>`. Find
   that pair in the history of the package's directory on the release branch. A
   row can be a subpackage of a larger recipe rather than a directory of its own,
   and the origin the image's own apk database records for that row
   (`/lib/apk/db/installed`) names the directory to read.
+- **Expect the row to be behind the branch tip.** aports moves past a row while
+  the digest-pinned base still ships the older version, so finding the row's
+  `pkgver-r<pkgrel>` in the package directory's history on the release branch
+  is the normal step, not a fallback. Measured for openssl one week after a
+  bump: the branch had moved to 3.5.9 while the base held 3.5.8, and the
+  superseded tarball was still on distfiles.
 
 ### The FIPS variant: Amazon Linux 2023
 
@@ -102,14 +116,47 @@ than a compatible one.
   installed binary package was built from:
   `rpm -q --qf '%{SOURCERPM}\n' <package>`, run in the image, names the file to
   retrieve.
-- **Retrieval**: `dnf download --source <package>`, run against the pinned base
-  with `--releasever` set to the snapshot `AL2023_RELEASEVER` names and the
-  distribution's source repository enabled. `dnf repolist --all` in that base
-  names that repository.
+- **Retrieval**: `dnf download` is a dnf-plugins-core command, and the pinned
+  base does not ship that package. Install it first with
+  `dnf install dnf-plugins-core`, using the same `--releasever`, then run
+  `dnf download --source <package>` with `--releasever` set to the snapshot
+  `AL2023_RELEASEVER` names and the source repository, `amazonlinux-source`,
+  enabled (`--enablerepo=amazonlinux-source`). The source repository is
+  disabled by default. Measured for glibc: the run retrieved
+  `glibc-2.34-231.amzn2023.0.5.src.rpm`, whose name equals rpm's `SOURCERPM`
+  for the installed package.
+
+### The relay image: Debian
+
+The pinned `coturn/coturn:4.18.0` digest is Debian 13.6 (trixie).
+[`NOTICE-os-packages-relay.tsv`](NOTICE-os-packages-relay.tsv) lists 126 dpkg
+packages from 89 source packages, queried at `linux/arm64` on 2026-10-04; the
+`amd64` set is unmeasured.
+
+- **Source packages**: the `source` and `source_version` columns name the Debian
+  source package each binary was built from.
+- **Durable address**: snapshot.debian.org,
+  `https://snapshot.debian.org/package/<source>/<url-encoded version>/`. All 89
+  source versions answered 200 there. sources.debian.org keeps only the current
+  suite versions: 8 of the 89 already answer 404, so it is not a stable address
+  for a pinned image.
+- **Fetching a row's source**: add a `deb-src` entry against
+  `http://snapshot.debian.org/archive/debian/20260908T000000Z` (and the same
+  date under `debian-security`, suite `trixie-security`), run `apt-get update`
+  with `-o Acquire::Check-Valid-Until=false`, then
+  `apt-get source --download-only <source>=<source_version>`. Measured for
+  openssl 3.5.7-1~deb13u2. A snapshot dated before the version first appeared
+  does not find it.
+- **The coturn binary** is not a dpkg package and has no row. Its source is the
+  coturn release tag the `infra/relay/Dockerfile` comment names, `4.18.0`.
+- **Licences**: Debian packages declare no single licence string, so the list
+  has no licence column. Each package ships `/usr/share/doc/<package>/copyright`
+  in the image (114 of the 126 in machine-readable DEP-5 form), and that file is
+  where the licence text lives.
 
 ### The limits of the paths above
 
-- Nothing in this repository dereferences either path, and no check asserts
+- Nothing in this repository dereferences any of these paths, and no check asserts
   that they stay reachable or that a distribution has not reorganized them.
   They are recorded from each image's own metadata and each distribution's
   published source arrangements.

@@ -1,0 +1,142 @@
+# Alcove OS-layer package attribution: the relay image
+#
+# Every dpkg package in the relay image, with its version, the source package
+# and source version it was built from, and its homepage. Debian packages
+# declare no single licence string, so this list has no licence column: each
+# package ships its licence text in /usr/share/doc/<package>/copyright.
+# Produced by a host run of dpkg-query, not by
+# scripts/generate-os-package-attribution.mjs; `check:all` does not regenerate
+# or check this file, so a base move leaves it stale until it is re-measured.
+#
+# image: docker.io/coturn/coturn:4.18.0@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3 (infra/relay/Dockerfile)
+# base: Debian GNU/Linux 13.6 (trixie)
+# query: dpkg-query -W -f '${Package}\t${Version}\t${Source}\t${Homepage}\n'
+# queried: 2026-10-04 at linux/arm64; the amd64 package set is unmeasured
+# source/source_version: the dpkg Source field split; an empty Source means source = package, and no version there means the binary version
+package	version	source	source_version	homepage
+apt	3.0.3	apt	3.0.3	
+base-files	13.8+deb13u6	base-files	13.8+deb13u6	
+base-passwd	3.6.7	base-passwd	3.6.7	
+bash	5.2.37-2+b9	bash	5.2.37-2	http://tiswww.case.edu/php/chet/bash/bashtop.html
+bind9-dnsutils	1:9.20.26-1~deb13u1	bind9	1:9.20.26-1~deb13u1	https://www.isc.org/downloads/bind/
+bind9-host	1:9.20.26-1~deb13u1	bind9	1:9.20.26-1~deb13u1	https://www.isc.org/downloads/bind/
+bind9-libs	1:9.20.26-1~deb13u1	bind9	1:9.20.26-1~deb13u1	https://www.isc.org/downloads/bind/
+bsdutils	1:2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+ca-certificates	20250419	ca-certificates	20250419	
+coreutils	9.7-3	coreutils	9.7-3	https://gnu.org/software/coreutils
+dash	0.5.12-12	dash	0.5.12-12	http://gondor.apana.org.au/~herbert/dash/
+debconf	1.5.91	debconf	1.5.91	
+debian-archive-keyring	2025.1	debian-archive-keyring	2025.1	
+debianutils	5.23.2	debianutils	5.23.2	
+diffutils	1:3.10-4	diffutils	1:3.10-4	https://www.gnu.org/software/diffutils/
+dpkg	1.22.22	dpkg	1.22.22	https://wiki.debian.org/Teams/Dpkg
+findutils	4.10.0-3	findutils	4.10.0-3	https://savannah.gnu.org/projects/findutils/
+gcc-14-base	14.2.0-19	gcc-14	14.2.0-19	http://gcc.gnu.org/
+grep	3.11-4+b1	grep	3.11-4	https://www.gnu.org/software/grep/
+gzip	1.13-1	gzip	1.13-1	https://www.gnu.org/software/gzip/
+hostname	3.25	hostname	3.25	
+init-system-helpers	1.69~deb13u1	init-system-helpers	1.69~deb13u1	
+libacl1	2.3.2-2+b1	acl	2.3.2-2	https://savannah.nongnu.org/projects/acl/
+libapt-pkg7.0	3.0.3	apt	3.0.3	
+libatomic1	14.2.0-19	gcc-14	14.2.0-19	http://gcc.gnu.org/
+libattr1	1:2.5.2-3	attr	1:2.5.2-3	https://savannah.nongnu.org/projects/attr/
+libaudit-common	1:4.0.2-2	audit	1:4.0.2-2	https://people.redhat.com/sgrubb/audit/
+libaudit1	1:4.0.2-2+b2	audit	1:4.0.2-2	https://people.redhat.com/sgrubb/audit/
+libblkid1	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+libbsd0	0.12.2-2	libbsd	0.12.2-2	https://libbsd.freedesktop.org/
+libbson-1.0-0t64	1.30.4-1+deb13u2	mongo-c-driver	1.30.4-1+deb13u2	https://github.com/mongodb/mongo-c-driver
+libbz2-1.0	1.0.8-6	bzip2	1.0.8-6	https://sourceware.org/bzip2/
+libc-bin	2.41-12+deb13u3	glibc	2.41-12+deb13u3	https://www.gnu.org/software/libc/libc.html
+libc6	2.41-12+deb13u3	glibc	2.41-12+deb13u3	https://www.gnu.org/software/libc/libc.html
+libcap-ng0	0.8.5-4+b1	libcap-ng	0.8.5-4	https://people.redhat.com/sgrubb/libcap-ng
+libcap2	1:2.75-10+deb13u1+b1	libcap2	1:2.75-10+deb13u1	https://sites.google.com/site/fullycapable/
+libcom-err2	1.47.2-3+b11	e2fsprogs	1.47.2-3	http://e2fsprogs.sourceforge.net
+libcrypt1	1:4.4.38-1	libxcrypt	1:4.4.38-1	
+libdb5.3t64	5.3.28+dfsg2-9	db5.3	5.3.28+dfsg2-9	http://www.oracle.com/technetwork/database/database-technologies/berkeleydb/overview/index.html
+libdebconfclient0	0.280	cdebconf	0.280	
+libedit2	3.1-20250104-1	libedit	3.1-20250104-1	https://www.thrysoee.dk/editline/
+libevent-2.1-7t64	2.1.12-stable-10+b1	libevent	2.1.12-stable-10	https://libevent.org/
+libevent-core-2.1-7t64	2.1.12-stable-10+b1	libevent	2.1.12-stable-10	https://libevent.org/
+libevent-extra-2.1-7t64	2.1.12-stable-10+b1	libevent	2.1.12-stable-10	https://libevent.org/
+libevent-openssl-2.1-7t64	2.1.12-stable-10+b1	libevent	2.1.12-stable-10	https://libevent.org/
+libevent-pthreads-2.1-7t64	2.1.12-stable-10+b1	libevent	2.1.12-stable-10	https://libevent.org/
+libffi8	3.4.8-2	libffi	3.4.8-2	https://sourceware.org/libffi/
+libfstrm0	0.6.1-1+b3	fstrm	0.6.1-1	https://github.com/farsightsec/fstrm
+libgcc-s1	14.2.0-19	gcc-14	14.2.0-19	http://gcc.gnu.org/
+libgmp10	2:6.3.0+dfsg-3	gmp	2:6.3.0+dfsg-3	https://gmplib.org/
+libgnutls30t64	3.8.9-3+deb13u4	gnutls28	3.8.9-3+deb13u4	https://www.gnutls.org/
+libgssapi-krb5-2	1.21.3-5+deb13u1	krb5	1.21.3-5+deb13u1	https://web.mit.edu/kerberos/
+libhiredis1.1.0	1.2.0-6+b3	hiredis	1.2.0-6	https://github.com/redis/hiredis
+libhogweed6t64	3.10.1-1	nettle	3.10.1-1	https://www.lysator.liu.se/~nisse/nettle/
+libidn2-0	2.3.8-2	libidn2	2.3.8-2	https://www.gnu.org/software/libidn/#libidn2
+libjemalloc2	5.3.0-3	jemalloc	5.3.0-3	https://jemalloc.net/
+libjson-c5	0.18+ds-1	json-c	0.18+ds-1	https://github.com/json-c/json-c/wiki
+libk5crypto3	1.21.3-5+deb13u1	krb5	1.21.3-5+deb13u1	https://web.mit.edu/kerberos/
+libkeyutils1	1.6.3-6	keyutils	1.6.3-6	https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/keyutils.git
+libkrb5-3	1.21.3-5+deb13u1	krb5	1.21.3-5+deb13u1	https://web.mit.edu/kerberos/
+libkrb5support0	1.21.3-5+deb13u1	krb5	1.21.3-5+deb13u1	https://web.mit.edu/kerberos/
+liblastlog2-2	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+libldap2	2.6.10+dfsg-1	openldap	2.6.10+dfsg-1	https://www.openldap.org/
+liblmdb0	0.9.31-1+b2	lmdb	0.9.31-1	https://symas.com/mdb/
+liblz4-1	1.10.0-4	lz4	1.10.0-4	https://github.com/lz4/lz4
+liblzma5	5.8.1-1+deb13u1	xz-utils	5.8.1-1+deb13u1	https://tukaani.org/xz/
+libmariadb3	1:11.8.6-0+deb13u1	mariadb	1:11.8.6-0+deb13u1	https://mariadb.org/
+libmaxminddb0	1.12.2-1	libmaxminddb	1.12.2-1	https://maxmind.github.io/libmaxminddb/
+libmd0	1.1.0-2+b1	libmd	1.1.0-2	https://www.hadrons.org/software/libmd/
+libmicrohttpd12t64	1.0.1-4	libmicrohttpd	1.0.1-4	https://www.gnu.org/software/libmicrohttpd/
+libmongoc-1.0-0t64	1.30.4-1+deb13u2	mongo-c-driver	1.30.4-1+deb13u2	https://github.com/mongodb/mongo-c-driver
+libmongocrypt0	1.13.2-1	libmongocrypt	1.13.2-1	https://github.com/mongodb/libmongocrypt
+libmount1	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+libnettle8t64	3.10.1-1	nettle	3.10.1-1	https://www.lysator.liu.se/~nisse/nettle/
+libnghttp2-14	1.64.0-1.1+deb13u1	nghttp2	1.64.0-1.1+deb13u1	https://nghttp2.org/
+libp11-kit0	0.25.5-3	p11-kit	0.25.5-3	https://p11-glue.github.io/p11-glue/p11-kit.html
+libpam-modules	1.7.0-5	pam	1.7.0-5	http://www.linux-pam.org/
+libpam-modules-bin	1.7.0-5	pam	1.7.0-5	http://www.linux-pam.org/
+libpam-runtime	1.7.0-5	pam	1.7.0-5	http://www.linux-pam.org/
+libpam0g	1.7.0-5	pam	1.7.0-5	http://www.linux-pam.org/
+libpcre2-8-0	10.46-1~deb13u1	pcre2	10.46-1~deb13u1	https://github.com/PCRE2Project/pcre2
+libpq5	17.11-0+deb13u1	postgresql-17	17.11-0+deb13u1	http://www.postgresql.org/
+libprotobuf-c1	1.5.1-1	protobuf-c	1.5.1-1	https://github.com/protobuf-c/protobuf-c
+libsasl2-2	2.1.28+dfsg1-9	cyrus-sasl2	2.1.28+dfsg1-9	https://www.cyrusimap.org/sasl/
+libsasl2-modules-db	2.1.28+dfsg1-9	cyrus-sasl2	2.1.28+dfsg1-9	https://www.cyrusimap.org/sasl/
+libseccomp2	2.6.0-2	libseccomp	2.6.0-2	https://github.com/seccomp/libseccomp
+libselinux1	3.8.1-1	libselinux	3.8.1-1	https://github.com/SELinuxProject
+libsemanage-common	3.8.1-1	libsemanage	3.8.1-1	https://selinuxproject.org
+libsemanage2	3.8.1-1	libsemanage	3.8.1-1	https://selinuxproject.org
+libsepol2	3.8.1-1	libsepol	3.8.1-1	https://selinuxproject.org
+libsmartcols1	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+libsnappy1v5	1.2.2-1	snappy	1.2.2-1	https://google.github.io/snappy/
+libsqlite3-0	3.46.1-7+deb13u1	sqlite3	3.46.1-7+deb13u1	https://www.sqlite.org/
+libssl3t64	3.5.7-1~deb13u2	openssl	3.5.7-1~deb13u2	https://openssl-library.org
+libstdc++6	14.2.0-19	gcc-14	14.2.0-19	http://gcc.gnu.org/
+libsystemd0	257.13-1~deb13u1	systemd	257.13-1~deb13u1	https://systemd.io
+libtasn1-6	4.20.0-2+deb13u1	libtasn1-6	4.20.0-2+deb13u1	https://www.gnu.org/software/libtasn1/
+libtinfo6	6.5+20250216-2	ncurses	6.5+20250216-2	https://invisible-island.net/ncurses/
+libudev1	257.13-1~deb13u1	systemd	257.13-1~deb13u1	https://systemd.io
+libunistring5	1.3-2	libunistring	1.3-2	https://www.gnu.org/software/libunistring/
+liburcu8t64	0.15.2-2	liburcu	0.15.2-2	https://liburcu.org/
+libutf8proc3	2.9.0-1+b2	utf8proc	2.9.0-1	https://github.com/JuliaStrings/utf8proc
+libuuid1	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+libuv1t64	1.50.0-2	libuv1	1.50.0-2	https://github.com/libuv/libuv
+libxml2	2.12.7+dfsg+really2.9.14-2.1+deb13u3	libxml2	2.12.7+dfsg+really2.9.14-2.1+deb13u3	http://xmlsoft.org
+libxxhash0	0.8.3-2	xxhash	0.8.3-2	https://cyan4973.github.io/xxHash
+libzstd1	1.5.7+dfsg-1	libzstd	1.5.7+dfsg-1	https://github.com/facebook/zstd
+login	1:4.16.0-2+really2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+login.defs	1:4.17.4-2	shadow	1:4.17.4-2	https://github.com/shadow-maint/shadow
+mariadb-common	1:11.8.6-0+deb13u1	mariadb	1:11.8.6-0+deb13u1	https://mariadb.org/
+mawk	1.3.4.20250131-1	mawk	1.3.4.20250131-1	https://invisible-island.net/mawk/
+mount	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+mysql-common	5.8+1.1.1	mysql-defaults	1.1.1	
+ncurses-base	6.5+20250216-2	ncurses	6.5+20250216-2	https://invisible-island.net/ncurses/
+ncurses-bin	6.5+20250216-2	ncurses	6.5+20250216-2	https://invisible-island.net/ncurses/
+openssl	3.5.7-1~deb13u2	openssl	3.5.7-1~deb13u2	https://openssl-library.org
+openssl-provider-legacy	3.5.7-1~deb13u2	openssl	3.5.7-1~deb13u2	https://openssl-library.org
+passwd	1:4.17.4-2	shadow	1:4.17.4-2	https://github.com/shadow-maint/shadow
+perl-base	5.40.1-6	perl	5.40.1-6	https://dev.perl.org/perl5/
+sed	4.9-2+deb13u1	sed	4.9-2+deb13u1	https://www.gnu.org/software/sed/
+sqv	1.3.0-3+b2	rust-sequoia-sqv	1.3.0-3	https://sequoia-pgp.org/
+sysvinit-utils	3.14-4	sysvinit	3.14-4	https://github.com/slicer69/sysvinit
+tar	1.35+dfsg-3.1	tar	1.35+dfsg-3.1	https://www.gnu.org/software/tar/
+tzdata	2026b-0+deb13u1	tzdata	2026b-0+deb13u1	https://www.iana.org/time-zones
+util-linux	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	https://github.com/util-linux/util-linux
+zlib1g	1:1.3.dfsg+really1.3.1-1+b1	zlib	1:1.3.dfsg+really1.3.1-1	http://zlib.net/
