@@ -276,18 +276,40 @@ Measured 2026-09-30 in the development container (aarch64 Linux, 10 CPUs, 23 GB 
 
 The engine's linear memory grows by about 252 bytes per setup element and 56 per response element against a fixed maximum of 2,147,483,648 bytes, which puts the failure of a symmetric round matched in one call near 6.97 million elements a side. The table's rows ran the match as one call. The web app's worker matches in setup slices under a memory budget, and runs its masking chunks under the same budget ([The single-pass dataset ceiling: receiver memory and masking compute](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute)), so each call it makes is sized to stay inside the budget at the measured per-element figures, at every size the ceiling below admits. No symmetric round larger than 2^20 a side was run in this table: the engine matches about 0.4 ms an element, and a larger one exceeded the measurement's 15-minute limit per step.
 
-**A same-size round past 6.97 million a side.** `apps/web/test/bench/browserSameSizeRound.ts` runs the web app's own worker-backed engine in Chromium against a Node partner, one PSI operation per page call with no step limit, and records each step's wall time, the renderer's peak resident set and the engine's linear memory. The browser's half of a round at 7,500,000 a side is to be measured:
+**A same-size round at 2^22 a side.** `apps/web/test/bench/browserSameSizeRound.ts` runs the web app's own worker-backed engine in Chromium against a Node partner on the native addon, one PSI operation per page call with no step limit. For each step it records the wall time, the renderer's peak resident set, the engine's linear memory after the step, and the worker's V8 heap before the step, at its peak and after it, read from V8's collection trace. Measured 2026-10-04 in the development container in Playwright's Chromium headless shell 151.0.7922.34, identifier-revealing, 4,194,304 values a side with 1,000 shared. Both rounds matched the known overlap; the joiner's took 4,224.6 s end to end and the starter's 3,673.3 s, partner steps included:
 
-| Browser's role | Elements a side | Result | Wall time | Peak renderer RSS | Engine linear memory |
+| Browser's role | Operation | Wall time | Worker V8 heap: before, peak, after | Engine linear memory after | Peak renderer RSS |
 | --- | --- | --- | --- | --- | --- |
-| Joiner: request, then the match | 7,500,000 | to be measured | to be measured | to be measured | to be measured |
-| Starter: setup, then the response | 7,500,000 | to be measured | to be measured | to be measured | to be measured |
+| Joiner | Create the request | 2,362.4 s | 6, 1,261, 134 MiB | 362 MiB | 2,613 MB |
+| Joiner | Take the partner's setup | 2.4 s | 134, 670, 647 MiB | 362 MiB | 1,870 MB |
+| Joiner | The match (association table) | 1,699.7 s | 647, 1,904, 6 MiB | 1,125 MiB | 4,204 MB |
+| Starter | Create the setup | 1,978.4 s | 6, 1,300, 134 MiB | 362 MiB | 2,713 MB |
+| Starter | Answer the request | 1,572.2 s | 134, 1,767, 6 MiB | 435 MiB | 3,518 MB |
+
+The worker's heap limit is 4,395,630,592 bytes (4,192 MiB), the used plus available bytes V8's memory allocator reports for the worker's isolate, and equal to the page's own `performance.memory.jsHeapSizeLimit`. A peak here is the heap in use as a full collection starts, so it counts garbage that collection then frees. The engine's linear memory stays under the 1,610,612,736-byte budget in every step, as the match slices and masking chunks size it to ([The single-pass dataset ceiling](#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute), which records each masking operation's per-element growth).
+
+**The same round in Node.** `packages/core/test/stress/psiRoundWalls.stress.test.ts` runs the round with both parties on the WebAssembly engine, each in its own worker thread at Node's default heap limit, also 4,192 MiB, and the starter's worker stopped before the match. Measured 2026-10-04 in the same container at 4,194,304 a side, identifier-revealing; the round matched the known overlap, and the process peaked at 5,386 MiB resident. Node reports the heap in use as every collection starts, minor ones included, so its peaks are higher than the browser's for the same step:
+
+| Party | Operation | Wall time | Worker V8 heap: before, peak, after | Engine linear memory after |
+| --- | --- | --- | --- | --- |
+| Starter | Create the setup | 1,854 s | 10, 2,523, 10 MiB | 362 MiB |
+| Joiner | Create the request | 1,847 s | 10, 2,320, 9 MiB | 362 MiB |
+| Starter | Answer the request | 1,478 s | 9, 3,074, 10 MiB | 435 MiB |
+| Joiner | Take the partner's setup | 1 s | 9, 1,089, 1,067 MiB | 362 MiB |
+| Joiner | The match (association table) | 1,625 s | 1,066, 3,095, 14 MiB | 1,125 MiB |
+
+**Not run.**
+
+- **2^23 a side**, in either harness. The Node case runs a size only when the host has twice the 1,400 bytes an element plus 1 GiB it estimates the round needs; at 8,388,608 that is 23.9 GiB, and this host had 21.8 GiB free. The browser round was held to the same rule: the renderer alone peaked at 4,204 MB at 2^22, about 8.4 GB at 2^23 by linear scaling, and twice that plus the Node partner exceeds the host's memory.
+- **Count-only rounds.** Both rounds above are identifier-revealing.
+
+**Where the next wall lies (estimated, not measured).** Every step's worker heap peak scales with the set, while the engine's linear memory is held to its budget, so the worker's V8 heap is the wall a larger round meets first, in the match and in answering a request. Scaled linearly from 2^22, the browser's match would peak near 3,470 MiB of the 4,192 MiB limit at the ceiling below, 7,643,790 a side, and near 3,810 MiB at 2^23. In Node the same scaling passes the limit before the ceiling, which agrees with the command-line application's measured failure of both the starter's request and the joiner's match at 6,291,456 a side ([FILE_SYNC.md, The measured costs](FILE_SYNC.md#the-measured-costs)).
 
 **The browser's ceiling.** `BROWSER_PSI_SET_MAX_ELEMENTS` (`packages/core/src/connection/frameSize.ts`) is 7,643,790, the tab's one-frame envelope: the most elements one WebRTC message holds ([The memory ceiling, and the CSV intake cap](#the-memory-ceiling-and-the-csv-intake-cap)). It is derived from `MAX_WEBRTC_FRAME_BYTES` (`largestOneFramePsiSetElements`, `packages/core/src/connection/webrtcOutboundBound.ts`), and a unit test holds it to the largest set one frame admits. A browser party states it as its receive ceiling ([The receive ceiling](#the-receive-ceiling)), so it admits every partner set one frame holds and refuses a set in parts that would join past one frame.
 
 The ceiling is not a measured capacity:
 
-- **The engine's memory is budgeted up to it; the tab's is not measured there.** The match slices and the masking chunks size every engine call to the budget, so the one-call engine wall near 6.97 million a side does not bind the worker. The tab's JavaScript heap still holds the whole decoded setup and response, and the largest symmetric round recorded as completed is 2^20 a side, so a partner the ceiling admits can still exceed what the tab can hold, pending the host run recorded in the same-size round table above.
+- **The engine's memory is budgeted up to it; the tab's is not measured there.** The match slices and the masking chunks size every engine call to the budget, so the one-call engine wall near 6.97 million a side does not bind the worker. The worker's JavaScript heap still holds the whole decoded setup and response. The largest same-size round measured as completed is 2^22 a side ([above](#what-a-browser-tab-can-match)), and the worker heap a round at the ceiling needs is an estimate, so a partner the ceiling admits can still exceed what the tab can hold.
 
 #### The receive ceiling
 
