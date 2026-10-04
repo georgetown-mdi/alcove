@@ -16,7 +16,7 @@ Work required before the 1.0 release.
 - Accessibility assessment against WCAG 2.1 Level AA and Section 508 for the web application; publication of a VPAT
 - One-time EAR ENC notification to BIS and NSA before public 1.0 distribution
 - Public website with documentation
-- Matching strategy bundles
+- Linkage rule sets for different operating contexts: bundles of matching rules tuned to the fields a context shares and to its precision and recall needs (the shipped default favours recall for linking homeless-services records to Medicaid providers; an education or benefits-administration set would favour precision, rely on no Social Security number, and use addresses); the built-in rule-set registry and picker are the first steps
 
 ## Version 1.0
 
