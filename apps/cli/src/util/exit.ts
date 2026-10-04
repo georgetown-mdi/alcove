@@ -334,14 +334,19 @@ export function installTerminalFailureReporter(
 
 /**
  * Report `err` to the installed terminal-failure reporter, when one is
- * installed, and exit the process with `code`. The exit of
- * {@link exitWithError}, {@link runOrExit}, and {@link exitOnUncaughtError},
- * so the stream's terminal `error` event states the code the process exits
- * with. The caller has already shown the failure on the operator log.
+ * installed, and exit the process with `code` even if the reporter throws, in
+ * which case its failure is written to stderr on one line.
  */
 function exitOnFailure(err: unknown, code: number): never {
-  terminalFailureReporter?.(err, code);
-  process.exit(code);
+  try {
+    terminalFailureReporter?.(err, code);
+  } catch (reportErr) {
+    process.stderr.write(
+      `Could not write the failure to the event stream: ${sanitizeErrorForDisplay(reportErr).replace(/\s+/g, " ")}\n`,
+    );
+  } finally {
+    process.exit(code);
+  }
 }
 
 /**

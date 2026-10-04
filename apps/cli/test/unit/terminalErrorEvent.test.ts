@@ -18,6 +18,7 @@ import {
   exitCodeForError,
   exitOnUncaughtError,
   exitWithError,
+  installTerminalFailureReporter,
   runOrExit,
 } from "../../src/util/exit";
 import { captureFd3 } from "../eventStreamTestSupport";
@@ -240,4 +241,20 @@ test("a failed fd-3 preflight leaves the boundary nothing to report on", () => {
   expect(writeSync.mock.calls.filter(([fd]) => fd === EVENT_STREAM_FD)).toEqual(
     [],
   );
+});
+
+test("a reporter that throws still exits with the boundary's code and one stderr line", () => {
+  installTerminalFailureReporter(() => {
+    throw new Error("EPIPE: the reader\nclosed fd 3");
+  });
+  const stderrWrite = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation(() => true);
+  captureProcessExit();
+  expect(() =>
+    exitWithError(silentLog, new Error("the run failed"), 76),
+  ).toThrow("exit:76");
+  expect(stderrWrite).toHaveBeenCalledTimes(1);
+  const written = String(stderrWrite.mock.calls[0]?.[0]);
+  expect(written).toMatch(/^[^\n]*EPIPE[^\n]*closed fd 3\n$/);
 });
