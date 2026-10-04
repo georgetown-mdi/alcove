@@ -1,4 +1,5 @@
 import type { MessageConnection } from "../../src/connection/messageConnection";
+import { partFrame, payloadPartBody } from "./matchedListPartFrames";
 
 /**
  * `conn` with this party's outbound payload frame swapped for `hostilePayload`
@@ -13,9 +14,7 @@ export function withHostilePayload(
   return {
     send: (data) => {
       const outgoing =
-        typeof data === "object" && data !== null && "hasData" in data
-          ? hostilePayload
-          : data;
+        payloadPartBody(data) !== undefined ? partFrame(hostilePayload) : data;
       return conn.send(outgoing);
     },
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),

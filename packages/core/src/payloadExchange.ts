@@ -27,8 +27,16 @@ import type { CommittedPayload } from "./records/exchangeRecord.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
 import {
   ConnectionError,
-  receiveParsed,
+  parseOrProtocolError,
 } from "./connection/messageConnection.js";
+import {
+  parseMatchedListParts,
+  receiveMatchedListParts,
+  sendMatchedList,
+  utf8Length,
+} from "./psi/matchedListParts.js";
+import type { MatchedListSource } from "./psi/matchedListParts.js";
+import { ShardedMap } from "./psi/shardedMap.js";
 import { redactPrivateKeyMaterial } from "./utils/sanitizeErrorForDisplay.js";
 import { singleIssueArray } from "./utils/singleIssueArray.js";
 import { loneSurrogateIndex } from "./utils/wellFormedString.js";
@@ -102,14 +110,12 @@ const isPayloadRow = (row: unknown): boolean =>
 // message does not say which is the record's. A structural property of the
 // frame, refused here alongside every other malformed shape rather than
 // downstream. The scan runs only on a frame that already passed length parity,
-// stops at the first repeat, and its Set is sized by the entries the frame
+// stops at the first repeat, and its map is sized by the entries the frame
 // already materialized, not by any bound the partner names.
 const hasDistinctRowIndices = (rowIndices: ReadonlyArray<number>): boolean => {
-  const seen = new Set<number>();
-  for (const rowIndex of rowIndices) {
-    if (seen.has(rowIndex)) return false;
-    seen.add(rowIndex);
-  }
+  const seen = new ShardedMap<number, true>();
+  for (const rowIndex of rowIndices)
+    if (seen.setIfAbsent(rowIndex, true) !== undefined) return false;
   return true;
 };
 
@@ -255,13 +261,10 @@ export type PayloadWireMessage = z.infer<typeof payloadWireSchema>;
 export function distinctMatchedRows(
   matchedRows: ReadonlyArray<number>,
 ): number[] {
-  const seen = new Set<number>();
+  const seen = new ShardedMap<number, true>();
   const distinct: number[] = [];
-  for (const row of matchedRows) {
-    if (seen.has(row)) continue;
-    seen.add(row);
-    distinct.push(row);
-  }
+  for (const row of matchedRows)
+    if (seen.setIfAbsent(row, true) === undefined) distinct.push(row);
   return distinct;
 }
 
@@ -635,16 +638,21 @@ export function toCommittedPayload(
  * surfaces as a rejection of the awaited call, so no listener registration,
  * error buffering, or per-path cleanup is needed.
  *
+ * Each payload goes as a list of its rows, in parts
+ * (docs/spec/PROTOCOL.md, A list of matched records is sent in parts), and
+ * the partner's is refused at its first part when it declares more than
+ * `maxPartnerRows` rows.
+ *
  * `onLocalPayloadSent` is the step's partial progress, and the part of it a
  * caller cannot recover from a rejection: this party's payload crosses before
  * the initiator's receive, and the throw that follows carries no state saying
- * so. It runs once the send has RESOLVED -- the transport has taken the frame
- * (docs/COMMUNICATION.md) -- and also for a send the transport rejects as
- * indeterminate, which it can neither confirm nor retract, so the payload file
- * may already be in the partner's directory. It does not run for a send
- * rejected any other way. A caller that owes a record of what it disclosed
- * opens that obligation there (docs/spec/EXCHANGE_RECORD.md, When a record is
- * owed).
+ * so. It runs once every part's send has RESOLVED -- the transport has taken
+ * the frame (docs/COMMUNICATION.md) -- and also for a send rejected after an
+ * earlier part was taken, or rejected as indeterminate, which the transport
+ * can neither confirm nor retract, so a payload file may already be in the
+ * partner's directory. It does not run for a first part rejected any other
+ * way. A caller that owes a record of what it disclosed opens that obligation
+ * there (docs/spec/EXCHANGE_RECORD.md, When a record is owed).
  *
  * The responder holds the partner's payload before its own send, and an
  * indeterminate rejection discards this function's return value, so its report
@@ -655,15 +663,14 @@ export async function exchangePayloads(
   conn: MessageConnection,
   handshakeRole: HandshakeRole,
   localPayload: PayloadWireMessage,
+  maxPartnerRows: number,
   onLocalPayloadSent?: (partnerPayload?: PartnerPayload) => void,
 ): Promise<PartnerPayload> {
   if (handshakeRole === "initiator") {
     await sendPayloadReportingHandOff(conn, localPayload, onLocalPayloadSent);
-    return toPartnerPayload(await receiveParsed(conn, payloadWireSchema));
+    return receivePayload(conn, maxPartnerRows);
   }
-  const partnerPayload = toPartnerPayload(
-    await receiveParsed(conn, payloadWireSchema),
-  );
+  const partnerPayload = await receivePayload(conn, maxPartnerRows);
   // This is the exchange's terminal frame on an unsigned run; on a signing
   // run the receipt swap follows it. On a buffering transport (WebRTC)
   // it looks racy: the responder's last act is a fire-and-forget send
@@ -682,28 +689,119 @@ export async function exchangePayloads(
   return partnerPayload;
 }
 
+const PAYLOAD_WHAT = "payload";
+
+// The payload message as a list of its rows: each part holds the columns and
+// the rows and row indices of its slice, so a part is a payload message of its
+// own and a list of one part is the whole message.
+function payloadSource(payload: PayloadWireMessage): MatchedListSource {
+  if (!payload.hasData)
+    return { entries: 0, entryBytes: () => 0, body: () => payload };
+  const { columns, rowIndices, rows } = payload;
+  return {
+    entries: rows.length,
+    entryBytes: (index) =>
+      utf8Length(String(rowIndices[index])) +
+      utf8Length(JSON.stringify(rows[index])) +
+      2,
+    body: (start, end) => ({
+      hasData: true,
+      columns,
+      rowIndices: rowIndices.slice(start, end),
+      rows: rows.slice(start, end),
+    }),
+  };
+}
+
+// Receives the partner's payload parts, each a payload message of its own.
+async function receivePayload(
+  conn: MessageConnection,
+  maxPartnerRows: number,
+): Promise<PartnerPayload> {
+  const participantId = "";
+  const parts = parseMatchedListParts(
+    await receiveMatchedListParts(
+      conn,
+      participantId,
+      PAYLOAD_WHAT,
+      maxPartnerRows,
+    ),
+    participantId,
+    PAYLOAD_WHAT,
+    (value) => {
+      const part = parseOrProtocolError(payloadWireSchema, value);
+      return { part, entries: part.hasData ? part.rows.length : 0 };
+    },
+  );
+  return joinPayloadParts(parts);
+}
+
+// Joins the partner's parsed payload parts: every part after the first names
+// the first part's columns, the row indices stay distinct across parts, and a
+// list of several parts holds rows in every part.
+/** @internal */
+export function joinPayloadParts(
+  parts: ReadonlyArray<PayloadWireMessage>,
+): PartnerPayload {
+  if (parts.length === 1) return toPartnerPayload(parts[0]);
+  const joined: PartnerPayload = { columns: [], rowIndices: [], rows: [] };
+  parts.forEach((part, index) => {
+    if (!part.hasData)
+      throw new ConnectionError(
+        `protocol error: inbound ${PAYLOAD_WHAT} part ${index} holds no rows`,
+        "protocol",
+      );
+    if (index === 0) joined.columns = part.columns;
+    else if (
+      part.columns.length !== joined.columns.length ||
+      part.columns.some((column, i) => column !== joined.columns[i])
+    )
+      throw new ConnectionError(
+        `protocol error: inbound ${PAYLOAD_WHAT} part ${index} names ` +
+          "different columns than part 0",
+        "protocol",
+      );
+    for (let i = 0; i < part.rows.length; i++) {
+      joined.rowIndices.push(part.rowIndices[i]);
+      joined.rows.push(part.rows[i]);
+    }
+  });
+  if (!hasDistinctRowIndices(joined.rowIndices))
+    throw new ConnectionError(
+      `protocol error: inbound ${PAYLOAD_WHAT} repeats a row index across ` +
+        "its parts",
+      "protocol",
+    );
+  return joined;
+}
+
 /**
- * Send this party's payload frame, reporting the send through `report` on a
- * resolution and on a rejection the transport classifies as indeterminate, and
- * rethrowing every rejection unchanged.
+ * Send this party's payload in parts, reporting the send through `report` once
+ * any part's send has resolved or a part's send was rejected as
+ * indeterminate, and rethrowing every rejection unchanged.
  *
- * An indeterminate rejection is a hand-off the transport could neither confirm
- * nor retract -- the payload file may already sit in the partner's directory --
- * so the disclosure a record attests may have occurred, and the report is what
- * opens the caller's obligation to write one (docs/spec/EXCHANGE_RECORD.md,
- * When a record is owed). It stays a rejection: the run fails, and the record
- * its `outcome` marks as terminated is the accounting entry for a disclosure
- * that cannot be ruled out, never a claim of delivery.
+ * A part the transport took is a disclosure whatever becomes of the parts
+ * after it, and an indeterminate rejection is a hand-off the transport could
+ * neither confirm nor retract -- the part's file may already sit in the
+ * partner's directory -- so either way the disclosure a record attests may
+ * have occurred, and the report is what opens the caller's obligation to write
+ * one (docs/spec/EXCHANGE_RECORD.md, When a record is owed). It stays a
+ * rejection: the run fails, and the record its `outcome` marks as terminated
+ * is the accounting entry for a disclosure that cannot be ruled out, never a
+ * claim of delivery.
  */
 async function sendPayloadReportingHandOff(
   conn: MessageConnection,
   localPayload: PayloadWireMessage,
   report: (() => void) | undefined,
 ): Promise<void> {
+  let partSent = false;
   try {
-    await conn.send(localPayload);
+    await sendMatchedList(conn, payloadSource(localPayload), () => {
+      partSent = true;
+    });
   } catch (error) {
-    if (isTransportPublishIndeterminate(error)) report?.();
+    if (partSent || isTransportPublishIndeterminate(error)) report?.();
     throw error;
   }
   report?.();
@@ -912,9 +1010,10 @@ export function buildOutputTable(
     ...ownHeaders.map(quote),
   ];
 
-  const theirIdxToPayloadPos = new Map(
-    partnerPayload.rowIndices.map((rowIdx, pos) => [rowIdx, pos]),
-  );
+  const theirIdxToPayloadPos = new ShardedMap<number, number>();
+  partnerPayload.rowIndices.forEach((rowIdx, pos) => {
+    theirIdxToPayloadPos.setIfAbsent(rowIdx, pos);
+  });
 
   // A repeated index is a MALFORMED payload -- a sender emitting a row it
   // should have sent once -- refused under every cardinality: the frame
@@ -934,11 +1033,12 @@ export function buildOutputTable(
   if (hasPartnerCols) {
     // Named once each: a partner row our table pairs with several of our records
     // is one missing payload row, not one per pair.
-    const missing = [
-      ...new Set(
-        associationTable[1].filter((idx) => !theirIdxToPayloadPos.has(idx)),
-      ),
-    ];
+    const missingSeen = new ShardedMap<number, true>();
+    const missing = associationTable[1].filter(
+      (idx) =>
+        theirIdxToPayloadPos.get(idx) === undefined &&
+        missingSeen.setIfAbsent(idx, true) === undefined,
+    );
     if (missing.length > 0) {
       throw new ProtocolRefusalError(
         "partner payload is missing rows for association table indices: " +

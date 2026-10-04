@@ -329,6 +329,25 @@ shadow outright, which is wider than the packer: the packer throws on all but
 one of these shapes, and on the one it survives -- an own `hasOwnProperty` that
 answers false for every key -- it writes a map header it fills with nothing.
 
+### Lists of matched records
+
+The lists naming matched records that a cascade sends after its last round --
+each party's mapped-element list, the list it returns with the partner's rows,
+and its payload rows -- go in parts on WebRTC as on file-sync, each part's
+frame sized to the partner's data-channel bound
+([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+No list is bounded by one frame.
+
+A cascade round's association table and original-index list are one frame
+each, sent as BinaryPack with no AEAD wrap. Their index lists fit one frame at
+the per-set maximum, as they fit one message file on file-sync: two index
+lists of 2^24 positions each, encoded by `encodeBinaryPackValue`, measured
+167,509,259 bytes (4.99 bytes per value), which `webrtcFrameReceiveCharge`
+charges as 168,074,494 bytes (5.01 bytes per value) against the 268,435,456
+bytes of `MAX_WEBRTC_FRAME_BYTES`. What can still pass the bound is the
+deduplicating side's owner-list grouping beside them
+([PROTOCOL.md, The lists the parts do not cover](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
+
 ### Outbound pacing
 
 The CLI hands a frame to the data channel a window at a time rather than all at

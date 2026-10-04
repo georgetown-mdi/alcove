@@ -8,6 +8,7 @@ import {
   assertPayloadSendDisclosed,
   assertNoPayloadReceived,
   termsStatingDeclaredPayloadSend,
+  joinPayloadParts,
 } from "../src/payloadExchange";
 import { prepareForExchange } from "../src/exchange";
 import { deriveAcceptedLinkageTerms } from "../src/linkageTermsNegotiation";
@@ -35,6 +36,12 @@ import {
   ConnectionError,
 } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
+import { partFrame } from "./utils/matchedListPartFrames";
+import { MESSAGE_HEADER_BYTES } from "../src/connection/fileSyncFraming";
+import { MATCHED_LIST_PART_HEADER_BYTES } from "../src/psi/matchedListParts";
+
+// The most payload rows a test admits from its partner.
+const PAYLOAD_ROWS_ADMITTED = 1_000;
 
 // --- Fixtures ----------------------------------------------------------------
 
@@ -865,8 +872,8 @@ async function runExchangePayloads(
 ) {
   const [connA, connB] = createMessagePipe();
   return Promise.all([
-    exchangePayloads(connA, "initiator", payloadA),
-    exchangePayloads(connB, "responder", payloadB),
+    exchangePayloads(connA, "initiator", payloadA, PAYLOAD_ROWS_ADMITTED),
+    exchangePayloads(connB, "responder", payloadB, PAYLOAD_ROWS_ADMITTED),
   ]);
 }
 
@@ -945,20 +952,30 @@ test("exchangePayloads: hasData:false from responder yields empty PartnerPayload
 
 test("exchangePayloads: malformed data from partner rejects the initiator", async () => {
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({ unexpected: true });
+  await connB.send(partFrame({ unexpected: true }));
   await expect(initiatorPromise).rejects.toThrow();
 });
 
 test("exchangePayloads: malformed data from partner rejects the responder", async () => {
   const [connA, connB] = createMessagePipe();
-  const responderPromise = exchangePayloads(connB, "responder", {
-    hasData: false,
-  });
-  await connA.send({ unexpected: true });
+  const responderPromise = exchangePayloads(
+    connB,
+    "responder",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
+  await connA.send(partFrame({ unexpected: true }));
   await expect(responderPromise).rejects.toThrow();
 });
 
@@ -972,7 +989,7 @@ function tracing(order: string[]): MessageConnection {
     },
     receive: () => {
       order.push("receive");
-      return Promise.resolve({ hasData: false });
+      return Promise.resolve(partFrame({ hasData: false }));
     },
     close: () => Promise.resolve(),
   };
@@ -984,16 +1001,24 @@ test("exchangePayloads: the initiator's send is reported before it awaits the re
   // taken the frame, so a failure reading the reply is already inside that
   // caller's region.
   const order: string[] = [];
-  await exchangePayloads(tracing(order), "initiator", { hasData: false }, () =>
-    order.push("reported"),
+  await exchangePayloads(
+    tracing(order),
+    "initiator",
+    { hasData: false },
+    PAYLOAD_ROWS_ADMITTED,
+    () => order.push("reported"),
   );
   expect(order).toEqual(["send", "reported", "receive"]);
 });
 
 test("exchangePayloads: the responder reports its send, the exchange's terminal frame", async () => {
   const order: string[] = [];
-  await exchangePayloads(tracing(order), "responder", { hasData: false }, () =>
-    order.push("reported"),
+  await exchangePayloads(
+    tracing(order),
+    "responder",
+    { hasData: false },
+    PAYLOAD_ROWS_ADMITTED,
+    () => order.push("reported"),
   );
   expect(order).toEqual(["receive", "send", "reported"]);
 });
@@ -1003,13 +1028,17 @@ test("exchangePayloads: a send the transport refuses outright is not reported", 
   // publish as not having happened, so nothing was disclosed to report.
   const refusing: MessageConnection = {
     send: () => Promise.reject(new Error("the transport refused the frame")),
-    receive: () => Promise.resolve({ hasData: false }),
+    receive: () => Promise.resolve(partFrame({ hasData: false })),
     close: () => Promise.resolve(),
   };
   const reported: string[] = [];
   await expect(
-    exchangePayloads(refusing, "initiator", { hasData: false }, () =>
-      reported.push("reported"),
+    exchangePayloads(
+      refusing,
+      "initiator",
+      { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
+      () => reported.push("reported"),
     ),
   ).rejects.toThrow(/the transport refused the frame/);
   expect(reported).toEqual([]);
@@ -1023,7 +1052,7 @@ function sendRejecting(
 ): MessageConnection {
   return {
     send: () => Promise.reject(error),
-    receive: () => Promise.resolve(inbound),
+    receive: () => Promise.resolve(partFrame(inbound)),
     close: () => Promise.resolve(),
   };
 }
@@ -1059,6 +1088,7 @@ test.each([
       sendRejecting(indeterminatePublish(), inboundPayload),
       handshakeRole,
       { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
       (partnerPayload) => reported.push(partnerPayload),
     ).then(
       () => {
@@ -1087,6 +1117,7 @@ test("exchangePayloads: an indeterminate publish the connection wrapped is repor
     ),
     "initiator",
     { hasData: false },
+    PAYLOAD_ROWS_ADMITTED,
     () => reported.push("reported"),
   ).catch((reason: unknown) => reason);
 
@@ -1098,16 +1129,23 @@ test("exchangePayloads: a frame failing length parity is refused on parity alone
   // Parity is checked before distinctness, so a mismatched frame is refused
   // without walking its indices -- the refusal names only the parity fault.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id"],
-    rowIndices: [0, 0],
-    rows: [["P0"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id"],
+      rowIndices: [0, 0],
+      rows: [["P0"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1126,16 +1164,23 @@ test("exchangePayloads: a repeated row index is refused at parse, as a protocol 
   // partner frame gets, so the receive rejects rather than returning a payload for
   // a later stage to refuse.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id"],
-    rowIndices: [2, 2],
-    rows: [["P2"], ["P2"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id"],
+      rowIndices: [2, 2],
+      rows: [["P2"], ["P2"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1149,16 +1194,23 @@ test("exchangePayloads: distinct row indices parse whatever order they arrive in
   // message still parses -- including one whose indices do not ascend, which the
   // schema has never required.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id"],
-    rowIndices: [2, 0],
-    rows: [["P2"], ["P0"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id"],
+      rowIndices: [2, 0],
+      rows: [["P2"], ["P0"]],
+    }),
+  );
   await expect(initiatorPromise).resolves.toEqual({
     columns: ["patient_id"],
     rowIndices: [2, 0],
@@ -1174,16 +1226,23 @@ test("exchangePayloads: a frame declaring no columns but holding rows is refused
   // the classification every other malformed partner frame gets, so the
   // receive rejects before any output or record stage reads the payload.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: [],
-    rowIndices: [0],
-    rows: [["x"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: [],
+      rowIndices: [0],
+      rows: [["x"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1194,16 +1253,23 @@ test("exchangePayloads: a frame declaring no columns but holding rows is refused
 
 test("exchangePayloads: a row holding more values than the frame names columns is refused", async () => {
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id"],
-    rowIndices: [0],
-    rows: [["P0", "undeclared"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id"],
+      rowIndices: [0],
+      rows: [["P0", "undeclared"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1217,16 +1283,23 @@ test("exchangePayloads: a row holding fewer values than the frame names columns 
   // value for the record would otherwise be committed as an absent cell the
   // record's column list still claims was received.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id", "diagnosis"],
-    rowIndices: [0, 2],
-    rows: [["P0", "A"], ["P2"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id", "diagnosis"],
+      rowIndices: [0, 2],
+      rows: [["P0", "A"], ["P2"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1240,19 +1313,26 @@ test("exchangePayloads: an ordinary output party's multi-column frame parses", a
   // names parse, and a null cell counts as the value it is rather than as a
   // missing one.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id", "diagnosis"],
-    rowIndices: [0, 2],
-    rows: [
-      ["P0", "A"],
-      ["P2", null],
-    ],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id", "diagnosis"],
+      rowIndices: [0, 2],
+      rows: [
+        ["P0", "A"],
+        ["P2", null],
+      ],
+    }),
+  );
   await expect(initiatorPromise).resolves.toEqual({
     columns: ["patient_id", "diagnosis"],
     rowIndices: [0, 2],
@@ -1267,16 +1347,23 @@ test("exchangePayloads: a zero-match frame naming columns but holding no rows pa
   // No row, so no row to be too wide or too narrow: a sender with transmittable
   // columns and nothing matched is honest, and the rule leaves it alone.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["patient_id"],
-    rowIndices: [],
-    rows: [],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["patient_id"],
+      rowIndices: [],
+      rows: [],
+    }),
+  );
   await expect(initiatorPromise).resolves.toEqual({
     columns: ["patient_id"],
     rowIndices: [],
@@ -1290,16 +1377,23 @@ test("exchangePayloads: a columnless frame holding no rows parses, committing no
   // column, so its record's committed payload and readable column list agree at
   // empty and there is nothing for the rule to refuse.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: [],
-    rowIndices: [],
-    rows: [],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: [],
+      rowIndices: [],
+      rows: [],
+    }),
+  );
   await expect(initiatorPromise).resolves.toEqual({
     columns: [],
     rowIndices: [],
@@ -1435,11 +1529,16 @@ const elementShapeCorpus: Array<{ label: string; frame: unknown }> = [
 /** Whether the receive path accepts `frame` as the partner's payload message. */
 async function parsesOnTheWire(frame: unknown): Promise<boolean> {
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send(frame);
+  await connB.send(partFrame(frame));
   return initiatorPromise.then(
     () => true,
     () => false,
@@ -1475,7 +1574,12 @@ test("exchangePayloads: send rejection rejects the initiator", async () => {
     close: () => Promise.resolve(),
   };
   await expect(
-    exchangePayloads(conn, "initiator", { hasData: false }),
+    exchangePayloads(
+      conn,
+      "initiator",
+      { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
+    ),
   ).rejects.toThrow("send failed");
 });
 
@@ -1483,12 +1587,17 @@ test("exchangePayloads: send rejection rejects the responder", async () => {
   const sendError = new Error("send failed");
   const conn: MessageConnection = {
     send: () => Promise.reject(sendError),
-    receive: () => Promise.resolve({ hasData: false }),
+    receive: () => Promise.resolve(partFrame({ hasData: false })),
     close: () => Promise.resolve(),
   };
   // Responder receives first then sends; the send rejection shows up.
   await expect(
-    exchangePayloads(conn, "responder", { hasData: false }),
+    exchangePayloads(
+      conn,
+      "responder",
+      { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
+    ),
   ).rejects.toThrow("send failed");
 });
 
@@ -1500,16 +1609,23 @@ test("exchangePayloads: a pathological-count partner row fails cleanly, not with
   // ConnectionError("protocol"); the improvement under test is that the cause is a
   // bounded validation error, not the RangeError.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive(); // consume the initiator's hasData:false frame
-  await connB.send({
-    hasData: true,
-    columns: ["c"],
-    rowIndices: [0],
-    rows: [Array.from({ length: 300_000 }, () => 1)],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["c"],
+      rowIndices: [0],
+      rows: [Array.from({ length: 300_000 }, () => 1)],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1524,16 +1640,23 @@ test("exchangePayloads: an empty partner column name is rejected as a protocol e
   // emit an empty name (inferMetadata rejects it at intake), so this floor cannot
   // regress them.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: [""],
-    rowIndices: [0],
-    rows: [["v"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: [""],
+      rowIndices: [0],
+      rows: [["v"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1545,16 +1668,23 @@ test("exchangePayloads: a pathological-count columns array fails cleanly, not wi
   // CPU burn then a RangeError). The single-issue validator caps that at one
   // clean issue; receiveParsed wraps it as ConnectionError("protocol").
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    PAYLOAD_ROWS_ADMITTED,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: Array.from({ length: 4_000_000 }, () => 1),
-    rowIndices: [0],
-    rows: [["v"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: Array.from({ length: 4_000_000 }, () => 1),
+      rowIndices: [0],
+      rows: [["v"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1567,16 +1697,23 @@ test("exchangePayloads: a pathological-count rowIndices array fails cleanly, not
   // unusable; the single-issue validator caps accumulation regardless of the
   // length mismatch with `rows`.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    Number.MAX_SAFE_INTEGER,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["c"],
-    rowIndices: Array.from({ length: 4_000_000 }, () => -1),
-    rows: [["v"]],
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["c"],
+      rowIndices: Array.from({ length: 4_000_000 }, () => -1),
+      rows: [["v"]],
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1590,16 +1727,23 @@ test("exchangePayloads: a pathological-count rows array fails cleanly, not with 
   // loop (`Invalid string length` at the top). The outer `rows` is a
   // single-issue validator too, so the whole 2-D structure yields one issue.
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    Number.MAX_SAFE_INTEGER,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["c"],
-    rowIndices: [0],
-    rows: Array.from({ length: 4_000_000 }, () => 0),
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["c"],
+      rowIndices: [0],
+      rows: Array.from({ length: 4_000_000 }, () => 0),
+    }),
+  );
   const err = await initiatorPromise.catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ConnectionError);
   expect((err as ConnectionError).kind).toBe("protocol");
@@ -1613,18 +1757,185 @@ test("exchangePayloads: a legitimately large partner payload parses", async () =
   // threshold, so this also proves a VALID large message never trips the bound.
   const n = 200_000;
   const [connA, connB] = createMessagePipe();
-  const initiatorPromise = exchangePayloads(connA, "initiator", {
-    hasData: false,
-  });
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    {
+      hasData: false,
+    },
+    n,
+  );
   await connB.receive();
-  await connB.send({
-    hasData: true,
-    columns: ["c"],
-    rowIndices: Array.from({ length: n }, (_, i) => i),
-    rows: Array.from({ length: n }, () => ["v"]),
-  });
+  await connB.send(
+    partFrame({
+      hasData: true,
+      columns: ["c"],
+      rowIndices: Array.from({ length: n }, (_, i) => i),
+      rows: Array.from({ length: n }, () => ["v"]),
+    }),
+  );
   const received = await initiatorPromise;
   expect(received.rows).toHaveLength(n);
+});
+
+// --- exchangePayloads: a payload in parts ------------------------------------
+
+// A pipe whose sending end states a file-sync message-file bound leaving
+// `bodyBytes` bytes for each payload part's body.
+function pipeWithPayloadPartBody(
+  bodyBytes: number,
+): [MessageConnection, MessageConnection] {
+  const [a, b] = createMessagePipe();
+  const bound =
+    MESSAGE_HEADER_BYTES + MATCHED_LIST_PART_HEADER_BYTES + bodyBytes;
+  const stating = (conn: MessageConnection): MessageConnection => ({
+    send: (data) => conn.send(data),
+    receive: (timeoutMs?: number) => conn.receive(timeoutMs),
+    close: () => conn.close(),
+    outboundFileSyncFrameBound: () => bound,
+  });
+  return [stating(a), stating(b)];
+}
+
+const manyRows = {
+  hasData: true as const,
+  columns: ["note"],
+  rowIndices: Array.from({ length: 30 }, (_, i) => i * 2),
+  rows: Array.from({ length: 30 }, (_, i) => [`note ${i}`]),
+};
+
+test("exchangePayloads: a payload past one part is sent in parts and joined", async () => {
+  const [connA, connB] = pipeWithPayloadPartBody(160);
+  const sent: Array<unknown> = [];
+  const countingA: MessageConnection = {
+    ...connA,
+    send: (data) => {
+      sent.push(data);
+      return connA.send(data);
+    },
+  };
+  const [, receivedByB] = await Promise.all([
+    exchangePayloads(countingA, "initiator", manyRows, 30),
+    exchangePayloads(connB, "responder", { hasData: false }, 30),
+  ]);
+  expect(sent.length).toBeGreaterThan(1);
+  expect(receivedByB).toEqual({
+    columns: manyRows.columns,
+    rowIndices: manyRows.rowIndices,
+    rows: manyRows.rows,
+  });
+});
+
+test("exchangePayloads: a payload declaring more rows than this party admits is refused at its first part", async () => {
+  const [connA, connB] = createMessagePipe();
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    { hasData: false },
+    29,
+  );
+  await connB.receive();
+  await connB.send(partFrame(manyRows));
+  await expect(initiatorPromise).rejects.toThrow(
+    new ConnectionError(
+      "protocol error: inbound payload declares 30 entries, over the 29 this " +
+        "party admits",
+      "protocol",
+    ),
+  );
+});
+
+test("exchangePayloads: parts naming different columns are refused", async () => {
+  const [connA, connB] = createMessagePipe();
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    { hasData: false },
+    PAYLOAD_ROWS_ADMITTED,
+  );
+  await connB.receive();
+  const header = { count: 2, entries: 2 };
+  await connB.send(
+    partFrame(
+      { hasData: true, columns: ["a"], rowIndices: [0], rows: [["x"]] },
+      { ...header, index: 0 },
+    ),
+  );
+  await connB.send(
+    partFrame(
+      { hasData: true, columns: ["b"], rowIndices: [1], rows: [["y"]] },
+      { ...header, index: 1 },
+    ),
+  );
+  await expect(initiatorPromise).rejects.toThrow(
+    /inbound payload part 1 names different columns than part 0/,
+  );
+});
+
+test("joinPayloadParts: a part of several holding no rows is refused", () => {
+  // parseMatchedListParts refuses this list before the join, so the join is
+  // reached here with the parsed parts directly.
+  let caught: unknown;
+  try {
+    joinPayloadParts([
+      { hasData: true, columns: ["a"], rowIndices: [0], rows: [["x"]] },
+      { hasData: false },
+    ]);
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toEqual(
+    new ConnectionError(
+      "protocol error: inbound payload part 1 holds no rows",
+      "protocol",
+    ),
+  );
+  expect((caught as ConnectionError).kind).toBe("protocol");
+});
+
+test("exchangePayloads: a row index repeated across parts is refused", async () => {
+  const [connA, connB] = createMessagePipe();
+  const initiatorPromise = exchangePayloads(
+    connA,
+    "initiator",
+    { hasData: false },
+    PAYLOAD_ROWS_ADMITTED,
+  );
+  await connB.receive();
+  const header = { count: 2, entries: 2 };
+  for (const index of [0, 1])
+    await connB.send(
+      partFrame(
+        { hasData: true, columns: ["a"], rowIndices: [4], rows: [["x"]] },
+        { ...header, index },
+      ),
+    );
+  await expect(initiatorPromise).rejects.toThrow(
+    /inbound payload repeats a row index across its parts/,
+  );
+});
+
+test("exchangePayloads: a send refused after an earlier part was taken is reported", async () => {
+  // The partner already holds the first part's rows, so the disclosure a
+  // record attests has occurred though the send failed outright.
+  const [connA] = pipeWithPayloadPartBody(160);
+  let sends = 0;
+  const failingSecond: MessageConnection = {
+    ...connA,
+    send: (data) => {
+      sends += 1;
+      return sends === 1
+        ? connA.send(data)
+        : Promise.reject(new ConnectionError("dropped", "transport"));
+    },
+  };
+  const reported: Array<string> = [];
+  await expect(
+    exchangePayloads(failingSecond, "initiator", manyRows, 30, () =>
+      reported.push("reported"),
+    ),
+  ).rejects.toThrow("dropped");
+  expect(reported).toEqual(["reported"]);
 });
 
 // --- buildOutputTable --------------------------------------------------------

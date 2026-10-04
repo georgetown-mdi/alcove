@@ -28,6 +28,10 @@ import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { ExchangeRecord } from "../../src/records/exchangeRecord";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { Metadata } from "../../src/config/metadata";
+import { partFrame } from "../utils/matchedListPartFrames";
+
+// The most payload rows a test admits from its partner.
+const PAYLOAD_ROWS_ADMITTED = 1_000;
 
 // Every bound on a length ceiling counts UTF-16 code units, so a schema and a
 // hand-written predicate sharing a ceiling accept the same values. Zod's own
@@ -298,14 +302,21 @@ test("the payload frame's column-name bound refuses the same astral names", asyn
   // than read off a schema.
   for (const name of corpus(MAX_NAME_LENGTH)) {
     const [a, b] = createMessagePipe();
-    const receiving = exchangePayloads(a, "initiator", { hasData: false });
+    const receiving = exchangePayloads(
+      a,
+      "initiator",
+      { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
+    );
     await b.receive();
-    await b.send({
-      hasData: true,
-      columns: [name],
-      rowIndices: [0],
-      rows: [["v"]],
-    });
+    await b.send(
+      partFrame({
+        hasData: true,
+        columns: [name],
+        rowIndices: [0],
+        rows: [["v"]],
+      }),
+    );
     if (name.length <= MAX_NAME_LENGTH) {
       expect((await receiving).columns).toEqual([name]);
     } else {

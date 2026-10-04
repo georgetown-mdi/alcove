@@ -104,8 +104,8 @@ export function unpackFrame(bytes: Uint8Array | ArrayBuffer): unknown {
   return unpack<Unpackable>(bytes as unknown as ArrayBuffer);
 }
 
-/** `n` mapped-element records -- `Array<{theirIndex, iteration}>`, the shape of
- * the largest legitimate non-binary frame. */
+/** `n` mapped-element records -- `Array<{theirIndex, iteration}>`, the entries
+ * a mapped-element list part holds, as a structured frame. */
 function mappedElementRecords(
   n: number,
 ): Array<{ theirIndex: number; iteration: number }> {

@@ -618,7 +618,7 @@ test("a count-only run refuses an inbound payload column from a non-conforming p
   ]);
 
   // The initiator is the party that receives the hostile frame, so it is the one
-  // that aborts through assertNoPayloadReceived.
+  // that aborts, at the first part of a payload declaring rows it admits none of.
   expect(initiatorOutcome.status).toBe("rejected");
   const refusal =
     initiatorOutcome.status === "rejected"
@@ -626,7 +626,9 @@ test("a count-only run refuses an inbound payload column from a non-conforming p
       : undefined;
   expect(refusal).toBeInstanceOf(ConnectionError);
   expect((refusal as ConnectionError).kind).toBe("protocol");
-  expect((refusal as Error).message).toContain("no payload at all");
+  expect((refusal as Error).message).toContain(
+    "inbound payload declares 1 entry, over the 0 this party admits",
+  );
 
   // The victim's terminated record states and commits the empty received
   // payload, not the frame the partner sent before the refusal.

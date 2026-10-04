@@ -27,6 +27,7 @@ import {
   mirrorCardinality,
   type Column,
 } from "../utils/candidateSetBounds";
+import { readPartFrame } from "../utils/matchedListPartFrames";
 
 // The conformance corpus over ragged and fanned-out inputs together that
 // docs/spec/PROTOCOL.md requires (What the cascade realization owes), asserting
@@ -170,10 +171,11 @@ function flippedPairs(table: AssociationTable): string {
   return canonicalPairs([table[1], table[0]]);
 }
 
-// A frame of the mapped-element exchange: the entries a party states for its
+// A part of the mapped-element exchange: the entries a party states for its
 // own matched records. Nothing else a linkage round sends is an array of
 // objects.
-function holdsMappedElements(frame: unknown): boolean {
+function holdsMappedElements(sent: unknown): boolean {
+  const frame = readPartFrame(sent)?.body;
   return (
     Array.isArray(frame) &&
     frame.length > 0 &&
