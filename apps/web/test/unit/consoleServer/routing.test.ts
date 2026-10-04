@@ -190,6 +190,29 @@ describe("the console server's answers", () => {
     expect(answer).not.toMatch(/\r\ncontent-type:/i);
   });
 
+  test.each([
+    ["TRACE", "TRACE /api/jobs/slot HTTP/1.1"],
+    ["an absolute-form target", "PUT http://localhost/api/jobs/slot HTTP/1.1"],
+    ["an asterisk-form target", "OPTIONS * HTTP/1.1"],
+  ])(
+    "%s with an unread body is discarded whole, so the next request on the connection is parsed from its own first byte",
+    async (_label, requestLine) => {
+      enableJobApi();
+      const port = await startServer();
+      const smuggled = "GET /nothing-here HTTP/1.1\r\nHost: localhost\r\n\r\n";
+      const answer = await sendRaw(
+        port,
+        `${requestLine}\r\nHost: localhost\r\nContent-Length: ${smuggled.length}\r\n\r\n` +
+          smuggled +
+          "GET /api/jobs/slot HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+      );
+      const statuses = [...answer.matchAll(/^HTTP\/1\.1 (\d{3}) /gm)].map(
+        (match) => Number(match[1]),
+      );
+      expect(statuses).toEqual([404, 200]);
+    },
+  );
+
   test("a WebSocket upgrade is answered as an ordinary request, never with 101", async () => {
     enableJobApi();
     const port = await startServer();

@@ -73,6 +73,12 @@ export function toWebRequest(
   });
 }
 
+/** Whether the connection under `res` is gone. A function rather than an
+ * inline test, since the value changes across the awaits that follow it. */
+function clientGone(res: ServerResponse): boolean {
+  return res.destroyed || res.closed;
+}
+
 /** Resolve once `res` can take more data or has closed. */
 function drainedOrClosed(res: ServerResponse): Promise<void> {
   return new Promise((resolve) => {
@@ -111,19 +117,25 @@ export async function writeWebResponse(
     return;
   }
 
-  res.flushHeaders();
   const reader = response.body.getReader();
   const cancelOnClose = (): void => {
     reader.cancel().catch(() => undefined);
   };
+  // The client may have gone while the handler ran, its `close` already
+  // emitted. A cancel settles a read parked on an idle stream.
+  if (clientGone(res)) {
+    cancelOnClose();
+    return;
+  }
   res.once("close", cancelOnClose);
+  res.flushHeaders();
   try {
     for (;;) {
       const { value, done } = await reader.read();
-      if (done || res.destroyed) break;
+      if (done || clientGone(res)) break;
       if (!res.write(value)) await drainedOrClosed(res);
     }
-    if (!res.destroyed) res.end();
+    if (!clientGone(res)) res.end();
   } catch {
     res.destroy();
   } finally {

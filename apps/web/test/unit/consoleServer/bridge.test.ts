@@ -112,6 +112,38 @@ describe("the node-to-web request bridge", () => {
 });
 
 describe("the web-to-node response bridge", () => {
+  test("a client that disconnects while the handler runs has its idle response body cancelled", async () => {
+    let cancelled = false;
+    let requestArrived = false;
+    const port = await serveProbe({
+      GET: async ({ request }) => {
+        requestArrived = true;
+        await new Promise((resolve) =>
+          request.signal.addEventListener("abort", resolve),
+        );
+        return new Response(
+          new ReadableStream({
+            start() {},
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        );
+      },
+    });
+    const request = http.get({
+      host: "127.0.0.1",
+      port,
+      path: PROBE_PATH,
+      agent: false,
+      headers: { host: "localhost" },
+    });
+    request.on("error", () => undefined);
+    await waitUntil(() => requestArrived);
+    request.destroy();
+    await waitUntil(() => cancelled, 1000);
+  });
+
   test("status and headers reach the client before the body's first chunk", async () => {
     const port = await serveProbe({
       GET: () =>

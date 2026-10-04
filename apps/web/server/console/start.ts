@@ -25,15 +25,30 @@ import type { JobRouteDefinition } from "./routeTable";
 import type { Server } from "node:http";
 import type { ServerCloseHooks } from "./shutdown";
 
+/** @internal */
+export function logUnhandledRejection(error: unknown): void {
+  getLogger("console-server").error(
+    "Unhandled rejection:",
+    sanitizeErrorForDisplay(error),
+  );
+}
+
+/** @internal */
+export function logUncaughtException(error: Error): void {
+  getLogger("console-server").error(
+    "Uncaught exception:",
+    sanitizeErrorForDisplay(error),
+  );
+}
+
 /** Log an uncaught exception or unhandled rejection and keep serving: the
- * server exiting would cut short the cleanup of a running exchange. */
-function logUncaughtErrors(log: ReturnType<typeof getLogger>): void {
-  process.on("unhandledRejection", (error) =>
-    log.error("Unhandled rejection:", sanitizeErrorForDisplay(error)),
-  );
-  process.on("uncaughtException", (error) =>
-    log.error("Uncaught exception:", sanitizeErrorForDisplay(error)),
-  );
+ * server exiting would cut short the cleanup of a running exchange. Installed
+ * once per process however many servers start. */
+function logUncaughtErrors(): void {
+  if (!process.listeners("unhandledRejection").includes(logUnhandledRejection))
+    process.on("unhandledRejection", logUnhandledRejection);
+  if (!process.listeners("uncaughtException").includes(logUncaughtException))
+    process.on("uncaughtException", logUncaughtException);
 }
 
 /**
@@ -53,7 +68,7 @@ export async function startConsoleServer(options: {
   bootSftpCredentialScratchDir();
   warnJobApiProfileMismatch();
   warnJobRendezvousProvisioning();
-  logUncaughtErrors(log);
+  logUncaughtErrors();
 
   const server = createConsoleServer(
     createConsoleHandler({ routes: options.routes }),
