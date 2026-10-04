@@ -45,6 +45,7 @@ import {
   FrameSizeExceededError,
   markPeerWaitTimeout,
 } from "../errors";
+import { failureCauseError } from "../failureCause";
 import {
   ADVERTISE_HELLO_RETRY_ATTEMPTS,
   cancellableDelay,
@@ -582,16 +583,14 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
-  peerTimeoutGuidance?: string;
 }
 
-const withPeerTimeoutGuidance = (
-  message: string,
-  options: RendezvousOptions,
-): string =>
-  options.peerTimeoutGuidance === undefined
-    ? message
-    : `${message}. ${options.peerTimeoutGuidance}`;
+const partnerNeverArrived = (deps: RendezvousDeps): Error =>
+  failureCauseError({
+    kind: "partner-never-arrived",
+    channel: deps.channel(),
+    waitedMs: deps.arrivalBudgetMs(),
+  });
 
 // The connection-owned state the coordinator reads and writes across this
 // boundary. Three kinds:
@@ -615,6 +614,11 @@ export interface RendezvousDeps {
   outbound: () => string | undefined;
   log: () => ReturnType<typeof getLoggerForVerbosity>;
   options: () => RendezvousOptions;
+  // The configured channel and arrival budget, for the partner-never-arrived
+  // sentence; either is unset when the connection has no config to read it
+  // from, and the sentence then leaves that part out.
+  channel: () => "filedrop" | "sftp" | undefined;
+  arrivalBudgetMs: () => number | undefined;
   signal: () => AbortSignal;
   wait: (ms: number) => Promise<void>;
   peerId: () => string | undefined;
@@ -1712,19 +1716,12 @@ export class FileSyncRendezvous {
           return;
         }
 
-        // No role tag: this lockless timeout can fire after the peer hello
-        // was seen and acked but the peer's return ack never arrived, where
-        // hello-filename order may make this party the joiner. The role is
-        // indeterminate here, so emit no `[role]` prefix (unlike the lock
-        // timeout below, which is reachable only as the lone starter).
-        throw markPeerWaitTimeout(
-          new Error(
-            withPeerTimeoutGuidance(
-              "synchronization has timed out",
-              deps.options(),
-            ),
-          ),
-        );
+        // No role tag even in the debug line: this lockless timeout can fire
+        // after the peer hello was seen and acked but the peer's return ack
+        // never arrived, where hello-filename order may make this party the
+        // joiner, so the role is indeterminate here.
+        deps.log().debug("synchronization has timed out");
+        throw markPeerWaitTimeout(partnerNeverArrived(deps));
       }
 
       // Lock path.
@@ -1831,8 +1828,14 @@ export class FileSyncRendezvous {
               // waiting for a joiner -- the joiner takes the entry
               // fast-path and never enters this loop -- even though
               // `this.role` is not committed until rendezvous succeeds.
+              deps
+                .log()
+                .debug(
+                  "[starter] partner began arriving but did not complete " +
+                    "within the recovery window",
+                );
               throw new Error(
-                `[starter] peer began arriving ` +
+                `The partner began arriving ` +
                   `(${redactPrivateKeyMaterial(joiningName)}) but did ` +
                   "not complete within the recovery window; it appears to " +
                   "have failed after announcing its arrival but before " +
@@ -2234,22 +2237,22 @@ export class FileSyncRendezvous {
       // that coupling type-enforced and degrades gracefully to the bare
       // timeout if they ever diverged.
       if (joiningSeenAt !== undefined && joiningSeenName !== undefined) {
+        deps
+          .log()
+          .debug(
+            "[starter] partner began arriving but the exchange timed out " +
+              "before it completed",
+          );
         throw new Error(
-          `[starter] peer began arriving ` +
+          `The partner began arriving ` +
             `(${redactPrivateKeyMaterial(joiningSeenName)}) but the ` +
             "exchange timed out before it completed; it appears to have " +
             "failed after announcing its arrival but before publishing its " +
             "hello. Retry the exchange.",
         );
       }
-      throw markPeerWaitTimeout(
-        new Error(
-          withPeerTimeoutGuidance(
-            "[starter] synchronization has timed out",
-            deps.options(),
-          ),
-        ),
-      );
+      deps.log().debug("[starter] synchronization has timed out");
+      throw markPeerWaitTimeout(partnerNeverArrived(deps));
     };
     try {
       await waitForPeer();

@@ -291,10 +291,9 @@ interface Options {
   // the public config; defaults to DEFAULT_JOINER_RECOVERY_MS. Tests lower it to
   // exercise the abort path without a real-time wait.
   joinerRecoveryMs: number;
-  // Sentences the caller appends to a timeout failure to name the setting
-  // that bounds the wait: the partner's arrival (the rendezvous), and every
-  // wait the peer-inactivity budget bounds. Unset leaves the message bare.
-  peerTimeoutGuidance?: string;
+  // A sentence the caller appends to a timeout failure to name the setting
+  // that bounds every wait the peer-inactivity budget bounds. Unset leaves the
+  // message bare.
   inactivityTimeoutGuidance?: string;
 }
 
@@ -503,6 +502,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // sets it from the config. See docs/spec/FILE_SYNC.md (Split directories).
   outbound: string | undefined;
   private config: SFTPConnectionConfig | FileDropConnectionConfig | undefined;
+  // The partner-arrival budget open() derived timeToLive from; unset when the
+  // constructor supplied timeToLive, whose budget is not known.
+  private arrivalBudgetMs: number | undefined;
 
   peerId: string | undefined;
   handshakeRole: HandshakeRole | undefined;
@@ -730,6 +732,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       outbound: () => this.outbound,
       log: () => this.log,
       options: () => this.options,
+      channel: () => this.config?.channel,
+      arrivalBudgetMs: () => this.arrivalBudgetMs,
       signal: () => this.abortController.signal,
       wait: (ms) => this.wait(ms),
       peerId: () => this.peerId,
@@ -1185,6 +1189,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     if (this.options.timeToLive === undefined) {
       const ttlMs = config.options?.peerTimeoutMs ?? DEFAULT_PEER_TIMEOUT_MS;
       this.options.timeToLive = new Date(Date.now() + ttlMs);
+      this.arrivalBudgetMs = ttlMs;
     }
     this.log.debug(`[${this.role}] connected`);
   }

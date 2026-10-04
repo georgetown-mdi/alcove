@@ -4,6 +4,7 @@ import logLibrary from "loglevel";
 import {
   ConnectionError,
   deriveRendezvousPeerId,
+  failureCauseOf,
   generateSharedSecret,
   sanitizeErrorForDisplay,
   setDiagnosticSink,
@@ -17,6 +18,7 @@ import {
 } from "../../../src/connection/webrtc/brokerClient";
 import { ICE_STATS_TIMEOUT_MS } from "../../../src/connection/webrtc/iceDiagnostics";
 import { webRtcDialFrom } from "../../../src/protocol";
+import { renderFailureForOperator } from "../../../src/util/exit";
 import {
   DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
   DEFAULT_UNREPORTED_OFFER_RESEND_MS,
@@ -777,8 +779,19 @@ test("an unanswered dialer fails on the rendezvous budget, and says so", async (
     channelOpenTimeoutMs: 100,
     rendezvousTimeoutMs: 150,
   });
-  await expect(session).rejects.toThrow(
-    /did not answer within 0.15s; --peer-timeout sets how long to wait.*--accept-timeout for an online invitation/,
+  const err: unknown = await session.catch((e: unknown) => e);
+  expect((err as Error).message).toBe(
+    "Your partner did not connect within 0.15 seconds.",
+  );
+  expect(failureCauseOf(err)).toEqual({
+    kind: "partner-never-arrived",
+    channel: "webrtc",
+    waitedMs: 150,
+  });
+  expect(renderFailureForOperator(err)).toBe(
+    "Your partner did not connect within 0.15 seconds.\n" +
+      "Check that your partner has started their side, then run again; " +
+      "--peer-timeout sets how long to wait.",
   );
 });
 
@@ -840,7 +853,9 @@ test("an absent partner fails at peer_timeout_ms while the silence budget is lon
   await vi.advanceTimersByTimeAsync(arrivalMs - 1_000);
   expect(await settlementOf(session)).toBe("waiting");
   await vi.advanceTimersByTimeAsync(2_000);
-  await expect(session).rejects.toThrow(/did not answer within 60s/);
+  await expect(session).rejects.toThrow(
+    "Your partner did not connect within 1 minute.",
+  );
 });
 
 test("the channel open ends its attempt at its fixed ceiling whatever both settings hold", async () => {
@@ -1736,7 +1751,9 @@ test("the whole wait ends at peer_timeout_ms however many attempts it took", asy
   // a short fourth.
   expect(sockets).toHaveLength(3);
   await vi.advanceTimersByTimeAsync(2_000);
-  await expect(session).rejects.toThrow(/did not answer within 200s/);
+  await expect(session).rejects.toThrow(
+    "Your partner did not connect within 200 seconds.",
+  );
   expect(sockets.every((socket) => socket.closeCalls === 1)).toBe(true);
 });
 
@@ -1752,7 +1769,9 @@ test("a wait within the last attempt's stretch makes one attempt", async () => {
   expect(await settlementOf(session)).toBe("waiting");
   expect(sockets).toHaveLength(1);
   await vi.advanceTimersByTimeAsync(2_000);
-  await expect(session).rejects.toThrow(/did not offer within 80s/);
+  await expect(session).rejects.toThrow(
+    "Your partner did not connect within 80 seconds.",
+  );
 });
 
 test("a re-registration refused as ID-TAKEN is retried within the attempt cycle", async () => {
@@ -1933,7 +1952,9 @@ test("a broker socket dropped in the last attempt still waits out the rendezvous
   expect(await settlementOf(session)).toBe("waiting");
   expect(sockets).toHaveLength(2);
   await vi.advanceTimersByTimeAsync(2_000);
-  await expect(session).rejects.toThrow(/did not offer within 80s/);
+  await expect(session).rejects.toThrow(
+    "Your partner did not connect within 80 seconds.",
+  );
 });
 
 test("a broker socket dropped once the partner has answered fails the wait", async () => {

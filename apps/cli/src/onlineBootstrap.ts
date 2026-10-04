@@ -1003,6 +1003,10 @@ export async function runOnlineBootstrap(params: {
       recordOutput: params.recordOutput,
       undeclaredColumnsWarned,
       memoryBudgetReported,
+      arrivalWait:
+        params.runOnlyPeerTimeoutSeconds === undefined
+          ? "exchange"
+          : "online-invitation",
       writeOutcomeLine: outcomeLineWriter(
         getLogger(params.loggerName),
         params.writePlainLine,

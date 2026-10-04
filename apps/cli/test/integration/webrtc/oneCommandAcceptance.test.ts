@@ -483,9 +483,10 @@ liveTest(
     // The failure names the wait in the units the flag takes, and the flag that
     // sets it, so the operator who chose ten seconds reads ten seconds back.
     expect(acceptRun.stderr).toContain(
-      `did not answer within ${NO_SHOW_PEER_TIMEOUT}`,
+      "Your partner did not connect within 10 seconds.",
     );
     expect(acceptRun.stderr).toContain("--peer-timeout");
+    expect(acceptRun.stderr).not.toContain("--accept-timeout");
     // Its own budget ended the run, not the deadline that kills a party: an
     // acceptance left on the transport's ten-minute rendezvous default would be
     // killed here instead, with no exit code of its own and nothing said.
@@ -496,7 +497,7 @@ liveTest(
     const waitedMs = loggedSpanMs(
       acceptRun.stderr,
       "rendezvousing through the signaling server",
-      "did not answer within",
+      "Your partner did not connect within",
     );
     expect(waitedMs).toBeGreaterThanOrEqual(NO_SHOW_PEER_TIMEOUT_MS);
     expect(waitedMs).toBeLessThan(45_000);

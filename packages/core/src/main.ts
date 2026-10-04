@@ -33,6 +33,19 @@ export {
   isSetTooLargeError,
 } from "./errors";
 export type { RoundSetLimitReason } from "./errors";
+export {
+  failureCauseOf,
+  failureCauseSentence,
+  formatWaitDuration,
+  markFailureCause,
+} from "./failureCause";
+export type {
+  FailureCause,
+  FailureCauseKind,
+  FailureCauseOfKind,
+  FolderMissingCode,
+  PartnerMeetingChannel,
+} from "./failureCause";
 export { PSIParticipant, ProcessState } from "./psi/participant";
 export type {
   PsiOperation,

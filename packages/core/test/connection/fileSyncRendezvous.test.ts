@@ -641,6 +641,8 @@ function makeParty(
     outbound: () => undefined,
     log: () => log,
     options: () => options,
+    channel: () => "filedrop",
+    arrivalBudgetMs: () => undefined,
     signal: () => controller.signal,
     wait: (ms) => cancellableDelay(ms, controller.signal),
     peerId: () => state.peerId,
@@ -956,7 +958,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     });
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("synchronization has timed out"),
+      message: expect.stringContaining("Your partner did not arrive"),
     });
     expectResetToPreSync(p.state);
     // peerId undefined is exactly the precondition the connection's
@@ -1009,7 +1011,7 @@ describe("FileSyncRendezvous terminal-failure rollback in retain mode", () => {
     const p = makeParty("aaa", { ...retainFlags, ...shortDeadline() }, files);
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("synchronization has timed out"),
+      message: expect.stringContaining("Your partner did not arrive"),
     });
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
     // The whole attempt is rolled back, so the next entrant finds a clean
@@ -1025,7 +1027,7 @@ describe("FileSyncRendezvous terminal-failure rollback in retain mode", () => {
     // The peer hello is present from the first poll, so this party acks it and
     // then polls for a return ack that never arrives.
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("synchronization has timed out"),
+      message: expect.stringContaining("Your partner did not arrive"),
     });
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
     expect(files.has(`${DIR}/${ackMarkerName("aaa", helloStem("zzz"))}`)).toBe(
@@ -1265,9 +1267,9 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
       files,
     );
 
-    // The sweep proceeds; with the directory then empty the barrier times out.
+    // The sweep proceeds; with the directory then empty the partner never arrives.
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("timed out"),
+      message: expect.stringContaining("Your partner did not arrive"),
     });
     expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(false);
   });
@@ -1926,7 +1928,7 @@ describe("FileSyncRendezvous across connection-per-poll session boundaries", () 
   // hello gets to answer in. The shared 2 s is a thousand times an idle
   // position and inside one descheduling stall on a starved one: at nice 19
   // against 40 nice-0 CPU hogs on a ten-core container the sweep aborts partway
-  // with "synchronization has timed out", deciding the outcome by the scheduler
+  // with "Your partner did not arrive", deciding the outcome by the scheduler
   // rather than by the boundary that position placed. Both bounds here were
   // verified green under that same regime, so a later tightening has one to
   // measure against.
@@ -2411,7 +2413,9 @@ describe("FileSyncRendezvous entry temp disposition", () => {
 
     // Entry is not aborted on either temp's account, so the run reaches the
     // barrier and times out with no peer.
-    await expect(p.rdv.run(p.scope)).rejects.toThrow("timed out");
+    await expect(p.rdv.run(p.scope)).rejects.toThrow(
+      "Your partner did not arrive",
+    );
 
     // The peer's in-flight publish survives: deleting it would break the rename
     // it is about to perform.
@@ -2441,7 +2445,9 @@ describe("FileSyncRendezvous entry temp disposition", () => {
       files,
     );
 
-    await expect(p.rdv.run(p.scope)).rejects.toThrow("timed out");
+    await expect(p.rdv.run(p.scope)).rejects.toThrow(
+      "Your partner did not arrive",
+    );
 
     // The peer hello IS swept (the flag's assertion covers a durable protocol
     // file); the in-flight temp is not, because a concurrent publish is exactly
@@ -2753,7 +2759,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
 
     // Waited the whole 3 s budget and failed with the ordinary timeout.
     expect(Date.now() - started).toBeGreaterThanOrEqual(3000);
-    expect((err as Error).message).toContain("synchronization has timed out");
+    expect((err as Error).message).toContain("Your partner did not arrive");
     expect(isPeerWaitTimeout(err)).toBe(true);
   });
 
@@ -2939,7 +2945,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     }
 
     expect(isPeerWaitTimeout(err)).toBe(true);
-    expect((err as Error).message).toContain("synchronization has timed out");
+    expect((err as Error).message).toContain("Your partner did not arrive");
     expect((err as Error).message).not.toContain("residue");
     // Ended within the listing that crossed the budget: the poll a deadline
     // capped at the budget would have failed on instead.

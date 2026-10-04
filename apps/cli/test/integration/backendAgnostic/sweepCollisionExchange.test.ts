@@ -248,7 +248,7 @@ test("a sequential both-sides sweep fails both parties, and a plain re-run then 
     "key exchange handshake timed out",
   );
   expect((collision.parties[1].error as Error).message).toContain(
-    "synchronization has timed out",
+    "Your partner did not arrive in the shared folder",
   );
   // The guidance reaches BOTH operators, asserted where runProtocol produces
   // it rather than at the gate's unit boundary: recovering needs no contact

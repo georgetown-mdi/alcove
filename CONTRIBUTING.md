@@ -180,6 +180,7 @@ not add one. Rationale and what the report covers: [docs/TESTING.md](docs/TESTIN
 
   These words are grounded in this repository and are NOT on the list: gate, mint, fan-out, round, ledger, canonical, attest, invariant, in flight, pin, drift, reconcile, sweep, harden, posture, hygiene, and the noun surface (attack surface, consent surface, `ConsentSurfaceName`). Neither are the terms of art -- honest-but-curious, semi-honest, honest party, the PSI round and round-trip, Promise settlement -- nor any identifier, filename, type name, fixture, or schema key.
 
+- **Failure messages**: a failure an operator sees states what happened in one plain sentence and what to do in a second, naming only the flag or control that applies to that run. A failure cause the CLI reports from core's failure-cause catalog takes its first sentence there and its second from the CLI's remedy map; which apps draw on the catalog is stated in the note below. Where the two live and how counts and error codes are written: [docs/notes/failure-cause-catalog.md](docs/notes/failure-cause-catalog.md).
 - **Markdown**: soft line wrapping, single space after periods, ASCII punctuation (`-` not em-dash, `->` not arrow character).
 
 Linting, formatting, and the repository's guard checks are enforced by CI. Run them locally before pushing:
