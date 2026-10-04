@@ -13,6 +13,7 @@ import {
   getManagedExchange,
   listManagedExchanges,
   listManagedExchangesDiagnostic,
+  markManagedBackupIfCurrent,
   openManagedExchangeDatabase,
   persistManagedExchangeRotation,
   readRecordAndMarkBackedUp,
@@ -169,6 +170,31 @@ describe("the backup marker persists beside the record", () => {
       Date.now(),
     );
     expect(after[0].backup.kind).toBe("backed-up");
+  });
+
+  test("a marker the reader would reject is refused before it is written", async () => {
+    const record = await createRunnableExchange(newExchange());
+    await markManagedExchangeImported(record.id, "2026-07-14T12:00:00.000Z");
+    const before = await getManagedLocalState(record.id);
+    const unreadable = {
+      kind: "folder",
+      folderName: "",
+      fileName: "alcove-managed-backup-2026-07-14T130000Z.json",
+    } as const;
+
+    await expect(
+      markManagedBackupIfCurrent(
+        record.id,
+        record.sharedSecret,
+        "2026-07-14T13:00:00.000Z",
+        unreadable,
+      ),
+    ).rejects.toThrow();
+
+    expect(await getManagedLocalState(record.id)).toEqual(before);
+    expect(
+      (await listManagedLocalState()).get(record.id)?.imported,
+    ).toBeDefined();
   });
 });
 

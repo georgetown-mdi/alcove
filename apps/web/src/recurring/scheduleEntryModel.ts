@@ -486,6 +486,7 @@ export function workingFolderGrantedNote(name: string): string {
 export const WORKING_FOLDER_SCOPE_NOTE =
   "After each scheduled run that succeeds, a backup of this exchange, " +
   "including its shared secret, is written into this folder, so choose one " +
-  "only you can read on this device and use it for nothing else. While the " +
+  "only you can read on this device, use it for nothing else, and delete " +
+  "older backups once you no longer need them. While the " +
   "grant stands, this site can read and write everything in the folder you " +
   "choose, not only the files this exchange uses.";

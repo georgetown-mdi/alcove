@@ -2233,7 +2233,8 @@ working folder, the run backs it up there without asking:
   exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
   It is written into the working folder and nowhere else.
 - **What it changes.** Once the file is in the folder, the exchange reads
-  "backed up as of <date>, written to the folder <name> as <file name>", and
+  "backed up as of <date>, written to the folder <name> as <file name>"
+  (without the folder's name where it is longer than the stored bound), and
   no backup notification fires for that run.
 - **What the operator is told.** The file holds the exchange's shared secret,
   and the files from earlier runs stay in the folder. Both where the folder is

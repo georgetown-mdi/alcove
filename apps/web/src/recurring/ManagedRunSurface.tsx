@@ -2077,8 +2077,10 @@ function backupLocationClause(
   savedAs: ManagedBackupLocation | undefined,
 ): string {
   if (savedAs === undefined) return "";
-  return savedAs.kind === "downloaded"
-    ? `, downloaded as ${savedAs.fileName}`
+  if (savedAs.kind === "downloaded")
+    return `, downloaded as ${savedAs.fileName}`;
+  return savedAs.folderName === undefined
+    ? `, written to the folder as ${savedAs.fileName}`
     : `, written to the folder ${savedAs.folderName} as ${savedAs.fileName}`;
 }
 

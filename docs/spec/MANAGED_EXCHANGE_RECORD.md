@@ -1680,8 +1680,11 @@ device's pending decision on a partner's changed terms. The four:
 - **The backup marker** (`backedUpAt`, an ISO 8601 UTC instant) records when a
   backup was last taken, and `savedAs`, where present, where it was saved:
   `{ kind: "downloaded", fileName }` for a download, or `{ kind: "folder",
-  folderName, fileName }` for a working-folder write, each name a non-empty
-  string of at most 255 code units. The backed-up state names that place. A
+  folderName?, fileName }` for a working-folder write, each name a non-empty
+  string of at most 255 code units. A folder whose name falls outside that
+  bound is stored without `folderName`, so the marker is still written. The
+  merged entry is validated before it is written, so a marker the reader would
+  reject is never stored. The backed-up state names that place. A
   marker an import stamps has no `savedAs`, since its file is the one
   imported, not one this app saved. It is the input to the derived backup state the UI
   surfaces (see [Moment-anchored backup

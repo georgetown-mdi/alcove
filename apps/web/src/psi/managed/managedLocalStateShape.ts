@@ -158,6 +158,11 @@ const backupLocationNameSchema = z
   .min(1)
   .check(maxCodeUnits(MAX_BACKUP_LOCATION_NAME_LENGTH));
 
+/** Whether `name` fits the bound a stored backup location's names hold to. */
+export function backupLocationNameFits(name: string): boolean {
+  return backupLocationNameSchema.safeParse(name).success;
+}
+
 const backupLocationSchema: ZodType<ManagedBackupLocation> = z.union([
   z
     .object({
@@ -168,7 +173,7 @@ const backupLocationSchema: ZodType<ManagedBackupLocation> = z.union([
   z
     .object({
       kind: z.literal("folder"),
-      folderName: backupLocationNameSchema,
+      folderName: backupLocationNameSchema.optional(),
       fileName: backupLocationNameSchema,
     })
     .strict(),

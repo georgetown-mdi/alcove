@@ -37,10 +37,11 @@ export interface ManagedBackupMarker {
 }
 
 /** Where a backup was saved: downloaded under `fileName`, or written into the
- * working folder `folderName` under `fileName`. */
+ * working folder under `fileName`. `folderName` names that folder where its
+ * name fits the stored bound, and is absent where it does not. */
 export type ManagedBackupLocation =
   | { kind: "downloaded"; fileName: string }
-  | { kind: "folder"; folderName: string; fileName: string };
+  | { kind: "folder"; folderName?: string; fileName: string };
 
 /** The derived backup state the UI shows:
  *

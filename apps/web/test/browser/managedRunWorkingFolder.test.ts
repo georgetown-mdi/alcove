@@ -19,6 +19,7 @@ import { ManagedRunSurface } from "@recurring/ManagedRunSurface";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
 
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
@@ -152,6 +153,61 @@ describe("a backup a scheduled run wrote into the working folder", () => {
         ),
       )
       .toBeInTheDocument();
+  });
+
+  test("a folder whose name was not stored is named as the folder", async () => {
+    const folder = await opfsFolder("run-surface-unnamed");
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    const fileName = "alcove-managed-backup-2026-07-14T120000Z.json";
+    expect(
+      await markManagedBackupIfCurrent(
+        created.id,
+        created.sharedSecret ?? "",
+        "2026-07-14T12:00:00.000Z",
+        { kind: "folder", fileName },
+      ),
+    ).toBe("marked");
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(
+        page.getByText(`written to the folder as ${fileName}`, {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+  });
+});
+
+describe("a backup the operator downloads", () => {
+  test("the backed-up line names the downloaded file", async () => {
+    const folder = await opfsFolder("run-surface-downloaded");
+    const created = await createManagedExchange(
+      newExchange({ workingDirectoryHandle: folder }),
+    );
+    const downloads = captureDownloads();
+    try {
+      app.render(createElement(ManagedRunSurface, { id: created.id }));
+      await page.getByRole("button", { name: "Download a backup" }).click();
+
+      await expect
+        .element(page.getByText("downloaded as", { exact: false }))
+        .toBeInTheDocument();
+      await downloads.settled();
+      expect(downloads.captured).toHaveLength(1);
+      await expect
+        .element(
+          page.getByText(`downloaded as ${downloads.captured[0].fileName}`, {
+            exact: false,
+          }),
+        )
+        .toBeInTheDocument();
+    } finally {
+      downloads.restore();
+    }
   });
 });
 

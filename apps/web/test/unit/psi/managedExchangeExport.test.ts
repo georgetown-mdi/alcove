@@ -625,11 +625,15 @@ describe("backUpManagedExchangeToFolder", () => {
    * and the writable the bytes go through. `holding` maps the names it already
    * has to their contents; `failWrite` makes the stream refuse the bytes. */
   function fakeFolder(
-    options: { holding?: Record<string, string>; failWrite?: Error } = {},
+    options: {
+      holding?: Record<string, string>;
+      failWrite?: Error;
+      name?: string;
+    } = {},
   ) {
     const files = new Map(Object.entries(options.holding ?? {}));
     const handle = {
-      name: "Riverbend exchange",
+      name: options.name ?? "Riverbend exchange",
       getFileHandle: (fileName: string, lookup?: { create?: boolean }) => {
         if (lookup?.create !== true && !files.has(fileName))
           return Promise.reject(
@@ -721,6 +725,32 @@ describe("backUpManagedExchangeToFolder", () => {
       },
     );
     expect(permission.requested).toBe(false);
+  });
+
+  test("a folder name outside the stored bound is left off the marker, which is still stamped", async () => {
+    // The marker's reader rejects a name outside 1-255 code units, so storing
+    // one would leave the exchange's local state unreadable on this device.
+    for (const name of ["x".repeat(256), ""]) {
+      const folder = fakeFolder({ name });
+      const rec = { ...record(), workingDirectoryHandle: folder.handle };
+      const { deps, markIfCurrent } = folderBackupDeps(
+        rec,
+        fakePermission("granted"),
+      );
+
+      expect(await backUpManagedExchangeToFolder(rec.id, deps)).toEqual({
+        kind: "backed-up",
+        fileName: FILE_NAME,
+        directoryName: name,
+        backedUpAt: new Date(BACKED_UP_AT),
+      });
+      expect(markIfCurrent).toHaveBeenCalledWith(
+        rec.id,
+        rec.sharedSecret,
+        BACKED_UP_AT,
+        { kind: "folder", fileName: FILE_NAME },
+      );
+    }
   });
 
   test("a grant that would need the operator's gesture writes nothing, prompts for nothing, and stamps nothing", async () => {

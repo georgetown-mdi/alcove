@@ -42,6 +42,7 @@ import {
   encodeManagedExchangeArtifact,
   serializeManagedExchangeArtifact,
 } from "./managedExchangeArtifact";
+import { backupLocationNameFits } from "./managedLocalStateShape";
 import { composeManagedCronExport } from "./managedCronExport";
 import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { storedWorkingDirectoryUsable } from "./managedWorkingDirectory";
@@ -342,7 +343,13 @@ export async function backUpManagedExchangeToFolder(
       id,
       runnable.sharedSecret,
       backedUpAt.toISOString(),
-      { kind: "folder", folderName: directoryName, fileName },
+      {
+        kind: "folder",
+        ...(backupLocationNameFits(directoryName)
+          ? { folderName: directoryName }
+          : {}),
+        fileName,
+      },
     );
     if (marked === "marked")
       return { kind: "backed-up", fileName, directoryName, backedUpAt };

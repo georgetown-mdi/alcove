@@ -562,6 +562,7 @@ describe("the working-folder grant the surfaces offer", () => {
   test("tells the operator before and after the grant that the folder receives the shared secret", () => {
     expect(WORKING_FOLDER_SCOPE_NOTE).toContain("including its shared secret");
     expect(WORKING_FOLDER_SCOPE_NOTE).toContain("only you can read");
+    expect(WORKING_FOLDER_SCOPE_NOTE).toContain("delete older backups");
     const granted = workingFolderGrantedNote("Riverbend results");
     expect(granted).toContain("including its shared secret");
     expect(granted).toContain("readable only by you");

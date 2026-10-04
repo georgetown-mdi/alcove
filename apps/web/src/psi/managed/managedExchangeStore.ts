@@ -1068,6 +1068,8 @@ function clearSpentOnLocalStore(
  * spent state. The marker only moves forward: a stamp older than the stored marker
  * is a no-op, so a slow export's late mark cannot revert a newer one. Compared as
  * parsed instants, since the schema admits ISO stamps of differing precision.
+ * The merged entry is validated before it is written, so a marker the reader
+ * would reject throws here and leaves the stored entry as it was.
  */
 function markBackupOnLocalStore(
   store: IDBObjectStore,
@@ -1081,7 +1083,7 @@ function markBackupOnLocalStore(
     Date.parse(current.backup.backedUpAt) > Date.parse(marker.backedUpAt)
   )
     return;
-  store.put({ ...current, backup: marker }, id);
+  store.put(parseManagedLocalState({ ...current, backup: marker }), id);
 }
 
 /**
