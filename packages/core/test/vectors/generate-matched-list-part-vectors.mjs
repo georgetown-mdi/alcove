@@ -64,7 +64,7 @@ const lists = [
     payloadBytes: 64,
   },
   { name: "a list within one part", count: 2, payloadBytes: 128 },
-  { name: "a list of three parts, the last short", count: 7, payloadBytes: 96 },
+  { name: "a list of four parts, the last short", count: 7, payloadBytes: 96 },
 ].map(({ name, count, payloadBytes }) => {
   const entries = mapped(count);
   return {
@@ -75,7 +75,13 @@ const lists = [
   };
 });
 
-const [first, second, third] = parts(mapped(7), 96);
+const [first, second, third, fourth] = parts(mapped(7), 96);
+
+function withHeader(part, edit) {
+  const header = Buffer.from(part.subarray(0, HEADER_BYTES));
+  edit(header);
+  return Buffer.concat([header, part.subarray(HEADER_BYTES)]);
+}
 const refusals = [
   {
     name: "a missing part",
@@ -99,17 +105,31 @@ const refusals = [
     name: "a later part declaring another list",
     partsHex: [
       first,
-      Buffer.concat([
-        (() => {
-          const header = Buffer.from(second.subarray(0, HEADER_BYTES));
-          header.writeBigUInt64BE(8n, 8);
-          return header;
-        })(),
-        second.subarray(HEADER_BYTES),
-      ]),
+      withHeader(second, (header) => header.writeBigUInt64BE(8n, 8)),
     ],
     maxEntries: 8,
     refusal: "part 1 declares a different list than part 0",
+  },
+  {
+    name: "two parts out of order",
+    partsHex: [second, first, third, fourth],
+    maxEntries: 7,
+    refusal: "is missing part 0",
+  },
+  {
+    name: "a later part declaring another part count",
+    partsHex: [
+      first,
+      withHeader(second, (header) => header.writeUInt32BE(5, 4)),
+    ],
+    maxEntries: 7,
+    refusal: "part 1 declares a different list than part 0",
+  },
+  {
+    name: "a part whose body is not JSON",
+    partsHex: [first, second.subarray(0, second.length - 1), third, fourth],
+    maxEntries: 7,
+    refusal: "part 1 is not a JSON message",
   },
 ].map((refusal) => ({
   ...refusal,
@@ -124,8 +144,9 @@ const vectors = {
     "part's index and the list's part count as big-endian uint32, then the " +
     "list's entry count as a big-endian uint64 -- followed by the UTF-8 JSON " +
     "of the part's slice, at most partPayloadBytes long. `refusals` are part " +
-    "sequences a receiver refuses from their headers before parsing any body, " +
-    "with the refusal's fixed tail. Replayed by " +
+    "sequences a receiver refuses, from their headers before parsing any " +
+    "body or, for a body that is not JSON, at that body, with the refusal's " +
+    "whole fixed tail, which carries no body bytes. Replayed by " +
     "packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with " +
     "generate-matched-list-part-vectors.mjs in this directory.",
   headerBytes: HEADER_BYTES,

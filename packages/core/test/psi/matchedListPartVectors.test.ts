@@ -16,7 +16,7 @@ import {
 // Replays matched-list-part-vectors.json
 // (generate-matched-list-part-vectors.mjs): the parts a cascade cuts a list of
 // matched records into, byte for byte, and the part sequences a receiver
-// refuses from their headers.
+// refuses, with the refusal's whole message.
 
 interface ListPartVectors {
   headerBytes: number;

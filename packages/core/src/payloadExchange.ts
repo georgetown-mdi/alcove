@@ -713,9 +713,7 @@ function payloadSource(payload: PayloadWireMessage): MatchedListSource {
   };
 }
 
-// Receives the partner's payload parts, each a payload message of its own, and
-// joins them: every part after the first names the first part's columns, and
-// the row indices stay distinct across parts.
+// Receives the partner's payload parts, each a payload message of its own.
 async function receivePayload(
   conn: MessageConnection,
   maxPartnerRows: number,
@@ -735,14 +733,23 @@ async function receivePayload(
       return { part, entries: part.hasData ? part.rows.length : 0 };
     },
   );
+  return joinPayloadParts(parts);
+}
+
+// Joins the partner's parsed payload parts: every part after the first names
+// the first part's columns, the row indices stay distinct across parts, and a
+// list of several parts holds rows in every part.
+/** @internal */
+export function joinPayloadParts(
+  parts: ReadonlyArray<PayloadWireMessage>,
+): PartnerPayload {
   if (parts.length === 1) return toPartnerPayload(parts[0]);
   const joined: PartnerPayload = { columns: [], rowIndices: [], rows: [] };
   parts.forEach((part, index) => {
-    // A list of several parts holds rows in every part, which a no-data part
-    // does not.
     if (!part.hasData)
-      throw new InternalConsistencyError(
-        "a payload part holding rows has no data",
+      throw new ConnectionError(
+        `protocol error: inbound ${PAYLOAD_WHAT} part ${index} holds no rows`,
+        "protocol",
       );
     if (index === 0) joined.columns = part.columns;
     else if (

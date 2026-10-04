@@ -339,12 +339,14 @@ frame sized to the partner's data-channel bound
 No list is bounded by one frame.
 
 A cascade round's association table and original-index list are one frame
-each. Their two index lists hold up to 9 bytes per matched value each, so a
-round matching more than about 14.9 million values passes the 256 MiB bound
-(`MAX_WEBRTC_FRAME_BYTES`) and the partner refuses the frame. Only two
-command-line parties reach such a round: a browser party's receive ceiling
-holds a round's sets to 7,643,790 values
-([PROTOCOL.md, What a browser tab can match](PROTOCOL.md#what-a-browser-tab-can-match)).
+each, sent as BinaryPack with no AEAD wrap. Their index lists fit one frame at
+the per-set maximum, as they fit one message file on file-sync: two index
+lists of 2^24 positions each, encoded by `encodeBinaryPackValue`, measured
+167,509,259 bytes (4.99 bytes per value), which `webrtcFrameReceiveCharge`
+charges as 168,074,494 bytes (5.01 bytes per value) against the 268,435,456
+bytes of `MAX_WEBRTC_FRAME_BYTES`. What can still pass the bound is the
+deduplicating side's owner-list grouping beside them
+([PROTOCOL.md, The lists the parts do not cover](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
 
 ### Outbound pacing
 

@@ -8,6 +8,7 @@ import {
   assertPayloadSendDisclosed,
   assertNoPayloadReceived,
   termsStatingDeclaredPayloadSend,
+  joinPayloadParts,
 } from "../src/payloadExchange";
 import { prepareForExchange } from "../src/exchange";
 import { deriveAcceptedLinkageTerms } from "../src/linkageTermsNegotiation";
@@ -1869,6 +1870,27 @@ test("exchangePayloads: parts naming different columns are refused", async () =>
   await expect(initiatorPromise).rejects.toThrow(
     /inbound payload part 1 names different columns than part 0/,
   );
+});
+
+test("joinPayloadParts: a part of several holding no rows is refused", () => {
+  // parseMatchedListParts refuses this list before the join, so the join is
+  // reached here with the parsed parts directly.
+  let caught: unknown;
+  try {
+    joinPayloadParts([
+      { hasData: true, columns: ["a"], rowIndices: [0], rows: [["x"]] },
+      { hasData: false },
+    ]);
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toEqual(
+    new ConnectionError(
+      "protocol error: inbound payload part 1 holds no rows",
+      "protocol",
+    ),
+  );
+  expect((caught as ConnectionError).kind).toBe("protocol");
 });
 
 test("exchangePayloads: a row index repeated across parts is refused", async () => {
