@@ -18,6 +18,10 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { Metadata } from "../../src/config/metadata";
 import type { LinkageTerms, Output } from "../../src/config/linkageTermsSchema";
+import { partFrame } from "../utils/matchedListPartFrames";
+
+// The most payload rows a test admits from its partner.
+const PAYLOAD_ROWS_ADMITTED = 1_000;
 
 // The name of a transmitted column is held, not merely used: it rides the
 // payload frame to the partner and is written into this party's exchange record,
@@ -329,14 +333,21 @@ test("the send-side gate refuses exactly the names the partner's parse refuses",
   for (const name of [atCeiling, astralAtCeiling]) {
     expect(overlongDisclosedColumnPositions(metadataSending(name))).toEqual([]);
     const [a, b] = createMessagePipe();
-    const receiving = exchangePayloads(a, "initiator", { hasData: false });
+    const receiving = exchangePayloads(
+      a,
+      "initiator",
+      { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
+    );
     await b.receive();
-    await b.send({
-      hasData: true,
-      columns: [name],
-      rowIndices: [0],
-      rows: [["v"]],
-    });
+    await b.send(
+      partFrame({
+        hasData: true,
+        columns: [name],
+        rowIndices: [0],
+        rows: [["v"]],
+      }),
+    );
     expect((await receiving).columns).toEqual([name]);
   }
 
@@ -345,14 +356,21 @@ test("the send-side gate refuses exactly the names the partner's parse refuses",
       2,
     ]);
     const [a, b] = createMessagePipe();
-    const receiving = exchangePayloads(a, "initiator", { hasData: false });
+    const receiving = exchangePayloads(
+      a,
+      "initiator",
+      { hasData: false },
+      PAYLOAD_ROWS_ADMITTED,
+    );
     await b.receive();
-    await b.send({
-      hasData: true,
-      columns: [name],
-      rowIndices: [0],
-      rows: [["v"]],
-    });
+    await b.send(
+      partFrame({
+        hasData: true,
+        columns: [name],
+        rowIndices: [0],
+        rows: [["v"]],
+      }),
+    );
     const err = await receiving.catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConnectionError);
     expect((err as ConnectionError).kind).toBe("protocol");

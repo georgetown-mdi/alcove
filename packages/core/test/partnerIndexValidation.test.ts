@@ -55,6 +55,7 @@ import {
   type MessageConnection,
 } from "../src/connection/messageConnection";
 import type { AssociationTable } from "../src/types";
+import { deviateListBody } from "./utils/matchedListPartFrames";
 
 // Every index list a party receives from its partner addresses rows or
 // per-round positions the RECEIVING party owns, so each is checked against that
@@ -104,7 +105,7 @@ function deviatingInbound(
   return {
     send: (data) => conn.send(data),
     receive: async (timeoutMs?: number) =>
-      deviate(await conn.receive(timeoutMs)),
+      deviateListBody(await conn.receive(timeoutMs), deviate),
     close: () => conn.close(),
     setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
   };

@@ -63,6 +63,11 @@ import type { AssociationTable } from "../../src/types";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
+import {
+  deviateListBody,
+  partFrame,
+  readPartFrame,
+} from "../utils/matchedListPartFrames";
 
 // Both-sided deduplicating matching at the cascade boundary: each party keeps a
 // value several of its own records hold, contributes it once, and attributes a
@@ -102,7 +107,7 @@ function deviatingInbound(
   return {
     send: (data) => conn.send(data),
     receive: async (timeoutMs?: number) =>
-      deviate(await conn.receive(timeoutMs)),
+      deviateListBody(await conn.receive(timeoutMs), deviate),
     close: () => conn.close(),
     setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
   };
@@ -582,9 +587,10 @@ async function runNonConformingStarter(
   // A party contributing its dataset verbatim has one round position per record,
   // so its translation of the joiner's list is the identity and its own entries
   // hold the joiner's positions as the round reported them.
-  await conn.send(report(joinerPositions));
-  const joinerList = (await conn.receive()) as Array<MappedElement>;
-  await conn.send(joinerList);
+  await conn.send(partFrame(report(joinerPositions)));
+  const joinerList = readPartFrame(await conn.receive())!
+    .body as Array<MappedElement>;
+  await conn.send(partFrame(joinerList));
   await conn.receive();
 }
 
@@ -728,7 +734,7 @@ for (const party of ["starter", "joiner"] as const) {
     // caps the list, and it is checked before any entry is translated.
     await expectProtocolRefusal(
       onMappedElementList(1, (list) => [...list, list[0], list[0]]),
-      /more than the 4 record\(s\) the partner counted/,
+      /mapped-element list declares \d+ entries, over the 4 this party admits/,
     );
   });
 

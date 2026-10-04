@@ -1,0 +1,106 @@
+{
+  "description": "Known-answer vectors for the parts a cascade sends a list of matched records in (each party's mapped-element list, the list returned with the partner's rows, the payload rows). Each part is a 16-byte header -- the part's index and the list's part count as big-endian uint32, then the list's entry count as a big-endian uint64 -- followed by the UTF-8 JSON of the part's slice, at most partPayloadBytes long. `refusals` are part sequences a receiver refuses from their headers before parsing any body, with the refusal's fixed tail. Replayed by packages/core/test/psi/matchedListPartVectors.test.ts; regenerate with generate-matched-list-part-vectors.mjs in this directory.",
+  "headerBytes": 16,
+  "lists": [
+    {
+      "name": "an empty list is one part of an empty array",
+      "entries": [],
+      "partPayloadBytes": 64,
+      "partsHex": ["000000000000000100000000000000005b5d"]
+    },
+    {
+      "name": "a list within one part",
+      "entries": [
+        {
+          "theirIndex": 0,
+          "iteration": 0
+        },
+        {
+          "theirIndex": 11,
+          "iteration": 1
+        }
+      ],
+      "partPayloadBytes": 128,
+      "partsHex": [
+        "000000000000000100000000000000025b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d"
+      ]
+    },
+    {
+      "name": "a list of three parts, the last short",
+      "entries": [
+        {
+          "theirIndex": 0,
+          "iteration": 0
+        },
+        {
+          "theirIndex": 11,
+          "iteration": 1
+        },
+        {
+          "theirIndex": [2, 3],
+          "iteration": 0
+        },
+        {
+          "theirIndex": 33,
+          "iteration": 1
+        },
+        {
+          "theirIndex": 44,
+          "iteration": 0
+        },
+        {
+          "theirIndex": [5, 6],
+          "iteration": 1
+        },
+        {
+          "theirIndex": 66,
+          "iteration": 0
+        }
+      ],
+      "partPayloadBytes": 96,
+      "partsHex": [
+        "000000000000000400000000000000075b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d",
+        "000000010000000400000000000000075b7b227468656972496e646578223a5b322c335d2c22697465726174696f6e223a307d2c7b227468656972496e646578223a33332c22697465726174696f6e223a317d5d",
+        "000000020000000400000000000000075b7b227468656972496e646578223a34342c22697465726174696f6e223a307d2c7b227468656972496e646578223a5b352c365d2c22697465726174696f6e223a317d5d",
+        "000000030000000400000000000000075b7b227468656972496e646578223a36362c22697465726174696f6e223a307d5d"
+      ]
+    }
+  ],
+  "refusals": [
+    {
+      "name": "a missing part",
+      "partsHex": [
+        "000000000000000400000000000000075b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d",
+        "000000020000000400000000000000075b7b227468656972496e646578223a34342c22697465726174696f6e223a307d2c7b227468656972496e646578223a5b352c365d2c22697465726174696f6e223a317d5d"
+      ],
+      "maxEntries": 7,
+      "refusal": "is missing part 1"
+    },
+    {
+      "name": "a repeated part",
+      "partsHex": [
+        "000000000000000400000000000000075b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d",
+        "000000000000000400000000000000075b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d"
+      ],
+      "maxEntries": 7,
+      "refusal": "repeats part 0"
+    },
+    {
+      "name": "a list declaring more entries than the receiver admits",
+      "partsHex": [
+        "000000000000000400000000000000075b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d"
+      ],
+      "maxEntries": 6,
+      "refusal": "declares 7 entries, over the 6 this party admits"
+    },
+    {
+      "name": "a later part declaring another list",
+      "partsHex": [
+        "000000000000000400000000000000075b7b227468656972496e646578223a302c22697465726174696f6e223a307d2c7b227468656972496e646578223a31312c22697465726174696f6e223a317d5d",
+        "000000010000000400000000000000085b7b227468656972496e646578223a5b322c335d2c22697465726174696f6e223a307d2c7b227468656972496e646578223a33332c22697465726174696f6e223a317d5d"
+      ],
+      "maxEntries": 8,
+      "refusal": "part 1 declares a different list than part 0"
+    }
+  ]
+}

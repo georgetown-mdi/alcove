@@ -49,6 +49,7 @@ import type { ExchangeResult } from "../../src/exchange";
 import type { Metadata } from "../../src/config/metadata";
 import type { RunExchangeOptions } from "../../src/exchange";
 import type { DualSignedRecordVerificationInputs } from "../../src/records/signedReceiptVerification";
+import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
 
 // End-to-end coverage of the signed-receipt step in runExchange: two parties
 // run a full exchange over an in-memory pipe (real PSI) with signing identities
@@ -336,8 +337,8 @@ test("an unnamed party refuses at terms agreement rather than signing", async ()
  * as much as what did.
  */
 function frameKind(frame: unknown): string {
+  if (payloadPartBody(frame) !== undefined) return "payload";
   if (typeof frame !== "object" || frame === null) return "opaque";
-  if ("hasData" in frame) return "payload";
   if ("linkageTerms" in frame) return "terms";
   if ("certificate" in frame) return "receipt";
   if ("decision" in frame)
@@ -1136,8 +1137,7 @@ function cutAfterPayloadSend(
     if (framesSinceSend === nth)
       throw new ConnectionError("the connection dropped", "transport");
   };
-  const isPayload = (data: unknown) =>
-    typeof data === "object" && data !== null && "hasData" in data;
+  const isPayload = (data: unknown) => payloadPartBody(data) !== undefined;
   return {
     send: async (data) => {
       cutHere();
@@ -1163,8 +1163,7 @@ function rejectPayloadSend(
 ): MessageConnection {
   return {
     send: async (data) => {
-      if (typeof data === "object" && data !== null && "hasData" in data)
-        throw rejection;
+      if (payloadPartBody(data) !== undefined) throw rejection;
       await conn.send(data);
     },
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),
@@ -1180,11 +1179,7 @@ function withForgedPayload(
 ): MessageConnection {
   return {
     send: (data) =>
-      conn.send(
-        typeof data === "object" && data !== null && "hasData" in data
-          ? forged
-          : data,
-      ),
+      conn.send(payloadPartBody(data) !== undefined ? partFrame(forged) : data),
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),
     close: () => conn.close(),
   };
@@ -2094,16 +2089,12 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
    * of that frame -- exactly as the honest run sends it. */
   function withTaintedPayload(conn: MessageConnection): MessageConnection {
     const taint = (data: unknown): unknown => {
-      if (typeof data !== "object" || data === null || !("hasData" in data))
+      const frame = payloadPartBody(data);
+      if (frame === undefined || !frame.hasData || frame.rows === undefined)
         return data;
-      const frame = data as {
-        hasData: boolean;
-        rows?: Array<Array<string | null>>;
-      };
-      if (!frame.hasData || frame.rows === undefined) return data;
       const rows = frame.rows.map((row) => [...row]);
       rows[0][0] = `${String(rows[0][0])}${LONE_SURROGATE}`;
-      return { ...frame, rows };
+      return partFrame({ ...frame, rows });
     };
     return {
       send: (data: unknown) => conn.send(taint(data)),

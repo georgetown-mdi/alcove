@@ -31,6 +31,7 @@ import {
 } from "./roundResolution";
 import type { AssociationTable } from "../types";
 import {
+  ConnectionError,
   connectionEndReader,
   receiveParsed,
   parseOrProtocolError,
@@ -79,6 +80,14 @@ import {
   UsageError,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import {
+  arraySource,
+  joinMatchedArrayParts,
+  receiveMatchedArray,
+  receiveMatchedListParts,
+  sendMatchedList,
+  type ReceivedMatchedList,
+} from "./matchedListParts";
 import { DistinctValues } from "../utils/distinctValues";
 import {
   EventLoopPacer,
@@ -1371,26 +1380,21 @@ export async function linkViaPSI(
     `${participant.id}: sending match map indexed by round, receiving ` +
       "partner's",
   );
+  // The partner states one entry per record it accepted, so a list declaring
+  // more entries than its declared record count is refused at its first part.
   const theirIdentifiedIndexIterationMap = await exchangeMappedElements(
     participant.id,
     conn,
     log,
     sendFirst,
     identifiedIndexIterationMap,
+    "mapped-element list",
+    partnerRecordCount,
     mappedElementArray,
   );
 
   // Translate the partner's list of our records into our own rows, checking
   // each entry against what THIS side resolved before it indexes anything.
-  // The partner states one entry per record it accepted, so a list longer than
-  // its declared record count is refused before any of it is read.
-  if (theirIdentifiedIndexIterationMap.length > partnerRecordCount)
-    throw partnerProtocolError(
-      participant.id,
-      "the partner's mapped-element list has " +
-        `${theirIdentifiedIndexIterationMap.length} entries, more than the ` +
-        `${partnerRecordCount} record(s) the partner counted`,
-    );
   // Where this party holds the partner's exact partition, a round's entries
   // must be exactly the ones the pairing states, entry for entry in the order
   // sent, and each expands to the rows of our records accepted with that
@@ -1557,6 +1561,8 @@ export async function linkViaPSI(
     log,
     sendFirst,
     expanded,
+    "returned mapped-element list",
+    sides.partnerKeepsDuplicates ? returnedEntries : numMappedElements,
     associationAndIterationArray,
   );
 
@@ -3295,7 +3301,8 @@ export function decodeSinglePassReply(bytes: Uint8Array): {
   return { setup, response, numRecords, distinctValueIndices };
 }
 
-async function exchangeMappedElements<T>(
+/** @internal */
+export async function exchangeMappedElements<T>(
   id: string,
   conn: MessageConnection,
   log: {
@@ -3304,25 +3311,46 @@ async function exchangeMappedElements<T>(
   },
   sendFirst: boolean,
   values: ReadonlyArray<unknown>,
-  // The schema the INBOUND frame is read under: the first pass admits an entry
+  what: string,
+  // The most entries the inbound list may declare, checked at its first part.
+  maxEntries: number,
+  // The schema each inbound part is read under: the first pass admits an entry
   // naming a set of positions, the second one row per accepted pair.
-  schema: { parse(value: unknown): T },
-): Promise<T> {
+  schema: { parse(value: unknown): Array<T> },
+): Promise<Array<T>> {
+  const parsePart = (value: unknown): Array<T> =>
+    parseOrProtocolError(schema, value);
   if (sendFirst) {
     log.debug(`${id}: sending own mapped elements`);
-    await conn.send(values);
+    await sendMatchedList(conn, arraySource(values));
     log.debug(`${id}: waiting for response`);
-    const result = await receiveParsed(conn, schema);
+    const result = await receiveMatchedArray(
+      conn,
+      id,
+      what,
+      maxEntries,
+      parsePart,
+    );
     log.debug(`${id}: received other mapped elements`);
     return result;
   } else {
-    // Send-before-parse: receive the partner's elements, send ours, then
-    // validate. Sending before parsing ensures a malformed final frame does
-    // not strand the partner waiting for our response.
-    const rawData = await conn.receive();
+    // Send-before-parse: receive the partner's parts, send ours, then parse.
+    // Sending before parsing ensures a malformed final part does not strand
+    // the partner waiting for our response, and a part sequence refused on its
+    // headers is refused after ours is sent for the same reason.
+    let received: ReceivedMatchedList | undefined;
+    let headerRefusal: ConnectionError | undefined;
+    try {
+      received = await receiveMatchedListParts(conn, id, what, maxEntries);
+    } catch (error) {
+      if (!(error instanceof ConnectionError) || error.kind !== "protocol")
+        throw error;
+      headerRefusal = error;
+    }
     log.debug(`${id}: received other mapped elements`);
     log.debug(`${id}: sending own mapped elements`);
-    await conn.send(values);
-    return parseOrProtocolError(schema, rawData);
+    await sendMatchedList(conn, arraySource(values));
+    if (received === undefined) throw headerRefusal;
+    return joinMatchedArrayParts(received, id, what, parsePart);
   }
 }

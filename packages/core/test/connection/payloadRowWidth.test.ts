@@ -17,6 +17,7 @@ import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PreparedExchange } from "../../src/exchange";
 import type { Output } from "../../src/config/linkageTermsSchema";
 import type { Metadata } from "../../src/config/metadata";
+import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
 
 // A payload row must supply exactly one value per named column, or the
 // record's readable governance list and its committed values fall out of
@@ -87,11 +88,7 @@ function withForgedPayload(
 ): MessageConnection {
   return {
     send: (data) =>
-      conn.send(
-        typeof data === "object" && data !== null && "hasData" in data
-          ? forged
-          : data,
-      ),
+      conn.send(payloadPartBody(data) !== undefined ? partFrame(forged) : data),
     receive: (timeoutMs?: number) => conn.receive(timeoutMs),
     close: () => conn.close(),
   };

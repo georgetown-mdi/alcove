@@ -168,6 +168,11 @@ export const GENERATED_VECTORS = [
     writes: "stdout",
   },
   {
+    vectors: "matched-list-part-vectors.json",
+    generator: "generate-matched-list-part-vectors.mjs",
+    writes: "stdout",
+  },
+  {
     vectors: "psi-engine-wire-vectors.json",
     generator: "generate-psi-engine-wire-vectors.mjs",
     writes: "file",

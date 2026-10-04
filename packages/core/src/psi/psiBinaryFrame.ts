@@ -61,7 +61,23 @@ function roundAbortReasonOf(frame: unknown): string | undefined {
 
 /**
  * Reads the next frame where the protocol expects PSI binary, classifying
- * whatever arrives before it can reach the library's decoder.
+ * whatever arrives before it can reach the library's decoder: the frame
+ * {@link receiveBinaryFrame} reads, with the frame named "PSI <what>".
+ *
+ * @param conn - The connection to read from.
+ * @param participantId - This party's participant id, prefixed on the message.
+ * @param what - The frame this round awaited, named in the message.
+ */
+export async function receivePsiBinaryFrame(
+  conn: MessageConnection,
+  participantId: string,
+  what: string,
+): Promise<Uint8Array> {
+  return receiveBinaryFrame(conn, participantId, `PSI ${what}`);
+}
+
+/**
+ * Reads the next frame where the protocol expects a binary frame.
  *
  * A partner's abort decision raises {@link PeerAbortError}: the partner ended
  * the exchange and holds the reason locally. The abort's reasons are
@@ -76,18 +92,19 @@ function roundAbortReasonOf(frame: unknown): string | undefined {
  * has not refused anything.
  *
  * @param conn - The connection to read from.
- * @param participantId - This party's participant id, prefixed on the message.
- * @param what - The frame this round awaited, named in the message.
+ * @param participantId - This party's participant id, prefixed on the message,
+ *   or "" for none.
+ * @param what - The frame awaited, named in the message.
  */
-export async function receivePsiBinaryFrame(
+export async function receiveBinaryFrame(
   conn: MessageConnection,
   participantId: string,
   what: string,
 ): Promise<Uint8Array> {
-  return asPsiBinaryFrame(await conn.receive(), participantId, what);
+  return asBinaryFrame(await conn.receive(), participantId, what);
 }
 
-function asPsiBinaryFrame(
+function asBinaryFrame(
   frame: unknown,
   participantId: string,
   what: string,
@@ -99,9 +116,9 @@ function asPsiBinaryFrame(
   if (frame instanceof ArrayBuffer) return new Uint8Array(frame);
   if (isPartnerAbortFrame(frame))
     throw new PeerAbortError(undefined, roundAbortReasonOf(frame));
+  const prefix = participantId === "" ? "" : `${participantId} `;
   throw new ConnectionError(
-    `${participantId} protocol error: inbound PSI ${what} is not a binary ` +
-      "frame",
+    `${prefix}protocol error: inbound ${what} is not a binary frame`,
     "protocol",
   );
 }

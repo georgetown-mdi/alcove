@@ -28,6 +28,11 @@ import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { recordingConnection } from "../utils/recordingConnection";
+import {
+  deviateListBody,
+  partFrame,
+  readPartFrame,
+} from "../utils/matchedListPartFrames";
 
 // Deduplicating matching: a "many" party keeps a value several of its records
 // hold, contributes it once to the round, and attributes a match on it to every
@@ -74,7 +79,7 @@ function deviatingInbound(
   return {
     send: (data) => conn.send(data),
     receive: async (timeoutMs?: number) =>
-      deviate(await conn.receive(timeoutMs)),
+      deviateListBody(await conn.receive(timeoutMs), deviate),
     close: () => conn.close(),
     setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
   };
@@ -512,9 +517,10 @@ async function runNonConformingStarter(
   // so its translation of the joiner's list is the identity and its own entries
   // hold the joiner's positions as the round reported them, in its own ascending
   // row order -- the order a round's entries are attributed by.
-  await conn.send(report(inOwnRowOrder(joinerPositions, ownRows)));
-  const joinerList = (await conn.receive()) as Array<MappedElement>;
-  await conn.send(joinerList);
+  await conn.send(partFrame(report(inOwnRowOrder(joinerPositions, ownRows))));
+  const joinerList = readPartFrame(await conn.receive())!
+    .body as Array<MappedElement>;
+  await conn.send(partFrame(joinerList));
   await conn.receive();
 }
 
@@ -671,7 +677,7 @@ for (const manySide of ["starter", "joiner"] as const) {
       await expectProtocolRefusal(
         oneSide,
         onMappedElementList(1, (list) => [...list, list[0], list[0]]),
-        /more than the 4 record\(s\) the partner counted/,
+        /mapped-element list declares \d+ entries, over the 4 this party admits/,
       );
     },
   );
@@ -1197,16 +1203,19 @@ async function runManyKeysAgainstNonConformingStarter(
     // Its own matched records: one entry per (round, joiner position) the round
     // paired it with exactly once, which is what the joiner's resolver keeps.
     await starterConn.send(
-      positionsByRound.flatMap((positions, iteration) =>
-        attributableMatches(positions).map((entry) => ({
-          ...entry,
-          iteration,
-        })),
+      partFrame(
+        positionsByRound.flatMap((positions, iteration) =>
+          attributableMatches(positions).map((entry) => ({
+            ...entry,
+            iteration,
+          })),
+        ),
       ),
     );
-    const joinerList = (await starterConn.receive()) as Array<MappedElement>;
+    const joinerList = readPartFrame(await starterConn.receive())!
+      .body as Array<MappedElement>;
     for (const entry of joinerList) roundsSent.push(entry.iteration);
-    await starterConn.send(joinerList);
+    await starterConn.send(partFrame(joinerList));
     await starterConn.receive();
   })().catch(() => undefined);
 

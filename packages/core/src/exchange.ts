@@ -3166,6 +3166,9 @@ export async function runExchange(
       conn,
       handshakeRole,
       localPayload,
+      // The partner sends one payload row per distinct record of its own this
+      // party's table pairs, so at most one per pair.
+      associationTable === undefined ? 0 : associationTable[1].length,
       (reportedPartnerPayload) => {
         localPayloadSent = true;
         // The responder's own send is the last frame of its exchange, so an

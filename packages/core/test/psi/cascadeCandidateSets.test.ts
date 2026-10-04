@@ -35,6 +35,7 @@ import {
   mirrorCardinality,
   type Column,
 } from "../utils/candidateSetBounds";
+import { deviateListBody } from "../utils/matchedListPartFrames";
 
 const psiLibrary = await PSI();
 
@@ -575,16 +576,16 @@ for (const manySide of ["starter", "joiner"] as const) {
     let named: Array<MappedElement> | undefined;
     const deviating = (conn: MessageConnection): MessageConnection => ({
       send: (data) => conn.send(data),
-      receive: async (timeoutMs?: number) => {
-        const frame = await conn.receive(timeoutMs);
-        if (named !== undefined || !isMappedElementList(frame)) return frame;
-        named = frame;
-        const last = frame[frame.length - 1];
-        return [
-          ...frame.slice(0, -1),
-          { ...last, theirIndex: 1 - last.theirIndex },
-        ];
-      },
+      receive: async (timeoutMs?: number) =>
+        deviateListBody(await conn.receive(timeoutMs), (frame) => {
+          if (named !== undefined || !isMappedElementList(frame)) return frame;
+          named = frame;
+          const last = frame[frame.length - 1];
+          return [
+            ...frame.slice(0, -1),
+            { ...last, theirIndex: 1 - last.theirIndex },
+          ];
+        }),
       close: () => conn.close(),
       setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
     });
