@@ -270,10 +270,9 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
-/** The longest file name kept: 255 code points, the number core bounds an
- * exchange's own file names by. A browser hands over a file's name as code
- * points, and no file system a browser reads from holds a name of more than
- * 255 of them. */
+/** The longest file name kept. Core bounds its own file names at
+ * MAX_FILE_NAME_BYTES UTF-8 bytes; the browser hands a file name over as code
+ * points, so this bound reuses the number in that unit. */
 const MAX_FILE_NAME_CODE_POINTS = MAX_FILE_NAME_BYTES;
 
 /** A string of at most `maxCodePoints` code points. */
