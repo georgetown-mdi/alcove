@@ -480,21 +480,15 @@ function exportReplacesIdentity(
 }
 
 /**
- * What an existing file at the export path holds, read before anything is
- * written: `undefined` when the path is free, `null` when something is there
- * that cannot be read as text (a folder, an unreadable file).
+ * What an existing file at the export path holds: `undefined` when the path is
+ * free, `null` when something is there that cannot be read as text (a folder,
+ * an unreadable file).
  */
 function readExistingExport(exportPath: string): string | null | undefined {
   try {
-    fs.lstatSync(exportPath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    return null;
-  }
-  try {
     return fs.readFileSync(exportPath, "utf8");
-  } catch {
-    return null;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null;
   }
 }
 
@@ -582,7 +576,6 @@ export async function handler(argv: Arguments): Promise<void> {
     // is, so a repeated run succeeds. Decided before anything may change the
     // identity.
     let onDisk: { identity: SigningIdentity | undefined } | undefined;
-    let existingExport: string | undefined;
     if (exportPath !== undefined && !force) {
       onDisk = { identity: await loadSigningIdentity(identityPath) };
       const existing = readExistingExport(exportPath);
@@ -592,7 +585,6 @@ export async function handler(argv: Arguments): Promise<void> {
           existing !== serializeCertificate(onDisk.identity.certificate)
         )
           throw exportWouldReplaceFileError(exportPath);
-        existingExport = existing;
       }
     }
 
@@ -613,13 +605,21 @@ export async function handler(argv: Arguments): Promise<void> {
       const certificate = serializeCertificate(identity.certificate);
       try {
         // Public, shareable artifact: world-readable and atomic, NOT owner-only.
-        if (existingExport === undefined)
-          writeFileAtomic(exportPath, certificate);
+        // Without --force the create is exclusive, so a file that appeared
+        // since the preflight is compared rather than replaced.
+        writeFileAtomic(exportPath, certificate, undefined, {
+          exclusive: !force,
+        });
       } catch (err) {
-        const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
-          exportPath,
-        )}: ${err instanceof Error ? err.message : String(err)}`;
-        throw keepOperatorSuppliedText(new UsageError(message.text), message);
+        if (err instanceof FileExistsError) {
+          if (readExistingExport(exportPath) !== certificate)
+            throw exportWouldReplaceFileError(exportPath);
+        } else {
+          const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
+            exportPath,
+          )}: ${err instanceof Error ? err.message : String(err)}`;
+          throw keepOperatorSuppliedText(new UsageError(message.text), message);
+        }
       }
     }
 

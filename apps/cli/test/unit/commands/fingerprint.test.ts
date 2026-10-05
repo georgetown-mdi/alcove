@@ -1375,6 +1375,25 @@ test("handler leaves an export already holding this certificate in place", async
   expect(fs.readFileSync(certPath, "utf8")).toBe(first);
 });
 
+test("handler leaves an export that appears with this certificate during the write", async () => {
+  const idPath = path.join(dir, "id.json");
+  const identity = await generateSigningIdentity("Party A");
+  idFile.saveSigningIdentity(idPath, identity);
+  const certPath = path.join(dir, "cert.json");
+  const certificate = serializeCertificate(identity.certificate);
+  const realLink = fs.linkSync;
+  const link = vi.spyOn(fs, "linkSync").mockImplementation((from, to) => {
+    fs.writeFileSync(certPath, certificate);
+    return realLink(from, to);
+  });
+  try {
+    await exportCertificate(idPath, certPath);
+  } finally {
+    link.mockRestore();
+  }
+  expect(fs.readFileSync(certPath, "utf8")).toBe(certificate);
+});
+
 test("handler replaces a different existing export with --force", async () => {
   const idPath = path.join(dir, "id.json");
   idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));

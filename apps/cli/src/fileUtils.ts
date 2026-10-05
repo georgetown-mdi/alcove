@@ -768,11 +768,15 @@ export function writeFileOwnerOnly(
  * mode withholds. Durability matches {@link writeFileOwnerOnly}: the data is
  * `fsync`'d before the rename and the parent directory after it. See
  * docs/spec/CREDENTIAL_STORAGE.md.
+ *
+ * With `exclusive`, the final step creates `destPath` only if absent and
+ * throws {@link FileExistsError} otherwise.
  */
 export function writeFileAtomic(
   destPath: string,
   content: string,
   mode = 0o644,
+  options: { exclusive?: boolean } = {},
 ): void {
   fs.mkdirSync(path.dirname(destPath), { recursive: true });
   // Same-directory temp guarantees a same-filesystem (atomic) rename; the
@@ -829,10 +833,28 @@ export function writeFileAtomic(
     // and this rename); for this public artifact it only risks leaving destPath
     // a redirecting symlink, which the next write heals. No portable fix in
     // Node's fs (it needs renameat2/O_TMPFILE).
-    fs.renameSync(tmp, destPath);
-    // Flush the parent directory so the rename's new directory entry is durable
-    // too (POSIX only; see fsyncParentDir). Inside the try so a flush failure
-    // runs the temp cleanup -- a no-op after a successful rename -- and propagates.
+    if (options.exclusive) {
+      // Create-if-absent: linkSync fails when destPath exists, where
+      // renameSync would silently replace it.
+      try {
+        fs.linkSync(tmp, destPath);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "EEXIST")
+          // eslint-disable-next-line no-restricted-syntax -- FileExistsError marks the path in its own constructor.
+          throw new FileExistsError(destPath);
+        throw e;
+      }
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* best-effort: destination is already created */
+      }
+    } else {
+      fs.renameSync(tmp, destPath);
+    }
+    // Flush the parent directory so the new directory entry is durable too
+    // (POSIX only; see fsyncParentDir). Inside the try so a flush failure
+    // runs the temp cleanup and propagates.
     fsyncParentDir(destPath);
   } catch (err) {
     // Remove the temp file on any failure so a partial write leaves no orphan.
