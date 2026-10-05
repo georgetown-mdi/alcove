@@ -1538,7 +1538,7 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
         /credential issuance: exchange=exchange-1 \S+ outcome=registered authority=relay-owner-token/,
       );
       expect(log.stderr).toMatch(
-        /revoke \(relay-owner token\): revoked exchange exchange-1/,
+        /credential issuance: exchange=exchange-1 time=\S+ outcome=revoked authority=relay-owner-token\n/,
       );
     });
     for (const text of [first.text, second.text, revoked.text, log.stderr]) {
@@ -2159,7 +2159,9 @@ describe.skipIf(runningAsRoot)(
         expect(log.stderr).toMatch(
           /credential issuance: exchange=exchange-1 \S+ outcome=replaced authority=proof/,
         );
-        expect(log.stderr).toMatch(/revoke \(proof\): revoked exchange/);
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 time=\S+ outcome=revoked authority=proof\n/,
+        );
       });
       expect(log.stderr).not.toMatch(HEX64);
     });

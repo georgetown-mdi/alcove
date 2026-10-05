@@ -435,10 +435,10 @@ session, usage, realm, username or byte line. Measured on the standing relay on
   about a party, and the denial cannot be kept without it being logged at
   these settings.
 
-Whether the authentication-failure line also names the client's address is
-not yet measured; the host run below captures it. The lines go to the journal
-through the unit's `journald` log driver, and coturn also writes them to a file
-under `/var/tmp` in the container, a tmpfs dropped when the container stops.
+Whether the authentication-failure line also names the client's address, and
+whether coturn also writes these lines to a file under `/var/tmp` despite
+`log-file=stdout`, are not yet measured; the host run below captures both. The
+lines go to the journal through the unit's `journald` log driver.
 `scripts/relay-logging-posture.test.mjs` holds the template to these settings;
 it cannot see a coturn release change what they write, so a base-image bump
 repeats the measurement.
@@ -450,12 +450,13 @@ token -- is the issuance event: it is what makes the relay accept the
 credentials both parties mint for that exchange. Its line is:
 
 ```
-credential issuance: exchange=<exchange-id> time=<YYYY-MM-DDTHH:MM:SSZ> outcome=<registered|replaced|renewed|unchanged> authority=<relay-owner-token|proof>
+credential issuance: exchange=<exchange-id> time=<YYYY-MM-DDTHH:MM:SSZ> outcome=<registered|replaced|renewed|unchanged|revoked> authority=<relay-owner-token|proof>
 ```
 
 `time` is the registrar's clock in UTC when it answered; `outcome` is what the
 write did, `unchanged` for an enrollment repeating the key the exchange holds;
-`authority` is the credential that authorized it. No registrar line names the
+`authority` is the credential that authorized it. A revocation writes the same
+line with `outcome=revoked`. No registrar line names the
 caller's address, the key, the token, or the proof.
 `scripts/relay-exchange-keys.test.mjs` holds the format, the outcomes, and the
 absence of any address, key, token or proof in the whole journal.
@@ -463,8 +464,7 @@ absence of any address, key, token or proof in the whole journal.
 ### Retention and who reads it
 
 - **Retention.** The host's journald settings; the reference sets none, so the
-  journal is rotated by size, not age. The tmpfs file lasts until the container
-  restarts.
+  journal is rotated by size, not age.
 - **Who reads it.** Whoever can read the relay host's journal: root and the
   accounts the host grants journal access, which on the reference deployment is
   the relay operator alone. Nothing in the reference ships a log off the host.
@@ -472,8 +472,8 @@ absence of any address, key, token or proof in the whole journal.
 ### Quotas against one exchange
 
 The values `render-config.sh` substitutes by default, reviewed against the
-largest exchange the specification sizes. Nothing changed; the one open
-question is the unit of `max-bps`.
+largest exchange the specification sizes. The unit of `max-bps` is among what
+the host run measures (below).
 
 **What one exchange moves.** A PSI round moves `35 * (2*D_recv + D_send)` bytes,
 at 35 bytes an encrypted element: the receiver's set once each way and the
@@ -555,7 +555,7 @@ host run before it is documented here.
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
 | The standalone broker at its standing name on 443 | the follow-on item for the standing broker service; the standalone entry point itself completed exchanges beside coturn on 8443 on 2026-10-03, then was removed |
 | A relayed exchange longer than `max-allocate-lifetime` | a relayed run past 600 s, which shows whether werift and the browser refresh their allocations; every relayed run measured here took seconds |
-| What coturn's metrics endpoint and its `verbose` lines hold, and the unit of `max-bps` | the host run in [Logging and data handling](#logging-and-data-handling), against the pinned image |
+| What coturn's metrics endpoint and its `verbose` lines hold, the unit of `max-bps`, and whether coturn writes a log file under `/var/tmp` at `log-file=stdout` | the host run in [Logging and data handling](#logging-and-data-handling), against the pinned image |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |
 
 ## Stated limits

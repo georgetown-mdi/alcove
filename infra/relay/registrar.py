@@ -121,9 +121,7 @@ def proof_mac(relay_key, method, exchange_id, body, timestamp):
 
 
 def issuance_line(registration, authority, now):
-    """The journal line for a registration, in the format
-    docs/notes/webrtc-relay-deployment.md states: the exchange, the time, the
-    outcome and which credential authorized it, and nothing about the caller."""
+    """The journal line for a write, in the format the deployment note gives."""
     return ISSUANCE_LINE % (registration["exchange_id"], relay_table.iso_time(now), registration["outcome"], authority)
 
 
@@ -152,8 +150,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         self.connection.do_handshake()
 
     def log_message(self, format, *args):
-        # No caller address: the registrar's journal keeps nothing about the
-        # parties (docs/notes/webrtc-relay-deployment.md, What the relay host keeps).
+        # No caller address (docs/notes/webrtc-relay-deployment.md, What the relay host keeps).
         sys.stderr.write("%s\n" % (format % args))
 
     def log_request(self, code="-", size="-"):
@@ -336,8 +333,8 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return None
         return raw, body["key"], body["maxAgeDays"]
 
-    def answer_registration(self, authority, registration):
-        sys.stderr.write(issuance_line(registration, authority, time.time()))
+    def answer_registration(self, authority, registration, now):
+        sys.stderr.write(issuance_line(registration, authority, now))
         message = relay_table.describe_registration(registration)
         lapses_at = registration["lapses_at"]
         self.send_json(
@@ -368,11 +365,12 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         if registration is None:
             return
         _, key, max_age_days = registration
+        now = time.time()
         enrollment = self.write_table(
-            lambda conn: relay_table.enroll(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
+            lambda conn: relay_table.enroll(conn, REALM, exchange_id, key, max_age_days, now, True)
         )
         if enrollment is not None:
-            self.answer_registration(AUTHORITY_TOKEN, enrollment)
+            self.answer_registration(AUTHORITY_TOKEN, enrollment, now)
 
     def do_PUT(self):
         credential = self.credential()
@@ -385,12 +383,13 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         if registration is None:
             return
         raw, key, max_age_days = registration
+        now = time.time()
         if credential is TOKEN:
             written = self.write_table(
-                lambda conn: relay_table.register(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
+                lambda conn: relay_table.register(conn, REALM, exchange_id, key, max_age_days, now, True)
             )
             if written is not None:
-                self.answer_registration(AUTHORITY_TOKEN, written)
+                self.answer_registration(AUTHORITY_TOKEN, written, now)
             return
 
         def holds(current):
@@ -403,10 +402,10 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return credential.made_under(current, "PUT", exchange_id, raw)
 
         written = self.write_table(
-            lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, time.time(), holds, True)
+            lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, now, holds, True)
         )
         if written is not None:
-            self.answer_registration(AUTHORITY_PROOF, written)
+            self.answer_registration(AUTHORITY_PROOF, written, now)
 
     def do_DELETE(self):
         credential = self.credential()
@@ -415,10 +414,11 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         exchange_id = self.target("revoke")
         if exchange_id is None:
             return
+        now = time.time()
         if credential is TOKEN:
             closing = self.discard_body()
             revocation = self.write_table(lambda conn: relay_table.revoke(conn, exchange_id), closing)
-            journal = "revoke (relay-owner token)"
+            authority = AUTHORITY_TOKEN
         else:
             closing = ()
             raw = self.read_body(empty_when_unsized=True)
@@ -429,11 +429,11 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
                     conn, exchange_id, lambda current: credential.made_under(current, "DELETE", exchange_id, raw)
                 )
             )
-            journal = "revoke (proof)"
+            authority = AUTHORITY_PROOF
         if revocation is None:
             return
         message = relay_table.describe_revocation(revocation)
-        sys.stderr.write("%s: %s\n" % (journal, message))
+        sys.stderr.write(issuance_line({"exchange_id": exchange_id, "outcome": "revoked"}, authority, now))
         self.send_json(200, {"message": message}, closing)
 
     def refuse_method(self):
