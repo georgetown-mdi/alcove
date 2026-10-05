@@ -148,7 +148,7 @@ describe("an accepting party's re-run", () => {
       .toBeInTheDocument();
   });
 
-  test("a saved address that fails validation stops the run before any dial, naming the exchange", async () => {
+  test("a saved address that fails validation stops the run before any dial, naming the exchange and offering no retry", async () => {
     expectConsole("error", /ManagedSignalingEndpointRefusedError/);
     const exchange = await acceptorExchange("rerun-refused-endpoint");
     const created = await createManagedExchange({
@@ -175,5 +175,25 @@ describe("an accepting party's re-run", () => {
       )
       .toBeInTheDocument();
     expect(dials.endpoints).toHaveLength(0);
+
+    const alert = page.getByRole("alert").filter({
+      hasText: "The saved signaling server address cannot be used",
+    });
+    await expect.element(alert).toBeInTheDocument();
+    const alertText = alert.element().textContent;
+    expect(alertText).toContain(
+      "Running it again stops the same way; this exchange needs a fresh " +
+        "invitation.",
+    );
+    expect(alertText).not.toMatch(/try again/i);
+    expect(
+      page.getByText("The run could not be completed").elements(),
+    ).toHaveLength(0);
+    await expect
+      .element(page.getByText("Ask your partner to re-invite."))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("link", { name: "Back to recurring exchanges" }))
+      .toBeInTheDocument();
   });
 });

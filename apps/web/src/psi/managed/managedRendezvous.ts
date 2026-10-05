@@ -88,6 +88,9 @@ export function assertManagedRerunDispatchable(
 export class ManagedSignalingEndpointRefusedError extends Error {
   /** The label of the exchange whose saved address was refused. */
   readonly label: string;
+  /** What is wrong with the saved address, as a predicate of it ("is not a
+   * complete host, port and path"), fixed text naming no stored value. */
+  readonly reason: string;
   constructor(label: string, reason: string) {
     const name =
       label.trim() === ""
@@ -99,6 +102,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
     );
     this.name = "ManagedSignalingEndpointRefusedError";
     this.label = label;
+    this.reason = reason;
   }
 }
 
