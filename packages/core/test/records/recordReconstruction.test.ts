@@ -85,6 +85,7 @@ async function roundTrip(opts: {
   // a retained result file edited after the exchange wrote it, reaching the
   // re-supply path exactly as an unedited one does.
   editRetainedResult?: (rows: string[][]) => void;
+  shardEntries?: number;
 }) {
   const localPayloadSent = toCommittedPayload(
     preparePayload(opts.rawRows, opts.metadata, opts.associationTable),
@@ -121,6 +122,7 @@ async function roundTrip(opts: {
     inputRows: opts.rawRows,
     result,
     ourIdColumn: opts.ourIdColumn,
+    shardEntries: opts.shardEntries,
   });
   const report = await verifyExchangeRecord(record, keys, {
     data,
@@ -476,6 +478,108 @@ describe("reconstructCommittedData round-trips through the real build path", () 
 // local side for the sent payload, on the partner side for the received one. Both
 // fan directions are driven here, each against the payload frame the mirrored
 // party would actually have sent.
+describe("the identifier index past one shard", () => {
+  // Two entries a shard, so five identifiers fill three shards and a lookup
+  // probes each.
+  const SHARD_ENTRIES = 2;
+  const rows: CSVRow[] = ["P0", "P1", "P2", "P3", "P4"].map((pid, at) => ({
+    pid,
+    dose: `${at}0mg`,
+  }));
+  const partnerPayload: PartnerPayload = {
+    columns: ["note"],
+    rowIndices: [0, 1, 2],
+    rows: [["n-0"], ["n-1"], ["n-2"]],
+  };
+
+  test("rows in every shard reopen every commitment", async () => {
+    const { report, warnings, data } = await roundTrip({
+      rawRows: rows,
+      metadata: idMeta,
+      associationTable: [
+        [0, 3, 4],
+        [2, 0, 1],
+      ],
+      partnerPayload,
+      ourIdColumn: "pid",
+      shardEntries: SHARD_ENTRIES,
+    });
+    expect(warnings).toEqual([]);
+    expect(data.associationTable).toEqual([
+      [0, 3, 4],
+      [2, 0, 1],
+    ]);
+    expect(report.outcome).toBe("verified");
+  });
+
+  test("an identifier repeated in a later shard resolves to its first row", async () => {
+    const repeated: CSVRow[] = [...rows, { pid: "P1", dose: "late" }];
+    const result: RetainedResult = {
+      headers: ["pid", "row_id"],
+      rows: [
+        ["P1", "0"],
+        ["P4", "1"],
+      ],
+    };
+    const { record } = await buildExchangeRecord({
+      localTerms: termsA,
+      partnerTerms: termsB,
+      contributedLinkageFields: ["ssn"],
+      outcome: "completed",
+      certificateMismatchObserved: false,
+      recordsExposed: repeated.length,
+      resultSize: 2,
+      associationTable: [
+        [1, 4],
+        [0, 1],
+      ],
+      localPayloadSent: { columns: [], rows: [] },
+      partnerPayloadReceived: { columns: [], rows: [] },
+      createdAt: "2026-01-02T03:04:05.000Z",
+    });
+    const { data, warnings } = reconstructCommittedData({
+      record,
+      inputRows: repeated,
+      result,
+      ourIdColumn: "pid",
+      shardEntries: SHARD_ENTRIES,
+    });
+    expect(data.associationTable).toEqual([
+      [1, 4],
+      [0, 1],
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("has duplicate values");
+  });
+
+  test("an identifier in no shard is reported missing", async () => {
+    const { record } = await buildExchangeRecord({
+      localTerms: termsA,
+      partnerTerms: termsB,
+      contributedLinkageFields: ["ssn"],
+      outcome: "completed",
+      certificateMismatchObserved: false,
+      recordsExposed: rows.length,
+      resultSize: 1,
+      associationTable: [[4], [0]],
+      localPayloadSent: { columns: [], rows: [] },
+      partnerPayloadReceived: { columns: [], rows: [] },
+      createdAt: "2026-01-02T03:04:05.000Z",
+    });
+    const { data, warnings } = reconstructCommittedData({
+      record,
+      inputRows: rows,
+      result: { headers: ["pid", "row_id"], rows: [["P9", "0"]] },
+      ourIdColumn: "pid",
+      shardEntries: SHARD_ENTRIES,
+    });
+    expect(data.associationTable).toEqual([[-1], [0]]);
+    expect(
+      warnings.some((w) => w.includes("not present in the supplied input")),
+    ).toBe(true);
+  });
+});
+
 describe("reconstructCommittedData round-trips a deduplicating cardinality", () => {
   test("the 'one' side: several partner records against one of ours", async () => {
     // The partner's rows 1 and 0 both link to our row 0, and its row 3 to our
