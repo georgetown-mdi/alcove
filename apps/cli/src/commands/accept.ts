@@ -542,6 +542,7 @@ export async function validateAccept(params: {
     const rows = await loadInputRows(input, {
       allowStdin: consentToTerms,
       csvDelimiter,
+      allowMemoryShortfall: options.allowMemoryShortfall,
     });
     checkLinkageSatisfiability(
       rows.columns,
@@ -625,6 +626,7 @@ export async function validateAccept(params: {
       ? await loadInputRows(resolved.input, {
           allowStdin: consentToTerms,
           csvDelimiter,
+          allowMemoryShortfall: options.allowMemoryShortfall,
         })
       : undefined;
   // The connection this acceptance can run the exchange on itself, rather than

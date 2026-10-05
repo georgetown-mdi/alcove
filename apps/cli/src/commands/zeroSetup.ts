@@ -464,12 +464,13 @@ async function prepareDataset(
   linkageStrategy: LinkageStrategy | undefined,
   deduplicate: boolean,
   csvDelimiter: string | undefined,
+  allowMemoryShortfall: boolean,
 ): Promise<PreparedExchange> {
   const log = getLogger("alcove");
 
   const { rawRows, columns, sanitizedColumnPositions } = await loadInputRows(
     input,
-    { allowStdin: true, csvDelimiter },
+    { allowStdin: true, csvDelimiter, allowMemoryShortfall },
   );
   // The prepare resolves the metadata from this read's own columns, so it takes
   // this read's changed positions with them: a header the removal emptied is
@@ -885,6 +886,7 @@ export async function handler(argv: Arguments): Promise<void> {
         linkageStrategy,
         deduplicate,
         csvDelimiter,
+        allowMemoryShortfall === true,
       );
       // Read the files any `@path` credential ref names, holding the values
       // aside rather than applying them: `connection` must keep the reference so

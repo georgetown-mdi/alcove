@@ -446,6 +446,9 @@ export function expiresFromNow(durationSeconds: number): string {
  * unconditionally. `csvDelimiter` is the field-delimiter choice the party made
  * for this run, from its `--csv-delimiter` or its configuration; omitted, the
  * read takes a comma.
+ * `allowMemoryShortfall` is the run's `--allow-memory-shortfall`: an input
+ * the main thread's heap is estimated not to hold is read with a warning
+ * rather than refused.
  *
  * A row-level parse fault rejects inside `loadCSVFile` (a `CsvRowParseError`,
  * which is a `UsageError` -> exit 64). A dataset with no data rows is refused
@@ -471,13 +474,20 @@ export async function loadInputRows(
   {
     allowStdin = false,
     csvDelimiter,
-  }: { allowStdin?: boolean; csvDelimiter?: string } = {},
+    allowMemoryShortfall = false,
+  }: {
+    allowStdin?: boolean;
+    csvDelimiter?: string;
+    allowMemoryShortfall?: boolean;
+  } = {},
 ): Promise<{
   rawRows: Array<CSVRow>;
   columns: string[];
   sanitizedColumnPositions: Array<number>;
 }> {
-  await checkInputFitsMainThreadHeap(input);
+  await checkInputFitsMainThreadHeap(input, {
+    allowShortfall: allowMemoryShortfall,
+  });
   const csvResult = await loadCSVFile(
     openInputSource(input, { allowStdin }),
     undefined,

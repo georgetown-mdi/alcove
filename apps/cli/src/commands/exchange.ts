@@ -832,12 +832,13 @@ export async function prepareDataset(
   logFile: string | undefined,
   connection: ProtocolConnectionConfig,
   csvDelimiter?: string,
+  allowMemoryShortfall = false,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
 
   const { rawRows, columns, sanitizedColumnPositions } = await loadInputRows(
     input,
-    { allowStdin: true, csvDelimiter },
+    { allowStdin: true, csvDelimiter, allowMemoryShortfall },
   );
 
   // Resolve the metadata this run transmits, carrying the positions this read
@@ -1251,6 +1252,7 @@ export async function handler(argv: Arguments): Promise<void> {
         logFile,
         connection,
         csvDelimiter,
+        allowMemoryShortfall === true,
       );
     } catch (err) {
       // A usage error -- the `-`-at-an-interactive-terminal rejection

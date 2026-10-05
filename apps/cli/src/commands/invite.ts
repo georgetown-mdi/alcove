@@ -743,6 +743,7 @@ export async function validateInvite(params: {
     const rows = await loadInputRows(input, {
       allowStdin: true,
       csvDelimiter,
+      allowMemoryShortfall: options.allowMemoryShortfall,
     });
     const builtDataSpec = {
       ...buildDataSpec({ identity, rows, linkageStrategy }),
@@ -930,6 +931,7 @@ export async function validateInvite(params: {
       const rows = await loadInputRows(resolved.input, {
         allowStdin: true,
         csvDelimiter: runCsvDelimiter,
+        allowMemoryShortfall: options.allowMemoryShortfall,
       });
       // The input only validated compatibility; the invitation's terms come from
       // the config, not the input. Say so ahead of the check below, so a user who
@@ -1070,6 +1072,7 @@ export async function validateInvite(params: {
   const rows = await loadInputRows(resolved.input, {
     allowStdin: true,
     csvDelimiter,
+    allowMemoryShortfall: options.allowMemoryShortfall,
   });
   const builtDataSpec = {
     ...buildDataSpec({ identity, rows, linkageStrategy }),
