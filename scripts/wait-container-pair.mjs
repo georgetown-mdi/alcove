@@ -16,6 +16,10 @@ import { fileURLToPath } from "node:url";
 const STOPPED_HALF_GRACE_MS =
   Number(process.env.WAIT_CONTAINER_PAIR_GRACE_MS) || 30_000;
 const TIMED_OUT = Symbol("timed out");
+// A half exiting within this window of its failing partner is spared, since
+// two `docker wait` calls report near-simultaneous exits staggered by spawn
+// latency.
+const PARTNER_SETTLE_MS = 250;
 
 /**
  * Waits for one container through `docker wait`. Resolves with the exit status
@@ -78,6 +82,14 @@ export async function waitForPair(halves, timeoutSeconds) {
     waits[next.index].reason = "exited";
     pending = pending.filter((index) => index !== next.index);
     if (next.status !== "0") failedHalf = waits[next.index];
+  }
+
+  if (failedHalf !== undefined && pending.length > 0) {
+    await withDeadline(
+      Promise.all(pending.map((index) => settled[index])),
+      Math.min(PARTNER_SETTLE_MS, deadline - Date.now()),
+      () => undefined,
+    );
   }
 
   const stopped = [];
