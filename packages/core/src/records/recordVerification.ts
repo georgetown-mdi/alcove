@@ -1,6 +1,7 @@
 import { computeTermsHash, verifyCommitmentOpening } from "./exchangeRecord.js";
 import { readRowColumn } from "../file.js";
 import { distinctMatchedRows } from "../payloadExchange.js";
+import { DistinctValues } from "../utils/distinctValues.js";
 import {
   firstPartyNote,
   sanitizeForDisplay,
@@ -422,6 +423,9 @@ interface ReconstructionSources {
    * mapped back to an input row index. Omit when the exchange keyed on row indices
    * (the result's first column is then the row index itself). */
   ourIdColumn?: string;
+  /** The entries one shard of the identifier index holds; lowered only by
+   * tests. */
+  shardEntries?: number;
 }
 
 /** The reconstructed committed data plus any non-fatal caveats a caller should
@@ -484,19 +488,25 @@ function sameCells(
 export function reconstructCommittedData(
   sources: ReconstructionSources,
 ): ReconstructedData {
-  const { record, inputRows, result, ourIdColumn } = sources;
+  const { record, inputRows, result, ourIdColumn, shardEntries } = sources;
   const warnings: Displayable[] = [];
   const data: Partial<Record<CommitmentName, CanonicalValue>> = {};
 
-  let idToRow: Map<string, number> | undefined;
+  // Each distinct identifier, and at the same position the input row it first
+  // appears on. An input can hold more rows than the 2^24 entries a V8 Map
+  // holds, so the index is sharded (docs/spec/FILE_SYNC.md, Round set size
+  // limits).
+  let identifiers: DistinctValues | undefined;
+  const firstRowOf: number[] = [];
   if (ourIdColumn !== undefined) {
-    idToRow = new Map();
+    const index = new DistinctValues({ shardEntries });
+    identifiers = index;
     let anyDuplicate = false;
-    inputRows.forEach((row, index) => {
+    inputRows.forEach((row, rowIndex) => {
       const value = readRowColumn(row, ourIdColumn);
       if (value === undefined) return;
-      if (idToRow!.has(value)) anyDuplicate = true;
-      else idToRow!.set(value, index);
+      if (index.add(value) < firstRowOf.length) anyDuplicate = true;
+      else firstRowOf.push(rowIndex);
     });
     if (anyDuplicate)
       warnings.push(
@@ -522,13 +532,13 @@ export function reconstructCommittedData(
   for (const row of result.rows) {
     const ourCell = row[RESULT_OUR_ID_COLUMN] ?? "";
     let ourIndex: number;
-    if (ourIdColumn !== undefined) {
-      const resolved = idToRow!.get(ourCell);
-      if (resolved === undefined) {
+    if (identifiers !== undefined) {
+      const position = identifiers.indexOf(ourCell);
+      if (position === -1) {
         anyMissingIdentity = true;
         ourIndex = -1;
       } else {
-        ourIndex = resolved;
+        ourIndex = firstRowOf[position];
       }
     } else {
       ourIndex = Number(ourCell);
