@@ -84,7 +84,9 @@ describe("the process runner", () => {
     expect(result.timedOut).toBe(false);
   });
 
-  test("follows a stop the child ignores with SIGKILL after the grace", async () => {
+  // Starts a child that ignores SIGTERM, stops it once it is listening, and
+  // returns the run's result with the time from the stop to its end.
+  async function stopChildIgnoringSigterm() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-runner-"));
     const ready = path.join(dir, "ready");
     try {
@@ -104,13 +106,33 @@ describe("the process runner", () => {
       const stoppedAt = Date.now();
       stop.abort();
       const result = await pending;
-      expect(result.code).toBeNull();
-      expect(result.timedOut).toBe(false);
-      expect(Date.now() - stoppedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 50);
+      return { result, elapsedMs: Date.now() - stoppedAt };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }
+
+  // Windows ends a child at the first kill() whatever the signal, so no child
+  // there can ignore the stop; the runIf test below checks that.
+  test.skipIf(process.platform === "win32")(
+    "follows a stop the child ignores with SIGKILL after the grace",
+    async () => {
+      const { result, elapsedMs } = await stopChildIgnoringSigterm();
+      expect(result.code).toBeNull();
+      expect(result.timedOut).toBe(false);
+      expect(elapsedMs).toBeGreaterThanOrEqual(KILL_GRACE_MS - 50);
+    },
+  );
+
+  test.runIf(process.platform === "win32")(
+    "ends a child that ignores SIGTERM at the stop on Windows, before the grace",
+    async () => {
+      const { result, elapsedMs } = await stopChildIgnoringSigterm();
+      expect(result.code).toBeNull();
+      expect(result.timedOut).toBe(false);
+      expect(elapsedMs).toBeLessThan(KILL_GRACE_MS - 50);
+    },
+  );
 
   test("does not call an aborted run a timeout that fires in the kill grace", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-runner-"));

@@ -67,6 +67,23 @@ function folderMissingError(dirPath: string, code: FolderMissingCode): Error {
   );
 }
 
+// Whether the nearest existing ancestor of `target` is something other than a
+// folder. Windows reports a path beneath a file as ENOENT where POSIX reports
+// ENOTDIR; this tells the two refusals apart on every platform.
+async function liesBeneathNonFolder(target: string): Promise<boolean> {
+  let current = path.dirname(path.resolve(target));
+  for (;;) {
+    try {
+      return !(await fs.stat(current)).isDirectory();
+    } catch (err: unknown) {
+      if ((err as { code?: unknown } | null)?.code !== "ENOENT") return false;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+}
+
 // Fails with folderMissingError when nothing usable as a folder is at
 // `dirPath`, else with the generic access failure the connect loop retries.
 async function checkFiledropDirectory(dirPath: string): Promise<void> {
@@ -77,8 +94,12 @@ async function checkFiledropDirectory(dirPath: string): Promise<void> {
   } catch (err: unknown) {
     if (failureCauseOf(err) !== undefined) throw err;
     const code = (err as { code?: unknown } | null)?.code;
-    if (code === "ENOENT" || code === "ENOTDIR")
-      throw folderMissingError(dirPath, code);
+    if (code === "ENOENT")
+      throw folderMissingError(
+        dirPath,
+        (await liesBeneathNonFolder(dirPath)) ? "ENOTDIR" : "ENOENT",
+      );
+    if (code === "ENOTDIR") throw folderMissingError(dirPath, code);
     throw new Error(
       `cannot read/write filedrop directory: ` +
         `${redactPrivateKeyMaterial(dirPath)}: ` +

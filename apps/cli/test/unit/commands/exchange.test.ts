@@ -48,6 +48,7 @@ import { preflightKeyFilePath } from "../../../src/keyFilePreflight";
 import { runProtocol } from "../../../src/protocol";
 import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { captureFd3 } from "../../eventStreamTestSupport";
+import { pathAsDisplayed } from "../../platformPaths";
 import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
@@ -1773,7 +1774,7 @@ test("handler: an unattended fill emits the line it writes as one payloadReceive
       v: 1,
       type: "warning",
       source: "payloadReceiveTaken",
-      message: notice,
+      message: notice?.replace(configFile, pathAsDisplayed(configFile)),
       columns: ["program", "bell\u0007"],
       columnCount: 2,
     },

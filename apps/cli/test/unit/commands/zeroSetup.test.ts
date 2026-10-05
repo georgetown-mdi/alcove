@@ -837,7 +837,7 @@ test("handler with --save records the filled receive list in the saved terms, an
       v: 1,
       type: "warning",
       source: "payloadReceiveTaken",
-      message: notice,
+      message: notice.replace(configFile, pathAsDisplayed(configFile)),
       columns: ["program"],
       columnCount: 1,
     },

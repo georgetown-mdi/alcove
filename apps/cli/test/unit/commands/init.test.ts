@@ -50,6 +50,7 @@ import {
   resolveInvitationIdentity,
 } from "../../../src/partyIdentity";
 import { captureStdio } from "../../loggingTestSupport";
+import { platformAbsolutePath, platformFileUrl } from "../../platformPaths";
 import { streamOf, ttyStream, withStdin } from "../../stdinStream";
 
 // Both terminal reads are mocked so the handler's interactive branches are
@@ -667,8 +668,11 @@ test("templateConnection: a URL with no user keeps the username placeholder", ()
 
 test("templateConnection: a file URL and --channel filedrop write a filedrop block", () => {
   expect(
-    templateConnection(new URL("file:///mnt/share/drop"), undefined),
-  ).toEqual({ channel: "filedrop", path: "/mnt/share/drop" });
+    templateConnection(platformFileUrl("/mnt/share/drop"), undefined),
+  ).toEqual({
+    channel: "filedrop",
+    path: platformAbsolutePath("/mnt/share/drop"),
+  });
   expect(templateConnection(undefined, "filedrop")).toEqual({
     channel: "filedrop",
     path: PLACEHOLDER_FILEDROP_PATH,
