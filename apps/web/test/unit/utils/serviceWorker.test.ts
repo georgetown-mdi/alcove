@@ -632,6 +632,21 @@ describe("a response whose content type does not match its path", () => {
     expect(harness.cachedUrls(ASSET_CACHE)).toEqual([]);
   });
 
+  test("is not stored when it has no content type", async () => {
+    const harness = servedHarness();
+    harness.network.route(
+      "/assets/untyped-GGGG7777.js",
+      () => new Response(new Uint8Array([1]), { status: 200 }),
+    );
+
+    const response = await harness.handleFetch(
+      subresourceRequest("/assets/untyped-GGGG7777.js"),
+    );
+
+    expect(response?.headers.has("Content-Type")).toBe(false);
+    expect(harness.cachedUrls(ASSET_CACHE)).toEqual([]);
+  });
+
   test("is stored when its type is any the extension allows", async () => {
     const harness = servedHarness();
     harness.network.route(
