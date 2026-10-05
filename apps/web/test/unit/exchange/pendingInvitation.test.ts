@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CSV_LINE_BYTE_CEILING,
   MAX_ENCODED_INVITATION_LENGTH,
-  MAX_FILE_NAME_BYTES,
   MAX_TEXT_LENGTH,
 } from "@alcove/core";
 
 import {
   clearPendingInvitation,
+  offerPendingInvitation,
+  onInvitationExpiry,
   prunePendingInvitation,
   readPendingInvitation,
   resumeFromChosenFile,
@@ -206,7 +207,7 @@ describe("the invitation kept for a resume", () => {
     ],
     [
       "holds an oversized file name",
-      (entry) => (entry.fileName = oversized(MAX_FILE_NAME_BYTES)),
+      (entry) => (entry.fileName = oversized(255)),
     ],
     [
       "holds an oversized column name",
@@ -257,18 +258,37 @@ describe("the invitation kept for a resume", () => {
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  test("the file name is bounded by its UTF-8 bytes", async () => {
+  test.each([
+    ["200 CJK characters, 592 UTF-8 bytes", "\u6587".repeat(196) + ".csv"],
+    ["255 characters past the BMP", "\u{1f600}".repeat(251) + ".csv"],
+  ])(
+    "a file name of %s, which a file system holds, reads back",
+    async (_, fileName) => {
+      writePendingInvitation(await mint(), { ...context, fileName });
+      expect((await readPendingInvitation(new Date()))?.fileName).toBe(
+        fileName,
+      );
+    },
+  );
+
+  test("a resume on a 200-character CJK file name, 592 UTF-8 bytes, keeps the name", async () => {
+    const fileName = "\u6587".repeat(196) + ".csv";
+    writePendingInvitation(await mint(), { ...context, fileName });
+    const pending = await readPendingInvitation(new Date());
+    if (pending === undefined) throw new Error("no pending invitation");
+    const outcome = await resumeFromChosenFile(pending, Readable.from(CSV));
+    if (outcome.kind !== "resumed") throw new Error(outcome.kind);
+
+    writePendingInvitation(outcome.invitation, { ...context, fileName });
+    expect((await readPendingInvitation(new Date()))?.fileName).toBe(fileName);
+  });
+
+  test("a file name past 255 characters is not offered and is removed", async () => {
     const entry = await writtenEntry();
-    entry.fileName = "\u00e9".repeat(200);
+    entry.fileName = "\u6587".repeat(256);
     storage.setItem(STORAGE_KEY, JSON.stringify(entry));
     expect(await readPendingInvitation(new Date())).toBeUndefined();
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
-
-    entry.fileName = "x".repeat(100);
-    storage.setItem(STORAGE_KEY, JSON.stringify(entry));
-    expect((await readPendingInvitation(new Date()))?.fileName).toBe(
-      entry.fileName,
-    );
   });
 
   test("pruning removes an expired entry and keeps a live one", async () => {
@@ -294,5 +314,103 @@ describe("the invitation kept for a resume", () => {
     writePendingInvitation(await mint(), context);
     clearPendingInvitation();
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("the claim on a kept invitation", () => {
+  /** Keep an invitation as a tab that could take no lock does, then give
+   * this tab a lock manager that finds the lock held for its first
+   * `refusals` requests; the manager's request function. */
+  async function keepThenLockRefusing(refusals: number) {
+    vi.stubGlobal("navigator", {});
+    writePendingInvitation(await mint(), context);
+    const request = vi.fn(
+      (
+        name: string,
+        _options: LockOptions,
+        callback: (lock: Lock | null) => Promise<unknown>,
+      ) =>
+        callback(
+          request.mock.calls.length <= refusals
+            ? null
+            : { name, mode: "exclusive" },
+        ),
+    );
+    vi.stubGlobal("navigator", { locks: { request } });
+    return request;
+  }
+
+  afterEach(() => {
+    clearPendingInvitation();
+  });
+
+  test("is asked for again after it is found held, and the invitation is offered when the second ask is granted", async () => {
+    const request = await keepThenLockRefusing(1);
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe("offer");
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  test("found held on both asks, says the invitation is open elsewhere", async () => {
+    const request = await keepThenLockRefusing(2);
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe(
+      "open-elsewhere",
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  test("is not asked for again once granted", async () => {
+    const request = await keepThenLockRefusing(0);
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe("offer");
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe("offer");
+    expect(request).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the expiry wait", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("fires at an expiry past the longest timer, and not before", () => {
+    vi.useFakeTimers();
+    const expires = new Date(Date.now() + 30 * DAY_MS).toISOString();
+    const onExpired = vi.fn();
+    onInvitationExpiry(expires, onExpired);
+
+    vi.advanceTimersByTime(30 * DAY_MS - 1000);
+    expect(onExpired).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(onExpired).toHaveBeenCalledOnce();
+    expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(expires));
+  });
+
+  test("fires when the page is shown after its expiry passed while hidden", () => {
+    vi.useFakeTimers();
+    const pageDocument = new EventTarget();
+    vi.stubGlobal("document", pageDocument);
+    const expires = new Date(Date.now() + 30 * DAY_MS).toISOString();
+    const onExpired = vi.fn();
+    onInvitationExpiry(expires, onExpired);
+
+    // The clock moves past the expiry with no timer firing, as it does for a
+    // suspended page.
+    vi.setSystemTime(Date.parse(expires) + 1000);
+    expect(onExpired).not.toHaveBeenCalled();
+    pageDocument.dispatchEvent(new Event("visibilitychange"));
+    expect(onExpired).toHaveBeenCalledOnce();
+  });
+
+  test("does not fire once stopped", () => {
+    vi.useFakeTimers();
+    const onExpired = vi.fn();
+    const stop = onInvitationExpiry(
+      new Date(Date.now() + 1000).toISOString(),
+      onExpired,
+    );
+    stop();
+    vi.advanceTimersByTime(2000);
+    expect(onExpired).not.toHaveBeenCalled();
   });
 });
