@@ -76,12 +76,11 @@ updates:
           - "@vitest/browser"
           - "@vitest/browser-playwright"
           - "@vitest/coverage-v8"
-          # Inlined into a built @alcove/core artifact rather than resolved
-          # at runtime -- canonicalize in every build, re2js and yaml in the
-          # standalone UMD browser build. Excluded so each bump is an
-          # individual, reviewable PR instead of riding along in this batch --
-          # see "Inlined dependencies and their remediation path" in
-          # docs/spec/DEPENDENCY_PINS.md.
+          # canonicalize is inlined into a built @alcove/core artifact rather
+          # than resolved at runtime; re2js and yaml are excluded with it so
+          # each bump is an individual, reviewable PR instead of riding along
+          # in this batch -- see "Inlined dependencies and their remediation
+          # path" in docs/spec/DEPENDENCY_PINS.md.
           - "re2js"
           - "yaml"
           - "canonicalize"

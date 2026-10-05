@@ -173,9 +173,8 @@ Driven on 2026-10-02 with Node 26.10.0, `canonicalize` 5.1.0 and rollup 4.63.4:
 Moving it to external is therefore a build-configuration change, not only a
 list edit, and is re-driven the same way before it is made.
 
-`re2js` and `yaml` are inlined only into the standalone UMD browser build. The
-ESM and CJS builds keep them external, so a transitive bump does remediate them
-for the CJS-based CLI.
+`re2js` and `yaml` are not inlined: the ESM and CJS builds keep them external, so
+a transitive bump does remediate them for the CJS-based CLI.
 
 ## The install-script policy (`allowScripts`)
 

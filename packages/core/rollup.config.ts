@@ -1,7 +1,6 @@
 import { createRequire } from "node:module";
 import { defineConfig } from "rollup";
 
-import commonjs from "@rollup/plugin-commonjs";
 import { dts } from "rollup-plugin-dts";
 import resolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
@@ -17,24 +16,7 @@ const pkg = require("./package.json");
 // `interop: "compat"` would fix that for every external; inlining the one
 // function is narrower. Measured: docs/spec/DEPENDENCY_PINS.md, "Inlined
 // dependencies and their remediation path".
-// @noble/curves is bundled in the UMD browser build only because it ships
-// ESM-only and has no UMD global name; the ESM/CJS builds keep it external.
 const ALWAYS_BUNDLED = new Set(["@openmined/psi.js", "canonicalize"]);
-// re2js and yaml are bundled into the standalone UMD browser build because they
-// ship with no UMD global name; the ESM/CJS builds keep them external (the
-// consuming apps bundle them). re2js is the linear-time regex engine that
-// executes partner transform patterns; it is pure JS, so the same build serves
-// both the CLI (Node) and the web (browser) -- see docs/spec/PROTOCOL.md
-// "Transform regular-expression dialect". yaml reaches the browser via the
-// sensitiveFile.ts config-import chokepoint. (canonicalize is bundled here too,
-// via ALWAYS_BUNDLED above.)
-const UMD_BUNDLED = new Set([
-  "@openmined/psi.js",
-  "@noble/curves",
-  "canonicalize",
-  "re2js",
-  "yaml",
-]);
 
 // Returns an `external` predicate that matches bare package names and their
 // subpath exports (e.g. both "@noble/curves" and "@noble/curves/p256").
@@ -46,24 +28,6 @@ function makeExternal(bundled: Set<string>) {
 }
 
 export default defineConfig([
-  {
-    input: "src/main.ts",
-    external: makeExternal(UMD_BUNDLED),
-    output: {
-      name: "alcove",
-      file: pkg.browser,
-      format: "umd",
-      globals: {
-        zod: "z",
-        loglevel: "log",
-        eventemitter3: "EventEmitter",
-        uuid: "uuid",
-        papaparse: "Papa",
-        luxon: "luxon",
-      },
-    },
-    plugins: [resolve(), typescript({ outputToFilesystem: true }), commonjs()],
-  },
   // The published entry points build TOGETHER, with code splitting, so a module
   // more than one of them reaches exists once at run time. Built separately they
   // would each hold their own copy, and a module holding mutable state -- the

@@ -128,7 +128,7 @@ describe("describeCoreDistStaleness", () => {
   // freshness by the exports map rather than by whatever sits in dist/ keeps
   // that leftover from reporting staleness no rebuild can clear.
   test("a leftover artifact the exports map does not publish is ignored", () => {
-    write("dist/core.umd.js", BEFORE_BUILD);
+    write("dist/leftover.js", BEFORE_BUILD);
     expect(describeCoreDistStaleness(coreDir)).toBeNull();
   });
 });
