@@ -3,8 +3,9 @@
 // image's builder stage copies, run by static_checks.yaml on every PR.
 //
 // The Dockerfile builder stage copies apps/web's config, src/, server/ and
-// public/ and no test tree, and `npm run build -w apps/web` there is the first
-// thing that evaluates vite.config.ts against that subset. Vite's config loader
+// public/ and no test tree, and `npm run build:console -w apps/web` there is the
+// first thing that evaluates vite.console.config.ts -- and vite.config.ts, which
+// it imports -- against that subset. Vite's config loader
 // BUNDLES the config rather than importing it, so it resolves every literal
 // specifier the file holds -- inside a dynamic import as much as a static one,
 // and whether or not the branch holding it is ever taken. A single import of a
@@ -77,11 +78,11 @@ import {
 /** The Dockerfile whose builder stage decides what the image build can read. */
 export const DOCKERFILE = "Dockerfile";
 
-/** The stage that runs `npm run build -w apps/web`. */
+/** The stage that runs the console builds. */
 export const BUILDER_STAGE = "builder";
 
 /** The config this check loads, relative to the repository root. */
-export const WEB_CONFIG = "apps/web/vite.config.ts";
+export const WEB_CONFIG = "apps/web/vite.console.config.ts";
 
 /** The tree the image does not copy, and the control's import target. */
 export const WEB_TEST_TREE = "apps/web/test";
@@ -414,7 +415,7 @@ export function checkWebConfigImageLoad({
       return {
         ok: false,
         status: STATUSES.refused,
-        message: `${WEB_CONFIG} does not load from the file subset the ${DOCKERFILE} ${BUILDER_STAGE} stage copies, so \`npm run build -w apps/web\` fails in the image while every local command stays green. The config loader bundles the config and resolves every literal specifier in it, a dynamic import's included, so a module outside that subset -- the test tree above all -- has to be reached through a path built at runtime rather than named in an import.\n\n${result.output}`,
+        message: `${WEB_CONFIG} does not load from the file subset the ${DOCKERFILE} ${BUILDER_STAGE} stage copies, so the console build fails in the image while every local command stays green. The config loader bundles the config and resolves every literal specifier in it, a dynamic import's included, so a module outside that subset -- the test tree above all -- has to be reached through a path built at runtime rather than named in an import.\n\n${result.output}`,
       };
     }
   } finally {

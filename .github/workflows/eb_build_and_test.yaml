@@ -274,13 +274,17 @@ jobs:
         run: npm run build -w apps/cli
       # The integration project's globalSetup
       # (apps/web/test/integration/requireProdBuild.ts) fails the run when
-      # apps/web/.output is absent rather than letting the suites that drive the
-      # built server skip, so this leg builds the web app for itself. Taking the
+      # apps/web/.output or the console builds under apps/web/dist are absent
+      # rather than letting the suites that drive the built servers skip, so
+      # this leg builds the hosted app and the console for itself. Taking the
       # `package` job's build through the deploy artifact instead would serialize
       # the slowest leg behind that job for a build of about half a minute.
       - name: Build the web app for the integration suites
         if: matrix.build-web == 'true'
-        run: npm run build -w apps/web
+        run: |
+          npm run build -w apps/web
+          npm run build:console -w apps/web
+          npm run build:console-server -w apps/web
       # apt applies no network timeout of its own, so a mirror connection that
       # goes quiet hangs the --with-deps install below with nothing to time it
       # out.

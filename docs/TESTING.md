@@ -318,10 +318,14 @@ Web (dev server managed automatically -- same pattern as the CLI integration tes
 npm run test:integration -w apps/web    # auto-starts, waits for, and stops the dev server
 ```
 
-Some of these specs drive the built production server at
-`apps/web/.output/server/index.mjs`, so run `npm run build -w apps/web` first.
-Without that build the project fails at setup, naming the missing path and the
-build command, rather than reporting a pass with those specs quietly skipped.
+Some of these specs drive the built production servers: the hosted build at
+`apps/web/.output/server/index.mjs`, and the console server at
+`apps/web/dist/console-server/main.mjs` with the client it serves from
+`apps/web/dist/console/`. Run `npm run build -w apps/web`,
+`npm run build:console -w apps/web` and `npm run build:console-server -w apps/web`
+first. Without those builds the project fails at setup, naming the missing paths
+and the build commands, rather than reporting a pass with those specs quietly
+skipped.
 
 For a dev-server-only run, set `ALCOVE_ALLOW_MISSING_WEB_BUILD=1`:
 the built-server specs report as skipped and the run passes. That is the one

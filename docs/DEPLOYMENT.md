@@ -481,7 +481,7 @@ The details are in [CLI.md](CLI.md#memory-for-a-large-exchange).
 
 ### Running the console
 
-Pass `serve` as the first argument to run the console instead. It takes a published port and at least one mount; the commands for each mount layout are in [Running the container](CONSOLE.md#running-the-container).
+Pass `serve` as the first argument to run the console server as PID 1 in place of the CLI; it takes a published port and at least one mount, and the commands for each mount layout are in [Running the container](CONSOLE.md#running-the-container). The server's variables and shutdown are in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md), and the console builds the image ships are in [CONTAINER_IMAGES.md](spec/CONTAINER_IMAGES.md).
 
 ### Restricting the container's outbound network access
 

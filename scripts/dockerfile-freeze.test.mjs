@@ -599,6 +599,19 @@ for (const {
     const cliArgv = execArgv((l) => l.includes("--expose-gc"));
     const cliEntryPath = cliArgv.find((t) => t.endsWith("index.js"));
 
+    it("copies nothing from a .output directory into the runtime stage", () => {
+      // The console image runs apps/web/dist/console-server, not the Nitro
+      // server whose build writes .output.
+      const offending = image.runtimeCopies.filter(({ sources }) =>
+        sources.some((source) => /(?:^|\/)\.output(?:\/|$)/.test(source)),
+      );
+      expect(
+        offending.map(({ flags, sources, dests }) =>
+          ["COPY", ...flags, ...sources, ...dests].join(" "),
+        ),
+      ).toEqual([]);
+    });
+
     it("ships every script on the entrypoint chain", () => {
       expect(entrypointArgv).toEqual([chain[0]]);
       for (const scriptPath of chain) {
@@ -621,14 +634,21 @@ for (const {
       );
     });
 
-    it("runs the web server entry, under a copied directory, for the serve role", () => {
-      const serveArgv = execArgv((l) => l.includes(".output"));
-      const serverEntry = serveArgv.find((t) => t.includes(".output"));
+    it("runs the console server entry, under a copied directory, for the serve role", () => {
+      const serveArgv = execArgv((l) => l.includes("console-server"));
+      const serverEntry = serveArgv.find((t) => t.includes("console-server"));
       expect(serverEntry).toBeDefined();
-      // The server entry lives under a directory the runtime stage copies in.
-      expect(
+      const underCopiedDirectory = (path) =>
         image.allRuntimeDests.some(
-          (dest) => serverEntry === dest || serverEntry.startsWith(dest + "/"),
+          (dest) => path === dest || path.startsWith(dest + "/"),
+        );
+      // The server entry lives under a directory the runtime stage copies in,
+      // and so does the client it serves from beside its own directory
+      // (apps/web/server/console/main.ts), without which it refuses to start.
+      expect(underCopiedDirectory(serverEntry)).toBe(true);
+      expect(
+        underCopiedDirectory(
+          posix.join(posix.dirname(serverEntry), "../console/index.html"),
         ),
       ).toBe(true);
     });
@@ -1023,9 +1043,18 @@ describe.each(IMAGES)(
       // version set in one step and a web build in another is a bundle with
       // no version in it.
       expect(versionRuns).toHaveLength(1);
-      expect(normalize(versionRuns[0])).toContain("npm run build -w apps/web");
+      expect(normalize(versionRuns[0])).toContain(
+        "npm run build:console -w apps/web",
+      );
+      expect(normalize(versionRuns[0])).toContain(
+        "npm run build:console-server -w apps/web",
+      );
+      // The hosted build's .output is not what the image runs.
+      expect(normalize(versionRuns[0])).not.toContain(
+        "npm run build -w apps/web",
+      );
       expect(
-        image.builderRuns.filter((run) => run.includes("build -w apps/web")),
+        image.builderRuns.filter((run) => /\bbuild\S* -w apps\/web/.test(run)),
       ).toEqual(versionRuns);
     });
 
@@ -1435,3 +1464,27 @@ describe("the fips-only OpenSSL configuration the variant ships", () => {
     );
   });
 });
+
+describe.each(IMAGES)(
+  "the console deployment profile in $file",
+  ({ image }) => {
+    const scripts = JSON.parse(readRepoFile("apps/web/package.json")).scripts;
+    const buildProfile = (name) =>
+      /(?:^|\s)VITE_DEPLOYMENT_PROFILE=(\S+)/.exec(scripts[name])?.[1];
+
+    it("sets the profile the console build scripts set", () => {
+      const built = [
+        buildProfile("build:console"),
+        buildProfile("build:console-server"),
+      ];
+      expect(built[0], "build:console sets no profile").toBeDefined();
+      expect(built[1], "build:console-server differs from build:console").toBe(
+        built[0],
+      );
+      expect(
+        image.runtimeEnv.VITE_DEPLOYMENT_PROFILE,
+        "runtime ENV VITE_DEPLOYMENT_PROFILE differs from the build scripts",
+      ).toBe(built[0]);
+    });
+  },
+);

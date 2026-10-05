@@ -1,6 +1,6 @@
 #!/bin/sh
 # Dispatch between the two roles this image serves. `serve` (as the first
-# argument) starts the web console appliance's Nitro server; any other argument
+# argument) starts the web console server; any other argument
 # vector runs the headless CLI, byte-for-byte as the CLI-only image did, so
 # existing `docker run ghcr.io/georgetown-mdi/alcove <cli-args>` callers are unaffected.
 #
@@ -11,7 +11,7 @@ set -e
 
 if [ "$1" = "serve" ]; then
   shift
-  exec node /app/apps/web/.output/server/index.mjs "$@"
+  exec node /app/apps/web/dist/console-server/main.mjs "$@"
 fi
 
 # The PSI engine's heap ceiling, PSI_HEAP_CEILING_MIB in

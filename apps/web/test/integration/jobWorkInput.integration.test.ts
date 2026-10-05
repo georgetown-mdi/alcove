@@ -8,8 +8,8 @@ import { getDefaultLinkageTerms } from "@alcove/core";
 
 import {
   getFreePort,
-  hasBuild,
-  spawnProdServer,
+  hasConsoleBuild,
+  spawnConsoleServer,
   stopProdServer,
   waitForRoot,
   webRoot,
@@ -32,7 +32,7 @@ const SOURCE_CSV =
   "ssn,last_name,date_of_birth\n111223333,smith,1990-01-01\n" +
   "222334444,jones,1985-11-30\n";
 
-describe.skipIf(!hasBuild)(
+describe.skipIf(!hasConsoleBuild)(
   "a job is driven from a mounted work input with no UI",
   () => {
     let child: ChildProcess | undefined;
@@ -52,7 +52,7 @@ describe.skipIf(!hasBuild)(
       writeFileSync(join(inputDir, "mounted.csv"), SOURCE_CSV);
 
       port = await getFreePort();
-      const { child: proc, getLaunchError } = await spawnProdServer(port, {
+      const { child: proc, getLaunchError } = await spawnConsoleServer(port, {
         VITE_DEPLOYMENT_PROFILE: "console",
         JOB_DATA_ROOT: dataRoot,
         JOB_INPUT_DIR: inputDir,
