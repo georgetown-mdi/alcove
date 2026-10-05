@@ -8,6 +8,7 @@ import {
   OUT_OF_CHECK_ALL,
   SEPARATE_WORKFLOW_STEPS,
   inventory,
+  runAll,
   rootScripts,
   summarize,
 } from "./run-checks.mjs";
@@ -68,7 +69,13 @@ describe("the check:all list against the root package.json", () => {
     const render = CHECKS.find(
       (check) => check.script === "check:web-route-render",
     );
-    expect(render?.args).toEqual(["--reuse-build"]);
+    expect(render?.command).toEqual([
+      "node",
+      "scripts/check-web-route-render.mjs",
+    ]);
+    expect(render?.command).not.toContain("--build");
+    expect(render?.buildFrom).toBe("check:deploy-trigger-graph");
+    expect(scripts["check:web-route-render"]).toContain("--build");
     expect(order.indexOf("check:deploy-trigger-graph")).toBeGreaterThanOrEqual(
       0,
     );
@@ -105,6 +112,45 @@ describe("the repo-guards job against the list", () => {
       (candidate) => candidate.run?.trim() === "npm run check:all",
     );
     expect(step.env?.GITHUB_TOKEN).toBeTruthy();
+  });
+});
+
+describe("the shared web build", () => {
+  const checks = [
+    { script: "a", usesBuild: true, description: "" },
+    { script: "b", buildFrom: "a", usesBuild: true, description: "" },
+    { script: "c", description: "" },
+  ];
+
+  it("skips the check reading a build whose maker failed, and runs the rest", () => {
+    const ran = [];
+    const lines = [];
+    const results = runAll(
+      "/nonexistent-root",
+      (line) => lines.push(line),
+      checks,
+      (check) => {
+        ran.push(check.script);
+        return { script: check.script, ok: check.script !== "a", seconds: 0 };
+      },
+    );
+    expect(ran).toEqual(["a", "c"]);
+    expect(results.map((result) => result.ok)).toEqual([false, false, true]);
+    expect(lines.join("\n")).toContain("web build it reads failed in a");
+  });
+
+  it("runs the dependent check when the build succeeded", () => {
+    const ran = [];
+    runAll(
+      "/nonexistent-root",
+      () => {},
+      checks,
+      (check) => {
+        ran.push(check.script);
+        return { script: check.script, ok: true, seconds: 0 };
+      },
+    );
+    expect(ran).toEqual(["a", "b", "c"]);
   });
 });
 

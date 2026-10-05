@@ -30,7 +30,9 @@
 //
 // The two checks that need the production web build share one: the run clears
 // apps/web/.output first, the deploy-trigger check builds it, and the route
-// render check reads it, so no run reads a build from before it started.
+// render check reads it without building (its entry point, invoked with no
+// --build), so no run reads a build from before it started. When the build
+// fails, the route render check is skipped with a line saying so.
 // scripts/run-checks.test.mjs holds every `check:*` script in the root
 // package.json to one list or the other, so a new check cannot be added without
 // being classified, and holds the repo-guards job to this one step plus the
@@ -45,8 +47,10 @@ import { BUILD_OUTPUT } from "./check-deploy-trigger-graph.mjs";
 
 /**
  * The checks `npm run check:all` runs, in order. `script` is a root
- * package.json script name; `args`, when present, are passed to it; `description` states in one line what the check
- * holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands before it
+ * package.json script name; `command`, when present, is run instead of the npm
+ * script; `usesBuild` marks a check that reads the shared web build and
+ * `buildFrom` names the check that makes it; `description` states in one line
+ * what the check holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands before it
  * is renewed or deleted, held by scripts/check-expiry-dates.mjs as on every
  * entry in the two lists below.
  */
@@ -293,13 +297,16 @@ export const CHECKS = [
   },
   {
     script: "check:deploy-trigger-graph",
+    usesBuild: true,
     expiresOn: "2026-12-31",
     description:
       "Every repository source the production web build reads matches a push filter of eb_deploy.yaml, so an edit to the deployed server always triggers a deploy. Builds apps/web once, for itself and the route render check after it.",
   },
   {
     script: "check:web-route-render",
-    args: ["--reuse-build"],
+    command: ["node", "scripts/check-web-route-render.mjs"],
+    usesBuild: true,
+    buildFrom: "check:deploy-trigger-graph",
     expiresOn: "2026-12-31",
     description:
       "Every page route in the checked-in route tree renders, with no 5xx and nothing written to the server's stderr, from the production web build the deploy-trigger check just made.",
@@ -379,10 +386,10 @@ export function rootScripts(root = repositoryRoot()) {
  * Runs one check and reports how it went.
  *
  */
-function runCheck(check, root) {
+export function runCheck(check, root) {
   const startedAt = Date.now();
-  const args = check.args ? ["--", ...check.args] : [];
-  const result = spawnSync("npm", ["run", check.script, ...args], {
+  const [file, ...args] = check.command ?? ["npm", "run", check.script];
+  const result = spawnSync(file, args, {
     cwd: root,
     stdio: "inherit",
     shell: process.platform === "win32",
@@ -399,13 +406,28 @@ function runCheck(check, root) {
  * in the order run.
  *
  */
-export function runAll(root, log = console.log) {
-  rmSync(resolve(root, BUILD_OUTPUT), { recursive: true, force: true });
+export function runAll(
+  root,
+  log = console.log,
+  checks = CHECKS,
+  run = runCheck,
+) {
+  if (checks.some((check) => check.usesBuild)) {
+    rmSync(resolve(root, BUILD_OUTPUT), { recursive: true, force: true });
+  }
   const results = [];
-  for (const [index, check] of CHECKS.entries()) {
-    log(`\n[${index + 1}/${CHECKS.length}] ${check.script}`);
+  for (const [index, check] of checks.entries()) {
+    log(`\n[${index + 1}/${checks.length}] ${check.script}`);
     log(`  ${check.description}`);
-    results.push(runCheck(check, root));
+    const builder = results.find((result) => result.script === check.buildFrom);
+    if (builder && !builder.ok) {
+      log(
+        `  skipped: the web build it reads failed in ${check.buildFrom}, whose output is above.`,
+      );
+      results.push({ script: check.script, ok: false, seconds: 0 });
+      continue;
+    }
+    results.push(run(check, root));
   }
   return results;
 }

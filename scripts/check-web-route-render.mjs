@@ -17,10 +17,9 @@
 //
 // With `--build` it runs `npm run build -w apps/web` first, and writes the
 // route tree's checked-in bytes back afterwards, since the build regenerates
-// that file. With `--reuse-build`, or with neither flag, it requests against
-// the build already in apps/web/.output: `npm run check:all` runs it with
-// `--reuse-build` on the build the deploy-trigger check made, and CI runs it
-// on the build it packages. The requests are bounded by RUN_TIMEOUT_MS, and
+// that file. Without it, it requests against the build already in
+// apps/web/.output: `npm run check:all` runs it that way on the build the
+// deploy-trigger check made, and CI runs it on the build it packages. The requests are bounded by RUN_TIMEOUT_MS, and
 // teardown signals the server's process group.
 
 import { spawn, spawnSync } from "node:child_process";

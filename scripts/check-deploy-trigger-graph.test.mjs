@@ -422,24 +422,23 @@ describe("wiring", () => {
     expect(readRepo("apps/web/vite.config.ts")).toContain(RECORD_ENV);
   });
 
-  // The build this check drives is the only web build that workflow runs, and
-  // the artifact is packaged from what it leaves in apps/web/.output, so the
-  // check and the upload have to stay in one job: a check moved to a job of its
-  // own would leave the packaging job with no build to zip.
-  it("runs the check in the job that uploads the deploy artifact", () => {
+  // The artifact is packaged from what the build leaves in apps/web/.output, so
+  // the build and the upload have to stay in one job: a build moved to a job of
+  // its own would leave the packaging job with nothing to zip.
+  it("builds the web app in the job that uploads the deploy artifact", () => {
     const workflow = workflowDocument(
       repoRoot,
       ".github/workflows/eb_build_and_test.yaml",
     );
-    const runners = Object.values(workflow.jobs).filter((job) =>
+    const uploaders = Object.values(workflow.jobs).filter((job) =>
       (job.steps ?? []).some((step) =>
-        (step.run ?? "").includes("check:deploy-trigger-graph"),
+        (step.uses ?? "").startsWith("actions/upload-artifact@"),
       ),
     );
-    expect(runners).toHaveLength(1);
+    expect(uploaders).toHaveLength(1);
     expect(
-      (runners[0].steps ?? []).some((step) =>
-        (step.uses ?? "").startsWith("actions/upload-artifact@"),
+      (uploaders[0].steps ?? []).some((step) =>
+        (step.run ?? "").includes("npm run build -w apps/web"),
       ),
     ).toBe(true);
   });
