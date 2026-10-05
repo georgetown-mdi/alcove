@@ -306,7 +306,7 @@ const nodeBuiltinImportBan = {
   regex: "^node:",
   allowTypeImports: true,
   message:
-    "This file is part of the browser bundle, where Node built-ins do not exist. Move the code that needs it into a server-only module (src/jobs, an src/routes/api handler); if this file never reaches the browser, add it to serverOnlySrcFiles in apps/web/eslint.config.js.",
+    "This file is part of the browser bundle, where Node built-ins do not exist. Move the code that needs it into a server-only module (src/jobs, a route module under apps/web/server/console/routes); if this file never reaches the browser, add it to serverOnlySrcFiles in apps/web/eslint.config.js.",
 };
 
 // The import options of the src/ files above the product layer and of the
