@@ -3,8 +3,8 @@ import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   generateSharedSecret,
-  getLogger,
   getDefaultLinkageTerms,
+  getLogger,
 } from "@alcove/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
