@@ -62,11 +62,14 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ROUTE_TREE } from "./check-web-route-render.mjs";
+import { withRestoreOnSignal } from "./lib/regenerationChecks.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 /** The workflow whose push filter decides when a deploy runs. */
@@ -306,14 +309,23 @@ function sourceMapFiles(directory) {
   return found;
 }
 
-/** Run the real build with the recorder pointed at `recordPath`. */
+/**
+ * Run the real build with the recorder pointed at `recordPath`, then write the
+ * route tree's checked-in bytes back, since the build regenerates that file.
+ */
 function runBuild(repoRoot, recordPath) {
   const [command, ...args] = BUILD_ARGV;
-  execFileSync(command, args, {
-    cwd: repoRoot,
-    stdio: "inherit",
-    env: { ...process.env, [RECORD_ENV]: recordPath },
-  });
+  const routeTree = resolve(repoRoot, ROUTE_TREE);
+  const original = readFileSync(routeTree);
+  withRestoreOnSignal(
+    () => writeFileSync(routeTree, original),
+    () =>
+      execFileSync(command, args, {
+        cwd: repoRoot,
+        stdio: "inherit",
+        env: { ...process.env, [RECORD_ENV]: recordPath },
+      }),
+  );
 }
 
 /**
