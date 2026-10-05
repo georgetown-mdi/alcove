@@ -553,11 +553,6 @@ export async function backUpUnattendedRun(
         `${replaced.fileName} could not be removed from its working folder`,
       replaced.error,
     );
-  else if (replaced !== undefined)
-    log.debug(
-      `scheduled managed exchange ${id}: the previous backup ` +
-        `${replaced.fileName}: ${replaced.kind}`,
-    );
   const notBackedUp = (cause: string) =>
     `scheduled managed exchange ${id} not backed up into its working folder: ` +
     `${cause}; it asks for a backup`;

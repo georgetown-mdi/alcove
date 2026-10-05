@@ -429,6 +429,12 @@ describe("removing the previous automatic backup from the folder", () => {
     ).resolves.toEqual({ kind: "absent" });
   });
 
+  test("reports a record with no working folder as no-folder", async () => {
+    await expect(
+      removeBackupFromWorkingFolder({}, PREVIOUS, fakePermission("granted")),
+    ).resolves.toEqual({ kind: "no-folder" });
+  });
+
   test("leaves a directory under the name, and a folder it may not use, untouched", async () => {
     vi.stubGlobal("FileSystemDirectoryHandle", class {});
     const directory = folderHolding([], [PREVIOUS]);

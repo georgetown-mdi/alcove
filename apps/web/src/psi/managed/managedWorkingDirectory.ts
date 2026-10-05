@@ -350,9 +350,11 @@ export async function writeBackupToWorkingFolder(
 
 /** How removing the previous automatic backup from the working folder turned
  * out: `"removed"`, `"absent"` where no file is held under its name any more,
- * and otherwise `"remove-failed"`, which leaves whatever the folder held. */
+ * `"no-folder"` where the record holds no grant this runtime can follow, and
+ * otherwise `"remove-failed"`, which leaves whatever the folder held. */
 export type BackupFolderRemoval =
   | { kind: "removed" }
+  | { kind: "no-folder" }
   | { kind: "absent" }
   | { kind: "remove-failed"; error: unknown };
 
@@ -371,10 +373,7 @@ export async function removeBackupFromWorkingFolder(
 ): Promise<BackupFolderRemoval> {
   const directory = record.workingDirectoryHandle;
   if (directory === undefined || !storedWorkingDirectoryUsable(directory))
-    return {
-      kind: "remove-failed",
-      error: new Error("the exchange holds no working folder"),
-    };
+    return { kind: "no-folder" };
   try {
     await ensureHandlePermission(
       directory,

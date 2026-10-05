@@ -271,10 +271,10 @@ const MAX_RESULTS_FILE_LABEL_CHARS = 40;
 
 /** The exchange's label as a file-name fragment, for the results file and the
  * backup a scheduled run writes: ASCII letters and digits, every other run of
- * characters reduced to one hyphen. A label reduces to the empty
- * string where it holds none of those, and the name then omits the fragment
- * rather than standing a bare hyphen in for it. The reduction is also what keeps
- * a path separator or a traversal segment out of a name that reaches a real
+ * characters reduced to one hyphen. A label reduces to the empty string where
+ * it holds none of those, and the name then omits the fragment rather than
+ * standing a bare hyphen in for it. The reduction is also what keeps a path
+ * separator or a traversal segment out of a name that reaches a real
  * filesystem through the granted folder. */
 export function exchangeLabelFileFragment(label: string): string {
   return label
