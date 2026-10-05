@@ -174,7 +174,7 @@ export async function registerRotatedRelayKey(
   const { registrar, preRotationSecret, keyFilePath, maxAgeDays } = params;
   let current: KeyFile | undefined;
   try {
-    current = loadKeyFile(keyFilePath, { warnOnLoad: false });
+    current = loadKeyFile(keyFilePath, { warnOnPermissive: false });
   } catch (err) {
     return {
       kind: "failed",

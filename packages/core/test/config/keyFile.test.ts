@@ -62,8 +62,18 @@ describe("keyFileUnreadFieldNames", () => {
     });
   });
 
-  test("replaces a field name that matches the shared-secret pattern", () => {
-    expect(keyFileUnreadFieldNames({ [SECRET]: "x", expiry: "y" })).toEqual([
+  test("replaces a field name that contains a secret-shaped run", () => {
+    const names = keyFileUnreadFieldNames({
+      [SECRET]: "x",
+      [`sharedSecret=${SECRET}`]: "x",
+      [`${SECRET} `]: "x",
+      [SECRET.slice(0, 42)]: "x",
+      expiry: "y",
+    });
+    expect(names).toEqual([
+      KEY_FILE_REDACTED_FIELD_NAME,
+      KEY_FILE_REDACTED_FIELD_NAME,
+      KEY_FILE_REDACTED_FIELD_NAME,
       KEY_FILE_REDACTED_FIELD_NAME,
       "expiry",
     ]);

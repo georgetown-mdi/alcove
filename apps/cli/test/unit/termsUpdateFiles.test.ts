@@ -1,13 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getLogger, UsageError } from "@alcove/core";
+import { afterEach, beforeEach, expect, test } from "vitest";
+import { UsageError } from "@alcove/core";
 
-import {
-  readPartnershipConfig,
-  readPartnershipSecret,
-} from "../../src/termsUpdateFiles";
+import { readPartnershipConfig } from "../../src/termsUpdateFiles";
 
 let dir: string;
 
@@ -28,26 +25,4 @@ test("readPartnershipConfig refuses a configuration it cannot read as a usage er
   expect(() => readPartnershipConfig(configPath)).toThrow(
     /config file .*alcove\.yaml could not be read/,
   );
-});
-
-test("readPartnershipSecret warns nothing for a key file with unread fields and a loose mode", () => {
-  const keyPath = path.join(dir, ".alcove.key");
-  const secret = "A".repeat(43);
-  fs.writeFileSync(
-    keyPath,
-    JSON.stringify({ sharedSecret: secret, expiry: 1 }),
-    {
-      mode: 0o644,
-    },
-  );
-  fs.chmodSync(keyPath, 0o644);
-  const warn = vi
-    .spyOn(getLogger("key-file"), "warn")
-    .mockImplementation(() => {});
-  try {
-    expect(readPartnershipSecret(keyPath)).toBe(secret);
-    expect(warn).not.toHaveBeenCalled();
-  } finally {
-    warn.mockRestore();
-  }
 });

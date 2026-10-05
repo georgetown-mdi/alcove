@@ -117,7 +117,7 @@ export function readPartnershipConfig(configPath: string): ExchangeSpec {
 export function readPartnershipSecret(keyPath: string): string {
   let keyFile;
   try {
-    keyFile = loadKeyFile(keyPath, { warnOnLoad: false });
+    keyFile = loadKeyFile(keyPath);
   } catch (err) {
     if (err instanceof UsageError) throw err;
     throw refusalAbout(
