@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -11,11 +12,16 @@ import type { RelayRegistrar } from "@alcove/core";
 
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";
 import {
+  logRotatedRelayKey,
   registerRelayKey,
   registerRotatedRelayKey,
+  RELAY_REENROLLMENT_STEP,
   retryPendingRelayRegistration,
 } from "../../src/relayKeyRotation";
-import { exitCodeForError } from "../../src/util/exit";
+import {
+  exitCodeForError,
+  renderFailureForOperator,
+} from "../../src/util/exit";
 import {
   fakeRegistrar,
   jsonResponse,
@@ -367,5 +373,122 @@ describe("retryPendingRelayRegistration", () => {
     ).catch((err: unknown) => err);
     expect(exitCodeForError(failure)).toBe(69);
     expect(loadKeyFile(keyFile)).toEqual(pending);
+  });
+});
+
+describe("a registrar this computer cannot connect to", () => {
+  // Real fetches against local ports: one nothing listens on, and one that
+  // accepts the connection and never answers, as a dropped connection does.
+  let silent: net.Server;
+  let silentSockets: net.Socket[];
+  let closedPort: number;
+
+  beforeEach(async () => {
+    const probe = net.createServer();
+    await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    closedPort = (probe.address() as net.AddressInfo).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    silentSockets = [];
+    silent = net.createServer((socket) => silentSockets.push(socket));
+    await new Promise<void>((resolve) =>
+      silent.listen(0, "127.0.0.1", resolve),
+    );
+  });
+
+  afterEach(async () => {
+    for (const socket of silentSockets) socket.destroy();
+    await new Promise<void>((resolve) => silent.close(() => resolve()));
+  });
+
+  const localRegistrar = (port: number): RelayRegistrar => ({
+    url: `https://127.0.0.1:${port}`,
+    exchangeId: "exchange-1",
+  });
+
+  const outbound = (port: number): string =>
+    `This computer needs outbound access to 127.0.0.1 on TCP port ${port}: ` +
+    "if this network allows only some ports out (such as 443), have that " +
+    "port opened or run from a network that allows it.";
+
+  async function rotationFailure(
+    registrar: RelayRegistrar,
+  ): Promise<{ error: Error; logged: string }> {
+    saveKeyFile(keyFile, { sharedSecret: ROTATED });
+    const result = await registerRotatedRelayKey(
+      {
+        registrar,
+        preRotationSecret: PRE_ROTATION,
+        keyFilePath: keyFile,
+        maxAgeDays: 30,
+      },
+      { timeoutMs: 200, retryDelaysMs: [] },
+    );
+    const errors: string[] = [];
+    logRotatedRelayKey(result, registrar, {
+      info: () => {},
+      warn: () => {},
+      error: (m) => errors.push(m),
+    });
+    return {
+      error: (result as { error: Error }).error,
+      logged: errors.join("\n"),
+    };
+  }
+
+  test("a refused connection names the host and port and the outbound access it needs", async () => {
+    const { error, logged } = await rotationFailure(localRegistrar(closedPort));
+    expect(logged).toBe(
+      "the exchange's shared secret rotated, and the relay registrar at " +
+        `https://127.0.0.1:${closedPort} (exchange exchange-1) did not ` +
+        "register the relay key derived from the new secret. The relay " +
+        `registrar at 127.0.0.1 port ${closedPort} could not be reached ` +
+        "(ECONNREFUSED). The rotated shared secret is kept. The next run " +
+        "retries the registration before it dials; if the registrar then " +
+        `refuses it, ${RELAY_REENROLLMENT_STEP}.\n${outbound(closedPort)}`,
+    );
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(exitCodeForError(error)).toBe(69);
+  });
+
+  test("a connection that never answers names the host and port and the outbound access it needs", async () => {
+    const port = (silent.address() as net.AddressInfo).port;
+    const { error, logged } = await rotationFailure(localRegistrar(port));
+    expect(logged).toBe(
+      "the exchange's shared secret rotated, and the relay registrar at " +
+        `https://127.0.0.1:${port} (exchange exchange-1) did not register ` +
+        "the relay key derived from the new secret. The relay registrar at " +
+        `127.0.0.1 port ${port} did not answer within 0.2 seconds. The ` +
+        "rotated shared secret is kept. The next run retries the " +
+        "registration before it dials; if the registrar then refuses it, " +
+        `${RELAY_REENROLLMENT_STEP}.\n${outbound(port)}`,
+    );
+    expect(exitCodeForError(error)).toBe(69);
+  });
+
+  test("the retry before dialing states the same requirement and exits 69", async () => {
+    saveKeyFile(keyFile, {
+      sharedSecret: ROTATED,
+      relayRegistrationPendingSince: NOW.toISOString(),
+    });
+    const failure = await retryPendingRelayRegistration(
+      {
+        registrar: localRegistrar(closedPort),
+        keyFilePath: keyFile,
+        sharedSecret: ROTATED,
+        maxAgeDays: 30,
+      },
+      { timeoutMs: 200, retryDelaysMs: [] },
+    ).catch((err: unknown) => err);
+    expect(renderFailureForOperator(failure)).toBe(
+      "the key file records a relay key registration that was not " +
+        "confirmed, and the relay registrar at " +
+        `https://127.0.0.1:${closedPort} (exchange exchange-1) did not ` +
+        "confirm it before this run dialed. The relay registrar at " +
+        `127.0.0.1 port ${closedPort} could not be reached (ECONNREFUSED). ` +
+        "Nothing was sent to your partner, and the shared secret is " +
+        "unchanged. Run the exchange again once the registrar answers.\n" +
+        outbound(closedPort),
+    );
+    expect(exitCodeForError(failure)).toBe(69);
   });
 });

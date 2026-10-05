@@ -29,6 +29,14 @@ const SAMPLES: {
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
     { kind: "folder-missing", path: "/data/drop", code: "ENOTDIR" },
   ],
+  "relay-registrar-unreachable": [
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      code: "ECONNREFUSED",
+    },
+  ],
 };
 
 const ARRIVAL_WAITS: ArrivalWait[] = ["exchange", "online-invitation"];
@@ -96,6 +104,16 @@ test("a missing shared folder names the path and the errno", () => {
   expect(rendered(SAMPLES["folder-missing"][1])).toBe(
     "The shared folder path /data/drop does not name a folder (ENOTDIR).\n" +
       "Correct the path so it names a folder, then run again.",
+  );
+});
+
+test("an unreachable relay registrar names its host and port and the outbound access it needs", () => {
+  expect(rendered(SAMPLES["relay-registrar-unreachable"][0])).toBe(
+    "The relay registrar at relay.example.org port 8443 could not be " +
+      "reached (ECONNREFUSED).\n" +
+      "This computer needs outbound access to relay.example.org on TCP port " +
+      "8443: if this network allows only some ports out (such as 443), have " +
+      "that port opened or run from a network that allows it.",
   );
 });
 

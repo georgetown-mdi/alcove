@@ -57,6 +57,10 @@ export const CLI_FAILURE_REMEDIES: {
     code === "ENOENT"
       ? "Create or mount the folder, or correct its path, then run again."
       : "Correct the path so it names a folder, then run again.",
+  "relay-registrar-unreachable": ({ host, port }) =>
+    `This computer needs outbound access to ${host} on TCP port ${port}: ` +
+    "if this network allows only some ports out (such as 443), have that " +
+    "port opened or run from a network that allows it.",
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

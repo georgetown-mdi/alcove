@@ -186,6 +186,33 @@ test.each([
   },
 );
 
+test("an enrollment that cannot connect names the registrar port and the outbound access it needs", async () => {
+  fs.writeFileSync(configFile, YAML.stringify(webrtcConfig()));
+  saveKeyFile(keyFile, { sharedSecret: SECRET });
+  const failure = await enrollRelay({
+    configFile,
+    keyFile,
+    replace: false,
+    readOwnerToken: async () => OWNER_TOKEN,
+    transport: {
+      fetch: () =>
+        Promise.reject(
+          new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } }),
+        ),
+    },
+  }).catch((err: unknown) => err);
+  expect(exitCodeForError(failure)).toBe(69);
+  expect(renderFailureForOperator(failure)).toBe(
+    "the exchange could not be enrolled at the relay registrar at " +
+      "https://relay.example.org:8443 (exchange exchange-1). The relay " +
+      "registrar at relay.example.org port 8443 could not be reached " +
+      "(ECONNREFUSED). Run the command again once it answers.\n" +
+      "This computer needs outbound access to relay.example.org on TCP port " +
+      "8443: if this network allows only some ports out (such as 443), have " +
+      "that port opened or run from a network that allows it.",
+  );
+});
+
 /** The line `exitWithError`, the handler's failure path, logs for `failure`. */
 function loggedFailureLine(failure: unknown): string {
   const lines: string[] = [];

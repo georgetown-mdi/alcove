@@ -13,6 +13,26 @@ export type PartnerMeetingChannel = "filedrop" | "sftp" | "webrtc";
 export type FolderMissingCode = "ENOENT" | "ENOTDIR";
 
 /**
+ * The network error codes under which a relay registrar counts as unreachable:
+ * the connection was refused or reset, no route reached the host, its name did
+ * not resolve, or the connection attempt timed out.
+ */
+export const RELAY_REGISTRAR_UNREACHABLE_CODES = [
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+] as const;
+
+/** One of {@link RELAY_REGISTRAR_UNREACHABLE_CODES}. */
+export type RelayRegistrarUnreachableCode =
+  (typeof RELAY_REGISTRAR_UNREACHABLE_CODES)[number];
+
+/**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
  * a path, an errno code, a duration. A path is composed into the sentence raw
  * and escaped where the message is shown, like every other error fragment.
@@ -32,6 +52,16 @@ export type FailureCause =
       readonly path: string;
       /** `ENOENT`: nothing at the path. `ENOTDIR`: something that is not a folder. */
       readonly code: FolderMissingCode;
+    }
+  | {
+      /** No connection to the relay registrar's host and port was made. */
+      readonly kind: "relay-registrar-unreachable";
+      readonly host: string;
+      readonly port: number;
+      /** The network error code; unset when the request timed out instead. */
+      readonly code?: RelayRegistrarUnreachableCode;
+      /** The request's timeout, when it ran out with no answer. */
+      readonly timedOutMs?: number;
     };
 
 /** The discriminant of {@link FailureCause}. */
@@ -107,6 +137,13 @@ const SENTENCES: {
     code === "ENOENT"
       ? `The shared folder ${path} does not exist (ENOENT).`
       : `The shared folder path ${path} does not name a folder (ENOTDIR).`,
+  "relay-registrar-unreachable": ({ host, port, code, timedOutMs }) =>
+    `The relay registrar at ${host} port ${port} ` +
+    (code === undefined
+      ? `did not answer within ${formatWaitDuration(timedOutMs ?? 0)}.`
+      : `could not be reached (${
+          code === "UND_ERR_CONNECT_TIMEOUT" ? "connection timed out" : code
+        }).`),
 };
 
 /**

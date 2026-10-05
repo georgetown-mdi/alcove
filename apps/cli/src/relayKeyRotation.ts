@@ -6,6 +6,8 @@
 
 import {
   ConnectionError,
+  failureCauseSentence,
+  markFailureCause,
   registerRelayKey,
   sanitizeErrorForDisplay,
   UsageError,
@@ -27,7 +29,10 @@ import {
   relayRegistrationNotice,
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
-import { AUTHENTICATION_FAILED_EXIT_CODE } from "./util/exit";
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  renderFailureForOperator,
+} from "./util/exit";
 import { withRecoveryHintTag } from "./util/recoveryHint";
 
 export {
@@ -112,15 +117,25 @@ export function relayRegistrationError(
           { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
         ),
       );
-    case "unavailable":
+    case "unavailable": {
+      const next =
+        stage === "pending"
+          ? "Run the exchange again once the registrar answers."
+          : "The next run retries the registration before it dials; if " +
+            `the registrar then refuses it, ${RELAY_REENROLLMENT_STEP}.`;
+      if (outcome.unreachable !== undefined)
+        return markFailureCause(
+          new ConnectionError(
+            `${what}. ${failureCauseSentence(outcome.unreachable)}${sent} ${next}`,
+            "transport",
+          ),
+          outcome.unreachable,
+        );
       return new ConnectionError(
-        `${what}: ${detail}.${sent} ` +
-          (stage === "pending"
-            ? "Run the exchange again once the registrar answers."
-            : "The next run retries the registration before it dials; if " +
-              `the registrar then refuses it, ${RELAY_REENROLLMENT_STEP}.`),
+        `${what}: ${detail}.${sent} ${next}`,
         "transport",
       );
+    }
     case "rejected":
       return new UsageError(
         `${what}: it refused the request (${detail}).${sent} Check ` +
@@ -212,7 +227,7 @@ export function logRotatedRelayKey(
 ): boolean {
   if (result.kind === "not-rotated") return false;
   if (result.kind === "failed") {
-    log.error(sanitizeErrorForDisplay(result.error));
+    log.error(renderFailureForOperator(result.error));
     return true;
   }
   log.info(relayRegistrationNotice(registrar, result.outcome));

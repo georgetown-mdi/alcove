@@ -7,6 +7,11 @@
 import { z } from "zod";
 
 import type { RelayRegistrar } from "./config/connection.js";
+import {
+  RELAY_REGISTRAR_UNREACHABLE_CODES,
+  type FailureCauseOfKind,
+  type RelayRegistrarUnreachableCode,
+} from "./failureCause.js";
 import { deriveRelayKey } from "./relayCredential.js";
 import { relayRegistrarAuthorization } from "./relayRegistrarProof.js";
 import { readBoundedJsonBody } from "./utils/boundedJsonBody.js";
@@ -89,6 +94,39 @@ export function relayRegistrarLabel(registrar: RelayRegistrar): string {
   );
 }
 
+/**
+ * The network error code under which `err` -- what `fetch` rejected with --
+ * failed to connect, read from its `cause` or, for a connection tried at
+ * several addresses, from each error the cause aggregates; `undefined` when
+ * none is one of {@link RELAY_REGISTRAR_UNREACHABLE_CODES}.
+ */
+function unreachableCode(
+  err: unknown,
+): RelayRegistrarUnreachableCode | undefined {
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  const candidates: unknown[] = [cause];
+  const aggregated = (cause as { errors?: unknown } | null)?.errors;
+  if (Array.isArray(aggregated)) candidates.push(...aggregated);
+  for (const candidate of candidates) {
+    const code = (candidate as { code?: unknown } | null)?.code;
+    if (
+      typeof code === "string" &&
+      (RELAY_REGISTRAR_UNREACHABLE_CODES as readonly string[]).includes(code)
+    )
+      return code as RelayRegistrarUnreachableCode;
+  }
+  return undefined;
+}
+
+/** The host and port a registrar's `https://` url connects to. */
+function registrarHostAndPort(registrar: RelayRegistrar): {
+  host: string;
+  port: number;
+} {
+  const url = new URL(registrar.url);
+  return { host: url.hostname, port: url.port === "" ? 443 : Number(url.port) };
+}
+
 function registrarRequestUrl(registrar: RelayRegistrar): string {
   return `${new URL(registrar.url).origin}/exchanges/${encodeURIComponent(registrar.exchangeId)}`;
 }
@@ -120,9 +158,15 @@ export type RelayRegistrarAnswer =
   | { kind: "rejected"; status: number; reason?: string }
   /**
    * No answer, one a later attempt may not repeat (408, 429, or 5xx), or a
-   * 2xx that does not state the registration.
+   * 2xx that does not state the registration. `unreachable` is set when no
+   * connection to the registrar was made, or the request timed out.
    */
-  | { kind: "unavailable"; status?: number; reason: string };
+  | {
+      kind: "unavailable";
+      status?: number;
+      reason: string;
+      unreachable?: FailureCauseOfKind<"relay-registrar-unreachable">;
+    };
 
 /** How a registrar request is sent: injectable for tests. */
 export interface RelayRegistrarTransport {
@@ -262,15 +306,23 @@ export async function sendRelayRegistration(
           kind: "unavailable",
           reason: RELAY_REGISTRATION_CANCELLED_REASON,
         };
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      const code = timedOut ? undefined : unreachableCode(err);
       return {
         kind: "unavailable",
-        reason:
-          err instanceof Error && err.name === "TimeoutError"
-            ? `no answer within ${timeoutMs} ms`
-            : `it could not be reached (${withCredentialRemoved(
-                err instanceof Error ? err.message : String(err),
-                request.authorization,
-              )})`,
+        reason: timedOut
+          ? `no answer within ${timeoutMs} ms`
+          : `it could not be reached (${withCredentialRemoved(
+              err instanceof Error ? err.message : String(err),
+              request.authorization,
+            )})`,
+        ...((timedOut || code !== undefined) && {
+          unreachable: {
+            kind: "relay-registrar-unreachable",
+            ...registrarHostAndPort(request.registrar),
+            ...(timedOut ? { timedOutMs: timeoutMs } : { code }),
+          },
+        }),
       };
     }
     const status = response.status;

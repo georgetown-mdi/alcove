@@ -146,6 +146,61 @@ describe("sendRelayRegistration", () => {
       expect(reason).not.toContain(form(token));
     },
   );
+
+  function failingWith(cause: unknown): typeof globalThis.fetch {
+    return (() =>
+      Promise.reject(
+        new TypeError("fetch failed", { cause }),
+      )) as typeof globalThis.fetch;
+  }
+
+  test.each([
+    ["a refused connection", { code: "ECONNREFUSED" }, "ECONNREFUSED"],
+    ["a name that does not resolve", { code: "ENOTFOUND" }, "ENOTFOUND"],
+    [
+      "a connection tried at several addresses",
+      new AggregateError([{ code: "EHOSTUNREACH" }], "connect failed"),
+      "EHOSTUNREACH",
+    ],
+  ])("%s names the registrar unreachable", async (_, cause, code) => {
+    const answer = await sendRelayRegistration(PROOF_REQUEST, {
+      fetch: failingWith(cause),
+    });
+    expect(answer).toMatchObject({
+      kind: "unavailable",
+      unreachable: {
+        kind: "relay-registrar-unreachable",
+        host: "relay.example.org",
+        port: 8443,
+        code,
+      },
+    });
+  });
+
+  test.each([
+    ["no cause", undefined],
+    ["a certificate the client refused", { code: "CERT_HAS_EXPIRED" }],
+  ])(
+    "a failed fetch with %s does not name the registrar unreachable",
+    async (_, cause) => {
+      const answer = await sendRelayRegistration(PROOF_REQUEST, {
+        fetch: failingWith(cause),
+      });
+      expect(answer.kind).toBe("unavailable");
+      expect(answer).not.toHaveProperty("unreachable");
+    },
+  );
+
+  test("a registrar url with no port names port 443", async () => {
+    const answer = await sendRelayRegistration(
+      {
+        ...PROOF_REQUEST,
+        registrar: { ...REGISTRAR, url: "https://relay.example.org" },
+      },
+      { fetch: failingWith({ code: "ECONNREFUSED" }) },
+    );
+    expect(answer).toMatchObject({ unreachable: { port: 443 } });
+  });
 });
 
 describe("registerRelayKey", () => {
@@ -228,6 +283,12 @@ describe("registerRelayKey", () => {
     expect(outcome).toEqual({
       kind: "unavailable",
       reason: "no answer within 20 ms",
+      unreachable: {
+        kind: "relay-registrar-unreachable",
+        host: "relay.example.org",
+        port: 8443,
+        timedOutMs: 20,
+      },
     });
     expect(fetch.endings).toEqual(["TimeoutError"]);
   });
