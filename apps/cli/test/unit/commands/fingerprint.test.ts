@@ -9,6 +9,7 @@ import {
   UsageError,
   computeCertificateFingerprint,
   generateSigningIdentity,
+  serializeCertificate,
 } from "@alcove/core";
 import {
   handler,
@@ -1246,6 +1247,7 @@ test("handler refuses to export the certificate over the identity file itself", 
 async function exportCertificate(
   identityPath: string,
   exportPath: string,
+  force = false,
 ): Promise<void> {
   const exitSpy = captureProcessExit();
   const cwd = process.cwd();
@@ -1257,7 +1259,7 @@ async function exportCertificate(
       "identity-file": identityPath,
       "export-certificate": exportPath,
       "log-level": "silent",
-      force: false,
+      force,
     } as unknown as Arguments);
   } finally {
     process.chdir(cwd);
@@ -1306,7 +1308,7 @@ test.skipIf(process.platform === "win32")(
 );
 
 test.skipIf(process.platform === "win32")(
-  "handler exports onto a symlink to the identity file, replacing only the link",
+  "handler refuses to export onto a symlink to the identity file without --force",
   async () => {
     const idPath = path.join(dir, "id.json");
     idFile.saveSigningIdentity(
@@ -1316,11 +1318,137 @@ test.skipIf(process.platform === "win32")(
     const before = fs.readFileSync(idPath, "utf8");
     const linkPath = path.join(dir, "cert.pem");
     fs.symlinkSync(idPath, linkPath);
-    await exportCertificate(idPath, linkPath);
-    expect(fs.lstatSync(linkPath).isSymbolicLink()).toBe(false);
+    await expect(exportCertificate(idPath, linkPath)).rejects.toThrow(
+      "exit:64",
+    );
+    expect(fs.lstatSync(linkPath).isSymbolicLink()).toBe(true);
     expect(fs.readFileSync(idPath, "utf8")).toBe(before);
   },
 );
+
+test.skipIf(process.platform === "win32")(
+  "handler exports onto a symlink to the identity file with --force, replacing only the link",
+  async () => {
+    const idPath = path.join(dir, "id.json");
+    idFile.saveSigningIdentity(
+      idPath,
+      await generateSigningIdentity("Party A"),
+    );
+    const linkPath = path.join(dir, "cert.pem");
+    fs.symlinkSync(idPath, linkPath);
+    await exportCertificate(idPath, linkPath, true);
+    expect(fs.lstatSync(linkPath).isSymbolicLink()).toBe(false);
+    expect((await loadSigningIdentity(idPath))?.privateKey).toBeDefined();
+  },
+);
+
+test("handler refuses to export over a different existing file without --force", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const keyPath = path.join(dir, ".alcove.key");
+  fs.writeFileSync(keyPath, "shared secret stand-in\n");
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(exportCertificate(idPath, keyPath)).rejects.toThrow("exit:64");
+  } finally {
+    logged.mockRestore();
+  }
+  expect(fs.readFileSync(keyPath, "utf8")).toBe("shared secret stand-in\n");
+});
+
+test("handler refuses an existing export path before creating a new identity", async () => {
+  const idPath = path.join(dir, "id.json");
+  const certPath = path.join(dir, "cert.json");
+  fs.writeFileSync(certPath, "an earlier file\n");
+  await expect(exportCertificate(idPath, certPath)).rejects.toThrow("exit:64");
+  expect(fs.existsSync(idPath)).toBe(false);
+  expect(fs.readFileSync(certPath, "utf8")).toBe("an earlier file\n");
+});
+
+test("handler leaves an export already holding this certificate in place", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const certPath = path.join(dir, "cert.json");
+  await exportCertificate(idPath, certPath);
+  const first = fs.readFileSync(certPath, "utf8");
+  await exportCertificate(idPath, certPath);
+  expect(fs.readFileSync(certPath, "utf8")).toBe(first);
+});
+
+test("handler leaves an export that appears with this certificate during the write", async () => {
+  const idPath = path.join(dir, "id.json");
+  const identity = await generateSigningIdentity("Party A");
+  idFile.saveSigningIdentity(idPath, identity);
+  const certPath = path.join(dir, "cert.json");
+  const certificate = serializeCertificate(identity.certificate);
+  const realLink = fs.linkSync;
+  const link = vi.spyOn(fs, "linkSync").mockImplementation((from, to) => {
+    fs.writeFileSync(certPath, certificate);
+    return realLink(from, to);
+  });
+  try {
+    await exportCertificate(idPath, certPath);
+  } finally {
+    link.mockRestore();
+  }
+  expect(fs.readFileSync(certPath, "utf8")).toBe(certificate);
+});
+
+test("handler leaves a different export that appears during the write and leaves no temp file", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const certPath = path.join(dir, "cert.json");
+  const planted = "planted during the write\n";
+  const realLink = fs.linkSync;
+  const link = vi.spyOn(fs, "linkSync").mockImplementation((from, to) => {
+    fs.writeFileSync(certPath, planted);
+    return realLink(from, to);
+  });
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await expect(exportCertificate(idPath, certPath)).rejects.toThrow(
+      "exit:64",
+    );
+  } finally {
+    link.mockRestore();
+    logged.mockRestore();
+  }
+  expect(fs.readFileSync(certPath, "utf8")).toBe(planted);
+  expect(fs.readdirSync(dir).sort()).toEqual(["cert.json", "id.json"]);
+});
+
+test("handler replaces a different existing export with --force", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const certPath = path.join(dir, "cert.json");
+  fs.writeFileSync(certPath, "an earlier file\n");
+  await exportCertificate(idPath, certPath, true);
+  const reloaded = await loadSigningIdentity(idPath);
+  expect(fs.readFileSync(certPath, "utf8")).toBe(
+    serializeCertificate(reloaded!.certificate),
+  );
+});
+
+test("handler refuses an export over the identity file with --force before regenerating it", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const before = fs.readFileSync(idPath);
+  await expect(exportCertificate(idPath, idPath, true)).rejects.toThrow(
+    "exit:64",
+  );
+  expect(fs.readFileSync(idPath).equals(before)).toBe(true);
+});
+
+test("handler refuses a different existing export with the identity file unchanged", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const before = fs.readFileSync(idPath);
+  const certPath = path.join(dir, "cert.json");
+  fs.writeFileSync(certPath, "an earlier file\n");
+  await expect(exportCertificate(idPath, certPath)).rejects.toThrow("exit:64");
+  expect(fs.readFileSync(idPath).equals(before)).toBe(true);
+  expect(fs.readFileSync(certPath, "utf8")).toBe("an earlier file\n");
+});
 
 test.skipIf(process.platform === "win32")(
   "handler refuses to export over the file a symlinked identity path resolves to",

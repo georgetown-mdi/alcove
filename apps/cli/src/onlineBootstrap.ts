@@ -1104,7 +1104,10 @@ export async function runOnlineBootstrap(params: {
             : {}),
         };
         try {
-          saveConfig(params.configPath, firstConfig, { exclusive: true });
+          saveConfig(params.configPath, firstConfig, {
+            exclusive: true,
+            log: getLogger(params.loggerName),
+          });
         } catch (err) {
           if (err instanceof FileExistsError) throw configAppearedLate();
           throw err;

@@ -74,6 +74,11 @@ import { isMap, isScalar } from "yaml";
 import type { Document } from "yaml";
 
 import { writeFileOwnerOnly } from "./fileUtils";
+import {
+  type ConnectionCredentialFields,
+  type SavedConfigWarningOptions,
+  warnIfSavedConfigHoldsLiteralCredential,
+} from "./literalCredentials";
 import { parseSensitiveYaml, editSensitiveYamlDocument } from "./sensitiveFile";
 import type { SensitiveFileLabel } from "./sensitiveFile";
 
@@ -1469,11 +1474,25 @@ export function reconcileConflictError(params: {
 // --- Config writer -----------------------------------------------------------
 
 /**
+ * Write a configuration's text to `configPath` owner-read-only, then warn
+ * when its connection holds a credential as typed rather than as an `@path`.
+ * Every writer of a new configuration goes through here, so the warning
+ * comes from one place.
+ */
+export function writeConfigFile(
+  configPath: string,
+  text: string,
+  connection: ConnectionCredentialFields | undefined,
+  options: { exclusive?: boolean } & SavedConfigWarningOptions = {},
+): void {
+  writeFileOwnerOnly(configPath, text, { exclusive: options.exclusive });
+  warnIfSavedConfigHoldsLiteralCredential(configPath, connection, options);
+}
+
+/**
  * Write an {@link ExchangeSpec} to `configPath` as the snake_case YAML document
  * {@link serializeExchangeDocument} renders -- guidance comments and the
- * shared-secret strip included -- owner-read-only, since a config may hold an
- * SFTP credential. Gets the same `0600`/ACL protection as the key file via
- * {@link writeFileOwnerOnly}.
+ * shared-secret strip included -- through {@link writeConfigFile}.
  *
  * Does not guard against overwriting an existing file; callers provision
  * through `provisionConfigAndKey`, which runs the conflict gate first.
@@ -1481,9 +1500,14 @@ export function reconcileConflictError(params: {
 export function saveConfig(
   configPath: string,
   spec: ExchangeSpec,
-  options: { exclusive?: boolean } = {},
+  options: { exclusive?: boolean } & SavedConfigWarningOptions = {},
 ): void {
-  writeFileOwnerOnly(configPath, serializeExchangeDocument(spec), options);
+  writeConfigFile(
+    configPath,
+    serializeExchangeDocument(spec),
+    spec.connection,
+    options,
+  );
 }
 
 /**

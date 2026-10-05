@@ -39,6 +39,12 @@ import {
   expandTilde,
   FileExistsError,
 } from "../fileUtils";
+import {
+  assertBootstrapUrlPasswordStorable,
+  BOOTSTRAP_CREDENTIAL_FLAGS,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import {
@@ -593,6 +599,7 @@ export function finalizeBootstrap(params: {
     unattendedFillNoticeWriter,
     eventStream,
   } = params;
+  const savedConfigWarning = { log };
   const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
     if (filledPayloadReceive !== undefined)
       reportPayloadReceiveFill({
@@ -628,6 +635,7 @@ export function finalizeBootstrap(params: {
         spec,
         { sharedSecret: bootstrap.sharedSecret },
         { configPath: configFile, keyPath: keyFile },
+        { savedConfigWarning },
       );
       log.info(
         `established a shared secret with your partner; wrote config to ` +
@@ -653,7 +661,7 @@ export function finalizeBootstrap(params: {
     if (conflicts.length > 0)
       throw new UsageError(configAppearedLateRefusal(conflicts.join(", ")));
     try {
-      saveConfig(configFile, spec, { exclusive: true });
+      saveConfig(configFile, spec, { exclusive: true, ...savedConfigWarning });
     } catch (err) {
       if (err instanceof FileExistsError)
         throw new UsageError(configAppearedLateRefusal(configFile));
@@ -787,6 +795,17 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     const { server, input, output } = resolved;
+    if (options.save) {
+      try {
+        assertBootstrapUrlPasswordStorable(argv, server);
+      } catch (err) {
+        exitWithError(log, err, 64);
+      }
+    }
+    warnIfCommandLineHoldsLiteralCredential(
+      commandLineLiteralCredentials(argv, server, BOOTSTRAP_CREDENTIAL_FLAGS),
+      log,
+    );
 
     // Warn before createConnection can throw so the user sees the flag issue even
     // if the channel is refused. The channel is derived from the URL here

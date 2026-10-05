@@ -88,6 +88,11 @@ import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
 import { loadInputRows } from "../onlineBootstrap";
 import {
+  BOOTSTRAP_CREDENTIAL_FLAGS,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
+import {
   addCommonBootstrapOptions,
   addCsvDelimiterOption,
   connectionOverridesFrom,
@@ -1080,6 +1085,14 @@ export async function handler(argv: Arguments): Promise<void> {
     } catch (err) {
       exitWithError(log, err, 64);
     }
+    warnIfCommandLineHoldsLiteralCredential(
+      commandLineLiteralCredentials(
+        argv,
+        undefined,
+        BOOTSTRAP_CREDENTIAL_FLAGS,
+      ),
+      log,
+    );
 
     // Provision the key file from --invitation before loadConfig reads it: the
     // party that composed the exchange in the web app has a config with no

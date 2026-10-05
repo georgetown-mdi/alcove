@@ -19,7 +19,10 @@ import {
   UsageError,
 } from "@alcove/core";
 
-import { stripExtendedAcls } from "../fileUtils";
+import {
+  restrictNewFileToOwnerOnWindows,
+  stripExtendedAcls,
+} from "../fileUtils";
 import { singleValue } from "./flags";
 
 // Mapping from log-level name to loglevel numeric constant. Module-private so
@@ -165,6 +168,28 @@ function installLogSink(
   };
 }
 
+function openLogFileForAppend(logFilePath: string): {
+  fd: number;
+  created: boolean;
+} {
+  try {
+    return {
+      fd: fs.openSync(
+        logFilePath,
+        fs.constants.O_WRONLY |
+          fs.constants.O_APPEND |
+          fs.constants.O_CREAT |
+          fs.constants.O_EXCL,
+        0o600,
+      ),
+      created: true,
+    };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+  return { fd: fs.openSync(logFilePath, "a", 0o600), created: false };
+}
+
 /**
  * Redirect every diagnostic log line to `logFilePath` (append mode) instead of
  * the terminal, returning a {@link LogSink} the caller closes after the
@@ -194,12 +219,10 @@ function installLogSink(
  * guards a failed `fs.writeSync` (a full disk) and reports it on stderr rather
  * than throwing back into the log call.
  *
- * The file is opened synchronously (`openSync` with `"a"`) so a missing parent
- * directory or other open failure shows up here, as a {@link UsageError}
- * before any exchange work begins, and created owner-only (`0o600`). The path
- * is operator-supplied, not attacker-derived, so the open skips the
- * `O_NOFOLLOW`/`O_EXCL` hardening Alcove's credential writers use for paths
- * it derives itself.
+ * The file is opened synchronously so an open failure is a
+ * {@link UsageError} before any exchange work begins. A file this call creates
+ * is owner-only (docs/spec/CREDENTIAL_STORAGE.md). The path is
+ * operator-supplied, not attacker-derived, so the open skips `O_NOFOLLOW`.
  *
  * Between that open and the first write, on macOS the file's extended (NFSv4)
  * ACL is cleared, so no line is written while an inherited ACE could still
@@ -217,21 +240,38 @@ export function configureLogFile(logFilePath: string): LogSink {
   const normalized = normalizeLogFilePath(logFilePath);
 
   let fd: number;
+  let created: boolean;
   try {
-    // "a" creates-or-appends and throws synchronously (ENOENT) when the parent
-    // directory is absent, so the failure is reported before any exchange work
-    // begins, and opens with O_APPEND so each writeSync lands at the current
-    // end of file. The 0o600 mode creates the file owner-only, since a
-    // debug/trace log can hold partner identity, linkage keys, and data
-    // categories (see writeFileOwnerOnly, docs/SECURITY_DESIGN.md "Required
-    // permissions"). The mode applies only when the file is created, so an
-    // existing --log-file path keeps its own permissions.
-    fd = fs.openSync(normalized, "a", 0o600);
+    // An existing --log-file path keeps its own permissions.
+    ({ fd, created } = openLogFileForAppend(normalized));
   } catch (err) {
     throw new UsageError(
       `could not open log file ${normalized}: ` +
         (err instanceof Error ? err.message : String(err)),
     );
+  }
+
+  if (created) {
+    try {
+      restrictNewFileToOwnerOnWindows(normalized);
+    } catch (err) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* already reported below */
+      }
+      try {
+        fs.rmSync(normalized, { force: true });
+      } catch {
+        /* already reported below */
+      }
+      throw new UsageError(
+        `could not restrict the new log file ${normalized} to your user ` +
+          "account, so it was removed. Run again once icacls can change its " +
+          "permissions, or name another log file.",
+        { cause: err },
+      );
+    }
   }
 
   try {

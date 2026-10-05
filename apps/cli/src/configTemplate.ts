@@ -61,7 +61,13 @@ export const PLACEHOLDER_FILEDROP_PATH = "/REPLACE_WITH_SHARED_DIRECTORY";
 export type TemplateConnection =
   | {
       channel: "sftp";
-      server: { host: string; port: number; username: string; path?: string };
+      server: {
+        host: string;
+        port: number;
+        username: string;
+        path?: string;
+        password?: string;
+      };
     }
   | { channel: "filedrop"; path: string };
 

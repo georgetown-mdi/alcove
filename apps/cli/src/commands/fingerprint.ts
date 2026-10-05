@@ -111,7 +111,10 @@ export function builder(cmd: Argv): Argv {
       type: "string",
       describe:
         "also write this party's public certificate (no private key) to the " +
-        "given path, for sharing with a partner",
+        "given path, for sharing with a partner. A different file already at " +
+        "the path is replaced only with --force, which also regenerates the " +
+        "signing identity and invalidates every partner's pin; remove the " +
+        "stale file yourself to replace only the export",
     });
   return addLoggingOptions(beforeLogging);
 }
@@ -248,6 +251,8 @@ export interface ResolveSigningIdentityInput {
   /** `--force`: regenerate even if an identity already exists. */
   force: boolean;
   log: { warn: (message: string) => void };
+  /** The identity file as the caller already loaded it, read instead. */
+  onDisk?: { identity: SigningIdentity | undefined };
 }
 
 /**
@@ -285,7 +290,10 @@ export async function resolveSigningIdentity(
   let existing: SigningIdentity | undefined;
   let replacingUnreadable = false;
   try {
-    existing = await loadSigningIdentity(input.identityPath);
+    existing =
+      input.onDisk !== undefined
+        ? input.onDisk.identity
+        : await loadSigningIdentity(input.identityPath);
   } catch (err) {
     if (!input.force) throw err;
     input.log.warn(
@@ -471,6 +479,33 @@ function exportReplacesIdentity(
   }
 }
 
+/**
+ * What an existing file at the export path holds: `undefined` when the path is
+ * free, `null` when something is there that cannot be read as text (a folder,
+ * an unreadable file).
+ */
+function readExistingExport(exportPath: string): string | null | undefined {
+  try {
+    return fs.readFileSync(exportPath, "utf8");
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null;
+  }
+}
+
+/** The refusal an export onto a different existing file gets. */
+function exportWouldReplaceFileError(exportPath: string): UsageError {
+  const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
+    exportPath,
+  )}${EXPORT_OVER_EXISTING_REMEDY}`;
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+/** What {@link exportWouldReplaceFileError} states behind the path. */
+const EXPORT_OVER_EXISTING_REMEDY =
+  " already holds a different file; nothing was written to it. Choose a " +
+  "path that does not exist yet, or move that file away and run the " +
+  "command again.";
+
 /** What the export refusal states behind the path it was asked to write. */
 const EXPORT_OVER_IDENTITY_REMEDY =
   " is the signing identity file itself; refusing to overwrite the private " +
@@ -520,6 +555,38 @@ export async function handler(argv: Arguments): Promise<void> {
     if (namedIdentityFile === undefined)
       throw new UsageError(NO_IDENTITY_PATH_REFUSAL);
     const identityPath = expandTilde(namedIdentityFile);
+    const exportPath =
+      exportCertificate !== undefined
+        ? expandTilde(exportCertificate)
+        : undefined;
+    // Pointing --export-certificate at the identity file would replace the
+    // private key with the public certificate, destroying the key and every
+    // partner's pin.
+    if (
+      exportPath !== undefined &&
+      exportReplacesIdentity(exportPath, identityPath)
+    ) {
+      const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
+        exportPath,
+      )}${EXPORT_OVER_IDENTITY_REMEDY}`;
+      throw keepOperatorSuppliedText(new UsageError(message.text), message);
+    }
+    // An existing file at the export path is replaced only on --force. One
+    // already holding the certificate of the identity on disk is left as it
+    // is, so a repeated run succeeds. Decided before anything may change the
+    // identity.
+    let onDisk: { identity: SigningIdentity | undefined } | undefined;
+    if (exportPath !== undefined && !force) {
+      onDisk = { identity: await loadSigningIdentity(identityPath) };
+      const existing = readExistingExport(exportPath);
+      if (existing !== undefined) {
+        if (
+          onDisk.identity === undefined ||
+          existing !== serializeCertificate(onDisk.identity.certificate)
+        )
+          throw exportWouldReplaceFileError(exportPath);
+      }
+    }
 
     const { identity, action } = await resolveSigningIdentity({
       identityPath,
@@ -527,31 +594,32 @@ export async function handler(argv: Arguments): Promise<void> {
       configIdentity: hints.identity,
       force,
       log,
+      ...(onDisk !== undefined ? { onDisk } : {}),
     });
 
     const fingerprint = await computeCertificateFingerprint(
       identity.certificate,
     );
 
-    if (exportCertificate !== undefined) {
-      const exportPath = expandTilde(exportCertificate);
-      // Pointing --export-certificate at the identity file would replace the
-      // private key with the public certificate, destroying the key and every
-      // partner's pin.
-      if (exportReplacesIdentity(exportPath, identityPath)) {
-        const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
-          exportPath,
-        )}${EXPORT_OVER_IDENTITY_REMEDY}`;
-        throw keepOperatorSuppliedText(new UsageError(message.text), message);
-      }
+    if (exportPath !== undefined) {
+      const certificate = serializeCertificate(identity.certificate);
       try {
         // Public, shareable artifact: world-readable and atomic, NOT owner-only.
-        writeFileAtomic(exportPath, serializeCertificate(identity.certificate));
+        // Without --force the create is exclusive, so a file that appeared
+        // since the preflight is compared rather than replaced.
+        writeFileAtomic(exportPath, certificate, undefined, {
+          exclusive: !force,
+        });
       } catch (err) {
-        const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
-          exportPath,
-        )}: ${err instanceof Error ? err.message : String(err)}`;
-        throw keepOperatorSuppliedText(new UsageError(message.text), message);
+        if (err instanceof FileExistsError) {
+          if (readExistingExport(exportPath) !== certificate)
+            throw exportWouldReplaceFileError(exportPath);
+        } else {
+          const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
+            exportPath,
+          )}: ${err instanceof Error ? err.message : String(err)}`;
+          throw keepOperatorSuppliedText(new UsageError(message.text), message);
+        }
       }
     }
 

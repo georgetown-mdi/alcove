@@ -14,13 +14,16 @@ import {
 } from "@alcove/core";
 import type { BuiltInLinkageRuleSet } from "@alcove/core";
 
-import { configPlaceholderFields, DEFAULT_CONFIG_PATH } from "../config";
+import {
+  configPlaceholderFields,
+  DEFAULT_CONFIG_PATH,
+  writeConfigFile,
+} from "../config";
 import { channelForScheme, connectionFromURL } from "../connectionFromUrl";
 import {
   detectFileConflicts,
   expandTilde,
   FileExistsError,
-  writeFileOwnerOnly,
 } from "../fileUtils";
 import {
   DEFAULT_TEMPLATE_CONNECTION,
@@ -28,6 +31,11 @@ import {
   renderConfigTemplate,
 } from "../configTemplate";
 import type { TemplateConnection, TemplateDataSpec } from "../configTemplate";
+import {
+  assertUrlPasswordStorable,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
 import { openInputSource } from "../util/dataIo";
 import { runOrExit } from "../util/exit";
 import {
@@ -147,6 +155,14 @@ export async function handler(argv: Arguments): Promise<void> {
       // before any input read or file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const { url, input } = resolveInitPositionals(positionals);
+      assertUrlPasswordStorable(
+        url,
+        'add its path with a leading @ to connection.server in the file, e.g. password: "@./sftp-password.txt".',
+      );
+      warnIfCommandLineHoldsLiteralCredential(
+        commandLineLiteralCredentials(argv, url, []),
+        log,
+      );
       const connection = templateConnection(
         url,
         singleValue(argv, "channel") as string | undefined,
@@ -206,8 +222,9 @@ export async function handler(argv: Arguments): Promise<void> {
         // clobber it, re-asserting the never-overwrite-unprompted contract at the
         // write the way provisionConfigAndKey re-gates. On the "overwrite" path
         // the operator already confirmed, so the write replaces in place.
-        writeFileOwnerOnly(configFile, template, {
+        writeConfigFile(configFile, template, connection, {
           exclusive: decision === "create",
+          log,
         });
       } catch (err) {
         // init performs no network activity, so every failure is a local,
@@ -304,23 +321,15 @@ export const INIT_WEBRTC_REFUSED =
   "the end of the template.";
 
 /**
- * The refusal a password in an sftp URL gets: `init` writes the file it
- * reads its credential from, and a literal password would sit in it.
- */
-export const INIT_URL_PASSWORD_REFUSED =
-  "init does not write a password from the URL into the configuration. " +
-  "Leave it out of the URL, then add it to connection.server in the file " +
-  'as an @path, e.g. password: "@./sftp-password.txt".';
-
-/**
  * The connection block `init` writes: filled from `url` when one is given,
  * otherwise placeholders for the `--channel` channel (default sftp). An sftp
  * URL fills host, port, username, and the directory; only a credential is
  * then left to add, and a URL naming no username leaves that placeholder. A
  * URL with no directory names the login directory, so no `path` is written.
+ * A URL holding a password writes it into the block as given.
  *
- * @throws {UsageError} for a webrtc or unknown channel, a `--channel` that
- *   disagrees with the URL's, or a URL holding a password.
+ * @throws {UsageError} for a webrtc or unknown channel, or a `--channel` that
+ *   disagrees with the URL's.
  * @internal exported for testing
  */
 export function templateConnection(
@@ -350,8 +359,6 @@ export function templateConnection(
       `--channel ${channelFlag} does not match the URL, which names the ` +
         `${urlChannel ?? "another"} channel; give the URL alone`,
     );
-  if (url.password) throw new UsageError(INIT_URL_PASSWORD_REFUSED);
-
   let parsed: ReturnType<typeof connectionFromURL>;
   try {
     parsed = connectionFromURL(url, {});
@@ -374,6 +381,9 @@ export function templateConnection(
       port: parsed.server.port ?? 22,
       username: parsed.server.username ?? PLACEHOLDER_SSH_USERNAME,
       ...(parsed.server.path !== undefined ? { path: parsed.server.path } : {}),
+      ...(parsed.server.password !== undefined
+        ? { password: parsed.server.password }
+        : {}),
     },
   };
 }
@@ -397,7 +407,8 @@ function initNextSteps(
             placeholders.join(", "),
         ]
       : []),
-    ...(connection.channel === "sftp"
+    ...(connection.channel === "sftp" &&
+    connection.server.password === undefined
       ? ["add your SFTP credential to connection.server"]
       : []),
   ];

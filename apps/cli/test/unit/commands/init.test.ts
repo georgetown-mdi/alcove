@@ -33,7 +33,6 @@ import {
   buildTemplateData,
   decideOverwrite,
   handler as initHandler,
-  INIT_URL_PASSWORD_REFUSED,
   INIT_URL_UNREADABLE,
   INIT_WEBRTC_REFUSED,
   resolveInitPositionals,
@@ -619,6 +618,41 @@ test.each([
   },
 );
 
+test("handler: a URL password beginning with @ is refused and nothing is written", async () => {
+  const dir = scratchDir();
+  const configFile = path.join(dir, "alcove.yaml");
+  const logFile = path.join(dir, "init.log");
+  const exit = vi
+    .spyOn(process, "exit")
+    .mockImplementation((() => {}) as never);
+
+  const stderr: Array<string> = [];
+  vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+    stderr.push(String(chunk));
+    return true;
+  }) as never);
+
+  await initHandler(
+    argvFor({
+      args: ["sftp://alice:%40pwDISTINCT7@h/drop"],
+      "config-file": configFile,
+      "log-file": logFile,
+      "log-level": "info",
+    }),
+  );
+
+  expect(exit).toHaveBeenCalledWith(64);
+  expect(fs.existsSync(configFile)).toBe(false);
+  const logged = fs.readFileSync(logFile, "utf8");
+  expect(logged).toContain(
+    "the password in the URL begins with @, so it cannot be stored in the " +
+      "configuration file",
+  );
+  expect(logged).toContain('password: "@./sftp-password.txt"');
+  expect(logged).not.toContain("pwDISTINCT7");
+  expect(stderr.join("")).not.toContain("pwDISTINCT7");
+});
+
 test("templateConnection: a URL connectionFromURL refuses is reported without the URL", () => {
   let message = "";
   try {
@@ -687,7 +721,7 @@ test("templateConnection: no URL and no channel is the sftp placeholder block", 
   expect(templateConnection(undefined, "sftp")).toEqual(connection);
 });
 
-test("templateConnection: webrtc, an unknown channel, a mismatch, and a URL password are refused", () => {
+test("templateConnection: webrtc, an unknown channel, and a mismatch are refused", () => {
   expect(() => templateConnection(new URL("wss://h/peers"), undefined)).toThrow(
     INIT_WEBRTC_REFUSED,
   );
@@ -700,9 +734,21 @@ test("templateConnection: webrtc, an unknown channel, a mismatch, and a URL pass
   expect(() =>
     templateConnection(new URL("sftp://h/drop"), "filedrop"),
   ).toThrow("does not match the URL");
-  expect(() =>
-    templateConnection(new URL("sftp://alice:pw@h/drop"), undefined),
-  ).toThrow(INIT_URL_PASSWORD_REFUSED);
+});
+
+test("templateConnection: a URL password is written into the server block as given", () => {
+  expect(
+    templateConnection(new URL("sftp://alice:p%40ss@h/drop"), undefined),
+  ).toEqual({
+    channel: "sftp",
+    server: {
+      host: "h",
+      port: 22,
+      username: "alice",
+      path: "/drop",
+      password: "p@ss",
+    },
+  });
 });
 
 // --- decideOverwrite ---------------------------------------------------------

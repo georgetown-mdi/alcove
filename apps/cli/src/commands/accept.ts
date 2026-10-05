@@ -113,6 +113,12 @@ import {
   type EndpointDirectories,
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
+import {
+  assertBootstrapUrlPasswordStorable,
+  BOOTSTRAP_CREDENTIAL_FLAGS,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
 
 /**
  * The refusal an acceptance gets when it can neither ask for consent to the
@@ -1074,6 +1080,12 @@ export async function handler(argv: Arguments): Promise<void> {
       // before the invitation decode, any connection, or any file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveAcceptPositionals(positionals);
+      const url = resolved.mode === "online" ? resolved.url : undefined;
+      assertBootstrapUrlPasswordStorable(argv, url);
+      warnIfCommandLineHoldsLiteralCredential(
+        commandLineLiteralCredentials(argv, url, BOOTSTRAP_CREDENTIAL_FLAGS),
+        log,
+      );
       // --consent-to-terms records advance consent to the invitation's terms and
       // bypasses the confirmation prompt for unattended runs. Read as `=== true`
       // so an absent flag (a hand-built argv in tests, or a parse that did not set
@@ -1109,7 +1121,6 @@ export async function handler(argv: Arguments): Promise<void> {
             }
           : {}),
       });
-
       // The acceptor's own outbound-send set: the columns this party will disclose
       // to the partner for matched records, derived from its own resolved metadata
       // via the same isDisclosedToPartner predicate preparePayload transmits on, so
