@@ -124,6 +124,31 @@ describe("the route table", () => {
       compileJobRoutes([defineJobRoute({ path: "/api/jobs/", handlers: {} })]),
     ).toThrow(/Malformed/);
   });
+
+  test("a path outside the job API prefix is refused when the table is compiled", () => {
+    expect(() =>
+      compileJobRoutes([defineJobRoute({ path: "/other/slot", handlers: {} })]),
+    ).toThrow(/outside \/api\/jobs/);
+  });
+
+  test("an unsupported method or non-function handler is refused when the table is compiled", () => {
+    expect(() =>
+      compileJobRoutes([
+        defineJobRoute({
+          path: "/api/jobs/slot",
+          handlers: { PATCH: () => new Response() } as never,
+        }),
+      ]),
+    ).toThrow(/invalid handler PATCH/);
+    expect(() =>
+      compileJobRoutes([
+        defineJobRoute({
+          path: "/api/jobs/slot",
+          handlers: { GET: "nope" } as never,
+        }),
+      ]),
+    ).toThrow(/invalid handler GET/);
+  });
 });
 
 describe("the console server's answers", () => {

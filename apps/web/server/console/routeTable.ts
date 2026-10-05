@@ -23,7 +23,11 @@ import { route as SftpRoute } from "./routes/sftp/index";
 import { route as SigningFingerprintRoute } from "./routes/signing/fingerprint";
 import { route as SlotRoute } from "./routes/slot";
 
+import { JOB_ROUTE_METHODS } from "./jobRoute";
+
 import type { JobRouteDefinition, JobRouteHandlers } from "./jobRoute";
+
+const JOB_API_PREFIX = "/api/jobs";
 
 /** Every job route the console serves. */
 export const jobRoutes: ReadonlyArray<JobRouteDefinition> = [
@@ -83,6 +87,21 @@ export function compileJobRoutes(
     const raw = segmentsOf(route.path);
     if (raw === null)
       throw new Error(`Malformed job route path ${route.path}.`);
+    if (
+      route.path !== JOB_API_PREFIX &&
+      !route.path.startsWith(`${JOB_API_PREFIX}/`)
+    )
+      throw new Error(
+        `Job route path ${route.path} is outside ${JOB_API_PREFIX}.`,
+      );
+    for (const [method, handler] of Object.entries(route.handlers))
+      if (
+        !(JOB_ROUTE_METHODS as ReadonlyArray<string>).includes(method) ||
+        typeof handler !== "function"
+      )
+        throw new Error(
+          `Job route path ${route.path} has an invalid handler ${method}.`,
+        );
     const segments = raw.map((segment): PathSegment =>
       segment.startsWith("$")
         ? { kind: "param", name: segment.slice(1) }
