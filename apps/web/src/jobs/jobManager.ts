@@ -1641,6 +1641,10 @@ export class JobManager {
     diagnostics: CliRunDiagnostics,
   ): void {
     record.terminal = state;
+    if (!record.runStampResolved) {
+      record.runStamp = latestRunStampIn(record.workdir);
+      record.runStampResolved = true;
+    }
     this.clearCancelTimers(record);
 
     // An already-emitted terminal is authoritative: a job failed on buffer
@@ -2262,15 +2266,11 @@ function errorDisplayStrings(event: RelayEvent): Array<string> {
  * This run's artifact paths inside its workdir, or null while its stamp is not
  * known. The run is the one its `result` event named; a run whose event named
  * no result file is the latest whose artifacts the workdir holds once the child
- * has exited, read on the first call after the exit and kept. Every path is
+ * has exited, read once in the exit handler and kept. Every path is
  * under that one stamp, so a workdir holding several runs' artifacts never
  * serves one run's result beside another's record.
  */
 function runArtifactsOf(record: JobRecord): RunArtifactPaths | null {
-  if (!record.runStampResolved && record.terminal !== null) {
-    record.runStamp = latestRunStampIn(record.workdir);
-    record.runStampResolved = true;
-  }
   return record.runStamp === null
     ? null
     : runArtifactPaths(record.workdir, record.runStamp);

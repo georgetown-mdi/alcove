@@ -231,44 +231,51 @@ describe("a job folder holding several runs' artifacts", () => {
     expect(view.recordCreatedAt).toBe(TEST_RUN_CREATED_AT);
   });
 
-  test("a run whose event named no result file is the latest run, and an earlier run's record is not taken for it", async () => {
+  test("a run whose event named no result file is read at its exit, and a set written after the exit is not adopted", async () => {
     const { manager, id, workdir } = await runJob(validIntent(), {
       STUB_FD3_EVENTS: JSON.stringify([]),
+      STUB_RECORD_JSON: recordJson(TEST_RUN_CREATED_AT),
     });
-    const earlier = runArtifactNames(EARLIER_STAMP);
+    const own = runArtifactNames(TEST_RUN_STAMP);
     const later = runArtifactNames(LATER_STAMP);
     fs.writeFileSync(
-      path.join(workdir, earlier.record),
-      recordJson("2026-07-08T09:00:00.000Z"),
+      path.join(workdir, later.record),
+      recordJson("2026-07-08T20:15:30.500Z"),
     );
-    fs.writeFileSync(path.join(workdir, earlier.keys), "{}");
+    fs.writeFileSync(path.join(workdir, later.keys), "{}");
     fs.writeFileSync(path.join(workdir, later.result), "id\n1\n");
 
     const view = manager.getJobView(id)!;
-    expect(view.outputPath).toBe(path.join(workdir, later.result));
-    expect(view.recordPath).toBe(path.join(workdir, later.record));
-    expect(view.recordAvailable).toBe(false);
-    expect(view.recordUnavailableReason).toBe("no-record");
+    expect(view.recordPath).toBe(path.join(workdir, own.record));
+    expect(view.keysPath).toBe(path.join(workdir, own.keys));
+    expect(view.recordAvailable).toBe(true);
+    expect(view.outputPath).not.toBe(path.join(workdir, later.result));
   });
 
-  test("a finished run whose event named no result file lists its folder once, not on every status read", async () => {
-    const { manager, id, workdir } = await runJob(validIntent(), {
-      STUB_FD3_EVENTS: JSON.stringify([]),
-    });
-    const later = runArtifactNames(LATER_STAMP);
-    fs.writeFileSync(path.join(workdir, later.result), "id\n1\n");
-    expect(manager.getJobView(id)!.outputPath).toBe(
-      path.join(workdir, later.result),
-    );
-
-    const readdir = vi.spyOn(fs, "readdirSync");
+  test("a finished run whose event named no result file lists its folder once, at its exit, and not on any status read", async () => {
+    const listed: Array<string> = [];
+    const original = fs.readdirSync;
+    const readdir = vi.spyOn(fs, "readdirSync").mockImplementation(((
+      dir: fs.PathLike,
+      ...rest: Array<unknown>
+    ) => {
+      listed.push(String(dir));
+      return (original as (...args: Array<unknown>) => unknown)(dir, ...rest);
+    }) as typeof fs.readdirSync);
     try {
-      const view = manager.getJobView(id)!;
+      const { manager, id, workdir } = await runJob(validIntent(), {
+        STUB_FD3_EVENTS: JSON.stringify([]),
+        STUB_OUTPUT_FILE: "id\n1\n",
+        STUB_RUN_CREATED_AT: TEST_RUN_CREATED_AT,
+      });
+      const names = runArtifactNames(TEST_RUN_STAMP);
+      const atExit = listed.filter((dir) => dir === workdir).length;
+      expect(atExit).toBe(1);
+      expect(manager.getJobView(id)!.outputPath).toBe(
+        path.join(workdir, names.result),
+      );
       manager.getJobView(id);
-      expect(view.outputPath).toBe(path.join(workdir, later.result));
-      expect(
-        readdir.mock.calls.filter(([dir]) => String(dir) === workdir),
-      ).toEqual([]);
+      expect(listed.filter((dir) => dir === workdir)).toHaveLength(atExit);
     } finally {
       readdir.mockRestore();
     }

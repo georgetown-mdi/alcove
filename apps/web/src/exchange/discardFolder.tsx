@@ -56,8 +56,8 @@ export function discardFolderItems(contents: JobFolderContents): Array<{
     });
   if (contents.record)
     items.push({
-      files: `${RUN_ARTIFACT_NAME_PATTERNS.record} and ${RUN_ARTIFACT_NAME_PATTERNS.keys}`,
-      what: "the exchange record and its verification keys",
+      files: `${RUN_ARTIFACT_NAME_PATTERNS.record}, ${RUN_ARTIFACT_NAME_PATTERNS.keys} and ${RUN_ARTIFACT_NAME_PATTERNS.terms}`,
+      what: "the exchange record, its verification keys and the agreed terms",
     });
   if (contents.sharedSecret)
     items.push({
