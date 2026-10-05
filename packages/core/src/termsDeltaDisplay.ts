@@ -24,11 +24,8 @@ export type TermsDeltaSection =
     }
   | { kind: "otherTerms"; label: string; differences: string[] };
 
-// Each direction's sections in display order, keyed by the PayloadColumnsChange
-// field each shows. Adopting the partner's terms takes the partner's list in
-// both directions: in `received` its send list, so `added` is what it now
-// sends; in `sent` its receive list, so `removed` -- a column it receives that
-// this party does not send -- is what this party now sends.
+// Each direction's sections in display order, keyed by the
+// PayloadColumnsChange field each shows; see that type for what each means.
 const RECEIVED_SECTIONS = [
   { field: "added", label: "columns your partner now sends you" },
   { field: "removed", label: "columns your partner no longer sends you" },

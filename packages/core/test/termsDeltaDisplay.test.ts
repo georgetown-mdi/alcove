@@ -103,8 +103,6 @@ const columnSection = (
   return section?.kind === "columns" ? section.columns : undefined;
 };
 
-// Each case reads the sections off two terms documents and holds every column
-// label to what adopting the partner's terms does to that direction's list.
 describe("termsDeltaSections against adopting the partner's terms", () => {
   const sectionsFor = (local: LinkageTerms, partner: LinkageTerms) =>
     termsDeltaSections(compareTerms(local, partner).delta);
@@ -195,7 +193,9 @@ describe("termsDeltaSections against adopting the partner's terms", () => {
     ]);
     expectLabelsMatchAdoption(local, partner);
   });
+});
 
+describe("termsDeltaSections for terms other than payload columns", () => {
   test("the partner's deduplicate shows the value held to, then the value its terms state", () => {
     const sections = termsDeltaSections(
       compareTerms(
@@ -216,7 +216,7 @@ describe("termsDeltaSections against adopting the partner's terms", () => {
     ]);
   });
 
-  test("a change to the field standardization, key transforms, or output names each side as it is", () => {
+  test("field, key-transform and output differences are reported without a direction", () => {
     const partner: LinkageTerms = {
       ...baseTerms,
       linkageFields: [
