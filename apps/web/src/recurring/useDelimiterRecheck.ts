@@ -26,9 +26,13 @@ export function useDelimiterRecheck(
   directory: FileSystemDirectoryHandle | undefined,
   changedDelimiter: string | undefined,
 ): DelimiterRecheck | undefined {
+  // The read is keyed on the folder handle and the delimiter, so a result read
+  // from one folder is never shown for another. The grade against the terms is
+  // taken at render, so new terms over the same folder regrade without a read.
   const [settled, setSettled] = useState<{
+    directory: FileSystemDirectoryHandle;
     delimiter: string;
-    recheck: DelimiterRecheck;
+    columns: ReadonlyArray<string> | undefined;
   }>();
   const rereads =
     changedDelimiter !== undefined &&
@@ -38,26 +42,31 @@ export function useDelimiterRecheck(
   useEffect(() => {
     if (!rereads) return;
     const delimiter = changedDelimiter;
+    const folder = directory;
     let live = true;
-    function settle(recheck: DelimiterRecheck) {
-      if (live) setSettled({ delimiter, recheck });
+    function settle(columns: ReadonlyArray<string> | undefined) {
+      if (live) setSettled({ directory: folder, delimiter, columns });
     }
     acquireManagedInput(
-      { kind: "folder", directory, attendance: "unattended" },
+      { kind: "folder", directory: folder, attendance: "unattended" },
       undefined,
       delimiter,
     ).then(
-      ({ columns }) => settle(delimiterRecheckFrom(exchangeFile, columns)),
-      () => settle({ kind: "unreadable" }),
+      ({ columns }) => settle(columns),
+      () => settle(undefined),
     );
     return () => {
       live = false;
     };
-  }, [rereads, exchangeFile, directory, changedDelimiter]);
+  }, [rereads, directory, changedDelimiter]);
 
   if (!rereads) return undefined;
-  // A result settled for an earlier choice is not this choice's.
-  return settled?.delimiter === changedDelimiter
-    ? settled.recheck
-    : { kind: "reading" };
+  if (
+    settled?.directory !== directory ||
+    settled.delimiter !== changedDelimiter
+  )
+    return { kind: "reading" };
+  return settled.columns === undefined
+    ? { kind: "unreadable" }
+    : delimiterRecheckFrom(exchangeFile, settled.columns);
 }

@@ -390,6 +390,11 @@ async function runUnattendedAttempt(
           log.warn(UNATTENDED_RUN_NOTICE_PREFIX, notice);
       },
     });
+    if (!result.lastRunSaved)
+      log.warn(
+        `scheduled managed exchange ${attempt.record.id}: this browser would ` +
+          `not save that the run succeeded; its results are delivered as usual`,
+      );
     await deliverUnattendedResults(
       attempt.record,
       result,

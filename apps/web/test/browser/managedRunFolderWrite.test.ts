@@ -81,6 +81,7 @@ vi.mock("@psi/managed/managedRunDriver", async (importOriginal) => {
           matchedRecordCount: 1,
         },
         lastRun: { at: RUN_AT, outcome: "succeeded" },
+        lastRunSaved: true,
       });
     },
   };

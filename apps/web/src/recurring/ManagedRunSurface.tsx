@@ -113,6 +113,7 @@ import {
 
 import {
   MANAGED_RUN_HANDED_OFF_ATTESTATION,
+  RUN_OUTCOME_UNSAVED_NOTE,
   TERMS_CHANGE_TAKEN_ON_FAILURE,
   classifyManagedRunFailure,
   managedReinviteRecoveryCopy,
@@ -338,6 +339,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // absent where the record holds no folder grant or the run left no file.
   const [folderWrite, setFolderWrite] = useState<AttendedFolderWrite>();
   const [finishedAt, setFinishedAt] = useState<Date>();
+  // The store refused the completed run's success stamp.
+  const [runOutcomeUnsavedReason, setRunOutcomeUnsavedReason] = useState<
+    string | undefined
+  >(undefined);
   // This holds alert copy alone: the hand-off state has no copy of its own and
   // never lands here, because reaching it moves the surface to the spent state below.
   const [liveFailure, setLiveFailure] = useState<LiveManagedRunFailure>();
@@ -421,6 +426,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // A single AbortController per in-flight run, aborted on unmount so a torn-down
   // surface stops the rendezvous, the connection, and the exchange.
   const abortRef = useRef<AbortController | undefined>(undefined);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = undefined;
+    },
+    [],
+  );
   // The re-invite result panel, scrolled into view when the detail section (far below
   // the panel) triggered the mint, so the operator lands on the artifacts they need.
   const reinvitePanelRef = useRef<HTMLDivElement | null>(null);
@@ -461,8 +473,6 @@ export function ManagedRunSurface({ id }: { id: string }) {
       });
     return () => {
       live = false;
-      abortRef.current?.abort();
-      abortRef.current = undefined;
     };
   }, [id, recordReads]);
 
@@ -596,6 +606,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setRunning(true);
     setLiveFailure(undefined);
     setRunWarnings([]);
+    setRunOutcomeUnsavedReason(undefined);
     setMatching(undefined);
     setConfirmationGrantedFor(undefined);
     setCompromiseWriteFailed(false);
@@ -679,6 +690,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
         if (controller.signal.aborted) return;
         setOutputs(result.exchange);
         setFinishedAt(new Date());
+        setRunOutcomeUnsavedReason(
+          result.lastRunSaved ? undefined : result.lastRunNotSavedReason,
+        );
         if (result.exchange.kind !== "matched") return;
         const directory = launched.workingDirectoryHandle;
         if (directory === undefined || !storedWorkingDirectoryUsable(directory))
@@ -1249,6 +1263,16 @@ export function ManagedRunSurface({ id }: { id: string }) {
           <>
             <h1 tabIndex={-1}>Run complete</h1>
             <DonePanel outputs={outputs} finishedAt={finishedAt} />
+            {runOutcomeUnsavedReason !== undefined && (
+              <Alert
+                color="yellow"
+                title={RUN_OUTCOME_UNSAVED_NOTE.title}
+                mb="sm"
+              >
+                <div>{RUN_OUTCOME_UNSAVED_NOTE.message}</div>
+                <div>Reason: {runOutcomeUnsavedReason}.</div>
+              </Alert>
+            )}
             <RunWarningsAlert warnings={runWarnings} />
             <RunDownloads
               outputs={outputs}
