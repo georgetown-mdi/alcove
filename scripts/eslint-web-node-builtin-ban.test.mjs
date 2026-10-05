@@ -5,14 +5,8 @@ import { describe, expect, it } from "vitest";
 import repoConfig from "../eslint.config.mjs";
 import { withoutTypeAwareLayer } from "./eslint-strip-type-aware-layer.mjs";
 
-// Coverage of the `node:` import ban in apps/web/eslint.config.js: a file in the
-// browser bundle may not import a Node built-in, and the server-only files under
-// src/ (serverOnlySrcFiles there) may. Flat config replaces a rule's options
-// rather than merging them, so the ban rides in three blocks' options and the
-// server-only files take theirs back in two blocks of their own; the cases below
-// hold both directions, and that the server-only blocks keep the other import
-// bans. Linted through the repo-root config with the type-aware layer stripped,
-// as the sibling eslint-*.test.mjs files do.
+// Holds the `node:` import ban in apps/web/eslint.config.js: browser-bundle
+// files may not import a Node built-in, and the server-only files may.
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

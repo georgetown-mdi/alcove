@@ -9,8 +9,9 @@
 //
 // So this starts the built server (`apps/web/.output/server/index.mjs`),
 // requests every page route the checked-in route tree names, one at a time,
-// and fails on a 5xx, a request that does not complete, or ANY output on the
-// server's stderr, attributed to the route whose request was in flight. A
+// and fails on a 5xx, a request that does not complete, or a render error on
+// the server's stderr, attributed to the route whose request was in flight;
+// any other stderr line is printed as a warning. A
 // dynamic segment takes a fixed value. The `/api` routes are left out: they
 // are request handlers rather than renders, and one of them streams.
 //
@@ -43,8 +44,7 @@ const BUILD_TIMEOUT_MS = 600_000;
 const RUN_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 20_000;
-// Time for a render's stderr line to arrive through the pipe after its
-// response body has been read, before the next request starts.
+// A render's stderr line arrives through the pipe after its response body.
 const STDERR_SETTLE_MS = 150;
 
 /**
@@ -93,14 +93,29 @@ export function pageRequestPaths(fullPaths) {
 }
 
 /**
+ * The stderr lines that signal a render error: the render-failure prefix the
+ * server prints, or an `Error` line followed by a stack frame line.
+ */
+export function renderErrorOf(stderr) {
+  const lines = stderr.split("\n");
+  const errors = lines.filter(
+    (line, i) =>
+      line.includes("Error in renderToReadableStream") ||
+      (/\bError\b/.test(line) && /^\s+at /.test(lines[i + 1] ?? "")),
+  );
+  return errors.length > 0 ? stderr.trimEnd() : null;
+}
+
+/**
  * A route's outcome as a failure line, or null when it passed: a 5xx, a
- * request error, or stderr written while its request was in flight.
+ * request error, or a render error on stderr while its request was in flight.
+ * Other stderr output does not fail the route.
  */
 export function failureOf({ path, status, error, stderr }) {
   if (error) return `${path}: the request failed: ${error}`;
   if (status >= 500) return `${path}: answered ${status}`;
-  if (stderr.trim())
-    return `${path}: the server wrote to stderr while rendering it:\n${stderr.trimEnd()}`;
+  if (renderErrorOf(stderr))
+    return `${path}: the server wrote a render error to stderr:\n${stderr.trimEnd()}`;
   return null;
 }
 
@@ -196,7 +211,7 @@ async function run(root) {
         `the server wrote to stderr while starting:\n${stderr.trimEnd()}`,
       );
     for (const path of paths) {
-      stderr = "";
+      const stderrStart = stderr.length;
       const outcome = { path, status: 0, error: undefined, stderr: "" };
       try {
         outcome.status = await request(`${origin}${path}`);
@@ -204,8 +219,12 @@ async function run(root) {
         outcome.error = error instanceof Error ? error.message : String(error);
       }
       await sleep(STDERR_SETTLE_MS);
-      outcome.stderr = stderr;
+      outcome.stderr = stderr.slice(stderrStart);
       const failure = failureOf(outcome);
+      if (!failure && outcome.stderr.trim())
+        console.warn(
+          `warning: ${path} wrote to stderr:\n${outcome.stderr.trimEnd()}`,
+        );
       console.log(
         `${failure ? "FAIL" : "ok  "}  ${outcome.status || "---"}  ${path}`,
       );

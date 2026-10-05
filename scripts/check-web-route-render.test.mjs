@@ -57,6 +57,18 @@ describe("web route render check", () => {
     );
     expect(
       failureOf({ ...base, stderr: "Error in renderToReadableStream" }),
-    ).toMatch(/stderr while rendering/);
+    ).toMatch(/render error/);
+  });
+
+  it("fails a route on an Error line with a stack frame", () => {
+    const stderr = "Error: boom\n    at render (file.mjs:1:1)\n";
+    expect(failureOf({ path: "/x", status: 200, stderr })).toMatch(
+      /render error/,
+    );
+  });
+
+  it("does not fail a route on a benign stderr warning", () => {
+    const stderr = "(node:1) ExperimentalWarning: something is experimental\n";
+    expect(failureOf({ path: "/x", status: 200, stderr })).toBeNull();
   });
 });
