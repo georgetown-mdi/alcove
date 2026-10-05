@@ -1219,14 +1219,14 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
     await chooseFiles([
       { bytes: configuration, name: "alcove.yaml" },
       {
-        bytes: JSON.stringify({ sharedSecret, comment: sharedSecret }),
+        bytes: JSON.stringify({ sharedSecret, expires: sharedSecret }),
         name: ".alcove.key",
       },
     ]);
 
     await expect
       .element(
-        page.getByText("it holds a field this app does not read", {
+        page.getByText("its expires is not a date and time", {
           exact: false,
         }),
       )

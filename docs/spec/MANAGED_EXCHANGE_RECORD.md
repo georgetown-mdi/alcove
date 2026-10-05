@@ -233,12 +233,14 @@ accepts it, and a key file holding exactly what Alcove writes there: a JSON
 object with a `sharedSecret` matching `SHARED_SECRET_REGEX`, an optional ISO
 8601 `expires`, the command line's optional
 [rotation-in-flight marker](#the-rotation-in-flight-marker), and its optional
-[pending relay registration](#the-pending-relay-registration), and no other
-field.
+[pending relay registration](#the-pending-relay-registration). A field outside
+these is read past and dropped, as the command line drops it
+([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-key-file-schema)), so a key file a
+later command line wrote still imports.
 The key file is validated on its own -- the configuration's schema parse never
-sees it -- through the sensitive-JSON chokepoint and the strict key-file schema
+sees it -- through the sensitive-JSON chokepoint and the shared key-file schema
 the [hand-off re-take](#taking-a-command-line-hand-off-back) also reads
-(`keyFileFieldsSchema`), under the re-take's size cap, applied before the file
+(`KeyFileSchema`), under the re-take's size cap, applied before the file
 is read. The export artifact's key half is read against the key-pair schema
 (`keyPairFieldsSchema`) instead, which admits the pending relay registration
 and no rotation-in-flight marker.
@@ -247,9 +249,9 @@ and no rotation-in-flight marker.
 
 - A key file over the cap, one that is not JSON, one that is not an object, and
   one whose `sharedSecret` is absent or not an Alcove shared secret, whose
-  `expires` is not an ISO 8601 date and time, or that holds any other field.
-  The refusal names each problem in fixed words and states no byte of the file:
-  no field value, no field name it did not expect, no parser message.
+  `expires`, rotation-in-flight marker or pending relay registration is not an
+  ISO 8601 date and time. The refusal names each problem in fixed words and
+  states no byte of the file: no field value, no parser message.
 - A configuration this app does not run -- on `sftp` or `filedrop`, or stating
   a `signing` block whose mode is not `none` -- with its key file. The record schema holds a secret only
   where this app runs the exchange, and the operator chose the key file to run

@@ -303,14 +303,14 @@ describe("what the pair import says", () => {
     let refusal: unknown;
     try {
       readManagedCommandLineKeyFile(
-        JSON.stringify({ sharedSecret, stray: sharedSecret }),
+        JSON.stringify({ sharedSecret, expires: sharedSecret }),
       );
     } catch (error) {
       refusal = error;
     }
     expect(refusal).toBeInstanceOf(ManagedKeyFileRefusedError);
     const reason = pairImportFailureReason(refusal);
-    expect(reason).toContain("holds a field this app does not read");
+    expect(reason).toContain("its expires is not a date and time");
     expect(reason).not.toContain(sharedSecret);
   });
 

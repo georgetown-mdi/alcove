@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  KeyFileSchema,
   generateSharedSecret,
   getDefaultLinkageTerms,
   snakeizeKeys,
@@ -177,6 +178,44 @@ describe("reading a .alcove.key", () => {
     });
   });
 
+  test("a field the key file schema does not know is read past and dropped", () => {
+    const sharedSecret = generateSharedSecret();
+    expect(
+      readManagedCommandLineKeyFile(
+        commandLineKeyText({
+          sharedSecret,
+          expires: "2026-12-31T00:00:00.000Z",
+          fieldFromALaterBuild: "2026-09-01T00:00:00.000Z",
+        }),
+      ),
+    ).toEqual({ sharedSecret, expires: "2026-12-31T00:00:00.000Z" });
+  });
+
+  test("a key file holding an unknown field round-trips through the import and the export", () => {
+    const { record, configuration, key } = exportedPair({
+      expires: "2026-12-31T00:00:00.000Z",
+    });
+    const withUnknownField = commandLineKeyText({
+      ...KeyFileSchema.parse(JSON.parse(key)),
+      fieldFromALaterBuild: { nested: true },
+    });
+
+    const imported = readManagedCommandLinePair(
+      configuration,
+      withUnknownField,
+    );
+    expect(imported.sharedSecret).toBe(record.sharedSecret);
+    expect(imported.expires).toBe("2026-12-31T00:00:00.000Z");
+    expect(imported).not.toHaveProperty("fieldFromALaterBuild");
+
+    const reexported = composeManagedCronExport(imported).key.text;
+    expect(reexported).toBe(key);
+    expect(KeyFileSchema.parse(JSON.parse(reexported))).toEqual({
+      sharedSecret: record.sharedSecret,
+      expires: "2026-12-31T00:00:00.000Z",
+    });
+  });
+
   // Each refusal names what is wrong in fixed words. The near-miss secret in
   // each file is the value a message must not echo.
   const nearMiss = generateSharedSecret().slice(0, 42);
@@ -220,14 +259,6 @@ describe("reading a .alcove.key", () => {
       "its expires is not a date and time",
     ],
     [
-      "a field the key file does not hold",
-      commandLineKeyText({
-        sharedSecret: generateSharedSecret(),
-        [nearMiss]: nearMiss,
-      }),
-      "it holds a field this app does not read",
-    ],
-    [
       "a pending relay registration that is not a date and time",
       commandLineKeyText({
         sharedSecret: generateSharedSecret(),
@@ -261,9 +292,6 @@ describe("reading a .alcove.key", () => {
       ),
     );
     expect((error as Error).message).toContain("its expires is not");
-    expect((error as Error).message).toContain(
-      "holds a field this app does not read",
-    );
     expect(errorText(error)).not.toContain(sharedSecret);
   });
 
@@ -332,7 +360,10 @@ describe("reading a configuration with its key file", () => {
     const error = thrownBy(() =>
       readManagedCommandLinePair(
         configuration,
-        commandLineKeyText({ sharedSecret: record.sharedSecret, stray: true }),
+        commandLineKeyText({
+          sharedSecret: record.sharedSecret,
+          expires: "soon",
+        }),
       ),
     );
     expect(error).toBeInstanceOf(ManagedKeyFileRefusedError);
@@ -888,7 +919,7 @@ describe("the secret reaches no log line and no request", () => {
     await rejectionOf(() =>
       importManagedCommandLinePair(
         configuration,
-        commandLineKeyText({ sharedSecret: record.sharedSecret, stray: 1 }),
+        commandLineKeyText({ sharedSecret: record.sharedSecret, expires: 1 }),
         recordingDeps(),
       ),
     );

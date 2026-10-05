@@ -22,6 +22,7 @@
 
 import {
   ExchangeSpecSchema,
+  KEY_FILE_FIELD_SCHEMAS,
   RelayRegistrarSchema,
   SHARED_SECRET_REGEX,
   UsageError,
@@ -43,6 +44,7 @@ import type {
   ColumnMetadata,
   ConnectionConfig,
   ExchangeSpec,
+  KeyFile,
   LinkageTerms,
   OwnColumnSelection,
   RelayRegistrar,
@@ -608,62 +610,30 @@ const persistedExchangeFileSchema = z.preprocess(
 );
 
 /**
- * The `.alcove.key` fields: `sharedSecret`, `expires`, `rotationInFlightSince`,
- * `relayRegistrationPendingSince`. The artifact's key half and the key file
- * this app writes are the fields without the rotation-in-flight marker
+ * The `.alcove.key` fields ({@link KeyFile}). The artifact's key half and the
+ * key file this app writes are the fields without the rotation-in-flight marker
  * ({@link ManagedExchangeKeyPair}), so a record's secret half maps onto a valid
  * `.alcove.key` and one read back maps onto a record.
  */
-export interface ManagedExchangeKeyFields {
-  /** The current rotated shared secret (base64url, 43 chars / 32 bytes). */
-  sharedSecret: string;
-  /** The instant after which the secret must not be used; absent means no bound. */
-  expires?: string;
-  /** A command-line key file's rotation-in-flight marker. Admitted so such a
-   * file reads; never carried onto a record, whose import is read through the
-   * import marker instead. */
-  rotationInFlightSince?: string;
-  /** An unconfirmed relay key registration: the record's
-   * `relayRegistrationPendingSince`, written by both exports and set on the
-   * record an import builds, so its first run retries it. */
-  relayRegistrationPendingSince?: string;
-}
+export type ManagedExchangeKeyFields = KeyFile;
 
 /** The key fields without the command line's rotation-in-flight marker: what
  * the export artifact's key block and the key file this app writes hold. */
-export type ManagedExchangeKeyPair = Omit<
-  ManagedExchangeKeyFields,
-  "rotationInFlightSince"
->;
-
-const keyPairShape = {
-  sharedSecret: z.string().regex(SHARED_SECRET_REGEX),
-  expires: z.iso.datetime().optional(),
-  relayRegistrationPendingSince: z.iso.datetime().optional(),
-};
+export type ManagedExchangeKeyPair = Omit<KeyFile, "rotationInFlightSince">;
 
 /**
  * The key pair's validator, for the export artifact's key block:
  * `sharedSecret`, an optional ISO 8601 `expires`, and an optional pending
- * relay registration. Strict, so an artifact whose key block holds the
- * rotation-in-flight marker, which the artifact never holds, is refused rather
- * than read with the field dropped.
+ * relay registration, each held to the key file's own field schema. Strict, so
+ * an artifact whose key block holds the rotation-in-flight marker, which the
+ * artifact never holds, is refused rather than read with the field dropped.
  */
 export const keyPairFieldsSchema: ZodType<ManagedExchangeKeyPair> = z
-  .object(keyPairShape)
-  .strict();
-
-/**
- * The command-line key file's validator: the key pair plus the optional
- * rotation-in-flight and pending relay registration markers the command line
- * writes there. Shares the pair's field schemas so neither reader validates
- * against a looser copy. Strict, so a reader rejects an unknown key rather
- * than silently accepting it.
- */
-export const keyFileFieldsSchema: ZodType<ManagedExchangeKeyFields> = z
   .object({
-    ...keyPairShape,
-    rotationInFlightSince: z.iso.datetime().optional(),
+    sharedSecret: KEY_FILE_FIELD_SCHEMAS.sharedSecret,
+    expires: KEY_FILE_FIELD_SCHEMAS.expires,
+    relayRegistrationPendingSince:
+      KEY_FILE_FIELD_SCHEMAS.relayRegistrationPendingSince,
   })
   .strict();
 

@@ -626,6 +626,10 @@ file, and each party provisions its own `.alcove.key` from the code:
   writing the inviter-side copy (secret **and** expiry, matching `alcove
   invite`) so the invitation's bounded lifetime is enforced at exchange time.
 
+### The key file schema
+
+`KeyFileSchema` and `serializeKeyFile` (`packages/core/src/config/keyFile.ts`) define the `.alcove.key` fields for every reader and writer: the CLI, the console's check of a mounted key file, and the web application's import and command-line export. A reader drops a field it does not know rather than refusing the file, and the serializer writes only the known fields, as pretty-printed JSON with a trailing newline.
+
 ### The rotation-in-flight marker
 
 The key file holds a third, optional field beside `sharedSecret` and `expires`:

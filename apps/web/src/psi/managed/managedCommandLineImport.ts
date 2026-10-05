@@ -67,6 +67,7 @@
 import { ZodError } from "zod";
 
 import {
+  KeyFileSchema,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -84,7 +85,6 @@ import {
   buildManagedExchangeRecord,
   channelThisAppDoesNotRun,
   documentPartsThisAppDoesNotRun,
-  keyFileFieldsSchema,
   runnableManagedExchangeOrRefuse,
 } from "./managedExchangeRecord";
 import {
@@ -566,7 +566,6 @@ const KEY_FILE_PROBLEMS = {
     "its relayRegistrationPendingSince is not a date and time in the form " +
     "Alcove writes, so the file was written by hand or damaged; write the " +
     "file again from the command line, or remove that field",
-  unknownField: "it holds a field this app does not read",
 } as const;
 
 /** A problem {@link KEY_FILE_PROBLEMS} names. */
@@ -579,7 +578,6 @@ const KEY_FILE_PROBLEM_ORDER: ReadonlyArray<KeyFileProblem> = [
   "malformedExpires",
   "malformedRotationInFlight",
   "malformedRelayRegistrationPending",
-  "unknownField",
 ];
 
 /** Which problems a failed key-pair parse shows, read off each issue's code
@@ -592,8 +590,7 @@ function keyPairProblems(
 ): Array<KeyFileProblem> {
   const found = new Set<KeyFileProblem>();
   for (const issue of error.issues) {
-    if (issue.code === "unrecognized_keys") found.add("unknownField");
-    else if (issue.path[0] === "sharedSecret")
+    if (issue.path[0] === "sharedSecret")
       found.add("sharedSecret" in parsed ? "malformedSecret" : "missingSecret");
     else if (issue.path[0] === "expires") found.add("malformedExpires");
     else if (issue.path[0] === "rotationInFlightSince")
@@ -620,12 +617,11 @@ function keyFileRefusal(
 
 /**
  * Read a command-line `.alcove.key` into the key pair a record holds: the
- * shared secret and any `expires`, the JSON object Alcove writes there
- * (`apps/cli/src/keyFile.ts`). The configuration's schema parse never sees
- * this file, so it is validated here on its own: capped, parsed through the
- * sensitive-JSON chokepoint, and read against the strict key-pair schema every
- * reader of the pair shares ({@link keyFileFieldsSchema}), so a file holding
- * anything else is refused before the store is reached. Pure.
+ * shared secret and any `expires`, the JSON object Alcove writes there. The
+ * configuration's schema parse never sees this file, so it is validated here
+ * on its own: capped, parsed through the sensitive-JSON chokepoint, and read
+ * against the key-file schema every application shares ({@link KeyFileSchema}),
+ * which drops a field it does not know. Pure.
  *
  * @throws {ManagedKeyFileRefusedError} if the file is over the cap, is not
  *   JSON, or is not the key pair; the message names which, never a value.
@@ -643,7 +639,7 @@ export function readManagedCommandLineKeyFile(
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw keyFileRefusal(["notObject"]);
-  const result = keyFileFieldsSchema.safeParse(parsed);
+  const result = KeyFileSchema.safeParse(parsed);
   if (result.success) return result.data;
   throw keyFileRefusal(keyPairProblems(result.error, parsed));
 }

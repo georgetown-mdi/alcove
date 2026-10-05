@@ -349,6 +349,13 @@ export {
   statesServerHost,
   withRetainModeImplications,
 } from "./config/connection";
+export {
+  KEY_FILE_FIELD_SCHEMAS,
+  KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
+  KeyFileSchema,
+  serializeKeyFile,
+} from "./config/keyFile";
+export type { KeyFile } from "./config/keyFile";
 export type {
   Authentication,
   ConnectionConfig,
