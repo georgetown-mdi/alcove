@@ -218,11 +218,25 @@ the first. In order:
   the spawn prompt, licenses the batch it covers, and the report names the
   delegation it filed under. A Decision item is a question, not work, and is
   exempt from the cap.
+- Work the cap holds back is a potential follow-up: the session lists it in
+  its continuation brief, and the owner-triggered triage at the end of the
+  session (`.claude/commands/follow-ups.md`) decides it with a PM consult.
+  That command relays the owner's delegation verbatim, so the drafts it and
+  the PM agree on are filed under the exception above.
+- When a review fails to converge -- a step-back trigger fires
+  (`.claude/commands/assess-review.md`, Step 2) -- the session offers the
+  owner two things together: an immediate step-back on the churning area, and
+  a continuation item holding the branch's unfinished work, filed on the
+  owner's word.
+
+This section is the one statement of when an agent files a board item. Every
+other command and agent definition cites it rather than restating it.
 
 The board is the only queue, for work and decisions alike. Anything not
-settled in the session that raised it becomes an item, and a decision becomes
-an item in Decision status -- never held only in a PR follow-on line, a report
-tail, or a chat aside.
+settled in the session that raised it becomes an item -- filed under the cap
+above, or listed as a potential follow-up for the end-of-session triage --
+and a decision becomes an item in Decision status. None is held only in a PR
+follow-on line, a report tail, or a chat aside.
 
 The repo is `georgetown-mdi/alcove`; the owner for both projects is
 `georgetown-mdi`.
@@ -302,8 +316,8 @@ sets a clear fit autonomously and notes an unclear one in **Open questions**; th
 ## Epic terminal conditions
 
 Every epic has a one-line terminal condition, written `Done is: ...`, naming
-an observable state that ends it. An epic without one is a parking lot: it
-refills as fast as it drains, because nothing in it can be finished.
+an observable state that ends it. An epic without one never ends: new items
+arrive as fast as old ones close, because nothing defines it as finished.
 
 - A filing that does not advance its epic's line is DECLINED. Say which line it
   fails to advance and where the concern belongs instead -- a limits line in the
@@ -311,28 +325,33 @@ refills as fast as it drains, because nothing in it can be finished.
   standing sweep item.
 - An epic with no line gets one at its next filing: draft the line, state it in
   the result, and leave it for the owner to ratify.
-- The line is terminal, not aspirational. "Done is: the checks cover every sink"
-  can be observed; "Done is: the surface is hardened" cannot.
+- The line names an end state someone can observe, not an aim. "Done is: the
+  checks cover every display site" can be observed; "Done is: the surface is
+  hardened" cannot.
+- Each line is written plainly: no coined compound or metaphor where a domain
+  word exists (`CONTRIBUTING.md`, Code Conventions, Plain language).
 
 Ratified by the owner:
 
-- **CI and test coverage** (board 10) -- Done is: no prose runtime claim
-  survives in shipped source, no test is held green by a retry or a skip, and
-  the merge gate's critical path is measured and carries no serial work that
-  could run beside it -- each claim is a check that fails on the
-  claimed-impossible state, each timing test carries a measured margin, and
-  setup is paid once per pull request rather than once per job.
+- **CI and test coverage** (board 10) -- Done is: no runtime claim stated only
+  in prose remains in shipped source, no test passes only because of a retry
+  or a skip, and the merge gate's longest chain of jobs is measured and runs
+  nothing in sequence that could run in parallel -- each such claim is a check
+  that fails when the claim breaks, each timing test has a measured margin,
+  and setup runs once per pull request rather than once per job.
 - **Issue Orchestration** (board 10) -- Done is: every rule the issue-to-PR flow
   depends on is enforced by a hook or a check rather than by prose alone, and
-  each `.claude/scripts/` tool the flow invokes either runs in-container or
-  states its out-of-container requirement at the point of use.
-- **Core Functionality** (board 9) -- Done is: no linkage term the schema admits
-  is parsed, displayed, or agreed without the run applying it -- every
-  declared-but-inert path implemented or refused -- and no local option the
-  config admits changes the result file without the run composing it.
-- **Application Encryption** (board 9) -- Done is:
-  escape-once-at-the-display-sink and bound-at-composition hold across every
-  operator-facing sink, carried by checks rather than by a fix per fragment.
+  each `.claude/scripts/` tool the flow runs either works inside the container
+  or states what it needs outside it where it is used.
+- **Core Functionality** (board 9) -- Done is: every linkage term the schema
+  accepts and the run parses, displays, or agrees is also applied by the run
+  -- each term accepted but not applied is implemented or refused -- and no
+  local option the config accepts changes the result file unless the run
+  applies it.
+- **Application Encryption** (board 9) -- Done is: everywhere untrusted text
+  is shown to an operator, it is escaped once, where it is displayed, and
+  limited in length where its message is built, and checks hold both rules
+  rather than a separate fix at each site.
 - **Partnership identity and consent** (board 9) -- Done is: no exchange
   proceeds past a consent surface whose disclosure list and terms binding are
   unverified, on the invite, accept, and unattended paths alike, and no run
@@ -352,15 +371,16 @@ Ratified by the owner:
   the product produces, not one the operator is told to have kept.
 - **Sync Tool** (board 9) -- Done is: no interruption of a file-drop or SFTP
   exchange -- crash, restart, dropped endpoint, or a peer that never arrives --
-  leaves a run wedged or a working directory unresumable, and every wait is
-  bounded by a measured value rather than a constant.
+  leaves a run stuck or a working directory that cannot be resumed, and every
+  wait is bounded by a measured value rather than a constant.
 - **CLI WebRTC Transport** (board 9) -- Done is: a CLI party completes a real
   WebRTC exchange with a browser party through a deployed broker, including a
   relayed (TURN) path, with every wait bounded by a measured value rather than a
-  constant, and the broker's provenance, deployment shape, and runtime surface
-  are decided rather than inherited from the vendored server.
+  constant, and where the broker's code comes from, how it is deployed, and
+  what it exposes at runtime are decided rather than inherited from the
+  vendored server.
 - **Linkage rule sets** (board 9) -- Done is: an operator picks a built-in rule
-  set at authoring time, and no rule set that reaches a partner can carry a term
+  set at authoring time, and no rule set that reaches a partner can hold a term
   that fails at the mint or whose per-row cost is unbounded.
 - **Scheduled exchanges** (board 9) -- Done is: a recurring exchange configured
   in the browser runs to completion unattended for a full schedule period with
@@ -377,11 +397,11 @@ Ratified by the owner:
 - **Recurring Exchange Setup** (board 9) -- Done is: an operator configures and
   re-runs a recurring exchange from the commands' own output -- channel,
   connection block, options, and credentials all established by the provisioning
-  path, with no hand-transcribed credential and no hunt across documents.
-- **Clean CLI stdout/stderr separation** (board 9) -- Done is: every surface the
-  operator must read or act on -- result, prompt, decision, outcome -- renders
-  identically at every log level, with diagnostic furniture confined to the
-  diagnostic stream.
+  path, with no credential copied by hand and no search across documents.
+- **Clean CLI stdout/stderr separation** (board 9) -- Done is: everything the
+  operator must read or act on -- result, prompt, decision, outcome -- looks
+  the same at every log level, and log formatting and diagnostic lines appear
+  only on the diagnostic stream.
 - **Dependency supply chain** (board 10) -- Done is: every image and package the
   build or a shipped artifact resolves is pinned by digest or exact version and
   held there by a drift check -- no unpinned reference is reachable from a
@@ -413,7 +433,8 @@ Ratified by the owner:
   2026-10 repo scan's program that is cross-cutting rather than a product
   epic's own -- the agent-rule, docs-structure, module-split and
   comment-volume items -- is landed or recorded as refused with a reason, and
-  the scan's verification debt is paid or recorded as a stated limit.
+  every claim the scan left unverified is measured or recorded as a stated
+  limit.
 - **Console CLI Parity** (board 9) -- Done is: no setting the command-line
   configuration file holds is unreachable from the console -- authored,
   loaded from the mounted working directory, or carried into the hand-off --

@@ -33,9 +33,11 @@ produce is your final message to the caller. Never end expecting a reply.
   Anything the change itself needs belongs in the commit.
 - Wait on a long command as `CLAUDE.md`'s one-shot wait rule says (Agent
   conventions, Spawns and reports).
-- Before you report, run `npm run typecheck && npm run lint && npm run format` and
-  the tests relevant to your change (a core change means every workspace unit
-  suite), and state in your report whether the work is committed.
+- Before you report, run the repo-wide gates once, as `CLAUDE.md` names them
+  (Writing, tooling and commits), after the tests relevant to your change pass
+  (a core change means every workspace unit suite); while working, check only
+  what you changed (`CONTRIBUTING.md`, Code Conventions). State in your report
+  whether the work is committed.
 - Any Agent spawn you make passes an explicit model -- an omitted model silently
   inherits this session's model.
 - Bubble questions up in your final report rather than guessing or stalling; the

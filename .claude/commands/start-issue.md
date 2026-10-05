@@ -107,8 +107,9 @@ Know when to decide and when to ask:
 
 Implement on the branch, following CONTRIBUTING.md. Verify before you commit:
 rebuild core (`npm run build -w packages/core`) if you touched it -- it was built
-at issue start, so this only picks up changes you made. Then `npm run typecheck &&
-npm run lint`, and run the tests covering what you changed. Then sweep your own
+at issue start, so this only picks up changes you made. Then run the tests
+covering what you changed, and once they pass, the repo-wide gates `CLAUDE.md`
+names (Writing, tooling and commits), once. Then sweep your own
 diff (`git diff`): delete every comment that restates the code, narrates the
 change, or cites a board id, and move any "this cannot happen" claim into a
 check. Report what you ran and the result; do not commit on red without saying

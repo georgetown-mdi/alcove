@@ -27,6 +27,11 @@ Run only when the owner invokes this command; never start the docket unasked.
 3. One decision per item: an item holding two decisions is two items, never
    sub-questions under one.
 4. Number the items once, as N of M, and keep that numbering to the end.
+5. Before presenting an item that touches screen copy, a user flow, CLI
+   ergonomics, or a consent surface, spawn `ux-reviewer` on the code it
+   concerns. An item on a security surface takes `security-reviewer`, run
+   under the refutation contract in the ruleset's Review flow; an item
+   touching both takes both. Their findings go into the item's background.
 
 ## Present, one message per item
 

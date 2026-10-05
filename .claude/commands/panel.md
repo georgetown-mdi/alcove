@@ -1,6 +1,6 @@
 ---
 name: panel
-description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no consolidator, and an opt-in single deliberation round. Whether to convene at all is CLAUDE.md's deferred-question rule (measure first; stakes gate); this command only runs a convened panel correctly.
+description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no consolidator, and an opt-in single deliberation round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in .claude/orchestration/ruleset.md (measure first; stakes gate); this command only runs a convened panel correctly.
 ---
 
 You are CONVENING a panel, not sitting on it. You do not answer the question
@@ -38,11 +38,20 @@ before proceeding -- it holds the session rules this command's steps assume.
   converge (Step 3). Without it, a panel that does not converge goes straight
   to the owner.
 
-Whether a panel should run at all is not this command's call: CLAUDE.md's
-deferred-question rule holds the stakes gate and the measure-first rule. A
+Whether a panel should run at all, and whether its outcome settles the
+question or goes to the owner, is not this command's call: the deferred-decision
+rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting,
+holds the stakes gate, the measure-first rule, and what each outcome decides. A
 panel's conclusion answers a design question; it is never a review round -- it
 does not enter `scratch/review-rounds/` and does not satisfy the PR checklist's
 Security review line.
+
+A question that touches screen copy, a user flow, CLI ergonomics, or a consent
+surface also takes a `ux-reviewer` spawn on the code it concerns, besides the
+`design-ux` seat; one that touches a security surface takes `security-reviewer`,
+run under the refutation contract in the ruleset's Review flow; one that
+touches both takes both. Their findings go beside the panel's positions to
+whoever decides.
 
 ## Step 1 -- Clean base
 
@@ -78,15 +87,13 @@ panelist saw another's.
 
 ## Step 3 -- Read the verdicts and close
 
-1. Every position aligned: converged. The panel informs the decision and the
-   owner settles it: proceed on the conclusion as the session's recommendation
-   and record it in your report -- the question, the conclusion, and one line
-   of rationale per panelist -- without presenting it as settled.
-2. A single dissent the majority's rationale answers (its keyRisk): proceed on
-   the majority, record the dissent.
-3. No convergence, or a dissent the majority does not answer: take the
-   question to the owner in prose with each returned position. Do NOT re-run the
-   panel -- a re-run is for contamination evidence only (a panelist read a
+1. Every position aligned: converged. Whether that settles the question or
+   informs the owner's decision is the ruleset's deferred-decision rule;
+   either way, record in your report the question, the conclusion, and one
+   line of rationale per panelist.
+2. Any dissent, even one the majority's rationale answers: the panel is split.
+   Take the question to the owner in prose with each returned position. Do
+   NOT re-run the panel -- a re-run is for contamination evidence only (a panelist read a
    candidate edit or was told a preferred answer), never for disagreement, and
    never because agreement came quickly. The one exception is the deliberation
    round, and only when `--deliberate` was given: before going to the owner,
@@ -100,11 +107,11 @@ panelist saw another's.
    run it at most once per panel. Take the question to the owner with both
    positions per panelist: a converged deliberation informs the owner and
    settles nothing.
-4. A panelist that returned null exhausted its schema retries and is missing
+3. A panelist that returned null exhausted its schema retries and is missing
    from `positions`; its analysis is usually intact in the rejected attempts in
    its transcript -- salvage it. Two or more surviving panelists that all
-   agree still converge; otherwise treat the round as no convergence.
-5. Remove the worktree: `git worktree remove /tmp/panel-base --force`.
+   agree still converge; otherwise treat the round as split.
+4. Remove the worktree: `git worktree remove /tmp/panel-base --force`.
 
 The deliberation round is a decision taken, opt-in and bounded as above: a
 panel that does not converge may be missing a consideration only one panelist

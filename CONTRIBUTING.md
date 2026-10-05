@@ -181,7 +181,8 @@ not add one. Rationale and what the report covers: [docs/TESTING.md](docs/TESTIN
   These words are grounded in this repository and are NOT on the list: gate, mint, fan-out, round, ledger, canonical, attest, invariant, in flight, pin, drift, reconcile, sweep, harden, posture, hygiene, and the noun surface (attack surface, consent surface, `ConsentSurfaceName`). Neither are the terms of art -- honest-but-curious, semi-honest, honest party, the PSI round and round-trip, Promise settlement -- nor any identifier, filename, type name, fixture, or schema key.
 
 - **Failure messages**: a failure an operator sees states what happened in one plain sentence and what to do in a second, naming only the flag or control that applies to that run. A failure cause the CLI reports from core's failure-cause catalog takes its first sentence there and its second from the CLI's remedy map; which apps draw on the catalog is stated in the note below. Where the two live and how counts and error codes are written: [docs/notes/failure-cause-catalog.md](docs/notes/failure-cause-catalog.md).
-- **Markdown**: soft line wrapping, single space after periods, ASCII punctuation (`-` not em-dash, `->` not arrow character).
+- **Markdown**: an existing file keeps the wrap style it has, soft or hard, and is never reflowed; a new file uses semantic line breaks, starting each sentence or clause on its own line. Single space after periods, ASCII punctuation (`-` not em-dash, `->` not arrow character).
+- **Capital-letter emphasis**: words set in capitals for emphasis come out of code comments and user docs as each file is touched. Agent-only rule text (`CLAUDE.md` and the files under `.claude/`) keeps them, where they mark the few lines an agent must not miss.
 
 Linting, formatting, and the repository's guard checks are enforced by CI. Run them locally before pushing:
 
@@ -192,6 +193,8 @@ npm run format
 npm run check:all            # the repo-wide guards, driven from one list
 npm run check:all -- --list  # what each holds, and what it does not run
 ```
+
+Run these repo-wide commands once, after the last edit and after the tests for your change pass. While working, check only what you changed: `npx eslint <paths>`, `npx tsc -p <workspace>/tsconfig.json --noEmit`, and `npx vitest run <file>` for the test files you touched. Each repo-wide command reads the whole repository, and several agents running them at once on one machine slow every one of them.
 
 `check:all` drives its checks from one list in [`scripts/run-checks.mjs`](scripts/run-checks.mjs), which also states which checks it does not run and why -- the production dependency audit needs the npm registry, the deploy-trigger graph check needs a full web build that `eb_build_and_test.yaml` already runs on the pull requests that can move its result, and the rest need a token, a release tag, CI's own install, or minutes the merge path does not have. It runs past a failing check, so one red result does not hide the rest.
 
