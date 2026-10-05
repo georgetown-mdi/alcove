@@ -36,7 +36,6 @@ import {
   getManagedLocalState,
   markManagedExchangeBackedUp,
 } from "@psi/managed/managedLocalState";
-import { ManagedKeyFileRefusedError } from "@psi/managed/managedCommandLineImport";
 import { composeManagedCronExport } from "@psi/managed/managedCronExport";
 
 import type {
@@ -195,21 +194,22 @@ describe("a command-line pair installs a runnable exchange", () => {
     ]);
   });
 
-  test("a refused key file stores nothing anywhere", async () => {
+  test("a key file field the app does not read is dropped and named", async () => {
     const source = runnableManagedExchangeOrRefuse(
       buildManagedExchangeRecord(newExchange()),
     );
     const { configuration } = pairOf(source);
 
-    await expect(
-      importManagedCommandLinePair(
-        configuration,
-        JSON.stringify({ sharedSecret: source.sharedSecret, stray: 1 }),
-      ),
-    ).rejects.toBeInstanceOf(ManagedKeyFileRefusedError);
+    const { record, unreadKeyFileFields } = await importManagedCommandLinePair(
+      configuration,
+      JSON.stringify({ sharedSecret: source.sharedSecret, stray: 1 }),
+    );
 
-    expect(await listManagedExchanges()).toEqual([]);
-    expect(await everywhereStored(source.sharedSecret)).toEqual([]);
+    expect(unreadKeyFileFields).toEqual(["stray"]);
+    const stored = await listManagedExchanges();
+    expect(stored.map((entry) => entry.id)).toEqual([record.id]);
+    expect(stored[0].sharedSecret).toBe(source.sharedSecret);
+    expect(JSON.stringify(stored[0])).not.toContain("stray");
   });
 });
 
