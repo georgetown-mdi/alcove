@@ -280,6 +280,50 @@ const sharedSyntaxBans = [
 // stricter loglevel entry, in the block of its own below.
 const sharedImportPathBans = [rawYamlParserImportBan, rootLoglevelImportBan];
 
+// The files under src/ that are not in the browser bundle. Read from the
+// client environment's module graph of a production build: every other file
+// under src/ is in it, the worker entries included (each is bundled on its
+// own). The `node:` ban below covers src/ minus this list.
+const serverOnlySrcFiles = [
+  "src/jobs/**/*.{ts,tsx}",
+  "src/routes/api/**/*.{ts,tsx}",
+  "src/server.ts",
+  "src/httpServer.ts",
+  "src/peerServer.ts",
+  "src/signalingDiagnostics.ts",
+  "src/utils/apiNamespace.ts",
+  "src/utils/configManager.ts",
+  "src/utils/securityHeaders.ts",
+  "src/utils/serverConfig.ts",
+];
+
+const belowProductServerOnlySrcFiles = serverOnlySrcFiles.filter((glob) =>
+  belowProductDirectories.some((dir) => glob.startsWith(`src/${dir}/`)),
+);
+
+// A type-only import is erased before bundling, so it is allowed.
+const nodeBuiltinImportBan = {
+  regex: "^node:",
+  allowTypeImports: true,
+  message:
+    "This file is part of the browser bundle, where Node built-ins do not exist. Move the code that needs it into a server-only module (src/jobs, an src/routes/api handler); if this file never reaches the browser, add it to serverOnlySrcFiles in apps/web/eslint.config.js.",
+};
+
+// The import options of the src/ files above the product layer and of the
+// files below it, each without and with the `node:` ban.
+const srcImportBans = {
+  paths: [...sharedImportPathBans, linkageComparisonChokepointBan],
+  patterns: crossWorkspaceImportBans.web,
+};
+const belowProductImportBans = {
+  paths: [...sharedImportPathBans, linkageComparisonChokepointBan],
+  patterns: [...crossWorkspaceImportBans.web, ...productDirectoryBans],
+};
+const withNodeBuiltinBan = (options) => ({
+  ...options,
+  patterns: [...options.patterns, nodeBuiltinImportBan],
+});
+
 // The two bans a file below the products takes on top of the shared set.
 const layerDirectionBans = [
   dynamicImportLiteralBan,
@@ -429,13 +473,7 @@ export default [
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/psi/linkageComparison.ts"],
     rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [...sharedImportPathBans, linkageComparisonChokepointBan],
-          patterns: crossWorkspaceImportBans.web,
-        },
-      ],
+      "no-restricted-imports": ["error", withNodeBuiltinBan(srcImportBans)],
     },
   },
   {
@@ -486,10 +524,7 @@ export default [
       ],
       "no-restricted-imports": [
         "error",
-        {
-          paths: [...sharedImportPathBans, linkageComparisonChokepointBan],
-          patterns: [...crossWorkspaceImportBans.web, ...productDirectoryBans],
-        },
+        withNodeBuiltinBan(belowProductImportBans),
       ],
     },
   },
@@ -525,9 +560,28 @@ export default [
         "error",
         {
           paths: sharedImportPathBans,
-          patterns: [...crossWorkspaceImportBans.web, ...productDirectoryBans],
+          patterns: [
+            ...crossWorkspaceImportBans.web,
+            ...productDirectoryBans,
+            nodeBuiltinImportBan,
+          ],
         },
       ],
+    },
+  },
+  {
+    // The server-only files under src/ take the import options of the blocks
+    // above without the `node:` ban. Last, so they replace those options.
+    files: serverOnlySrcFiles,
+    ignores: belowProductServerOnlySrcFiles,
+    rules: {
+      "no-restricted-imports": ["error", srcImportBans],
+    },
+  },
+  {
+    files: belowProductServerOnlySrcFiles,
+    rules: {
+      "no-restricted-imports": ["error", belowProductImportBans],
     },
   },
   // Any other config...

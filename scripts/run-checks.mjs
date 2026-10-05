@@ -274,6 +274,12 @@ export const CHECKS = [
       "The cosign verify command docs/RELEASES.md publishes, the release workflow's self-verify step, and the publish sequence name one release identity.",
   },
   {
+    script: "check:web-route-render",
+    expiresOn: "2026-12-31",
+    description:
+      "Every page route in the checked-in route tree renders from a fresh production web build with no 5xx and nothing written to the server's stderr.",
+  },
+  {
     script: "test:scripts",
     expiresOn: "2026-12-31",
     description:
