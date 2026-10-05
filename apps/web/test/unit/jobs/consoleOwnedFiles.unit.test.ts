@@ -8,16 +8,16 @@ import ts from "typescript";
 import { afterEach, describe, expect, test } from "vitest";
 
 import {
+  SAMPLE_INVITER_FILE_NAME,
+  SAMPLE_PARTNER_FILE_NAME,
+} from "@psi/sampleData";
+import {
   consoleOwnedCredentialField,
   isConsoleOwnedFolderName,
 } from "@jobs/consoleOwnedFiles";
 import { JobApiConfigError } from "@jobs/gate";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { validateAuthoredSftpServer } from "@jobs/sftpServer";
-import {
-  SAMPLE_INVITER_FILE_NAME,
-  SAMPLE_PARTNER_FILE_NAME,
-} from "@psi/sampleData";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
@@ -94,8 +94,7 @@ function dataRootFileNames(): Array<string> {
           const type = checker.getTypeAtLocation(nameArgument);
           const members = type.isUnion() ? type.types : [type];
           if (members.every((member) => member.isStringLiteral())) {
-            for (const member of members)
-              names.add((member as ts.StringLiteralType).value);
+            for (const member of members) names.add(member.value);
           } else {
             const enclosing = enclosingFunctionParameter(nameArgument);
             if (enclosing === undefined)
@@ -123,7 +122,7 @@ function enclosingFunctionParameter(
   node: ts.Node,
 ): { functionName: string; index: number } | undefined {
   if (!ts.isIdentifier(node)) return undefined;
-  let scope: ts.Node | undefined = node.parent;
+  let scope = node.parent as ts.Node | undefined;
   while (scope !== undefined && !ts.isFunctionDeclaration(scope))
     scope = scope.parent;
   if (scope === undefined || scope.name === undefined) return undefined;
@@ -169,7 +168,7 @@ function joinedWriteSites(): Array<string> {
         ) &&
         (isJoin(node.arguments[0]) || isJoin(node.arguments[1]))
       ) {
-        let scope: ts.Node | undefined = node.parent;
+        let scope = node.parent as ts.Node | undefined;
         while (scope !== undefined && !ts.isFunctionDeclaration(scope))
           scope = scope.parent;
         sites.push(`${file}:${scope?.name?.text ?? "<top level>"}`);

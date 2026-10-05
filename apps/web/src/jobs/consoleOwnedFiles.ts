@@ -12,8 +12,8 @@ import {
   SIGNING_IDENTITY_FILE_NAME,
 } from "./signingIdentity";
 import { isPathWithin } from "./pathContainment";
-import { readBoundedMountedFile } from "./boundedMountedFile";
 import { isValidJobId } from "./workdir";
+import { readBoundedMountedFile } from "./boundedMountedFile";
 
 /** The names the console writes into the working folder itself, none of them
  * an input, each with how a refusal names it to the operator. */
