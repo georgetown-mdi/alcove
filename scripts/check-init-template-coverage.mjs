@@ -1,51 +1,25 @@
 #!/usr/bin/env node
 // Init-template coverage check, run by static_checks.yaml.
 //
-// docs/CLI.md (Initialization) states which configuration options the file
-// `alcove init` writes documents, and the template's header says the options
-// it shows are documented inline. Both drift the day a field is added to the
-// exchange schema without a line in the template, so the claim is held here:
-// the check walks the schema core exports (ExchangeSpecSchema, which every
-// reader of alcove.yaml parses through) and the templates
-// `renderConfigTemplate` renders, and compares the key paths each holds. It
-// fails naming
+// docs/CLI.md (Initialization) and the template's header claim that the file
+// `alcove init` writes documents each configuration option inline. Both drift
+// when a field is added to the exchange schema without a template line, so
+// this check compares two sets of key paths: the schema core exports
+// (ExchangeSpecSchema) and the keys of the two templates `renderConfigTemplate`
+// writes without an input file (sftp default and filedrop directory), read from
+// their rendered text, active or in a commented-out example. It fails naming
 //
 //   - a schema option no template documents, unless ALLOWED_OMISSIONS lists it
 //     (or a path above it) with the reason it stays out,
 //   - a template key the schema does not define, since an operator who
 //     uncomments it gets a refused setting, and
 //   - an ALLOWED_OMISSIONS entry the template documents or the schema lacks.
-//
-// A KEY PATH is the dotted snake_case path of a mapping key with array levels
-// dropped: `linkage_terms.linkage_keys.elements.field` names the `field` of any
-// element of any key. A schema path under a record (a map with free keys, such
-// as a transform step's `params`) ends at the record, and a template key under
-// one is accepted as it stands.
-//
-// What a template DOCUMENTS is read from its rendered text, not from the
-// renderer's inputs, so a comment the renderer adds anywhere counts:
-//
-//   - every key of the active YAML document, and
-//   - every key of a commented-out YAML example: a run of comment lines that
-//     opens on `key:` or `- key:` with a block, a quoted value, or one token
-//     after it, and parses as YAML once the `#` is removed (nested `#` levels
-//     too, so `#   # identity_file: ...` inside a commented block counts). An
-//     example in a comment block that sits directly above an active key is
-//     placed under that key when indented past the block, beside it when not;
-//     any other example is placed under the innermost active key whose
-//     indentation encloses it, or at the top of the document.
-//
-// Not read as a key: a prose line that opens `name: a sentence`, which is how
-// the template introduces an optional section, and a key named only inside a
-// sentence (`payload.receive is not set`).
-//
-// The templates compared are the two `alcove init` writes without an input
-// file, the sftp default and a filedrop directory, taken together: an option
-// documented in either counts. An input file adds inferred metadata,
-// standardization and payload entries over the same keys.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+const SPLIT_DIRECTORY =
+  "A split-directory deployment, which also needs retain_files; alcove accept adopts the pair from the invitation.";
 
 /**
  * Schema options the template leaves out, each with the reason. An entry
@@ -92,22 +66,10 @@ export const ALLOWED_OMISSIONS = new Map([
     "connection.invitation_relay",
     "Written by alcove accept from the invitation; not authored by hand.",
   ],
-  [
-    "connection.inbound_path",
-    "A split-directory deployment, which also needs retain_files; alcove accept adopts the pair from the invitation.",
-  ],
-  [
-    "connection.outbound_path",
-    "A split-directory deployment, which also needs retain_files; alcove accept adopts the pair from the invitation.",
-  ],
-  [
-    "connection.server.inbound_path",
-    "A split-directory deployment, which also needs retain_files; alcove accept adopts the pair from the invitation.",
-  ],
-  [
-    "connection.server.outbound_path",
-    "A split-directory deployment, which also needs retain_files; alcove accept adopts the pair from the invitation.",
-  ],
+  ["connection.inbound_path", SPLIT_DIRECTORY],
+  ["connection.outbound_path", SPLIT_DIRECTORY],
+  ["connection.server.inbound_path", SPLIT_DIRECTORY],
+  ["connection.server.outbound_path", SPLIT_DIRECTORY],
   [
     "connection.options.connection_per_poll",
     "A remedy for an SFTP server that caps session length; the failure that calls for it names the setting.",
@@ -162,7 +124,11 @@ const LEAVES = new Set([
 
 /**
  * Every key path a zod (v4) schema defines, and the paths under which a record
- * admits free keys. Walks the schema's own definitions (`_zod.def`), both sides
+ * admits free keys. A key path is the dotted snake_case path of a mapping key
+ * with array levels dropped: `linkage_terms.linkage_keys.elements.field` names
+ * the `field` of any element of any key. A path under a record (a map with free
+ * keys, such as a transform step's `params`) ends at the record, and a template
+ * key under one is accepted as it stands. Walks the schema's own definitions (`_zod.def`), both sides
  * of a pipe, so a bounded or transformed array still yields its element's keys.
  *
  * @throws {Error} on a schema node of a type this walk does not know, so a new
@@ -320,8 +286,15 @@ function parentPath(path) {
 }
 
 /**
- * Every key path a rendered template documents, active or in a commented-out
- * example (see the module header for what counts). `YAML` is the `yaml`
+ * Every key path a rendered template documents: every key of the active YAML
+ * document, and every key of a commented-out example (a run of comment lines
+ * that opens on `key:` or `- key:` with a block, a quoted value, or one token
+ * after it, and parses as YAML once the `#` is removed, nested `#` levels
+ * too). An example in a comment block directly above an active key is placed
+ * under that key when indented past the block, beside it when not; any other
+ * example goes under the innermost active key whose indentation encloses it,
+ * or at the top. A prose line that opens `name: a sentence`, or a key named
+ * only inside a sentence, is not read as a key. `YAML` is the `yaml`
  * package, passed in so the tests and the CLI entry share one parser.
  */
 export function templateKeyPaths(text, YAML) {
