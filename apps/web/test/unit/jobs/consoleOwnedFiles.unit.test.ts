@@ -138,8 +138,10 @@ function enclosingFunctionParameter(
  * Each function in `src/jobs` that passes a `path.join(...)` straight to a file
  * write, bypassing `resolveWorkdirFile`. The one expected is the sample-input
  * writer: its two fixed CSV names land on the data root when no input directory
- * is set, and are inputs the operator picks, not console-owned files. A path
- * joined into a variable before the write is outside this walk.
+ * is set, and are inputs the operator picks, not console-owned files. The walk
+ * matches only the listed write calls made as property accesses with a direct
+ * path.join argument: a path joined into a variable first, a copy, symlink or
+ * mkdir, and a write through a named import are not caught.
  */
 function joinedWriteSites(): Array<string> {
   const sourceDir = path.join(webRoot, "src", "jobs");
