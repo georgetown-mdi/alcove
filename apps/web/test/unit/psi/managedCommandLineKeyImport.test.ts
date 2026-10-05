@@ -1037,6 +1037,23 @@ describe("the relay key registration across the command-line files", () => {
     );
   });
 
+  test("a pair import whose key file holds expires and an unknown field stores the secret and that expires", async () => {
+    const { record, configuration } = exportedPair();
+    const expires = "2026-12-31T00:00:00.000Z";
+    const result = await importManagedCommandLinePair(
+      configuration,
+      commandLineKeyText({
+        sharedSecret: record.sharedSecret,
+        expires,
+        extra: 1,
+      }),
+      recordingDeps(),
+    );
+    expect(result.record.sharedSecret).toBe(record.sharedSecret);
+    expect(result.record.expires).toBe(expires);
+    expect(result.unreadKeyFileFields).toEqual(["extra"]);
+  });
+
   test("a pair import whose key file holds only fields it reads names none", async () => {
     const { configuration, key } = exportedPair();
     const result = await importManagedCommandLinePair(

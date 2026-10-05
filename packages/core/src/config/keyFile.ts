@@ -62,18 +62,25 @@ const KEY_FILE_FIELD_NAMES: ReadonlySet<string> = new Set(
   Object.keys(KEY_FILE_FIELD_SCHEMAS),
 );
 
+/** Stands in for an unread field whose name matches the shared-secret pattern. */
+export const KEY_FILE_REDACTED_FIELD_NAME = "<redacted>";
+
 /**
  * The names of the top-level fields of a parsed key file that
  * {@link KeyFileSchema} does not read and so drops, in the file's order, for a
  * reader to name to the operator. Returns names only: a value may be the
- * secret. Empty for anything other than a plain object.
+ * secret. A name that itself matches the shared-secret pattern is replaced by
+ * {@link KEY_FILE_REDACTED_FIELD_NAME}. Empty for anything other than a plain
+ * object.
  */
 export function keyFileUnreadFieldNames(document: unknown): Array<string> {
   if (typeof document !== "object" || document === null) return [];
   if (Array.isArray(document)) return [];
-  return Object.keys(document).filter(
-    (name) => !KEY_FILE_FIELD_NAMES.has(name),
-  );
+  return Object.keys(document)
+    .filter((name) => !KEY_FILE_FIELD_NAMES.has(name))
+    .map((name) =>
+      SHARED_SECRET_REGEX.test(name) ? KEY_FILE_REDACTED_FIELD_NAME : name,
+    );
 }
 
 /**

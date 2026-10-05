@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  KEY_FILE_REDACTED_FIELD_NAME,
   KeyFileSchema,
   keyFileUnreadFieldNames,
   serializeKeyFile,
@@ -59,6 +60,13 @@ describe("keyFileUnreadFieldNames", () => {
       sharedSecret: SECRET,
       expires: "2030-01-01T00:00:00.000Z",
     });
+  });
+
+  test("replaces a field name that matches the shared-secret pattern", () => {
+    expect(keyFileUnreadFieldNames({ [SECRET]: "x", expiry: "y" })).toEqual([
+      KEY_FILE_REDACTED_FIELD_NAME,
+      "expiry",
+    ]);
   });
 
   test("names nothing for a file holding only known fields", () => {
