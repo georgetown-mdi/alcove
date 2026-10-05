@@ -1,4 +1,3 @@
-import { describe, expect, test } from "vitest";
 import {
   KeyFileSchema,
   generateSharedSecret,
@@ -6,6 +5,7 @@ import {
   parseExchangeSpec,
   parseSensitiveYaml,
 } from "@alcove/core";
+import { describe, expect, test } from "vitest";
 
 import { ZodError } from "zod";
 import { stringify as stringifyYaml } from "yaml";
