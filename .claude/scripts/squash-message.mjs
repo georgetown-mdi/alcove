@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 //
-// Draft the squash-and-merge commit message for a pull request and print it to
-// stdout. Companion to the remind-squash-message.mjs hook, which raises the same
-// need at `gh pr create` time; this is the maintainer's side of it, run against
-// a pull request that already exists.
+// Draft the body of the squash-and-merge commit message for a pull request and
+// print it to stdout. Companion to the remind-squash-message.mjs hook, which
+// raises the same need at `gh pr create` time; this is the maintainer's side of
+// it, run against a pull request that already exists.
 //
 // Alcove squash-merges, so the message GitHub proposes -- the PR title plus a
 // bullet list of commit subjects -- is what lands in the history unless someone
 // writes a better one. Writing that message is a fixed, repeated prompt, so it
 // is a script rather than a habit: one `claude -p` run, pinned to sonnet, over
-// the branch's commits, the PR body, and CONTRIBUTING.md.
+// the branch's commits, the PR body, and CONTRIBUTING.md. Only the body is
+// drafted: GitHub fills the merge box's subject from the PR title, so the
+// output pastes into the body field unchanged.
 //
 // Usage:
 //   node squash-message.mjs <pr-number>
@@ -30,11 +32,11 @@
 // maintainer decides what to do with it. The colocated test pins that property
 // of the argv this builds.
 //
-// The prompt is left in the maintainer's own words rather than elaborated. It
-// names CONTRIBUTING.md with an `@` mention because that is what the interactive
-// ritual does, and the conventions it must follow (imperative subject, prose
-// body, no markdown) live there rather than being restated into the prompt where
-// they would drift from the document.
+// The prompt is left in the maintainer's own words rather than elaborated, but
+// for the one sentence that keeps a subject line out. It names CONTRIBUTING.md
+// with an `@` mention because that is what the interactive ritual does, and the
+// conventions it must follow (prose body, no markdown) live there rather than
+// being restated into the prompt where they would drift from the document.
 //
 // THE DRAFT GOES OUT THROUGH THE NORMALIZER. format-squash-message.mjs rewraps
 // the body at the column CONTRIBUTING.md sets and strips the markdown a `claude
@@ -93,7 +95,9 @@ export const DISALLOWED_TOOLS = [
 export function prompt(prNumber) {
   return (
     "Please use the commit history, the PR body, and @CONTRIBUTING.md to " +
-    `write a short squash-and-merge commit message for PR #${prNumber}.`
+    "write the body of a short squash-and-merge commit message for " +
+    `PR #${prNumber}. Leave out the subject line: GitHub takes it from the ` +
+    "PR title."
   );
 }
 
@@ -202,13 +206,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.stdout.write(drafted);
     process.exit(run.status ?? 1);
   }
-  const { text, refusals } = formatDraft(drafted, prNumber);
+  const { text, refusals } = formatDraft(drafted);
   if (refusals.length > 0) {
     process.stdout.write(drafted);
     process.stderr.write(refusalReport(refusals));
     process.exit(2);
   }
-  const remaining = violations(text, prNumber);
+  const remaining = violations(text);
   if (remaining.length > 0) {
     process.stdout.write(drafted);
     process.stderr.write(selfCheckReport(remaining));

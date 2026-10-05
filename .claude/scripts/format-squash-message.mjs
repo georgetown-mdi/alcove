@@ -1,39 +1,38 @@
 #!/usr/bin/env node
 //
-// Normalize a squash-and-merge commit message draft, and refuse what a machine
-// cannot fix without rewriting the message. Reads the draft from a path or
-// stdin, writes the normalized message to stdout or to `--out <path>`.
+// Normalize the body of a squash-and-merge commit message, and refuse what a
+// machine cannot fix without rewriting it. Reads the draft body from a path or
+// stdin and writes the normalized body to stdout; `--fenced` wraps it in a code
+// fence, the form posted as a pull-request comment.
 //
 // Usage:
-//   node format-squash-message.mjs <pr-number|unassigned> [<draft-path>] [--out <path>]
+//   node format-squash-message.mjs [<draft-path>] [--fenced]
 //
-// Why this exists: a draft under scratch/squash-messages/ is pasted verbatim
-// into the merge box, so whatever it holds is what lands in the history. Prose
+// Why this exists: the body posted on a pull request is pasted verbatim into
+// the merge box's body field, so whatever it holds is what lands in the
+// history. GitHub fills the subject from the pull request's title, whose budget
+// ../../scripts/lib/squashSubjectBudget.mjs holds for the title hook and the
+// PR checklist check, so a draft here is a body and nothing else. Prose
 // restating CONTRIBUTING.md's Commit Messages rules at each producer -- the
 // remind-squash-message.mjs reminder, squash-message.mjs's prompt -- checks
 // nothing, and a 120-column body line reaches the maintainer intact. This is
 // where those rules are executable. The wrap column below is the only copy of
-// that number outside CONTRIBUTING.md's own statement of the rule; the subject
-// budget is re-exported from ../../scripts/lib/squashSubjectBudget.mjs, the one
-// definition the PR checklist check and the PR-title hook measure it from too.
+// that number outside CONTRIBUTING.md's own statement of the rule.
 //
 // THE SPLIT BETWEEN NORMALIZING AND REFUSING is whether the fix keeps the words.
-// Rewrapping a paragraph, dropping a markdown marker, turning a list item into a
-// paragraph, and putting the blank line under the subject all leave the text
-// saying what it said, so they happen silently. A fix that would not keep them
-// is refused instead: shortening a subject over the budget drops something it
-// says, and reflowing an over-wide line inside an indented block destroys the
-// shape it was indented for. `refusals` below is the enumeration.
+// Rewrapping a paragraph, dropping a markdown marker, and turning a list item
+// into a paragraph all leave the text saying what it said, so they happen
+// silently. A fix that would not keep them is refused instead: reflowing an
+// over-wide line inside an indented block destroys the shape it was indented
+// for. `refusals` below is the enumeration.
 //
-// WHAT A CHECK OVER AN ALREADY-WRITTEN DRAFT ASKS. `violations` is empty
-// exactly when no refusal fires and the draft is what this script produces from
-// it, character for character, so the hook gating a hand-written file has one
-// question to ask and the file this script writes always passes it. A body
-// wrapped by hand at some other column is not what it produces; the fix is one
-// run of this script. Both entry points -- this one and squash-message.mjs --
-// run `violations` over what normalizing produced and refuse to hand on output
-// it rejects, so a shape the normalizer mangles is a failed run rather than a
-// mangled message the maintainer pastes.
+// WHAT A CHECK OVER AN ALREADY-WRITTEN BODY ASKS. `violations` is empty exactly
+// when no refusal fires and the body is what this script produces from it,
+// character for character. A body wrapped by hand at some other column is not
+// what it produces; the fix is one run of this script. Both entry points --
+// this one and squash-message.mjs -- run `violations` over what normalizing
+// produced and refuse to hand on output it rejects, so a shape the normalizer
+// mangles is a failed run rather than a mangled message the maintainer pastes.
 //
 // WHAT NORMALIZING DOES TO MARKDOWN. Emphasis and an inline code span lose their
 // markers and keep the text. A heading marker, a code fence line, and a
@@ -43,12 +42,10 @@
 // marker removed, its continuation lines joined into it, and an indented item
 // riding with the item above it.
 //
-// THE SUBJECT BUDGET COUNTS THE SUFFIX. GitHub appends " (#NNNN)" to the subject
-// at squash time, and CONTRIBUTING.md's subject limit is on what lands, so the
-// budget checked here is that limit minus the suffix's width at the pull
-// request's own number, measured against the subject as normalized. A draft
-// written before the number is known passes `unassigned`, which assumes the four
-// digits every pull request in this repository has.
+// THE FENCE IS FOR THE COMMENT, NOT THE MESSAGE. GitHub renders a comment as
+// markdown, which would reflow the wrapped lines the maintainer copies; a fenced
+// block shows them as written. The fence is longer than any run of backticks in
+// the body, so nothing inside it can close it early.
 //
 // AN INDENTED BLOCK IS LEFT VERBATIM. Rewrapping indented text would destroy the
 // shape someone indented it for, so a block holding an indented line is not
@@ -56,28 +53,14 @@
 // which keeps the wrap guarantee total. A block holding a list marker at column
 // 0 is a list rather than indented text, whatever its items are indented by.
 //
-// STATED LIMIT. A single word longer than the column budget occupies a line of
-// its own, over budget: breaking it would change the text. `violations` exempts
-// exactly that line, so a normalized draft always passes the check the
-// block-nonconforming-squash-message.mjs hook runs over it.
+// STATED LIMITS. A single word longer than the column budget occupies a line of
+// its own, over budget: breaking it would change the text, and `violations`
+// exempts exactly that line. A subject line written at the top of the draft is
+// not told apart from a one-line opening paragraph, so it is kept as one; the
+// draft is the body alone.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-
-import {
-  SUBJECT_LIMIT,
-  UNASSIGNED_PR,
-  squashSuffix,
-  subjectBudget,
-} from "../../scripts/lib/squashSubjectBudget.mjs";
-
-export {
-  ASSUMED_PR_DIGITS,
-  SUBJECT_LIMIT,
-  UNASSIGNED_PR,
-  squashSuffix,
-  subjectBudget,
-} from "../../scripts/lib/squashSubjectBudget.mjs";
 
 /** CONTRIBUTING.md's body wrap: the widest a body line may be. */
 export const BODY_WRAP_COLUMNS = 70;
@@ -119,13 +102,11 @@ const MARKDOWN_MARKERS = [
 ];
 
 /**
- * The draft as a subject, the line under it, and the body: line endings
- * normalized, trailing whitespace dropped, code fence lines removed, and the
- * blank lines around the whole message removed. `separator` is the line under
- * the subject as written, and the body holds every line after the subject with
- * one blank separator dropped.
+ * The draft as body lines: line endings normalized, trailing whitespace
+ * dropped, code fence lines removed, and the blank lines around the whole body
+ * removed.
  */
-export function splitDraft(draft) {
+export function bodyLinesOf(draft) {
   const lines = String(draft ?? "")
     .replace(/\r\n?/g, "\n")
     .split("\n")
@@ -133,12 +114,7 @@ export function splitDraft(draft) {
     .filter((line) => !CODE_FENCE.test(line));
   while (lines.length > 0 && lines[0] === "") lines.shift();
   while (lines.length > 0 && lines.at(-1) === "") lines.pop();
-  const separator = lines[1];
-  return {
-    subject: lines[0] ?? "",
-    separator,
-    body: separator === "" ? lines.slice(2) : lines.slice(1),
-  };
+  return lines;
 }
 
 /** The body's blank-line-separated blocks, blank lines dropped. */
@@ -208,16 +184,6 @@ function plainText(line) {
     .trim();
 }
 
-/** The subject with its markers removed. It is never rewrapped or reflowed. */
-function normalizeSubject(subject) {
-  return plainText(
-    subject
-      .replace(BLOCKQUOTE, "")
-      .replace(HEADING, "")
-      .replace(TOP_LEVEL_LIST, ""),
-  );
-}
-
 /** A non-verbatim block as the paragraphs it normalizes to, markers removed. */
 function paragraphsOf(block) {
   const paragraphs = [];
@@ -264,22 +230,17 @@ export function wrapParagraph(text, columns = BODY_WRAP_COLUMNS) {
 }
 
 /**
- * The draft with its markdown and its lists turned into paragraphs, every
- * paragraph rewrapped, and one blank line between blocks. Indented blocks and
- * the subject's own words are copied through.
+ * The body with its markdown and its lists turned into paragraphs, every
+ * paragraph rewrapped, and one blank line between blocks. Indented blocks are
+ * copied through.
  */
 export function normalizeDraft(draft) {
-  const { subject, body } = splitDraft(draft);
-  const blocks = blocksOf(body).flatMap((block) =>
+  const blocks = blocksOf(bodyLinesOf(draft)).flatMap((block) =>
     isVerbatim(block)
       ? [block]
       : paragraphsOf(block).map((paragraph) => wrapParagraph(paragraph)),
   );
-  const lines = [
-    normalizeSubject(subject),
-    ...blocks.flatMap((block) => ["", ...block]),
-  ];
-  return `${lines.join("\n")}\n`;
+  return `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`;
 }
 
 /** A line quoted in a report, shortened so the report stays readable. */
@@ -288,28 +249,18 @@ function quoted(line) {
 }
 
 /**
- * What is wrong with the draft that normalizing cannot fix: an empty draft, a
- * subject over budget once the suffix is counted, or an over-wide line inside an
- * indented block. Empty means the draft is ready once it is normalized.
+ * What is wrong with the body that normalizing cannot fix: an empty body, or an
+ * over-wide line inside an indented block. Empty means the body is ready once it
+ * is normalized.
  */
-export function refusals(draft, prNumber) {
-  const { subject, body } = splitDraft(draft);
-  const normalized = normalizeSubject(subject);
-  if (normalized === "") {
-    return ["The draft is empty; a squash message needs a subject line."];
+export function refusals(draft) {
+  const blocks = blocksOf(bodyLinesOf(draft));
+  if (blocks.length === 0) {
+    return ["The draft is empty; a squash message needs a body."];
   }
 
   const found = [];
-  const budget = subjectBudget(prNumber);
-  if (normalized.length > budget) {
-    found.push(
-      `The subject is ${normalized.length} characters and the budget is ${budget}: ` +
-        `GitHub appends "${squashSuffix(prNumber)}" at squash time, and ` +
-        `CONTRIBUTING.md's limit of ${SUBJECT_LIMIT} counts it. Shorten the subject.`,
-    );
-  }
-
-  for (const block of blocksOf(body).filter(isVerbatim)) {
+  for (const block of blocks.filter(isVerbatim)) {
     for (const line of block.filter(
       (line) => line.length > BODY_WRAP_COLUMNS,
     )) {
@@ -329,7 +280,7 @@ export function refusals(draft, prNumber) {
  * no way to wrap it that does not change the text.
  */
 export function overlongBodyLines(draft) {
-  return blocksOf(splitDraft(draft).body)
+  return blocksOf(bodyLinesOf(draft))
     .filter((block) => !isVerbatim(block))
     .flat()
     .filter(
@@ -348,14 +299,6 @@ function unnormalized(draft) {
   if (normalizeDraft(draft) === draft) return [];
 
   const found = [];
-  const { subject, separator, body } = splitDraft(draft);
-  if (separator !== undefined && separator !== "") {
-    found.push(
-      "The line under the subject is not blank, so git reads the whole opening " +
-        `as one subject: "${quoted(separator)}". Normalizing puts a blank line ` +
-        "between the subject and the body.",
-    );
-  }
   if (/^\s*(?:```|~~~)/m.test(String(draft ?? ""))) {
     found.push(
       "A commit message takes no markdown, and this draft holds a code fence. " +
@@ -374,7 +317,7 @@ function unnormalized(draft) {
           `"${quoted(line)}". Normalizing drops the marker and keeps the text.`;
   };
 
-  for (const block of [[subject], ...blocksOf(body)].filter(
+  for (const block of blocksOf(bodyLinesOf(draft)).filter(
     (block) => !isVerbatim(block),
   )) {
     const starts = itemStarts(block);
@@ -407,55 +350,57 @@ function unnormalized(draft) {
 }
 
 /**
- * Every Commit Messages rule the draft breaks as written, the ones normalizing
- * fixes included. This is what a check over an already-written draft asks; a
- * producer that can still normalize the draft asks `refusals` instead.
+ * Every Commit Messages rule the body breaks as written, the ones normalizing
+ * fixes included. This is what a check over an already-written body asks; a
+ * producer that can still normalize the body asks `refusals` instead.
  */
-export function violations(draft, prNumber) {
-  return [...refusals(draft, prNumber), ...unnormalized(draft)];
+export function violations(draft) {
+  return [...refusals(draft), ...unnormalized(draft)];
 }
 
-/** The normalized draft and what it still breaks, in one call. */
-export function formatDraft(draft, prNumber) {
-  return { text: normalizeDraft(draft), refusals: refusals(draft, prNumber) };
+/** The normalized body and what it still breaks, in one call. */
+export function formatDraft(draft) {
+  return { text: normalizeDraft(draft), refusals: refusals(draft) };
 }
 
 /**
- * The arguments in `argv`, or null when they are not one pull-request number,
- * at most one draft path, and at most one `--out` path. `#928` is accepted
- * because that is how a pull request is written everywhere else.
+ * The body inside a code fence one backtick longer than the longest run of
+ * backticks it holds, and never shorter than three.
+ */
+export function fenced(text) {
+  const longest = Math.max(
+    0,
+    ...[...text.matchAll(/`+/g)].map(([run]) => run.length),
+  );
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${fence}\n${text}${fence}\n`;
+}
+
+/**
+ * The arguments in `argv`, or null when they are not at most one draft path
+ * and an optional `--fenced`. A path of `-` is stdin.
  */
 export function parseArgs(argv) {
   const positional = [];
-  let out = null;
-  for (let index = 0; index < argv.length; index++) {
-    const argument = argv[index];
-    if (argument === "--out") {
-      if (out !== null || index + 1 >= argv.length) return null;
-      out = argv[++index];
-    } else if (argument.startsWith("--out=")) {
-      if (out !== null) return null;
-      out = argument.slice("--out=".length);
+  let fence = false;
+  for (const argument of argv) {
+    if (argument === "--fenced") {
+      if (fence) return null;
+      fence = true;
     } else if (argument.startsWith("-") && argument !== "-") {
       return null;
     } else {
       positional.push(argument);
     }
   }
-  if (positional.length < 1 || positional.length > 2 || out === "") return null;
-
-  const first = positional[0].trim();
-  if (first === UNASSIGNED_PR) {
-    return { prNumber: null, input: positional[1] ?? null, out };
-  }
-  const match = /^#?(\d+)$/.exec(first);
-  if (!match || Number(match[1]) <= 0) return null;
-  return { prNumber: Number(match[1]), input: positional[1] ?? null, out };
+  if (positional.length > 1) return null;
+  const input = positional[0] ?? null;
+  return { input: input === "-" ? null : input, fenced: fence };
 }
 
 /** How the script is called, printed on an unusable argument list. */
 export const USAGE =
-  "Usage: node format-squash-message.mjs <pr-number|unassigned> [<draft-path>] [--out <path>]\n";
+  "Usage: node format-squash-message.mjs [<draft-path>] [--fenced]\n";
 
 /** The refusal report, for a caller that prints it rather than throwing. */
 export function refusalReport(broken) {
@@ -480,8 +425,8 @@ export function selfCheckReport(broken) {
   );
 }
 
-// CLI entry: only runs when invoked directly, so the hook and the tests can
-// import the functions above without reading stdin.
+// CLI entry: only runs when invoked directly, so squash-message.mjs and the
+// tests can import the functions above without reading stdin.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
   if (args === null) {
@@ -495,25 +440,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.stderr.write(`could not read the draft: ${error.message}\n`);
     process.exit(1);
   }
-  const { text, refusals: broken } = formatDraft(draft, args.prNumber);
+  const { text, refusals: broken } = formatDraft(draft);
   if (broken.length > 0) {
-    process.stderr.write(`${refusalReport(broken)}Nothing was written.\n`);
+    process.stderr.write(`${refusalReport(broken)}Nothing was printed.\n`);
     process.exit(2);
   }
-  const remaining = violations(text, args.prNumber);
+  const remaining = violations(text);
   if (remaining.length > 0) {
-    process.stderr.write(`${selfCheckReport(remaining)}Nothing was written.\n`);
+    process.stderr.write(`${selfCheckReport(remaining)}Nothing was printed.\n`);
     process.exit(2);
   }
-  if (args.out === null) {
-    process.stdout.write(text);
-  } else {
-    try {
-      writeFileSync(args.out, text);
-    } catch (error) {
-      process.stderr.write(`could not write ${args.out}: ${error.message}\n`);
-      process.exit(1);
-    }
-  }
+  process.stdout.write(args.fenced ? fenced(text) : text);
   process.exit(0);
 }

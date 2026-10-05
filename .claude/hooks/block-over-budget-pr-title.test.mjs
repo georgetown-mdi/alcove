@@ -1,9 +1,13 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { titleViolations } from "../../scripts/check-pr-checklist.mjs";
-import { refusals, subjectBudget } from "../scripts/format-squash-message.mjs";
+import {
+  SUBJECT_LIMIT,
+  subjectBudget,
+} from "../../scripts/lib/squashSubjectBudget.mjs";
 
 const HOOK = fileURLToPath(
   new URL("./block-over-budget-pr-title.mjs", import.meta.url),
@@ -50,6 +54,12 @@ function title(length) {
 describe("block-over-budget-pr-title hook", () => {
   it("holds the budget CONTRIBUTING.md quotes for a title", () => {
     expect(UNNUMBERED_BUDGET).toBe(42);
+    const contributing = readFileSync(
+      new URL("../../CONTRIBUTING.md", import.meta.url),
+      "utf8",
+    );
+    expect(contributing).toContain(`roughly ${UNNUMBERED_BUDGET} characters`);
+    expect(contributing).toContain(`${SUBJECT_LIMIT} characters or fewer`);
   });
 
   it("ignores tools other than Bash", () => {
@@ -161,30 +171,23 @@ describe("block-over-budget-pr-title hook", () => {
   });
 });
 
-// Three readers measure one budget: this hook when the title is written, the PR
-// checklist check on the open pull request, and the normalizer on the squash
-// draft. A title one of them accepts and another fails costs a red run and a
-// retitle, so the boundary itself is pinned across all three.
+// Two readers measure one budget: this hook when the title is written, and the
+// PR checklist check on the open pull request. A title one of them accepts and
+// the other fails costs a red run and a retitle, so the boundary itself is
+// pinned across both.
 describe("the readers of the subject budget", () => {
   const PR = "1274";
   const budget = subjectBudget(PR);
-
-  /** A one-paragraph squash draft under `subject`, clean but for its length. */
-  function draft(subject) {
-    return `${subject}\n\nA body sentence for the draft.\n`;
-  }
 
   it("agree on a title of exactly the budget", () => {
     const fitting = title(budget);
     expect(verdict(`gh pr edit ${PR} --title "${fitting}"`).status).toBe(0);
     expect(titleViolations(fitting, PR)).toEqual([]);
-    expect(refusals(draft(fitting), PR)).toEqual([]);
   });
 
   it("agree on a title one character over the budget", () => {
     const overlong = title(budget + 1);
     expect(verdict(`gh pr edit ${PR} --title "${overlong}"`).status).toBe(2);
     expect(titleViolations(overlong, PR)).toHaveLength(1);
-    expect(refusals(draft(overlong), PR)).toHaveLength(1);
   });
 });

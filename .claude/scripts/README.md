@@ -8,16 +8,15 @@ push:
   `lint-issues.mjs`), and `lib/projectItems.mjs` under them
 - `worktree-init.sh`, which places a fresh worktree on its branching base and
   provisions its `node_modules`
-- `squash-message.mjs`, which drafts the squash message a pull request lands as,
-  and `format-squash-message.mjs`, which rewraps a draft's body, drops the
-  markdown and list markers a commit message does not take, and reports what it
-  cannot fix without rewriting the message. It holds the wrap column, and
-  re-exports the subject budget from
-  [`squashSubjectBudget.mjs`](../../scripts/lib/squashSubjectBudget.mjs) next
-  door, the one definition the PR checklist check and the PR-title hook measure
-  that budget from. The reminder hook and the
-  `block-nonconforming-squash-message.mjs` guard take both from here rather than
-  restate them
+- `squash-message.mjs`, which drafts the body of the squash message a pull
+  request lands as, and `format-squash-message.mjs`, which rewraps a draft
+  body, drops the markdown and list markers a commit message does not take,
+  reports what it cannot fix without rewriting the body, and with `--fenced`
+  prints the body as the code-fenced pull-request comment it is posted as. It
+  holds the wrap column, which the reminder hook takes from here rather than
+  restate it. The subject is the PR title, whose budget
+  [`squashSubjectBudget.mjs`](../../scripts/lib/squashSubjectBudget.mjs) holds
+  for the PR checklist check and the PR-title hook
 - `verify-nonexecutable-delta.mjs`, which decides whether a review attestation
   survives a moved head; `verify-rebase-invariance.mjs`, which decides the same
   question for a head moved by a rebase; and `verify-additive-test-delta.mjs`,
