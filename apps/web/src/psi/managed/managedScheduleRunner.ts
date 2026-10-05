@@ -75,6 +75,7 @@ import { ManagedExchangeExpiredError } from "./managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedInputError } from "./managedInputGuard";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
+import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
 import { RotationPersistError } from "./managedRunRotate";
 
 import type {
@@ -680,14 +681,14 @@ function attemptProvesContact(
  *
  * Only the no-show and a failure with no determinate local cause (a dropped
  * connection, a broker fault) are retried inside the window. Every other
- * failure -- a lapsed bound, a hand-off, an unreadable custody entry, an
- * unusable input, a terms shortfall, a refused disclosure, a relay key
- * registration the registrar refused, a failed rotation persist, or a
- * handshake that failed closed -- reproduces identically on the next attempt,
- * so it ends the window's occupancy where it happened. The
- * hand-off refusal is non-retryable and counts no partner miss on its own, but
- * a window that already found the partner absent still folds to `"missed"`
- * (see {@link foldWindowDisposition}).
+ * failure -- a lapsed bound, a hand-off, an unreadable custody entry, a
+ * refused saved signaling address, an unusable input, a terms shortfall, a
+ * refused disclosure, a relay key registration the registrar refused, a
+ * failed rotation persist, or a handshake that failed closed -- reproduces
+ * identically on the next attempt, so it ends the window's occupancy where it
+ * happened. The hand-off refusal is non-retryable and counts no partner miss
+ * on its own, but a window that already found the partner absent still folds
+ * to `"missed"` (see {@link foldWindowDisposition}).
  *
  * `dataExchangeStarted` overrides all of it: past that boundary a re-attempt
  * would disclose a second time.
@@ -732,6 +733,7 @@ function managedScheduleWindowVerdict(
     error instanceof ManagedExchangeSpentError ||
     error instanceof ManagedExchangeCustodyUnreadableError ||
     error instanceof ManagedExchangeNotRunnableError ||
+    error instanceof ManagedSignalingEndpointRefusedError ||
     error instanceof ManagedInputError ||
     error instanceof LinkageTermsUnsatisfiableError ||
     (error instanceof ManagedRelayRegistrationError &&

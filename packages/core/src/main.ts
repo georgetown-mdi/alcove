@@ -473,6 +473,7 @@ export {
   isInvitationExpired,
   relayLocatorFromOwnRelay,
   stripInvitationWhitespace,
+  WebRTCEndpointSchema,
 } from "./config/invitation";
 export {
   MAX_ENCODED_TERMS_UPDATE_LENGTH,

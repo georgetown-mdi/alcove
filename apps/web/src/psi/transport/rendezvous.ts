@@ -3,7 +3,6 @@ import Peer from "peerjs";
 import {
   ConnectionError,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
-  authorityMovingSignalingField,
   deriveRelayKey,
   deriveRendezvousPeerId,
   getLogger,
@@ -17,7 +16,11 @@ import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
 } from "./waitForConnection";
-import { OWN_SIGNALING_PATH, ownSignalingAddress } from "./signalingAddress";
+import {
+  OWN_SIGNALING_PATH,
+  ownSignalingAddress,
+  refusedSignalingEndpointField,
+} from "./signalingAddress";
 import {
   createRedactingLogFunction,
   redactErrorIds,
@@ -259,10 +262,10 @@ function endpointRefusal(message: string): ConnectionError {
  * Peer: the endpoint is content the remote partner wrote and the operator
  * cannot inspect, and the PeerJS client assembles its signaling address by
  * string concatenation, so a delimiter left in either field can put the
- * authority somewhere the endpoint does not name. The rule is core's
- * {@link authorityMovingSignalingField}, the same one the CLI applies to a
- * webrtc `server` block; what each refused shape does to the assembled address
- * is measured against the real client in
+ * authority somewhere the endpoint does not name. The rule is
+ * {@link refusedSignalingEndpointField}, core's rule the CLI applies to a
+ * webrtc `server` block too; what each refused shape does to the assembled
+ * address is measured against the real client in
  * test/browser/webrtcEndpointAuthority.test.ts and recorded in
  * docs/spec/WEBRTC_TRANSPORT.md.
  *
@@ -272,15 +275,14 @@ function endpointRefusal(message: string): ConnectionError {
 function acceptorLocationFromEndpoint(
   endpoint: WebRTCEndpoint,
 ): SignalingLocation {
-  const location = {
+  const moved = refusedSignalingEndpointField(endpoint);
+  if (moved === "host") throw endpointRefusal(WEBRTC_ENDPOINT_HOST_REFUSED);
+  if (moved === "path") throw endpointRefusal(WEBRTC_ENDPOINT_PATH_REFUSED);
+  return {
     host: endpoint.host,
     port: endpoint.port ?? (window.location.protocol === "https:" ? 443 : 80),
     path: endpoint.path ?? OWN_SIGNALING_PATH,
   };
-  const moved = authorityMovingSignalingField(location);
-  if (moved === "host") throw endpointRefusal(WEBRTC_ENDPOINT_HOST_REFUSED);
-  if (moved === "path") throw endpointRefusal(WEBRTC_ENDPOINT_PATH_REFUSED);
-  return location;
 }
 
 /**

@@ -198,9 +198,9 @@ payload names an invalid key is the wrong `server.key`.
 
 A browser party resolves one address for the signaling server its own
 deployment uses, and every place that needs it reads that one value: where an
-inviter registers, the endpoint its invitation names, and where a saved
-exchange's acceptor dials on a later run. It comes from the deployment's build
-setting `VITE_SIGNALING_SERVER_URL`, never from an invitation. A fresh accept dials the endpoint its invitation names, from any deployment; a saved exchange's later runs dial each party's own deployment's address, so both parties' deployments must name the same signaling server for a re-run to connect:
+inviter registers, on a fresh invitation and on a saved exchange's later
+runs, and the endpoint its invitation names. It comes from the deployment's
+build setting `VITE_SIGNALING_SERVER_URL`, never from an invitation:
 
 | Setting | Address |
 | ------- | ------- |
@@ -212,6 +212,17 @@ or names a user name, password, query or fragment, or a host or path the
 delimiter rules above refuse. It is also refused when the app loads if its
 scheme does not match the page's: `wss:` under an `https` page, `ws:` under an
 `http` page. `localhost` is resolved to `127.0.0.1` in either case.
+
+An accepting party never dials its own deployment's address. A fresh accept
+dials the endpoint its invitation names, from any deployment, and a saved
+exchange's later runs dial the endpoint the acceptor's record stored from that
+invitation, so two parties on different deployments keep reaching each other
+on every run. Both dials put the endpoint through the same validation before
+anything is dialled: the invitation endpoint schema, the host and path
+delimiter rules above, a missing port taken as 443 under an `https` page and
+80 otherwise, and a missing path taken as `/api/`; the scheme is the page's.
+A stored endpoint that fails it refuses the run before any connection
+([MANAGED_EXCHANGE_RECORD.md](MANAGED_EXCHANGE_RECORD.md#role-a-local-side-field-not-the-document)).
 
 The endpoint an invitation names holds the address's `host` and `path`, and
 names no scheme: an acceptor resolves the scheme from its own page, and an

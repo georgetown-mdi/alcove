@@ -434,13 +434,20 @@ web composes has no `role` at all -- the locator expansion writes only
 `host`/`port`/`path` (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md)) -- so the side a
 browser record runs is knowable only from `side`.
 
-On the webrtc re-run path the document's `server` locator is likewise inert: the
-inviter derives its signaling location from the deployment's own signaling
-address (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address)), and the
-acceptor's re-run dials its own deployment's address the same way, so a saved exchange's later runs need both parties' deployments to name the same signaling server. The connection
-block is persisted for document fidelity -- the document is kept verbatim, per
-the CLI-parity contract above -- not because the webrtc re-run reads it; the
-one field of it a re-run reads is an acceptor's `invitation_relay`.
+On the webrtc re-run path the document's `server` locator is what an
+acceptor's later run dials. The acceptor's record saved the `host`, `port` and
+`path` of the invitation it accepted, and every re-run dials that address and
+no other -- not the page's location, not its own deployment's setting -- so
+two parties on different deployments keep reaching each other. Before any
+connection, including a relay registration, the saved address goes through the
+validation a fresh invitation's endpoint gets: the invitation endpoint schema,
+the host and path refusals, and the dial's port and scheme defaults (see
+[WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address)).
+An address failing it refuses the run with a message naming the exchange, and
+the same record refuses identically at every later run, so a scheduled window
+does not retry it. The inviter registers at its own deployment's signaling
+address and does not read the locator. The other connection field a re-run
+reads is an acceptor's `invitation_relay`.
 
 #### Versioning: an app upgrade can invalidate a stored record
 

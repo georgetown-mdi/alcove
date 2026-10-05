@@ -2,8 +2,11 @@ import {
   SIGNALING_SCHEME_MISMATCH,
   signalingSchemeMatchesPage,
 } from "@utils/signalingScheme";
+import { authorityMovingSignalingField } from "@alcove/core";
+
 import { signalingServerSetting } from "@utils/clientConfig";
 
+import type { SignalingLocationField, WebRTCEndpoint } from "@alcove/core";
 import type { SignalingServerSetting } from "@utils/clientConfig";
 
 /**
@@ -22,6 +25,22 @@ export interface SignalingAddress {
 /** The mount this app's own signaling server answers at: `peerServer.ts`
  * mounts it at `/api`, and the PeerJS client dials the mount with its slash. */
 export const OWN_SIGNALING_PATH = "/api/";
+
+/**
+ * The field of a webrtc endpoint whose shape could move the address a dial
+ * reaches, or `undefined` when neither does: core's
+ * {@link authorityMovingSignalingField} over the endpoint's host and the path a
+ * dial uses, {@link OWN_SIGNALING_PATH} where the endpoint states none. A fresh
+ * accept and a saved exchange's later run both refuse by this one rule.
+ */
+export function refusedSignalingEndpointField(
+  endpoint: Pick<WebRTCEndpoint, "host" | "path">,
+): SignalingLocationField | undefined {
+  return authorityMovingSignalingField({
+    host: endpoint.host,
+    path: endpoint.path ?? OWN_SIGNALING_PATH,
+  });
+}
 
 /** The page-location fields {@link resolveSignalingAddress} reads. */
 export interface PageLocation {

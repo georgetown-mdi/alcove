@@ -35,6 +35,7 @@ import {
 import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
+import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 import { RotationPersistError } from "@psi/managed/managedRunRotate";
 import { managedScheduleWindow } from "@psi/managed/managedSchedule";
@@ -418,6 +419,10 @@ describe("a due window in the open runtime", () => {
       new ManagedExchangeCustodyUnreadableError(
         "record-under-test",
         new Error("the sibling entry did not validate"),
+      ),
+      new ManagedSignalingEndpointRefusedError(
+        "Riverbend quarterly",
+        "names a host that could move the connection to another server",
       ),
     ]) {
       const runner = harness({
