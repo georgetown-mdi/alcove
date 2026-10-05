@@ -34,7 +34,7 @@ docker run --rm -p 127.0.0.1:3000:3000 \
 
 The operator drops their input CSVs into `/host/work`; `/host/agency-a-agency-b` is the folder their sync tool shares with the partner, and `JOB_RENDEZVOUS_NAME` is the name an invitation tells the partner to look for (see below).
 
-For a browser-to-browser or SFTP exchange, which syncs no folder with the partner, the single mount is enough: leave out the three shared-folder lines. A shared-directory exchange still runs on the single mount, out of `JOB_DATA_ROOT` -- but then this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results. The console says so where you choose the shared-directory transport, with the flags above, and once more when the run starts; it does not refuse the run (see [Mounted work-input directory](#mounted-work-input-directory)).
+For an SFTP exchange, which syncs no folder with the partner, the single mount is enough: leave out the three shared-folder lines. A shared-directory exchange still runs on the single mount, out of `JOB_DATA_ROOT` -- but then this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results. The console says so where you choose the shared-directory transport, with the flags above, and once more when the run starts; it does not refuse the run (see [Mounted work-input directory](#mounted-work-input-directory)).
 
 Inputs can have a mount of their own as well, which can be read-only:
 

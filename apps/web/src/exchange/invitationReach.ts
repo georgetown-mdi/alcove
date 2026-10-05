@@ -6,9 +6,22 @@
  */
 
 /** Where an invitation link can be opened: `thisComputer` for a loopback host,
- * `localNetwork` for a private-range, link-local or unqualified host, and
- * `anywhere` otherwise. */
+ * `localNetwork` for a private-range, link-local or unqualified host or one
+ * under a {@link PRIVATE_ZONES} suffix, and `anywhere` otherwise. A name only
+ * the inviter's network resolves under any other suffix reads as `anywhere`:
+ * nothing in the name says it is private. */
 export type InvitationReach = "thisComputer" | "localNetwork" | "anywhere";
+
+/** Name suffixes in common use for names resolved inside one network. */
+const PRIVATE_ZONES: ReadonlyArray<string> = [
+  "local",
+  "localdomain",
+  "internal",
+  "lan",
+  "home",
+  "home.arpa",
+  "corp",
+];
 
 /** Classify the host of `link`, an absolute URL. A link that does not parse is
  * treated as reachable from anywhere, since nothing can be said about it. */
@@ -27,10 +40,7 @@ export function invitationReach(link: string): InvitationReach {
     return "thisComputer";
   if (
     !hostname.includes(".") ||
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal") ||
-    hostname.endsWith(".lan") ||
-    hostname.endsWith(".home.arpa")
+    PRIVATE_ZONES.some((zone) => hostname.endsWith(`.${zone}`))
   )
     return "localNetwork";
   return "anywhere";

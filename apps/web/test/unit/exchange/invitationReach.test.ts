@@ -33,6 +33,12 @@ describe("invitationReach", () => {
     "http://alcove.local/accept#t",
     "http://alcove.corp.internal/accept#t",
     "http://alcove.home.arpa/accept#t",
+    "http://alcove.corp/accept#t",
+    "http://alcove.example.CORP:3000/accept#t",
+    "http://alcove.home/accept#t",
+    "http://alcove.lan/accept#t",
+    "http://alcove.localdomain/accept#t",
+    "http://alcove.internal./accept#t",
   ])("%s only works on the local network", (link) => {
     expect(invitationReach(link)).toBe("localNetwork");
   });
@@ -44,6 +50,8 @@ describe("invitationReach", () => {
     "http://8.8.8.8/accept#t",
     "http://[2001:db8::1]/accept#t",
     "not a url",
+    "http://alcove.agency-a.example/accept#t",
+    "http://alcove.corporate.example/accept#t",
   ])("%s works anywhere", (link) => {
     expect(invitationReach(link)).toBe("anywhere");
   });
