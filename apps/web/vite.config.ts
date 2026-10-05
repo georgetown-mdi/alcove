@@ -294,6 +294,7 @@ export default defineConfig((_configEnv) => {
             // are the ones the file sets: each party's peer budget, and a hard
             // per-invocation kill on the child.
             testTimeout: 180_000,
+            globalSetup: ["./test/interop/requireCliBuild.ts"],
           },
           resolve: { alias: srcAliases },
         },

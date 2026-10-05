@@ -38,8 +38,6 @@ import {
   trackScratchDirs,
 } from "../utils/jobFixtures";
 
-import { cliIsBuilt } from "./cliParty";
-
 // The console's authoring cards and the CLI's own parser, met where they touch:
 // the argv the console drives -- the zero-setup form throughout, and the exchange
 // form for the per-run controls both hold. The tokens under test are produced by
@@ -170,7 +168,7 @@ function parseWithRealCli(
   return { status: result.status, stderr: result.stderr };
 }
 
-describe.skipIf(!cliIsBuilt)(
+describe(
   "the console's zero-setup argv is accepted by the CLI's own parser",
   { timeout: SPAWN_TEST_TIMEOUT_MS },
   () => {
