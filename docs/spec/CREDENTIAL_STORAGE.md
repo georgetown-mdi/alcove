@@ -397,6 +397,7 @@ open, and before the diagnostic sink is installed, so no line is written before
 the narrowing. If it fails, the descriptor is released, the empty file removed,
 and the open refused as a usage error (exit 64) before any exchange work begins.
 An existing log file is appended to with the access list it already has.
+A log file created through a dangling symlink is opened by the fallback path and keeps its inherited Windows ACL, though the POSIX mode still applies.
 
 Owner-only on Windows means the owner plus two well-known principals, SYSTEM
 (`S-1-5-18`) and `BUILTIN\Administrators` (`S-1-5-32-544`), which the narrowing
