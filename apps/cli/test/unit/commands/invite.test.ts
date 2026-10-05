@@ -4359,7 +4359,7 @@ test("validateInvite: online from a file:// URL refuses --server-provision", asy
     validateInvite({
       resolved: {
         mode: "online",
-        url: new URL("file:///mnt/share/drop"),
+        url: platformFileUrl("/mnt/share/drop"),
         input,
       },
       options: { ...options, serverProvision: WAKE_PROVISION },

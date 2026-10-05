@@ -565,7 +565,17 @@ describe("alcove apply", () => {
         )}\n`,
       );
 
-      const { exit, stderr } = await runApply(`@${spell(proposal)}`);
+      // path.relative across Windows drives returns an absolute path, so the
+      // run starts on the proposal's own drive.
+      const cwd = process.cwd();
+      process.chdir(path.dirname(proposal));
+      let ran: Awaited<ReturnType<typeof runApply>>;
+      try {
+        ran = await runApply(`@${spell(proposal)}`);
+      } finally {
+        process.chdir(cwd);
+      }
+      const { exit, stderr } = ran;
       expect(exit).toBe("exit:64");
       expect(stderr).toContain("refused by the partnership check");
       expect(stderr).not.toContain("To fix, apply the terms");
