@@ -178,6 +178,8 @@ A leading `~` (or `~/`) in a local filesystem path -- whether given on the comma
 
 Note that `~user` (another user's home) is not resolved.
 
+Every command that takes a path or other positional argument reads the arguments after a `--` separator as positional arguments, never as options, so a path beginning with `-` can be given as `alcove exchange [options] -- -input.csv results.csv`.
+
 When a connection is supplied as a URL, Alcove percent-decodes the host, path, username, and password into the stored connection fields, so a reserved or non-ASCII character must be percent-encoded in the URL and is stored decoded -- for example `sftp://user@host/my%20drop` targets the directory `my drop`, and a percent-encoded password is sent decoded. All URL-to-config paths decode identically. A malformed percent-escape (such as a lone `%`) is rejected with a usage error (exit 64), and the credential is redacted from the message.
 
 An `INPUT_FILE` argument may be given as `-` to read the CSV from standard input instead of a file on disk -- for example, `cat data.csv | alcove exchange - results.csv` -- so a pipeline need not stage a temporary file. This applies to `alcove exchange`, the zero-setup form (`alcove URL INPUT_FILE`), `alcove invite`, `alcove init`, and `alcove verify-receipt` -- for the last, to its `INPUT_FILE` only; the `RESULT_FILE` positional must be a path.

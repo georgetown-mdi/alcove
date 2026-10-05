@@ -83,6 +83,7 @@ import {
   exitWithError,
   INTERNAL_FAULT_EXIT_CODE,
 } from "../util/exit";
+import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
@@ -114,7 +115,12 @@ import type { SigningConfig } from "@alcove/core";
 
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
-    addCsvDelimiterOption(cmd)
+    addCsvDelimiterOption(
+      acceptPositionalsAfterDoubleDash(cmd, {
+        required: ["input"],
+        optional: ["output"],
+      }),
+    )
       .usage(
         "Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FILE]\n\n" +
           "Run a recurring exchange from alcove.yaml and the shared secret in\n" +

@@ -60,6 +60,10 @@ import {
 } from "../invitationDisplay";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
+import {
+  acceptPositionalsAfterDoubleDash,
+  positionalsBeforeDoubleDash,
+} from "../util/doubleDash";
 import { configureLogging } from "../util/logging";
 import { promptConfirm } from "../util/prompt";
 import { resolveRecordOutput } from "../recordFile";
@@ -123,13 +127,20 @@ export const ACCEPT_NEEDS_TERMINAL =
 
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
-    addCsvDelimiterOption(cmd)
+    addCsvDelimiterOption(
+      acceptPositionalsAfterDoubleDash(
+        cmd,
+        { optional: ["args"] },
+        {
+          "unknown-options-as-args": true,
+        },
+      ),
+    )
       // Capture all positionals into `args` (rather than relying on the global
       // `_`) and treat an unknown `-`-leading token as a positional, so an
       // invitation string beginning with `-` (a valid base64url character) is
       // taken as the positional invitation, not a cluster of option flags.
       // Scoped to this command so the other commands' parsing is unaffected.
-      .parserConfiguration({ "unknown-options-as-args": true })
       .positional("args", {
         type: "string",
         array: true,
@@ -1061,7 +1072,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // survives as a positional), which also lets a mistyped `--flag` reach the
       // positionals rather than the top-level strictOptions; reject it here,
       // before the invitation decode, any connection, or any file write.
-      assertNoUnknownOptions(positionals);
+      assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveAcceptPositionals(positionals);
       // --consent-to-terms records advance consent to the invitation's terms and
       // bypasses the confirmation prompt for unattended runs. Read as `=== true`

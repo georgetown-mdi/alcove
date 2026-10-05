@@ -69,6 +69,10 @@ import {
   MAX_TIMEOUT_SECONDS,
   singleValue,
 } from "../util/flags";
+import {
+  acceptPositionalsAfterDoubleDash,
+  positionalsBeforeDoubleDash,
+} from "../util/doubleDash";
 import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
 import { redactUrlCredentials } from "../util/connectionUrl";
@@ -133,12 +137,19 @@ import {
 
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
-    addCsvDelimiterOption(cmd)
+    addCsvDelimiterOption(
+      acceptPositionalsAfterDoubleDash(
+        cmd,
+        { optional: ["args"] },
+        {
+          "unknown-options-as-args": true,
+        },
+      ),
+    )
       // Capture all positionals into `args` (rather than relying on the global
       // `_`) and treat an unknown `-`-leading token as a positional, so an
       // input path is never misread as a flag. Scoped to this command so the
       // other commands' parsing is unaffected.
-      .parserConfiguration({ "unknown-options-as-args": true })
       .positional("args", {
         type: "string",
         array: true,
@@ -1170,7 +1181,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // in the positionals rather than being rejected by the top-level
       // strictOptions; reject it here, before any conflict gate, input read, or
       // token mint.
-      assertNoUnknownOptions(positionals);
+      assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveInvitePositionals(positionals);
       const ready = await validateInvite({
         resolved,

@@ -46,16 +46,25 @@ import { applyCommand, termsProposalPath } from "../termsChange";
 import { resolveAtSignRefs } from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, singleValue } from "../util/flags";
+import {
+  acceptPositionalsAfterDoubleDash,
+  positionalsBeforeDoubleDash,
+} from "../util/doubleDash";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptConfirm } from "../util/prompt";
 
 export function builder(cmd: Argv): Argv {
   return addLoggingOptions(
-    cmd
+    acceptPositionalsAfterDoubleDash(
+      cmd,
+      { optional: ["args"] },
+      {
+        "unknown-options-as-args": true,
+      },
+    )
       // A terms update is base64url and may begin with `-`, so an unknown
       // `-`-leading token is taken as the positional, as accept takes an
       // invitation; a mistyped `--flag` is then refused by the handler.
-      .parserConfiguration({ "unknown-options-as-args": true })
       .positional("args", {
         type: "string",
         array: true,
@@ -277,7 +286,7 @@ export async function handler(argv: Arguments): Promise<void> {
       const positionals = (
         (argv["args"] as Array<unknown> | undefined) ?? []
       ).map(String);
-      assertNoUnknownOptions(positionals);
+      assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       if (positionals.length !== 1)
         throw new UsageError(
           "alcove apply takes exactly one argument, the terms update; " +

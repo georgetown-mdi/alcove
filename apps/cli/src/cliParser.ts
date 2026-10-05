@@ -150,7 +150,7 @@ export function buildCli(argv: string[]): Argv {
         acceptHandler,
       )
       .command(
-        "exchange <input> [output]",
+        "exchange [input] [output]",
         "Run a recurring exchange from alcove.yaml and its key file",
         exchangeBuilder,
         exchangeHandler,
@@ -182,13 +182,13 @@ export function buildCli(argv: string[]): Argv {
         enrollRelayHandler,
       )
       .command(
-        "verify-receipt <record> [input-file] [result-file]",
+        "verify-receipt [record] [input-file] [result-file]",
         "Verify a stored exchange record and open its commitments (read-only)",
         verifyReceiptBuilder,
         verifyReceiptHandler,
       )
       .command(
-        "probe-host-key <sftp-url>",
+        "probe-host-key [sftp-url]",
         "Read and print an SFTP server's host-key fingerprint (no credential sent)",
         probeHostKeyBuilder,
         probeHostKeyHandler,
