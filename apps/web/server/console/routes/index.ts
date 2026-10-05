@@ -3,6 +3,7 @@ import {
   JobIntentUncomposableError,
   JobRendezvousRetainRequiredError,
   JobRendezvousUnavailableError,
+  JobSftpCredentialConsoleOwnedError,
   JobSigningIdentityExposedError,
   MountedSigningPathsUnconvertedError,
   SftpUnavailableError,
@@ -16,6 +17,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
 } from "@jobs/jobCreateRefusal";
@@ -68,7 +70,9 @@ import { defineJobRoute } from "../jobRoute";
  * answers `{ "reason": "mounted-key-file-absent" }` or
  * `{ "reason": "mounted-key-file-invalid" }`, and a signed run of it naming
  * unconverted signing paths answers
- * `{ "reason": "mounted-signing-paths-unconverted" }`. Each is about console state
+ * `{ "reason": "mounted-signing-paths-unconverted" }`, and an sftp intent refused
+ * because a credential file of the saved connection is one of the console's own
+ * files answers `{ "reason": "sftp-credential-console-file" }`. Each is about console state
  * rather than the intent, so the browser cannot otherwise say what to fix.
  *
  * A schema-valid intent that core refuses while the CLI configuration or the
@@ -111,6 +115,11 @@ export const route = defineJobRoute({
         if (error instanceof ZeroSetupFingerprintListError)
           return jobJsonResponse(
             { reason: SFTP_FINGERPRINT_LIST_REFUSAL },
+            400,
+          );
+        if (error instanceof JobSftpCredentialConsoleOwnedError)
+          return jobJsonResponse(
+            { reason: SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL },
             400,
           );
         // The key file beside the opened configuration is missing or is not

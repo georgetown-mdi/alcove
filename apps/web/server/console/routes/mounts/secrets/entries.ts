@@ -1,4 +1,6 @@
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
 import { gateJobRoute } from "@jobs/routeSupport";
+import { isConsoleOwnedFolderName } from "@jobs/consoleOwnedFiles";
 import { jobJsonResponse } from "@jobs/gate";
 import { listMountEntries } from "@jobs/mountBrowse";
 import { useJobSecretsDir } from "@jobs/jobSecrets";
@@ -24,6 +26,12 @@ import { defineJobRoute } from "../../../jobRoute";
  * escaping, or unreadable subpath under a configured mount is
  * `{ configured: true, readable: false, entries: [] }`. No file bytes are read;
  * entry kinds come from `stat` only.
+ *
+ * The top level leaves out the console's own names, as the working folder's
+ * listing does, so a credential browse never offers one; the SFTP settings
+ * route refuses them as credentials whichever way they arrive. A listing asked
+ * with `purpose=signing-identity` ({@link SIGNING_IDENTITY_BROWSE_PURPOSE})
+ * keeps them: it picks where the signing identity is kept.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/mounts/secrets/entries",
@@ -38,10 +46,20 @@ export const route = defineJobRoute({
           readable: true,
           entries: [],
         });
-      const subPath = new URL(request.url).searchParams.getAll("subPath");
+      const params = new URL(request.url).searchParams;
+      const subPath = params.getAll("subPath");
+      const listing = listMountEntries(mountRoot, subPath);
+      const keepConsoleNames =
+        subPath.length > 0 ||
+        params.get("purpose") === SIGNING_IDENTITY_BROWSE_PURPOSE;
       return jobJsonResponse({
         configured: true,
-        ...listMountEntries(mountRoot, subPath),
+        readable: listing.readable,
+        entries: keepConsoleNames
+          ? listing.entries
+          : listing.entries.filter(
+              (entry) => !isConsoleOwnedFolderName(entry.name),
+            ),
       });
     },
   },

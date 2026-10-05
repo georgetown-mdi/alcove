@@ -34,13 +34,19 @@ export const MOUNTED_KEY_FILE_INVALID_REFUSAL = "mounted-key-file-invalid";
 export const MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL =
   "mounted-signing-paths-unconverted";
 
+/** The token for an sftp run refused because a credential file of the saved
+ * connection is one of the console's own files. */
+export const SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL =
+  "sftp-credential-console-file";
+
 /** The refusal tokens a create rejection can name. */
 export type JobCreateRefusalReason =
   | typeof SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL
   | typeof SFTP_FINGERPRINT_LIST_REFUSAL
   | typeof MOUNTED_KEY_FILE_ABSENT_REFUSAL
   | typeof MOUNTED_KEY_FILE_INVALID_REFUSAL
-  | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL;
+  | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
+  | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL;
 
 /** Whether a value read off a create rejection's body is a refusal token this
  * bundle knows. An unknown token is treated as no token at all, so an older
@@ -53,6 +59,7 @@ export function isJobCreateRefusalReason(
     value === SFTP_FINGERPRINT_LIST_REFUSAL ||
     value === MOUNTED_KEY_FILE_ABSENT_REFUSAL ||
     value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
-    value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
+    value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
+    value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
   );
 }

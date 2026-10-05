@@ -80,6 +80,7 @@ export function SigningIdentityLocationField({
         <div ref={pickerRef} tabIndex={-1} style={{ outline: "none" }}>
           <Stack gap="xs">
             <SecretsFilePicker
+              purpose="signingIdentity"
               unconfiguredNotice={
                 <>
                   This console has no separate secrets directory to browse, so

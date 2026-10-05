@@ -111,8 +111,12 @@ function createGate(): { promise: Promise<void>; settle: () => void } {
 
 /** The console's signing endpoint, stubbed at the global fetch boundary the card
  * reaches through, recording each request body so a test can assert what crossed. */
-function stubSigningApi(options: StubOptions = {}): { bodies: Array<string> } {
+function stubSigningApi(options: StubOptions = {}): {
+  bodies: Array<string>;
+  listings: Array<string>;
+} {
   const bodies: Array<string> = [];
+  const listings: Array<string> = [];
   const realFetch = window.fetch.bind(window);
   const responses = options.responses ?? [{ body: okBody() }];
   let requests = 0;
@@ -121,7 +125,8 @@ function stubSigningApi(options: StubOptions = {}): { bodies: Array<string> } {
     "fetch",
     (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
-      if (url.startsWith("/api/jobs/mounts/secrets/entries"))
+      if (url.startsWith("/api/jobs/mounts/secrets/entries")) {
+        listings.push(url);
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -132,6 +137,7 @@ function stubSigningApi(options: StubOptions = {}): { bodies: Array<string> } {
             { status: 200, headers: { "Content-Type": "application/json" } },
           ),
         );
+      }
       if (url !== "/api/jobs/signing/fingerprint")
         return realFetch(input, init);
       const index = requests++;
@@ -151,7 +157,7 @@ function stubSigningApi(options: StubOptions = {}): { bodies: Array<string> } {
     },
   );
 
-  return { bodies };
+  return { bodies, listings };
 }
 
 /** The draft the card last passed the harness, so a test can assert on the
@@ -388,6 +394,13 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
     await chooseCertificateMode();
 
     await pickIdentityLocation(PICKED_IDENTITY);
+    // Asked as an identity browse, which the listing answers with the
+    // console's own names that a credential browse leaves out.
+    expect(stub.listings).not.toHaveLength(0);
+    for (const listing of stub.listings)
+      expect(
+        new URL(listing, "http://localhost").searchParams.get("purpose"),
+      ).toBe("signing-identity");
     await expect
       .element(page.getByRole("button", { name: "Show my fingerprint" }))
       .toBeInTheDocument();

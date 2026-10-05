@@ -17,7 +17,11 @@ import {
 } from "./sftpScratch";
 import { JobApiConfigError } from "./gate";
 import { formatIssues } from "./schemaIssueMessage";
-import { isConsoleOwnedFolderPath } from "./consoleOwnedFiles";
+import {
+  consoleOwnedCredentialEntry,
+  consoleOwnedCredentialMessage,
+  consoleOwnedMountPath,
+} from "./consoleOwnedFiles";
 import { isPathWithin } from "./pathContainment";
 import { resolveMountFile } from "./mountBrowse";
 
@@ -282,6 +286,7 @@ function canonicalizeIfPresent(dir: string): string {
 function validateServerEntry(
   rawEntry: unknown,
   exclusions: Array<CredentialRefExclusion>,
+  ownedRoots: ConsoleOwnedRoots,
 ): { entry: JobSftpServerEntry; credentialWarnings: Array<string> } {
   if (
     rawEntry === null ||
@@ -301,7 +306,12 @@ function validateServerEntry(
   const credentialWarnings: Array<string> = [];
   for (const field of CREDENTIAL_REF_FIELDS)
     credentialWarnings.push(
-      ...collectCredentialRefWarnings(field, entry[field], exclusions),
+      ...collectCredentialRefWarnings(
+        field,
+        entry[field],
+        exclusions,
+        ownedRoots,
+      ),
     );
   assertComposesThroughCoreSchema(entry);
 
@@ -394,6 +404,7 @@ export function validateAuthoredSftpServer(
     const { entry, credentialWarnings } = validateServerEntry(
       rawEntry,
       credentialRefExclusions(dataRoot, rendezvousDirs),
+      { folder: dataRoot, secrets: secretsDir },
     );
     return resolved.materializedPath !== undefined
       ? {
@@ -553,23 +564,32 @@ function resolveMountRefCredential(
       "The credential file you chose is no longer a readable file in " +
         `${CREDENTIAL_MOUNT_LABELS[credential.mount]}. Choose it again.`,
     );
-  if (
-    credential.mount === "folder" &&
-    isConsoleOwnedFolderPath(
-      mountRoot,
-      credential.subPath,
-      resolved.absolutePath,
-    )
-  )
+  const owned = consoleOwnedMountPath(
+    mountRoot,
+    credential.subPath,
+    resolved.absolutePath,
+  );
+  if (owned !== undefined)
     throw new JobApiConfigError(
-      "The file you chose belongs to the console and is not a credential. " +
-        "Choose your credential file instead.",
+      consoleOwnedCredentialMessage(
+        owned,
+        CREDENTIAL_FIELD_LABELS[
+          credential.credType === "password" ? "password" : "privateKey"
+        ],
+      ),
     );
   return {
     kind: "ref",
     ref: `@${resolved.absolutePath}`,
     credType: credential.credType,
   };
+}
+
+/** The mounts whose console-owned top-level entries a credential reference
+ * may not name: the working folder and, when mounted, the secrets directory. */
+interface ConsoleOwnedRoots {
+  folder: string;
+  secrets?: string;
 }
 
 /**
@@ -636,6 +656,9 @@ function assertLiteralFingerprints(fingerprint: string | Array<string>): void {
 /**
  * A credential field must be an `@path` reference to an ABSOLUTE path, and the
  * referenced file must exist at validation time -- all three are hard errors.
+ * So is a reference naming one of the console's own files
+ * ({@link consoleOwnedCredentialEntry}): none of them is ever a credential, so
+ * the refusal costs the operator no valid choice.
  * Existence and canonicalization go through `realpathSync` only -- the secret
  * bytes are never read into the server; the CLI child resolves the reference at
  * exchange time. A reference resolving inside an exclusion (the data root or a
@@ -650,6 +673,7 @@ function collectCredentialRefWarnings(
   field: (typeof CREDENTIAL_REF_FIELDS)[number],
   value: string | undefined,
   exclusions: Array<CredentialRefExclusion>,
+  ownedRoots: ConsoleOwnedRoots,
 ): Array<string> {
   if (value === undefined) return [];
   const fieldPath = `server.${field}`;
@@ -675,6 +699,11 @@ function collectCredentialRefWarnings(
         "found. Choose the file from your folder instead of typing it.",
     );
   }
+  const owned = consoleOwnedCredentialEntry(resolvedRef, ownedRoots);
+  if (owned !== undefined)
+    throw new JobApiConfigError(
+      consoleOwnedCredentialMessage(owned, CREDENTIAL_FIELD_LABELS[field]),
+    );
   const excluded =
     matchedExclusion(resolvedRef, exclusions) ??
     matchedExclusion(realRef, exclusions);

@@ -19,6 +19,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
 } from "@jobs/jobCreateRefusal";
 import {
@@ -511,6 +512,27 @@ describe("failureFor", () => {
     expect(failure.message).toContain("Edit connection");
     expect(failure.message).toContain("keep only the fingerprint");
     expect(failure.message).not.toContain("file");
+  });
+
+  test("an sftp run refused over a console file as its credential names the saved connection", () => {
+    const failure = failureFor(
+      "config",
+      new JobApiRequestError(
+        400,
+        "POST /api/jobs failed with status 400",
+        undefined,
+        SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
+      ),
+      WORK_FILE,
+      "sftp",
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe(
+      "The saved SFTP connection uses one of the console's own files",
+    );
+    expect(failure.message).toContain("signing identity");
+    expect(failure.message).toContain("Edit connection");
+    expect(failure.message).toContain("SFTP password or private key");
   });
 
   test.each([

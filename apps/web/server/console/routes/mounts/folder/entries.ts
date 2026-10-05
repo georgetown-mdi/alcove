@@ -17,9 +17,9 @@ import { defineJobRoute } from "../../../jobRoute";
  * The body is `{ configured: true, readable, entries }`, the secrets listing's
  * shape; the working folder is always configured while the API is on. No file
  * bytes are read. The console's own top-level files -- the key file, the
- * configuration and its saved copy, the signing certificate, and the job
- * working directories -- are left out, so the picker never offers the
- * exchange's secret as a credential.
+ * configuration and its saved copy, the signing identity and its certificate,
+ * and the job working directories -- are left out, so the picker never offers
+ * one of them as a credential.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/mounts/folder/entries",

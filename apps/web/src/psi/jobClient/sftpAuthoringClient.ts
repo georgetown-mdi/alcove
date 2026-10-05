@@ -10,6 +10,8 @@ import {
   isRecord,
   readJsonOrNull,
 } from "./jobApiBody";
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
+
 import { sftpConnectionProjectionOf } from "./serverJobExchangeDriver";
 
 import type { AuthoredSftpServerRequest } from "@jobs/sftpServer";
@@ -118,15 +120,22 @@ function secretsEntriesOf(body: unknown): SecretsEntriesResult | null {
  * the working folder when none is mounted. */
 export type CredentialMount = "secrets" | "folder";
 
+/** What a mount browse picks: an SFTP credential file, or the signing
+ * identity's location ({@link SIGNING_IDENTITY_BROWSE_PURPOSE}). */
+export type MountBrowsePurpose = "credential" | "signingIdentity";
+
 /** Build the `?subPath=...&subPath=...` query: one value per path segment, never a
  * single slash-joined string, so a `/` inside a value can never compose a
  * traversal (the server enforces the same). */
 function mountEntriesUrl(
   mount: CredentialMount,
   subPath: Array<string>,
+  purpose: MountBrowsePurpose,
 ): string {
   const params = new URLSearchParams();
   for (const segment of subPath) params.append("subPath", segment);
+  if (purpose === "signingIdentity")
+    params.append("purpose", SIGNING_IDENTITY_BROWSE_PURPOSE);
   const query = params.toString();
   return `/api/jobs/mounts/${mount}/entries${query === "" ? "" : `?${query}`}`;
 }
@@ -147,9 +156,10 @@ export async function fetchMountEntries(
   mount: CredentialMount,
   subPath: Array<string>,
   fetchImpl: typeof fetch = fetch,
+  purpose: MountBrowsePurpose = "credential",
 ): Promise<SecretsEntriesResult> {
   try {
-    const response = await fetchImpl(mountEntriesUrl(mount, subPath), {
+    const response = await fetchImpl(mountEntriesUrl(mount, subPath, purpose), {
       method: "GET",
     });
     if (response.status === 404) return { kind: "disabled" };
