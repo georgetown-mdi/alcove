@@ -7,6 +7,7 @@ import {
   failureCauseOf,
   failureCauseSentence,
   formatWaitDuration,
+  relayRegistrarUnreachableRemedy,
   markFailureCause,
   type FailureCause,
   type FailureCauseKind,
@@ -113,6 +114,20 @@ describe("the failure-cause catalog", () => {
       "The relay registrar's host name relay.example.org did not resolve to an address (ENOTFOUND).",
       "The relay registrar at relay.example.org port 8443 closed the connection without answering (ECONNRESET).",
       "The relay registrar at relay.example.org port 8443 did not answer within 15 seconds.",
+    ]);
+  });
+
+  test("the registrar remedy names no setting or file for any class", () => {
+    expect(
+      SAMPLES["relay-registrar-unreachable"].map((cause) =>
+        relayRegistrarUnreachableRemedy(cause),
+      ),
+    ).toEqual([
+      "This computer needs outbound access to relay.example.org on TCP port 8443: if this network allows only some ports out, have that port opened or run from a network that allows it.",
+      "This computer needs outbound access to relay.example.org on TCP port 8443: if this network allows only some ports out, have that port opened or run from a network that allows it.",
+      "Check the registrar address this exchange is configured with and that this computer's DNS resolves relay.example.org, then run again.",
+      "The registrar did not complete the request: check that it is running and reachable from this network, then run again.",
+      "The registrar did not complete the request: check that it is running and reachable from this network, then run again.",
     ]);
   });
 

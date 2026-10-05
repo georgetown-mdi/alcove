@@ -58,7 +58,23 @@ export const CLI_FAILURE_REMEDIES: {
     code === "ENOENT"
       ? "Create or mount the folder, or correct its path, then run again."
       : "Correct the path so it names a folder, then run again.",
-  "relay-registrar-unreachable": relayRegistrarUnreachableRemedy,
+  "relay-registrar-unreachable": (cause) => {
+    switch (cause.failure) {
+      case "no-connection":
+        return relayRegistrarUnreachableRemedy(cause);
+      case "name-not-resolved":
+        return (
+          "Check the registrar address in connection.relay_registrar.url and " +
+          `that this computer's DNS resolves ${cause.host}, then run again.`
+        );
+      case "no-answer":
+        return (
+          "The registrar did not complete the request: check that it is " +
+          "running and reachable from this network " +
+          "(infra/relay/README.md, The registrar), then run again."
+        );
+    }
+  },
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

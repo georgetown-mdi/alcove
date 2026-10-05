@@ -268,11 +268,7 @@ function relayRegistrarUnreachableSentence(
     : `${at} closed the connection without answering (${cause.code}).`;
 }
 
-/**
- * The remedy for a relay registrar that did not answer, by class: the same
- * sentence in every app, since the registrar address is set in the
- * configuration and no app holds a flag or control for it.
- */
+/** The remedy for a relay registrar that did not answer (docs/notes/failure-cause-catalog.md). */
 export function relayRegistrarUnreachableRemedy({
   host,
   port,
@@ -287,14 +283,13 @@ export function relayRegistrarUnreachableRemedy({
       );
     case "name-not-resolved":
       return (
-        "Check the registrar address in connection.relay_registrar.url and " +
+        "Check the registrar address this exchange is configured with and " +
         `that this computer's DNS resolves ${host}, then run again.`
       );
     case "no-answer":
       return (
-        "The registrar did not complete the " +
-        "request: check that it is running and reachable from this network " +
-        "(infra/relay/README.md, The registrar), then run again."
+        "The registrar did not complete the request: check that it is " +
+        "running and reachable from this network, then run again."
       );
   }
 }

@@ -152,6 +152,31 @@ describe("a console run that failed on a catalog cause", () => {
     expect(failure.message).not.toContain(CONNECTION_TUNING_HEADING);
   });
 
+  test("a registrar name that does not resolve and a registrar that does not answer take core's remedy as is", () => {
+    const resolved = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["relay-registrar-unreachable"][1],
+        exitCode: 69,
+      }),
+    );
+    expect(resolved.message).toContain(
+      "Check the registrar address this exchange is configured with and " +
+        "that this computer's DNS resolves relay.example.org, then run again.",
+    );
+    const silent = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["relay-registrar-unreachable"][2],
+        exitCode: 69,
+      }),
+    );
+    expect(silent.message).toContain(
+      "The registrar did not complete the request: check that it is " +
+        "running and reachable from this network, then run again.",
+    );
+  });
+
   test("a failure this browser raised keeps its own copy whatever it holds", () => {
     // Only a relayed failure takes the console's remedy: the public web app
     // does not draw on the catalog.
