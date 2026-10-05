@@ -2255,18 +2255,21 @@ working folder, the run backs it up there without asking:
   results are delivered, and only where the folder grant still holds with
   nobody present -- the same check the results write makes, which never
   prompts.
-- **What it writes.** The same file "Back up this exchange" downloads, with the
-  same contents, under a name stating the date and time it was written (the
-  exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
+- **What it writes.** The same contents "Back up this exchange" downloads,
+  under a name stating the exchange's label and the date and time it was
+  written (the exact name: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
   It is written into the working folder and nowhere else.
+- **What it replaces.** Once the new file is in the folder, the backup the
+  previous scheduled run wrote there is deleted. A backup saved into the folder
+  by hand is never deleted, nor is any other file.
 - **What it changes.** Once the file is in the folder, the exchange reads
   "backed up as of <date>, written to the folder <name> as <file name>"
   (without the folder's name where it is longer than the stored bound), and
   no backup notification fires for that run.
 - **What the operator is told.** The file holds the exchange's shared secret,
-  and the files from earlier runs stay in the folder. Both where the folder is
-  chosen and once it is granted, the exchange says so, and asks for a folder
-  only the operator can read on this device and for older backups to be
+  and replaces the previous run's. Both where the folder is chosen and once it
+  is granted, the exchange says so, and asks for a folder only the operator
+  can read on this device and for any other backup of the exchange there to be
   deleted once no longer needed.
 
 The exchange still asks for a backup, at the next visit and in the
@@ -2280,14 +2283,22 @@ notification, exactly as it would without this step, when:
   folder -- which is left untouched;
 - the write fails, or the secret changes again before the backup is recorded.
 
+A write that fails leaves the previous run's backup in the folder.
+
 A failure never changes the run's outcome: the run has rotated and filed its
 disclosure, and its results are delivered as before. An attended run does not
 write this file; its completion screen offers "download updated backup".
 
-Each scheduled run that completes writes a new file, and the older ones stay
-in the folder. Only the newest restores the exchange; an older one holds a secret the
-partnership has rotated past (see [Desync detection and
-recovery](#desync-detection-and-recovery)). Delete the older files, and keep
+Each scheduled run that completes writes a new file and deletes the one the
+previous run wrote. An older backup can still be left in the folder: one from
+before a run that wrote no backup there (an attended run, or a scheduled run
+whose backup did not land), one the folder would not let the app delete, one
+left when the stored exchange changed while the backup was being written (the
+backup is written but not recorded, so the earlier file stays as well), or one
+saved there by hand. Only the newest restores the exchange; an
+older one holds a secret the partnership has rotated past (see [Desync
+detection and recovery](#desync-detection-and-recovery)). Delete the older
+files, and keep
 the folder used for nothing else: anyone who can read it can read the current
 secret, as with the command line's `.alcove.key` in its working directory (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).

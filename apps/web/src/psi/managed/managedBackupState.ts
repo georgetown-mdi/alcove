@@ -43,6 +43,26 @@ export type ManagedBackupLocation =
   | { kind: "downloaded"; fileName: string }
   | { kind: "folder"; folderName?: string; fileName: string };
 
+/** A backup written into the working folder, which only a scheduled run's
+ * automatic backup does. */
+export type ManagedFolderBackupLocation = Extract<
+  ManagedBackupLocation,
+  { kind: "folder" }
+>;
+
+/**
+ * The automatic backup a marker records, or `undefined` where the marker
+ * records none: a download, an import, or no marker at all. The marker is the
+ * one record of which file the app wrote itself, so it alone decides what a
+ * later automatic backup may replace; a file that merely looks like one by its
+ * name is never taken for it.
+ */
+export function automaticBackupOnMarker(
+  marker: ManagedBackupMarker | undefined,
+): ManagedFolderBackupLocation | undefined {
+  return marker?.savedAs?.kind === "folder" ? marker.savedAs : undefined;
+}
+
 /** The derived backup state the UI shows:
  *
  * - `"backed-up"` -- a current export exists (the marker is present, and it is

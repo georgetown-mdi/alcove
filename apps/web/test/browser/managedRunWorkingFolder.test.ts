@@ -133,7 +133,8 @@ describe("a backup a scheduled run wrote into the working folder", () => {
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: folder }),
     );
-    const fileName = "alcove-managed-backup-2026-07-14T120000Z.json";
+    const fileName =
+      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
     expect(
       await markManagedBackupIfCurrent(
         created.id,
@@ -160,7 +161,8 @@ describe("a backup a scheduled run wrote into the working folder", () => {
     const created = await createManagedExchange(
       newExchange({ workingDirectoryHandle: folder }),
     );
-    const fileName = "alcove-managed-backup-2026-07-14T120000Z.json";
+    const fileName =
+      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-14T120000Z.json";
     expect(
       await markManagedBackupIfCurrent(
         created.id,

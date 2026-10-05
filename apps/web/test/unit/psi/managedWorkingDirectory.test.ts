@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   chooseManagedWorkingDirectory,
+  removeBackupFromWorkingFolder,
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
   writeResultsToWorkingDirectory,
@@ -364,5 +365,94 @@ describe("writing a completed run's results into its exchange's folder", () => {
       ),
     ).resolves.toEqual({ kind: "no-folder" });
     expect(folder.opened).toEqual([]);
+  });
+});
+
+describe("removing the previous automatic backup from the folder", () => {
+  const PREVIOUS =
+    "alcove-scheduled-backup-Riverbend-quarterly-2026-03-01T140000Z.json";
+
+  /** A folder holding `files` as files and `directories` as directories,
+   * refusing a lookup of anything else as the platform does. */
+  function folderHolding(
+    files: Array<string>,
+    directories: Array<string> = [],
+  ) {
+    const names = new Set(files);
+    const handle = {
+      name: "Riverbend results",
+      getFileHandle: (fileName: string) => {
+        if (directories.includes(fileName))
+          return Promise.reject(
+            new DOMException("a directory", "TypeMismatchError"),
+          );
+        return names.has(fileName)
+          ? Promise.resolve({})
+          : Promise.reject(new DOMException("no entry", "NotFoundError"));
+      },
+      removeEntry: vi.fn((fileName: string) => {
+        names.delete(fileName);
+        return Promise.resolve();
+      }),
+    };
+    return {
+      names,
+      handle,
+      record: {
+        workingDirectoryHandle: handle as unknown as FileSystemDirectoryHandle,
+      },
+    };
+  }
+
+  test("removes the named file and nothing else", async () => {
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+    const folder = folderHolding([PREVIOUS, "kept-by-hand.json"]);
+    const permission = fakePermission("granted");
+
+    await expect(
+      removeBackupFromWorkingFolder(folder.record, PREVIOUS, permission),
+    ).resolves.toEqual({ kind: "removed" });
+    expect([...folder.names]).toEqual(["kept-by-hand.json"]);
+    expect(permission.modes).toEqual(["readwrite"]);
+    expect(permission.requested).toBe(false);
+  });
+
+  test("reports a file already gone as absent", async () => {
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+    const folder = folderHolding([]);
+    await expect(
+      removeBackupFromWorkingFolder(
+        folder.record,
+        PREVIOUS,
+        fakePermission("granted"),
+      ),
+    ).resolves.toEqual({ kind: "absent" });
+  });
+
+  test("reports a record with no working folder as no-folder", async () => {
+    await expect(
+      removeBackupFromWorkingFolder({}, PREVIOUS, fakePermission("granted")),
+    ).resolves.toEqual({ kind: "no-folder" });
+  });
+
+  test("leaves a directory under the name, and a folder it may not use, untouched", async () => {
+    vi.stubGlobal("FileSystemDirectoryHandle", class {});
+    const directory = folderHolding([], [PREVIOUS]);
+    await expect(
+      removeBackupFromWorkingFolder(
+        directory.record,
+        PREVIOUS,
+        fakePermission("granted"),
+      ),
+    ).resolves.toMatchObject({ kind: "remove-failed" });
+    expect(directory.handle.removeEntry).not.toHaveBeenCalled();
+
+    const ungranted = folderHolding([PREVIOUS]);
+    const permission = fakePermission("prompt");
+    await expect(
+      removeBackupFromWorkingFolder(ungranted.record, PREVIOUS, permission),
+    ).resolves.toMatchObject({ kind: "remove-failed" });
+    expect(ungranted.names.has(PREVIOUS)).toBe(true);
+    expect(permission.requested).toBe(false);
   });
 });

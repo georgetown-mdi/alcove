@@ -61,10 +61,12 @@ import {
 import { runResultsFileName } from "../parkedResults";
 
 import {
+  removeBackupFromWorkingFolder,
   unallocatedResultsMessage,
   writeBackupToWorkingFolder,
   writeRunResultsToWorkingFolder,
 } from "./managedWorkingDirectory";
+import { automaticBackupOnMarker } from "./managedBackupState";
 import { backUpManagedExchangeToFolder } from "./managedExchangeExport";
 
 import {
@@ -79,7 +81,10 @@ import {
   markManagedBackupIfCurrent,
   persistManagedExchangeScheduleAdvance,
 } from "./managedExchangeStore";
-import { listReadableManagedLocalState } from "./managedLocalState";
+import {
+  getManagedLocalState,
+  listReadableManagedLocalState,
+} from "./managedLocalState";
 import { runManagedExchangeInBrowser } from "./managedRunDriver";
 import { tickManagedSchedules } from "./managedScheduleRunner";
 
@@ -98,6 +103,7 @@ import type {
 } from "./managedExchangeExport";
 import type { BetweenVisitNotice } from "./betweenVisitNotice";
 import type { ManagedExchangeRunResult } from "./managedExchangeRun";
+import type { ManagedFolderBackupLocation } from "./managedBackupState";
 import type { ManagedLocalState } from "./managedLocalStateShape";
 
 import type {
@@ -358,6 +364,7 @@ async function runUnattendedAttempt(
     },
   };
   try {
+    const previousBackup = await previousAutomaticBackup(attempt.record.id);
     const result = await runManagedExchangeInBrowser({
       record: attempt.record,
       source: attempt.source,
@@ -389,7 +396,11 @@ async function runUnattendedAttempt(
       created,
       pairTableFactors,
     );
-    await backUpUnattendedRun(attempt.record.id);
+    await backUpUnattendedRun(
+      attempt.record.id,
+      browserFolderBackupDeps(),
+      previousBackup,
+    );
   } finally {
     for (const url of created.keys()) window.URL.revokeObjectURL(url);
   }
@@ -490,9 +501,32 @@ export function browserFolderBackupDeps(): ManagedFolderBackupDeps {
     readRecord: getManagedExchange,
     writeToFolder: (record, fileName, content) =>
       writeBackupToWorkingFolder(record, fileName, content),
+    removeFromFolder: (record, fileName) =>
+      removeBackupFromWorkingFolder(record, fileName),
     markIfCurrent: markManagedBackupIfCurrent,
     now: () => new Date(),
   };
+}
+
+/**
+ * The automatic backup a record's marker names, read before the run: its
+ * rotation clears the marker, and with it the one record of which file the
+ * next backup replaces. `undefined` where the marker names none, or cannot be
+ * read, so nothing is removed.
+ */
+async function previousAutomaticBackup(
+  id: string,
+): Promise<ManagedFolderBackupLocation | undefined> {
+  try {
+    return automaticBackupOnMarker((await getManagedLocalState(id))?.backup);
+  } catch (error) {
+    log.warn(
+      `scheduled managed exchange ${id}: its backup marker could not be read, ` +
+        `so the backup this run writes replaces no earlier one:`,
+      error,
+    );
+    return undefined;
+  }
 }
 
 /**
@@ -502,15 +536,23 @@ export function browserFolderBackupDeps(): ManagedFolderBackupDeps {
  * backup marker unstamped, so the exchange asks for a backup at the next visit
  * and, where notifications are on, in the notice for this window, as it would
  * have without this step. Every such outcome but the no-folder one also reaches
- * the diagnostic log.
+ * the diagnostic log, as does a `previous` backup the folder would not let go.
  *
  * Never rejects: the run has rotated and filed its disclosure already.
  */
 export async function backUpUnattendedRun(
   id: string,
   deps: ManagedFolderBackupDeps = browserFolderBackupDeps(),
+  previous?: ManagedFolderBackupLocation,
 ): Promise<ManagedFolderBackup> {
-  const backup = await backUpManagedExchangeToFolder(id, deps);
+  const backup = await backUpManagedExchangeToFolder(id, deps, previous);
+  const replaced = "previous" in backup ? backup.previous : undefined;
+  if (replaced?.kind === "remove-failed")
+    log.warn(
+      `scheduled managed exchange ${id}: the previous backup ` +
+        `${replaced.fileName} could not be removed from its working folder`,
+      replaced.error,
+    );
   const notBackedUp = (cause: string) =>
     `scheduled managed exchange ${id} not backed up into its working folder: ` +
     `${cause}; it asks for a backup`;
