@@ -128,6 +128,13 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
       kind: "relay-registrar-unreachable",
       host: "relay.example.org",
       port: 8443,
+      failure: "no-connection",
+      code: "UND_ERR_CONNECT_TIMEOUT",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
       failure: "name-not-resolved",
       code: "ENOTFOUND",
     },

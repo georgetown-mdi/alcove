@@ -44,6 +44,7 @@ test.each([
   ["https://relay.example.org:8443/exchanges", "no path"],
   ["https://relay.example.org:8443?x=1", "no path"],
   ["relay.example.org", "not a url"],
+  ["https://relay.example.org:0", "1-65535"],
 ])("the registrar url %s is refused", (url, expected) => {
   expect(messages(webrtc({ url, exchange_id: "exchange-1" }))).toContain(
     expected,
