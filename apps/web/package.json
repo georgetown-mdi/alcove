@@ -14,7 +14,7 @@
     "build:hosted": "VITE_DEPLOYMENT_PROFILE=hosted vite build --config vite.hosted.config.ts",
     "build:console": "VITE_DEPLOYMENT_PROFILE=console vite build --config vite.console.config.ts",
     "build:console-server": "VITE_DEPLOYMENT_PROFILE=console vite build --config vite.console.config.ts --ssr server/console/main.ts",
-    "lint": "npx eslint src server",
+    "lint": "npx eslint src server hosted vite.hosted.config.ts",
     "type-check": "tsc --noEmit",
     "start": "node --env-file=.env .output/server/index.mjs",
     "test": "vitest run --project unit",

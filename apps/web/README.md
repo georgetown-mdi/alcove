@@ -81,10 +81,8 @@ It regenerates with the generator the lockfile pins, compares byte for byte, and
 ## Hosted static build
 
 `npm run build:hosted -w apps/web` writes the hosted app as a static site to `dist/hosted/`, beside the TanStack Start build `npm run build` writes to `.output/`.
-It is the single-page client `src/hostedClient.tsx`, with one document per path in the app-shell worker's `SHELL_ROUTES` (`public/serviceWorker.js`), the root's as `index.html` and `/saved/_` as `saved/_.html`.
-Each document is `hosted/index.html` with the root route's head and a link to every script and stylesheet that route's code statically imports, so the worker's warm, which caches what a route's document names, finds the whole route; `hosted/routeDocuments.ts` writes them.
-
-The build writes no `_redirects` or `404.html`, and fails if one is present in its output: with neither, Cloudflare Pages answers an unmatched path with the root `index.html`, while a catch-all rewrite to a document loops there.
+It is the single-page client `src/hostedClient.tsx`, with one document per path in the app-shell worker's `SHELL_ROUTES`.
+Which assets each document links and why the build writes no `_redirects` or `404.html`: [docs/notes/hosted-static-build.md](../../docs/notes/hosted-static-build.md).
 
 ## Erasable syntax in the config's import graph
 

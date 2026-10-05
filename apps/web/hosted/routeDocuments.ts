@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
+import { ColorSchemeScript } from "@mantine/core";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ColorSchemeScript } from "@mantine/core";
 
 import { rootDocumentHead } from "../src/utils/documentHead.ts";
 
@@ -39,9 +39,9 @@ function rootHeadTags(): Array<HtmlTagDescriptor> {
         attrs: { charset: entry.charSet },
         injectTo: "head-prepend",
       };
-    const attrs = Object.fromEntries(
-      Object.entries(entry).filter(([, value]) => value !== undefined),
-    ) as Record<string, string>;
+    const attrs: Record<string, string> = {};
+    for (const [key, value] of Object.entries(entry))
+      if (typeof value === "string") attrs[key] = value;
     return { tag: "meta", attrs, injectTo: "head-prepend" };
   });
   const links = rootDocumentHead.links.map((entry): HtmlTagDescriptor => ({
@@ -157,7 +157,7 @@ export function hostedRouteDocuments(templateFileName: string): Plugin {
       order: "post",
       handler(_options, bundle) {
         const template = bundle[templateFileName];
-        if (template?.type !== "asset")
+        if (template.type !== "asset")
           throw new Error(`the hosted build emitted no ${templateFileName}`);
         const shell = String(template.source);
         delete bundle[templateFileName];

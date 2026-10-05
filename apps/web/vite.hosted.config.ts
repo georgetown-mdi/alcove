@@ -13,8 +13,6 @@ const appRoot = import.meta.dirname;
 // generates is never rewritten; router.tsx's import of it resolves here.
 const hostedRouteTree = path.join(appRoot, ".tanstack/hosted/routeTree.gen.ts");
 
-// The template's path relative to the app root, which is also its output name
-// before the route documents replace it.
 const template = "hosted/index.html";
 
 /**
@@ -50,6 +48,7 @@ export default defineConfig({
   build: {
     outDir: "dist/hosted",
     emptyOutDir: true,
+    manifest: true,
     rollupOptions: { input: path.join(appRoot, template) },
   },
 });

@@ -42,14 +42,31 @@ export function serviceWorkerString(name: string): string {
 }
 
 /** A string-array constant declared at the worker's top level, read from its
- * source for the same reason as {@link serviceWorkerConstant}. */
-export function serviceWorkerStringArray(name: string): Array<string> {
-  const block = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`).exec(
-    serviceWorkerSource(),
-  );
-  if (block === null)
+ * source for the same reason as {@link serviceWorkerConstant}. Comments inside
+ * the array are skipped, and an entry that does not start with `/` throws.
+ * @param source - the worker source; the shipped worker when omitted. */
+export function serviceWorkerStringArray(
+  name: string,
+  source: string = serviceWorkerSource(),
+): Array<string> {
+  const declaration = new RegExp(`const ${name} = \\[`).exec(source);
+  if (declaration === null)
     throw new Error(`serviceWorker.js declares no array const ${name}`);
-  return [...block[1].matchAll(/"([^"]*)"/g)].map((match) => match[1]);
+  const entries: Array<string> = [];
+  let position = declaration.index + declaration[0].length;
+  while (position < source.length && source[position] !== "]") {
+    const rest = source.slice(position);
+    const skipped = /^(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/)/.exec(rest);
+    const quoted = /^"([^"]*)"/.exec(rest);
+    if (quoted !== null) entries.push(quoted[1]);
+    position += (skipped ?? quoted)?.[0].length ?? 1;
+  }
+  const malformed = entries.find((entry) => !entry.startsWith("/"));
+  if (malformed !== undefined)
+    throw new Error(
+      `serviceWorker.js ${name} entry "${malformed}" does not start with "/"`,
+    );
+  return entries;
 }
 
 /** The extensions the worker will store, read from the keys of its

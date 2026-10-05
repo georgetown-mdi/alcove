@@ -3,15 +3,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { setDefaultLevel } from "loglevel";
 
-import { captureInstallPrompt } from "@utils/installPrompt";
 import { isConsoleBuild, logLevel } from "@utils/clientConfig";
+import { captureInstallPrompt } from "@utils/installPrompt";
 import { registerAppShell } from "@utils/appShellUpdate";
 
 import { getRouter } from "./router";
-
-// The hosted static build's entry: the console's single-page entry plus the two
-// things client.tsx does for the hosted profile only, holding the browser's
-// install offer and registering the app-shell worker.
 
 setDefaultLevel(logLevel());
 
