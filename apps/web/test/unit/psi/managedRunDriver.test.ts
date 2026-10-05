@@ -42,7 +42,10 @@ import {
 } from "../../../src/recurring/managedRunLaunchModel.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
-import { beginManagedRendezvous } from "../../../src/psi/managed/managedRendezvous.js";
+import {
+  assertManagedRendezvousPossible,
+  beginManagedRendezvous,
+} from "../../../src/psi/managed/managedRendezvous.js";
 import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
 import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
@@ -127,6 +130,7 @@ vi.mock("../../../src/psi/managed/managedRun.js", async (importOriginal) => ({
   ),
 }));
 vi.mock("../../../src/psi/managed/managedRendezvous.js", () => ({
+  assertManagedRendezvousPossible: vi.fn(),
   beginManagedRendezvous: vi.fn(),
 }));
 vi.mock("../../../src/psi/transport/peerMessageConnection.js", () => ({
@@ -418,9 +422,11 @@ describe("runManagedExchangeInBrowser", () => {
     });
 
     expect(mockedRendezvous).toHaveBeenCalledWith(
-      RECORD.side,
-      "rotated-secret",
-      lockedExchangeFile,
+      expect.objectContaining({
+        side: RECORD.side,
+        sharedSecret: "rotated-secret",
+        exchangeFile: lockedExchangeFile,
+      }),
       expect.anything(),
     );
     expect(mockedAuthenticate).toHaveBeenCalledWith(
@@ -921,7 +927,7 @@ describe("the peer-wait bound", () => {
    * acquisition that registers the peer, and the inbound wait that follows it. */
   function rendezvousOptions() {
     return {
-      acquisition: mockedRendezvous.mock.calls[0][3],
+      acquisition: mockedRendezvous.mock.calls[0][1],
       inboundWait: mockedWaitForIncoming.mock.calls[0][1],
     };
   }
@@ -1689,5 +1695,23 @@ describe("filing a stopped run's disclosure", () => {
     // disclosure went unfiled, which this run cannot show happened.
     expect(mockedNoteUnfiled).not.toHaveBeenCalled();
     logged.mockRestore();
+  });
+});
+
+describe("a saved signaling address the rendezvous refuses", () => {
+  test("stops the run before the rendezvous and the PSI library load", async () => {
+    const refusal = new Error("the saved signaling address was refused");
+    vi.mocked(assertManagedRendezvousPossible).mockImplementationOnce(() => {
+      throw refusal;
+    });
+    acquireResources();
+
+    const rejection = await runDriver(new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBe(refusal);
+    expect(mockedRendezvous).not.toHaveBeenCalled();
+    expect(loadPsiBackend).not.toHaveBeenCalled();
   });
 });

@@ -9,8 +9,11 @@ import {
 } from "@alcove/core";
 
 import {
+  ManagedSignalingEndpointRefusedError,
+  assertManagedRendezvousPossible,
   assertManagedRerunDispatchable,
   beginManagedRendezvous,
+  managedAcceptorSignalingEndpoint,
 } from "@psi/managed/managedRendezvous";
 import { BROKER_REGISTRATION_TIMEOUT_MS } from "@psi/transport/rendezvous";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
@@ -23,14 +26,30 @@ import type {
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
 
+import type { ManagedExchangeSide } from "@psi/managed/managedExchangeRecord";
 import type { ManagedRendezvousFlows } from "@psi/managed/managedRendezvous";
 
 // The side-dispatched rendezvous, tested in Node with the rendezvous flows faked:
 // the record's local `side` selects listenAsInviter vs dialAsAcceptor, the
 // current sharedSecret goes to whichever runs (its peer id derives fresh, never
-// from storage), and the acceptor's dial endpoint comes from the app's OWN
-// location, not the stored document's server locator, which the spec keeps inert
-// (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Role: a local side field").
+// from storage), and the acceptor dials the signaling server its record saved,
+// never the app's own location.
+
+const LABEL = "Riverbend quarterly";
+
+/** Begin the rendezvous for a record of `side` holding `sharedSecret` and
+ * `exchangeFile`. */
+function begin(
+  side: ManagedExchangeSide,
+  sharedSecret: string,
+  file: ExchangeSpec,
+  options?: Parameters<typeof beginManagedRendezvous>[1],
+) {
+  return beginManagedRendezvous(
+    { side, sharedSecret, exchangeFile: file, label: LABEL },
+    options,
+  );
+}
 
 // Every locator field differs from the stubbed app location below, so an
 // assertion on the dial endpoint distinguishes the two sources.
@@ -111,12 +130,9 @@ describe("beginManagedRendezvous: side dispatch", () => {
     const secret = generateSharedSecret();
     const { flows, inviterCalls, acceptorCalls } = recordingFlows();
 
-    const acquisition = await beginManagedRendezvous(
-      "inviter",
-      secret,
-      exchangeFile(),
-      { flows },
-    );
+    const acquisition = await begin("inviter", secret, exchangeFile(), {
+      flows,
+    });
 
     expect(acquisition.side).toBe("inviter");
     expect(inviterCalls).toEqual([{ secret }]);
@@ -129,12 +145,9 @@ describe("beginManagedRendezvous: side dispatch", () => {
     const secret = generateSharedSecret();
     const { flows, inviterCalls, acceptorCalls } = recordingFlows();
 
-    const acquisition = await beginManagedRendezvous(
-      "acceptor",
-      secret,
-      exchangeFile(),
-      { flows },
-    );
+    const acquisition = await begin("acceptor", secret, exchangeFile(), {
+      flows,
+    });
 
     expect(acquisition.side).toBe("acceptor");
     expect(inviterCalls).toHaveLength(0);
@@ -142,42 +155,44 @@ describe("beginManagedRendezvous: side dispatch", () => {
     expect(acceptorCalls[0].secret).toBe(secret);
   });
 
-  test("the acceptor dials the app's own location; the stored locator is inert", async () => {
+  test("the acceptor dials the signaling server its record saved, not the app's own", async () => {
     stubAppLocation();
     const { flows, acceptorCalls } = recordingFlows();
 
-    await beginManagedRendezvous(
+    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
+
+    expect(acceptorCalls[0].endpoint).toEqual({
+      channel: "webrtc",
+      host: webrtcLocator.host,
+      port: webrtcLocator.port,
+      path: webrtcLocator.path,
+    });
+  });
+
+  test("a saved address with no port or path is dialled as saved, the defaults left to the dial", async () => {
+    const { flows, acceptorCalls } = recordingFlows();
+
+    await begin(
       "acceptor",
       generateSharedSecret(),
-      exchangeFile(),
+      exchangeFile({ channel: "webrtc", host: "signaling.example.org" }),
       { flows },
     );
 
-    // The dial endpoint derives from the app's own location (origin isolation: a
-    // record exists only at the origin it was deposited at), never from the
-    // document's persisted server locator, which the spec keeps inert.
-    const endpoint = acceptorCalls[0].endpoint;
-    expect(endpoint).toEqual({
+    expect(acceptorCalls[0].endpoint).toEqual({
       channel: "webrtc",
-      host: "app.example.test",
-      port: 3000,
-      path: "/api/",
+      host: "signaling.example.org",
     });
-    expect(endpoint.host).not.toBe(webrtcLocator.host);
-    expect(endpoint.port).not.toBe(webrtcLocator.port);
-    expect(endpoint.path).not.toBe(webrtcLocator.path);
   });
 
   test("passes a supplied peer-wait bound into the acceptor's dial budget", async () => {
     stubAppLocation();
     const { flows, acceptorCalls } = recordingFlows();
 
-    await beginManagedRendezvous(
-      "acceptor",
-      generateSharedSecret(),
-      exchangeFile(),
-      { flows, peerWaitTimeoutMs: 90_000 },
-    );
+    await begin("acceptor", generateSharedSecret(), exchangeFile(), {
+      flows,
+      peerWaitTimeoutMs: 90_000,
+    });
 
     expect(acceptorCalls[0].options?.totalTimeoutMs).toBe(90_000);
   });
@@ -186,12 +201,7 @@ describe("beginManagedRendezvous: side dispatch", () => {
     stubAppLocation();
     const { flows, acceptorCalls } = recordingFlows();
 
-    await beginManagedRendezvous(
-      "acceptor",
-      generateSharedSecret(),
-      exchangeFile(),
-      { flows },
-    );
+    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
 
     // Absent rather than an explicit undefined, and absent rather than a bound
     // this module picked: the dial keeps the flows' own shared default, and the
@@ -208,12 +218,12 @@ describe("beginManagedRendezvous: side dispatch", () => {
     } as unknown as ExchangeSpec;
     const { flows, inviterCalls, acceptorCalls } = recordingFlows();
     await expect(
-      beginManagedRendezvous("acceptor", generateSharedSecret(), notWebrtc, {
+      begin("acceptor", generateSharedSecret(), notWebrtc, {
         flows,
       }),
     ).rejects.toThrow(/webrtc/);
     await expect(
-      beginManagedRendezvous("inviter", generateSharedSecret(), notWebrtc, {
+      begin("inviter", generateSharedSecret(), notWebrtc, {
         flows,
       }),
     ).rejects.toThrow(/webrtc/);
@@ -248,12 +258,10 @@ describe("beginManagedRendezvous: registration bound", () => {
       const { flows, options } = registrationBoundFlows();
       const peerWaitTimeoutMs = BROKER_REGISTRATION_TIMEOUT_MS - 18_000;
 
-      await beginManagedRendezvous(
-        side,
-        generateSharedSecret(),
-        exchangeFile(),
-        { flows, peerWaitTimeoutMs },
-      );
+      await begin(side, generateSharedSecret(), exchangeFile(), {
+        flows,
+        peerWaitTimeoutMs,
+      });
 
       expect(options).toHaveLength(1);
       expect(options[0]?.registrationTimeoutMs).toBe(peerWaitTimeoutMs);
@@ -266,12 +274,10 @@ describe("beginManagedRendezvous: registration bound", () => {
       stubAppLocation();
       const { flows, options } = registrationBoundFlows();
 
-      await beginManagedRendezvous(
-        side,
-        generateSharedSecret(),
-        exchangeFile(),
-        { flows, peerWaitTimeoutMs: 90_000 },
-      );
+      await begin(side, generateSharedSecret(), exchangeFile(), {
+        flows,
+        peerWaitTimeoutMs: 90_000,
+      });
 
       expect(options[0]?.registrationTimeoutMs).toBe(
         BROKER_REGISTRATION_TIMEOUT_MS,
@@ -285,16 +291,112 @@ describe("beginManagedRendezvous: registration bound", () => {
       stubAppLocation();
       const { flows, options } = registrationBoundFlows();
 
-      await beginManagedRendezvous(
-        side,
-        generateSharedSecret(),
-        exchangeFile(),
-        { flows },
-      );
+      await begin(side, generateSharedSecret(), exchangeFile(), { flows });
 
       expect(options[0]).not.toHaveProperty("registrationTimeoutMs");
     },
   );
+});
+
+describe("an acceptor's saved signaling address that fails validation", () => {
+  /** A record whose saved `connection.server` is `server`, as storage could
+   * hold it past the type. */
+  function withSavedServer(server: Record<string, unknown>): ExchangeSpec {
+    const file = exchangeFile();
+    return {
+      ...file,
+      connection: { ...file.connection, server },
+    } as unknown as ExchangeSpec;
+  }
+
+  const refused: Array<[string, Record<string, unknown>, RegExp]> = [
+    [
+      "a host holding @",
+      { host: "partner.example@attacker.example", port: 443, path: "/api/" },
+      /names a host that could move the connection/,
+    ],
+    [
+      "a host holding /",
+      { host: "attacker.example/x", path: "/api/" },
+      /names a host that could move the connection/,
+    ],
+    [
+      "a path not starting with /",
+      { host: "signaling.example.org", path: "api/" },
+      /names a path that could move the connection/,
+    ],
+    [
+      "a path holding ?",
+      { host: "signaling.example.org", path: "/api/?x=" },
+      /names a path that could move the connection/,
+    ],
+    [
+      "port 0",
+      { host: "signaling.example.org", port: 0 },
+      /is not a complete host, port and path/,
+    ],
+    [
+      "an empty path",
+      { host: "signaling.example.org", path: "" },
+      /is not a complete host, port and path/,
+    ],
+    ["no host", { path: "/api/" }, /is not a complete host, port and path/],
+  ];
+
+  test.each(refused)(
+    "%s refuses the re-run, naming the exchange, before any flow runs",
+    async (_name, server, reason) => {
+      const { flows, inviterCalls, acceptorCalls } = recordingFlows();
+      const file = withSavedServer(server);
+
+      const rejection: unknown = await begin(
+        "acceptor",
+        generateSharedSecret(),
+        file,
+        { flows },
+      ).catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(ManagedSignalingEndpointRefusedError);
+      const message = (rejection as Error).message;
+      expect(message).toMatch(/^The saved exchange "Riverbend quarterly"/);
+      expect(message).toMatch(reason);
+      if (typeof server.host === "string")
+        expect(message).not.toContain(server.host);
+      expect(acceptorCalls).toHaveLength(0);
+      expect(inviterCalls).toHaveLength(0);
+      expect(() =>
+        assertManagedRendezvousPossible({
+          side: "acceptor",
+          exchangeFile: file,
+          label: LABEL,
+        }),
+      ).toThrow(ManagedSignalingEndpointRefusedError);
+    },
+  );
+
+  test("an unlabelled exchange is named as this saved exchange", () => {
+    expect(() =>
+      managedAcceptorSignalingEndpoint({
+        exchangeFile: withSavedServer({ host: "a@b" }),
+        label: " ",
+      }),
+    ).toThrow(/^This saved exchange cannot run/);
+  });
+
+  test("the inviter registers at its own server whatever its record saved", async () => {
+    const { flows, inviterCalls } = recordingFlows();
+    const file = withSavedServer({ host: "a@b" });
+
+    expect(() =>
+      assertManagedRendezvousPossible({
+        side: "inviter",
+        exchangeFile: file,
+        label: LABEL,
+      }),
+    ).not.toThrow();
+    await begin("inviter", generateSharedSecret(), file, { flows });
+    expect(inviterCalls).toHaveLength(1);
+  });
 });
 
 describe("assertManagedRerunDispatchable", () => {
@@ -343,7 +445,7 @@ describe("per-run peer id derives fresh from the current secret", () => {
       },
     };
 
-    await beginManagedRendezvous("inviter", secret, exchangeFile(), { flows });
+    await begin("inviter", secret, exchangeFile(), { flows });
     expect(constructedId).toBe(expected);
 
     // A different secret derives a different id: the id is not read from storage.
@@ -385,14 +487,9 @@ describe("beginManagedRendezvous: relay", () => {
         },
       };
 
-      await beginManagedRendezvous(
-        side,
-        generateSharedSecret(),
-        exchangeFile(),
-        {
-          flows,
-        },
-      );
+      await begin(side, generateSharedSecret(), exchangeFile(), {
+        flows,
+      });
 
       expect(relays).toEqual([ownRelay]);
     },
@@ -407,7 +504,7 @@ describe("beginManagedRendezvous: relay", () => {
     };
     const { flows, acceptorCalls } = recordingFlows();
 
-    await beginManagedRendezvous(
+    await begin(
       "acceptor",
       generateSharedSecret(),
       exchangeFile({ ...webrtcLocator, relay: named }),
@@ -421,12 +518,7 @@ describe("beginManagedRendezvous: relay", () => {
     stubAppLocation();
     const { flows, acceptorCalls } = recordingFlows();
 
-    await beginManagedRendezvous(
-      "acceptor",
-      generateSharedSecret(),
-      exchangeFile(),
-      { flows },
-    );
+    await begin("acceptor", generateSharedSecret(), exchangeFile(), { flows });
 
     expect(acceptorCalls[0].options?.relay).toBeUndefined();
   });

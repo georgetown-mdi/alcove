@@ -106,8 +106,6 @@ export const WEB_FILES = [
   "apps/web/src/psi/transport/peerMessageConnection.ts",
   "apps/web/src/psi/transport/waitForConnection.ts",
   "apps/web/src/psi/transport/peerLogging.ts",
-  "apps/web/src/psi/invitationLocation.ts",
-  "apps/web/src/psi/invitation.ts",
   "apps/web/src/psi/managed/managedExchangeRecord.ts",
   "apps/web/src/psi/transport/boundedReassembly.ts",
   "apps/web/src/psi/transport/iterativePacking.ts",

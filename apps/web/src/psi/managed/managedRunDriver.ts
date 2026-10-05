@@ -63,7 +63,10 @@ import { persistManagedExchangePayloadReceiveFill } from "./managedExchangeStore
 import { prepareManagedRerunExchange } from "./managedPreparedExchange";
 import { runManagedRerun } from "./managedRun";
 
-import { beginManagedRendezvous } from "./managedRendezvous";
+import {
+  assertManagedRendezvousPossible,
+  beginManagedRendezvous,
+} from "./managedRendezvous";
 
 import {
   managedRelayRegistrarForRun,
@@ -136,8 +139,8 @@ export interface ManagedRunDriverConfig {
   /** The stored record to run. The run re-reads it by `id` inside the
    * run+rotate lock and runs THAT copy: its `side` dispatches the rendezvous,
    * its `sharedSecret` authenticates and derives the peer id, and its
-   * `exchangeFile` supplies the terms (the connection block is read only for the
-   * webrtc dispatchability check -- the signaling location is the app's own; see
+   * `exchangeFile` supplies the terms and the connection block (the acceptor
+   * dials the signaling server it saved, the inviter registers at its own; see
    * {@link beginManagedRendezvous}). */
   record: RunnableManagedExchangeRecord;
   /** The per-run input source: read from the working folder (attended may
@@ -296,6 +299,7 @@ export function runManagedExchangeInBrowser(
       // partner, and yield the rotated secret plus the held exchange resources.
       handshake: async (input, markRotationInFlight, current) => {
         const exchangeRole = HANDSHAKE_ROLE_FOR_SIDE[current.side];
+        assertManagedRendezvousPossible(current);
         // A registration the registrar did not confirm is retried after every
         // local refusal and before any contact with the partner, so a relay
         // holding a key this run cannot mint under stops the run while the
@@ -314,15 +318,10 @@ export function runManagedExchangeInBrowser(
         // opens; a rejecting load on a torn-down run must not go unhandled.
         void psiPromise.catch(() => undefined);
 
-        const acquisition = await beginManagedRendezvous(
-          current.side,
-          current.sharedSecret,
-          current.exchangeFile,
-          {
-            signal,
-            ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
-          },
-        );
+        const acquisition = await beginManagedRendezvous(current, {
+          signal,
+          ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
+        });
         let peer: Peer;
         let conn: DataConnection;
         try {
