@@ -132,6 +132,21 @@ describe("the main thread's heap check", () => {
     );
   });
 
+  it("checks several files against the heap together", async () => {
+    const first = writeCsv(rows(6));
+    const second = writeCsv(rows(5));
+    await expect(
+      checkInputFitsMainThreadHeap([first, second], {
+        heapLimitBytes: tenRecordHeap,
+      }),
+    ).rejects.toThrow("the 2 CSV files hold 11 records");
+    await expect(
+      checkInputFitsMainThreadHeap([first, second], {
+        heapLimitBytes: mainThreadHeapNeedBytes(11),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("warns and admits an input one record over under --allow-memory-shortfall", async () => {
     const file = writeCsv(rows(11));
     const warn = vi.spyOn(getLogger("input"), "warn");

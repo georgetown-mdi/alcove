@@ -1351,9 +1351,10 @@ export async function handler(argv: Arguments): Promise<void> {
     // exchange wrote, and the paths named here need not be those files.
     // Nothing later reads by this value, so a difference is not reported.
     const csvDelimiter = csvDelimiterArg ?? localSource?.csvDelimiter;
-    for (const csvFile of [inputFile, resultFile])
-      if (csvFile !== undefined)
-        await checkInputFitsMainThreadHeap(csvFile, { offerOverride: false });
+    await checkInputFitsMainThreadHeap(
+      [inputFile, resultFile].filter((file) => file !== undefined),
+      { offerOverride: false },
+    );
     const inputParse =
       inputFile === undefined
         ? undefined

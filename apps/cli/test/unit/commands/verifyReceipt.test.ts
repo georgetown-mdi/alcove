@@ -1198,13 +1198,14 @@ describe("handler", () => {
     async function verifyOverHeapOf(
       records: number,
       heapRecords: number,
+      resultRecords = 1,
     ): Promise<Awaited<ReturnType<typeof runVerify>>> {
       const { recordPath } = await exchangeArtifacts();
       const dir = tmp();
       const inputFile = join(dir, "input.csv");
       const resultFile = join(dir, "result.csv");
       writeFileSync(inputFile, csvRows(records));
-      writeFileSync(resultFile, csvRows(1));
+      writeFileSync(resultFile, csvRows(resultRecords));
       heapLimit.bytes = mainThreadHeapNeedBytes(heapRecords);
       try {
         return await runVerify({
@@ -1218,18 +1219,25 @@ describe("handler", () => {
     }
 
     test("refuses an input over the heap with exit 64 before the parse, naming the remedy", async () => {
-      const { stdout, stderr, exits } = await verifyOverHeapOf(3, 2);
+      const { stdout, stderr, exits } = await verifyOverHeapOf(3, 2, 0);
       expect(exits).toEqual([64]);
-      expect(stderr).toContain("the CSV input holds 3 records");
+      expect(stderr).toContain("the 2 CSV files hold 3 records");
       expect(stderr).toMatch(/NODE_OPTIONS=--max-old-space-size=\d+/);
       expect(stderr).toContain("machine with more memory");
       expect(stderr).not.toContain("--allow-memory-shortfall");
       expect(stdout).toBe("");
     });
 
-    test("reads an input the heap holds", async () => {
-      const { stderr, exits } = await verifyOverHeapOf(3, 3);
-      expect(stderr).not.toContain("the CSV input holds");
+    test("refuses an input and result file that each fit the heap but not together", async () => {
+      const { stdout, stderr, exits } = await verifyOverHeapOf(3, 5, 3);
+      expect(exits).toEqual([64]);
+      expect(stderr).toContain("the 2 CSV files hold 6 records");
+      expect(stdout).toBe("");
+    });
+
+    test("reads an input and result file the heap holds together", async () => {
+      const { stderr, exits } = await verifyOverHeapOf(3, 6, 3);
+      expect(stderr).not.toContain("CSV files hold");
       expect(exits).not.toContain(64);
     });
   });
