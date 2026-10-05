@@ -8,7 +8,12 @@ import { afterEach, describe, expect, it } from "vitest";
 const HOOK = fileURLToPath(
   new URL("./remind-squash-message.mjs", import.meta.url),
 );
-const REPO_ROOT = join(dirname(HOOK), "..", "..");
+const NORMALIZER = join(
+  dirname(HOOK),
+  "..",
+  "scripts",
+  "format-squash-message.mjs",
+);
 
 // Run the hook as a real subprocess, piping a synthesized PostToolUse payload on
 // stdin the way Claude Code itself invokes it, and returning its stdout. The hook
@@ -39,6 +44,9 @@ const prCreateEvent = (
   tool_response: toolResponse,
   cwd: dir,
 });
+
+/** What the reminder names as its target, for pull request `number`. */
+const target = (number) => `gh pr comment ${number} --body-file`;
 
 const ghOutput = (number) =>
   "Creating pull request for feature into staging in georgetown-mdi/alcove\n\n" +
@@ -116,21 +124,21 @@ describe("remind-squash-message hook", () => {
     }
   });
 
-  it("directs the message to a PR-numbered file, not the transcript", () => {
+  it("directs the body to a comment on the created PR, not a file", () => {
     const dir = track(makeRepo(2));
     const additionalContext = context(prCreateEvent(dir, ghOutput(1234)));
     expect(additionalContext).toContain("2 commits");
     expect(additionalContext).toContain("origin/staging");
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "1234.txt"),
-    );
-    expect(additionalContext).toContain("Report only");
-    expect(additionalContext).not.toContain("Print a ready-to-use");
+    expect(additionalContext).toContain("PR #1234");
+    expect(additionalContext).toContain(target(1234));
+    expect(additionalContext).toContain("no subject line");
+    expect(additionalContext).toContain("report only the comment URL");
+    expect(additionalContext).not.toContain("scratch");
   });
 
   it("finds the PR URL in a string tool_response and in stderr", () => {
     const dir = track(makeRepo(2));
-    const expected = join(dir, "scratch", "squash-messages", "77.txt");
+    const expected = target(77);
     expect(context(prCreateEvent(dir, ghOutput(77)))).toContain(expected);
     expect(context(prCreateEvent(dir, { stderr: ghOutput(77) }))).toContain(
       expected,
@@ -146,27 +154,22 @@ describe("remind-squash-message hook", () => {
           ghOutput(12),
       }),
     );
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "12.txt"),
-    );
+    expect(additionalContext).toContain(target(12));
   });
 
-  it("keys on the sanitized branch name when no PR URL is parseable", () => {
-    const dir = track(makeRepo(2, "feature/odd.name"));
+  it("points at the created PR without a number when no PR URL is parseable", () => {
+    const dir = track(makeRepo(2, "feature"));
     const additionalContext = context(prCreateEvent(dir, { stdout: "" }));
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "branch-feature-odd.name.txt"),
-    );
+    expect(additionalContext).toContain("the pull request gh just created");
+    expect(additionalContext).toContain(target("<pr-number>"));
   });
 
-  it("writes into the main checkout from a linked worktree", () => {
+  it("counts the branch of a linked worktree it runs in", () => {
     const main = track(makeRepo(2));
     const worktree = addWorktree(main, "branch-under-review");
     const additionalContext = context(prCreateEvent(worktree, ghOutput(42)));
-    expect(additionalContext).toContain(
-      join(main, "scratch", "squash-messages", "42.txt"),
-    );
-    expect(additionalContext).not.toContain(worktree);
+    expect(additionalContext).toContain("2 commits");
+    expect(additionalContext).toContain(target(42));
   });
 
   it("counts the --head branch when the checkout sits at the base", () => {
@@ -180,9 +183,7 @@ describe("remind-squash-message hook", () => {
       ),
     );
     expect(additionalContext).toContain("3 commits");
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "1191.txt"),
-    );
+    expect(additionalContext).toContain(target(1191));
   });
 
   it("counts the branch a fork-style --head=owner:branch names", () => {
@@ -196,9 +197,7 @@ describe("remind-squash-message hook", () => {
       ),
     );
     expect(additionalContext).toContain("3 commits");
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "1192.txt"),
-    );
+    expect(additionalContext).toContain(target(1192));
   });
 
   it("resolves the --head branch from a linked worktree", () => {
@@ -213,9 +212,7 @@ describe("remind-squash-message hook", () => {
       ),
     );
     expect(additionalContext).toContain("3 commits");
-    expect(additionalContext).toContain(
-      join(main, "scratch", "squash-messages", "43.txt"),
-    );
+    expect(additionalContext).toContain(target(43));
   });
 
   it("counts the --head branch rather than the cwd HEAD", () => {
@@ -241,9 +238,7 @@ describe("remind-squash-message hook", () => {
       ),
     );
     expect(additionalContext).toContain("2 commits");
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "45.txt"),
-    );
+    expect(additionalContext).toContain(target(45));
   });
 
   it("counts the cwd HEAD when the command has no --head", () => {
@@ -271,10 +266,8 @@ describe("remind-squash-message hook", () => {
     );
     expect(additionalContext.split("\n")).toHaveLength(1);
     expect(additionalContext).toContain("3 commits");
-    expect(additionalContext).toContain(
-      join(dir, "scratch", "squash-messages", "1265.txt"),
-    );
-    expect(additionalContext).not.toContain("1266.txt");
+    expect(additionalContext).toContain(target(1265));
+    expect(additionalContext).not.toContain("1266");
   });
 
   it("pairs each created PR with its own --head branch's count", () => {
@@ -290,13 +283,9 @@ describe("remind-squash-message hook", () => {
     ).split("\n");
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("2 commits");
-    expect(lines[0]).toContain(
-      join(dir, "scratch", "squash-messages", "1265.txt"),
-    );
+    expect(lines[0]).toContain(target(1265));
     expect(lines[1]).toContain("3 commits");
-    expect(lines[1]).toContain(
-      join(dir, "scratch", "squash-messages", "1266.txt"),
-    );
+    expect(lines[1]).toContain(target(1266));
   });
 
   it("emits nothing when two creates leave one PR URL", () => {
@@ -327,76 +316,34 @@ describe("remind-squash-message hook", () => {
     expect(additionalContext).toBeNull();
   });
 
-  // Deliberate divergence from singleCreateReminder, which falls back to
-  // printReminder when no file path can be named. multiCreateReminder
-  // resolves the main checkout root once, up front, and returns null the
-  // moment that fails -- before it ever looks at a single pair -- rather
-  // than falling back to printing whatever counts it could still gather.
-  it("returns nothing for a multi-create when the main checkout root cannot be determined, without falling back to printing", () => {
-    const dir = track(mkdtempSync(join(tmpdir(), "remind-squash-nogit-")));
-    const additionalContext = context(
-      prCreateEvent(
-        dir,
-        ghOutput(202) + ghOutput(203),
-        twoCreates("branch-a", "branch-b"),
-      ),
-    );
-    expect(additionalContext).toBeNull();
-  });
-
-  it("falls back to printing when no key can be determined", () => {
+  // The body wrap lives in the normalizer, so what a later edit of this copy
+  // must not lose is the pointer to it: a reminder naming neither the rules
+  // document nor the script leaves the session restating limits from memory.
+  it("names the rules document and the normalizer with or without a number", () => {
     const dir = track(makeRepo(2));
-    execFileSync("git", ["-C", dir, "checkout", "-q", "--detach"]);
-    const additionalContext = context(prCreateEvent(dir, { stdout: "" }));
-    expect(additionalContext).toContain("Print a ready-to-use");
-    expect(additionalContext).not.toContain("squash-messages");
-  });
-
-  // The subject budget and the body wrap live in the normalizer, so what a later
-  // edit of this copy must not lose is the pointer to it: a reminder naming
-  // neither the rules document nor the script leaves the session restating
-  // limits from memory.
-  it("names the rules document and the normalizer in either reminder", () => {
-    const dir = track(makeRepo(2));
-    const rules = ["CONTRIBUTING.md", "format-squash-message.mjs"];
-    const fileContext = context(prCreateEvent(dir, ghOutput(5)));
-    execFileSync("git", ["-C", dir, "checkout", "-q", "--detach"]);
-    const printContext = context(prCreateEvent(dir, { stdout: "" }));
-    for (const rule of rules) {
-      expect(fileContext).toContain(rule);
-      expect(printContext).toContain(rule);
+    const numbered = context(prCreateEvent(dir, ghOutput(5)));
+    const unnumbered = context(prCreateEvent(dir, { stdout: "" }));
+    for (const reminder of [numbered, unnumbered]) {
+      expect(reminder).toContain("CONTRIBUTING.md");
+      expect(reminder).toContain(NORMALIZER);
     }
   });
 
-  it("names the normalizer with the PR number and the file it writes", () => {
+  it("names the normalizer's fenced output as the comment body", () => {
     const dir = track(makeRepo(2));
-    const path = join(dir, "scratch", "squash-messages", "5.txt");
     expect(context(prCreateEvent(dir, ghOutput(5)))).toContain(
-      `'${join(dir, ".claude", "scripts", "format-squash-message.mjs")}' 5 ` +
-        `/tmp/squash-message.txt --out '${path}'`,
+      `node '${NORMALIZER}' --fenced <draft> | gh pr comment 5 --body-file -`,
     );
   });
 
-  it("passes unassigned for a branch-keyed draft, which has no number", () => {
-    const dir = track(makeRepo(2, "feature"));
-    const additionalContext = context(prCreateEvent(dir, { stdout: "" }));
-    expect(additionalContext).toContain("unassigned /tmp/squash-message.txt");
-    expect(additionalContext).toContain("branch-feature.txt");
-  });
-
-  it("names a directory this repository's gitignore covers", () => {
-    const { status } = spawnSync(
-      "git",
-      [
-        "-C",
-        REPO_ROOT,
-        "check-ignore",
-        "-q",
-        join("scratch", "squash-messages", "1.txt"),
-      ],
-      { encoding: "utf8" },
+  it("carries the <pr-number> placeholder in the command only when no PR URL parses", () => {
+    const dir = track(makeRepo(2));
+    expect(context(prCreateEvent(dir, { stdout: "" }))).toContain(
+      `node '${NORMALIZER}' --fenced <draft> | gh pr comment <pr-number> --body-file -`,
     );
-    expect(status).toBe(0);
+    expect(context(prCreateEvent(dir, ghOutput(9)))).not.toContain(
+      "<pr-number>",
+    );
   });
 
   it("emits nothing for gh pr create on a single-commit branch", () => {

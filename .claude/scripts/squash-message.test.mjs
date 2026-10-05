@@ -5,11 +5,7 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  BODY_WRAP_COLUMNS,
-  SUBJECT_LIMIT,
-  splitDraft,
-} from "./format-squash-message.mjs";
+import { BODY_WRAP_COLUMNS, bodyLinesOf } from "./format-squash-message.mjs";
 import {
   ALLOWED_TOOLS,
   DISALLOWED_TOOLS,
@@ -47,9 +43,9 @@ describe("squash-message argument parsing", () => {
 });
 
 describe("squash-message prompt", () => {
-  it("includes the PR number and names CONTRIBUTING.md", () => {
+  it("includes the PR number, names CONTRIBUTING.md, and asks for the body", () => {
     expect(prompt(928)).toBe(
-      "Please use the commit history, the PR body, and @CONTRIBUTING.md to write a short squash-and-merge commit message for PR #928.",
+      "Please use the commit history, the PR body, and @CONTRIBUTING.md to write the body of a short squash-and-merge commit message for PR #928. Leave out the subject line: GitHub takes it from the PR title.",
     );
   });
 });
@@ -173,30 +169,24 @@ describe("squash-message output", () => {
 
   it("wraps the body of the draft the run produced", () => {
     const paragraph = `${"word ".repeat(30)}end`;
-    const result = run(
-      `Wrap the squash message on the way out\n\n${paragraph}\n`,
-    );
+    const result = run(`${paragraph}\n`);
     expect(result.status).toBe(0);
-    for (const line of splitDraft(result.stdout).body) {
+    for (const line of bodyLinesOf(result.stdout)) {
       expect(line.length).toBeLessThanOrEqual(BODY_WRAP_COLUMNS);
     }
   });
 
   it("takes the markers out of the draft the run produced", () => {
-    const result = run(
-      "Wrap the squash message on the way out\n\n- a list item\n",
-    );
+    const result = run("- a list item\n");
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe(
-      "Wrap the squash message on the way out\n\na list item\n",
-    );
+    expect(result.stdout).toBe("a list item\n");
   });
 
   it("prints an unfixable draft as it came, with the rule on stderr", () => {
-    const drafted = `${"x".repeat(SUBJECT_LIMIT)}\n\nA body sentence.\n`;
+    const drafted = `A body sentence.\n\n  ${"x".repeat(BODY_WRAP_COLUMNS)}\n`;
     const result = run(drafted);
     expect(result.status).toBe(2);
     expect(result.stdout).toBe(drafted);
-    expect(result.stderr).toContain("Shorten the subject");
+    expect(result.stderr).toContain("wrap it by hand");
   });
 });

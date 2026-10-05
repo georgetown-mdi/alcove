@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,13 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   BODY_WRAP_COLUMNS,
-  SUBJECT_LIMIT,
+  bodyLinesOf,
+  fenced,
   formatDraft,
   normalizeDraft,
   parseArgs,
   refusals,
-  splitDraft,
-  subjectBudget,
   violations,
   wrapParagraph,
 } from "./format-squash-message.mjs";
@@ -41,9 +40,8 @@ function run(args, input = "") {
   return spawnSync("node", [SCRIPT, ...args], { input, encoding: "utf8" });
 }
 
-const SUBJECT = "Make the squash-message wrap structural";
-const draft = (body) => `${SUBJECT}\n\n${body}\n`;
-const bodyLines = (text) => splitDraft(text).body.filter((l) => l !== "");
+const draft = (body) => `${body}\n`;
+const bodyLines = (text) => bodyLinesOf(text).filter((l) => l !== "");
 
 describe("format-squash-message wrapping", () => {
   it("rewraps a paragraph written at 120 columns", () => {
@@ -60,23 +58,14 @@ describe("format-squash-message wrapping", () => {
     expect(bodyLines(normalized).join(" ")).toBe(wide);
   });
 
-  it("never rewraps or reflows the subject line", () => {
-    const long =
-      "A subject line far past every column budget in this repository";
-    const normalized = normalizeDraft(`${long}\n\nBody sentence.\n`);
-    expect(normalized.split("\n")[0]).toBe(long);
-  });
-
   it("keeps paragraphs apart and collapses repeated blank lines", () => {
-    const normalized = normalizeDraft(
-      `${SUBJECT}\n\n\nFirst.\n\n\n\nSecond.\n`,
-    );
-    expect(normalized).toBe(`${SUBJECT}\n\nFirst.\n\nSecond.\n`);
+    const normalized = normalizeDraft("\n\nFirst.\n\n\n\nSecond.\n\n");
+    expect(normalized).toBe("First.\n\nSecond.\n");
   });
 
   it("leaves an indented block exactly as it was written", () => {
     const block = "  alcove exchange --config a.yaml\n  alcove doctor";
-    expect(normalizeDraft(draft(block))).toBe(`${SUBJECT}\n\n${block}\n`);
+    expect(normalizeDraft(draft(block))).toBe(`${block}\n`);
   });
 
   it("gives a word longer than the budget a line of its own", () => {
@@ -87,7 +76,7 @@ describe("format-squash-message wrapping", () => {
 });
 
 // One case per marker the normalizer takes out. Each body normalizes to the
-// text beside it, the subject unchanged.
+// text beside it.
 const NORMALIZED = [
   {
     name: "a heading marker, whose line becomes a paragraph",
@@ -179,33 +168,21 @@ const NORMALIZED = [
 describe("format-squash-message normalizing", () => {
   for (const { name, body, want } of NORMALIZED) {
     it(`takes out ${name}`, () => {
-      expect(normalizeDraft(draft(body))).toBe(`${SUBJECT}\n\n${want}\n`);
-      expect(refusals(draft(body), 1374)).toEqual([]);
+      expect(normalizeDraft(draft(body))).toBe(`${want}\n`);
+      expect(refusals(draft(body))).toEqual([]);
     });
   }
-
-  it("puts in the blank line under the subject the draft is missing", () => {
-    expect(normalizeDraft(`${SUBJECT}\nBody sentence.\n`)).toBe(
-      `${SUBJECT}\n\nBody sentence.\n`,
-    );
-  });
-
-  it("takes the markers out of the subject without reflowing it", () => {
-    expect(normalizeDraft("## `Fix` the **thing**\n\nBody.\n")).toBe(
-      "Fix the thing\n\nBody.\n",
-    );
-  });
 
   it("is a fixed point: normalizing its own output changes nothing", () => {
     const drafts = [
       draft(`${"word ".repeat(40)}end`),
-      `${SUBJECT}\nBody sentence.\n`,
+      "\r\nBody sentence.   \r\n\r\n",
       ...NORMALIZED.map(({ body }) => draft(body)),
     ];
     for (const source of drafts) {
       const once = normalizeDraft(source);
       expect(normalizeDraft(once), source).toBe(once);
-      expect(violations(once, 1374), source).toEqual([]);
+      expect(violations(once), source).toEqual([]);
     }
   });
 });
@@ -232,49 +209,14 @@ describe("format-squash-message normalized output", () => {
   it("leaves nothing for the check to report, whatever the shape", () => {
     for (const body of CORPUS) {
       const once = normalizeDraft(draft(body));
-      expect(violations(once, 1374), body).toEqual([]);
+      expect(violations(once), body).toEqual([]);
       expect(normalizeDraft(once), body).toBe(once);
     }
   });
 });
 
-describe("format-squash-message subject budget", () => {
-  it("counts the suffix GitHub appends, not the bare subject", () => {
-    expect(subjectBudget(1374)).toBe(SUBJECT_LIMIT - " (#1374)".length);
-    const subject = "x".repeat(subjectBudget(1374));
-    expect(refusals(`${subject}\n\nBody.\n`, 1374)).toEqual([]);
-    expect(refusals(`${subject}x\n\nBody.\n`, 1374)).toHaveLength(1);
-    expect(refusals(`${subject}x\n\nBody.\n`, 1374)[0]).toContain("(#1374)");
-  });
-
-  it("measures the subject the normalizer produces, markers gone", () => {
-    const subject = "x".repeat(subjectBudget(1374));
-    expect(refusals(`\`${subject}\`\n\nBody.\n`, 1374)).toEqual([]);
-  });
-
-  it("assumes a four-digit suffix when the number is unknown", () => {
-    expect(subjectBudget(null)).toBe(SUBJECT_LIMIT - " (#NNNN)".length);
-  });
-
-  it("takes a wider budget for a shorter pull-request number", () => {
-    expect(subjectBudget(7)).toBeGreaterThan(subjectBudget(1374));
-    const subject = "x".repeat(subjectBudget(7));
-    expect(refusals(`${subject}\n\nBody.\n`, 7)).toEqual([]);
-    expect(refusals(`${subject}\n\nBody.\n`, 1374)).toHaveLength(1);
-  });
-
-  it("agrees with the budget CONTRIBUTING.md states in prose", () => {
-    const contributing = readFileSync(
-      join(REPO_ROOT, "CONTRIBUTING.md"),
-      "utf8",
-    );
-    expect(contributing).toContain(`roughly ${subjectBudget(null)} characters`);
-    expect(contributing).toContain(`${SUBJECT_LIMIT} characters or fewer`);
-  });
-});
-
 describe("format-squash-message refusals", () => {
-  const refusedFor = (body) => refusals(draft(body), 1374);
+  const refusedFor = (body) => refusals(draft(body));
 
   it("refuses an over-wide line inside an indented block", () => {
     const found = refusedFor(`  ${"x".repeat(BODY_WRAP_COLUMNS)}`);
@@ -283,14 +225,13 @@ describe("format-squash-message refusals", () => {
   });
 
   it("refuses an empty draft", () => {
-    expect(refusals("   \n\n", 1374)).toHaveLength(1);
+    expect(refusals("   \n\n")).toHaveLength(1);
   });
 
   it("refuses nothing normalizing can fix without losing a word", () => {
     for (const { body } of NORMALIZED) {
       expect(refusedFor(body), body).toEqual([]);
     }
-    expect(refusals(`${SUBJECT}\nBody sentence.\n`, 1374)).toEqual([]);
     expect(refusedFor(`${"word ".repeat(30)}end`)).toEqual([]);
   });
 
@@ -300,79 +241,77 @@ describe("format-squash-message refusals", () => {
       "because both producers stated the rule in prose and nothing\n" +
       "checked the result.";
     expect(refusedFor(body)).toEqual([]);
-    expect(violations(normalizeDraft(draft(body)), 1374)).toEqual([]);
+    expect(violations(normalizeDraft(draft(body)))).toEqual([]);
   });
 });
 
 describe("format-squash-message violations", () => {
   it("reports the wrap a producer that cannot rewrite must refuse", () => {
     const wide = `${"word ".repeat(30)}end`;
-    expect(refusals(draft(wide), 1374)).toEqual([]);
-    expect(violations(draft(wide), 1374)).toHaveLength(1);
-    expect(violations(draft(wide), 1374)[0]).toContain(
-      String(BODY_WRAP_COLUMNS),
-    );
+    expect(refusals(draft(wide))).toEqual([]);
+    expect(violations(draft(wide))).toHaveLength(1);
+    expect(violations(draft(wide))[0]).toContain(String(BODY_WRAP_COLUMNS));
   });
 
-  it("names the markdown, the list, and the missing blank line", () => {
-    expect(violations(draft("## Motivation"), 1374)[0]).toContain(
-      "no markdown",
-    );
-    expect(violations(draft("- first point"), 1374)[0]).toContain(
+  it("names the markdown and the list", () => {
+    expect(violations(draft("## Motivation"))[0]).toContain("no markdown");
+    expect(violations(draft("- first point"))[0]).toContain(
       "prose, not a list",
-    );
-    expect(violations(`${SUBJECT}\nBody sentence.\n`, 1374)[0]).toContain(
-      "blank",
     );
   });
 
   it("reports a draft no rule names but the normalizer still changes", () => {
-    const found = violations(`${SUBJECT}\n\nBody sentence.\n\n\n`, 1374);
+    const found = violations("Body sentence.\n\n\n");
     expect(found).toHaveLength(1);
     expect(found[0]).toContain("normalizer produces");
   });
 
   // A body wrapped by hand at some narrower column is not what the normalizer
   // produces, so the gate is byte identity with its output rather than "every
-  // line fits": the file is written by the normalizer, and an edit that leaves
-  // the paragraph short is one command away from normalized again.
+  // line fits": an edit that leaves the paragraph short is one command away
+  // from normalized again.
   it("reports a paragraph hand-wrapped narrower than the column", () => {
     const body = "A body sentence broken\nearly, well under the column.";
-    expect(violations(draft(body), 1374)).toHaveLength(1);
-    expect(violations(normalizeDraft(draft(body)), 1374)).toEqual([]);
+    expect(violations(draft(body))).toHaveLength(1);
+    expect(violations(normalizeDraft(draft(body)))).toEqual([]);
   });
 
   it("exempts a single unbreakable word, which no wrap can shorten", () => {
     const word = "x".repeat(BODY_WRAP_COLUMNS + 20);
-    expect(violations(draft(word), 1374)).toEqual([]);
+    expect(violations(draft(word))).toEqual([]);
+  });
+});
+
+describe("format-squash-message fence", () => {
+  it("wraps the body in a three-backtick fence", () => {
+    expect(fenced("Body sentence.\n")).toBe("```\nBody sentence.\n```\n");
+  });
+
+  it("outruns any backtick run the body holds", () => {
+    expect(fenced("A ```` run.\n")).toBe("`````\nA ```` run.\n`````\n");
   });
 });
 
 describe("format-squash-message arguments", () => {
-  it("takes a bare number, the #-prefixed spelling, and unassigned", () => {
-    expect(parseArgs(["1374"]).prNumber).toBe(1374);
-    expect(parseArgs(["#1374"]).prNumber).toBe(1374);
-    expect(parseArgs(["unassigned"]).prNumber).toBeNull();
-  });
-
-  it("reads a draft path and an --out path in either spelling", () => {
-    expect(parseArgs(["7", "/tmp/a.txt", "--out", "/tmp/b.txt"])).toEqual({
-      prNumber: 7,
+  it("takes no argument, a draft path, stdin's dash, and --fenced", () => {
+    expect(parseArgs([])).toEqual({ input: null, fenced: false });
+    expect(parseArgs(["/tmp/a.txt"])).toEqual({
       input: "/tmp/a.txt",
-      out: "/tmp/b.txt",
+      fenced: false,
     });
-    expect(parseArgs(["7", "--out=/tmp/b.txt"]).out).toBe("/tmp/b.txt");
+    expect(parseArgs(["-", "--fenced"])).toEqual({ input: null, fenced: true });
+    expect(parseArgs(["--fenced", "/tmp/a.txt"])).toEqual({
+      input: "/tmp/a.txt",
+      fenced: true,
+    });
   });
 
   it("refuses an argument list it cannot read", () => {
     for (const argv of [
-      [],
-      ["abc"],
-      ["0"],
-      ["-3"],
-      ["7", "a.txt", "b.txt"],
-      ["7", "--out"],
-      ["7", "--verbose"],
+      ["a.txt", "b.txt"],
+      ["--fenced", "--fenced"],
+      ["--out", "b.txt"],
+      ["--verbose"],
     ]) {
       expect(parseArgs(argv), JSON.stringify(argv)).toBeNull();
     }
@@ -382,7 +321,7 @@ describe("format-squash-message arguments", () => {
 describe("format-squash-message as a command", () => {
   it("normalizes a draft read from stdin onto stdout", () => {
     const wide = `${"word ".repeat(30)}end`;
-    const result = run(["1374"], draft(wide));
+    const result = run([], draft(wide));
     expect(result.status).toBe(0);
     for (const line of bodyLines(result.stdout)) {
       expect(line.length).toBeLessThanOrEqual(BODY_WRAP_COLUMNS);
@@ -390,121 +329,92 @@ describe("format-squash-message as a command", () => {
   });
 
   it("takes the markers out rather than refusing over them", () => {
-    const result = run(["1374"], draft("- a list item with `a code span`"));
+    const result = run([], draft("- a list item with `a code span`"));
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe(`${SUBJECT}\n\na list item with a code span\n`);
+    expect(result.stdout).toBe("a list item with a code span\n");
   });
 
-  it("writes the normalized draft to --out and nothing to stdout", () => {
-    const directory = tempDirectory();
-    const source = join(directory, "draft.txt");
-    const target = join(directory, "1374.txt");
+  it("reads a draft path and prints the fenced body for a comment", () => {
+    const source = join(tempDirectory(), "draft.txt");
     writeFileSync(source, draft(`${"word ".repeat(30)}end`));
-
-    const result = run(["1374", source, "--out", target]);
+    const result = run([source, "--fenced"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
-    expect(readFileSync(target, "utf8")).toBe(
-      normalizeDraft(readFileSync(source, "utf8")),
+    expect(result.stdout).toBe(
+      fenced(normalizeDraft(draft(`${"word ".repeat(30)}end`))),
     );
   });
 
-  it("writes nothing at all when the draft is refused", () => {
-    const directory = tempDirectory();
-    const target = join(directory, "1374.txt");
-    const subject = "x".repeat(subjectBudget(1374) + 1);
-    const result = run(["1374", "--out", target], `${subject}\n\nBody.\n`);
+  it("prints nothing when the draft is refused", () => {
+    const result = run(["--fenced"], "   \n\n");
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("Shorten the subject");
-    expect(result.stderr).toContain("Nothing was written");
-    expect(() => readFileSync(target, "utf8")).toThrow();
+    expect(result.stderr).toContain("needs a body");
+    expect(result.stderr).toContain("Nothing was printed");
+    expect(result.stdout).toBe("");
   });
 
   // The check over its own output has one shape that reaches it: the wrap put a
   // marker at the front of a line whose line above ends in a colon, which the
-  // next pass reads as a list. The run fails there rather than write a message
-  // the hook over the file would refuse.
-  it("writes nothing when its own check rejects what it produced", () => {
-    const directory = tempDirectory();
-    const target = join(directory, "1374.txt");
+  // next pass reads as a list. The run fails there rather than print a message
+  // its own check refuses.
+  it("prints nothing when its own check rejects what it produced", () => {
     const body = `${"word ".repeat(12)}budget: 12. A sentence the wrap pushes onto the next line.`;
-    const result = run(["1374", "--out", target], draft(body));
+    const result = run(["--fenced"], draft(body));
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("bug in the script");
     expect(result.stderr).toContain("prose, not a list");
-    expect(result.stderr).toContain("Nothing was written");
-    expect(() => readFileSync(target, "utf8")).toThrow();
+    expect(result.stderr).toContain("Nothing was printed");
+    expect(result.stdout).toBe("");
   });
 
   it("prints its usage rather than guessing at a bad argument list", () => {
-    const result = run([]);
+    const result = run(["a.txt", "b.txt"]);
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("Usage:");
   });
 });
 
 /**
- * The recent commits that landed through a squash merge, each as the draft it
- * would have been written from: the suffix GitHub appended taken back off. `git
- * log` ends each record with the NUL and then a newline, so the newline opening
- * every record after the first is dropped -- keeping it leaves a blank subject
- * line and a corpus that matches nothing.
+ * The bodies of recent commits that landed through a squash merge, the subject
+ * left off since GitHub fills it from the title. `git log` ends each record
+ * with the NUL and then a newline, so the newline opening every record after
+ * the first is dropped. A commit with no body is left out: there is nothing of
+ * it a comment would carry.
  */
-function landedCommits(count) {
+function landedBodies(count) {
   const log = execFileSync(
     "git",
-    ["-C", REPO_ROOT, "log", `-${count}`, "--format=%s%n%n%b%x00"],
+    ["-C", REPO_ROOT, "log", `-${count}`, "--format=%s%x01%b%x00"],
     { encoding: "utf8" },
   );
   return log
     .split("\0")
-    .map((message) => message.replace(/^\n/, ""))
-    .filter((message) => message.trim() !== "")
-    .flatMap((message) => {
-      const landed = /^(?<subject>.*?)(?<suffix> \(#(?<number>\d+)\))?$/.exec(
-        message.split("\n")[0],
-      );
-      if (landed.groups.number === undefined) return [];
-      return [
-        {
-          subject: landed.groups.subject,
-          message: message.replace(landed.groups.suffix, ""),
-          prNumber: Number(landed.groups.number),
-        },
-      ];
+    .map((record) => record.replace(/^\n/, ""))
+    .flatMap((record) => {
+      const [subject, body = ""] = record.split("\x01");
+      if (!/ \(#\d+\)$/.test(subject) || body.trim() === "") return [];
+      return [{ subject, body }];
     });
 }
-
-/**
- * The problems reported about a message's body. STATED LIMIT: subjects that
- * landed before this budget was checked run past it, so the history proves the
- * body rules only; the subject budget is measured on its own above.
- */
-const bodyProblems = (found) =>
-  found.filter((problem) => !problem.startsWith("The subject is"));
 
 describe("format-squash-message against real commit messages", () => {
   // The repository's own recent history is the only corpus that proves the
   // rules do not fire on messages written under them.
-  const landed = landedCommits(50);
+  const landed = landedBodies(50);
 
   it("reads a corpus of messages rather than an empty list", () => {
     expect(landed.length).toBeGreaterThan(10);
   });
 
   it("refuses no body among the last fifty commits", () => {
-    for (const { subject, message, prNumber } of landed) {
-      expect(
-        bodyProblems(formatDraft(message, prNumber).refusals),
-        subject,
-      ).toEqual([]);
+    for (const { subject, body } of landed) {
+      expect(formatDraft(body).refusals, subject).toEqual([]);
     }
   });
 
   it("leaves nothing for the check to report on what it normalizes", () => {
-    for (const { subject, message, prNumber } of landed) {
-      const once = normalizeDraft(message);
-      expect(bodyProblems(violations(once, prNumber)), subject).toEqual([]);
+    for (const { subject, body } of landed) {
+      const once = normalizeDraft(body);
+      expect(violations(once), subject).toEqual([]);
       expect(normalizeDraft(once), subject).toBe(once);
     }
   });

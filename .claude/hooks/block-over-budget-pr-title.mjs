@@ -4,17 +4,16 @@
 //
 // Why this exists: Alcove squash-merges, so a pull request's title becomes the
 // commit subject with GitHub's " (#NNNN)" appended, and CONTRIBUTING.md's
-// subject limit counts that suffix. Every other reading of that budget comes
-// after the fact -- the PR Checklist workflow fails the open pull request, and
-// ../scripts/format-squash-message.mjs refuses a draft written past it -- so a
-// session reusing a board item's own title pays a red run and a retitle for it.
-// This is the same rule at the moment the title is written.
+// subject limit counts that suffix. The other reading of that budget comes
+// after the fact -- the PR Checklist workflow fails the open pull request -- so
+// a session reusing a board item's own title pays a red run and a retitle for
+// it. This is the same rule at the moment the title is written.
 //
 // THE BUDGET IS NOT A NUMBER HERE. `subjectBudget` in
 // ../../scripts/lib/squashSubjectBudget.mjs is the one source, so the suffix
 // width, the limit it is subtracted from, and the digits assumed for an unknown
 // pull request all move together with the checklist check that fails the open
-// pull request and the normalizer that writes its squash draft.
+// pull request.
 //
 // THE PULL-REQUEST NUMBER, where the call carries one. `gh pr edit` names the
 // pull request first, so a number or a pull-request URL written there gives the
