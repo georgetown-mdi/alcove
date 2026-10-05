@@ -275,7 +275,7 @@ The event's `termsChange` object states the same change for a supervisor that re
 | ----- | ---- | ------- |
 | `proposalWritten` | boolean | `true` where the run wrote the partner's terms beside the configuration for `alcove apply`, `false` where it wrote nothing. |
 | `received` | optional `{ "added": [string], "removed": [string] }` | The columns the partner now sends, and no longer sends, against the columns this party receives; absent where the two agree. |
-| `sent` | optional `{ "added": [string], "removed": [string] }` | The columns this party sends against the columns the partner receives, the partner's to decide; absent where the two agree. |
+| `sent` | optional `{ "added": [string], "removed": [string] }` | The columns this party sends against the columns the partner receives, the partner's to decide: `added` names the columns this party sends that the partner does not receive, which it would no longer send under the partner's terms, and `removed` the columns the partner receives that this party does not send, which it would now send; absent where the two agree. |
 | `partnerDeduplicate` | optional `{ "expected": boolean, "presented": boolean }` | The partner's `deduplicate` against the value this party holds it to; absent where they agree. |
 | `otherTerms` | array of string | The diagnostic for each other term that differs. |
 

@@ -372,7 +372,11 @@ export function partnerBoundTerms(terms: LinkageTerms): PartnerBoundTerms {
 
 /**
  * How one direction's payload columns differ between the party that sends
- * them and the party that receives them, by column name.
+ * them and the party that receives them, by column name. Adopting the
+ * partner's terms takes the partner's list in both directions, so in
+ * {@link TermsDelta}'s `received` (the partner sends) `added` is what the
+ * partner now sends this party, while in its `sent` (the partner receives)
+ * `removed` is what this party now sends and `added` what it no longer sends.
  */
 export interface PayloadColumnsChange {
   /** Columns the sender's terms send that the receiver's do not receive. */
