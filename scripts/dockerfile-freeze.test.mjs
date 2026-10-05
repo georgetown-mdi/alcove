@@ -599,6 +599,19 @@ for (const {
     const cliArgv = execArgv((l) => l.includes("--expose-gc"));
     const cliEntryPath = cliArgv.find((t) => t.endsWith("index.js"));
 
+    it("copies nothing from a .output directory into the runtime stage", () => {
+      // The console image runs apps/web/dist/console-server, not the Nitro
+      // server whose build writes .output.
+      const offending = image.runtimeCopies.filter(({ sources }) =>
+        sources.some((source) => /(?:^|\/)\.output(?:\/|$)/.test(source)),
+      );
+      expect(
+        offending.map(({ flags, sources, dests }) =>
+          ["COPY", ...flags, ...sources, ...dests].join(" "),
+        ),
+      ).toEqual([]);
+    });
+
     it("ships every script on the entrypoint chain", () => {
       expect(entrypointArgv).toEqual([chain[0]]);
       for (const scriptPath of chain) {
