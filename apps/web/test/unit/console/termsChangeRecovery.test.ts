@@ -64,7 +64,7 @@ describe("a relayed terms change", () => {
 describe("the terms change as the web app shows it", () => {
   const delta = {
     received: { added: ["a\u202eb"], removed: [] },
-    sent: { added: [], removed: ["zip"] },
+    sent: { added: ["zip"], removed: [] },
     partnerDeduplicate: { expected: false, presented: true },
     otherTerms: ["algorithm mismatch"],
   };

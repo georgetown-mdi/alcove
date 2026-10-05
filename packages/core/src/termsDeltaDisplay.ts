@@ -24,37 +24,39 @@ export type TermsDeltaSection =
     }
   | { kind: "otherTerms"; label: string; differences: string[] };
 
-const COLUMN_LABELS = {
-  received: {
-    added: "columns your partner now sends you",
-    removed: "columns your partner no longer sends you",
+// Each direction's sections in display order, keyed by the PayloadColumnsChange
+// field each shows. Adopting the partner's terms takes the partner's list in
+// both directions: in `received` its send list, so `added` is what it now
+// sends; in `sent` its receive list, so `removed` -- a column it receives that
+// this party does not send -- is what this party now sends.
+const RECEIVED_SECTIONS = [
+  { field: "added", label: "columns your partner now sends you" },
+  { field: "removed", label: "columns your partner no longer sends you" },
+] as const;
+const SENT_SECTIONS = [
+  {
+    field: "removed",
+    label: "columns you now send your partner (your partner decides on these)",
   },
-  sent: {
-    added: "columns you now send your partner (your partner decides on these)",
-    removed:
+  {
+    field: "added",
+    label:
       "columns you no longer send your partner (your partner decides on this)",
   },
-} as const;
+] as const;
 
 function columnSections(
   change: PayloadColumnsChange | undefined,
-  labels: { added: string; removed: string },
+  shown: ReadonlyArray<{ field: keyof PayloadColumnsChange; label: string }>,
 ): TermsDeltaSection[] {
   if (change === undefined) return [];
-  const sections: TermsDeltaSection[] = [];
-  if (change.added.length > 0)
-    sections.push({
+  return shown
+    .filter(({ field }) => change[field].length > 0)
+    .map(({ field, label }) => ({
       kind: "columns",
-      label: labels.added,
-      columns: change.added,
-    });
-  if (change.removed.length > 0)
-    sections.push({
-      kind: "columns",
-      label: labels.removed,
-      columns: change.removed,
-    });
-  return sections;
+      label,
+      columns: change[field],
+    }));
 }
 
 /**
@@ -64,8 +66,8 @@ function columnSections(
  */
 export function termsDeltaSections(delta: TermsDelta): TermsDeltaSection[] {
   const sections = [
-    ...columnSections(delta.received, COLUMN_LABELS.received),
-    ...columnSections(delta.sent, COLUMN_LABELS.sent),
+    ...columnSections(delta.received, RECEIVED_SECTIONS),
+    ...columnSections(delta.sent, SENT_SECTIONS),
   ];
   if (delta.partnerDeduplicate !== undefined)
     sections.push({
