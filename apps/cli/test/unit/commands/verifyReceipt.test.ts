@@ -63,11 +63,31 @@ import {
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
   worseReceiptVerdictExitCode,
 } from "../../../src/util/exit";
+import { mainThreadHeapNeedBytes } from "../../../src/inputHeapCheck";
 import {
   argv,
   captureStdio,
   snapshotDiagnosticSinkAndLevel,
 } from "../../loggingTestSupport";
+
+// The main thread's heap limit as the heap check reads it, when a test sets one.
+const heapLimit = vi.hoisted(() => ({
+  bytes: undefined as number | undefined,
+}));
+vi.mock("node:v8", async (importActual) => {
+  const actual = await importActual<typeof import("node:v8")>();
+  const getHeapStatistics = (): ReturnType<typeof actual.getHeapStatistics> => {
+    const statistics = actual.getHeapStatistics();
+    return heapLimit.bytes === undefined
+      ? statistics
+      : { ...statistics, heap_size_limit: heapLimit.bytes };
+  };
+  return {
+    ...actual,
+    default: { ...actual, getHeapStatistics },
+    getHeapStatistics,
+  };
+});
 
 const tmp = () => mkdtempSync(join(tmpdir(), "verify-receipt-"));
 
@@ -1166,6 +1186,52 @@ describe("handler", () => {
     expect(exits).toEqual([64]);
     expect(stderr).toContain("already a dual-signed record");
     expect(stdout).toBe("");
+  });
+
+  describe("the heap gate", () => {
+    const csvRows = (count: number): string => {
+      let body = "id\n";
+      for (let i = 0; i < count; i++) body += `${i}\n`;
+      return body;
+    };
+
+    async function verifyOverHeapOf(
+      records: number,
+      heapRecords: number,
+    ): Promise<Awaited<ReturnType<typeof runVerify>>> {
+      const { recordPath } = await exchangeArtifacts();
+      const dir = tmp();
+      const inputFile = join(dir, "input.csv");
+      const resultFile = join(dir, "result.csv");
+      writeFileSync(inputFile, csvRows(records));
+      writeFileSync(resultFile, csvRows(1));
+      heapLimit.bytes = mainThreadHeapNeedBytes(heapRecords);
+      try {
+        return await runVerify({
+          record: recordPath,
+          "input-file": inputFile,
+          "result-file": resultFile,
+        });
+      } finally {
+        heapLimit.bytes = undefined;
+      }
+    }
+
+    test("refuses an input over the heap with exit 64 before the parse, naming the remedy", async () => {
+      const { stdout, stderr, exits } = await verifyOverHeapOf(3, 2);
+      expect(exits).toEqual([64]);
+      expect(stderr).toContain("the CSV input holds 3 records");
+      expect(stderr).toMatch(/NODE_OPTIONS=--max-old-space-size=\d+/);
+      expect(stderr).toContain("machine with more memory");
+      expect(stderr).not.toContain("--allow-memory-shortfall");
+      expect(stdout).toBe("");
+    });
+
+    test("reads an input the heap holds", async () => {
+      const { stderr, exits } = await verifyOverHeapOf(3, 3);
+      expect(stderr).not.toContain("the CSV input holds");
+      expect(exits).not.toContain(64);
+    });
   });
 
   const exchangeRecordOnlyOptions: Array<[string, Record<string, unknown>]> = [

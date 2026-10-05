@@ -87,13 +87,26 @@ function inputHeapShortfallSentence(params: InputHeapShortfall): string {
   );
 }
 
-/** The refusal for an input the main thread's heap cannot hold. */
-export function inputHeapShortfallMessage(params: InputHeapShortfall): string {
+/**
+ * The refusal for an input the main thread's heap cannot hold. A command with
+ * no `--allow-memory-shortfall` flag passes `offerOverride: false`, and the
+ * refusal then names a larger machine in its place.
+ */
+export function inputHeapShortfallMessage(
+  params: InputHeapShortfall,
+  { offerOverride = true }: { offerOverride?: boolean } = {},
+): string {
   const needBytes = mainThreadHeapNeedBytes(params.records);
+  const raiseHeap =
+    `Set NODE_OPTIONS=--max-old-space-size=${suggestedHeapMiB(needBytes)} in the ` +
+    `environment and run the command again`;
+  if (!offerOverride)
+    return (
+      `${inputHeapShortfallSentence(params)}. ${raiseHeap}, or run it on a ` +
+      `machine with more memory.`
+    );
   return (
-    `${inputHeapShortfallSentence(params)}. Set ` +
-    `NODE_OPTIONS=--max-old-space-size=${suggestedHeapMiB(needBytes)} in the ` +
-    `environment and run the command again, or pass ` +
+    `${inputHeapShortfallSentence(params)}. ${raiseHeap}, or pass ` +
     `--allow-memory-shortfall to run anyway; the run may then run out of ` +
     `heap while it reads the input and end with exit 134.`
   );
@@ -111,7 +124,8 @@ export function inputHeapShortfallOverrideWarning(
 
 /**
  * Refuse, with a {@link UsageError}, a CSV input file the main thread's heap
- * cannot read and prepare, or with `allowShortfall` warn and return. Reads
+ * cannot read and prepare, or with `allowShortfall` warn and return. A command
+ * with no override flag passes `offerOverride: false`. Reads
  * nothing for stdin (`-`), and leaves a path it cannot stat or read to the read
  * that reports it. A file too small to hold more records than the heap admits
  * is not counted.
@@ -120,8 +134,13 @@ export async function checkInputFitsMainThreadHeap(
   input: string,
   {
     allowShortfall = false,
+    offerOverride = true,
     heapLimitBytes = getHeapStatistics().heap_size_limit,
-  }: { allowShortfall?: boolean; heapLimitBytes?: number } = {},
+  }: {
+    allowShortfall?: boolean;
+    offerOverride?: boolean;
+    heapLimitBytes?: number;
+  } = {},
 ): Promise<void> {
   if (input === "-") return;
   let fileBytes: number;
@@ -146,5 +165,5 @@ export async function checkInputFitsMainThreadHeap(
     getLogger("input").warn(inputHeapShortfallOverrideWarning(shortfall));
     return;
   }
-  throw new UsageError(inputHeapShortfallMessage(shortfall));
+  throw new UsageError(inputHeapShortfallMessage(shortfall, { offerOverride }));
 }

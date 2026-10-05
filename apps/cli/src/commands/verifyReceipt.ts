@@ -65,6 +65,7 @@ import {
   type ConfigLinkageSource,
 } from "../config";
 import { expandTilde } from "../fileUtils";
+import { checkInputFitsMainThreadHeap } from "../inputHeapCheck";
 import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
 import { agreedTermsPathFor, keysPathFor } from "../recordFile";
 import { parseSensitiveJson, parseSensitiveYaml } from "../sensitiveFile";
@@ -1350,6 +1351,9 @@ export async function handler(argv: Arguments): Promise<void> {
     // exchange wrote, and the paths named here need not be those files.
     // Nothing later reads by this value, so a difference is not reported.
     const csvDelimiter = csvDelimiterArg ?? localSource?.csvDelimiter;
+    for (const csvFile of [inputFile, resultFile])
+      if (csvFile !== undefined)
+        await checkInputFitsMainThreadHeap(csvFile, { offerOverride: false });
     const inputParse =
       inputFile === undefined
         ? undefined
