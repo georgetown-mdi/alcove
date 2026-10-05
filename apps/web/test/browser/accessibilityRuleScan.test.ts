@@ -126,6 +126,29 @@ async function exchangeWithRunsId(): Promise<string> {
   return created.id;
 }
 
+/** A saved exchange on an agreed schedule: the state that shows the schedule
+ * form's date, time and number fields. */
+async function scheduledExchangeId(): Promise<string> {
+  const anchor = new Date(Date.now() + 3_600_000).toISOString();
+  const created = await createManagedExchange({
+    label: "Riverbend quarterly",
+    exchangeFile: composeManagedExchangeFile({
+      connection: { channel: "webrtc", host: "signaling.example.org" },
+      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+    }),
+    side: "inviter",
+    sharedSecret: generateSharedSecret(),
+    schedule: {
+      anchor,
+      intervalDays: 7,
+      windowSeconds: 10_800,
+      nextWindow: anchor,
+      consecutiveMisses: 0,
+    },
+  });
+  return created.id;
+}
+
 interface ScannedState {
   /** The route path as the route file declares it. */
   route: string;
@@ -222,6 +245,13 @@ const SCANNED_STATES: Array<ScannedState> = [
     heading: "Riverbend quarterly",
     node: async () =>
       createElement(ManagedRunSurface, { id: await exchangeWithRunsId() }),
+  },
+  {
+    route: "/saved/$id",
+    state: "an exchange on an agreed schedule",
+    heading: "Riverbend quarterly",
+    node: async () =>
+      createElement(ManagedRunSurface, { id: await scheduledExchangeId() }),
   },
   {
     route: "/saved/$id",

@@ -78,6 +78,21 @@ function StepStrip({ steps }: { steps: ReadonlyArray<RailStep> }) {
   );
 }
 
+/** The user guide link: in the {@link TopBar} on a wide layout, below the ledger
+ * on a narrow one ({@link WorkShell}). Opens in a new tab. */
+export function HelpLink() {
+  return (
+    <a
+      className={styles.topBarHelp}
+      href={userGuideUrl()}
+      target="_blank"
+      rel="noreferrer"
+    >
+      Help
+    </a>
+  );
+}
+
 /**
  * The console's top bar: the wordmark linking home, a `<nav>` landmark named
  * by `navLabel` wrapping the required-spine or protocol-timeline Stepper, and
@@ -91,9 +106,9 @@ function StepStrip({ steps }: { steps: ReadonlyArray<RailStep> }) {
  *
  * At or below the narrow cut-over the Stepper compresses to a {@link
  * StepStrip}; the switch is by conditional render, not `display`, so only one
- * spine is ever in the accessibility tree. The wordmark and Help are left out
- * as controls there so the ledger's share bar stays the page's first
- * interactive element.
+ * spine is ever in the accessibility tree. The wordmark is plain text there and
+ * Help moves below the ledger ({@link WorkShell}) so the ledger's share bar
+ * stays the page's first interactive element.
  */
 export function TopBar({
   navLabel,
@@ -123,16 +138,7 @@ export function TopBar({
         {transportNote !== undefined && (
           <p className={styles.topBarNote}>{transportNote}</p>
         )}
-        {!narrow && (
-          <a
-            className={styles.topBarHelp}
-            href={userGuideUrl()}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Help
-          </a>
-        )}
+        {!narrow && <HelpLink />}
       </div>
     </div>
   );

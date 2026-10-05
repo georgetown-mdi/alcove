@@ -256,6 +256,12 @@ export const CHECKS = [
       "Every render of a failed run's message or reported cause in apps/web/src goes through that piece's own sink, so no alert collapses a relayed cause chain onto one line.",
   },
   {
+    script: "check:alert-roles",
+    expiresOn: "2026-12-31",
+    description:
+      "Every red or runtime-color Alert in apps/web/src sets a role a screen reader announces (alert, status, or alertRoleFor of its own color), except the documented sites whose text a separate live region announces.",
+  },
+  {
     script: "check:zero-setup-keys",
     expiresOn: "2026-12-31",
     description:

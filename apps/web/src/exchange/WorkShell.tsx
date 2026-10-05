@@ -2,6 +2,8 @@ import { Fragment } from "react";
 
 import { AppPage } from "@components/AppPage";
 import styles from "@styles/app.module.css";
+
+import { HelpLink } from "./TopBar";
 import { useNarrowViewport } from "./narrowViewport";
 
 import type { ReactNode } from "react";
@@ -25,6 +27,10 @@ import type { ReactNode } from "react";
  * reveal toggles, live-region identity). The browser does drop focus when the
  * node containing the focused element moves -- inherent to the DOM move, not
  * something keying can prevent.
+ *
+ * The top bar leaves its Help link out at that width, so with a top bar the
+ * shell places it after the ledger instead: after the share bar in Tab order,
+ * ahead of the work column.
  */
 export function WorkShell({
   topBar,
@@ -55,13 +61,17 @@ export function WorkShell({
     ledger === undefined ? undefined : (
       <Fragment key="ledger">{ledger}</Fragment>
     );
+  const narrowHelp =
+    topBar === undefined ? undefined : (
+      <p key="help" className={styles.narrowHelp}>
+        <HelpLink />
+      </p>
+    );
   return (
     <AppPage>
       {topBar}
       <div className={gridClass}>
-        {narrow && ledgerRegion !== undefined
-          ? [ledgerRegion, work]
-          : [work, ledgerRegion]}
+        {narrow ? [ledgerRegion, narrowHelp, work] : [work, ledgerRegion]}
       </div>
     </AppPage>
   );
