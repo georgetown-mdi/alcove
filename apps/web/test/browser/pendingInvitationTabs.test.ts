@@ -150,4 +150,23 @@ describe("a kept invitation in two tabs", () => {
     await expect.element(heading(OFFER_HEADING)).toBeInTheDocument();
     expect(heading(ELSEWHERE_HEADING).query()).toBeNull();
   });
+
+  test("closing the tab that holds it lets Check again in the other offer it", async () => {
+    const creator = await openOtherTab();
+    const lockName = await mintIn(creator);
+    app.render(createElement(InviterScreen));
+    await expect.element(heading(ELSEWHERE_HEADING)).toBeInTheDocument();
+
+    const checkAgain = page.getByRole("button", { name: "Check again" });
+    await checkAgain.click();
+    await expect.element(checkAgain).toBeEnabled();
+    expect(heading(ELSEWHERE_HEADING).query()).not.toBeNull();
+    expect(heading(OFFER_HEADING).query()).toBeNull();
+
+    creator.close();
+    await vi.waitFor(async () => expect(await claimed(lockName)).toBe(false));
+    await checkAgain.click();
+    await expect.element(heading(OFFER_HEADING)).toBeInTheDocument();
+    expect(heading(ELSEWHERE_HEADING).query()).toBeNull();
+  });
 });

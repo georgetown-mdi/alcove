@@ -10,6 +10,7 @@ import {
 
 import {
   clearPendingInvitation,
+  offerPendingInvitation,
   onInvitationExpiry,
   prunePendingInvitation,
   readPendingInvitation,
@@ -270,6 +271,18 @@ describe("the invitation kept for a resume", () => {
     },
   );
 
+  test("a resume on a 200-character CJK file name, 592 UTF-8 bytes, keeps the name", async () => {
+    const fileName = "\u6587".repeat(196) + ".csv";
+    writePendingInvitation(await mint(), { ...context, fileName });
+    const pending = await readPendingInvitation(new Date());
+    if (pending === undefined) throw new Error("no pending invitation");
+    const outcome = await resumeFromChosenFile(pending, Readable.from(CSV));
+    if (outcome.kind !== "resumed") throw new Error(outcome.kind);
+
+    writePendingInvitation(outcome.invitation, { ...context, fileName });
+    expect((await readPendingInvitation(new Date()))?.fileName).toBe(fileName);
+  });
+
   test("a file name past 255 characters is not offered and is removed", async () => {
     const entry = await writtenEntry();
     entry.fileName = "\u6587".repeat(256);
@@ -301,6 +314,55 @@ describe("the invitation kept for a resume", () => {
     writePendingInvitation(await mint(), context);
     clearPendingInvitation();
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("the claim on a kept invitation", () => {
+  /** Keep an invitation as a tab that could take no lock does, then give
+   * this tab a lock manager that finds the lock held for its first
+   * `refusals` requests; the manager's request function. */
+  async function keepThenLockRefusing(refusals: number) {
+    vi.stubGlobal("navigator", {});
+    writePendingInvitation(await mint(), context);
+    const request = vi.fn(
+      (
+        name: string,
+        _options: LockOptions,
+        callback: (lock: Lock | null) => Promise<unknown>,
+      ) =>
+        callback(
+          request.mock.calls.length <= refusals
+            ? null
+            : { name, mode: "exclusive" },
+        ),
+    );
+    vi.stubGlobal("navigator", { locks: { request } });
+    return request;
+  }
+
+  afterEach(() => {
+    clearPendingInvitation();
+  });
+
+  test("is asked for again after it is found held, and the invitation is offered when the second ask is granted", async () => {
+    const request = await keepThenLockRefusing(1);
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe("offer");
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  test("found held on both asks, says the invitation is open elsewhere", async () => {
+    const request = await keepThenLockRefusing(2);
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe(
+      "open-elsewhere",
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  test("is not asked for again once granted", async () => {
+    const request = await keepThenLockRefusing(0);
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe("offer");
+    expect((await offerPendingInvitation(new Date()))?.kind).toBe("offer");
+    expect(request).toHaveBeenCalledOnce();
   });
 });
 

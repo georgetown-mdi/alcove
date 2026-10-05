@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import {
   CSV_LINE_BYTE_CEILING,
   MAX_ENCODED_INVITATION_LENGTH,
+  MAX_FILE_NAME_BYTES,
   MAX_TEXT_LENGTH,
   decodeInvitation,
   getLogger,
@@ -115,6 +116,8 @@ export function writePendingInvitation(
     return;
   }
   releasePendingInvitationClaims(invitation.encoded);
+  // The result is not needed: no other tab holds a fresh invitation's claim,
+  // and a resumed one's is already this tab's.
   void claimPendingInvitation(invitation.encoded);
 }
 
@@ -129,13 +132,6 @@ export function clearPendingInvitation(): void {
   releasePendingInvitationClaims();
 }
 
-/**
- * A duplicated tab starts with a copy of its original's session storage, kept
- * invitation included, so two tabs could offer to wait on the same
- * invitation. The tab that keeps or offers it holds a Web Lock named for it
- * until it removes the entry or closes; a tab that finds the lock held offers
- * nothing. Where no lock can be taken the tab offers it.
- */
 const CLAIM_LOCK_PREFIX = "alcove-pending-invitation:";
 
 /** The Web Locks name of the claim on the invitation `encoded`: a digest, so
@@ -154,6 +150,7 @@ export async function pendingInvitationLockName(
 }
 
 interface Claim {
+  /** True once the lock is granted; false where another tab holds it. */
   granted: Promise<boolean>;
   release: () => void;
   /** Settles once the lock is released or was never granted. */
@@ -166,6 +163,10 @@ const claims = new Map<string, Claim>();
  * invitation; a new claim on the same invitation waits for it. */
 const releasing = new Map<string, Promise<unknown>>();
 
+/** How long a claim found held waits before it asks once more: a reloaded
+ * tab's old document can still hold the lock while the new one asks. */
+export const CLAIM_RETRY_MS = 300;
+
 function lockManager(): LockManager | undefined {
   try {
     return (globalThis.navigator as Navigator | undefined)?.locks;
@@ -174,38 +175,59 @@ function lockManager(): LockManager | undefined {
   }
 }
 
-/** Whether this tab holds, or now takes, the claim on the invitation
- * `encoded`. */
-async function claimPendingInvitation(encoded: string): Promise<boolean> {
+/**
+ * Whether this tab holds, or now takes, the claim on the invitation
+ * `encoded`. A duplicated tab starts with a copy of its original's session
+ * storage, kept invitation included, so two tabs could offer to wait on the
+ * same invitation: the tab that keeps or offers it holds a Web Lock named for
+ * it until it removes the entry or closes, and a tab that finds the lock held,
+ * twice {@link CLAIM_RETRY_MS} apart, offers nothing. Where no lock can be
+ * taken, the tab offers it.
+ */
+function claimPendingInvitation(encoded: string): Promise<boolean> {
   const existing = claims.get(encoded);
   if (existing !== undefined) return existing.granted;
   const locks = lockManager();
-  if (locks === undefined) return true;
+  if (locks === undefined) return Promise.resolve(true);
+  const state = { released: false };
   let release = (): void => undefined;
   const held = new Promise<void>((resolve) => {
-    release = resolve;
+    release = () => {
+      state.released = true;
+      resolve();
+    };
   });
   let grant = (_granted: boolean): void => undefined;
   const granted = new Promise<boolean>((resolve) => {
     grant = resolve;
   });
-  const claim: Claim = { granted, release, settled: held };
-  claims.set(encoded, claim);
-  const requested = (async () => {
+  const settled = (async () => {
     await releasing.get(encoded);
     const name = await pendingInvitationLockName(encoded);
-    await locks.request(name, { ifAvailable: true }, (lock) => {
-      grant(lock !== null);
-      return lock === null ? undefined : held;
-    });
+    const ask = () =>
+      locks.request(name, { ifAvailable: true }, async (lock) => {
+        if (lock === null || state.released) return false;
+        grant(true);
+        await held;
+        return true;
+      });
+    if (await ask()) return;
+    if (!state.released) {
+      await new Promise((resolve) => setTimeout(resolve, CLAIM_RETRY_MS));
+      if (await ask()) return;
+    }
+    grant(false);
   })().catch((error: unknown) => {
     whenDiagnostic(() => log.warn("pending invitation claim failed:", error));
+    // Fail open: where no lock can be taken, every tab offers the invitation.
     grant(true);
   });
-  claim.settled = requested;
-  const result = await granted;
-  if (!result && claims.get(encoded) === claim) claims.delete(encoded);
-  return result;
+  const claim: Claim = { granted, release, settled };
+  claims.set(encoded, claim);
+  void granted.then((result) => {
+    if (!result && claims.get(encoded) === claim) claims.delete(encoded);
+  });
+  return granted;
 }
 
 /** Give up this tab's claims, but for the one on `keep`. */
@@ -221,7 +243,8 @@ function releasePendingInvitationClaims(keep?: string): void {
   }
 }
 
-/** Every member a written entry may hold; an entry with any other is refused. */
+/** Every member a written entry may hold; an entry with any other is
+ * refused. */
 const STORED_MEMBERS: ReadonlySet<string> = new Set(
   Object.keys({
     v: true,
@@ -247,11 +270,11 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
-/** The longest file name, in code points, the file systems a browser reads a
- * file from hold: NTFS and HFS+ allow 255 UTF-16 code units, APFS 255
- * characters, and ext4 255 UTF-8 bytes, none of them past 255 code points. A
- * browser hands over the name as the file system holds it. */
-const MAX_FILE_NAME_CODE_POINTS = 255;
+/** The longest file name kept: 255 code points, the number core bounds an
+ * exchange's own file names by. A browser hands over a file's name as code
+ * points, and no file system a browser reads from holds a name of more than
+ * 255 of them. */
+const MAX_FILE_NAME_CODE_POINTS = MAX_FILE_NAME_BYTES;
 
 /** A string of at most `maxCodePoints` code points. */
 function isCodePointBoundedString(
@@ -285,8 +308,8 @@ function ownDeepLink(encoded: string): string | undefined {
  * this app writes, or not one the writer sets. Each string is bounded by what
  * the app can write: the encoded invitation by core's decoder, the deep link
  * by being the one this page builds, the name by a terms party identity, the
- * file name by the longest name a file system holds, and the column names by the
- * header line the CSV read accepts.
+ * file name by 255 code points, and the column names by the header line the
+ * CSV read accepts.
  */
 function storedRecordOf(value: unknown): StoredRecord | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value))

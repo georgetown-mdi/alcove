@@ -849,6 +849,12 @@ export function InviterScreen() {
       cancelled = true;
     };
   }, []);
+  async function checkPendingInvitationAgain() {
+    const offer = await offerPendingInvitation(new Date());
+    if (offer?.kind === "open-elsewhere") return;
+    setPendingElsewhere(false);
+    if (offer !== undefined) setPending(offer.pending);
+  }
   useEffect(() => {
     if (invitation === undefined) return;
     setPending(undefined);
@@ -1595,7 +1601,9 @@ export function InviterScreen() {
             />
           )}
         {section === "file" && invitation === undefined && pendingElsewhere && (
-          <ResumeInvitationElsewhere />
+          <ResumeInvitationElsewhere
+            onCheckAgain={checkPendingInvitationAgain}
+          />
         )}
         {section === "file" && (
           <YourFileSection
