@@ -112,7 +112,9 @@ export function builder(cmd: Argv): Argv {
       describe:
         "also write this party's public certificate (no private key) to the " +
         "given path, for sharing with a partner. A different file already at " +
-        "the path is replaced only with --force",
+        "the path is replaced only with --force, which also regenerates the " +
+        "signing identity and invalidates every partner's pin; remove the " +
+        "stale file yourself to replace only the export",
     });
   return addLoggingOptions(beforeLogging);
 }

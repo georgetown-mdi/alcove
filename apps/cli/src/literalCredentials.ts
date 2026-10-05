@@ -109,8 +109,8 @@ export const BOOTSTRAP_CREDENTIAL_FLAGS: readonly string[] =
 export interface CommandLineLiteralCredentials {
   /** Where each one was given: a flag, or `the URL`. */
   sources: string[];
-  /** The `@path` form of the first one, as this command takes it. */
-  example: string;
+  /** How to give them from a file instead, in a form this command takes. */
+  remedy: string;
 }
 
 function joinedList(items: readonly string[]): string {
@@ -158,20 +158,26 @@ export function commandLineLiteralCredentials(
     ...fromFlags.map((field) => field.flag),
   ];
   const passwordField = CREDENTIAL_FIELDS[0];
-  let example = passwordField.configExample;
-  if (fromFlags.length > 0) example = fromFlags[0].flagExample;
-  else if (url !== undefined && definedFlags.includes(passwordField.flag))
-    example = `${urlWithoutPassword(url)} ${passwordField.flagExample}`;
-  return { sources, example };
-}
-
-/** What a command line holding `found` exposes, as the opening of a warning. */
-function commandLineExposure(found: CommandLineLiteralCredentials): string {
-  return (
-    `the command line holds ${found.sources.length === 1 ? "a credential" : "credentials"} as typed in ${joinedList(found.sources)}, ` +
-    "which other users of this machine can see while the command runs and " +
-    "your shell may keep in its history"
-  );
+  if (fromFlags.length === 0 && !definedFlags.includes(passwordField.flag))
+    return {
+      sources,
+      remedy:
+        "Put the password in a file of its own, give the URL without the " +
+        "password, and set the file's path with a leading @ in " +
+        "connection.server of the written configuration, e.g. " +
+        `${passwordField.configExample}.`,
+    };
+  const example =
+    fromFlags.length > 0
+      ? fromFlags[0].flagExample
+      : `${urlWithoutPassword(url as URL)} ${passwordField.flagExample}`;
+  return {
+    sources,
+    remedy:
+      "Put each value in a file of its own and pass its path with a leading @" +
+      (inUrl ? ", leaving the password out of the URL" : "") +
+      `, e.g. ${example}.`,
+  };
 }
 
 /** The notice a command line holding `found` gets. */
@@ -179,18 +185,16 @@ export function commandLineLiteralCredentialNotice(
   found: CommandLineLiteralCredentials,
 ): string {
   return (
-    `${commandLineExposure(found)}. Put each value in a file of its own and ` +
-    "pass its path with a leading @" +
-    (found.sources.includes("the URL")
-      ? ", leaving the password out of the URL"
-      : "") +
-    `, e.g. ${found.example}.`
+    `the command line holds ${found.sources.length === 1 ? "a credential" : "credentials"} as typed in ${joinedList(found.sources)}, ` +
+    "which other users of this machine can see while the command runs and " +
+    `your shell may keep in its history. ${found.remedy}`
   );
 }
 
 /**
- * Warn when the command line holds a credential as typed, for a command that
- * writes no configuration holding it.
+ * Warn when the command line holds a credential as typed. Called when the
+ * arguments are parsed, before the command contacts anything, so a run that
+ * fails or is interrupted still states it.
  */
 export function warnIfCommandLineHoldsLiteralCredential(
   found: CommandLineLiteralCredentials | undefined,
@@ -201,62 +205,43 @@ export function warnIfCommandLineHoldsLiteralCredential(
 
 /**
  * The warning a configuration written with a credential as typed gets, or
- * undefined when it holds none. With `commandLine`, the one warning also
- * states what the command line exposed.
+ * undefined when it holds none.
  */
 export function savedLiteralCredentialWarning(
   configPath: string,
   connection: ConnectionCredentialFields | undefined,
-  commandLine?: CommandLineLiteralCredentials,
 ): string | undefined {
   const found = literalCredentials(connection?.server);
-  if (found.length === 0)
-    return commandLine === undefined
-      ? undefined
-      : commandLineLiteralCredentialNotice(commandLine);
+  if (found.length === 0) return undefined;
   const shownPath = redactAndRenderOperatorSuppliedText(
     operatorSuppliedText(configPath),
   );
   const fields = found.map((field) => field.configField);
   const which = `${fields.length === 1 ? "a credential" : "credentials"} as typed in ${joinedList(fields)}`;
-  if (commandLine === undefined)
-    return (
-      `the configuration saved to ${shownPath} holds ${which}, and anyone ` +
-      "with a copy of the file can use it. Before you commit or share the " +
-      "file, put the value in a file of its own and write its path with a " +
-      `leading @ in its place, e.g. ${found[0].configExample}.`
-    );
   return (
-    `${commandLineExposure(commandLine)}, and the configuration saved to ` +
-    `${shownPath} holds ${which}, where anyone with a copy of the file can ` +
-    "use it. Put each value in a file of its own and give its path with a " +
-    `leading @: on the command line, e.g. ${commandLine.example}, and in the ` +
-    `file before you commit or share it, e.g. ${found[0].configExample}.`
+    `the configuration saved to ${shownPath} holds ${which}, and anyone ` +
+    "with a copy of the file can use it. Before you commit or share the " +
+    "file, put the value in a file of its own and write its path with a " +
+    `leading @ in its place, e.g. ${found[0].configExample}.`
   );
 }
 
-/** Where a saved-configuration warning goes, and what it also states. */
+/** Where a saved-configuration warning goes. */
 export interface SavedConfigWarningOptions {
   /** Defaults to the `config` logger. */
   log?: { warn: (message: string) => void };
-  /** The command line's own credentials as typed, stated in the same warning. */
-  commandLine?: CommandLineLiteralCredentials;
 }
 
 /**
  * Warn when the configuration just written to `configPath` holds a
- * credential as typed, or the command line that wrote it did.
+ * credential as typed.
  */
 export function warnIfSavedConfigHoldsLiteralCredential(
   configPath: string,
   connection: ConnectionCredentialFields | undefined,
   options: SavedConfigWarningOptions = {},
 ): void {
-  const warning = savedLiteralCredentialWarning(
-    configPath,
-    connection,
-    options.commandLine,
-  );
+  const warning = savedLiteralCredentialWarning(configPath, connection);
   if (warning !== undefined) (options.log ?? getLogger("config")).warn(warning);
 }
 

@@ -1194,15 +1194,10 @@ export async function handler(argv: Arguments): Promise<void> {
       const resolved = resolveInvitePositionals(positionals);
       const url = resolved.mode === "online" ? resolved.url : undefined;
       assertBootstrapUrlPasswordStorable(argv, url);
-      // An online invitation states these in the warning its configuration
-      // gets when the partner accepts.
-      const commandLineCredentials = commandLineLiteralCredentials(
-        argv,
-        url,
-        BOOTSTRAP_CREDENTIAL_FLAGS,
+      warnIfCommandLineHoldsLiteralCredential(
+        commandLineLiteralCredentials(argv, url, BOOTSTRAP_CREDENTIAL_FLAGS),
+        log,
       );
-      if (resolved.mode !== "online")
-        warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
       const ready = await validateInvite({
         resolved,
         options,
@@ -1244,7 +1239,6 @@ export async function handler(argv: Arguments): Promise<void> {
           csvDelimiter,
           verbosity: options.verbosity,
           loggerName: "invite",
-          commandLineCredentials,
           logFile: options.logFile,
           writeRecord: options.record,
           eventStream: options.eventStream,

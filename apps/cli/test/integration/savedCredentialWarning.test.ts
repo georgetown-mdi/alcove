@@ -1,9 +1,18 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  test,
+  vi,
+} from "vitest";
 import YAML from "yaml";
 
 import { parseExchangeSpec } from "@alcove/core";
@@ -132,6 +141,9 @@ inProcessOnly(
       expect(run.stderr).toContain(`${COMMAND_LINE_NOTICE} in the URL`);
       expect(run.stderr.split(COMMAND_LINE_NOTICE)).toHaveLength(2);
       expect(run.stderr.split(SAVED_WARNING)).toHaveLength(2);
+      expect(run.stderr.indexOf(COMMAND_LINE_NOTICE)).toBeLessThan(
+        run.stderr.indexOf(SAVED_WARNING),
+      );
       const user = side === "a" ? srv.usera : srv.userb;
       expect(savedServer(side).password).toBe(user.password);
     }
@@ -164,3 +176,38 @@ inProcessOnly(
     }
   },
 );
+
+/** A local port nothing listens on, so a connection to it is refused. */
+async function closedPort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as net.AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+test("an online invite that never connects still states the command-line notice", async () => {
+  fs.writeFileSync(path.join(work, "in.csv"), INPUT_A);
+  const port = await closedPort();
+  const run = await startCli({
+    args: [
+      "invite",
+      `sftp://alice:s3cretPW@127.0.0.1:${port}/drop`,
+      "in.csv",
+      "out",
+      "--identity",
+      "party a",
+      "--server-host-key-fingerprint",
+      srv.hostKeyFingerprint,
+      "--accept-timeout",
+      "5s",
+    ],
+    cwd: work,
+    timeoutMs: RUN_BUDGET_MS,
+  }).finished;
+  expect(run.exitCode, describeCliRun("invite", run)).not.toBe(0);
+  expect(run.stderr).toContain(`${COMMAND_LINE_NOTICE} in the URL`);
+  expect(run.stderr).not.toContain("s3cretPW");
+  expect(run.stderr).not.toContain(SAVED_WARNING);
+  expect(fs.existsSync(path.join(work, "alcove.yaml"))).toBe(false);
+});

@@ -144,10 +144,17 @@ describe("commandLineLiteralCredentialNotice", () => {
     );
   });
 
-  test("a command with no --server-password names the configuration form", () => {
-    expect(noticeFor({}, new URL("sftp://alice:pw@host/drop"), [])).toContain(
-      'e.g. password: "@./sftp-password.txt".',
+  test("a command with no credential flag names only the configuration form", () => {
+    const notice = noticeFor({}, new URL("sftp://alice:pw@host/drop"), []);
+    expect(notice).toBe(
+      "the command line holds a credential as typed in the URL, which other " +
+        "users of this machine can see while the command runs and your shell " +
+        "may keep in its history. Put the password in a file of its own, " +
+        "give the URL without the password, and set the file's path with a " +
+        "leading @ in connection.server of the written configuration, e.g. " +
+        'password: "@./sftp-password.txt".',
     );
+    expect(notice).not.toContain("--server-password");
   });
 
   test("each credential flag given a value as typed is named", () => {
@@ -203,41 +210,14 @@ describe("commandLineLiteralCredentialNotice", () => {
   });
 });
 
-describe("savedLiteralCredentialWarning with the command line's credentials", () => {
-  const commandLine = commandLineLiteralCredentials(
-    { "server-password": "pw" },
-    undefined,
-    BOOTSTRAP_CREDENTIAL_FLAGS,
-  );
-
-  test("one warning states both the command line and the saved file", () => {
-    expect(
-      savedLiteralCredentialWarning(
-        "alcove.yaml",
-        { channel: "sftp", server: { password: "pw" } },
-        commandLine,
-      ),
-    ).toBe(
-      "the command line holds a credential as typed in --server-password, " +
-        "which other users of this machine can see while the command runs " +
-        "and your shell may keep in its history, and the configuration saved " +
-        "to alcove.yaml holds a credential as typed in " +
-        "connection.server.password, where anyone with a copy of the file " +
-        "can use it. Put each value in a file of its own and give its path " +
-        "with a leading @: on the command line, e.g. --server-password " +
-        "@./sftp-password.txt, and in the file before you commit or share " +
-        'it, e.g. password: "@./sftp-password.txt".',
-    );
-  });
-
-  test("a saved file holding none still gets the command line's notice", () => {
-    expect(
-      savedLiteralCredentialWarning(
-        "alcove.yaml",
-        { channel: "filedrop" },
-        commandLine,
-      ),
-    ).toBe(commandLineLiteralCredentialNotice(commandLine!));
+describe("savedLiteralCredentialWarning and the command line", () => {
+  test("the saved-file warning states the file only", () => {
+    const warning = savedLiteralCredentialWarning("alcove.yaml", {
+      channel: "sftp",
+      server: { password: "pw" },
+    });
+    expect(warning).toMatch(/^the configuration saved to alcove\.yaml holds/);
+    expect(warning).not.toContain("command line");
   });
 });
 

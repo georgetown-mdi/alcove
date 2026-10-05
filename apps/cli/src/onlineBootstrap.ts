@@ -60,7 +60,6 @@ import {
   type HostKeyPersistence,
 } from "./hostKeyTrust";
 import { checkInputFitsMainThreadHeap } from "./inputHeapCheck";
-import type { CommandLineLiteralCredentials } from "./literalCredentials";
 import { openInputSource } from "./util/dataIo";
 import { singleValue } from "./util/flags";
 import {
@@ -854,12 +853,6 @@ export async function runOnlineBootstrap(params: {
    */
   reuseExistingConfig?: boolean;
   /**
-   * The command line's credentials as typed, stated in the warning the
-   * configuration written at the handshake gets rather than in one of their
-   * own. The caller warns about them itself under {@link reuseExistingConfig}.
-   */
-  commandLineCredentials?: CommandLineLiteralCredentials;
-  /**
    * The online ACCEPTOR's terms-side commitment for THIS acceptance: the
    * `deduplicate` the invitation declared for the INVITING party's own side
    * (`token.linkageTerms.deduplicate`), recorded as the config's
@@ -1114,7 +1107,6 @@ export async function runOnlineBootstrap(params: {
           saveConfig(params.configPath, firstConfig, {
             exclusive: true,
             log: getLogger(params.loggerName),
-            commandLine: params.commandLineCredentials,
           });
         } catch (err) {
           if (err instanceof FileExistsError) throw configAppearedLate();

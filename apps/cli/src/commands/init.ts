@@ -159,11 +159,9 @@ export async function handler(argv: Arguments): Promise<void> {
         url,
         'add its path with a leading @ to connection.server in the file, e.g. password: "@./sftp-password.txt".',
       );
-      // States the URL's password in the warning the written file gets.
-      const commandLineCredentials = commandLineLiteralCredentials(
-        argv,
-        url,
-        [],
+      warnIfCommandLineHoldsLiteralCredential(
+        commandLineLiteralCredentials(argv, url, []),
+        log,
       );
       const connection = templateConnection(
         url,
@@ -188,7 +186,6 @@ export async function handler(argv: Arguments): Promise<void> {
           ),
       });
       if (decision === "skip") {
-        warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
         log.info(
           `left the existing file at ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configFile),
@@ -228,7 +225,6 @@ export async function handler(argv: Arguments): Promise<void> {
         writeConfigFile(configFile, template, connection, {
           exclusive: decision === "create",
           log,
-          commandLine: commandLineCredentials,
         });
       } catch (err) {
         // init performs no network activity, so every failure is a local,

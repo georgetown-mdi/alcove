@@ -42,7 +42,6 @@ import {
 import {
   assertBootstrapUrlPasswordStorable,
   BOOTSTRAP_CREDENTIAL_FLAGS,
-  type CommandLineLiteralCredentials,
   commandLineLiteralCredentials,
   warnIfCommandLineHoldsLiteralCredential,
 } from "../literalCredentials";
@@ -588,8 +587,6 @@ export function finalizeBootstrap(params: {
    */
   unattendedFillNoticeWriter?: (line: string) => void;
   eventStream?: EventStreamEmitter;
-  /** Stated in the warning the saved configuration gets, if any. */
-  commandLineCredentials?: CommandLineLiteralCredentials;
 }): void {
   const {
     save,
@@ -601,9 +598,8 @@ export function finalizeBootstrap(params: {
     filledPayloadReceive,
     unattendedFillNoticeWriter,
     eventStream,
-    commandLineCredentials,
   } = params;
-  const savedConfigWarning = { log, commandLine: commandLineCredentials };
+  const savedConfigWarning = { log };
   const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
     if (filledPayloadReceive !== undefined)
       reportPayloadReceiveFill({
@@ -799,19 +795,17 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     const { server, input, output } = resolved;
-    // A run that saves states these in the warning its configuration gets.
-    const commandLineCredentials = commandLineLiteralCredentials(
-      argv,
-      server,
-      BOOTSTRAP_CREDENTIAL_FLAGS,
-    );
     if (options.save) {
       try {
         assertBootstrapUrlPasswordStorable(argv, server);
       } catch (err) {
         exitWithError(log, err, 64);
       }
-    } else warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
+    }
+    warnIfCommandLineHoldsLiteralCredential(
+      commandLineLiteralCredentials(argv, server, BOOTSTRAP_CREDENTIAL_FLAGS),
+      log,
+    );
 
     // Warn before createConnection can throw so the user sees the flag issue even
     // if the channel is refused. The channel is derived from the URL here
@@ -1104,7 +1098,6 @@ export async function handler(argv: Arguments): Promise<void> {
                 filledPayloadReceive,
                 unattendedFillNoticeWriter: unattendedWriter,
                 eventStream: eventStreamEmitter,
-                commandLineCredentials,
               });
               return { persisted: true };
             } catch (err) {

@@ -223,7 +223,6 @@ export function provisionConfigAndKey(
     createIfAbsent(resolved.configPath, () =>
       saveConfig(resolved.configPath, spec, {
         exclusive: true,
-        commandLine: options.savedConfigWarning?.commandLine,
         log: { warn: (message) => heldWarnings.push(message) },
       }),
     );
