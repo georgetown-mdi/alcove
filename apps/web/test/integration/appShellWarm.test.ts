@@ -1,5 +1,5 @@
-import { readdirSync } from "node:fs";
 import { extname, resolve } from "node:path";
+import { readdirSync } from "node:fs";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
