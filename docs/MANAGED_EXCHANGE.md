@@ -2292,7 +2292,9 @@ write this file; its completion screen offers "download updated backup".
 Each scheduled run that completes writes a new file and deletes the one the
 previous run wrote. An older backup can still be left in the folder: one from
 before a run that wrote no backup there (an attended run, or a scheduled run
-whose backup did not land), one the folder would not let the app delete, or one
+whose backup did not land), one the folder would not let the app delete, one
+left when the stored exchange changed while the backup was being written (the
+backup is written but not recorded, so the earlier file stays as well), or one
 saved there by hand. Only the newest restores the exchange; an
 older one holds a secret the partnership has rotated past (see [Desync
 detection and recovery](#desync-detection-and-recovery)). Delete the older
