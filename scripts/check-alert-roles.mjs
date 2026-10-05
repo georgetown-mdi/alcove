@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// Error Alert role check, run by static_checks.yaml.
+// Error Alert role check; scripts/run-checks.mjs lists it.
 //
 // WHAT IS HELD. A red (error) Mantine `<Alert>` under apps/web/src sets a role
 // a screen reader announces: `role="alert"` or `role="status"` written at the
 // call site, or `role={alertRoleFor(color)}` (apps/web/src/theme.ts) where the
 // color is chosen at runtime. A red Alert that sets no role takes the theme's
-// polite default rather than the interrupting `alert` an error is given, and one
-// set to `presentation`, `none` or `note` is not announced at all. An Alert
-// whose color is an
-// expression rather than a literal may be red, so it is held the same way, and
-// its `alertRoleFor` argument must be its own color expression.
+// polite default rather than the interrupting `alert` an error is given, and
+// one set to `presentation`, `none` or `note` is not announced at all. An
+// Alert whose color is an expression rather than a literal may be red, so it
+// is held the same way, and its `alertRoleFor` argument must be its own color
+// expression.
 //
 // THE DOCUMENTED EXCEPTIONS are QUIET_ERROR_ALERTS below: a red Alert that is
 // visible only because a separate live region already announces its text, or

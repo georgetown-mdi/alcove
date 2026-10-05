@@ -6,22 +6,42 @@ import styles from "@styles/app.module.css";
 
 import type { NumberInputHandlers, NumberInputProps } from "@mantine/core";
 
+/** The step buttons' names: "One more day of maximum age", "Five fewer
+ * hours of window length". The field name keeps two fields sharing a unit apart. */
+export function stepButtonNames(
+  step: number,
+  stepUnit: string,
+  fieldName: string,
+): { up: string; down: string } {
+  const amount = step === 1 ? "One" : String(step);
+  const unit = step === 1 ? stepUnit : `${stepUnit}s`;
+  return {
+    up: `${amount} more ${unit} of ${fieldName}`,
+    down: `${amount} fewer ${unit} of ${fieldName}`,
+  };
+}
+
 /**
- * A Mantine NumberInput whose step buttons are named controls ("One more day",
- * "One fewer day") rather than Mantine's own, which are unnamed and hidden from
- * assistive tech. The buttons stay out of the Tab order, as Mantine's are: the
- * arrow keys step the focused field.
+ * A Mantine NumberInput whose step buttons are named controls rather than
+ * Mantine's own, which are unnamed and hidden from assistive tech. The buttons
+ * stay out of the Tab order, as Mantine's are: the arrow keys step the focused
+ * field.
  */
 export function NamedStepNumberInput({
   stepUnit,
+  fieldName,
   ...props
 }: Omit<NumberInputProps, "rightSection" | "handlersRef"> & {
   /** The singular unit one step adds or removes ("day", "hour"). */
   stepUnit: string;
+  /** The field's name as the step buttons say it, in lower case ("maximum
+   * age"). */
+  fieldName: string;
 }) {
   const handlers = useRef<NumberInputHandlers>(undefined);
   const input = useRef<HTMLInputElement>(null);
   const { value, min, max, disabled, readOnly } = props;
+  const names = stepButtonNames(props.step ?? 1, stepUnit, fieldName);
   const atMax = typeof value === "number" && max !== undefined && value >= max;
   const atMin = typeof value === "number" && min !== undefined && value <= min;
   const step = (direction: "up" | "down") => {
@@ -40,7 +60,7 @@ export function NamedStepNumberInput({
             <UnstyledButton
               className={styles.stepControl}
               tabIndex={-1}
-              aria-label={`One more ${stepUnit}`}
+              aria-label={names.up}
               disabled={disabled === true || atMax}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => step("up")}
@@ -50,7 +70,7 @@ export function NamedStepNumberInput({
             <UnstyledButton
               className={styles.stepControl}
               tabIndex={-1}
-              aria-label={`One fewer ${stepUnit}`}
+              aria-label={names.down}
               disabled={disabled === true || atMin}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => step("down")}

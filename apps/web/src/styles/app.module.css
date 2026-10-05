@@ -108,9 +108,10 @@
 /* ---------- work + ledger grid ---------- */
 
 .grid {
+  --grid-gap: 28px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 28px;
+  gap: var(--grid-gap);
   max-width: 1260px;
   margin: 0 auto;
   padding: 30px 32px 40px 32px;
@@ -1317,11 +1318,12 @@
     margin: 8px 0 4px 0;
   }
 
-  /* Pulled into the grid gaps on either side so the link sits close under the
-     ledger; scoped under .grid to outweigh the .page p margin rule. */
+  /* Pulled into the grid gaps on either side, leaving 8px of each, so the link
+     sits close under the ledger; scoped under .grid to outweigh the .page p
+     margin rule. */
   .grid .narrowHelp {
     justify-self: end;
-    margin: -20px 0;
+    margin: calc(8px - var(--grid-gap)) 0;
   }
 }
 

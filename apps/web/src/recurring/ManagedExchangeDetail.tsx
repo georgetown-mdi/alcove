@@ -673,6 +673,7 @@ function LocalFieldsEditor({
         <NamedStepNumberInput
           label="Maximum age in days"
           stepUnit="day"
+          fieldName="maximum age"
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -792,6 +793,7 @@ function ScheduleEntryFieldset({
       <NamedStepNumberInput
         label="A window opens every (days)"
         stepUnit="day"
+        fieldName="window interval"
         value={fields.intervalDays}
         min={1}
         max={MAX_SCHEDULE_INTERVAL_DAYS}
@@ -804,6 +806,7 @@ function ScheduleEntryFieldset({
       <NamedStepNumberInput
         label="Each window stays open (hours)"
         stepUnit="hour"
+        fieldName="window length"
         description="Both of you must be running during the same window, so a wide window is what absorbs the difference between your two clocks and the slack of two independently-kept machines."
         value={fields.windowHours}
         min={MIN_SCHEDULE_WINDOW_HOURS}
