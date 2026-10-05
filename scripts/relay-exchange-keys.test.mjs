@@ -1535,7 +1535,7 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
 
     await vi.waitFor(() => {
       expect(log.stderr).toMatch(
-        /register \(relay-owner token\): registered exchange exchange-1/,
+        /credential issuance: exchange=exchange-1 \S+ outcome=registered authority=relay-owner-token/,
       );
       expect(log.stderr).toMatch(
         /revoke \(relay-owner token\): revoked exchange exchange-1/,
@@ -2058,11 +2058,61 @@ describe.skipIf(runningAsRoot)(
       expect(host.mapping()).toEqual(before);
       expect(host.rows()).toEqual([listed(KEY_LISTED), listed(KEY_A)].sort());
       await vi.waitFor(() =>
-        expect(log.stderr).toMatch(/enroll: registered exchange exchange-1/),
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 \S+ outcome=registered authority=relay-owner-token/,
+        ),
       );
       for (const text of [first.text, same.text, other.text, log.stderr]) {
         expect(text).not.toMatch(HEX64);
       }
+    });
+
+    // docs/notes/webrtc-relay-deployment.md, What the relay host keeps,
+    // states this line's format.
+    it("journals one issuance line a registration, naming the exchange and the time and nothing about the caller", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startRegistrar(host);
+      const started = Date.now();
+      const responses = [
+        await enroll(port, "exchange-1", KEY_A),
+        await enroll(port, "exchange-1", KEY_A),
+        await proven(port, "PUT", "exchange-1", KEY_A, {
+          body: keyBody(KEY_B),
+        }),
+        await proven(port, "PUT", "exchange-1", KEY_B, {
+          body: keyBody(KEY_B),
+        }),
+      ];
+      for (const response of responses) {
+        expect(response.status, response.text).toBe(200);
+      }
+      const issuance = () =>
+        log.stderr
+          .split("\n")
+          .filter((line) => line.startsWith("credential issuance:"));
+      await vi.waitFor(() => expect(issuance()).toHaveLength(4));
+      const lines = issuance();
+      const shape =
+        /^credential issuance: exchange=exchange-1 time=(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) outcome=(\w+) authority=([\w-]+)$/;
+      expect(lines.map((line) => shape.exec(line)?.slice(2))).toEqual([
+        ["registered", "relay-owner-token"],
+        ["unchanged", "relay-owner-token"],
+        ["replaced", "proof"],
+        ["renewed", "proof"],
+      ]);
+      for (const line of lines) {
+        const at = Date.parse(shape.exec(line)[1]);
+        expect(at).toBeGreaterThanOrEqual(Math.floor(started / 1000) * 1000);
+        expect(at).toBeLessThanOrEqual(Date.now());
+      }
+      // The whole journal, not only the issuance lines: the request lines
+      // beside them name no caller either.
+      expect(log.stderr).not.toContain("127.0.0.1");
+      expect(log.stderr).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);
+      expect(log.stderr).not.toMatch(/\[?::1\]?|::ffff:/);
+      expect(log.stderr).not.toMatch(HEX64);
+      expect(log.stderr).not.toContain(REGISTRAR_TOKEN);
+      expect(log.stderr).not.toContain("Alcove-Relay-Proof");
     });
 
     it("refuses to enroll under a proof", async () => {
@@ -2106,7 +2156,9 @@ describe.skipIf(runningAsRoot)(
       expect(host.mapping()).toEqual([]);
       expect(host.rows()).toEqual([listed(KEY_LISTED)]);
       await vi.waitFor(() => {
-        expect(log.stderr).toMatch(/register \(proof\): registered exchange/);
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 \S+ outcome=replaced authority=proof/,
+        );
         expect(log.stderr).toMatch(/revoke \(proof\): revoked exchange/);
       });
       expect(log.stderr).not.toMatch(HEX64);

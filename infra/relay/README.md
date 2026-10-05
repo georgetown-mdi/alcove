@@ -399,12 +399,16 @@ token, overwrite the file and
   the standard library only), which Amazon Linux 2023 ships.
 - **What it logs.** One line per request to the journal (`journalctl -u
   alcove-relay-registrar.service`), naming the method, the status, and the
-  path, and the result of each write, naming whether the token or a proof
-  made it. The path is logged only when it is
+  path, and the result of each write: a registration as one
+  `credential issuance:` line naming the exchange, the time, the outcome and
+  whether the token or a proof made it, in the format
+  [the deployment record](../../docs/notes/webrtc-relay-deployment.md#what-the-relay-host-keeps)
+  states. The path is logged only when it is
   `/exchanges/<exchange-id>` with a well-formed id, and the method only when
   it is a standard one; any other path or method, and any part of a malformed
   request line, is replaced by a fixed placeholder, since it could hold a key
-  sent in the wrong place. Neither the token nor a key is logged.
+  sent in the wrong place. Neither the token, a key, nor the caller's address
+  is logged.
 
 ## Supervision and the container runtime
 

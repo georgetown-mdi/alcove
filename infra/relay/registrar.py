@@ -73,6 +73,9 @@ PROOF_PARAMETERS = re.compile(r"ts=(0|[1-9][0-9]{0,11}),mac=([0-9a-f]{64})")
 PROOF_FORMAT_REFUSAL = "send the proof as Authorization: %s ts=<unix-seconds>,mac=<64 lowercase hex>" % PROOF_SCHEME
 CHALLENGE = 'Bearer realm="alcove-relay-registrar", %s realm="alcove-relay-registrar"' % PROOF_SCHEME
 TOKEN = "token"
+ISSUANCE_LINE = "credential issuance: exchange=%s time=%s outcome=%s authority=%s\n"
+AUTHORITY_TOKEN = "relay-owner-token"
+AUTHORITY_PROOF = "proof"
 # The journal names a request's method only from this list.
 KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "TRACE", "CONNECT"))
 
@@ -117,6 +120,13 @@ def proof_mac(relay_key, method, exchange_id, body, timestamp):
     return hmac.new(proof_key(relay_key), message, hashlib.sha256).hexdigest()
 
 
+def issuance_line(registration, authority, now):
+    """The journal line for a registration, in the format
+    docs/notes/webrtc-relay-deployment.md states: the exchange, the time, the
+    outcome and which credential authorized it, and nothing about the caller."""
+    return ISSUANCE_LINE % (registration["exchange_id"], relay_table.iso_time(now), registration["outcome"], authority)
+
+
 class Proof:
     """A well-formed proof header, checked against no key yet."""
 
@@ -142,7 +152,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         self.connection.do_handshake()
 
     def log_message(self, format, *args):
-        sys.stderr.write("%s %s\n" % (self.address_string(), format % args))
+        # No caller address: the registrar's journal keeps nothing about the
+        # parties (docs/notes/webrtc-relay-deployment.md, What the relay host keeps).
+        sys.stderr.write("%s\n" % (format % args))
 
     def log_request(self, code="-", size="-"):
         # The request line can carry a key -- in the path, or anywhere in a
@@ -324,9 +336,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return None
         return raw, body["key"], body["maxAgeDays"]
 
-    def answer_registration(self, journal, registration):
+    def answer_registration(self, authority, registration):
+        sys.stderr.write(issuance_line(registration, authority, time.time()))
         message = relay_table.describe_registration(registration)
-        sys.stderr.write("%s: %s\n" % (journal, message))
         lapses_at = registration["lapses_at"]
         self.send_json(
             200,
@@ -360,7 +372,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             lambda conn: relay_table.enroll(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
         )
         if enrollment is not None:
-            self.answer_registration("enroll", enrollment)
+            self.answer_registration(AUTHORITY_TOKEN, enrollment)
 
     def do_PUT(self):
         credential = self.credential()
@@ -378,7 +390,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
                 lambda conn: relay_table.register(conn, REALM, exchange_id, key, max_age_days, time.time(), True)
             )
             if written is not None:
-                self.answer_registration("register (relay-owner token)", written)
+                self.answer_registration(AUTHORITY_TOKEN, written)
             return
 
         def holds(current):
@@ -394,7 +406,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, time.time(), holds, True)
         )
         if written is not None:
-            self.answer_registration("register (proof)", written)
+            self.answer_registration(AUTHORITY_PROOF, written)
 
     def do_DELETE(self):
         credential = self.credential()
@@ -445,7 +457,7 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         error = sys.exc_info()[1]
-        sys.stderr.write("%s connection ended: %s\n" % (client_address[0], error))
+        sys.stderr.write("connection ended: %s\n" % error)
 
 
 def main():

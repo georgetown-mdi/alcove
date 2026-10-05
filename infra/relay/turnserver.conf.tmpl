@@ -71,8 +71,8 @@ no-multicast-peers
 
 # What a leaked credential is worth. The credential expires in an hour, so these
 # bound the damage inside that hour: concurrent allocations per user and in
-# total, and the per-session rate. An Alcove exchange is tens of kilobytes over
-# seconds, so these sit far above one exchange and far below a useful open relay.
+# total, and the per-session rate. They are reviewed against the largest
+# exchange in docs/notes/webrtc-relay-deployment.md, Quotas against one exchange.
 user-quota=__USER_QUOTA__
 total-quota=__TOTAL_QUOTA__
 max-bps=__MAX_BPS__
@@ -88,6 +88,9 @@ max-allocate-lifetime=600
 # interface is off unless it is asked for, and nothing here asks for it.
 no-cli
 
+# No verbose: at these settings coturn writes no line for a successful
+# allocation (docs/notes/webrtc-relay-deployment.md, What the relay host keeps).
+# scripts/relay-logging-posture.test.mjs holds them.
 log-file=stdout
 simple-log
 
