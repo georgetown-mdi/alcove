@@ -43,7 +43,7 @@ const CLIENT_FILES = [
 
 const SERVER_ONLY_FILES = [
   "apps/web/src/jobs/workdir.ts",
-  "apps/web/src/routes/api/jobs/config.ts",
+  "apps/web/src/routes/api/peerjs/id.ts",
   "apps/web/src/server.ts",
   "apps/web/src/utils/serverConfig.ts",
 ];

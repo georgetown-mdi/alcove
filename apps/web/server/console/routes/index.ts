@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import {
   ExchangeBusyError,
   JobIntentUncomposableError,
@@ -27,6 +25,8 @@ import { MountedKeyFileRefusedError } from "@jobs/mountedKeyFile";
 import { SigningIdentityLocationError } from "@jobs/signingIdentity";
 import { ZeroSetupFingerprintListError } from "@jobs/intentArgv";
 import { jobCreateIntentSchema } from "@jobs/intentSchemas";
+
+import { defineJobRoute } from "../jobRoute";
 
 /**
  * `POST /api/jobs` -- create and start an exchange job from a typed intent.
@@ -75,90 +75,86 @@ import { jobCreateIntentSchema } from "@jobs/intentSchemas";
  * hand-off is composed from it is a 400 `{ "error": "<field>: <reason>" }`,
  * the field naming the composed configuration's.
  */
-export const Route = createFileRoute("/api/jobs/")({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
+export const route = defineJobRoute({
+  path: "/api/jobs",
+  handlers: {
+    POST: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
 
-        const bodyResult = await readJobRequestBody(
-          request,
-          MAX_JOB_BODY_BYTES,
-        );
-        if (bodyResult.kind === "too-large") return jobEmptyResponse(413);
-        if (bodyResult.kind === "invalid") return jobEmptyResponse(400);
+      const bodyResult = await readJobRequestBody(request, MAX_JOB_BODY_BYTES);
+      if (bodyResult.kind === "too-large") return jobEmptyResponse(413);
+      if (bodyResult.kind === "invalid") return jobEmptyResponse(400);
 
-        const parsed = jobCreateIntentSchema.safeParse(bodyResult.value);
-        if (!parsed.success) return jobEmptyResponse(400);
+      const parsed = jobCreateIntentSchema.safeParse(bodyResult.value);
+      if (!parsed.success) return jobEmptyResponse(400);
 
-        let id: string;
-        try {
-          id = await gate.manager.createJob(parsed.data);
-        } catch (error) {
-          // The single slot is occupied: return its occupant's id (only) so the
-          // browser can re-attach to the running exchange.
-          if (error instanceof ExchangeBusyError)
-            return jobJsonResponse({ id: error.activeJobId }, 409);
-          // The refusal the browser cannot diagnose from the intent it sent: it
-          // is about the console's mounts. The body names the refusal with a
-          // fixed token and nothing else -- no path, no mount name.
-          if (error instanceof JobSigningIdentityExposedError)
-            return jobJsonResponse(
-              { reason: SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL },
-              400,
-            );
-          // A direct sftp run cannot pass on the saved connection's several
-          // host-key fingerprints; the fix is in the saved connection, which the
-          // intent does not state, so the body names the refusal.
-          if (error instanceof ZeroSetupFingerprintListError)
-            return jobJsonResponse(
-              { reason: SFTP_FINGERPRINT_LIST_REFUSAL },
-              400,
-            );
-          // The key file beside the opened configuration is missing or is not
-          // a key file. The token says which, and nothing read from the file.
-          if (error instanceof MountedKeyFileRefusedError)
-            return jobJsonResponse(
-              {
-                reason:
-                  error.fault === "absent"
-                    ? MOUNTED_KEY_FILE_ABSENT_REFUSAL
-                    : MOUNTED_KEY_FILE_INVALID_REFUSAL,
-              },
-              400,
-            );
-          // A signed run of the opened configuration whose own signing paths
-          // the operator did not convert to the console's.
-          if (error instanceof MountedSigningPathsUnconvertedError)
-            return jobJsonResponse(
-              { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
-              400,
-            );
-          // Core refused the configuration or hand-off composed from the
-          // intent; the body names the composed field and the rule it broke.
-          if (error instanceof JobIntentUncomposableError)
-            return jobJsonResponse({ error: error.detail }, 400);
-          // A mounted input that names no regular file, a filedrop intent with no
-          // rendezvous directory configured, a filedrop intent on a
-          // split-provisioned console without retain mode, an sftp intent with
-          // no connection authored, or a signing identity location that names
-          // nothing in the secrets mount is a 400 (the manager left no workdir
-          // behind).
-          if (
-            error instanceof JobInputNotFoundError ||
-            error instanceof JobRendezvousUnavailableError ||
-            error instanceof JobRendezvousRetainRequiredError ||
-            error instanceof SftpUnavailableError ||
-            error instanceof SigningIdentityLocationError
-          )
-            return jobEmptyResponse(400);
-          // Workdir creation or an input write failed (the manager has already
-          // cleaned up); no internal detail crosses the boundary.
-          return jobEmptyResponse(500);
-        }
-        return jobJsonResponse({ id }, 201);
-      },
+      let id: string;
+      try {
+        id = await gate.manager.createJob(parsed.data);
+      } catch (error) {
+        // The single slot is occupied: return its occupant's id (only) so the
+        // browser can re-attach to the running exchange.
+        if (error instanceof ExchangeBusyError)
+          return jobJsonResponse({ id: error.activeJobId }, 409);
+        // The refusal the browser cannot diagnose from the intent it sent: it
+        // is about the console's mounts. The body names the refusal with a
+        // fixed token and nothing else -- no path, no mount name.
+        if (error instanceof JobSigningIdentityExposedError)
+          return jobJsonResponse(
+            { reason: SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL },
+            400,
+          );
+        // A direct sftp run cannot pass on the saved connection's several
+        // host-key fingerprints; the fix is in the saved connection, which the
+        // intent does not state, so the body names the refusal.
+        if (error instanceof ZeroSetupFingerprintListError)
+          return jobJsonResponse(
+            { reason: SFTP_FINGERPRINT_LIST_REFUSAL },
+            400,
+          );
+        // The key file beside the opened configuration is missing or is not
+        // a key file. The token says which, and nothing read from the file.
+        if (error instanceof MountedKeyFileRefusedError)
+          return jobJsonResponse(
+            {
+              reason:
+                error.fault === "absent"
+                  ? MOUNTED_KEY_FILE_ABSENT_REFUSAL
+                  : MOUNTED_KEY_FILE_INVALID_REFUSAL,
+            },
+            400,
+          );
+        // A signed run of the opened configuration whose own signing paths
+        // the operator did not convert to the console's.
+        if (error instanceof MountedSigningPathsUnconvertedError)
+          return jobJsonResponse(
+            { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
+            400,
+          );
+        // Core refused the configuration or hand-off composed from the
+        // intent; the body names the composed field and the rule it broke.
+        if (error instanceof JobIntentUncomposableError)
+          return jobJsonResponse({ error: error.detail }, 400);
+        // A mounted input that names no regular file, a filedrop intent with no
+        // rendezvous directory configured, a filedrop intent on a
+        // split-provisioned console without retain mode, an sftp intent with
+        // no connection authored, or a signing identity location that names
+        // nothing in the secrets mount is a 400 (the manager left no workdir
+        // behind).
+        if (
+          error instanceof JobInputNotFoundError ||
+          error instanceof JobRendezvousUnavailableError ||
+          error instanceof JobRendezvousRetainRequiredError ||
+          error instanceof SftpUnavailableError ||
+          error instanceof SigningIdentityLocationError
+        )
+          return jobEmptyResponse(400);
+        // Workdir creation or an input write failed (the manager has already
+        // cleaned up); no internal detail crosses the boundary.
+        return jobEmptyResponse(500);
+      }
+      return jobJsonResponse({ id }, 201);
     },
   },
 });

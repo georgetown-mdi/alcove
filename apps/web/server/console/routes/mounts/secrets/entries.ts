@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute } from "@jobs/routeSupport";
 import { jobJsonResponse } from "@jobs/gate";
 import { listMountEntries } from "@jobs/mountBrowse";
 import { useJobSecretsDir } from "@jobs/jobSecrets";
+
+import { defineJobRoute } from "../../../jobRoute";
 
 /**
  * `GET /api/jobs/mounts/secrets/entries?subPath=...&subPath=...` -- list the
@@ -25,25 +25,24 @@ import { useJobSecretsDir } from "@jobs/jobSecrets";
  * `{ configured: true, readable: false, entries: [] }`. No file bytes are read;
  * entry kinds come from `stat` only.
  */
-export const Route = createFileRoute("/api/jobs/mounts/secrets/entries")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const mountRoot = useJobSecretsDir();
-        if (mountRoot === undefined)
-          return jobJsonResponse({
-            configured: false,
-            readable: true,
-            entries: [],
-          });
-        const subPath = new URL(request.url).searchParams.getAll("subPath");
+export const route = defineJobRoute({
+  path: "/api/jobs/mounts/secrets/entries",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const mountRoot = useJobSecretsDir();
+      if (mountRoot === undefined)
         return jobJsonResponse({
-          configured: true,
-          ...listMountEntries(mountRoot, subPath),
+          configured: false,
+          readable: true,
+          entries: [],
         });
-      },
+      const subPath = new URL(request.url).searchParams.getAll("subPath");
+      return jobJsonResponse({
+        configured: true,
+        ...listMountEntries(mountRoot, subPath),
+      });
     },
   },
 });

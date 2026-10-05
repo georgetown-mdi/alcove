@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse } from "@jobs/gate";
 import { jobFileDownloadResponse } from "@jobs/jobFileDownload";
 import { jobFileExists } from "@jobs/workdir";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/:jobId/receipt` -- serve the job's dual-signed receipt.
@@ -18,25 +18,24 @@ import { jobFileExists } from "@jobs/workdir";
  * independently of the local record build and of the run's exit code -- a
  * persistence-loss exit (73) is a completed exchange whose receipt survived.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/receipt")({
-  server: {
-    handlers: {
-      GET: async ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/receipt",
+  handlers: {
+    GET: async ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        const view = gate.manager.getJobView(jobId);
-        if (view === null) return jobEmptyResponse(404);
-        if (view.receiptPath === null) return jobEmptyResponse(404);
-        if (!jobFileExists(view.receiptPath)) return jobEmptyResponse(404);
+      const view = gate.manager.getJobView(jobId);
+      if (view === null) return jobEmptyResponse(404);
+      if (view.receiptPath === null) return jobEmptyResponse(404);
+      if (!jobFileExists(view.receiptPath)) return jobEmptyResponse(404);
 
-        return jobFileDownloadResponse(view.receiptPath, {
-          contentType: "application/json; charset=utf-8",
-          fileName: "alcove-receipt.json",
-        });
-      },
+      return jobFileDownloadResponse(view.receiptPath, {
+        contentType: "application/json; charset=utf-8",
+        fileName: "alcove-receipt.json",
+      });
     },
   },
 });

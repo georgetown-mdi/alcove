@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { z } from "zod";
 
 import { isBareSftpHost } from "@psi/sftpHost";
@@ -12,6 +10,8 @@ import {
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { SftpProbeBusyError } from "@jobs/jobManager";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
+
+import { defineJobRoute } from "../../jobRoute";
 
 import type { SftpProbeResult } from "@jobs/sftpProbe";
 
@@ -76,52 +76,46 @@ function probeEnvelope(result: SftpProbeResult): Record<string, unknown> {
  * streamed off the request, so an oversized body is a 413 (and an unparseable one
  * a 400) before validation.
  */
-export const Route = createFileRoute("/api/jobs/sftp/probe")({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
+export const route = defineJobRoute({
+  path: "/api/jobs/sftp/probe",
+  handlers: {
+    POST: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
 
-        const body = await readJobRequestBody(
-          request,
-          MAX_SFTP_PROBE_BODY_BYTES,
+      const body = await readJobRequestBody(request, MAX_SFTP_PROBE_BODY_BYTES);
+      if (body.kind === "too-large") return jobEmptyResponse(413);
+      if (body.kind === "invalid") return jobEmptyResponse(400);
+
+      const parsed = probeBodySchema.safeParse(body.value);
+      if (!parsed.success)
+        return jobJsonResponse(
+          { error: formatFirstIssue(parsed.error.issues) },
+          400,
         );
-        if (body.kind === "too-large") return jobEmptyResponse(413);
-        if (body.kind === "invalid") return jobEmptyResponse(400);
+      if (!isBareSftpHost(parsed.data.host))
+        return jobJsonResponse(
+          {
+            error:
+              "host: must be a bare server address, without a scheme, a " +
+              "path, an @, or whitespace",
+          },
+          400,
+        );
 
-        const parsed = probeBodySchema.safeParse(body.value);
-        if (!parsed.success)
-          return jobJsonResponse(
-            { error: formatFirstIssue(parsed.error.issues) },
-            400,
-          );
-        if (!isBareSftpHost(parsed.data.host))
-          return jobJsonResponse(
-            {
-              error:
-                "host: must be a bare server address, without a scheme, a " +
-                "path, an @, or whitespace",
-            },
-            400,
-          );
-
-        let result: SftpProbeResult;
-        try {
-          result = await gate.manager.probeSftpHostKey({
-            host: parsed.data.host,
-            ...(parsed.data.port !== undefined
-              ? { port: parsed.data.port }
-              : {}),
-          });
-        } catch (error) {
-          // A probe already in flight is a 409 (the busy convention). Anything
-          // else is an unexpected internal fault -- no detail crosses the boundary.
-          if (error instanceof SftpProbeBusyError) return jobEmptyResponse(409);
-          return jobEmptyResponse(500);
-        }
-        return jobJsonResponse(probeEnvelope(result));
-      },
+      let result: SftpProbeResult;
+      try {
+        result = await gate.manager.probeSftpHostKey({
+          host: parsed.data.host,
+          ...(parsed.data.port !== undefined ? { port: parsed.data.port } : {}),
+        });
+      } catch (error) {
+        // A probe already in flight is a 409 (the busy convention). Anything
+        // else is an unexpected internal fault -- no detail crosses the boundary.
+        if (error instanceof SftpProbeBusyError) return jobEmptyResponse(409);
+        return jobEmptyResponse(500);
+      }
+      return jobJsonResponse(probeEnvelope(result));
     },
   },
 });

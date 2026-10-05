@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import {
   JobApiConfigError,
   jobEmptyResponse,
@@ -10,6 +8,8 @@ import {
   gateJobRoute,
   readJobRequestBody,
 } from "@jobs/routeSupport";
+
+import { defineJobRoute } from "../../jobRoute";
 
 import type { SftpConnectionProjection } from "@jobs/jobManager";
 
@@ -38,52 +38,51 @@ import type { SftpConnectionProjection } from "@jobs/jobManager";
  * closed on `/api/jobs` -- all authored connection material flows through this
  * endpoint, so the job-create intent gains no connection field.
  */
-export const Route = createFileRoute("/api/jobs/sftp/")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const connection = gate.manager.sftpProjection();
-        return jobJsonResponse(
-          connection === null
-            ? { configured: false }
-            : { configured: true, ...connection },
-        );
-      },
-      PUT: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
+export const route = defineJobRoute({
+  path: "/api/jobs/sftp",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const connection = gate.manager.sftpProjection();
+      return jobJsonResponse(
+        connection === null
+          ? { configured: false }
+          : { configured: true, ...connection },
+      );
+    },
+    PUT: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
 
-        const body = await readJobRequestBody(
-          request,
-          MAX_SFTP_AUTHOR_BODY_BYTES,
-        );
-        if (body.kind === "too-large") return jobEmptyResponse(413);
-        if (body.kind === "invalid") return jobEmptyResponse(400);
+      const body = await readJobRequestBody(
+        request,
+        MAX_SFTP_AUTHOR_BODY_BYTES,
+      );
+      if (body.kind === "too-large") return jobEmptyResponse(413);
+      if (body.kind === "invalid") return jobEmptyResponse(400);
 
-        let connection: SftpConnectionProjection;
-        try {
-          connection = gate.manager.authorSftpServer(body.value);
-        } catch (error) {
-          // A validation failure names a field path only (never a submitted
-          // value), so showing the message helps the operator fix the input
-          // without leaking a credential reference or secret.
-          if (error instanceof JobApiConfigError)
-            return jobJsonResponse({ error: error.message }, 400);
-          return jobEmptyResponse(400);
-        }
-        return jobJsonResponse({
-          configured: true,
-          ...connection,
-        });
-      },
-      DELETE: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        gate.manager.clearAuthoredSftpServer();
-        return jobEmptyResponse(204);
-      },
+      let connection: SftpConnectionProjection;
+      try {
+        connection = gate.manager.authorSftpServer(body.value);
+      } catch (error) {
+        // A validation failure names a field path only (never a submitted
+        // value), so showing the message helps the operator fix the input
+        // without leaking a credential reference or secret.
+        if (error instanceof JobApiConfigError)
+          return jobJsonResponse({ error: error.message }, 400);
+        return jobEmptyResponse(400);
+      }
+      return jobJsonResponse({
+        configured: true,
+        ...connection,
+      });
+    },
+    DELETE: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      gate.manager.clearAuthoredSftpServer();
+      return jobEmptyResponse(204);
     },
   },
 });

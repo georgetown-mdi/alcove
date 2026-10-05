@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { NodeCountExceededError, UsageError } from "@alcove/core";
 
-import { Route as CreateRoute } from "../../../src/routes/api/jobs/index";
+import { route as CreateRoute } from "../../../server/console/routes/index";
 
 import {
   STUB_CLI_PATH,
@@ -64,7 +64,7 @@ afterEach(async () => {
 });
 
 async function postCreate(): Promise<Response> {
-  const handlers = CreateRoute.options.server?.handlers as Record<
+  const handlers = CreateRoute.handlers as Record<
     string,
     (ctx: { request: Request; params: Record<string, string> }) => unknown
   >;

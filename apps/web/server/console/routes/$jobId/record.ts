@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse } from "@jobs/gate";
 import { jobFileDownloadResponse } from "@jobs/jobFileDownload";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/:jobId/record` -- serve the job's self-attested exchange record.
@@ -23,25 +23,24 @@ import { jobFileDownloadResponse } from "@jobs/jobFileDownload";
  * The download name the browser saves is set by the driver's `download` attribute;
  * the Content-Disposition name here is a stable fallback.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/record")({
-  server: {
-    handlers: {
-      GET: async ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/record",
+  handlers: {
+    GET: async ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        const view = gate.manager.getJobView(jobId);
-        if (view === null) return jobEmptyResponse(404);
-        if (!view.recordAvailable || view.recordPath === null)
-          return jobEmptyResponse(404);
+      const view = gate.manager.getJobView(jobId);
+      if (view === null) return jobEmptyResponse(404);
+      if (!view.recordAvailable || view.recordPath === null)
+        return jobEmptyResponse(404);
 
-        return jobFileDownloadResponse(view.recordPath, {
-          contentType: "application/json; charset=utf-8",
-          fileName: "alcove-record.json",
-        });
-      },
+      return jobFileDownloadResponse(view.recordPath, {
+        contentType: "application/json; charset=utf-8",
+        fileName: "alcove-record.json",
+      });
     },
   },
 });

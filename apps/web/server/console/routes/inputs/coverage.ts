@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import {
   JobInputCoverageAbortedError,
   JobInputNotFoundError,
@@ -11,6 +9,8 @@ import {
 } from "@jobs/workInputs";
 import { gateJobRoute, readJobRequestBody } from "@jobs/routeSupport";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `POST /api/jobs/inputs/coverage` -- compute per-field non-empty coverage over one
@@ -31,43 +31,42 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
  * pass rather than scanning a CLI-scale file to completion after the browser has
  * superseded or abandoned the request.
  */
-export const Route = createFileRoute("/api/jobs/inputs/coverage")({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const resolvedDir = useJobInputDir();
-        if (resolvedDir === undefined) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/inputs/coverage",
+  handlers: {
+    POST: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const resolvedDir = useJobInputDir();
+      if (resolvedDir === undefined) return jobEmptyResponse(404);
 
-        const body = await readJobRequestBody(request, MAX_COVERAGE_BODY_BYTES);
-        if (body.kind === "too-large") return jobEmptyResponse(413);
-        if (body.kind === "invalid") return jobEmptyResponse(400);
+      const body = await readJobRequestBody(request, MAX_COVERAGE_BODY_BYTES);
+      if (body.kind === "too-large") return jobEmptyResponse(413);
+      if (body.kind === "invalid") return jobEmptyResponse(400);
 
-        const parsed = coverageRequestSchema.safeParse(body.value);
-        if (!parsed.success) return jobEmptyResponse(400);
-        const { name, standardization, csvDelimiter } = parsed.data;
-        if (!isAdmissibleInputName(name)) return jobEmptyResponse(404);
+      const parsed = coverageRequestSchema.safeParse(body.value);
+      if (!parsed.success) return jobEmptyResponse(400);
+      const { name, standardization, csvDelimiter } = parsed.data;
+      if (!isAdmissibleInputName(name)) return jobEmptyResponse(404);
 
-        try {
-          const rates = await coverageJobInput(
-            resolvedDir,
-            name,
-            standardization,
-            csvDelimiter,
-            request.signal,
-          );
-          return jobJsonResponse({ rates });
-        } catch (error) {
-          if (error instanceof JobInputCoverageAbortedError)
-            // The client already disconnected or superseded this sweep; nothing reads
-            // the response, so answer without spending a status on an aborted pass.
-            return jobEmptyResponse(499);
-          if (error instanceof JobInputNotFoundError)
-            return jobEmptyResponse(404);
-          return jobEmptyResponse(400);
-        }
-      },
+      try {
+        const rates = await coverageJobInput(
+          resolvedDir,
+          name,
+          standardization,
+          csvDelimiter,
+          request.signal,
+        );
+        return jobJsonResponse({ rates });
+      } catch (error) {
+        if (error instanceof JobInputCoverageAbortedError)
+          // The client already disconnected or superseded this sweep; nothing reads
+          // the response, so answer without spending a status on an aborted pass.
+          return jobEmptyResponse(499);
+        if (error instanceof JobInputNotFoundError)
+          return jobEmptyResponse(404);
+        return jobEmptyResponse(400);
+      }
     },
   },
 });

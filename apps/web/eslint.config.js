@@ -415,19 +415,19 @@ export default [
   {
     // The raw-JSON.parse ban for the web app, over the two trees its files list
     // names: src/ and server/. src/ is not only the browser bundle -- the
-    // console server's own code lives there too (src/jobs, and the API route
-    // handlers under src/routes/api), and a request body is the untrusted input
-    // the ban exists for. server/ is the Nitro entry and its upgrade hardening,
-    // which reach the socket earlier still. The test tree is outside the ban,
-    // parsing fixtures it wrote itself. Raw `JSON.parse` is banned in the
-    // no-restricted-properties form packages/core/src and apps/cli/src already
-    // use, which also catches an alias, a computed access, and a destructure. A
-    // request body, a relayed CLI line, and a persisted record are input this
-    // app did not produce, so each is parsed through `@alcove/core`'s
-    // parseBoundedJson; its bound and the rationale for it are in
-    // packages/core/src/utils/boundedJson.ts and docs/spec/CHANNEL_SECURITY.md.
-    // A parse of a value this process serialized itself opts out with an
-    // eslint-disable-next-line carrying a one-line why.
+    // console server's job machinery lives there too (src/jobs), and a request
+    // body is the untrusted input the ban exists for. server/ is the console
+    // server with its job route handlers, the Nitro entry, and the upgrade
+    // hardening, which reach the socket earlier still. The test tree is outside
+    // the ban, parsing fixtures it wrote itself. Raw `JSON.parse` is banned in
+    // the no-restricted-properties form packages/core/src and apps/cli/src
+    // already use, which also catches an alias, a computed access, and a
+    // destructure. A request body, a relayed CLI line, and a persisted record
+    // are input this app did not produce, so each is parsed through
+    // `@alcove/core`'s parseBoundedJson; its bound and the rationale for it are
+    // in packages/core/src/utils/boundedJson.ts and
+    // docs/spec/CHANNEL_SECURITY.md. A parse of a value this process serialized
+    // itself opts out with an eslint-disable-next-line carrying a one-line why.
     //
     // Beside it, the `json` ban closes the platform `.json()`, which a JSON.parse
     // ban does not see, since that parse happens inside the method. What a client

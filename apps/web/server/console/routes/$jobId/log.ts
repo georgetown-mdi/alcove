@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse } from "@jobs/gate";
 import { jobFileDownloadResponse } from "@jobs/jobFileDownload";
 import { jobFileExists } from "@jobs/workdir";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/:jobId/log` -- serve the diagnostic log a diagnostic run
@@ -29,25 +29,24 @@ import { jobFileExists } from "@jobs/workdir";
  * The file is streamed rather than read whole, since a debug-level log of a long
  * run has no size bound of its own.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/log")({
-  server: {
-    handlers: {
-      GET: async ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/log",
+  handlers: {
+    GET: async ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        const view = gate.manager.getJobView(jobId);
-        if (view === null) return jobEmptyResponse(404);
-        if (view.logPath === null) return jobEmptyResponse(404);
-        if (!jobFileExists(view.logPath)) return jobEmptyResponse(404);
+      const view = gate.manager.getJobView(jobId);
+      if (view === null) return jobEmptyResponse(404);
+      if (view.logPath === null) return jobEmptyResponse(404);
+      if (!jobFileExists(view.logPath)) return jobEmptyResponse(404);
 
-        return jobFileDownloadResponse(view.logPath, {
-          contentType: "text/plain; charset=utf-8",
-          fileName: `alcove-run-${view.id}.log`,
-        });
-      },
+      return jobFileDownloadResponse(view.logPath, {
+        contentType: "text/plain; charset=utf-8",
+        fileName: `alcove-run-${view.id}.log`,
+      });
     },
   },
 });

@@ -17,8 +17,8 @@ import {
 } from "@jobs/signingIdentity";
 import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
-import { Route as FingerprintRoute } from "../../../src/routes/api/jobs/signing/fingerprint";
-import { Route as JobsRoute } from "../../../src/routes/api/jobs/index";
+import { route as FingerprintRoute } from "../../../server/console/routes/signing/fingerprint";
+import { route as JobsRoute } from "../../../server/console/routes/index";
 
 import {
   STUB_CLI_PATH,
@@ -644,10 +644,8 @@ describe("the boundary shows no container path", () => {
     (ctx: { request: Request; params: Record<string, string> }) => unknown
   >;
 
-  function handlersOf(route: {
-    options: { server?: { handlers?: unknown } };
-  }): Handlers {
-    const handlers = route.options.server?.handlers;
+  function handlersOf(route: { handlers: unknown }): Handlers {
+    const handlers = route.handlers;
     if (typeof handlers !== "object" || handlers === null)
       throw new Error("route exposes no plain handlers object");
     return handlers as Handlers;

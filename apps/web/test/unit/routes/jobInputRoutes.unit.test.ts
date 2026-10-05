@@ -9,10 +9,10 @@ import { MAX_TRANSFORM_PATTERN_LENGTH } from "@alcove/core";
 
 import { MAX_COVERAGE_BODY_BYTES } from "@jobs/workInputs";
 
-import { Route as CoverageRoute } from "../../../src/routes/api/jobs/inputs/coverage";
-import { Route as InputsRoute } from "../../../src/routes/api/jobs/inputs/index";
-import { Route as ProfileRoute } from "../../../src/routes/api/jobs/inputs/profile";
-import { Route as SamplesRoute } from "../../../src/routes/api/jobs/inputs/samples";
+import { route as CoverageRoute } from "../../../server/console/routes/inputs/coverage";
+import { route as InputsRoute } from "../../../server/console/routes/inputs/index";
+import { route as ProfileRoute } from "../../../server/console/routes/inputs/profile";
+import { route as SamplesRoute } from "../../../server/console/routes/inputs/samples";
 
 import { STUB_CLI_PATH } from "../../utils/jobFixtures";
 
@@ -70,10 +70,8 @@ type Handlers = Record<
   (ctx: { request: Request; params: Record<string, string> }) => unknown
 >;
 
-function handlersOf(route: {
-  options: { server?: { handlers?: unknown } };
-}): Handlers {
-  const handlers = route.options.server?.handlers;
+function handlersOf(route: { handlers: unknown }): Handlers {
+  const handlers = route.handlers;
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;

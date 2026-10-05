@@ -7,7 +7,7 @@ import { JobManager } from "@jobs/jobManager";
 import { SSE_KEEPALIVE_FRAME } from "@jobs/sse";
 import { createFetchJobApiClient } from "@psi/jobClient/serverJobExchangeDriver";
 
-import { Route as EventsRoute } from "../../../src/routes/api/jobs/$jobId/events";
+import { route as EventsRoute } from "../../../server/console/routes/$jobId/events";
 
 import {
   STUB_CLI_PATH,
@@ -107,7 +107,7 @@ function bridgeServer(jobId: string): Promise<{
   served: Array<ServedConnection>;
 }> {
   const served: Array<ServedConnection> = [];
-  const handlers = EventsRoute.options.server?.handlers as Record<
+  const handlers = EventsRoute.handlers as Record<
     string,
     (ctx: { request: Request; params: Record<string, string> }) => unknown
   >;

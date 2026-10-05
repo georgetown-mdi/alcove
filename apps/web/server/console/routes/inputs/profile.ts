@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import {
   JobInputNotFoundError,
   JobInputProfileError,
@@ -10,6 +8,8 @@ import {
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { gateJobRoute } from "@jobs/routeSupport";
 import { jobCsvDelimiterSchema } from "@jobs/intentSchemas";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/inputs/profile?name=...` -- profile one mounted input CSV in a
@@ -28,40 +28,39 @@ import { jobCsvDelimiterSchema } from "@jobs/intentSchemas";
  * names the reason itself. The mounted directory is the operator's own data, so
  * the responses need no further redaction.
  */
-export const Route = createFileRoute("/api/jobs/inputs/profile")({
-  server: {
-    handlers: {
-      GET: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const resolvedDir = useJobInputDir();
-        if (resolvedDir === undefined) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/inputs/profile",
+  handlers: {
+    GET: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const resolvedDir = useJobInputDir();
+      if (resolvedDir === undefined) return jobEmptyResponse(404);
 
-        const parameters = new URL(request.url).searchParams;
-        const name = parameters.get("name");
-        if (name === null || !isAdmissibleInputName(name))
+      const parameters = new URL(request.url).searchParams;
+      const name = parameters.get("name");
+      if (name === null || !isAdmissibleInputName(name))
+        return jobEmptyResponse(404);
+
+      const requested = parameters.get("delimiter");
+      const delimiter =
+        requested === null
+          ? undefined
+          : jobCsvDelimiterSchema.safeParse(requested);
+      if (delimiter !== undefined && !delimiter.success)
+        return jobEmptyResponse(400);
+
+      try {
+        return jobJsonResponse(
+          await profileJobInput(resolvedDir, name, delimiter?.data),
+        );
+      } catch (error) {
+        if (error instanceof JobInputNotFoundError)
           return jobEmptyResponse(404);
-
-        const requested = parameters.get("delimiter");
-        const delimiter =
-          requested === null
-            ? undefined
-            : jobCsvDelimiterSchema.safeParse(requested);
-        if (delimiter !== undefined && !delimiter.success)
-          return jobEmptyResponse(400);
-
-        try {
-          return jobJsonResponse(
-            await profileJobInput(resolvedDir, name, delimiter?.data),
-          );
-        } catch (error) {
-          if (error instanceof JobInputNotFoundError)
-            return jobEmptyResponse(404);
-          if (error instanceof JobInputProfileError)
-            return jobJsonResponse({ error: error.code }, 400);
-          return jobEmptyResponse(400);
-        }
-      },
+        if (error instanceof JobInputProfileError)
+          return jobJsonResponse({ error: error.code }, 400);
+        return jobEmptyResponse(400);
+      }
     },
   },
 });

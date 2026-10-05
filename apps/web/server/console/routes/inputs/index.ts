@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { listJobInputs, useJobInputDir } from "@jobs/workInputs";
 import { gateJobRoute } from "@jobs/routeSupport";
 import { jobJsonResponse } from "@jobs/gate";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/inputs` -- list the operator-mounted input CSVs the console reads
@@ -20,19 +20,18 @@ import { jobJsonResponse } from "@jobs/gate";
  * configuration and the other files the console or an exchange writes, and the
  * credential files the authored connection or opened configuration reference.
  */
-export const Route = createFileRoute("/api/jobs/inputs/")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        return jobJsonResponse(
-          listJobInputs(
-            useJobInputDir(),
-            gate.manager.referencedCredentialPaths(),
-          ),
-        );
-      },
+export const route = defineJobRoute({
+  path: "/api/jobs/inputs",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      return jobJsonResponse(
+        listJobInputs(
+          useJobInputDir(),
+          gate.manager.referencedCredentialPaths(),
+        ),
+      );
     },
   },
 });

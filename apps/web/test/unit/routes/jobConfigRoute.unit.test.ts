@@ -7,7 +7,7 @@ import { stringify as stringifyYaml } from "yaml";
 
 import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
 
-import { Route as ConfigRoute } from "../../../src/routes/api/jobs/config";
+import { route as ConfigRoute } from "../../../server/console/routes/config";
 
 import { STUB_CLI_PATH } from "../../utils/jobFixtures";
 
@@ -41,10 +41,8 @@ type Handlers = Record<
   (ctx: { request: Request; params: Record<string, string> }) => unknown
 >;
 
-function handlersOf(route: {
-  options: { server?: { handlers?: unknown } };
-}): Handlers {
-  const handlers = route.options.server?.handlers;
+function handlersOf(route: { handlers: unknown }): Handlers {
+  const handlers = route.handlers;
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;

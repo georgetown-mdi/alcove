@@ -20,7 +20,7 @@ import {
 import { createStaticFileHandler } from "./staticFiles";
 
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import type { JobRouteDefinition, JobRouteMethod } from "./routeTable";
+import type { JobRouteDefinition, JobRouteMethod } from "./jobRoute";
 
 const log = getLogger("console-server");
 

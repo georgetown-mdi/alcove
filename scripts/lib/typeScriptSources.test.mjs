@@ -84,13 +84,13 @@ describe("reading a repository-relative source", () => {
   });
 
   it("reads a list of files in the order given, each as it ships", async () => {
-    const files = sourceModules("apps/web/src/routes/api/jobs").reverse();
+    const files = sourceModules("apps/web/server/console/routes").reverse();
     expect(files.length).toBeGreaterThan(1);
     expect(await readSources(files)).toEqual(files.map(readSource));
   });
 
   it("lists a tree's TypeScript sources, nested ones included", () => {
-    const dir = "apps/web/src/routes/api/jobs";
+    const dir = "apps/web/server/console/routes";
     const modules = sourceModules(dir);
     expect(modules.length).toBeGreaterThan(0);
     expect(modules).toEqual([...modules].sort());
@@ -116,7 +116,7 @@ describe("reading a repository-relative source", () => {
   });
 
   it("drops nothing from a tree that is TypeScript throughout", () => {
-    const dir = "apps/web/src/routes/api/jobs";
+    const dir = "apps/web/server/console/routes";
     expect(filesUnder(dir)).toEqual(sourceModules(dir));
   });
 });

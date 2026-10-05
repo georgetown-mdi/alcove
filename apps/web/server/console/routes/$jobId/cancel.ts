@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse } from "@jobs/gate";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `POST /api/jobs/:jobId/cancel` -- request cancellation of a running job.
@@ -11,21 +11,20 @@ import { jobEmptyResponse } from "@jobs/gate";
  * effect. A job already terminal is accepted idempotently (202). An unknown job
  * or malformed id is 404.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/cancel")({
-  server: {
-    handlers: {
-      POST: ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/cancel",
+  handlers: {
+    POST: ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        const record = gate.manager.getJob(jobId);
-        if (record === undefined) return jobEmptyResponse(404);
+      const record = gate.manager.getJob(jobId);
+      if (record === undefined) return jobEmptyResponse(404);
 
-        gate.manager.cancelJob(record);
-        return jobEmptyResponse(202);
-      },
+      gate.manager.cancelJob(record);
+      return jobEmptyResponse(202);
     },
   },
 });

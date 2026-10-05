@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import {
   ConfigurationHandBackRefusedError,
   handBackMountedConfiguration,
@@ -17,6 +15,8 @@ import {
 import { ConfigurationLoadRefusedError } from "@jobs/configLoad";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
 import { jobConfigurationHandBackSchema } from "@jobs/intentSchemas";
+
+import { defineJobRoute } from "../jobRoute";
 
 /**
  * `GET /api/jobs/config` -- the command-line configuration the operator mounted
@@ -51,52 +51,48 @@ import { jobConfigurationHandBackSchema } from "@jobs/intentSchemas";
  * `{ written: true }` -- nothing of the document crosses back. A hand-back the
  * file or the settings refuse is a `400 { error }`.
  */
-export const Route = createFileRoute("/api/jobs/config")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        try {
-          return jobJsonResponse(gate.manager.openMountedConfiguration());
-        } catch (error) {
-          if (error instanceof ConfigurationLoadRefusedError)
-            return jobJsonResponse({ error: error.message }, 400);
-          throw error;
-        }
-      },
-      PUT: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
+export const route = defineJobRoute({
+  path: "/api/jobs/config",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      try {
+        return jobJsonResponse(gate.manager.openMountedConfiguration());
+      } catch (error) {
+        if (error instanceof ConfigurationLoadRefusedError)
+          return jobJsonResponse({ error: error.message }, 400);
+        throw error;
+      }
+    },
+    PUT: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
 
-        const body = await readJobRequestBody(
-          request,
-          MAX_CONFIG_HAND_BACK_BODY_BYTES,
+      const body = await readJobRequestBody(
+        request,
+        MAX_CONFIG_HAND_BACK_BODY_BYTES,
+      );
+      if (body.kind === "too-large") return jobEmptyResponse(413);
+      if (body.kind === "invalid") return jobEmptyResponse(400);
+
+      const parsed = jobConfigurationHandBackSchema.safeParse(body.value);
+      if (!parsed.success)
+        return jobJsonResponse(
+          { error: formatFirstIssue(parsed.error.issues) },
+          400,
         );
-        if (body.kind === "too-large") return jobEmptyResponse(413);
-        if (body.kind === "invalid") return jobEmptyResponse(400);
-
-        const parsed = jobConfigurationHandBackSchema.safeParse(body.value);
-        if (!parsed.success)
-          return jobJsonResponse(
-            { error: formatFirstIssue(parsed.error.issues) },
-            400,
-          );
-        try {
-          handBackMountedConfiguration(
-            readJobApiConfig().dataRoot,
-            parsed.data,
-          );
-        } catch (error) {
-          if (
-            error instanceof ConfigurationLoadRefusedError ||
-            error instanceof ConfigurationHandBackRefusedError
-          )
-            return jobJsonResponse({ error: error.message }, 400);
-          throw error;
-        }
-        return jobJsonResponse({ written: true });
-      },
+      try {
+        handBackMountedConfiguration(readJobApiConfig().dataRoot, parsed.data);
+      } catch (error) {
+        if (
+          error instanceof ConfigurationLoadRefusedError ||
+          error instanceof ConfigurationHandBackRefusedError
+        )
+          return jobJsonResponse({ error: error.message }, 400);
+        throw error;
+      }
+      return jobJsonResponse({ written: true });
     },
   },
 });

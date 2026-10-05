@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { jobJsonResponse, readJobApiConfig } from "@jobs/gate";
 import { gateJobRoute } from "@jobs/routeSupport";
 import { isConsoleOwnedFolderName } from "@jobs/consoleOwnedFiles";
 import { listMountEntries } from "@jobs/mountBrowse";
+
+import { defineJobRoute } from "../../../jobRoute";
 
 /**
  * `GET /api/jobs/mounts/folder/entries?subPath=...&subPath=...` -- list the
@@ -21,25 +21,24 @@ import { listMountEntries } from "@jobs/mountBrowse";
  * working directories -- are left out, so the picker never offers the
  * exchange's secret as a credential.
  */
-export const Route = createFileRoute("/api/jobs/mounts/folder/entries")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const subPath = new URL(request.url).searchParams.getAll("subPath");
-        const listing = listMountEntries(readJobApiConfig().dataRoot, subPath);
-        return jobJsonResponse({
-          configured: true,
-          readable: listing.readable,
-          entries:
-            subPath.length === 0
-              ? listing.entries.filter(
-                  (entry) => !isConsoleOwnedFolderName(entry.name),
-                )
-              : listing.entries,
-        });
-      },
+export const route = defineJobRoute({
+  path: "/api/jobs/mounts/folder/entries",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const subPath = new URL(request.url).searchParams.getAll("subPath");
+      const listing = listMountEntries(readJobApiConfig().dataRoot, subPath);
+      return jobJsonResponse({
+        configured: true,
+        readable: listing.readable,
+        entries:
+          subPath.length === 0
+            ? listing.entries.filter(
+                (entry) => !isConsoleOwnedFolderName(entry.name),
+              )
+            : listing.entries,
+      });
     },
   },
 });

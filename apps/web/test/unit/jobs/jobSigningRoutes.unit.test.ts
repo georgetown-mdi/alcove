@@ -21,9 +21,9 @@ import {
 } from "@jobs/signingIdentity";
 import { MAX_SIGNING_FINGERPRINT_BODY_BYTES } from "@jobs/routeSupport";
 
-import { Route as FingerprintRoute } from "../../../src/routes/api/jobs/signing/fingerprint";
-import { Route as JobRoute } from "../../../src/routes/api/jobs/$jobId/index";
-import { Route as ReceiptRoute } from "../../../src/routes/api/jobs/$jobId/receipt";
+import { route as FingerprintRoute } from "../../../server/console/routes/signing/fingerprint";
+import { route as JobRoute } from "../../../server/console/routes/$jobId/index";
+import { route as ReceiptRoute } from "../../../server/console/routes/$jobId/receipt";
 
 import {
   STUB_CLI_PATH,
@@ -69,10 +69,8 @@ type Handlers = Record<
   (ctx: { request: Request; params: Record<string, string> }) => unknown
 >;
 
-function handlersOf(route: {
-  options: { server?: { handlers?: unknown } };
-}): Handlers {
-  const handlers = route.options.server?.handlers;
+function handlersOf(route: { handlers: unknown }): Handlers {
+  const handlers = route.handlers;
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;

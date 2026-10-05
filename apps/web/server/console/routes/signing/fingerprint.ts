@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { z } from "zod";
 
 import { holdsPrivateKeyMaterial, maxCodeUnits } from "@alcove/core";
@@ -27,6 +25,8 @@ import {
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { SigningFingerprintBusyError } from "@jobs/jobManager";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
+
+import { defineJobRoute } from "../../jobRoute";
 
 import type { SigningFingerprintResult } from "@jobs/signingIdentity";
 
@@ -137,51 +137,50 @@ function pickedFileName(
  * `JOB_DATA_ROOT`; the body is capped at
  * {@link MAX_SIGNING_FINGERPRINT_BODY_BYTES} (413 over, 400 unparseable).
  */
-export const Route = createFileRoute("/api/jobs/signing/fingerprint")({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
+export const route = defineJobRoute({
+  path: "/api/jobs/signing/fingerprint",
+  handlers: {
+    POST: async ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
 
-        const body = await readJobRequestBody(
-          request,
-          MAX_SIGNING_FINGERPRINT_BODY_BYTES,
-        );
-        if (body.kind === "too-large") return jobEmptyResponse(413);
-        if (body.kind === "invalid") return jobEmptyResponse(400);
+      const body = await readJobRequestBody(
+        request,
+        MAX_SIGNING_FINGERPRINT_BODY_BYTES,
+      );
+      if (body.kind === "too-large") return jobEmptyResponse(413);
+      if (body.kind === "invalid") return jobEmptyResponse(400);
 
-        const parsed = fingerprintBodySchema.safeParse(body.value);
-        if (!parsed.success)
-          return jobJsonResponse(
-            { error: formatFirstIssue(parsed.error.issues) },
-            400,
-          );
-
-        const { identityLocation } = parsed.data;
-        let result: SigningFingerprintResult;
-        try {
-          result = await gate.manager.resolveSigningFingerprint({
-            identityLabel: parsed.data.identity,
-            exportCertificate: parsed.data.exportCertificate === true,
-            ...(identityLocation !== undefined ? { identityLocation } : {}),
-          });
-        } catch (error) {
-          // A request already in flight is a 409 (the busy convention). A
-          // location that names nothing in the secrets mount is a 400 whose
-          // message holds a field path and a reason, the shape every authoring
-          // rejection takes. Anything else is an unexpected internal fault --
-          // no detail crosses the boundary.
-          if (error instanceof SigningFingerprintBusyError)
-            return jobEmptyResponse(409);
-          if (error instanceof SigningIdentityLocationError)
-            return jobJsonResponse({ error: error.message }, 400);
-          return jobEmptyResponse(500);
-        }
+      const parsed = fingerprintBodySchema.safeParse(body.value);
+      if (!parsed.success)
         return jobJsonResponse(
-          fingerprintEnvelope(result, pickedFileName(identityLocation)),
+          { error: formatFirstIssue(parsed.error.issues) },
+          400,
         );
-      },
+
+      const { identityLocation } = parsed.data;
+      let result: SigningFingerprintResult;
+      try {
+        result = await gate.manager.resolveSigningFingerprint({
+          identityLabel: parsed.data.identity,
+          exportCertificate: parsed.data.exportCertificate === true,
+          ...(identityLocation !== undefined ? { identityLocation } : {}),
+        });
+      } catch (error) {
+        // A request already in flight is a 409 (the busy convention). A
+        // location that names nothing in the secrets mount is a 400 whose
+        // message holds a field path and a reason, the shape every authoring
+        // rejection takes. Anything else is an unexpected internal fault --
+        // no detail crosses the boundary.
+        if (error instanceof SigningFingerprintBusyError)
+          return jobEmptyResponse(409);
+        if (error instanceof SigningIdentityLocationError)
+          return jobJsonResponse({ error: error.message }, 400);
+        return jobEmptyResponse(500);
+      }
+      return jobJsonResponse(
+        fingerprintEnvelope(result, pickedFileName(identityLocation)),
+      );
     },
   },
 });

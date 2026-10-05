@@ -34,8 +34,8 @@ import {
 } from "@psi/managed/recurringHandoff";
 import { JobManager } from "@jobs/jobManager";
 
-import { Route as CreateRoute } from "../../src/routes/api/jobs/index";
-import { Route as HandoffRoute } from "../../src/routes/api/jobs/$jobId/handoff";
+import { route as CreateRoute } from "../../server/console/routes/index";
+import { route as HandoffRoute } from "../../server/console/routes/$jobId/handoff";
 
 import {
   STUB_CLI_PATH,
@@ -58,12 +58,9 @@ type Handlers = Record<
   (ctx: { request: Request; params: Record<string, string> }) => unknown
 >;
 
-/** Extract a route's plain handlers object, mirroring the jobRoutes suite: the
- * generated route type does not expose the method keys directly. */
-function handlersOf(route: {
-  options: { server?: { handlers?: unknown } };
-}): Handlers {
-  const handlers = route.options.server?.handlers;
+/** A route's handlers, typed so a test calls a method without a guard. */
+function handlersOf(route: { handlers: unknown }): Handlers {
+  const handlers = route.handlers;
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;

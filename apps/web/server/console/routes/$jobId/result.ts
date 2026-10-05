@@ -1,9 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse } from "@jobs/gate";
 import { jobFileDownloadResponse } from "@jobs/jobFileDownload";
 import { resultFileExists } from "@jobs/workdir";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/:jobId/result` -- serve the job's matched-result CSV.
@@ -16,30 +16,29 @@ import { resultFileExists } from "@jobs/workdir";
  * no-store headers are set. A job that has not succeeded, or whose result is
  * missing, is 404 rather than leaking whether an unfinished job exists.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/result")({
-  server: {
-    handlers: {
-      GET: async ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/result",
+  handlers: {
+    GET: async ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        const view = gate.manager.getJobView(jobId);
-        if (view === null) return jobEmptyResponse(404);
-        if (view.status !== "succeeded") return jobEmptyResponse(404);
-        if (
-          view.outputPath === null ||
-          view.resultFileName === null ||
-          !resultFileExists(view.outputPath)
-        )
-          return jobEmptyResponse(404);
+      const view = gate.manager.getJobView(jobId);
+      if (view === null) return jobEmptyResponse(404);
+      if (view.status !== "succeeded") return jobEmptyResponse(404);
+      if (
+        view.outputPath === null ||
+        view.resultFileName === null ||
+        !resultFileExists(view.outputPath)
+      )
+        return jobEmptyResponse(404);
 
-        return jobFileDownloadResponse(view.outputPath, {
-          contentType: "text/csv; charset=utf-8",
-          fileName: view.resultFileName,
-        });
-      },
+      return jobFileDownloadResponse(view.outputPath, {
+        contentType: "text/csv; charset=utf-8",
+        fileName: view.resultFileName,
+      });
     },
   },
 });

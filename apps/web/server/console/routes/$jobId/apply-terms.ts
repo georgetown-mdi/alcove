@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `POST /api/jobs/:jobId/apply-terms` -- apply the partner's changed linkage
@@ -15,25 +15,24 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
  * `refused`, `timeout`, `error`, `configuration-changed`, or
  * `run-terms-differ`.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/apply-terms")({
-  server: {
-    handlers: {
-      POST: async ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/apply-terms",
+  handlers: {
+    POST: async ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        let result: Awaited<ReturnType<typeof gate.manager.applyTermsProposal>>;
-        try {
-          result = await gate.manager.applyTermsProposal(jobId);
-        } catch {
-          return jobEmptyResponse(500);
-        }
-        if (result.kind === "unavailable") return jobEmptyResponse(404);
-        if (result.kind === "busy") return jobEmptyResponse(409);
-        return jobJsonResponse({ status: result.kind });
-      },
+      let result: Awaited<ReturnType<typeof gate.manager.applyTermsProposal>>;
+      try {
+        result = await gate.manager.applyTermsProposal(jobId);
+      } catch {
+        return jobEmptyResponse(500);
+      }
+      if (result.kind === "unavailable") return jobEmptyResponse(404);
+      if (result.kind === "busy") return jobEmptyResponse(409);
+      return jobJsonResponse({ status: result.kind });
     },
   },
 });

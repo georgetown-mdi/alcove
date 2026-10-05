@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
+
+import { defineJobRoute } from "../../jobRoute";
 
 /**
  * `GET /api/jobs/:jobId/handoff` -- the recurring-run hand-off for a job: the
@@ -19,20 +19,19 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
  * the portable host/port/username, host-key fingerprint, and linkage terms are
  * the values the run used.
  */
-export const Route = createFileRoute("/api/jobs/$jobId/handoff")({
-  server: {
-    handlers: {
-      GET: ({ request, params }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const jobId = validateJobIdParam(params.jobId);
-        if (jobId === null) return jobEmptyResponse(404);
+export const route = defineJobRoute({
+  path: "/api/jobs/$jobId/handoff",
+  handlers: {
+    GET: ({ request, params }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const jobId = validateJobIdParam(params.jobId);
+      if (jobId === null) return jobEmptyResponse(404);
 
-        const handoff = gate.manager.getJobHandoff(jobId);
-        if (handoff === null) return jobEmptyResponse(404);
+      const handoff = gate.manager.getJobHandoff(jobId);
+      if (handoff === null) return jobEmptyResponse(404);
 
-        return jobJsonResponse(handoff);
-      },
+      return jobJsonResponse(handoff);
     },
   },
 });

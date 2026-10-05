@@ -192,7 +192,7 @@ function rejectDisallowedHost(
  * manager, and reject a browser-reachable request. Every job route calls this
  * first, before any filesystem use or spawn; `scripts/job-route-gate.test.mjs`
  * enforces the call order across the handlers under
- * `apps/web/src/routes/api/jobs`. The API is unauthenticated loopback-local,
+ * `apps/web/server/console/routes`. The API is unauthenticated loopback-local,
  * so the feature gate is the only per-request auth; {@link rejectDisallowedHost}
  * and {@link rejectCrossOriginBrowserRequest} run after it, so a disabled API
  * stays a uniform 404.

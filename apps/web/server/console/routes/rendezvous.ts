@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute } from "@jobs/routeSupport";
 import { jobJsonResponse } from "@jobs/gate";
 import { useJobRendezvousProvisioning } from "@jobs/jobRendezvous";
+
+import { defineJobRoute } from "../jobRoute";
 
 /**
  * `GET /api/jobs/rendezvous` -- report whether a filedrop exchange can run here, how
@@ -41,33 +41,32 @@ import { useJobRendezvousProvisioning } from "@jobs/jobRendezvous";
  * server side of the API rather than relying on every consumer to reduce them
  * before minting.
  */
-export const Route = createFileRoute("/api/jobs/rendezvous")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const rendezvous = useJobRendezvousProvisioning();
-        if (rendezvous.problem !== undefined)
-          return jobJsonResponse({
-            configured: false,
-            problem: rendezvous.problem,
-          });
-        if (rendezvous.dir === undefined)
-          return jobJsonResponse({ configured: false });
-        const { folderName, locator, outboundFolderName, outboundLocator } =
-          rendezvous;
+export const route = defineJobRoute({
+  path: "/api/jobs/rendezvous",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const rendezvous = useJobRendezvousProvisioning();
+      if (rendezvous.problem !== undefined)
         return jobJsonResponse({
-          configured: true,
-          sharesDataRoot: rendezvous.sharesDataRoot === true,
-          sharesDataRootUncertain: rendezvous.sharesDataRootUncertain === true,
-          ...(rendezvous.outboundDir === undefined ? {} : { split: true }),
-          ...(locator === undefined ? {} : { locator }),
-          ...(folderName === undefined ? {} : { folderName }),
-          ...(outboundLocator === undefined ? {} : { outboundLocator }),
-          ...(outboundFolderName === undefined ? {} : { outboundFolderName }),
+          configured: false,
+          problem: rendezvous.problem,
         });
-      },
+      if (rendezvous.dir === undefined)
+        return jobJsonResponse({ configured: false });
+      const { folderName, locator, outboundFolderName, outboundLocator } =
+        rendezvous;
+      return jobJsonResponse({
+        configured: true,
+        sharesDataRoot: rendezvous.sharesDataRoot === true,
+        sharesDataRootUncertain: rendezvous.sharesDataRootUncertain === true,
+        ...(rendezvous.outboundDir === undefined ? {} : { split: true }),
+        ...(locator === undefined ? {} : { locator }),
+        ...(folderName === undefined ? {} : { folderName }),
+        ...(outboundLocator === undefined ? {} : { outboundLocator }),
+        ...(outboundFolderName === undefined ? {} : { outboundFolderName }),
+      });
     },
   },
 });

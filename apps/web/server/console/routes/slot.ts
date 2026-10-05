@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-
 import { gateJobRoute } from "@jobs/routeSupport";
 import { jobJsonResponse } from "@jobs/gate";
+
+import { defineJobRoute } from "../jobRoute";
 
 /**
  * `GET /api/jobs/slot` -- report whether the console's single exchange slot is
@@ -23,17 +23,16 @@ import { jobJsonResponse } from "@jobs/gate";
  * validated as canonical v4 UUIDs before any use, and `slot` is not one -- the
  * same rule the sibling `sftp` segment relies on.
  */
-export const Route = createFileRoute("/api/jobs/slot")({
-  server: {
-    handlers: {
-      GET: ({ request }) => {
-        const gate = gateJobRoute(request);
-        if (gate.kind === "response") return gate.response;
-        const id = gate.manager.occupiedSlotId();
-        return jobJsonResponse(
-          id === null ? { occupied: false } : { occupied: true, id },
-        );
-      },
+export const route = defineJobRoute({
+  path: "/api/jobs/slot",
+  handlers: {
+    GET: ({ request }) => {
+      const gate = gateJobRoute(request);
+      if (gate.kind === "response") return gate.response;
+      const id = gate.manager.occupiedSlotId();
+      return jobJsonResponse(
+        id === null ? { occupied: false } : { occupied: true, id },
+      );
     },
   },
 });
