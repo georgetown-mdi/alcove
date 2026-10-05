@@ -60,14 +60,15 @@ export function builder(cmd: Argv): Argv {
       cmd,
       { optional: ["args"] },
       {
+        // Capture positionals into `args` (rather than the global `_`) and
+        // treat an unknown `-`-leading token as a positional, so a bare `-`
+        // (stdin) or an input path is never swallowed or misread as a flag --
+        // the same parsing the invite/accept commands use for their
+        // positionals.
         "unknown-options-as-args": true,
       },
     ),
   )
-    // Capture positionals into `args` (rather than the global `_`) and treat an
-    // unknown `-`-leading token as a positional, so a bare `-` (stdin) or an
-    // input path is never swallowed or misread as a flag -- the same parsing the
-    // invite/accept commands use for their positionals.
     .positional("args", {
       type: "string",
       array: true,

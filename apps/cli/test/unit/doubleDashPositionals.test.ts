@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 
@@ -189,4 +193,57 @@ test("the quick exchange reads its URL and paths after `--`", async () => {
   ]);
   expect(exit).toBe("");
   expect(parsed?._).toEqual(["sftp://h/p", "-in.csv", "-out"]);
+});
+
+// Run the command's own handler, which reads the count of positionals given
+// before `--` from the parsed argv: a handler handed a different argv object
+// than the middleware set it on would refuse the `--`-leading path as an
+// unknown argument.
+async function handlerRun(
+  argv: string[],
+): Promise<{ exit: string; stderr: string }> {
+  const stderr: string[] = [];
+  vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+    stderr.push(args.map(String).join(" "));
+  });
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    stderr.push(String(chunk));
+    return true;
+  });
+  captureProcessExit();
+  let exit = "";
+  try {
+    await buildCli(argv).parseAsync();
+  } catch (err) {
+    exit = err instanceof Error ? err.message : String(err);
+  }
+  return { exit, stderr: stderr.join("\n") };
+}
+
+test("accept's handler takes `--`-leading paths after `--` as its input and output", async () => {
+  expect(process.stdin.isTTY).toBeFalsy();
+  const { exit, stderr } = await handlerRun([
+    "accept",
+    "invitation",
+    "--",
+    "--in.csv",
+    "--out",
+  ]);
+  expect(stderr).not.toContain("Unknown argument");
+  expect(stderr).toContain("standard input is not a terminal");
+  expect(exit).toBe("exit:64");
+});
+
+test("apply's handler takes a `--`-leading update after `--`", async () => {
+  const missingConfig = join(tmpdir(), `alcove-absent-${randomUUID()}.yaml`);
+  const { exit, stderr } = await handlerRun([
+    "apply",
+    "--config-file",
+    missingConfig,
+    "--",
+    "--update",
+  ]);
+  expect(stderr).not.toContain("Unknown argument");
+  expect(stderr).toContain(missingConfig);
+  expect(exit).not.toBe("");
 });

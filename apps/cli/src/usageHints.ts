@@ -104,9 +104,9 @@ function camelCase(name: string): string {
  * each paired with the option it most likely stands for: every key of the
  * parsed `argv` other than yargs' own `_`, `$0` and `--`, plus each
  * `--`-leading token in the `args` positional given before a `--` separator,
- * where the commands that take unknown options as arguments collect them. yargs adds a camelCase copy of
- * each dashed key, so that copy is skipped; a one-character key comes from a
- * short flag and is left to yargs' own message.
+ * where the commands that take unknown options as arguments collect them.
+ * yargs adds a camelCase copy of each dashed key, so that copy is skipped; a
+ * one-character key comes from a short flag and is left to yargs' own message.
  */
 export function unknownLongOptions(
   argv: Readonly<Record<string, unknown>>,

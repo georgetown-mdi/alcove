@@ -59,12 +59,12 @@ export function builder(cmd: Argv): Argv {
       cmd,
       { optional: ["args"] },
       {
+        // A terms update is base64url and may begin with `-`, so an unknown
+        // `-`-leading token is taken as the positional, as accept takes an
+        // invitation; a mistyped `--flag` is then refused by the handler.
         "unknown-options-as-args": true,
       },
     )
-      // A terms update is base64url and may begin with `-`, so an unknown
-      // `-`-leading token is taken as the positional, as accept takes an
-      // invitation; a mistyped `--flag` is then refused by the handler.
       .positional("args", {
         type: "string",
         array: true,

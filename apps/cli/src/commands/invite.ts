@@ -142,14 +142,14 @@ export function builder(cmd: Argv): Argv {
         cmd,
         { optional: ["args"] },
         {
+          // Capture all positionals into `args` (rather than relying on the
+          // global `_`) and treat an unknown `-`-leading token as a positional,
+          // so an input path is never misread as a flag. Scoped to this command
+          // so the other commands' parsing is unaffected.
           "unknown-options-as-args": true,
         },
       ),
     )
-      // Capture all positionals into `args` (rather than relying on the global
-      // `_`) and treat an unknown `-`-leading token as a positional, so an
-      // input path is never misread as a flag. Scoped to this command so the
-      // other commands' parsing is unaffected.
       .positional("args", {
         type: "string",
         array: true,

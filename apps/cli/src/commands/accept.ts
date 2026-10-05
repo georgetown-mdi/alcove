@@ -132,15 +132,16 @@ export function builder(cmd: Argv): Argv {
         cmd,
         { optional: ["args"] },
         {
+          // Capture all positionals into `args` (rather than relying on the
+          // global `_`) and treat an unknown `-`-leading token as a positional,
+          // so an invitation string beginning with `-` (a valid base64url
+          // character) is taken as the positional invitation, not a cluster of
+          // option flags. Scoped to this command so the other commands' parsing
+          // is unaffected.
           "unknown-options-as-args": true,
         },
       ),
     )
-      // Capture all positionals into `args` (rather than relying on the global
-      // `_`) and treat an unknown `-`-leading token as a positional, so an
-      // invitation string beginning with `-` (a valid base64url character) is
-      // taken as the positional invitation, not a cluster of option flags.
-      // Scoped to this command so the other commands' parsing is unaffected.
       .positional("args", {
         type: "string",
         array: true,
