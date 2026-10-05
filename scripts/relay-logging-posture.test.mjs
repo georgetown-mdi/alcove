@@ -40,3 +40,23 @@ describe("turnserver.conf.tmpl logging", () => {
     expect(logging.sort()).toEqual([...ALLOWED].sort());
   });
 });
+
+describe("journal retention", () => {
+  const relay = resolve(here, "..", "infra/relay");
+  const read = (path) => readFileSync(resolve(relay, path), "utf8");
+
+  it("is capped at 90 days by a drop-in install.sh installs", () => {
+    expect(read("journald-alcove-relay.conf")).toMatch(
+      /^MaxRetentionSec=90day$/m,
+    );
+    expect(read("install.sh")).toContain("journald-alcove-relay.conf");
+  });
+
+  it("is stated as 90 days where the docs name it", () => {
+    for (const doc of ["docs/notes/webrtc-relay-deployment.md", "PRIVACY.md"]) {
+      expect(readFileSync(resolve(here, "..", doc), "utf8"), doc).toContain(
+        "90 days",
+      );
+    }
+  });
+});
