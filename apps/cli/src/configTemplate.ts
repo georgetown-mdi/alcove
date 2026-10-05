@@ -120,6 +120,9 @@ export const FIELD_DOCS: Array<{ path: Array<string>; lines: Array<string> }> =
       path: ["connection", "options"],
       lines: [
         "Connection tuning. Defaults shown; most exchanges leave these untouched.",
+        "For a scheduled run, also set a stable peer_id naming this party, so a",
+        "file a killed run left behind stops the next run with the file named:",
+        "  peer_id: agency-a",
       ],
     },
     {
@@ -276,6 +279,8 @@ export const SFTP_FIELD_DOCS: Array<{
       "a leading @ is reserved in YAML):",
       '  password: "@./sftp-password.txt"',
       '  private_key: "@~/.ssh/id_alcove"',
+      "An encrypted private key also takes its passphrase:",
+      '  private_key_passphrase: "@./sftp-key-passphrase.txt"',
       "If the server accepts keyboard-interactive but not the direct password",
       "method, answer its prompts with the password (requires password):",
       "  keyboard_interactive: true",
@@ -339,17 +344,21 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # channel between the two parties, set up through a peer-coordination server.
 # role is inviter on the party that issued the invitation and acceptor on the
 # other; 'alcove accept' writes this block for you. key is the coordination
-# server's API key (default peerjs). stun replaces the built-in STUN server
-# list. turn names relay servers for networks where a direct connection fails
-# (write the credential as an @path, or leave out username and credential to
-# have each run mint one from the shared secret); ice_transport_policy: relay
-# uses those relays only.
+# server's API key (default peerjs). port defaults to 443, or to 80 with
+# secure: false, which opens the signaling socket without TLS. stun replaces
+# the built-in STUN server list. turn names relay servers for networks where a
+# direct connection fails (write the credential as an @path, or leave out
+# username and credential to have each run mint one from the shared secret;
+# credential_type is hmac-sha1 for a time-limited credential your relay's
+# deployment minted, password otherwise); ice_transport_policy: relay uses
+# those relays only.
 # connection:
 #   channel: webrtc
 #   server:
 #     host: REPLACE_WITH_COORDINATION_SERVER_HOST
 #     port: 443
 #     key: peerjs
+#     secure: true
 #   role: inviter
 #   stun:
 #     - "stun:stun.example.org:3478"
@@ -357,6 +366,7 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 #     - url: "turns:relay.example.org:443?transport=tcp"
 #       username: REPLACE_WITH_TURN_USERNAME
 #       credential: "@./turn-credential.txt"
+#       credential_type: password
 #   ice_transport_policy: all
 
 # unexpected_files (sftp and filedrop): what to do when a file that is not part
@@ -452,11 +462,16 @@ export const INFERRED_SECTIONS_HINT = `# metadata and standardization are inferr
 #     type: ssn
 #     role: linkage
 #     is_payload: false
+#     description: Social Security number
 # standardization:
 #   - output: ssn
 #     input: ssn
 #     steps:
 #       - function: trim_whitespace
+#       - function: pad_left
+#         params:
+#           length: 9
+#           char: "0"
 `;
 
 /**

@@ -1337,7 +1337,8 @@ const LinkageRuleSetReferenceSchema: z.ZodType<LinkageRuleSetReference> =
  * copy; after authentication both parties swap copies and verify that all
  * mandatory fields are consistent. A mismatch on a mandatory field cancels the
  * exchange; a mismatch on a soft field (currently only `date`) produces a
- * warning and an updated set of terms being output.
+ * warning and the exchange continues: neither party's `date` is rewritten and
+ * no updated terms are written.
  *
  * Fields and their consistency requirements:
  * - `version` -- mandatory. Two versions are incompatible if no migration path

@@ -56,6 +56,7 @@
     "check:webrtc-provider-options-unread": "node scripts/check-webrtc-provider-options-unread.mjs",
     "check:run-failure-sink": "node scripts/check-run-failure-sink.mjs",
     "check:zero-setup-keys": "node scripts/check-zero-setup-keys.mjs",
+    "check:init-template-coverage": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-init-template-coverage.mjs",
     "check:built-in-set-versions": "node scripts/check-built-in-set-versions.mjs",
     "check:release-version": "node scripts/check-release-version.mjs",
     "check:release-signing": "node scripts/check-release-signing.mjs",

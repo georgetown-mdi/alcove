@@ -247,7 +247,7 @@ A configuration file can name its rule set instead of writing the rules out: a `
 alcove init [--channel sftp|filedrop] [URL] [INPUT_FILE]
 ```
 
-This creates a configuration file and then exits - no exchange or invitation is generated, and no key file is created. The file is a commented template with defaults pre-filled; [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) lists every field. If an input file is provided, column metadata, linkage fields, and data standardizing transformations are inferred from it. The user can then edit the file by hand before running their first exchange.
+This creates a configuration file and then exits - no exchange or invitation is generated, and no key file is created. The file is a commented template with defaults pre-filled, documenting each option inline, active or as a commented example. A few are left to [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md), which lists every field: values Alcove writes for you (the shared secret's state, read from the key file, and the relay an accepted invitation names), the payload lists (filled from an input file and by the first exchange), split-directory and on-demand provisioning setups, relay registration and ICE credential services, SSH library settings, the session-per-poll SFTP remedy, two linkage-key element options the built-in keys do not use, and the SSH certificate, known-hosts and proxy fields no exchange uses. If an input file is provided, column metadata, linkage fields, and data standardizing transformations are inferred from it. The user can then edit the file by hand before running their first exchange.
 
 ```sh
 # A connection block that needs only the SFTP credential added
