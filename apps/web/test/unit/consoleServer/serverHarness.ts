@@ -63,11 +63,17 @@ export async function resetConsoleServerTests(): Promise<void> {
 }
 
 /** Start the console server on a loopback port, serving `routes` (every job
- * route by default), and resolve with its port. */
+ * route by default) and the client under `staticRoot` when given, and resolve
+ * with its port. */
 export async function startServer(
   routes: ReadonlyArray<JobRouteDefinition> = jobRoutes,
+  staticRoot?: string,
 ): Promise<number> {
-  const server = createConsoleServer(createConsoleHandler({ routes }));
+  const server = createConsoleServer(
+    createConsoleHandler(
+      staticRoot === undefined ? { routes } : { routes, staticRoot },
+    ),
+  );
   servers.push(server);
   await listenConsoleServer(server, { port: 0, host: "127.0.0.1" });
   return (server.address() as net.AddressInfo).port;

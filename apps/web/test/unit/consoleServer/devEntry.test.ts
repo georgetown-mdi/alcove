@@ -9,7 +9,7 @@ import { resetConsoleServerTests, scratchDir } from "./serverHarness";
 import type { ChildProcess } from "node:child_process";
 
 const APP_ROOT = path.resolve(import.meta.dirname, "../../..");
-const SCRIPT_NAME = "console-server:dev";
+const SCRIPT_NAME = "dev:console";
 
 let child: ChildProcess | undefined;
 
@@ -29,7 +29,7 @@ function devScript(): string {
   return script;
 }
 
-test("the dev script starts the console server and shuts it down on SIGTERM", async () => {
+test("the dev script starts the console server with the client and shuts it down on SIGTERM", async () => {
   const dataRoot = scratchDir("console-dev-root");
   // `exec env` makes the server the shell's own process, so the signal below
   // reaches it rather than the shell.
@@ -80,6 +80,17 @@ test("the dev script starts the console server and shuts it down on SIGTERM", as
   const slot = await fetch(`${url}/api/jobs/slot`);
   expect(slot.status).toBe(200);
   await slot.body?.cancel();
+
+  for (const clientPath of ["/", "/exchange"]) {
+    const page = await fetch(`${url}${clientPath}`);
+    expect(page.status).toBe(200);
+    expect(page.headers.get("x-frame-options")).toBe("DENY");
+    expect(await page.text()).toContain('src="/src/spaClient.tsx"');
+  }
+
+  const unknownApi = await fetch(`${url}/api/nope`);
+  expect(unknownApi.status).toBe(404);
+  expect(await unknownApi.text()).toBe("");
 
   child.kill("SIGTERM");
   expect(await exited).toBe(0);

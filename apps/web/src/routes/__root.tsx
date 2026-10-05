@@ -91,7 +91,11 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <HeadContent />
-        <ColorSchemeScript />
+        {/* A script React renders on the client never runs, so a document
+            rendered there has no use for one. */}
+        {import.meta.env.CLIENT_RENDERED_DOCUMENT ? null : (
+          <ColorSchemeScript />
+        )}
       </head>
       <body>
         <MantineProvider

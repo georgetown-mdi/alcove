@@ -1,34 +1,26 @@
 import path from "node:path";
 
-import { createServer, loadConfigFromFile } from "vite";
+import { createServer } from "vite";
 
 import type * as RouteTableModule from "./routeTable.ts";
 import type * as StartModule from "./start.ts";
 
 /**
- * The console server for development: the same server `main.ts` starts, its
- * modules loaded through Vite so the app's `@`-prefixed imports resolve as
- * they do in the build, with the aliases read from the app's own Vite config.
- * Run under Node directly (`npm run console-server:dev -w apps/web`): this file
+ * The console for development (`npm run dev:console -w apps/web`): the same
+ * server `main.ts` starts, with the client served by Vite in middleware mode
+ * on the same origin in place of the built bundle, and the server's own
+ * modules loaded through the console's Vite config so the app's `@`-prefixed
+ * imports resolve as they do in the build. Run under Node directly: this file
  * imports nothing Node cannot load by itself.
  */
 
 const appRoot = path.resolve(import.meta.dirname, "../..");
 
-const appConfig = await loadConfigFromFile(
-  { command: "serve", mode: "development" },
-  path.join(appRoot, "vite.config.ts"),
-  appRoot,
-);
-if (appConfig === null)
-  throw new Error("The web app's Vite config could not be loaded.");
-
 const vite = await createServer({
   root: appRoot,
-  configFile: false,
-  appType: "custom",
-  server: { middlewareMode: true, ws: false },
-  resolve: { alias: appConfig.config.resolve?.alias },
+  configFile: path.join(appRoot, "vite.console.config.ts"),
+  appType: "spa",
+  server: { middlewareMode: true },
 });
 
 const { jobRoutes } = (await vite.ssrLoadModule(
@@ -38,5 +30,8 @@ const { startConsoleServer } = (await vite.ssrLoadModule(
   "/server/console/start.ts",
 )) as typeof StartModule;
 
-const { hooks } = await startConsoleServer({ routes: jobRoutes });
+const { hooks } = await startConsoleServer({
+  routes: jobRoutes,
+  clientMiddleware: vite.middlewares,
+});
 hooks.hook("close", () => vite.close());
