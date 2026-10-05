@@ -8,9 +8,10 @@ import { z } from "zod";
 
 import type { RelayRegistrar } from "./config/connection.js";
 import {
-  RELAY_REGISTRAR_UNREACHABLE_CODES,
+  RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES,
+  RELAY_REGISTRAR_NO_CONNECTION_CODES,
   type FailureCauseOfKind,
-  type RelayRegistrarUnreachableCode,
+  type RelayRegistrarUnreachableFailure,
 } from "./failureCause.js";
 import { deriveRelayKey } from "./relayCredential.js";
 import { relayRegistrarAuthorization } from "./relayRegistrarProof.js";
@@ -95,25 +96,31 @@ export function relayRegistrarLabel(registrar: RelayRegistrar): string {
 }
 
 /**
- * The network error code under which `err` -- what `fetch` rejected with --
- * failed to connect, read from its `cause` or, for a connection tried at
- * several addresses, from each error the cause aggregates; `undefined` when
- * none is one of {@link RELAY_REGISTRAR_UNREACHABLE_CODES}.
+ * The class of network failure `err` -- what `fetch` rejected with -- names,
+ * read from the code on its `cause` or, for a connection tried at several
+ * addresses, on each error the cause aggregates; `undefined` when no code is
+ * one a {@link RelayRegistrarUnreachableFailure} names.
  */
-function unreachableCode(
+function unreachableFailure(
   err: unknown,
-): RelayRegistrarUnreachableCode | undefined {
+): RelayRegistrarUnreachableFailure | undefined {
   const cause = (err as { cause?: unknown } | null)?.cause;
   const candidates: unknown[] = [cause];
   const aggregated = (cause as { errors?: unknown } | null)?.errors;
   if (Array.isArray(aggregated)) candidates.push(...aggregated);
   for (const candidate of candidates) {
     const code = (candidate as { code?: unknown } | null)?.code;
-    if (
-      typeof code === "string" &&
-      (RELAY_REGISTRAR_UNREACHABLE_CODES as readonly string[]).includes(code)
-    )
-      return code as RelayRegistrarUnreachableCode;
+    const noConnection = RELAY_REGISTRAR_NO_CONNECTION_CODES.find(
+      (known) => known === code,
+    );
+    if (noConnection !== undefined)
+      return { failure: "no-connection", code: noConnection };
+    const nameNotResolved = RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES.find(
+      (known) => known === code,
+    );
+    if (nameNotResolved !== undefined)
+      return { failure: "name-not-resolved", code: nameNotResolved };
+    if (code === "ECONNRESET") return { failure: "no-answer", code };
   }
   return undefined;
 }
@@ -158,8 +165,8 @@ export type RelayRegistrarAnswer =
   | { kind: "rejected"; status: number; reason?: string }
   /**
    * No answer, one a later attempt may not repeat (408, 429, or 5xx), or a
-   * 2xx that does not state the registration. `unreachable` is set when no
-   * connection to the registrar was made, or the request timed out.
+   * 2xx that does not state the registration. `unreachable` is set when the
+   * request failed with no answer for a reason it names.
    */
   | {
       kind: "unavailable";
@@ -307,7 +314,9 @@ export async function sendRelayRegistration(
           reason: RELAY_REGISTRATION_CANCELLED_REASON,
         };
       const timedOut = err instanceof Error && err.name === "TimeoutError";
-      const code = timedOut ? undefined : unreachableCode(err);
+      const failure: RelayRegistrarUnreachableFailure | undefined = timedOut
+        ? { failure: "no-answer", timedOutMs: timeoutMs }
+        : unreachableFailure(err);
       return {
         kind: "unavailable",
         reason: timedOut
@@ -316,11 +325,11 @@ export async function sendRelayRegistration(
               err instanceof Error ? err.message : String(err),
               request.authorization,
             )})`,
-        ...((timedOut || code !== undefined) && {
+        ...(failure !== undefined && {
           unreachable: {
             kind: "relay-registrar-unreachable",
             ...registrarHostAndPort(request.registrar),
-            ...(timedOut ? { timedOutMs: timeoutMs } : { code }),
+            ...failure,
           },
         }),
       };

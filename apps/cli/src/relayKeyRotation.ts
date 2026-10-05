@@ -6,8 +6,6 @@
 
 import {
   ConnectionError,
-  failureCauseSentence,
-  markFailureCause,
   registerRelayKey,
   sanitizeErrorForDisplay,
   UsageError,
@@ -26,6 +24,7 @@ import {
 import {
   relayRegistrarForRun,
   relayRegistrarLabel,
+  relayRegistrarUnreachableError,
   relayRegistrationNotice,
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
@@ -102,15 +101,15 @@ export function relayRegistrationError(
         `confirmed, and ${label} did not confirm it before this run dialed`;
   const sent =
     stage === "pending"
-      ? " Nothing was sent to your partner, and the shared secret is unchanged."
-      : " The rotated shared secret is kept.";
+      ? "Nothing was sent to your partner, and the shared secret is unchanged."
+      : "The rotated shared secret is kept.";
   switch (outcome.kind) {
     case "refused":
       return withRecoveryHintTag(
         Object.assign(
           new Error(
             `${what} (${detail}): the registrar does not hold the key this ` +
-              `run signed with.${sent} Until the registrar holds this ` +
+              `run signed with. ${sent} Until the registrar holds this ` +
               `exchange's current key, the relay refuses this party's runs; ` +
               `${RELAY_REENROLLMENT_STEP}.`,
           ),
@@ -124,21 +123,19 @@ export function relayRegistrationError(
           : "The next run retries the registration before it dials; if " +
             `the registrar then refuses it, ${RELAY_REENROLLMENT_STEP}.`;
       if (outcome.unreachable !== undefined)
-        return markFailureCause(
-          new ConnectionError(
-            `${what}. ${failureCauseSentence(outcome.unreachable)}${sent} ${next}`,
-            "transport",
-          ),
+        return relayRegistrarUnreachableError(
+          what,
           outcome.unreachable,
+          `${sent} ${next}`,
         );
       return new ConnectionError(
-        `${what}: ${detail}.${sent} ${next}`,
+        `${what}: ${detail}. ${sent} ${next}`,
         "transport",
       );
     }
     case "rejected":
       return new UsageError(
-        `${what}: it refused the request (${detail}).${sent} Check ` +
+        `${what}: it refused the request (${detail}). ${sent} Check ` +
           "connection.relay_registrar in the configuration; once it is " +
           `corrected, ${RELAY_REENROLLMENT_STEP}.`,
       );

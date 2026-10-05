@@ -33,18 +33,35 @@ const SAMPLES: {
       kind: "relay-registrar-unreachable",
       host: "relay.example.org",
       port: 8443,
+      failure: "no-connection",
       code: "ECONNREFUSED",
     },
     {
       kind: "relay-registrar-unreachable",
       host: "relay.example.org",
       port: 8443,
+      failure: "no-connection",
       code: "UND_ERR_CONNECT_TIMEOUT",
     },
     {
       kind: "relay-registrar-unreachable",
       host: "relay.example.org",
       port: 8443,
+      failure: "name-not-resolved",
+      code: "ENOTFOUND",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      code: "ECONNRESET",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
       timedOutMs: 15_000,
     },
   ],
@@ -91,6 +108,8 @@ describe("the failure-cause catalog", () => {
     ).toEqual([
       "The relay registrar at relay.example.org port 8443 could not be reached (ECONNREFUSED).",
       "The relay registrar at relay.example.org port 8443 could not be reached (connection timed out).",
+      "The relay registrar's host name relay.example.org did not resolve to an address (ENOTFOUND).",
+      "The relay registrar at relay.example.org port 8443 closed the connection without answering (ECONNRESET).",
       "The relay registrar at relay.example.org port 8443 did not answer within 15 seconds.",
     ]);
   });

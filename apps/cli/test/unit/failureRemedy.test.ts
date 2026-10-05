@@ -34,7 +34,29 @@ const SAMPLES: {
       kind: "relay-registrar-unreachable",
       host: "relay.example.org",
       port: 8443,
+      failure: "no-connection",
       code: "ECONNREFUSED",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "name-not-resolved",
+      code: "ENOTFOUND",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      code: "ECONNRESET",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      timedOutMs: 15_000,
     },
   ],
 };
@@ -107,15 +129,47 @@ test("a missing shared folder names the path and the errno", () => {
   );
 });
 
-test("an unreachable relay registrar names its host and port and the outbound access it needs", () => {
+test("a relay registrar with no connection names its host and port and the outbound access it needs", () => {
   expect(rendered(SAMPLES["relay-registrar-unreachable"][0])).toBe(
     "The relay registrar at relay.example.org port 8443 could not be " +
       "reached (ECONNREFUSED).\n" +
       "This computer needs outbound access to relay.example.org on TCP port " +
-      "8443: if this network allows only some ports out (such as 443), have " +
-      "that port opened or run from a network that allows it.",
+      "8443: if this network allows only some ports out, have that port " +
+      "opened or run from a network that allows it.",
   );
 });
+
+test("a relay registrar name that does not resolve points at the configured address and DNS, not the port", () => {
+  expect(rendered(SAMPLES["relay-registrar-unreachable"][1])).toBe(
+    "The relay registrar's host name relay.example.org did not resolve to " +
+      "an address (ENOTFOUND).\n" +
+      "Check the registrar address in connection.relay_registrar.url and " +
+      "that this computer's DNS resolves relay.example.org, then run again.",
+  );
+});
+
+test.each([
+  [
+    2,
+    "The relay registrar at relay.example.org port 8443 closed the " +
+      "connection without answering (ECONNRESET).",
+  ],
+  [
+    3,
+    "The relay registrar at relay.example.org port 8443 did not answer " +
+      "within 15 seconds.",
+  ],
+])(
+  "a relay registrar that connected and did not answer points at the registrar, not the port (sample %i)",
+  (index, sentence) => {
+    expect(rendered(SAMPLES["relay-registrar-unreachable"][index])).toBe(
+      `${sentence}\n` +
+        "The registrar accepted the connection but did not complete the " +
+        "request: check that it is running and reachable from this network " +
+        "(infra/relay/README.md, The registrar), then run again.",
+    );
+  },
+);
 
 test("the remedy follows the cause through a wrap", () => {
   const cause = SAMPLES["folder-missing"][0];

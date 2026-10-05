@@ -12,25 +12,44 @@ export type PartnerMeetingChannel = "filedrop" | "sftp" | "webrtc";
 /** The errno codes a missing or unusable shared folder is reported under. */
 export type FolderMissingCode = "ENOENT" | "ENOTDIR";
 
-/**
- * The network error codes under which a relay registrar counts as unreachable:
- * the connection was refused or reset, no route reached the host, its name did
- * not resolve, or the connection attempt timed out.
- */
-export const RELAY_REGISTRAR_UNREACHABLE_CODES = [
+/** The network error codes under which no connection to a relay registrar was made. */
+export const RELAY_REGISTRAR_NO_CONNECTION_CODES = [
   "ECONNREFUSED",
-  "ECONNRESET",
   "EHOSTUNREACH",
   "ENETUNREACH",
-  "ENOTFOUND",
-  "EAI_AGAIN",
   "ETIMEDOUT",
   "UND_ERR_CONNECT_TIMEOUT",
 ] as const;
 
-/** One of {@link RELAY_REGISTRAR_UNREACHABLE_CODES}. */
-export type RelayRegistrarUnreachableCode =
-  (typeof RELAY_REGISTRAR_UNREACHABLE_CODES)[number];
+/** The network error codes under which a relay registrar's host name did not resolve. */
+export const RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES = [
+  "ENOTFOUND",
+  "EAI_AGAIN",
+] as const;
+
+/**
+ * Why a relay registrar did not answer, by class:
+ *
+ * - `no-connection`: no connection to its host and port was made;
+ * - `name-not-resolved`: its host name did not resolve to an address;
+ * - `no-answer`: the connection was reset, or the request timed out, before
+ *   it answered.
+ */
+export type RelayRegistrarUnreachableFailure =
+  | {
+      readonly failure: "no-connection";
+      readonly code: (typeof RELAY_REGISTRAR_NO_CONNECTION_CODES)[number];
+    }
+  | {
+      readonly failure: "name-not-resolved";
+      readonly code: (typeof RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES)[number];
+    }
+  | { readonly failure: "no-answer"; readonly code: "ECONNRESET" }
+  | {
+      readonly failure: "no-answer";
+      /** The request's timeout, which ran out with no answer. */
+      readonly timedOutMs: number;
+    };
 
 /**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
@@ -53,16 +72,12 @@ export type FailureCause =
       /** `ENOENT`: nothing at the path. `ENOTDIR`: something that is not a folder. */
       readonly code: FolderMissingCode;
     }
-  | {
-      /** No connection to the relay registrar's host and port was made. */
+  | ({
+      /** The relay registrar did not answer, for the reason `failure` names. */
       readonly kind: "relay-registrar-unreachable";
       readonly host: string;
       readonly port: number;
-      /** The network error code; unset when the request timed out instead. */
-      readonly code?: RelayRegistrarUnreachableCode;
-      /** The request's timeout, when it ran out with no answer. */
-      readonly timedOutMs?: number;
-    };
+    } & RelayRegistrarUnreachableFailure);
 
 /** The discriminant of {@link FailureCause}. */
 export type FailureCauseKind = FailureCause["kind"];
@@ -125,6 +140,24 @@ const MEETING_PLACE: Record<PartnerMeetingChannel | "unknown", string> = {
   unknown: "arrive",
 };
 
+function relayRegistrarUnreachableSentence(
+  cause: FailureCauseOfKind<"relay-registrar-unreachable">,
+): string {
+  const { host, port } = cause;
+  if (cause.failure === "name-not-resolved")
+    return `The relay registrar's host name ${host} did not resolve to an address (${cause.code}).`;
+  const at = `The relay registrar at ${host} port ${port}`;
+  if (cause.failure === "no-connection")
+    return `${at} could not be reached (${
+      cause.code === "UND_ERR_CONNECT_TIMEOUT"
+        ? "connection timed out"
+        : cause.code
+    }).`;
+  return "timedOutMs" in cause
+    ? `${at} did not answer within ${formatWaitDuration(cause.timedOutMs)}.`
+    : `${at} closed the connection without answering (${cause.code}).`;
+}
+
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
@@ -137,13 +170,7 @@ const SENTENCES: {
     code === "ENOENT"
       ? `The shared folder ${path} does not exist (ENOENT).`
       : `The shared folder path ${path} does not name a folder (ENOTDIR).`,
-  "relay-registrar-unreachable": ({ host, port, code, timedOutMs }) =>
-    `The relay registrar at ${host} port ${port} ` +
-    (code === undefined
-      ? `did not answer within ${formatWaitDuration(timedOutMs ?? 0)}.`
-      : `could not be reached (${
-          code === "UND_ERR_CONNECT_TIMEOUT" ? "connection timed out" : code
-        }).`),
+  "relay-registrar-unreachable": relayRegistrarUnreachableSentence,
 };
 
 /**

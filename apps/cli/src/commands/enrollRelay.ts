@@ -1,11 +1,6 @@
 import type { Argv, Arguments } from "yargs";
 
-import {
-  ConnectionError,
-  failureCauseSentence,
-  markFailureCause,
-  UsageError,
-} from "@alcove/core";
+import { ConnectionError, UsageError } from "@alcove/core";
 import type { RelayRegistrar } from "@alcove/core";
 
 import { DEFAULT_CONFIG_PATH } from "../config";
@@ -16,6 +11,7 @@ import {
   enrollRelayKey,
   relayRegistrarForRun,
   relayRegistrarLabel,
+  relayRegistrarUnreachableError,
   relayRegistrationNotice,
   type RelayRegistrarTransport,
   type RelayRegistrationOutcome,
@@ -93,14 +89,10 @@ function enrollmentError(
   const label = relayRegistrarLabel(registrar);
   const reason = outcome.reason === undefined ? "" : `: ${outcome.reason}`;
   if (outcome.kind === "unavailable" && outcome.unreachable !== undefined)
-    return markFailureCause(
-      new ConnectionError(
-        `the exchange could not be enrolled at ${label}. ` +
-          `${failureCauseSentence(outcome.unreachable)} Run the command ` +
-          "again once it answers.",
-        "transport",
-      ),
+    return relayRegistrarUnreachableError(
+      `the exchange could not be enrolled at ${label}`,
       outcome.unreachable,
+      "Run the command again once it answers.",
     );
   if (outcome.kind === "unavailable")
     return new ConnectionError(

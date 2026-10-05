@@ -376,11 +376,12 @@ describe("retryPendingRelayRegistration", () => {
   });
 });
 
-describe("a registrar this computer cannot connect to", () => {
-  // Real fetches against local ports: one nothing listens on, and one that
-  // accepts the connection and never answers, as a dropped connection does.
+describe("a registrar that does not answer", () => {
+  // Real fetches against local ports: one nothing listens on, one that
+  // accepts the connection and never answers, and one that resets it.
   let silent: net.Server;
   let silentSockets: net.Socket[];
+  let resetting: net.Server;
   let closedPort: number;
 
   beforeEach(async () => {
@@ -393,11 +394,16 @@ describe("a registrar this computer cannot connect to", () => {
     await new Promise<void>((resolve) =>
       silent.listen(0, "127.0.0.1", resolve),
     );
+    resetting = net.createServer((socket) => socket.resetAndDestroy());
+    await new Promise<void>((resolve) =>
+      resetting.listen(0, "127.0.0.1", resolve),
+    );
   });
 
   afterEach(async () => {
     for (const socket of silentSockets) socket.destroy();
     await new Promise<void>((resolve) => silent.close(() => resolve()));
+    await new Promise<void>((resolve) => resetting.close(() => resolve()));
   });
 
   const localRegistrar = (port: number): RelayRegistrar => ({
@@ -407,11 +413,17 @@ describe("a registrar this computer cannot connect to", () => {
 
   const outbound = (port: number): string =>
     `This computer needs outbound access to 127.0.0.1 on TCP port ${port}: ` +
-    "if this network allows only some ports out (such as 443), have that " +
-    "port opened or run from a network that allows it.";
+    "if this network allows only some ports out, have that port opened or " +
+    "run from a network that allows it.";
+
+  const NO_ANSWER_REMEDY =
+    "The registrar accepted the connection but did not complete the " +
+    "request: check that it is running and reachable from this network " +
+    "(infra/relay/README.md, The registrar), then run again.";
 
   async function rotationFailure(
     registrar: RelayRegistrar,
+    fetch?: typeof globalThis.fetch,
   ): Promise<{ error: Error; logged: string }> {
     saveKeyFile(keyFile, { sharedSecret: ROTATED });
     const result = await registerRotatedRelayKey(
@@ -421,7 +433,7 @@ describe("a registrar this computer cannot connect to", () => {
         keyFilePath: keyFile,
         maxAgeDays: 30,
       },
-      { timeoutMs: 200, retryDelaysMs: [] },
+      { timeoutMs: 200, retryDelaysMs: [], ...(fetch && { fetch }) },
     );
     const errors: string[] = [];
     logRotatedRelayKey(result, registrar, {
@@ -450,17 +462,49 @@ describe("a registrar this computer cannot connect to", () => {
     expect(exitCodeForError(error)).toBe(69);
   });
 
-  test("a connection that never answers names the host and port and the outbound access it needs", async () => {
+  const rotationFailed = (port: number): string =>
+    "the exchange's shared secret rotated, and the relay registrar at " +
+    `https://127.0.0.1:${port} (exchange exchange-1) did not register the ` +
+    "relay key derived from the new secret.";
+
+  const nextRun =
+    "The rotated shared secret is kept. The next run retries the " +
+    "registration before it dials; if the registrar then refuses it, " +
+    `${RELAY_REENROLLMENT_STEP}.`;
+
+  test("a connection that never answers points at the registrar, not the port", async () => {
     const port = (silent.address() as net.AddressInfo).port;
     const { error, logged } = await rotationFailure(localRegistrar(port));
     expect(logged).toBe(
-      "the exchange's shared secret rotated, and the relay registrar at " +
-        `https://127.0.0.1:${port} (exchange exchange-1) did not register ` +
-        "the relay key derived from the new secret. The relay registrar at " +
-        `127.0.0.1 port ${port} did not answer within 0.2 seconds. The ` +
-        "rotated shared secret is kept. The next run retries the " +
-        "registration before it dials; if the registrar then refuses it, " +
-        `${RELAY_REENROLLMENT_STEP}.\n${outbound(port)}`,
+      `${rotationFailed(port)} The relay registrar at 127.0.0.1 port ` +
+        `${port} did not answer within 0.2 seconds. ${nextRun}\n` +
+        NO_ANSWER_REMEDY,
+    );
+    expect(exitCodeForError(error)).toBe(69);
+  });
+
+  test("a reset connection points at the registrar, not the port", async () => {
+    const port = (resetting.address() as net.AddressInfo).port;
+    const { error, logged } = await rotationFailure(localRegistrar(port));
+    expect(logged).toBe(
+      `${rotationFailed(port)} The relay registrar at 127.0.0.1 port ` +
+        `${port} closed the connection without answering (ECONNRESET). ` +
+        `${nextRun}\n${NO_ANSWER_REMEDY}`,
+    );
+    expect(exitCodeForError(error)).toBe(69);
+  });
+
+  test("a registrar name that does not resolve points at the address and DNS", async () => {
+    const { error, logged } = await rotationFailure(localRegistrar(8443), () =>
+      Promise.reject(
+        new TypeError("fetch failed", { cause: { code: "ENOTFOUND" } }),
+      ),
+    );
+    expect(logged).toBe(
+      `${rotationFailed(8443)} The relay registrar's host name 127.0.0.1 ` +
+        `did not resolve to an address (ENOTFOUND). ${nextRun}\n` +
+        "Check the registrar address in connection.relay_registrar.url and " +
+        "that this computer's DNS resolves 127.0.0.1, then run again.",
     );
     expect(exitCodeForError(error)).toBe(69);
   });

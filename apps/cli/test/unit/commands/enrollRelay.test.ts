@@ -186,30 +186,58 @@ test.each([
   },
 );
 
-test("an enrollment that cannot connect names the registrar port and the outbound access it needs", async () => {
+async function enrollmentFailingWith(code: string): Promise<unknown> {
   fs.writeFileSync(configFile, YAML.stringify(webrtcConfig()));
   saveKeyFile(keyFile, { sharedSecret: SECRET });
-  const failure = await enrollRelay({
+  return enrollRelay({
     configFile,
     keyFile,
     replace: false,
     readOwnerToken: async () => OWNER_TOKEN,
     transport: {
       fetch: () =>
-        Promise.reject(
-          new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } }),
-        ),
+        Promise.reject(new TypeError("fetch failed", { cause: { code } })),
     },
   }).catch((err: unknown) => err);
+}
+
+const ENROLLMENT_FAILED =
+  "the exchange could not be enrolled at the relay registrar at " +
+  "https://relay.example.org:8443 (exchange exchange-1).";
+
+test.each([
+  [
+    "cannot connect names the registrar port and the outbound access it needs",
+    "ECONNREFUSED",
+    "The relay registrar at relay.example.org port 8443 could not be " +
+      "reached (ECONNREFUSED).",
+    "This computer needs outbound access to relay.example.org on TCP port " +
+      "8443: if this network allows only some ports out, have that port " +
+      "opened or run from a network that allows it.",
+  ],
+  [
+    "whose registrar name does not resolve points at the address and DNS",
+    "ENOTFOUND",
+    "The relay registrar's host name relay.example.org did not resolve to " +
+      "an address (ENOTFOUND).",
+    "Check the registrar address in connection.relay_registrar.url and " +
+      "that this computer's DNS resolves relay.example.org, then run again.",
+  ],
+  [
+    "whose connection is reset points at the registrar, not the port",
+    "ECONNRESET",
+    "The relay registrar at relay.example.org port 8443 closed the " +
+      "connection without answering (ECONNRESET).",
+    "The registrar accepted the connection but did not complete the " +
+      "request: check that it is running and reachable from this network " +
+      "(infra/relay/README.md, The registrar), then run again.",
+  ],
+])("an enrollment that %s", async (_, code, sentence, remedy) => {
+  const failure = await enrollmentFailingWith(code);
   expect(exitCodeForError(failure)).toBe(69);
   expect(renderFailureForOperator(failure)).toBe(
-    "the exchange could not be enrolled at the relay registrar at " +
-      "https://relay.example.org:8443 (exchange exchange-1). The relay " +
-      "registrar at relay.example.org port 8443 could not be reached " +
-      "(ECONNREFUSED). Run the command again once it answers.\n" +
-      "This computer needs outbound access to relay.example.org on TCP port " +
-      "8443: if this network allows only some ports out (such as 443), have " +
-      "that port opened or run from a network that allows it.",
+    `${ENROLLMENT_FAILED} ${sentence} Run the command again once it ` +
+      `answers.\n${remedy}`,
   );
 });
 

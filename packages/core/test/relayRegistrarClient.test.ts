@@ -155,14 +155,32 @@ describe("sendRelayRegistration", () => {
   }
 
   test.each([
-    ["a refused connection", { code: "ECONNREFUSED" }, "ECONNREFUSED"],
-    ["a name that does not resolve", { code: "ENOTFOUND" }, "ENOTFOUND"],
+    [
+      "a refused connection",
+      { code: "ECONNREFUSED" },
+      "no-connection",
+      "ECONNREFUSED",
+    ],
+    [
+      "a name that does not resolve",
+      { code: "ENOTFOUND" },
+      "name-not-resolved",
+      "ENOTFOUND",
+    ],
+    [
+      "a name lookup that failed for now",
+      { code: "EAI_AGAIN" },
+      "name-not-resolved",
+      "EAI_AGAIN",
+    ],
+    ["a reset connection", { code: "ECONNRESET" }, "no-answer", "ECONNRESET"],
     [
       "a connection tried at several addresses",
       new AggregateError([{ code: "EHOSTUNREACH" }], "connect failed"),
+      "no-connection",
       "EHOSTUNREACH",
     ],
-  ])("%s names the registrar unreachable", async (_, cause, code) => {
+  ])("%s names the registrar unreachable", async (_, cause, failure, code) => {
     const answer = await sendRelayRegistration(PROOF_REQUEST, {
       fetch: failingWith(cause),
     });
@@ -172,6 +190,7 @@ describe("sendRelayRegistration", () => {
         kind: "relay-registrar-unreachable",
         host: "relay.example.org",
         port: 8443,
+        failure,
         code,
       },
     });
@@ -287,6 +306,7 @@ describe("registerRelayKey", () => {
         kind: "relay-registrar-unreachable",
         host: "relay.example.org",
         port: 8443,
+        failure: "no-answer",
         timedOutMs: 20,
       },
     });
