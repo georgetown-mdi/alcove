@@ -10,10 +10,10 @@ import {
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
 
-// Every route the web app serves under /api is accounted for by the namespace
-// refusal: either it is allowlisted, which the hosted profile lets through and
-// the console profile refuses, or the job gate answers it on a profile where
-// the job API is not enabled.
+// Every route the web app serves under /api must be on the namespace
+// allowlist, which the hosted profile lets through and the console profile
+// refuses. Job handlers live only in the console server, not in the hosted
+// router tree.
 //
 // The refusal (apps/web/src/utils/apiNamespace.ts) keeps a public deployment
 // from routing to anything under /api but the peer-coordination broker, so the
@@ -21,9 +21,8 @@ import {
 // SSR path's JSON refusal -- are not observable there. It also keeps the
 // console from serving the broker at all. Its allowlist is a hand-written list
 // of prefixes, and a route added outside it is served or refused by whatever
-// the list happens to say, with nothing failing either way: an added job-gated
-// route is refused ahead of its own gate, which is right, but an added ungated
-// route is routed to on the public deployment, which is not. This is that
+// the list happens to say, with nothing failing either way, and a route
+// served on the public deployment outside the broker is wrong. This is that
 // obligation as a check.
 //
 // It is an INCLUSION check over the ROUTER'S OWN ACCOUNT of what it serves:
@@ -42,14 +41,6 @@ import {
 // modules the tree names against the route tree on disk in both directions, so
 // a route file added or removed without the regeneration is reported here
 // rather than read past.
-//
-// What it decides is SYNTACTIC and coarse, and it owns only the accounting.
-// "Gated" here means every module answering under the entry imports the job
-// gate by name from a routeSupport specifier -- WHETHER each handler calls it
-// first and returns its refusal is scripts/job-route-gate.test.mjs's claim,
-// over the job route directory, and neither check stands in for the other. An
-// entry whose modules it cannot read that way is reported as unaccounted for
-// rather than passed over.
 //
 // public/ is read too. A static asset there is served by Nitro's own handler,
 // which does not run the server entry (apps/web/src/utils/securityHeaders.ts
@@ -85,9 +76,6 @@ const SERVED_PATHS = "FileRoutesByFullPath";
  * constant so the two cannot name different namespaces. */
 const API_PATH_ROOT = "/api";
 const API_PATH_ROOT_CONSTANT = "API_PATH_ROOT";
-
-/** The job gate every job route imports, and the tail its specifier contains --
- * the same binding scripts/job-route-gate.test.mjs reads. */
 
 /** The tail of the specifier a route module imports the peer server by. */
 const PEER_SERVER_MODULE_TAIL = "peerServer";
