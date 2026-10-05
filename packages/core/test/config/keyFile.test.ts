@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { KeyFileSchema, serializeKeyFile } from "../../src/config/keyFile";
+import {
+  KeyFileSchema,
+  keyFileUnreadFieldNames,
+  serializeKeyFile,
+} from "../../src/config/keyFile";
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -37,6 +41,41 @@ describe("KeyFileSchema", () => {
       KeyFileSchema.safeParse({ sharedSecret: SECRET, expires: "tomorrow" })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("keyFileUnreadFieldNames", () => {
+  test("names each field the schema drops, in file order, and no value", () => {
+    const file = {
+      expiry: "2030-01-01T00:00:00.000Z",
+      sharedSecret: SECRET,
+      expires: "2030-01-01T00:00:00.000Z",
+      expire: SECRET,
+    };
+    const names = keyFileUnreadFieldNames(file);
+    expect(names).toEqual(["expiry", "expire"]);
+    expect(JSON.stringify(names)).not.toContain(SECRET);
+    expect(KeyFileSchema.parse(file)).toEqual({
+      sharedSecret: SECRET,
+      expires: "2030-01-01T00:00:00.000Z",
+    });
+  });
+
+  test("names nothing for a file holding only known fields", () => {
+    expect(
+      keyFileUnreadFieldNames({
+        sharedSecret: SECRET,
+        expires: "2030-01-01T00:00:00.000Z",
+        rotationInFlightSince: "2026-03-01T12:00:00.000Z",
+        relayRegistrationPendingSince: "2026-03-01T12:00:01.000Z",
+      }),
+    ).toEqual([]);
+  });
+
+  test("names nothing for a document that is not a plain object", () => {
+    expect(keyFileUnreadFieldNames(null)).toEqual([]);
+    expect(keyFileUnreadFieldNames(["sharedSecret"])).toEqual([]);
+    expect(keyFileUnreadFieldNames("expiry")).toEqual([]);
   });
 });
 

@@ -799,7 +799,7 @@ export function tokenExpiringAdvisory(
   // loadKeyFile returns undefined only for ENOENT (file gone); any other failure
   // (EACCES, malformed JSON) throws and is left to propagate to the caller rather
   // than being silently swallowed.
-  const reloaded = loadKeyFile(keyFilePath, { warnOnPermissive: false });
+  const reloaded = loadKeyFile(keyFilePath, { warnOnLoad: false });
   if (reloaded === undefined) return undefined;
   const expiryAfter = checkKeyFileExpiry(reloaded, now, { warnThresholdDays });
   if (!shouldWarnTokenExpiring(expiryBefore, expiryAfter)) return undefined;
@@ -1333,7 +1333,7 @@ export async function handler(argv: Arguments): Promise<void> {
     if (relayRegistrar !== undefined) {
       try {
         const pendingSince = loadKeyFile(authentication.keyFilePath, {
-          warnOnPermissive: false,
+          warnOnLoad: false,
         })?.relayRegistrationPendingSince;
         if (pendingSince !== undefined) {
           log.info(

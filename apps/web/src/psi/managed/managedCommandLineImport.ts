@@ -68,6 +68,7 @@ import { ZodError } from "zod";
 
 import {
   KeyFileSchema,
+  keyFileUnreadFieldNames,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -629,6 +630,23 @@ function keyFileRefusal(
 export function readManagedCommandLineKeyFile(
   source: string,
 ): ManagedExchangeKeyFields {
+  return readManagedCommandLineKeyFileFields(source).fields;
+}
+
+/** A command-line key file read ({@link readManagedCommandLineKeyFile}), with
+ * the names of the fields it holds that the read dropped. */
+interface ManagedCommandLineKeyFileRead {
+  fields: ManagedExchangeKeyFields;
+  /** Names only, as the file states them; never a value. */
+  unreadFieldNames: Array<string>;
+}
+
+/** {@link readManagedCommandLineKeyFile}, also returning the names of the
+ * fields the file holds that the read dropped. Throws what that function
+ * throws. */
+function readManagedCommandLineKeyFileFields(
+  source: string,
+): ManagedCommandLineKeyFileRead {
   if (new TextEncoder().encode(source).byteLength > MAX_KEY_FILE_IMPORT_BYTES)
     throw keyFileRefusal(["oversize"]);
   let parsed: unknown;
@@ -640,7 +658,11 @@ export function readManagedCommandLineKeyFile(
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw keyFileRefusal(["notObject"]);
   const result = KeyFileSchema.safeParse(parsed);
-  if (result.success) return result.data;
+  if (result.success)
+    return {
+      fields: result.data,
+      unreadFieldNames: keyFileUnreadFieldNames(parsed),
+    };
   throw keyFileRefusal(keyPairProblems(result.error, parsed));
 }
 
@@ -682,11 +704,14 @@ export interface ManagedCommandLinePairRead {
   /** The dropped urls, as the file states them; empty where it names no
    * registrar or no `turn` entry. */
   droppedTurnUrls: Array<string>;
+  /** The names of the fields the key file holds that the read dropped, as
+   * the file states them; empty where it holds none. Never a value. */
+  unreadKeyFileFields: Array<string>;
 }
 
 /** {@link readManagedCommandLinePair}, also returning the `turn` urls the
- * record does not keep, so the import can name them. Throws what that
- * function throws. */
+ * record does not keep and the key-file fields it did not read, so the import
+ * can name them. Throws what that function throws. */
 export function readManagedCommandLinePairImport(
   configurationSource: string,
   keySource: string,
@@ -709,7 +734,8 @@ export function readManagedCommandLinePairImport(
         "Import the alcove.yaml on its own to edit its settings here, and " +
         "run the exchange with Alcove.",
     );
-  const key = readManagedCommandLineKeyFile(keySource);
+  const { fields: key, unreadFieldNames } =
+    readManagedCommandLineKeyFileFields(keySource);
   const record = runnableManagedExchangeOrRefuse(
     buildManagedExchangeRecord({
       ...fields,
@@ -720,5 +746,5 @@ export function readManagedCommandLinePairImport(
         : {}),
     }),
   );
-  return { record, droppedTurnUrls };
+  return { record, droppedTurnUrls, unreadKeyFileFields: unreadFieldNames };
 }

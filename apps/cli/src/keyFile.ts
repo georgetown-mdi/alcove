@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import {
+  getLogger,
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
   keepOperatorSuppliedText,
+  keyFileUnreadFieldNames,
   messageWithOperatorText,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   SHARED_SECRET_REGEX,
+  sanitizeForDisplay,
   serializeKeyFile,
   UsageError,
 } from "@alcove/core";
@@ -24,6 +27,8 @@ import type { KeyFile } from "@alcove/core";
 
 export type { KeyFile } from "@alcove/core";
 
+const log = getLogger("key-file");
+
 /**
  * Default path for the key file written by the provisioning commands (`invite`,
  * `accept`, and a zero-setup run with `--save`). Matches the default the
@@ -33,15 +38,36 @@ export type { KeyFile } from "@alcove/core";
 export const DEFAULT_KEY_PATH = "./.alcove.key";
 
 /**
+ * The warning naming the fields of the key file at `keyFilePath` this build
+ * does not read, which the next write of the file drops. Names only: a value
+ * may be the secret.
+ */
+export function unreadKeyFileFieldsWarning(
+  keyFilePath: string,
+  unreadFieldNames: ReadonlyArray<string>,
+): string {
+  return (
+    `The key file at ${redactAndRenderOperatorSuppliedText(
+      operatorSuppliedText(keyFilePath),
+    )} holds fields Alcove does not read: ` +
+    unreadFieldNames.map((name) => sanitizeForDisplay(name)).join(", ") +
+    ". They are ignored, and the next write of the key file drops them. If " +
+    "one was meant as the secret's expiry, rename it to expires."
+  );
+}
+
+/**
  * Load and parse a `.alcove.key` file; returns `undefined` if absent.
  *
- * `warnOnPermissive` (default `true`) emits the over-permissive-file warning. Set
- * it `false` only when re-reading a file already loaded (and warned about) this
- * run -- e.g. the post-exchange expiry re-check -- so the warning is not doubled.
+ * `warnOnLoad` (default `true`) emits the over-permissive-file warning and the
+ * warning naming fields the file holds that this build does not read. Set it
+ * `false` only when re-reading a file already loaded (and warned about) this
+ * run -- e.g. the post-exchange expiry re-check -- so the warnings are not
+ * doubled.
  */
 export function loadKeyFile(
   keyFilePath: string,
-  opts: { warnOnPermissive?: boolean } = {},
+  opts: { warnOnLoad?: boolean } = {},
 ): KeyFile | undefined {
   // Read, then parse through the sensitive-file chokepoint. A read failure (other
   // than ENOENT) propagates its errno -- a path plus code, no file content. The
@@ -61,8 +87,12 @@ export function loadKeyFile(
     messageWithOperatorText`key file at ${operatorSuppliedText(keyFilePath)}`,
   );
   const result = KeyFileSchema.parse(raw);
-  if (opts.warnOnPermissive !== false)
+  if (opts.warnOnLoad !== false) {
     warnIfFileOverPermissive(keyFilePath, "shared secret");
+    const unreadFieldNames = keyFileUnreadFieldNames(raw);
+    if (unreadFieldNames.length > 0)
+      log.warn(unreadKeyFileFieldsWarning(keyFilePath, unreadFieldNames));
+  }
   return result;
 }
 
@@ -204,7 +234,7 @@ export function markRotationInFlight(
   sharedSecret: string,
   now: number,
 ): void {
-  const current = loadKeyFile(keyFilePath, { warnOnPermissive: false });
+  const current = loadKeyFile(keyFilePath, { warnOnLoad: false });
   if (current === undefined || current.sharedSecret !== sharedSecret) return;
   if (current.rotationInFlightSince !== undefined) return;
   saveKeyFile(keyFilePath, {
@@ -224,7 +254,7 @@ export function clearRotationInFlight(
   keyFilePath: string,
   sharedSecret: string,
 ): void {
-  const current = loadKeyFile(keyFilePath, { warnOnPermissive: false });
+  const current = loadKeyFile(keyFilePath, { warnOnLoad: false });
   if (current === undefined || current.sharedSecret !== sharedSecret) return;
   if (current.rotationInFlightSince === undefined) return;
   const { rotationInFlightSince: _cleared, ...unmarked } = current;
@@ -241,7 +271,7 @@ export function clearRelayRegistrationPending(
   keyFilePath: string,
   sharedSecret: string,
 ): void {
-  const current = loadKeyFile(keyFilePath, { warnOnPermissive: false });
+  const current = loadKeyFile(keyFilePath, { warnOnLoad: false });
   if (current === undefined || current.sharedSecret !== sharedSecret) return;
   if (current.relayRegistrationPendingSince === undefined) return;
   const { relayRegistrationPendingSince: _cleared, ...confirmed } = current;

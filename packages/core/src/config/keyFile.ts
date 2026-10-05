@@ -63,6 +63,20 @@ const KEY_FILE_FIELD_NAMES: ReadonlySet<string> = new Set(
 );
 
 /**
+ * The names of the top-level fields of a parsed key file that
+ * {@link KeyFileSchema} does not read and so drops, in the file's order, for a
+ * reader to name to the operator. Returns names only: a value may be the
+ * secret. Empty for anything other than a plain object.
+ */
+export function keyFileUnreadFieldNames(document: unknown): Array<string> {
+  if (typeof document !== "object" || document === null) return [];
+  if (Array.isArray(document)) return [];
+  return Object.keys(document).filter(
+    (name) => !KEY_FILE_FIELD_NAMES.has(name),
+  );
+}
+
+/**
  * The bytes of a `.alcove.key` holding `data`: pretty-printed JSON with a
  * trailing newline, holding only the {@link KeyFile} fields `data` sets.
  * Validates nothing; a writer checks the secret's shape itself.

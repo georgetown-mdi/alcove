@@ -1018,6 +1018,35 @@ describe("the relay key registration across the command-line files", () => {
     expect(result).not.toHaveProperty("droppedTurnUrls");
   });
 
+  test("a pair import whose key file misspells expires lands without it and names the field, never a value", async () => {
+    const { record, configuration } = exportedPair();
+    const misspelledBound = "2026-12-31T00:00:00.000Z";
+    const result = await importManagedCommandLinePair(
+      configuration,
+      commandLineKeyText({
+        sharedSecret: record.sharedSecret,
+        expiry: misspelledBound,
+        expire: record.sharedSecret,
+      }),
+      recordingDeps(),
+    );
+    expect(result.unreadKeyFileFields).toEqual(["expiry", "expire"]);
+    expect(result.record.expires).toBeUndefined();
+    expect(JSON.stringify(result.unreadKeyFileFields)).not.toContain(
+      misspelledBound,
+    );
+  });
+
+  test("a pair import whose key file holds only fields it reads names none", async () => {
+    const { configuration, key } = exportedPair();
+    const result = await importManagedCommandLinePair(
+      configuration,
+      key,
+      recordingDeps(),
+    );
+    expect(result).not.toHaveProperty("unreadKeyFileFields");
+  });
+
   test("the configuration alone naming a registrar is refused, naming both ways past it", () => {
     const { configuration } = exportedPair(
       { relayRegistrar: REGISTRAR },

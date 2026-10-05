@@ -89,7 +89,7 @@ const LABELLED_READERS: ReadonlyArray<
     "the key-file reader",
     "alcove.key",
     UNPARSEABLE_JSON,
-    (filePath) => loadKeyFile(filePath, { warnOnPermissive: false }),
+    (filePath) => loadKeyFile(filePath, { warnOnLoad: false }),
   ],
   [
     "the signing-identity reader",

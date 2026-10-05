@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   encodeInvitation,
   getDefaultLinkageTerms,
+  getLogger,
   UsageError,
 } from "@alcove/core";
 import type { InvitationToken } from "@alcove/core";
@@ -50,6 +51,31 @@ afterEach(() => {
 test("loadKeyFile returns undefined when the file does not exist", () => {
   const result = loadKeyFile(path.join(dir, "missing.key"));
   expect(result).toBeUndefined();
+});
+
+test("loadKeyFile warns once, naming the fields it does not read and no value", () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  const misspelledBound = "2030-01-01T00:00:00.000Z";
+  fs.writeFileSync(
+    keyPath,
+    JSON.stringify({ sharedSecret: TOKEN, expiry: misspelledBound }),
+    { mode: 0o600 },
+  );
+  const warn = vi
+    .spyOn(getLogger("key-file"), "warn")
+    .mockImplementation(() => {});
+  try {
+    expect(loadKeyFile(keyPath)).toEqual({ sharedSecret: TOKEN });
+    loadKeyFile(keyPath, { warnOnLoad: false });
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [message] = warn.mock.calls[0] as [string];
+    expect(message).toContain("holds fields Alcove does not read: expiry.");
+    expect(message).toContain("the next write of the key file drops them");
+    expect(message).not.toContain(misspelledBound);
+    expect(message).not.toContain(TOKEN);
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test("loadKeyFile parses a valid key file with sharedSecret and expires", () => {

@@ -208,7 +208,7 @@ vi.mock("../../src/keyFile", async (importActual) => {
     ) => {
       mockState.keyFileBeforeRotation[keyFilePath] = actual.loadKeyFile(
         keyFilePath,
-        { warnOnPermissive: false },
+        { warnOnLoad: false },
       );
       if (keyFilePath === mockState.unwritableKeyFilePath)
         throw new Error("EACCES: permission denied");
@@ -5878,10 +5878,10 @@ test("SIGINT logs recovery message when tokenRotated=true", async () => {
   try {
     await vi.waitFor(
       () => {
-        // warnOnPermissive off: the load-time check runs a subprocess per call
+        // warnOnLoad off: the load-time check runs a subprocess per call
         // on Windows, and this poll runs beside the two parties it is waiting
         // on, whose rendezvous is the thing that must make progress.
-        const opts = { warnOnPermissive: false };
+        const opts = { warnOnLoad: false };
         expect(loadKeyFile(keyFileA, opts)?.sharedSecret).not.toBe(TOKEN_A);
         expect(loadKeyFile(keyFileB, opts)?.sharedSecret).not.toBe(TOKEN_A);
       },
@@ -6089,10 +6089,10 @@ test("SIGTERM logs recovery message when tokenRotated=true", async () => {
   try {
     await vi.waitFor(
       () => {
-        // warnOnPermissive off: the load-time check runs a subprocess per call
+        // warnOnLoad off: the load-time check runs a subprocess per call
         // on Windows, and this poll runs beside the two parties it is waiting
         // on, whose rendezvous is the thing that must make progress.
-        const opts = { warnOnPermissive: false };
+        const opts = { warnOnLoad: false };
         expect(loadKeyFile(keyFileA, opts)?.sharedSecret).not.toBe(TOKEN_A);
         expect(loadKeyFile(keyFileB, opts)?.sharedSecret).not.toBe(TOKEN_A);
       },

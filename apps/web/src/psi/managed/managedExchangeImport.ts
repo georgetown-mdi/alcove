@@ -305,6 +305,9 @@ export interface ManagedImportResult {
    * beside a relay registrar, which this browser's own relay settings replace
    * ({@link readManagedCommandLinePairImport}), as the file states them. */
   droppedTurnUrls?: Array<string>;
+  /** On a pair import, the names of the fields its key file holds that the
+   * import did not read ({@link readManagedCommandLinePairImport}). */
+  unreadKeyFileFields?: Array<string>;
 }
 
 /** The grants the artifact's source held that the imported record does not, which is
@@ -650,8 +653,8 @@ const defaultPairDeps: ManagedPairImportDeps = {
  *
  * The secret lands in the record's `sharedSecret` alone, the field every
  * runnable record keeps it in; no refusal here states any byte of the key
- * file. A landed import returns the `turn` urls the record did not keep, for
- * the notice to name.
+ * file. A landed import returns the `turn` urls the record did not keep and
+ * the names of the key-file fields it did not read, for the notice to name.
  *
  * @throws {ManagedImportBackupNotConfigurationError} if the configuration file
  *   is the app's backup; nothing is written.
@@ -675,12 +678,16 @@ export async function importManagedCommandLinePair(
 ): Promise<ManagedImportResult> {
   if (probeImportFile(configurationSource) === "backup")
     throw new ManagedImportBackupNotConfigurationError();
-  const { record: imported, droppedTurnUrls } =
-    readManagedCommandLinePairImport(configurationSource, keySource);
+  const {
+    record: imported,
+    droppedTurnUrls,
+    unreadKeyFileFields,
+  } = readManagedCommandLinePairImport(configurationSource, keySource);
   const landed = (record: ManagedExchangeRecord): ManagedImportResult => ({
     record,
     missingGrants: [],
     ...(droppedTurnUrls.length > 0 ? { droppedTurnUrls } : {}),
+    ...(unreadKeyFileFields.length > 0 ? { unreadKeyFileFields } : {}),
   });
   const at = deps.now().toISOString();
   const reconciled = await deps.reconcile(imported, at, options);

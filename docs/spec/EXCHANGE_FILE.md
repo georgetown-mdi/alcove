@@ -628,7 +628,7 @@ file, and each party provisions its own `.alcove.key` from the code:
 
 ### The key file schema
 
-`KeyFileSchema` and `serializeKeyFile` (`packages/core/src/config/keyFile.ts`) define the `.alcove.key` fields for every reader and writer: the CLI, the console's check of a mounted key file, and the web application's import and command-line export. A reader drops a field it does not know rather than refusing the file, and the serializer writes only the known fields, as pretty-printed JSON with a trailing newline.
+`KeyFileSchema` and `serializeKeyFile` (`packages/core/src/config/keyFile.ts`) define the `.alcove.key` fields for every reader and writer: the CLI, the console's check of a mounted key file, and the web application's import and command-line export. A reader drops a field it does not know rather than refusing the file, and the serializer writes only the known fields, as pretty-printed JSON with a trailing newline. The CLI's load warning and the web application's import notice name each dropped field to the operator, by name only and never its value.
 
 ### The rotation-in-flight marker
 

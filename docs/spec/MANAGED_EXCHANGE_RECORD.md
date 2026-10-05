@@ -236,7 +236,8 @@ object with a `sharedSecret` matching `SHARED_SECRET_REGEX`, an optional ISO
 [pending relay registration](#the-pending-relay-registration). A field outside
 these is read past and dropped, as the command line drops it
 ([EXCHANGE_FILE.md](EXCHANGE_FILE.md#the-key-file-schema)), so a key file a
-later command line wrote still imports.
+later command line wrote still imports. The landed import's notice names each
+dropped field to the operator, by name only and never its value.
 The key file is validated on its own -- the configuration's schema parse never
 sees it -- through the sensitive-JSON chokepoint and the shared key-file schema
 the [hand-off re-take](#taking-a-command-line-hand-off-back) also reads

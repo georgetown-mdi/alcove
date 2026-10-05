@@ -1023,7 +1023,13 @@ function useImportFile({
         // Best-effort persistence on the imported record's origin, the same request
         // a create makes; a denied grant does not fail the import.
         void requestPersistentStorage();
-        const { record, missingGrants, sameTermsAs, droppedTurnUrls } =
+        const {
+          record,
+          missingGrants,
+          sameTermsAs,
+          droppedTurnUrls,
+          unreadKeyFileFields,
+        } =
           keySource === undefined
             ? await importFile(source, besideIds)
             : await importManagedCommandLinePair(
@@ -1035,7 +1041,10 @@ function useImportFile({
         const grantNotice =
           keySource === undefined
             ? managedImportGrantNotice(missingGrants)
-            : pairImportedNotice(record, droppedTurnUrls);
+            : pairImportedNotice(record, {
+                turnUrls: droppedTurnUrls,
+                keyFileFields: unreadKeyFileFields,
+              });
         const notice =
           sameTermsAs === undefined
             ? grantNotice
