@@ -8,6 +8,7 @@ import {
   LinkageTermsUnsatisfiableError,
   MAX_ERROR_CAUSE_DEPTH,
   redactAndSanitizeForDisplay,
+  redactPrivateKeyMaterial,
   singleColumnDelimiterClause,
   summarizeLinkageShortfall,
 } from "@alcove/core";
@@ -165,7 +166,9 @@ export function checkLinkageSatisfiability(
   // independently, so batching names into one sentence risks one long name
   // spending the whole link's budget. The fields the CSV lacks a column for
   // lead, since the renderer's depth bound reaches them first and they name
-  // what to add; dead keys and unsatisfiable keys follow.
+  // what to add; dead keys and unsatisfiable keys follow. Each name is
+  // redacted where it is interpolated, so a private-key marker in one costs
+  // that name and not the first-party text composed after it.
   const blockingFieldNames = new Set(
     verdict.unsatisfiableKeys.flatMap((key) =>
       key.elements.map((element) => element.field),
@@ -174,16 +177,19 @@ export function checkLinkageSatisfiability(
   const details = [
     ...verdict.unsatisfiedFieldColumns
       .filter(({ field }) => blockingFieldNames.has(field.name))
-      .map(({ field, column }) =>
-        column === undefined
-          ? `this CSV has no column of type ${field.type} for linkage field ${field.name}`
-          : `this CSV has no column ${column}, which linkage field ${field.name} (${field.type}) reads`,
-      ),
+      .map(({ field, column }) => {
+        const fieldName = redactPrivateKeyMaterial(field.name);
+        return column === undefined
+          ? `this CSV has no column of type ${field.type} for linkage field ${fieldName}`
+          : `this CSV has no column ${redactPrivateKeyMaterial(column)}, which linkage field ${fieldName} (${field.type}) reads`;
+      }),
     ...verdict.deadKeys.map(
-      (key) => `linkage key that drops every record: ${key.name}`,
+      (key) =>
+        `linkage key that drops every record: ${redactPrivateKeyMaterial(key.name)}`,
     ),
     ...verdict.unsatisfiableKeys.map(
-      (key) => `linkage key the CSV cannot produce: ${key.name}`,
+      (key) =>
+        `linkage key the CSV cannot produce: ${redactPrivateKeyMaterial(key.name)}`,
     ),
   ];
 
