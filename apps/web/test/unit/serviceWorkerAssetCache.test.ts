@@ -101,6 +101,9 @@ describe("the asset cache's writers", () => {
         [...reachable(name)],
         `${name} (${NAMED_WRITERS[name]})`,
       ).toContain("isStorableAsset");
+
+    for (const name of ["handleStaticAsset", "refreshInBackground"])
+      expect([...reachable(name)], name).toContain("isStorableAsset");
   });
 
   test("are read out of the worker itself, so none of the above is vacuous", () => {
