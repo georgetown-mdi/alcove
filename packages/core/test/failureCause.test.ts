@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  FAILURE_CAUSE_KINDS,
   failureCauseError,
+  failureCauseFromUntrusted,
   failureCauseOf,
   failureCauseSentence,
   formatWaitDuration,
@@ -129,5 +131,55 @@ describe("the failure-cause tag", () => {
     const err = failureCauseError(cause);
     expect(err.message).toBe(failureCauseSentence(cause));
     expect(failureCauseOf(err)).toBe(cause);
+  });
+});
+
+describe("failureCauseFromUntrusted", () => {
+  test("lists every kind the catalog declares", () => {
+    expect([...FAILURE_CAUSE_KINDS].sort()).toEqual(
+      Object.keys(SAMPLES).sort(),
+    );
+  });
+
+  test.each(allSamples.map((cause) => [JSON.stringify(cause), cause]))(
+    "rebuilds %s unchanged",
+    (_, cause) => {
+      expect(failureCauseFromUntrusted(cause)).toEqual(cause);
+    },
+  );
+
+  test("keeps the facts its kind holds and drops every other key", () => {
+    expect(
+      failureCauseFromUntrusted({
+        kind: "partner-never-arrived",
+        channel: "filedrop",
+        path: "/elsewhere",
+        extra: { nested: true },
+      }),
+    ).toEqual({ kind: "partner-never-arrived", channel: "filedrop" });
+  });
+
+  test.each([
+    ["an unknown kind", { kind: "partner-refused" }],
+    ["a kind of the wrong type", { kind: 1 }],
+    ["no kind", { channel: "filedrop" }],
+    ["an inherited kind name", { kind: "toString" }],
+    [
+      "a channel off the list",
+      { kind: "partner-never-arrived", channel: "carrier-pigeon" },
+    ],
+    ["a negative wait", { kind: "partner-never-arrived", waitedMs: -1 }],
+    ["a fractional wait", { kind: "partner-never-arrived", waitedMs: 1.5 }],
+    ["a wait as text", { kind: "partner-never-arrived", waitedMs: "90000" }],
+    ["a folder with no path", { kind: "folder-missing", code: "ENOENT" }],
+    [
+      "a folder code off the list",
+      { kind: "folder-missing", path: "/data", code: "EACCES" },
+    ],
+    ["an array", ["partner-never-arrived"]],
+    ["a string", "partner-never-arrived"],
+    ["null", null],
+  ])("refuses %s", (_, value) => {
+    expect(failureCauseFromUntrusted(value)).toBeUndefined();
   });
 });

@@ -163,7 +163,34 @@ test(
     const run = await runExchange();
     expect(run.status).not.toBe(0);
     expect(run.events.some((event) => event.type === "metrics")).toBe(true);
-    expectOneTerminalError(run);
+    const terminal = expectOneTerminalError(run);
+    expect(terminal.cause).toEqual({
+      kind: "folder-missing",
+      path: path.join(work, "no-such-directory"),
+      code: "ENOENT",
+    });
+    expect(terminal.recoveryHint).toBe(true);
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "a partner that never arrives ends the stream with the cause and the wait",
+  async () => {
+    fs.mkdirSync(path.join(work, "shared"));
+    writeConfig({
+      channel: "filedrop",
+      path: path.join(work, "shared"),
+    } as ConnectionConfig);
+    const run = await runExchange();
+    const terminal = expectOneTerminalError(run);
+    expect(terminal.cause).toEqual({
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 5000,
+    });
+    expect(terminal.recoveryHint).toBe(true);
+    expect(terminal.message).toContain("--peer-timeout");
   },
   RUN_DEADLINE_MS + 10_000,
 );

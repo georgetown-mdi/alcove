@@ -6,6 +6,7 @@ import {
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  failureCauseOf,
   getLogger,
   redactAndSanitizeForDisplay,
   redactAndFitUnescaped,
@@ -14,6 +15,9 @@ import type {
   Displayable,
   EntityClusterSummary,
   ExchangeStageDefinition,
+  FailureCause,
+  FailureCauseKind,
+  FailureCauseOfKind,
   PartnerDeduplicateChange,
   PayloadColumnsChange,
   ResolvedMatching,
@@ -26,6 +30,7 @@ import {
   INTERNAL_FAULT_EXIT_CODE,
   renderFailureForOperator,
 } from "./util/exit";
+import { failureRemedy } from "./failureRemedy";
 import { asciiSafeJsonText } from "./util/jsonLine";
 import { takeLogFileLossReport } from "./util/logging";
 import { holdsRecoveryHintTag } from "./util/recoveryHint";
@@ -240,8 +245,9 @@ export interface MetricsEvent extends EventBase {
 }
 
 /**
- * The display cap on the `result` event's `resultPath`: a path up to Linux's
- * `PATH_MAX`, so a deep path is not cut at the per-value default.
+ * The display cap on a path the stream states -- the `result` event's
+ * `resultPath`, a folder in the `error` event's `cause` -- a path up to
+ * Linux's `PATH_MAX`, so a deep path is not cut at the per-value default.
  */
 const RESULT_PATH_MAX_DISPLAY_LENGTH = 4096;
 
@@ -336,7 +342,8 @@ export interface ErrorEvent extends EventBase {
    * Present and `true` when {@link message} holds its own next step: read off
    * core's `alcoveRecoveryHintEmitted` tag ({@link errorStatesItsOwnNextStep}),
    * or set where the CLI appended {@link fixedNextStep}'s step to an internal
-   * fault's or a partner refusal's message. A supervisor showing fixed copy
+   * fault's or a partner refusal's message, or its remedy for a {@link cause}
+   * ({@link failureRemedy}). A supervisor showing fixed copy
    * for this category shows the message instead, and adds no advisory of its
    * own; absent, it has no such assurance. Omitted rather than emitted `false`, so the field is the
    * assurance and nothing else.
@@ -362,6 +369,13 @@ export interface ErrorEvent extends EventBase {
    * them beside the configuration for `alcove apply`.
    */
   termsChange?: ErrorEventTermsChange;
+  /**
+   * The cause from core's failure-cause catalog the failure holds
+   * (`failureCauseOf`), as its kind and facts: a supervisor states the cause
+   * from it and names its own remedy rather than reading {@link message}.
+   * Absent on a failure the catalog does not name.
+   */
+  cause?: FailureCause;
 }
 
 /** One direction's changed payload columns, as the `error` event states them. */
@@ -659,7 +673,9 @@ export function buildErrorEvent(
     // cause chain, so route it through the display-boundary sanitizer that
     // stderr uses; the category and version fields are this party's own vocabulary.
     message: renderFailureForOperator(error),
-    ...(errorStatesItsOwnNextStep(error) || fixedNextStep(error) !== undefined
+    ...(errorStatesItsOwnNextStep(error) ||
+    fixedNextStep(error) !== undefined ||
+    failureRemedy(error) !== undefined
       ? { recoveryHint: true as const }
       : {}),
     ...(exitCode === INTERNAL_FAULT_EXIT_CODE
@@ -667,6 +683,41 @@ export function buildErrorEvent(
       : {}),
     exitCode,
     ...termsChangeFieldOf(error),
+    ...causeFieldOf(error),
+  };
+}
+
+// Each kind's facts copied one by one, so nothing beyond them widens the line,
+// a path escaped as the stream's other free text is, and a wait floored to a
+// whole count. Total over the kinds, so a cause core adds fails to compile here
+// until it has a row.
+const CAUSE_FIELDS: {
+  readonly [K in FailureCauseKind]: (
+    cause: FailureCauseOfKind<K>,
+  ) => FailureCauseOfKind<K>;
+} = {
+  "partner-never-arrived": ({ channel, waitedMs }) => ({
+    kind: "partner-never-arrived",
+    ...(channel !== undefined ? { channel } : {}),
+    ...(waitedMs !== undefined ? { waitedMs: toCount(waitedMs) } : {}),
+  }),
+  "folder-missing": ({ path, code }) => ({
+    kind: "folder-missing",
+    path: redactAndSanitizeForDisplay(path, {
+      maxLength: RESULT_PATH_MAX_DISPLAY_LENGTH,
+    }),
+    code,
+  }),
+};
+
+/** The {@link ErrorEvent.cause} field for `error`, as the fields to spread. */
+function causeFieldOf(error: unknown): Pick<ErrorEvent, "cause"> {
+  const cause = failureCauseOf(error);
+  if (cause === undefined) return {};
+  return {
+    cause: (CAUSE_FIELDS[cause.kind] as (cause: FailureCause) => FailureCause)(
+      cause,
+    ),
   };
 }
 

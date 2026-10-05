@@ -6,11 +6,17 @@
 
 import { formatCount } from "./utils/formatCount";
 
+/** Every {@link PartnerMeetingChannel}. */
+export const PARTNER_MEETING_CHANNELS = ["filedrop", "sftp", "webrtc"] as const;
+
 /** Where the two parties were to meet when a partner did not arrive. */
-export type PartnerMeetingChannel = "filedrop" | "sftp" | "webrtc";
+export type PartnerMeetingChannel = (typeof PARTNER_MEETING_CHANNELS)[number];
+
+/** Every {@link FolderMissingCode}. */
+export const FOLDER_MISSING_CODES = ["ENOENT", "ENOTDIR"] as const;
 
 /** The errno codes a missing or unusable shared folder is reported under. */
-export type FolderMissingCode = "ENOENT" | "ENOTDIR";
+export type FolderMissingCode = (typeof FOLDER_MISSING_CODES)[number];
 
 /**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
@@ -43,6 +49,16 @@ export type FailureCauseOfKind<K extends FailureCauseKind> = Extract<
   { kind: K }
 >;
 
+/**
+ * Every {@link FailureCauseKind}: the allowlist a consumer of a cause read
+ * from outside this process checks the kind against
+ * ({@link failureCauseFromUntrusted}).
+ */
+export const FAILURE_CAUSE_KINDS = [
+  "partner-never-arrived",
+  "folder-missing",
+] as const satisfies ReadonlyArray<FailureCauseKind>;
+
 const FAILURE_CAUSE_TAG = "alcoveFailureCause";
 
 /**
@@ -71,6 +87,55 @@ export function failureCauseOf(error: unknown): FailureCause | undefined {
     cursor = (cursor as { cause?: unknown }).cause;
   }
   return undefined;
+}
+
+const oneOf = <T extends string>(
+  allowed: ReadonlyArray<T>,
+  value: unknown,
+): value is T => typeof value === "string" && allowed.includes(value as T);
+
+const FROM_UNTRUSTED: {
+  readonly [K in FailureCauseKind]: (
+    fields: Record<string, unknown>,
+  ) => FailureCauseOfKind<K> | undefined;
+} = {
+  "partner-never-arrived": ({ channel, waitedMs }) => {
+    if (channel !== undefined && !oneOf(PARTNER_MEETING_CHANNELS, channel))
+      return undefined;
+    if (
+      waitedMs !== undefined &&
+      (typeof waitedMs !== "number" ||
+        !Number.isSafeInteger(waitedMs) ||
+        waitedMs < 0)
+    )
+      return undefined;
+    return {
+      kind: "partner-never-arrived",
+      ...(channel !== undefined ? { channel } : {}),
+      ...(waitedMs !== undefined ? { waitedMs: waitedMs as number } : {}),
+    };
+  },
+  "folder-missing": ({ path, code }) =>
+    typeof path === "string" && oneOf(FOLDER_MISSING_CODES, code)
+      ? { kind: "folder-missing", path, code }
+      : undefined,
+};
+
+/**
+ * `value` as a {@link FailureCause} when it is one -- its `kind` on
+ * {@link FAILURE_CAUSE_KINDS} and every fact that kind holds of the type and
+ * value set the catalog declares -- rebuilt from those facts alone, else
+ * `undefined`. A string fact is returned as it arrived: the caller escapes it
+ * where it shows it.
+ */
+export function failureCauseFromUntrusted(
+  value: unknown,
+): FailureCause | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const fields = value as Record<string, unknown>;
+  if (!oneOf(FAILURE_CAUSE_KINDS, fields.kind)) return undefined;
+  return FROM_UNTRUSTED[fields.kind](fields);
 }
 
 /**

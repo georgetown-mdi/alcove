@@ -8,6 +8,7 @@ import {
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   createPrivateKeyStreamRedactor,
+  failureCauseFromUntrusted,
   parseBoundedJson,
   partnerOriginText,
   redactAndFitUnescaped,
@@ -19,8 +20,8 @@ import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 
 import { PAYLOAD_RECEIVE_TAKEN_SOURCE } from "./payloadReceiveTakenNotice";
 
+import type { FailureCause, PartnerOriginText } from "@alcove/core";
 import type { ChildProcess } from "node:child_process";
-import type { PartnerOriginText } from "@alcove/core";
 import type { Readable } from "node:stream";
 
 /**
@@ -606,6 +607,12 @@ const RELAY_EVENT_TYPES = new Set<RelayEventType>([
  * the source is dropped, then reassigned from this pass's own derivation, so no
  * source ever hands the seat a whole chain directly.
  *
+ * A terminal `error` event's `cause` and `termsChange` are rebuilt from their
+ * known fields only ({@link relayedFailureCause}, {@link relayedTermsChange}),
+ * and dropped whole where they are not the shape the CLI emits -- a cause whose
+ * kind is not on core's `FAILURE_CAUSE_KINDS` among them -- so the event is
+ * still relayed and the seat reads its message instead.
+ *
  * A `payloadReceiveTaken` warning's `columns` is the other field left unescaped
  * ({@link relayedTakenColumnNames}): the console composes its notice from those
  * names for the run view's single escape, and escapes the served field itself
@@ -632,6 +639,11 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
     if (type === "error" && key === "termsChange") {
       const termsChange = relayedTermsChange(field);
       if (termsChange !== undefined) sanitized[outKey] = termsChange;
+      continue;
+    }
+    if (type === "error" && key === "cause") {
+      const cause = relayedFailureCause(field);
+      if (cause !== undefined) sanitized[outKey] = cause;
       continue;
     }
     if (
@@ -798,6 +810,30 @@ function relayedTermsChange(
     out.partnerDeduplicate = { expected, presented };
   }
   return out;
+}
+
+/**
+ * The display cap on a path a relayed `cause` states, the cap the CLI composed
+ * it under (docs/spec/CLI_EVENTS.md, the `error` event).
+ */
+const RELAY_CAUSE_PATH_MAX_DISPLAY_LENGTH = 4096;
+
+/**
+ * An `error` event's `cause` (docs/spec/CLI_EVENTS.md), rebuilt by core's
+ * `failureCauseFromUntrusted` from the facts its kind holds, its path escaped
+ * again at this boundary. Undefined -- the field dropped -- where the kind is
+ * not on the allowlist or a fact is not the type and value the catalog
+ * declares.
+ */
+function relayedFailureCause(value: unknown): FailureCause | undefined {
+  const cause = failureCauseFromUntrusted(value);
+  if (cause?.kind !== "folder-missing") return cause;
+  return {
+    ...cause,
+    path: sanitizeForDisplay(cause.path, {
+      maxLength: RELAY_CAUSE_PATH_MAX_DISPLAY_LENGTH,
+    }),
+  };
 }
 
 /**

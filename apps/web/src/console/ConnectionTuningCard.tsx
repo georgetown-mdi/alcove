@@ -16,6 +16,8 @@ import { DEFAULT_MAX_RECONNECT_ATTEMPTS } from "@alcove/core";
 import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
+  CONNECTION_TUNING_HEADING,
+  PEER_TIMEOUT_LABEL,
   POLL_INTERVAL_UNITS,
   TIMEOUT_UNITS,
   TUNING_DEFAULT_MS,
@@ -123,7 +125,7 @@ export function ConnectionTuningCard({
 
   return (
     <DisclosureSection
-      label="Connection tuning"
+      label={CONNECTION_TUNING_HEADING}
       summary={connectionTuningSummary(draft, capabilities)}
       open={open}
       onToggle={setOpen}
@@ -147,7 +149,7 @@ export function ConnectionTuningCard({
         />
 
         <DurationRow
-          label="How long to wait for your partner"
+          label={PEER_TIMEOUT_LABEL}
           description="How long this side waits for the other to start its half before it gives up."
           units={TIMEOUT_UNITS}
           defaultMs={TUNING_DEFAULT_MS.peerTimeout}

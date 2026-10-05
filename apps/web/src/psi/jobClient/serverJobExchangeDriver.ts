@@ -2,6 +2,7 @@ import {
   LINKAGE_CARDINALITIES,
   ProcessState,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  failureCauseFromUntrusted,
   getLogger,
   joinErrorCauseChain,
   parseBoundedJson,
@@ -27,6 +28,7 @@ import { ERROR_MESSAGE_CHAIN_FIELD } from "../relayErrorChain";
 import type {
   EntityClusterShape,
   EntityClusterSummary,
+  FailureCause,
   LinkageTerms,
   Metadata,
   OwnColumnSelection,
@@ -299,6 +301,13 @@ export class RelayedTerminalError extends Error {
   /** The partner terms change the run stopped on, where the event states one
    * ({@link relayedTermsChangeOf}). */
   termsChange: RelayedTermsChange | undefined = undefined;
+  /** The cause from core's failure-cause catalog the event states, where it
+   * states one the catalog names (docs/spec/CLI_EVENTS.md, the `error`
+   * event). A path in it is display-safe: the CLI escaped it and the relay
+   * escaped it again. */
+  failureCause: FailureCause | undefined = undefined;
+  /** The code the CLI exits with, where the event states a whole number. */
+  exitCode: number | undefined = undefined;
 
   constructor(
     message: string,
@@ -398,6 +407,15 @@ export class RelayedSelfExplainingError extends RelayedTerminalError {
     this.name = "RelayedSelfExplainingError";
   }
 }
+
+/**
+ * The exit code the CLI reports for a run the partner or the agreed terms
+ * refused (docs/CLI.md, Exit codes; docs/spec/CLI_EVENTS.md, The
+ * partner-refusal code), mirrored from `PARTNER_REFUSED_EXIT_CODE` in
+ * `apps/cli/src/util/exit.ts` and held to it by
+ * `scripts/mirrored-exit-codes.test.mjs`.
+ */
+export const PARTNER_REFUSED_EXIT_CODE = 76;
 
 /** The result CSV of a server-driven job lives on the console, retrievable
  * through this endpoint rather than as a browser object URL. */
@@ -1211,7 +1229,8 @@ function errorMessageOf(event: RelayEvent): string {
  * event's `recoveryHint` to decide which of the two classes it is, and its
  * `internalFault` for the flag both hold. Each field is read strictly -- only
  * the literal `true` the CLI emits counts -- so anything else takes the class
- * that shows fixed copy, and a failure that keeps its retry.
+ * that shows fixed copy, and a failure that keeps its retry. Its `cause` and
+ * `exitCode` are read as strictly: a cause the catalog names, a whole number.
  */
 function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
   const message = errorMessageOf(event);
@@ -1221,6 +1240,9 @@ function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
       ? new RelayedSelfExplainingError(message, internalFault)
       : new RelayedTerminalError(message, internalFault);
   error.termsChange = relayedTermsChangeOf(event);
+  error.failureCause = failureCauseFromUntrusted(event.cause);
+  if (Number.isSafeInteger(event.exitCode))
+    error.exitCode = event.exitCode as number;
   return error;
 }
 

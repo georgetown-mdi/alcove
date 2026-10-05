@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseFile, parseSource } from "./lib/typeScriptSources.mjs";
 
-// The console server declares some of the CLI's exit codes itself rather than
+// The console declares some of the CLI's exit codes itself rather than
 // importing them -- the CLI is a separate workspace it drives as a subprocess --
 // so nothing in the module graph holds each pair together. Each side's suite
 // pins only its OWN copy against the literal, so a coherent change to one
@@ -33,12 +33,13 @@ import { parseFile, parseSource } from "./lib/typeScriptSources.mjs";
 
 const SELF = "scripts/mirrored-exit-codes.test.mjs";
 
-/** The declaring module of the server's copy of every row. */
+/** The declaring module of the console's copy of a row naming no other. */
 const SERVER_MODULE = "apps/web/src/jobs/cliDriver.ts";
 
 /**
  * Each mirrored constant: the name both sides export, the CLI module declaring
- * it, and what the server gets wrong when its copy diverges.
+ * it, the console module declaring it where that is not SERVER_MODULE, and
+ * what the console gets wrong when its copy diverges.
  */
 const MIRRORS = [
   {
@@ -57,6 +58,14 @@ const MIRRORS = [
       "a run that stopped on an internal fault without reporting it gets the " +
       "retryable terminal synthesized for a broken event stream, offering a " +
       "Try again that reaches the same fault",
+  },
+  {
+    constant: "PARTNER_REFUSED_EXIT_CODE",
+    cliModule: "apps/cli/src/util/exit.ts",
+    serverModule: "apps/web/src/psi/jobClient/serverJobExchangeDriver.ts",
+    consequence:
+      "a run the partner or the agreed terms refused is shown as a failure " +
+      "worth retrying, and a refusal it is not is shown as the partner's",
   },
 ];
 
@@ -127,9 +136,9 @@ function readSynthetic(constant, sources) {
 }
 
 describe.each(MIRRORS)(
-  "the console server's $constant tracks the CLI's",
-  ({ constant, cliModule, consequence }) => {
-    const readings = readDeclarations(constant, [cliModule, SERVER_MODULE]);
+  "the console's $constant tracks the CLI's",
+  ({ constant, cliModule, serverModule = SERVER_MODULE, consequence }) => {
+    const readings = readDeclarations(constant, [cliModule, serverModule]);
 
     it("reads a declaration it understands out of each module", () => {
       const unreadable = readings
@@ -148,7 +157,7 @@ describe.each(MIRRORS)(
       const divergent = divergence(readings);
       expect(
         divergent,
-        `${cliModule} and ${SERVER_MODULE} declare different values for ` +
+        `${cliModule} and ${serverModule} declare different values for ` +
           `${constant}, so ${consequence}. Carry the change to both.`,
       ).toEqual([]);
     });
