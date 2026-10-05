@@ -27,20 +27,30 @@
 // it there: a check needing the network, a token, a release trigger, or CI's own
 // install cannot run from a plain checkout, and one whose cost is measured in
 // minutes does not belong on the unfiltered merge path.
+//
+// The two checks that need the production web build share one: the run clears
+// apps/web/.output first, the deploy-trigger check builds it, and the route
+// render check reads it without building (its entry point, invoked with no
+// --build), so no run reads a build from before it started. When the build
+// fails, the route render check is skipped with a line saying so.
 // scripts/run-checks.test.mjs holds every `check:*` script in the root
 // package.json to one list or the other, so a new check cannot be added without
 // being classified, and holds the repo-guards job to this one step plus the
 // dependency audit.
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BUILD_OUTPUT } from "./check-deploy-trigger-graph.mjs";
+
 /**
  * The checks `npm run check:all` runs, in order. `script` is a root
- * package.json script name; `description` states in one line what the check
- * holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands before it
+ * package.json script name; `command`, when present, is run instead of the npm
+ * script; `usesBuild` marks a check that reads the shared web build and
+ * `buildFrom` names the check that makes it; `description` states in one line
+ * what the check holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands before it
  * is renewed or deleted, held by scripts/check-expiry-dates.mjs as on every
  * entry in the two lists below.
  */
@@ -286,10 +296,20 @@ export const CHECKS = [
       "The cosign verify command docs/RELEASES.md publishes, the release workflow's self-verify step, and the publish sequence name one release identity.",
   },
   {
-    script: "check:web-route-render",
+    script: "check:deploy-trigger-graph",
+    usesBuild: true,
     expiresOn: "2026-12-31",
     description:
-      "Every page route in the checked-in route tree renders from a fresh production web build with no 5xx and nothing written to the server's stderr.",
+      "Every repository source the production web build reads matches a push filter of eb_deploy.yaml, so an edit to the deployed server always triggers a deploy. Builds apps/web once, for itself and the route render check after it.",
+  },
+  {
+    script: "check:web-route-render",
+    command: ["node", "scripts/check-web-route-render.mjs"],
+    usesBuild: true,
+    buildFrom: "check:deploy-trigger-graph",
+    expiresOn: "2026-12-31",
+    description:
+      "Every page route in the checked-in route tree renders, with no 5xx and nothing written to the server's stderr, from the production web build the deploy-trigger check just made.",
   },
   {
     script: "test:scripts",
@@ -321,12 +341,6 @@ export const OUT_OF_CHECK_ALL = [
     expiresOn: "2026-12-31",
     reason:
       "Run by .github/actions/setup ahead of every install in every workflow, and reaches `gh attestation verify` and the network once arming is switched on.",
-  },
-  {
-    script: "check:deploy-trigger-graph",
-    expiresOn: "2026-12-31",
-    reason:
-      "Reads the deployed import graph out of a full apps/web production build, minutes the merge path does not have. Run by eb_build_and_test.yaml, on the pull requests its path scope names as able to move that graph.",
   },
   {
     script: "test:mutation",
@@ -372,9 +386,10 @@ export function rootScripts(root = repositoryRoot()) {
  * Runs one check and reports how it went.
  *
  */
-function runCheck(check, root) {
+export function runCheck(check, root) {
   const startedAt = Date.now();
-  const result = spawnSync("npm", ["run", check.script], {
+  const [file, ...args] = check.command ?? ["npm", "run", check.script];
+  const result = spawnSync(file, args, {
     cwd: root,
     stdio: "inherit",
     shell: process.platform === "win32",
@@ -391,12 +406,28 @@ function runCheck(check, root) {
  * in the order run.
  *
  */
-export function runAll(root, log = console.log) {
+export function runAll(
+  root,
+  log = console.log,
+  checks = CHECKS,
+  run = runCheck,
+) {
+  if (checks.some((check) => check.usesBuild)) {
+    rmSync(resolve(root, BUILD_OUTPUT), { recursive: true, force: true });
+  }
   const results = [];
-  for (const [index, check] of CHECKS.entries()) {
-    log(`\n[${index + 1}/${CHECKS.length}] ${check.script}`);
+  for (const [index, check] of checks.entries()) {
+    log(`\n[${index + 1}/${checks.length}] ${check.script}`);
     log(`  ${check.description}`);
-    results.push(runCheck(check, root));
+    const builder = results.find((result) => result.script === check.buildFrom);
+    if (builder && !builder.ok) {
+      log(
+        `  skipped: the web build it reads failed in ${check.buildFrom}, whose output is above.`,
+      );
+      results.push({ script: check.script, ok: false, seconds: 0 });
+      continue;
+    }
+    results.push(run(check, root));
   }
   return results;
 }
