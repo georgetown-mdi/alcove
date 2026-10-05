@@ -1165,6 +1165,41 @@ test("handler: a first round over the per-set maximum exits 64 with no host-key 
   }
 });
 
+test("handler: an OUTPUT naming a file exits 64 with no host-key probe or run", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerooutput-"));
+  const exitSpy = captureProcessExit();
+  try {
+    const input = path.join(dir, "input.csv");
+    fs.writeFileSync(
+      input,
+      "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+    );
+    const output = path.join(dir, "not-a-folder");
+    fs.writeFileSync(output, "");
+    vi.mocked(establishHostKeyTrust).mockClear();
+    vi.mocked(runProtocol).mockClear();
+
+    const raised = await handler({
+      _: ["sftp://userb@localhost:2222/drop", input, output],
+      $0: "alcove",
+      "config-file": path.join(dir, "alcove.yaml"),
+      "key-file": path.join(dir, ".alcove.key"),
+      identity: "Tester",
+      record: false,
+      "log-level": "silent",
+    } as unknown as Arguments).then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    expect(raised).toEqual(new Error("exit:64"));
+    expect(vi.mocked(establishHostKeyTrust)).not.toHaveBeenCalled();
+    expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+  } finally {
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("handler: the memory check is decided before the first-round count", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeromemory-"));
   const exitSpy = captureProcessExit();

@@ -61,6 +61,7 @@ import {
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
+import { preflightOutputFolder } from "../resultFile";
 import { stdinAnswersPrompts } from "../util/prompt";
 import {
   channelForScheme,
@@ -930,6 +931,7 @@ export async function handler(argv: Arguments): Promise<void> {
           { verbosity, logFile, log },
           (report) => assertFirstRoundFits(prepared, report),
         );
+        if (output !== undefined) preflightOutputFolder(output, log);
       } catch (err) {
         emitPrepareRefusal(eventStreamEmitter, prepared.rowCount, err);
         throw err;

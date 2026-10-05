@@ -102,22 +102,42 @@ export function preflightOutputFolder(
     output,
     `.alcove-write-probe-${process.pid}-${crypto.randomUUID().slice(0, 8)}`,
   );
+  let fd: number;
   try {
-    const fd = fs.openSync(
+    fd = fs.openSync(
       probe,
       fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
     );
-    try {
-      fs.closeSync(fd);
-    } finally {
-      fs.rmSync(probe, { force: true });
-    }
   } catch (err) {
-    throw outputFolderError(
-      output,
-      `is not writable: ${errorText(err)}`,
-      "Restore write access to it -- in a container, the folder's owner as " +
-        "well as its permissions -- or name another folder as the output.",
-    );
+    throw notWritable(output, err);
   }
+  let writeError: unknown;
+  try {
+    fs.closeSync(fd);
+  } catch (err) {
+    writeError = err;
+  }
+  try {
+    fs.rmSync(probe, { force: true });
+  } catch (err) {
+    if (writeError === undefined)
+      throw outputFolderError(
+        output,
+        `was checked for write access, but the check could not remove its ` +
+          `probe file ${probe}: ${errorText(err)}`,
+        `The probe file was left behind and can be deleted. Make sure the ` +
+          `run's user can delete files in the folder, or name another folder ` +
+          `as the output.`,
+      );
+  }
+  if (writeError !== undefined) throw notWritable(output, writeError);
+}
+
+function notWritable(output: string, err: unknown): UsageError {
+  return outputFolderError(
+    output,
+    `is not writable: ${errorText(err)}`,
+    "Restore write access to it -- in a container, the folder's owner as " +
+      "well as its permissions -- or name another folder as the output.",
+  );
 }
