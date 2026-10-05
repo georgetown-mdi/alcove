@@ -1451,3 +1451,27 @@ describe("the fips-only OpenSSL configuration the variant ships", () => {
     );
   });
 });
+
+describe.each(IMAGES)(
+  "the console deployment profile in $file",
+  ({ image }) => {
+    const scripts = JSON.parse(readRepoFile("apps/web/package.json")).scripts;
+    const buildProfile = (name) =>
+      /(?:^|\s)VITE_DEPLOYMENT_PROFILE=(\S+)/.exec(scripts[name])?.[1];
+
+    it("sets the profile the console build scripts set", () => {
+      const built = [
+        buildProfile("build:console"),
+        buildProfile("build:console-server"),
+      ];
+      expect(built[0], "build:console sets no profile").toBeDefined();
+      expect(built[1], "build:console-server differs from build:console").toBe(
+        built[0],
+      );
+      expect(
+        image.runtimeEnv.VITE_DEPLOYMENT_PROFILE,
+        "runtime ENV VITE_DEPLOYMENT_PROFILE differs from the build scripts",
+      ).toBe(built[0]);
+    });
+  },
+);

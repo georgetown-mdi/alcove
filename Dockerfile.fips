@@ -119,13 +119,9 @@ COPY apps/web/vite.config.ts apps/web/vite.console.config.ts apps/web/postcss.co
 COPY apps/web/src apps/web/src/
 COPY apps/web/server apps/web/server/
 COPY apps/web/public apps/web/public/
-# The console client and server builds, as in the root Dockerfile; both
-# scripts set VITE_DEPLOYMENT_PROFILE=console.
-# The release version reaches this image's client bundle the same way it does
-# the default image's (Dockerfile): read from the apps/cli manifest copied
-# above, gated by `set -e`/`test -n` in the same RUN as the build so a failed
-# read or an empty manifest value fails the layer rather than shipping a kit
-# that quietly names the floating tag (apps/web/src/bench/acceptKit.ts).
+# The version is gated by `set -e`/`test -n` in the same RUN as the build, so a
+# failed read or an empty manifest value fails the layer rather than shipping a
+# kit that quietly names the floating tag (apps/web/src/bench/acceptKit.ts).
 RUN set -eu; \
   VITE_ALCOVE_VERSION="$(node -p "require('/build/apps/cli/package.json').version ?? ''")"; \
   test -n "$VITE_ALCOVE_VERSION"; \
@@ -231,8 +227,7 @@ RUN chmod u-s,g-s \
   /usr/sbin/pam_timestamp_check \
   /usr/sbin/unix_chkpwd
 
-# The package manager taken out of the final stage, as in the root Dockerfile:
-# neither role runs npm, npx or corepack, and the npm CLI's bundled dependency
+# The package manager taken out of the final stage: neither role runs npm, npx or corepack, and the npm CLI's bundled dependency
 # tree is one no pin in this repository moves. The paths are under /opt/node,
 # the runtime here coming from the official tarball rather than from a package,
 # and this stage is the only one they leave -- the builder shares the `nodebase`
@@ -271,7 +266,7 @@ COPY --from=builder /build/apps/web/dist/console apps/web/dist/console
 COPY --from=builder /build/apps/web/dist/console-server apps/web/dist/console-server
 
 # The profile the job-API gate reads at runtime, and the bind the published
-# port reaches, as in the root Dockerfile.
+# port reaches.
 ENV VITE_DEPLOYMENT_PROFILE=console
 ENV HOST=0.0.0.0
 ENV JOB_CLI_BINARY=/app/apps/cli/dist/index.js
@@ -301,7 +296,7 @@ ENV OPENSSL_CONF=/etc/alcove/fips-only.cnf
 ENV OPENSSL_MODULES=/usr/lib64/ossl-modules
 
 # Everything the container must WRITE, created and handed to the unprivileged
-# account the USER below drops to, exactly as in the root Dockerfile: /work so a
+# account the USER below drops to: /work so a
 # run with no bind mount still has somewhere to write, and /run/alcove for the
 # console's pasted-credential scratch directory, whose root-owned parent an
 # unprivileged server cannot create at boot. /app is deliberately not among
@@ -311,8 +306,7 @@ RUN mkdir -p /work /run/alcove/sftp-credentials \
   && chown -R node:node /work /run/alcove \
   && chmod -R 700 /run/alcove
 
-# Stated rather than left to the runtime's passwd lookup, as in the root
-# Dockerfile: the CLI derives its default signing-identity directory from the
+# Stated rather than left to the runtime's passwd lookup: the CLI derives its default signing-identity directory from the
 # home directory while its module loads, ahead of any command.
 ENV HOME=/home/node
 

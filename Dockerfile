@@ -52,13 +52,12 @@ COPY apps/web/public apps/web/public/
 # copies only those two. Both scripts set VITE_DEPLOYMENT_PROFILE=console, which
 # drops the browser-only file-assurance copy and routes a filedrop channel to
 # the server-side job driver (see apps/web/src/utils/clientConfig.ts).
-# The release version reaches the client bundle the same way, so the `docker run`
-# lines the console's partner accept kit prints name this image rather than the
+# The release version is baked into the client bundle so the `docker run` lines
+# the console's partner accept kit prints name this image rather than the
 # floating tag. It is read from the apps/cli manifest copied above -- the
 # canonical release version this image is tagged with (docs/RELEASES.md) --
 # rather than taken as a build argument, which could disagree with it. Scoped to
-# this RUN because it is a build input for the client bundle, not runtime
-# configuration like the profile above.
+# this RUN because it is a build input for the client bundle only.
 #
 # The read is gated rather than carried as an assignment prefix on the build
 # command: a prefix gives the RUN the BUILD's exit status, so a reader that
