@@ -91,18 +91,20 @@ export class ManagedSignalingEndpointRefusedError extends Error {
   /** What is wrong with the saved address, as a predicate of it ("is not a
    * complete host, port and path"), fixed text naming no stored value. */
   readonly reason: string;
+  /** The sentence naming the exchange and the refused address, ending in a
+   * full stop; the message continues it with the remedy. */
+  readonly refusal: string;
   constructor(label: string, reason: string) {
     const name =
       label.trim() === ""
         ? "This saved exchange"
         : `The saved exchange "${label}"`;
-    super(
-      `${name} cannot run: the signaling server address it saved ${reason}. ` +
-        "Ask your partner for a new invitation and accept it.",
-    );
+    const refusal = `${name} cannot run: the signaling server address it saved ${reason}.`;
+    super(`${refusal} Ask your partner for a new invitation and accept it.`);
     this.name = "ManagedSignalingEndpointRefusedError";
     this.label = label;
     this.reason = reason;
+    this.refusal = refusal;
   }
 }
 

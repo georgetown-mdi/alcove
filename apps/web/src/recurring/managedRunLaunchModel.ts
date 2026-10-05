@@ -635,16 +635,11 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
 function savedAddressRefusedFailure(
   error: ManagedSignalingEndpointRefusedError,
 ): ManagedRunFailureAlert {
-  const name =
-    error.label.trim() === ""
-      ? "This saved exchange"
-      : `The saved exchange "${error.label}"`;
   return {
     kind: "saved-address-refused",
     title: "The saved signaling server address cannot be used",
     message:
-      `${name} cannot run: the signaling server address it saved ` +
-      `${error.reason}. The run stopped before connecting, so your partner ` +
+      `${error.refusal} The run stopped before connecting, so your partner ` +
       "was not contacted and nothing left this device. Running it again " +
       "stops the same way; this exchange needs a fresh invitation.",
     recovery: "reinvite",
