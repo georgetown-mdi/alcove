@@ -50,8 +50,6 @@ describe("invitationReach", () => {
     "http://8.8.8.8/accept#t",
     "http://[2001:db8::1]/accept#t",
     "not a url",
-    // A name only the inviter's network resolves, under a suffix nothing marks
-    // as private: the limit docs/WEB_APP.md states.
     "http://alcove.agency-a.example/accept#t",
     "http://alcove.corporate.example/accept#t",
   ])("%s works anywhere", (link) => {
