@@ -453,13 +453,14 @@ credentials both parties mint for that exchange. Its line is:
 credential issuance: exchange=<exchange-id> time=<YYYY-MM-DDTHH:MM:SSZ> outcome=<registered|replaced|renewed|unchanged|revoked> authority=<relay-owner-token|proof>
 ```
 
-`time` is the registrar's clock in UTC when it answered; `outcome` is what the
+`time` is the registrar's clock in UTC when it processed the request; `outcome` is what the
 write did, `unchanged` for an enrollment repeating the key the exchange holds;
 `authority` is the credential that authorized it. A revocation writes the same
 line with `outcome=revoked`. No registrar line names the
 caller's address, the key, the token, or the proof.
 `scripts/relay-exchange-keys.test.mjs` holds the format, the outcomes, and the
-absence of any address, key, token or proof in the whole journal.
+absence of any address, key, token or proof in the whole journal across
+registrations, revocations, refusals and a connection error.
 
 ### Retention and who reads it
 
