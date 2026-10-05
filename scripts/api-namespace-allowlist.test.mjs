@@ -88,8 +88,6 @@ const API_PATH_ROOT_CONSTANT = "API_PATH_ROOT";
 
 /** The job gate every job route imports, and the tail its specifier contains --
  * the same binding scripts/job-route-gate.test.mjs reads. */
-const GATE = "gateJobRoute";
-const GATE_MODULE_TAIL = "routeSupport";
 
 /** The tail of the specifier a route module imports the peer server by. */
 const PEER_SERVER_MODULE_TAIL = "peerServer";
@@ -362,33 +360,21 @@ describe("every /api route is accounted for by the namespace refusal", () => {
     ).toEqual([]);
   });
 
-  it("holds every route under /api to the allowlist or the job gate", () => {
+  it("holds every route under /api to the allowlist", () => {
     const unaccounted = [];
     for (const entry of entries) {
       if (allowlist.some((prefix) => isUnderPrefix(entry.route, prefix)))
         continue;
-      for (const path of [...entry.unreadable].sort())
-        unaccounted.push(
-          `${path}: ${ROUTE_TREE} names no module this check can read`,
-        );
-      const ungated = [...entry.modules]
-        .sort()
-        .filter(
-          (module) => !importsFrom(parseFile(module), GATE, GATE_MODULE_TAIL),
-        );
-      if (ungated.length > 0)
-        unaccounted.push(
-          `${entry.route}: ${ungated.join(", ")} ` +
-            `${ungated.length === 1 ? "does" : "do"} not import ${GATE}`,
-        );
+      unaccounted.push(entry.route);
     }
     expect(
       unaccounted,
-      `${unaccounted.length} route(s) under ${API_PATH_ROOT} are neither in ` +
-        `${GUARD_MODULE}'s ${ALLOWLIST} nor gated by ${GATE}, so what a public ` +
-        `deployment answers for them is whatever the allowlist happens to say ` +
-        `and nothing fails when it is wrong. Add the route to ${ALLOWLIST} if ` +
-        `the hosted deployment serves it and the console must not, or gate it.`,
+      `${unaccounted.length} route(s) under ${API_PATH_ROOT} are not in ` +
+        `${GUARD_MODULE}'s ${ALLOWLIST}, so what a public deployment answers ` +
+        `for them is whatever the allowlist happens to say and nothing fails ` +
+        `when it is wrong. Add the route to ${ALLOWLIST} if the hosted ` +
+        `deployment serves it and the console must not. Job handlers belong ` +
+        `under apps/web/server/console/routes, not ${ROUTE_TREE}.`,
     ).toEqual([]);
   });
 
