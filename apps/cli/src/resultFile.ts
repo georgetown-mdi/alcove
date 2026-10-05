@@ -120,15 +120,16 @@ export function preflightOutputFolder(
   try {
     fs.rmSync(probe, { force: true });
   } catch (err) {
-    if (writeError === undefined)
-      throw outputFolderError(
-        output,
-        `was checked for write access, but the check could not remove its ` +
-          `probe file ${probe}: ${errorText(err)}`,
-        `The probe file was left behind and can be deleted. Make sure the ` +
-          `run's user can delete files in the folder, or name another folder ` +
-          `as the output.`,
-      );
+    const removal = `the check could not remove its probe file ${probe}: ${errorText(err)}`;
+    throw outputFolderError(
+      output,
+      writeError === undefined
+        ? `was checked for write access, but ${removal}`
+        : `is not writable: ${errorText(writeError)}, and ${removal}`,
+      `The probe file was left behind and can be deleted. Make sure the ` +
+        `run's user can delete files in the folder, or name another folder ` +
+        `as the output.`,
+    );
   }
   if (writeError !== undefined) throw notWritable(output, writeError);
 }

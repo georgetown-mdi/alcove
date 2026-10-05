@@ -96,15 +96,15 @@ function plainExchangeCommand(endpoint: AcceptKitEndpoint): string {
     return (
       '     docker run --rm -it -v "$PWD":/work -v "/your/secrets":' +
       "/run/secrets:ro ghcr.io/georgetown-mdi/alcove:1.4.2 exchange " +
-      "your-file.csv results.csv"
+      "your-file.csv ./results"
     );
   return endpoint.split === true
     ? '     docker run --rm -v "$PWD":/work -v "/path/to/the/folder/you/read":' +
         '/sync-in -v "/path/to/the/folder/you/write":/sync-out ' +
-        "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv results.csv"
+        "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results"
     : '     docker run --rm -v "$PWD":/work -v "/path/to/your/shared/folder":' +
         "/sync ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv " +
-        "results.csv";
+        "./results";
 }
 
 /** The lines `variant` has that `base` does not: one setting's whole
@@ -357,7 +357,7 @@ describe("accept kit, filedrop routing", () => {
     expect(text).toContain(
       'docker run --rm -v "$PWD":/work -v "/path/to/your/shared/folder":' +
         "/sync ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv " +
-        "results.csv",
+        "./results",
     );
   });
 });
@@ -373,7 +373,7 @@ describe("accept kit, sftp configuration section", () => {
     // credential fill-in section precedes it: the sheet is read top to bottom.
     expect(text).toContain(
       'docker run --rm -it -v "$PWD":/work -v "/your/secrets":/run/secrets:ro ' +
-        "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv results.csv",
+        "ghcr.io/georgetown-mdi/alcove:1.4.2 exchange your-file.csv ./results",
     );
     expect(text.indexOf("username: REPLACE_WITH_SSH_USERNAME")).toBeLessThan(
       text.indexOf("exchange your-file.csv"),

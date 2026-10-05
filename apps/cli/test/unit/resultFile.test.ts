@@ -157,6 +157,33 @@ describe("preflightOutputFolder", () => {
     expect(message).toContain("left behind and can be deleted");
   });
 
+  test("a probe that can be neither closed nor removed is refused with exit 64 naming both failures and the leftover file", () => {
+    const closeSpy = vi.spyOn(fs, "closeSync").mockImplementation(() => {
+      throw new Error("close failed");
+    });
+    const rmSpy = vi.spyOn(fs, "rmSync").mockImplementation(() => {
+      throw new Error("EBUSY: resource busy");
+    });
+    let thrown: unknown;
+    try {
+      preflightOutputFolder(dir, quietLog);
+    } catch (err) {
+      thrown = err;
+    } finally {
+      closeSpy.mockRestore();
+      rmSpy.mockRestore();
+    }
+    const [leftover] = fs.readdirSync(dir);
+    expect(leftover).toMatch(/^\.alcove-write-probe-/);
+    expect(exitCodeForError(thrown)).toBe(64);
+    const message = (thrown as Error).message;
+    expect(message).toContain("is not writable: close failed");
+    expect(message).toContain(
+      `could not remove its probe file ${path.join(dir, leftover)}: EBUSY: resource busy`,
+    );
+    expect(message).toContain("left behind and can be deleted");
+  });
+
   test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "a missing folder under a read-only parent is refused with exit 64",
     () => {

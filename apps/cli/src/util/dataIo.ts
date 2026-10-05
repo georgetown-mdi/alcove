@@ -65,7 +65,7 @@ export function openInputSource(
     if (process.stdin.isTTY === true)
       throw new UsageError(
         "nothing is piped to stdin, so `-` would wait for input forever; pipe " +
-          "a CSV (e.g. `cat data.csv | alcove exchange - results.csv`) or pass " +
+          "a CSV (e.g. `cat data.csv | alcove exchange - results/`) or pass " +
           "a file path instead of `-`",
       );
     return process.stdin;

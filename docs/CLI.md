@@ -299,10 +299,10 @@ For SFTP, SSH credentials must be supplied in the URL or as command-line argumen
 
 ```sh
 # SFTP example
-alcove --identity "Jane Doe, County Health" sftp://user@sftp.example.org/exchanges/drop input.csv output.csv
+alcove --identity "Jane Doe, County Health" sftp://user@sftp.example.org/exchanges/drop input.csv ./results
 
 # File-drop example, running unnamed (network-mounted folder)
-alcove file:///mnt/sftp-share/drop input.csv output.csv
+alcove file:///mnt/sftp-share/drop input.csv ./results
 ```
 
 The run states what it will send and match on -- the columns it transmits for matched records, and the terms the inference settled -- before it contacts the server, whatever `--log-level` is set. See [What the run shows before it starts](#what-the-run-shows-before-it-starts), which covers the zero-setup run and the configured one alike. A warning follows it: with no shared secret, anyone who administers the server or shared folder could stand in for your partner. The warning is printed only once the run has passed the checks of its own inputs, so a run refused for a usage error does not show it.
@@ -1360,7 +1360,7 @@ What the run has is the least of the matching's heap limit, the machine's memory
 **An installed `alcove`** (rather than the container image) runs under the heap limit `node` starts with: Node's default unless you set one. The matching runs in a worker whose limit `alcove` raises itself, but the main thread, which reads and prepares your input, keeps that limit, and at the default it holds about six million records of a four-column input. Set the larger limit the container image sets before you run an exchange over a large input:
 
 ```sh
-NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv output.csv
+NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv ./results
 ```
 
 - **An input too large for the main thread's heap is refused** before it is read, with exit 64 and a message stating the input's record count and size, the heap it needs, the limit, and the `NODE_OPTIONS` line to set. With `--allow-memory-shortfall` the input is read anyway, with a warning on `stderr`, and the run may end with exit 134. The check counts the file's lines; an input read from stdin is not checked, and runs out of heap (exit 134) instead when it is too large.

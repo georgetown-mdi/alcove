@@ -109,6 +109,7 @@ import {
   warnUnsupportedWebRTCServerFlags,
   type CommonBootstrapOptions,
 } from "../optionDefinitions";
+import { preflightOutputFolder } from "../resultFile";
 import {
   buildDataSpec,
   connectionFromEndpoint,
@@ -624,6 +625,9 @@ export async function validateInvite(params: {
       configPath: options.configFile,
       keyPath: options.keyFile,
     });
+    // Refuse an unusable output folder here, before the invitation is printed,
+    // so no token goes out for an inviter that is about to exit.
+    if (output !== undefined) preflightOutputFolder(output, log);
     // Validate the URL before the token is minted, so an unusable URL (e.g. one
     // with no host) fails before the caller can disclose the token. The role is
     // stamped here because this command is the inviting end; on a ws:/wss: URL
@@ -1195,8 +1199,8 @@ export async function handler(argv: Arguments): Promise<void> {
 
       if (ready.mode === "online") {
         // The token is disclosed only now -- after all validation and prep above
-        // succeeded. Nothing fallible runs after this print except the network
-        // wait it is meant to precede.
+        // succeeded, the output folder check included. Only the network wait it
+        // is meant to precede can still fail.
         printInvitation(ready.invitation, {
           url: ready.url,
           channel: ready.connection.channel,

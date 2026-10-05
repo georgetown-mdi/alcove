@@ -188,14 +188,14 @@ If you put the password in the connection string instead, special characters in 
 
 ```sh
 docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
-   'sftp://user:passw!rd@example.org/psi' input.csv output.csv
+   'sftp://user:passw!rd@example.org/psi' input.csv ./results
 ```
 
 or
 
 ```sh
 docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
-   sftp://user:passw\!rd@example.org/psi input.csv output.csv
+   sftp://user:passw\!rd@example.org/psi input.csv ./results
 ```
 
 #### Command line flags
@@ -213,7 +213,7 @@ Using `@path`s specifies that the value should be read from a file. For example,
 docker run -it --rm --mount type=bind,src=$PWD,dst=/work ghcr.io/georgetown-mdi/alcove:latest \
   sftp://user@example.org/psi \
   --server-password=@passwd \
-  input.csv output.csv
+  input.csv ./results
 ```
 
 Note that because Docker prevents the container from accessing any path on your host system that isn't explicitly mounted, if you wish to use a pre-existing private key the program cannot access `~/.ssh` by default. In that case, either add a read-only mount to the key folder or copy the key to the working directory.
@@ -235,7 +235,7 @@ Paths can be given to Docker using standard Windows-style back-slashes. One exce
 Additionally, the line-continuation markers given in the examples (the `\` at the end of each line) above do not parse correctly. Put commands all on one line instead. For example:
 
 ```sh
-docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv output.csv
+docker run -it --rm --mount type=bind,src='C:\Users\me\Documents\alcove',dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://user@example.org/psi --server-password=@passwd input.csv ./results
 ```
 
 ### Docker run background
