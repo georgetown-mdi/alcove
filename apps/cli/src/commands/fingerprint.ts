@@ -249,6 +249,8 @@ export interface ResolveSigningIdentityInput {
   /** `--force`: regenerate even if an identity already exists. */
   force: boolean;
   log: { warn: (message: string) => void };
+  /** The identity file as the caller already loaded it, read instead. */
+  onDisk?: { identity: SigningIdentity | undefined };
 }
 
 /**
@@ -286,7 +288,10 @@ export async function resolveSigningIdentity(
   let existing: SigningIdentity | undefined;
   let replacingUnreadable = false;
   try {
-    existing = await loadSigningIdentity(input.identityPath);
+    existing =
+      input.onDisk !== undefined
+        ? input.onDisk.identity
+        : await loadSigningIdentity(input.identityPath);
   } catch (err) {
     if (!input.force) throw err;
     input.log.warn(
@@ -558,19 +563,36 @@ export async function handler(argv: Arguments): Promise<void> {
       exportCertificate !== undefined
         ? expandTilde(exportCertificate)
         : undefined;
-    // An existing file at the export path is replaced only on --force. One
-    // already holding this certificate is left as it is, so a repeated run
-    // succeeds. With no identity yet, the certificate is new and cannot match.
-    const existingExport =
-      exportPath !== undefined && !force
-        ? readExistingExport(exportPath)
-        : undefined;
+    // Pointing --export-certificate at the identity file would replace the
+    // private key with the public certificate, destroying the key and every
+    // partner's pin.
     if (
       exportPath !== undefined &&
-      existingExport !== undefined &&
-      !fs.existsSync(identityPath)
-    )
-      throw exportWouldReplaceFileError(exportPath);
+      exportReplacesIdentity(exportPath, identityPath)
+    ) {
+      const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
+        exportPath,
+      )}${EXPORT_OVER_IDENTITY_REMEDY}`;
+      throw keepOperatorSuppliedText(new UsageError(message.text), message);
+    }
+    // An existing file at the export path is replaced only on --force. One
+    // already holding the certificate of the identity on disk is left as it
+    // is, so a repeated run succeeds. Decided before anything may change the
+    // identity.
+    let onDisk: { identity: SigningIdentity | undefined } | undefined;
+    let existingExport: string | undefined;
+    if (exportPath !== undefined && !force) {
+      onDisk = { identity: await loadSigningIdentity(identityPath) };
+      const existing = readExistingExport(exportPath);
+      if (existing !== undefined) {
+        if (
+          onDisk.identity === undefined ||
+          existing !== serializeCertificate(onDisk.identity.certificate)
+        )
+          throw exportWouldReplaceFileError(exportPath);
+        existingExport = existing;
+      }
+    }
 
     const { identity, action } = await resolveSigningIdentity({
       identityPath,
@@ -578,6 +600,7 @@ export async function handler(argv: Arguments): Promise<void> {
       configIdentity: hints.identity,
       force,
       log,
+      ...(onDisk !== undefined ? { onDisk } : {}),
     });
 
     const fingerprint = await computeCertificateFingerprint(
@@ -585,18 +608,7 @@ export async function handler(argv: Arguments): Promise<void> {
     );
 
     if (exportPath !== undefined) {
-      // Pointing --export-certificate at the identity file would replace the
-      // private key with the public certificate, destroying the key and every
-      // partner's pin.
-      if (exportReplacesIdentity(exportPath, identityPath)) {
-        const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
-          exportPath,
-        )}${EXPORT_OVER_IDENTITY_REMEDY}`;
-        throw keepOperatorSuppliedText(new UsageError(message.text), message);
-      }
       const certificate = serializeCertificate(identity.certificate);
-      if (existingExport !== undefined && existingExport !== certificate)
-        throw exportWouldReplaceFileError(exportPath);
       try {
         // Public, shareable artifact: world-readable and atomic, NOT owner-only.
         if (existingExport === undefined)

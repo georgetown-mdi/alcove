@@ -113,7 +113,12 @@ import {
   type EndpointDirectories,
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
-import { warnIfCommandLineHoldsLiteralCredential } from "../literalCredentials";
+import {
+  assertBootstrapUrlPasswordStorable,
+  BOOTSTRAP_CREDENTIAL_FLAGS,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
 
 /**
  * The refusal an acceptance gets when it can neither ask for consent to the
@@ -1075,10 +1080,12 @@ export async function handler(argv: Arguments): Promise<void> {
       // before the invitation decode, any connection, or any file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveAcceptPositionals(positionals);
-      warnIfCommandLineHoldsLiteralCredential(
+      const url = resolved.mode === "online" ? resolved.url : undefined;
+      assertBootstrapUrlPasswordStorable(argv, url);
+      const commandLineCredentials = commandLineLiteralCredentials(
         argv,
-        resolved.mode === "online" ? resolved.url : undefined,
-        log,
+        url,
+        BOOTSTRAP_CREDENTIAL_FLAGS,
       );
       // --consent-to-terms records advance consent to the invitation's terms and
       // bypasses the confirmation prompt for unattended runs. Read as `=== true`
@@ -1115,6 +1122,12 @@ export async function handler(argv: Arguments): Promise<void> {
             }
           : {}),
       });
+      // A running acceptance that writes a fresh configuration states these in
+      // the warning that configuration gets.
+      const writesConfigAtHandshake =
+        ready.mode !== "offline" && !ready.reuseExistingConfig;
+      if (!writesConfigAtHandshake)
+        warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
 
       // The acceptor's own outbound-send set: the columns this party will disclose
       // to the partner for matched records, derived from its own resolved metadata
@@ -1230,6 +1243,7 @@ export async function handler(argv: Arguments): Promise<void> {
           csvDelimiter: ready.dataSpec.csvDelimiter,
           verbosity: options.verbosity,
           loggerName: "accept",
+          ...(writesConfigAtHandshake ? { commandLineCredentials } : {}),
           logFile: options.logFile,
           writeRecord: options.record,
           eventStream: options.eventStream,

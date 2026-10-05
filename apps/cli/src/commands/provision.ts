@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   causeChainSome,
+  getLogger,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
@@ -12,6 +13,7 @@ import type { ExchangeSpec } from "@alcove/core";
 import { DEFAULT_CONFIG_PATH, saveConfig } from "../config";
 import { detectFileConflicts, FileExistsError } from "../fileUtils";
 import { DEFAULT_KEY_PATH, saveKeyFile, type KeyFile } from "../keyFile";
+import type { SavedConfigWarningOptions } from "../literalCredentials";
 import { exitCodeForError } from "../util/exit";
 
 /**
@@ -123,6 +125,12 @@ export interface ProvisionOptions {
    * directory) leaves no key behind and the same command can be run again.
    */
   refreshReusedConfig?: (configPath: string) => void;
+  /**
+   * Where the warning for a written config holding a credential as typed
+   * goes. It is given only once the key is written, since a key-write failure
+   * removes the config.
+   */
+  savedConfigWarning?: SavedConfigWarningOptions;
 }
 
 /**
@@ -194,6 +202,7 @@ export function provisionConfigAndKey(
     resolved.keyPath,
     options.reuseExistingConfig ? ["key"] : ["config", "key"],
   );
+  const heldWarnings: string[] = [];
   // Outside the try: a saveConfig failure is atomic (nothing written), so it
   // propagates before the key is touched.
   if (options.reuseExistingConfig) {
@@ -212,7 +221,11 @@ export function provisionConfigAndKey(
     options.refreshReusedConfig?.(resolved.configPath);
   } else {
     createIfAbsent(resolved.configPath, () =>
-      saveConfig(resolved.configPath, spec, { exclusive: true }),
+      saveConfig(resolved.configPath, spec, {
+        exclusive: true,
+        commandLine: options.savedConfigWarning?.commandLine,
+        log: { warn: (message) => heldWarnings.push(message) },
+      }),
     );
   }
   try {
@@ -236,6 +249,8 @@ export function provisionConfigAndKey(
     }
     throw err;
   }
+  const log = options.savedConfigWarning?.log ?? getLogger("config");
+  for (const warning of heldWarnings) log.warn(warning);
   return resolved;
 }
 

@@ -39,7 +39,13 @@ import {
   expandTilde,
   FileExistsError,
 } from "../fileUtils";
-import { warnIfCommandLineHoldsLiteralCredential } from "../literalCredentials";
+import {
+  assertBootstrapUrlPasswordStorable,
+  BOOTSTRAP_CREDENTIAL_FLAGS,
+  type CommandLineLiteralCredentials,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import {
@@ -582,6 +588,8 @@ export function finalizeBootstrap(params: {
    */
   unattendedFillNoticeWriter?: (line: string) => void;
   eventStream?: EventStreamEmitter;
+  /** Stated in the warning the saved configuration gets, if any. */
+  commandLineCredentials?: CommandLineLiteralCredentials;
 }): void {
   const {
     save,
@@ -593,7 +601,9 @@ export function finalizeBootstrap(params: {
     filledPayloadReceive,
     unattendedFillNoticeWriter,
     eventStream,
+    commandLineCredentials,
   } = params;
+  const savedConfigWarning = { log, commandLine: commandLineCredentials };
   const logPayloadReceiveFilledNotice = (recordedIn: string): void => {
     if (filledPayloadReceive !== undefined)
       reportPayloadReceiveFill({
@@ -629,6 +639,7 @@ export function finalizeBootstrap(params: {
         spec,
         { sharedSecret: bootstrap.sharedSecret },
         { configPath: configFile, keyPath: keyFile },
+        { savedConfigWarning },
       );
       log.info(
         `established a shared secret with your partner; wrote config to ` +
@@ -654,7 +665,7 @@ export function finalizeBootstrap(params: {
     if (conflicts.length > 0)
       throw new UsageError(configAppearedLateRefusal(conflicts.join(", ")));
     try {
-      saveConfig(configFile, spec, { exclusive: true });
+      saveConfig(configFile, spec, { exclusive: true, ...savedConfigWarning });
     } catch (err) {
       if (err instanceof FileExistsError)
         throw new UsageError(configAppearedLateRefusal(configFile));
@@ -788,7 +799,19 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     const { server, input, output } = resolved;
-    warnIfCommandLineHoldsLiteralCredential(argv, server, log);
+    // A run that saves states these in the warning its configuration gets.
+    const commandLineCredentials = commandLineLiteralCredentials(
+      argv,
+      server,
+      BOOTSTRAP_CREDENTIAL_FLAGS,
+    );
+    if (options.save) {
+      try {
+        assertBootstrapUrlPasswordStorable(argv, server);
+      } catch (err) {
+        exitWithError(log, err, 64);
+      }
+    } else warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
 
     // Warn before createConnection can throw so the user sees the flag issue even
     // if the channel is refused. The channel is derived from the URL here
@@ -1081,6 +1104,7 @@ export async function handler(argv: Arguments): Promise<void> {
                 filledPayloadReceive,
                 unattendedFillNoticeWriter: unattendedWriter,
                 eventStream: eventStreamEmitter,
+                commandLineCredentials,
               });
               return { persisted: true };
             } catch (err) {

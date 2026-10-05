@@ -171,6 +171,42 @@ test("provisionConfigAndKey rolls back the written config when the key write fai
   expect(fs.existsSync(keyPath)).toBe(false);
 });
 
+function specWithPassword(): ExchangeSpec {
+  return {
+    connection: {
+      channel: "sftp",
+      server: { host: "h", username: "alice", password: "pw" },
+    },
+    linkageTerms: getDefaultLinkageTerms("Test Party"),
+  };
+}
+
+test("provisionConfigAndKey warns about a saved credential once the key is written", () => {
+  const warnings: string[] = [];
+  provisionConfigAndKey(
+    specWithPassword(),
+    { sharedSecret: TOKEN },
+    { configPath, keyPath },
+    { savedConfigWarning: { log: { warn: (m) => warnings.push(m) } } },
+  );
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("connection.server.password");
+});
+
+test("provisionConfigAndKey does not warn about a config the key-write failure removed", () => {
+  const warnings: string[] = [];
+  expect(() =>
+    provisionConfigAndKey(
+      specWithPassword(),
+      { sharedSecret: "too-short" },
+      { configPath, keyPath },
+      { savedConfigWarning: { log: { warn: (m) => warnings.push(m) } } },
+    ),
+  ).toThrow("base64url-encoded 32-byte value");
+  expect(fs.existsSync(configPath)).toBe(false);
+  expect(warnings).toEqual([]);
+});
+
 test("provisionConfigAndKey leaves the error unmarked when the rollback succeeds", () => {
   // The negative half of the marking contract: the config really was removed, so
   // a caller's report is right to name it as never having reached disk.

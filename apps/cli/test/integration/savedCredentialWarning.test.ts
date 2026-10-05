@@ -130,6 +130,8 @@ inProcessOnly(
       );
       expect(run.stderr).toContain('password: "@./sftp-password.txt"');
       expect(run.stderr).toContain(`${COMMAND_LINE_NOTICE} in the URL`);
+      expect(run.stderr.split(COMMAND_LINE_NOTICE)).toHaveLength(2);
+      expect(run.stderr.split(SAVED_WARNING)).toHaveLength(2);
       const user = side === "a" ? srv.usera : srv.userb;
       expect(savedServer(side).password).toBe(user.password);
     }

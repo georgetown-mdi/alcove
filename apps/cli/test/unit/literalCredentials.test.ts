@@ -2,15 +2,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { getLogger } from "@alcove/core";
+import { getLogger, UsageError } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { saveConfig } from "../../src/config";
 import {
+  assertBootstrapUrlPasswordStorable,
+  BOOTSTRAP_CREDENTIAL_FLAGS,
   commandLineLiteralCredentialNotice,
+  commandLineLiteralCredentials,
   literalCredentials,
   savedLiteralCredentialWarning,
+  urlPasswordIsNotStorable,
 } from "../../src/literalCredentials";
 
 let dir: string;
@@ -118,24 +122,36 @@ describe("savedLiteralCredentialWarning", () => {
   });
 });
 
+function noticeFor(
+  argv: Record<string, unknown>,
+  url: URL | undefined,
+  definedFlags: readonly string[] = BOOTSTRAP_CREDENTIAL_FLAGS,
+): string | undefined {
+  const found = commandLineLiteralCredentials(argv, url, definedFlags);
+  return found === undefined
+    ? undefined
+    : commandLineLiteralCredentialNotice(found);
+}
+
 describe("commandLineLiteralCredentialNotice", () => {
-  test("a password in the URL is named, with the flag that replaces it", () => {
-    expect(
-      commandLineLiteralCredentialNotice(
-        {},
-        new URL("sftp://alice:pw@host/drop"),
-      ),
-    ).toBe(
+  test("a password in the URL is named, with the URL as it should be typed", () => {
+    expect(noticeFor({}, new URL("sftp://alice:pw@host/drop"))).toBe(
       "the command line holds a credential as typed in the URL, which other " +
         "users of this machine can see while the command runs and your shell " +
         "may keep in its history. Put each value in a file of its own and " +
         "pass its path with a leading @, leaving the password out of the " +
-        "URL, e.g. --server-password @./sftp-password.txt.",
+        "URL, e.g. sftp://alice@host/drop --server-password @./sftp-password.txt.",
+    );
+  });
+
+  test("a command with no --server-password names the configuration form", () => {
+    expect(noticeFor({}, new URL("sftp://alice:pw@host/drop"), [])).toContain(
+      'e.g. password: "@./sftp-password.txt".',
     );
   });
 
   test("each credential flag given a value as typed is named", () => {
-    const notice = commandLineLiteralCredentialNotice(
+    const notice = noticeFor(
       {
         "server-private-key": "key",
         "server-private-key-passphrase": "phrase",
@@ -150,18 +166,23 @@ describe("commandLineLiteralCredentialNotice", () => {
     expect(notice).toContain("e.g. --server-private-key @~/.ssh/id_alcove.");
   });
 
+  test("a flag the command does not define is not read", () => {
+    expect(
+      noticeFor({ "server-password": "pw" }, undefined, [
+        "--server-private-key",
+      ]),
+    ).toBeUndefined();
+  });
+
   test("a URL password percent-encoding an @path is a reference", () => {
     expect(
-      commandLineLiteralCredentialNotice(
-        {},
-        new URL("sftp://alice:%40.%2Fpw.txt@host/drop"),
-      ),
+      noticeFor({}, new URL("sftp://alice:%40.%2Fpw.txt@host/drop")),
     ).toBeUndefined();
   });
 
   test("references, and a URL with no password, get no notice", () => {
     expect(
-      commandLineLiteralCredentialNotice(
+      noticeFor(
         {
           "server-password": "@./pw.txt",
           "server-provision-username": "svc",
@@ -174,11 +195,80 @@ describe("commandLineLiteralCredentialNotice", () => {
 
   test("a URL password is named even when the flag overrides it with a reference", () => {
     expect(
-      commandLineLiteralCredentialNotice(
+      noticeFor(
         { "server-password": "@./pw.txt" },
         new URL("sftp://alice:pw@host/drop"),
       ),
     ).toContain("holds a credential as typed in the URL,");
+  });
+});
+
+describe("savedLiteralCredentialWarning with the command line's credentials", () => {
+  const commandLine = commandLineLiteralCredentials(
+    { "server-password": "pw" },
+    undefined,
+    BOOTSTRAP_CREDENTIAL_FLAGS,
+  );
+
+  test("one warning states both the command line and the saved file", () => {
+    expect(
+      savedLiteralCredentialWarning(
+        "alcove.yaml",
+        { channel: "sftp", server: { password: "pw" } },
+        commandLine,
+      ),
+    ).toBe(
+      "the command line holds a credential as typed in --server-password, " +
+        "which other users of this machine can see while the command runs " +
+        "and your shell may keep in its history, and the configuration saved " +
+        "to alcove.yaml holds a credential as typed in " +
+        "connection.server.password, where anyone with a copy of the file " +
+        "can use it. Put each value in a file of its own and give its path " +
+        "with a leading @: on the command line, e.g. --server-password " +
+        "@./sftp-password.txt, and in the file before you commit or share " +
+        'it, e.g. password: "@./sftp-password.txt".',
+    );
+  });
+
+  test("a saved file holding none still gets the command line's notice", () => {
+    expect(
+      savedLiteralCredentialWarning(
+        "alcove.yaml",
+        { channel: "filedrop" },
+        commandLine,
+      ),
+    ).toBe(commandLineLiteralCredentialNotice(commandLine!));
+  });
+});
+
+describe("urlPasswordIsNotStorable", () => {
+  test("a URL password beginning with @ cannot be stored as typed", () => {
+    expect(
+      urlPasswordIsNotStorable(new URL("sftp://alice:%40secret@host/drop")),
+    ).toBe(true);
+    expect(
+      urlPasswordIsNotStorable(new URL("sftp://alice:p%40ss@host/drop")),
+    ).toBe(false);
+    expect(urlPasswordIsNotStorable(new URL("sftp://alice@host/drop"))).toBe(
+      false,
+    );
+    expect(urlPasswordIsNotStorable(undefined)).toBe(false);
+  });
+
+  test("a bootstrap command refuses it unless --server-password replaces it", () => {
+    const url = new URL("sftp://alice:%40secret@host/drop");
+    expect(() => assertBootstrapUrlPasswordStorable({}, url)).toThrow(
+      UsageError,
+    );
+    expect(() => assertBootstrapUrlPasswordStorable({}, url)).toThrow(
+      "e.g. --server-password @./sftp-password.txt.",
+    );
+    expect(() =>
+      assertBootstrapUrlPasswordStorable(
+        { "server-password": "@./pw.txt" },
+        url,
+      ),
+    ).not.toThrow();
   });
 });
 
@@ -214,6 +304,17 @@ describe("saveConfig", () => {
     ]);
     if (process.platform !== "win32")
       expect(fs.statSync(configPath).mode & 0o777).toBe(0o600);
+  });
+
+  test("warns through the logger it is given", () => {
+    const configPath = path.join(dir, "alcove.yaml");
+    const configWarnings = captureConfigWarnings();
+    const warnings: string[] = [];
+    saveConfig(configPath, spec("pw"), {
+      log: { warn: (message) => warnings.push(message) },
+    });
+    expect(warnings).toHaveLength(1);
+    expect(configWarnings).toEqual([]);
   });
 
   test("does not warn for an @path, and writes the file owner-only all the same", () => {

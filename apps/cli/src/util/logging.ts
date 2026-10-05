@@ -168,10 +168,6 @@ function installLogSink(
   };
 }
 
-/**
- * Open `logFilePath` for appending, creating it with mode `0o600` when absent,
- * and report whether this call created it.
- */
 function openLogFileForAppend(logFilePath: string): {
   fd: number;
   created: boolean;
@@ -223,14 +219,10 @@ function openLogFileForAppend(logFilePath: string): {
  * guards a failed `fs.writeSync` (a full disk) and reports it on stderr rather
  * than throwing back into the log call.
  *
- * The file is opened synchronously for appending so a missing parent
- * directory or other open failure shows up here, as a {@link UsageError}
- * before any exchange work begins. A file this call creates is owner-only:
- * mode `0o600`, and on Windows an access list narrowed to the current user
- * the way the credential writers narrow theirs, with the empty file removed
- * and the run refused when that fails. The path is operator-supplied, not
- * attacker-derived, so the open skips the `O_NOFOLLOW` hardening Alcove's
- * credential writers use for paths it derives itself.
+ * The file is opened synchronously so an open failure is a
+ * {@link UsageError} before any exchange work begins. A file this call creates
+ * is owner-only (docs/spec/CREDENTIAL_STORAGE.md). The path is
+ * operator-supplied, not attacker-derived, so the open skips `O_NOFOLLOW`.
  *
  * Between that open and the first write, on macOS the file's extended (NFSv4)
  * ACL is cleared, so no line is written while an inherited ACE could still
@@ -250,13 +242,7 @@ export function configureLogFile(logFilePath: string): LogSink {
   let fd: number;
   let created: boolean;
   try {
-    // Opened with O_APPEND so each writeSync lands at the current end of file;
-    // a missing parent directory throws (ENOENT) before any exchange work
-    // begins. The 0o600 mode, and on Windows the narrowed access list below,
-    // make a file this run creates owner-only, since a debug/trace log can
-    // hold partner identity, linkage keys, and data categories (see
-    // docs/SECURITY_DESIGN.md "Required permissions"). An existing --log-file
-    // path keeps its own permissions.
+    // An existing --log-file path keeps its own permissions.
     ({ fd, created } = openLogFileForAppend(normalized));
   } catch (err) {
     throw new UsageError(
@@ -269,8 +255,6 @@ export function configureLogFile(logFilePath: string): LogSink {
     try {
       restrictNewFileToOwnerOnWindows(normalized);
     } catch (err) {
-      // Best-effort release and removal of the empty file this run created;
-      // the refusal below is what the caller has to see.
       try {
         fs.closeSync(fd);
       } catch {

@@ -14,13 +14,16 @@ import {
 } from "@alcove/core";
 import type { BuiltInLinkageRuleSet } from "@alcove/core";
 
-import { configPlaceholderFields, DEFAULT_CONFIG_PATH } from "../config";
+import {
+  configPlaceholderFields,
+  DEFAULT_CONFIG_PATH,
+  writeConfigFile,
+} from "../config";
 import { channelForScheme, connectionFromURL } from "../connectionFromUrl";
 import {
   detectFileConflicts,
   expandTilde,
   FileExistsError,
-  writeFileOwnerOnly,
 } from "../fileUtils";
 import {
   DEFAULT_TEMPLATE_CONNECTION,
@@ -29,8 +32,9 @@ import {
 } from "../configTemplate";
 import type { TemplateConnection, TemplateDataSpec } from "../configTemplate";
 import {
+  assertUrlPasswordStorable,
+  commandLineLiteralCredentials,
   warnIfCommandLineHoldsLiteralCredential,
-  warnIfSavedConfigHoldsLiteralCredential,
 } from "../literalCredentials";
 import { openInputSource } from "../util/dataIo";
 import { runOrExit } from "../util/exit";
@@ -151,7 +155,16 @@ export async function handler(argv: Arguments): Promise<void> {
       // before any input read or file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const { url, input } = resolveInitPositionals(positionals);
-      warnIfCommandLineHoldsLiteralCredential(argv, url, log);
+      assertUrlPasswordStorable(
+        url,
+        'add its path with a leading @ to connection.server in the file, e.g. password: "@./sftp-password.txt".',
+      );
+      // States the URL's password in the warning the written file gets.
+      const commandLineCredentials = commandLineLiteralCredentials(
+        argv,
+        url,
+        [],
+      );
       const connection = templateConnection(
         url,
         singleValue(argv, "channel") as string | undefined,
@@ -175,6 +188,7 @@ export async function handler(argv: Arguments): Promise<void> {
           ),
       });
       if (decision === "skip") {
+        warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
         log.info(
           `left the existing file at ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configFile),
@@ -211,8 +225,10 @@ export async function handler(argv: Arguments): Promise<void> {
         // clobber it, re-asserting the never-overwrite-unprompted contract at the
         // write the way provisionConfigAndKey re-gates. On the "overwrite" path
         // the operator already confirmed, so the write replaces in place.
-        writeFileOwnerOnly(configFile, template, {
+        writeConfigFile(configFile, template, connection, {
           exclusive: decision === "create",
+          log,
+          commandLine: commandLineCredentials,
         });
       } catch (err) {
         // init performs no network activity, so every failure is a local,
@@ -240,7 +256,6 @@ export async function handler(argv: Arguments): Promise<void> {
         )}. No key file was created and no exchange was run. ` +
           initNextSteps(connection, identity),
       );
-      warnIfSavedConfigHoldsLiteralCredential(configFile, connection, log);
     });
   } finally {
     // Restore the loglevel factory (and close the log-file descriptor, for the

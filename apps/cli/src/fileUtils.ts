@@ -503,14 +503,8 @@ const ACL_RESTRICT_EMPTY_FILE_LEFT =
 const ACL_RESTRICT_REMEDY =
   "; restrict manually to owner-read-only via icacls or File Properties";
 
-/**
- * Narrow the Windows access list of `filePath` to `owner` alone, the step
- * every owner-only writer takes on Windows. `/inheritance:r` strips inherited
- * entries (e.g. BUILTIN\Users read) and `/grant:r` replaces any explicit grant
- * for the owner. (M) is the Modify level, which includes the DELETE right
- * MoveFileEx needs on a temp file renamed into place. Throws when icacls
- * fails or cannot be run.
- */
+// (M) includes the DELETE right MoveFileEx needs to rename a temp file into
+// place.
 function restrictAclToOwner(filePath: string, owner: string): void {
   execFileSync(
     "icacls",
@@ -519,12 +513,7 @@ function restrictAclToOwner(filePath: string, owner: string): void {
   );
 }
 
-/**
- * On Windows, narrow the access list of a file the caller has just created to
- * the current user alone, as {@link writeFileOwnerOnly} does before writing
- * content; a no-op elsewhere, where the create mode governs. Throws when the
- * user cannot be identified or icacls fails.
- */
+/** On Windows, narrow a just-created file's access list to the current user. */
 export function restrictNewFileToOwnerOnWindows(filePath: string): void {
   if (process.platform !== "win32") return;
   restrictAclToOwner(filePath, whoami());

@@ -127,7 +127,12 @@ import {
   singlePassDisclosureNotice,
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
-import { warnIfCommandLineHoldsLiteralCredential } from "../literalCredentials";
+import {
+  assertBootstrapUrlPasswordStorable,
+  BOOTSTRAP_CREDENTIAL_FLAGS,
+  commandLineLiteralCredentials,
+  warnIfCommandLineHoldsLiteralCredential,
+} from "../literalCredentials";
 
 // The invitation lifetime default and one-year ceiling are shared from
 // @alcove/core (INVITATION_LIFETIME_SECONDS, MAX_INVITATION_LIFETIME_SECONDS) so
@@ -1187,11 +1192,17 @@ export async function handler(argv: Arguments): Promise<void> {
       // token mint.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveInvitePositionals(positionals);
-      warnIfCommandLineHoldsLiteralCredential(
+      const url = resolved.mode === "online" ? resolved.url : undefined;
+      assertBootstrapUrlPasswordStorable(argv, url);
+      // An online invitation states these in the warning its configuration
+      // gets when the partner accepts.
+      const commandLineCredentials = commandLineLiteralCredentials(
         argv,
-        resolved.mode === "online" ? resolved.url : undefined,
-        log,
+        url,
+        BOOTSTRAP_CREDENTIAL_FLAGS,
       );
+      if (resolved.mode !== "online")
+        warnIfCommandLineHoldsLiteralCredential(commandLineCredentials, log);
       const ready = await validateInvite({
         resolved,
         options,
@@ -1233,6 +1244,7 @@ export async function handler(argv: Arguments): Promise<void> {
           csvDelimiter,
           verbosity: options.verbosity,
           loggerName: "invite",
+          commandLineCredentials,
           logFile: options.logFile,
           writeRecord: options.record,
           eventStream: options.eventStream,

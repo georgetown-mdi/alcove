@@ -1387,6 +1387,27 @@ test("handler replaces a different existing export with --force", async () => {
   );
 });
 
+test("handler refuses an export over the identity file with --force before regenerating it", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const before = fs.readFileSync(idPath);
+  await expect(exportCertificate(idPath, idPath, true)).rejects.toThrow(
+    "exit:64",
+  );
+  expect(fs.readFileSync(idPath).equals(before)).toBe(true);
+});
+
+test("handler refuses a different existing export with the identity file unchanged", async () => {
+  const idPath = path.join(dir, "id.json");
+  idFile.saveSigningIdentity(idPath, await generateSigningIdentity("Party A"));
+  const before = fs.readFileSync(idPath);
+  const certPath = path.join(dir, "cert.json");
+  fs.writeFileSync(certPath, "an earlier file\n");
+  await expect(exportCertificate(idPath, certPath)).rejects.toThrow("exit:64");
+  expect(fs.readFileSync(idPath).equals(before)).toBe(true);
+  expect(fs.readFileSync(certPath, "utf8")).toBe("an earlier file\n");
+});
+
 test.skipIf(process.platform === "win32")(
   "handler refuses to export over the file a symlinked identity path resolves to",
   async () => {
