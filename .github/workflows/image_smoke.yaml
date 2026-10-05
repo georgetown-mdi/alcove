@@ -654,7 +654,7 @@ jobs:
             docker run -d --name "exchange-$party" \
               -v "$work/$party:/work" -v "$work/share:/share" \
               ${{ matrix.tag }} \
-              --linkage-strategy single-pass file:///share input.csv output.csv
+              --linkage-strategy single-pass file:///share input.csv output
           done
 
           codes=$(timeout 900 docker wait exchange-a exchange-b || true)
@@ -674,16 +674,16 @@ jobs:
           # while linking nothing is caught here rather than passing on exit 0.
           #
           # Counted from inside a container rather than on the runner: the CLI
-          # writes the result CSV owner-only (createOwnerOnlyWriteStream), so the
-          # bind mount puts a uid-1000 0600 file in front of a runner shell that
-          # is neither. Reading it back through the image preserves the mode the
+          # writes the result CSV, under the output folder, owner-only
+          # (createOwnerOnlyWriteStream), so the bind mount puts a uid-1000
+          # 0600 file in front of a runner shell that is neither. Reading it back through the image preserves the mode the
           # image actually ships with, where running the parties as the runner's
           # uid would smoke something other than the published image. The default
           # leg's bind-mount step above reads its artifacts with sudo for the
           # same reason.
           for party in a b; do
             lines=$(docker run --rm -v "$work/$party:/work:ro" \
-              --entrypoint sh ${{ matrix.tag }} -c 'wc -l </work/output.csv')
+              --entrypoint sh ${{ matrix.tag }} -c 'cat /work/output/alcove-results-*.csv | wc -l')
             echo "party $party wrote $lines lines of results"
             if [ "$lines" != "11" ]; then
               echo "party $party wrote $lines lines, expected 11 (a header and ten matched rows)" >&2
