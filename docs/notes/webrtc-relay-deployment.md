@@ -318,9 +318,9 @@ Two operational findings came out of the bring-up.
 - **The relay's own logs did not witness the bytes.** No per-session
   relayed-byte summary appeared in coturn's container logs, only a connection
   reset on teardown, which is why the figures above come from host conntrack
-  accounting. Whether that is a property of this coturn build or of the
-  bring-up's log configuration -- simple-log, verbose directed to a file, an
-  abrupt teardown -- is not determined.
+  accounting. At the reference's log settings coturn writes no line for a
+  successful allocation at all
+  ([What the relay host keeps](#what-the-relay-host-keeps)).
 - **One credential username across back-to-back exchanges exhausts the
   allocation quota.** coturn's per-username quota interacts with the roughly
   eight-minute allocation linger a relayed run leaves behind, so reusing a
@@ -401,6 +401,148 @@ Candidate members, by title:
   server framework.** Only once the broker is deployed elsewhere, and only on
   the terms in [web-server-runtime-role.md](web-server-runtime-role.md).
 
+## Logging and data handling
+
+_Status: the logging settings and the registrar's line are in the reference;
+the counters, the egress alarm, and the verbose option below are proposed and
+wait on a host run against the pinned coturn image. Per-session logging stays
+off; abuse is detected from first-party and aggregate signals instead._
+
+### What the relay sees
+
+- The client's and the peer's IP addresses and ports, for every allocation,
+  permission and channel binding.
+- Timing: when an allocation opens, refreshes and closes.
+- Byte and packet counts on each allocation.
+- The credential's username, `<unix-expiry>:<name>`, which names a time and a
+  fixed label, not a party ([README.md, Per-exchange keys](../../infra/relay/README.md#per-exchange-keys)).
+- No exchange content: the channel is DTLS end to end and the relay forwards it
+  without terminating it ([Question 3](#question-3-self-hosted-or-managed)).
+
+### What the relay host keeps
+
+**coturn.** At the template's settings (`log-file=stdout`, `simple-log`, no
+`verbose`), coturn 4.18.0 writes no line for a successful allocation: no
+session, usage, realm, username or byte line. Measured on the standing relay on
+2026-10-03 across that day's relayed exchanges. What it does write:
+
+- its start-up lines;
+- an authentication failure, naming the credential's username
+  (`credentials of user <1791072505:alcove> are wrong`);
+- a refused peer, naming the address a client asked to reach inside a denied
+  range (`A peer IP 172.19.0.2 denied in the range: 172.16.0.0-172.31.255.255`).
+  That is a party's private host candidate, so this line does name an address
+  about a party, and the denial cannot be kept without it being logged at
+  these settings.
+
+Whether the authentication-failure line also names the client's address, and
+whether coturn also writes these lines to a file under `/var/tmp` despite
+`log-file=stdout`, are not yet measured; the host run below captures both. The
+lines go to the journal through the unit's `journald` log driver.
+`scripts/relay-logging-posture.test.mjs` holds the template to these settings;
+it cannot see a coturn release change what they write, so a base-image bump
+repeats the measurement.
+
+**The registrar.** One line a request (method, path, status), the path only in
+its `/exchanges/<exchange-id>` form, and one line a write. A registration --
+an enrollment, a rotation, a renewal, or a re-registration by the relay-owner
+token -- is the issuance event: it is what makes the relay accept the
+credentials both parties mint for that exchange. Its line is:
+
+```
+credential issuance: exchange=<exchange-id> time=<YYYY-MM-DDTHH:MM:SSZ> outcome=<registered|replaced|renewed|unchanged|revoked> authority=<relay-owner-token|proof>
+```
+
+`time` is the registrar's clock in UTC when it processed the request; `outcome` is what the
+write did, `unchanged` for an enrollment repeating the key the exchange holds;
+`authority` is the credential that authorized it. A revocation writes the same
+line with `outcome=revoked`. No registrar line names the
+caller's address, the key, the token, or the proof.
+`scripts/relay-exchange-keys.test.mjs` holds the format, the outcomes, and the
+absence of any address, key, token or proof in the whole journal across
+registrations, revocations, refusals and a connection error.
+
+### Retention and who reads it
+
+- **Retention.** The host's journald settings; the reference sets none, so the
+  journal is rotated by size, not age.
+- **Who reads it.** Whoever can read the relay host's journal: root and the
+  accounts the host grants journal access, which on the reference deployment is
+  the relay operator alone. Nothing in the reference ships a log off the host.
+
+### Quotas against one exchange
+
+The values `render-config.sh` substitutes by default, reviewed against the
+largest exchange the specification sizes. The unit of `max-bps` is among what
+the host run measures (below).
+
+**What one exchange moves.** A PSI round moves `35 * (2*D_recv + D_send)` bytes,
+at 35 bytes an encrypted element: the receiver's set once each way and the
+sender's once
+([PROTOCOL.md](../spec/PROTOCOL.md#role-resolution-and-work-minimization)). At
+the largest measured exchange, 7,700,000 records a side over four linking keys
+([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#a-round-between-two-hosts)),
+with one distinct value a record:
+
+- a round's larger direction, sender to receiver: `35 * 2 * 7,700,000` =
+  539,000,000 bytes;
+- a round, both directions: `35 * 3 * 7,700,000` = 808,500,000 bytes;
+- four rounds: about 3,234,000,000 bytes, before the lists of matched records.
+
+The largest single frame either party sends is `MAX_WEBRTC_FRAME_BYTES`,
+268,435,456 bytes, and the clean close waits 5 min for the last frames to
+drain ([WEBRTC_TRANSPORT.md](../spec/WEBRTC_TRANSPORT.md#budgets)). The small
+exchanges the relay has carried move tens of kilobytes.
+
+| setting | value | what one exchange needs | outcome |
+| --- | --- | --- | --- |
+| `user-quota` | 6 | one allocation a party; each party mints its own username, and two parties on one relay at most two | kept |
+| `total-quota` | 40 | two allocations an exchange at most, so 20 concurrent relayed exchanges, each lingering up to `max-allocate-lifetime` after its run; held under the 49-port relay range in `relay.env.example` | kept |
+| `max-bps` | 2,000,000 | read as bytes a second: the largest frame takes 268,435,456 / 2,000,000 = 134 s, inside the 300 s close drain, and a round's larger direction 539,000,000 / 2,000,000 = 270 s | kept, if the unit is bytes |
+| `max-allocate-lifetime` | 600 s | a lifetime between refreshes, not a bound on the exchange: the 7,700,000-record exchange ran 25 minutes on a LAN, so relayed it needs its client to refresh, which RFC 8656 provides for; that werift and the browser do so past 600 s is unmeasured | kept |
+
+**The `max-bps` unit is unconfirmed.** `relay.env.example` calls it bits a
+second; coturn's own help text is not available in the development container.
+Read as bits, 2,000,000 is 250,000 bytes a second: the largest frame would take
+268,435,456 / 250,000 = 1,074 s, past the 300 s close drain, and the
+7,700,000-record exchange about 2.4 hours. If the host run shows bits, the value
+becomes 16,000,000, the same 2,000,000 bytes a second.
+
+### Aggregate counters and the egress alarm (proposed)
+
+**Counters, proposed: coturn's Prometheus endpoint, on loopback, with
+per-username labels off**, read on the host by a timer that records the
+aggregate values -- allocations an interval, bytes relayed, authentication
+failures -- and nothing per session. Against a host-side counter (packet
+counters on 443 and the relay port range): those give bytes but not
+allocations or authentication failures, and a distinct-client count from the
+host would mean keeping addresses. coturn's documentation is not vendored in
+this repository or reachable from the development container; the choice rests
+on the endpoint coturn's README describes (port 9641, path `/metrics`, an
+option for username labels) and on a coturn 4.18.0 start-up line from 2026-09-29,
+`prometheus collector disabled, not started`. Which series the endpoint
+exposes, whether any carries an address or a username with labels off, and
+whether a distinct-client count is among them, is what the host run measures
+before this is built. If none gives distinct clients, that counter is dropped
+rather than taken from addresses.
+
+**Egress alarm, proposed: a CloudWatch alarm on the instance's `NetworkOut`
+sum over one hour above 5 GB, notifying the relay owner through an SNS topic.**
+The threshold is about one and a half of the largest exchange above (3.2 GB),
+so one exchange does not trip it and two concurrent ones may. At `total-quota`
+40 and 2,000,000 bytes a second an allocation, read as bytes, the most the
+relay forwards is 80 MB a second, about 288 GB an hour, which trips it within
+the first period.
+The metric is the instance's own, aggregate, with no per-session content.
+
+### Verbose logging for incident response (pending a host run)
+
+If a customer's incident-response requirement asks for session records, the
+setting is coturn's `verbose` with a short journal retention on the relay host,
+turned on for that deployment only. Which fields a verbose
+line holds -- addresses, ports, usernames, byte counts -- is confirmed on a
+host run before it is documented here.
+
 ## What remains unmeasured
 
 | question | the one thing that would determine it |
@@ -413,6 +555,8 @@ Candidate members, by title:
 | Whether the account's real cost matches the computed figure | reading Cost Explorer a day later, once its lag has passed |
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
 | The standalone broker at its standing name on 443 | the follow-on item for the standing broker service; the standalone entry point itself completed exchanges beside coturn on 8443 on 2026-10-03, then was removed |
+| A relayed exchange longer than `max-allocate-lifetime` | a relayed run past 600 s, which shows whether werift and the browser refresh their allocations; every relayed run measured here took seconds |
+| What coturn's metrics endpoint and its `verbose` lines hold, the unit of `max-bps`, and whether coturn writes a log file under `/var/tmp` at `log-file=stdout` | the host run in [Logging and data handling](#logging-and-data-handling), against the pinned image |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |
 
 ## Stated limits

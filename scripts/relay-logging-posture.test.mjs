@@ -1,0 +1,42 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+// Holds turnserver.conf.tmpl's logging settings to the posture in
+// docs/notes/webrtc-relay-deployment.md (What the relay host keeps). It reads
+// the template, not a running coturn.
+
+const here = dirname(fileURLToPath(import.meta.url));
+const TEMPLATE = resolve(here, "..", "infra/relay/turnserver.conf.tmpl");
+
+const LOGGING =
+  /^(log-|syslog|[Vv]erbose$|[Vv]$|prometheus|redis-statsdb|no-stdout-log|new-log-timestamp|simple-log)/;
+const ALLOWED = ["log-file", "simple-log"];
+
+const directives = () =>
+  readFileSync(TEMPLATE, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .map((line) => {
+      const [name, ...value] = line.split("=");
+      return { name: name.trim(), value: value.join("=").trim() };
+    });
+
+describe("turnserver.conf.tmpl logging", () => {
+  it("logs to stdout in simple-log form", () => {
+    const names = directives().map(({ name }) => name);
+    expect(names).toContain("simple-log");
+    expect(directives()).toContainEqual({ name: "log-file", value: "stdout" });
+  });
+
+  it("sets no logging directive beyond the documented ones", () => {
+    // Verbose logging writes per-session lines and a metrics endpoint's labels
+    // are unmeasured; either is a decision the note records first.
+    const logging = directives()
+      .map(({ name }) => name)
+      .filter((name) => LOGGING.test(name));
+    expect(logging.sort()).toEqual([...ALLOWED].sort());
+  });
+});

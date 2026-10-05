@@ -9,6 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { connect as netConnect } from "node:net";
 import { request } from "node:https";
 import { connect, getCACertificates, setDefaultCACertificates } from "node:tls";
 import { tmpdir } from "node:os";
@@ -1535,10 +1536,10 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
 
     await vi.waitFor(() => {
       expect(log.stderr).toMatch(
-        /register \(relay-owner token\): registered exchange exchange-1/,
+        /credential issuance: exchange=exchange-1 \S+ outcome=registered authority=relay-owner-token/,
       );
       expect(log.stderr).toMatch(
-        /revoke \(relay-owner token\): revoked exchange exchange-1/,
+        /credential issuance: exchange=exchange-1 time=\S+ outcome=revoked authority=relay-owner-token\n/,
       );
     });
     for (const text of [first.text, second.text, revoked.text, log.stderr]) {
@@ -2058,11 +2059,148 @@ describe.skipIf(runningAsRoot)(
       expect(host.mapping()).toEqual(before);
       expect(host.rows()).toEqual([listed(KEY_LISTED), listed(KEY_A)].sort());
       await vi.waitFor(() =>
-        expect(log.stderr).toMatch(/enroll: registered exchange exchange-1/),
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 \S+ outcome=registered authority=relay-owner-token/,
+        ),
       );
       for (const text of [first.text, same.text, other.text, log.stderr]) {
         expect(text).not.toMatch(HEX64);
       }
+    });
+
+    // docs/notes/webrtc-relay-deployment.md, What the relay host keeps,
+    // states this line's format.
+    it("journals one issuance line a registration, naming the exchange and the time and nothing about the caller", async () => {
+      const host = fixtureHost();
+      const { port, log } = await startRegistrar(host);
+      const started = Date.now();
+      const responses = [
+        await enroll(port, "exchange-1", KEY_A),
+        await enroll(port, "exchange-1", KEY_A),
+        await proven(port, "PUT", "exchange-1", KEY_A, {
+          body: keyBody(KEY_B),
+        }),
+        await proven(port, "PUT", "exchange-1", KEY_B, {
+          body: keyBody(KEY_B),
+        }),
+      ];
+      for (const response of responses) {
+        expect(response.status, response.text).toBe(200);
+      }
+      const issuance = () =>
+        log.stderr
+          .split("\n")
+          .filter((line) => line.startsWith("credential issuance:"));
+      await vi.waitFor(() => expect(issuance()).toHaveLength(4));
+      const lines = issuance();
+      const shape =
+        /^credential issuance: exchange=exchange-1 time=(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) outcome=(\w+) authority=([\w-]+)$/;
+      expect(lines.map((line) => shape.exec(line)?.slice(2))).toEqual([
+        ["registered", "relay-owner-token"],
+        ["unchanged", "relay-owner-token"],
+        ["replaced", "proof"],
+        ["renewed", "proof"],
+      ]);
+      for (const line of lines) {
+        const at = Date.parse(shape.exec(line)[1]);
+        expect(at).toBeGreaterThanOrEqual(Math.floor(started / 1000) * 1000);
+        expect(at).toBeLessThanOrEqual(Date.now());
+      }
+      // The whole journal, not only the issuance lines: the request lines
+      // beside them name no caller either.
+      expect(log.stderr).not.toContain("127.0.0.1");
+      expect(log.stderr).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);
+      expect(log.stderr).not.toMatch(/\[?::1\]?|::ffff:/);
+      expect(log.stderr).not.toMatch(HEX64);
+      expect(log.stderr).not.toContain(REGISTRAR_TOKEN);
+      expect(log.stderr).not.toContain("Alcove-Relay-Proof");
+      // Revocation, refusals and connection errors write to the same journal.
+      const revokedUnderToken = await call(
+        port,
+        "DELETE",
+        "/exchanges/exchange-1",
+        { token: REGISTRAR_TOKEN },
+      );
+      expect(revokedUnderToken.status, revokedUnderToken.text).toBe(200);
+      expect((await enroll(port, "exchange-2", KEY_A)).status).toBe(200);
+      const revokedUnderProof = await proven(
+        port,
+        "DELETE",
+        "exchange-2",
+        KEY_A,
+      );
+      expect(revokedUnderProof.status, revokedUnderProof.text).toBe(200);
+      expect((await enroll(port, "exchange-3", KEY_A)).status).toBe(200);
+      const badToken = await call(port, "POST", "/exchanges/exchange-4", {
+        token: REGISTRAR_TOKEN.slice(1),
+        body: keyBody(KEY_A),
+      });
+      expect(badToken.status).toBe(401);
+      const wrongKey = await proven(port, "PUT", "exchange-3", KEY_B, {
+        body: keyBody(KEY_C),
+      });
+      expect(wrongKey.status).toBe(409);
+      await new Promise((resolveDone) => {
+        const plain = netConnect({ host: "127.0.0.1", port }, () =>
+          plain.write("GET /exchanges/exchange-3 HTTP/1.1\r\nHost: x\r\n\r\n"),
+        );
+        plain.on("error", () => {});
+        plain.on("close", resolveDone);
+        setTimeout(() => plain.destroy(), 1000);
+      });
+      await new Promise((resolveDone) => {
+        const bare = netConnect({ host: "127.0.0.1", port }, () =>
+          bare.destroy(),
+        );
+        bare.on("error", () => {});
+        bare.on("close", resolveDone);
+        setTimeout(() => bare.destroy(), 1000);
+      });
+      await new Promise((resolveDone) => {
+        const truncated = connect(
+          {
+            host: "127.0.0.1",
+            port,
+            servername: "relay.example",
+            ca: readFileSync(join(certDir, "fullchain.pem")),
+          },
+          () => {
+            truncated.write(
+              [
+                "POST /exchanges/exchange-5 HTTP/1.1",
+                "Host: relay.example",
+                `Authorization: Bearer ${REGISTRAR_TOKEN}`,
+                "Content-Length: 500",
+                "",
+                '{"key": "',
+              ].join("\r\n"),
+            );
+            truncated.end();
+          },
+        );
+        truncated.on("error", () => {});
+        truncated.on("close", resolveDone);
+        setTimeout(() => truncated.destroy(), 1000);
+      });
+      await vi.waitFor(() => {
+        expect(issuance()).toHaveLength(8);
+        expect(log.stderr).toContain("POST /exchanges/exchange-4 401");
+        expect(log.stderr).toContain("PUT /exchanges/exchange-3 409");
+      });
+      expect(
+        issuance().filter((line) => line.includes("outcome=revoked")),
+      ).toHaveLength(2);
+      expect(log.stderr).not.toMatch(
+        /(?<![\d:])\d{1,3}(\.\d{1,3}){3}(?![\d:])/,
+      );
+      expect(log.stderr).not.toMatch(
+        /(?<![\d:])(\p{AHex}{0,4}:){2,7}\p{AHex}{0,4}(?![\d:])(?<!\d\d:\d\d:\d\d)/u,
+      );
+      expect(log.stderr).not.toMatch(/::/);
+      expect(log.stderr).not.toMatch(HEX64);
+      expect(log.stderr).not.toContain(REGISTRAR_TOKEN);
+      expect(log.stderr).not.toContain(REGISTRAR_TOKEN.slice(1));
+      expect(log.stderr.toLowerCase()).not.toContain("alcove-relay-proof");
     });
 
     it("refuses to enroll under a proof", async () => {
@@ -2106,8 +2244,12 @@ describe.skipIf(runningAsRoot)(
       expect(host.mapping()).toEqual([]);
       expect(host.rows()).toEqual([listed(KEY_LISTED)]);
       await vi.waitFor(() => {
-        expect(log.stderr).toMatch(/register \(proof\): registered exchange/);
-        expect(log.stderr).toMatch(/revoke \(proof\): revoked exchange/);
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 \S+ outcome=replaced authority=proof/,
+        );
+        expect(log.stderr).toMatch(
+          /credential issuance: exchange=exchange-1 time=\S+ outcome=revoked authority=proof\n/,
+        );
       });
       expect(log.stderr).not.toMatch(HEX64);
     });
