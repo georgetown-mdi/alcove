@@ -72,10 +72,10 @@ import {
   standingCompromiseResponse,
 } from "./managedExchangeRecord";
 import { ManagedExchangeExpiredError } from "./managedExpiry";
-import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
 import { ManagedExchangeLockUnavailableError } from "./managedExchangeLock";
 import { ManagedInputError } from "./managedInputGuard";
 import { ManagedRelayRegistrationError } from "./managedRelayRegistration";
+import { ManagedSignalingEndpointRefusedError } from "./managedRendezvous";
 import { RotationPersistError } from "./managedRunRotate";
 
 import type {

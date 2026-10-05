@@ -37,15 +37,15 @@ import {
   waitForIncomingConnection,
 } from "../../../src/psi/transport/waitForConnection.js";
 import {
+  assertManagedRendezvousPossible,
+  beginManagedRendezvous,
+} from "../../../src/psi/managed/managedRendezvous.js";
+import {
   classifyManagedRunFailure,
   managedRunRetryable,
 } from "../../../src/recurring/managedRunLaunchModel.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
-import {
-  assertManagedRendezvousPossible,
-  beginManagedRendezvous,
-} from "../../../src/psi/managed/managedRendezvous.js";
 import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
 import { disclosureRecord } from "../../utils/disclosureFixtures.js";
 import { noteUnfiledDisclosureRun } from "../../../src/psi/unfiledDisclosureStore.js";
