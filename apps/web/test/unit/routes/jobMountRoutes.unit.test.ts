@@ -13,6 +13,9 @@ import { STUB_CLI_PATH } from "../../utils/jobFixtures";
 
 const dirs: Array<string> = [];
 
+/** A name shaped like a job folder's, which only the working folder reserves. */
+const JOB_ID_SHAPED_NAME = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
+
 function tempDir(label: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
   dirs.push(dir);
@@ -122,6 +125,7 @@ describe("GET /api/jobs/mounts/secrets/entries", () => {
     const mount = secretsMount();
     fs.writeFileSync(path.join(mount, ".alcove-signing-identity.json"), "x");
     fs.writeFileSync(path.join(mount, ".alcove.key"), "x");
+    fs.writeFileSync(path.join(mount, JOB_ID_SHAPED_NAME), "x");
     fs.writeFileSync(
       path.join(mount, ".ssh", ".alcove-signing-identity.json"),
       "x",
@@ -132,6 +136,7 @@ describe("GET /api/jobs/mounts/secrets/entries", () => {
       readable: true,
       entries: [
         { name: ".ssh", kind: "dir" },
+        { name: JOB_ID_SHAPED_NAME, kind: "file" },
         { name: "partner-password", kind: "file" },
       ],
     });

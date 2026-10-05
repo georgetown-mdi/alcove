@@ -70,10 +70,10 @@ import { defineJobRoute } from "../jobRoute";
  * answers `{ "reason": "mounted-key-file-absent" }` or
  * `{ "reason": "mounted-key-file-invalid" }`, and a signed run of it naming
  * unconverted signing paths answers
- * `{ "reason": "mounted-signing-paths-unconverted" }`, and an sftp intent refused
- * because a credential file of the saved connection is one of the console's own
- * files answers `{ "reason": "sftp-credential-console-file" }`. Each is about console state
- * rather than the intent, so the browser cannot otherwise say what to fix.
+ * `{ "reason": "mounted-signing-paths-unconverted" }`, and a saved SFTP
+ * credential naming a console file answers its `jobCreateRefusal.ts` token.
+ * Each is about console state rather than the intent, so the browser cannot
+ * otherwise say what to fix.
  *
  * A schema-valid intent that core refuses while the CLI configuration or the
  * hand-off is composed from it is a 400 `{ "error": "<field>: <reason>" }`,

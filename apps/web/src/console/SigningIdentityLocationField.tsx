@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { Button, Group, Stack, Text } from "@mantine/core";
 
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
 import { identityLocationLabel } from "@psi/receiptsModel";
 
 import styles from "@styles/app.module.css";
@@ -80,7 +81,7 @@ export function SigningIdentityLocationField({
         <div ref={pickerRef} tabIndex={-1} style={{ outline: "none" }}>
           <Stack gap="xs">
             <SecretsFilePicker
-              purpose="signingIdentity"
+              purpose={SIGNING_IDENTITY_BROWSE_PURPOSE}
               unconfiguredNotice={
                 <>
                   This console has no separate secrets directory to browse, so

@@ -10,11 +10,10 @@ import {
   isRecord,
   readJsonOrNull,
 } from "./jobApiBody";
-import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
-
 import { sftpConnectionProjectionOf } from "./serverJobExchangeDriver";
 
 import type { AuthoredSftpServerRequest } from "@jobs/sftpServer";
+import type { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
 
 /**
@@ -122,7 +121,8 @@ export type CredentialMount = "secrets" | "folder";
 
 /** What a mount browse picks: an SFTP credential file, or the signing
  * identity's location ({@link SIGNING_IDENTITY_BROWSE_PURPOSE}). */
-export type MountBrowsePurpose = "credential" | "signingIdentity";
+export type MountBrowsePurpose =
+  "credential" | typeof SIGNING_IDENTITY_BROWSE_PURPOSE;
 
 /** Build the `?subPath=...&subPath=...` query: one value per path segment, never a
  * single slash-joined string, so a `/` inside a value can never compose a
@@ -134,8 +134,7 @@ function mountEntriesUrl(
 ): string {
   const params = new URLSearchParams();
   for (const segment of subPath) params.append("subPath", segment);
-  if (purpose === "signingIdentity")
-    params.append("purpose", SIGNING_IDENTITY_BROWSE_PURPOSE);
+  if (purpose !== "credential") params.append("purpose", purpose);
   const query = params.toString();
   return `/api/jobs/mounts/${mount}/entries${query === "" ? "" : `?${query}`}`;
 }

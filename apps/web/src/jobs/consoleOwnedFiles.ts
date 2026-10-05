@@ -41,6 +41,18 @@ export function isConsoleOwnedFolderName(name: string): boolean {
   );
 }
 
+/** Whether `name`, a top-level entry of the secrets directory, has one of the
+ * console's fixed file names. Job folders live only in the working folder, so a
+ * job-id-shaped name here is the operator's own. */
+export function isConsoleOwnedSecretsName(name: string): boolean {
+  return CONSOLE_WRITTEN_NAMES.has(name) || name === JOB_FILE_NAMES.key;
+}
+
+/** Which top-level names of a mount belong to the console. */
+const CONSOLE_OWNED_NAME_TESTS: Readonly<
+  Record<"folder" | "secrets", (name: string) => boolean>
+> = { folder: isConsoleOwnedFolderName, secrets: isConsoleOwnedSecretsName };
+
 /** How a refusal names the console-owned top-level entry `name`. */
 function consoleOwnedDescription(name: string): string {
   if (name === JOB_FILE_NAMES.key)
@@ -62,15 +74,16 @@ export function consoleOwnedCredentialMessage(
   );
 }
 
-/** The console-owned top-level entry of `root` that `candidate` is or is
- * under, else undefined. Both are absolute. */
+/** The console-owned top-level entry of the `mount` at `root` that
+ * `candidate` is or is under, else undefined. Both are absolute. */
 function consoleOwnedEntryUnder(
+  mount: "folder" | "secrets",
   root: string,
   candidate: string,
 ): string | undefined {
   if (!isPathWithin(root, candidate, "strictly-under")) return undefined;
   const first = path.relative(root, candidate).split(path.sep)[0];
-  return isConsoleOwnedFolderName(first) ? first : undefined;
+  return CONSOLE_OWNED_NAME_TESTS[mount](first) ? first : undefined;
 }
 
 /** `dir` resolved, and its realpath when it exists. */
@@ -90,7 +103,7 @@ function rootForms(dir: string): Array<string> {
  * forms of each root, so neither a link to a console file nor a linked mount
  * hides one.
  */
-export function consoleOwnedCredentialEntry(
+function consoleOwnedCredentialEntry(
   filePath: string,
   roots: { folder: string; secrets?: string },
 ): string | undefined {
@@ -101,26 +114,29 @@ export function consoleOwnedCredentialEntry(
     // Checked by the path as given only.
   }
   const rootList = [
-    ...rootForms(roots.folder),
-    ...(roots.secrets !== undefined ? rootForms(roots.secrets) : []),
+    ...rootForms(roots.folder).map((root) => ["folder", root] as const),
+    ...(roots.secrets !== undefined
+      ? rootForms(roots.secrets).map((root) => ["secrets", root] as const)
+      : []),
   ];
-  for (const root of rootList)
+  for (const [mount, root] of rootList)
     for (const candidate of candidates) {
-      const owned = consoleOwnedEntryUnder(root, candidate);
+      const owned = consoleOwnedEntryUnder(mount, root, candidate);
       if (owned !== undefined) return owned;
     }
   return undefined;
 }
 
-/** The console-owned name a credential locator resolved to, else undefined:
- * its first path segment under the mount, taken from the locator and from the
- * resolved realpath (so a symlink to one is caught). */
+/** The console-owned name a credential locator in `mount` resolved to, else
+ * undefined: its first path segment under the mount, taken from the locator and
+ * from the resolved realpath (so a symlink to one is caught). */
 export function consoleOwnedMountPath(
+  mount: "folder" | "secrets",
   mountRoot: string,
   subPath: Array<string>,
   resolvedPath: string,
 ): string | undefined {
-  if (subPath.length > 0 && isConsoleOwnedFolderName(subPath[0]))
+  if (subPath.length > 0 && CONSOLE_OWNED_NAME_TESTS[mount](subPath[0]))
     return subPath[0];
   let realRoot: string;
   try {
@@ -128,7 +144,7 @@ export function consoleOwnedMountPath(
   } catch {
     return undefined;
   }
-  return consoleOwnedEntryUnder(realRoot, resolvedPath);
+  return consoleOwnedEntryUnder(mount, realRoot, resolvedPath);
 }
 
 /** `filePath`'s realpath, or the path resolved when it has none. */
@@ -140,21 +156,40 @@ function realpathOrResolved(filePath: string): string {
   }
 }
 
+/** The SFTP connection fields whose values are `@path` credential file
+ * references. */
+export const CREDENTIAL_FILE_FIELDS = [
+  "password",
+  "privateKey",
+  "privateKeyPassphrase",
+] as const;
+
+/** One of {@link CREDENTIAL_FILE_FIELDS}. */
+export type CredentialFileField = (typeof CREDENTIAL_FILE_FIELDS)[number];
+
 /**
- * Whether the credential file at `filePath` is one of the console's own: a
- * console-owned entry of either mount ({@link consoleOwnedCredentialEntry}),
- * or one of `identityPaths`, the signing identity files this console reads,
- * compared through their links.
+ * The first credential field whose `@path` reference names one of the
+ * console's own files, with the console-owned name it resolved to, else
+ * undefined. A file is the console's when it is a console-owned entry of
+ * either mount ({@link consoleOwnedCredentialEntry}) or one of
+ * `identityPaths`, the signing identity files this console reads, compared
+ * through their links. A value without the `@` prefix is not a file reference
+ * and is skipped.
  */
-export function isConsoleFileCredential(
-  filePath: string,
+export function consoleOwnedCredentialField(
+  credentials: Readonly<Partial<Record<CredentialFileField, string>>>,
   roots: { folder: string; secrets?: string },
-  identityPaths: ReadonlyArray<string>,
-): boolean {
-  const target = realpathOrResolved(filePath);
-  return (
-    identityPaths.some(
-      (identityPath) => realpathOrResolved(identityPath) === target,
-    ) || consoleOwnedCredentialEntry(filePath, roots) !== undefined
-  );
+  identityPaths: ReadonlyArray<string> = [],
+): { field: CredentialFileField; ownedName: string } | undefined {
+  const identityTargets = identityPaths.map(realpathOrResolved);
+  for (const field of CREDENTIAL_FILE_FIELDS) {
+    const value = credentials[field];
+    if (value?.startsWith("@") !== true) continue;
+    const filePath = value.slice(1);
+    if (identityTargets.includes(realpathOrResolved(filePath)))
+      return { field, ownedName: SIGNING_IDENTITY_FILE_NAME };
+    const ownedName = consoleOwnedCredentialEntry(filePath, roots);
+    if (ownedName !== undefined) return { field, ownedName };
+  }
+  return undefined;
 }

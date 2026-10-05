@@ -1,6 +1,6 @@
 import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
 import { gateJobRoute } from "@jobs/routeSupport";
-import { isConsoleOwnedFolderName } from "@jobs/consoleOwnedFiles";
+import { isConsoleOwnedSecretsName } from "@jobs/consoleOwnedFiles";
 import { jobJsonResponse } from "@jobs/gate";
 import { listMountEntries } from "@jobs/mountBrowse";
 import { useJobSecretsDir } from "@jobs/jobSecrets";
@@ -27,9 +27,10 @@ import { defineJobRoute } from "../../../jobRoute";
  * `{ configured: true, readable: false, entries: [] }`. No file bytes are read;
  * entry kinds come from `stat` only.
  *
- * The top level leaves out the console's own names, as the working folder's
- * listing does, so a credential browse never offers one; the SFTP settings
- * route refuses them as credentials whichever way they arrive. A listing asked
+ * The top level leaves out the console's fixed file names
+ * ({@link isConsoleOwnedSecretsName}), so a credential browse never offers one;
+ * the SFTP settings route refuses them as credentials whichever way they
+ * arrive. A listing asked
  * with `purpose=signing-identity` ({@link SIGNING_IDENTITY_BROWSE_PURPOSE})
  * keeps them: it picks where the signing identity is kept.
  */
@@ -58,7 +59,7 @@ export const route = defineJobRoute({
         entries: keepConsoleNames
           ? listing.entries
           : listing.entries.filter(
-              (entry) => !isConsoleOwnedFolderName(entry.name),
+              (entry) => !isConsoleOwnedSecretsName(entry.name),
             ),
       });
     },

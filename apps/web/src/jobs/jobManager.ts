@@ -73,7 +73,7 @@ import {
 } from "./signingIdentity";
 import { buildJobHandoff } from "./handoff";
 import { checkedMountedKeyFilePath } from "./mountedKeyFile";
-import { isConsoleFileCredential } from "./consoleOwnedFiles";
+import { consoleOwnedCredentialField } from "./consoleOwnedFiles";
 import { formatFirstIssue } from "./schemaIssueMessage";
 import { probeSftpHostKey } from "./sftpProbe";
 import { referencedCredentialPaths } from "./referencedCredentialFiles";
@@ -220,9 +220,9 @@ export class JobSigningIdentityExposedError extends Error {
 /**
  * Thrown by {@link JobManager.createJob} when a credential file of the saved
  * SFTP connection is one of the console's own files
- * ({@link isConsoleFileCredential}). None of them is ever a credential, so the
- * run is refused rather than sending the file's contents to the server. The
- * route maps it to a 400 naming the refusal.
+ * ({@link consoleOwnedCredentialField}). None of them is ever a credential,
+ * so the run is refused rather than sending the file's contents to the server.
+ * The route maps it to a 400 naming the refusal.
  */
 export class JobSftpCredentialConsoleOwnedError extends Error {
   constructor() {
@@ -757,24 +757,13 @@ export class JobManager {
       this.runWouldPublishSigningIdentity(identityPath)
     )
       throw new JobSigningIdentityExposedError();
-    // Checked per create, so a file that became one of the console's after
-    // the connection was saved -- the identity location this intent picks,
-    // above all -- is caught too.
     if (
       serverEntry !== undefined &&
-      [
-        serverEntry.password,
-        serverEntry.privateKey,
-        serverEntry.privateKeyPassphrase,
-      ].some(
-        (value) =>
-          value?.startsWith("@") === true &&
-          isConsoleFileCredential(
-            value.slice(1),
-            { folder: this.dataRoot, secrets: this.jobSecretsDir },
-            [identityPath, signingIdentityPath(this.dataRoot)],
-          ),
-      )
+      consoleOwnedCredentialField(
+        serverEntry,
+        { folder: this.dataRoot, secrets: this.jobSecretsDir },
+        [identityPath, signingIdentityPath(this.dataRoot)],
+      ) !== undefined
     )
       throw new JobSftpCredentialConsoleOwnedError();
     this.slot = { phase: "starting", id, channel: intent.channel };

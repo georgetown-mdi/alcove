@@ -8,7 +8,7 @@ import ts from "typescript";
 import { afterEach, describe, expect, test } from "vitest";
 
 import {
-  isConsoleFileCredential,
+  consoleOwnedCredentialField,
   isConsoleOwnedFolderName,
 } from "@jobs/consoleOwnedFiles";
 import { JobApiConfigError } from "@jobs/gate";
@@ -310,29 +310,56 @@ describe("validateAuthoredSftpServer refuses the console's own files as credenti
       `@${fs.realpathSync(path.join(secretsDir, "sftp", "alcove.yaml"))}`,
     );
   });
+
+  test("a file at the top of the secrets directory named like a job folder is accepted", () => {
+    const { dataRoot, secretsDir } = layout();
+    const name = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
+    fs.writeFileSync(path.join(secretsDir, name), "pw");
+    const { entry } = validateAuthoredSftpServer(
+      body({
+        kind: "mountRef",
+        mount: "secrets",
+        subPath: [name],
+        credType: "password",
+      }),
+      dataRoot,
+      [],
+      secretsDir,
+    );
+    expect(entry.password).toBe(
+      `@${fs.realpathSync(path.join(secretsDir, name))}`,
+    );
+  });
 });
 
-describe("isConsoleFileCredential", () => {
-  test("matches a signing identity it is given, through a link", () => {
+describe("consoleOwnedCredentialField", () => {
+  test("names the field whose file is a signing identity it is given, through a link", () => {
     const { dir, dataRoot } = layout();
     const picked = path.join(dir, "keys", "identity.json");
     fs.mkdirSync(path.dirname(picked));
     fs.writeFileSync(picked, "PRIVATE");
     const link = path.join(dir, "pw-link");
     fs.symlinkSync(picked, link);
-    expect(isConsoleFileCredential(link, { folder: dataRoot }, [picked])).toBe(
-      true,
-    );
+    expect(
+      consoleOwnedCredentialField(
+        {
+          password: `@${path.join(dir, "server-password")}`,
+          privateKey: `@${link}`,
+        },
+        { folder: dataRoot },
+        [picked],
+      ),
+    ).toEqual({ field: "privateKey", ownedName: SIGNING_IDENTITY_FILE_NAME });
   });
 
   test("does not match an ordinary credential file", () => {
     const { dataRoot, secretsDir, outside } = layout();
     expect(
-      isConsoleFileCredential(
-        outside,
+      consoleOwnedCredentialField(
+        { password: `@${outside}`, privateKeyPassphrase: "inline" },
         { folder: dataRoot, secrets: secretsDir },
         [path.join(dataRoot, SIGNING_IDENTITY_FILE_NAME)],
       ),
-    ).toBe(false);
+    ).toBeUndefined();
   });
 });
