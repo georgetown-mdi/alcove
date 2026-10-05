@@ -33,6 +33,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
 } from "@jobs/jobCreateRefusal";
@@ -327,6 +328,24 @@ function failureContentFor(
         "holds more than one server identity fingerprint, and a direct " +
         "exchange pins one. Start over, choose Edit connection on the server " +
         "step, and keep only the fingerprint the server presents now.",
+    };
+  // An sftp run refused because the saved connection's credential file is one
+  // of the console's own. Above the mounted-file branch: the input is not at
+  // fault. Classified `config`: a retry refuses identically.
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
+  )
+    return {
+      category: "config",
+      title: "The saved SFTP connection uses one of the console's own files",
+      message:
+        "The console did not start this exchange. The saved SFTP connection " +
+        "names a credential file that is one of the console's own -- your " +
+        "signing identity, the exchange's key file, or its configuration -- " +
+        "and none of them is a server credential. Start over, choose Edit " +
+        "connection on the SFTP connection, and choose the file that holds " +
+        "your SFTP password or private key.",
     };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified

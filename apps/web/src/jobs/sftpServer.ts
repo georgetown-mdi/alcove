@@ -12,14 +12,21 @@ import {
 import { isBareSftpHost } from "@psi/sftpHost";
 
 import {
+  CREDENTIAL_FILE_FIELDS,
+  consoleOwnedCredentialField,
+  consoleOwnedCredentialMessage,
+  consoleOwnedMountPath,
+} from "./consoleOwnedFiles";
+import {
   materializeSftpCredential,
   removeSftpCredentialFile,
 } from "./sftpScratch";
 import { JobApiConfigError } from "./gate";
 import { formatIssues } from "./schemaIssueMessage";
-import { isConsoleOwnedFolderPath } from "./consoleOwnedFiles";
 import { isPathWithin } from "./pathContainment";
 import { resolveMountFile } from "./mountBrowse";
+
+import type { CredentialFileField } from "./consoleOwnedFiles";
 
 /**
  * The operator-authored SFTP connection: the connection block the server -- never
@@ -80,13 +87,6 @@ const jobSftpServerEntrySchema: z.ZodType<JobSftpServerEntry> = z.strictObject({
       .min(1, "host_key_fingerprint must list at least one fingerprint"),
   ]),
 });
-
-/** The credential fields whose values must be `@path` file references. */
-const CREDENTIAL_REF_FIELDS = [
-  "password",
-  "privateKey",
-  "privateKeyPassphrase",
-] as const;
 
 /** Which SFTP primary auth method a credential feeds. */
 type SftpCredType = "password" | "private_key";
@@ -277,11 +277,13 @@ function canonicalizeIfPresent(dir: string): string {
  * request-sourced authoring path. A credential that resolves inside an excluded
  * directory is a non-blocking warning, not a hard error, so the returned
  * `credentialWarnings` contains one entry per offending credential field (empty
- * when every credential resolves safely outside).
+ * when every credential resolves safely outside). A credential naming one of
+ * the console's own files ({@link consoleOwnedCredentialField}) is refused.
  */
 function validateServerEntry(
   rawEntry: unknown,
   exclusions: Array<CredentialRefExclusion>,
+  ownedRoots: ConsoleOwnedRoots,
 ): { entry: JobSftpServerEntry; credentialWarnings: Array<string> } {
   if (
     rawEntry === null ||
@@ -299,9 +301,17 @@ function validateServerEntry(
   assertBareHost(entry.host);
   assertLiteralFingerprints(entry.hostKeyFingerprint);
   const credentialWarnings: Array<string> = [];
-  for (const field of CREDENTIAL_REF_FIELDS)
+  for (const field of CREDENTIAL_FILE_FIELDS)
     credentialWarnings.push(
       ...collectCredentialRefWarnings(field, entry[field], exclusions),
+    );
+  const owned = consoleOwnedCredentialField(entry, ownedRoots);
+  if (owned !== undefined)
+    throw new JobApiConfigError(
+      consoleOwnedCredentialMessage(
+        owned.ownedName,
+        CREDENTIAL_FIELD_LABELS[owned.field],
+      ),
     );
   assertComposesThroughCoreSchema(entry);
 
@@ -394,6 +404,7 @@ export function validateAuthoredSftpServer(
     const { entry, credentialWarnings } = validateServerEntry(
       rawEntry,
       credentialRefExclusions(dataRoot, rendezvousDirs),
+      { folder: dataRoot, secrets: secretsDir },
     );
     return resolved.materializedPath !== undefined
       ? {
@@ -553,23 +564,33 @@ function resolveMountRefCredential(
       "The credential file you chose is no longer a readable file in " +
         `${CREDENTIAL_MOUNT_LABELS[credential.mount]}. Choose it again.`,
     );
-  if (
-    credential.mount === "folder" &&
-    isConsoleOwnedFolderPath(
-      mountRoot,
-      credential.subPath,
-      resolved.absolutePath,
-    )
-  )
+  const owned = consoleOwnedMountPath(
+    credential.mount,
+    mountRoot,
+    credential.subPath,
+    resolved.absolutePath,
+  );
+  if (owned !== undefined)
     throw new JobApiConfigError(
-      "The file you chose belongs to the console and is not a credential. " +
-        "Choose your credential file instead.",
+      consoleOwnedCredentialMessage(
+        owned,
+        CREDENTIAL_FIELD_LABELS[
+          credential.credType === "password" ? "password" : "privateKey"
+        ],
+      ),
     );
   return {
     kind: "ref",
     ref: `@${resolved.absolutePath}`,
     credType: credential.credType,
   };
+}
+
+/** The mounts whose console-owned top-level entries a credential reference
+ * may not name: the working folder and, when mounted, the secrets directory. */
+interface ConsoleOwnedRoots {
+  folder: string;
+  secrets?: string;
 }
 
 /**
@@ -647,7 +668,7 @@ function assertLiteralFingerprints(fingerprint: string | Array<string>): void {
  * only, never the reference value.
  */
 function collectCredentialRefWarnings(
-  field: (typeof CREDENTIAL_REF_FIELDS)[number],
+  field: CredentialFileField,
   value: string | undefined,
   exclusions: Array<CredentialRefExclusion>,
 ): Array<string> {
@@ -696,10 +717,7 @@ function matchedExclusion(
 }
 
 /** The operator-facing label for a credential field in a warning. */
-const CREDENTIAL_FIELD_LABELS: Record<
-  (typeof CREDENTIAL_REF_FIELDS)[number],
-  string
-> = {
+const CREDENTIAL_FIELD_LABELS: Record<CredentialFileField, string> = {
   password: "password",
   privateKey: "private key",
   privateKeyPassphrase: "private key passphrase",
@@ -710,7 +728,7 @@ const CREDENTIAL_FIELD_LABELS: Record<
  * reference, resolved path, or secret), leads with the hazard that is always true
  * for that directory, and points to the better practice. */
 function credentialContainmentWarning(
-  field: (typeof CREDENTIAL_REF_FIELDS)[number],
+  field: CredentialFileField,
   exclusion: CredentialRefExclusion,
 ): string {
   const fieldLabel = CREDENTIAL_FIELD_LABELS[field];

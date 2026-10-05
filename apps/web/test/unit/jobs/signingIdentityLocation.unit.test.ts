@@ -7,6 +7,7 @@ import { parse as parseYaml } from "yaml";
 import {
   ExchangeBusyError,
   JobManager,
+  JobSftpCredentialConsoleOwnedError,
   JobSigningIdentityExposedError,
 } from "@jobs/jobManager";
 import {
@@ -339,6 +340,82 @@ describe("the job resolves the identity through the option", () => {
       manager.createJob(signedIntent(["missing-dir", PICKED_IDENTITY_NAME])),
     ).rejects.toBeInstanceOf(SigningIdentityLocationError);
     expect(fs.readdirSync(root)).toEqual([]);
+  });
+
+  test("an sftp run whose saved credential is the picked identity is refused before a workdir exists", async () => {
+    const root = directory("job-credential-identity");
+    const secrets = directory("job-credential-identity-secrets");
+    const identity = path.join(secrets, PICKED_IDENTITY_NAME);
+    writeIdentity(identity);
+    const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
+    manager.authorSftpServer({
+      host: "sftp.partner.example",
+      hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      credential: { kind: "ref", ref: `@${identity}`, credType: "password" },
+    });
+    const intent = validSftpIntent({
+      signing: {
+        mode: "certificate",
+        partnerFingerprint: PARTNER_FINGERPRINT,
+        identityLocation: { mount: "secrets", subPath: [PICKED_IDENTITY_NAME] },
+      },
+    });
+    await expect(manager.createJob(intent)).rejects.toBeInstanceOf(
+      JobSftpCredentialConsoleOwnedError,
+    );
+    expect(fs.readdirSync(root)).toEqual([]);
+  });
+
+  test("an unsigned sftp run whose saved credential file holds a signing identity is refused", async () => {
+    const root = directory("job-credential-identity-shape");
+    const secrets = directory("job-credential-identity-shape-secrets");
+    const credential = path.join(secrets, "my-identity.json");
+    fs.writeFileSync(credential, "pw");
+    const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
+    manager.authorSftpServer({
+      host: "sftp.partner.example",
+      hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      credential: { kind: "ref", ref: `@${credential}`, credType: "password" },
+    });
+    fs.writeFileSync(
+      credential,
+      JSON.stringify({
+        version: "v",
+        privateKey: { d: "d" },
+        certificate: {},
+      }),
+    );
+    await expect(manager.createJob(validSftpIntent())).rejects.toBeInstanceOf(
+      JobSftpCredentialConsoleOwnedError,
+    );
+    expect(fs.readdirSync(root)).toEqual([]);
+  });
+
+  test("an sftp run on an ordinary credential file is not refused", async () => {
+    const root = directory("job-credential-ordinary");
+    const secrets = directory("job-credential-ordinary-secrets");
+    writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
+    const password = path.join(secrets, "sftp-password");
+    fs.writeFileSync(password, "pw");
+    const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
+    manager.authorSftpServer({
+      host: "sftp.partner.example",
+      hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      credential: { kind: "ref", ref: `@${password}`, credType: "password" },
+    });
+    const id = await manager.createJob(
+      validSftpIntent({
+        signing: {
+          mode: "certificate",
+          partnerFingerprint: PARTNER_FINGERPRINT,
+          identityLocation: {
+            mount: "secrets",
+            subPath: [PICKED_IDENTITY_NAME],
+          },
+        },
+      }),
+    );
+    expect(fs.readdirSync(root)).toEqual([id]);
   });
 
   test("an occupied console answers the busy rejection, location or not", async () => {
@@ -750,6 +827,42 @@ describe("the boundary shows no container path", () => {
     })) as Response;
     expect(response.status).toBe(400);
     expect(await response.text()).toBe("");
+  });
+
+  test("a job create on a saved credential that is the picked identity answers its refusal token", async () => {
+    const { root, secrets } = seed({ identityIn: "secrets" });
+    const manager = (globalThis as { jobManagerInstance?: JobManager })
+      .jobManagerInstance!;
+    manager.authorSftpServer({
+      host: "sftp.partner.example",
+      hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      credential: {
+        kind: "ref",
+        ref: `@${path.join(secrets, PICKED_IDENTITY_NAME)}`,
+        credType: "private_key",
+      },
+    });
+    const response = (await handlersOf(JobsRoute).POST({
+      request: jobRequest(
+        "http://localhost/api/jobs",
+        validSftpIntent({
+          signing: {
+            mode: "certificate",
+            partnerFingerprint: PARTNER_FINGERPRINT,
+            identityLocation: {
+              mount: "secrets",
+              subPath: [PICKED_IDENTITY_NAME],
+            },
+          },
+        }),
+      ),
+      params: {},
+    })) as Response;
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      reason: "sftp-credential-console-file",
+    });
+    expect(fs.readdirSync(root)).toEqual([]);
   });
 
   test("an unmodeled path field beside the location is a 400", async () => {

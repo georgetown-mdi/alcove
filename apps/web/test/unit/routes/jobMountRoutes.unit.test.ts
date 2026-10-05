@@ -4,12 +4,17 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
+
 import { route as FolderEntriesRoute } from "../../../server/console/routes/mounts/folder/entries";
 import { route as SecretsEntriesRoute } from "../../../server/console/routes/mounts/secrets/entries";
 
 import { STUB_CLI_PATH } from "../../utils/jobFixtures";
 
 const dirs: Array<string> = [];
+
+/** A name shaped like a job folder's, which only the working folder reserves. */
+const JOB_ID_SHAPED_NAME = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
 
 function tempDir(label: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
@@ -116,6 +121,48 @@ describe("GET /api/jobs/mounts/secrets/entries", () => {
     });
   });
 
+  test("a credential browse leaves the console's own names out of the top level only", async () => {
+    const mount = secretsMount();
+    fs.writeFileSync(path.join(mount, ".alcove-signing-identity.json"), "x");
+    fs.writeFileSync(path.join(mount, ".alcove.key"), "x");
+    fs.writeFileSync(path.join(mount, JOB_ID_SHAPED_NAME), "x");
+    fs.writeFileSync(
+      path.join(mount, ".ssh", ".alcove-signing-identity.json"),
+      "x",
+    );
+    enable(mount);
+    expect(await (await entries()).json()).toEqual({
+      configured: true,
+      readable: true,
+      entries: [
+        { name: ".ssh", kind: "dir" },
+        { name: JOB_ID_SHAPED_NAME, kind: "file" },
+        { name: "partner-password", kind: "file" },
+      ],
+    });
+    expect((await (await entries([".ssh"])).json()).entries).toContainEqual({
+      name: ".alcove-signing-identity.json",
+      kind: "file",
+    });
+  });
+
+  test("a signing identity browse keeps the identity file in the listing", async () => {
+    const mount = secretsMount();
+    fs.writeFileSync(path.join(mount, ".alcove-signing-identity.json"), "x");
+    enable(mount);
+    const request = entriesRequest([]);
+    const url = new URL(request.url);
+    url.searchParams.append("purpose", SIGNING_IDENTITY_BROWSE_PURPOSE);
+    const response = (await handlersOf(SecretsEntriesRoute).GET({
+      request: new Request(url, { headers: { host: "localhost" } }),
+      params: {},
+    })) as Response;
+    expect((await response.json()).entries).toContainEqual({
+      name: ".alcove-signing-identity.json",
+      kind: "file",
+    });
+  });
+
   test("an escaping subpath is readable:false, empty", async () => {
     const mount = secretsMount();
     enable(mount);
@@ -166,6 +213,10 @@ describe("GET /api/jobs/mounts/folder/entries", () => {
     fs.writeFileSync(path.join(dataRoot, "alcove.yaml"), "x");
     fs.writeFileSync(path.join(dataRoot, "alcove.yaml.previous"), "x");
     fs.writeFileSync(path.join(dataRoot, "alcove-certificate.json"), "x");
+    fs.writeFileSync(
+      path.join(dataRoot, ".alcove-signing-identity.json"),
+      "PRIVATE",
+    );
     fs.mkdirSync(path.join(dataRoot, "0b9b3a0e-6f0d-4c58-9a57-3f0e1f3c7a11"));
     fs.writeFileSync(path.join(dataRoot, "sftp-password.txt"), "x");
     expect(await (await folderEntries()).json()).toEqual({

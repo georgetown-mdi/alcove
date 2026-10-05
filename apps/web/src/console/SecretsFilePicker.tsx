@@ -26,6 +26,7 @@ import { breadcrumbTrail, enterSubdir, fileSubPath } from "./mountNavigation";
 
 import type {
   CredentialMount,
+  MountBrowsePurpose,
   SecretsEntriesResult,
 } from "@psi/jobClient/sftpAuthoringClient";
 import type { ReactNode } from "react";
@@ -87,6 +88,7 @@ export function SecretsFilePicker({
   onSelect,
   unconfiguredNotice,
   folderFallback = false,
+  purpose = "credential",
 }: {
   /** Commit a picked credential file's locator subPath (the directory segments
    * plus the file name) and the mount it is under. */
@@ -97,6 +99,9 @@ export function SecretsFilePicker({
   /** Browse the working folder instead when no secrets directory is mounted,
    * with {@link FOLDER_CREDENTIAL_NOTICE} above it. */
   folderFallback?: boolean;
+  /** What the pick is for: a credential browse is not offered the console's
+   * own files, a signing identity browse is. */
+  purpose?: MountBrowsePurpose;
 }) {
   const [mount, setMount] = useState<CredentialMount>("secrets");
   const [subPath, setSubPath] = useState<Array<string>>([]);
@@ -121,7 +126,7 @@ export function SecretsFilePicker({
     async (from: CredentialMount, path: Array<string>) => {
       const id = ++listingId.current;
       setListing("loading");
-      const result = await fetchMountEntries(from, path);
+      const result = await fetchMountEntries(from, path, fetch, purpose);
       if (!mounted.current || id !== listingId.current) return;
       if (
         folderFallback &&
@@ -134,7 +139,7 @@ export function SecretsFilePicker({
       }
       setListing(result);
     },
-    [folderFallback],
+    [folderFallback, purpose],
   );
 
   useEffect(() => {

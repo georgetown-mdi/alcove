@@ -73,6 +73,7 @@ import {
 } from "./signingIdentity";
 import { buildJobHandoff } from "./handoff";
 import { checkedMountedKeyFilePath } from "./mountedKeyFile";
+import { consoleOwnedCredentialField } from "./consoleOwnedFiles";
 import { formatFirstIssue } from "./schemaIssueMessage";
 import { probeSftpHostKey } from "./sftpProbe";
 import { referencedCredentialPaths } from "./referencedCredentialFiles";
@@ -213,6 +214,22 @@ export class JobSigningIdentityExposedError extends Error {
       "a rendezvous directory holds this party's signing identity, so the run would publish the private key",
     );
     this.name = "JobSigningIdentityExposedError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} when a credential file of the saved
+ * SFTP connection is one of the console's own files
+ * ({@link consoleOwnedCredentialField}). None of them is ever a credential,
+ * so the run is refused rather than sending the file's contents to the server.
+ * The route maps it to a 400 naming the refusal.
+ */
+export class JobSftpCredentialConsoleOwnedError extends Error {
+  constructor() {
+    super(
+      "a credential file of the saved SFTP connection is one of the console's own files",
+    );
+    this.name = "JobSftpCredentialConsoleOwnedError";
   }
 }
 
@@ -740,6 +757,15 @@ export class JobManager {
       this.runWouldPublishSigningIdentity(identityPath)
     )
       throw new JobSigningIdentityExposedError();
+    if (
+      serverEntry !== undefined &&
+      consoleOwnedCredentialField(
+        serverEntry,
+        { folder: this.dataRoot, secrets: this.jobSecretsDir },
+        [identityPath, signingIdentityPath(this.dataRoot)],
+      ) !== undefined
+    )
+      throw new JobSftpCredentialConsoleOwnedError();
     this.slot = { phase: "starting", id, channel: intent.channel };
 
     let workdir: string | null = null;
