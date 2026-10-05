@@ -684,11 +684,11 @@ function attemptProvesContact(
  * failure -- a lapsed bound, a hand-off, an unreadable custody entry, a
  * refused saved signaling address, an unusable input, a terms shortfall, a
  * refused disclosure, a relay key registration the registrar refused, a
- * failed rotation persist, or a handshake that failed closed -- reproduces identically on the next attempt,
- * so it ends the window's occupancy where it happened. The
- * hand-off refusal is non-retryable and counts no partner miss on its own, but
- * a window that already found the partner absent still folds to `"missed"`
- * (see {@link foldWindowDisposition}).
+ * failed rotation persist, or a handshake that failed closed -- reproduces
+ * identically on the next attempt, so it ends the window's occupancy where it
+ * happened. The hand-off refusal is non-retryable and counts no partner miss
+ * on its own, but a window that already found the partner absent still folds
+ * to `"missed"` (see {@link foldWindowDisposition}).
  *
  * `dataExchangeStarted` overrides all of it: past that boundary a re-attempt
  * would disclose a second time.

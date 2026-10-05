@@ -134,12 +134,7 @@ export function managedAcceptorSignalingEndpoint(
       record.label,
       "is not a complete host, port and path",
     );
-  const endpoint: WebRTCEndpoint = {
-    channel: "webrtc",
-    host: parsed.data.host,
-    ...(parsed.data.port !== undefined ? { port: parsed.data.port } : {}),
-    ...(parsed.data.path !== undefined ? { path: parsed.data.path } : {}),
-  };
+  const endpoint: WebRTCEndpoint = parsed.data;
   const refused = refusedSignalingEndpointField(endpoint);
   if (refused !== undefined)
     throw new ManagedSignalingEndpointRefusedError(
