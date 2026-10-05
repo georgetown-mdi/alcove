@@ -69,7 +69,6 @@ import {
   type ProtocolConnectionConfig,
 } from "./protocol";
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
-import type { RecordOutput } from "./recordFile";
 import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
 import {
   payloadReceiveFillConfirmation,
@@ -833,7 +832,7 @@ export async function runOnlineBootstrap(params: {
    * them.
    */
   logFile?: string;
-  recordOutput?: RecordOutput;
+  writeRecord?: boolean;
   /**
    * `--event-stream`: emit the opt-in NDJSON machine-interface stream on fd 3
    * for the online exchange (see protocol.FileSyncRuntimeOptions and
@@ -948,7 +947,8 @@ export async function runOnlineBootstrap(params: {
       connection: params.connection,
       auth,
       prepared: params.prepared,
-      recordOutput: params.recordOutput,
+      output: params.output,
+      writeRecord: params.writeRecord,
       verbosity: params.verbosity,
       loggerName: params.loggerName,
       logFile: params.logFile,
@@ -1012,7 +1012,7 @@ export async function runOnlineBootstrap(params: {
       verbosity: params.verbosity,
       loggerName: params.loggerName,
       logFile: params.logFile,
-      recordOutput: params.recordOutput,
+      writeRecord: params.writeRecord,
       undeclaredColumnsWarned,
       memoryBudgetReported,
       arrivalWait:

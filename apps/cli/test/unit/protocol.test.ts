@@ -423,8 +423,9 @@ import {
 import {
   agreedTermsPathFor,
   keysPathFor,
-  type RecordOutput,
+  recordFilePathIn,
 } from "../../src/recordFile";
+import { resultFilePath } from "../../src/resultFile";
 import { configureLogFile } from "../../src/util/logging";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
@@ -1202,10 +1203,10 @@ test("an unnamed partner on a record-filing run takes its own warning class", as
         },
         auth: null,
         prepared: minimalPrepared,
-        output: undefined,
+        output: path.join(tmpDir, "out-a"),
         verbosity: -1,
         loggerName: "test-a",
-        recordOutput: { recordFile: path.join(tmpDir, "rec-a.json") },
+        writeRecord: true,
         fileSyncRuntime: { eventStream: true },
       }),
       runProtocol({
@@ -1485,7 +1486,7 @@ test("tells a non-receiving party what the run's completion tells it too", async
       },
     ) as never,
   );
-  const output = path.join(tmpDir, "no-output-party.csv");
+  const output = path.join(tmpDir, "no-output-party");
 
   await runBothHalves(output);
 
@@ -1498,10 +1499,26 @@ test("tells a non-receiving party what the run's completion tells it too", async
   expect(
     mockState.infos.some((line) => line.includes("you receive no result")),
   ).toBe(true);
-  expect(fs.existsSync(output)).toBe(false);
+  expect(resultFilesIn(output)).toEqual([]);
 }, 20_000);
 
 // --- Self-attested record persistence via runProtocol ------------------------
+
+/** The result files a run wrote in `folder`, by name. */
+function resultFilesIn(folder: string): string[] {
+  if (!fs.existsSync(folder)) return [];
+  return fs
+    .readdirSync(folder)
+    .filter((name) => name.startsWith("alcove-results-"));
+}
+
+/** The record files a run wrote in `folder`, by name. */
+function recordFilesIn(folder: string): string[] {
+  if (!fs.existsSync(folder)) return [];
+  return fs
+    .readdirSync(folder)
+    .filter((name) => name.startsWith("alcove-record-"));
+}
 
 const sampleRecord: ExchangeRecord = {
   version: "alcove-exchange-record/v10",
@@ -1554,10 +1571,12 @@ test("writes the self-attested record and verification keys when runExchange ret
   // on disk and round-trip the schema parsers.
   vi.mocked(runExchange).mockImplementation(runExchangeWithAudit as never);
 
-  const recordA = path.join(tmpDir, "rec-a.json");
-  const recordB = path.join(tmpDir, "rec-b.json");
-  const keysA = path.join(tmpDir, "rec-a.keys.json");
-  const keysB = path.join(tmpDir, "rec-b.keys.json");
+  const folderA = path.join(tmpDir, "out-a");
+  const folderB = path.join(tmpDir, "out-b");
+  const recordA = recordFilePathIn(folderA, sampleRecord.createdAt);
+  const recordB = recordFilePathIn(folderB, sampleRecord.createdAt);
+  const keysA = keysPathFor(recordA);
+  const keysB = keysPathFor(recordB);
 
   await Promise.all([
     runProtocol({
@@ -1568,10 +1587,10 @@ test("writes the self-attested record and verification keys when runExchange ret
       },
       auth: null,
       prepared: minimalPrepared,
-      output: undefined,
+      output: folderA,
       verbosity: -1,
       loggerName: "test-a",
-      recordOutput: { recordFile: recordA },
+      writeRecord: true,
     }),
     runProtocol({
       connection: {
@@ -1581,10 +1600,10 @@ test("writes the self-attested record and verification keys when runExchange ret
       },
       auth: null,
       prepared: minimalPrepared,
-      output: undefined,
+      output: folderB,
       verbosity: -1,
       loggerName: "test-b",
-      recordOutput: { recordFile: recordB },
+      writeRecord: true,
     }),
   ]);
 
@@ -1603,14 +1622,17 @@ test("writes the self-attested record and verification keys when runExchange ret
 
 test("a record the run was asked for and could not write warns on fd 3 and exits 73", async () => {
   // The unattended case: records are enabled, the exchange succeeds, and the
-  // record write fails (here on a path whose parent is a regular file). A
+  // record write fails (here on a directory standing at the record's path). A
   // supervisor that discards stderr would otherwise see a clean exit 0 for a
   // run that produced no audit artifact. Both machine channels must send it: a
   // warning event ahead of the terminal event, and exit code 73 (EX_CANTCREAT,
   // per docs/CLI.md) rather than 69, which tells a supervisor to retry. The
   // terminal event stays `result` since the exchange itself succeeded.
-  const blocker = path.join(tmpDir, "blocker");
-  fs.writeFileSync(blocker, "x");
+  const folderA = path.join(tmpDir, "out-a");
+  const folderB = path.join(tmpDir, "out-b");
+  fs.mkdirSync(recordFilePathIn(folderA, sampleRecord.createdAt), {
+    recursive: true,
+  });
   vi.mocked(runExchange).mockImplementation(runExchangeWithAudit as never);
   mockFd3Open();
   try {
@@ -1623,10 +1645,10 @@ test("a record the run was asked for and could not write warns on fd 3 and exits
         },
         auth: null,
         prepared: minimalPrepared,
-        output: undefined,
+        output: folderA,
         verbosity: -1,
         loggerName: "test-a",
-        recordOutput: { recordFile: path.join(blocker, "rec-a.json") },
+        writeRecord: true,
         fileSyncRuntime: { eventStream: true },
       }),
       runProtocol({
@@ -1637,10 +1659,10 @@ test("a record the run was asked for and could not write warns on fd 3 and exits
         },
         auth: null,
         prepared: minimalPrepared,
-        output: undefined,
+        output: folderB,
         verbosity: -1,
         loggerName: "test-b",
-        recordOutput: { recordFile: path.join(tmpDir, "rec-b.json") },
+        writeRecord: true,
       }),
     ]);
     expect(process.exitCode).toBe(73);
@@ -1661,7 +1683,9 @@ test("a record the run was asked for and could not write warns on fd 3 and exits
     "the audit record could not be written to",
   );
   // The successful party is untouched: its record landed and its exit is clean.
-  expect(fs.existsSync(path.join(tmpDir, "rec-b.json"))).toBe(true);
+  expect(fs.existsSync(recordFilePathIn(folderB, sampleRecord.createdAt))).toBe(
+    true,
+  );
 }, 20_000);
 
 // The fixed text runProtocol reports when records were asked for and runExchange
@@ -1681,7 +1705,7 @@ test(
     // that discards stderr never sees. The default runExchange mock returns
     // exactly that shape. Party B is asked for no record, so the single warning
     // and the non-zero exit are provably party A's.
-    const recordA = path.join(tmpDir, "rec-a.json");
+    const folderA = path.join(tmpDir, "out-a");
     mockFd3Open();
     try {
       await Promise.all([
@@ -1693,10 +1717,10 @@ test(
           },
           auth: null,
           prepared: minimalPrepared,
-          output: undefined,
+          output: folderA,
           verbosity: -1,
           loggerName: "test-a",
-          recordOutput: { recordFile: recordA },
+          writeRecord: true,
           fileSyncRuntime: { eventStream: true },
         }),
         runProtocol({
@@ -1728,20 +1752,22 @@ test(
     expect(lines[1].message).toBe(NO_RECORD_BUILT_WARNING);
     expect(lines[3].resultWritten).toBe(true);
     // What the warning asserts: neither the record nor its keys reached disk.
-    expect(fs.existsSync(recordA)).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "rec-a.keys.json"))).toBe(false);
+    expect(recordFilesIn(folderA)).toEqual([]);
   },
 );
 
 test("a result file that could not be written fails with the persistence-loss exit code", async () => {
   // The terminal form of the same loss: the exchange completed and only local
-  // result generation failed (here the output path's parent is a regular file),
+  // result generation failed (here a directory stands at the result's path),
   // so re-running would re-send this party's data for an exchange that already
   // happened. The run fails -- there is no result -- but it reaches the command
   // boundary with 73 rather than the 69 a transport fault gets, and the terminal
   // event's `output` category names the finer distinction for a reader of fd 3.
-  const blocker = path.join(tmpDir, "blocker");
-  fs.writeFileSync(blocker, "x");
+  const folderA = path.join(tmpDir, "out-a");
+  fs.mkdirSync(resultFilePath(folderA, sampleRecord.createdAt), {
+    recursive: true,
+  });
+  vi.mocked(runExchange).mockImplementation(runExchangeWithAudit as never);
   mockFd3Open();
   let outcome: PromiseSettledResult<unknown>;
   try {
@@ -1754,7 +1780,7 @@ test("a result file that could not be written fails with the persistence-loss ex
         },
         auth: null,
         prepared: minimalPrepared,
-        output: path.join(blocker, "out.csv"),
+        output: folderA,
         verbosity: -1,
         loggerName: "test-a",
         fileSyncRuntime: { eventStream: true },
@@ -2041,7 +2067,11 @@ test("a partner payload missing a matched row still leaves the record and the re
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
   const parties = ["a", "b"].map((name) => ({
-    record: path.join(tmpDir, `rec-${name}.json`),
+    folder: path.join(tmpDir, `out-${name}`),
+    record: recordFilePathIn(
+      path.join(tmpDir, `out-${name}`),
+      sampleRecord.createdAt,
+    ),
     receipt: path.join(tmpDir, `receipt-${name}.json`),
     keyFile: name === "a" ? keyFileA : keyFileB,
     name: `test-${name}`,
@@ -2051,9 +2081,7 @@ test("a partner payload missing a matched row still leaves the record and the re
   try {
     outcomes = await Promise.allSettled(
       parties.map((p) =>
-        runSigningParty(p.keyFile, p.name, p.receipt, {
-          recordFile: p.record,
-        }),
+        runSigningParty(p.keyFile, p.name, p.receipt, p.folder),
       ),
     );
   } finally {
@@ -2165,8 +2193,8 @@ test("writes no result file for a non-receiving party when the exchange withhold
   // reached here.
   vi.mocked(buildOutputTable).mockClear();
 
-  const outputA = path.join(tmpDir, "out-a.csv");
-  const outputB = path.join(tmpDir, "out-b.csv");
+  const outputA = path.join(tmpDir, "out-a");
+  const outputB = path.join(tmpDir, "out-b");
 
   await Promise.all([
     runProtocol({
@@ -2196,8 +2224,8 @@ test("writes no result file for a non-receiving party when the exchange withhold
   ]);
 
   // No result file is written for either non-receiving party...
-  expect(fs.existsSync(outputA)).toBe(false);
-  expect(fs.existsSync(outputB)).toBe(false);
+  expect(resultFilesIn(outputA)).toEqual([]);
+  expect(resultFilesIn(outputB)).toEqual([]);
   // ...and the table-formatting step is never reached, so there is nothing in
   // memory to write either.
   expect(vi.mocked(buildOutputTable)).not.toHaveBeenCalled();
@@ -2256,10 +2284,10 @@ test("reports a count-only exchange's count instead of treating it as withheld",
   // same way: this party received exactly what its terms promised.
   mockCountOnlyRun("receiver");
 
-  const output = path.join(tmpDir, "count-only.csv");
+  const output = path.join(tmpDir, "count-only");
   await runBothHalves(output);
 
-  expect(fs.existsSync(output)).toBe(false);
+  expect(resultFilesIn(output)).toEqual([]);
   expect(vi.mocked(buildOutputTable)).not.toHaveBeenCalled();
   const countLines = mockState.infos.filter((line) =>
     line.includes("7 records in common"),
@@ -2288,10 +2316,10 @@ test("caveats a count-only count the partner reported rather than computed", asy
   // reads the number rather than only at consent time.
   mockCountOnlyRun("sender");
 
-  const output = path.join(tmpDir, "count-only-sender.csv");
+  const output = path.join(tmpDir, "count-only-sender");
   await runBothHalves(output);
 
-  expect(fs.existsSync(output)).toBe(false);
+  expect(resultFilesIn(output)).toEqual([]);
   const countLines = mockState.infos.filter((entry) =>
     entry.includes("7 records in common"),
   );
@@ -2877,8 +2905,8 @@ test("both key files hold the same rotated token after a successful exchange", a
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
-  const outputA = path.join(tmpDir, "out-a.csv");
-  const outputB = path.join(tmpDir, "out-b.csv");
+  const outputA = path.join(tmpDir, "out-a");
+  const outputB = path.join(tmpDir, "out-b");
 
   await Promise.all([
     runProtocol({
@@ -2930,8 +2958,9 @@ test("a completed run ends with one outcome line naming the count, the paths and
     headers: ["id"],
     rows: [["1"], ["2"]],
   });
-  const recordA = path.join(tmpDir, "rec-a.json");
-  const outputA = path.join(tmpDir, "out-a.csv");
+  const folderA = path.join(tmpDir, "out-a");
+  const recordA = recordFilePathIn(folderA, sampleRecord.createdAt);
+  const outputA = resultFilePath(folderA, sampleRecord.createdAt);
   const linesA: string[] = [];
   const linesB: string[] = [];
   const emitted: Array<{ event: string; args: unknown[] }> = [];
@@ -2961,10 +2990,10 @@ test("a completed run ends with one outcome line naming the count, the paths and
         },
         auth: { sharedSecret: TOKEN_A, keyFilePath: keyFileA },
         prepared: minimalPrepared,
-        output: outputA,
+        output: folderA,
         verbosity: -1,
         loggerName: "test-a",
-        recordOutput: { recordFile: recordA },
+        writeRecord: true,
         fileSyncRuntime: { eventStream: emitter },
         writeOutcomeLine: (line) => linesA.push(line),
       }),
@@ -3662,7 +3691,7 @@ function runSigningParty(
   keyFilePath: string,
   name: string,
   receiptFile: string,
-  recordOutput?: RecordOutput,
+  recordFolder?: string,
   machineInterface: { eventStream?: boolean } = {},
   configPath?: string,
 ): Promise<unknown> {
@@ -3674,10 +3703,10 @@ function runSigningParty(
     },
     auth: { sharedSecret: TOKEN_A, keyFilePath },
     prepared: minimalPrepared,
-    output: undefined,
+    output: recordFolder,
     verbosity: -1,
     loggerName: name,
-    recordOutput,
+    writeRecord: recordFolder !== undefined,
     fileSyncRuntime: machineInterface,
     signing: signingPersistFixture(receiptFile, configPath),
   }) as unknown as Promise<unknown>;
@@ -4010,8 +4039,10 @@ test(
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-    const recordA = path.join(tmpDir, "record-a.json");
-    const recordB = path.join(tmpDir, "record-b.json");
+    const folderA = path.join(tmpDir, "out-a");
+    const folderB = path.join(tmpDir, "out-b");
+    const recordA = recordFilePathIn(folderA, terminatedAudit.record.createdAt);
+    const recordB = recordFilePathIn(folderB, terminatedAudit.record.createdAt);
 
     vi.mocked(runExchange).mockImplementation((async () => {
       await awaitBothArmed();
@@ -4020,12 +4051,18 @@ test(
     vi.mocked(exchangeRecordFromFailure).mockReturnValue(terminatedAudit);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json"), {
-        recordFile: recordA,
-      }),
-      runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json"), {
-        recordFile: recordB,
-      }),
+      runSigningParty(
+        keyFileA,
+        "test-a",
+        path.join(tmpDir, "receipt-a.json"),
+        folderA,
+      ),
+      runSigningParty(
+        keyFileB,
+        "test-b",
+        path.join(tmpDir, "receipt-b.json"),
+        folderB,
+      ),
     ]);
     // The run still fails: keeping the record is not a rescue of the exchange.
     expect(resultA.status).toBe("rejected");
@@ -4101,11 +4138,12 @@ test(
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-    // A path whose parent is a regular file, so the write fails on its own
-    // rather than through a mocked writer.
-    const blocker = path.join(tmpDir, "blocker");
-    fs.writeFileSync(blocker, "x");
-    const recordA = path.join(blocker, "record-a.json");
+    // A directory standing at the record's path, so the write fails on its
+    // own rather than through a mocked writer.
+    const folderA = path.join(tmpDir, "out-a");
+    fs.mkdirSync(recordFilePathIn(folderA, terminatedAudit.record.createdAt), {
+      recursive: true,
+    });
 
     vi.mocked(runExchange).mockImplementation((async () => {
       await awaitBothArmed();
@@ -4119,7 +4157,7 @@ test(
           keyFileA,
           "test-a",
           path.join(tmpDir, "receipt-a.json"),
-          { recordFile: recordA },
+          folderA,
           { eventStream: true },
         ),
         runSigningParty(
@@ -4151,7 +4189,7 @@ test(
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-    const recordA = path.join(tmpDir, "record-a.json");
+    const folderA = path.join(tmpDir, "out-a");
 
     vi.mocked(runExchange).mockImplementation((async () => {
       await awaitBothArmed();
@@ -4169,7 +4207,7 @@ test(
           keyFileA,
           "test-a",
           path.join(tmpDir, "receipt-a.json"),
-          { recordFile: recordA },
+          folderA,
           { eventStream: true },
         ),
         runSigningParty(
@@ -4199,8 +4237,7 @@ test(
     expect(lines[lines.length - 1].type).toBe("error");
     expect(process.exitCode).not.toBe(73);
     // Nothing was written, which is what the warning says.
-    expect(fs.existsSync(recordA)).toBe(false);
-    expect(fs.existsSync(keysPathFor(recordA))).toBe(false);
+    expect(recordFilesIn(folderA)).toEqual([]);
   },
 );
 
@@ -4212,7 +4249,7 @@ test(
     const keyFileB = path.join(tmpDir, "b.key");
     saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
-    const recordA = path.join(tmpDir, "record-a.json");
+    const folderA = path.join(tmpDir, "out-a");
 
     // A failure raised before the payloads flowed: no disclosure to attest, so
     // core marks the error neither way, which is what the mocked defaults stand
@@ -4228,7 +4265,7 @@ test(
           keyFileA,
           "test-a",
           path.join(tmpDir, "receipt-a.json"),
-          { recordFile: recordA },
+          folderA,
           { eventStream: true },
         ),
         runSigningParty(
@@ -4263,7 +4300,7 @@ test(
 
 function runThroughWarnGate(
   signing: SigningPersist | null,
-  recordOutput?: { recordFile?: string },
+  writeRecord?: boolean,
   eventStream?: boolean,
 ): Promise<unknown> {
   return runProtocol({
@@ -4273,7 +4310,7 @@ function runThroughWarnGate(
     output: undefined,
     verbosity: -1,
     loggerName: "test",
-    recordOutput,
+    writeRecord,
     fileSyncRuntime: { eventStream },
     signing,
   }) as unknown as Promise<unknown>;
@@ -4309,9 +4346,7 @@ test("a signing run that writes its record does not warn", async () => {
   await expect(
     runThroughWarnGate(
       signingPersistFixture(path.join(tmpDir, "receipt.json")),
-      {
-        recordFile: path.join(tmpDir, "rec.json"),
-      },
+      true,
     ),
   ).rejects.toThrow("key file path is empty");
 
@@ -4325,6 +4360,46 @@ test("an unsigned run with records off does not warn", async () => {
   );
 
   expect(mockState.warnings).not.toContain(SIGNING_WITHOUT_RECORD_WARNING);
+});
+
+// --- The output folder ---------------------------------------------------------
+
+test("an output naming a file is refused before any contact, and the file is kept", async () => {
+  const file = path.join(tmpDir, "results.csv");
+  fs.writeFileSync(file, "earlier\n");
+  const error = await runProtocol({
+    connection: { channel: "filedrop", path: dropDir },
+    auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
+    prepared: minimalPrepared,
+    output: file,
+    verbosity: -1,
+    loggerName: "test",
+  }).then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  expect((error as Error).message).toContain("is a file, not a folder");
+  expect(exitCodeForError(error)).toBe(64);
+  expect(fs.readFileSync(file, "utf8")).toBe("earlier\n");
+  expect(fs.readdirSync(dropDir)).toEqual([]);
+  expect(vi.mocked(runExchange)).not.toHaveBeenCalled();
+});
+
+test("a missing output folder is created before the run's other local checks", async () => {
+  const folder = path.join(tmpDir, "runs", "latest");
+  await expect(
+    runProtocol({
+      connection: { channel: "filedrop", path: dropDir },
+      auth: { sharedSecret: TOKEN_A, keyFilePath: "" },
+      prepared: minimalPrepared,
+      output: folder,
+      verbosity: -1,
+      loggerName: "test",
+    }),
+  ).rejects.toThrow("key file path is empty");
+  expect(fs.statSync(folder).isDirectory()).toBe(true);
+  expect(fs.readdirSync(folder)).toEqual([]);
+  expect(fs.readdirSync(dropDir)).toEqual([]);
 });
 
 // --- Input columns the metadata does not declare -----------------------------
@@ -4566,8 +4641,9 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
           keyFilePath: path.join(tmpDir, "expired.key"),
         },
         prepared: { ...minimalPrepared, undeclaredColumns },
+        output: undefined,
         signing: signingPersistFixture(path.join(tmpDir, "receipt.json")),
-        recordOutput: undefined,
+        writeRecord: false,
         verbosity: -1,
         loggerName: "test",
         eventStream: true,
@@ -4613,6 +4689,7 @@ test("preflightRun refuses a run short of memory before any file is written", as
         connection: { channel: "filedrop", path: dropDir },
         auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
         prepared: { ...minimalPrepared, rowCount: SHORT_MEMORY_RECORDS },
+        output: undefined,
         verbosity: -1,
         loggerName: "test",
         eventStream: true,
@@ -4643,6 +4720,7 @@ test("--allow-memory-shortfall turns the refusal into a warning on both channels
       connection: { channel: "filedrop", path: dropDir },
       auth: { sharedSecret: TOKEN_A, keyFilePath: path.join(tmpDir, "k") },
       prepared: { ...minimalPrepared, rowCount: SHORT_MEMORY_RECORDS },
+      output: undefined,
       verbosity: -1,
       loggerName: "test",
       eventStream: true,
@@ -4679,7 +4757,7 @@ test("runProtocol with no preflight refuses a run short of memory before any fil
       output: undefined,
       verbosity: -1,
       loggerName: "test",
-      recordOutput: undefined,
+      writeRecord: false,
     }),
   ).rejects.toThrow(/--allow-memory-shortfall/);
   expect(fs.readdirSync(dropDir)).toEqual([]);
@@ -4702,7 +4780,7 @@ test("a run whose preflight reported its memory does not report it again", async
       output: undefined,
       verbosity: -1,
       loggerName: "test",
-      recordOutput: undefined,
+      writeRecord: false,
       memoryBudgetReported: true,
     }),
   ).rejects.not.toThrow(/--allow-memory-shortfall/);
@@ -4784,8 +4862,9 @@ async function runSigningPartyWithPreflight(
       connection,
       auth,
       prepared,
+      output: undefined,
       signing,
-      recordOutput: undefined,
+      writeRecord: false,
       verbosity: -1,
       loggerName: name,
       eventStream: undefined,
@@ -4797,7 +4876,7 @@ async function runSigningPartyWithPreflight(
     output: undefined,
     verbosity: -1,
     loggerName: name,
-    recordOutput: undefined,
+    writeRecord: false,
     fileSyncRuntime: { eventStream },
     signing,
     signingWithoutRecordWarned,

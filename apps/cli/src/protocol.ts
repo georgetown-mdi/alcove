@@ -109,8 +109,12 @@ import {
   stopPsiWorkersBeforeExit,
   type PsiWorkerExitWaitOptions,
 } from "./psiWorkerHost";
-import { writeExchangeRecord, type RecordOutput } from "./recordFile";
-import { resultFilePath } from "./resultFile";
+import { writeExchangeRecord } from "./recordFile";
+import {
+  preflightOutputFolder,
+  resultFilePath,
+  runArtifactFolder,
+} from "./resultFile";
 import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
 import {
   closeWithinCeiling,
@@ -717,7 +721,7 @@ async function runExchangeStage(params: {
   onPayloadReceiveFill:
     ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined;
   onTermsChange: ((change: TermsChange) => Promise<void>) | undefined;
-  recordOutput: RecordOutput | undefined;
+  writeRecord: boolean;
   allowMemoryShortfall: boolean;
   stageTimer: { open: (id: string) => void; close: () => void };
   psiProgress: PsiProgressDisplay;
@@ -739,7 +743,7 @@ async function runExchangeStage(params: {
     payloadReceiveFillNotice,
     onPayloadReceiveFill,
     onTermsChange,
-    recordOutput,
+    writeRecord,
     allowMemoryShortfall,
     stageTimer,
     psiProgress,
@@ -952,7 +956,7 @@ async function runExchangeStage(params: {
           "terms agreed, partner identity:",
           redactAndDisplayPartyIdentity(partnerTerms.identity),
         ] as const;
-        if (recordOutput !== undefined && partnerTerms.identity === undefined) {
+        if (writeRecord && partnerTerms.identity === undefined) {
           log.warn(...line, UNNAMED_PARTNER_ACCOUNTING_NOTE);
           emit((e) =>
             e.warning("unnamedPartnerRecord", UNNAMED_PARTNER_ACCOUNTING_NOTE),
@@ -1759,14 +1763,13 @@ interface RunLocalInputs {
  */
 function warnSigningWithoutRecord(params: {
   signing: SigningPersist | null;
-  recordOutput: RecordOutput | undefined;
+  writeRecord: boolean;
   alreadyWarned: boolean;
   log: ReturnType<typeof getLogger>;
   emit: (fn: (e: EventStreamEmitter) => void) => void;
 }): boolean {
-  const { signing, recordOutput, alreadyWarned, log, emit } = params;
-  if (alreadyWarned || signing === null || recordOutput !== undefined)
-    return alreadyWarned;
+  const { signing, writeRecord, alreadyWarned, log, emit } = params;
+  if (alreadyWarned || signing === null || writeRecord) return alreadyWarned;
   log.warn(SIGNING_WITHOUT_RECORD_WARNING);
   emit((e) =>
     e.warning("signingWithoutRecord", SIGNING_WITHOUT_RECORD_WARNING),
@@ -1839,8 +1842,9 @@ export function checkRunMemoryBudget(params: {
 }
 
 /**
- * The run's refusals decided from local inputs alone: the shared secret's
- * readiness and its key-file path, the memory the round needs
+ * The run's refusals decided from local inputs alone: the output folder
+ * ({@link preflightOutputFolder}), the shared secret's readiness and its
+ * key-file path, the memory the round needs
  * ({@link checkRunMemoryBudget}, skipped when `memoryBudgetReported`), the
  * first round's size against one message on the channel, and on webrtc the
  * rendezvous resolution. None of them contacts the network, so
@@ -1850,6 +1854,7 @@ export function checkRunMemoryBudget(params: {
 async function checkRunLocalInputs(params: {
   connection: ProtocolConnectionConfig;
   prepared: PreparedExchange;
+  output: string | undefined;
   auth: AuthPersist | null;
   verbosity: number;
   logFile: string | undefined;
@@ -1861,6 +1866,7 @@ async function checkRunLocalInputs(params: {
   const {
     connection,
     prepared,
+    output,
     auth,
     verbosity,
     logFile,
@@ -1869,6 +1875,7 @@ async function checkRunLocalInputs(params: {
     log,
     emit,
   } = params;
+  if (output !== undefined) preflightOutputFolder(output, log);
   let trimmedKeyFilePath: string | undefined;
   if (auth) {
     // Fail fast on the locally-knowable secret preconditions -- a malformed
@@ -1988,7 +1995,7 @@ export interface PreflightRunResult {
  * `runProtocol` as `fileSyncRuntime.eventStream`; `runProtocol` runs the same
  * checks again, and a first round already counted is not counted twice.
  *
- * `signing` and `recordOutput` are the same run's signed-receipt inputs, so a
+ * `signing` and `writeRecord` are the same run's signed-receipt inputs, so a
  * signed run this preflight refuses still shows
  * {@link SIGNING_WITHOUT_RECORD_WARNING} ahead of the terminal error, as a
  * run this preflight passes does ahead of `runProtocol`'s own pass. Omit both
@@ -2002,8 +2009,10 @@ export async function preflightRun(options: {
   connection: ProtocolConnectionConfig;
   auth: AuthPersist | null;
   prepared: PreparedExchange;
+  /** The run's `OUTPUT` folder, as `runProtocol` is given it. */
+  output: string | undefined;
   signing?: SigningPersist | null;
-  recordOutput?: RecordOutput | undefined;
+  writeRecord?: boolean;
   verbosity: number;
   loggerName: string;
   logFile?: string;
@@ -2015,8 +2024,9 @@ export async function preflightRun(options: {
     connection,
     auth,
     prepared,
+    output,
     signing = null,
-    recordOutput,
+    writeRecord = false,
     verbosity,
     loggerName,
     logFile,
@@ -2029,7 +2039,7 @@ export async function preflightRun(options: {
   const log = getLogger(loggerName);
   const signingWithoutRecordWarned = warnSigningWithoutRecord({
     signing,
-    recordOutput,
+    writeRecord,
     alreadyWarned: false,
     log,
     emit,
@@ -2044,6 +2054,7 @@ export async function preflightRun(options: {
     await checkRunLocalInputs({
       connection,
       prepared,
+      output,
       auth,
       verbosity,
       logFile,
@@ -2091,11 +2102,12 @@ async function prepareTransport(
   params: {
     connection: ProtocolConnectionConfig;
     prepared: PreparedExchange;
+    output: string | undefined;
     auth: AuthPersist | null;
     saveIntent: boolean | undefined;
     onAuthenticated: (() => void | Promise<void>) | undefined;
     signing: SigningPersist | null;
-    recordOutput: RecordOutput | undefined;
+    writeRecord: boolean;
     signingWithoutRecordWarned: boolean;
     undeclaredColumnsWarned: boolean;
     allowMemoryShortfall: boolean;
@@ -2110,11 +2122,12 @@ async function prepareTransport(
   const {
     connection,
     prepared,
+    output,
     auth,
     saveIntent,
     onAuthenticated,
     signing,
-    recordOutput,
+    writeRecord,
     signingWithoutRecordWarned,
     undeclaredColumnsWarned,
     allowMemoryShortfall,
@@ -2175,11 +2188,11 @@ async function prepareTransport(
   // A caller that ran preflightRun already raised
   // SIGNING_WITHOUT_RECORD_WARNING and passed that back as
   // signingWithoutRecordWarned; a caller that did not run preflightRun (or
-  // whose preflight had no signing/recordOutput to check) has it raised here,
+  // whose preflight had no signing/writeRecord to check) has it raised here,
   // still ahead of every check below.
   warnSigningWithoutRecord({
     signing,
-    recordOutput,
+    writeRecord,
     alreadyWarned: signingWithoutRecordWarned,
     log,
     emit,
@@ -2206,6 +2219,7 @@ async function prepareTransport(
   const checked = await checkRunLocalInputs({
     connection,
     prepared,
+    output,
     auth,
     verbosity,
     logFile,
@@ -2306,7 +2320,7 @@ async function writeExchangeOutputs(params: {
   prepared: PreparedExchange;
   output: string | undefined;
   csvDelimiter: string | undefined;
-  recordOutput: RecordOutput | undefined;
+  writeRecord: boolean;
   signing: SigningPersist | null;
   loggerName: string;
   log: ReturnType<typeof getLogger>;
@@ -2319,7 +2333,7 @@ async function writeExchangeOutputs(params: {
     prepared,
     output,
     csvDelimiter,
-    recordOutput,
+    writeRecord,
     signing,
     loggerName,
     log,
@@ -2342,6 +2356,7 @@ async function writeExchangeOutputs(params: {
   // there is one, so a result named per run, the record, and the receipt pair
   // by name.
   const runCreatedAt = audit?.record.createdAt ?? new Date().toISOString();
+  const artifactFolder = runArtifactFolder(output);
   const resultPath =
     output === undefined ? undefined : resultFilePath(output, runCreatedAt);
 
@@ -2486,7 +2501,7 @@ async function writeExchangeOutputs(params: {
   // (warned there, with the cause), so it reports as a missing artifact
   // exactly as a failed write does.
   let record: RecordDelivery;
-  if (recordOutput === undefined) record = { kind: "disabled" };
+  if (!writeRecord) record = { kind: "disabled" };
   else if (audit === undefined) {
     missingArtifacts.push(
       "no audit record could be built for this exchange, so none was " +
@@ -2496,7 +2511,7 @@ async function writeExchangeOutputs(params: {
     record = { kind: "notWritten" };
   } else {
     const written = writeExchangeRecord(
-      recordOutput,
+      artifactFolder,
       audit.record,
       audit.keys,
       loggerName,
@@ -2525,6 +2540,7 @@ async function writeExchangeOutputs(params: {
     const failure = writeDualSignedRecord(
       signing.receiptOutput,
       signedReceipt,
+      artifactFolder,
       runCreatedAt,
       loggerName,
     );
@@ -2662,8 +2678,9 @@ export interface RunProtocolOptions {
    * a terminal whose diagnostics it shares and nowhere else.
    */
   logFile?: string;
-  /** Where to write the exchange record; omit to skip recording. */
-  recordOutput?: RecordOutput;
+  /** Whether to write the exchange record, in the run's folder; omit to skip
+   * recording. */
+  writeRecord?: boolean;
   /** This party's zero-setup `--save` intent. Meaningful only with `auth: null`. */
   saveIntent?: boolean;
   /** The post-handshake hook. Meaningful only on the authenticated path. */
@@ -2767,9 +2784,9 @@ export interface RunProtocolOptions {
  * security only. The parameter has no `undefined` state: every caller passes
  * `AuthPersist` to authenticate or `null` to opt out.
  *
- * When `recordOutput` is given, the self-attested exchange record and its
- * private verification keys are written after the results (non-fatal on
- * failure; see {@link writeExchangeRecord}). Pass `undefined` to skip
+ * When `writeRecord` is true, the self-attested exchange record and its
+ * private verification keys are written in the run's folder after the results
+ * (non-fatal on failure; see {@link writeExchangeRecord}); omit it to skip
  * recording. A record that was asked for and could not be produced never
  * fails the exchange but is reported: a `warning` event on the
  * machine-interface stream and `PERSISTENCE_LOSS_EXIT_CODE`, so an
@@ -2813,7 +2830,7 @@ export interface RunProtocolOptions {
  * record). Pass `null` (the default) to skip signing. Runs only on the
  * authenticated path, the only one holding the session key the receipt
  * binder needs; a non-null `signing` on the unauthenticated (`auth: null`)
- * path is rejected up front. A non-null `signing` with no `recordOutput` is
+ * path is rejected up front. A non-null `signing` without `writeRecord` is
  * permitted and warned about ({@link SIGNING_WITHOUT_RECORD_WARNING}), not
  * refused.
  */
@@ -2829,7 +2846,7 @@ export async function runProtocol(
     verbosity,
     loggerName,
     logFile,
-    recordOutput,
+    writeRecord = false,
     saveIntent,
     onAuthenticated,
     fileSyncRuntime = {},
@@ -2913,11 +2930,12 @@ export async function runProtocol(
     await prepareTransport(build, {
       connection,
       prepared,
+      output,
       auth,
       saveIntent,
       onAuthenticated,
       signing,
-      recordOutput,
+      writeRecord,
       signingWithoutRecordWarned,
       undeclaredColumnsWarned,
       allowMemoryShortfall,
@@ -3187,7 +3205,7 @@ export async function runProtocol(
       payloadReceiveFillNotice,
       onPayloadReceiveFill,
       onTermsChange,
-      recordOutput,
+      writeRecord,
       allowMemoryShortfall,
       stageTimer,
       psiProgress,
@@ -3224,7 +3242,7 @@ export async function runProtocol(
       prepared,
       output,
       csvDelimiter,
-      recordOutput,
+      writeRecord,
       signing,
       loggerName,
       log,
@@ -3393,7 +3411,7 @@ export async function runProtocol(
     // wherever it is copied.
     // Skipped under --no-record, like every other record write.
     const disclosedRecord = exchangeRecordFromFailure(err);
-    if (recordOutput !== undefined) {
+    if (writeRecord) {
       // Reported on the stream but NOT as a persistence loss: that class is
       // a completed run's lost local write, and its exit code exists to
       // tell a supervisor not to re-run. This run failed and keeps its own
@@ -3406,7 +3424,7 @@ export async function runProtocol(
       // above.
       if (disclosedRecord !== undefined) {
         const written = writeExchangeRecord(
-          recordOutput,
+          runArtifactFolder(output),
           disclosedRecord.record,
           disclosedRecord.keys,
           loggerName,

@@ -23,11 +23,11 @@ export const COMMAND_NAMES: readonly string[] = [
 /** What a bare `alcove` prints: the common tasks and where to read more. */
 export const BARE_INVOCATION_SUMMARY =
   "No command given. Common tasks:\n" +
-  "  alcove URL INPUT_FILE [OUTPUT_FILE]       quick exchange, no setup\n" +
-  "  alcove init [INPUT_FILE]                  write a configuration template\n" +
-  "  alcove invite ... / alcove accept ...     set up a recurring exchange\n" +
-  "  alcove exchange INPUT_FILE [OUTPUT_FILE]  run a recurring exchange\n" +
-  "  alcove doctor probe                       check a network file drop\n" +
+  "  alcove URL INPUT_FILE [OUTPUT_FOLDER]       quick exchange, no setup\n" +
+  "  alcove init [INPUT_FILE]                    write a configuration template\n" +
+  "  alcove invite ... / alcove accept ...       set up a recurring exchange\n" +
+  "  alcove exchange INPUT_FILE [OUTPUT_FOLDER]  run a recurring exchange\n" +
+  "  alcove doctor probe                         check a network file drop\n" +
   "Run 'alcove --help' for every command and option, or\n" +
   "'alcove COMMAND --help' for one command.";
 

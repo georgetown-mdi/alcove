@@ -28,7 +28,7 @@ vi.mock("@alcove/core", async (importActual) => {
 import { parseDualSignedRecord, type DualSignedRecord } from "@alcove/core";
 
 import {
-  defaultReceiptPath,
+  receiptFilePathIn,
   receiptPathFor,
   resolveReceiptOutput,
   writeDualSignedRecord,
@@ -75,10 +75,15 @@ const record: DualSignedRecord = {
   },
 };
 
-test("defaultReceiptPath is a filesystem-safe timestamped path in the cwd", () => {
-  const p = defaultReceiptPath("2026-06-06T01:02:03.456Z");
-  expect(p).toBe("./alcove-receipt-2026-06-06T01-02-03-456Z.json");
+test("receiptFilePathIn is a filesystem-safe timestamped path in the folder", () => {
+  const p = receiptFilePathIn(dir, "2026-06-06T01:02:03.456Z");
+  expect(p).toBe(
+    path.join(dir, "alcove-receipt-2026-06-06T01-02-03-456Z.json"),
+  );
   expect(path.basename(p)).not.toContain(":");
+  expect(receiptFilePathIn(".", "2026-06-06T01:02:03.456Z")).toBe(
+    "alcove-receipt-2026-06-06T01-02-03-456Z.json",
+  );
 });
 
 test("resolveReceiptOutput keeps an explicit path, else selects the default", () => {
@@ -90,13 +95,13 @@ test("resolveReceiptOutput keeps an explicit path, else selects the default", ()
   expect(resolveReceiptOutput()).toEqual({ receiptFile: undefined });
 });
 
-test("receiptPathFor uses an explicit path verbatim, else the timestamped default", () => {
+test("receiptPathFor uses an explicit path verbatim, else the timestamped name in the folder", () => {
   expect(
-    receiptPathFor({ receiptFile: "/tmp/x.json" }, "2026-01-01T00:00:00Z"),
+    receiptPathFor({ receiptFile: "/tmp/x.json" }, dir, "2026-01-01T00:00:00Z"),
   ).toBe("/tmp/x.json");
   expect(
-    receiptPathFor({ receiptFile: undefined }, "2026-01-01T00:00:00Z"),
-  ).toBe("./alcove-receipt-2026-01-01T00-00-00Z.json");
+    receiptPathFor({ receiptFile: undefined }, dir, "2026-01-01T00:00:00Z"),
+  ).toBe(path.join(dir, "alcove-receipt-2026-01-01T00-00-00Z.json"));
 });
 
 test("writeDualSignedRecord writes a parseable owner-only file", () => {
@@ -105,6 +110,7 @@ test("writeDualSignedRecord writes a parseable owner-only file", () => {
     writeDualSignedRecord(
       { receiptFile: target },
       record,
+      dir,
       "2026-01-01T00:00:00Z",
       "test",
     ),
@@ -134,6 +140,7 @@ test("writeDualSignedRecord warns rather than throws on a write failure", () => 
     failure = writeDualSignedRecord(
       { receiptFile: target },
       record,
+      dir,
       "2026-01-01T00:00:00Z",
       "test",
     );

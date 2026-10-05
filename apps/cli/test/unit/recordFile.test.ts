@@ -46,8 +46,8 @@ import {
 import {
   agreedTermsPathFor,
   keysPathFor,
+  recordFilePathIn,
   recordPathsFor,
-  resolveRecordOutput,
   writeExchangeRecord,
 } from "../../src/recordFile";
 
@@ -110,50 +110,30 @@ test("keysPathFor swaps a .json suffix for .keys.json", () => {
   expect(keysPathFor("/tmp/rec")).toBe("/tmp/rec.keys.json");
 });
 
-test("resolveRecordOutput returns undefined when disabled", () => {
-  expect(resolveRecordOutput({ enabled: false })).toBeUndefined();
-  // --no-record wins over an explicit --record-file.
-  expect(
-    resolveRecordOutput({ enabled: false, recordFile: "x.json" }),
-  ).toBeUndefined();
-});
-
-test("resolveRecordOutput keeps an explicit record file, else selects the default", () => {
-  expect(
-    resolveRecordOutput({ enabled: true, recordFile: "/tmp/a.json" }),
-  ).toEqual({ recordFile: "/tmp/a.json" });
-  // Whitespace-only is treated as no explicit file: fall back to the default.
-  expect(resolveRecordOutput({ enabled: true, recordFile: "   " })).toEqual({
-    recordFile: undefined,
+test("recordPathsFor names the record in the folder, stamped with its createdAt", () => {
+  // The filename timestamp is the record's createdAt, not a separate clock
+  // read, so the filename matches the timestamp recorded inside the file.
+  expect(recordPathsFor("/tmp/out", "2026-06-06T01:02:03.456Z")).toEqual({
+    recordFilePath: path.join(
+      "/tmp/out",
+      "alcove-record-2026-06-06T01-02-03-456Z.json",
+    ),
+    keysFilePath: path.join(
+      "/tmp/out",
+      "alcove-record-2026-06-06T01-02-03-456Z.keys.json",
+    ),
   });
-  expect(resolveRecordOutput({ enabled: true })).toEqual({
-    recordFile: undefined,
-  });
-});
-
-test("recordPathsFor uses an explicit path verbatim and derives the keys path", () => {
-  expect(
-    recordPathsFor({ recordFile: "/tmp/a.json" }, "2026-01-02T03:04:05.000Z"),
-  ).toEqual({
-    recordFilePath: "/tmp/a.json",
-    keysFilePath: "/tmp/a.keys.json",
-  });
-});
-
-test("recordPathsFor stamps the default path with the record's createdAt", () => {
-  // The default filename timestamp is the record's createdAt, not a separate
-  // clock read, so the filename matches the timestamp recorded inside the file.
-  expect(recordPathsFor({}, "2026-06-06T01:02:03.456Z")).toEqual({
-    recordFilePath: "./alcove-record-2026-06-06T01-02-03-456Z.json",
-    keysFilePath: "./alcove-record-2026-06-06T01-02-03-456Z.keys.json",
+  expect(recordPathsFor(".", "2026-06-06T01:02:03.456Z")).toEqual({
+    recordFilePath: "alcove-record-2026-06-06T01-02-03-456Z.json",
+    keysFilePath: "alcove-record-2026-06-06T01-02-03-456Z.keys.json",
   });
 });
 
 test("writeExchangeRecord writes both files, parseable and owner-only", () => {
-  const recordFilePath = path.join(dir, "rec.json");
+  const recordFilePath = recordFilePathIn(dir, record.createdAt);
   const keysFilePath = keysPathFor(recordFilePath);
   expect(
-    writeExchangeRecord({ recordFile: recordFilePath }, record, keys, "test"),
+    writeExchangeRecord(path.dirname(recordFilePath), record, keys, "test"),
   ).toEqual({ kind: "written", paths: { recordFilePath, keysFilePath } });
 
   // Both files exist and round-trip through the schema parsers.
@@ -188,11 +168,11 @@ test("writeExchangeRecord is non-fatal when the destination is unwritable", () =
   // escapes the log line's cause once.
   const blocker = path.join(dir, "blocker");
   fs.writeFileSync(blocker, "x");
-  const recordFilePath = path.join(blocker, "rec.json"); // parent is a file
+  const recordFilePath = recordFilePathIn(blocker, record.createdAt); // parent is a file
   let written: ReturnType<typeof writeExchangeRecord> | undefined;
   expect(() => {
     written = writeExchangeRecord(
-      { recordFile: recordFilePath },
+      path.dirname(recordFilePath),
       record,
       keys,
       "test",
@@ -223,10 +203,10 @@ const terminatedRecord: ExchangeRecord = {
 };
 
 test("a terminated run's record is written to the same destination", () => {
-  const recordFilePath = path.join(dir, "rec.json");
+  const recordFilePath = recordFilePathIn(dir, record.createdAt);
   expect(
     writeExchangeRecord(
-      { recordFile: recordFilePath },
+      path.dirname(recordFilePath),
       terminatedRecord,
       keys,
       "test",
@@ -259,10 +239,10 @@ test("a record stating an observed certificate mismatch says so where the file i
   // The one arm on which the record narrows who received the disclosure. An
   // operator reading the log line has to be told, since the partner name beside
   // it is one the run has positive grounds to doubt.
-  const recordFilePath = path.join(dir, "mismatch.json");
+  const recordFilePath = recordFilePathIn(dir, record.createdAt);
   expect(
     writeExchangeRecord(
-      { recordFile: recordFilePath },
+      path.dirname(recordFilePath),
       { ...terminatedRecord, certificateMismatchObserved: true },
       keys,
       "test",
@@ -283,9 +263,9 @@ test("a terminated run's lost record is not reported as a completed exchange", (
   // words about it cannot disagree.
   const blocker = path.join(dir, "blocker");
   fs.writeFileSync(blocker, "x");
-  const recordFilePath = path.join(blocker, "rec.json");
+  const recordFilePath = recordFilePathIn(blocker, record.createdAt);
   const written = writeExchangeRecord(
-    { recordFile: recordFilePath },
+    path.dirname(recordFilePath),
     terminatedRecord,
     keys,
     "test",
@@ -317,11 +297,11 @@ test("agreedTermsPathFor pairs the file with its record as the keys file is", ()
 });
 
 test("writeExchangeRecord writes the agreed terms beside the record, owner-only", () => {
-  const recordFilePath = path.join(dir, "rec.json");
+  const recordFilePath = recordFilePathIn(dir, record.createdAt);
   const termsFilePath = agreedTermsPathFor(recordFilePath);
   expect(
     writeExchangeRecord(
-      { recordFile: recordFilePath },
+      path.dirname(recordFilePath),
       record,
       keys,
       "test",
@@ -340,10 +320,10 @@ test("writeExchangeRecord writes the agreed terms beside the record, owner-only"
 });
 
 test("a terminated run's record gets the agreed-terms file beside it", () => {
-  const recordFilePath = path.join(dir, "terminated.json");
+  const recordFilePath = recordFilePathIn(dir, record.createdAt);
   expect(
     writeExchangeRecord(
-      { recordFile: recordFilePath },
+      path.dirname(recordFilePath),
       terminatedRecord,
       keys,
       "test",
@@ -359,12 +339,12 @@ test("a terminated run's record gets the agreed-terms file beside it", () => {
 });
 
 test("an agreed-terms write that fails leaves the record written and says what to pass", () => {
-  const recordFilePath = path.join(dir, "rec.json");
+  const recordFilePath = recordFilePathIn(dir, record.createdAt);
   // A directory where the file would go makes its rename fail.
   fs.mkdirSync(agreedTermsPathFor(recordFilePath));
   expect(
     writeExchangeRecord(
-      { recordFile: recordFilePath },
+      path.dirname(recordFilePath),
       record,
       keys,
       "test",

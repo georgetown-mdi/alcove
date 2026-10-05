@@ -41,7 +41,6 @@ import {
 } from "../fileUtils";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
-import { resolveRecordOutput } from "../recordFile";
 import {
   payloadReceiveFillConfirmation,
   reportPayloadReceiveFill,
@@ -108,7 +107,7 @@ import { BARE_INVOCATION_SUMMARY, unknownCommandMessage } from "../usageHints";
 export const QUICK_EXCHANGE_USAGE =
   "Usage:\n" +
   "  $0 COMMAND [options]\n" +
-  "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FILE]\n\n" +
+  "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FOLDER]\n\n" +
   "Run 'alcove COMMAND --help' for a command's own options. Without a\n" +
   "command, alcove runs a quick exchange through the server or shared\n" +
   "folder at URL; the options below are the quick exchange's. A quick\n" +
@@ -142,9 +141,10 @@ export function builder(cmd: Argv): Argv {
     addCsvDelimiterOption(cmd)
       .epilog(
         "Quick exchange arguments:\n" +
-          "  URL          server URL (sftp://, ssh://, or file://)\n" +
-          "  INPUT_FILE   CSV to link; use `-` to read from stdin\n" +
-          "  OUTPUT_FILE  where to write results; defaults to stdout\n\n" +
+          "  URL            server URL (sftp://, ssh://, or file://)\n" +
+          "  INPUT_FILE     CSV to link; use `-` to read from stdin\n" +
+          "  OUTPUT_FOLDER  folder for the result, record and receipt, created\n" +
+          "                 if missing; without it the result goes to stdout\n\n" +
           "Both parties run the quick exchange against the same server URL.\n" +
           "Linkage terms are inferred from each party's input file. No\n" +
           "configuration files are required or written unless --save is given.\n" +
@@ -359,7 +359,6 @@ function parseArgs(argv: Arguments): ZeroSetupArgs {
     // Local filesystem paths accept a leading `~`.
     configFile: expandTilde(common.configFile),
     keyFile: expandTilde(common.keyFile),
-    recordFile: expandTilde(common.recordFile),
     save: (argv["save"] as boolean | undefined) ?? false,
     // CLI-only, never persisted: resolve to a definite boolean here since there
     // is no config layer to merge with (unlike the file-sync flags above).
@@ -417,7 +416,7 @@ export function resolvePositionals(positionals: Array<unknown>): {
       );
     }
     throw new UsageError(
-      "input file not specified; usage: alcove URL INPUT_FILE [OUTPUT_FILE]",
+      "input file not specified; usage: alcove URL INPUT_FILE [OUTPUT_FOLDER]",
     );
   }
 
@@ -429,7 +428,7 @@ export function resolvePositionals(positionals: Array<unknown>): {
     // file:// case below, the input failed to parse, so there is no URL to route
     // through redactUrlCredentials; drop it entirely. The usage hint stands in
     // for the offending value, which the operator just typed.
-    "unable to parse server URL; usage: alcove URL INPUT_FILE [OUTPUT_FILE]",
+    "unable to parse server URL; usage: alcove URL INPUT_FILE [OUTPUT_FOLDER]",
   );
   // A ws:// or wss:// URL maps to a channel and is refused later with its own
   // reason, so this message names only the schemes a quick exchange runs over.
@@ -1002,10 +1001,7 @@ export async function handler(argv: Arguments): Promise<void> {
         verbosity,
         loggerName: "alcove",
         logFile,
-        recordOutput: resolveRecordOutput({
-          enabled: options.record,
-          recordFile: options.recordFile,
-        }),
+        writeRecord: options.record,
         // Pass this party's --save intent into the in-band bootstrap; the
         // exchange advertises it and, when both saved, hands the established
         // secret to the hook below. Pass the raw boolean, never `options.save ||

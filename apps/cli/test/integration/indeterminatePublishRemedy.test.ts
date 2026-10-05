@@ -124,6 +124,15 @@ interface AttemptOptions {
  * error is rendered and logged the way the CLI's exitWithError does, so the
  * captured lines are the operator's stderr rather than a reconstruction of it.
  */
+/** The one result a run wrote in its output folder. */
+async function readResult(folder: string): Promise<string> {
+  const results = (await fsp.readdir(folder)).filter((name) =>
+    name.startsWith("alcove-results-"),
+  );
+  expect(results).toHaveLength(1);
+  return fsp.readFile(path.join(folder, results[0]), "utf8");
+}
+
 async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
   const { srv, remoteDir, work, tag, keyFiles } = options;
   const serverBlock = (
@@ -143,8 +152,8 @@ async function runAttempt(options: AttemptOptions): Promise<AttemptOutcome> {
     },
   });
 
-  const outR = path.join(work, `${tag}-receiver-out.csv`);
-  const outS = path.join(work, `${tag}-sender-out.csv`);
+  const outR = path.join(work, `${tag}-receiver-out`);
+  const outS = path.join(work, `${tag}-sender-out`);
   const secretR = loadKeyFile(keyFiles.receiver)!.sharedSecret;
   const secretS = loadKeyFile(keyFiles.sender)!.sharedSecret;
 
@@ -318,7 +327,7 @@ inProcessOnly(
       });
       expect(retry.parties.filter((party) => !party.ok)).toEqual([]);
       expect(
-        (await fsp.readFile(path.join(work, "retry-receiver-out.csv"), "utf8"))
+        (await readResult(path.join(work, "retry-receiver-out")))
           .trim()
           .split("\n"),
       ).toHaveLength(1 + RECEIVER_ROWS.length);
@@ -343,12 +352,7 @@ inProcessOnly(
       });
       expect(restart.parties.filter((party) => !party.ok)).toEqual([]);
       expect(
-        (
-          await fsp.readFile(
-            path.join(work, "restart-receiver-out.csv"),
-            "utf8",
-          )
-        )
+        (await readResult(path.join(work, "restart-receiver-out")))
           .trim()
           .split("\n"),
       ).toHaveLength(1 + RECEIVER_ROWS.length);
@@ -485,12 +489,7 @@ inProcessOnly(
       });
       expect(restart.parties.filter((party) => !party.ok)).toEqual([]);
       expect(
-        (
-          await fsp.readFile(
-            path.join(work, "restart-receiver-out.csv"),
-            "utf8",
-          )
-        )
+        (await readResult(path.join(work, "restart-receiver-out")))
           .trim()
           .split("\n"),
       ).toHaveLength(1 + RECEIVER_ROWS.length);

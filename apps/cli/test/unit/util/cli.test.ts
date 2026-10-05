@@ -1226,7 +1226,7 @@ test("writeOutput: a drain that finished leaves no listener behind", async () =>
 
 test("writeOutput: a redirected regular-file stdout warns at error level about umask exposure", async () => {
   // `alcove exchange data.csv > results.csv`: fd 1 is a regular file the shell
-  // created under its umask, not the owner-only permissions an OUTPUT_FILE path
+  // created under its umask, not the owner-only permissions an OUTPUT_FOLDER path
   // gets, so the operator is warned about the exposure and pointed at the
   // alternative.
   const { stdout, errors, warns } = await runStdoutBranch("regular-file");
@@ -1234,10 +1234,10 @@ test("writeOutput: a redirected regular-file stdout warns at error level about u
   // Emitted at error level, not warn, so a routine `--log-level error` (which
   // suppresses warn) cannot hide this sensitive-data exposure.
   expect(warns).toHaveLength(0);
-  // Names the exposure (umask, not owner-only) and the OUTPUT_FILE-path fix.
+  // Names the exposure (umask, not owner-only) and the OUTPUT_FOLDER-path fix.
   expect(errors[0]).toMatch(/umask/);
   expect(errors[0]).toMatch(/owner-only/);
-  expect(errors[0]).toMatch(/OUTPUT_FILE/);
+  expect(errors[0]).toMatch(/OUTPUT_FOLDER/);
   // The notice never rides the result stream, so the CSV on stdout is intact.
   expect(stdout).toBe("a,b\n1,2\n");
 });

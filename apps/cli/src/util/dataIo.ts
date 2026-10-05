@@ -356,7 +356,7 @@ async function writeResultToStdout(
  * operator on `log` at ERROR level (not warn, since a routine
  * `--log-level error` must not hide an operator-actionable data exposure): a
  * `> file` redirect is created by the shell under its umask, not the
- * owner-only permissions an OUTPUT_FILE path gets, so on a shared host the
+ * owner-only permissions a result in an OUTPUT_FOLDER gets, so on a shared host the
  * matched records can silently land group/world-readable. Detection is
  * fd-1-local -- a redirect applied outside this process (e.g. across a
  * container boundary) is undetectable, so the absence of the notice is not a
@@ -374,11 +374,11 @@ export function writeOutput(
     if (stdoutIsRedirectedFile())
       log.error(
         "result written to redirected stdout: the shell created that file " +
-          "under its umask, not the owner-only permissions an OUTPUT_FILE path " +
-          "gets, so on a shared host the matched records may be " +
-          "group/world-readable. Pass an OUTPUT_FILE path argument instead of " +
-          "redirecting stdout with `>` to have Alcove create the result " +
-          "owner-only.",
+          "under its umask, not the owner-only permissions a result in an " +
+          "OUTPUT_FOLDER gets, so on a shared host the matched records may be " +
+          "group/world-readable. Pass an OUTPUT_FOLDER argument (for example " +
+          "./) instead of redirecting stdout with `>` to have Alcove create " +
+          "the result owner-only.",
       );
     return writeResultToStdout(headers, rows, idleCeilingMs, delimiter);
   }

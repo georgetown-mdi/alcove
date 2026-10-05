@@ -24,33 +24,36 @@ import {
   DEFAULT_RECORD_BASENAME,
   keysPathFor,
 } from "../../../src/recordFile";
+import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
 import { captureStdio } from "../../loggingTestSupport";
 
 // Net-new coverage: the per-command-handler wiring that turns the default-on
 // audit record into files on disk. `alcove exchange` and the zero-setup
-// command each default `--record` to true and pass resolveRecordOutput(...)
+// command each default `--record` to true and pass it with the OUTPUT folder
 // into the shared runProtocol write path -- already covered elsewhere
 // (recordFile.test.ts, protocol.test.ts, exchangeRecord*.test.ts,
 // ../onlineInviteAccept.test.ts for invite/accept). The gap this file closes
 // is the exchange and zero-setup HANDLERS: run with no record-related flags,
-// each writes the default record and its private verification-keys file.
+// each writes the record and its private verification-keys file in the OUTPUT
+// folder beside the result, or in the working directory when the result goes
+// to stdout.
 //
 // Why drive the real yargs builder + handler (not a post-parse boundary like
 // onlineInviteAccept's validate* -> runOnlineBootstrap): the thing under test
 // IS the `--record` default and the handler body that reads it, so each
 // asserted party runs exactly as the CLI runs it -- through the command's
 // builder so yargs applies `record: true`, then its handler -- with NO
-// --record / --no-record / --record-file on the command line, exercising both
-// the default firing and the default record path. process.exit is trapped, so
+// --record / --no-record on the command line, exercising both the default
+// firing and the record's placement. process.exit is trapped, so
 // any handler error is reported as a clean test rejection instead of killing
 // the worker.
 //
 // Each exchange needs two parties to complete, but only the ASSERTED party
 // runs with the default record on; its peer runs the same command with
 // --no-record, so exactly one default record lands with no path collision.
-// The default record path is `./alcove-record-<stamp>.json` relative to
-// process cwd, so each test runs from its per-test work dir (chdir in
-// beforeEach, restored in afterEach) so afterEach cleans up the artifact.
+// In stdout mode the record lands in the process cwd, so each test runs from
+// its per-test work dir (chdir in beforeEach, restored in afterEach) so
+// afterEach cleans up whatever a run writes there.
 //
 // filedrop only: the record-write wiring is transport-agnostic (the handler
 // reads the same `--record` default and calls the same runProtocol regardless
@@ -112,11 +115,9 @@ let exitSpy: ReturnType<typeof vi.spyOn> | undefined;
 beforeEach(() => {
   work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-cmd-record-"));
   originalCwd = process.cwd();
-  // Run from the work dir so the asserted party's default record
-  // (`./alcove-record-*.json`, resolved against cwd) lands here and is
-  // cleaned up with it, while still passing no --record-file. Done here, not
-  // inline in each test, so the chdir pairs one-to-one with its afterEach
-  // restore. (cwd is process-global, so these tests are not safe to run
+  // Run from the work dir so a stdout-mode run's record (written to the
+  // cwd) lands here and is cleaned up with it. Done here, not inline in each
+  // test, so the chdir pairs one-to-one with its afterEach restore. (cwd is process-global, so these tests are not safe to run
   // concurrently within the file, which this runner does not do.)
   process.chdir(work);
   // The handlers call process.exit on any failure (bad config, a stalled or
@@ -145,14 +146,16 @@ afterEach(() => {
 // Run a single CLI invocation exactly as index.ts wires it: the zero-setup
 // command as the `$0` default and `exchange` as a subcommand, so the same
 // builders apply the same option defaults, `record: true` among them. exitProcess
-// is disabled so a yargs-level parse error rejects rather than exiting; a handler
-// error already rejects via the trapped process.exit above.
+// is disabled and fail(false) rethrows, so a yargs-level parse error rejects
+// rather than exiting or printing usage; a handler error already rejects via
+// the trapped process.exit above.
 async function runCli(argv: string[]): Promise<void> {
   await yargs(argv)
     .scriptName("alcove")
     .command("$0", "zero-setup exchange", zeroSetupBuilder, zeroSetupHandler)
     .command("exchange <input> [output]", "", exchangeBuilder, exchangeHandler)
     .exitProcess(false)
+    .fail(false)
     .parseAsync();
 }
 
@@ -200,6 +203,14 @@ function findDefaultRecord(dir: string): string {
   return path.join(dir, matches[0]);
 }
 
+// The result file a run wrote in `dir`, paired with `recordFile` by its stamp.
+function resultBesideRecord(dir: string, recordFile: string): string {
+  const stamp = path
+    .basename(recordFile)
+    .slice(`${DEFAULT_RECORD_BASENAME}-`.length, -".json".length);
+  return path.join(dir, `${DEFAULT_RESULT_BASENAME}-${stamp}.csv`);
+}
+
 // Assert the asserted party's default-on artifacts: the record and its private
 // verification keys exist, are written owner-only, and the record round-trips as
 // JSON naming this exchange's participants. Contents beyond that are covered by
@@ -239,14 +250,20 @@ function expectDefaultRecord(
 
 // --- exchange -----------------------------------------------------------------
 
-test("exchange: a default-flag run writes the default audit record and keys file", async () => {
+/** Write one config, key file and input per party for an `alcove exchange`. */
+function provisionExchangeParties(): {
+  inputA: string;
+  inputB: string;
+  configA: string;
+  configB: string;
+  keyA: string;
+  keyB: string;
+} {
   const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
   const inputA = path.join(work, "a-input.csv");
   fs.writeFileSync(inputA, PARTY_A_CSV);
   const inputB = path.join(work, "b-input.csv");
   fs.writeFileSync(inputB, PARTY_B_CSV);
-  const outA = path.join(work, "a-out.csv");
-  const outB = path.join(work, "b-out.csv");
 
   // One config per party, since a run whose terms leave payload.receive unset
   // writes the list into its own config: the filedrop rendezvous plus the
@@ -273,10 +290,19 @@ test("exchange: a default-flag run writes the default audit record and keys file
   const keyB = path.join(work, "b.key");
   saveKeyFile(keyA, { sharedSecret: INITIAL_SECRET });
   saveKeyFile(keyB, { sharedSecret: INITIAL_SECRET });
+  return { inputA, inputB, configA, configB, keyA, keyB };
+}
+
+test("exchange: a default-flag run writes the record, keys and result in a new OUTPUT folder", async () => {
+  const { inputA, inputB, configA, configB, keyA, keyB } =
+    provisionExchangeParties();
+  // Nested and missing: the run creates it before contacting the partner.
+  const outA = path.join(work, "out", "a");
+  const outB = path.join(work, "out", "b");
 
   // Asserted party runs with NO record-related flags, so `--record` defaults to
-  // true and the record goes to the default path; the peer runs the same command
-  // with --no-record so only the asserted party records.
+  // true and the record goes in its OUTPUT folder; the peer runs the same
+  // command with --no-record so only the asserted party records.
   await runBoth(
     [
       "exchange",
@@ -311,7 +337,113 @@ test("exchange: a default-flag run writes the default audit record and keys file
     ],
   );
 
+  expectDefaultRecord(outA, "party-a", "party-b");
+  const resultA = resultBesideRecord(outA, findDefaultRecord(outA));
+  expect(fs.readFileSync(resultA, "utf8").trim().split("\n")).toHaveLength(3);
+  if (process.platform !== "win32")
+    expect(fs.statSync(resultA).mode & 0o077).toBe(0);
+  // Nothing of party A's landed in the working directory.
+  expect(
+    fs.readdirSync(work).filter((name) => name.startsWith("alcove-")),
+  ).toEqual([]);
+  // The --no-record peer wrote only its result.
+  expect(fs.readdirSync(outB)).toEqual([
+    expect.stringMatching(/^alcove-results-.*\.csv$/),
+  ]);
+}, 90_000);
+
+test("exchange: with no OUTPUT the result goes to stdout and the record to the working directory", async () => {
+  const { inputA, inputB, configA, configB, keyA, keyB } =
+    provisionExchangeParties();
+  const outB = path.join(work, "b-out");
+
+  // The result's last line waits on its write callback, so the stand-in for
+  // stdout calls it.
+  const stdoutChunks: string[] = [];
+  const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+    encodingOrDone?: unknown,
+    done?: unknown,
+  ) => {
+    stdoutChunks.push(String(chunk));
+    const callback =
+      typeof encodingOrDone === "function" ? encodingOrDone : done;
+    if (typeof callback === "function")
+      queueMicrotask(() => (callback as (err?: Error | null) => void)(null));
+    return true;
+  }) as typeof process.stdout.write);
+  try {
+    await runBoth(
+      [
+        "exchange",
+        inputA,
+        "--config-file",
+        configA,
+        "--key-file",
+        keyA,
+        "--identity",
+        "party-a",
+        "--peer-timeout",
+        `${PEER_TIMEOUT_SECONDS}s`,
+        "--log-level",
+        "silent",
+      ],
+      [
+        "exchange",
+        inputB,
+        outB,
+        "--config-file",
+        configB,
+        "--key-file",
+        keyB,
+        "--identity",
+        "party-b",
+        "--no-record",
+        "--peer-timeout",
+        `${PEER_TIMEOUT_SECONDS}s`,
+        "--log-level",
+        "silent",
+      ],
+    );
+  } finally {
+    stdoutSpy.mockRestore();
+  }
+
   expectDefaultRecord(work, "party-a", "party-b");
+  expect(
+    fs
+      .readdirSync(work)
+      .filter((name) => name.startsWith(`${DEFAULT_RESULT_BASENAME}-`)),
+  ).toEqual([]);
+  expect(stdoutChunks.join("").trim().split("\n")).toHaveLength(3);
+}, 90_000);
+
+test("exchange: a file as OUTPUT is refused with exit 64 before the partner is contacted", async () => {
+  const { inputA, configA, keyA } = provisionExchangeParties();
+  const fileAsOutput = path.join(work, "results.csv");
+  fs.writeFileSync(fileAsOutput, "from an earlier run\n");
+  const keyBefore = fs.readFileSync(keyA, "utf8");
+
+  // No partner runs: a refusal before contact settles on its own.
+  await expect(
+    runCli([
+      "exchange",
+      inputA,
+      fileAsOutput,
+      "--config-file",
+      configA,
+      "--key-file",
+      keyA,
+      "--identity",
+      "party-a",
+      "--peer-timeout",
+      `${PEER_TIMEOUT_SECONDS}s`,
+      "--log-level",
+      "silent",
+    ]),
+  ).rejects.toThrow("process.exit(64)");
+  expect(fs.readFileSync(fileAsOutput, "utf8")).toBe("from an earlier run\n");
+  expect(fs.readFileSync(keyA, "utf8")).toBe(keyBefore);
 }, 90_000);
 
 // --- zero-setup ---------------------------------------------------------------
@@ -324,8 +456,8 @@ describe("zero-setup", () => {
     fs.writeFileSync(inputA, PARTY_A_CSV);
     const inputB = path.join(work, "b-input.csv");
     fs.writeFileSync(inputB, PARTY_B_CSV);
-    const outA = path.join(work, "a-out.csv");
-    const outB = path.join(work, "b-out.csv");
+    const outA = path.join(work, "a-out");
+    const outB = path.join(work, "b-out");
 
     // Zero-setup needs no config or key: both parties meet at the same
     // file:// URL with terms inferred from their inputs. No --save, so
@@ -363,7 +495,7 @@ describe("zero-setup", () => {
       ],
     );
 
-    expectDefaultRecord(work, "party-a", "party-b");
+    expectDefaultRecord(outA, "party-a", "party-b");
   }, 90_000);
 
   test("one party names itself, the other does not, and both sides say so", async () => {
@@ -380,8 +512,8 @@ describe("zero-setup", () => {
     fs.writeFileSync(inputA, PARTY_A_CSV);
     const inputB = path.join(work, "unnamed-input.csv");
     fs.writeFileSync(inputB, PARTY_B_CSV);
-    const recordNamed = path.join(work, "named-record.json");
-    const recordUnnamed = path.join(work, "unnamed-record.json");
+    const outNamed = path.join(work, "named-out");
+    const outUnnamed = path.join(work, "unnamed-out");
 
     const stdio = captureStdio();
     // Both parties also run under --event-stream, so the same run pins the
@@ -418,11 +550,9 @@ describe("zero-setup", () => {
         [
           url,
           inputA,
-          path.join(work, "named-out.csv"),
+          outNamed,
           "--identity",
           "party-a",
-          "--record-file",
-          recordNamed,
           "--polling-frequency",
           "100ms",
           "--peer-timeout",
@@ -434,9 +564,7 @@ describe("zero-setup", () => {
         [
           url,
           inputB,
-          path.join(work, "unnamed-out.csv"),
-          "--record-file",
-          recordUnnamed,
+          outUnnamed,
           "--polling-frequency",
           "100ms",
           "--peer-timeout",
@@ -452,6 +580,8 @@ describe("zero-setup", () => {
       fstatSyncSpy.mockRestore();
     }
 
+    const recordNamed = findDefaultRecord(outNamed);
+    const recordUnnamed = findDefaultRecord(outUnnamed);
     const named = JSON.parse(fs.readFileSync(recordNamed, "utf8")) as Record<
       string,
       unknown

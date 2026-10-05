@@ -258,7 +258,7 @@ export const INIT_URL_UNREADABLE =
  * positional with a connection scheme ({@link looksLikeUrl}) is the URL;
  * anything else is the input file, except an argument that starts with a
  * scheme but does not parse, which is refused without being echoed. A further positional is a mistake -- most
- * likely an OUTPUT_FILE copied from another command, which `init` does not
+ * likely an OUTPUT_FOLDER copied from another command, which `init` does not
  * take -- so it is rejected as a usage error rather than silently ignored.
  *
  * @internal exported for testing

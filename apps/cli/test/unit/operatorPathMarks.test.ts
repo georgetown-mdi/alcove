@@ -12,7 +12,7 @@ import type {
 
 import { logOnlineBootstrapOutcome } from "../../src/onlineBootstrap";
 import { writeDualSignedRecord } from "../../src/receiptFile";
-import { writeExchangeRecord } from "../../src/recordFile";
+import { recordFilePathIn, writeExchangeRecord } from "../../src/recordFile";
 import { openInputSource } from "../../src/util/dataIo";
 
 // Every message the record and receipt writers, the online-bootstrap summary
@@ -51,6 +51,13 @@ function backslashedPath(name: string): string {
       ? path.join(dir, "alcove", name)
       : path.join(dir, `C:\\alcove\\${name}`);
   fs.mkdirSync(path.dirname(full), { recursive: true });
+  return full;
+}
+
+/** A folder whose path holds a backslash, as {@link backslashedPath}'s does. */
+function backslashedFolder(): string {
+  const full = backslashedPath("out");
+  fs.mkdirSync(full, { recursive: true });
   return full;
 }
 
@@ -241,14 +248,10 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
     name: "record file: the verification keys it wrote",
     says: ["wrote private verification keys to"],
     drive: async () => {
-      const filePath = backslashedPath("alcove-record.json");
+      const folder = backslashedFolder();
+      const filePath = recordFilePathIn(folder, RECORD.createdAt);
       const lines = captureLines("record-marks");
-      writeExchangeRecord(
-        { recordFile: filePath },
-        RECORD,
-        KEYS,
-        "record-marks",
-      );
+      writeExchangeRecord(folder, RECORD, KEYS, "record-marks");
       return { filePaths: [filePath.replace(/\.json$/, ".keys.json")], lines };
     },
   },
@@ -256,14 +259,10 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
     name: "record file: the self-attested record it wrote",
     says: ["self-attested exchange record"],
     drive: async () => {
-      const filePath = backslashedPath("alcove-record.json");
+      const folder = backslashedFolder();
+      const filePath = recordFilePathIn(folder, RECORD.createdAt);
       const lines = captureLines("record-marks");
-      writeExchangeRecord(
-        { recordFile: filePath },
-        RECORD,
-        KEYS,
-        "record-marks",
-      );
+      writeExchangeRecord(folder, RECORD, KEYS, "record-marks");
       return { filePaths: [filePath], lines };
     },
   },
@@ -273,15 +272,11 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
     drive: async () => {
       // A directory at the record's own path: the keys beside it are written
       // first and the record write then fails, leaving them to be named.
-      const filePath = backslashedPath("alcove-record.json");
+      const folder = backslashedFolder();
+      const filePath = recordFilePathIn(folder, RECORD.createdAt);
       fs.mkdirSync(filePath);
       const lines = captureLines("record-marks");
-      writeExchangeRecord(
-        { recordFile: filePath },
-        RECORD,
-        KEYS,
-        "record-marks",
-      );
+      writeExchangeRecord(folder, RECORD, KEYS, "record-marks");
       return { filePaths: [filePath.replace(/\.json$/, ".keys.json")], lines };
     },
   },
@@ -294,6 +289,7 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
       writeDualSignedRecord(
         { receiptFile: filePath },
         DUAL_SIGNED_RECORD,
+        dir,
         "2026-01-01T00:00:00Z",
         "receipt-marks",
       );

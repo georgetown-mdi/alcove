@@ -194,8 +194,8 @@ async function runAbortScenario(
   const secretB = loadKeyFile(keyB)!.sharedSecret;
   const tag = options.tag ?? "";
   const outputs = {
-    a: path.join(work, `${tag}a-out.csv`),
-    b: path.join(work, `${tag}b-out.csv`),
+    a: path.join(work, `${tag}a-out`),
+    b: path.join(work, `${tag}b-out`),
   };
 
   // The faulting party's catch emits an ERROR recovery advisory (its token
@@ -312,7 +312,12 @@ async function expectPlainRetryToComplete(
   expect(retry.markerCount).toBe(0);
   // Party A holds the smaller dataset, so it is the receiver and its result CSV
   // is the intersection: a header plus every row both parties hold.
-  const rows = (await fsp.readFile(retry.outputs.a, "utf8")).trim().split("\n");
+  const [result] = (await fsp.readdir(retry.outputs.a)).filter((name) =>
+    name.startsWith("alcove-results-"),
+  );
+  const rows = (await fsp.readFile(path.join(retry.outputs.a, result), "utf8"))
+    .trim()
+    .split("\n");
   expect(rows).toHaveLength(1 + ROWS_A.length);
 }
 

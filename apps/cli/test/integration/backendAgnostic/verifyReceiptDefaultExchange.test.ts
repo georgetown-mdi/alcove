@@ -27,9 +27,9 @@ import { RECEIPT_VERIFICATION_FAILED_EXIT_CODE } from "../../../src/util/exit";
 
 // A default (unsigned) exchange verified the way its operator would: the
 // record, the input, and the result, with no other file. Two runs of the
-// same partnership write two records while the result path is overwritten, so
-// the first record checked against the second run's result is the case the
-// scheduling layout produces.
+// same partnership write two records and two results into one output folder,
+// each pair under one stamp, so the first record checked against the second
+// run's result is the mismatch an operator re-supplying the wrong file makes.
 //
 // filedrop only, like commandDefaultRecord.test.ts beside it: the record and
 // agreed-terms writes are transport-agnostic.
@@ -156,8 +156,8 @@ test("a default exchange's record verifies from the record, input, and result al
   fs.writeFileSync(inputA, PARTY_A_CSV);
   const inputB = path.join(work, "b-input.csv");
   fs.writeFileSync(inputB, PARTY_B_FIRST_CSV);
-  const outA = path.join(work, "a-out.csv");
-  const outB = path.join(work, "b-out.csv");
+  const outA = path.join(work, "a-out");
+  const outB = path.join(work, "b-out");
 
   const prepared = prepareForExchange({}, "config", PROVISION_ROWS, CSV_FIELDS);
   const spec: ExchangeSpec = {
@@ -211,21 +211,29 @@ test("a default exchange's record verifies from the record, input, and result al
   ];
 
   await runBoth(exchangeA, exchangeB);
-  const firstResult = path.join(work, "a-out-first.csv");
-  fs.copyFileSync(outA, firstResult);
-
-  // A later run of the same partnership overwrites the result path and
-  // writes a second record.
+  // A later run of the same partnership writes a second record and a second
+  // result beside the first.
   fs.writeFileSync(inputB, PARTY_B_SECOND_CSV);
   await runBoth(exchangeA, exchangeB);
 
-  const [firstRecord, secondRecord] = recordsIn(work);
-  expect(recordsIn(work)).toHaveLength(2);
+  expect(recordsIn(work)).toEqual([]);
+  const [firstRecord, secondRecord] = recordsIn(outA);
+  expect(recordsIn(outA)).toHaveLength(2);
+  const [firstResult, secondResult] = [firstRecord, secondRecord].map(
+    (record) =>
+      path.join(
+        outA,
+        path
+          .basename(record)
+          .replace(`${DEFAULT_RECORD_BASENAME}-`, `${DEFAULT_RESULT_BASENAME}-`)
+          .replace(/\.json$/, ".csv"),
+      ),
+  );
   const termsFile = agreedTermsPathFor(firstRecord);
   expect(fs.existsSync(termsFile)).toBe(true);
   if (process.platform !== "win32")
     expect(fs.statSync(termsFile).mode & 0o077).toBe(0);
-  expect(fs.readFileSync(outA, "utf8")).not.toBe(
+  expect(fs.readFileSync(secondResult, "utf8")).not.toBe(
     fs.readFileSync(firstResult, "utf8"),
   );
 
@@ -234,11 +242,11 @@ test("a default exchange's record verifies from the record, input, and result al
   expect(own.stdout).toContain("agreed-terms hash: re-derives and matches");
   expect(own.exitCode).toBe(0);
 
-  const later = await verify([secondRecord, inputA, outA]);
+  const later = await verify([secondRecord, inputA, secondResult]);
   expect(later.stdout).toMatch(/^VERIFIED/);
   expect(later.exitCode).toBe(0);
 
-  const overwritten = await verify([firstRecord, inputA, outA]);
+  const overwritten = await verify([firstRecord, inputA, secondResult]);
   expect(overwritten.stdout.split("\n")[0]).toBe(
     RESULT_FROM_ANOTHER_RUN_HEADLINE,
   );
@@ -254,7 +262,7 @@ test("a folder output names each run's result after its record, and each record 
   fs.writeFileSync(inputA, PARTY_A_CSV);
   const inputB = path.join(work, "b-input.csv");
   fs.writeFileSync(inputB, PARTY_B_FIRST_CSV);
-  const outB = path.join(work, "b-out.csv");
+  const outB = path.join(work, "b-out");
 
   const prepared = prepareForExchange({}, "config", PROVISION_ROWS, CSV_FIELDS);
   const spec: ExchangeSpec = {

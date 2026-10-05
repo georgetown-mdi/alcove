@@ -546,11 +546,11 @@ recreated on an exclusive descriptor before its ACL is narrowed. The owner-only
 guarantee is the same on both. Writing the result to
 stdout (no output path given) applies no permission handling -- in particular,
 redirecting stdout to a file with a shell `>` leaves that file at the shell's
-umask, since the shell, not the CLI, creates it; pass an output path to get the
+umask, since the shell, not the CLI, creates it; pass an output folder to get the
 owner-only treatment. Because that exposure is silent, the CLI detects the
 redirect at runtime -- `fs.fstatSync(1).isFile()` is true for a `> file`
 redirect but false for a TTY, a pipe, or `/dev/null` -- and emits a one-line
-notice naming the umask exposure and pointing at the OUTPUT_FILE-path
+notice naming the umask exposure and pointing at the OUTPUT_FOLDER
 alternative. The notice goes through the logger, so it lands on stderr under the
 default sink and is captured by `--log-file`, and never corrupts the result CSV
 on stdout; it is emitted at error level rather than warn so a routine

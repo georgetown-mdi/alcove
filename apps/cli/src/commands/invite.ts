@@ -56,7 +56,6 @@ import type {
   WebRTCConnectionAwaitingAddress,
 } from "../config";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
-import { resolveRecordOutput } from "../recordFile";
 import { createProvisionedServer } from "../serverProvision";
 import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
@@ -157,12 +156,12 @@ export function builder(cmd: Argv): Argv {
         // config when one is present, and are inferred from INPUT_FILE otherwise.
         // Online still requires INPUT_FILE (the data to exchange).
         describe:
-          "[INPUT_FILE] (offline), or URL INPUT_FILE [OUTPUT_FILE] (online)",
+          "[INPUT_FILE] (offline), or URL INPUT_FILE [OUTPUT_FOLDER] (online)",
       })
       .usage(
         "Usage:\n" +
           "  $0 invite [options] [INPUT_FILE]                       (offline)\n" +
-          "  $0 invite [options] URL INPUT_FILE [OUTPUT_FILE]       (online)\n\n" +
+          "  $0 invite [options] URL INPUT_FILE [OUTPUT_FOLDER]     (online)\n\n" +
           "Offline: print an invitation string to send your partner over a\n" +
           "channel you trust, and write the configuration and key file this\n" +
           "party keeps. Online: also connect, wait for the partner to\n" +
@@ -418,7 +417,7 @@ export function resolveInvitePositionals(
     if (input === undefined)
       throw new UsageError(
         "online invitation requires an input file; usage: alcove invite " +
-          "--identity IDENTITY URL INPUT_FILE [OUTPUT_FILE]",
+          "--identity IDENTITY URL INPUT_FILE [OUTPUT_FOLDER]",
       );
     const output =
       positionals[2] !== undefined ? String(positionals[2]) : undefined;
@@ -1225,10 +1224,7 @@ export async function handler(argv: Arguments): Promise<void> {
           verbosity: options.verbosity,
           loggerName: "invite",
           logFile: options.logFile,
-          recordOutput: resolveRecordOutput({
-            enabled: options.record,
-            recordFile: options.recordFile,
-          }),
+          writeRecord: options.record,
           eventStream: options.eventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           // The wait for the partner to arrive runs on --accept-timeout; the

@@ -41,6 +41,7 @@ import {
   fillInFileDropConnection,
   invitationFrom,
   pairsFromResultCsv,
+  resultFileIn,
   startCli,
 } from "./cliParty";
 
@@ -128,7 +129,7 @@ function makeWorkspace(): Workspace {
     root,
     dropDir,
     partnerDir,
-    partnerOutput: path.join(partnerDir, "out.csv"),
+    partnerOutput: path.join(partnerDir, "out"),
     partnerConfig: path.join(partnerDir, "alcove.yaml"),
     mount,
     mountedConfig: path.join(mount, "alcove.yaml"),
@@ -294,7 +295,7 @@ describe.skipIf(!cliIsBuilt)(
       });
       const createdAt = Date.now();
       const partner = startCli({
-        args: ["exchange", "input.csv", "out.csv"],
+        args: ["exchange", "input.csv", "out/"],
         cwd: workspace.partnerDir,
         timeoutMs: CLI_DEADLINE_MS,
       });
@@ -307,7 +308,7 @@ describe.skipIf(!cliIsBuilt)(
       expect(pairsFromResultCsv(manager.getJobView(id)!.outputPath!)).toEqual(
         CONSOLE_PAIRS,
       );
-      expect(pairsFromResultCsv(workspace.partnerOutput)).toEqual(
+      expect(pairsFromResultCsv(resultFileIn(workspace.partnerOutput))).toEqual(
         PARTNER_PAIRS,
       );
 
@@ -540,7 +541,7 @@ async function runAgainstPartner(
 ): Promise<{ record: JobRecord; partner: CliRun }> {
   const id = await manager.createJob(intent);
   const partner = startCli({
-    args: ["exchange", "input.csv", "out.csv"],
+    args: ["exchange", "input.csv", "out/"],
     cwd: workspace.partnerDir,
     timeoutMs: CLI_DEADLINE_MS,
   });

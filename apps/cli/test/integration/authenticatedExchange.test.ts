@@ -74,19 +74,25 @@ function preparedFor(identity: string, rows: Array<Record<string, string>>) {
 
 type ConfigFactory = () => ProtocolConnectionConfig;
 
-async function readWhenReady(file: string): Promise<string> {
+/** The result a run wrote in its output folder, once its content is stable. */
+async function readWhenReady(folder: string): Promise<string> {
   const deadline = Date.now() + 5_000;
   let last = "";
   for (;;) {
+    let names: string[] = [];
     try {
-      const cur = await fsp.readFile(file, "utf8");
-      if (cur.length > 0 && cur === last) return cur;
-      last = cur;
+      names = await fsp.readdir(folder);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
+    const result = names.find((name) => name.startsWith("alcove-results-"));
+    if (result !== undefined) {
+      const cur = await fsp.readFile(path.join(folder, result), "utf8");
+      if (cur.length > 0 && cur === last) return cur;
+      last = cur;
+    }
     if (Date.now() > deadline)
-      throw new Error(`output file ${file} never stabilized with content`);
+      throw new Error(`the result in ${folder} never stabilized with content`);
     await new Promise<void>((r) => setTimeout(r, 20));
   }
 }
@@ -98,8 +104,8 @@ async function runBaseline(
   work: string,
   makeConfig: ConfigFactory,
 ): Promise<string> {
-  const outR = path.join(work, "baseline-receiver-out.csv");
-  const outS = path.join(work, "baseline-sender-out.csv");
+  const outR = path.join(work, "baseline-receiver-out");
+  const outS = path.join(work, "baseline-sender-out");
   await Promise.all([
     runProtocol({
       connection: makeConfig(),
@@ -141,8 +147,8 @@ async function runAuthenticatedPair(
   const keyS = path.join(work, `${tag}-sender.key`);
   saveKeyFile(keyR, { sharedSecret: secret });
   saveKeyFile(keyS, { sharedSecret: secret });
-  const outR = path.join(work, `${tag}-receiver-out.csv`);
-  const outS = path.join(work, `${tag}-sender-out.csv`);
+  const outR = path.join(work, `${tag}-receiver-out`);
+  const outS = path.join(work, `${tag}-sender-out`);
 
   await Promise.all([
     runProtocol({

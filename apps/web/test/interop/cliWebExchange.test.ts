@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -23,6 +24,7 @@ import {
   invitationFrom,
   namesFileDrop,
   pairsFromResultCsv,
+  resultFileIn,
   startCli,
 } from "./cliParty";
 
@@ -120,7 +122,7 @@ function makeWorkspace(): Workspace {
     dropDir,
     cliDir,
     cliInput,
-    cliOutput: path.join(cliDir, "out.csv"),
+    cliOutput: path.join(cliDir, "out"),
     cliConfig: path.join(cliDir, "alcove.yaml"),
     webInput,
   };
@@ -289,7 +291,12 @@ describe.skipIf(!cliIsBuilt)(
       if (cli.status !== "fulfilled") throw cli.reason;
       expect(cli.value.timedOut).toBe(false);
       expect(cli.value.exitCode).toBeGreaterThan(0);
-      expect(existsSync(workspace.cliOutput)).toBe(false);
+      expect(
+        existsSync(workspace.cliOutput) &&
+          readdirSync(workspace.cliOutput).some((name) =>
+            name.startsWith("alcove-results-"),
+          ),
+      ).toBe(false);
     });
   },
 );
@@ -308,5 +315,7 @@ function expectBothPartiesLinked(settled: {
   const web = settled.web.value;
   expect(web.partnerIdentity).toBe(CLI_IDENTITY);
   expect(web.pairs).toEqual(WEB_PAIRS);
-  expect(pairsFromResultCsv(workspace.cliOutput)).toEqual(CLI_PAIRS);
+  expect(pairsFromResultCsv(resultFileIn(workspace.cliOutput))).toEqual(
+    CLI_PAIRS,
+  );
 }

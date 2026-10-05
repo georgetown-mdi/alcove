@@ -43,7 +43,7 @@ import type {
   PartnerPayload,
 } from "@alcove/core";
 
-import { writeExchangeRecord } from "../../../src/recordFile";
+import { recordFilePathIn, writeExchangeRecord } from "../../../src/recordFile";
 import { writeOutput } from "../../../src/util/dataIo";
 
 // The CLI's own artifacts for the both-sided deduplicating cardinality: the
@@ -125,7 +125,6 @@ afterEach(() => {
 test("a both-sided result writes a cluster's whole product and attests the pair count", async () => {
   const dir = tempDir();
   const resultPath = path.join(dir, "results.csv");
-  const recordPath = path.join(dir, "record.json");
 
   const { headers, rows } = buildOutputTable(
     associationTable,
@@ -164,9 +163,8 @@ test("a both-sided result writes a cluster's whole product and attests the pair 
     partnerPayloadReceived: toCommittedPayload(partnerPayload),
     createdAt: "2026-01-02T03:04:05.000Z",
   });
-  expect(
-    writeExchangeRecord({ recordFile: recordPath }, record, keys, "test").kind,
-  ).toBe("written");
+  expect(writeExchangeRecord(dir, record, keys, "test").kind).toBe("written");
+  const recordPath = recordFilePathIn(dir, record.createdAt);
 
   // The figure on disk is the pair count: neither this party's matched-record
   // count (3), nor the clusters (2), nor the rows either party exposed.

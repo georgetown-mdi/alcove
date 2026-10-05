@@ -1,36 +1,121 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  getLogger,
+  keepOperatorSuppliedText,
+  messageWithOperatorText,
+  operatorSuppliedText,
+  redactAndRenderOperatorSuppliedText,
+  UsageError,
+} from "@alcove/core";
+
 import { recordFileStamp } from "./recordFile";
 
-/** Basename stem of a result file a run names itself. */
+/** Basename stem of the result file a run names itself. */
 export const DEFAULT_RESULT_BASENAME = "alcove-results";
 
 /**
- * Whether an `OUTPUT_FILE` path names a folder rather than a file: it ends in a
- * path separator, or it is an existing directory (a symbolic link to one
- * included).
+ * The folder a run writes its files in: the `OUTPUT` folder it was given, or
+ * the working directory when the result goes to stdout
+ * (docs/spec/EXCHANGE_RECORD.md, Where a run's files go).
  */
-export function outputNamesFolder(output: string): boolean {
-  if (output.endsWith("/") || output.endsWith(path.sep)) return true;
-  try {
-    return fs.statSync(output).isDirectory();
-  } catch {
-    return false;
-  }
+export function runArtifactFolder(output: string | undefined): string {
+  return output ?? ".";
 }
 
 /**
- * The file a run writes its result to. A path naming a file is used as given,
- * so each run overwrites it. A path naming a folder gets a new
- * `alcove-results-<stamp>.csv` in that folder, `<stamp>` being the one the
- * run's record name has ({@link recordFileStamp}), so the result pairs with
- * its record by name (docs/spec/EXCHANGE_RECORD.md, Result file name).
+ * The file a run writes its result to: a new `alcove-results-<time>.csv` in
+ * the `OUTPUT` folder, `<time>` being the stamp the run's record name has
+ * ({@link recordFileStamp}), so the result pairs with its record by name
+ * (docs/spec/EXCHANGE_RECORD.md, Result file name).
  */
-export function resultFilePath(output: string, createdAt: string): string {
-  if (!outputNamesFolder(output)) return output;
+export function resultFilePath(folder: string, createdAt: string): string {
   return path.join(
-    output,
+    folder,
     `${DEFAULT_RESULT_BASENAME}-${recordFileStamp(createdAt)}.csv`,
   );
+}
+
+function outputFolderError(
+  output: string,
+  problem: string,
+  remedy: string,
+): UsageError {
+  const message = messageWithOperatorText`the output folder ${operatorSuppliedText(
+    output,
+  )} ${problem}. ${remedy} Nothing was sent to your partner.`;
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Make sure the run can write its files in `output` before the partner is
+ * contacted: a missing folder is created (recursively, and left in place if
+ * the run fails afterwards), and the folder is then shown writable by creating
+ * and removing a probe file in it. Throws a {@link UsageError} (exit 64) when
+ * `output` names something other than a folder, or the folder cannot be
+ * checked, created or written.
+ */
+export function preflightOutputFolder(
+  output: string,
+  log: ReturnType<typeof getLogger>,
+): void {
+  let stat: fs.Stats | undefined;
+  try {
+    stat = fs.statSync(output);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT")
+      throw outputFolderError(
+        output,
+        `cannot be checked: ${errorText(err)}`,
+        "Make the folder reachable, or name another folder as the output.",
+      );
+  }
+  if (stat === undefined) {
+    try {
+      fs.mkdirSync(output, { recursive: true });
+    } catch (err) {
+      throw outputFolderError(
+        output,
+        `cannot be created: ${errorText(err)}`,
+        "Create the folder, or name an existing writable folder as the output.",
+      );
+    }
+    log.info(
+      `created the output folder ${redactAndRenderOperatorSuppliedText(
+        operatorSuppliedText(output),
+      )} (left in place if the exchange fails)`,
+    );
+  } else if (!stat.isDirectory())
+    throw outputFolderError(
+      output,
+      "is a file, not a folder",
+      "The output argument names the folder the run writes its result, " +
+        "record and receipt in: name a folder (for example ./).",
+    );
+  const probe = path.join(
+    output,
+    `.alcove-write-probe-${process.pid}-${crypto.randomUUID().slice(0, 8)}`,
+  );
+  let fd: number;
+  try {
+    fd = fs.openSync(
+      probe,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+    );
+  } catch (err) {
+    throw outputFolderError(
+      output,
+      `is not writable: ${errorText(err)}`,
+      "Restore write access to it -- in a container, the folder's owner as " +
+        "well as its permissions -- or name another folder as the output.",
+    );
+  }
+  fs.closeSync(fd);
+  fs.rmSync(probe, { force: true });
 }

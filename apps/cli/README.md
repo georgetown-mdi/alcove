@@ -11,7 +11,7 @@ From the repository root, run:
 To connect:
 
 ```sh
-npm run dev -w apps/cli sftp://USER:PASSWORD@HOST/PATH INPUT_FILE [OUTPUT_FILE]
+npm run dev -w apps/cli sftp://USER:PASSWORD@HOST/PATH INPUT_FILE [OUTPUT_FOLDER]
 ```
 
 To avoid using a password on the command line, place it in a plain-text file and execute:

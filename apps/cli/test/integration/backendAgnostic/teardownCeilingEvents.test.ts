@@ -158,7 +158,7 @@ function partyArgs(
   return [
     "exchange",
     path.join(work, `${party}-input.csv`),
-    path.join(work, `${party}-out.csv`),
+    path.join(work, `${party}-out`),
     "--config-file",
     path.join(work, `${party}.yaml`),
     "--key-file",
@@ -188,7 +188,7 @@ function savingPartyArgs(
   return [
     dropUrl(),
     path.join(work, `${party}-input.csv`),
-    path.join(work, `${party}-out.csv`),
+    path.join(work, `${party}-out`),
     "--save",
     "--config-file",
     configFile,
@@ -360,24 +360,34 @@ test(
 test(
   "a run that lost an artifact claims nothing about what is on disk",
   async () => {
-    // The record path's parent is a regular file, so the record cannot be
-    // written and the run loses it non-fatally: the exchange and the result
-    // stand, the loss is reported, and the notice must not then tell the
-    // operator every file the run writes is there. The partner keeps no
-    // record, so its own notice still states the clause; that is what tells
-    // the two apart, since both parties run in this process.
+    // Party A's record file cannot be opened for writing, so the run loses it
+    // non-fatally: the exchange and the result stand, the loss is reported,
+    // and the notice must not then tell the operator every file the run
+    // writes is there. The refusal is injected at the record's own open --
+    // its name is stamped with the run's time, so no path can be blocked in
+    // advance -- and every other open, its keys file's included, is real. The
+    // partner keeps no record, so its own notice still states the clause;
+    // that is what tells the two apart, since both parties run in this process.
     writeExchangeFixture();
-    const recordInsideAFile = path.join(work, "a-input.csv", "record.json");
+    const recordTempFile = /alcove-record-[0-9TZ-]+\.json\.tmp/;
+    const realOpenSync = fs.openSync;
+    vi.spyOn(fs, "openSync").mockImplementation(((
+      file: fs.PathLike,
+      ...rest: unknown[]
+    ) => {
+      if (recordTempFile.test(String(file)))
+        throw Object.assign(new Error("EACCES: permission denied"), {
+          code: "EACCES",
+        });
+      return (realOpenSync as (...a: unknown[]) => number)(file, ...rest);
+    }) as typeof fs.openSync);
     const logArgs = ["--log-level", "error"];
 
     const { value: stderrText, lines } = await captureFd3(async () => {
       const { text } = await captureStderr(async () => {
         const results = await Promise.allSettled([
           runCli(
-            partyArgs("a", ["--event-stream", ...logArgs], PEER_TIMEOUT, [
-              "--record-file",
-              recordInsideAFile,
-            ]),
+            partyArgs("a", ["--event-stream", ...logArgs], PEER_TIMEOUT, []),
           ),
           runCli(partyArgs("b", logArgs)),
         ]);

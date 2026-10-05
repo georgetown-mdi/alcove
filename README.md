@@ -17,7 +17,7 @@ Pick the one that matches who you are. All three run the same protocol, so the t
    For an exchange through a shared folder, add the folder as the [Web Console Quickstart](#web-console-quickstart) shows.
 3. **You automate exchanges from the command line.** Run the containerized command line app against an SFTP server, a shared folder, or a partner's browser:
    ```sh
-   docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FILE
+   docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest sftp://SFTP_USER@SFTP_HOST/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
    ```
    Best for recurring or scheduled exchanges and for IT teams fitting linkage into a data pipeline. See the [CLI App Quickstart](#cli-app-quickstart).
 
@@ -72,15 +72,15 @@ docker run -it \
   ghcr.io/georgetown-mdi/alcove:latest \
   sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH \
   --server-password=@PASSWORD_FILE \
-  INPUT_FILE OUTPUT_FILE
+  INPUT_FILE OUTPUT_FOLDER
 ```  
 Replacing each of the following:
-   * `WORK_PATH` - relative or absolute path to a directory on your machine that contains your input file. The container can only read and write inside this directory, and the output file is written here. Example: `/Users/me/psi-exchange` (Mac/Linux) or `C:\Users\me\psi-exchange` (Windows).
+   * `WORK_PATH` - relative or absolute path to a directory on your machine that contains your input file. The container can only read and write inside this directory, and the output folder is in it. Example: `/Users/me/psi-exchange` (Mac/Linux) or `C:\Users\me\psi-exchange` (Windows).
    * `SFTP_USER`, `SFTP_HOST`, `SFTP_PORT` - standard SFTP connection information: the account username, the server address, and the port (usually `22`; if you use the default you can omit `:SFTP_PORT`).
    * `PASSWORD_FILE` - a file in `WORK_PATH` holding the SFTP account's password, so the password stays out of the command line and your shell history. Example: `passwd`.
    * `SFTP_PATH` - path from the **root** of the SFTP server to a directory that both parties can read and write; the exchange happens through files placed here. Example: `/exchanges/county-a-county-b`.
    * `INPUT_FILE` - your data file: a CSV with identifier columns (such as name, date of birth, or SSN) and, optionally, columns with data to share with the other party for matched records. A relative path is resolved inside `WORK_PATH`. Example: `clients.csv`.
-   * `OUTPUT_FILE` - name for the results file. Unless an absolute path is specified, the output file is written in `WORK_PATH`. Example: `matches.csv`.
+   * `OUTPUT_FOLDER` - the folder the run writes its result and exchange record in, each run under its own time-stamped names. It is created if missing, and a relative path is resolved inside `WORK_PATH`. Example: `./` for `WORK_PATH` itself, or `matches/`.
 
 A complete example, run from `/Users/me/psi-exchange` containing `clients.csv`:
 
@@ -90,7 +90,7 @@ docker run -it \
   ghcr.io/georgetown-mdi/alcove:latest \
   sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b \
   --server-password=@passwd \
-  clients.csv matches.csv
+  clients.csv matches/
 ```
 
 The `-it` flag connects your terminal to the container. On the first connection, Alcove shows the SFTP server's host-key fingerprint and asks you to confirm it; check it against the fingerprint your server administrator gives you before answering yes. Without `-it` there is no terminal to ask at, and Alcove refuses to connect to a server whose fingerprint it has not been given.
@@ -111,7 +111,7 @@ docker run \
   sftp://exchange_user@sftp.example.org/exchanges/county-a-county-b \
   --server-password=@passwd \
   --server-host-key-fingerprint=SHA256:FINGERPRINT \
-  clients.csv matches.csv
+  clients.csv matches/
 ```
 
 See [Reading a host key with `probe-host-key`](docs/CLI.md#reading-a-host-key-with-probe-host-key).
@@ -129,7 +129,7 @@ To practice before using real data, the repository provides two synthetic input 
 The command line app also exchanges over WebRTC with a partner who uses the web app, with no SFTP server or shared folder between you. Invite them from the directory holding your input, replacing `Agency A` with your organization's name:
 
 ```sh
-docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches.csv
+docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
 ```
 
 It prints an invitation code and waits. Send the code to your partner over a trusted channel; they paste it under **Accept an invitation you were sent** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
@@ -138,7 +138,7 @@ It prints an invitation code and waits. Send the code to your partner over a tru
 
 1. Set the exchange up once with `invite` on one side and `accept` on the other.
 2. That writes `alcove.yaml` and a key file into your working directory.
-3. Each later run is `exchange INPUT_FILE OUTPUT_FILE` from the same directory, with no further coordination.
+3. Each later run is `exchange INPUT_FILE OUTPUT_FOLDER` from the same directory, with no further coordination.
 4. Each run rotates the shared secret in the key file, so keep the directory between runs.
 5. Hand that command to cron or the Windows Task Scheduler, as [Scheduling the run](docs/CLI.md#scheduling-the-run) shows.
 
@@ -249,7 +249,7 @@ docker run -it --rm --mount type=bind,src=WORK_PATH,dst=/work ghcr.io/georgetown
 The second part is the invocation of the Alcove script and includes any command line options you wish to use. In the first example above it is:
 
 ```sh
-sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FILE
+sftp://SFTP_USER@SFTP_HOST:SFTP_PORT/SFTP_PATH --server-password=@PASSWORD_FILE INPUT_FILE OUTPUT_FOLDER
 ```
 
 However, you can place anything here you wish to pass on to the program. For example, to have it print all of its options, execute:

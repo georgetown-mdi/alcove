@@ -66,7 +66,6 @@ import {
   type KeyFileExpiryStatus,
 } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
-import { resolveRecordOutput } from "../recordFile";
 import { resolveReceiptOutput } from "../receiptFile";
 import { assertIdentityMatchesAgreedTerms } from "../signingIdentityDivergence";
 import { loadSigningIdentity } from "../signingIdentityFile";
@@ -122,7 +121,7 @@ export function builder(cmd: Argv): Argv {
       }),
     )
       .usage(
-        "Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FILE]\n\n" +
+        "Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FOLDER]\n\n" +
           "Run a recurring exchange from alcove.yaml and the shared secret in\n" +
           "the key file, both written by invite, accept, or a quick exchange\n" +
           "run with --save. Each run replaces the secret the key file holds.",
@@ -135,9 +134,10 @@ export function builder(cmd: Argv): Argv {
       .positional("output", {
         type: "string",
         describe:
-          "where to write results; defaults to stdout. A folder, or a path " +
-          "ending in /, gets a new alcove-results-<stamp>.csv each run, " +
-          "stamped like that run's alcove-record-<stamp>.json",
+          "folder for the run's files, created if missing: a new " +
+          "alcove-results-<time>.csv each run, beside the record, keys and " +
+          "receipt stamped with the same time. Without it the result goes " +
+          "to stdout and the other files to the working directory",
       }),
     // exchange reads a config and has no URL, so the config/key files are read
     // (not written) and the server-* / peer-id overrides apply to the config.
@@ -237,9 +237,9 @@ export function builder(cmd: Argv): Argv {
 }
 
 // The common bootstrap options (config/key paths, identity, server-* overrides,
-// timeouts, record/-file, log-level, verbosity, the file-sync flags) plus the
-// exchange-specific positionals and CLI-only sweep controls. record/recordFile/
-// logLevel/verbosity come from CommonBootstrapOptions.
+// timeouts, record, log-level, verbosity, the file-sync flags) plus the
+// exchange-specific positionals and CLI-only sweep controls. record/logLevel/
+// verbosity come from CommonBootstrapOptions.
 interface ExchangeArgs extends CommonBootstrapOptions {
   input: string;
   output?: string;
@@ -272,7 +272,6 @@ type ExchangeOptions = Omit<
   | "allowMemoryShortfall"
   | "invitation"
   | "record"
-  | "recordFile"
 >;
 
 /** @internal exported for testing */
@@ -300,7 +299,6 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
     // -private-key-passphrase are credential values, not paths to tilde-expand.)
     configFile: expandTilde(common.configFile),
     keyFile: expandTilde(common.keyFile),
-    recordFile: expandTilde(common.recordFile),
     serverPassword: resolveAtSignRefs(common.serverPassword) as
       string | undefined,
     serverPrivateKey: resolveAtSignRefs(common.serverPrivateKey) as
@@ -1292,14 +1290,6 @@ export async function handler(argv: Arguments): Promise<void> {
       configPath: options.configFile,
     } as const;
 
-    // Resolved ahead of the preflight below so a signed run refused there
-    // still carries recordOutput into the same signed-receipt-without-record
-    // check runProtocol's own pass makes.
-    const recordOutput = resolveRecordOutput({
-      enabled: options.record,
-      recordFile: options.recordFile,
-    });
-
     // Every refusal above and here is decided from local inputs alone, so all
     // of them come before the wake call and the host-key probe, the run's
     // first network contact: runProtocol's own local checks (the
@@ -1322,8 +1312,9 @@ export async function handler(argv: Arguments): Promise<void> {
         connection,
         auth: authentication,
         prepared,
+        output,
         signing,
-        recordOutput,
+        writeRecord: options.record,
         verbosity,
         loggerName: "exchange",
         logFile,
@@ -1394,7 +1385,7 @@ export async function handler(argv: Arguments): Promise<void> {
         verbosity,
         loggerName: "exchange",
         logFile,
-        recordOutput,
+        writeRecord: options.record,
         fileSyncRuntime: {
           sweepExchangeFiles,
           forceRetainSweep,

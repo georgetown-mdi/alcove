@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   getLogger,
   operatorSuppliedText,
@@ -15,7 +17,7 @@ import type {
 
 import { writeFileOwnerOnly } from "./fileUtils";
 
-/** Basename stem for the default record file. */
+/** Basename stem of the record file. */
 export const DEFAULT_RECORD_BASENAME = "alcove-record";
 
 /**
@@ -28,11 +30,14 @@ export function recordFileStamp(createdAt: string): string {
 }
 
 /**
- * Default path for the self-attested record: `./alcove-record-<stamp>.json` in
- * the working directory, with the stamp {@link recordFileStamp} derives.
+ * The self-attested record's path in a run's folder:
+ * `alcove-record-<time>.json`, with the stamp {@link recordFileStamp} derives.
  */
-export function defaultRecordPath(createdAt: string): string {
-  return `./${DEFAULT_RECORD_BASENAME}-${recordFileStamp(createdAt)}.json`;
+export function recordFilePathIn(folder: string, createdAt: string): string {
+  return path.join(
+    folder,
+    `${DEFAULT_RECORD_BASENAME}-${recordFileStamp(createdAt)}.json`,
+  );
 }
 
 /**
@@ -61,36 +66,6 @@ export function agreedTermsPathFor(recordPath: string): string {
     : `${recordPath}.terms.json`;
 }
 
-/**
- * Where the record artifacts should go, resolved from the CLI flags before the
- * exchange runs. Holds only the user's choice -- an explicit `--record-file`
- * path, or `undefined` for the default timestamped path -- because the default's
- * timestamp is the record's `createdAt`, which is not known until the exchange
- * completes. {@link recordPathsFor} turns this into concrete paths at write time.
- */
-export interface RecordOutput {
-  /** Explicit `--record-file` path; `undefined` selects the default path. */
-  recordFile?: string;
-}
-
-/**
- * Resolve the record-output choice from the CLI flags. Returns `undefined` when
- * records are disabled (`--no-record`, which wins over an explicit
- * `--record-file`); otherwise the trimmed explicit path, or a choice with
- * `recordFile` undefined to mean "use the default timestamped path".
- */
-export function resolveRecordOutput(opts: {
-  enabled: boolean;
-  recordFile?: string;
-}): RecordOutput | undefined {
-  if (!opts.enabled) return undefined;
-  const trimmed = opts.recordFile?.trim();
-  return {
-    recordFile:
-      trimmed !== undefined && trimmed.length > 0 ? trimmed : undefined,
-  };
-}
-
 /** Concrete file destinations for the record and its verification keys. */
 export interface RecordPaths {
   /** Shareable record (commitments + non-secret summary). */
@@ -100,16 +75,12 @@ export interface RecordPaths {
 }
 
 /**
- * Resolve the concrete record and keys paths from the output choice and the
- * record being written. An explicit `--record-file` is used verbatim; otherwise
- * the default path is derived from the record's `createdAt`. The keys path is
- * always derived from the record path so the two stay visibly paired.
+ * The record and keys paths in a run's folder, derived from the record's
+ * `createdAt`. The keys path is derived from the record path so the two stay
+ * visibly paired.
  */
-export function recordPathsFor(
-  output: RecordOutput,
-  createdAt: string,
-): RecordPaths {
-  const recordFilePath = output.recordFile ?? defaultRecordPath(createdAt);
+export function recordPathsFor(folder: string, createdAt: string): RecordPaths {
+  const recordFilePath = recordFilePathIn(folder, createdAt);
   return { recordFilePath, keysFilePath: keysPathFor(recordFilePath) };
 }
 
@@ -164,7 +135,7 @@ function writeAgreedTermsBesideRecord(
  * it (docs/spec/EXCHANGE_RECORD.md, Agreed-terms file).
  */
 export function writeExchangeRecord(
-  output: RecordOutput,
+  folder: string,
   record: ExchangeRecord,
   keys: VerificationKeys,
   loggerName: string,
@@ -172,7 +143,7 @@ export function writeExchangeRecord(
 ): RecordWriteResult {
   const log = getLogger(loggerName);
   const { recordFilePath, keysFilePath } = recordPathsFor(
-    output,
+    folder,
     record.createdAt,
   );
   // Track the keys write so a partial failure (keys written, record write

@@ -39,7 +39,7 @@ import {
 import { runOnlineBootstrap } from "../../src/onlineBootstrap";
 import type { CommonBootstrapOptions } from "../../src/optionDefinitions";
 import { loadKeyFile } from "../../src/keyFile";
-import { keysPathFor, resolveRecordOutput } from "../../src/recordFile";
+import { keysPathFor } from "../../src/recordFile";
 import {
   AUTHENTICATION_FAILED_EXIT_CODE,
   exitCodeForError,
@@ -103,12 +103,12 @@ log.setLevel("silent");
 // setting.
 const PEER_TIMEOUT_SECONDS = 30;
 
-// Minimal options with config/key/record at fresh paths under the work dir, so
-// the invite/accept conflict gates pass and each run writes its own files.
+// Minimal options with config/key at fresh paths under the work dir, so the
+// invite/accept conflict gates pass and each run writes its own files.
 // `record` is left at the shipped CLI default (true) -- matching what the real
-// handlers do -- so the default-on audit-record path is exercised; recordFile is
-// pinned under the work dir (rather than the default `./alcove-record-<stamp>`,
-// which would litter the process cwd) so the artifacts are cleaned up with it.
+// handlers do -- so the default-on audit-record path is exercised; each run is
+// given its own output folder under the work dir ({@link outputFolder}), where
+// the record lands beside the result and is cleaned up with it.
 function testOptions(label: string): CommonBootstrapOptions {
   return {
     configFile: path.join(work, `${label}.yaml`),
@@ -125,15 +125,40 @@ function testOptions(label: string): CommonBootstrapOptions {
     // `log` below, so it emits no console output.
     pollingFrequencyMs: 10,
     record: true,
-    recordFile: path.join(work, `${label}-record.json`),
     eventStream: false,
     logLevel: logLibrary.levels.SILENT,
     verbosity: 0,
   };
 }
 
+/** The output folder the run labelled `label` is given. */
+function outputFolder(label: string): string {
+  return path.join(work, `${label}-out`);
+}
+
+/** The run artifacts named `<prefix>-<time><suffix>` in `folder`. */
+function artifactsIn(folder: string, prefix: string, suffix: string): string[] {
+  if (!fs.existsSync(folder)) return [];
+  return fs
+    .readdirSync(folder)
+    .filter(
+      (name) =>
+        name.startsWith(`${prefix}-`) &&
+        name.endsWith(suffix) &&
+        !name.slice(0, -suffix.length).includes("."),
+    )
+    .map((name) => path.join(folder, name));
+}
+
+/** The one exchange record a run wrote in `folder`. */
+function recordIn(folder: string): string {
+  const records = artifactsIn(folder, "alcove-record", ".json");
+  expect(records).toHaveLength(1);
+  return records[0];
+}
+
 async function readStableOutput(
-  file: string,
+  folder: string,
   dataRows: number,
 ): Promise<string> {
   const expectedLines = 1 + dataRows;
@@ -141,11 +166,8 @@ async function readStableOutput(
   let last = "";
   for (;;) {
     let cur = "";
-    try {
-      cur = await fsp.readFile(file, "utf8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    }
+    const [file] = artifactsIn(folder, "alcove-results", ".csv");
+    if (file !== undefined) cur = await fsp.readFile(file, "utf8");
     if (
       cur.length > 0 &&
       cur === last &&
@@ -154,7 +176,7 @@ async function readStableOutput(
       return cur;
     if (Date.now() > deadline)
       throw new Error(
-        `output file ${file} did not reach ${expectedLines} stable lines ` +
+        `the result in ${folder} did not reach ${expectedLines} stable lines ` +
           `within 5s; last saw ${cur.length} bytes: ${JSON.stringify(cur)}`,
       );
     last = cur;
@@ -216,8 +238,8 @@ async function runOnlineRoundTrip(params: {
 
   const inviteOptions = testOptions("invite");
   const acceptOptions = testOptions("accept");
-  const inviteOut = path.join(work, "invite-out.csv");
-  const acceptOut = path.join(work, "accept-out.csv");
+  const inviteOut = outputFolder("invite");
+  const acceptOut = outputFolder("accept");
 
   // Invite validation mints the invitation and builds the inviter's connection
   // from the URL (the online wiring's no-network half).
@@ -289,10 +311,7 @@ async function runOnlineRoundTrip(params: {
       verbosity: 0,
       loggerName: "invite",
       writePlainLine: () => {},
-      recordOutput: resolveRecordOutput({
-        enabled: inviteOptions.record,
-        recordFile: inviteOptions.recordFile,
-      }),
+      writeRecord: inviteOptions.record,
     }),
     runOnlineBootstrap({
       connection: acceptReady.connection,
@@ -306,10 +325,7 @@ async function runOnlineRoundTrip(params: {
       verbosity: 0,
       loggerName: "accept",
       writePlainLine: () => {},
-      recordOutput: resolveRecordOutput({
-        enabled: acceptOptions.record,
-        recordFile: acceptOptions.recordFile,
-      }),
+      writeRecord: acceptOptions.record,
       reuseExistingConfig: acceptReady.reuseExistingConfig,
     }),
   ]);
@@ -385,17 +401,11 @@ async function runOnlineRoundTrip(params: {
   // but only here does a real two-party PSI exchange produce a real audit that is
   // then serialized to disk through the CLI's default. Assert both files exist and
   // the record round-trips as JSON naming this exchange's participants.
+  const inviteRecord = recordIn(inviteOut);
+  const acceptRecord = recordIn(acceptOut);
   for (const party of [
-    {
-      recordFile: inviteOptions.recordFile!,
-      local: "invite",
-      partner: "accept",
-    },
-    {
-      recordFile: acceptOptions.recordFile!,
-      local: "accept",
-      partner: "invite",
-    },
+    { recordFile: inviteRecord, local: "invite", partner: "accept" },
+    { recordFile: acceptRecord, local: "accept", partner: "invite" },
   ]) {
     expect(fs.existsSync(party.recordFile)).toBe(true);
     expect(fs.existsSync(keysPathFor(party.recordFile))).toBe(true);
@@ -422,10 +432,12 @@ async function runOnlineRoundTrip(params: {
       acceptOptions.keyFile,
       inviteOptions.configFile,
       acceptOptions.configFile,
-      inviteOptions.recordFile!,
-      acceptOptions.recordFile!,
-      keysPathFor(inviteOptions.recordFile!),
-      keysPathFor(acceptOptions.recordFile!),
+      inviteRecord,
+      acceptRecord,
+      keysPathFor(inviteRecord),
+      keysPathFor(acceptRecord),
+      ...artifactsIn(inviteOut, "alcove-results", ".csv"),
+      ...artifactsIn(acceptOut, "alcove-results", ".csv"),
     ];
     for (const f of ownerOnly) expect(fs.statSync(f).mode & 0o077).toBe(0);
   }
@@ -443,8 +455,12 @@ async function runOnlineRoundTrip(params: {
 function expectNoPersistedFiles(options: CommonBootstrapOptions): void {
   expect(fs.existsSync(options.configFile)).toBe(false);
   expect(fs.existsSync(options.keyFile)).toBe(false);
-  expect(fs.existsSync(options.recordFile!)).toBe(false);
-  expect(fs.existsSync(keysPathFor(options.recordFile!))).toBe(false);
+  expect(
+    artifactsIn(outputFolder(options.identity!), "alcove-record", ".json"),
+  ).toEqual([]);
+  expect(
+    artifactsIn(outputFolder(options.identity!), "alcove-record", ".keys.json"),
+  ).toEqual([]);
 }
 
 // --- Happy path: filedrop -----------------------------------------------------
@@ -605,8 +621,8 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
 
   const inviteOptions = testOptions("invite");
   const acceptOptions = testOptions("accept");
-  const inviteOut = path.join(work, "invite-out.csv");
-  const acceptOut = path.join(work, "accept-out.csv");
+  const inviteOut = outputFolder("invite");
+  const acceptOut = outputFolder("accept");
 
   const inviteReady = await validateInvite({
     resolved: resolveInvitePositionals([url, inviteInput, inviteOut]),
@@ -644,7 +660,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
   expect(wrongSecret).not.toBe(minted);
   expect(wrongSecret).toMatch(SHARED_SECRET_REGEX);
 
-  // Both sides enable recording (recordOutput) and pass an output path, exactly as
+  // Both sides enable recording (writeRecord) and pass an output folder, exactly as
   // the happy path does, so the no-write assertions below are exercised against a
   // run that WOULD write an audit record and an output table on success: a failed
   // handshake must still produce neither. Both artifacts are written only after the
@@ -673,10 +689,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
           verbosity: 0,
           loggerName: "invite",
           writePlainLine: () => {},
-          recordOutput: resolveRecordOutput({
-            enabled: inviteOptions.record,
-            recordFile: inviteOptions.recordFile,
-          }),
+          writeRecord: inviteOptions.record,
         }),
         runOnlineBootstrap({
           connection: acceptReady.connection,
@@ -690,10 +703,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
           verbosity: 0,
           loggerName: "accept",
           writePlainLine: () => {},
-          recordOutput: resolveRecordOutput({
-            enabled: acceptOptions.record,
-            recordFile: acceptOptions.recordFile,
-          }),
+          writeRecord: acceptOptions.record,
           reuseExistingConfig: acceptReady.reuseExistingConfig,
         }),
       ]),
@@ -719,11 +729,10 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
   }
   expectNoPersistedFiles(inviteOptions);
   expectNoPersistedFiles(acceptOptions);
-  // The output table is written only after the exchange runs, so an aborted
-  // handshake leaves neither side's output file behind (the output path is not in
-  // CommonBootstrapOptions, so it is checked here rather than in the helper).
-  expect(fs.existsSync(inviteOut)).toBe(false);
-  expect(fs.existsSync(acceptOut)).toBe(false);
+  // The output folder is made before contact, but the result is written only
+  // after the exchange runs, so an aborted handshake leaves each folder empty.
+  expect(fs.readdirSync(inviteOut)).toEqual([]);
+  expect(fs.readdirSync(acceptOut)).toEqual([]);
 
   // Each aborted handshake emits one recovery advisory at ERROR -- the only
   // intended WARN/ERROR of this run -- and which one follows the side's exit
@@ -850,8 +859,8 @@ describe("sftp", () => {
       fs.writeFileSync(acceptInput, ACCEPT_CSV);
       const inviteOptions = testOptions("fu-invite");
       const acceptOptions = testOptions("fu-accept");
-      const inviteOut = path.join(work, "fu-invite-out.csv");
-      const acceptOut = path.join(work, "fu-accept-out.csv");
+      const inviteOut = outputFolder("fu-invite");
+      const acceptOut = outputFolder("fu-accept");
 
       // Validate builds each side's connection from the URL (the no-network half);
       // neither holds a pin.
@@ -1032,7 +1041,7 @@ describe("sftp", () => {
         resolved: resolveInvitePositionals([
           url,
           inviteInput,
-          path.join(work, "fc-invite-out.csv"),
+          outputFolder("fc-invite"),
         ]),
         options: testOptions("fc-invite"),
         acceptTimeout: PEER_TIMEOUT_SECONDS,
@@ -1045,7 +1054,7 @@ describe("sftp", () => {
           url,
           inviteReady.invitation,
           acceptInput,
-          path.join(work, "fc-accept-out.csv"),
+          outputFolder("fc-accept"),
         ]),
         options: acceptOptions,
         log,

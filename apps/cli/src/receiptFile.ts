@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   getLogger,
   operatorSuppliedText,
@@ -11,21 +13,23 @@ import { writeFileOwnerOnly } from "./fileUtils";
 import { recordFileStamp } from "./recordFile";
 
 // File custody for the dual-signed exchange record (the signed-receipt step's
-// output). Mirrors recordFile.ts: a timestamped default path, atomic owner-only
-// writes. See docs/spec/EXCHANGE_RECORD.md, Dual-signed record file.
+// output). Mirrors recordFile.ts: a timestamped default path in the run's
+// folder, atomic owner-only writes. See docs/spec/EXCHANGE_RECORD.md, Dual-signed record file.
 
 /** Basename stem for the default dual-signed record file. */
 export const DEFAULT_RECEIPT_BASENAME = "alcove-receipt";
 
 /**
- * Default path for the dual-signed record: `./alcove-receipt-<stamp>.json` in the
- * working directory, where `<stamp>` is the exchange's `createdAt` timestamp made
- * filesystem-safe (colons and the fractional-second dot replaced with hyphens).
- * The stamp is supplied by the caller (the same value the self-attested record
- * uses) so the receipt and record files for one exchange share a timestamp.
+ * The dual-signed record's default path in a run's folder:
+ * `alcove-receipt-<time>.json`, with the stamp of the run's self-attested
+ * record ({@link recordFileStamp}), so the receipt and record files for one
+ * exchange share it.
  */
-export function defaultReceiptPath(createdAt: string): string {
-  return `./${DEFAULT_RECEIPT_BASENAME}-${recordFileStamp(createdAt)}.json`;
+export function receiptFilePathIn(folder: string, createdAt: string): string {
+  return path.join(
+    folder,
+    `${DEFAULT_RECEIPT_BASENAME}-${recordFileStamp(createdAt)}.json`,
+  );
 }
 
 /**
@@ -53,15 +57,16 @@ export function resolveReceiptOutput(receiptOutput?: string): ReceiptOutput {
 }
 
 /**
- * Resolve the concrete receipt path from the output choice and the exchange
- * timestamp. An explicit path is used verbatim; otherwise the default path's
- * timestamp is the exchange's `createdAt`.
+ * Resolve the concrete receipt path from the output choice, the run's folder
+ * and the exchange timestamp. An explicit path is used verbatim; otherwise the
+ * receipt goes in the run's folder ({@link receiptFilePathIn}).
  */
 export function receiptPathFor(
   output: ReceiptOutput,
+  folder: string,
   createdAt: string,
 ): string {
-  return output.receiptFile ?? defaultReceiptPath(createdAt);
+  return output.receiptFile ?? receiptFilePathIn(folder, createdAt);
 }
 
 /**
@@ -75,11 +80,12 @@ export function receiptPathFor(
 export function writeDualSignedRecord(
   output: ReceiptOutput,
   record: DualSignedRecord,
+  folder: string,
   createdAt: string,
   loggerName: string,
 ): string | undefined {
   const log = getLogger(loggerName);
-  const receiptFilePath = receiptPathFor(output, createdAt);
+  const receiptFilePath = receiptPathFor(output, folder, createdAt);
   try {
     writeFileOwnerOnly(receiptFilePath, serializeDualSignedRecord(record));
     log.info(

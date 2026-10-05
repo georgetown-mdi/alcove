@@ -136,7 +136,7 @@ test(
       await runCli([
         "exchange",
         path.join(work, "a-input.csv"),
-        path.join(work, "a-out.csv"),
+        path.join(work, "a-out"),
         "--config-file",
         path.join(work, "alcove.yaml"),
         "--key-file",
