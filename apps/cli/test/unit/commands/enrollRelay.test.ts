@@ -228,7 +228,7 @@ test.each([
     "ECONNRESET",
     "The relay registrar at relay.example.org port 8443 closed the " +
       "connection without answering (ECONNRESET).",
-    "The registrar accepted the connection but did not complete the " +
+    "The registrar did not complete the " +
       "request: check that it is running and reachable from this network " +
       "(infra/relay/README.md, The registrar), then run again.",
   ],

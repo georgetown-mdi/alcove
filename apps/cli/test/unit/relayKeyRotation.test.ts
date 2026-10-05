@@ -417,7 +417,7 @@ describe("a registrar that does not answer", () => {
     "run from a network that allows it.";
 
   const NO_ANSWER_REMEDY =
-    "The registrar accepted the connection but did not complete the " +
+    "The registrar did not complete the " +
     "request: check that it is running and reachable from this network " +
     "(infra/relay/README.md, The registrar), then run again.";
 
