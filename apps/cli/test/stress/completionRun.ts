@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
 } from "node:fs";
 import { arch, cpus, platform, release, totalmem } from "node:os";
@@ -253,7 +254,14 @@ export function resultDifference(
   party: "starter" | "joiner",
 ): string | undefined {
   const shared = Math.floor(rows / 2);
-  const [, ...lines] = readFileSync(resultPath, "utf8").trim().split("\n");
+  const resultFiles = readdirSync(resultPath).filter(
+    (name) => name.startsWith("alcove-results-") && name.endsWith(".csv"),
+  );
+  if (resultFiles.length !== 1)
+    return "the output folder holds " + resultFiles.length + " result files";
+  const [, ...lines] = readFileSync(join(resultPath, resultFiles[0]), "utf8")
+    .trim()
+    .split("\n");
   const pairs = lines
     .map((row): [number, number] => {
       const [own, partner] = row.split(",").map(Number);

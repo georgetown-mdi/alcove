@@ -103,7 +103,7 @@ function runFileSyncParty(
       ...EXTRA_CLI_ARGS,
       url,
       join(dir, "input.csv"),
-      join(dir, "result.csv"),
+      join(dir, "results"),
     ],
     name,
     roleLine: ROLE_LINE,
@@ -168,10 +168,10 @@ test(
         if (party.exitCode !== 0) console.log(party.log.slice(-4000));
 
       expect([partyA.exitCode, partyB.exitCode]).toEqual([0, 0]);
-      expect(resultDifference(join(a, "result.csv"), ROWS, "starter")).toBe(
+      expect(resultDifference(join(a, "results"), ROWS, "starter")).toBe(
         undefined,
       );
-      expect(resultDifference(join(b, "result.csv"), ROWS, "joiner")).toBe(
+      expect(resultDifference(join(b, "results"), ROWS, "joiner")).toBe(
         undefined,
       );
     } finally {
@@ -258,7 +258,7 @@ test(
       );
       const difference =
         run.exitCode === 0
-          ? resultDifference(join(root, "result.csv"), ROWS, PARTY)
+          ? resultDifference(join(root, "results"), ROWS, PARTY)
           : undefined;
       console.log(
         `${PARTY}, ${ROWS} records: wall ${run.wallMs} ms; peak RSS ` +
