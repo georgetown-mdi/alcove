@@ -56,7 +56,7 @@ For work that spans `packages/core` and the web app, run the dev loop from the r
 
 ```sh
 npm run dev            # core's build watcher + the web dev server
-npm run dev:console    # the same, with the console deployment profile
+npm run dev:console    # core's build watcher + the console Node server, its client served through Vite middleware
 ```
 
 The apps consume `@alcove/core` from its built `dist/`, so a core edit made while a bare `npm run dev -w apps/web` is running never reaches the page. The root script brings `dist/` up to date before the server starts and rebuilds it on every later change; either side exiting stops the other.

@@ -115,6 +115,19 @@ function isHostedApiPath(spelling: string): boolean {
 }
 
 /**
+ * Whether any spelling of `pathname` -- as written, case-folded,
+ * dot-resolved, or percent-decoded -- is `/api` or under it, or decoding was
+ * still changing the path at {@link MAX_DECODE_ROUNDS}.
+ */
+export function isApiNamespacePath(pathname: string): boolean {
+  const { spellings, settled } = spellingsOf(pathname);
+  return (
+    !settled ||
+    spellings.some((spelling) => isUnderPrefix(spelling, API_PATH_ROOT))
+  );
+}
+
+/**
  * Whether the request for `url` is refused under the current profile: on the
  * hosted profile, any spelling of its path lands under `/api` outside
  * {@link HOSTED_API_PREFIXES}; on the console profile, any spelling lands under

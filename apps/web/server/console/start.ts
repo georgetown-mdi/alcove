@@ -21,6 +21,7 @@ import {
   shutdownTimeoutMs,
 } from "./shutdown";
 
+import type { ClientMiddleware } from "./app";
 import type { JobRouteDefinition } from "./routeTable";
 import type { Server } from "node:http";
 import type { ServerCloseHooks } from "./shutdown";
@@ -55,11 +56,15 @@ function logUncaughtErrors(): void {
  * Boot the console server and listen: load the server configuration, prepare
  * the job API's startup state and its warnings, wire the running exchange and
  * the server into the SIGINT/SIGTERM shutdown, then listen on `PORT` at
- * `HOST` ({@link DEFAULT_BIND_HOST} when unset). A job API configuration error
- * rejects before anything listens.
+ * `HOST` ({@link DEFAULT_BIND_HOST} when unset). Paths no route names are
+ * served from the built client under `staticRoot` when it is given, or by
+ * `clientMiddleware` in development. A job API configuration error, or a
+ * `staticRoot` holding no client, rejects before anything listens.
  */
 export async function startConsoleServer(options: {
   routes: ReadonlyArray<JobRouteDefinition>;
+  staticRoot?: string;
+  clientMiddleware?: ClientMiddleware;
 }): Promise<{ server: Server; hooks: ServerCloseHooks; url: string }> {
   const config = await new ConfigManager().load();
   setLogLevel(config.LOG_LEVEL);
@@ -70,10 +75,12 @@ export async function startConsoleServer(options: {
   warnJobRendezvousProvisioning();
   logUncaughtErrors();
 
-  const server = createConsoleServer(
-    createConsoleHandler({ routes: options.routes }),
-    { requestTimeoutMs: jobApiRequestTimeoutMs() },
-  );
+  const server = createConsoleServer(createConsoleHandler(options), {
+    requestTimeoutMs: jobApiRequestTimeoutMs(),
+    ...(options.clientMiddleware === undefined
+      ? {}
+      : { clientMiddleware: options.clientMiddleware }),
+  });
   const hooks = createCloseHooks();
   registerJobManagerShutdown(hooks);
   installGracefulShutdown(server, hooks, { timeoutMs: shutdownTimeoutMs() });

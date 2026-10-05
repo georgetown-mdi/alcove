@@ -48,7 +48,7 @@ logLibrary.setDefaultLevel(config.LOG_LEVEL);
 // too. tsconfig provides these via explicit `paths` plus a `@*` -> `./src/*`
 // catch-all; `@psi` here stands in for that catch-all, which the unit project
 // needs because its `src/psi` sources pull in `@utils/*`.
-const srcAliases = {
+export const srcAliases = {
   "@components": path.resolve(import.meta.dirname, "src/components"),
   "@console": path.resolve(import.meta.dirname, "src/console"),
   "@exchange": path.resolve(import.meta.dirname, "src/exchange"),
