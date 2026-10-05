@@ -143,6 +143,9 @@ async function resupplyFiles(): Promise<void> {
   );
 }
 
+// Both tests carry a 90 s timeout: the slowest full-suite run measured under
+// container load (load average ~26 on 10 cores) took 57 s for the first, which
+// types two terms documents key by key, so 90 s is a 1.6x margin over it.
 test("verify: record, keys, re-supplied files and terms to a verified verdict, from the keyboard", async () => {
   const { record, keys } = await exchangeRecord();
   await loadRecord(record, serializeVerificationKeys(keys));
@@ -167,7 +170,7 @@ test("verify: record, keys, re-supplied files and terms to a verified verdict, f
 
   await expectVerdictFocused("Verified");
   expectNoAccessibilityViolations(app.container, { page: true });
-});
+}, 90_000);
 
 test("verify: an altered record reaches the failed verdict, from the keyboard", async () => {
   const { record, keys } = await exchangeRecord();
@@ -185,4 +188,4 @@ test("verify: an altered record reaches the failed verdict, from the keyboard", 
 
   await expectVerdictFocused("Verification failed");
   expectNoAccessibilityViolations(app.container, { page: true });
-});
+}, 90_000);

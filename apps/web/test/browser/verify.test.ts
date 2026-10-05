@@ -305,7 +305,9 @@ async function expectBothVerdictsGone() {
     .not.toBeInTheDocument();
 }
 
-describe("verify receipt screen", () => {
+// The slowest full-suite run measured under container load (load average ~26
+// on 10 cores) took 24 s for one test here; 40 s is a 1.7x margin over it.
+describe("verify receipt screen", { timeout: 40_000 }, () => {
   test("full happy path: record + keys + re-supplied files reach a verified verdict", async () => {
     const { record, keys } = await buildFixture();
     await mountVerifyScreen();
