@@ -11,8 +11,10 @@ import { isPathWithin } from "./pathContainment";
  * materialized to. It is NOT `JOB_DATA_ROOT` and NOT the resolved
  * `JOB_RENDEZVOUS_DIR`, and needs no extra operator mount, so a raw paste
  * works with only the data root mounted. A pasted secret lives at rest only
- * here, as a server-owned 0600 file, only long enough to be delivered to the
- * CLI child as an `@path`. The directory is owner-only (0700) and swept clean
+ * here, as a server-owned 0600 file the CLI child reads as an `@path`, for as
+ * long as the authored connection holds it: clearing or replacing the
+ * connection, or deleting the exchange, deletes it, and it outlasts every run
+ * in between. The directory is owner-only (0700) and swept clean
  * at server start, so a credential orphaned by a restart never lingers --
  * unlike a workdir, an SSH credential must not inherit the "lingers until
  * deleted" behavior. `/run` is the conventional runtime-state location; mount

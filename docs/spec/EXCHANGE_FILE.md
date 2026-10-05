@@ -522,7 +522,7 @@ The applying party derives its own terms from the update with `deriveAcceptedLin
 
 ### Wire format
 
-The encoded update is `BODY.MAC`, two base64url strings joined by `.`. Alcove writes both unpadded; the decoder also accepts trailing `=` padding, which does not change the decoded bytes, so the MAC below is unaffected:
+The encoded update is `BODY.MAC`, two base64url strings joined by `.`. Both are unpadded: the decoder refuses an update holding any `=` character as a `format` refusal, before it decodes either part:
 
 - `BODY` encodes the UTF-8 bytes of a JSON object with exactly the keys `kind` (the string `terms-update`), `version` (`"1"`), `partnership`, and `linkageTerms`. The object is strict: any other key is refused, including the `disclosedPayloadColumns` an earlier build wrote.
 - `MAC` encodes `HMAC-SHA-256(mac_key, BODY bytes)`, 32 bytes, computed over the exact bytes `BODY` encodes, so no canonical re-serialization is involved.

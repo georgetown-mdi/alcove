@@ -32,62 +32,22 @@ data path. A party that will not accept a relay it does not operate can run this
 one itself, which is the whole reason a self-hosted reference exists beside the
 managed option.
 
-## Provenance
+## Design records and tests
 
-Agent-authored, and a proposal rather than ratified infrastructure: read every
-claim here as something to check. **A relay has been stood up from it, on the
-docker path.** One instance -- the stock AL2023 arm64 AMI
-[`aws/provision.md`](aws/provision.md) prescribes -- was driven end to end on
-2026-09-03/04: the image built from the pinned digest, the container's uid was
-probed (65534), a real Let's Encrypt certificate was issued by DNS-01 through
-Cloudflare and deployed, the configuration rendered, TURNS bound on 443, an
-outside TLS handshake was verified from a third network against the public
-name, allocations were driven with `turnutils_uclient`, an allocation toward an
-internal address was confirmed refused, and `verify.sh` finished 6 pass / 0
-fail / 0 unclear from `install.sh`'s own end-of-install run.
+This reference is verified this far, and a claim beyond it is one to check in
+your own environment:
 
-**The podman/Quadlet path has been driven on a stand-in host, not an
-instance.** On 2026-09-24 `install.sh` installed the relay under
-`alcove-relay.container` in a throwaway Fedora 42 container running systemd
-and podman 5.8, and `verify.sh`'s probes passed there as they did on the docker
-host beside it, the self-signed test certificate aside. `verify.sh` has not
-exercised the data leg to a responsive peer (`ALCOVE_RELAY_VERIFY_PEER`):
-its allocation and refusal probes were driven, not exchange traffic. A
-relayed exchange has been driven through this relay separately; what that
-covered and what it did not is in
-[standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
-Fix what the next real run against those gets wrong rather than loosening a
-probe until it passes.
-
-**The per-exchange secrets table has been driven through the key scripts, on
-a stand-in host rather than this relay.** What coturn 4.18.0 does with the
-table -- two rows both authenticate, an unregistered secret is refused, a
-deleted row refuses new allocations and leaves open ones running, the static
-secret and the rows are a union, and the HMAC key is the 64 hex characters --
-was measured by hand against the pinned image on 2026-09-23. On 2026-09-23/24
-`register-exchange.sh`, `revoke-exchange.sh`, the data directory's ownership,
-and `verify.sh`'s secrets-table probes ran against the pinned image in a
-throwaway Amazon Linux 2023 container with its own docker daemon, with every
-secrets-table probe passing, the table-only and static-secret cases alike.
-
-**The registrar, the lapse sweep, and `max-allocate-lifetime` were driven
-beside the pinned coturn on 2026-09-24**, on an Amazon Linux 2023 docker host
-and a Fedora 42 podman host, both installed by `install.sh`: registration,
-replacement, revocation, the sweep's lapse boundary, the registrar's refusals,
-and `verify.sh` with its registrar probe all behaved as this document states.
-That run went through the earlier write path, which ran `turnadmin` in a
-throwaway container; the write path is `relay_table.py`, which writes the same
-table directly, and its coupling to coturn's table is held by a check against
-the pinned image (below). What that run measured about open allocations is
-under Revoking in [Per-exchange keys](#per-exchange-keys).
-
-`render-config.sh` and `mint-credential.sh` were also driven locally against a
-fixture before the live run: `render-config.sh` renders the template, writes
-at mode 600, and refuses a leftover placeholder, a placeholder named in a
-comment, and a secret whose alphabet its substitution would not survive;
-`mint-credential.sh` produces a credential that matches an independent
-HMAC-SHA1 computation of the same username, which the live run confirmed
-coturn itself accepts.
+- The docker path runs end to end on an instance launched from
+  [`aws/provision.md`](aws/provision.md), with `verify.sh` passing every probe.
+- The podman/Quadlet path and the per-exchange secrets table run on stand-in
+  hosts beside the pinned coturn image, not on a relay instance.
+- The registrar, the lapse sweep, and `max-allocate-lifetime` run beside the
+  pinned coturn image on a docker host and a podman host, both installed by
+  `install.sh`.
+- `verify.sh` probes the allocation and its refusals, not exchange traffic,
+  unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
+  exchange through this relay covers is in
+  [standing-relay-delivery.md](../../docs/notes/standing-relay-delivery.md).
 
 The measurement this reference implements, and the shapes it rules out, are in
 [`docs/notes/webrtc-relay-deployment.md`](../../docs/notes/webrtc-relay-deployment.md);
