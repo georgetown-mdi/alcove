@@ -115,6 +115,20 @@ const STATIC_ASSETS = [
  */
 const MAX_ASSET_ENTRIES = 240;
 
+/**
+ * The content types a response may have to be stored under a path with each
+ * extension. A static host answers a missing path with its fallback document
+ * (200, text/html), and a content-hashed entry is never revalidated, so a
+ * response whose type does not match its extension is served but not stored.
+ */
+const ASSET_CONTENT_TYPES = new Map([
+  ["js", ["text/javascript", "application/javascript"]],
+  ["css", ["text/css"]],
+  ["webmanifest", ["application/manifest+json", "application/json"]],
+  ["ico", ["image/x-icon", "image/vnd.microsoft.icon"]],
+  ["png", ["image/png"]],
+]);
+
 /** The message a client posts to make a waiting worker take over now, having
  * told its operator an update is ready and reached the unload that applies it.
  * Mirrored by the client registration in `apps/web/src/utils/appShellUpdate.ts`.
@@ -362,7 +376,7 @@ async function handleHashedAsset(request) {
       : await tryCache(() => cache.match(request));
   if (cached !== undefined) return cached;
   const response = await fetch(request);
-  if (cache !== undefined && response.ok) {
+  if (cache !== undefined && isStorableAsset(request.url, response)) {
     const toStore = response.clone();
     await tryCache(async () => {
       await cache.put(request, toStore);
@@ -393,7 +407,7 @@ async function handleStaticAsset(request, hold) {
     return cached;
   }
   const response = await fetch(request);
-  if (cache !== undefined && response.ok) {
+  if (cache !== undefined && isStorableAsset(request.url, response)) {
     const toStore = response.clone();
     await tryCache(() => cache.put(request, toStore));
   }
@@ -406,7 +420,9 @@ async function handleStaticAsset(request, hold) {
 async function refreshInBackground(cache, request) {
   try {
     const response = await fetch(request, { cache: "reload" });
-    if (response.ok) await cache.put(request, response);
+    if (isStorableAsset(request.url, response))
+      await cache.put(request, response);
+    else await response.body?.cancel();
   } catch {
     // Offline or a failing origin; the stored copy stands.
   }
@@ -447,7 +463,11 @@ async function addAllIndividually(cache, paths) {
     paths.map(async (path) => {
       try {
         if ((await cache.match(path)) !== undefined) return;
-        await cache.add(path);
+        const response = await fetch(path);
+        // Chromium holds the connection of a response whose body is never
+        // read, and the batch stalls once the per-host connections run out.
+        if (isStorableAsset(path, response)) await cache.put(path, response);
+        else await response.body?.cancel();
       } catch {
         // One missing or failing asset; the rest of the precache stands.
       }
@@ -473,6 +493,19 @@ async function cacheAssetsWithinCap(paths) {
   if (assets === undefined) return;
   await addAllIndividually(assets, paths);
   await tryCache(() => trimCache(assets, MAX_ASSET_ENTRIES));
+}
+
+/** Whether `response` may be stored under `url`: it succeeded, and its content
+ * type is one {@link ASSET_CONTENT_TYPES} lists for the path's extension. */
+function isStorableAsset(url, response) {
+  if (!response.ok) return false;
+  const path = new URL(url, self.location.origin).pathname;
+  const extension = path.slice(path.lastIndexOf(".") + 1);
+  const mediaType = (response.headers.get("Content-Type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  return ASSET_CONTENT_TYPES.get(extension)?.includes(mediaType) ?? false;
 }
 
 /** Drop the oldest entries until `cache` holds at most `max`. */

@@ -91,6 +91,17 @@ export function serviceWorkerStringArray(name: string): Array<string> {
   return [...block[1].matchAll(/"([^"]*)"/g)].map((match) => match[1]);
 }
 
+/** The extensions the worker will store, read from the keys of its
+ * `ASSET_CONTENT_TYPES` map in the shipped source. */
+export function serviceWorkerStorableExtensions(): Array<string> {
+  const block = /const ASSET_CONTENT_TYPES = new Map\(\[([\s\S]*?)\]\);/.exec(
+    serviceWorkerSource(),
+  );
+  if (block === null)
+    throw new Error("serviceWorker.js declares no ASSET_CONTENT_TYPES map");
+  return [...block[1].matchAll(/\[\s*"([^"]*)"\s*,/g)].map((match) => match[1]);
+}
+
 /**
  * The worker's own `hashedAssetPathsIn`, lifted out of the classic script so a
  * check can run the shipped extraction over a document a real server rendered.

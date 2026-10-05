@@ -1,3 +1,6 @@
+import { extname, resolve } from "node:path";
+import { readdirSync } from "node:fs";
+
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import {
@@ -7,6 +10,7 @@ import {
 
 import {
   serviceWorkerAssetExtractor,
+  serviceWorkerStorableExtensions,
   serviceWorkerString,
   serviceWorkerStringArray,
 } from "../utils/serviceWorkerHarness";
@@ -17,6 +21,7 @@ import {
   spawnProdServer,
   stopProdServer,
   waitForRoot,
+  webRoot,
 } from "./prodServer.js";
 
 import type { ChildProcess } from "node:child_process";
@@ -90,6 +95,28 @@ describe.skipIf(!hasBuild)(
       }
 
       expect(unserved).toEqual([]);
+    });
+
+    test("emits only extensions the worker's media-type map can store", () => {
+      const builtAssets = readdirSync(
+        resolve(webRoot, ".output/public/assets"),
+        { recursive: true, withFileTypes: true },
+      ).filter((entry) => entry.isFile());
+      const storable = serviceWorkerStorableExtensions();
+      const emitted = [
+        ...new Set(builtAssets.map((entry) => extname(entry.name).slice(1))),
+      ];
+      expect(emitted.length).toBeGreaterThan(0);
+
+      const missing = emitted.filter(
+        (extension) => !storable.includes(extension),
+      );
+      expect(
+        missing,
+        `the build emits /assets/ files with extensions ${JSON.stringify(missing)} ` +
+          `that ASSET_CONTENT_TYPES in serviceWorker.js (${JSON.stringify(storable)}) ` +
+          `does not list, so the worker never stores them; add each to the map`,
+      ).toEqual([]);
     });
 
     test("brings each declared route code the shell's own graph does not", () => {
