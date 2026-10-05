@@ -56,10 +56,6 @@ import {
 } from "@jobs/intentConfig";
 
 import {
-  jobCreateIntentSchema,
-  jobExchangeIntentSchema,
-} from "@jobs/intentSchemas";
-import {
   SIGNING_CERTIFICATE_FILE_NAME,
   SIGNING_IDENTITY_FILE_NAME,
   assertExportPathDistinct,
@@ -75,11 +71,15 @@ import {
   buildAdvancedTerms,
   seedAdvancedInvite,
 } from "@psi/authoring/advancedInvite";
+import {
+  jobCreateIntentSchema,
+  jobExchangeIntentSchema,
+} from "@jobs/intentSchemas";
 import { browseSegment } from "@jobs/workInputName";
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 import { resolveWorkdirFile } from "@jobs/workdir";
-import { runArtifactPaths } from "@jobs/runArtifacts";
 import { runArtifactNames } from "@jobs/runArtifactNames";
+import { runArtifactPaths } from "@jobs/runArtifacts";
 
 import {
   STUB_CLI_PATH,

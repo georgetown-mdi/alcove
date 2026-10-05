@@ -13,12 +13,12 @@ import {
   MAX_SFTP_CONNECTION_RESPONSE_BYTES,
   readBoundedJson,
 } from "@psi/jobClient/jobApiBody";
+import { runArtifactNames, stampOfResultPath } from "@jobs/runArtifactNames";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
 import { isJobCreateRefusalReason } from "@jobs/jobCreateRefusal";
 import { jobCreateIntentSchema } from "@jobs/intentSchemas";
 import { jobRecordDownloads } from "@psi/jobClient/jobExchangeRecord";
-import { runArtifactNames, stampOfResultPath } from "@jobs/runArtifactNames";
-import { recordFileStamp } from "../runOutputs";
+import { recordFileStamp } from "@psi/runOutputs";
 import { refusedColumnNames } from "@psi/columnNames";
 import { whenDiagnostic } from "@utils/diagnostics";
 
@@ -53,7 +53,7 @@ import type { JobCreateRefusalReason } from "@jobs/jobCreateRefusal";
 import type { ReceiptsIntentFields } from "../receiptsModel";
 import type { RefusedColumnName } from "@psi/columnNames";
 import type { RunDiagnosticsIntentFields } from "../runDiagnosticsModel";
-import type { RunOutputs } from "../runOutputs";
+import type { RunOutputs } from "@psi/runOutputs";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
 
 const log = getLogger("serverJobExchangeDriver");

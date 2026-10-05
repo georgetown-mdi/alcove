@@ -633,7 +633,7 @@ export function VerifyReceiptScreen() {
       <Stack gap="lg" mt="md">
         <JsonDropzone
           label="Exchange record"
-          hint="The shareable record: alcove-record-<stamp>.json"
+          hint="The shareable record: alcove-record-<time>.json"
           chosen={record?.file}
           onFile={(file) => void onRecordFile(file)}
         />
@@ -646,7 +646,7 @@ export function VerifyReceiptScreen() {
 
         <JsonDropzone
           label="Verification keys"
-          hint="The private keys: alcove-record-<stamp>.keys.json"
+          hint="The private keys: alcove-record-<time>.keys.json"
           chosen={keys?.file}
           onFile={(file) => void onKeysFile(file)}
         />
@@ -853,7 +853,7 @@ export function VerifyReceiptScreen() {
             </Text>
             <JsonDropzone
               label="Dual-signed record"
-              hint="The record both parties signed: alcove-receipt-<stamp>.json"
+              hint="The record both parties signed: alcove-receipt-<time>.json"
               chosen={signedRecord?.file}
               onFile={(file) => void onSignedRecordFile(file)}
             />

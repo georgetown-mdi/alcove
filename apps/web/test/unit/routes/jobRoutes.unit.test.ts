@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { JOB_FILE_NAMES, MAX_INPUT_CSV_LENGTH } from "@jobs/intentSchemas";
-import { runArtifactNames } from "@jobs/runArtifactNames";
 import {
   MAX_JOB_BODY_BYTES,
   MAX_SFTP_AUTHOR_BODY_BYTES,
@@ -15,6 +14,7 @@ import {
 import { formatFirstIssue, formatIssues } from "@jobs/schemaIssueMessage";
 import { JobManager } from "@jobs/jobManager";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
+import { runArtifactNames } from "@jobs/runArtifactNames";
 
 import { Route as CancelRoute } from "../../../src/routes/api/jobs/$jobId/cancel";
 import { Route as CreateRoute } from "../../../src/routes/api/jobs/index";
@@ -46,16 +46,16 @@ import {
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
 
-/** The artifact names of a run whose record states the `createdAt` these
- * tests stage. */
-const RUN_NAMES = runArtifactNames(TEST_RUN_STAMP);
-
 import type {
   JobCreateIntent,
   JobInputFileReference,
 } from "@jobs/intentSchemas";
 import type { ExchangeRecordOutcome } from "@alcove/core";
 import type { JobManager as JobManagerType } from "@jobs/jobManager";
+
+/** The artifact names of a run whose record states the `createdAt` these
+ * tests stage. */
+const RUN_NAMES = runArtifactNames(TEST_RUN_STAMP);
 
 const roots: Array<string> = [];
 

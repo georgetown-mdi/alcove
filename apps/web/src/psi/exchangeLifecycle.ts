@@ -233,7 +233,7 @@ interface ReceivedExchangeOutputs extends ExchangeOutputsBase {
   /** The matched results (CSV), as an object URL the UI exposes as a download. */
   resultsUrl: string;
   /** The name the result download is saved under: a console run's result file
-   * name, `alcove-results-<stamp>.csv`. Absent for an in-browser run, whose
+   * name, `alcove-results-<time>.csv`. Absent for an in-browser run, whose
    * download takes {@link RESULT_DOWNLOAD_NAME}. */
   resultFileName?: string;
   /** How the entity closure grouped this result's pairs

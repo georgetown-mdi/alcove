@@ -27,10 +27,10 @@ import {
   composeKeyFileDocument,
   composeSftpConfigDocument,
 } from "./intentConfig";
-import { JOB_FILE_NAMES } from "./intentSchemas";
-import { readJobFolderContents } from "./jobFolder";
 import { latestRunStampIn, runArtifactPaths } from "./runArtifacts";
 import { runArtifactNames, stampOfResultPath } from "./runArtifactNames";
+import { JOB_FILE_NAMES } from "./intentSchemas";
+import { readJobFolderContents } from "./jobFolder";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
 import {
@@ -104,10 +104,10 @@ import type {
   OpenedMountedConfiguration,
 } from "./configLoad";
 import type { JobFolderView } from "./jobFolder";
-import type { RunArtifactPaths } from "./runArtifacts";
 import type { JobHandoff } from "./handoff";
 import type { JobSftpServerEntry } from "./sftpServer";
 import type { RendezvousLeg } from "./jobRendezvous";
+import type { RunArtifactPaths } from "./runArtifacts";
 import type { SftpProbeResult } from "./sftpProbe";
 import type { SigningFingerprintResult } from "./signingIdentity";
 
@@ -364,7 +364,7 @@ interface JobView {
   keysPath: string | null;
   logPath: string | null;
   receiptPath: string | null;
-  /** The result file's own name, `alcove-results-<stamp>.csv`, the name its
+  /** The result file's own name, `alcove-results-<time>.csv`, the name its
    * download is offered under; null with {@link outputPath}. */
   resultFileName: string | null;
 }
@@ -374,12 +374,16 @@ export interface JobRecord {
   id: string;
   workdir: string;
   /**
-   * The stamp this run's `result` event named its result file with, or null
-   * when it named none -- a run that wrote no result file, or a path the relay
-   * cut short. The run's artifacts are found by it, or by the latest stamp in
-   * the workdir when it is null ({@link runArtifactsOf}).
+   * The stamp this run's artifacts are found by ({@link runArtifactsOf}): the
+   * one its `result` event named its result file with, or, for a run whose
+   * event named none, the latest stamp in the workdir once the child has
+   * exited. Null while neither is known, and after it for a run that left no
+   * artifact.
    */
-  resultStamp: string | null;
+  runStamp: string | null;
+  /** Whether {@link runStamp} is final, so the workdir is listed at most once
+   * per run rather than on every status read. */
+  runStampResolved: boolean;
   /**
    * The diagnostic log the CLI was pointed at with `--log-file`, or null when
    * this run was not a diagnostic one. Set at creation from the intent's
@@ -1159,7 +1163,8 @@ export class JobManager {
     const record: JobRecord = {
       id,
       workdir,
-      resultStamp: null,
+      runStamp: null,
+      runStampResolved: false,
       logPath,
       receiptRequested,
       partnerFingerprintPinnedAtCreation:
@@ -1490,7 +1495,10 @@ export class JobManager {
       record.termsProposal = "available";
     if (event.type === "result") {
       const stamp = stampOfResultPath(event.resultPath);
-      if (stamp !== null) record.resultStamp = stamp;
+      if (stamp !== null) {
+        record.runStamp = stamp;
+        record.runStampResolved = true;
+      }
     }
     if (event.type === "result" || event.type === "error")
       this.markTerminalEmitted(record, event.type);
@@ -2251,15 +2259,21 @@ function errorDisplayStrings(event: RelayEvent): Array<string> {
 }
 
 /**
- * This run's artifact paths inside its workdir, or null while the workdir holds
- * no artifact of any run. The run is the one its `result` event named; a run
- * whose event named no result file is the latest whose artifacts the workdir
- * holds. Every path is under that one stamp, so a workdir holding several runs'
- * artifacts never serves one run's result beside another's record.
+ * This run's artifact paths inside its workdir, or null while its stamp is not
+ * known. The run is the one its `result` event named; a run whose event named
+ * no result file is the latest whose artifacts the workdir holds once the child
+ * has exited, read on the first call after the exit and kept. Every path is
+ * under that one stamp, so a workdir holding several runs' artifacts never
+ * serves one run's result beside another's record.
  */
 function runArtifactsOf(record: JobRecord): RunArtifactPaths | null {
-  const stamp = record.resultStamp ?? latestRunStampIn(record.workdir);
-  return stamp === null ? null : runArtifactPaths(record.workdir, stamp);
+  if (!record.runStampResolved && record.terminal !== null) {
+    record.runStamp = latestRunStampIn(record.workdir);
+    record.runStampResolved = true;
+  }
+  return record.runStamp === null
+    ? null
+    : runArtifactPaths(record.workdir, record.runStamp);
 }
 
 /** The live view of an in-memory record, mirroring what the routes report. */

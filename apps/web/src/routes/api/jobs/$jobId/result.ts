@@ -12,7 +12,7 @@ import { resultFileExists } from "@jobs/workdir";
  * path is the job's server-chosen output file inside its workdir -- never
  * derived from client input. Content-Type and Content-Disposition are set
  * explicitly, the download named as the file is on disk
- * (`alcove-results-<stamp>.csv`, this run's stamp), and the nosniff and
+ * (`alcove-results-<time>.csv`, this run's stamp), and the nosniff and
  * no-store headers are set. A job that has not succeeded, or whose result is
  * missing, is 404 rather than leaking whether an unfinished job exists.
  */

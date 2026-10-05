@@ -1,8 +1,8 @@
 import path from "node:path";
 
 import { JOB_FILE_NAMES } from "./intentSchemas";
-import { runArtifactKindsIn } from "./runArtifacts";
 import { jobPathPresent } from "./workdir";
+import { runArtifactKindsIn } from "./runArtifacts";
 
 /**
  * Which of a run's files its folder holds, as named presence flags only: the
@@ -12,13 +12,13 @@ import { jobPathPresent } from "./workdir";
  * counts for whichever run wrote it, since the discard deletes them all.
  */
 export interface JobFolderContents {
-  /** A matched result, `alcove-results-<stamp>.csv`. */
+  /** A matched result, `alcove-results-<time>.csv`. */
   results: boolean;
   /** Either half of an exchange-record pair, or its agreed-terms file. */
   record: boolean;
   /** The key file holding the shared secret, {@link JOB_FILE_NAMES.key}. */
   sharedSecret: boolean;
-  /** A dual-signed receipt, `alcove-receipt-<stamp>.json`. */
+  /** A dual-signed receipt, `alcove-receipt-<time>.json`. */
   receipt: boolean;
   /** The diagnostic log. */
   log: boolean;

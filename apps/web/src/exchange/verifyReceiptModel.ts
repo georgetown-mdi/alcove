@@ -134,17 +134,17 @@ const CERTIFICATE_LABEL = "the certificate file";
 
 const MALFORMED_RECORD_MESSAGE =
   "This is not a valid exchange record. Check that you loaded the " +
-  "alcove-record-<stamp>.json file (the shareable record), not the keys file " +
+  "alcove-record-<time>.json file (the shareable record), not the keys file " +
   "or another document.";
 
 const MALFORMED_KEYS_MESSAGE =
   "This is not a valid verification-keys file. Check that you loaded the " +
-  "alcove-record-<stamp>.keys.json file (the private keys), not the record " +
+  "alcove-record-<time>.keys.json file (the private keys), not the record " +
   "file or another document.";
 
 const MALFORMED_SIGNED_RECORD_MESSAGE =
   "This is not a valid dual-signed record. Check that you loaded the " +
-  "alcove-receipt-<stamp>.json file (the record both parties signed), not the " +
+  "alcove-receipt-<time>.json file (the record both parties signed), not the " +
   "exchange record or another document.";
 
 const MALFORMED_CERTIFICATE_MESSAGE =

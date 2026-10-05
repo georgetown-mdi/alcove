@@ -4,17 +4,17 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
 
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
-import { JobManager } from "@jobs/jobManager";
-import { outputFolderArgument } from "@jobs/cliDriver";
-import { readJobFolderContents } from "@jobs/jobFolder";
 import {
   latestRunStamp,
   parseRunArtifactName,
   runArtifactNames,
   stampOfResultPath,
 } from "@jobs/runArtifactNames";
+import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
+import { JobManager } from "@jobs/jobManager";
 import { latestRunStampIn } from "@jobs/runArtifacts";
+import { outputFolderArgument } from "@jobs/cliDriver";
+import { readJobFolderContents } from "@jobs/jobFolder";
 
 import {
   STUB_CLI_PATH,
@@ -249,6 +249,29 @@ describe("a job folder holding several runs' artifacts", () => {
     expect(view.recordPath).toBe(path.join(workdir, later.record));
     expect(view.recordAvailable).toBe(false);
     expect(view.recordUnavailableReason).toBe("no-record");
+  });
+
+  test("a finished run whose event named no result file lists its folder once, not on every status read", async () => {
+    const { manager, id, workdir } = await runJob(validIntent(), {
+      STUB_FD3_EVENTS: JSON.stringify([]),
+    });
+    const later = runArtifactNames(LATER_STAMP);
+    fs.writeFileSync(path.join(workdir, later.result), "id\n1\n");
+    expect(manager.getJobView(id)!.outputPath).toBe(
+      path.join(workdir, later.result),
+    );
+
+    const readdir = vi.spyOn(fs, "readdirSync");
+    try {
+      const view = manager.getJobView(id)!;
+      manager.getJobView(id);
+      expect(view.outputPath).toBe(path.join(workdir, later.result));
+      expect(
+        readdir.mock.calls.filter(([dir]) => String(dir) === workdir),
+      ).toEqual([]);
+    } finally {
+      readdir.mockRestore();
+    }
   });
 
   test("the folder answer counts each kind of artifact whichever run wrote it", () => {

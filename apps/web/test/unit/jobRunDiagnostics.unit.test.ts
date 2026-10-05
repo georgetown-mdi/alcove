@@ -24,8 +24,8 @@ import {
 } from "@psi/runDiagnosticsModel";
 import { RelayedTerminalError } from "@psi/jobClient/serverJobExchangeDriver";
 import { failureFor } from "@exchange/useInviterExchange";
-import { resolveWorkdirFile } from "@jobs/workdir";
 import { outputFolderArgument } from "@jobs/cliDriver";
+import { resolveWorkdirFile } from "@jobs/workdir";
 
 import {
   captureExchangeArgv,

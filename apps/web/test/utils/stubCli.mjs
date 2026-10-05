@@ -28,7 +28,7 @@
 //                     escapes this route too, so the same spelling is used.
 //   STUB_STDOUT       Text written to stdout before exit.
 //   STUB_OUTPUT_FILE  When set, the result is written with this content (so the
-//                     result route has a file): as alcove-results-<stamp>.csv
+//                     result route has a file): as alcove-results-<time>.csv
 //                     inside the output positional (last argv) where that names
 //                     a folder, as the real CLI does, or to that path itself
 //                     otherwise. A `result` event in STUB_FD3_EVENTS that states
@@ -52,13 +52,13 @@
 //   STUB_RECORD_JSON  When set, the record is written with this content, and its
 //                     paired .keys.json alongside it (so the record/keys routes
 //                     have files): at the path --record-file names when it is
-//                     passed, and otherwise as alcove-record-<stamp>.json in the
+//                     passed, and otherwise as alcove-record-<time>.json in the
 //                     working directory, the real CLI's default. The keys path
 //                     is the record path with .json replaced by .keys.json,
 //                     matching the CLI's keysPathFor.
 //   STUB_RECEIPT_JSON When set, the receipt is written with this content: at the
 //                     configuration's signing.receipt_output when it names one,
-//                     and otherwise as alcove-receipt-<stamp>.json in the
+//                     and otherwise as alcove-receipt-<time>.json in the
 //                     working directory, the real CLI's default.
 //   STUB_DELAY_MS     Milliseconds to wait before exiting (default 0). During
 //                     the wait the process is interruptible.

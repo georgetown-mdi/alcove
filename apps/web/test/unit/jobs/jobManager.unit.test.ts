@@ -43,11 +43,11 @@ import {
   MountedKeyFileRefusedError,
 } from "@jobs/mountedKeyFile";
 import { generateJobId, writeJobFile } from "@jobs/workdir";
-import { runArtifactNames } from "@jobs/runArtifactNames";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL } from "@jobs/jobCreateRefusal";
 import { failureFor } from "@exchange/useInviterExchange";
+import { runArtifactNames } from "@jobs/runArtifactNames";
 
 import {
   STUB_CLI_PATH,
