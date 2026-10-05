@@ -2,7 +2,8 @@
 // the facts and one plain sentence per cause saying what happened; each app
 // binds its own remedy (a CLI flag, a console control) through a total map
 // keyed on FailureCauseKind, so a cause added here fails to compile in an app
-// that has no remedy for it. No flag, control or command name belongs here.
+// that has no remedy for it. No flag, control or command name belongs here; a
+// remedy every app states alike, naming none, is here for the apps to share.
 
 import { formatCount } from "./utils/formatCount";
 
@@ -108,6 +109,7 @@ export type FailureCauseOfKind<K extends FailureCauseKind> = Extract<
 export const FAILURE_CAUSE_KINDS = [
   "partner-never-arrived",
   "folder-missing",
+  "relay-registrar-unreachable",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
 const FAILURE_CAUSE_TAG = "alcoveFailureCause";
@@ -145,6 +147,34 @@ const oneOf = <T extends string>(
   value: unknown,
 ): value is T => typeof value === "string" && allowed.includes(value as T);
 
+const isWholeNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+function relayRegistrarFailureFromUntrusted({
+  failure,
+  code,
+  timedOutMs,
+}: Record<string, unknown>): RelayRegistrarUnreachableFailure | undefined {
+  switch (failure) {
+    case "no-connection":
+      return oneOf(RELAY_REGISTRAR_NO_CONNECTION_CODES, code)
+        ? { failure, code }
+        : undefined;
+    case "name-not-resolved":
+      return oneOf(RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES, code)
+        ? { failure, code }
+        : undefined;
+    case "no-answer":
+      if (code !== undefined)
+        return code === "ECONNRESET" && timedOutMs === undefined
+          ? { failure, code }
+          : undefined;
+      return isWholeNumber(timedOutMs) ? { failure, timedOutMs } : undefined;
+    default:
+      return undefined;
+  }
+}
+
 const FROM_UNTRUSTED: {
   readonly [K in FailureCauseKind]: (
     fields: Record<string, unknown>,
@@ -153,13 +183,7 @@ const FROM_UNTRUSTED: {
   "partner-never-arrived": ({ channel, waitedMs }) => {
     if (channel !== undefined && !oneOf(PARTNER_MEETING_CHANNELS, channel))
       return undefined;
-    if (
-      waitedMs !== undefined &&
-      (typeof waitedMs !== "number" ||
-        !Number.isSafeInteger(waitedMs) ||
-        waitedMs < 0)
-    )
-      return undefined;
+    if (waitedMs !== undefined && !isWholeNumber(waitedMs)) return undefined;
     return {
       kind: "partner-never-arrived",
       ...(channel !== undefined ? { channel } : {}),
@@ -170,6 +194,21 @@ const FROM_UNTRUSTED: {
     typeof path === "string" && oneOf(FOLDER_MISSING_CODES, code)
       ? { kind: "folder-missing", path, code }
       : undefined,
+  "relay-registrar-unreachable": (fields) => {
+    const { host, port } = fields;
+    if (
+      typeof host !== "string" ||
+      host.length === 0 ||
+      !isWholeNumber(port) ||
+      port < 1 ||
+      port > 65535
+    )
+      return undefined;
+    const failure = relayRegistrarFailureFromUntrusted(fields);
+    return failure === undefined
+      ? undefined
+      : { kind: "relay-registrar-unreachable", host, port, ...failure };
+  },
 };
 
 /**
@@ -227,6 +266,32 @@ function relayRegistrarUnreachableSentence(
   return "timedOutMs" in cause
     ? `${at} did not answer within ${formatWaitDuration(cause.timedOutMs)}.`
     : `${at} closed the connection without answering (${cause.code}).`;
+}
+
+/** The remedy for a relay registrar that did not answer (docs/notes/failure-cause-catalog.md). */
+export function relayRegistrarUnreachableRemedy({
+  host,
+  port,
+  failure,
+}: FailureCauseOfKind<"relay-registrar-unreachable">): string {
+  switch (failure) {
+    case "no-connection":
+      return (
+        `This computer needs outbound access to ${host} on TCP port ${port}: ` +
+        "if this network allows only some ports out, have that port opened " +
+        "or run from a network that allows it."
+      );
+    case "name-not-resolved":
+      return (
+        "Check the registrar address this exchange is configured with and " +
+        `that this computer's DNS resolves ${host}, then run again.`
+      );
+    case "no-answer":
+      return (
+        "The registrar did not complete the request: check that it is " +
+        "running and reachable from this network, then run again."
+      );
+  }
 }
 
 const SENTENCES: {

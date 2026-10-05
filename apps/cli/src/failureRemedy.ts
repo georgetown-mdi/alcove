@@ -5,6 +5,7 @@
 
 import {
   failureCauseOf,
+  relayRegistrarUnreachableRemedy,
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
@@ -41,32 +42,6 @@ const partnerNeverArrived = (
   return `${check}, then run again; --peer-timeout sets how long to wait.`;
 };
 
-const relayRegistrarUnreachable = ({
-  host,
-  port,
-  failure,
-}: FailureCauseOfKind<"relay-registrar-unreachable">): string => {
-  switch (failure) {
-    case "no-connection":
-      return (
-        `This computer needs outbound access to ${host} on TCP port ${port}: ` +
-        "if this network allows only some ports out, have that port opened " +
-        "or run from a network that allows it."
-      );
-    case "name-not-resolved":
-      return (
-        "Check the registrar address in connection.relay_registrar.url and " +
-        `that this computer's DNS resolves ${host}, then run again.`
-      );
-    case "no-answer":
-      return (
-        "The registrar did not complete the " +
-        "request: check that it is running and reachable from this network " +
-        "(infra/relay/README.md, The registrar), then run again."
-      );
-  }
-};
-
 /**
  * The remedy sentence for each cause kind, given the cause and the run.
  *
@@ -83,7 +58,23 @@ export const CLI_FAILURE_REMEDIES: {
     code === "ENOENT"
       ? "Create or mount the folder, or correct its path, then run again."
       : "Correct the path so it names a folder, then run again.",
-  "relay-registrar-unreachable": relayRegistrarUnreachable,
+  "relay-registrar-unreachable": (cause) => {
+    switch (cause.failure) {
+      case "no-connection":
+        return relayRegistrarUnreachableRemedy(cause);
+      case "name-not-resolved":
+        return (
+          "Check the registrar address in connection.relay_registrar.url and " +
+          `that this computer's DNS resolves ${cause.host}, then run again.`
+        );
+      case "no-answer":
+        return (
+          "The registrar did not complete the request: check that it is " +
+          "running and reachable from this network " +
+          "(infra/relay/README.md, The registrar), then run again."
+        );
+    }
+  },
 };
 
 /** The CLI's remedy sentence for `cause` on a run described by `context`. */

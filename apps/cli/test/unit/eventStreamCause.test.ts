@@ -76,6 +76,29 @@ test("a folder path is escaped and every fact off the kind is left behind", () =
   expect(JSON.stringify(event.cause)).not.toContain("\u001b");
 });
 
+test("a registrar host is escaped and every fact off its class is left behind", () => {
+  const host = "relay\u001b[2J.example.org";
+  const tagged = Object.assign(
+    {
+      kind: "relay-registrar-unreachable",
+      host,
+      port: 8443,
+      failure: "no-answer",
+      timedOutMs: 15_000.9,
+    } as const,
+    { code: "ECONNRESET", extra: "not a fact" },
+  );
+  const event = buildErrorEvent(causeError(tagged), "prepare");
+  expect(event.cause).toEqual({
+    kind: "relay-registrar-unreachable",
+    host: sanitizeForDisplay(host),
+    port: 8443,
+    failure: "no-answer",
+    timedOutMs: 15_000,
+  });
+  expect(JSON.stringify(event.cause)).not.toContain("\u001b");
+});
+
 test("a wait is floored to a whole count of milliseconds", () => {
   const event = buildErrorEvent(
     causeError({ kind: "partner-never-arrived", waitedMs: 1500.7 }),
@@ -94,6 +117,41 @@ test("every emitted cause passes the allowlist a consumer checks it against", ()
     { kind: "partner-never-arrived", channel: "webrtc" },
     { kind: "folder-missing", path: "/data", code: "ENOENT" },
     { kind: "folder-missing", path: "/data", code: "ENOTDIR" },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-connection",
+      code: "ECONNREFUSED",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-connection",
+      code: "UND_ERR_CONNECT_TIMEOUT",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "name-not-resolved",
+      code: "ENOTFOUND",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      code: "ECONNRESET",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      timedOutMs: 15_000,
+    },
   ];
   expect(new Set(emitted.map((cause) => cause.kind))).toEqual(
     new Set(FAILURE_CAUSE_KINDS),

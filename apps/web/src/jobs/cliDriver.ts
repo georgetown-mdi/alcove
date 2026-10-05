@@ -815,20 +815,23 @@ function relayedTermsChange(
 
 /**
  * An `error` event's `cause` (docs/spec/CLI_EVENTS.md), rebuilt by core's
- * `failureCauseFromUntrusted` from the facts its kind holds, its path escaped
- * again at this boundary. Undefined -- the field dropped -- where the kind is
- * not on the allowlist or a fact is not the type and value the catalog
+ * `failureCauseFromUntrusted` from the facts its kind holds, its path or host
+ * escaped again at this boundary. Undefined -- the field dropped -- where the
+ * kind is not on the allowlist or a fact is not the type and value the catalog
  * declares.
  */
 function relayedFailureCause(value: unknown): FailureCause | undefined {
   const cause = failureCauseFromUntrusted(value);
-  if (cause?.kind !== "folder-missing") return cause;
-  return {
-    ...cause,
-    path: sanitizeForDisplay(cause.path, {
-      maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
-    }),
-  };
+  const escape = (text: string): string =>
+    sanitizeForDisplay(text, { maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH });
+  switch (cause?.kind) {
+    case "folder-missing":
+      return { ...cause, path: escape(cause.path) };
+    case "relay-registrar-unreachable":
+      return { ...cause, host: escape(cause.host) };
+    default:
+      return cause;
+  }
 }
 
 /**

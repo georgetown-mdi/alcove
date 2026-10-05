@@ -1232,6 +1232,7 @@ function relayRegistrarUrlProblem(url: string): string | undefined {
       "must name only a host and an optional port, with no path, query, or " +
       `fragment, for example ${RELAY_REGISTRAR_URL_EXAMPLE}`
     );
+  if (parsed.port === "0") return "must not name port 0; a port is 1-65535";
   return undefined;
 }
 

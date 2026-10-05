@@ -33,6 +33,29 @@ const SAMPLES: {
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
     { kind: "folder-missing", path: "/data/drop", code: "ENOTDIR" },
   ],
+  "relay-registrar-unreachable": [
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-connection",
+      code: "ECONNREFUSED",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "name-not-resolved",
+      code: "ENOTFOUND",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      timedOutMs: 15_000,
+    },
+  ],
 };
 
 /** A relayed failure as the job client builds it off the CLI's event. */
@@ -107,6 +130,50 @@ describe("a console run that failed on a catalog cause", () => {
       "The shared folder /data/drop does not exist (ENOENT). Check that the " +
         "shared folder is mounted into the console and still in place, then " +
         "try again.",
+    );
+  });
+
+  test("an unreachable relay registrar names the port to open, not a setting", () => {
+    const failure = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["relay-registrar-unreachable"][0],
+        exitCode: 69,
+      }),
+    );
+    expect(failure.title).toBe("The relay registrar could not be reached");
+    expect(failure.message).toBe(
+      "The relay registrar at relay.example.org port 8443 could not be " +
+        "reached (ECONNREFUSED). This computer needs outbound access to " +
+        "relay.example.org on TCP port 8443: if this network allows only " +
+        "some ports out, have that port opened or run from a network that " +
+        "allows it.",
+    );
+    expect(failure.message).not.toContain(CONNECTION_TUNING_HEADING);
+  });
+
+  test("a registrar name that does not resolve and a registrar that does not answer take core's remedy as is", () => {
+    const resolved = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["relay-registrar-unreachable"][1],
+        exitCode: 69,
+      }),
+    );
+    expect(resolved.message).toContain(
+      "Check the registrar address this exchange is configured with and " +
+        "that this computer's DNS resolves relay.example.org, then run again.",
+    );
+    const silent = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["relay-registrar-unreachable"][2],
+        exitCode: 69,
+      }),
+    );
+    expect(silent.message).toContain(
+      "The registrar did not complete the request: check that it is " +
+        "running and reachable from this network, then run again.",
     );
   });
 
