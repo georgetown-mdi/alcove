@@ -457,9 +457,11 @@ export function addCommonBootstrapOptions(
       describe:
         "run an exchange whose PSI round needs more memory than this process " +
         "has, with a warning, instead of refusing it before connecting. The " +
-        "run may then run out of memory partway through. On invite and " +
-        "accept it applies to every form that runs an exchange and has no " +
-        "effect on one that only writes files",
+        "run may then run out of memory partway through. It also reads, with " +
+        "a warning, an input file larger than this process's heap is " +
+        "estimated to hold, on every command that reads one. On invite and " +
+        "accept the PSI round check applies to every form that runs an " +
+        "exchange",
     })
     .option("lockless-rendezvous", {
       type: "boolean",
@@ -581,7 +583,8 @@ export interface CommonBootstrapOptions {
   eventStream: boolean;
   /**
    * `--allow-memory-shortfall`: warn rather than refuse a run whose PSI round
-   * needs more memory than the process has.
+   * needs more memory than the process has, or an input file the main thread's
+   * heap is estimated not to hold.
    */
   allowMemoryShortfall?: boolean;
   logLevel: logLibrary.LogLevelNumbers;

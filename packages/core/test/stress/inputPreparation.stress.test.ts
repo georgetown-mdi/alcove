@@ -15,8 +15,8 @@ import { stressMemory } from "./stressMemory";
 // SSN, from reading the CSV to the first-round check: admitted at the per-set
 // maximum, and refused with the maximum one value under the rows, a count that
 // walks every record (docs/spec/FILE_SYNC.md, Preparing the input at 2^24).
-// The probe runs in its own process under the heap the CLI raises its main
-// thread to, and reports each stage's time and the process's peak resident
+// The probe runs in its own process under the heap limit the container
+// images set, and reports each stage's time and the process's peak resident
 // set. About eight minutes and 12 GB resident on the measured host, which is
 // why it is the opt-in tier. ALCOVE_STRESS_PREPARATION_ROWS lowers the row
 // count for a quicker run; the maximum is lowered with it to the row count, so

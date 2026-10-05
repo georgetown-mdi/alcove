@@ -55,7 +55,6 @@ const mockState = vi.hoisted(() => ({
         mainThreadHeapLimitBytes: number;
         hostBytes: number;
         containerLimitBytes: number | undefined;
-        heapRaisedByRestart: boolean;
       }
     | undefined,
 }));
@@ -189,9 +188,8 @@ vi.mock("../../src/psiMemoryBudget", async (importActual) => {
     await importActual<typeof import("../../src/psiMemoryBudget")>();
   return {
     ...actual,
-    readMemory: (engineInWorker: boolean, heapRaisedByRestart: boolean) =>
-      mockState.memoryReadings ??
-      actual.readMemory(engineInWorker, heapRaisedByRestart),
+    readMemory: (engineInWorker: boolean) =>
+      mockState.memoryReadings ?? actual.readMemory(engineInWorker),
   };
 });
 
@@ -4598,7 +4596,6 @@ const SHORT_MEMORY = {
   mainThreadHeapLimitBytes: 20e9,
   hostBytes: 32e9,
   containerLimitBytes: 1e9,
-  heapRaisedByRestart: false,
 };
 const SHORT_MEMORY_RECORDS = 1_000_000;
 

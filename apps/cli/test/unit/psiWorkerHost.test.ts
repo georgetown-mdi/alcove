@@ -181,11 +181,7 @@ describe("a signal exit while a PSI worker request is in flight", () => {
       const exitAtOnce = vi.fn();
       const sigintListenersBefore = process.listenerCount("SIGINT");
       const sigtermListenersBefore = process.listenerCount("SIGTERM");
-      const options = {
-        announce,
-        isRepeatedDelivery: () => false,
-        exitAtOnce,
-      };
+      const options = { announce, exitAtOnce };
 
       offerExitAtOnceWhilePsiWorkersStop(options);
       expect(announce).toHaveBeenCalledExactlyOnceWith(
@@ -226,7 +222,7 @@ describe("a signal exit while a PSI worker request is in flight", () => {
     const engine = trackWorkerPsiEngine(fake);
     const announce = vi.fn();
     const exitAtOnce = vi.fn();
-    const options = { announce, isRepeatedDelivery: () => false, exitAtOnce };
+    const options = { announce, exitAtOnce };
 
     offerExitAtOnceWhilePsiWorkersStop(options);
     expect(announce).not.toHaveBeenCalled();
@@ -250,44 +246,13 @@ describe("a signal exit while a PSI worker request is in flight", () => {
     await stopping;
   });
 
-  test("a repeated delivery of the first signal does not exit at once", async () => {
-    const fake = new FakeWorker();
-    const engine = trackWorkerPsiEngine(fake);
-    void engine.createClientRequest(["x"]).catch(() => {});
-    const request = fake.posted[0]!;
-    const exitAtOnce = vi.fn();
-    const options = {
-      announce: vi.fn(),
-      isRepeatedDelivery: () => true,
-      exitAtOnce,
-    };
-
-    offerExitAtOnceWhilePsiWorkersStop(options);
-    const stopping = stopPsiWorkersBeforeExit(options);
-    process.emit("SIGINT");
-    process.emit("SIGTERM");
-    expect(exitAtOnce).not.toHaveBeenCalled();
-
-    fake.emit("message", {
-      id: request.id,
-      ok: true,
-      result: new Uint8Array(),
-    });
-    fake.emit("exit", 1);
-    await stopping;
-  });
-
   test("with no request in flight there is no notice and no extra listener", async () => {
     const fake = new FakeWorker();
     trackWorkerPsiEngine(fake);
     const announce = vi.fn();
     const sigintListenersBefore = process.listenerCount("SIGINT");
     const sigtermListenersBefore = process.listenerCount("SIGTERM");
-    const options = {
-      announce,
-      isRepeatedDelivery: () => false,
-      exitAtOnce: vi.fn(),
-    };
+    const options = { announce, exitAtOnce: vi.fn() };
 
     offerExitAtOnceWhilePsiWorkersStop(options);
     const stopping = stopPsiWorkersBeforeExit(options);

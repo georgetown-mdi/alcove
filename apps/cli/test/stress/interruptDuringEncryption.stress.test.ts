@@ -18,11 +18,10 @@ import {
 // every attempt, never aborting (134) by tearing its worker down inside a
 // native call. Two file-sync parties run on this host, each on a terminal of
 // its own (util-linux script(1)), so the interrupt is a real Ctrl-C: the
-// terminal signals the whole foreground process group, the process restarted
-// for the PSI heap included. The terminal also turns on the live progress
-// line, which is how the test sees a masking operation running: the first
-// party to draw one is sent Ctrl-C at a spread of delays, and must still be
-// drawing it when the signal is sent.
+// terminal signals the whole foreground process group. The terminal also
+// turns on the live progress line, which is how the test sees a masking
+// operation running: the first party to draw one is sent Ctrl-C at a spread
+// of delays, and must still be drawing it when the signal is sent.
 //
 // ALCOVE_STRESS_INTERRUPT_ROWS sets the records a side (500,000 by default,
 // which masks for several seconds); ALCOVE_STRESS_INTERRUPT_ATTEMPTS sets the

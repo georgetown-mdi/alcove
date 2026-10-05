@@ -234,8 +234,6 @@ const EXIT_SIGNALS: readonly PsiWorkerExitSignal[] = ["SIGINT", "SIGTERM"];
 /** How a signal handler reports and ends the wait for a PSI worker. */
 export interface PsiWorkerExitWaitOptions {
   announce: (line: string) => void;
-  /** Whether `signal` is the same delivery seen again, not a new signal. */
-  isRepeatedDelivery: (signal: PsiWorkerExitSignal) => boolean;
   exitAtOnce: (signal: PsiWorkerExitSignal) => void;
 }
 
@@ -246,7 +244,7 @@ let exitAtOnceListeners: Map<PsiWorkerExitSignal, () => void> | undefined;
  * {@link stopPsiWorkersBeforeExit}: when a PSI worker has a request in
  * flight, print {@link PSI_WORKER_EXIT_WAIT_NOTICE} through `announce` and,
  * until {@link stopPsiWorkersBeforeExit} finishes, call `exitAtOnce` on a
- * further SIGINT or SIGTERM that `isRepeatedDelivery` does not discount.
+ * further SIGINT or SIGTERM.
  * The operator is the bound on the wait: there is no timeout.
  */
 export function offerExitAtOnceWhilePsiWorkersStop(
@@ -261,7 +259,6 @@ export function offerExitAtOnceWhilePsiWorkersStop(
   exitAtOnceListeners = new Map();
   for (const signal of EXIT_SIGNALS) {
     const listener = (): void => {
-      if (options.isRepeatedDelivery(signal)) return;
       options.exitAtOnce(signal);
     };
     exitAtOnceListeners.set(signal, listener);

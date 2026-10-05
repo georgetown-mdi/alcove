@@ -1,11 +1,9 @@
 import { hideBin } from "yargs/helpers";
 
 import { buildCli } from "./cliParser";
-import { allowPsiHeapRestart } from "./psiHeapRestart";
 import { exitOnUncaughtError } from "./util/exit";
 import { armProcessReturnGate } from "./util/exitGate";
 
-allowPsiHeapRestart();
 buildCli(hideBin(process.argv))
   .parseAsync()
   .then(() => {

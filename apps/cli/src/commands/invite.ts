@@ -61,7 +61,6 @@ import { createProvisionedServer } from "../serverProvision";
 import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
 import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
-import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { runOrExit } from "../util/exit";
 import {
   assertNoUnknownOptions,
@@ -744,6 +743,7 @@ export async function validateInvite(params: {
     const rows = await loadInputRows(input, {
       allowStdin: true,
       csvDelimiter,
+      allowMemoryShortfall: options.allowMemoryShortfall,
     });
     const builtDataSpec = {
       ...buildDataSpec({ identity, rows, linkageStrategy }),
@@ -931,6 +931,7 @@ export async function validateInvite(params: {
       const rows = await loadInputRows(resolved.input, {
         allowStdin: true,
         csvDelimiter: runCsvDelimiter,
+        allowMemoryShortfall: options.allowMemoryShortfall,
       });
       // The input only validated compatibility; the invitation's terms come from
       // the config, not the input. Say so ahead of the check below, so a user who
@@ -1071,6 +1072,7 @@ export async function validateInvite(params: {
   const rows = await loadInputRows(resolved.input, {
     allowStdin: true,
     csvDelimiter,
+    allowMemoryShortfall: options.allowMemoryShortfall,
   });
   const builtDataSpec = {
     ...buildDataSpec({ identity, rows, linkageStrategy }),
@@ -1121,11 +1123,6 @@ const INVITE_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
 // --- Handler -----------------------------------------------------------------
 
 export async function handler(argv: Arguments): Promise<void> {
-  const positionals = (argv["args"] as Array<unknown> | undefined) ?? [];
-  if (isInviteUrl(String(positionals[0])))
-    await restartUnderPsiHeapCeiling({
-      passEventStreamFd: argv["event-stream"] === true,
-    });
   let closeLogging: (() => void) | undefined;
   try {
     await runOrExit("invite", async () => {

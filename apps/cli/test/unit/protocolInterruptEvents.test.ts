@@ -63,7 +63,6 @@ vi.mock("../../src/psiProgressDisplay", () => ({
 import { runExchange } from "@alcove/core";
 
 import { runProtocol } from "../../src/protocol";
-import { PSI_HEAP_RESTART_MARKER } from "../../src/psiHeapRestart";
 
 // 32 zero bytes in base64url (43 chars, no padding).
 const TOKEN_A = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -249,14 +248,10 @@ test("an interrupt drops the live progress line before it logs anything", async 
 /**
  * Start a filedrop run, deliver `signals` back to back once it has posted,
  * and return the exit codes it asked for and the "caught" lines it logged.
- * `restarted` runs it as the process restarted for the PSI heap.
  */
 async function deliverSignals(
   signals: readonly NodeJS.Signals[],
-  restarted: boolean,
 ): Promise<{ exits: unknown[]; caught: string[] }> {
-  if (restarted) vi.stubEnv(PSI_HEAP_RESTART_MARKER, "1");
-  else vi.stubEnv(PSI_HEAP_RESTART_MARKER, undefined);
   const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
   const keyFile = path.join(tmpDir, "interrupted-twice.key");
   try {
@@ -291,12 +286,11 @@ async function deliverSignals(
     return { exits: exitSpy.mock.calls.map(([code]) => code), caught };
   } finally {
     exitSpy.mockRestore();
-    vi.unstubAllEnvs();
   }
 }
 
-test("a second Ctrl-C ends a run that was not restarted", async () => {
-  const { exits, caught } = await deliverSignals(["SIGINT", "SIGINT"], false);
+test("a second Ctrl-C ends the run", async () => {
+  const { exits, caught } = await deliverSignals(["SIGINT", "SIGINT"]);
   expect(caught).toEqual([
     "info: caught SIGINT, exiting",
     "info: caught SIGINT, exiting",
@@ -304,16 +298,8 @@ test("a second Ctrl-C ends a run that was not restarted", async () => {
   expect(exits).toEqual([130, 130]);
 });
 
-test("the same interrupt delivered twice to a restarted run runs one cleanup", async () => {
-  // A terminal's Ctrl-C reaches both a process restarted for its heap limit
-  // and the parent that restarted it, which passes the signal on.
-  const { exits, caught } = await deliverSignals(["SIGINT", "SIGINT"], true);
-  expect(caught).toEqual(["info: caught SIGINT, exiting"]);
-  expect(exits).toEqual([130]);
-});
-
-test("a SIGTERM after a SIGINT still ends a restarted run", async () => {
-  const { exits, caught } = await deliverSignals(["SIGINT", "SIGTERM"], true);
+test("a SIGTERM after a SIGINT still ends the run", async () => {
+  const { exits, caught } = await deliverSignals(["SIGINT", "SIGTERM"]);
   expect(caught).toEqual([
     "info: caught SIGINT, exiting",
     "info: caught SIGTERM, exiting",

@@ -59,7 +59,6 @@ import {
   startModeProvisionAsRead,
   wakeServerThrough,
 } from "../serverProvision";
-import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -465,12 +464,13 @@ async function prepareDataset(
   linkageStrategy: LinkageStrategy | undefined,
   deduplicate: boolean,
   csvDelimiter: string | undefined,
+  allowMemoryShortfall: boolean,
 ): Promise<PreparedExchange> {
   const log = getLogger("alcove");
 
   const { rawRows, columns, sanitizedColumnPositions } = await loadInputRows(
     input,
-    { allowStdin: true, csvDelimiter },
+    { allowStdin: true, csvDelimiter, allowMemoryShortfall },
   );
   // The prepare resolves the metadata from this read's own columns, so it takes
   // this read's changed positions with them: a header the removal emptied is
@@ -746,16 +746,13 @@ export async function handler(argv: Arguments): Promise<void> {
   // single-value flag or an unrecognized log-level -- on stderr and exits 64,
   // and lets any other (unexpected) failure propagate to the top-level handler.
   const parsed = parseOrExit(() => parseArgs(argv));
-  // The positionals are checked ahead of the heap restart and every check
-  // that logs: a bare `alcove` or a mistyped command name is not an exchange.
+  // The positionals are checked ahead of every check that logs: a bare
+  // `alcove` or a mistyped command name is not an exchange.
   if (argv._.length === 0) {
     console.error(BARE_INVOCATION_SUMMARY);
     process.exit(64);
   }
   const resolved = parseOrExit(() => resolvePositionals(argv._));
-  await restartUnderPsiHeapCeiling({
-    passEventStreamFd: argv["event-stream"] === true,
-  });
   const {
     logLevel,
     logFile,
@@ -889,6 +886,7 @@ export async function handler(argv: Arguments): Promise<void> {
         linkageStrategy,
         deduplicate,
         csvDelimiter,
+        allowMemoryShortfall === true,
       );
       // Read the files any `@path` credential ref names, holding the values
       // aside rather than applying them: `connection` must keep the reference so

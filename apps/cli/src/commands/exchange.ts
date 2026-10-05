@@ -76,7 +76,6 @@ import {
   reportPayloadReceiveFill,
   termsChangeHandler,
 } from "../termsChange";
-import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
 import {
@@ -833,12 +832,13 @@ export async function prepareDataset(
   logFile: string | undefined,
   connection: ProtocolConnectionConfig,
   csvDelimiter?: string,
+  allowMemoryShortfall = false,
 ): Promise<PreparedExchange> {
   const log = getLogger("exchange");
 
   const { rawRows, columns, sanitizedColumnPositions } = await loadInputRows(
     input,
-    { allowStdin: true, csvDelimiter },
+    { allowStdin: true, csvDelimiter, allowMemoryShortfall },
   );
 
   // Resolve the metadata this run transmits, carrying the positions this read
@@ -1037,9 +1037,6 @@ export async function resolveSigningPersist(
 }
 
 export async function handler(argv: Arguments): Promise<void> {
-  await restartUnderPsiHeapCeiling({
-    passEventStreamFd: argv["event-stream"] === true,
-  });
   // parseArgs resolves the log level and reads every option, so it runs before
   // the logger exists. parseOrExit reports its usage errors -- a repeated
   // single-value flag or an unrecognized log-level -- on stderr and exits 64,
@@ -1255,6 +1252,7 @@ export async function handler(argv: Arguments): Promise<void> {
         logFile,
         connection,
         csvDelimiter,
+        allowMemoryShortfall === true,
       );
     } catch (err) {
       // A usage error -- the `-`-at-an-interactive-terminal rejection
