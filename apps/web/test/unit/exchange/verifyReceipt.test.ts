@@ -754,7 +754,7 @@ describe("parseSignedRecordDocument", () => {
     );
     expect(parsed.kind).toBe("malformed");
     if (parsed.kind === "malformed")
-      expect(parsed.message).toContain("alcove-receipt-<stamp>.json");
+      expect(parsed.message).toContain("alcove-receipt-<time>.json");
   });
 
   test("an error-bearing malformed input never echoes control bytes", () => {

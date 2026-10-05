@@ -27,8 +27,16 @@
 //                     CLI prints before its event stream is open. The real CLI
 //                     escapes this route too, so the same spelling is used.
 //   STUB_STDOUT       Text written to stdout before exit.
-//   STUB_OUTPUT_FILE  When set, the output positional (last argv) is written
-//                     with this content (so the result route has a file).
+//   STUB_OUTPUT_FILE  When set, the result is written with this content (so the
+//                     result route has a file): as alcove-results-<time>.csv
+//                     inside the output positional (last argv) where that names
+//                     a folder, as the real CLI does, or to that path itself
+//                     otherwise. A `result` event in STUB_FD3_EVENTS that states
+//                     no resultPath is given the absolute path written, as the
+//                     real CLI's is.
+//   STUB_RUN_CREATED_AT  The ISO-8601 instant this run's stamp is made from.
+//                     Defaults to the createdAt STUB_RECORD_JSON states, then
+//                     to the current time.
 //   STUB_PARTNER_PIN  When set, signing.partner_fingerprint is written into the
 //                     document named by --config-file before the fd-3 events,
 //                     as the real first-contact adoption does (it persists the
@@ -41,11 +49,17 @@
 //                     read from stdin is written to this path.
 //   STUB_APPLY_EXIT_CODE  When set, the `apply` subcommand exits with this code
 //                     and writes nothing.
-//   STUB_RECORD_JSON  When set, the record file named by --record-file is written
-//                     with this content, and its paired .keys.json alongside it
-//                     (so the record/keys routes have files). The keys path is
-//                     the record path with .json replaced by .keys.json, matching
-//                     the CLI's keysPathFor.
+//   STUB_RECORD_JSON  When set, the record is written with this content, and its
+//                     paired .keys.json alongside it (so the record/keys routes
+//                     have files): at the path --record-file names when it is
+//                     passed, and otherwise as alcove-record-<time>.json in the
+//                     working directory, the real CLI's default. The keys path
+//                     is the record path with .json replaced by .keys.json,
+//                     matching the CLI's keysPathFor.
+//   STUB_RECEIPT_JSON When set, the receipt is written with this content: at the
+//                     configuration's signing.receipt_output when it names one,
+//                     and otherwise as alcove-receipt-<time>.json in the
+//                     working directory, the real CLI's default.
 //   STUB_DELAY_MS     Milliseconds to wait before exiting (default 0). During
 //                     the wait the process is interruptible.
 //   STUB_IGNORE_SIGINT  When "1", SIGINT is ignored (to test SIGTERM escalation).
@@ -86,6 +100,7 @@
 //                     decides whose ./alcove.yaml the real CLI would resolve.
 
 import fs from "node:fs";
+import path from "node:path";
 
 import YAML from "yaml";
 
@@ -250,9 +265,14 @@ function runExchangeStub() {
   // the real CLI (whose result event means the result has been written) and lets a
   // test that waits for the terminal event read the files without racing the
   // child's write.
+  const stamp = runStamp();
+  let writtenResultPath;
   if (process.env.STUB_OUTPUT_FILE !== undefined) {
-    const outputPath = process.argv[process.argv.length - 1];
-    fs.writeFileSync(outputPath, process.env.STUB_OUTPUT_FILE);
+    writtenResultPath = resultFilePath(
+      process.argv[process.argv.length - 1],
+      stamp,
+    );
+    fs.writeFileSync(writtenResultPath, process.env.STUB_OUTPUT_FILE);
   }
 
   // The real CLI persists an adopted pin into its configuration file and only
@@ -282,15 +302,20 @@ function runExchangeStub() {
   }
 
   if (process.env.STUB_RECORD_JSON !== undefined) {
-    const recordPath = recordFilePath(process.argv);
-    if (recordPath !== undefined) {
-      const keysPath = recordPath.endsWith(".json")
-        ? recordPath.slice(0, -".json".length) + ".keys.json"
-        : recordPath + ".keys.json";
-      fs.writeFileSync(recordPath, process.env.STUB_RECORD_JSON);
-      fs.writeFileSync(keysPath, JSON.stringify({ salts: {} }));
-    }
+    const recordPath =
+      recordFilePath(process.argv) ?? `./alcove-record-${stamp}.json`;
+    const keysPath = recordPath.endsWith(".json")
+      ? recordPath.slice(0, -".json".length) + ".keys.json"
+      : recordPath + ".keys.json";
+    fs.writeFileSync(recordPath, process.env.STUB_RECORD_JSON);
+    fs.writeFileSync(keysPath, JSON.stringify({ salts: {} }));
   }
+
+  if (process.env.STUB_RECEIPT_JSON !== undefined)
+    fs.writeFileSync(
+      configuredReceiptOutput() ?? `./alcove-receipt-${stamp}.json`,
+      process.env.STUB_RECEIPT_JSON,
+    );
 
   if (process.env.STUB_FD3_RAW !== undefined)
     writeFd3(process.env.STUB_FD3_RAW);
@@ -298,11 +323,14 @@ function runExchangeStub() {
   // text: the replacement holds a backslash for every character the display
   // escape rewrites, which is no valid escape inside a JSON string.
   const events = JSON.parse(process.env.STUB_FD3_EVENTS ?? "[]").map((event) =>
-    Object.fromEntries(
-      Object.entries(event).map(([key, value]) => [
-        key,
-        typeof value === "string" ? withConfigFile(value) : value,
-      ]),
+    withResultPath(
+      Object.fromEntries(
+        Object.entries(event).map(([key, value]) => [
+          key,
+          typeof value === "string" ? withConfigFile(value) : value,
+        ]),
+      ),
+      writtenResultPath,
     ),
   );
   for (const event of events) writeFd3(JSON.stringify(event) + "\n");
@@ -386,12 +414,70 @@ function writeFd3(line) {
   }
 }
 
-// The driver passes --record-file as a two-token pair (the exchange form) or a
-// single --record-file=<value> token (the zero-setup form, which uses the =value
-// shape so a flag-shaped value cannot be misparsed); the real CLI's yargs accepts
-// both, so the stub resolves both.
+// --record-file as a two-token pair or a single --record-file=<value> token;
+// the real CLI's yargs accepts both, so the stub resolves both.
 function recordFilePath(argv) {
   return separatedFlagValue(argv, "--record-file");
+}
+
+/** The stamp this run's artifact names share, made from its createdAt as the
+ * CLI's recordFileStamp makes it. */
+function runStamp() {
+  return runCreatedAt().replace(/[:.]/g, "-");
+}
+
+function runCreatedAt() {
+  if (process.env.STUB_RUN_CREATED_AT !== undefined)
+    return process.env.STUB_RUN_CREATED_AT;
+  if (process.env.STUB_RECORD_JSON !== undefined) {
+    try {
+      const createdAt = JSON.parse(process.env.STUB_RECORD_JSON).createdAt;
+      if (typeof createdAt === "string") return createdAt;
+    } catch {
+      // A record body a test made unparseable on purpose names no stamp.
+    }
+  }
+  return new Date().toISOString();
+}
+
+/** Where the result goes, by the CLI's own rule: a path ending in a separator
+ * or naming an existing directory is a folder, and gets a stamped name. */
+function resultFilePath(output, stamp) {
+  let folder = output.endsWith("/") || output.endsWith(path.sep);
+  if (!folder)
+    try {
+      folder = fs.statSync(output).isDirectory();
+    } catch {
+      folder = false;
+    }
+  return folder ? path.join(output, `alcove-results-${stamp}.csv`) : output;
+}
+
+/** A `result` event as the real CLI emits it: holding the absolute path of the
+ * result file it wrote, unless the test staged one of its own. */
+function withResultPath(event, writtenResultPath) {
+  if (
+    event.type !== "result" ||
+    event.resultWritten === false ||
+    writtenResultPath === undefined ||
+    event.resultPath !== undefined
+  )
+    return event;
+  return { ...event, resultPath: path.resolve(writtenResultPath) };
+}
+
+/** The configuration's signing.receipt_output, or undefined where it names
+ * none or no configuration was passed. */
+function configuredReceiptOutput() {
+  const configPath = separatedFlagValue(process.argv, "--config-file");
+  if (configPath === undefined) return undefined;
+  try {
+    const value = YAML.parse(fs.readFileSync(configPath, "utf8"))?.signing
+      ?.receipt_output;
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The value of a flag the exchange argv passes as two tokens, tolerating the

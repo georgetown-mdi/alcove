@@ -722,7 +722,8 @@ export const IDENTITY_REGENERATION_NOTICE =
  */
 export const RECEIPT_LOCATION_NOTICE =
   "The signed receipt is written with this run's files in your mounted folder, " +
-  "as receipt.json inside the run's own directory, and the run screen offers " +
+  "as alcove-receipt-<time>.json, named for the time of the run, inside the " +
+  "run's own directory, and the run screen offers " +
   "it as a download once the run finishes or fails. Discarding the run removes " +
   "it along with the results, so keep a copy of your own if you mean to keep " +
   "it -- it is the artifact an auditor checks, and neither party can recreate " +

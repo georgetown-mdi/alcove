@@ -2,21 +2,23 @@ import path from "node:path";
 
 import { JOB_FILE_NAMES } from "./intentSchemas";
 import { jobPathPresent } from "./workdir";
+import { runArtifactKindsIn } from "./runArtifacts";
 
 /**
  * Which of a run's files its folder holds, as named presence flags only: the
  * files the operator may want to keep before the folder is deleted. Presence is
- * an `lstat`, so a file the console cannot read still counts, since deleting the
- * folder removes it all the same.
+ * an `lstat` or a directory listing, so a file the console cannot read still
+ * counts, since deleting the folder removes it all the same. A run artifact
+ * counts for whichever run wrote it, since the discard deletes them all.
  */
 export interface JobFolderContents {
-  /** The matched result, {@link JOB_FILE_NAMES.output}. */
+  /** A matched result, `alcove-results-<time>.csv`. */
   results: boolean;
-  /** Either half of the exchange-record pair. */
+  /** Either half of an exchange-record pair, or its agreed-terms file. */
   record: boolean;
   /** The key file holding the shared secret, {@link JOB_FILE_NAMES.key}. */
   sharedSecret: boolean;
-  /** The dual-signed receipt. */
+  /** A dual-signed receipt, `alcove-receipt-<time>.json`. */
   receipt: boolean;
   /** The diagnostic log. */
   log: boolean;
@@ -39,12 +41,15 @@ export interface JobFolderView {
  * workdir. */
 export function readJobFolderContents(workdir: string): JobFolderContents {
   const present = (name: string) => jobPathPresent(path.join(workdir, name));
+  const artifacts = runArtifactKindsIn(workdir);
   return {
-    results: present(JOB_FILE_NAMES.output),
+    results: artifacts.has("result"),
     record:
-      present(JOB_FILE_NAMES.record) || present(JOB_FILE_NAMES.recordKeys),
+      artifacts.has("record") ||
+      artifacts.has("keys") ||
+      artifacts.has("terms"),
     sharedSecret: present(JOB_FILE_NAMES.key),
-    receipt: present(JOB_FILE_NAMES.receipt),
+    receipt: artifacts.has("receipt"),
     log: present(JOB_FILE_NAMES.log),
     input: present(JOB_FILE_NAMES.input),
   };

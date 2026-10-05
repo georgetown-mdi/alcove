@@ -17,7 +17,6 @@ import {
   createFetchJobApiClient,
   createServerJobReattachDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 import { renderSseFrame } from "@jobs/sse";
 import { spawnExchangeJob } from "@jobs/cliDriver";
@@ -136,8 +135,6 @@ async function relayWarningFromChild(fields: {
       configPath: path.join(workdir, "alcove.yaml"),
       keyPath: path.join(workdir, ".alcove.key"),
       inputPath: path.join(workdir, "input.csv"),
-      outputPath: path.join(workdir, JOB_FILE_NAMES.output),
-      recordPath: path.join(workdir, "record.json"),
       workdir,
       eventStream: true,
       runControls: { sweepExchangeFiles: false, logFilePath: undefined },

@@ -32,7 +32,8 @@ vi.mock("@tanstack/react-router", async () =>
 vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
-vi.mock("@psi/exchangeLifecycle", () => ({
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   runExchangeLifecycle: () => Promise.resolve(),
 }));
 

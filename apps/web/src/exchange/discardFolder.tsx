@@ -1,4 +1,5 @@
 import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
+import { RUN_ARTIFACT_NAME_PATTERNS } from "@jobs/runArtifactNames";
 
 import { folderHoldsKeepableFiles } from "@psi/jobClient/jobFolder";
 
@@ -41,18 +42,22 @@ export function useDiscardFolder(
 }
 
 /** One line per file the folder holds, each naming the file as it is on disk
- * and what it is. */
+ * and what it is. A run's own files hold the time it ran in their names, which
+ * the folder answer does not state, so `<time>` stands in for it. */
 export function discardFolderItems(contents: JobFolderContents): Array<{
   files: string;
   what: string;
 }> {
   const items: Array<{ files: string; what: string }> = [];
   if (contents.results)
-    items.push({ files: JOB_FILE_NAMES.output, what: "the matched result" });
+    items.push({
+      files: RUN_ARTIFACT_NAME_PATTERNS.result,
+      what: "the matched result",
+    });
   if (contents.record)
     items.push({
-      files: `${JOB_FILE_NAMES.record} and ${JOB_FILE_NAMES.recordKeys}`,
-      what: "the exchange record and its verification keys",
+      files: `${RUN_ARTIFACT_NAME_PATTERNS.record}, ${RUN_ARTIFACT_NAME_PATTERNS.keys} and ${RUN_ARTIFACT_NAME_PATTERNS.terms}`,
+      what: "the exchange record, its verification keys and the agreed terms",
     });
   if (contents.sharedSecret)
     items.push({
@@ -60,7 +65,10 @@ export function discardFolderItems(contents: JobFolderContents): Array<{
       what: "the shared secret; your next run of this exchange with your partner needs it",
     });
   if (contents.receipt)
-    items.push({ files: JOB_FILE_NAMES.receipt, what: "the signed receipt" });
+    items.push({
+      files: RUN_ARTIFACT_NAME_PATTERNS.receipt,
+      what: "the signed receipt",
+    });
   if (contents.log)
     items.push({ files: JOB_FILE_NAMES.log, what: "the diagnostic log" });
   if (contents.input)

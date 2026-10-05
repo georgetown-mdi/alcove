@@ -753,6 +753,39 @@ describe("createServerJobExchangeDriver record downloads", () => {
     });
   });
 
+  test("the result is saved under the file name the result event states", async () => {
+    const resultName = "alcove-results-2026-07-08T14-32-00-000Z.csv";
+    const { client } = scriptedClient(
+      [{ ...result(true), resultPath: `/data/job-1/${resultName}` }],
+      { available: false },
+    );
+    const driver = createServerJobExchangeDriver(driverConfig(), client);
+    const events = driverEvents(new AbortController().signal);
+
+    await driver.run(events);
+
+    const outputs = events.onResult.mock.calls[0][0] as RunOutputs;
+    expect(outputs.kind === "matched" && outputs.resultFileName).toBe(
+      resultName,
+    );
+  });
+
+  test("a result event naming no file takes the record's stamp for its save name", async () => {
+    const { client } = scriptedClient([result(true)], {
+      available: true,
+      createdAt: CREATED_AT,
+    });
+    const driver = createServerJobExchangeDriver(driverConfig(), client);
+    const events = driverEvents(new AbortController().signal);
+
+    await driver.run(events);
+
+    const outputs = events.onResult.mock.calls[0][0] as RunOutputs;
+    expect(outputs.kind === "matched" && outputs.resultFileName).toBe(
+      "alcove-results-2026-07-08T14-32-00-000Z.csv",
+    );
+  });
+
   test("a withheld result still offers the record when available", async () => {
     const { client } = scriptedClient([result(false)], {
       available: true,

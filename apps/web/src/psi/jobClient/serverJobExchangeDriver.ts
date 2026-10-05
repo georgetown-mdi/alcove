@@ -13,10 +13,12 @@ import {
   MAX_SFTP_CONNECTION_RESPONSE_BYTES,
   readBoundedJson,
 } from "@psi/jobClient/jobApiBody";
+import { runArtifactNames, stampOfResultPath } from "@jobs/runArtifactNames";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
 import { isJobCreateRefusalReason } from "@jobs/jobCreateRefusal";
 import { jobCreateIntentSchema } from "@jobs/intentSchemas";
 import { jobRecordDownloads } from "@psi/jobClient/jobExchangeRecord";
+import { recordFileStamp } from "@psi/runOutputs";
 import { refusedColumnNames } from "@psi/columnNames";
 import { whenDiagnostic } from "@utils/diagnostics";
 
@@ -51,7 +53,7 @@ import type { JobCreateRefusalReason } from "@jobs/jobCreateRefusal";
 import type { ReceiptsIntentFields } from "../receiptsModel";
 import type { RefusedColumnName } from "@psi/columnNames";
 import type { RunDiagnosticsIntentFields } from "../runDiagnosticsModel";
-import type { RunOutputs } from "../runOutputs";
+import type { RunOutputs } from "@psi/runOutputs";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
 
 const log = getLogger("serverJobExchangeDriver");
@@ -1112,13 +1114,19 @@ function entityClusterSummaryOf(
  * the count only on a literal `true`; anything else -- omitted, or a
  * non-boolean -- is treated as this party's own count, per the contract. The
  * resolved matching rides all three outcomes, since the console seat states
- * what the pair resolved to whatever this party received. */
+ * what the pair resolved to whatever this party received. The result's save
+ * name is the file name the event's `resultPath` ends on, where it ends on a
+ * result name. */
 function baseResultOutputs(event: RelayEvent, jobId: string): RunOutputs {
   const matching = resolvedMatchingOf(event);
+  const resultStamp = stampOfResultPath(event.resultPath);
   if (event.resultWritten !== false)
     return {
       kind: "matched",
       resultsUrl: jobResultUrl(jobId),
+      ...(resultStamp !== null
+        ? { resultFileName: runArtifactNames(resultStamp).result }
+        : {}),
       matching,
       entityClusters: entityClusterSummaryOf(event),
     };
@@ -1137,13 +1145,18 @@ function baseResultOutputs(event: RelayEvent, jobId: string): RunOutputs {
  * console's record/keys endpoints with filenames byte-identical to the
  * in-browser path's (the record's own `createdAt`, made filesystem-safe). The
  * record is written even for a withheld result, so it attaches in either
- * branch. */
+ * branch. A result whose event named no file takes the record's stamp, which
+ * is the one the CLI names the result with. */
 function withRecordDownloads(
   outputs: RunOutputs,
   jobId: string,
   createdAt: string,
 ): RunOutputs {
   outputs.record = jobRecordDownloads(jobId, createdAt);
+  if (outputs.kind === "matched" && outputs.resultFileName === undefined)
+    outputs.resultFileName = runArtifactNames(
+      recordFileStamp(createdAt),
+    ).result;
   return outputs;
 }
 

@@ -9,10 +9,10 @@ import {
 } from "@alcove/core";
 
 import {
-  JOB_FILE_NAMES,
   MAX_IDENTITY_LENGTH,
   jobZeroSetupIntentSchema,
 } from "@jobs/intentSchemas";
+import { parseRunArtifactName, runArtifactNames } from "@jobs/runArtifactNames";
 
 import { JobManager, SigningFingerprintBusyError } from "@jobs/jobManager";
 import {
@@ -573,8 +573,13 @@ describe("GET /api/jobs/:jobId/receipt serves only a workdir-contained receipt",
     expect(view.receiptPath).toBeNull();
     // Planting the file a signed run would have written does not make it
     // servable: a run that asked for no receipt has none to serve.
+    const stamp = parseRunArtifactName(path.basename(view.outputPath!))!.stamp;
     fs.writeFileSync(
-      path.join(process.env.JOB_DATA_ROOT!, id, JOB_FILE_NAMES.receipt),
+      path.join(
+        process.env.JOB_DATA_ROOT!,
+        id,
+        runArtifactNames(stamp).receipt,
+      ),
       RECEIPT_JSON,
     );
     expect((await getReceipt(id)).status).toBe(404);
@@ -593,7 +598,11 @@ describe("GET /api/jobs/:jobId/receipt serves only a workdir-contained receipt",
     expect(path.dirname(receiptPath)).toBe(
       path.join(process.env.JOB_DATA_ROOT!, id),
     );
-    expect(path.basename(receiptPath)).toBe(JOB_FILE_NAMES.receipt);
+    // The receipt is the one under this run's stamp, the result's own.
+    const stamp = parseRunArtifactName(
+      path.basename(manager.getJobView(id)!.outputPath!),
+    )!.stamp;
+    expect(path.basename(receiptPath)).toBe(runArtifactNames(stamp).receipt);
 
     const response = await getReceipt(id);
     expect(response.status).toBe(200);

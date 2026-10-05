@@ -114,7 +114,8 @@ vi.mock("@psi/transport/rendezvous", async () =>
 
 // Stub the run lifecycle so nothing dials; no run is launched from an initial
 // mount, but the stub keeps the import inert either way.
-vi.mock("@psi/exchangeLifecycle", () => ({
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   runExchangeLifecycle: () => Promise.resolve(),
 }));
 

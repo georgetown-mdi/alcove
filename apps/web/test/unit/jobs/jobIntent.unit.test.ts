@@ -24,9 +24,9 @@ import {
   composeKeyFileDocument,
   composeSftpConfigDocument,
 } from "@jobs/intentConfig";
+import { runArtifactNames } from "@jobs/runArtifactNames";
 
 import {
-  JOB_FILE_NAMES,
   MAX_CSV_DELIMITER_LENGTH,
   MAX_IDENTITY_LENGTH,
   MAX_INPUT_CSV_LENGTH,
@@ -1226,16 +1226,17 @@ describe("composeKeyFileDocument", () => {
   });
 });
 
-describe("JOB_FILE_NAMES record/keys pairing", () => {
-  // The web app cannot import apps/cli's keysPathFor, so this pins the same
-  // derivation (a trailing `.json` replaced by `.keys.json`) the CLI applies to
-  // the record path: the keys name the server serves must match the one the CLI
-  // writes alongside the record it is pointed at via --record-file.
-  test("recordKeys is the record name under the .json -> .keys.json rule", () => {
-    const derivedKeysName = JOB_FILE_NAMES.record.endsWith(".json")
-      ? `${JOB_FILE_NAMES.record.slice(0, -".json".length)}.keys.json`
-      : `${JOB_FILE_NAMES.record}.keys.json`;
-    expect(JOB_FILE_NAMES.recordKeys).toBe(derivedKeysName);
+describe("run artifact record/keys/terms pairing", () => {
+  // The web app cannot import apps/cli's keysPathFor or agreedTermsPathFor, so
+  // this pins the same derivation (a trailing `.json` replaced by `.keys.json`
+  // or `.terms.json`) the CLI applies to the record path: the names the server
+  // serves must match the ones the CLI writes beside the record.
+  test("keys and terms are the record name under the CLI's suffix rule", () => {
+    const names = runArtifactNames("2026-07-08T14-32-00-000Z");
+    const stem = names.record.slice(0, -".json".length);
+    expect(names.record.endsWith(".json")).toBe(true);
+    expect(names.keys).toBe(`${stem}.keys.json`);
+    expect(names.terms).toBe(`${stem}.terms.json`);
   });
 });
 

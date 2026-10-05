@@ -1137,7 +1137,7 @@ describe("console direct re-attaches on a busy create", () => {
     bindPaths: [],
     template: {
       kind: "command",
-      argv: ["alcove", "exchange", "clients.csv", "results.csv"],
+      argv: ["alcove", "exchange", "clients.csv", "./"],
     },
   } satisfies JobHandoff;
 

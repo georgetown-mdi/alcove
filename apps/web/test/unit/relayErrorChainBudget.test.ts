@@ -21,7 +21,6 @@ import {
 } from "@psi/jobClient/serverJobExchangeDriver";
 import { spawnExchangeJob, validateAndSanitizeEvent } from "@jobs/cliDriver";
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { failureFor } from "@exchange/useInviterExchange";
 import { renderSseFrame } from "@jobs/sse";
 
@@ -100,8 +99,6 @@ async function relayErrorFromChild(
       configPath: path.join(workdir, "alcove.yaml"),
       keyPath: path.join(workdir, ".alcove.key"),
       inputPath: path.join(workdir, "input.csv"),
-      outputPath: path.join(workdir, JOB_FILE_NAMES.output),
-      recordPath: path.join(workdir, "record.json"),
       workdir,
       eventStream: true,
       runControls: { sweepExchangeFiles: false, logFilePath: undefined },

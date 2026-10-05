@@ -86,7 +86,6 @@ function composedConfigFile(pin: string | undefined): string {
     configPath,
     composeConfigDocument(intent, path.join(dir, "rendezvous"), undefined, {
       identityFile: path.join(dir, ".alcove-signing-identity.json"),
-      receiptOutput: path.join(dir, JOB_FILE_NAMES.receipt),
     }),
   );
   return configPath;

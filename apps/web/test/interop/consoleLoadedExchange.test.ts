@@ -23,11 +23,13 @@ import { stringify as stringifyYaml } from "yaml";
 
 import { JobManager, TERMS_PROPOSAL_REFUSAL } from "@jobs/jobManager";
 import { RECEIPTS_DEFAULT, receiptsIntentFields } from "@psi/receiptsModel";
+import { parseRunArtifactName, runArtifactNames } from "@jobs/runArtifactNames";
 import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/termsProposal";
 import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";
 import { openMountedConfiguration } from "@jobs/configLoad";
+import { recordFileStamp } from "@psi/runOutputs";
 import { relayedTermsChangeOf } from "@psi/jobClient/serverJobExchangeDriver";
 
 import { Route as ApplyTermsRoute } from "../../src/routes/api/jobs/$jobId/apply-terms";
@@ -302,7 +304,9 @@ describe.skipIf(!cliIsBuilt)(
 
       const record = manager.getJob(id);
       if (record === undefined) throw new Error("the job left the slot");
-      expect(pairsFromResultCsv(record.outputPath)).toEqual(CONSOLE_PAIRS);
+      expect(pairsFromResultCsv(manager.getJobView(id)!.outputPath!)).toEqual(
+        CONSOLE_PAIRS,
+      );
       expect(pairsFromResultCsv(workspace.partnerOutput)).toEqual(
         PARTNER_PAIRS,
       );
@@ -344,6 +348,72 @@ describe.skipIf(!cliIsBuilt)(
         mountedDocumentOf(workspace.mount).linkageTerms,
       );
       expect(handoff.template.yaml).not.toContain(workspace.dropDir);
+    });
+  },
+);
+
+/** Have the partner sign a receipt: a signing identity beside its
+ * configuration, and a certificate-mode block naming it with no pin, so the
+ * run adopts the console's certificate as a first authenticated contact. */
+async function partnerSignsReceipts(): Promise<void> {
+  const identityFile = path.join(workspace.partnerDir, "signing-identity.json");
+  const fingerprint = await startCli({
+    args: ["fingerprint", `--identity-file=${identityFile}`],
+    cwd: workspace.partnerDir,
+    timeoutMs: CLI_DEADLINE_MS,
+  });
+  expectCliSucceeded(fingerprint, "fingerprint");
+  const config = parseSensitiveYaml(
+    readFileSync(workspace.partnerConfig, "utf8"),
+    "partner configuration",
+  ) as Record<string, unknown>;
+  config.signing = { mode: "certificate", identity_file: identityFile };
+  writeFileSync(workspace.partnerConfig, stringifyYaml(config));
+}
+
+describe.skipIf(!cliIsBuilt)(
+  "the artifacts one console run leaves in its folder",
+  () => {
+    test("every artifact shares one stamp, the record's createdAt made filesystem-safe", async () => {
+      await establishPartnership();
+      await partnerSignsReceipts();
+      const manager = consoleManager();
+      await manager.resolveSigningFingerprint({
+        identityLabel: CONSOLE_IDENTITY,
+        exportCertificate: false,
+      });
+
+      const { record, partner } = await runAgainstPartner(manager, {
+        ...intentFromOpen(manager),
+        signing: { mode: "certificate" },
+      });
+      expectRunSucceeded(record);
+      expectCliSucceeded(partner, "exchange");
+
+      const artifacts = readdirSync(record.workdir)
+        .map(parseRunArtifactName)
+        .filter((parsed) => parsed !== null);
+      const stamps = new Set(artifacts.map(({ stamp }) => stamp));
+      expect(stamps.size).toBe(1);
+      const [stamp] = [...stamps] as [string];
+      expect(new Set(artifacts.map(({ kind }) => kind))).toEqual(
+        new Set(["result", "record", "keys", "terms", "receipt"]),
+      );
+
+      const { createdAt } = JSON.parse(
+        readFileSync(
+          path.join(record.workdir, runArtifactNames(stamp).record),
+          "utf8",
+        ),
+      ) as { createdAt: string };
+      expect(recordFileStamp(createdAt)).toBe(stamp);
+
+      const view = manager.getJobView(record.id);
+      if (view?.recordAvailable !== true || view.recordCreatedAt === undefined)
+        throw new Error("the console offers no record for the run");
+      expect(recordFileStamp(view.recordCreatedAt)).toBe(stamp);
+      expect(view.resultFileName).toBe(runArtifactNames(stamp).result);
+      expect(view.receiptAvailable).toBe(true);
     });
   },
 );
@@ -625,7 +695,7 @@ describe.skipIf(!cliIsBuilt)(
       const rerun = await runAgainstPartner(manager, intentFromOpen(manager));
       expectRunSucceeded(rerun.record);
       expectCliSucceeded(rerun.partner, "exchange");
-      const rows = resultRows(rerun.record.outputPath);
+      const rows = resultRows(manager.getJobView(rerun.record.id)!.outputPath!);
       expect(rows.map((row) => [row.row_id, row.their_row_id])).toEqual(
         CONSOLE_PAIRS.map(([own, partner]) => [String(own), String(partner)]),
       );
