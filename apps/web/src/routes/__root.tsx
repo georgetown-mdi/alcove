@@ -25,6 +25,14 @@ import { seo } from "@utils/seo";
 
 import type { ReactNode } from "react";
 
+declare global {
+  interface ImportMetaEnv {
+    /** Set by the console build (`vite.console.config.ts`), whose client
+     * renders the whole document itself; unset in every other build. */
+    readonly CLIENT_RENDERED_DOCUMENT?: boolean;
+  }
+}
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [

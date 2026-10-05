@@ -104,12 +104,8 @@ async function openRegularFile(
   } catch {
     return null;
   }
-  try {
-    const stat = await handle.stat();
-    if (stat.isFile()) return { handle, size: stat.size };
-  } catch {
-    // Closed below and answered as missing.
-  }
+  const stat = await handle.stat().catch(() => null);
+  if (stat?.isFile()) return { handle, size: stat.size };
   await handle.close();
   return null;
 }

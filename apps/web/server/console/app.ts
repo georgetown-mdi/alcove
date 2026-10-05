@@ -109,13 +109,15 @@ async function serveRequest(
           "A console client request failed:",
           sanitizeErrorForDisplay(error),
         );
-      void writeWebResponse(
-        res,
-        error === undefined
-          ? notFound()
-          : withSecurityHeaders(jobEmptyResponse(500)),
-        req.method,
-      );
+      if (res.headersSent) res.destroy();
+      else
+        void writeWebResponse(
+          res,
+          error === undefined
+            ? notFound()
+            : withSecurityHeaders(jobEmptyResponse(500)),
+          req.method,
+        );
     });
     return;
   }

@@ -20,7 +20,7 @@ const vite = await createServer({
   root: appRoot,
   configFile: path.join(appRoot, "vite.console.config.ts"),
   appType: "spa",
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, ws: false },
 });
 
 const { jobRoutes } = (await vite.ssrLoadModule(
