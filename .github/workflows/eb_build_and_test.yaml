@@ -144,6 +144,11 @@ jobs:
       # holds the check and the upload in one job.
       - name: Deploy trigger coverage
         run: npm run check:deploy-trigger-graph
+      # Renders every page route from the build the step above left in
+      # apps/web/.output, the one packaged below, and fails on a 5xx or on
+      # anything the server writes to stderr while rendering.
+      - name: Render every web route
+        run: node scripts/check-web-route-render.mjs
       - name: Package for Elastic Beanstalk
         run: |
           cp -a apps/web/deploy/aws_eb/. apps/web/.output
