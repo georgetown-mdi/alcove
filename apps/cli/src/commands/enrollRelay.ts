@@ -11,6 +11,7 @@ import {
   enrollRelayKey,
   relayRegistrarForRun,
   relayRegistrarLabel,
+  relayRegistrarUnreachableError,
   relayRegistrationNotice,
   type RelayRegistrarTransport,
   type RelayRegistrationOutcome,
@@ -87,6 +88,12 @@ function enrollmentError(
 ): Error {
   const label = relayRegistrarLabel(registrar);
   const reason = outcome.reason === undefined ? "" : `: ${outcome.reason}`;
+  if (outcome.kind === "unavailable" && outcome.unreachable !== undefined)
+    return relayRegistrarUnreachableError(
+      `the exchange could not be enrolled at ${label}`,
+      outcome.unreachable,
+      "Run the command again once it answers.",
+    );
   if (outcome.kind === "unavailable")
     return new ConnectionError(
       `${label} could not be reached to enroll the exchange${reason}. Run ` +

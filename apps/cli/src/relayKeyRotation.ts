@@ -24,10 +24,14 @@ import {
 import {
   relayRegistrarForRun,
   relayRegistrarLabel,
+  relayRegistrarUnreachableError,
   relayRegistrationNotice,
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
-import { AUTHENTICATION_FAILED_EXIT_CODE } from "./util/exit";
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  renderFailureForOperator,
+} from "./util/exit";
 import { withRecoveryHintTag } from "./util/recoveryHint";
 
 export {
@@ -97,33 +101,41 @@ export function relayRegistrationError(
         `confirmed, and ${label} did not confirm it before this run dialed`;
   const sent =
     stage === "pending"
-      ? " Nothing was sent to your partner, and the shared secret is unchanged."
-      : " The rotated shared secret is kept.";
+      ? "Nothing was sent to your partner, and the shared secret is unchanged."
+      : "The rotated shared secret is kept.";
   switch (outcome.kind) {
     case "refused":
       return withRecoveryHintTag(
         Object.assign(
           new Error(
             `${what} (${detail}): the registrar does not hold the key this ` +
-              `run signed with.${sent} Until the registrar holds this ` +
+              `run signed with. ${sent} Until the registrar holds this ` +
               `exchange's current key, the relay refuses this party's runs; ` +
               `${RELAY_REENROLLMENT_STEP}.`,
           ),
           { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
         ),
       );
-    case "unavailable":
+    case "unavailable": {
+      const next =
+        stage === "pending"
+          ? "Run the exchange again once the registrar answers."
+          : "The next run retries the registration before it dials; if " +
+            `the registrar then refuses it, ${RELAY_REENROLLMENT_STEP}.`;
+      if (outcome.unreachable !== undefined)
+        return relayRegistrarUnreachableError(
+          what,
+          outcome.unreachable,
+          `${sent} ${next}`,
+        );
       return new ConnectionError(
-        `${what}: ${detail}.${sent} ` +
-          (stage === "pending"
-            ? "Run the exchange again once the registrar answers."
-            : "The next run retries the registration before it dials; if " +
-              `the registrar then refuses it, ${RELAY_REENROLLMENT_STEP}.`),
+        `${what}: ${detail}. ${sent} ${next}`,
         "transport",
       );
+    }
     case "rejected":
       return new UsageError(
-        `${what}: it refused the request (${detail}).${sent} Check ` +
+        `${what}: it refused the request (${detail}). ${sent} Check ` +
           "connection.relay_registrar in the configuration; once it is " +
           `corrected, ${RELAY_REENROLLMENT_STEP}.`,
       );
@@ -212,7 +224,7 @@ export function logRotatedRelayKey(
 ): boolean {
   if (result.kind === "not-rotated") return false;
   if (result.kind === "failed") {
-    log.error(sanitizeErrorForDisplay(result.error));
+    log.error(renderFailureForOperator(result.error));
     return true;
   }
   log.info(relayRegistrationNotice(registrar, result.outcome));

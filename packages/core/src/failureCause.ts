@@ -24,6 +24,45 @@ export const FOLDER_MISSING_CODES = ["ENOENT", "ENOTDIR"] as const;
 /** The errno codes a missing or unusable shared folder is reported under. */
 export type FolderMissingCode = (typeof FOLDER_MISSING_CODES)[number];
 
+/** The network error codes under which no connection to a relay registrar was made. */
+export const RELAY_REGISTRAR_NO_CONNECTION_CODES = [
+  "ECONNREFUSED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+] as const;
+
+/** The network error codes under which a relay registrar's host name did not resolve. */
+export const RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES = [
+  "ENOTFOUND",
+  "EAI_AGAIN",
+] as const;
+
+/**
+ * Why a relay registrar did not answer, by class:
+ *
+ * - `no-connection`: no connection to its host and port was made;
+ * - `name-not-resolved`: its host name did not resolve to an address;
+ * - `no-answer`: the connection was reset, or the request timed out, before
+ *   it answered.
+ */
+export type RelayRegistrarUnreachableFailure =
+  | {
+      readonly failure: "no-connection";
+      readonly code: (typeof RELAY_REGISTRAR_NO_CONNECTION_CODES)[number];
+    }
+  | {
+      readonly failure: "name-not-resolved";
+      readonly code: (typeof RELAY_REGISTRAR_NAME_NOT_RESOLVED_CODES)[number];
+    }
+  | { readonly failure: "no-answer"; readonly code: "ECONNRESET" }
+  | {
+      readonly failure: "no-answer";
+      /** The request's timeout, which ran out with no answer. */
+      readonly timedOutMs: number;
+    };
+
 /**
  * A failure whose cause the catalog names. Members hold facts only: a channel,
  * a path, an errno code, a duration. A path is composed into the sentence raw
@@ -44,7 +83,13 @@ export type FailureCause =
       readonly path: string;
       /** `ENOENT`: nothing at the path. `ENOTDIR`: something that is not a folder. */
       readonly code: FolderMissingCode;
-    };
+    }
+  | ({
+      /** The relay registrar did not answer, for the reason `failure` names. */
+      readonly kind: "relay-registrar-unreachable";
+      readonly host: string;
+      readonly port: number;
+    } & RelayRegistrarUnreachableFailure);
 
 /** The discriminant of {@link FailureCause}. */
 export type FailureCauseKind = FailureCause["kind"];
@@ -166,6 +211,24 @@ const MEETING_PLACE: Record<PartnerMeetingChannel | "unknown", string> = {
   unknown: "arrive",
 };
 
+function relayRegistrarUnreachableSentence(
+  cause: FailureCauseOfKind<"relay-registrar-unreachable">,
+): string {
+  const { host, port } = cause;
+  if (cause.failure === "name-not-resolved")
+    return `The relay registrar's host name ${host} did not resolve to an address (${cause.code}).`;
+  const at = `The relay registrar at ${host} port ${port}`;
+  if (cause.failure === "no-connection")
+    return `${at} could not be reached (${
+      cause.code === "UND_ERR_CONNECT_TIMEOUT"
+        ? "connection timed out"
+        : cause.code
+    }).`;
+  return "timedOutMs" in cause
+    ? `${at} did not answer within ${formatWaitDuration(cause.timedOutMs)}.`
+    : `${at} closed the connection without answering (${cause.code}).`;
+}
+
 const SENTENCES: {
   readonly [K in FailureCauseKind]: (cause: FailureCauseOfKind<K>) => string;
 } = {
@@ -178,6 +241,7 @@ const SENTENCES: {
     code === "ENOENT"
       ? `The shared folder ${path} does not exist (ENOENT).`
       : `The shared folder path ${path} does not name a folder (ENOTDIR).`,
+  "relay-registrar-unreachable": relayRegistrarUnreachableSentence,
 };
 
 /**

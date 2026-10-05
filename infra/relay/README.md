@@ -386,6 +386,13 @@ token, overwrite the file and
   certificate changes. TURNS holds 443, so the registrar cannot share it. Open
   the port in the instance's security group to the addresses the operator
   registers from ([aws/provision.md](aws/provision.md), Ports).
+- **Who must reach that port.** Every machine that registers needs outbound
+  TCP to the relay's host on this port, as well as on 443 for TURNS: the
+  machine `alcove enroll-relay` runs on, and every CLI that runs an exchange
+  through this relay, since each run registers its rotated key. A network
+  that allows only 443 out lets the exchange relay but blocks the
+  registration, and the CLI's failure names this host and port
+  ([docs/CLI.md](../../docs/CLI.md#registering-the-relay-key-at-your-relay)).
 - **How it reaches the table, and as whom.** In-process, through
   `relay_table.py`, so the table and mapping have one write path. It runs as the
   relay image's uid and gid, which `install.sh` reads from the image and fills

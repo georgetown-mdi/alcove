@@ -3,8 +3,18 @@
 // with the relay-owner token are core's (`relayRegistrarClient.ts`), shared
 // with the web app, and re-exported here.
 
-import { hasMintedTurnEntry, selectRunRelay } from "@alcove/core";
-import type { ConnectionConfig, RelayRegistrar } from "@alcove/core";
+import {
+  ConnectionError,
+  failureCauseSentence,
+  hasMintedTurnEntry,
+  markFailureCause,
+  selectRunRelay,
+} from "@alcove/core";
+import type {
+  ConnectionConfig,
+  FailureCauseOfKind,
+  RelayRegistrar,
+} from "@alcove/core";
 
 export {
   enrollRelayKey,
@@ -39,4 +49,24 @@ export function relayRegistrarForRun(
   if (turn?.source !== "own" || !hasMintedTurnEntry(turn.servers))
     return undefined;
   return registrar;
+}
+
+/**
+ * The `transport` failure (69) for a registrar request that got no answer for
+ * the reason `cause` names: `attempted` states what the request was for, the
+ * catalog sentence states what happened, and `next` what this run leaves to
+ * the operator. The cause is attached, so the remedy follows it.
+ */
+export function relayRegistrarUnreachableError(
+  attempted: string,
+  cause: FailureCauseOfKind<"relay-registrar-unreachable">,
+  next: string,
+): ConnectionError {
+  return markFailureCause(
+    new ConnectionError(
+      `${attempted}. ${failureCauseSentence(cause)} ${next}`,
+      "transport",
+    ),
+    cause,
+  );
 }
