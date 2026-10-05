@@ -228,7 +228,9 @@ A scheduled exchange's page has a **Keep it running** section:
   prompt. Only Chromium-based browsers make that offer to a page; elsewhere the
   section says to install from the browser's menu. On every other page the
   browser's own install offer (on a phone, a banner) shows as the browser
-  decides; it is held back only on a page showing the button.
+  decides. The button appears only when the offer arrives while the scheduled
+  exchange's page is open; otherwise, or if the browser refuses the prompt,
+  the section points at the browser's menu.
 - **The checklist** of what a run with nobody present needs: the installed app
   with this exchange in it, start at sign-in or the app opened before each
   window, the computer awake and online during the window, the same browser

@@ -11,10 +11,12 @@ import { useLayoutEffect, useSyncExternalStore } from "react";
  * that already fired. Where the event never fires, no button is shown and the
  * page gives the browser's own instructions instead.
  *
- * The browser's own install banner is suppressed only while a page showing the
- * button is mounted ({@link useInstallPrompt}); on every other route the banner
- * shows as the browser decides, and the offer is still held for a button shown
- * later in the same page load.
+ * The offer is held, and the browser's own install banner suppressed, only
+ * when it arrives while a page showing the button is mounted
+ * ({@link useHoldsInstallOffer}). An offer arriving on any other page is left
+ * to the browser and not held, so a button page opened later gives the
+ * browser's own instructions: a browser may refuse a prompt on an offer it has
+ * already shown.
  */
 
 /** The non-standard event Chromium fires when the page can be installed. The
@@ -62,14 +64,19 @@ function isInstallPromptEvent(event: Event): event is BeforeInstallPromptEvent {
  * Start holding the install offer `target` receives. Safe to call more than
  * once for the same target. While a page showing the install button is
  * mounted, the offer is held with `preventDefault` so that page decides when to
- * show it; otherwise the browser's own banner is left to show.
+ * show it; otherwise it is left to the browser and any earlier offer dropped.
  */
 export function captureInstallPrompt(target: EventTarget): void {
   if (capturedTargets.has(target)) return;
   capturedTargets.add(target);
   target.addEventListener("beforeinstallprompt", (event) => {
     if (!isInstallPromptEvent(event)) return;
-    if (mountedButtonPages > 0) event.preventDefault();
+    if (mountedButtonPages === 0) {
+      heldOffer = undefined;
+      setState({ ...state, available: false });
+      return;
+    }
+    event.preventDefault();
     heldOffer = event;
     setState({ ...state, available: true });
   });
@@ -105,17 +112,26 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/**
+ * Count the caller as a page showing the install button until the returned
+ * function is called: an offer arriving meanwhile is held for it.
+ */
+export function holdInstallOffer(): () => void {
+  mountedButtonPages += 1;
+  return () => {
+    mountedButtonPages -= 1;
+  };
+}
+
+/** Called by a component that shows the install button, so an offer arriving
+ * while it is mounted is held for it ({@link holdInstallOffer}). */
+export function useHoldsInstallOffer(): void {
+  useLayoutEffect(() => holdInstallOffer(), []);
+}
+
 /** The install state, re-rendering when an offer arrives, is spent, or the
- * app is installed. Server rendering reads no offer. A component calling it is
- * one that shows the install button, so while it is mounted the browser's own
- * banner is suppressed. */
+ * app is installed. Server rendering reads no offer. */
 export function useInstallPrompt(): InstallPromptState {
-  useLayoutEffect(() => {
-    mountedButtonPages += 1;
-    return () => {
-      mountedButtonPages -= 1;
-    };
-  }, []);
   return useSyncExternalStore(
     subscribe,
     () => state,
