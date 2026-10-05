@@ -144,8 +144,8 @@ const BODY_RULES =
 // out of the reminder as one argument.
 function postCommand(prNumber) {
   return (
-    `node '${NORMALIZER}' <draft> --fenced > <draft>.fenced && ` +
-    `gh pr comment ${prNumber} --body-file <draft>.fenced`
+    `node '${NORMALIZER}' --fenced <draft> | ` +
+    `gh pr comment ${prNumber} --body-file -`
   );
 }
 
@@ -159,7 +159,8 @@ function reminderFor(count, prNumber) {
     `${BODY_RULES}. Draft the body in a file under a \`mktemp -d\` directory and ` +
     `post it through the normalizer: \`${postCommand(prNumber ?? "<pr-number>")}\`, ` +
     "which rewraps the body, drops markdown and list markers, and refuses what it " +
-    "cannot fix. Write no copy anywhere else, and report only the comment URL in " +
+    "cannot fix. The command pipes the comment body straight to gh, so no second " +
+    "file exists beside the draft; report only the comment URL in " +
     "your reply: the maintainer copies the body from the pull request when they " +
     "squash-merge."
   );

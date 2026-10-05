@@ -332,8 +332,17 @@ describe("remind-squash-message hook", () => {
   it("names the normalizer's fenced output as the comment body", () => {
     const dir = track(makeRepo(2));
     expect(context(prCreateEvent(dir, ghOutput(5)))).toContain(
-      `node '${NORMALIZER}' <draft> --fenced > <draft>.fenced && ` +
-        "gh pr comment 5 --body-file <draft>.fenced",
+      `node '${NORMALIZER}' --fenced <draft> | gh pr comment 5 --body-file -`,
+    );
+  });
+
+  it("carries the <pr-number> placeholder in the command only when no PR URL parses", () => {
+    const dir = track(makeRepo(2));
+    expect(context(prCreateEvent(dir, { stdout: "" }))).toContain(
+      `node '${NORMALIZER}' --fenced <draft> | gh pr comment <pr-number> --body-file -`,
+    );
+    expect(context(prCreateEvent(dir, ghOutput(9)))).not.toContain(
+      "<pr-number>",
     );
   });
 
