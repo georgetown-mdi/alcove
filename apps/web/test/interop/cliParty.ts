@@ -15,7 +15,7 @@ export const cliEntry = path.resolve(
 );
 
 /** Whether the CLI has been built. `npm run build -w apps/cli` produces it; the
- * suite skips rather than failing on a tree that has not. */
+ * suites skip on a tree that has not, and requireCliBuild.ts fails the run. */
 export const cliIsBuilt = existsSync(cliEntry);
 
 /** How one `alcove` invocation ended. */
