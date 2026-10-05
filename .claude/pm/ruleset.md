@@ -409,6 +409,11 @@ Ratified by the owner:
   rounds raised, is landed or recorded as refused with a reason, and no source
   or test file the review named as oversized, misnamed, or misplaced remains in
   that state.
+- **Repo review 2026-10** (boards 9 and 10) -- Done is: every item of the
+  2026-10 repo scan's program that is cross-cutting rather than a product
+  epic's own -- the agent-rule, docs-structure, module-split and
+  comment-volume items -- is landed or recorded as refused with a reason, and
+  the scan's verification debt is paid or recorded as a stated limit.
 - **Console CLI Parity** (board 9) -- Done is: no setting the command-line
   configuration file holds is unreachable from the console -- authored,
   loaded from the mounted working directory, or carried into the hand-off --
