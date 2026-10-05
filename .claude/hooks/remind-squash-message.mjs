@@ -1,27 +1,31 @@
 #!/usr/bin/env node
-// PostToolUse hook: after a `gh pr create` call, tell the session to WRITE a
-// ready-to-paste squash-and-merge commit message to a per-PR file under the main
-// checkout's scratch/, when the PR branch has more than one commit over its
+// PostToolUse hook: after a `gh pr create` call, tell the session to POST the
+// body of a ready-to-paste squash-and-merge commit message as a fenced comment
+// on the new pull request, when the PR branch has more than one commit over its
 // base.
 //
 // Why this exists: Alcove merges pull requests with squash-and-merge, so GitHub
 // folds every commit on the branch into one commit whose default message is the PR
 // title plus a bullet list of commit subjects, not a coherent hand-written summary.
 // A maintainer squash-merging a multi-commit PR is better served by a ready-to-paste
-// subject and body that follow the repo's Commit Messages rules; this hook raises
-// that need right after the PR is opened rather than leaving it for the maintainer
-// to notice is missing.
+// body that follows the repo's Commit Messages rules; this hook raises that need
+// right after the PR is opened rather than leaving it for the maintainer to notice
+// is missing. Only the body is asked for: GitHub fills the merge box's subject
+// from the PR title, so a subject in the comment would be pasted twice. A branch
+// of one commit gets no reminder, since GitHub lands that commit's own message.
 //
-// WHY A FILE RATHER THAN THE TRANSCRIPT. A message printed into the reply is gone
-// by merge time: the session keeps working, the message scrolls out of reach, and
-// the maintainer merging later has nowhere to look it up. A file keyed by PR
-// number has a stable address, and scratch/ is gitignored, so a draft parked
-// there never becomes repository content.
+// WHY A PR COMMENT RATHER THAN THE TRANSCRIPT OR A FILE. A message printed into
+// the reply is gone by merge time: the session keeps working, the message
+// scrolls out of reach, and the maintainer merging later has nowhere to look it
+// up. A comment on the pull request has a stable address on the page that holds
+// the merge button, so the maintainer sees it at the moment of merging, from any
+// machine, and it never becomes repository content. The fence keeps GitHub from
+// rendering the body as markdown, so what is copied is what was written.
 //
-// THE FORMAT RULES ARE NOT RESTATED HERE. The subject budget and the body wrap
-// come from ../scripts/format-squash-message.mjs, which the reminder names as
-// the step that places the file; block-nonconforming-squash-message.mjs refuses
-// a draft written past it. Prose here would be a second copy of two numbers.
+// THE FORMAT RULES ARE NOT RESTATED HERE. The body wrap and the markdown the
+// body may not hold come from ../scripts/format-squash-message.mjs, which the
+// reminder names as the step that produces the comment text. Prose here would
+// be a second copy of its rules.
 //
 // THE COUNT IS TAKEN OVER THE BRANCH THE PULL REQUEST IS OPENED FOR, not over
 // the event cwd's HEAD. The repo's by-ref review flow opens pull requests from
@@ -36,44 +40,31 @@
 //
 // A COMMAND CAN CHAIN SEVERAL `gh pr create` CALLS, and one reminder for the whole
 // command is then wrong at both ends: the count would come from the first `--head`
-// and the file key from the last PR URL, so a long branch's count lands in a short
-// branch's file. Past one create, the `--head` values and the PR numbers are read
-// as lists in command and output order and paired by position, one reminder per
-// pair whose branch has more than one commit, joined into a single message. Position is
-// the only thing that pairs them, so the pairing is trusted only when the two
-// lists are the same length: a create that failed, or output containing part of what
-// ran, leaves lists that cannot be aligned, and the hook emits nothing rather than
-// address a message wrongly -- the session's retry of the failed create fires the
-// hook again. Within a pair, a `--head` no ref resolves for is skipped rather than
-// counted from the cwd's HEAD, which cannot be the branch of more than one pull
-// request, and a run whose main checkout root will not resolve emits nothing,
-// there being no per-PR file to name without it.
+// and the PR number from the last PR URL, so a long branch's count lands on a short
+// branch's pull request. Past one create, the `--head` values and the PR numbers
+// are read as lists in command and output order and paired by position, one
+// reminder per pair whose branch has more than one commit, joined into a single
+// message. Position is the only thing that pairs them, so the pairing is trusted
+// only when the two lists are the same length: a create that failed, or output
+// containing part of what ran, leaves lists that cannot be aligned, and the hook
+// emits nothing rather than address a message wrongly -- the session's retry of
+// the failed create fires the hook again. Within a pair, a `--head` no ref
+// resolves for is skipped rather than counted from the cwd's HEAD, which cannot
+// be the branch of more than one pull request.
 //
-// THE PATH IS COMPUTED HERE rather than described to the session, so the
-// instruction names one absolute file instead of a convention each session
-// re-derives:
-//   - The key is the PR number parsed out of the `gh pr create` output's PR URL.
-//     Where no URL is there to parse, it is the current branch name, sanitized to
-//     filename characters and prefixed `branch-` so that a branch named for a
-//     number cannot collide with a PR-numbered file.
-//   - The directory is scratch/squash-messages/ in the MAIN worktree, found by
-//     resolving `git rev-parse --git-common-dir` against the event's cwd and
-//     taking its parent. That output is relative in the main worktree and
-//     absolute from a linked one (git 2.39.5), which the resolve against cwd
-//     determines either way -- so a PR opened from a branch worktree still leaves
-//     its message where the maintainer looks, in the checkout they merge from.
-// When neither the key nor the root can be determined, the reminder falls back to
-// asking for the message in the reply: a message in the transcript is worth more
-// than an instruction to write a path that was guessed.
+// THE PULL-REQUEST NUMBER is parsed out of the `gh pr create` output's PR URL,
+// so the instruction names the one pull request to comment on. Where no URL is
+// there to parse, the reminder points at the pull request `gh` just created
+// rather than guessing a number.
 //
 // STATED LIMIT. What a PostToolUse payload holds for a Bash result is the
 // harness's business and is not asserted here: PR URLs are looked for in the
 // string-valued candidate fields in turn and taken from the first one containing
 // any -- a payload repeating one result under two field names would otherwise
 // list every URL twice and break the pairing -- and a payload holding none falls
-// back to the branch key rather than being wrong. The command is likewise treated as
-// raw text rather than a parsed argv: a `--head` written inside another flag's
-// quoted value is treated as if it named the branch, which lands on the
+// back to the unnumbered reminder rather than being wrong. The command is likewise
+// treated as raw text rather than a parsed argv: a `--head` written inside another
+// flag's quoted value is treated as if it named the branch, which lands on the
 // unresolvable-ref path, and a literal `gh pr create` inside one (a PR body
 // quoting the command) counts as another create, routing a single create through
 // the pairing path -- where its reminder is unchanged while the lists still pair,
@@ -84,8 +75,7 @@
 // open on every error (unreadable event, missing git, unresolvable origin/staging):
 // a hook whose only job is a reminder must never disrupt the session over it.
 
-import { statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import { git } from "./lib/shell.mjs";
@@ -94,11 +84,8 @@ import { git } from "./lib/shell.mjs";
 export const EXPIRES_ON = "2026-12-31";
 
 const PR_BASE = "origin/staging";
-const MESSAGE_SUBDIR = join("scratch", "squash-messages");
-const NORMALIZER_SUBPATH = join(
-  ".claude",
-  "scripts",
-  "format-squash-message.mjs",
+const NORMALIZER = fileURLToPath(
+  new URL("../scripts/format-squash-message.mjs", import.meta.url),
 );
 const CANDIDATE_FIELDS = ["output", "stdout", "stderr", "content"];
 
@@ -148,58 +135,33 @@ function prNumbersFromResponse(toolResponse) {
   return [];
 }
 
-function branchKey(cwd) {
-  const branch = git(["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
-  if (branch === null || branch === "" || branch === "HEAD") return null;
-  return `branch-${branch.replace(/[^A-Za-z0-9._-]+/g, "-")}`;
-}
+const BODY_RULES =
+  "a prose body summarizing the whole change, under the Commit Messages rules " +
+  "in CONTRIBUTING.md (no subject line, since GitHub takes the subject from the " +
+  "PR title; no markdown, no board ids, no self-attribution)";
 
-function mainCheckoutRoot(cwd) {
-  const commonDir = git(["rev-parse", "--git-common-dir"], { cwd });
-  if (commonDir === null || commonDir === "") return null;
-  try {
-    const root = dirname(resolve(cwd, commonDir));
-    return statSync(root).isDirectory() ? root : null;
-  } catch {
-    return null;
-  }
-}
-
-const MESSAGE_RULES =
-  "an imperative subject plus a prose body summarizing the whole change, under " +
-  "the Commit Messages rules in CONTRIBUTING.md (no markdown, no board ids, no " +
-  "self-attribution)";
-
-// The script and the target are quoted so that a checkout path holding a space
-// still copies out of the reminder as one argument.
-function normalizerCommand(root, key, path) {
-  const script = join(root, NORMALIZER_SUBPATH);
-  const prArgument = /^\d+$/.test(key) ? key : "unassigned";
-  return `node '${script}' ${prArgument} /tmp/squash-message.txt --out '${path}'`;
-}
-
-function fileReminder(count, root, key) {
-  const path = join(root, MESSAGE_SUBDIR, `${key}.txt`);
+// The script is quoted so that a checkout path holding a space still copies
+// out of the reminder as one argument.
+function postCommand(prNumber) {
   return (
-    `This PR branch has ${count} commits over ${PR_BASE}. Write a ready-to-paste ` +
-    `squash-and-merge commit message to ${path} -- ${MESSAGE_RULES}. Draft it in ` +
-    `/tmp/squash-message.txt and let the normalizer place it: \`${normalizerCommand(root, key, path)}\`, ` +
-    "which rewraps the body, checks the subject against the budget GitHub's " +
-    "suffix leaves it, and writes the file itself. Report only that path and the " +
-    "subject line in your reply: the maintainer reads the message out of the file " +
-    "when they squash-merge, and a body printed into the transcript is out of " +
-    "reach by then."
+    `node '${NORMALIZER}' <draft> --fenced > <draft>.fenced && ` +
+    `gh pr comment ${prNumber} --body-file <draft>.fenced`
   );
 }
 
-function printReminder(count) {
+// `prNumber` is null when the output held no PR URL to read it from.
+function reminderFor(count, prNumber) {
+  const target =
+    prNumber === null ? "the pull request gh just created" : `PR #${prNumber}`;
   return (
-    `This PR branch has ${count} commits over ${PR_BASE}. Print a ready-to-use ` +
-    "squash-and-merge commit message for the maintainer to paste when squash-" +
-    `merging -- ${MESSAGE_RULES}. Draft it in /tmp/squash-message.txt and print ` +
-    `what \`node ${NORMALIZER_SUBPATH} <pr-number> /tmp/squash-message.txt\` ` +
-    "returns, which rewraps the body and checks the subject against the budget " +
-    "GitHub's suffix leaves it."
+    `This PR branch has ${count} commits over ${PR_BASE}. Post the body of its ` +
+    `squash-and-merge commit message as one fenced comment on ${target} -- ` +
+    `${BODY_RULES}. Draft the body in a file under a \`mktemp -d\` directory and ` +
+    `post it through the normalizer: \`${postCommand(prNumber ?? "<pr-number>")}\`, ` +
+    "which rewraps the body, drops markdown and list markers, and refuses what it " +
+    "cannot fix. Write no copy anywhere else, and report only the comment URL in " +
+    "your reply: the maintainer copies the body from the pull request when they " +
+    "squash-merge."
   );
 }
 
@@ -211,10 +173,7 @@ function singleCreateReminder(cwd, command, toolResponse) {
     (headRef === undefined ? null : commitCountOverBase(cwd, headRef)) ??
     commitCountOverBase(cwd, "HEAD");
   if (count === null || count <= 1) return null;
-
-  const key = prNumbersFromResponse(toolResponse).at(-1) ?? branchKey(cwd);
-  const root = key === null ? null : mainCheckoutRoot(cwd);
-  return root === null ? printReminder(count) : fileReminder(count, root, key);
+  return reminderFor(count, prNumbersFromResponse(toolResponse).at(-1) ?? null);
 }
 
 // One reminder per created pull request whose branch has more than one
@@ -225,16 +184,14 @@ function multiCreateReminder(cwd, command, toolResponse) {
   const prNumbers = prNumbersFromResponse(toolResponse);
   if (headRefs.length === 0 || headRefs.length !== prNumbers.length)
     return null;
-  const root = mainCheckoutRoot(cwd);
-  if (root === null) return null;
 
   const reminders = headRefs
     .map((headRef, index) => ({
       count: commitCountOverBase(cwd, headRef),
-      key: prNumbers[index],
+      prNumber: prNumbers[index],
     }))
     .filter(({ count }) => count !== null && count > 1)
-    .map(({ count, key }) => fileReminder(count, root, key));
+    .map(({ count, prNumber }) => reminderFor(count, prNumber));
   return reminders.length === 0 ? null : reminders.join("\n");
 }
 
