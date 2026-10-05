@@ -97,7 +97,6 @@ import {
   withFirstRoundCountDisplay,
   type PsiProgressDisplay,
 } from "./psiProgressDisplay";
-import { restartedForPsiHeap } from "./psiHeapRestart";
 import {
   checkPartnerRoundMemory,
   checkPsiMemoryBudget,
@@ -927,7 +926,7 @@ async function runExchangeStage(params: {
         checkPartnerRoundMemory({
           partnerRoundValues,
           allowShortfall: allowMemoryShortfall,
-          readings: readMemory(psiEngineRunsInWorker(), restartedForPsiHeap()),
+          readings: readMemory(psiEngineRunsInWorker()),
           onShortfallWarning: (message) => {
             log.warn(message);
             emit((e) => e.warning("memoryShortfall", message));
@@ -1830,7 +1829,7 @@ export function checkRunMemoryBudget(params: {
   checkPsiMemoryBudget({
     records: prepared.rowCount,
     allowShortfall: allowMemoryShortfall,
-    readings: readMemory(psiEngineRunsInWorker(), restartedForPsiHeap()),
+    readings: readMemory(psiEngineRunsInWorker()),
     log,
     onShortfallWarning: (message) => {
       log.warn(message);
@@ -2627,8 +2626,6 @@ interface ExchangeOutputs {
   record: RecordDelivery;
 }
 
-const REPEATED_SIGNAL_DELIVERY_MS = 500;
-
 /**
  * The one argument {@link runProtocol} takes. Every field it needs is named
  * here rather than passed by position, so a caller supplying only some of the
@@ -2970,23 +2967,6 @@ export async function runProtocol(
   // Aborted only from a signal handler; ordinary teardown is doCleanup's own
   // closes.
   const interrupted = new AbortController();
-  // In a process restarted for the PSI heap, a terminal's Ctrl-C (or a
-  // supervisor signalling the process group) reaches both it and its parent,
-  // which forwards the signal: the same signal again within
-  // REPEATED_SIGNAL_DELIVERY_MS is that one interrupt delivered twice, and must
-  // not cut the first one's cleanup short. Elsewhere a repeat ends the process.
-  const dedupeSignals = restartedForPsiHeap();
-  const firstDeliveryAt = new Map<NodeJS.Signals, number>();
-  function isRepeatedDelivery(signal: NodeJS.Signals): boolean {
-    if (!dedupeSignals) return false;
-    const now = performance.now();
-    const first = firstDeliveryAt.get(signal);
-    if (first === undefined) {
-      firstDeliveryAt.set(signal, now);
-      return false;
-    }
-    return now - first < REPEATED_SIGNAL_DELIVERY_MS;
-  }
   async function doCleanup() {
     if (cleaned) return;
     cleaned = true;
@@ -3064,11 +3044,9 @@ export async function runProtocol(
   }
   const psiWorkerExitWait: PsiWorkerExitWaitOptions = {
     announce: (line) => log.info(line),
-    isRepeatedDelivery,
     exitAtOnce: (signal) => process.exit(signal === "SIGINT" ? 130 : 143),
   };
   async function onSigint(): Promise<void> {
-    if (isRepeatedDelivery("SIGINT")) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGINT";
@@ -3100,7 +3078,6 @@ export async function runProtocol(
     }
   }
   async function onSigterm(): Promise<void> {
-    if (isRepeatedDelivery("SIGTERM")) return;
     // Must be set synchronously, before the first await, so the runProtocol
     // catch block sees it as soon as the cleanup-induced failure propagates.
     run.signalReceived = "SIGTERM";

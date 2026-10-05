@@ -59,7 +59,6 @@ import {
   startModeProvisionAsRead,
   wakeServerThrough,
 } from "../serverProvision";
-import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -746,16 +745,13 @@ export async function handler(argv: Arguments): Promise<void> {
   // single-value flag or an unrecognized log-level -- on stderr and exits 64,
   // and lets any other (unexpected) failure propagate to the top-level handler.
   const parsed = parseOrExit(() => parseArgs(argv));
-  // The positionals are checked ahead of the heap restart and every check
-  // that logs: a bare `alcove` or a mistyped command name is not an exchange.
+  // The positionals are checked ahead of every check that logs: a bare
+  // `alcove` or a mistyped command name is not an exchange.
   if (argv._.length === 0) {
     console.error(BARE_INVOCATION_SUMMARY);
     process.exit(64);
   }
   const resolved = parseOrExit(() => resolvePositionals(argv._));
-  await restartUnderPsiHeapCeiling({
-    passEventStreamFd: argv["event-stream"] === true,
-  });
   const {
     logLevel,
     logFile,

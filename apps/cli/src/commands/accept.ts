@@ -58,7 +58,6 @@ import {
   renderDialedBroker,
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
-import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -1033,26 +1032,7 @@ const ACCEPT_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
 
 // --- Handler -----------------------------------------------------------------
 
-/**
- * Whether an acceptance with these positionals can run an exchange: the URL
- * form, or an invitation with an input file, which runs one when the
- * invitation's endpoint is webrtc (the `endpointRun` mode). Read from the
- * positionals alone, because the mode is resolved only after the identity
- * question and the input read, which a restart would repeat.
- *
- * @internal exported for testing
- */
-export function acceptFormMayRunExchange(positionals: Array<unknown>): boolean {
-  return looksLikeUrl(String(positionals[0])) || positionals[1] !== undefined;
-}
-
 export async function handler(argv: Arguments): Promise<void> {
-  if (
-    acceptFormMayRunExchange((argv["args"] as Array<unknown> | undefined) ?? [])
-  )
-    await restartUnderPsiHeapCeiling({
-      passEventStreamFd: argv["event-stream"] === true,
-    });
   let closeLogging: (() => void) | undefined;
   try {
     await runOrExit("accept", async () => {

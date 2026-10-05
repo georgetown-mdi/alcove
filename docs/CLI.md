@@ -1346,17 +1346,15 @@ What the run has is the least of the matching's heap limit, the machine's memory
 - **Split the input** into smaller files and run one exchange for each.
 - **Pass `--allow-memory-shortfall`** to run anyway. The line is still logged, and a warning naming the shortfall goes to `stderr` and, with `--event-stream`, to the event stream under `memoryShortfall`. The run may then run out of memory and end with exit 134.
 
-**An installed `alcove`** (rather than the container image) starts at Node's default heap limit, which a large input does not fit. So each exchange-running command starts itself again once, before it reads any file, as a second `node` process with a larger heap limit, and exits with that process's exit code. `Ctrl-C` and a `SIGTERM` sent to the first process reach the second. Other commands, such as `doctor` and `verify-receipt`, do not.
+**An installed `alcove`** (rather than the container image) runs under the heap limit `node` starts with: Node's default unless you set one. The matching runs in a worker whose limit `alcove` raises itself, but the main thread, which reads and prepares your input, keeps that limit, and at the default it holds about six million records of a four-column input. Set the larger limit the container image sets before you run an exchange over a large input:
 
-- **To see it**, read the memory line: it ends the main thread's limit with `(raised by restarting this process with --max-old-space-size=19075)`, and `ps` lists two `node` processes for the run. A smaller `--max-old-space-size` on `node`'s own command line is kept, and the line then states that limit and that your option set it. A smaller limit given through `NODE_OPTIONS` is raised to the ceiling by the restart, because the restart's flag follows `NODE_OPTIONS`; this is a limit of the installed route.
-- **`alcove accept` restarts** for the URL form and for an invitation given an input file, deciding before it reads the invitation, so an acceptance whose invitation names no webrtc endpoint also restarts though it only writes files. An invitation alone does not.
-- **To start at the larger limit instead**, and skip the second process, set it yourself; a larger value raises the matching's limit too. The container image does this (see [DEPLOYMENT.md](DEPLOYMENT.md#giving-a-run-more-memory)):
+```sh
+NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv output.csv
+```
 
-  ```sh
-  NODE_OPTIONS=--max-old-space-size=19075 alcove exchange input.csv output.csv
-  ```
-
-- **If the second process cannot start**, the command exits 64 and names the `NODE_OPTIONS` setting above.
+- **An input too large for the main thread's heap is refused** before it is read, with exit 64 and a message stating the input's record count and size, the heap it needs, the limit, and the `NODE_OPTIONS` line to set. The check counts the file's lines; an input read from stdin is not checked, and runs out of heap (exit 134) instead when it is too large.
+- **A heap option you give is kept as given**, through `NODE_OPTIONS` or on `node`'s own command line, and the memory line states the limit the main thread runs under.
+- **The figure is measured for four columns a record** (an id, an SSN, a last name and a date of birth). An input with more or longer columns needs more heap a record than the check counts, so it can still run out of heap below the count the check admits; set the larger limit for it.
 
 ## Logging
 

@@ -79,7 +79,6 @@ describe("the budget", () => {
       mainThreadHeapLimitBytes: 20e9,
       hostBytes: 64e9,
       containerLimitBytes: 8e9,
-      heapRaisedByRestart: false,
     };
     expect(assessPsiMemory(10, readings)).toMatchObject({
       availableBytes: 8e9,
@@ -107,36 +106,35 @@ describe("the readings", () => {
   };
 
   it("takes the raised limit when the engine runs in a worker", () => {
-    expect(readMemory(true, false, snapshot)).toEqual({
+    expect(readMemory(true, snapshot)).toEqual({
       engineHeapLimitBytes: PSI_HEAP_CEILING_MIB * 2 ** 20,
       engineInWorker: true,
       mainThreadHeapLimitBytes: 4_395_630_592,
       hostBytes: 25e9,
       containerLimitBytes: undefined,
-      heapRaisedByRestart: false,
     });
   });
 
   it("takes the process's own limit when the engine runs on this thread", () => {
-    expect(readMemory(false, false, snapshot).engineHeapLimitBytes).toBe(
+    expect(readMemory(false, snapshot).engineHeapLimitBytes).toBe(
       4_395_630_592,
     );
   });
 
   it("keeps a larger limit the process was started with", () => {
     expect(
-      readMemory(true, false, { ...snapshot, heapLimitBytes: 40e9 })
+      readMemory(true, { ...snapshot, heapLimitBytes: 40e9 })
         .engineHeapLimitBytes,
     ).toBe(40e9);
   });
 
   it("counts a container limit only below the host's memory", () => {
     expect(
-      readMemory(true, false, { ...snapshot, constrainedMemBytes: 8e9 })
+      readMemory(true, { ...snapshot, constrainedMemBytes: 8e9 })
         .containerLimitBytes,
     ).toBe(8e9);
     expect(
-      readMemory(true, false, { ...snapshot, constrainedMemBytes: 0 })
+      readMemory(true, { ...snapshot, constrainedMemBytes: 0 })
         .containerLimitBytes,
     ).toBeUndefined();
   });
@@ -149,7 +147,6 @@ describe("the check", () => {
     mainThreadHeapLimitBytes: 4_395_630_592,
     hostBytes: 2e9,
     containerLimitBytes: 512e6,
-    heapRaisedByRestart: false,
   };
 
   function run(records: number, allowShortfall: boolean) {
@@ -196,41 +193,24 @@ describe("the check", () => {
     mainThreadHeapLimitBytes,
     hostBytes: 64e9,
     containerLimitBytes: undefined,
-    heapRaisedByRestart: true,
   });
 
-  it("states both threads' limits and names the restart that raised the main thread's", () => {
+  it("states both threads' limits", () => {
     const statement = psiMemoryStatement(
       assessPsiMemory(1_000, inWorker(20_102_250_496)),
     );
     expect(statement).toBe(
       "memory: the PSI engine runs in a worker thread under a heap limit of " +
         "20.00 GB, and this process's main thread, which reads the input, " +
-        "under 20.10 GB (raised by restarting this process with " +
-        "--max-old-space-size=19075); a round over this run's 1,000 records " +
-        "needs about 0.27 GB, and this process has 20.00 GB (host memory " +
-        "64.00 GB, no container memory limit)",
+        "under 20.10 GB; a round over this run's 1,000 records needs about " +
+        "0.27 GB, and this process has 20.00 GB (host memory 64.00 GB, no " +
+        "container memory limit)",
     );
   });
 
-  it("names the operator's node option when it kept the main thread below the ceiling", () => {
+  it("states the main thread's limit as measured, below the ceiling too", () => {
     const statement = psiMemoryStatement(
-      assessPsiMemory(1_000, inWorker(4_345_298_944)),
-    );
-    expect(statement).toContain(
-      "this process's main thread, which reads the input, under 4.35 GB " +
-        "(set by a heap size option given to node, which takes precedence " +
-        "over the --max-old-space-size=19075 the restart added); a round",
-    );
-    expect(statement).not.toContain("raised by restarting");
-  });
-
-  it("names no source for the main thread's limit in a process that was not restarted", () => {
-    const statement = psiMemoryStatement(
-      assessPsiMemory(1_000, {
-        ...inWorker(4_395_630_592),
-        heapRaisedByRestart: false,
-      }),
+      assessPsiMemory(1_000, inWorker(4_395_630_592)),
     );
     expect(statement).toContain("under 4.40 GB; a round");
   });
@@ -272,7 +252,6 @@ describe("the partner's round", () => {
     mainThreadHeapLimitBytes: 4_395_630_592,
     hostBytes: 2e9,
     containerLimitBytes: 512e6,
-    heapRaisedByRestart: false,
   };
 
   function run(partnerRoundValues: number, allowShortfall: boolean) {
@@ -330,7 +309,6 @@ describe("the partner's round", () => {
           mainThreadHeapLimitBytes: need,
           hostBytes: need,
           containerLimitBytes: undefined,
-          heapRaisedByRestart: false,
         },
         onShortfallWarning: (m) => warnings.push(m),
       }),

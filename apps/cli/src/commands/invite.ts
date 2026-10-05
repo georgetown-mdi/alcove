@@ -61,7 +61,6 @@ import { createProvisionedServer } from "../serverProvision";
 import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
 import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
-import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
 import { runOrExit } from "../util/exit";
 import {
   assertNoUnknownOptions,
@@ -1121,11 +1120,6 @@ const INVITE_PROVISIONING_COMMAND: OfflineProvisioningCommand = {
 // --- Handler -----------------------------------------------------------------
 
 export async function handler(argv: Arguments): Promise<void> {
-  const positionals = (argv["args"] as Array<unknown> | undefined) ?? [];
-  if (isInviteUrl(String(positionals[0])))
-    await restartUnderPsiHeapCeiling({
-      passEventStreamFd: argv["event-stream"] === true,
-    });
   let closeLogging: (() => void) | undefined;
   try {
     await runOrExit("invite", async () => {

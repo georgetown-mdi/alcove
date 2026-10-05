@@ -59,6 +59,7 @@ import {
   establishHostKeyTrust,
   type HostKeyPersistence,
 } from "./hostKeyTrust";
+import { checkInputFitsMainThreadHeap } from "./inputHeapCheck";
 import { openInputSource } from "./util/dataIo";
 import { singleValue } from "./util/flags";
 import {
@@ -476,6 +477,7 @@ export async function loadInputRows(
   columns: string[];
   sanitizedColumnPositions: Array<number>;
 }> {
+  await checkInputFitsMainThreadHeap(input);
   const csvResult = await loadCSVFile(
     openInputSource(input, { allowStdin }),
     undefined,
