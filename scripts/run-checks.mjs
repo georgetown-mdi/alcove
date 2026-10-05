@@ -268,6 +268,12 @@ export const CHECKS = [
       "Every built-in linkage key is built from the built-in field set, so a zero-setup exchange strands no party over a field its file lacks.",
   },
   {
+    script: "check:init-template-coverage",
+    expiresOn: "2026-12-31",
+    description:
+      "Every configuration-schema option is documented in the template alcove init writes or listed with the reason it is left out, and the template documents no key the schema lacks.",
+  },
+  {
     script: "check:built-in-set-versions",
     expiresOn: "2026-12-31",
     description:
