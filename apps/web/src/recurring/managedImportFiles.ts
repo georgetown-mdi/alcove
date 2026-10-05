@@ -85,6 +85,31 @@ function droppedTurnUrlsSentence(
   );
 }
 
+/** The line naming the fields a pair's key file holds that the import did
+ * not read, each escaped for display, or `undefined` where it holds none. */
+function unreadKeyFileFieldsSentence(
+  unreadKeyFileFields: ReadonlyArray<string>,
+): string | undefined {
+  if (unreadKeyFileFields.length === 0) return undefined;
+  return (
+    "The key file holds fields this app does not read, so they were not " +
+    "imported: " +
+    unreadKeyFileFields.map((name) => sanitizeForDisplay(name)).join(", ") +
+    ". If one was meant as the secret's expiry, rename it to expires in " +
+    "the key file and import the two files again."
+  );
+}
+
+/** What a pair import read from its files and did not keep, for
+ * {@link pairImportedNotice} to name. */
+export interface PairImportDropped {
+  /** The `connection.turn` urls the record did not keep, as the file states
+   * them. */
+  turnUrls?: ReadonlyArray<string>;
+  /** The names of the key-file fields the import did not read. */
+  keyFileFields?: ReadonlyArray<string>;
+}
+
 /** The line saying a pair naming a relay registrar registers nothing from
  * this browser until its Relay server page names a TURN url, or `undefined`
  * where it names one or the record registers nothing here anyway. */
@@ -108,20 +133,21 @@ function noOwnTurnSentence(
 /** The notice a landed pair import shows: {@link PAIR_IMPORTED_NOTICE}, and a
  * line each for the settings the imported document states that this app
  * keeps unchanged without a control, the `connection.turn` urls it did not
- * keep, and a relay registrar this browser's relay settings give no TURN url
- * to register for. */
+ * keep, the key-file fields it did not read, and a relay registrar this
+ * browser's relay settings give no TURN url to register for. */
 export function pairImportedNotice(
   record: ManagedExchangeRecord,
-  droppedTurnUrls: ReadonlyArray<string> = [],
+  dropped: PairImportDropped = {},
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedImportGrantNotice {
   const own = readOwn();
   const lines = [
     heldSettingsSentence(record),
     droppedTurnUrlsSentence(
-      droppedTurnUrls,
+      dropped.turnUrls ?? [],
       own.kind === "set" ? own.relay.turn : [],
     ),
+    unreadKeyFileFieldsSentence(dropped.keyFileFields ?? []),
     noOwnTurnSentence(record, own),
   ].filter((line) => line !== undefined);
   return { ...PAIR_IMPORTED_NOTICE, consequences: lines };

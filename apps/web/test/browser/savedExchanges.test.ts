@@ -1149,6 +1149,45 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
     expect(anyRequestHeld(sharedSecret)).toBe(false);
   });
 
+  test("a key file with a misspelled expires lands without it, and the notice names the field and no value", async () => {
+    await createRunnableExchange(newExchange());
+    const { configuration, sharedSecret } = exportedPair();
+    const misspelledBound = "2031-06-30T00:00:00.000Z";
+    app.render(createElement(SavedExchanges));
+    await expect
+      .element(page.getByRole("button", { name: "Import a file" }))
+      .toBeInTheDocument();
+
+    await chooseFiles([
+      { bytes: configuration, name: "alcove.yaml" },
+      {
+        bytes: JSON.stringify({
+          sharedSecret,
+          expiry: misspelledBound,
+          expire: sharedSecret,
+        }),
+        name: ".alcove.key",
+      },
+    ]);
+
+    await expect
+      .element(
+        page.getByText(
+          "The key file holds fields this app does not read, so they were " +
+            "not imported: expiry, expire.",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    const imported = (await listManagedExchanges()).filter(
+      (record) => record.sharedSecret === sharedSecret,
+    );
+    expect(imported).toHaveLength(1);
+    expect(imported[0].expires).toBeUndefined();
+    expect(document.body.innerHTML).not.toContain(sharedSecret);
+    expect(document.body.innerHTML).not.toContain(misspelledBound);
+  });
+
   test.each([
     { path: "the pair", withKey: true },
     { path: "the configuration alone", withKey: false },
@@ -1219,14 +1258,14 @@ describe("saved list route: an alcove.yaml imports with the .alcove.key beside i
     await chooseFiles([
       { bytes: configuration, name: "alcove.yaml" },
       {
-        bytes: JSON.stringify({ sharedSecret, comment: sharedSecret }),
+        bytes: JSON.stringify({ sharedSecret, expires: sharedSecret }),
         name: ".alcove.key",
       },
     ]);
 
     await expect
       .element(
-        page.getByText("it holds a field this app does not read", {
+        page.getByText("its expires is not a date and time", {
           exact: false,
         }),
       )

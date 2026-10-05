@@ -505,3 +505,61 @@ test("clearRotationInFlight removes only the marker, and only beside the run's s
     expires: "2030-01-01T00:00:00.000Z",
   });
 });
+
+// --- on-disk compatibility ---------------------------------------------------
+
+const PENDING_FILE_BYTES =
+  "{\n" +
+  `  "sharedSecret": "${TOKEN}",\n` +
+  '  "expires": "2030-01-01T00:00:00.000Z",\n' +
+  '  "relayRegistrationPendingSince": "2026-02-01T00:00:00.000Z"\n' +
+  "}\n";
+
+test("a key file in the established byte layout reads, and each write keeps that layout", () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  fs.writeFileSync(keyPath, PENDING_FILE_BYTES, { mode: 0o600 });
+  expect(loadKeyFile(keyPath)).toEqual({
+    sharedSecret: TOKEN,
+    expires: "2030-01-01T00:00:00.000Z",
+    relayRegistrationPendingSince: "2026-02-01T00:00:00.000Z",
+  });
+
+  markRotationInFlight(keyPath, TOKEN, Date.parse("2026-03-01T12:00:00Z"));
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(
+    "{\n" +
+      `  "sharedSecret": "${TOKEN}",\n` +
+      '  "expires": "2030-01-01T00:00:00.000Z",\n' +
+      '  "relayRegistrationPendingSince": "2026-02-01T00:00:00.000Z",\n' +
+      '  "rotationInFlightSince": "2026-03-01T12:00:00.000Z"\n' +
+      "}\n",
+  );
+
+  clearRotationInFlight(keyPath, TOKEN);
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(PENDING_FILE_BYTES);
+
+  saveKeyFile(keyPath, buildRotatedKeyFile(TOKEN, undefined, 0));
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(
+    `{\n  "sharedSecret": "${TOKEN}"\n}\n`,
+  );
+});
+
+test("a field the key file schema does not know is read past and dropped by the next write", () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  fs.writeFileSync(
+    keyPath,
+    "{\n" +
+      `  "sharedSecret": "${TOKEN}",\n` +
+      '  "fieldFromALaterBuild": "2026-02-01T00:00:00.000Z"\n' +
+      "}\n",
+    { mode: 0o600 },
+  );
+  expect(loadKeyFile(keyPath)).toEqual({ sharedSecret: TOKEN });
+
+  markRotationInFlight(keyPath, TOKEN, Date.parse("2026-03-01T12:00:00Z"));
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(
+    "{\n" +
+      `  "sharedSecret": "${TOKEN}",\n` +
+      '  "rotationInFlightSince": "2026-03-01T12:00:00.000Z"\n' +
+      "}\n",
+  );
+});

@@ -66,6 +66,7 @@ import {
   ExchangeSpecSchema,
   relayRegistrarLabel,
   serializeExchangeDocument,
+  serializeKeyFile,
 } from "@alcove/core";
 
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
@@ -88,7 +89,6 @@ import type {
   WebRTCConnectionConfig,
 } from "@alcove/core";
 import type {
-  ManagedExchangeKeyPair,
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
@@ -354,16 +354,6 @@ function composeCronExportDocument(
   });
   assertComposableDocumentFields(document);
   return document;
-}
-
-/**
- * Serialize the key pair to the `.alcove.key` bytes the CLI reads: pretty-printed
- * JSON with a trailing newline, `camelCase` keys, matching the CLI's own key-file
- * write (`saveKeyFile`, `apps/cli/src/keyFile.ts`) so the exported file is
- * byte-shaped like one the CLI wrote itself.
- */
-function serializeKeyFile(fields: ManagedExchangeKeyPair): string {
-  return `${JSON.stringify(fields, null, 2)}\n`;
 }
 
 /**

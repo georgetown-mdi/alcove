@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  KeyFileSchema,
   assembleExchangeSpec,
   connectionFromLocator,
   generateSharedSecret,
@@ -26,7 +27,6 @@ import {
   MANAGED_EXCHANGE_ARTIFACT_VERSION,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
-  keyFileFieldsSchema,
   parseManagedExchangeRecord,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
@@ -217,7 +217,7 @@ describe("the exported key file", () => {
       "expires",
       "sharedSecret",
     ]);
-    const key = keyFileFieldsSchema.parse(parsed);
+    const key = KeyFileSchema.parse(parsed);
     expect(key.sharedSecret).toBe(record.sharedSecret);
     expect(key.expires).toBe(record.expires);
   });
@@ -228,9 +228,7 @@ describe("the exported key file", () => {
       composeManagedCronExport(record).key.text,
     );
     expect(Object.keys(parsed as object)).toEqual(["sharedSecret"]);
-    expect(keyFileFieldsSchema.parse(parsed).sharedSecret).toBe(
-      record.sharedSecret,
-    );
+    expect(KeyFileSchema.parse(parsed).sharedSecret).toBe(record.sharedSecret);
   });
 
   test("is written the way the CLI writes one: 2-space JSON, trailing newline", () => {
@@ -748,7 +746,7 @@ describe("the relay key registration", () => {
     record: RunnableManagedExchangeRecord,
     readOwn: () => OwnRelayRead,
   ) {
-    return keyFileFieldsSchema.parse(
+    return KeyFileSchema.parse(
       JSON.parse(composeManagedCronExport(record, readOwn).key.text),
     );
   }

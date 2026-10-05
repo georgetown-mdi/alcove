@@ -1,10 +1,11 @@
-import { describe, expect, test } from "vitest";
 import {
+  KeyFileSchema,
   generateSharedSecret,
   getDefaultLinkageTerms,
   parseExchangeSpec,
   parseSensitiveYaml,
 } from "@alcove/core";
+import { describe, expect, test } from "vitest";
 
 import { ZodError } from "zod";
 import { stringify as stringifyYaml } from "yaml";
@@ -14,7 +15,6 @@ import {
   NO_STANDING_CONDITION,
   buildManagedExchangeRecord,
   composeManagedExchangeFile,
-  keyFileFieldsSchema,
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
@@ -267,7 +267,7 @@ describe("CLI separability", () => {
     ]);
     expect(artifact.key).not.toHaveProperty("shared_secret");
     // And it reads as a command-line key file, so the block lifts out as one.
-    const key = keyFileFieldsSchema.parse(artifact.key);
+    const key = KeyFileSchema.parse(artifact.key);
     expect(key.sharedSecret).toBe(record.sharedSecret);
     expect(key.expires).toBe(record.expires);
   });
@@ -670,7 +670,7 @@ describe("the relay key registration", () => {
     const artifact = encodeManagedExchangeArtifact(record);
     expect(artifact.key.relayRegistrationPendingSince).toBe(PENDING_SINCE);
     expect(
-      keyFileFieldsSchema.parse(artifact.key).relayRegistrationPendingSince,
+      KeyFileSchema.parse(artifact.key).relayRegistrationPendingSince,
     ).toBe(PENDING_SINCE);
 
     const back = restored(record);

@@ -67,6 +67,8 @@
 import { ZodError } from "zod";
 
 import {
+  KeyFileSchema,
+  keyFileUnreadFieldNames,
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
@@ -84,7 +86,6 @@ import {
   buildManagedExchangeRecord,
   channelThisAppDoesNotRun,
   documentPartsThisAppDoesNotRun,
-  keyFileFieldsSchema,
   runnableManagedExchangeOrRefuse,
 } from "./managedExchangeRecord";
 import {
@@ -566,7 +567,6 @@ const KEY_FILE_PROBLEMS = {
     "its relayRegistrationPendingSince is not a date and time in the form " +
     "Alcove writes, so the file was written by hand or damaged; write the " +
     "file again from the command line, or remove that field",
-  unknownField: "it holds a field this app does not read",
 } as const;
 
 /** A problem {@link KEY_FILE_PROBLEMS} names. */
@@ -579,7 +579,6 @@ const KEY_FILE_PROBLEM_ORDER: ReadonlyArray<KeyFileProblem> = [
   "malformedExpires",
   "malformedRotationInFlight",
   "malformedRelayRegistrationPending",
-  "unknownField",
 ];
 
 /** Which problems a failed key-pair parse shows, read off each issue's code
@@ -592,8 +591,7 @@ function keyPairProblems(
 ): Array<KeyFileProblem> {
   const found = new Set<KeyFileProblem>();
   for (const issue of error.issues) {
-    if (issue.code === "unrecognized_keys") found.add("unknownField");
-    else if (issue.path[0] === "sharedSecret")
+    if (issue.path[0] === "sharedSecret")
       found.add("sharedSecret" in parsed ? "malformedSecret" : "missingSecret");
     else if (issue.path[0] === "expires") found.add("malformedExpires");
     else if (issue.path[0] === "rotationInFlightSince")
@@ -620,12 +618,11 @@ function keyFileRefusal(
 
 /**
  * Read a command-line `.alcove.key` into the key pair a record holds: the
- * shared secret and any `expires`, the JSON object Alcove writes there
- * (`apps/cli/src/keyFile.ts`). The configuration's schema parse never sees
- * this file, so it is validated here on its own: capped, parsed through the
- * sensitive-JSON chokepoint, and read against the strict key-pair schema every
- * reader of the pair shares ({@link keyFileFieldsSchema}), so a file holding
- * anything else is refused before the store is reached. Pure.
+ * shared secret and any `expires`, the JSON object Alcove writes there. The
+ * configuration's schema parse never sees this file, so it is validated here
+ * on its own: capped, parsed through the sensitive-JSON chokepoint, and read
+ * against the key-file schema every application shares ({@link KeyFileSchema}),
+ * which drops a field it does not know. Pure.
  *
  * @throws {ManagedKeyFileRefusedError} if the file is over the cap, is not
  *   JSON, or is not the key pair; the message names which, never a value.
@@ -633,6 +630,23 @@ function keyFileRefusal(
 export function readManagedCommandLineKeyFile(
   source: string,
 ): ManagedExchangeKeyFields {
+  return readManagedCommandLineKeyFileFields(source).fields;
+}
+
+/** A command-line key file read ({@link readManagedCommandLineKeyFile}), with
+ * the names of the fields it holds that the read dropped. */
+interface ManagedCommandLineKeyFileRead {
+  fields: ManagedExchangeKeyFields;
+  /** Names only, as the file states them; never a value. */
+  unreadFieldNames: Array<string>;
+}
+
+/** {@link readManagedCommandLineKeyFile}, also returning the names of the
+ * fields the file holds that the read dropped. Throws what that function
+ * throws. */
+function readManagedCommandLineKeyFileFields(
+  source: string,
+): ManagedCommandLineKeyFileRead {
   if (new TextEncoder().encode(source).byteLength > MAX_KEY_FILE_IMPORT_BYTES)
     throw keyFileRefusal(["oversize"]);
   let parsed: unknown;
@@ -643,8 +657,12 @@ export function readManagedCommandLineKeyFile(
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw keyFileRefusal(["notObject"]);
-  const result = keyFileFieldsSchema.safeParse(parsed);
-  if (result.success) return result.data;
+  const result = KeyFileSchema.safeParse(parsed);
+  if (result.success)
+    return {
+      fields: result.data,
+      unreadFieldNames: keyFileUnreadFieldNames(parsed),
+    };
   throw keyFileRefusal(keyPairProblems(result.error, parsed));
 }
 
@@ -686,11 +704,14 @@ export interface ManagedCommandLinePairRead {
   /** The dropped urls, as the file states them; empty where it names no
    * registrar or no `turn` entry. */
   droppedTurnUrls: Array<string>;
+  /** The names of the fields the key file holds that the read dropped, as
+   * the file states them; empty where it holds none. Never a value. */
+  unreadKeyFileFields: Array<string>;
 }
 
 /** {@link readManagedCommandLinePair}, also returning the `turn` urls the
- * record does not keep, so the import can name them. Throws what that
- * function throws. */
+ * record does not keep and the key-file fields it did not read, so the import
+ * can name them. Throws what that function throws. */
 export function readManagedCommandLinePairImport(
   configurationSource: string,
   keySource: string,
@@ -713,7 +734,8 @@ export function readManagedCommandLinePairImport(
         "Import the alcove.yaml on its own to edit its settings here, and " +
         "run the exchange with Alcove.",
     );
-  const key = readManagedCommandLineKeyFile(keySource);
+  const { fields: key, unreadFieldNames } =
+    readManagedCommandLineKeyFileFields(keySource);
   const record = runnableManagedExchangeOrRefuse(
     buildManagedExchangeRecord({
       ...fields,
@@ -724,5 +746,5 @@ export function readManagedCommandLinePairImport(
         : {}),
     }),
   );
-  return { record, droppedTurnUrls };
+  return { record, droppedTurnUrls, unreadKeyFileFields: unreadFieldNames };
 }

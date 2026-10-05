@@ -151,7 +151,7 @@ describe("what the pair import says", () => {
   ] as const)(
     "a landed pair whose file states %s names it as kept unchanged",
     (name, settings) => {
-      const notice = pairImportedNotice(importedPair(settings), [], noOwnRelay);
+      const notice = pairImportedNotice(importedPair(settings), {}, noOwnRelay);
 
       expect(notice.title).toBe(PAIR_IMPORTED_NOTICE.title);
       expect(notice.lead).toBe(PAIR_IMPORTED_NOTICE.lead);
@@ -185,9 +185,29 @@ describe("what the pair import says", () => {
   });
 
   test("a landed pair whose file states none of them adds no line", () => {
-    expect(pairImportedNotice(importedPair({}), [], noOwnRelay)).toEqual(
+    expect(pairImportedNotice(importedPair({}), {}, noOwnRelay)).toEqual(
       PAIR_IMPORTED_NOTICE,
     );
+  });
+
+  test("names the key-file fields the import did not read, escaped, never a value", () => {
+    const notice = pairImportedNotice(
+      importedPair({}),
+      { keyFileFields: ["expiry", "exp\u202eire"] },
+      noOwnRelay,
+    );
+    expect(notice.consequences).toEqual([
+      "The key file holds fields this app does not read, so they were not " +
+        "imported: expiry, exp\\u202eire. If one was meant as the " +
+        "secret's expiry, rename it to expires in the key file and import " +
+        "the two files again.",
+    ]);
+  });
+
+  test("says nothing of the key file when it holds only fields it reads", () => {
+    expect(
+      pairImportedNotice(importedPair({}), { keyFileFields: [] }, noOwnRelay),
+    ).toEqual(PAIR_IMPORTED_NOTICE);
   });
 
   describe("a pair naming a relay registrar", () => {
@@ -205,7 +225,7 @@ describe("what the pair import says", () => {
     test("names the file's TURN urls this browser's relay settings replace", () => {
       const notice = pairImportedNotice(
         enrolled(),
-        [fileTurn],
+        { turnUrls: [fileTurn] },
         ownRelay([ownTurn]),
       );
       expect(notice.consequences).toEqual([
@@ -220,7 +240,7 @@ describe("what the pair import says", () => {
     test("escapes each dropped url once for display", () => {
       const [line] = pairImportedNotice(
         enrolled(),
-        ["turn:relay\u202e.example.org"],
+        { turnUrls: ["turn:relay\u202e.example.org"] },
         ownRelay([ownTurn]),
       ).consequences;
       expect(line).not.toContain("\u202e");
@@ -230,19 +250,27 @@ describe("what the pair import says", () => {
 
     test("says nothing of the urls where this browser's own are the same", () => {
       expect(
-        pairImportedNotice(enrolled(), [ownTurn], ownRelay([ownTurn])),
+        pairImportedNotice(
+          enrolled(),
+          { turnUrls: [ownTurn] },
+          ownRelay([ownTurn]),
+        ),
       ).toEqual(PAIR_IMPORTED_NOTICE);
     });
 
     test("compares a repeated url as one member of the set", () => {
       const secondOwnTurn = "turn:relay.example.org:3478";
       expect(
-        pairImportedNotice(enrolled(), [ownTurn, ownTurn], ownRelay([ownTurn])),
+        pairImportedNotice(
+          enrolled(),
+          { turnUrls: [ownTurn, ownTurn] },
+          ownRelay([ownTurn]),
+        ),
       ).toEqual(PAIR_IMPORTED_NOTICE);
       expect(
         pairImportedNotice(
           enrolled(),
-          [ownTurn, ownTurn],
+          { turnUrls: [ownTurn, ownTurn] },
           ownRelay([ownTurn, secondOwnTurn]),
         ).consequences,
       ).toEqual([
@@ -266,7 +294,7 @@ describe("what the pair import says", () => {
     ])(
       "under %s, says nothing is registered until the Relay server page names a TURN url",
       (_case, readOwn) => {
-        const notice = pairImportedNotice(enrolled(), [], readOwn);
+        const notice = pairImportedNotice(enrolled(), {}, readOwn);
         expect(notice.consequences).toEqual([
           "Nothing is registered at the relay registrar at " +
             "https://relay.example.org:8443 (exchange riverbend-q3) until " +
@@ -277,9 +305,13 @@ describe("what the pair import says", () => {
     );
 
     test("under an unreadable relay setting, says to save it again", () => {
-      const notice = pairImportedNotice(enrolled(), [fileTurn], () => ({
-        kind: "unreadable",
-      }));
+      const notice = pairImportedNotice(
+        enrolled(),
+        { turnUrls: [fileTurn] },
+        () => ({
+          kind: "unreadable",
+        }),
+      );
       expect(notice.consequences).toHaveLength(2);
       expect(notice.consequences[0]).toContain(fileTurn);
       expect(notice.consequences[1]).toBe(
@@ -293,7 +325,7 @@ describe("what the pair import says", () => {
 
     test("a pair naming no registrar says nothing of the relay, whatever the setting", () => {
       expect(
-        pairImportedNotice(importedPair({}), [], () => ({ kind: "none" })),
+        pairImportedNotice(importedPair({}), {}, () => ({ kind: "none" })),
       ).toEqual(PAIR_IMPORTED_NOTICE);
     });
   });
@@ -303,14 +335,14 @@ describe("what the pair import says", () => {
     let refusal: unknown;
     try {
       readManagedCommandLineKeyFile(
-        JSON.stringify({ sharedSecret, stray: sharedSecret }),
+        JSON.stringify({ sharedSecret, expires: sharedSecret }),
       );
     } catch (error) {
       refusal = error;
     }
     expect(refusal).toBeInstanceOf(ManagedKeyFileRefusedError);
     const reason = pairImportFailureReason(refusal);
-    expect(reason).toContain("holds a field this app does not read");
+    expect(reason).toContain("its expires is not a date and time");
     expect(reason).not.toContain(sharedSecret);
   });
 

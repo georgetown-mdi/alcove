@@ -1,6 +1,7 @@
 import {
   CSV_DELIMITER_DETECT,
   DEFAULT_LINKAGE_KEY_SET_NAME,
+  KeyFileSchema,
   assembleExchangeSpec,
   computeTermsHash,
   connectionFromLocator,
@@ -32,7 +33,6 @@ import {
   channelThisAppDoesNotRun,
   composeManagedExchangeFile,
   diagnoseManagedExchangeRecord,
-  keyFileFieldsSchema,
   parseManagedExchangeRecord,
   partitionReadableManagedExchanges,
   recentRunsOf,
@@ -2288,7 +2288,7 @@ describe("the rotation-in-flight marker", () => {
 
   test("a command-line key file holding one reads as a key pair", () => {
     expect(
-      keyFileFieldsSchema.safeParse({
+      KeyFileSchema.safeParse({
         sharedSecret: generateSharedSecret(),
         rotationInFlightSince: MARKED_AT,
       }).success,
