@@ -146,6 +146,57 @@ inProcessOnly(
   TEST_TIMEOUT_MS,
 );
 
+// The held-session mode's own form of the same wait: the lock is not
+// mode-gated, so a teardown requested while the FIRST dial is parked mid-
+// handshake waits it out only to the bound, then destroys the transport, and
+// the parked dial rejects with the code a peer close produces a moment later.
+// The figures docs/spec/CHANNEL_SECURITY.md states for this ordering.
+inProcessOnly(
+  "a teardown concurrent with a first dial that will not settle closes the " +
+    "transport at the bound and the dial rejects as a peer close",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const adapter = new SSH2SFTPClientAdapter();
+    const dials = countDials(adapter);
+    try {
+      srv.sessionControls.stallHandshakeOnConnect = true;
+      let rejectedAt = 0;
+      const parked = adapter
+        .connect({
+          host: srv.handle.host,
+          port: srv.handle.port,
+          ...serverAuth(srv.handle.usera),
+          maxReconnectAttempts: 0,
+          readyTimeout: 120_000,
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            rejectedAt = Date.now();
+            return error;
+          },
+        );
+      await waitFor(() => dials() > 0);
+      await waitFor(() => srv.sessionControls.stalledConnectionCount() > 0);
+
+      const started = Date.now();
+      await adapter.end();
+      const endedAt = Date.now();
+      const error = await parked;
+
+      expect(endedAt - started).toBeGreaterThan(WAIT_FLOOR_MS);
+      expect(endedAt - started).toBeLessThan(WAIT_CEILING_MS);
+      expect((error as { code?: unknown }).code).toBe("ERR_GENERIC_CLIENT");
+      expect(Math.abs(rejectedAt - endedAt)).toBeLessThan(1_000);
+      expect(dials()).toBe(1);
+    } finally {
+      srv.sessionControls.stopStallingHandshakes();
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
 inProcessOnly(
   "the process exits after a teardown enqueued behind a re-dial that will not settle",
   async () => {

@@ -2783,6 +2783,61 @@ test("synchronize() --sweep-exchange-files: sweeps stale delete-mode protocol fi
   expect(files.has("/test/a-b-hello-ack.json")).toBe(false);
 });
 
+// docs/EXCHANGE_REFERENCE.md tells two operators coordinating a one-sided sweep
+// that the `sweeping ...` line goes out before the deletions, and that a
+// directory with nothing to delete draws no line at all.
+test("synchronize() --sweep-exchange-files: states its line before the first delete, keeps foreign files, and is silent with nothing to delete", async () => {
+  const sweepRun = async (protocolFiles: string[]) => {
+    const { client, files } = makeMockClient();
+    const conn = await makeConnectedConn(client, {
+      pollingFrequency: 10,
+      timeToLiveMs: 120,
+    });
+    conn.id = "me";
+    conn.options.sweepExchangeFiles = true;
+    for (const name of protocolFiles) files.set(name, Buffer.alloc(0));
+    files.set("/test/notes.txt", Buffer.from("unrelated"));
+    const events: string[] = [];
+    const record =
+      (level: string) =>
+      (...parts: unknown[]) =>
+        events.push(`${level}:${parts.map(String).join(" ")}`);
+    conn.log = {
+      info: record("info"),
+      warn: record("warn"),
+      debug: record("debug"),
+      trace: record("trace"),
+      error: record("error"),
+    } as unknown as typeof conn.log;
+    const origDelete = client.delete.bind(client);
+    client.delete = async (path: string) => {
+      events.push(`delete:${path}`);
+      return origDelete(path);
+    };
+    await conn.synchronize().catch(() => {});
+    return { events, files };
+  };
+
+  const swept = await sweepRun([
+    "/test/x-y-lock.json",
+    "/test/me-hello.json",
+    "/test/a-b-hello-ack.json",
+  ]);
+  const lineAt = swept.events.findIndex((e) =>
+    e.startsWith("info:[me] sweeping 3 protocol file(s)"),
+  );
+  const firstDeleteAt = swept.events.findIndex((e) => e.startsWith("delete:"));
+  expect(lineAt).toBeGreaterThanOrEqual(0);
+  expect(firstDeleteAt).toBeGreaterThan(lineAt);
+  expect(swept.files.has("/test/me-hello.json")).toBe(false);
+  expect(swept.files.has("/test/notes.txt")).toBe(true);
+
+  const empty = await sweepRun([]);
+  expect(empty.events.some((e) => e.includes("sweeping"))).toBe(false);
+  expect(empty.events.some((e) => e.startsWith("delete:"))).toBe(false);
+  expect(empty.files.has("/test/notes.txt")).toBe(true);
+});
+
 test("synchronize() --sweep-exchange-files: refuses (exit 64) on a peer hello advertising retain_files=true, without deleting it", async () => {
   const peerId = "peer-uuid";
   const { client, files } = makeMockClient();

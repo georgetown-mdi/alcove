@@ -585,3 +585,48 @@ for (const [mode, ephemeralSessions] of [
     TEST_TIMEOUT_MS,
   );
 }
+
+// The two counters the metrics event reports apart, held to the triggers
+// docs/spec/CLI_EVENTS.md states for them: a rename the server refuses
+// transiently is re-issued by its own retry loop and counted in
+// transportRetries only, while a lost session recovered by a re-dial is counted
+// in reconnects only, its re-issue not being a retry-loop attempt.
+inProcessOnly(
+  "a transient rename refusal counts as transport retries and a recovered " +
+    "drop as a reconnect, each in its own counter",
+  async () => {
+    const party = await connectParty({ maxReconnectAttempts: 4 });
+    try {
+      await fsp.writeFile(path.join(party.localDir, "from.json"), "{}");
+      party.srv.inject.renameFailuresRemaining = 2;
+      await withCapturedLogs(
+        () =>
+          party.adapter.rename(
+            `${party.remote}/from.json`,
+            `${party.remote}/to.json`,
+          ),
+        (level) => level === "WARN" || level === "ERROR",
+      );
+      expect(party.srv.inject.renameFailuresRemaining).toBe(0);
+      expect(party.adapter.transportRetryCount).toBe(2);
+      expect(party.adapter.reconnectCount).toBe(0);
+
+      party.srv.sessionControls.dropActiveAfterOps(1);
+      await withCapturedLogs(
+        async () => {
+          await expect(party.adapter.list(party.remote)).resolves.toHaveLength(
+            1,
+          );
+        },
+        (level) => level === "WARN" || level === "ERROR",
+      );
+      expect(party.adapter.reconnectCount).toBe(1);
+      expect(party.adapter.midExchangeReconnectCount).toBe(1);
+      expect(party.adapter.transportRetryCount).toBe(2);
+    } finally {
+      party.srv.inject.renameFailuresRemaining = 0;
+      await party.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);

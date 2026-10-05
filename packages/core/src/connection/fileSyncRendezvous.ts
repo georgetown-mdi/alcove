@@ -474,8 +474,9 @@ const entryHelloAckDeadline = (
 // names out. A name built from a longer identity -- a configured
 // `peer_id`, or a session past message 999 -- may still not fit; it is
 // then counted rather than shown. A test pins that the reservation shows a
-// constructor-built name whole.
-const ENTRY_GUARD_NAME_BUDGET_FLOOR = renderedDisplayCost(
+// constructor-built name whole, and its value.
+/** @internal */
+export const ENTRY_GUARD_NAME_BUDGET_FLOOR = renderedDisplayCost(
   ackMarkerName(
     NIL_UUID,
     messageFilename({

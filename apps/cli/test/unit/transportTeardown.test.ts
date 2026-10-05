@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 
-import { TERMINAL_FRAME_DRAIN_TIMEOUT_MS } from "@alcove/core/testing";
+import {
+  CONNECTION_CLOSE_TIMEOUT_MS,
+  TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
+} from "@alcove/core/testing";
 import type { ConnectionConfig } from "@alcove/core";
 
 import { DEFAULT_CLOSE_FLUSH_TIMEOUT_MS } from "../../src/connection/webrtc/webrtcMessageConnection";
@@ -41,6 +44,18 @@ test.each(CHANNEL_CEILINGS)(
   ({ channel, dominantBudgetMs }) => {
     expect(transportTeardownCeilingMs(channel)).toBeGreaterThan(
       dominantBudgetMs,
+    );
+  },
+);
+
+// docs/spec/FILE_SYNC.md states the file-based ceiling sits above the drain
+// and the transport close together, which the per-channel row above does not
+// reach: it compares against the drain alone.
+test.each(["sftp", "filedrop"] as const)(
+  "%s's ceiling stands above the drain and the transport close together",
+  (channel) => {
+    expect(transportTeardownCeilingMs(channel)).toBeGreaterThan(
+      TERMINAL_FRAME_DRAIN_TIMEOUT_MS + CONNECTION_CLOSE_TIMEOUT_MS,
     );
   },
 );
