@@ -221,6 +221,41 @@ test("a column the configuration's metadata names and the CSV lacks is named, wi
   expect(links.join("\n")).not.toContain("\\x0a");
 });
 
+test("a private-key marker in a named column or field costs that name, not the text after it", () => {
+  const marker = "-----BEGIN RSA PRIVATE KEY-----MIIEow";
+  let thrown: unknown;
+  try {
+    checkLinkageSatisfiability(
+      ["ssn"],
+      {
+        ...dobTerms(),
+        linkageFields: [{ name: `dob${marker}`, type: "date_of_birth" }],
+        linkageKeys: [{ name: "DOB", elements: [{ field: `dob${marker}` }] }],
+      },
+      messaging,
+      undefined,
+      [
+        {
+          name: `DOB${marker}`,
+          type: "date_of_birth",
+          role: "linkage",
+          isPayload: false,
+        },
+      ],
+    );
+  } catch (err) {
+    thrown = err;
+  }
+  const links = sanitizeErrorForDisplay(thrown).split("\ncaused by: ");
+  expect(links).toContain(
+    "this CSV has no column DOB[redacted private key], which linkage field " +
+      "dob[redacted private key] (date_of_birth) reads",
+  );
+  expect(remedyOf(links)).toBe(
+    `To fix: provide a CSV that covers the required field types, ${messaging.blockRemedy}`,
+  );
+});
+
 test("a dead key beside a column-unsatisfiable one is refused, naming both causes", () => {
   // DOB is shape-satisfiable (column present) but dead; SSN is shape-unsatisfiable
   // (no ssn column). Every key is out, each for its own reason, so the refusal

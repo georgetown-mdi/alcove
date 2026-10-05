@@ -213,6 +213,36 @@ test("validateInvite: offline rejects a missing input file as not found", async 
   ).rejects.toBeInstanceOf(InputNotFoundError);
 });
 
+test("validateInvite: a missing input that is a URL is named without its credentials", async () => {
+  // A mistyped scheme is not a server URL, so it arrives as the input path.
+  const resolvedCases = [
+    { mode: "offline", input: "sfpt://alice:hunter2@host.example/drop" },
+    {
+      mode: "online",
+      url: new URL("sftp://bob@host.example/drop"),
+      input: "sfpt://alice:hunter2@host.example/drop",
+    },
+  ] as const;
+  for (const resolved of resolvedCases) {
+    let thrown: unknown;
+    try {
+      await validateInvite({
+        resolved,
+        options: testOptions(),
+        acceptTimeout: 900,
+        log: silentLog,
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(InputNotFoundError);
+    const rendered = sanitizeErrorForDisplay(thrown);
+    expect(rendered).toBe("sfpt://host.example/drop does not exist");
+    expect(rendered).not.toContain("alice");
+    expect(rendered).not.toContain("hunter2");
+  }
+});
+
 test("validateInvite: offline requires an input file", async () => {
   await expect(
     validateInvite({
