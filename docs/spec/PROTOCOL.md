@@ -126,7 +126,7 @@ A second run of the same shape and commands, on 2026-10-05 UTC, used an x86 host
 | A, deduplicating | 16,779,264 | 494.8 s | 16.54 GB | exit 69, `Map maximum size exceeded`, no verdict |
 | B | 2,097,408 | 477.6 s | 7.87 GB | VERIFIED |
 
-The verifier indexes the input's identifier column in shards of 2^24 entries, as the round's deduplication does ([FILE_SYNC.md, Round set size limits](FILE_SYNC.md#round-set-size-limits)), and `verify-receipt` completes at this size: `packages/core/test/stress/verifyReceiptLarge.stress.test.ts` pins it, verifying a record over an input of 2^24 + 2048 rows of this shape, through an identifier column and through row indices.
+The verifier indexes the input's identifier column in shards of 2^24 entries, as the round's deduplication does ([FILE_SYNC.md, Round set size limits](FILE_SYNC.md#round-set-size-limits)), and the core verification completes at this size with the identifier index in shards of 2^24: `packages/core/test/stress/verifyReceiptLarge.stress.test.ts` pins it, verifying a record over an input of 2^24 + 2048 rows of this shape, through an identifier column and through row indices. The command-line `verify-receipt` over that input is to be measured on the host after this change.
 
 The exchange record and receipt at that size, 2^24 + 2048 pairs of this shape, are built and verified by `packages/core/test/stress/canonicalLargeArray.stress.test.ts` in the opt-in stress tier.
 
