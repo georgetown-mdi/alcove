@@ -185,12 +185,13 @@ import { timelineSteps } from "./exchangeRun";
 import { useInviterExchange } from "./useInviterExchange";
 
 import {
+  ResumeInvitationElsewhere,
   ResumeInvitationOffer,
   ResumedInvitationRun,
 } from "./ResumeInvitation";
 import {
   clearPendingInvitation,
-  readPendingInvitation,
+  offerPendingInvitation,
   usePendingInvitationRecord,
 } from "./pendingInvitation";
 import { useStepHistory } from "./useStepHistory";
@@ -831,6 +832,7 @@ export function InviterScreen() {
   // while it can still be waited on, so a reload offers to wait on it again
   // rather than leave the partner holding a link nothing answers.
   const [pending, setPending] = useState<PendingInvitation>();
+  const [pendingElsewhere, setPendingElsewhere] = useState(false);
   const [resumed, setResumed] = useState<{
     invitation: GeneratedInvitation;
     pending: PendingInvitation;
@@ -838,15 +840,19 @@ export function InviterScreen() {
   useEffect(() => {
     if (isConsoleBuild()) return;
     let cancelled = false;
-    void readPendingInvitation(new Date()).then((read) => {
-      if (!cancelled) setPending(read);
+    void offerPendingInvitation(new Date()).then((offer) => {
+      if (cancelled || offer === undefined) return;
+      if (offer.kind === "offer") setPending(offer.pending);
+      else setPendingElsewhere(true);
     });
     return () => {
       cancelled = true;
     };
   }, []);
   useEffect(() => {
-    if (invitation !== undefined) setPending(undefined);
+    if (invitation === undefined) return;
+    setPending(undefined);
+    setPendingElsewhere(false);
   }, [invitation]);
   const keepsPendingInvitation =
     chosenRunMode === "browser" && !demoActive && !isConsoleBuild();
@@ -1588,6 +1594,9 @@ export function InviterScreen() {
               }}
             />
           )}
+        {section === "file" && invitation === undefined && pendingElsewhere && (
+          <ResumeInvitationElsewhere />
+        )}
         {section === "file" && (
           <YourFileSection
             name={name}

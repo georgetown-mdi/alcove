@@ -8,8 +8,8 @@ import { dateTimeLabel } from "@psi/formatting";
 import styles from "@styles/app.module.css";
 
 import {
-  MAX_TIMER_MS,
   clearPendingInvitation,
+  onInvitationExpiry,
   resumeFromChosenFile,
   usePendingInvitationRecord,
 } from "./pendingInvitation";
@@ -48,18 +48,14 @@ export function ResumeInvitationOffer({
   const { fileName } = pending;
   const { expires } = pending.invitation;
 
-  useEffect(() => {
-    const remainingMs = Date.parse(expires) - Date.now();
-    if (remainingMs > MAX_TIMER_MS) return;
-    const timer = setTimeout(
-      () => {
+  useEffect(
+    () =>
+      onInvitationExpiry(expires, () => {
         clearPendingInvitation();
         setExpired(true);
-      },
-      Math.max(0, remainingMs),
-    );
-    return () => clearTimeout(timer);
-  }, [expires]);
+      }),
+    [expires],
+  );
 
   async function readChosenFile(file: File | null) {
     if (file === null) return;
@@ -150,6 +146,26 @@ export function ResumeInvitationOffer({
           {alert.message}
         </Alert>
       )}
+    </section>
+  );
+}
+
+/**
+ * In place of the offer, on the inviter's file step, where another tab of this
+ * browser -- a duplicate of this one -- keeps or offers the same invitation:
+ * one tab waits on it, so this one points there.
+ */
+export function ResumeInvitationElsewhere() {
+  const headingId = useId();
+  return (
+    <section className={styles.callout} aria-labelledby={headingId}>
+      <h2 id={headingId}>Your invitation is open in another tab</h2>
+      <p className={styles.small}>
+        Another tab in this browser has the invitation you created open, so this
+        tab does not offer to wait on it. Continue in that tab. To wait on it
+        here instead, close that tab and reload this page, or create a new
+        invitation below.
+      </p>
     </section>
   );
 }

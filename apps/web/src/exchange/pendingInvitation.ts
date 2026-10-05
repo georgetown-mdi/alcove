@@ -3,7 +3,6 @@ import { useEffect, useRef } from "react";
 import {
   CSV_LINE_BYTE_CEILING,
   MAX_ENCODED_INVITATION_LENGTH,
-  MAX_FILE_NAME_BYTES,
   MAX_TEXT_LENGTH,
   decodeInvitation,
   getLogger,
@@ -113,15 +112,112 @@ export function writePendingInvitation(
     storage()?.setItem(STORAGE_KEY, JSON.stringify(record));
   } catch (error) {
     whenDiagnostic(() => log.warn("pending invitation write failed:", error));
+    return;
   }
+  releasePendingInvitationClaims(invitation.encoded);
+  void claimPendingInvitation(invitation.encoded);
 }
 
-/** Remove the kept invitation, best-effort. */
+/** Remove the kept invitation, best-effort, and give up this tab's claim on
+ * it. */
 export function clearPendingInvitation(): void {
   try {
     storage()?.removeItem(STORAGE_KEY);
   } catch (error) {
     whenDiagnostic(() => log.warn("pending invitation clear failed:", error));
+  }
+  releasePendingInvitationClaims();
+}
+
+/**
+ * A duplicated tab starts with a copy of its original's session storage, kept
+ * invitation included, so two tabs could offer to wait on the same
+ * invitation. The tab that keeps or offers it holds a Web Lock named for it
+ * until it removes the entry or closes; a tab that finds the lock held offers
+ * nothing. Where no lock can be taken the tab offers it.
+ */
+const CLAIM_LOCK_PREFIX = "alcove-pending-invitation:";
+
+/** The Web Locks name of the claim on the invitation `encoded`: a digest, so
+ * the name does not hold the invitation's secret. */
+export async function pendingInvitationLockName(
+  encoded: string,
+): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(encoded),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${CLAIM_LOCK_PREFIX}${hex}`;
+}
+
+interface Claim {
+  granted: Promise<boolean>;
+  release: () => void;
+  /** Settles once the lock is released or was never granted. */
+  settled: Promise<unknown>;
+}
+
+/** This tab's claims, by encoded invitation. */
+const claims = new Map<string, Claim>();
+/** Claims released whose lock may not be released yet, by encoded
+ * invitation; a new claim on the same invitation waits for it. */
+const releasing = new Map<string, Promise<unknown>>();
+
+function lockManager(): LockManager | undefined {
+  try {
+    return (globalThis.navigator as Navigator | undefined)?.locks;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether this tab holds, or now takes, the claim on the invitation
+ * `encoded`. */
+async function claimPendingInvitation(encoded: string): Promise<boolean> {
+  const existing = claims.get(encoded);
+  if (existing !== undefined) return existing.granted;
+  const locks = lockManager();
+  if (locks === undefined) return true;
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let grant = (_granted: boolean): void => undefined;
+  const granted = new Promise<boolean>((resolve) => {
+    grant = resolve;
+  });
+  const claim: Claim = { granted, release, settled: held };
+  claims.set(encoded, claim);
+  const requested = (async () => {
+    await releasing.get(encoded);
+    const name = await pendingInvitationLockName(encoded);
+    await locks.request(name, { ifAvailable: true }, (lock) => {
+      grant(lock !== null);
+      return lock === null ? undefined : held;
+    });
+  })().catch((error: unknown) => {
+    whenDiagnostic(() => log.warn("pending invitation claim failed:", error));
+    grant(true);
+  });
+  claim.settled = requested;
+  const result = await granted;
+  if (!result && claims.get(encoded) === claim) claims.delete(encoded);
+  return result;
+}
+
+/** Give up this tab's claims, but for the one on `keep`. */
+function releasePendingInvitationClaims(keep?: string): void {
+  for (const [encoded, claim] of claims) {
+    if (encoded === keep) continue;
+    claims.delete(encoded);
+    claim.release();
+    releasing.set(encoded, claim.settled);
+    void claim.settled.then(() => {
+      if (releasing.get(encoded) === claim.settled) releasing.delete(encoded);
+    });
   }
 }
 
@@ -151,15 +247,20 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
-const utf8 = new TextEncoder();
+/** The longest file name, in code points, the file systems a browser reads a
+ * file from hold: NTFS and HFS+ allow 255 UTF-16 code units, APFS 255
+ * characters, and ext4 255 UTF-8 bytes, none of them past 255 code points. A
+ * browser hands over the name as the file system holds it. */
+const MAX_FILE_NAME_CODE_POINTS = 255;
 
-/** A string whose UTF-8 encoding is at most `maxBytes` bytes long. */
-function isByteBoundedString(
+/** A string of at most `maxCodePoints` code points. */
+function isCodePointBoundedString(
   value: unknown,
-  maxBytes: number,
+  maxCodePoints: number,
 ): value is string {
   return (
-    isBoundedString(value, maxBytes) && utf8.encode(value).length <= maxBytes
+    isBoundedString(value, 2 * maxCodePoints) &&
+    Array.from(value).length <= maxCodePoints
   );
 }
 
@@ -184,7 +285,7 @@ function ownDeepLink(encoded: string): string | undefined {
  * this app writes, or not one the writer sets. Each string is bounded by what
  * the app can write: the encoded invitation by core's decoder, the deep link
  * by being the one this page builds, the name by a terms party identity, the
- * file name by a filesystem name's UTF-8 bytes, and the column names by the
+ * file name by the longest name a file system holds, and the column names by the
  * header line the CSV read accepts.
  */
 function storedRecordOf(value: unknown): StoredRecord | undefined {
@@ -202,7 +303,7 @@ function storedRecordOf(value: unknown): StoredRecord | undefined {
     return undefined;
   if (
     !isBoundedString(inviterName, MAX_TEXT_LENGTH) ||
-    !isByteBoundedString(fileName, MAX_FILE_NAME_BYTES)
+    !isCodePointBoundedString(fileName, MAX_FILE_NAME_CODE_POINTS)
   )
     return undefined;
   if (!isColumnList(columns)) return undefined;
@@ -321,6 +422,72 @@ export async function prunePendingInvitation(now: Date): Promise<void> {
   await readPendingInvitation(now);
 }
 
+/** What the inviter's file step shows of a kept invitation. */
+export type PendingInvitationOffer =
+  | { kind: "offer"; pending: PendingInvitation }
+  /** Another tab of this browser keeps or offers the same invitation. */
+  | { kind: "open-elsewhere" };
+
+/**
+ * The kept invitation to offer for a resume, claimed for this tab, or the
+ * note that another tab holds it; undefined where none is kept.
+ */
+export async function offerPendingInvitation(
+  now: Date,
+): Promise<PendingInvitationOffer | undefined> {
+  const pending = await readPendingInvitation(now);
+  if (pending === undefined) return undefined;
+  return (await claimPendingInvitation(pending.invitation.encoded))
+    ? { kind: "offer", pending }
+    : { kind: "open-elsewhere" };
+}
+
+/** The longest delay `setTimeout` holds; a longer one fires at once. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * Call `onExpired` once `expires` has passed, and return the function that
+ * stops waiting. A wait longer than one timer holds is armed in steps, and
+ * the expiry is checked again whenever the page is shown or focused, since a
+ * hidden or suspended page's timers fire late.
+ */
+export function onInvitationExpiry(
+  expires: string,
+  onExpired: () => void,
+): () => void {
+  const at = Date.parse(expires);
+  const pageDocument = (globalThis as { document?: Document }).document;
+  const pageWindow = (globalThis as { window?: Window }).window;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let waiting = true;
+  const stop = () => {
+    waiting = false;
+    clearTimeout(timer);
+    pageDocument?.removeEventListener("visibilitychange", check);
+    pageWindow?.removeEventListener("focus", check);
+    pageWindow?.removeEventListener("pageshow", check);
+  };
+  function arm() {
+    clearTimeout(timer);
+    const remainingMs = Math.max(0, at - Date.now());
+    timer = setTimeout(check, Math.min(remainingMs, MAX_TIMER_MS));
+  }
+  function check() {
+    if (!waiting) return;
+    if (invitationUsable(expires, new Date())) {
+      arm();
+      return;
+    }
+    stop();
+    onExpired();
+  }
+  pageDocument?.addEventListener("visibilitychange", check);
+  pageWindow?.addEventListener("focus", check);
+  pageWindow?.addEventListener("pageshow", check);
+  arm();
+  return stop;
+}
+
 /** What reading the file chosen again for a resume found. */
 export type ResumeFileOutcome =
   | { kind: "resumed"; invitation: GeneratedInvitation }
@@ -412,10 +579,7 @@ export function usePendingInvitationRecord({
     }
     kept.current = invitation;
     writePendingInvitation(invitation, contextRef.current);
-    const remainingMs = Date.parse(invitation.expires) - Date.now();
-    if (remainingMs > MAX_TIMER_MS) return;
-    const timer = setTimeout(clearPendingInvitation, Math.max(0, remainingMs));
-    return () => clearTimeout(timer);
+    return onInvitationExpiry(invitation.expires, clearPendingInvitation);
   }, [invitation]);
   const finished =
     invitation !== undefined &&
@@ -427,7 +591,3 @@ export function usePendingInvitationRecord({
     if (finished) clearPendingInvitation();
   }, [finished]);
 }
-
-/** The longest delay `setTimeout` holds; an expiry further out is removed on
- * the read after it instead. */
-export const MAX_TIMER_MS = 2 ** 31 - 1;

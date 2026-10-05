@@ -26,12 +26,14 @@ import type { RunFailure } from "@exchange/useInviterExchange";
 
 const PENDING_KEY = "alcove-pending-invitation";
 
+const DAY_SECONDS = 24 * 60 * 60;
+
 const app = createAppMount();
 
 afterEach(async () => {
+  vi.useRealTimers();
   await flushPendingUpdates();
   app.unmount();
-  vi.useRealTimers();
   window.sessionStorage.clear();
 });
 
@@ -89,6 +91,30 @@ describe("the invitation kept for a resume is removed", () => {
     await vi.waitFor(() => expect(kept()).toBeNull(), { timeout: 6000 });
     expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(invitation.expires));
     expect(await readPendingInvitation(new Date())).toBeUndefined();
+  });
+
+  test("when its expiry, further out than one timer holds, passes while the screen is open", async () => {
+    const invitation = await mint(30 * DAY_SECONDS);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    app.render(createElement(Keeper, { invitation }));
+    await vi.waitFor(() => expect(kept()).not.toBeNull());
+
+    vi.advanceTimersByTime(Date.parse(invitation.expires) - Date.now() - 1000);
+    expect(kept()).not.toBeNull();
+    vi.advanceTimersByTime(1000);
+    expect(kept()).toBeNull();
+  });
+
+  test("when its expiry passed while the page was hidden, once the page is shown", async () => {
+    const invitation = await mint(30 * DAY_SECONDS);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    app.render(createElement(Keeper, { invitation }));
+    await vi.waitFor(() => expect(kept()).not.toBeNull());
+
+    vi.setSystemTime(Date.parse(invitation.expires) + 1000);
+    expect(kept()).not.toBeNull();
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(kept()).toBeNull();
   });
 
   test("when the run fails in a way the same invitation cannot retry, with nothing else", async () => {
@@ -189,5 +215,40 @@ describe("the resume offer", () => {
     expect(offer.query()).toBeNull();
     expect(kept()).toBeNull();
     expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(expires));
+  });
+
+  test("gives way when the page is shown after a 30-day invitation expired while hidden", async () => {
+    writePendingInvitation(await mint(30 * DAY_SECONDS), {
+      inviterName: "Dana Okafor",
+      fileName: "clients.csv",
+    });
+    const pending = await readPendingInvitation(new Date());
+    if (pending === undefined) throw new Error("no pending invitation");
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    app.render(
+      createElement(ResumeInvitationOffer, {
+        pending,
+        onResume: () => undefined,
+        onDiscard: () => undefined,
+      }),
+    );
+    await expect
+      .element(
+        page.getByRole("heading", { name: "Your invitation is still open" }),
+      )
+      .toBeInTheDocument();
+    await flushPendingUpdates();
+
+    vi.setSystemTime(Date.parse(pending.invitation.expires) + 1000);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await expect
+      .element(
+        page
+          .getByRole("status")
+          .filter({ hasText: "Your earlier invitation has expired" }),
+      )
+      .toBeInTheDocument();
+    expect(kept()).toBeNull();
   });
 });
