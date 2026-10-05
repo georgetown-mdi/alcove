@@ -3,6 +3,7 @@ import {
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   generateSharedSecret,
+  getLogger,
   getDefaultLinkageTerms,
 } from "@alcove/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -1051,11 +1052,22 @@ describe("runManagedRerun: a store write that fails", () => {
     stubGrantingWebLocks();
     vi.mocked(recordManagedExchangeLastRun).mockRejectedValueOnce(storeAbort());
 
+    const warn = vi
+      .spyOn(getLogger("managedExchangeRun"), "warn")
+      .mockImplementation(() => undefined);
+
     const result = await runManagedRerun(record(), completingSeams());
 
     expect(result.exchange).toBe("exchanged");
     expect(result.lastRun.outcome).toBe("succeeded");
     expect(result.lastRunSaved).toBe(false);
+    expect(result.lastRunNotSavedReason).toBe(
+      "the browser aborted the storage write",
+    );
+    expect(warn).toHaveBeenCalledWith(
+      `managed exchange ${record().id}: the success stamp was not saved (AbortError: the transaction was aborted)`,
+    );
+    warn.mockRestore();
     // Only the success stamp was attempted: the run is not restated as failed.
     expect(recordManagedExchangeLastRun).toHaveBeenCalledTimes(1);
     expect(persistManagedExchangeRotation).toHaveBeenCalledTimes(1);
@@ -1067,6 +1079,7 @@ describe("runManagedRerun: a store write that fails", () => {
     const result = await runManagedRerun(record(), completingSeams());
 
     expect(result.lastRunSaved).toBe(true);
+    expect(result.lastRunNotSavedReason).toBeUndefined();
   });
 
   test("the hand-off refusal stamp: the refusal still reaches the caller", async () => {

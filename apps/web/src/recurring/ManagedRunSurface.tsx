@@ -340,7 +340,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const [folderWrite, setFolderWrite] = useState<AttendedFolderWrite>();
   const [finishedAt, setFinishedAt] = useState<Date>();
   // The store refused the completed run's success stamp.
-  const [runOutcomeUnsaved, setRunOutcomeUnsaved] = useState(false);
+  const [runOutcomeUnsavedReason, setRunOutcomeUnsavedReason] = useState<
+    string | undefined
+  >(undefined);
   // This holds alert copy alone: the hand-off state has no copy of its own and
   // never lands here, because reaching it moves the surface to the spent state below.
   const [liveFailure, setLiveFailure] = useState<LiveManagedRunFailure>();
@@ -422,8 +424,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const [reinviteSource, setReinviteSource] = useState<"recovery" | "detail">();
 
   // A single AbortController per in-flight run, aborted on unmount so a torn-down
-  // surface stops the rendezvous, the connection, and the exchange. A record
-  // read again during a run leaves it running.
+  // surface stops the rendezvous, the connection, and the exchange.
   const abortRef = useRef<AbortController | undefined>(undefined);
   useEffect(
     () => () => {
@@ -605,7 +606,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setRunning(true);
     setLiveFailure(undefined);
     setRunWarnings([]);
-    setRunOutcomeUnsaved(false);
+    setRunOutcomeUnsavedReason(undefined);
     setMatching(undefined);
     setConfirmationGrantedFor(undefined);
     setCompromiseWriteFailed(false);
@@ -689,7 +690,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
         if (controller.signal.aborted) return;
         setOutputs(result.exchange);
         setFinishedAt(new Date());
-        setRunOutcomeUnsaved(!result.lastRunSaved);
+        setRunOutcomeUnsavedReason(
+          result.lastRunSaved ? undefined : result.lastRunNotSavedReason,
+        );
         if (result.exchange.kind !== "matched") return;
         const directory = launched.workingDirectoryHandle;
         if (directory === undefined || !storedWorkingDirectoryUsable(directory))
@@ -1260,13 +1263,14 @@ export function ManagedRunSurface({ id }: { id: string }) {
           <>
             <h1 tabIndex={-1}>Run complete</h1>
             <DonePanel outputs={outputs} finishedAt={finishedAt} />
-            {runOutcomeUnsaved && (
+            {runOutcomeUnsavedReason !== undefined && (
               <Alert
                 color="yellow"
                 title={RUN_OUTCOME_UNSAVED_NOTE.title}
                 mb="sm"
               >
-                {RUN_OUTCOME_UNSAVED_NOTE.message}
+                <div>{RUN_OUTCOME_UNSAVED_NOTE.message}</div>
+                <div>Reason: {runOutcomeUnsavedReason}.</div>
               </Alert>
             )}
             <RunWarningsAlert warnings={runWarnings} />

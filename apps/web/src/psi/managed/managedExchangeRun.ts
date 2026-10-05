@@ -54,6 +54,8 @@
  *   it awaits.
  */
 
+import { getLogger } from "@alcove/core";
+
 import { ManagedInputError, managedInputLastRun } from "./managedInputGuard";
 import {
   RotationPersistError,
@@ -81,6 +83,8 @@ import type {
 import type { ManagedExchangeLockOptions } from "./managedExchangeLock";
 import type { ManagedLocalState } from "./managedLocalStateShape";
 import type { RotationWriteBack } from "./managedRunRotate";
+
+const log = getLogger("managedExchangeRun");
 
 /**
  * Raised when a run finds this device's copy of the record handed off: an
@@ -203,10 +207,14 @@ export interface ManagedExchangeRunResult<TExchange> {
   exchange: TExchange;
   /** The `succeeded` `lastRun` this run stamped. */
   lastRun: ManagedExchangeLastRun;
-  /** Whether the store took the success stamp. `false` where the write
-   * failed: the exchange completed and its results stand, but the stored
-   * record still holds whatever run it held before this one. */
+  /** Whether the store took the success stamp. `false` only when the stamp
+   * write threw: the exchange completed and its results stand, but the stored
+   * record still holds whatever run it held before this one. A stamp the store
+   * skipped as stale counts as taken. */
   lastRunSaved: boolean;
+  /** A short plain-words reason the stamp write threw (full storage, aborted
+   * write, or an unknown cause); set exactly when `lastRunSaved` is `false`. */
+  lastRunNotSavedReason?: string;
 }
 
 /**
@@ -333,13 +341,20 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       phases.onDataExchangeStart?.();
       const exchange = await phases.dataExchange(gate.handshake);
       const lastRun = succeededRun(now());
-      let lastRunSaved = true;
       try {
         await recordLastRun(record.id, lastRun, runStartedAtMs);
-      } catch {
-        lastRunSaved = false;
+      } catch (error) {
+        log.warn(
+          `managed exchange ${record.id}: the success stamp was not saved (${describeStoreError(error)})`,
+        );
+        return {
+          exchange,
+          lastRun,
+          lastRunSaved: false,
+          lastRunNotSavedReason: storeErrorReason(error),
+        };
       }
-      return { exchange, lastRun, lastRunSaved };
+      return { exchange, lastRun, lastRunSaved: true };
     },
     phases.lock,
   );
@@ -434,6 +449,27 @@ async function persistRotation(
       relayRegistrationPendingSince,
     }),
   });
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : "unknown error";
+}
+
+function describeStoreError(error: unknown): string {
+  return error instanceof Error
+    ? `${error.name}: ${error.message}`
+    : errorName(error);
+}
+
+function storeErrorReason(error: unknown): string {
+  switch (errorName(error)) {
+    case "QuotaExceededError":
+      return "this browser's storage is full";
+    case "AbortError":
+      return "the browser aborted the storage write";
+    default:
+      return "the cause is unknown";
+  }
 }
 
 async function recordLastRun(

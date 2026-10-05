@@ -16,10 +16,6 @@ import { createAppMount, flushPendingUpdates } from "./renderApp";
 import type * as ManagedInputHandle from "@psi/managed/managedInputHandle";
 import type { ExchangeSpec } from "@alcove/core";
 
-// The re-read a changed delimiter makes is keyed on the folder and the
-// delimiter: a result read from one folder is never shown for another, and
-// new terms over the same folder and delimiter are graded without a read.
-
 const reads = vi.hoisted(() => ({
   count: 0,
   hold: undefined as Promise<void> | undefined,
