@@ -53,6 +53,13 @@ export const POLL_INTERVAL_UNITS: ReadonlyArray<DurationUnit> = [
  * the value the operator authored. */
 export const TIMEOUT_UNITS: ReadonlyArray<DurationUnit> = ["s", "m", "h"];
 
+/** The heading of the console's connection tuning card. */
+export const CONNECTION_TUNING_HEADING = "Connection tuning";
+
+/** The label of the tuning control that sets how long a run waits for the
+ * partner to start (the CLI's `--peer-timeout`). */
+export const PEER_TIMEOUT_LABEL = "How long to wait for your partner";
+
 /**
  * One duration as the card holds it: the magnitude as raw field text (blank means
  * unset, so the field is left off entirely and core's default applies) and the

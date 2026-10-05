@@ -34,6 +34,11 @@ export {
 } from "./errors";
 export type { RoundSetLimitReason } from "./errors";
 export {
+  FAILURE_CAUSE_KINDS,
+  FAILURE_CAUSE_PATH_MAX_LENGTH,
+  FOLDER_MISSING_CODES,
+  PARTNER_MEETING_CHANNELS,
+  failureCauseFromUntrusted,
   failureCauseOf,
   failureCauseSentence,
   formatWaitDuration,

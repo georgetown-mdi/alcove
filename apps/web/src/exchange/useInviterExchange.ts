@@ -23,6 +23,7 @@ import {
 import {
   JobApiRequestError,
   JobIntentColumnNameError,
+  PARTNER_REFUSED_EXIT_CODE,
   RelayedSelfExplainingError,
   RelayedTerminalError,
   createFetchJobApiClient,
@@ -41,6 +42,7 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
 import { HANDSHAKE_ROLE_FOR_SIDE } from "@psi/handshakeRole";
+import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
@@ -509,6 +511,33 @@ function failureContentFor(
       message: sanitizedFailureMessage(error),
       termsChange: error.termsChange,
     };
+  // A console run that failed on a cause core's catalog names: core's sentence
+  // with the console's own remedy. The CLI's report is left out, since its
+  // remedy names a command-line flag this operator does not set.
+  if (
+    error instanceof RelayedTerminalError &&
+    error.failureCause !== undefined &&
+    (category === "exchange" || category === "config")
+  )
+    return { category, ...consoleFailureForCause(error.failureCause) };
+  // A console run the partner or the agreed terms refused (the CLI's exit 76):
+  // the partner's refusal, which a retry and a change to this party's settings
+  // both meet again, so it takes the config category and no retry.
+  if (
+    error instanceof RelayedTerminalError &&
+    error.exitCode === PARTNER_REFUSED_EXIT_CODE &&
+    category === "exchange"
+  )
+    return {
+      category: "config",
+      title: "Your partner refused this exchange",
+      message:
+        "Your partner, or the terms you both agreed, stopped this exchange, " +
+        "and running it again stops the same way. Contact your partner " +
+        "before running it again.",
+      settingsCannotResolve: true,
+      ...reportedCauseFields(sanitizedFailureMessage(error)),
+    };
   if (category === "config") {
     // A prepare-time fault in the operator's OWN config, safe to show because
     // an OperatorConfigError's message names only local content (the
@@ -624,17 +653,18 @@ function failureContentFor(
   // than into this copy (docs/notes/reported-failure-cause.md).
   //
   // A filedrop run never opens a connection: its two halves rendezvous through a
-  // synced shared folder, so a temporary-connection message misdirects. Name the
-  // shared-state cause instead. Both messages are built from operator-known facts
-  // alone and keep the retry affordance.
+  // synced shared folder, so a temporary-connection message misdirects. Its
+  // copy names no cause, since a partner that never arrived is stated above
+  // and anything else is the report's to state. Both messages are built from
+  // operator-known facts alone and keep the retry affordance.
   return {
     category,
     title: "Exchange failed",
     message:
       channel === "filedrop"
-        ? "The partner's half never appeared in the shared folder. Confirm you " +
-          "both point at the same synced directory and that it is syncing, then " +
-          "try again."
+        ? "The exchange through the shared folder stopped before it " +
+          "finished. Check that the shared folder is in place and syncing, " +
+          "then try again."
         : "The exchange could not be completed - usually a temporary " +
           "connection problem rather than an issue with your data.",
     // A rejection that is not an `Error` has no chain to attribute, and its

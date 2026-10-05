@@ -596,6 +596,45 @@ describe("createServerJobExchangeDriver event mapping", () => {
     }
   });
 
+  test("a relayed catalog cause and exit code reach the failure", async () => {
+    const cause = {
+      kind: "partner-never-arrived",
+      channel: "filedrop",
+      waitedMs: 90_000,
+    };
+    const { client } = scriptedClient([
+      {
+        ...errorEvent("exchange", "Your partner did not arrive."),
+        recoveryHint: true,
+        exitCode: 69,
+        cause,
+      },
+    ]);
+    const events = driverEvents(new AbortController().signal);
+    await createServerJobExchangeDriver(driverConfig(), client).run(events);
+    const failure = events.onError.mock.calls[0][0] as { error: unknown };
+    expect(failure.error).toBeInstanceOf(RelayedSelfExplainingError);
+    expect((failure.error as RelayedTerminalError).failureCause).toEqual(cause);
+    expect((failure.error as RelayedTerminalError).exitCode).toBe(69);
+  });
+
+  test("a cause off the catalog and an exit code that is not a whole number are not read", async () => {
+    const { client } = scriptedClient([
+      {
+        ...errorEvent("exchange", "the exchange stopped"),
+        exitCode: "76",
+        cause: { kind: "partner-refused" },
+      },
+    ]);
+    const events = driverEvents(new AbortController().signal);
+    await createServerJobExchangeDriver(driverConfig(), client).run(events);
+    const failure = events.onError.mock.calls[0][0] as { error: unknown };
+    expect(
+      (failure.error as RelayedTerminalError).failureCause,
+    ).toBeUndefined();
+    expect((failure.error as RelayedTerminalError).exitCode).toBeUndefined();
+  });
+
   test("an unmarked error stays the class that shows fixed copy", async () => {
     const { client } = scriptedClient([
       errorEvent("security", "key exchange authentication failed"),
