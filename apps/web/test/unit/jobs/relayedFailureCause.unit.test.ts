@@ -52,6 +52,30 @@ describe("the relayed failure cause", () => {
   });
 
   test.each([
+    { failure: "no-connection", code: "UND_ERR_CONNECT_TIMEOUT" },
+    { failure: "name-not-resolved", code: "EAI_AGAIN" },
+    { failure: "no-answer", code: "ECONNRESET" },
+    { failure: "no-answer", timedOutMs: 15000 },
+  ])("keeps an unreachable registrar's %o, its host escaped", (facts) => {
+    const event = validateAndSanitizeEvent({
+      ...NO_SHOW_EVENT,
+      cause: {
+        kind: "relay-registrar-unreachable",
+        host: "relay\u202e.example.org",
+        port: 8443,
+        ...facts,
+        smuggled: "field",
+      },
+    });
+    expect(event?.cause).toEqual({
+      kind: "relay-registrar-unreachable",
+      host: "relay\\u202e.example.org",
+      port: 8443,
+      ...facts,
+    });
+  });
+
+  test.each([
     ["an unknown kind", { kind: "partner-refused" }],
     ["a kind that is not text", { kind: 7 }],
     ["no kind", { channel: "filedrop" }],
@@ -69,6 +93,164 @@ describe("the relayed failure cause", () => {
       { kind: "folder-missing", path: "/d", code: "EACCES" },
     ],
     ["a folder with no path", { kind: "folder-missing", code: "ENOENT" }],
+    [
+      "a registrar with no host",
+      {
+        kind: "relay-registrar-unreachable",
+        port: 443,
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a registrar host that is empty",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "",
+        port: 443,
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a registrar host that is not text",
+      {
+        kind: "relay-registrar-unreachable",
+        host: 7,
+        port: 443,
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a registrar port of zero",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 0,
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a registrar port past 65535",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 65536,
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a fractional registrar port",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443.5,
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a registrar port as text",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: "443",
+        failure: "no-answer",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a registrar failure class off the list",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "refused",
+        code: "ECONNREFUSED",
+      },
+    ],
+    [
+      "a registrar with no failure class",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        code: "ECONNREFUSED",
+      },
+    ],
+    [
+      "a no-connection code from another class",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "no-connection",
+        code: "ENOTFOUND",
+      },
+    ],
+    [
+      "a name-not-resolved code from another class",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "name-not-resolved",
+        code: "ECONNREFUSED",
+      },
+    ],
+    [
+      "a no-answer code off the list",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "no-answer",
+        code: "ETIMEDOUT",
+      },
+    ],
+    [
+      "a no-answer with both a code and a timeout",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "no-answer",
+        code: "ECONNRESET",
+        timedOutMs: 1,
+      },
+    ],
+    [
+      "a no-answer with neither a code nor a timeout",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "no-answer",
+      },
+    ],
+    [
+      "a fractional registrar timeout",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "no-answer",
+        timedOutMs: 1.5,
+      },
+    ],
+    [
+      "a negative registrar timeout",
+      {
+        kind: "relay-registrar-unreachable",
+        host: "r",
+        port: 443,
+        failure: "no-answer",
+        timedOutMs: -1,
+      },
+    ],
   ])("refuses %s by dropping the field and relaying the rest", (_, cause) => {
     const event = validateAndSanitizeEvent({ ...NO_SHOW_EVENT, cause });
     expect(event).not.toBeNull();

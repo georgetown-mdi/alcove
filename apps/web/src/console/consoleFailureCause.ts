@@ -5,7 +5,10 @@
 // remedy names. Total over FailureCauseKind, so a cause core adds fails to
 // compile here until bound.
 
-import { failureCauseSentence } from "@alcove/core";
+import {
+  failureCauseSentence,
+  relayRegistrarUnreachableRemedy,
+} from "@alcove/core";
 
 import {
   CONNECTION_TUNING_HEADING,
@@ -58,6 +61,10 @@ export const CONSOLE_FAILURE_REMEDIES: {
           "still in place, then try again."
         : "Check that the shared folder is mounted into the console as a " +
           "folder rather than a file, then try again.",
+  }),
+  "relay-registrar-unreachable": (cause) => ({
+    title: "The relay registrar could not be reached",
+    remedy: relayRegistrarUnreachableRemedy(cause),
   }),
 };
 

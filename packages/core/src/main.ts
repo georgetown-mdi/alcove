@@ -43,6 +43,7 @@ export {
   failureCauseSentence,
   formatWaitDuration,
   markFailureCause,
+  relayRegistrarUnreachableRemedy,
 } from "./failureCause";
 export type {
   FailureCause,
@@ -50,6 +51,7 @@ export type {
   FailureCauseOfKind,
   FolderMissingCode,
   PartnerMeetingChannel,
+  RelayRegistrarUnreachableFailure,
 } from "./failureCause";
 export { PSIParticipant, ProcessState } from "./psi/participant";
 export type {

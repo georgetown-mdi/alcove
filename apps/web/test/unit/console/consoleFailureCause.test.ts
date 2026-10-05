@@ -33,6 +33,29 @@ const SAMPLES: {
     { kind: "folder-missing", path: "/data/drop", code: "ENOENT" },
     { kind: "folder-missing", path: "/data/drop", code: "ENOTDIR" },
   ],
+  "relay-registrar-unreachable": [
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-connection",
+      code: "ECONNREFUSED",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "name-not-resolved",
+      code: "ENOTFOUND",
+    },
+    {
+      kind: "relay-registrar-unreachable",
+      host: "relay.example.org",
+      port: 8443,
+      failure: "no-answer",
+      timedOutMs: 15_000,
+    },
+  ],
 };
 
 /** A relayed failure as the job client builds it off the CLI's event. */
@@ -108,6 +131,25 @@ describe("a console run that failed on a catalog cause", () => {
         "shared folder is mounted into the console and still in place, then " +
         "try again.",
     );
+  });
+
+  test("an unreachable relay registrar names the port to open, not a setting", () => {
+    const failure = failureFor(
+      "exchange",
+      relayed("the CLI's text", {
+        failureCause: SAMPLES["relay-registrar-unreachable"][0],
+        exitCode: 69,
+      }),
+    );
+    expect(failure.title).toBe("The relay registrar could not be reached");
+    expect(failure.message).toBe(
+      "The relay registrar at relay.example.org port 8443 could not be " +
+        "reached (ECONNREFUSED). This computer needs outbound access to " +
+        "relay.example.org on TCP port 8443: if this network allows only " +
+        "some ports out, have that port opened or run from a network that " +
+        "allows it.",
+    );
+    expect(failure.message).not.toContain(CONNECTION_TUNING_HEADING);
   });
 
   test("a failure this browser raised keeps its own copy whatever it holds", () => {

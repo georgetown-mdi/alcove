@@ -21,6 +21,7 @@ import type {
   FailureCauseOfKind,
   PartnerDeduplicateChange,
   PayloadColumnsChange,
+  RelayRegistrarUnreachableFailure,
   ResolvedMatching,
 } from "@alcove/core";
 
@@ -702,7 +703,30 @@ const CAUSE_FIELDS: {
     }),
     code,
   }),
+  "relay-registrar-unreachable": (cause) => ({
+    kind: "relay-registrar-unreachable",
+    host: redactAndSanitizeForDisplay(cause.host, {
+      maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
+    }),
+    port: cause.port,
+    ...relayRegistrarFailureFields(cause),
+  }),
 };
+
+function relayRegistrarFailureFields(
+  cause: RelayRegistrarUnreachableFailure,
+): RelayRegistrarUnreachableFailure {
+  switch (cause.failure) {
+    case "no-connection":
+      return { failure: cause.failure, code: cause.code };
+    case "name-not-resolved":
+      return { failure: cause.failure, code: cause.code };
+    case "no-answer":
+      return "timedOutMs" in cause
+        ? { failure: cause.failure, timedOutMs: toCount(cause.timedOutMs) }
+        : { failure: cause.failure, code: cause.code };
+  }
+}
 
 /** The {@link ErrorEvent.cause} field for `error`, as the fields to spread. */
 function causeFieldOf(error: unknown): Pick<ErrorEvent, "cause"> {
