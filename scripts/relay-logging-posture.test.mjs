@@ -40,3 +40,40 @@ describe("turnserver.conf.tmpl logging", () => {
     expect(logging.sort()).toEqual([...ALLOWED].sort());
   });
 });
+
+describe("journal retention", () => {
+  const root = resolve(here, "..");
+  const read = (path) => readFileSync(resolve(root, path), "utf8");
+  const DROPIN = "infra/relay/journald-alcove-relay.conf";
+  const DAYS = /^(\d+)day$/;
+
+  const setting = (name) => {
+    const match = read(DROPIN).match(new RegExp(`^${name}=(.*)$`, "m"));
+    expect(match, name).not.toBeNull();
+    return match[1].trim();
+  };
+  const days = (name) => {
+    const match = setting(name).match(DAYS);
+    expect(match, `${name} is a whole number of days`).not.toBeNull();
+    return Number(match[1]);
+  };
+
+  it("keeps a persistent journal", () => {
+    expect(setting("Storage")).toBe("persistent");
+  });
+
+  it("is installed by install.sh into journald's drop-in directory", () => {
+    const install = read("infra/relay/install.sh");
+    expect(install).toContain('"$HERE/journald-alcove-relay.conf"');
+    expect(install).toContain(
+      "JOURNALD_DROPIN=/etc/systemd/journald.conf.d/alcove-relay.conf",
+    );
+  });
+
+  it("is stated where the docs name it as the retention plus the file's life", () => {
+    const bound = days("MaxRetentionSec") + days("MaxFileSec");
+    for (const doc of ["docs/notes/webrtc-relay-deployment.md", "PRIVACY.md"]) {
+      expect(read(doc), doc).toContain(`within ${bound} days`);
+    }
+  });
+});
