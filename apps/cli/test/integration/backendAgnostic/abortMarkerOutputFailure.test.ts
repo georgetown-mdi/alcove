@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { prepareForExchange } from "@alcove/core";
 import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
@@ -16,7 +16,7 @@ import {
 import { saveKeyFile } from "../../../src/keyFile";
 
 // A clean authenticated exchange completes for both parties; then one party's
-// result-CSV write fails (missing parent directory) AFTER runExchange has
+// result-CSV write fails (ENOENT at the file's open) AFTER runExchange has
 // returned. runProtocol seals the cross-party abort decision the moment the
 // exchange completes, before that local output stage, so the failing party
 // writes NO abort marker: a local, post-exchange I/O fault must not tell the
@@ -65,6 +65,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   try {
     if (work) fs.rmSync(work, { recursive: true, force: true });
   } catch {
@@ -89,12 +90,27 @@ test("a result-write failure after a completed exchange writes no abort marker",
     },
   });
 
-  // Party A's output path has a missing parent directory, so its writeOutput
-  // throws ENOENT after the exchange completes; Party B's path is valid. Party
+  // Party A's result file cannot be opened -- its name is stamped with the
+  // run's time, so the ENOENT is injected at that open rather than set up in
+  // advance -- so its writeOutput throws after the exchange completes; Party
+  // B's result is written for real. Party
   // A's token rotated before that local failure, so runProtocol emits a
   // recovery advisory at ERROR; run both parties under withCapturedLogs so
   // that intended line is captured below rather than leaked to the suite
   // console.
+  const outA = path.join(work, "a-out");
+  const outB = path.join(work, "b-out");
+  const realOpenSync = fs.openSync;
+  vi.spyOn(fs, "openSync").mockImplementation(((
+    file: fs.PathLike,
+    ...rest: unknown[]
+  ) => {
+    if (String(file).startsWith(path.join(outA, "alcove-results-")))
+      throw Object.assign(new Error(`ENOENT: no such file, open '${file}'`), {
+        code: "ENOENT",
+      });
+    return (realOpenSync as (...a: unknown[]) => number)(file, ...rest);
+  }) as typeof fs.openSync);
   const [settled, capturedLogs] = await withCapturedLogs(
     () =>
       Promise.allSettled([
@@ -102,7 +118,7 @@ test("a result-write failure after a completed exchange writes no abort marker",
           connection: makeConfig(),
           auth: { sharedSecret: INITIAL_SECRET, keyFilePath: keyA },
           prepared: preparedFor("Party A"),
-          output: path.join(work, "missing-parent", "a-out.csv"),
+          output: outA,
           verbosity: -1,
           loggerName: "noabort-a",
         }),
@@ -110,7 +126,7 @@ test("a result-write failure after a completed exchange writes no abort marker",
           connection: makeConfig(),
           auth: { sharedSecret: INITIAL_SECRET, keyFilePath: keyB },
           prepared: preparedFor("Party B"),
-          output: path.join(work, "b-out.csv"),
+          output: outB,
           verbosity: -1,
           loggerName: "noabort-b",
         }),
@@ -120,7 +136,7 @@ test("a result-write failure after a completed exchange writes no abort marker",
   const [resA, resB] = settled;
 
   // A failed on its local output write -- specifically the ENOENT from the
-  // missing parent directory, not some masked earlier fault -- while B completed
+  // result file's open, not some masked earlier fault -- while B completed
   // the exchange unaffected.
   expect(resA.status).toBe("rejected");
   expect((resA as PromiseRejectedResult).reason).toMatchObject({
@@ -137,7 +153,9 @@ test("a result-write failure after a completed exchange writes no abort marker",
   expect(markers).toEqual([]);
 
   // B's result was actually written -- it was not poisoned by A's failure.
-  expect(fs.existsSync(path.join(work, "b-out.csv"))).toBe(true);
+  expect(
+    fs.readdirSync(outB).filter((name) => name.startsWith("alcove-results-")),
+  ).toHaveLength(1);
 
   // Exactly one intended WARN/ERROR fired: A's "rotated before this error"
   // recovery advisory (its token was saved before the post-exchange output

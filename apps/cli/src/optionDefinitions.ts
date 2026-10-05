@@ -433,14 +433,8 @@ export function addCommonBootstrapOptions(
       describe:
         "after a successful exchange, write a self-attested audit record (a " +
         "local artifact, not a signed receipt) and its private verification " +
-        "keys; use --no-record to skip",
-    })
-    .option("record-file", {
-      type: "string",
-      describe:
-        "path for the audit record (default: ./alcove-record-<timestamp>." +
-        "json); the private verification keys are written alongside it as " +
-        "<name>.keys.json",
+        "keys in the output folder (the working directory when the result " +
+        "goes to stdout); use --no-record to skip",
     })
     .option("event-stream", {
       type: "boolean",
@@ -577,7 +571,6 @@ export interface CommonBootstrapOptions {
   connectionPerPoll?: boolean;
   outboundPath?: string;
   record: boolean;
-  recordFile?: string;
   // Opt-in NDJSON machine-interface stream on fd 3 (see eventStream.ts). A
   // boolean toggle; when absent nothing is ever written to fd 3.
   eventStream: boolean;
@@ -663,7 +656,6 @@ export function parseCommonBootstrapArgs(
     // yargs sets `record` to false on --no-record and true by the option's
     // default otherwise, so it is always a boolean here.
     record: argv["record"] as boolean,
-    recordFile: singleValue(argv, "record-file") as string | undefined,
     // Boolean toggle: a repeat is valid (last-one-wins), so read it directly.
     // yargs yields true only when --event-stream is passed; default off.
     eventStream: argv["event-stream"] === true,

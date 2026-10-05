@@ -51,9 +51,8 @@
 //                     and writes nothing.
 //   STUB_RECORD_JSON  When set, the record is written with this content, and its
 //                     paired .keys.json alongside it (so the record/keys routes
-//                     have files): at the path --record-file names when it is
-//                     passed, and otherwise as alcove-record-<time>.json in the
-//                     working directory, the real CLI's default. The keys path
+//                     have files) as alcove-record-<time>.json in the working
+//                     directory, the real CLI's default. The keys path
 //                     is the record path with .json replaced by .keys.json,
 //                     matching the CLI's keysPathFor.
 //   STUB_RECEIPT_JSON When set, the receipt is written with this content: at the
@@ -302,8 +301,7 @@ function runExchangeStub() {
   }
 
   if (process.env.STUB_RECORD_JSON !== undefined) {
-    const recordPath =
-      recordFilePath(process.argv) ?? `./alcove-record-${stamp}.json`;
+    const recordPath = `./alcove-record-${stamp}.json`;
     const keysPath = recordPath.endsWith(".json")
       ? recordPath.slice(0, -".json".length) + ".keys.json"
       : recordPath + ".keys.json";
@@ -412,12 +410,6 @@ function writeFd3(line) {
   } catch {
     // fd 3 not wired; ignore (mirrors the real CLI's fail-safe writer).
   }
-}
-
-// --record-file as a two-token pair or a single --record-file=<value> token;
-// the real CLI's yargs accepts both, so the stub resolves both.
-function recordFilePath(argv) {
-  return separatedFlagValue(argv, "--record-file");
 }
 
 /** The stamp this run's artifact names share, made from its createdAt as the

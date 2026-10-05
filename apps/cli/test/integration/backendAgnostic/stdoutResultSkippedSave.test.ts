@@ -134,7 +134,7 @@ test("an undelivered stdout result names the save it skipped", async () => {
             connection: makeConfig(),
             auth: null,
             prepared: preparedFor("Party B"),
-            output: path.join(work, "b-out.csv"),
+            output: path.join(work, "b-out"),
             verbosity: -1,
             loggerName: "skipped-save-b",
             saveIntent: true,

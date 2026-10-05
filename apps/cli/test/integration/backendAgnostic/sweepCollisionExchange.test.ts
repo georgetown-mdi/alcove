@@ -138,8 +138,8 @@ async function waitForHelloPublished(dropDir: string): Promise<void> {
 async function runSequentialPair(options: PairOptions): Promise<PairOutcome> {
   const { work, dropDir, tag, keyFiles, sweep, peerTimeoutMs } = options;
   const outputs = {
-    a: path.join(work, `${tag}-a-out.csv`),
-    b: path.join(work, `${tag}-b-out.csv`),
+    a: path.join(work, `${tag}-a-out`),
+    b: path.join(work, `${tag}-b-out`),
   };
   const connection = (): ProtocolConnectionConfig => ({
     channel: "filedrop",
@@ -206,9 +206,16 @@ function guidanceFor(outcome: PairOutcome, loggerName: string): string[] {
   );
 }
 
-/** The intersection the receiving party wrote: a header plus every shared row. */
-async function expectReceiverIntersection(outputPath: string): Promise<void> {
-  const rows = (await fsp.readFile(outputPath, "utf8")).trim().split("\n");
+/** The intersection the receiving party wrote in its output folder: a header
+ * plus every shared row. */
+async function expectReceiverIntersection(outputFolder: string): Promise<void> {
+  const results = (await fsp.readdir(outputFolder)).filter((name) =>
+    name.startsWith("alcove-results-"),
+  );
+  expect(results).toHaveLength(1);
+  const rows = (await fsp.readFile(path.join(outputFolder, results[0]), "utf8"))
+    .trim()
+    .split("\n");
   expect(rows).toHaveLength(1 + ROWS_A.length);
 }
 

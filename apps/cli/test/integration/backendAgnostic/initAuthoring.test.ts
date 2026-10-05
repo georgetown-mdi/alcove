@@ -118,7 +118,7 @@ test("an exchange refuses an init template's placeholder, naming the field", asy
     "--key-file",
     ".alcove.key",
     "in.csv",
-    "out.csv",
+    "out",
   ]);
   expect(run.exitCode, describeCliRun("exchange", run)).toBe(64);
   expect(run.stderr).toContain(

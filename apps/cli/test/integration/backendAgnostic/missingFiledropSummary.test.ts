@@ -64,7 +64,7 @@ test("a run whose shared folder does not exist fails at once with exit 66", asyn
     await buildCli([
       pathToFileURL(missing).href,
       input,
-      path.join(work, "out.csv"),
+      path.join(work, "out"),
       "--max-reconnect-attempts",
       MAX_RECONNECT_ATTEMPTS,
     ]).parseAsync();

@@ -2331,7 +2331,6 @@ function onlineBootstrapParams(
     output: undefined,
     verbosity: -1,
     loggerName: "bootstrap-test",
-    recordOutput: undefined,
     writePlainLine: () => {},
   };
 }

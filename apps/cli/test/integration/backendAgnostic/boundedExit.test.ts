@@ -152,6 +152,34 @@ afterEach(() => {
   fs.rmSync(work, { recursive: true, force: true });
 });
 
+/**
+ * The run artifacts named `<prefix>-<time><suffix>` in `folder`; a record's
+ * keys and terms files, whose names hold a further dot, are not among them.
+ */
+function artifactsIn(folder: string, prefix: string, suffix: string): string[] {
+  if (!fs.existsSync(folder)) return [];
+  return fs
+    .readdirSync(folder)
+    .filter(
+      (name) =>
+        name.startsWith(`${prefix}-`) &&
+        name.endsWith(suffix) &&
+        !name.slice(0, -suffix.length).includes("."),
+    )
+    .map((name) => path.join(folder, name));
+}
+
+/** The single artifact `artifactsIn` finds, failing when there is not one. */
+function onlyArtifactIn(
+  folder: string,
+  prefix: string,
+  suffix: string,
+): string {
+  const found = artifactsIn(folder, prefix, suffix);
+  expect(found).toHaveLength(1);
+  return found[0];
+}
+
 /** The command line a party runs, with its output argument left to the caller. */
 function partyArgs(party: "a" | "b", output: string[]): string[] {
   return [
@@ -164,8 +192,6 @@ function partyArgs(party: "a" | "b", output: string[]): string[] {
     path.join(work, `${party}.key`),
     "--identity",
     `party-${party}`,
-    "--record-file",
-    path.join(work, `${party}-record.json`),
     "--peer-timeout",
     PEER_TIMEOUT,
     "--log-level",
@@ -245,7 +271,7 @@ async function runBoth(params: {
       [...params.probeArgs, "--", ...partyArgs("a", params.probeOutput)],
       { firstReadDelayMs: params.firstReadDelayMs },
     ),
-    runParty(cliEntry, partyArgs("b", [path.join(work, "b-out.csv")])),
+    runParty(cliEntry, partyArgs("b", [path.join(work, "b-out")])),
   ]);
   return { probe, peer };
 }
@@ -261,18 +287,23 @@ function probeReturnMs(run: FinishedParty): number {
 }
 
 /**
- * Assert every artifact the asserted party owed is on disk and whole: the
- * result CSV with both matched rows, the exchange record with its private
+ * Assert every artifact the asserted party owed is on disk and whole in its
+ * output folder: the result CSV with both matched rows, named with its
+ * record's stamp, the exchange record with its private
  * verification keys, and the dual-signed receipt. This is what the forced exit
  * must never cut short, since the gate runs after all of them.
  */
-function expectArtifactsComplete(resultPath: string): void {
+function expectArtifactsComplete(outputFolder: string): void {
+  const resultPath = onlyArtifactIn(outputFolder, "alcove-results", ".csv");
   const result = fs.readFileSync(resultPath, "utf8");
   const rows = result.trimEnd().split("\n");
   expect(rows).toHaveLength(MATCHED_ROWS + 1);
   expect(rows[0]).toContain("row_id");
 
-  const recordPath = path.join(work, "a-record.json");
+  const recordPath = onlyArtifactIn(outputFolder, "alcove-record", ".json");
+  expect(path.basename(resultPath).slice("alcove-results-".length, -4)).toBe(
+    path.basename(recordPath).slice("alcove-record-".length, -5),
+  );
   const record = JSON.parse(fs.readFileSync(recordPath, "utf8")) as {
     localIdentity?: unknown;
     partnerIdentity?: unknown;
@@ -293,7 +324,7 @@ function expectArtifactsComplete(resultPath: string): void {
 test(
   "a held event loop returns at the budget with the run's own status, and its files are whole",
   async () => {
-    const resultPath = path.join(work, "a-out.csv");
+    const outputFolder = path.join(work, "a-out");
     const { probe, peer } = await runBoth({
       probeArgs: [
         "--probe-gate-budget-ms",
@@ -305,7 +336,7 @@ test(
         "--probe-cleanup-delay-ms",
         "0",
       ],
-      probeOutput: [resultPath],
+      probeOutput: [outputFolder],
     });
 
     expect(peer.exitCode).toBe(0);
@@ -318,7 +349,7 @@ test(
     // point of reporting rather than silently exiting.
     expect(probe.stderr).toContain("still held open");
     expect(probe.stderr).toContain("Timeout");
-    expectArtifactsComplete(resultPath);
+    expectArtifactsComplete(outputFolder);
   },
   CASE_TIMEOUT_MS,
 );
@@ -326,7 +357,7 @@ test(
 test(
   "the budget's clock starts after the run's obligations, not during them",
   async () => {
-    const resultPath = path.join(work, "a-out.csv");
+    const outputFolder = path.join(work, "a-out");
     const obligationMs = PROBE_GATE_BUDGET_MS * 4;
     const startedAt = Date.now();
     const { probe } = await runBoth({
@@ -340,7 +371,7 @@ test(
         "--probe-cleanup-delay-ms",
         "0",
       ],
-      probeOutput: [resultPath],
+      probeOutput: [outputFolder],
     });
 
     expect(probe.exitCode).toBe(0);
@@ -348,7 +379,7 @@ test(
     // follows it rather than cutting it off at the budget.
     expect(Date.now() - startedAt).toBeGreaterThan(obligationMs);
     expect(probeReturnMs(probe)).toBeLessThan(RETURN_ALLOWANCE_MS);
-    expectArtifactsComplete(resultPath);
+    expectArtifactsComplete(outputFolder);
   },
   CASE_TIMEOUT_MS,
 );
@@ -367,7 +398,7 @@ test(
         "--probe-cleanup-delay-ms",
         "0",
       ],
-      // No OUTPUT_FILE: the result goes to stdout, which is a pipe here.
+      // No OUTPUT_FOLDER: the result goes to stdout, which is a pipe here.
       probeOutput: [],
     });
 
@@ -461,17 +492,17 @@ test(
     // The gate's shipped budget and no leak: the real end-to-end shape. A
     // future dependency that leaves a handle armed reddens this case rather
     // than being absorbed into a run that merely takes longer.
-    const resultPath = path.join(work, "a-out.csv");
+    const outputFolder = path.join(work, "a-out");
     const [a, b] = await Promise.all([
-      runParty(cliEntry, partyArgs("a", [resultPath])),
-      runParty(cliEntry, partyArgs("b", [path.join(work, "b-out.csv")])),
+      runParty(cliEntry, partyArgs("a", [outputFolder])),
+      runParty(cliEntry, partyArgs("b", [path.join(work, "b-out")])),
     ]);
 
     expect(a.exitCode).toBe(0);
     expect(b.exitCode).toBe(0);
     expect(a.stderr).not.toContain("still held open");
     expect(b.stderr).not.toContain("still held open");
-    expectArtifactsComplete(resultPath);
+    expectArtifactsComplete(outputFolder);
   },
   CASE_TIMEOUT_MS,
 );
@@ -504,7 +535,7 @@ async function runInterruptedParty(
     "--probe-cleanup-delay-ms",
     String(SIGNAL_CLEANUP_DELAY_MS),
     "--",
-    ...partyArgs("a", [path.join(work, "a-out.csv")]),
+    ...partyArgs("a", [path.join(work, "a-out")]),
   ]);
   await vi.waitFor(
     () => expect(fs.readdirSync(dropDir).length).toBeGreaterThan(0),
@@ -532,7 +563,12 @@ test.each([
     expect(party.signal).toBeNull();
     expect(party.stderr).not.toContain("still held open");
     // The run was cut short, so it produced none of what a completed one owes.
-    expect(fs.existsSync(path.join(work, "a-out.csv"))).toBe(false);
+    expect(
+      artifactsIn(path.join(work, "a-out"), "alcove-results", ".csv"),
+    ).toEqual([]);
+    expect(
+      artifactsIn(path.join(work, "a-out"), "alcove-record", ".json"),
+    ).toEqual([]);
   },
   CASE_TIMEOUT_MS,
 );
@@ -561,7 +597,7 @@ function runPipedToHead(eventsPath: string): Promise<FinishedParty> {
     "--import",
     require.resolve("tsx"),
     cliEntry,
-    // No OUTPUT_FILE: the result goes to stdout, which is the pipe.
+    // No OUTPUT_FOLDER: the result goes to stdout, which is the pipe.
     ...partyArgs("a", []),
     "--event-stream",
   ]
@@ -591,7 +627,7 @@ test(
     const eventsPath = path.join(work, "a-events.jsonl");
     const [a, b] = await Promise.all([
       runPipedToHead(eventsPath),
-      runParty(cliEntry, partyArgs("b", [path.join(work, "b-out.csv")])),
+      runParty(cliEntry, partyArgs("b", [path.join(work, "b-out")])),
     ]);
 
     expect(b.exitCode).toBe(0);
@@ -608,7 +644,8 @@ test(
     expect(terminal["category"]).toBe("output");
     expect(events.filter((line) => line["type"] === "result")).toEqual([]);
 
-    const recordPath = path.join(work, "a-record.json");
+    // No OUTPUT_FOLDER, so the record is in the working directory.
+    const recordPath = onlyArtifactIn(work, "alcove-record", ".json");
     const record = JSON.parse(fs.readFileSync(recordPath, "utf8")) as {
       localIdentity?: unknown;
     };

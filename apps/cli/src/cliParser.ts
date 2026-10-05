@@ -127,7 +127,7 @@ export function buildCli(argv: string[]): Argv {
       .command(
         "$0",
         "Quick exchange with no setup and no shared secret: " +
-          "alcove [--save] URL INPUT_FILE [OUTPUT_FILE]",
+          "alcove [--save] URL INPUT_FILE [OUTPUT_FOLDER]",
         zeroSetupBuilder,
         zeroSetupHandler,
       )

@@ -518,9 +518,9 @@ export const RESULT_FROM_ANOTHER_RUN_HEADLINE =
   "run -- most often, a later run overwrote it. The agreed terms match the " +
   "record; only the checks against your input and result files failed. " +
   "Supply the input and result files from this record's run; if these are " +
-  "them, the record was altered. To keep every run's result, give the " +
-  "exchange a folder as its output (for example ./): each run then writes " +
-  "alcove-results-<stamp>.csv with its record's stamp.";
+  "them, the record was altered. An exchange given an output folder writes " +
+  "each run's result there as alcove-results-<time>.csv, with its record's " +
+  "stamp.";
 
 /** Render the unsigned record's verification report to output lines and an exit
  * code (0 only when the verdict is verified). `signatureFailed` marks a run
@@ -804,8 +804,8 @@ export function formatSignedRecordReport(
   if (verdict.runBinding.pairByStamp)
     lines.push(
       "  note: an exchange writes its record and its receipt together, under one " +
-        "timestamp stamp by default (alcove-record-<stamp>.json and " +
-        "alcove-receipt-<stamp>.json), so pair them by that stamp.",
+        "timestamp stamp by default (alcove-record-<time>.json and " +
+        "alcove-receipt-<time>.json), so pair them by that stamp.",
     );
   // The binder is never RECOMPUTED: deriving it needs the exchange's session key,
   // which only the two parties ever held and neither retains. What an offline

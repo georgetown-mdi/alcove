@@ -202,7 +202,36 @@ function loggedSpanMs(stderr: string, from: string, to: string): number {
 }
 
 /** The association table a party wrote, as its header and its row pairs. */
-function resultTable(file: string): { header: string; pairs: Set<string> } {
+/** The run artifacts named `<prefix>-<time><suffix>` in `folder`. */
+function artifactsIn(folder: string, prefix: string, suffix: string): string[] {
+  if (!fs.existsSync(folder)) return [];
+  return fs
+    .readdirSync(folder)
+    .filter(
+      (name) =>
+        name.startsWith(`${prefix}-`) &&
+        name.endsWith(suffix) &&
+        !name.slice(0, -suffix.length).includes("."),
+    )
+    .map((name) => path.join(folder, name));
+}
+
+/** The single artifact {@link artifactsIn} finds in `folder`. */
+function onlyArtifactIn(
+  folder: string,
+  prefix: string,
+  suffix: string,
+): string {
+  const found = artifactsIn(folder, prefix, suffix);
+  expect(found).toHaveLength(1);
+  return found[0];
+}
+
+function resultTable(folder: string): {
+  header: string;
+  pairs: Set<string>;
+} {
+  const file = onlyArtifactIn(folder, "alcove-results", ".csv");
   const lines = fs.readFileSync(file, "utf8").trim().split("\n");
   return { header: lines[0], pairs: new Set(lines.slice(1)) };
 }
@@ -258,13 +287,12 @@ liveTest(
     fs.writeFileSync(inviteInput, INVITE_CSV);
     const acceptInput = path.join(work, "accept-input.csv");
     fs.writeFileSync(acceptInput, ACCEPT_CSV);
-    const inviteOut = path.join(work, "invite-out.csv");
-    const acceptOut = path.join(work, "accept-out.csv");
+    const inviteOut = path.join(work, "invite-out");
+    const acceptOut = path.join(work, "accept-out");
     const inviteConfig = path.join(work, "invite.yaml");
     const acceptConfig = path.join(work, "accept.yaml");
     const inviteKey = path.join(work, "invite.key");
     const acceptKey = path.join(work, "accept.key");
-    const acceptRecord = path.join(work, "accept-record.json");
 
     // The inviting party: a wss:// coordination server of its own, from which
     // the invitation's endpoint is derived. It records no audit, so the one
@@ -310,8 +338,6 @@ liveTest(
       acceptKey,
       "--identity",
       "accept",
-      "--record-file",
-      acceptRecord,
       // This acceptance runs the exchange, so its own budget bounds it: the
       // wait for the partner at the rendezvous, and the peer waits after.
       "--peer-timeout",
@@ -398,9 +424,9 @@ liveTest(
 
     // And the audit record lands on disk with its private verification keys
     // beside it, naming this exchange's two parties. Recording is the shipped
-    // default and no flag turns it off here; only its destination is given, to
-    // keep it out of the process's own directory.
-    expect(fs.existsSync(acceptRecord)).toBe(true);
+    // default and no flag turns it off here; it lands in the output folder,
+    // beside the result.
+    const acceptRecord = onlyArtifactIn(acceptOut, "alcove-record", ".json");
     expect(fs.existsSync(keysPathFor(acceptRecord))).toBe(true);
     const record = JSON.parse(fs.readFileSync(acceptRecord, "utf8")) as {
       localIdentity?: unknown;
@@ -427,13 +453,13 @@ liveTest(
     fs.writeFileSync(acceptInput, ACCEPT_CSV);
     const acceptConfig = path.join(work, "accept.yaml");
     const acceptKey = path.join(work, "accept.key");
-    const acceptOut = path.join(work, "accept-out.csv");
+    const acceptOut = path.join(work, "accept-out");
 
     const inviter = party([
       "invite",
       `wss://${BROKER_HOST}:${front.port}${broker.path}`,
       inviteInput,
-      path.join(work, "invite-out.csv"),
+      path.join(work, "invite-out"),
       "--config-file",
       path.join(work, "invite.yaml"),
       "--key-file",
@@ -505,7 +531,8 @@ liveTest(
     // the handshake succeeds, which never happened.
     expect(fs.existsSync(acceptConfig)).toBe(false);
     expect(fs.existsSync(acceptKey)).toBe(false);
-    expect(fs.existsSync(acceptOut)).toBe(false);
+    expect(artifactsIn(acceptOut, "alcove-results", ".csv")).toEqual([]);
+    expect(artifactsIn(acceptOut, "alcove-record", ".json")).toEqual([]);
   },
   120_000,
 );

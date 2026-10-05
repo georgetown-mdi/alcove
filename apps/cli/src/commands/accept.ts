@@ -66,7 +66,6 @@ import {
 } from "../util/doubleDash";
 import { configureLogging } from "../util/logging";
 import { promptConfirm } from "../util/prompt";
-import { resolveRecordOutput } from "../recordFile";
 import {
   checkLinkageSatisfiability,
   RUN_BLOCK_CONSEQUENCE,
@@ -146,13 +145,13 @@ export function builder(cmd: Argv): Argv {
         type: "string",
         array: true,
         describe:
-          "INVITATION [INPUT_FILE] [OUTPUT_FILE] (offline), or URL INVITATION " +
-          "INPUT_FILE [OUTPUT_FILE] (online)",
+          "INVITATION [INPUT_FILE] [OUTPUT_FOLDER] (offline), or URL INVITATION " +
+          "INPUT_FILE [OUTPUT_FOLDER] (online)",
       })
       .usage(
         "Usage:\n" +
-          "  $0 accept [options] INVITATION [INPUT_FILE] [OUTPUT_FILE]    (offline)\n" +
-          "  $0 accept [options] URL INVITATION INPUT_FILE [OUTPUT_FILE]  (online)\n\n" +
+          "  $0 accept [options] INVITATION [INPUT_FILE] [OUTPUT_FOLDER]    (offline)\n" +
+          "  $0 accept [options] URL INVITATION INPUT_FILE [OUTPUT_FOLDER]  (online)\n\n" +
           "INVITATION is the invitation string your partner sent, or an @path\n" +
           "reference to a file containing it. Offline: show its terms, ask you\n" +
           "to confirm, and write config and key files; an invitation naming a\n" +
@@ -197,14 +196,14 @@ export function builder(cmd: Argv): Argv {
  * a flag -- the top-level parser is configured to push unknown `-`-leading
  * tokens into the positionals for this reason.
  *
- * Both forms end in an optional OUTPUT_FILE, the destination of the result an
+ * Both forms end in an optional OUTPUT_FOLDER, the destination of the result an
  * acceptance that runs its own exchange writes (see {@link validateAccept}).
  * Offline it is honored only by an acceptance that runs one, which reports it
  * unused otherwise rather than dropping a positional the operator typed.
  *
  * A positional past the last one each form names is a usage error rather than a
  * silent drop, checked per form because the two differ in what the same position
- * means: the third is an OUTPUT_FILE offline and an INPUT_FILE online, so an
+ * means: the third is an OUTPUT_FOLDER offline and an INPUT_FILE online, so an
  * operator who reached for the wrong form is told so instead of having a file
  * they named ignored.
  *
@@ -224,7 +223,7 @@ export function resolveAcceptPositionals(positionals: Array<unknown>):
   if (arg0 === undefined)
     throw new UsageError(
       "an invitation is required; usage: alcove accept --identity IDENTITY " +
-        "INVITATION [INPUT_FILE] [OUTPUT_FILE]",
+        "INVITATION [INPUT_FILE] [OUTPUT_FOLDER]",
     );
 
   if (looksLikeUrl(arg0)) {
@@ -236,12 +235,12 @@ export function resolveAcceptPositionals(positionals: Array<unknown>):
       throw new UsageError(
         "online acceptance requires an invitation and an input file; usage: " +
           "alcove accept --identity IDENTITY URL INVITATION INPUT_FILE " +
-          "[OUTPUT_FILE]",
+          "[OUTPUT_FOLDER]",
       );
     if (positionals.length > 4)
       throw new UsageError(
         "online acceptance takes at most four positionals; usage: alcove " +
-          "accept --identity IDENTITY URL INVITATION INPUT_FILE [OUTPUT_FILE]",
+          "accept --identity IDENTITY URL INVITATION INPUT_FILE [OUTPUT_FOLDER]",
       );
     const output =
       positionals[3] !== undefined ? String(positionals[3]) : undefined;
@@ -251,7 +250,7 @@ export function resolveAcceptPositionals(positionals: Array<unknown>):
   if (positionals.length > 3)
     throw new UsageError(
       "offline acceptance takes at most three positionals; usage: alcove " +
-        "accept --identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FILE]",
+        "accept --identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]",
     );
   return {
     mode: "offline",
@@ -695,9 +694,9 @@ export async function validateAccept(params: {
   // rather than drop it silently.
   if (resolved.output !== undefined && !runsExchange)
     log.warn(
-      "the OUTPUT_FILE positional has no effect on this acceptance: it writes " +
-        "the configuration and key file and runs no exchange, so there is no " +
-        "result to write. Pass the destination to 'alcove exchange' instead.",
+      "the OUTPUT_FOLDER positional has no effect on this acceptance: it " +
+        "writes the configuration and key file and runs no exchange, so there " +
+        "is no result to write. Pass the folder to 'alcove exchange' instead.",
     );
   if (rows !== undefined)
     checkLinkageSatisfiability(
@@ -1060,7 +1059,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // the shared configureLogging helper (in that order, so the logger inherits
       // the sink): the file sink when --log-file is given, otherwise the default
       // stderr sink so stdout holds only result data (the exchange CSV when no
-      // OUTPUT_FILE positional is given). A missing parent directory is a
+      // OUTPUT_FOLDER positional is given). A missing parent directory is a
       // UsageError -> exit 64, mapped here by the enclosing runOrExit.
       const { log, writePlainLine, close } = configureLogging({
         logLevel: options.logLevel,
@@ -1226,10 +1225,7 @@ export async function handler(argv: Arguments): Promise<void> {
           verbosity: options.verbosity,
           loggerName: "accept",
           logFile: options.logFile,
-          recordOutput: resolveRecordOutput({
-            enabled: options.record,
-            recordFile: options.recordFile,
-          }),
+          writeRecord: options.record,
           eventStream: options.eventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           reuseExistingConfig: ready.reuseExistingConfig,

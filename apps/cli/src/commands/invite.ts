@@ -56,7 +56,6 @@ import type {
   WebRTCConnectionAwaitingAddress,
 } from "../config";
 import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
-import { resolveRecordOutput } from "../recordFile";
 import { createProvisionedServer } from "../serverProvision";
 import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
@@ -110,6 +109,7 @@ import {
   warnUnsupportedWebRTCServerFlags,
   type CommonBootstrapOptions,
 } from "../optionDefinitions";
+import { preflightOutputFolder } from "../resultFile";
 import {
   buildDataSpec,
   connectionFromEndpoint,
@@ -157,12 +157,12 @@ export function builder(cmd: Argv): Argv {
         // config when one is present, and are inferred from INPUT_FILE otherwise.
         // Online still requires INPUT_FILE (the data to exchange).
         describe:
-          "[INPUT_FILE] (offline), or URL INPUT_FILE [OUTPUT_FILE] (online)",
+          "[INPUT_FILE] (offline), or URL INPUT_FILE [OUTPUT_FOLDER] (online)",
       })
       .usage(
         "Usage:\n" +
           "  $0 invite [options] [INPUT_FILE]                       (offline)\n" +
-          "  $0 invite [options] URL INPUT_FILE [OUTPUT_FILE]       (online)\n\n" +
+          "  $0 invite [options] URL INPUT_FILE [OUTPUT_FOLDER]     (online)\n\n" +
           "Offline: print an invitation string to send your partner over a\n" +
           "channel you trust, and write the configuration and key file this\n" +
           "party keeps. Online: also connect, wait for the partner to\n" +
@@ -418,7 +418,7 @@ export function resolveInvitePositionals(
     if (input === undefined)
       throw new UsageError(
         "online invitation requires an input file; usage: alcove invite " +
-          "--identity IDENTITY URL INPUT_FILE [OUTPUT_FILE]",
+          "--identity IDENTITY URL INPUT_FILE [OUTPUT_FOLDER]",
       );
     const output =
       positionals[2] !== undefined ? String(positionals[2]) : undefined;
@@ -625,6 +625,9 @@ export async function validateInvite(params: {
       configPath: options.configFile,
       keyPath: options.keyFile,
     });
+    // Refuse an unusable output folder here, before the invitation is printed,
+    // so no token goes out for an inviter that is about to exit.
+    if (output !== undefined) preflightOutputFolder(output, log);
     // Validate the URL before the token is minted, so an unusable URL (e.g. one
     // with no host) fails before the caller can disclose the token. The role is
     // stamped here because this command is the inviting end; on a ws:/wss: URL
@@ -1196,8 +1199,8 @@ export async function handler(argv: Arguments): Promise<void> {
 
       if (ready.mode === "online") {
         // The token is disclosed only now -- after all validation and prep above
-        // succeeded. Nothing fallible runs after this print except the network
-        // wait it is meant to precede.
+        // succeeded, the output folder check included. Only the network wait it
+        // is meant to precede can still fail.
         printInvitation(ready.invitation, {
           url: ready.url,
           channel: ready.connection.channel,
@@ -1225,10 +1228,7 @@ export async function handler(argv: Arguments): Promise<void> {
           verbosity: options.verbosity,
           loggerName: "invite",
           logFile: options.logFile,
-          recordOutput: resolveRecordOutput({
-            enabled: options.record,
-            recordFile: options.recordFile,
-          }),
+          writeRecord: options.record,
           eventStream: options.eventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           // The wait for the partner to arrive runs on --accept-timeout; the

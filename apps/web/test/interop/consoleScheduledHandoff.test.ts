@@ -251,7 +251,7 @@ describe.skipIf(!cliIsBuilt)(
       managers.push(manager);
       const id = await manager.createJob(convertedIntentFromOpen(manager));
       const partnerFirst = startCli({
-        args: ["exchange", "input.csv", "out.csv"],
+        args: ["exchange", "input.csv", "out/"],
         cwd: workspace.partnerDir,
         timeoutMs: CLI_DEADLINE_MS,
       });
@@ -305,7 +305,7 @@ describe.skipIf(!cliIsBuilt)(
         .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);
 
       const partnerNext = startCli({
-        args: ["exchange", "input.csv", "out.csv"],
+        args: ["exchange", "input.csv", "out/"],
         cwd: workspace.partnerDir,
         timeoutMs: CLI_DEADLINE_MS,
       });

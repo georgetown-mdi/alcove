@@ -105,7 +105,7 @@ import {
   PLACEHOLDER_IDENTITY,
 } from "../../../src/partyIdentity";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
-import { InputNotFoundError } from "../../../src/util/exit";
+import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 
 const silentLog = getLogger("invite-test");
 silentLog.setLevel("silent");
@@ -285,6 +285,38 @@ test("validateInvite: a non-positive accept-timeout is rejected", async () => {
       log: silentLog,
     }),
   ).rejects.toBeInstanceOf(UsageError);
+});
+
+test("validateInvite: an online OUTPUT naming a regular file exits 64 and writes nothing to stdout", async () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-output-"));
+  const output = path.join(dir, "results.csv");
+  fs.writeFileSync(output, "");
+  const stdout = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+  let thrown: unknown;
+  try {
+    await validateInvite({
+      resolved: {
+        mode: "online",
+        url: new URL("sftp://host/drop"),
+        input: "input.csv",
+        output,
+      },
+      options: testOptions(),
+      acceptTimeout: 900,
+      log: silentLog,
+    });
+  } catch (err) {
+    thrown = err;
+  } finally {
+    const written = stdout.mock.calls.length;
+    stdout.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+    expect(written).toBe(0);
+  }
+  expect(thrown).toBeInstanceOf(UsageError);
+  expect(exitCodeForError(thrown)).toBe(64);
 });
 
 // --- onlineWaitInvalidationNotice --------------------------------------------

@@ -213,7 +213,7 @@ describe("offline vs online dispatch", () => {
 
   test("a positional past the form's last one is a usage error, not a drop", () => {
     // Each form is checked against its own count: the third positional is the
-    // OUTPUT_FILE offline and the INPUT_FILE online, so an operator who reached
+    // OUTPUT_FOLDER offline and the INPUT_FILE online, so an operator who reached
     // for the wrong form reads that form's usage rather than having the file they
     // named silently ignored.
     const offline = (): void => {
@@ -221,7 +221,7 @@ describe("offline vs online dispatch", () => {
     };
     expect(offline).toThrow(UsageError);
     expect(offline).toThrow(
-      "alcove accept --identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FILE]",
+      "alcove accept --identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]",
     );
     const online = (): void => {
       resolveAcceptPositionals([
@@ -235,7 +235,7 @@ describe("offline vs online dispatch", () => {
     expect(online).toThrow(UsageError);
     expect(online).toThrow(
       "alcove accept --identity IDENTITY URL INVITATION INPUT_FILE " +
-        "[OUTPUT_FILE]",
+        "[OUTPUT_FOLDER]",
     );
     // The classification an unattended caller reads: a positional it typed is its
     // own to fix, so 64 rather than the transport's 69.
@@ -1874,7 +1874,7 @@ describe("accepting and running a webrtc exchange in one command", () => {
     }
   });
 
-  test("validateAccept: an OUTPUT_FILE an acceptance cannot honor is reported, not dropped", async () => {
+  test("validateAccept: an OUTPUT_FOLDER an acceptance cannot honor is reported, not dropped", async () => {
     // The result destination belongs to a run. An acceptance that writes only a
     // configuration and key file has no result to send there, so the positional is
     // named rather than silently ignored -- and a running acceptance passes it
@@ -1894,7 +1894,7 @@ describe("accepting and running a webrtc exchange in one command", () => {
         options: testOptions(),
         log: recordingLog(stops),
       });
-      expect(stops.some((m) => m.includes("OUTPUT_FILE"))).toBe(true);
+      expect(stops.some((m) => m.includes("OUTPUT_FOLDER"))).toBe(true);
 
       const webrtc = await encodeInvitation(
         sampleToken(FUTURE(), WEBRTC_ENDPOINT),
@@ -1909,7 +1909,7 @@ describe("accepting and running a webrtc exchange in one command", () => {
         options: testOptions(),
         log: recordingLog(runs),
       });
-      expect(runs.some((m) => m.includes("OUTPUT_FILE"))).toBe(false);
+      expect(runs.some((m) => m.includes("OUTPUT_FOLDER"))).toBe(false);
       expect(ready.mode).toBe("endpointRun");
       if (ready.mode !== "endpointRun") return;
       expect(ready.output).toBe("results.csv");

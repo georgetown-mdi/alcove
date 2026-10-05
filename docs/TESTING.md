@@ -221,7 +221,7 @@ asserts the ORDER of what goes on the wire.
 
 `oneCommandAcceptance.test.ts` drives whole COMMANDS rather than the transport
 beneath them: an inviting `alcove invite` mints a webrtc invitation and waits,
-and an accepting `alcove accept INVITATION INPUT_FILE OUTPUT_FILE` resolves its
+and an accepting `alcove accept INVITATION INPUT_FILE OUTPUT_FOLDER` resolves its
 positionals, renders the consent surface, takes its confirmation from stdin,
 resolves the connection from the invitation's own endpoint, dials, and runs the
 exchange -- with the linkage result asserted on both sides. Both parties are

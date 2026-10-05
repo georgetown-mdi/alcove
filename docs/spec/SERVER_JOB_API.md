@@ -668,7 +668,7 @@ An exchange job drives the `exchange` subcommand against its composed config and
 <node> <binaryPath> exchange --config-file <configPath> --key-file <keyPath> [--sweep-exchange-files] [--log-level=debug --verbose --log-file=<logPath>] [--event-stream] <inputPath> <workdir>/
 ```
 
-The output positional is the job's workdir, spelled with a trailing separator so the CLI takes it as a folder and writes `alcove-results-<time>.csv` there. The child runs with the workdir as its working directory, so the record, its keys, the agreed-terms file and the receipt land beside the result under the same stamp at the CLI's default names; neither `--record-file` nor `signing.receipt_output` is passed. The server finds them as [Locating a run's artifacts](#workdir-layout) states. Records are on by default, so no `--no-record` is passed.
+The output positional is the job's workdir, spelled with a trailing separator, and the CLI writes every file of the run there: `alcove-results-<time>.csv`, and beside it the record, its keys, the agreed-terms file and the receipt under the same stamp at the CLI's own names ([EXCHANGE_RECORD.md, Where a run's files go](EXCHANGE_RECORD.md#where-a-runs-files-go)). The child also runs with the workdir as its working directory. No `signing.receipt_output` is passed. The server finds them as [Locating a run's artifacts](#workdir-layout) states. Records are on by default, so no `--no-record` is passed.
 
 ### The per-run controls
 

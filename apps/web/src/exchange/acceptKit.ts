@@ -717,14 +717,15 @@ function filedropSplitBody(
       `-v "/path/to/the/folder/you/read":${INBOUND_SYNC_MOUNT} ` +
       `-v "/path/to/the/folder/you/write":${OUTBOUND_SYNC_MOUNT} ` +
       `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
-      `your-file.csv results.csv`,
+      `your-file.csv ./results`,
     "",
     "   Getting the two the wrong way round is the one mistake to watch for:",
     "   the exchange would then wait for files in the folder it is writing",
     "   into and never meet your partner. Replace your-file.csv with your",
-    "   CSV file's name. The matched result is written to results.csv beside",
-    "   your input. You and your partner each run your own half; whichever",
-    "   runs first waits for the other.",
+    "   CSV file's name. The matched records are written as",
+    "   alcove-results-<time>.csv inside the ./results folder, created if",
+    "   missing. You and your partner each run your own half; whichever runs",
+    "   first waits for the other.",
     "",
     ...bilateralFlagLines(settings),
   ];
@@ -771,11 +772,12 @@ function filedropBody(
     `     docker run --rm -v "$PWD":${WORK_MOUNT} ` +
       `-v "/path/to/your/shared/folder":${SYNC_MOUNT} ` +
       `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
-      `your-file.csv results.csv`,
+      `your-file.csv ./results`,
     "",
-    "   Replace your-file.csv with your CSV file's name. The matched result",
-    "   is written to results.csv beside your input. You and your partner",
-    "   each run your own half; whichever runs first waits for the other.",
+    "   Replace your-file.csv with your CSV file's name. The matched records",
+    "   are written as alcove-results-<time>.csv inside the ./results folder,",
+    "   created if missing. You and your partner each run your own half;",
+    "   whichever runs first waits for the other.",
     "",
     ...bilateralFlagLines(settings),
   ];
@@ -845,13 +847,13 @@ function sftpBody(
     `     docker run --rm -it -v "$PWD":${WORK_MOUNT} ` +
       `-v "/your/secrets":/run/secrets:ro ` +
       `${imageReference(version)} exchange${bilateralFlag(settings)} ` +
-      `your-file.csv results.csv`,
+      `your-file.csv ./results`,
     "",
     '   Replace "/your/secrets" with the folder that holds your credential',
     "   file, and your-file.csv with your CSV file's name. The matched",
-    "   result is written to results.csv beside your input. You and your",
-    "   partner each run your own half; whichever runs first waits for the",
-    "   other.",
+    "   records are written as alcove-results-<time>.csv inside the ./results",
+    "   folder, created if missing. You and your partner each run your own",
+    "   half; whichever runs first waits for the other.",
     "",
     ...bilateralFlagLines(settings),
     "   The first run shows the server's SSH host-key fingerprint and asks",

@@ -144,7 +144,7 @@ test("a reader that stops mid-result fails the run at 73 rather than reporting o
             connection: makeConfig(),
             auth: { sharedSecret: INITIAL_SECRET, keyFilePath: keyB },
             prepared: preparedFor("Party B"),
-            output: path.join(work, "b-out.csv"),
+            output: path.join(work, "b-out"),
             verbosity: -1,
             loggerName: "drain-b",
           }),

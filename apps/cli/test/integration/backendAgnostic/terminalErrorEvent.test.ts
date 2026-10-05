@@ -88,7 +88,7 @@ function runExchange(): Promise<FailedRun> {
       cliEntry,
       "exchange",
       path.join(work, "input.csv"),
-      path.join(work, "out.csv"),
+      path.join(work, "out"),
       "--config-file",
       path.join(work, "alcove.yaml"),
       "--key-file",

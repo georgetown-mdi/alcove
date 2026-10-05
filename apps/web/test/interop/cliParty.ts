@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -154,6 +154,18 @@ export function fillInFileDropConnection(params: {
       ...lines.slice(end),
     ].join("\n"),
   );
+}
+
+/** The one result file a CLI run wrote in its output folder. */
+export function resultFileIn(folder: string): string {
+  const results = readdirSync(folder).filter(
+    (name) => name.startsWith("alcove-results-") && name.endsWith(".csv"),
+  );
+  if (results.length !== 1)
+    throw new Error(
+      `expected one result file in ${folder}, found ${results.length}`,
+    );
+  return path.join(folder, results[0]);
 }
 
 /** The matched (own row, partner row) pairs a party's result CSV holds. */

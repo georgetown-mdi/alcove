@@ -703,17 +703,16 @@ docker run --rm \
   --identity "Agency A, a@agency-a.gov"
 ```
 
-Then mount it read-only for every exchange thereafter, beside the read-write mount the key file needs, with `signing.identity_file: /run/signing/alcove-signing-identity.json` and `signing.receipt_output: /run/secrets/alcove-receipt.json` in the mounted `alcove.yaml`. Point the exchange record there too: the image's `WORKDIR` is `/work`, which this example mounts read-only, and a signed run's receipt and record both default to a path under the working directory -- a write that fails there is non-fatal and only warns, so leaving either at its default here would complete the exchange while landing neither.
-
-**A fixed path keeps only the latest run.** `--record-file` and `signing.receipt_output` each name one file, and every run replaces it, the record's verification-keys file included, so the example below holds only the most recent exchange's record and receipt. Where the history matters -- an accounting of disclosures, for one -- copy both out after each run, or give the record a per-run name from the scheduler, for example `--record-file "/run/secrets/alcove-record-$(date -u +%Y%m%dT%H%M%SZ).json"`. `signing.receipt_output` is read from the configuration and has no per-run form, so the receipt has to be copied out.
+Then mount it read-only for every exchange thereafter, beside the read-write mount the key file needs, with `signing.identity_file: /run/signing/alcove-signing-identity.json` in the mounted `alcove.yaml`. Give the exchange a writable output folder too: the image's `WORKDIR` is `/work`, which this example mounts read-only, and a run with no output folder writes its record and receipt to the working directory -- a write that fails there is non-fatal and only warns, so the exchange would complete while landing neither. In the output folder each run writes its result, record, verification keys and receipt under its own time-stamped names, so the folder keeps every run's files ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)). `signing.receipt_output`, where set, names one receipt file that every run replaces; leave it unset to keep each run's receipt beside its record.
 
 ```sh
 docker run \
   --mount type=bind,src=/data/config,dst=/work,readonly \
   --mount type=bind,src=/data/secrets,dst=/run/secrets \
   --mount type=bind,src=/data/signing,dst=/run/signing,readonly \
-  ghcr.io/georgetown-mdi/alcove exchange input.csv --key-file /run/secrets/.alcove.key \
-  --record-file /run/secrets/alcove-record.json
+  --mount type=bind,src=/data/out,dst=/run/out \
+  ghcr.io/georgetown-mdi/alcove exchange input.csv /run/out/ \
+  --key-file /run/secrets/.alcove.key
 ```
 
 ```yaml

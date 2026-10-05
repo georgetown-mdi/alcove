@@ -186,7 +186,7 @@ test("writeOutput: each field is quoted once, not escaped a second time", async 
   expect(text.startsWith(`${EXPECTED_HEADERS.join(",")}\n`)).toBe(true);
 });
 
-test("writeOutput: the stdout branch and the OUTPUT_FILE branch write identical bytes", async () => {
+test("writeOutput: the stdout branch and the OUTPUT_FOLDER branch write identical bytes", async () => {
   // A quoted field cannot be produced on one branch and not the other: both take
   // the same already-escaped fields and join them the same way, so `alcove
   // exchange input.csv > results.csv` and `alcove exchange input.csv results.csv`
