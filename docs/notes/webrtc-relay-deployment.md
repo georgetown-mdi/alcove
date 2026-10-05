@@ -496,11 +496,17 @@ registrations, revocations, refusals and a connection error.
 
 ### Retention and who reads it
 
-- **Retention.** 90 days. `install.sh` installs a journald drop-in,
+- **Retention.** An entry is deleted within 91 days. `install.sh` installs a
+  journald drop-in,
   [`journald-alcove-relay.conf`](../../infra/relay/journald-alcove-relay.conf),
-  which sets the age limit for the host's whole journal, coturn's and the
-  registrar's lines alike; the file is where the period is set. journald still
-  rotates by size, so a flood of lines can drop entries sooner.
+  the one place the period is set: it keeps the journal on disk
+  (`Storage=persistent`, under `/var/log/journal`), deletes archived journal
+  files holding entries older than 90 days (`MaxRetentionSec`), and archives the active file
+  after one day (`MaxFileSec`), since the age limit applies to archived files
+  only. It applies to the host's whole journal, coturn's and the registrar's
+  lines alike, so the reference deployment runs the relay on a host of its own.
+  journald still rotates by size, so a flood of lines can drop entries sooner.
+  `journalctl --disk-usage` shows what the journal holds.
 - **Who reads it.** Whoever can read the relay host's journal: root and the
   accounts the host grants journal access, which on the reference deployment is
   the relay operator alone. Nothing in the reference ships a log off the host.
@@ -553,9 +559,9 @@ allocations or authentication failures, and a distinct-client count from the
 host would mean keeping addresses. coturn's documentation is not vendored in
 this repository or reachable from the development container; the choice rests
 on the endpoint coturn's help text describes (port 9641, path `/metrics`, an
-option for username labels), confirmed on the host run. The host run found the endpoint's series (above): none carries an address or,
-with labels off, a username; none counts distinct clients, so that counter is
-dropped rather than taken from addresses. Bytes relayed appear only once a
+option for username labels). Of its series (above), none carries an address
+or, with labels off, a username, and none counts distinct clients, so that
+counter is dropped rather than taken from addresses. Bytes relayed appear only once a
 session finishes, so a long-lived session is not counted until it closes.
 
 **Egress alarm, proposed: a CloudWatch alarm on the instance's `NetworkOut`
@@ -572,9 +578,9 @@ The metric is the instance's own, aggregate, with no per-session content.
 If a customer's incident-response requirement asks for session records, the
 setting is coturn's `verbose`, turned on for that deployment only. The fields it
 adds are listed under What the relay host keeps. It writes the client address
-and byte counts for each session, so the journal's 90-day age limit then bounds
-how long those are held, and a shorter limit is a deployment's own change to the
-drop-in.
+and byte counts for each session, so the journal's retention (within 91 days)
+then bounds how long those are held, and a shorter period is a deployment's own
+change to the drop-in.
 
 ## What remains unmeasured
 

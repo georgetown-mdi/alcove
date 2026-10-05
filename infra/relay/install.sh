@@ -265,12 +265,20 @@ for unit in alcove-relay-sweep.service alcove-relay-registrar.service; do
   mv "$UNIT_DIR/$unit.tmp" "$UNIT_DIR/$unit"
 done
 
-install -d -m 755 /etc/systemd/journald.conf.d
-install -m 644 "$HERE/journald-alcove-relay.conf" /etc/systemd/journald.conf.d/alcove-relay.conf
-systemctl restart systemd-journald.service \
-  || die "systemd-journald did not restart, so the journal's age limit in /etc/systemd/journald.conf.d/alcove-relay.conf is not in effect; journalctl -u systemd-journald.service"
+JOURNALD_DROPIN=/etc/systemd/journald.conf.d/alcove-relay.conf
+JOURNALD_CHANGED=0
+if ! cmp -s "$HERE/journald-alcove-relay.conf" "$JOURNALD_DROPIN"; then
+  install -d -m 755 /etc/systemd/journald.conf.d
+  install -m 644 "$HERE/journald-alcove-relay.conf" "$JOURNALD_DROPIN"
+  JOURNALD_CHANGED=1
+fi
 
 systemctl daemon-reload || die "systemctl daemon-reload failed, so systemd has not read the relay's unit; check systemd-analyze verify and run again"
+if [ "$JOURNALD_CHANGED" = 1 ]; then
+  log "restarting systemd-journald to apply $JOURNALD_DROPIN"
+  systemctl restart systemd-journald.service \
+    || die "systemd-journald did not restart, so the journal retention in $JOURNALD_DROPIN is not in effect; see journalctl -u systemd-journald.service, then run systemctl restart systemd-journald.service"
+fi
 systemctl enable --now alcove-relay-cert.timer \
   || die "alcove-relay-cert.timer did not start; the certificate would expire unrenewed. journalctl -u alcove-relay-cert.timer"
 systemctl enable --now alcove-relay-verify.timer \
