@@ -3,7 +3,7 @@
 #
 # Driven end to end against a real relay from install.sh's own end-of-install
 # run on 2026-09-03/04: 6 pass / 0 fail / 0 unclear (infra/relay/README.md,
-# Provenance). The exit statuses and message strings the probes below key on
+# Design records and tests). The exit statuses and message strings the probes below key on
 # are what that run measured against a live coturn instance, not documented
 # shapes assumed in advance. Fix what a later run gets wrong rather than
 # loosening a probe until it passes.

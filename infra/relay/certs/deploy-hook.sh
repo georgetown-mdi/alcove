@@ -20,7 +20,7 @@
 # output, so it is the same for lego and acme.sh.
 #
 # A real Let's Encrypt certificate has been deployed through this script, on
-# the 2026-09-03/04 live run (infra/relay/README.md, Provenance).
+# the 2026-09-03/04 live run (infra/relay/README.md, Design records and tests).
 set -euo pipefail
 
 ETC=/etc/alcove-relay

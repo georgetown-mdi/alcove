@@ -689,12 +689,11 @@ export interface InvitationSummary {
   /**
    * The partner's advisory shared-directory locator, sanitized for display:
    * the `path` a single-directory file-drop endpoint holds. Present only for
-   * such an endpoint. Advisory only -- it never flows to any config, and it
-   * is the folder's own name only where the inviting console could name the
-   * folder, so a surface presenting it AS the shared folder's name
-   * overstates what it is. Sanitized for TEXT display only: safe as a React
-   * text child, and never to be interpolated into an attribute value or raw
-   * HTML.
+   * such an endpoint. It is the folder's own name only where the inviting
+   * console could name the folder, so a surface presenting it AS the shared
+   * folder's name overstates what it is. Sanitized for TEXT display only:
+   * safe as a React text child, and never to be interpolated into an
+   * attribute value or raw HTML.
    */
   connectionPath?: Displayable;
   /**

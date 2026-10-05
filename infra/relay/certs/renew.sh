@@ -15,7 +15,7 @@
 #
 # A real Let's Encrypt certificate has been issued through this script, by
 # DNS-01 through Cloudflare, on the 2026-09-03/04 live run (infra/relay/README.md,
-# Provenance).
+# Design records and tests).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
