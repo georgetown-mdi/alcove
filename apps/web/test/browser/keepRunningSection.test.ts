@@ -117,12 +117,12 @@ describe("the install offer", () => {
       .toBeInTheDocument();
 
     const prompt = vi.fn(() => Promise.resolve());
-    window.dispatchEvent(
-      Object.assign(new Event("beforeinstallprompt", { cancelable: true }), {
-        prompt,
-        userChoice: Promise.resolve({ outcome: "dismissed" }),
-      }),
+    const offer = Object.assign(
+      new Event("beforeinstallprompt", { cancelable: true }),
+      { prompt, userChoice: Promise.resolve({ outcome: "dismissed" }) },
     );
+    window.dispatchEvent(offer);
+    expect(offer.defaultPrevented).toBe(true);
     await expect.element(installButton()).toBeInTheDocument();
     expectNoAccessibilityViolations(app.container);
 
@@ -134,6 +134,27 @@ describe("the install offer", () => {
       )
       .toBeInTheDocument();
     expect(installButton().query()).toBeNull();
+  });
+
+  test("leaves the browser's banner to show on a page without the button, and holds the offer for one shown later", async () => {
+    captureInstallPrompt(window);
+    app.render(createElement("p", null, "Another page"));
+    const prompt = vi.fn(() => Promise.resolve());
+    const offer = Object.assign(
+      new Event("beforeinstallprompt", { cancelable: true }),
+      { prompt, userChoice: Promise.resolve({ outcome: "accepted" }) },
+    );
+    window.dispatchEvent(offer);
+    expect(offer.defaultPrevented).toBe(false);
+
+    app.render(
+      createElement(KeepRunningSection, {
+        record: scheduledRecord(),
+        isInstalledRuntime: () => false,
+      }),
+    );
+    await installButton().click();
+    expect(prompt).toHaveBeenCalledTimes(1);
   });
 
   test("is withheld in the installed app", async () => {
@@ -302,6 +323,18 @@ describe("the folder check", () => {
     await expect(
       checkWorkingFolder(folder, {
         query: () => Promise.resolve("prompt"),
+        request,
+      }),
+    ).resolves.toBe("notGranted");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  test("a denied permission is reported without a prompt", async () => {
+    const folder = await folderNamed("keep-running-denied", true);
+    const request = vi.fn();
+    await expect(
+      checkWorkingFolder(folder, {
+        query: () => Promise.resolve("denied"),
         request,
       }),
     ).resolves.toBe("notGranted");

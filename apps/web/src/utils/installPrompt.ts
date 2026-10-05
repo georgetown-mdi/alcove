@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 
 /**
  * The browser's offer to install this app, held so a page can show its own
@@ -10,6 +10,11 @@ import { useSyncExternalStore } from "react";
  * the button: a listener added when that component mounts would miss an event
  * that already fired. Where the event never fires, no button is shown and the
  * page gives the browser's own instructions instead.
+ *
+ * The browser's own install banner is suppressed only while a page showing the
+ * button is mounted ({@link useInstallPrompt}); on every other route the banner
+ * shows as the browser decides, and the offer is still held for a button shown
+ * later in the same page load.
  */
 
 /** The non-standard event Chromium fires when the page can be installed. The
@@ -39,6 +44,7 @@ const NO_OFFER: InstallPromptState = {
 let heldOffer: BeforeInstallPromptEvent | undefined;
 let state: InstallPromptState = NO_OFFER;
 const listeners = new Set<() => void>();
+let mountedButtonPages = 0;
 const capturedTargets = new WeakSet<EventTarget>();
 
 function setState(next: InstallPromptState): void {
@@ -54,15 +60,16 @@ function isInstallPromptEvent(event: Event): event is BeforeInstallPromptEvent {
 
 /**
  * Start holding the install offer `target` receives. Safe to call more than
- * once for the same target. The offer is held with `preventDefault` so the
- * page decides when to show it.
+ * once for the same target. While a page showing the install button is
+ * mounted, the offer is held with `preventDefault` so that page decides when to
+ * show it; otherwise the browser's own banner is left to show.
  */
 export function captureInstallPrompt(target: EventTarget): void {
   if (capturedTargets.has(target)) return;
   capturedTargets.add(target);
   target.addEventListener("beforeinstallprompt", (event) => {
     if (!isInstallPromptEvent(event)) return;
-    event.preventDefault();
+    if (mountedButtonPages > 0) event.preventDefault();
     heldOffer = event;
     setState({ ...state, available: true });
   });
@@ -99,8 +106,16 @@ function subscribe(listener: () => void): () => void {
 }
 
 /** The install state, re-rendering when an offer arrives, is spent, or the
- * app is installed. Server rendering reads no offer. */
+ * app is installed. Server rendering reads no offer. A component calling it is
+ * one that shows the install button, so while it is mounted the browser's own
+ * banner is suppressed. */
 export function useInstallPrompt(): InstallPromptState {
+  useLayoutEffect(() => {
+    mountedButtonPages += 1;
+    return () => {
+      mountedButtonPages -= 1;
+    };
+  }, []);
   return useSyncExternalStore(
     subscribe,
     () => state,

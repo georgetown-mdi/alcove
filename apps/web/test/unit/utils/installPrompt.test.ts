@@ -32,11 +32,18 @@ describe("installPrompt", () => {
     captureInstallPrompt(target);
     const event = installOfferEvent("accepted");
     target.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
 
     await expect(showInstallPrompt()).resolves.toBe("accepted");
     expect(event.prompt).toHaveBeenCalledTimes(1);
     await expect(showInstallPrompt()).resolves.toBe("unavailable");
+  });
+
+  test("with no page showing the install button, the browser's banner is left to show", () => {
+    const target = new EventTarget();
+    captureInstallPrompt(target);
+    const event = installOfferEvent("accepted");
+    target.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   test("a dismissed prompt reports it", async () => {

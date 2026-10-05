@@ -34,6 +34,7 @@ describe("the note beside an attended run's result download", () => {
   test("reports a write that did not land, and points at the download", () => {
     for (const delivery of [
       { kind: "ungranted", state: "prompt" },
+      { kind: "ungranted", state: "denied" },
       { kind: "write-failed", error: new Error("the disk is full") },
     ] as const) {
       const note = attendedFolderWriteNote({ directoryName, delivery });
