@@ -6,7 +6,6 @@ import {
   Checkbox,
   Loader,
   Modal,
-  NumberInput,
   TextInput,
 } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
@@ -24,6 +23,7 @@ import {
 
 import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
+import { NamedStepNumberInput } from "@components/NamedStepNumberInput";
 import { isConsoleBuild } from "@utils/clientConfig";
 import { isInstalledRuntime } from "@utils/installedRuntime";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
@@ -670,8 +670,9 @@ function LocalFieldsEditor({
         mt="sm"
       />
       {maxAgeEnabled && (
-        <NumberInput
+        <NamedStepNumberInput
           label="Maximum age in days"
+          stepUnit="day"
           value={maxAgeDays}
           min={1}
           max={MAX_TOKEN_MAX_AGE_DAYS}
@@ -788,8 +789,9 @@ function ScheduleEntryFieldset({
         }
         mt="xs"
       />
-      <NumberInput
+      <NamedStepNumberInput
         label="A window opens every (days)"
+        stepUnit="day"
         value={fields.intervalDays}
         min={1}
         max={MAX_SCHEDULE_INTERVAL_DAYS}
@@ -799,8 +801,9 @@ function ScheduleEntryFieldset({
         onChange={(value) => onEdit({ intervalDays: value })}
         mt="xs"
       />
-      <NumberInput
+      <NamedStepNumberInput
         label="Each window stays open (hours)"
+        stepUnit="hour"
         description="Both of you must be running during the same window, so a wide window is what absorbs the difference between your two clocks and the slack of two independently-kept machines."
         value={fields.windowHours}
         min={MIN_SCHEDULE_WINDOW_HOURS}

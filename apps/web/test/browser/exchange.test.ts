@@ -40,6 +40,7 @@ import { isolatedColumnName } from "@components/ColumnName";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
+import { tabTo } from "./keyboardOnly";
 
 import type {
   LinkageTerms,
@@ -2994,6 +2995,32 @@ describe("exchange screen at a narrow viewport", () => {
     // Collapsing again reports the closed state.
     await shareToggle.click();
     await expect.element(shareToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("Help is reached by Tab from the share bar, ahead of the work column", async () => {
+    await reachMatchingSharingNarrow();
+
+    const help = page.getByRole("link", { name: "Help" });
+    await expect.element(help).toHaveAttribute("href", WEB_APP_GUIDE_URL);
+    await expect.element(help).toHaveAttribute("target", "_blank");
+    expect(
+      document.querySelector('nav[aria-label="Exchange setup"] a[href]'),
+    ).toBeNull();
+
+    const shareToggle = page
+      .getByRole("button", { name: "What you will share" })
+      .element() as HTMLElement;
+    shareToggle.focus();
+    await tabTo(help.element());
+
+    const firstWorkControl = document.querySelector<HTMLElement>(
+      `main.${styles.work} button, main.${styles.work} select, main.${styles.work} input`,
+    );
+    expect(firstWorkControl).not.toBeNull();
+    expect(
+      help.element().compareDocumentPosition(firstWorkControl as HTMLElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   test("the narrow layout holds without horizontal overflow", async () => {

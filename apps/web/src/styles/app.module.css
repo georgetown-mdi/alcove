@@ -1316,4 +1316,52 @@
     color: var(--app-faint);
     margin: 8px 0 4px 0;
   }
+
+  /* Pulled into the grid gaps on either side so the link sits close under the
+     ledger; scoped under .grid to outweigh the .page p margin rule. */
+  .grid .narrowHelp {
+    justify-self: end;
+    margin: -20px 0;
+  }
+}
+
+/* The step buttons of NamedStepNumberInput, sized and ruled like Mantine's own
+   NumberInput controls, which they replace. */
+.stepControls {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: calc(var(--input-height) - 2px);
+  margin-inline-start: auto;
+}
+
+.stepControl {
+  flex: 0 0 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-inline-start: 1px solid var(--input-bd);
+  color: var(--mantine-color-text);
+  cursor: pointer;
+}
+
+.stepControl:first-of-type {
+  border-start-end-radius: calc(var(--input-radius) - 1px);
+}
+
+.stepControl:last-of-type {
+  border-end-end-radius: calc(var(--input-radius) - 1px);
+}
+
+.stepControl:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  color: var(--mantine-color-disabled-color);
+}
+
+@media (hover: hover) {
+  .stepControl:not(:disabled):hover {
+    background-color: var(--mantine-color-default-hover);
+  }
 }
