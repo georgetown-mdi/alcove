@@ -109,6 +109,7 @@ describe("wait-container-pair", () => {
     expect(run.stderr).toContain("acceptor: exited, status 0");
   });
 
+  // after40 is still running once the settle window passes, so it is killed.
   it("stops the acceptor as soon as the inviter fails", () => {
     const run = runPair(30, "i-exit3-after1", "a-exit0-after40");
     expect(run.status).toBe(1);
@@ -162,21 +163,12 @@ describe("wait-container-pair", () => {
     );
   });
 
-  it(
-    "does not kill a half that exits at nearly the same instant as its failing partner",
-    { retry: 4 },
-    () => {
-      // Both halves exit immediately; which one Node's event loop reports
-      // first through `docker wait` is real OS scheduling, not something
-      // this stub controls, so occasionally the acceptor's own exit isn't
-      // yet recorded when the pending half is decided. Retrying absorbs
-      // that scheduling noise without weakening the assertion itself.
-      const run = runPair(30, "i-exit1-after0", "a-exit0-after0");
-      expect(run.status).toBe(1);
-      expect(run.kills).not.toContain("a-exit0-after0");
-      expect(run.stderr).toContain("acceptor: exited, status 0");
-    },
-  );
+  it("does not kill a half that exits at nearly the same instant as its failing partner", () => {
+    const run = runPair(30, "i-exit1-after0", "a-exit0-after0");
+    expect(run.status).toBe(1);
+    expect(run.kills).not.toContain("a-exit0-after0");
+    expect(run.stderr).toContain("acceptor: exited, status 0");
+  });
 
   it("waits for both stopped halves concurrently, not sequentially", () => {
     // Both halves ignore `docker kill` and only resolve through the
