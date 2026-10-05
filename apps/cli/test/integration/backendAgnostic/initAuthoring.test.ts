@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import YAML from "yaml";
 
 import { parseExchangeSpec, safeParseMetadata } from "@alcove/core";
@@ -23,6 +23,11 @@ import { configPlaceholderFields } from "../../../src/config";
  */
 
 const RUN_BUDGET_MS = 60_000;
+
+// A test here runs up to three cold `alcove` processes. The slowest full-suite
+// run measured under container load (load average ~26 on 10 cores) took 40 s,
+// for the three-process acceptance test; 60 s is a 1.5x margin over it.
+vi.setConfig({ testTimeout: 60_000 });
 
 const INPUT_CSV =
   "member_id,first_name,last_name,dob,score,notes\n" +
