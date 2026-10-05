@@ -30,8 +30,10 @@ lockfile: a rebuild without a lockfile change cannot re-resolve a caret range,
 and the image ships the same tree CI tested. The release SBOM covers a wider
 scope than this install -- step 9 in [RELEASES.md](../RELEASES.md) runs
 `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev --legacy-peer-deps -w packages/core -w apps/cli -w apps/web`
--- because the Nitro `.output` this image copies bundles `apps/web`'s runtime
-dependencies, which the install scope above does not reach.
+-- because the console server build this image copies
+(`apps/web/dist/console-server`) bundles `apps/web`'s runtime dependencies, and
+the console client build (`apps/web/dist/console`) its browser ones, which the
+install scope above does not reach.
 
 Why this is correctness-critical rather than hygiene: `re2js` executes the
 agreed linkage transforms' regexes that standardize values before PSI key
@@ -113,8 +115,8 @@ The built image's `/app/node_modules` is measured against that scope by
 which is the resolved-tree half the freeze test cannot reach: every package the
 image carries must be one the same install resolves from the committed lockfile
 on the runner. What it does not reach is a package the resolution holds and the
-image lacks, and the `apps/web` `.output` bundle the runtime stage copies
-alongside, which is vite's own output rather than an npm install.
+image lacks, and the `apps/web` console builds the runtime stage copies
+alongside, which are vite's own output rather than an npm install.
 
 The `node:26-alpine` base image is digest-pinned in both stages to its
 multi-arch index digest, so the Node runtime and Alpine userland beneath the
@@ -637,9 +639,9 @@ opposite direction would catch is covered by the exchange smokes, which do not
 complete without the runtime dependencies, and by the symlink containment
 measurement, which refuses a workspace link that dangles.
 
-Two things stay outside it. The `apps/web` `.output` tree the runtime stage
-copies bundles its own dependencies, which are vite's output rather than an npm
-install and are not walked. And where a package sits in the tree is not
+Two things stay outside it. The `apps/web` console builds the runtime stage
+copies, `dist/console` and `dist/console-server`, bundle their own dependencies,
+which are vite's output rather than an npm install and are not walked. And where a package sits in the tree is not
 compared, only which packages are there; the layout is the lockfile's, and the
 copied layout is the freeze test's.
 

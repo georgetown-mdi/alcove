@@ -1,11 +1,3 @@
-# The deployment profile is one build-time source of truth shared by both stages:
-# the builder bakes it into the client bundle (vite `import.meta.env`), and the
-# runtime stage exports the SAME value into the server's process environment so
-# the job-API gate reads the identical profile at runtime (apps/web/src/jobs/gate.ts).
-# A single ARG keeps the client build and the server gate from drifting. Override
-# with --build-arg VITE_DEPLOYMENT_PROFILE=hosted to build a hosted image.
-ARG VITE_DEPLOYMENT_PROFILE=console
-
 # Base pinned to node:26-alpine's multi-arch index digest (both stages) so builds
 # resolve one exact image; a base bump for a node or musl patch is a deliberate
 # digest update, not an automatic float. See docs/spec/CONTAINER_IMAGES.md; the
@@ -23,10 +15,11 @@ COPY lib lib
 # npm ci resolves nothing: it installs exactly the committed lockfile (including
 # each registry package's integrity hash) and fails if a manifest disagrees with
 # it, so an image rebuild cannot drift from the tree CI tested. apps/web is in
-# scope with its dev deps because `vite build` (and the nitro plugin) are
+# scope with its dev deps because `vite build` and its plugins are
 # devDependencies; what keeps those out of the shipped image is the production
 # rebuild at the end of this stage rather than anything about this scope, the
-# runtime stage taking apps/web's self-contained .output/ and none of this tree.
+# runtime stage taking apps/web's self-contained dist/ builds and none of this
+# tree.
 # The root .npmrc copied in above puts the install-script policy in force here as
 # it is locally and in CI; what that does and does not reach is in
 # docs/spec/DEPENDENCY_PINS.md.
@@ -42,28 +35,23 @@ COPY apps/cli/src apps/cli/src/
 # built dist/ (a file: workspace dependency), so build core and the CLI first.
 RUN npm run build -w packages/core -w apps/cli
 
-# apps/web build inputs: its root-level config (vite/nitro/postcss/tsconfig) plus
-# the source, server entry, and static assets vite reads. There is no index.html
-# (TanStack Start generates the document), so none is copied. The signaling
-# broker is a source-only workspace the web build bundles into its server output
-# (no build step of its own), so its source is a build input here too.
+# apps/web build inputs: the console build's config and the vite config it
+# takes its aliases from, the postcss and TypeScript config, the client's
+# index.html, and the source, console server, and static assets vite reads. The
+# signaling broker is a source-only workspace the web source imports (no build
+# step of its own), so its source is a build input here too.
 COPY packages/peerjs-broker/tsconfig.json packages/peerjs-broker/
 COPY packages/peerjs-broker/src packages/peerjs-broker/src/
-COPY apps/web/vite.config.ts apps/web/nitro.config.ts apps/web/postcss.config.cjs apps/web/tsconfig.json apps/web/
+COPY apps/web/vite.config.ts apps/web/vite.console.config.ts apps/web/postcss.config.cjs apps/web/tsconfig.json apps/web/index.html apps/web/
 COPY apps/web/src apps/web/src/
 COPY apps/web/server apps/web/server/
 COPY apps/web/public apps/web/public/
-# Build the console-appliance UI: VITE_DEPLOYMENT_PROFILE=console drops the
-# browser-only file-assurance copy and routes a filedrop channel to the
-# server-side job driver (see apps/web/src/utils/clientConfig.ts). vite build
-# produces a self-contained apps/web/.output/ (server entry + bundled
-# node_modules + public assets), so the runtime stage copies only that. The
-# global ARG is re-declared here and promoted to ENV so vite's
-# `import.meta.env.VITE_*` reads it from the build process environment (a bare
-# ARG is not exported into the RUN child). This bakes the profile into the client
-# bundle; the runtime stage exports the same ARG so the server gate matches it.
-ARG VITE_DEPLOYMENT_PROFILE
-ENV VITE_DEPLOYMENT_PROFILE=${VITE_DEPLOYMENT_PROFILE}
+# Build the console: `build:console` writes the single-page client to
+# apps/web/dist/console/ and `build:console-server` the console server, every
+# dependency bundled in, to apps/web/dist/console-server/, so the runtime stage
+# copies only those two. Both scripts set VITE_DEPLOYMENT_PROFILE=console, which
+# drops the browser-only file-assurance copy and routes a filedrop channel to
+# the server-side job driver (see apps/web/src/utils/clientConfig.ts).
 # The release version reaches the client bundle the same way, so the `docker run`
 # lines the console's partner accept kit prints name this image rather than the
 # floating tag. It is read from the apps/cli manifest copied above -- the
@@ -82,7 +70,8 @@ RUN set -eu; \
   VITE_ALCOVE_VERSION="$(node -p "require('/build/apps/cli/package.json').version ?? ''")"; \
   test -n "$VITE_ALCOVE_VERSION"; \
   export VITE_ALCOVE_VERSION; \
-  npm run build -w apps/web
+  npm run build:console -w apps/web; \
+  npm run build:console-server -w apps/web
 
 # The tree the runtime stage ships: the same lockfile-exact resolution as above
 # with the build's own dependencies left out. Both halves of the command are
@@ -183,19 +172,23 @@ COPY --from=builder /build/apps/cli/dist/index.js apps/cli/dist/index.js
 # name; it is spawned as a worker, never executed, so no shebang/chmod.
 COPY --from=builder /build/apps/cli/dist/psiWorker.worker.js apps/cli/dist/psiWorker.worker.js
 
-# The web console appliance: vite build produces a self-contained
-# apps/web/.output/ (server entry + bundled node_modules + public assets), so the
-# runtime stage copies only that -- no apps/web production `npm ci` is needed.
-COPY --from=builder /build/apps/web/.output apps/web/.output
+# The web console: its server bundles every dependency it runs, and serves the
+# client from the directory beside its own, so the runtime stage copies only
+# the two builds -- no apps/web production `npm ci` is needed.
+COPY --from=builder /build/apps/web/dist/console apps/web/dist/console
+COPY --from=builder /build/apps/web/dist/console-server apps/web/dist/console-server
 
-# Export the deployment profile into the runtime environment so the server-side
-# job-API gate (apps/web/src/jobs/gate.ts) reads the SAME value the client bundle
-# was baked with: a console image enables the job API, a hosted one keeps it
-# disabled. The Nitro server has no build-time env baking, so it must come from
-# the process environment here; re-declaring the global ARG keeps it in sync with
-# the client build rather than hardcoding a value that could drift from it.
-ARG VITE_DEPLOYMENT_PROFILE
-ENV VITE_DEPLOYMENT_PROFILE=${VITE_DEPLOYMENT_PROFILE}
+# The deployment profile the job-API gate (apps/web/src/jobs/gate.ts) reads
+# from the process environment at runtime: the same `console` the build scripts
+# baked into the client bundle, so the server enables the job API the client
+# offers.
+ENV VITE_DEPLOYMENT_PROFILE=console
+
+# The console server binds 127.0.0.1 unless HOST says otherwise, and a
+# loopback bind inside the container is unreachable through a published port.
+# Which host interfaces reach the console is decided by the `-p` publish
+# binding instead (docs/CONSOLE.md).
+ENV HOST=0.0.0.0
 
 # The server spawns the CLI as a subprocess; its default binary resolution walks
 # up from the server module and would not find the CLI in this image layout, so

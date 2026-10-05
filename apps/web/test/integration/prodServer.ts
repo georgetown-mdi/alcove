@@ -7,9 +7,10 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 
 // Shared production-server harness for the integration suites that drive the
-// real built app: resolve and probe the built entry, probe a free loopback port,
-// spawn `node .output/server/index.mjs` as its own process group, wait for it to
-// answer HTTP, and tear the whole group down on teardown.
+// real built app: resolve and probe the built entries, probe a free loopback
+// port, spawn the hosted build's `.output/server/index.mjs` or the console
+// server's `dist/console-server/main.mjs` as its own process group, wait for it
+// to answer HTTP, and tear the whole group down on teardown.
 
 const READY_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 5_000;
@@ -26,6 +27,18 @@ export const prodEntry = resolve(webRoot, ".output/server/index.mjs");
  * a failing run says how to fix itself. */
 export const BUILD_COMMAND = "npm run build -w apps/web";
 
+/** The console server entry `npm run build:console-server -w apps/web` emits. */
+export const consoleEntry = resolve(webRoot, "dist/console-server/main.mjs");
+
+/** The document of the client `npm run build:console -w apps/web` emits, which
+ * the console server serves from beside its own directory. */
+export const consoleClientIndex = resolve(webRoot, "dist/console/index.html");
+
+/** The commands that produce {@link consoleEntry} and
+ * {@link consoleClientIndex}. */
+export const CONSOLE_BUILD_COMMAND =
+  "npm run build:console -w apps/web && npm run build:console-server -w apps/web";
+
 /** Set to `1` to run the integration project without a production build: the
  * built-server suites skip instead of failing it (see requireProdBuild.ts). */
 export const ALLOW_MISSING_BUILD_ENV = "ALCOVE_ALLOW_MISSING_WEB_BUILD";
@@ -35,6 +48,11 @@ export const ALLOW_MISSING_BUILD_ENV = "ALCOVE_ALLOW_MISSING_WEB_BUILD";
  * it, so an absent build cannot mean one thing to the guard and another to a
  * suite. */
 export const hasBuild = existsSync(prodEntry);
+
+/** {@link hasBuild}'s counterpart for the console server and the client it
+ * serves, both of which it needs to start. */
+export const hasConsoleBuild =
+  existsSync(consoleEntry) && existsSync(consoleClientIndex);
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -117,23 +135,46 @@ export interface ProdServer {
   getLaunchError: () => Error | undefined;
 }
 
-/** Spawn `node prodEntry` on `port`, bound to loopback, as its own process group
- * so teardown can signal the whole tree. Yields one tick so a spawn failure (e.g.
- * a missing node) is reported before returning. NITRO_HOST pins the loopback bind;
- * PORT pins the free port (the nitro entry reads it straight from process.env, no
- * dotenv override). `extraEnv` merges over the inherited environment, for suites
- * that enable a feature-gated surface (e.g. the job API) at boot. */
-export async function spawnProdServer(
+/** Spawn the hosted build's {@link prodEntry} on `port`, bound to loopback.
+ * NITRO_HOST pins the loopback bind; PORT pins the free port (the nitro entry
+ * reads it straight from process.env, no dotenv override). `extraEnv` merges
+ * over the inherited environment. */
+export function spawnProdServer(
   port: number,
   extraEnv: NodeJS.ProcessEnv = {},
 ): Promise<ProdServer> {
-  const env: NodeJS.ProcessEnv = {
+  return spawnServer(prodEntry, {
     ...process.env,
     PORT: String(port),
     NITRO_HOST: "127.0.0.1",
     ...extraEnv,
-  };
-  const proc = spawn("node", [prodEntry], {
+  });
+}
+
+/** Spawn the console server, {@link consoleEntry}, on `port` with the console
+ * profile, bound to loopback. `extraEnv` merges over the inherited
+ * environment, for suites that enable the job API at boot. */
+export function spawnConsoleServer(
+  port: number,
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<ProdServer> {
+  return spawnServer(consoleEntry, {
+    ...process.env,
+    PORT: String(port),
+    HOST: "127.0.0.1",
+    VITE_DEPLOYMENT_PROFILE: "console",
+    ...extraEnv,
+  });
+}
+
+/** Spawn `node entry` with `env` as its own process group, so teardown can
+ * signal the whole tree. Yields one tick so a spawn failure (e.g. a missing
+ * node) is reported before returning. */
+async function spawnServer(
+  entry: string,
+  env: NodeJS.ProcessEnv,
+): Promise<ProdServer> {
+  const proc = spawn("node", [entry], {
     cwd: webRoot,
     env,
     detached: true,

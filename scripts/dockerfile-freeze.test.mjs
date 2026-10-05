@@ -621,14 +621,21 @@ for (const {
       );
     });
 
-    it("runs the web server entry, under a copied directory, for the serve role", () => {
-      const serveArgv = execArgv((l) => l.includes(".output"));
-      const serverEntry = serveArgv.find((t) => t.includes(".output"));
+    it("runs the console server entry, under a copied directory, for the serve role", () => {
+      const serveArgv = execArgv((l) => l.includes("console-server"));
+      const serverEntry = serveArgv.find((t) => t.includes("console-server"));
       expect(serverEntry).toBeDefined();
-      // The server entry lives under a directory the runtime stage copies in.
-      expect(
+      const underCopiedDirectory = (path) =>
         image.allRuntimeDests.some(
-          (dest) => serverEntry === dest || serverEntry.startsWith(dest + "/"),
+          (dest) => path === dest || path.startsWith(dest + "/"),
+        );
+      // The server entry lives under a directory the runtime stage copies in,
+      // and so does the client it serves from beside its own directory
+      // (apps/web/server/console/main.ts), without which it refuses to start.
+      expect(underCopiedDirectory(serverEntry)).toBe(true);
+      expect(
+        underCopiedDirectory(
+          posix.join(posix.dirname(serverEntry), "../console/index.html"),
         ),
       ).toBe(true);
     });
@@ -1023,9 +1030,18 @@ describe.each(IMAGES)(
       // version set in one step and a web build in another is a bundle with
       // no version in it.
       expect(versionRuns).toHaveLength(1);
-      expect(normalize(versionRuns[0])).toContain("npm run build -w apps/web");
+      expect(normalize(versionRuns[0])).toContain(
+        "npm run build:console -w apps/web",
+      );
+      expect(normalize(versionRuns[0])).toContain(
+        "npm run build:console-server -w apps/web",
+      );
+      // The hosted build's .output is not what the image runs.
+      expect(normalize(versionRuns[0])).not.toContain(
+        "npm run build -w apps/web",
+      );
       expect(
-        image.builderRuns.filter((run) => run.includes("build -w apps/web")),
+        image.builderRuns.filter((run) => /\bbuild\S* -w apps\/web/.test(run)),
       ).toEqual(versionRuns);
     });
 

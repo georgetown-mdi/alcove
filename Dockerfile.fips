@@ -9,10 +9,6 @@
 # on the same glibc userland the runtime stage has: @openmined/psi.js ships
 # separate musl and glibc prebuilds, so building on one libc and running on the
 # other is not safe.
-#
-# The deployment profile is one build-time source of truth shared by both
-# stages, exactly as in the root Dockerfile.
-ARG VITE_DEPLOYMENT_PROFILE=console
 
 # Amazon Linux 2023 packages nodejs20, nodejs22 and nodejs24 only, and the root
 # package.json requires >=26, so the runtime comes from the official tarball.
@@ -119,12 +115,12 @@ RUN npm run build -w packages/core -w apps/cli
 
 COPY packages/peerjs-broker/tsconfig.json packages/peerjs-broker/
 COPY packages/peerjs-broker/src packages/peerjs-broker/src/
-COPY apps/web/vite.config.ts apps/web/nitro.config.ts apps/web/postcss.config.cjs apps/web/tsconfig.json apps/web/
+COPY apps/web/vite.config.ts apps/web/vite.console.config.ts apps/web/postcss.config.cjs apps/web/tsconfig.json apps/web/index.html apps/web/
 COPY apps/web/src apps/web/src/
 COPY apps/web/server apps/web/server/
 COPY apps/web/public apps/web/public/
-ARG VITE_DEPLOYMENT_PROFILE
-ENV VITE_DEPLOYMENT_PROFILE=${VITE_DEPLOYMENT_PROFILE}
+# The console client and server builds, as in the root Dockerfile; both
+# scripts set VITE_DEPLOYMENT_PROFILE=console.
 # The release version reaches this image's client bundle the same way it does
 # the default image's (Dockerfile): read from the apps/cli manifest copied
 # above, gated by `set -e`/`test -n` in the same RUN as the build so a failed
@@ -134,7 +130,8 @@ RUN set -eu; \
   VITE_ALCOVE_VERSION="$(node -p "require('/build/apps/cli/package.json').version ?? ''")"; \
   test -n "$VITE_ALCOVE_VERSION"; \
   export VITE_ALCOVE_VERSION; \
-  npm run build -w apps/web
+  npm run build:console -w apps/web; \
+  npm run build:console-server -w apps/web
 
 # The tree the runtime stage ships: the same lockfile-exact resolution as above
 # with the build's own dependencies left out. The explicit wipe is what makes it
@@ -270,10 +267,13 @@ COPY --from=builder /build/apps/cli/dist/index.js apps/cli/dist/index.js
 # resolves it as `<__dirname>/psiWorker.worker.js`, and without it createPsiEngine
 # silently falls back to the in-process engine.
 COPY --from=builder /build/apps/cli/dist/psiWorker.worker.js apps/cli/dist/psiWorker.worker.js
-COPY --from=builder /build/apps/web/.output apps/web/.output
+COPY --from=builder /build/apps/web/dist/console apps/web/dist/console
+COPY --from=builder /build/apps/web/dist/console-server apps/web/dist/console-server
 
-ARG VITE_DEPLOYMENT_PROFILE
-ENV VITE_DEPLOYMENT_PROFILE=${VITE_DEPLOYMENT_PROFILE}
+# The profile the job-API gate reads at runtime, and the bind the published
+# port reaches, as in the root Dockerfile.
+ENV VITE_DEPLOYMENT_PROFILE=console
+ENV HOST=0.0.0.0
 ENV JOB_CLI_BINARY=/app/apps/cli/dist/index.js
 
 # The pinned module version, carried into the image so the entrypoint can name

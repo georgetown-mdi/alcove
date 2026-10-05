@@ -107,7 +107,7 @@ describe("replicating the copies", () => {
       "export default {};\n",
     );
     writeFileSync(
-      join(root, "apps/web/nitro.config.ts"),
+      join(root, "apps/web/vite.console.config.ts"),
       "export default {};\n",
     );
     writeFileSync(join(root, "apps/web/tsconfig.json"), "{}\n");
@@ -133,10 +133,10 @@ describe("replicating the copies", () => {
       builderStageCopies(DOCKERFILE_SOURCE),
     );
     expect(readdirSync(join(into, "apps/web")).sort()).toEqual([
-      "nitro.config.ts",
       "src",
       "tsconfig.json",
       "vite.config.ts",
+      "vite.console.config.ts",
     ]);
     expect(existsSync(join(into, "apps/web/src/psi/run.ts"))).toBe(true);
     expect(existsSync(join(into, "package.json"))).toBe(true);
@@ -223,7 +223,7 @@ describe("the check, driven through an injected load", () => {
       "export default {};\n",
     );
     writeFileSync(
-      join(root, "apps/web/nitro.config.ts"),
+      join(root, "apps/web/vite.console.config.ts"),
       "export default {};\n",
     );
     writeFileSync(join(root, "apps/web/tsconfig.json"), "{}\n");

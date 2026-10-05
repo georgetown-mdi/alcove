@@ -6,8 +6,8 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import {
   getFreePort,
-  hasBuild,
-  spawnProdServer,
+  hasConsoleBuild,
+  spawnConsoleServer,
   stopProdServer,
   waitForRoot,
   webRoot,
@@ -54,7 +54,7 @@ async function waitForJobStatus(
   }
 }
 
-describe.skipIf(!hasBuild)(
+describe.skipIf(!hasConsoleBuild)(
   "a zero-setup job is driven through the real server with no config or key",
   () => {
     let child: ChildProcess | undefined;
@@ -71,7 +71,7 @@ describe.skipIf(!hasBuild)(
       scratchDir = mkdtempSync(join(tmpdir(), "alcove-zs-cred-"));
 
       port = await getFreePort();
-      const { child: proc, getLaunchError } = await spawnProdServer(port, {
+      const { child: proc, getLaunchError } = await spawnConsoleServer(port, {
         VITE_DEPLOYMENT_PROFILE: "console",
         JOB_DATA_ROOT: dataRoot,
         JOB_RENDEZVOUS_DIR: rendezvousDir,
