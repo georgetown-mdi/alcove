@@ -14,6 +14,7 @@ import {
 
 import { createOwnerOnlyWriteStream } from "../fileUtils";
 import { settleWithinCeiling, type CeilingOutcome } from "./ceiling";
+import { redactUrlCredentials } from "./connectionUrl";
 import { InputNotFoundError } from "./exit";
 
 /**
@@ -77,10 +78,11 @@ export function openInputSource(
   return fs.createReadStream(input);
 }
 
-function inputStatError(input: string, err: unknown): Error {
+function inputStatError(rawInput: string, err: unknown): Error {
+  const input = withoutUrlCredentials(rawInput);
   const code = (err as NodeJS.ErrnoException | undefined)?.code;
   if (code === "ENOENT" || code === "ENOTDIR") {
-    const message = isSymbolicLink(input)
+    const message = isSymbolicLink(rawInput)
       ? messageWithOperatorText`${operatorSuppliedText(input)} is a symbolic link to a file that does not exist`
       : messageWithOperatorText`${operatorSuppliedText(input)} does not exist`;
     return keepOperatorSuppliedText(
@@ -93,6 +95,18 @@ function inputStatError(input: string, err: unknown): Error {
     keepOperatorSuppliedText(new Error(message.text, { cause: err }), message),
     { exitCode: 69 },
   );
+}
+
+function withoutUrlCredentials(input: string): string {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    return input;
+  }
+  return url.username === "" && url.password === ""
+    ? input
+    : redactUrlCredentials(url);
 }
 
 function isSymbolicLink(input: string): boolean {

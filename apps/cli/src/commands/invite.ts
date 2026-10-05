@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import type { Argv, Arguments } from "yargs";
 
 import {
@@ -13,9 +11,7 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   inferMetadata,
   INVITATION_LIFETIME_SECONDS,
-  keepOperatorSuppliedText,
   MAX_INVITATION_LIFETIME_SECONDS,
-  messageWithOperatorText,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
@@ -66,7 +62,7 @@ import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
 import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
 import { restartUnderPsiHeapCeiling } from "../psiHeapRestart";
-import { InputNotFoundError, runOrExit } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import {
   assertNoUnknownOptions,
   csvDelimiterFlag,
@@ -423,27 +419,6 @@ export function resolveInvitePositionals(
 }
 
 /**
- * Refuse an input argument that is a URL carrying credentials and names no
- * file, naming it with the credentials removed. The read's own refusal echoes
- * the argument as given, and a URL this command does not take as a server --
- * a mistyped scheme such as `sfpt://user:password@host` -- arrives as the
- * input path, so that echo would print the password.
- */
-function assertCredentialUrlInputExists(input: string | undefined): void {
-  if (input === undefined || input === "-") return;
-  let url: URL;
-  try {
-    url = new URL(input);
-  } catch {
-    return;
-  }
-  if (url.username === "" && url.password === "") return;
-  if (fs.existsSync(input)) return;
-  const message = messageWithOperatorText`${operatorSuppliedText(redactUrlCredentials(url))} does not exist`;
-  throw keepOperatorSuppliedText(new InputNotFoundError(message.text), message);
-}
-
-/**
  * Mint-time wording for the shared linkage pre-flight
  * ({@link checkLinkageSatisfiability}): core grades the terms, this function
  * supplies the copy for {@link LinkagePreflightMessaging}. `configPath` names
@@ -607,8 +582,6 @@ export async function validateInvite(params: {
       `--expires-in must not exceed ${MAX_INVITATION_LIFETIME_SECONDS / 86400}d ` +
         `(the maximum invitation lifetime); got ${expiresIn}`,
     );
-
-  assertCredentialUrlInputExists(resolved.input);
 
   // The input is read at most once per invocation. The online branch below and
   // the two offline branches (config-as-source, and infer-from-input) are
