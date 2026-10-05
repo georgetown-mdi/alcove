@@ -22,7 +22,7 @@ import {
 } from "./shutdown";
 
 import type { ClientMiddleware } from "./app";
-import type { JobRouteDefinition } from "./routeTable";
+import type { JobRouteDefinition } from "./jobRoute";
 import type { Server } from "node:http";
 import type { ServerCloseHooks } from "./shutdown";
 

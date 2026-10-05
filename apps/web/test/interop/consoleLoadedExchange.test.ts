@@ -32,7 +32,7 @@ import { openMountedConfiguration } from "@jobs/configLoad";
 import { recordFileStamp } from "@psi/runOutputs";
 import { relayedTermsChangeOf } from "@psi/jobClient/serverJobExchangeDriver";
 
-import { Route as ApplyTermsRoute } from "../../src/routes/api/jobs/$jobId/apply-terms";
+import { route as ApplyTermsRoute } from "../../server/console/routes/$jobId/apply-terms";
 
 import {
   cliEntry,
@@ -633,7 +633,7 @@ async function applyThroughConsoleRoute(
   vi.stubEnv("JOB_DATA_ROOT", workspace.mount);
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
     manager;
-  const handlers = ApplyTermsRoute.options.server?.handlers as Record<
+  const handlers = ApplyTermsRoute.handlers as Record<
     string,
     (context: {
       request: Request;

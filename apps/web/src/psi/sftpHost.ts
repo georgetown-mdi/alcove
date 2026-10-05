@@ -4,8 +4,8 @@
  * safety check ({@link ../jobs/sftpServer}), the accept-side admission check
  * ({@link ../exchange/acceptorModel}), the host-key probe form control
  * ({@link ../console/SftpAuthoringForm}), and the probe route's body check
- * ({@link ../routes/api/jobs/sftp/probe}). Extracted so they cannot drift: a value
- * one accepts as bare, the others must too.
+ * (`server/console/routes/sftp/probe.ts`). Extracted so they cannot drift: a
+ * value one accepts as bare, the others must too.
  */
 
 /**

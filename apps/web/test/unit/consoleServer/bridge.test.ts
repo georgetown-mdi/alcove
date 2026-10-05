@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { JOB_RESPONSE_HEADERS } from "@jobs/gate";
 
-import { defineJobRoute } from "../../../server/console/routeTable";
+import { defineJobRoute } from "../../../server/console/jobRoute";
 
 import {
   enableJobApi,
@@ -14,7 +14,7 @@ import {
   waitUntil,
 } from "./serverHarness";
 
-import type { JobRouteHandlers } from "../../../server/console/routeTable";
+import type { JobRouteHandlers } from "../../../server/console/jobRoute";
 
 afterEach(resetConsoleServerTests);
 

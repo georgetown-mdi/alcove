@@ -9,10 +9,10 @@ import { securityResponseHeaders } from "@utils/securityHeaders";
 
 import {
   compileJobRoutes,
-  defineJobRoute,
   jobRoutes,
   matchJobRoute,
 } from "../../../server/console/routeTable";
+import { defineJobRoute } from "../../../server/console/jobRoute";
 
 import {
   enableJobApi,
@@ -29,10 +29,10 @@ afterEach(resetConsoleServerTests);
 
 const ROUTES_DIR = path.resolve(
   import.meta.dirname,
-  "../../../src/routes/api/jobs",
+  "../../../server/console/routes",
 );
 
-/** Every route file under the job routes directory. */
+/** Every route module under the job routes directory. */
 function routeFiles(dir = ROUTES_DIR): Array<string> {
   return fs
     .readdirSync(dir, { withFileTypes: true })
@@ -60,20 +60,21 @@ function expectSecurityHeaders(answer: Answer): void {
 }
 
 describe("the route table", () => {
-  test("serves every job route file at the path the file declares", async () => {
+  test("serves every job route module at the path its location names", async () => {
     const files = routeFiles();
     expect(files.length).toBe(jobRoutes.length);
     for (const file of files) {
-      const declared = /createFileRoute\("([^"]+)"\)/.exec(
-        fs.readFileSync(file, "utf8"),
-      )?.[1];
-      expect(declared, file).toBeDefined();
+      const segments = path
+        .relative(ROUTES_DIR, file)
+        .replace(/\.ts$/, "")
+        .split(path.sep);
+      if (segments.at(-1) === "index") segments.pop();
       const module = (await import(pathToFileURL(file).href)) as {
-        Route: unknown;
+        route: unknown;
       };
-      const entry = jobRoutes.find((route) => route.fileRoute === module.Route);
+      const entry = jobRoutes.find((route) => route === module.route);
       expect(entry, file).toBeDefined();
-      expect(entry!.path).toBe(declared!.replace(/(.)\/$/, "$1"));
+      expect(entry!.path).toBe(["/api/jobs", ...segments].join("/"));
     }
   });
 
@@ -122,6 +123,31 @@ describe("the route table", () => {
     expect(() =>
       compileJobRoutes([defineJobRoute({ path: "/api/jobs/", handlers: {} })]),
     ).toThrow(/Malformed/);
+  });
+
+  test("a path outside the job API prefix is refused when the table is compiled", () => {
+    expect(() =>
+      compileJobRoutes([defineJobRoute({ path: "/other/slot", handlers: {} })]),
+    ).toThrow(/outside \/api\/jobs/);
+  });
+
+  test("an unsupported method or non-function handler is refused when the table is compiled", () => {
+    expect(() =>
+      compileJobRoutes([
+        defineJobRoute({
+          path: "/api/jobs/slot",
+          handlers: { PATCH: () => new Response() } as never,
+        }),
+      ]),
+    ).toThrow(/invalid handler PATCH/);
+    expect(() =>
+      compileJobRoutes([
+        defineJobRoute({
+          path: "/api/jobs/slot",
+          handlers: { GET: "nope" } as never,
+        }),
+      ]),
+    ).toThrow(/invalid handler GET/);
   });
 });
 

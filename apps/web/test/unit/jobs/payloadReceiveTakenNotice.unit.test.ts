@@ -25,7 +25,7 @@ import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
-import { Route as EventsRoute } from "../../../src/routes/api/jobs/$jobId/events";
+import { route as EventsRoute } from "../../../server/console/routes/$jobId/events";
 
 import {
   STUB_CLI_PATH,
@@ -177,7 +177,7 @@ describe("the relayed fill notice states no container path", () => {
 
 /** The job's whole SSE body, read off the real route. */
 async function sseBody(id: string): Promise<string> {
-  const handlers = EventsRoute.options.server?.handlers as Record<
+  const handlers = EventsRoute.handlers as Record<
     string,
     (ctx: { request: Request; params: Record<string, string> }) => unknown
   >;

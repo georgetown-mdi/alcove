@@ -14,7 +14,7 @@ import { jobRoutes } from "../../../server/console/routeTable";
 import { tempDataRoot } from "../../utils/jobFixtures";
 
 import type { JobManager } from "@jobs/jobManager";
-import type { JobRouteDefinition } from "../../../server/console/routeTable";
+import type { JobRouteDefinition } from "../../../server/console/jobRoute";
 
 const servers: Array<http.Server> = [];
 const dirs: Array<string> = [];

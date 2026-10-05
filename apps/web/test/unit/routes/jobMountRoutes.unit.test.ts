@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { Route as FolderEntriesRoute } from "../../../src/routes/api/jobs/mounts/folder/entries";
-import { Route as SecretsEntriesRoute } from "../../../src/routes/api/jobs/mounts/secrets/entries";
+import { route as FolderEntriesRoute } from "../../../server/console/routes/mounts/folder/entries";
+import { route as SecretsEntriesRoute } from "../../../server/console/routes/mounts/secrets/entries";
 
 import { STUB_CLI_PATH } from "../../utils/jobFixtures";
 
@@ -31,10 +31,8 @@ type Handlers = Record<
   (ctx: { request: Request; params: Record<string, string> }) => unknown
 >;
 
-function handlersOf(route: {
-  options: { server?: { handlers?: unknown } };
-}): Handlers {
-  const handlers = route.options.server?.handlers;
+function handlersOf(route: { handlers: unknown }): Handlers {
+  const handlers = route.handlers;
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;

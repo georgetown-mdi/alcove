@@ -16,21 +16,21 @@ import { JobManager } from "@jobs/jobManager";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { runArtifactNames } from "@jobs/runArtifactNames";
 
-import { Route as CancelRoute } from "../../../src/routes/api/jobs/$jobId/cancel";
-import { Route as CreateRoute } from "../../../src/routes/api/jobs/index";
-import { Route as EventsRoute } from "../../../src/routes/api/jobs/$jobId/events";
-import { Route as FolderRoute } from "../../../src/routes/api/jobs/$jobId/folder";
-import { Route as InputsRoute } from "../../../src/routes/api/jobs/inputs/index";
-import { Route as JobRoute } from "../../../src/routes/api/jobs/$jobId/index";
-import { Route as KeysRoute } from "../../../src/routes/api/jobs/$jobId/keys";
-import { Route as LogRoute } from "../../../src/routes/api/jobs/$jobId/log";
-import { Route as ReceiptRoute } from "../../../src/routes/api/jobs/$jobId/receipt";
-import { Route as RecordRoute } from "../../../src/routes/api/jobs/$jobId/record";
-import { Route as RendezvousRoute } from "../../../src/routes/api/jobs/rendezvous";
-import { Route as ResultRoute } from "../../../src/routes/api/jobs/$jobId/result";
-import { Route as SftpProbeRoute } from "../../../src/routes/api/jobs/sftp/probe";
-import { Route as SftpRoute } from "../../../src/routes/api/jobs/sftp/index";
-import { Route as SlotRoute } from "../../../src/routes/api/jobs/slot";
+import { route as CancelRoute } from "../../../server/console/routes/$jobId/cancel";
+import { route as CreateRoute } from "../../../server/console/routes/index";
+import { route as EventsRoute } from "../../../server/console/routes/$jobId/events";
+import { route as FolderRoute } from "../../../server/console/routes/$jobId/folder";
+import { route as InputsRoute } from "../../../server/console/routes/inputs/index";
+import { route as JobRoute } from "../../../server/console/routes/$jobId/index";
+import { route as KeysRoute } from "../../../server/console/routes/$jobId/keys";
+import { route as LogRoute } from "../../../server/console/routes/$jobId/log";
+import { route as ReceiptRoute } from "../../../server/console/routes/$jobId/receipt";
+import { route as RecordRoute } from "../../../server/console/routes/$jobId/record";
+import { route as RendezvousRoute } from "../../../server/console/routes/rendezvous";
+import { route as ResultRoute } from "../../../server/console/routes/$jobId/result";
+import { route as SftpProbeRoute } from "../../../server/console/routes/sftp/probe";
+import { route as SftpRoute } from "../../../server/console/routes/sftp/index";
+import { route as SlotRoute } from "../../../server/console/routes/slot";
 
 import {
   STUB_CLI_PATH,
@@ -101,10 +101,8 @@ type Handlers = Record<
   (ctx: { request: Request; params: Record<string, string> }) => unknown
 >;
 
-function handlersOf(route: {
-  options: { server?: { handlers?: unknown } };
-}): Handlers {
-  const handlers = route.options.server?.handlers;
+function handlersOf(route: { handlers: unknown }): Handlers {
+  const handlers = route.handlers;
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;

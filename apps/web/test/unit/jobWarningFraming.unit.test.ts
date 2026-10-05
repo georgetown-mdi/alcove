@@ -10,7 +10,7 @@ import {
 import { JobManager } from "@jobs/jobManager";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
-import { Route as EventsRoute } from "../../src/routes/api/jobs/$jobId/events";
+import { route as EventsRoute } from "../../server/console/routes/$jobId/events";
 
 import { STUB_CLI_PATH, tempDataRoot, validIntent } from "../utils/jobFixtures";
 
@@ -88,7 +88,7 @@ async function jobOverMountHolding(
 /** The job's whole SSE body, read off the real route. The stream closes once the
  * terminal event is delivered, so draining it needs no polling. */
 async function sseBody(id: string): Promise<string> {
-  const handlers = EventsRoute.options.server?.handlers as Record<
+  const handlers = EventsRoute.handlers as Record<
     string,
     (ctx: { request: Request; params: Record<string, string> }) => unknown
   >;

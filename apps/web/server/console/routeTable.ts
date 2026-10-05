@@ -1,123 +1,60 @@
-import { Route as ApplyTermsRoute } from "../../src/routes/api/jobs/$jobId/apply-terms";
-import { Route as CancelRoute } from "../../src/routes/api/jobs/$jobId/cancel";
-import { Route as ConfigRoute } from "../../src/routes/api/jobs/config";
-import { Route as CoverageRoute } from "../../src/routes/api/jobs/inputs/coverage";
-import { Route as EventsRoute } from "../../src/routes/api/jobs/$jobId/events";
-import { Route as FolderEntriesRoute } from "../../src/routes/api/jobs/mounts/folder/entries";
-import { Route as FolderRoute } from "../../src/routes/api/jobs/$jobId/folder";
-import { Route as HandoffRoute } from "../../src/routes/api/jobs/$jobId/handoff";
-import { Route as InputsRoute } from "../../src/routes/api/jobs/inputs/index";
-import { Route as JobRoute } from "../../src/routes/api/jobs/$jobId/index";
-import { Route as JobsRoute } from "../../src/routes/api/jobs/index";
-import { Route as KeysRoute } from "../../src/routes/api/jobs/$jobId/keys";
-import { Route as LogRoute } from "../../src/routes/api/jobs/$jobId/log";
-import { Route as ProfileRoute } from "../../src/routes/api/jobs/inputs/profile";
-import { Route as ReceiptRoute } from "../../src/routes/api/jobs/$jobId/receipt";
-import { Route as RecordRoute } from "../../src/routes/api/jobs/$jobId/record";
-import { Route as RendezvousRoute } from "../../src/routes/api/jobs/rendezvous";
-import { Route as ResultRoute } from "../../src/routes/api/jobs/$jobId/result";
-import { Route as SamplesRoute } from "../../src/routes/api/jobs/inputs/samples";
-import { Route as SecretsEntriesRoute } from "../../src/routes/api/jobs/mounts/secrets/entries";
-import { Route as SftpProbeRoute } from "../../src/routes/api/jobs/sftp/probe";
-import { Route as SftpRoute } from "../../src/routes/api/jobs/sftp/index";
-import { Route as SigningFingerprintRoute } from "../../src/routes/api/jobs/signing/fingerprint";
-import { Route as SlotRoute } from "../../src/routes/api/jobs/slot";
+import { route as ApplyTermsRoute } from "./routes/$jobId/apply-terms";
+import { route as CancelRoute } from "./routes/$jobId/cancel";
+import { route as ConfigRoute } from "./routes/config";
+import { route as CoverageRoute } from "./routes/inputs/coverage";
+import { route as EventsRoute } from "./routes/$jobId/events";
+import { route as FolderEntriesRoute } from "./routes/mounts/folder/entries";
+import { route as FolderRoute } from "./routes/$jobId/folder";
+import { route as HandoffRoute } from "./routes/$jobId/handoff";
+import { route as InputsRoute } from "./routes/inputs/index";
+import { route as JobRoute } from "./routes/$jobId/index";
+import { route as JobsRoute } from "./routes/index";
+import { route as KeysRoute } from "./routes/$jobId/keys";
+import { route as LogRoute } from "./routes/$jobId/log";
+import { route as ProfileRoute } from "./routes/inputs/profile";
+import { route as ReceiptRoute } from "./routes/$jobId/receipt";
+import { route as RecordRoute } from "./routes/$jobId/record";
+import { route as RendezvousRoute } from "./routes/rendezvous";
+import { route as ResultRoute } from "./routes/$jobId/result";
+import { route as SamplesRoute } from "./routes/inputs/samples";
+import { route as SecretsEntriesRoute } from "./routes/mounts/secrets/entries";
+import { route as SftpProbeRoute } from "./routes/sftp/probe";
+import { route as SftpRoute } from "./routes/sftp/index";
+import { route as SigningFingerprintRoute } from "./routes/signing/fingerprint";
+import { route as SlotRoute } from "./routes/slot";
 
-/** The request methods a job route may declare a handler for. */
-export const JOB_ROUTE_METHODS = ["GET", "POST", "PUT", "DELETE"] as const;
+import { JOB_ROUTE_METHODS } from "./jobRoute";
 
-/** One of {@link JOB_ROUTE_METHODS}. */
-export type JobRouteMethod = (typeof JOB_ROUTE_METHODS)[number];
+import type { JobRouteDefinition, JobRouteHandlers } from "./jobRoute";
 
-/** What a job route handler receives: the request and its path parameters,
- * each decoded once. */
-export interface JobRouteContext {
-  request: Request;
-  params: Record<string, string>;
-}
+const JOB_API_PREFIX = "/api/jobs";
 
-/** A job route's handlers, keyed by the method each answers. */
-export type JobRouteHandlers = Partial<
-  Record<
-    JobRouteMethod,
-    (context: JobRouteContext) => Response | Promise<Response>
-  >
->;
-
-/** A job route: its path, with `$name` marking a one-segment parameter, and its
- * handlers. */
-export interface JobRouteDefinition {
-  path: string;
-  handlers: JobRouteHandlers;
-}
-
-/** Declare a job route. */
-export function defineJobRoute(
-  definition: JobRouteDefinition,
-): JobRouteDefinition {
-  return definition;
-}
-
-/**
- * The plain handlers object a router file route declares, refused at startup
- * unless every key is one of {@link JOB_ROUTE_METHODS} and every value a
- * function, so a route declaring a shape this server does not dispatch fails
- * the boot rather than answering `404` at request time.
- */
-function fileRouteHandlers(route: {
-  options: { server?: { handlers?: unknown } };
-}): JobRouteHandlers {
-  const handlers = route.options.server?.handlers;
-  if (typeof handlers !== "object" || handlers === null)
-    throw new Error("A job route exposes no plain handlers object.");
-  for (const [method, handler] of Object.entries(handlers)) {
-    if (!(JOB_ROUTE_METHODS as ReadonlyArray<string>).includes(method))
-      throw new Error(`A job route declares an unsupported method ${method}.`);
-    if (typeof handler !== "function")
-      throw new Error(`A job route's ${method} handler is not a function.`);
-  }
-  return handlers;
-}
-
-/** A router file route paired with the path this server serves it at. */
-function fromFileRoute(
-  path: string,
-  route: Parameters<typeof fileRouteHandlers>[0],
-): JobRouteDefinition & { fileRoute: unknown } {
-  return { path, handlers: fileRouteHandlers(route), fileRoute: route };
-}
-
-/**
- * Every job route the console serves. A router index route (`/api/jobs/`) is
- * served without its trailing slash, the form clients request.
- */
-export const jobRoutes: ReadonlyArray<
-  JobRouteDefinition & { fileRoute: unknown }
-> = [
-  fromFileRoute("/api/jobs", JobsRoute),
-  fromFileRoute("/api/jobs/config", ConfigRoute),
-  fromFileRoute("/api/jobs/rendezvous", RendezvousRoute),
-  fromFileRoute("/api/jobs/slot", SlotRoute),
-  fromFileRoute("/api/jobs/inputs", InputsRoute),
-  fromFileRoute("/api/jobs/inputs/coverage", CoverageRoute),
-  fromFileRoute("/api/jobs/inputs/profile", ProfileRoute),
-  fromFileRoute("/api/jobs/inputs/samples", SamplesRoute),
-  fromFileRoute("/api/jobs/mounts/folder/entries", FolderEntriesRoute),
-  fromFileRoute("/api/jobs/mounts/secrets/entries", SecretsEntriesRoute),
-  fromFileRoute("/api/jobs/sftp", SftpRoute),
-  fromFileRoute("/api/jobs/sftp/probe", SftpProbeRoute),
-  fromFileRoute("/api/jobs/signing/fingerprint", SigningFingerprintRoute),
-  fromFileRoute("/api/jobs/$jobId", JobRoute),
-  fromFileRoute("/api/jobs/$jobId/apply-terms", ApplyTermsRoute),
-  fromFileRoute("/api/jobs/$jobId/cancel", CancelRoute),
-  fromFileRoute("/api/jobs/$jobId/events", EventsRoute),
-  fromFileRoute("/api/jobs/$jobId/folder", FolderRoute),
-  fromFileRoute("/api/jobs/$jobId/handoff", HandoffRoute),
-  fromFileRoute("/api/jobs/$jobId/keys", KeysRoute),
-  fromFileRoute("/api/jobs/$jobId/log", LogRoute),
-  fromFileRoute("/api/jobs/$jobId/receipt", ReceiptRoute),
-  fromFileRoute("/api/jobs/$jobId/record", RecordRoute),
-  fromFileRoute("/api/jobs/$jobId/result", ResultRoute),
+/** Every job route the console serves. */
+export const jobRoutes: ReadonlyArray<JobRouteDefinition> = [
+  JobsRoute,
+  ConfigRoute,
+  RendezvousRoute,
+  SlotRoute,
+  InputsRoute,
+  CoverageRoute,
+  ProfileRoute,
+  SamplesRoute,
+  FolderEntriesRoute,
+  SecretsEntriesRoute,
+  SftpRoute,
+  SftpProbeRoute,
+  SigningFingerprintRoute,
+  JobRoute,
+  ApplyTermsRoute,
+  CancelRoute,
+  EventsRoute,
+  FolderRoute,
+  HandoffRoute,
+  KeysRoute,
+  LogRoute,
+  ReceiptRoute,
+  RecordRoute,
+  ResultRoute,
 ];
 
 type PathSegment =
@@ -150,6 +87,21 @@ export function compileJobRoutes(
     const raw = segmentsOf(route.path);
     if (raw === null)
       throw new Error(`Malformed job route path ${route.path}.`);
+    if (
+      route.path !== JOB_API_PREFIX &&
+      !route.path.startsWith(`${JOB_API_PREFIX}/`)
+    )
+      throw new Error(
+        `Job route path ${route.path} is outside ${JOB_API_PREFIX}.`,
+      );
+    for (const [method, handler] of Object.entries(route.handlers))
+      if (
+        !(JOB_ROUTE_METHODS as ReadonlyArray<string>).includes(method) ||
+        typeof handler !== "function"
+      )
+        throw new Error(
+          `Job route path ${route.path} has an invalid handler ${method}.`,
+        );
     const segments = raw.map((segment): PathSegment =>
       segment.startsWith("$")
         ? { kind: "param", name: segment.slice(1) }

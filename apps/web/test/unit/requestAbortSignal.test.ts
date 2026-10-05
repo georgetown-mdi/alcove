@@ -6,7 +6,7 @@ import { createApp, fromWebHandler, toNodeListener } from "h3";
 
 import { JobManager } from "@jobs/jobManager";
 
-import { Route as EventsRoute } from "../../src/routes/api/jobs/$jobId/events";
+import { route as EventsRoute } from "../../server/console/routes/$jobId/events";
 import { attachRequestAbortSignal } from "../../server/requestAbortSignal";
 
 import { STUB_CLI_PATH, tempDataRoot, validIntent } from "../utils/jobFixtures";
@@ -138,7 +138,7 @@ describe("the request hook gives request.signal the client disconnect", () => {
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
 
-    const handlers = EventsRoute.options.server?.handlers as {
+    const handlers = EventsRoute.handlers as {
       GET: (ctx: {
         request: Request;
         params: Record<string, string>;

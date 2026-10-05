@@ -32,7 +32,7 @@ the data channel is confidential against it under DTLS
 The same application also builds as the console -- one party's own machine,
 one operator, one exchange at a time -- and there the server's runtime role is a
 larger one: it drives that party's `alcove` CLI as a subprocess. The job
-API is what does it (`apps/web/src/routes/api/jobs/`, specified in
+API is what does it (`apps/web/server/console/routes/`, specified in
 [SERVER_JOB_API.md](../spec/SERVER_JOB_API.md)). A create request composes the
 CLI's inputs from a typed intent, the server spawns the run, owns a workdir on
 disk, relays the CLI's event stream to the page, and serves the result, the
@@ -87,10 +87,10 @@ framework, it uses it.
 The job API is what that constraint has bound so far, and it holds there without
 having cost anything. Its machinery is a set of plain modules under
 `apps/web/src/jobs/` that import nothing from the framework -- the job manager,
-the CLI driver, the gate, the workdir and the event relay -- and the files under
-`apps/web/src/routes/api/jobs/` are the adapters that mount them on the
-framework's route mechanism. The console's server half therefore rests on the
-framework only where it is served from.
+the CLI driver, the gate, the workdir and the event relay -- and the modules
+under `apps/web/server/console/routes/` are the adapters that mount them on the
+console server's own route table (`apps/web/server/console/routeTable.ts`),
+which imports nothing from the framework either.
 
 ## The end state this points at
 

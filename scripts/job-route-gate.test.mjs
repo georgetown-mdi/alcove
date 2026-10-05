@@ -86,7 +86,7 @@ const SELF = "scripts/job-route-gate.test.mjs";
 
 // The routes tree whose every module is a job-API route, and the module
 // declaring the gate, both repository-relative.
-const ROUTES_DIR = "apps/web/src/routes/api/jobs";
+const ROUTES_DIR = "apps/web/server/console/routes";
 const GATE_MODULE = "apps/web/src/jobs/routeSupport.ts";
 
 // The exported name the route modules import, and the tail every import
@@ -596,26 +596,25 @@ describe("every job-API route handler is gated", () => {
     // and whose PUT gates only after reading the filesystem. A per-module
     // reading passes all three.
     const sources = {
-      "added/route.ts": `import { createFileRoute } from "@tanstack/react-router";
+      "added/route.ts": `import { defineJobRoute } from "../jobRoute";
          import { gateJobRoute } from "@jobs/routeSupport";
-         export const Route = createFileRoute("/api/jobs/added/")({
-           server: {
-             handlers: {
-               GET: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "response") return gate.response;
-                 return jobJsonResponse(gate.manager.added());
-               },
-               PUT: async ({ request }) => {
-                 const listing = await readdir(useJobInputDir());
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "response") return gate.response;
-                 return jobJsonResponse(listing);
-               },
-               DELETE: () => {
-                 rmSync(useJobInputDir(), { recursive: true });
-                 return jobEmptyResponse(204);
-               },
+         export const route = defineJobRoute({
+           path: "/api/jobs/added",
+           handlers: {
+             GET: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "response") return gate.response;
+               return jobJsonResponse(gate.manager.added());
+             },
+             PUT: async ({ request }) => {
+               const listing = await readdir(useJobInputDir());
+               const gate = gateJobRoute(request);
+               if (gate.kind === "response") return gate.response;
+               return jobJsonResponse(listing);
+             },
+             DELETE: () => {
+               rmSync(useJobInputDir(), { recursive: true });
+               return jobEmptyResponse(204);
              },
            },
          });`,
@@ -639,61 +638,59 @@ describe("every job-API route handler is gated", () => {
     // idiom, in the inverted and else-side polarities, or not at all.
     const sources = {
       "acting/route.ts": `import { gateJobRoute } from "@jobs/routeSupport";
-         export const Route = createFileRoute("/api/jobs/acting/")({
-           server: {
-             handlers: {
-               GET: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "response") return gate.response;
+         export const route = defineJobRoute({
+           path: "/api/jobs/acting",
+           handlers: {
+             GET: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "response") return gate.response;
+               return jobJsonResponse(gate.manager.added());
+             },
+             PUT: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind !== "manager") {
+                 log.warn("refused");
+                 return gate.response;
+               }
+               return jobEmptyResponse(204);
+             },
+             POST: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "manager") {
                  return jobJsonResponse(gate.manager.added());
-               },
-               PUT: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind !== "manager") {
-                   log.warn("refused");
-                   return gate.response;
-                 }
-                 return jobEmptyResponse(204);
-               },
-               POST: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "manager") {
-                   return jobJsonResponse(gate.manager.added());
-                 } else return gate.response;
-               },
+               } else return gate.response;
              },
            },
          });`,
       "dropping/route.ts": `import { gateJobRoute } from "@jobs/routeSupport";
-         export const Route = createFileRoute("/api/jobs/dropping/")({
-           server: {
-             handlers: {
-               GET: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 return jobJsonResponse(gate.manager.added());
-               },
-               PUT: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "response") log.warn("refused");
-                 return jobJsonResponse(gate.manager.added());
-               },
-               POST: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "manager") return jobEmptyResponse(204);
-               },
-               PATCH: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 const listing = readdirSync(useJobInputDir());
-                 if (gate.kind === "response") return gate.response;
-                 return jobJsonResponse(listing);
-               },
-               DELETE: ({ request }) => {
-                 gateJobRoute(request);
-                 return jobEmptyResponse(204);
-               },
-               HEAD: ({ request }) => {
-                 const gate = gateJobRoute(request);
-               },
+         export const route = defineJobRoute({
+           path: "/api/jobs/dropping",
+           handlers: {
+             GET: ({ request }) => {
+               const gate = gateJobRoute(request);
+               return jobJsonResponse(gate.manager.added());
+             },
+             PUT: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "response") log.warn("refused");
+               return jobJsonResponse(gate.manager.added());
+             },
+             POST: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "manager") return jobEmptyResponse(204);
+             },
+             PATCH: ({ request }) => {
+               const gate = gateJobRoute(request);
+               const listing = readdirSync(useJobInputDir());
+               if (gate.kind === "response") return gate.response;
+               return jobJsonResponse(listing);
+             },
+             DELETE: ({ request }) => {
+               gateJobRoute(request);
+               return jobEmptyResponse(204);
+             },
+             HEAD: ({ request }) => {
+               const gate = gateJobRoute(request);
              },
            },
          });`,
@@ -728,37 +725,36 @@ describe("every job-API route handler is gated", () => {
     // too.
     const sources = {
       "guarding/route.ts": `import { gateJobRoute } from "@jobs/routeSupport";
-         export const Route = createFileRoute("/api/jobs/guarding/")({
-           server: {
-             handlers: {
-               GET: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "manager") {
-                   return jobJsonResponse(gate.manager.added());
-                 }
-                 return gate.response;
-               },
-               PUT: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind !== "response") {
-                   return jobEmptyResponse(204);
-                 }
-                 return gate.response;
-               },
-               POST: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "manager") {
-                   return jobJsonResponse(gate.manager.added());
-                 }
-                 log.warn("refused");
-               },
-               PATCH: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (gate.kind === "manager") {
-                   log.info("served");
-                 }
+         export const route = defineJobRoute({
+           path: "/api/jobs/guarding",
+           handlers: {
+             GET: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "manager") {
+                 return jobJsonResponse(gate.manager.added());
+               }
+               return gate.response;
+             },
+             PUT: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind !== "response") {
                  return jobEmptyResponse(204);
-               },
+               }
+               return gate.response;
+             },
+             POST: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "manager") {
+                 return jobJsonResponse(gate.manager.added());
+               }
+               log.warn("refused");
+             },
+             PATCH: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (gate.kind === "manager") {
+                 log.info("served");
+               }
+               return jobEmptyResponse(204);
              },
            },
          });`,
@@ -790,57 +786,55 @@ describe("every job-API route handler is gated", () => {
     // waved through as acting.
     const sources = {
       "bound/route.ts": `import { gateJobRoute } from "@jobs/routeSupport";
-         export const Route = createFileRoute("/api/jobs/bound/")({
-           server: {
-             handlers: {
-               GET: ({ request }) => {
-                 const { kind, response } = gateJobRoute(request);
-                 if (kind === "response") return response;
-                 return jobEmptyResponse(204);
-               },
-               PUT: ({ request }) => {
-                 const gate = withTiming(gateJobRoute(request));
-                 if (gate.kind === "response") return gate.response;
-                 return jobEmptyResponse(204);
-               },
-               POST: ({ request }) => {
-                 const gate = gateJobRoute(request),
-                   dir = useJobInputDir();
-                 if (gate.kind === "response") return gate.response;
-                 return jobJsonResponse(dir);
-               },
-               DELETE: ({ request }) => {
-                 if (gateJobRoute(request).kind === "response")
-                   return jobEmptyResponse(404);
-                 return jobEmptyResponse(204);
-               },
+         export const route = defineJobRoute({
+           path: "/api/jobs/bound",
+           handlers: {
+             GET: ({ request }) => {
+               const { kind, response } = gateJobRoute(request);
+               if (kind === "response") return response;
+               return jobEmptyResponse(204);
+             },
+             PUT: ({ request }) => {
+               const gate = withTiming(gateJobRoute(request));
+               if (gate.kind === "response") return gate.response;
+               return jobEmptyResponse(204);
+             },
+             POST: ({ request }) => {
+               const gate = gateJobRoute(request),
+                 dir = useJobInputDir();
+               if (gate.kind === "response") return gate.response;
+               return jobJsonResponse(dir);
+             },
+             DELETE: ({ request }) => {
+               if (gateJobRoute(request).kind === "response")
+                 return jobEmptyResponse(404);
+               return jobEmptyResponse(204);
              },
            },
          });`,
       "guarded/route.ts": `import { gateJobRoute } from "@jobs/routeSupport";
-         export const Route = createFileRoute("/api/jobs/guarded/")({
-           server: {
-             handlers: {
-               GET: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 if (isRefusal(gate)) return gate.response;
-                 return jobEmptyResponse(204);
-               },
-               PUT: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 switch (gate.kind) {
-                   case "response":
-                     return gate.response;
-                   default:
-                     return jobEmptyResponse(204);
-                 }
-               },
-               POST: ({ request }) => {
-                 const gate = gateJobRoute(request);
-                 return gate.kind === "response"
-                   ? gate.response
-                   : jobEmptyResponse(204);
-               },
+         export const route = defineJobRoute({
+           path: "/api/jobs/guarded",
+           handlers: {
+             GET: ({ request }) => {
+               const gate = gateJobRoute(request);
+               if (isRefusal(gate)) return gate.response;
+               return jobEmptyResponse(204);
+             },
+             PUT: ({ request }) => {
+               const gate = gateJobRoute(request);
+               switch (gate.kind) {
+                 case "response":
+                   return gate.response;
+                 default:
+                   return jobEmptyResponse(204);
+               }
+             },
+             POST: ({ request }) => {
+               const gate = gateJobRoute(request);
+               return gate.kind === "response"
+                 ? gate.response
+                 : jobEmptyResponse(204);
              },
            },
          });`,
@@ -867,11 +861,13 @@ describe("every job-API route handler is gated", () => {
     // check never sees is named, not skipped. Silence on any of these would be
     // the check reporting a clean tree it did not read.
     const sources = {
-      "named/route.ts": `export const Route = createFileRoute("/api/jobs/named/")({
-           server: { handlers: { GET: readNamedJob, ...sharedHandlers } },
+      "named/route.ts": `export const route = defineJobRoute({
+           path: "/api/jobs/named",
+           handlers: { GET: readNamedJob, ...sharedHandlers },
          });`,
-      "built/route.ts": `export const Route = createFileRoute("/api/jobs/built/")({
-           server: { handlers: buildJobHandlers() },
+      "built/route.ts": `export const route = defineJobRoute({
+           path: "/api/jobs/built",
+           handlers: buildJobHandlers(),
          });`,
       "none/helper.ts": `export function useNamedJob() { return null; }`,
     };
