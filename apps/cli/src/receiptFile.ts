@@ -14,7 +14,8 @@ import { recordFileStamp } from "./recordFile";
 
 // File custody for the dual-signed exchange record (the signed-receipt step's
 // output). Mirrors recordFile.ts: a timestamped default path in the run's
-// folder, atomic owner-only writes. See docs/spec/EXCHANGE_RECORD.md, Dual-signed record file.
+// folder, atomic owner-only writes. See docs/spec/EXCHANGE_RECORD.md,
+// Dual-signed record file.
 
 /** Basename stem for the default dual-signed record file. */
 export const DEFAULT_RECEIPT_BASENAME = "alcove-receipt";

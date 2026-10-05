@@ -270,7 +270,6 @@ export const ZERO_SETUP_OPTION_GROUPS: ReadonlyArray<
       "deduplicate",
       "linkage-strategy",
       "record",
-      "record-file",
     ],
   ],
   [

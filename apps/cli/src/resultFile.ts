@@ -102,12 +102,16 @@ export function preflightOutputFolder(
     output,
     `.alcove-write-probe-${process.pid}-${crypto.randomUUID().slice(0, 8)}`,
   );
-  let fd: number;
   try {
-    fd = fs.openSync(
+    const fd = fs.openSync(
       probe,
       fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
     );
+    try {
+      fs.closeSync(fd);
+    } finally {
+      fs.rmSync(probe, { force: true });
+    }
   } catch (err) {
     throw outputFolderError(
       output,
@@ -116,6 +120,4 @@ export function preflightOutputFolder(
         "well as its permissions -- or name another folder as the output.",
     );
   }
-  fs.closeSync(fd);
-  fs.rmSync(probe, { force: true });
 }

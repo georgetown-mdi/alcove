@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { UsageError } from "@alcove/core";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { recordFilePathIn } from "../../src/recordFile";
 import {
@@ -116,6 +116,23 @@ describe("preflightOutputFolder", () => {
       expect((thrown as Error).message).toContain("is not writable");
     },
   );
+
+  test("a probe that cannot be closed is refused with exit 64 and removed", () => {
+    const spy = vi.spyOn(fs, "closeSync").mockImplementation(() => {
+      throw new Error("close failed");
+    });
+    let thrown: unknown;
+    try {
+      preflightOutputFolder(dir, quietLog);
+    } catch (err) {
+      thrown = err;
+    } finally {
+      spy.mockRestore();
+    }
+    expect(exitCodeForError(thrown)).toBe(64);
+    expect((thrown as Error).message).toContain("is not writable");
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
 
   test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "a missing folder under a read-only parent is refused with exit 64",
