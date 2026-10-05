@@ -58,8 +58,7 @@
 //     and the write is answered as git sees it now.
 //   - The session's tree is read from the event's cwd, where the harness says
 //     the session is working, not where any one command ran. A cwd that silently
-//     reverted out of an entered worktree is treated as the tree it reverted to;
-//     warn-worktree-revert.mjs is what reports that revert.
+//     reverted out of an entered worktree is treated as the tree it reverted to.
 //
 // Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude.
 

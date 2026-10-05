@@ -84,8 +84,10 @@ fix-and-rerun: stop, and recommend a structural pivot instead -- a focused
 independent assessment of the churning area (fresh agents, cold), a judge
 panel of alternative shapes, or a narrowing (delete or defer the churning
 surface, its limit stated in the spec) -- presented to the owner in prose with
-options and a recommendation. Churn escalates to a different activity, never to
-another blind whole-branch round.
+options and a recommendation, together with the continuation item that
+`.claude/pm/ruleset.md`, Filing and updating items, has the session offer.
+Churn escalates to a different activity, never to another blind whole-branch
+round.
 
 1. The same file or area has confirmed findings in three consecutive rounds
    (two, for a diff under ~150 lines).
@@ -118,8 +120,8 @@ A gated claim or confirmed review finding has four dispositions, not one:
    line in the governing `docs/spec/` file, written on the branch in the same
    pass. That line is the whole of the narrow exit by default. A follow-on board
    item is the escalation above it, taken only when the remainder itself needs a
-   runtime change, and no session files more than one such item autonomously --
-   past that, the rest are proposals in the report for the owner to scope.
+   runtime change, and filed as `.claude/pm/ruleset.md`, Filing and updating
+   items, allows.
 4. **Record it as a stated limit**: the finding is true, it stands, and what it
    costs is written into the round's dispositions ledger. No branch edit, no
    `docs/spec/` line, and NO BOARD ITEM -- the ledger entry is the record, and it
@@ -176,9 +178,9 @@ the branch is worse for leaving. Absent that line, state it and move on.
   the change, or best taken as a limit per the four dispositions above
   -- narrowed, where the brief writes the limits line into the governing
   `docs/spec/` file in the same pass, or stated, where the ledger entry is the
-  whole record. Do NOT file a board issue for anything -- no automated filings;
-  an unaddressed finding is recorded in the ledger and in Step 4, not on the
-  board, and a follow-on is filed only on the owner's word.
+  whole record. An unaddressed finding is recorded in the ledger and in Step 4;
+  whether it also becomes a board item is `.claude/pm/ruleset.md`, Filing and
+  updating items.
 
 ### Dispatching the fixes
 
@@ -219,8 +221,9 @@ there is the one the brief describes.
   implementer. A branch mixing both sizes takes one `opus` spawn with the small
   edits written out inside the same brief.
 - The brief ends by ordering the verification and the commit: build core
-  (`npm run build -w packages/core`) if the fix touched it, then `npm run
-  typecheck && npm run lint`, then the tests covering what changed, then a commit
+  (`npm run build -w packages/core`) if the fix touched it, then the tests
+  covering what changed, then the repo-wide gates `CLAUDE.md` names (Writing,
+  tooling and commits), once, then a commit
   to the branch -- never staging or main -- following CONTRIBUTING.md's commit
   conventions (no markdown, no top-level lists, no self-attribution). Report what
   the spawn ran and what it reported.
@@ -238,14 +241,14 @@ entry has a `note` beside it -- one phrase saying what the branch is living
 with -- because the entry is the whole record of that finding and an unannotated
 one is treated as an entry nobody wrote down.
 
-A `deferred` entry names where the finding went: an owner-approved board item,
+A `deferred` entry names where the finding went: a board item,
 as `"board": "<board>/<itemId>"`, or a spec limits line on the branch, as
 `"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`. A finding
 with neither is recorded as `limit` with its `note`, not `deferred`. A
 follow-on line in the pull request description alone does not satisfy this:
-it is invisible to every later session once the PR merges. Nothing here files a
-board item to give a deferral a home -- the no-automated-filings rule above
-still holds, and a board item exists only on the owner's word. An entry left `open` says nobody decided
+it is invisible to every later session once the PR merges. A board item made
+to give a deferral a home is filed under `.claude/pm/ruleset.md`, Filing and
+updating items, like any other. An entry left `open` says nobody decided
 that finding, so leave none behind -- and a round whose entries are all still
 `open` is a round that was read and not triaged.
 

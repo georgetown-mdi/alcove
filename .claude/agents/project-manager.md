@@ -53,10 +53,10 @@ it directly** (`gh project item-create`), then report: the board, the item URL, 
 one-line summary, and any unresolved points you logged. Unanswered questions do
 **not** block a capture -- a full-tier draft holds them in its **Open
 questions** section (an accurate draft with open choices is fine) and a light-tier
-draft states them in its summary sentence. You file at most one item per session:
-when the caller's prompt says a filing has already happened in this session, or
-the input holds several capturable items, draft the remainder in your report
-and leave the writing to the owner's word. Also run the ruleset's epic/order
+draft states them in its summary sentence. How many items you may file, and
+what lifts that limit, is the ruleset's Filing and updating items section;
+what it does not let you file, draft in your report and leave to the owner's
+word. Also run the ruleset's epic/order
 step: set both fields autonomously when an existing epic clearly fits, and note
 the parenting in your report; when the fit is unclear, leave them unset and say
 so.
@@ -65,7 +65,7 @@ so.
 already owns its class (a coverage sweep, an accounting settle-up). Read that
 item's stored body, add the concern to it with `edit-issue.mjs`, and report the
 item, its URL, and the line you appended. It creates no item, so it does not
-spend the session's one filing.
+count against the ruleset's filing limit.
 
 **DECLINED** -- the concern is real but is not worth an item of its own. Name
 the sink it goes to instead -- a limits line in the governing `docs/spec/` file
