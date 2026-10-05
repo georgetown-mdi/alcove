@@ -12,6 +12,12 @@ export const PARTNER_MEETING_CHANNELS = ["filedrop", "sftp", "webrtc"] as const;
 /** Where the two parties were to meet when a partner did not arrive. */
 export type PartnerMeetingChannel = (typeof PARTNER_MEETING_CHANNELS)[number];
 
+/**
+ * The display cap on a path a failure cause states: Linux's `PATH_MAX`, so a
+ * deep path is not cut at the per-value default.
+ */
+export const FAILURE_CAUSE_PATH_MAX_LENGTH = 4096;
+
 /** Every {@link FolderMissingCode}. */
 export const FOLDER_MISSING_CODES = ["ENOENT", "ENOTDIR"] as const;
 

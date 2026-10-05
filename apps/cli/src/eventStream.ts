@@ -5,6 +5,7 @@ import {
   OperatorConfigError,
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
+  FAILURE_CAUSE_PATH_MAX_LENGTH,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   failureCauseOf,
   getLogger,
@@ -243,13 +244,6 @@ export interface MetricsEvent extends EventBase {
   /** Connection re-establishment attempts over the run; 0 when none occurred. */
   reconnects: number;
 }
-
-/**
- * The display cap on a path the stream states -- the `result` event's
- * `resultPath`, a folder in the `error` event's `cause` -- a path up to
- * Linux's `PATH_MAX`, so a deep path is not cut at the per-value default.
- */
-const RESULT_PATH_MAX_DISPLAY_LENGTH = 4096;
 
 /** Where a written result table went, for the `result` event. */
 export interface ResultTableDelivery {
@@ -588,7 +582,7 @@ export function buildResultEvent(
           ...(table.resultPath !== undefined
             ? {
                 resultPath: redactAndSanitizeForDisplay(table.resultPath, {
-                  maxLength: RESULT_PATH_MAX_DISPLAY_LENGTH,
+                  maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
                 }),
               }
             : {}),
@@ -704,7 +698,7 @@ const CAUSE_FIELDS: {
   "folder-missing": ({ path, code }) => ({
     kind: "folder-missing",
     path: redactAndSanitizeForDisplay(path, {
-      maxLength: RESULT_PATH_MAX_DISPLAY_LENGTH,
+      maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
     }),
     code,
   }),

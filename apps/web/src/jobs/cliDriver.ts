@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 
 import {
   DEFAULT_MAX_DISPLAY_LENGTH,
+  FAILURE_CAUSE_PATH_MAX_LENGTH,
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   createPrivateKeyStreamRedactor,
@@ -813,12 +814,6 @@ function relayedTermsChange(
 }
 
 /**
- * The display cap on a path a relayed `cause` states, the cap the CLI composed
- * it under (docs/spec/CLI_EVENTS.md, the `error` event).
- */
-const RELAY_CAUSE_PATH_MAX_DISPLAY_LENGTH = 4096;
-
-/**
  * An `error` event's `cause` (docs/spec/CLI_EVENTS.md), rebuilt by core's
  * `failureCauseFromUntrusted` from the facts its kind holds, its path escaped
  * again at this boundary. Undefined -- the field dropped -- where the kind is
@@ -831,7 +826,7 @@ function relayedFailureCause(value: unknown): FailureCause | undefined {
   return {
     ...cause,
     path: sanitizeForDisplay(cause.path, {
-      maxLength: RELAY_CAUSE_PATH_MAX_DISPLAY_LENGTH,
+      maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
     }),
   };
 }
