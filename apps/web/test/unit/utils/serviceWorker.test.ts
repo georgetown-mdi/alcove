@@ -46,23 +46,36 @@ function javascript(body: string): Response {
   });
 }
 
+/** The content type a host serves each extension of the cached set with. */
+const CONTENT_TYPE_BY_EXTENSION: Partial<Record<string, string>> = {
+  js: "text/javascript; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  webmanifest: "application/manifest+json",
+  ico: "image/vnd.microsoft.icon",
+  png: "image/png",
+};
+
+/** `body` served as the file at `path` is, typed by its extension. */
+function servedFile(path: string, body: string): Response {
+  const extension = path.slice(path.lastIndexOf(".") + 1);
+  const contentType = CONTENT_TYPE_BY_EXTENSION[extension];
+  if (contentType === undefined)
+    throw new Error(`no content type for the fixture path ${path}`);
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": contentType },
+  });
+}
+
 /** A harness whose origin serves the shell, the static assets the worker
  * precaches, and one build asset. */
 function servedHarness(assets: Array<string> = ["/assets/index-AAAA1111.js"]) {
   const harness = createServiceWorkerHarness();
   harness.network.route("/", () => html(shellDocument(assets)));
-  for (const path of [
-    "/site.webmanifest",
-    "/favicon.ico",
-    "/favicon-16x16.png",
-    "/favicon-32x32.png",
-    "/apple-touch-icon.png",
-    "/android-chrome-192x192.png",
-    "/android-chrome-512x512.png",
-  ])
-    harness.network.route(path, () => new Response("icon", { status: 200 }));
+  for (const path of serviceWorkerStringArray("STATIC_ASSETS"))
+    harness.network.route(path, () => servedFile(path, "icon"));
   for (const asset of assets)
-    harness.network.route(asset, () => javascript(`// ${asset}`));
+    harness.network.route(asset, () => servedFile(asset, `// ${asset}`));
   return harness;
 }
 
@@ -89,9 +102,10 @@ describe("install", () => {
   test("caches the shell document, the static assets, and the shell's asset graph", async () => {
     await harness.install();
 
-    expect(harness.cachedUrls(SHELL_CACHE)).toContain(`${HARNESS_ORIGIN}/`);
-    expect(harness.cachedUrls(SHELL_CACHE)).toContain(
-      `${HARNESS_ORIGIN}/site.webmanifest`,
+    expect(harness.cachedUrls(SHELL_CACHE).sort()).toEqual(
+      ["/", ...serviceWorkerStringArray("STATIC_ASSETS")]
+        .map((path) => `${HARNESS_ORIGIN}${path}`)
+        .sort(),
     );
     // The precache runs concurrently, so the order entries land in is not fixed.
     expect(harness.cachedUrls(ASSET_CACHE).sort()).toEqual([
@@ -492,9 +506,8 @@ describe("the manifest and icons", () => {
     const harness = servedHarness();
     await harness.install();
     await harness.activate();
-    harness.network.route(
-      "/site.webmanifest",
-      () => new Response("a redeployed manifest", { status: 200 }),
+    harness.network.route("/site.webmanifest", () =>
+      servedFile("/site.webmanifest", "a redeployed manifest"),
     );
 
     const first = await harness.handleFetch(
@@ -513,9 +526,8 @@ describe("the manifest and icons", () => {
     const harness = servedHarness();
     await harness.install();
     await harness.activate();
-    harness.network.route(
-      "/site.webmanifest",
-      () => new Response("a redeployed manifest", { status: 200 }),
+    harness.network.route("/site.webmanifest", () =>
+      servedFile("/site.webmanifest", "a redeployed manifest"),
     );
 
     const served = await harness.handleFetch(
@@ -564,6 +576,146 @@ describe("the manifest and icons", () => {
     const again = await harness.handleFetch(
       subresourceRequest("/site.webmanifest"),
     );
+    expect(await again?.text()).toBe("icon");
+  });
+});
+
+// A static host answers a path it does not have with its fallback document,
+// 200 text/html. Under a content-hashed URL that would be served cache-first
+// for as long as the entry lasts, so it must reach the page and never a cache.
+
+describe("a response whose content type does not match its path", () => {
+  const MISSING_ASSET = "/assets/missing-DDDD4444.js";
+
+  test("is served from the fetch path but not stored", async () => {
+    const harness = servedHarness();
+    await harness.install();
+    await harness.activate();
+    harness.network.route(MISSING_ASSET, () => html(shellDocument()));
+
+    const response = await harness.handleFetch(
+      subresourceRequest(MISSING_ASSET),
+    );
+
+    expect(response?.headers.get("Content-Type")).toContain("text/html");
+    expect(harness.cachedUrls(ASSET_CACHE)).not.toContain(
+      `${HARNESS_ORIGIN}${MISSING_ASSET}`,
+    );
+  });
+
+  test("is fetched again on the next request rather than served from a cache", async () => {
+    const harness = servedHarness();
+    harness.network.route(MISSING_ASSET, () => html(shellDocument()));
+    await harness.handleFetch(subresourceRequest(MISSING_ASSET));
+    harness.network.route(MISSING_ASSET, () =>
+      javascript("// the asset, deployed"),
+    );
+
+    const response = await harness.handleFetch(
+      subresourceRequest(MISSING_ASSET),
+    );
+
+    expect(await response?.text()).toBe("// the asset, deployed");
+    expect(harness.cachedUrls(ASSET_CACHE)).toEqual([
+      `${HARNESS_ORIGIN}${MISSING_ASSET}`,
+    ]);
+  });
+
+  test("is not stored when its type names another kind of asset", async () => {
+    const harness = servedHarness();
+    harness.network.route("/assets/app-EEEE5555.css", () =>
+      javascript("// not a stylesheet"),
+    );
+
+    await harness.handleFetch(subresourceRequest("/assets/app-EEEE5555.css"));
+
+    expect(harness.cachedUrls(ASSET_CACHE)).toEqual([]);
+  });
+
+  test("is stored when its type is any the extension allows", async () => {
+    const harness = servedHarness();
+    harness.network.route(
+      "/assets/legacy-FFFF6666.js",
+      () =>
+        new Response("// legacy", {
+          status: 200,
+          headers: { "Content-Type": "Application/JavaScript; charset=UTF-8" },
+        }),
+    );
+
+    await harness.handleFetch(subresourceRequest("/assets/legacy-FFFF6666.js"));
+
+    expect(harness.cachedUrls(ASSET_CACHE)).toEqual([
+      `${HARNESS_ORIGIN}/assets/legacy-FFFF6666.js`,
+    ]);
+  });
+
+  test("is not stored by the install precache", async () => {
+    const harness = servedHarness(["/assets/index-AAAA1111.js"]);
+    harness.network.route("/", () =>
+      html(shellDocument(["/assets/index-AAAA1111.js", MISSING_ASSET])),
+    );
+    const refused: Array<Response> = [];
+    const refusedDocument = () => {
+      const response = html(shellDocument());
+      refused.push(response);
+      return response;
+    };
+    harness.network.route(MISSING_ASSET, refusedDocument);
+    harness.network.route("/favicon.ico", refusedDocument);
+
+    await harness.install();
+
+    expect(harness.cachedUrls(ASSET_CACHE)).toEqual([
+      `${HARNESS_ORIGIN}/assets/index-AAAA1111.js`,
+    ]);
+    expect(harness.cachedUrls(SHELL_CACHE)).not.toContain(
+      `${HARNESS_ORIGIN}/favicon.ico`,
+    );
+    // An unread body holds its connection in a browser, so a refused response
+    // is consumed rather than left for the batch to stall on.
+    expect(refused.map((response) => response.bodyUsed)).toEqual([true, true]);
+  });
+
+  test("is not stored by the route warm", async () => {
+    const harness = servedHarness();
+    await harness.install();
+    await harness.activate();
+    harness.network.route("/saved", () => html(shellDocument([MISSING_ASSET])));
+    harness.network.route(MISSING_ASSET, () => html(shellDocument()));
+
+    await harness.postMessage("alcove-warm-routes");
+
+    expect(harness.network.requested).toContain(MISSING_ASSET);
+    expect(harness.cachedUrls(ASSET_CACHE)).not.toContain(
+      `${HARNESS_ORIGIN}${MISSING_ASSET}`,
+    );
+  });
+
+  test("is served for a manifest or icon but not stored", async () => {
+    const harness = servedHarness();
+    harness.network.route("/favicon.ico", () => html(shellDocument()));
+
+    const response = await harness.handleFetch(
+      subresourceRequest("/favicon.ico"),
+    );
+
+    expect(response?.headers.get("Content-Type")).toContain("text/html");
+    expect(harness.cachedUrls(SHELL_CACHE)).toEqual([]);
+  });
+
+  test("does not replace a stored manifest when it answers the revalidation", async () => {
+    const harness = servedHarness();
+    await harness.install();
+    await harness.activate();
+    harness.network.route("/site.webmanifest", () => html(shellDocument()));
+
+    await harness.handleFetch(subresourceRequest("/site.webmanifest"));
+    await Promise.all(harness.heldByLastFetch);
+    const again = await harness.handleFetch(
+      subresourceRequest("/site.webmanifest"),
+    );
+
     expect(await again?.text()).toBe("icon");
   });
 });

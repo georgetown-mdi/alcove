@@ -26,6 +26,8 @@ The strategy is chosen per request class, against the shape of what `vite build`
 
 Two consequences follow. First, "cache-first" is safe here only because of the content hashing; it would be the wrong default for any unhashed asset, which is why the set that gets it is an enumerated list rather than a catch-all. Second, the asset cache is capped and trimmed oldest-first, because a continuously deployed origin otherwise accumulates every past deployment's chunks.
 
+A URL names its bytes only when the server sent those bytes. A static host answers a path it does not have, such as a previous deployment's chunk, with its fallback document as 200 `text/html`; stored under an `/assets/` URL, that document would be served in place of the code until the trim reached it. So every write of a build asset, icon, or the manifest stores a response only when its content type is the one its file extension names. A mismatch is served to the page and not stored.
+
 ### One cached document, not one per route
 
 Every route of the app renders client-side from the same server-rendered shell, so a single cached document answers an offline navigation to any path: the client router resolves the route from the address bar after hydration. This was verified against the built server rather than assumed -- the root document served at a `/saved/<id>` URL hydrates and renders that route's surface.

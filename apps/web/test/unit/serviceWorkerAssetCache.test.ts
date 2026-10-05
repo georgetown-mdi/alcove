@@ -78,6 +78,31 @@ describe("the asset cache's writers", () => {
     }
   });
 
+  test("each check a response's content type before storing it", () => {
+    const { functions } = serviceWorkerSourceModel();
+
+    // A writer may store through a helper (the batch writer through
+    // addAllIndividually), so what each reaches is followed through the
+    // functions it calls.
+    const reachable = (start: string): Set<string> => {
+      const seen = new Set<string>([start]);
+      const pending = [start];
+      for (let name = pending.pop(); name !== undefined; name = pending.pop())
+        for (const referenced of functions.get(name) ?? [])
+          if (functions.has(referenced) && !seen.has(referenced)) {
+            seen.add(referenced);
+            pending.push(referenced);
+          }
+      return seen;
+    };
+
+    for (const name of namedWriters)
+      expect(
+        [...reachable(name)],
+        `${name} (${NAMED_WRITERS[name]})`,
+      ).toContain("isStorableAsset");
+  });
+
   test("are read out of the worker itself, so none of the above is vacuous", () => {
     const { functions, outsideFunctions, cacheOpens } =
       serviceWorkerSourceModel();
