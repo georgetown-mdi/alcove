@@ -23,19 +23,25 @@ const manifestPath = `${outDirectory}.vite/manifest.json`;
 
 // Needs `npm run build:hosted -w apps/web` first.
 describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
-  const manifest = JSON.parse(
-    readFileSync(manifestPath, "utf8"), // eslint-disable-line alcove/bounded-json -- the build's own output
-  ) as Record<string, ManifestChunk>;
+  const readManifest = () =>
+    JSON.parse(readFileSync(manifestPath, "utf8")) as Record<
+      string,
+      ManifestChunk
+    >;
 
-  function staticClosureFiles(keys: Array<string>): Set<string> {
+  function staticClosureFiles(
+    manifest: Record<string, ManifestChunk>,
+    keys: Array<string>,
+  ): Set<string> {
     const files = new Set<string>();
     const seen = new Set<string>();
     const pending = [...keys];
     for (let key = pending.pop(); key !== undefined; key = pending.pop()) {
-      if (seen.has(key) || manifest[key] === undefined) continue;
+      const chunk = manifest[key] as ManifestChunk | undefined;
+      if (seen.has(key) || chunk === undefined) continue;
       seen.add(key);
-      files.add(manifest[key].file);
-      pending.push(...(manifest[key].imports ?? []));
+      files.add(chunk.file);
+      pending.push(...(chunk.imports ?? []));
     }
     return files;
   }
@@ -43,6 +49,7 @@ describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
   test.each(serviceWorkerStringArray("SHELL_ROUTES"))(
     "%s links every chunk its route file statically imports",
     (route) => {
+      const manifest = readManifest();
       const routeFiles = declaredRoutes()
         .filter((declared) => matchesRoutePattern(declared.path, route))
         .map((declared) => relative(appRoot, declared.file));
@@ -64,7 +71,7 @@ describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
 
       expect(holdingKeys.length + entryKeys.length).toBeGreaterThan(0);
       const missing = [
-        ...staticClosureFiles([...holdingKeys, ...entryKeys]),
+        ...staticClosureFiles(manifest, [...holdingKeys, ...entryKeys]),
       ].filter((file) => !linked.has(file));
       expect(missing).toEqual([]);
     },

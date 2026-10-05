@@ -9,8 +9,8 @@ import {
   hostedRouteDocuments,
   routeDocumentFileName,
 } from "../../hosted/routeDocuments";
-import { rootDocumentHead } from "@utils/documentHead";
 import { declaredRoutes } from "../../hosted/declaredRoutes";
+import { rootDocumentHead } from "../../src/utils/documentHead";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
 
 import type { HtmlTagDescriptor, Plugin, Rollup } from "vite";
