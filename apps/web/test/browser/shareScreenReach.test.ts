@@ -83,6 +83,26 @@ describe("share screen reach warning", () => {
     ).toBeNull();
   });
 
+  test("an invitation created on a .corp name says it only works on the local network", async () => {
+    renderShareScreen("http://alcove.corp:3000");
+    await expect
+      .element(
+        page.getByText("This invitation only works on your local network"),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      "This page runs on an address only your network reaches",
+    );
+  });
+
+  test("an invitation created on a private name under an unlisted suffix shows no warning", async () => {
+    renderShareScreen("http://alcove.agency-a.example:3000");
+    await expect
+      .element(page.getByRole("heading", { name: "Share this invitation" }))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("only works on");
+  });
+
   test("a command-line partner is pointed at the code, which names no address", async () => {
     renderShareScreen("http://127.0.0.1:3000", true);
     await expect

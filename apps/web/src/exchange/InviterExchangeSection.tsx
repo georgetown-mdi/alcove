@@ -511,7 +511,7 @@ function LimitedReachAlert({
         ? "Send your partner the invitation code instead of the link."
         : reach === "thisComputer"
           ? "This page runs on your own computer, so a partner on another computer cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."
-          : "This page runs on an address inside your network, so a partner outside it cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."}
+          : "This page runs on an address only your network reaches, so a partner outside it cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."}
     </Alert>
   );
 }

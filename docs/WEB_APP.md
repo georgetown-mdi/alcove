@@ -29,6 +29,8 @@ On the start page, choose **Create an invitation**. Three steps follow.
 
 The next screen, **Your invitation is ready**, shows the invitation link and a message you can copy that explains it to your partner. Send them the link over your trusted channel.
 
+If the page you created it on runs on your own computer or inside your network, the screen warns that the link works only there. It recognizes loopback and private-range addresses and the common internal name endings, such as `.local`, `.lan` and `.corp`. A name only your network resolves under some other ending gets no warning, so before you send the link, check that your partner can open that address.
+
 **Keep this tab open.** Your browser waits for your partner to accept, and the screen says until what time: about 10 minutes, or until the invitation expires if that is sooner. Closing the tab cancels the invitation. Agree a time with your partner so that both of you are at your computers.
 
 - **If your partner has not connected by then**, the screen says so. Choose **Keep waiting** to wait again while the invitation is still valid, or **Start over with a fresh invitation** once it has expired.
