@@ -376,10 +376,10 @@ jobs:
 
           inviter_cid=$(docker run -d \
             -v "$work/inviter":/work -v "$work/drop":/drop \
-            ${{ matrix.tag }} exchange input.csv output.csv --polling-frequency 1s)
+            ${{ matrix.tag }} exchange input.csv output --polling-frequency 1s)
           acceptor_cid=$(docker run -d \
             -v "$work/acceptor":/work -v "$work/drop":/drop \
-            ${{ matrix.tag }} exchange input.csv output.csv --polling-frequency 1s)
+            ${{ matrix.tag }} exchange input.csv output --polling-frequency 1s)
           echo "started exchange halves $inviter_cid and $acceptor_cid"
 
           # Each half waits for the other, so both must be running before either
@@ -676,11 +676,12 @@ jobs:
           # Counted from inside a container rather than on the runner: the CLI
           # writes the result CSV, under the output folder, owner-only
           # (createOwnerOnlyWriteStream), so the bind mount puts a uid-1000
-          # 0600 file in front of a runner shell that is neither. Reading it back through the image preserves the mode the
-          # image actually ships with, where running the parties as the runner's
-          # uid would smoke something other than the published image. The default
-          # leg's bind-mount step above reads its artifacts with sudo for the
-          # same reason.
+          # 0600 file in front of a runner shell that is neither. Reading it
+          # back through the image preserves the mode the image actually ships
+          # with, where running the parties as the runner's uid would smoke
+          # something other than the published image. The default leg's
+          # bind-mount step above reads its artifacts with sudo for the same
+          # reason.
           for party in a b; do
             lines=$(docker run --rm -v "$work/$party:/work:ro" \
               --entrypoint sh ${{ matrix.tag }} -c 'cat /work/output/alcove-results-*.csv | wc -l')
