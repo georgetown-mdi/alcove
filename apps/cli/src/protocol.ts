@@ -112,6 +112,7 @@ import {
 import { writeExchangeRecord } from "./recordFile";
 import {
   preflightOutputFolder,
+  runFilesInSharedFolderWarnings,
   resultFilePath,
   runArtifactFolder,
 } from "./resultFile";
@@ -2229,6 +2230,13 @@ async function prepareTransport(
     emit,
   });
   build.trimmedKeyFilePath = checked.trimmedKeyFilePath;
+  for (const warning of runFilesInSharedFolderWarnings({
+    connection,
+    output,
+    writeRecord,
+    keyFilePath: checked.trimmedKeyFilePath,
+  }))
+    log.warn(warning);
   if (connection.channel === "webrtc") {
     // The file-sync construction below has no webrtc counterpart: on this
     // channel there is no client to build.

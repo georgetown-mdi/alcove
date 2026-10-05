@@ -503,6 +503,33 @@ const ACL_RESTRICT_EMPTY_FILE_LEFT =
 const ACL_RESTRICT_REMEDY =
   "; restrict manually to owner-read-only via icacls or File Properties";
 
+/**
+ * Narrow the Windows access list of `filePath` to `owner` alone, the step
+ * every owner-only writer takes on Windows. `/inheritance:r` strips inherited
+ * entries (e.g. BUILTIN\Users read) and `/grant:r` replaces any explicit grant
+ * for the owner. (M) is the Modify level, which includes the DELETE right
+ * MoveFileEx needs on a temp file renamed into place. Throws when icacls
+ * fails or cannot be run.
+ */
+function restrictAclToOwner(filePath: string, owner: string): void {
+  execFileSync(
+    "icacls",
+    [filePath, "/inheritance:r", "/grant:r", `${owner}:(M)`],
+    { stdio: "ignore", timeout: 5000 },
+  );
+}
+
+/**
+ * On Windows, narrow the access list of a file the caller has just created to
+ * the current user alone, as {@link writeFileOwnerOnly} does before writing
+ * content; a no-op elsewhere, where the create mode governs. Throws when the
+ * user cannot be identified or icacls fails.
+ */
+export function restrictNewFileToOwnerOnWindows(filePath: string): void {
+  if (process.platform !== "win32") return;
+  restrictAclToOwner(filePath, whoami());
+}
+
 /** Options for {@link writeFileOwnerOnly}. */
 export interface WriteFileOwnerOnlyOptions {
   /**
@@ -613,17 +640,7 @@ export function writeFileOwnerOnly(
       );
       try {
         try {
-          // /inheritance:r strips inherited ACEs (e.g. BUILTIN\Users group read);
-          // /grant:r replaces any existing explicit grant for owner only.
-          // (M) is the standard Modify level: FILE_GENERIC_READ |
-          // FILE_GENERIC_WRITE | DELETE; it unambiguously includes the DELETE
-          // right that MoveFileEx requires on the source file to complete the
-          // subsequent rename.
-          execFileSync(
-            "icacls",
-            [tmp, "/inheritance:r", "/grant:r", `${owner}:(M)`],
-            { stdio: "ignore", timeout: 5000 },
-          );
+          restrictAclToOwner(tmp, owner);
         } catch {
           // State a clear remediation; the outer catch removes the placeholder,
           // which this branch's close has already released, so the destination
@@ -882,11 +899,7 @@ export function createOwnerOnlyWriteStream(destPath: string): fs.WriteStream {
       ),
     );
     try {
-      execFileSync(
-        "icacls",
-        [destPath, "/inheritance:r", "/grant:r", `${owner}:(M)`],
-        { stdio: "ignore", timeout: 5000 },
-      );
+      restrictAclToOwner(destPath, owner);
     } catch {
       // Report a clear remediation rather than stream PII into a file whose ACL
       // we could not restrict; the empty placeholder is left for the operator,

@@ -38,6 +38,95 @@ export function resultFilePath(folder: string, createdAt: string): string {
   );
 }
 
+/**
+ * The path `filePath` names, with every directory on the way resolved through
+ * the filesystem (symlinks, and on Windows the name's case), so two spellings
+ * of one place compare equal. The part of the path that does not exist yet is
+ * kept as written.
+ */
+function canonicalPath(filePath: string): string {
+  const absolute = path.resolve(filePath);
+  try {
+    return fs.realpathSync.native(absolute);
+  } catch {
+    const parent = path.dirname(absolute);
+    if (parent === absolute) return absolute;
+    return path.join(canonicalPath(parent), path.basename(absolute));
+  }
+}
+
+function isSameOrInside(child: string, parent: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+/**
+ * The warnings a file-drop run gets for each of its own files placed inside a
+ * folder the channel shares (`path`, `inbound_path` or `outbound_path`): the
+ * output folder, or the working directory when the run writes its record
+ * there, and the key file. Empty on any other channel or placement.
+ */
+export function runFilesInSharedFolderWarnings(params: {
+  connection: {
+    channel: string;
+    path?: string;
+    inboundPath?: string;
+    outboundPath?: string;
+  };
+  output: string | undefined;
+  writeRecord: boolean;
+  keyFilePath: string | undefined;
+}): string[] {
+  const { connection, output, writeRecord, keyFilePath } = params;
+  if (connection.channel !== "filedrop") return [];
+  const shared = [
+    connection.path,
+    connection.inboundPath,
+    connection.outboundPath,
+  ].filter((folder): folder is string => folder !== undefined);
+  const sharedFolderHolding = (filePath: string): string | undefined => {
+    const canonical = canonicalPath(filePath);
+    return shared.find((folder) =>
+      isSameOrInside(canonical, canonicalPath(folder)),
+    );
+  };
+  const shown = (text: string): string =>
+    redactAndRenderOperatorSuppliedText(operatorSuppliedText(text));
+  const warnings: string[] = [];
+  const runFolderShared =
+    output !== undefined || writeRecord
+      ? sharedFolderHolding(runArtifactFolder(output))
+      : undefined;
+  if (runFolderShared !== undefined)
+    warnings.push(
+      output !== undefined
+        ? `the output folder ${shown(output)} is inside the shared folder ` +
+            `${shown(runFolderShared)}, so anyone who can read that folder, ` +
+            "your partner included, can read the result, the exchange " +
+            "record and its keys. Name an output folder outside it."
+        : `the working directory is inside the shared folder ` +
+            `${shown(runFolderShared)}, so anyone who can read that folder, ` +
+            "your partner included, can read the exchange record and its " +
+            "keys written there. Run from a folder outside it, or name an " +
+            "output folder outside it.",
+    );
+  const keyFileShared =
+    keyFilePath !== undefined ? sharedFolderHolding(keyFilePath) : undefined;
+  if (keyFilePath !== undefined && keyFileShared !== undefined)
+    warnings.push(
+      `the key file ${shown(keyFilePath)} is inside the shared folder ` +
+        `${shown(keyFileShared)}, so anyone who can read that folder, your ` +
+        "partner included, can read the shared secret it holds. Move it " +
+        "outside the folder and pass its new path with --key-file.",
+    );
+  return warnings;
+}
+
 function outputFolderError(
   output: string,
   problem: string,

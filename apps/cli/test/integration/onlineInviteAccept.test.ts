@@ -228,6 +228,11 @@ async function runOnlineRoundTrip(params: {
   // built connection is pinned -- the no-pin default is fail-closed, and an
   // sftp:// URL cannot hold the pin. Omitted for filedrop (no host key).
   hostKeyFingerprint?: string;
+  // A `--server-password` value both parties pass, e.g. an `@path`.
+  serverPassword?: string;
+  // Whether each saved config holds a credential as typed, and so each side
+  // warns once when it saves.
+  savesLiteralCredential: boolean;
 }): Promise<void> {
   const { url, assertPersistedConnection } = params;
 
@@ -236,8 +241,14 @@ async function runOnlineRoundTrip(params: {
   const acceptInput = path.join(work, "accept-input.csv");
   fs.writeFileSync(acceptInput, ACCEPT_CSV);
 
-  const inviteOptions = testOptions("invite");
-  const acceptOptions = testOptions("accept");
+  const inviteOptions = {
+    ...testOptions("invite"),
+    serverPassword: params.serverPassword,
+  };
+  const acceptOptions = {
+    ...testOptions("accept"),
+    serverPassword: params.serverPassword,
+  };
   const inviteOut = outputFolder("invite");
   const acceptOut = outputFolder("accept");
 
@@ -297,38 +308,59 @@ async function runOnlineRoundTrip(params: {
 
   // Run both online wirings concurrently: the live authenticated handshake over
   // the shared rendezvous, then the PSI exchange, then the saveConfig hook. This
-  // is the invite.ts / accept.ts handler tail verbatim.
-  const [inviteResult, acceptResult] = await Promise.all([
-    runOnlineBootstrap({
-      connection: inviteReady.connection,
-      dataSpec: inviteReady.dataSpec,
-      prepared: inviteReady.prepared,
-      sharedSecret: inviteReady.sharedSecret,
-      expires: inviteReady.expires,
-      keyPath: inviteOptions.keyFile,
-      configPath: inviteOptions.configFile,
-      output: inviteReady.output,
-      verbosity: 0,
-      loggerName: "invite",
-      writePlainLine: () => {},
-      writeRecord: inviteOptions.record,
-    }),
-    runOnlineBootstrap({
-      connection: acceptReady.connection,
-      dataSpec: acceptReady.dataSpec,
-      prepared: acceptReady.prepared,
-      sharedSecret: acceptReady.token.sharedSecret,
-      expires: acceptReady.token.expires,
-      keyPath: acceptOptions.keyFile,
-      configPath: acceptOptions.configFile,
-      output: acceptReady.output,
-      verbosity: 0,
-      loggerName: "accept",
-      writePlainLine: () => {},
-      writeRecord: acceptOptions.record,
-      reuseExistingConfig: acceptReady.reuseExistingConfig,
-    }),
-  ]);
+  // is the invite.ts / accept.ts handler tail verbatim. WARNs are captured so
+  // the saved-credential warning is asserted rather than reaching the console.
+  const [[inviteResult, acceptResult], warnings] = await withCapturedLogs(() =>
+    Promise.all([
+      runOnlineBootstrap({
+        connection: inviteReady.connection,
+        dataSpec: inviteReady.dataSpec,
+        prepared: inviteReady.prepared,
+        sharedSecret: inviteReady.sharedSecret,
+        expires: inviteReady.expires,
+        keyPath: inviteOptions.keyFile,
+        configPath: inviteOptions.configFile,
+        output: inviteReady.output,
+        verbosity: 0,
+        loggerName: "invite",
+        writePlainLine: () => {},
+        writeRecord: inviteOptions.record,
+      }),
+      runOnlineBootstrap({
+        connection: acceptReady.connection,
+        dataSpec: acceptReady.dataSpec,
+        prepared: acceptReady.prepared,
+        sharedSecret: acceptReady.token.sharedSecret,
+        expires: acceptReady.token.expires,
+        keyPath: acceptOptions.keyFile,
+        configPath: acceptOptions.configFile,
+        output: acceptReady.output,
+        verbosity: 0,
+        loggerName: "accept",
+        writePlainLine: () => {},
+        writeRecord: acceptOptions.record,
+        reuseExistingConfig: acceptReady.reuseExistingConfig,
+      }),
+    ]),
+  );
+
+  // Each side that saved a password as typed says so once, naming its own
+  // file and the field; a config holding none draws no such warning.
+  const credentialWarnings = warnings
+    .map((entry) => entry.message)
+    .filter((message) => message.includes("holds a credential as typed"));
+  if (params.savesLiteralCredential) {
+    expect(credentialWarnings).toHaveLength(2);
+    for (const cfg of [inviteOptions.configFile, acceptOptions.configFile])
+      expect(
+        credentialWarnings.filter((message) =>
+          message.includes(
+            `the configuration saved to ${cfg} holds a credential as typed ` +
+              "in connection.server.password",
+          ),
+        ),
+      ).toHaveLength(1);
+  } else expect(credentialWarnings).toEqual([]);
 
   // The post-handshake config write succeeded on both sides (a failure is
   // reported here as configWriteError without aborting the exchange).
@@ -473,6 +505,7 @@ test("filedrop: online invite + accept round-trip authenticates, finds the inter
 
   await runOnlineRoundTrip({
     url,
+    savesLiteralCredential: false,
     assertPersistedConnection: (spec) => {
       expect(spec.connection.channel).toBe("filedrop");
       expect((spec.connection as FileDropConnectionConfig).path).toBe(
@@ -812,6 +845,7 @@ describe("sftp", () => {
       await runOnlineRoundTrip({
         url,
         hostKeyFingerprint: srv.hostKeyFingerprint,
+        savesLiteralCredential: true,
         assertPersistedConnection: (spec) => {
           expect(spec.connection.channel).toBe("sftp");
           const server = (spec.connection as SFTPConnectionConfig).server;
@@ -826,6 +860,32 @@ describe("sftp", () => {
           expect(server.path).toBe(serverPath);
           expect(server.username).toBe(srv.usera.username);
           expect(server.password).toBe(srv.usera.password);
+        },
+      });
+    },
+    90_000,
+  );
+
+  inProcessOnly(
+    "sftp: an online invite + accept given the password as an @path saves the reference, owner-only, with no credential warning",
+    async () => {
+      const tag = "atpath";
+      await fsp.mkdir(path.join(SFTP_LOCAL_ROOT, tag), { recursive: true });
+      const serverPath = `${SFTP_PATH_ROOT}/${tag}`;
+      const passwordFile = path.join(work, "sftp-password.txt");
+      fs.writeFileSync(passwordFile, `${srv.usera.password}\n`);
+      const url = `sftp://${srv.usera.username}@${srv.host}:${srv.port}${serverPath}`;
+
+      await runOnlineRoundTrip({
+        url,
+        hostKeyFingerprint: srv.hostKeyFingerprint,
+        serverPassword: `@${passwordFile}`,
+        savesLiteralCredential: false,
+        assertPersistedConnection: (spec) => {
+          expect(spec.connection.channel).toBe("sftp");
+          expect(
+            (spec.connection as SFTPConnectionConfig).server.password,
+          ).toBe(`@${passwordFile}`);
         },
       });
     },

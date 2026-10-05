@@ -39,6 +39,7 @@ import {
   expandTilde,
   FileExistsError,
 } from "../fileUtils";
+import { warnIfCommandLineHoldsLiteralCredential } from "../literalCredentials";
 import { DEFAULT_KEY_PATH } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
 import {
@@ -787,6 +788,7 @@ export async function handler(argv: Arguments): Promise<void> {
     }
 
     const { server, input, output } = resolved;
+    warnIfCommandLineHoldsLiteralCredential(argv, server, log);
 
     // Warn before createConnection can throw so the user sees the flag issue even
     // if the channel is refused. The channel is derived from the URL here

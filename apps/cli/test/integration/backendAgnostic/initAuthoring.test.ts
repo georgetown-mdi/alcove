@@ -62,7 +62,10 @@ test("init from an sftp URL writes a connection block that needs only a credenti
   expect(run.exitCode, describeCliRun("init", run)).toBe(0);
   expect(run.stderr).toContain("add your SFTP credential to connection.server");
   expect(run.stderr).not.toContain("replace the placeholder");
+  expect(run.stderr).not.toContain("holds a credential as typed");
 
+  if (process.platform !== "win32")
+    expect(fs.statSync(path.join(work, "alcove.yaml")).mode & 0o077).toBe(0);
   const written = fs.readFileSync(path.join(work, "alcove.yaml"), "utf8");
   const spec = parseExchangeSpec(YAML.parse(written));
   expect(spec.connection).toMatchObject({
@@ -126,16 +129,35 @@ test("an exchange refuses an init template's placeholder, naming the field", asy
   );
 });
 
-test("init refuses a password in the URL and writes nothing", async () => {
+test("init writes a password from the URL owner-only and warns about it", async () => {
   const run = await alcove([
     "init",
-    "sftp://alice:secret@sftp.example.org/drop",
+    "sftp://alice:s3cretPW@sftp.example.org/drop",
     "--config-file",
     "alcove.yaml",
   ]);
-  expect(run.exitCode, describeCliRun("init", run)).toBe(64);
-  expect(run.stderr).not.toContain("secret");
-  expect(fs.existsSync(path.join(work, "alcove.yaml"))).toBe(false);
+  expect(run.exitCode, describeCliRun("init", run)).toBe(0);
+  expect(run.stderr).not.toContain("s3cretPW");
+  expect(run.stderr).toContain(
+    "the configuration saved to alcove.yaml holds a credential as typed in " +
+      "connection.server.password",
+  );
+  expect(run.stderr).toContain('password: "@./sftp-password.txt"');
+  expect(run.stderr).toContain(
+    "the command line holds a credential as typed in the URL",
+  );
+  expect(run.stderr).not.toContain("add your SFTP credential");
+
+  const configPath = path.join(work, "alcove.yaml");
+  if (process.platform !== "win32")
+    expect(fs.statSync(configPath).mode & 0o077).toBe(0);
+  const spec = parseExchangeSpec(
+    YAML.parse(fs.readFileSync(configPath, "utf8")),
+  );
+  expect(spec.connection).toMatchObject({
+    channel: "sftp",
+    server: { username: "alice", password: "s3cretPW" },
+  });
 });
 
 test("accept with no terminal and no --consent-to-terms exits 64 before the terms", async () => {

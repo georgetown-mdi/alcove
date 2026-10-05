@@ -74,6 +74,7 @@ import { isMap, isScalar } from "yaml";
 import type { Document } from "yaml";
 
 import { writeFileOwnerOnly } from "./fileUtils";
+import { warnIfSavedConfigHoldsLiteralCredential } from "./literalCredentials";
 import { parseSensitiveYaml, editSensitiveYamlDocument } from "./sensitiveFile";
 import type { SensitiveFileLabel } from "./sensitiveFile";
 
@@ -1473,7 +1474,8 @@ export function reconcileConflictError(params: {
  * {@link serializeExchangeDocument} renders -- guidance comments and the
  * shared-secret strip included -- owner-read-only, since a config may hold an
  * SFTP credential. Gets the same `0600`/ACL protection as the key file via
- * {@link writeFileOwnerOnly}.
+ * {@link writeFileOwnerOnly}, and warns when the connection holds a credential
+ * as typed rather than as an `@path`.
  *
  * Does not guard against overwriting an existing file; callers provision
  * through `provisionConfigAndKey`, which runs the conflict gate first.
@@ -1484,6 +1486,7 @@ export function saveConfig(
   options: { exclusive?: boolean } = {},
 ): void {
   writeFileOwnerOnly(configPath, serializeExchangeDocument(spec), options);
+  warnIfSavedConfigHoldsLiteralCredential(configPath, spec.connection);
 }
 
 /**

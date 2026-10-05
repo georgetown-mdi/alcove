@@ -111,7 +111,8 @@ export function builder(cmd: Argv): Argv {
       type: "string",
       describe:
         "also write this party's public certificate (no private key) to the " +
-        "given path, for sharing with a partner",
+        "given path, for sharing with a partner. A different file already at " +
+        "the path is replaced only with --force",
     });
   return addLoggingOptions(beforeLogging);
 }
@@ -471,6 +472,39 @@ function exportReplacesIdentity(
   }
 }
 
+/**
+ * What an existing file at the export path holds, read before anything is
+ * written: `undefined` when the path is free, `null` when something is there
+ * that cannot be read as text (a folder, an unreadable file).
+ */
+function readExistingExport(exportPath: string): string | null | undefined {
+  try {
+    fs.lstatSync(exportPath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    return null;
+  }
+  try {
+    return fs.readFileSync(exportPath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** The refusal an export onto a different existing file gets. */
+function exportWouldReplaceFileError(exportPath: string): UsageError {
+  const message = messageWithOperatorText`--export-certificate path ${operatorSuppliedText(
+    exportPath,
+  )}${EXPORT_OVER_EXISTING_REMEDY}`;
+  return keepOperatorSuppliedText(new UsageError(message.text), message);
+}
+
+/** What {@link exportWouldReplaceFileError} states behind the path. */
+const EXPORT_OVER_EXISTING_REMEDY =
+  " already holds a different file; nothing was written to it. Choose a " +
+  "path that does not exist yet, or move that file away and run the " +
+  "command again.";
+
 /** What the export refusal states behind the path it was asked to write. */
 const EXPORT_OVER_IDENTITY_REMEDY =
   " is the signing identity file itself; refusing to overwrite the private " +
@@ -520,6 +554,23 @@ export async function handler(argv: Arguments): Promise<void> {
     if (namedIdentityFile === undefined)
       throw new UsageError(NO_IDENTITY_PATH_REFUSAL);
     const identityPath = expandTilde(namedIdentityFile);
+    const exportPath =
+      exportCertificate !== undefined
+        ? expandTilde(exportCertificate)
+        : undefined;
+    // An existing file at the export path is replaced only on --force. One
+    // already holding this certificate is left as it is, so a repeated run
+    // succeeds. With no identity yet, the certificate is new and cannot match.
+    const existingExport =
+      exportPath !== undefined && !force
+        ? readExistingExport(exportPath)
+        : undefined;
+    if (
+      exportPath !== undefined &&
+      existingExport !== undefined &&
+      !fs.existsSync(identityPath)
+    )
+      throw exportWouldReplaceFileError(exportPath);
 
     const { identity, action } = await resolveSigningIdentity({
       identityPath,
@@ -533,8 +584,7 @@ export async function handler(argv: Arguments): Promise<void> {
       identity.certificate,
     );
 
-    if (exportCertificate !== undefined) {
-      const exportPath = expandTilde(exportCertificate);
+    if (exportPath !== undefined) {
       // Pointing --export-certificate at the identity file would replace the
       // private key with the public certificate, destroying the key and every
       // partner's pin.
@@ -544,9 +594,13 @@ export async function handler(argv: Arguments): Promise<void> {
         )}${EXPORT_OVER_IDENTITY_REMEDY}`;
         throw keepOperatorSuppliedText(new UsageError(message.text), message);
       }
+      const certificate = serializeCertificate(identity.certificate);
+      if (existingExport !== undefined && existingExport !== certificate)
+        throw exportWouldReplaceFileError(exportPath);
       try {
         // Public, shareable artifact: world-readable and atomic, NOT owner-only.
-        writeFileAtomic(exportPath, serializeCertificate(identity.certificate));
+        if (existingExport === undefined)
+          writeFileAtomic(exportPath, certificate);
       } catch (err) {
         const message = messageWithOperatorText`could not write certificate to ${operatorSuppliedText(
           exportPath,

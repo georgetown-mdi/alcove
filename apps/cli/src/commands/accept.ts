@@ -113,6 +113,7 @@ import {
   type EndpointDirectories,
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
+import { warnIfCommandLineHoldsLiteralCredential } from "../literalCredentials";
 
 /**
  * The refusal an acceptance gets when it can neither ask for consent to the
@@ -1074,6 +1075,11 @@ export async function handler(argv: Arguments): Promise<void> {
       // before the invitation decode, any connection, or any file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveAcceptPositionals(positionals);
+      warnIfCommandLineHoldsLiteralCredential(
+        argv,
+        resolved.mode === "online" ? resolved.url : undefined,
+        log,
+      );
       // --consent-to-terms records advance consent to the invitation's terms and
       // bypasses the confirmation prompt for unattended runs. Read as `=== true`
       // so an absent flag (a hand-built argv in tests, or a parse that did not set

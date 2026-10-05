@@ -1065,6 +1065,25 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
             "identity-file": backslashedPath("identity.json"),
             "export-certificate": filePath,
             identity: "Test Party",
+            force: true,
+          }),
+        ),
+      );
+      return { filePath, lines };
+    },
+  },
+  {
+    name: "fingerprint: an --export-certificate path already holding another file",
+    says: ["already holds a different file"],
+    drive: async () => {
+      const filePath = backslashedPath("exported");
+      fs.writeFileSync(filePath, "an earlier file\n");
+      const lines = await stderrLinesOf(() =>
+        fingerprintHandler(
+          argvOf({
+            "identity-file": backslashedPath("identity.json"),
+            "export-certificate": filePath,
+            identity: "Test Party",
             force: false,
           }),
         ),

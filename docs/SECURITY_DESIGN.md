@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-04"
+last_reviewed: "2026-10-05"
 ---
 
 # Alcove security
@@ -118,7 +118,7 @@ The count-only algorithm (PSI-C) reports the size of the overlap and no identifi
 
 ### Configuration-file trust boundary
 
-An `alcove.yaml` is designed to be shared. It records `@path` references to credentials rather than the credentials themselves, so it holds no secrets and is safe to commit or send to a partner. That safety protects the file's author, not whoever later runs it. Loading a configuration you did not author is equivalent to running its referenced files as your own credentials: when an exchange runs, each `@path` reference is read from local disk with your privileges, and the resolved credential (in the CLI today, the SFTP password) is sent to the host the configuration names. A substituted configuration can therefore turn such a reference into a read of an arbitrary local file, a private key for instance, delivered to a host the author chose. Reaching this requires loading a wholesale attacker-authored configuration and running an exchange against it; it cannot arrive through an invitation, which holds no credential (see [Invitation contents and confidentiality](#invitation-contents-and-confidentiality)). Which fields are read, and how to treat a configuration from an untrusted source, are in [CLI.md](CLI.md#configuration).
+An `alcove.yaml` is designed to be shared. Written with `@path` references to credentials rather than the credentials themselves, it holds no secrets and is safe to commit or send to a partner; a command that saves a credential typed as a literal value warns, naming the field to move into a file, and writes the file owner-only. That safety protects the file's author, not whoever later runs it. Loading a configuration you did not author is equivalent to running its referenced files as your own credentials: when an exchange runs, each `@path` reference is read from local disk with your privileges, and the resolved credential (in the CLI today, the SFTP password) is sent to the host the configuration names. A substituted configuration can therefore turn such a reference into a read of an arbitrary local file, a private key for instance, delivered to a host the author chose. Reaching this requires loading a wholesale attacker-authored configuration and running an exchange against it; it cannot arrive through an invitation, which holds no credential (see [Invitation contents and confidentiality](#invitation-contents-and-confidentiality)). Which fields are read, and how to treat a configuration from an untrusted source, are in [CLI.md](CLI.md#configuration).
 
 ### Single-party console trust boundary
 

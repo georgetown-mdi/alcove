@@ -33,7 +33,6 @@ import {
   buildTemplateData,
   decideOverwrite,
   handler as initHandler,
-  INIT_URL_PASSWORD_REFUSED,
   INIT_URL_UNREADABLE,
   INIT_WEBRTC_REFUSED,
   resolveInitPositionals,
@@ -683,7 +682,7 @@ test("templateConnection: no URL and no channel is the sftp placeholder block", 
   expect(templateConnection(undefined, "sftp")).toEqual(connection);
 });
 
-test("templateConnection: webrtc, an unknown channel, a mismatch, and a URL password are refused", () => {
+test("templateConnection: webrtc, an unknown channel, and a mismatch are refused", () => {
   expect(() => templateConnection(new URL("wss://h/peers"), undefined)).toThrow(
     INIT_WEBRTC_REFUSED,
   );
@@ -696,9 +695,21 @@ test("templateConnection: webrtc, an unknown channel, a mismatch, and a URL pass
   expect(() =>
     templateConnection(new URL("sftp://h/drop"), "filedrop"),
   ).toThrow("does not match the URL");
-  expect(() =>
-    templateConnection(new URL("sftp://alice:pw@h/drop"), undefined),
-  ).toThrow(INIT_URL_PASSWORD_REFUSED);
+});
+
+test("templateConnection: a URL password is written into the server block as given", () => {
+  expect(
+    templateConnection(new URL("sftp://alice:p%40ss@h/drop"), undefined),
+  ).toEqual({
+    channel: "sftp",
+    server: {
+      host: "h",
+      port: 22,
+      username: "alice",
+      path: "/drop",
+      password: "p@ss",
+    },
+  });
 });
 
 // --- decideOverwrite ---------------------------------------------------------

@@ -11,6 +11,7 @@ import {
   preflightOutputFolder,
   resultFilePath,
   runArtifactFolder,
+  runFilesInSharedFolderWarnings,
 } from "../../src/resultFile";
 import { exitCodeForError } from "../../src/util/exit";
 
@@ -212,4 +213,115 @@ describe("preflightOutputFolder", () => {
       );
     },
   );
+});
+
+describe("runFilesInSharedFolderWarnings", () => {
+  function sharedFolder(): string {
+    const shared = path.join(dir, "shared");
+    fs.mkdirSync(shared);
+    return shared;
+  }
+
+  test("an output folder inside the shared folder is named, with its remedy", () => {
+    const shared = sharedFolder();
+    const output = path.join(shared, "results");
+    const warnings = runFilesInSharedFolderWarnings({
+      connection: { channel: "filedrop", path: shared },
+      output,
+      writeRecord: true,
+      keyFilePath: path.join(dir, ".alcove.key"),
+    });
+    expect(warnings).toEqual([
+      `the output folder ${output} is inside the shared folder ${shared}, ` +
+        "so anyone who can read that folder, your partner included, can " +
+        "read the result, the exchange record and its keys. Name an output " +
+        "folder outside it.",
+    ]);
+  });
+
+  test("a key file inside a split-directory inbound folder is named", () => {
+    const inbound = sharedFolder();
+    const outbound = path.join(dir, "outbound");
+    const keyFilePath = path.join(inbound, ".alcove.key");
+    const warnings = runFilesInSharedFolderWarnings({
+      connection: {
+        channel: "filedrop",
+        inboundPath: inbound,
+        outboundPath: outbound,
+      },
+      output: path.join(dir, "results"),
+      writeRecord: true,
+      keyFilePath,
+    });
+    expect(warnings).toEqual([
+      `the key file ${keyFilePath} is inside the shared folder ${inbound}, ` +
+        "so anyone who can read that folder, your partner included, can " +
+        "read the shared secret it holds. Move it outside the folder and " +
+        "pass its new path with --key-file.",
+    ]);
+  });
+
+  test("the working directory counts when the run writes its record there", () => {
+    const shared = sharedFolder();
+    const cwd = process.cwd();
+    try {
+      process.chdir(shared);
+      const connection = { channel: "filedrop", path: shared };
+      expect(
+        runFilesInSharedFolderWarnings({
+          connection,
+          output: undefined,
+          writeRecord: true,
+          keyFilePath: undefined,
+        }),
+      ).toHaveLength(1);
+      expect(
+        runFilesInSharedFolderWarnings({
+          connection,
+          output: undefined,
+          writeRecord: false,
+          keyFilePath: undefined,
+        }),
+      ).toEqual([]);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a path reaching the shared folder through a symlink is caught",
+    () => {
+      const shared = sharedFolder();
+      const link = path.join(dir, "link");
+      fs.symlinkSync(shared, link);
+      expect(
+        runFilesInSharedFolderWarnings({
+          connection: { channel: "filedrop", path: shared },
+          output: path.join(link, "results"),
+          writeRecord: true,
+          keyFilePath: undefined,
+        }),
+      ).toHaveLength(1);
+    },
+  );
+
+  test("files beside the shared folder, or on another channel, get no warning", () => {
+    const shared = sharedFolder();
+    expect(
+      runFilesInSharedFolderWarnings({
+        connection: { channel: "filedrop", path: shared },
+        output: path.join(dir, "shared-results"),
+        writeRecord: true,
+        keyFilePath: path.join(dir, ".alcove.key"),
+      }),
+    ).toEqual([]);
+    expect(
+      runFilesInSharedFolderWarnings({
+        connection: { channel: "sftp" },
+        output: path.join(shared, "results"),
+        writeRecord: true,
+        keyFilePath: path.join(shared, ".alcove.key"),
+      }),
+    ).toEqual([]);
+  });
 });

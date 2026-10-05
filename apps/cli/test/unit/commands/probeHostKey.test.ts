@@ -109,6 +109,22 @@ describe("buildProbeConfig parses the URL into a minimal connection", () => {
     expect(() => buildProbeConfig("not a url", 10)).toThrow(UsageError);
   });
 
+  test("an unparseable URL's refusal does not repeat the argument", () => {
+    // The port is out of range, so the URL does not parse; its password must
+    // not reach stderr or a log file.
+    const typed = "sftp://alice:s3cretPW@sftp.example.org:99999";
+    let thrown: unknown;
+    try {
+      buildProbeConfig(typed, 10);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(UsageError);
+    const message = (thrown as Error).message;
+    expect(message).toBe("could not read the URL; expected sftp://host[:port]");
+    expect(message).not.toContain("s3cretPW");
+  });
+
   test("a host-less sftp URL is a UsageError", () => {
     expect(() => buildProbeConfig("sftp:///exchange", 10)).toThrow(UsageError);
   });

@@ -127,6 +127,7 @@ import {
   singlePassDisclosureNotice,
   type ResolvedDataSpec,
 } from "../onlineBootstrap";
+import { warnIfCommandLineHoldsLiteralCredential } from "../literalCredentials";
 
 // The invitation lifetime default and one-year ceiling are shared from
 // @alcove/core (INVITATION_LIFETIME_SECONDS, MAX_INVITATION_LIFETIME_SECONDS) so
@@ -1186,6 +1187,11 @@ export async function handler(argv: Arguments): Promise<void> {
       // token mint.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveInvitePositionals(positionals);
+      warnIfCommandLineHoldsLiteralCredential(
+        argv,
+        resolved.mode === "online" ? resolved.url : undefined,
+        log,
+      );
       const ready = await validateInvite({
         resolved,
         options,

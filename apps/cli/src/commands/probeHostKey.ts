@@ -128,9 +128,7 @@ export function buildProbeConfig(
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new UsageError(
-      `could not parse ${rawUrl} as a URL; expected sftp://host[:port]`,
-    );
+    throw new UsageError("could not read the URL; expected sftp://host[:port]");
   }
   // channelFromURL maps the scheme to a channel (throwing a UsageError for a
   // truly-unknown scheme); ws/file map to webrtc/filedrop, which this command

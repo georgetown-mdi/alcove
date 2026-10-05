@@ -186,7 +186,7 @@ content lands in:
 | --------- | ----- | --- |
 | Temp-file writers (`writeFileOwnerOnly`, `writeFileAtomic`) | `-h -N` | The path is Alcove's own temp path, opened with `O_EXCL` and `O_NOFOLLOW`; a symlink at it is one planted in the create window. `-h` acts on the named entry, so following one cannot redirect the strip onto another file's ACL while the content goes to the temp file. |
 | Streamed result CSV (`createOwnerOnlyWriteStream`) | `-N` | The path is an operator-supplied output path, opened without `O_NOFOLLOW` and `fchmod`'d on the descriptor, so a pre-existing symlink there is followed by design (see [Result CSV output](#result-csv-output)). `chmod` resolves the path for the same reason: acting on the link node would clear an ACL that governs nothing while the rows landed in a target whose ACEs still stood. Because the strip re-resolves the path rather than acting on the already-`fchmod`'d descriptor -- Node's `fs` exposes no fd-based ACL API -- a destPath swapped between the `fchmod` and the strip aims the two at different files. |
-| `--log-file` descriptor (`configureLogFile`) | `-N` | The path is an operator-supplied flag value, opened `"a"` with neither `O_NOFOLLOW` nor `O_EXCL`, so a symlink there is followed and the lines land in its target. The strip resolves the path for the same reason the streamed CSV's does, and inherits the same known limitation: it re-resolves the path rather than acting on the open descriptor. |
+| `--log-file` descriptor (`configureLogFile`) | `-N` | The path is an operator-supplied flag value, opened for appending without `O_NOFOLLOW` -- an exclusive create is tried first only to learn whether the run created the file, and an existing entry is then opened `"a"` -- so a symlink there is followed and the lines land in its target. The strip resolves the path for the same reason the streamed CSV's does, and inherits the same known limitation: it re-resolves the path rather than acting on the open descriptor. |
 | `doctor probe` work directory (`runProbe`) | `-h -N` | The path is one `mkdtemp` created itself, so a symlink at it is one planted in the window after that create. `-h` acts on the named entry, so following one cannot clear an unrelated directory's ACL while the credentials file is created under an inheritable ACE that still stands. |
 
 The strip covers every artifact this document's write construction produces --
@@ -390,6 +390,13 @@ runner; the `icacls` fixture in the load-check tests is that listing), which
 is the case the narrowing exists for. If the `icacls` call fails (for example
 in a restricted container environment), the placeholder is deleted and an
 error is raised; no key material is written.
+
+A `--log-file` the run creates is narrowed by the same `icacls` command line,
+on the path, while the append descriptor the run will write through is held
+open, and before the diagnostic sink is installed, so no line is written before
+the narrowing. If it fails, the descriptor is released, the empty file removed,
+and the open refused as a usage error (exit 64) before any exchange work begins.
+An existing log file is appended to with the access list it already has.
 
 Owner-only on Windows means the owner plus two well-known principals, SYSTEM
 (`S-1-5-18`) and `BUILTIN\Administrators` (`S-1-5-32-544`), which the narrowing
