@@ -3,13 +3,13 @@ import { describe, expect, test } from "vitest";
 import {
   declaredRoutePaths,
   matchesRoutePattern,
-} from "../utils/declaredRoutes";
+} from "../../hosted/declaredRoutes";
 import { serviceWorkerStringArray } from "../utils/serviceWorkerHarness";
 
 // SHELL_ROUTES is the worker's hand-written list of routes an installed app
 // warms for offline use; a route added to src/routes/ without an entry here
 // ships offline-broken, silently. This is that check, reading route paths
-// from the route files themselves (../utils/declaredRoutes) rather than a
+// from the route files themselves (hosted/declaredRoutes.ts) rather than a
 // separately hand-written list. What the entries actually pull out of the
 // built deployment is test/integration/appShellWarm.test.ts.
 

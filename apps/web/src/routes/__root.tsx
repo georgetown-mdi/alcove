@@ -21,62 +21,23 @@ import { DefaultCatchBoundary } from "@components/DefaultCatchBoundary";
 import { NotFound } from "@components/NotFound";
 import { PendingInvitationPrune } from "@exchange/PendingInvitationPrune";
 import { ScheduledExchangeRunner } from "@components/ScheduledExchangeRunner";
-import { seo } from "@utils/seo";
+import { rootDocumentHead } from "@utils/documentHead";
 
 import type { ReactNode } from "react";
 
 declare global {
   interface ImportMetaEnv {
-    /** Set by the console build (`vite.console.config.ts`), whose client
-     * renders the whole document itself; unset in every other build. */
+    /** Set by the console and hosted static builds (`vite.console.config.ts`,
+     * `vite.hosted.config.ts`), whose client renders the whole document
+     * itself; unset in the Start build. */
     readonly CLIENT_RENDERED_DOCUMENT?: boolean;
   }
 }
 
 export const Route = createRootRoute({
   head: () => ({
-    meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        // Matches the manifest's theme_color and the console's background, so an
-        // installed window's title bar takes the app's color rather than
-        // browser white.
-        name: "theme-color",
-        content: "#f6f5f1",
-      },
-      ...seo({
-        title: "Alcove - encrypted matching and sharing",
-        description:
-          "Find the records you both hold - without either of you seeing the other's data.",
-      }),
-    ],
-    links: [
-      {
-        rel: "apple-touch-icon",
-        sizes: "180x180",
-        href: "/apple-touch-icon.png",
-      },
-      {
-        rel: "icon",
-        type: "image/png",
-        sizes: "32x32",
-        href: "/favicon-32x32.png",
-      },
-      {
-        rel: "icon",
-        type: "image/png",
-        sizes: "16x16",
-        href: "/favicon-16x16.png",
-      },
-      { rel: "manifest", href: "/site.webmanifest" },
-      { rel: "icon", href: "/favicon.ico" },
-    ],
+    meta: [...rootDocumentHead.meta],
+    links: [...rootDocumentHead.links],
   }),
   errorComponent: DefaultCatchBoundary,
   notFoundComponent: () => <NotFound />,

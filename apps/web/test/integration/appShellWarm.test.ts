@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   declaredRoutePaths,
   matchesRoutePattern,
-} from "../utils/declaredRoutes";
+} from "../../hosted/declaredRoutes";
 
 import {
   serviceWorkerAssetExtractor,

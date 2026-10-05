@@ -7,13 +7,14 @@ import { join } from "node:path";
 // than derived from filenames, so a change to the file-naming convention cannot
 // make a check built on this silently vacuous.
 //
-// Two checks over the app-shell worker's warm read them: the source-level guard
-// that holds SHELL_ROUTES to this list, and the integration check that drives
-// those routes against the built server. One implementation, so a route the
-// router declares cannot be a route only one of them knows about.
+// Read by the source-level guard that holds the worker's SHELL_ROUTES to this
+// list, by the integration check that drives those routes against the built
+// server, and by the hosted build, which finds each warmed route's file here to
+// write that route's document. One implementation, so a route the router
+// declares cannot be a route only one of them knows about.
 
 const routesDirectory = fileURLToPath(
-  new URL("../../src/routes", import.meta.url),
+  new URL("../src/routes", import.meta.url),
 );
 
 /**
@@ -37,20 +38,34 @@ function routeFiles(directory: string): Array<string> {
   });
 }
 
-/** The route path each file declares, with an index route's trailing slash
- * normalized away so `/saved/` and `/saved` compare equal. */
-export function declaredRoutePaths(): Array<string> {
+/** A route file and the path it declares. */
+export interface DeclaredRoute {
+  /** Absolute path of the route file. */
+  readonly file: string;
+  /** The declared path, an index route's trailing slash normalized away so
+   * `/saved/` and `/saved` compare equal. */
+  readonly path: string;
+}
+
+/** Every route file outside {@link EXCLUDED_ROUTE_PREFIX} with the path it
+ * declares. */
+export function declaredRoutes(): Array<DeclaredRoute> {
   return routeFiles(routesDirectory)
-    .map((path) => {
+    .map((file) => {
       const declared = /createFileRoute\("([^"]+)"\)/.exec(
-        readFileSync(path, "utf8"),
+        readFileSync(file, "utf8"),
       );
       if (declared === null)
-        throw new Error(`${path} declares no createFileRoute path`);
-      return declared[1];
+        throw new Error(`${file} declares no createFileRoute path`);
+      const path = declared[1];
+      return { file, path: path.length > 1 ? path.replace(/\/$/, "") : path };
     })
-    .map((path) => (path.length > 1 ? path.replace(/\/$/, "") : path))
-    .filter((path) => !path.startsWith(EXCLUDED_ROUTE_PREFIX));
+    .filter(({ path }) => !path.startsWith(EXCLUDED_ROUTE_PREFIX));
+}
+
+/** The route path each file declares (see {@link DeclaredRoute.path}). */
+export function declaredRoutePaths(): Array<string> {
+  return declaredRoutes().map(({ path }) => path);
 }
 
 /** Whether `path` is an instance of `pattern`, whose `$name` segments stand for

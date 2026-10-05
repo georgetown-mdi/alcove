@@ -78,6 +78,14 @@ npm exec --workspace apps/web -- vitest list --project unit
 `npm run check:routetree` guards the checked-in copy, on every pull request and locally.
 It regenerates with the generator the lockfile pins, compares byte for byte, and restores the working-tree copy either way, so a stale file fails the build instead of resurfacing as an unrelated modification in a branch that touched no route.
 
+## Hosted static build
+
+`npm run build:hosted -w apps/web` writes the hosted app as a static site to `dist/hosted/`, beside the TanStack Start build `npm run build` writes to `.output/`.
+It is the single-page client `src/hostedClient.tsx`, with one document per path in the app-shell worker's `SHELL_ROUTES` (`public/serviceWorker.js`), the root's as `index.html` and `/saved/_` as `saved/_.html`.
+Each document is `hosted/index.html` with the root route's head and a link to every script and stylesheet that route's code statically imports, so the worker's warm, which caches what a route's document names, finds the whole route; `hosted/routeDocuments.ts` writes them.
+
+The build writes no `_redirects` or `404.html`, and fails if one is present in its output: with neither, Cloudflare Pages answers an unmatched path with the root `index.html`, while a catch-all rewrite to a document loops there.
+
 ## Erasable syntax in the config's import graph
 
 `vite.config.ts` is evaluated with no transform in front of it by Vite's `configLoader: "native"` and by a plain `node` import, both of which hand it to Node's strip-only type stripping.
