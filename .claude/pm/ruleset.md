@@ -221,16 +221,12 @@ the first. In order:
 - Work the cap holds back is a potential follow-up: the session lists it in
   its continuation brief, and the owner-triggered triage at the end of the
   session (`.claude/commands/follow-ups.md`) decides it with a PM consult.
-  That command relays the owner's delegation verbatim, so the drafts it and
-  the PM agree on are filed under the exception above.
+  That command relays the owner's delegation verbatim.
 - When a review fails to converge -- a step-back trigger fires
   (`.claude/commands/assess-review.md`, Step 2) -- the session offers the
   owner two things together: an immediate step-back on the churning area, and
   a continuation item holding the branch's unfinished work, filed on the
   owner's word.
-
-This section is the one statement of when an agent files a board item. Every
-other command and agent definition cites it rather than restating it.
 
 The board is the only queue, for work and decisions alike. Anything not
 settled in the session that raised it becomes an item -- filed under the cap

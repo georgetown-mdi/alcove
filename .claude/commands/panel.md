@@ -35,8 +35,8 @@ before proceeding -- it holds the session rules this command's steps assume.
     `{"name": "<short-name>", "lens": "<one paragraph>"}`, phrased as
     neutrally as the question.
 - `--deliberate`: opt in to one deliberation round should the panel not
-  converge (Step 3). Without it, a panel that does not converge goes straight
-  to the owner.
+  converge (Step 3). Without it, a split panel goes straight to the
+  owner.
 
 Whether a panel should run at all, and whether its outcome settles the
 question or goes to the owner, is not this command's call: the deferred-decision
@@ -93,10 +93,10 @@ panelist saw another's.
    line of rationale per panelist.
 2. Any dissent, even one the majority's rationale answers: the panel is split.
    Take the question to the owner in prose with each returned position. Do
-   NOT re-run the panel -- a re-run is for contamination evidence only (a panelist read a
-   candidate edit or was told a preferred answer), never for disagreement, and
-   never because agreement came quickly. The one exception is the deliberation
-   round, and only when `--deliberate` was given: before going to the owner,
+   NOT re-run the panel -- a re-run is for contamination evidence only (a
+   panelist read a candidate edit or was told a preferred answer), never for
+   disagreement, and never because agreement came quickly. The one exception is
+   the deliberation round, and only when `--deliberate` was given: before going to the owner,
    invoke the Workflow once more, same `scriptPath`, with `args` set to
    `{"deliberate": <the first round's result, verbatim>}`. Each panelist that
    answered sees its own first answer and the others' and may revise once. The
@@ -114,7 +114,7 @@ panelist saw another's.
 4. Remove the worktree: `git worktree remove /tmp/panel-base --force`.
 
 The deliberation round is a decision taken, opt-in and bounded as above: a
-panel that does not converge may be missing a consideration only one panelist
+split panel may be missing a consideration only one panelist
 raised, and independence holds because every first position is formed and
 recorded before any panelist sees another's.
 
