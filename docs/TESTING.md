@@ -433,8 +433,8 @@ npm run test:interop -w apps/web
 
 It lives in `apps/web/test/interop/` because only that workspace may import
 `apps/web/src`; the CLI side is a spawned child process, which is how the console
-already drives it. The suite skips itself when `apps/cli/dist/` is absent rather
-than failing on a tree that has not built it.
+already drives it. The suite fails, naming the build command, when `apps/cli/dist/` is absent,
+rather than skipping and reporting a pass with no tests run.
 
 Not every file in the project is an exchange. `consoleExportParity.test.ts`
 spawns the built `alcove` only to WRITE what it compares against -- a

@@ -14,8 +14,7 @@ export const cliEntry = path.resolve(
   "../../../../apps/cli/dist/index.js",
 );
 
-/** Whether the CLI has been built. `npm run build -w apps/cli` produces it; the
- * suites skip on a tree that has not, and requireCliBuild.ts fails the run. */
+/** Whether the CLI has been built; `npm run build -w apps/cli` produces it. */
 export const cliIsBuilt = existsSync(cliEntry);
 
 /** How one `alcove` invocation ended. */

@@ -25,12 +25,7 @@ import { connectionTuningOptions } from "@console/connectionTuningModel";
 
 import { TEST_HOST_KEY_FINGERPRINT, tempDataRoot } from "../utils/jobFixtures";
 
-import {
-  cliIsBuilt,
-  expectCliSucceeded,
-  invitationFrom,
-  startCli,
-} from "./cliParty";
+import { expectCliSucceeded, invitationFrom, startCli } from "./cliParty";
 
 import type { CliRun } from "./cliParty";
 import type { ExchangeSpec } from "@alcove/core";
@@ -347,7 +342,7 @@ function keyFileBeside(keyPath: string): { sharedSecret: string } {
   return { sharedSecret };
 }
 
-describe.skipIf(!cliIsBuilt)("an alcove-written configuration", () => {
+describe("an alcove-written configuration", () => {
   describe.each([
     {
       channel: "filedrop" as const,

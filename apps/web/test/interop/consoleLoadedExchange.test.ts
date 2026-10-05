@@ -36,7 +36,6 @@ import { Route as ApplyTermsRoute } from "../../src/routes/api/jobs/$jobId/apply
 
 import {
   cliEntry,
-  cliIsBuilt,
   expectCliSucceeded,
   fillInFileDropConnection,
   invitationFrom,
@@ -281,77 +280,74 @@ function consoleManager(): JobManager {
   return manager;
 }
 
-describe.skipIf(!cliIsBuilt)(
-  "a configuration Alcove wrote, opened in the console and run",
-  () => {
-    test("the console links against a real Alcove partner on the file's terms", async () => {
-      await establishPartnership();
-      const manager = consoleManager();
+describe("a configuration Alcove wrote, opened in the console and run", () => {
+  test("the console links against a real Alcove partner on the file's terms", async () => {
+    await establishPartnership();
+    const manager = consoleManager();
 
-      const secretBeforeRun = mountedSharedSecret(workspace.mount);
-      const id = await manager.createJob({
-        ...intentFromOpen(manager),
-        tokenMaxAgeDays: 30,
-      });
-      const createdAt = Date.now();
-      const partner = startCli({
-        args: ["exchange", "input.csv", "out/"],
-        cwd: workspace.partnerDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-
-      await waitForTerminal(manager, id);
-      expectCliSucceeded(await partner, "exchange");
-
-      const record = manager.getJob(id);
-      if (record === undefined) throw new Error("the job left the slot");
-      expect(pairsFromResultCsv(manager.getJobView(id)!.outputPath!)).toEqual(
-        CONSOLE_PAIRS,
-      );
-      expect(pairsFromResultCsv(resultFileIn(workspace.partnerOutput))).toEqual(
-        PARTNER_PAIRS,
-      );
-
-      // The run continued the exchange under the key file beside the
-      // configuration and left its rotated secret there, as a command-line run
-      // does; it wrote no key file of its own.
-      expect(mountedSharedSecret(workspace.mount)).not.toBe(secretBeforeRun);
-      expect(
-        mountedSharedSecret(workspace.mount) ===
-          mountedSharedSecret(workspace.partnerDir),
-      ).toBe(true);
-      expect(existsSync(path.join(record.workdir, ".alcove.key"))).toBe(false);
-
-      // The max-age policy the console composed is the one the CLI stamped the
-      // rotated secret with, as a command-line run under the same policy does.
-      const { expires } = parseSensitiveJson(
-        readFileSync(path.join(workspace.mount, ".alcove.key"), "utf8"),
-        "mounted key file",
-      ) as { expires?: string };
-      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-      expect(Date.parse(expires ?? "")).toBeGreaterThanOrEqual(
-        createdAt + thirtyDaysMs - 60_000,
-      );
-      expect(Date.parse(expires ?? "")).toBeLessThanOrEqual(
-        Date.now() + thirtyDaysMs,
-      );
-
-      // The hand-off the same run composed is the configuration the operator
-      // takes to cron: the terms the file stated, and the rendezvous folder as a
-      // placeholder rather than the console's own mount.
-      const handoff = manager.getJobHandoff(id);
-      if (handoff?.template.kind !== "config")
-        throw new Error("the run composed no configuration template");
-      const exported = parseExchangeSpec(
-        parseSensitiveYaml(handoff.template.yaml, "exported configuration"),
-      );
-      expect(exported.linkageTerms).toEqual(
-        mountedDocumentOf(workspace.mount).linkageTerms,
-      );
-      expect(handoff.template.yaml).not.toContain(workspace.dropDir);
+    const secretBeforeRun = mountedSharedSecret(workspace.mount);
+    const id = await manager.createJob({
+      ...intentFromOpen(manager),
+      tokenMaxAgeDays: 30,
     });
-  },
-);
+    const createdAt = Date.now();
+    const partner = startCli({
+      args: ["exchange", "input.csv", "out/"],
+      cwd: workspace.partnerDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+
+    await waitForTerminal(manager, id);
+    expectCliSucceeded(await partner, "exchange");
+
+    const record = manager.getJob(id);
+    if (record === undefined) throw new Error("the job left the slot");
+    expect(pairsFromResultCsv(manager.getJobView(id)!.outputPath!)).toEqual(
+      CONSOLE_PAIRS,
+    );
+    expect(pairsFromResultCsv(resultFileIn(workspace.partnerOutput))).toEqual(
+      PARTNER_PAIRS,
+    );
+
+    // The run continued the exchange under the key file beside the
+    // configuration and left its rotated secret there, as a command-line run
+    // does; it wrote no key file of its own.
+    expect(mountedSharedSecret(workspace.mount)).not.toBe(secretBeforeRun);
+    expect(
+      mountedSharedSecret(workspace.mount) ===
+        mountedSharedSecret(workspace.partnerDir),
+    ).toBe(true);
+    expect(existsSync(path.join(record.workdir, ".alcove.key"))).toBe(false);
+
+    // The max-age policy the console composed is the one the CLI stamped the
+    // rotated secret with, as a command-line run under the same policy does.
+    const { expires } = parseSensitiveJson(
+      readFileSync(path.join(workspace.mount, ".alcove.key"), "utf8"),
+      "mounted key file",
+    ) as { expires?: string };
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    expect(Date.parse(expires ?? "")).toBeGreaterThanOrEqual(
+      createdAt + thirtyDaysMs - 60_000,
+    );
+    expect(Date.parse(expires ?? "")).toBeLessThanOrEqual(
+      Date.now() + thirtyDaysMs,
+    );
+
+    // The hand-off the same run composed is the configuration the operator
+    // takes to cron: the terms the file stated, and the rendezvous folder as a
+    // placeholder rather than the console's own mount.
+    const handoff = manager.getJobHandoff(id);
+    if (handoff?.template.kind !== "config")
+      throw new Error("the run composed no configuration template");
+    const exported = parseExchangeSpec(
+      parseSensitiveYaml(handoff.template.yaml, "exported configuration"),
+    );
+    expect(exported.linkageTerms).toEqual(
+      mountedDocumentOf(workspace.mount).linkageTerms,
+    );
+    expect(handoff.template.yaml).not.toContain(workspace.dropDir);
+  });
+});
 
 /** Have the partner sign a receipt: a signing identity beside its
  * configuration, and a certificate-mode block naming it with no pin, so the
@@ -372,122 +368,116 @@ async function partnerSignsReceipts(): Promise<void> {
   writeFileSync(workspace.partnerConfig, stringifyYaml(config));
 }
 
-describe.skipIf(!cliIsBuilt)(
-  "the artifacts one console run leaves in its folder",
-  () => {
-    test("every artifact shares one stamp, the record's createdAt made filesystem-safe", async () => {
-      await establishPartnership();
-      await partnerSignsReceipts();
-      const manager = consoleManager();
-      await manager.resolveSigningFingerprint({
-        identityLabel: CONSOLE_IDENTITY,
-        exportCertificate: false,
-      });
-
-      const { record, partner } = await runAgainstPartner(manager, {
-        ...intentFromOpen(manager),
-        signing: { mode: "certificate" },
-      });
-      expectRunSucceeded(record);
-      expectCliSucceeded(partner, "exchange");
-
-      const artifacts = readdirSync(record.workdir)
-        .map(parseRunArtifactName)
-        .filter((parsed) => parsed !== null);
-      const stamps = new Set(artifacts.map(({ stamp }) => stamp));
-      expect(stamps.size).toBe(1);
-      const [stamp] = [...stamps] as [string];
-      expect(new Set(artifacts.map(({ kind }) => kind))).toEqual(
-        new Set(["result", "record", "keys", "terms", "receipt"]),
-      );
-
-      const { createdAt } = JSON.parse(
-        readFileSync(
-          path.join(record.workdir, runArtifactNames(stamp).record),
-          "utf8",
-        ),
-      ) as { createdAt: string };
-      expect(recordFileStamp(createdAt)).toBe(stamp);
-
-      const view = manager.getJobView(record.id);
-      if (view?.recordAvailable !== true || view.recordCreatedAt === undefined)
-        throw new Error("the console offers no record for the run");
-      expect(recordFileStamp(view.recordCreatedAt)).toBe(stamp);
-      expect(view.resultFileName).toBe(runArtifactNames(stamp).result);
-      expect(view.receiptAvailable).toBe(true);
+describe("the artifacts one console run leaves in its folder", () => {
+  test("every artifact shares one stamp, the record's createdAt made filesystem-safe", async () => {
+    await establishPartnership();
+    await partnerSignsReceipts();
+    const manager = consoleManager();
+    await manager.resolveSigningFingerprint({
+      identityLabel: CONSOLE_IDENTITY,
+      exportCertificate: false,
     });
-  },
-);
 
-describe.skipIf(!cliIsBuilt)(
-  "an opened configuration's maximum age, held by the real Alcove",
-  () => {
-    test("a run whose shared secret is past its expiry is refused", async () => {
-      // The mount an operator has once a max-age policy stamped the key file
-      // and the exchange then went unrun past that stamp. No partner is needed:
-      // the run is refused before it reaches the shared folder.
-      writeFileSync(
-        workspace.mountedConfig,
-        stringifyYaml(
-          snakeizeKeys({
-            connection: { channel: "filedrop", path: workspace.dropDir },
-            linkageTerms: getDefaultLinkageTerms(CONSOLE_IDENTITY),
-            authentication: { tokenMaxAgeDays: 30 },
-          }),
-        ),
-      );
-      writeFileSync(
-        path.join(workspace.mount, ".alcove.key"),
-        JSON.stringify({
-          sharedSecret: "c".repeat(42) + "A",
-          expires: "2020-01-01T00:00:00.000Z",
+    const { record, partner } = await runAgainstPartner(manager, {
+      ...intentFromOpen(manager),
+      signing: { mode: "certificate" },
+    });
+    expectRunSucceeded(record);
+    expectCliSucceeded(partner, "exchange");
+
+    const artifacts = readdirSync(record.workdir)
+      .map(parseRunArtifactName)
+      .filter((parsed) => parsed !== null);
+    const stamps = new Set(artifacts.map(({ stamp }) => stamp));
+    expect(stamps.size).toBe(1);
+    const [stamp] = [...stamps] as [string];
+    expect(new Set(artifacts.map(({ kind }) => kind))).toEqual(
+      new Set(["result", "record", "keys", "terms", "receipt"]),
+    );
+
+    const { createdAt } = JSON.parse(
+      readFileSync(
+        path.join(record.workdir, runArtifactNames(stamp).record),
+        "utf8",
+      ),
+    ) as { createdAt: string };
+    expect(recordFileStamp(createdAt)).toBe(stamp);
+
+    const view = manager.getJobView(record.id);
+    if (view?.recordAvailable !== true || view.recordCreatedAt === undefined)
+      throw new Error("the console offers no record for the run");
+    expect(recordFileStamp(view.recordCreatedAt)).toBe(stamp);
+    expect(view.resultFileName).toBe(runArtifactNames(stamp).result);
+    expect(view.receiptAvailable).toBe(true);
+  });
+});
+
+describe("an opened configuration's maximum age, held by the real Alcove", () => {
+  test("a run whose shared secret is past its expiry is refused", async () => {
+    // The mount an operator has once a max-age policy stamped the key file
+    // and the exchange then went unrun past that stamp. No partner is needed:
+    // the run is refused before it reaches the shared folder.
+    writeFileSync(
+      workspace.mountedConfig,
+      stringifyYaml(
+        snakeizeKeys({
+          connection: { channel: "filedrop", path: workspace.dropDir },
+          linkageTerms: getDefaultLinkageTerms(CONSOLE_IDENTITY),
+          authentication: { tokenMaxAgeDays: 30 },
         }),
-        { mode: 0o600 },
-      );
+      ),
+    );
+    writeFileSync(
+      path.join(workspace.mount, ".alcove.key"),
+      JSON.stringify({
+        sharedSecret: "c".repeat(42) + "A",
+        expires: "2020-01-01T00:00:00.000Z",
+      }),
+      { mode: 0o600 },
+    );
 
-      const manager = consoleManager();
-      const response = manager.openMountedConfiguration();
-      if (response.document === undefined)
-        throw new Error("the mount holds no configuration to open");
-      const loaded = authoringStateFromDocument(response.document);
-      const receipts = receiptsIntentFields({
-        ...RECEIPTS_DEFAULT,
-        ...loaded.receipts,
-      });
-      expect(receipts.tokenMaxAgeDays).toBe(30);
-
-      const id = await manager.createJob({
-        channel: "filedrop",
-        side: "acceptor",
-        linkageTerms: loaded.linkageTerms,
-        inputFile: { name: "input.csv" },
-        mountedConfigurationOpened: true,
-        ...receipts,
-      });
-
-      const deadline = Date.now() + JOB_DEADLINE_MS;
-      let record = manager.getJob(id);
-      while (record?.terminal === null && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 25));
-        record = manager.getJob(id);
-      }
-      if (record === undefined || record.terminal === null)
-        throw new Error("the console run reached no terminal state");
-      // The CLI's load-time refusal: a usage fault, before any exchange file.
-      expect(record.terminal.outcome).not.toBe("succeeded");
-      expect(record.terminal.exitCode).toBe(64);
-      expect(JSON.stringify(record.events)).toContain(
-        "remove the expired key file on both sides",
-      );
-      expect(readdirSync(workspace.dropDir)).toEqual([]);
-      expect(
-        JSON.parse(
-          readFileSync(path.join(workspace.mount, ".alcove.key"), "utf8"),
-        ),
-      ).toMatchObject({ expires: "2020-01-01T00:00:00.000Z" });
+    const manager = consoleManager();
+    const response = manager.openMountedConfiguration();
+    if (response.document === undefined)
+      throw new Error("the mount holds no configuration to open");
+    const loaded = authoringStateFromDocument(response.document);
+    const receipts = receiptsIntentFields({
+      ...RECEIPTS_DEFAULT,
+      ...loaded.receipts,
     });
-  },
-);
+    expect(receipts.tokenMaxAgeDays).toBe(30);
+
+    const id = await manager.createJob({
+      channel: "filedrop",
+      side: "acceptor",
+      linkageTerms: loaded.linkageTerms,
+      inputFile: { name: "input.csv" },
+      mountedConfigurationOpened: true,
+      ...receipts,
+    });
+
+    const deadline = Date.now() + JOB_DEADLINE_MS;
+    let record = manager.getJob(id);
+    while (record?.terminal === null && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      record = manager.getJob(id);
+    }
+    if (record === undefined || record.terminal === null)
+      throw new Error("the console run reached no terminal state");
+    // The CLI's load-time refusal: a usage fault, before any exchange file.
+    expect(record.terminal.outcome).not.toBe("succeeded");
+    expect(record.terminal.exitCode).toBe(64);
+    expect(JSON.stringify(record.events)).toContain(
+      "remove the expired key file on both sides",
+    );
+    expect(readdirSync(workspace.dropDir)).toEqual([]);
+    expect(
+      JSON.parse(
+        readFileSync(path.join(workspace.mount, ".alcove.key"), "utf8"),
+      ),
+    ).toMatchObject({ expires: "2020-01-01T00:00:00.000Z" });
+  });
+});
 
 /** The partner's input once it adds a column to what it sends: the rows of
  * {@link PARTNER_CSV}, each with its county. */
@@ -668,77 +658,68 @@ function resultRows(resultPath: string): Array<Record<string, string>> {
   });
 }
 
-describe.skipIf(!cliIsBuilt)(
-  "a partner's terms change, met by a console run of the opened configuration",
-  () => {
-    test("the run is refused, Apply takes the change into alcove.yaml, and the next run links on it", async () => {
-      await establishPartnership();
-      const manager = consoleManager();
-      const refused = await runRefusedOnPartnerChange(manager);
-      expectTermsChangeRefusal(refused);
+describe("a partner's terms change, met by a console run of the opened configuration", () => {
+  test("the run is refused, Apply takes the change into alcove.yaml, and the next run links on it", async () => {
+    await establishPartnership();
+    const manager = consoleManager();
+    const refused = await runRefusedOnPartnerChange(manager);
+    expectTermsChangeRefusal(refused);
 
-      const beforeApply = readFileSync(workspace.mountedConfig, "utf8");
-      expect(await applyThroughConsoleRoute(manager, refused.id)).toBe(
-        "applied",
-      );
-      expect(refused.termsProposal).toBe("applied");
-      expect(readFileSync(workspace.mountedConfig, "utf8")).not.toBe(
-        beforeApply,
-      );
-      const applied = mountedDocumentOf(workspace.mount);
-      expect(applied.linkageTerms.payload?.receive).toEqual([
-        { name: "county" },
-      ]);
+    const beforeApply = readFileSync(workspace.mountedConfig, "utf8");
+    expect(await applyThroughConsoleRoute(manager, refused.id)).toBe("applied");
+    expect(refused.termsProposal).toBe("applied");
+    expect(readFileSync(workspace.mountedConfig, "utf8")).not.toBe(beforeApply);
+    const applied = mountedDocumentOf(workspace.mount);
+    expect(applied.linkageTerms.payload?.receive).toEqual([{ name: "county" }]);
 
-      // The seat reopens the configuration before the next run, which then
-      // runs on the terms the file took on.
-      expect(await manager.deleteJob(refused.id)).toBe(true);
-      const rerun = await runAgainstPartner(manager, intentFromOpen(manager));
-      expectRunSucceeded(rerun.record);
-      expectCliSucceeded(rerun.partner, "exchange");
-      const rows = resultRows(manager.getJobView(rerun.record.id)!.outputPath!);
-      expect(rows.map((row) => [row.row_id, row.their_row_id])).toEqual(
-        CONSOLE_PAIRS.map(([own, partner]) => [String(own), String(partner)]),
-      );
-      for (const row of rows)
-        expect(row.county).toBe(COUNTY_BY_CONSOLE_ROW[row.row_id]);
+    // The seat reopens the configuration before the next run, which then
+    // runs on the terms the file took on.
+    expect(await manager.deleteJob(refused.id)).toBe(true);
+    const rerun = await runAgainstPartner(manager, intentFromOpen(manager));
+    expectRunSucceeded(rerun.record);
+    expectCliSucceeded(rerun.partner, "exchange");
+    const rows = resultRows(manager.getJobView(rerun.record.id)!.outputPath!);
+    expect(rows.map((row) => [row.row_id, row.their_row_id])).toEqual(
+      CONSOLE_PAIRS.map(([own, partner]) => [String(own), String(partner)]),
+    );
+    for (const row of rows)
+      expect(row.county).toBe(COUNTY_BY_CONSOLE_ROW[row.row_id]);
+  });
+
+  test("a declined apply or a run whose terms were edited leaves alcove.yaml unchanged", async () => {
+    await establishPartnership();
+    const manager = consoleManager();
+    const refused = await runRefusedOnPartnerChange(manager, (intent) => ({
+      ...intent,
+      linkageTerms: { ...intent.linkageTerms, date: "2026-07-12" },
+    }));
+    expectTermsChangeRefusal(refused);
+    const beforeApply = readFileSync(workspace.mountedConfig, "utf8");
+
+    // The run's terms are not the file's, so the change the seat showed is
+    // not the one the file would take on: nothing runs.
+    expect(await applyThroughConsoleRoute(manager, refused.id)).toBe(
+      "run-terms-differ",
+    );
+    expect(readFileSync(workspace.mountedConfig, "utf8")).toBe(beforeApply);
+    expect(refused.termsProposal).toBe("available");
+
+    // The same proposal applied on the command line without
+    // --consent-to-terms and nothing to answer the question: declined.
+    const declined = await startCli({
+      args: [
+        "apply",
+        `--config-file=${workspace.mountedConfig}`,
+        `--key-file=${path.join(workspace.mount, ".alcove.key")}`,
+        `@${path.join(refused.workdir, TERMS_PROPOSAL_FILE_NAME)}`,
+      ],
+      cwd: workspace.mount,
+      timeoutMs: CLI_DEADLINE_MS,
     });
-
-    test("a declined apply or a run whose terms were edited leaves alcove.yaml unchanged", async () => {
-      await establishPartnership();
-      const manager = consoleManager();
-      const refused = await runRefusedOnPartnerChange(manager, (intent) => ({
-        ...intent,
-        linkageTerms: { ...intent.linkageTerms, date: "2026-07-12" },
-      }));
-      expectTermsChangeRefusal(refused);
-      const beforeApply = readFileSync(workspace.mountedConfig, "utf8");
-
-      // The run's terms are not the file's, so the change the seat showed is
-      // not the one the file would take on: nothing runs.
-      expect(await applyThroughConsoleRoute(manager, refused.id)).toBe(
-        "run-terms-differ",
-      );
-      expect(readFileSync(workspace.mountedConfig, "utf8")).toBe(beforeApply);
-      expect(refused.termsProposal).toBe("available");
-
-      // The same proposal applied on the command line without
-      // --consent-to-terms and nothing to answer the question: declined.
-      const declined = await startCli({
-        args: [
-          "apply",
-          `--config-file=${workspace.mountedConfig}`,
-          `--key-file=${path.join(workspace.mount, ".alcove.key")}`,
-          `@${path.join(refused.workdir, TERMS_PROPOSAL_FILE_NAME)}`,
-        ],
-        cwd: workspace.mount,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      expectCliSucceeded(declined, "apply");
-      expect(declined.output).toContain(
-        "update declined; the configuration was not changed",
-      );
-      expect(readFileSync(workspace.mountedConfig, "utf8")).toBe(beforeApply);
-    });
-  },
-);
+    expectCliSucceeded(declined, "apply");
+    expect(declined.output).toContain(
+      "update declined; the configuration was not changed",
+    );
+    expect(readFileSync(workspace.mountedConfig, "utf8")).toBe(beforeApply);
+  });
+});

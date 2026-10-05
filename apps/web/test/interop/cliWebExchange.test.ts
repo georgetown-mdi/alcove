@@ -18,7 +18,6 @@ import {
   runWebPartyExchange,
 } from "./webParty";
 import {
-  cliIsBuilt,
   expectCliSucceeded,
   fillInFileDropConnection,
   invitationFrom,
@@ -167,139 +166,136 @@ afterEach(() => {
   rmSync(workspace.root, { recursive: true, force: true });
 });
 
-describe.skipIf(!cliIsBuilt)(
-  "a CLI party and a web party complete one live exchange",
-  () => {
-    test("the CLI invites and the web app's acceptor assembly accepts", async () => {
-      const invite = await startCli({
-        args: ["invite", "--identity", CLI_IDENTITY, workspace.cliInput],
-        cwd: workspace.cliDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      expectCliSucceeded(invite, "invite");
-      const token = invitationFrom(invite);
+describe("a CLI party and a web party complete one live exchange", () => {
+  test("the CLI invites and the web app's acceptor assembly accepts", async () => {
+    const invite = await startCli({
+      args: ["invite", "--identity", CLI_IDENTITY, workspace.cliInput],
+      cwd: workspace.cliDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+    expectCliSucceeded(invite, "invite");
+    const token = invitationFrom(invite);
 
-      // An offline invite embeds no endpoint, so its configuration names none
-      // and Alcove says so; supplying the shared directory is the operator step
-      // it asks for.
-      expect(namesFileDrop(workspace.cliConfig, workspace.dropDir)).toBe(false);
-      fillInFileDropConnection({
-        configPath: workspace.cliConfig,
-        dropDir: workspace.dropDir,
-        pollIntervalMs: POLL_INTERVAL_MS,
-        peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
-      });
-
-      const webSetup = await acceptAsWebParty({
-        token,
-        identity: WEB_IDENTITY,
-        inputCsvPath: workspace.webInput,
-      });
-      const { cli, web } = await runBothParties({
-        workspace,
-        driver: "aead-stand-in",
-        webSetup,
-        peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
-      });
-
-      expectBothPartiesLinked({ cli, web });
+    // An offline invite embeds no endpoint, so its configuration names none
+    // and Alcove says so; supplying the shared directory is the operator step
+    // it asks for.
+    expect(namesFileDrop(workspace.cliConfig, workspace.dropDir)).toBe(false);
+    fillInFileDropConnection({
+      configPath: workspace.cliConfig,
+      dropDir: workspace.dropDir,
+      pollIntervalMs: POLL_INTERVAL_MS,
+      peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
     });
 
-    test("the web app mints the invitation and the real CLI accepts it", async () => {
-      const minted = await inviteAsWebParty({
-        identity: WEB_IDENTITY,
-        inputCsvPath: workspace.webInput,
-        dropDir: workspace.dropDir,
-      });
-
-      const accept = await startCli({
-        args: [
-          "accept",
-          "--identity",
-          CLI_IDENTITY,
-          "--consent-to-terms",
-          minted.encoded,
-          workspace.cliInput,
-        ],
-        cwd: workspace.cliDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      expectCliSucceeded(accept, "accept");
-
-      // The endpoint the web app minted onto the token is what the CLI's own
-      // accept wrote into its configuration: no operator fill-in here, unlike
-      // the endpoint-less offline invite above.
-      expect(namesFileDrop(workspace.cliConfig, workspace.dropDir)).toBe(true);
-      fillInFileDropConnection({
-        configPath: workspace.cliConfig,
-        dropDir: workspace.dropDir,
-        pollIntervalMs: POLL_INTERVAL_MS,
-        peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
-      });
-
-      const { cli, web } = await runBothParties({
-        workspace,
-        driver: "aead-stand-in",
-        webSetup: minted,
-        peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
-      });
-
-      expectBothPartiesLinked({ cli, web });
+    const webSetup = await acceptAsWebParty({
+      token,
+      identity: WEB_IDENTITY,
+      inputCsvPath: workspace.webInput,
+    });
+    const { cli, web } = await runBothParties({
+      workspace,
+      driver: "aead-stand-in",
+      webSetup,
+      peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
     });
 
-    test("the web app's own handshake driver refuses the AEAD a file-sync CLI party asks for", async () => {
-      const invite = await startCli({
-        args: ["invite", "--identity", CLI_IDENTITY, workspace.cliInput],
-        cwd: workspace.cliDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      expectCliSucceeded(invite, "invite");
-      fillInFileDropConnection({
-        configPath: workspace.cliConfig,
-        dropDir: workspace.dropDir,
-        pollIntervalMs: POLL_INTERVAL_MS,
-        peerTimeoutMs: REFUSAL_PEER_TIMEOUT_MS,
-      });
+    expectBothPartiesLinked({ cli, web });
+  });
 
-      const webSetup = await acceptAsWebParty({
-        token: invitationFrom(invite),
-        identity: WEB_IDENTITY,
-        inputCsvPath: workspace.webInput,
-      });
-      const { cli, web } = await runBothParties({
-        workspace,
-        driver: "app",
-        webSetup,
-        peerTimeoutMs: REFUSAL_PEER_TIMEOUT_MS,
-      });
-
-      // The handshake itself succeeds -- both parties derive the same session
-      // key -- and the run stops on what it negotiated: a capability the web
-      // path does not apply, reported as a local `usage` fault rather than a
-      // failed authentication. Nothing reaches the PSI rounds, on either side.
-      if (web.status !== "rejected")
-        throw new Error("the web party completed an exchange it must refuse");
-      expect(web.reason).toBeInstanceOf(ConnectionError);
-      expect((web.reason as ConnectionError).kind).toBe("usage");
-      expect((web.reason as ConnectionError).message).toContain(
-        "application-layer encryption",
-      );
-
-      // The CLI party exits on its own peer budget rather than being killed on
-      // the harness deadline, so this arm measures a real failure rather than a
-      // hang the assertion above would pass over.
-      if (cli.status !== "fulfilled") throw cli.reason;
-      expect(cli.value.timedOut).toBe(false);
-      expect(cli.value.exitCode).toBeGreaterThan(0);
-      expect(
-        existsSync(workspace.cliOutput) &&
-          readdirSync(workspace.cliOutput).some((name) =>
-            name.startsWith("alcove-results-"),
-          ),
-      ).toBe(false);
+  test("the web app mints the invitation and the real CLI accepts it", async () => {
+    const minted = await inviteAsWebParty({
+      identity: WEB_IDENTITY,
+      inputCsvPath: workspace.webInput,
+      dropDir: workspace.dropDir,
     });
-  },
-);
+
+    const accept = await startCli({
+      args: [
+        "accept",
+        "--identity",
+        CLI_IDENTITY,
+        "--consent-to-terms",
+        minted.encoded,
+        workspace.cliInput,
+      ],
+      cwd: workspace.cliDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+    expectCliSucceeded(accept, "accept");
+
+    // The endpoint the web app minted onto the token is what the CLI's own
+    // accept wrote into its configuration: no operator fill-in here, unlike
+    // the endpoint-less offline invite above.
+    expect(namesFileDrop(workspace.cliConfig, workspace.dropDir)).toBe(true);
+    fillInFileDropConnection({
+      configPath: workspace.cliConfig,
+      dropDir: workspace.dropDir,
+      pollIntervalMs: POLL_INTERVAL_MS,
+      peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
+    });
+
+    const { cli, web } = await runBothParties({
+      workspace,
+      driver: "aead-stand-in",
+      webSetup: minted,
+      peerTimeoutMs: COMPLETING_PEER_TIMEOUT_MS,
+    });
+
+    expectBothPartiesLinked({ cli, web });
+  });
+
+  test("the web app's own handshake driver refuses the AEAD a file-sync CLI party asks for", async () => {
+    const invite = await startCli({
+      args: ["invite", "--identity", CLI_IDENTITY, workspace.cliInput],
+      cwd: workspace.cliDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+    expectCliSucceeded(invite, "invite");
+    fillInFileDropConnection({
+      configPath: workspace.cliConfig,
+      dropDir: workspace.dropDir,
+      pollIntervalMs: POLL_INTERVAL_MS,
+      peerTimeoutMs: REFUSAL_PEER_TIMEOUT_MS,
+    });
+
+    const webSetup = await acceptAsWebParty({
+      token: invitationFrom(invite),
+      identity: WEB_IDENTITY,
+      inputCsvPath: workspace.webInput,
+    });
+    const { cli, web } = await runBothParties({
+      workspace,
+      driver: "app",
+      webSetup,
+      peerTimeoutMs: REFUSAL_PEER_TIMEOUT_MS,
+    });
+
+    // The handshake itself succeeds -- both parties derive the same session
+    // key -- and the run stops on what it negotiated: a capability the web
+    // path does not apply, reported as a local `usage` fault rather than a
+    // failed authentication. Nothing reaches the PSI rounds, on either side.
+    if (web.status !== "rejected")
+      throw new Error("the web party completed an exchange it must refuse");
+    expect(web.reason).toBeInstanceOf(ConnectionError);
+    expect((web.reason as ConnectionError).kind).toBe("usage");
+    expect((web.reason as ConnectionError).message).toContain(
+      "application-layer encryption",
+    );
+
+    // The CLI party exits on its own peer budget rather than being killed on
+    // the harness deadline, so this arm measures a real failure rather than a
+    // hang the assertion above would pass over.
+    if (cli.status !== "fulfilled") throw cli.reason;
+    expect(cli.value.timedOut).toBe(false);
+    expect(cli.value.exitCode).toBeGreaterThan(0);
+    expect(
+      existsSync(workspace.cliOutput) &&
+        readdirSync(workspace.cliOutput).some((name) =>
+          name.startsWith("alcove-results-"),
+        ),
+    ).toBe(false);
+  });
+});
 
 /** Both parties finished, the web party naming the CLI's declared identity off
  * the agreed terms, and each resolved the same intersection from its own side --

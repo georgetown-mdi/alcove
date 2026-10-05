@@ -32,7 +32,6 @@ import { connectionTuningOptions } from "@console/connectionTuningModel";
 
 import {
   cliEntry,
-  cliIsBuilt,
   expectCliSucceeded,
   fillInFileDropConnection,
   invitationFrom,
@@ -237,135 +236,132 @@ function runCrontabCommand(
   });
 }
 
-describe.skipIf(!cliIsBuilt)(
-  "the console's recurring-run hand-off, run as given",
-  () => {
-    test("the handed-off files and cron command link against the partner's next run", async () => {
-      await establishPartnership();
-      const manager = new JobManager({
-        dataRoot: workspace.mount,
-        binaryPath: cliEntry,
-        jobInputDir: workspace.mount,
-        jobRendezvousDir: workspace.dropDir,
-      });
-      managers.push(manager);
-      const id = await manager.createJob(convertedIntentFromOpen(manager));
-      const partnerFirst = startCli({
-        args: ["exchange", "input.csv", "out/"],
-        cwd: workspace.partnerDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      await waitForSuccess(manager, id);
-      expectCliSucceeded(await partnerFirst, "exchange");
-
-      const handoff = manager.getJobHandoff(id);
-      if (handoff?.template.kind !== "config")
-        throw new Error("the run composed no configuration template");
-      expect(handoff.bindPaths).toEqual([
-        { path: HANDOFF_SHARED_DIRECTORY_PLACEHOLDER, readOnly: false },
-      ]);
-
-      // The operator's part: save alcove.yaml with the shared folder set, copy
-      // the key file the run rotated, and put the input in the folder.
-      writeFileSync(
-        path.join(workspace.scheduleDir, "alcove.yaml"),
-        handoff.template.yaml.replaceAll(
-          HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
-          workspace.dropDir,
-        ),
-      );
-      copyFileSync(
-        path.join(workspace.mount, ".alcove.key"),
-        path.join(workspace.scheduleDir, ".alcove.key"),
-      );
-      chmodSync(path.join(workspace.scheduleDir, ".alcove.key"), 0o600);
-      expect(handoff.template.argv).toContain(`./${CONSOLE_INPUT_NAME}`);
-      expect(handoffInputName(handoff.template.argv)).toBe(CONSOLE_INPUT_NAME);
-      copyFileSync(
-        path.join(workspace.mount, CONSOLE_INPUT_NAME),
-        path.join(workspace.scheduleDir, CONSOLE_INPUT_NAME),
-      );
-      const installedAlcove = path.join(workspace.root, "alcove");
-      writeFileSync(
-        installedAlcove,
-        `#!/bin/sh\nexec '${process.execPath}' '${cliEntry}' "$@"\n`,
-      );
-      chmodSync(installedAlcove, 0o755);
-
-      const source: ScheduledRunSource = {
-        argv: handoff.template.argv,
-        bindPaths: handoff.bindPaths,
-        image: "ghcr.io/georgetown-mdi/alcove:latest",
-      };
-      const handedOffLine = installedCronLine(source);
-      expect(handedOffLine).not.toContain("$(");
-      expect(handedOffLine).not.toContain("%");
-      const line = handedOffLine
-        .replace(EXCHANGE_FOLDER_PLACEHOLDER, workspace.scheduleDir)
-        .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);
-
-      const partnerNext = startCli({
-        args: ["exchange", "input.csv", "out/"],
-        cwd: workspace.partnerDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      const scheduled = await runCrontabCommand(line);
-      expectCliSucceeded(await partnerNext, "exchange");
-      if (scheduled.exitCode !== 0)
-        throw new Error(
-          `the scheduled command exited ${String(scheduled.exitCode)}\n` +
-            scheduled.output,
-        );
-
-      // The result is named with its record's stamp, and the record verifies
-      // against it and the input the run read.
-      const scheduledFiles = readdirSync(workspace.scheduleDir);
-      const results = scheduledFiles.filter((name) =>
-        /^alcove-results-.+\.csv$/.test(name),
-      );
-      expect(results).toHaveLength(1);
-      expect(
-        pairsFromResultCsv(path.join(workspace.scheduleDir, results[0])),
-      ).toEqual(CONSOLE_PAIRS);
-      const record = results[0]
-        .replace(/^alcove-results-/, "alcove-record-")
-        .replace(/\.csv$/, ".json");
-      expect(scheduledFiles).toContain(record);
-      const verified = await startCli({
-        args: ["verify-receipt", record, `./${CONSOLE_INPUT_NAME}`, results[0]],
-        cwd: workspace.scheduleDir,
-        timeoutMs: CLI_DEADLINE_MS,
-      });
-      expectCliSucceeded(verified, "verify-receipt");
-      expect(verified.output).toMatch(/^VERIFIED/m);
-      expect(existsSync(path.join(workspace.scheduleDir, "exchange.log"))).toBe(
-        true,
-      );
-      expect(
-        sharedSecretIn(workspace.scheduleDir) ===
-          sharedSecretIn(workspace.partnerDir),
-      ).toBe(true);
-
-      // The Docker line runs the same arguments in the image, over the same
-      // folder mounted at its working directory and the shared folder at its
-      // own path.
-      const dockerArgv = dockerRunArgv(
-        source,
-        "/usr/bin/docker",
-        EXCHANGE_FOLDER_PLACEHOLDER,
-      );
-      expect(dockerArgv?.slice(0, 7)).toEqual([
-        "/usr/bin/docker",
-        "run",
-        "--rm",
-        "--mount",
-        `type=bind,src=${EXCHANGE_FOLDER_PLACEHOLDER},dst=/work`,
-        "--mount",
-        `type=bind,src=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER},` +
-          `dst=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER}`,
-      ]);
-      expect(dockerArgv?.slice(8)).toEqual(handoff.template.argv.slice(1));
-      expect(dockerCronLine(source)).toMatch(/ \.\/$/);
+describe("the console's recurring-run hand-off, run as given", () => {
+  test("the handed-off files and cron command link against the partner's next run", async () => {
+    await establishPartnership();
+    const manager = new JobManager({
+      dataRoot: workspace.mount,
+      binaryPath: cliEntry,
+      jobInputDir: workspace.mount,
+      jobRendezvousDir: workspace.dropDir,
     });
-  },
-);
+    managers.push(manager);
+    const id = await manager.createJob(convertedIntentFromOpen(manager));
+    const partnerFirst = startCli({
+      args: ["exchange", "input.csv", "out/"],
+      cwd: workspace.partnerDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+    await waitForSuccess(manager, id);
+    expectCliSucceeded(await partnerFirst, "exchange");
+
+    const handoff = manager.getJobHandoff(id);
+    if (handoff?.template.kind !== "config")
+      throw new Error("the run composed no configuration template");
+    expect(handoff.bindPaths).toEqual([
+      { path: HANDOFF_SHARED_DIRECTORY_PLACEHOLDER, readOnly: false },
+    ]);
+
+    // The operator's part: save alcove.yaml with the shared folder set, copy
+    // the key file the run rotated, and put the input in the folder.
+    writeFileSync(
+      path.join(workspace.scheduleDir, "alcove.yaml"),
+      handoff.template.yaml.replaceAll(
+        HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
+        workspace.dropDir,
+      ),
+    );
+    copyFileSync(
+      path.join(workspace.mount, ".alcove.key"),
+      path.join(workspace.scheduleDir, ".alcove.key"),
+    );
+    chmodSync(path.join(workspace.scheduleDir, ".alcove.key"), 0o600);
+    expect(handoff.template.argv).toContain(`./${CONSOLE_INPUT_NAME}`);
+    expect(handoffInputName(handoff.template.argv)).toBe(CONSOLE_INPUT_NAME);
+    copyFileSync(
+      path.join(workspace.mount, CONSOLE_INPUT_NAME),
+      path.join(workspace.scheduleDir, CONSOLE_INPUT_NAME),
+    );
+    const installedAlcove = path.join(workspace.root, "alcove");
+    writeFileSync(
+      installedAlcove,
+      `#!/bin/sh\nexec '${process.execPath}' '${cliEntry}' "$@"\n`,
+    );
+    chmodSync(installedAlcove, 0o755);
+
+    const source: ScheduledRunSource = {
+      argv: handoff.template.argv,
+      bindPaths: handoff.bindPaths,
+      image: "ghcr.io/georgetown-mdi/alcove:latest",
+    };
+    const handedOffLine = installedCronLine(source);
+    expect(handedOffLine).not.toContain("$(");
+    expect(handedOffLine).not.toContain("%");
+    const line = handedOffLine
+      .replace(EXCHANGE_FOLDER_PLACEHOLDER, workspace.scheduleDir)
+      .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);
+
+    const partnerNext = startCli({
+      args: ["exchange", "input.csv", "out/"],
+      cwd: workspace.partnerDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+    const scheduled = await runCrontabCommand(line);
+    expectCliSucceeded(await partnerNext, "exchange");
+    if (scheduled.exitCode !== 0)
+      throw new Error(
+        `the scheduled command exited ${String(scheduled.exitCode)}\n` +
+          scheduled.output,
+      );
+
+    // The result is named with its record's stamp, and the record verifies
+    // against it and the input the run read.
+    const scheduledFiles = readdirSync(workspace.scheduleDir);
+    const results = scheduledFiles.filter((name) =>
+      /^alcove-results-.+\.csv$/.test(name),
+    );
+    expect(results).toHaveLength(1);
+    expect(
+      pairsFromResultCsv(path.join(workspace.scheduleDir, results[0])),
+    ).toEqual(CONSOLE_PAIRS);
+    const record = results[0]
+      .replace(/^alcove-results-/, "alcove-record-")
+      .replace(/\.csv$/, ".json");
+    expect(scheduledFiles).toContain(record);
+    const verified = await startCli({
+      args: ["verify-receipt", record, `./${CONSOLE_INPUT_NAME}`, results[0]],
+      cwd: workspace.scheduleDir,
+      timeoutMs: CLI_DEADLINE_MS,
+    });
+    expectCliSucceeded(verified, "verify-receipt");
+    expect(verified.output).toMatch(/^VERIFIED/m);
+    expect(existsSync(path.join(workspace.scheduleDir, "exchange.log"))).toBe(
+      true,
+    );
+    expect(
+      sharedSecretIn(workspace.scheduleDir) ===
+        sharedSecretIn(workspace.partnerDir),
+    ).toBe(true);
+
+    // The Docker line runs the same arguments in the image, over the same
+    // folder mounted at its working directory and the shared folder at its
+    // own path.
+    const dockerArgv = dockerRunArgv(
+      source,
+      "/usr/bin/docker",
+      EXCHANGE_FOLDER_PLACEHOLDER,
+    );
+    expect(dockerArgv?.slice(0, 7)).toEqual([
+      "/usr/bin/docker",
+      "run",
+      "--rm",
+      "--mount",
+      `type=bind,src=${EXCHANGE_FOLDER_PLACEHOLDER},dst=/work`,
+      "--mount",
+      `type=bind,src=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER},` +
+        `dst=${HANDOFF_SHARED_DIRECTORY_PLACEHOLDER}`,
+    ]);
+    expect(dockerArgv?.slice(8)).toEqual(handoff.template.argv.slice(1));
+    expect(dockerCronLine(source)).toMatch(/ \.\/$/);
+  });
+});
