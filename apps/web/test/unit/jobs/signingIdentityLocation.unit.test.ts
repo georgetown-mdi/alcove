@@ -366,6 +366,31 @@ describe("the job resolves the identity through the option", () => {
     expect(fs.readdirSync(root)).toEqual([]);
   });
 
+  test("an unsigned sftp run whose saved credential file holds a signing identity is refused", async () => {
+    const root = directory("job-credential-identity-shape");
+    const secrets = directory("job-credential-identity-shape-secrets");
+    const credential = path.join(secrets, "my-identity.json");
+    fs.writeFileSync(credential, "pw");
+    const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
+    manager.authorSftpServer({
+      host: "sftp.partner.example",
+      hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      credential: { kind: "ref", ref: `@${credential}`, credType: "password" },
+    });
+    fs.writeFileSync(
+      credential,
+      JSON.stringify({
+        version: "v",
+        privateKey: { d: "d" },
+        certificate: {},
+      }),
+    );
+    await expect(manager.createJob(validSftpIntent())).rejects.toBeInstanceOf(
+      JobSftpCredentialConsoleOwnedError,
+    );
+    expect(fs.readdirSync(root)).toEqual([]);
+  });
+
   test("an sftp run on an ordinary credential file is not refused", async () => {
     const root = directory("job-credential-ordinary");
     const secrets = directory("job-credential-ordinary-secrets");

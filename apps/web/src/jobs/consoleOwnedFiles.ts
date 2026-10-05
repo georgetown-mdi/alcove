@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { parseSensitiveJson } from "@alcove/core";
+
 import {
   JOB_FILE_NAMES,
   PREVIOUS_CONFIGURATION_FILE_NAME,
@@ -10,6 +12,7 @@ import {
   SIGNING_IDENTITY_FILE_NAME,
 } from "./signingIdentity";
 import { isPathWithin } from "./pathContainment";
+import { readBoundedMountedFile } from "./boundedMountedFile";
 import { isValidJobId } from "./workdir";
 
 /** The names the console writes into the working folder itself, none of them
@@ -156,6 +159,42 @@ function realpathOrResolved(filePath: string): string {
   }
 }
 
+/** Far above any signing identity document the CLI writes; a larger file is
+ * not one and is not read. */
+const MAX_IDENTITY_SHAPE_READ_BYTES = 16 * 1024;
+
+/** Whether `value` is an object with every key in `keys`. */
+function hasKeys(value: unknown, keys: ReadonlyArray<string>): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    keys.every((key) => key in value)
+  );
+}
+
+/**
+ * Whether the file at `filePath` holds a signing identity document, matched on
+ * its structure (`version`, a `privateKey` with its `d` component, and a
+ * `certificate`) rather than its values, so an identity under another name or
+ * a hard link to one is caught. The content is never logged or returned.
+ */
+function fileHoldsSigningIdentity(filePath: string): boolean {
+  const read = readBoundedMountedFile(filePath, MAX_IDENTITY_SHAPE_READ_BYTES);
+  if (read.outcome !== "read") return false;
+  let document: unknown;
+  try {
+    document = parseSensitiveJson(read.source, "credential file");
+  } catch {
+    return false;
+  }
+  return (
+    hasKeys(document, ["version", "privateKey", "certificate"]) &&
+    hasKeys((document as Record<string, unknown>)["privateKey"], ["d"]) &&
+    hasKeys((document as Record<string, unknown>)["certificate"], [])
+  );
+}
+
 /** The SFTP connection fields whose values are `@path` credential file
  * references. */
 export const CREDENTIAL_FILE_FIELDS = [
@@ -173,8 +212,9 @@ export type CredentialFileField = (typeof CREDENTIAL_FILE_FIELDS)[number];
  * undefined. A file is the console's when it is a console-owned entry of
  * either mount ({@link consoleOwnedCredentialEntry}) or one of
  * `identityPaths`, the signing identity files this console reads, compared
- * through their links. A value without the `@` prefix is not a file reference
- * and is skipped.
+ * through their links, or any file whose content is a signing identity
+ * document ({@link fileHoldsSigningIdentity}). A value without the `@` prefix
+ * is not a file reference and is skipped.
  */
 export function consoleOwnedCredentialField(
   credentials: Readonly<Partial<Record<CredentialFileField, string>>>,
@@ -190,6 +230,8 @@ export function consoleOwnedCredentialField(
       return { field, ownedName: SIGNING_IDENTITY_FILE_NAME };
     const ownedName = consoleOwnedCredentialEntry(filePath, roots);
     if (ownedName !== undefined) return { field, ownedName };
+    if (fileHoldsSigningIdentity(filePath))
+      return { field, ownedName: SIGNING_IDENTITY_FILE_NAME };
   }
   return undefined;
 }

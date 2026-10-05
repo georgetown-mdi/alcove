@@ -14,6 +14,10 @@ import {
 import { JobApiConfigError } from "@jobs/gate";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { validateAuthoredSftpServer } from "@jobs/sftpServer";
+import {
+  SAMPLE_INVITER_FILE_NAME,
+  SAMPLE_PARTNER_FILE_NAME,
+} from "@psi/sampleData";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
@@ -34,7 +38,8 @@ const webRoot = path.resolve(
  * type is not a string literal and which is not a forwarded parameter fails the
  * walk by name, so a new writer cannot drop out of it unseen. The walk covers
  * `src/jobs`, checked to be the only part of the app that imports `fs`; a file
- * written under some other first-argument name is outside it.
+ * written under some other first-argument name is outside it, which
+ * {@link joinedWriteSites} narrows for a write call that joins its own path.
  */
 function dataRootFileNames(): Array<string> {
   const configPath = path.join(webRoot, "tsconfig.json");
@@ -129,7 +134,58 @@ function enclosingFunctionParameter(
   return index < 0 ? undefined : { functionName: scope.name.text, index };
 }
 
+/**
+ * Each function in `src/jobs` that passes a `path.join(...)` straight to a file
+ * write, bypassing `resolveWorkdirFile`. The one expected is the sample-input
+ * writer: its two fixed CSV names land on the data root when no input directory
+ * is set, and are inputs the operator picks, not console-owned files. A path
+ * joined into a variable before the write is outside this walk.
+ */
+function joinedWriteSites(): Array<string> {
+  const sourceDir = path.join(webRoot, "src", "jobs");
+  const sites: Array<string> = [];
+  for (const file of fs
+    .readdirSync(sourceDir)
+    .filter((f) => f.endsWith(".ts"))) {
+    const text = fs.readFileSync(path.join(sourceDir, file), "utf8");
+    const source = ts.createSourceFile(
+      file,
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const isJoin = (node: ts.Node | undefined): boolean =>
+      node !== undefined &&
+      ts.isCallExpression(node) &&
+      node.expression.getText(source) === "path.join";
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        /^(writeFile|appendFile|copyFile|rename|open|createWriteStream)(Sync)?$/.test(
+          node.expression.name.text,
+        ) &&
+        (isJoin(node.arguments[0]) || isJoin(node.arguments[1]))
+      ) {
+        let scope: ts.Node | undefined = node.parent;
+        while (scope !== undefined && !ts.isFunctionDeclaration(scope))
+          scope = scope.parent;
+        sites.push(`${file}:${scope?.name?.text ?? "<top level>"}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return sites.sort();
+}
+
 describe("the console-owned name set", () => {
+  test("has the sample-input writer as the only write that joins its own path", () => {
+    expect(joinedWriteSites()).toEqual(["sampleInputs.ts:writeSampleInputs"]);
+    for (const name of [SAMPLE_INVITER_FILE_NAME, SAMPLE_PARTNER_FILE_NAME])
+      expect(isConsoleOwnedFolderName(name)).toBe(false);
+  });
+
   test(
     "holds every fixed name the console resolves a file at in its working folder",
     { timeout: 120_000 },
@@ -328,6 +384,96 @@ describe("validateAuthoredSftpServer refuses the console's own files as credenti
     );
     expect(entry.password).toBe(
       `@${fs.realpathSync(path.join(secretsDir, name))}`,
+    );
+  });
+});
+
+/** A document with the signing identity's structure; the values are
+ * placeholders, since only the keys are matched. */
+const IDENTITY_SHAPED = JSON.stringify({
+  version: "v",
+  privateKey: { kty: "EC", crv: "P-256", x: "x", y: "y", d: "d" },
+  certificate: { identity: "Agency A" },
+});
+
+describe("validateAuthoredSftpServer refuses a file holding a signing identity by its content", () => {
+  test.each(["password", "private_key"] as const)(
+    "an identity under another name in the secrets directory is refused as a %s",
+    (credType) => {
+      const { dir, dataRoot, secretsDir } = layout();
+      fs.mkdirSync(path.join(secretsDir, "keys"));
+      fs.writeFileSync(
+        path.join(secretsDir, "keys", "my-identity.json"),
+        IDENTITY_SHAPED,
+      );
+      for (const credential of [
+        {
+          kind: "ref",
+          ref: `@${path.join(secretsDir, "keys", "my-identity.json")}`,
+          credType,
+        },
+        {
+          kind: "mountRef",
+          mount: "secrets",
+          subPath: ["keys", "my-identity.json"],
+          credType,
+        },
+      ]) {
+        const error = refusal(() =>
+          validateAuthoredSftpServer(
+            body(credential),
+            dataRoot,
+            [],
+            secretsDir,
+          ),
+        );
+        expect(error.message).toContain("your signing identity");
+        expect(error.message).not.toContain(dir);
+        expect(error.message).not.toContain("Agency A");
+      }
+    },
+  );
+
+  test("a hard link to the default identity is refused", () => {
+    const { dir, dataRoot } = layout();
+    const identity = path.join(dataRoot, SIGNING_IDENTITY_FILE_NAME);
+    fs.writeFileSync(identity, IDENTITY_SHAPED);
+    const hardLink = path.join(dir, "server-key");
+    fs.linkSync(identity, hardLink);
+    const error = refusal(() =>
+      validateAuthoredSftpServer(
+        body({ kind: "ref", ref: `@${hardLink}`, credType: "private_key" }),
+        dataRoot,
+        [],
+      ),
+    );
+    expect(error.message).toContain("your signing identity");
+  });
+
+  test.each([
+    [
+      "an ordinary private key file",
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n",
+      "private_key",
+    ],
+    [
+      "a password file whose text starts with a brace",
+      '{"privateKey": {"d": 1}}',
+      "password",
+    ],
+    ["a password file that is not JSON", "{not json", "password"],
+  ] as const)("%s is accepted", (_label, content, credType) => {
+    const { dir, dataRoot, secretsDir } = layout();
+    const file = path.join(dir, "credential");
+    fs.writeFileSync(file, content);
+    const { entry } = validateAuthoredSftpServer(
+      body({ kind: "ref", ref: `@${file}`, credType }),
+      dataRoot,
+      [],
+      secretsDir,
+    );
+    expect(entry[credType === "password" ? "password" : "privateKey"]).toBe(
+      `@${file}`,
     );
   });
 });
