@@ -282,7 +282,7 @@ function runWebRtcParty(
       "--no-record",
       ...EXTRA_CLI_ARGS,
       join(dir, "input.csv"),
-      join(dir, "result.csv"),
+      join(dir, "results"),
     ],
     name,
     roleLine: ROLE_LINE,
@@ -362,16 +362,12 @@ test(
       );
       const inviterDifference =
         inviter.exitCode === 0
-          ? resultDifference(
-              join(a, "result.csv"),
-              ROWS,
-              POPULATION_PARTY.inviter,
-            )
+          ? resultDifference(join(a, "results"), ROWS, POPULATION_PARTY.inviter)
           : undefined;
       const acceptorDifference =
         acceptor.exitCode === 0
           ? resultDifference(
-              join(b, "result.csv"),
+              join(b, "results"),
               ROWS,
               POPULATION_PARTY.acceptor,
             )
@@ -472,7 +468,7 @@ test(
       const difference =
         run.exitCode === 0
           ? resultDifference(
-              join(root, "result.csv"),
+              join(root, "results"),
               ROWS,
               POPULATION_PARTY[PARTY],
             )

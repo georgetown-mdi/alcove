@@ -54,7 +54,7 @@ function startParty(dir: string, drop: string): Party {
     "--no-record",
     `file://${drop}`,
     join(dir, "input.csv"),
-    join(dir, "result.csv"),
+    join(dir, "results"),
   ]
     .map(shellQuote)
     .join(" ");
