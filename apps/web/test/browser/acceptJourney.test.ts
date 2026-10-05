@@ -81,7 +81,8 @@ const journeyResultsUrl = URL.createObjectURL(new Blob(["a,b\nx,y\n"]));
 const settledRun = vi.hoisted(() => ({
   capturedSignal: undefined as AbortSignal | undefined,
 }));
-vi.mock("@psi/exchangeLifecycle", () => ({
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   runExchangeLifecycle: (options: {
     signal: AbortSignal;
     onStages: (stages: Array<unknown>) => void;

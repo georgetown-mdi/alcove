@@ -68,7 +68,8 @@ interface CapturedLifecycle {
 const lifecycleHarness = vi.hoisted(() => ({
   calls: [] as Array<unknown>,
 }));
-vi.mock("@psi/exchangeLifecycle", () => ({
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   runExchangeLifecycle: (options: unknown) => {
     lifecycleHarness.calls.push(options);
     return Promise.resolve();
