@@ -45,6 +45,7 @@ import { ManagedExchangeExpiredError } from "@psi/managed/managedExpiry";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
 import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { ManagedRelayRegistrationError } from "@psi/managed/managedRelayRegistration";
+import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { PartnerNoShowError } from "@psi/transport/waitForConnection";
 
 import {
@@ -190,6 +191,60 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
       false,
     );
     expect(unanswered.recovery).toBe("retry");
+  });
+
+  test("a refused saved signaling address names the exchange, says the address cannot be used, and offers re-invite, not retry", () => {
+    const reason =
+      "names a host that could move the connection to another server";
+    const failure = classifyAgainstOneRecord(
+      new ManagedSignalingEndpointRefusedError("Riverbend quarterly", reason),
+      record({ lastRun: failed("transport") }),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure).toEqual({
+      kind: "saved-address-refused",
+      title: "The saved signaling server address cannot be used",
+      message:
+        'The saved exchange "Riverbend quarterly" cannot run: the signaling ' +
+        `server address it saved ${reason}. The run stopped before ` +
+        "connecting, so your partner was not contacted and nothing left " +
+        "this device. Running it again stops the same way; this exchange " +
+        "needs a fresh invitation.",
+      recovery: "reinvite",
+    });
+    expect(managedRunRetryable(failure)).toBe(false);
+    expect(failure.message).not.toMatch(/try again/i);
+
+    const unlabelled = classifyAgainstOneRecord(
+      new ManagedSignalingEndpointRefusedError(" ", reason),
+      record(),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(unlabelled.message).toMatch(/^This saved exchange cannot run:/);
+  });
+
+  test("a plain transport failure stamped the same way keeps the generic retryable state", () => {
+    const failure = classifyAgainstOneRecord(
+      new Error("the data channel closed"),
+      record({ lastRun: failed("transport") }),
+      undefined,
+      NOW,
+      false,
+    );
+    expect(failure.kind).toBe("transport");
+    expect(failure.title).toBe("The run could not be completed");
+    expect(managedRunRetryable(failure)).toBe(true);
+    expect(
+      managedRunFailureFromRecord(
+        record({ lastRun: failed("transport") }),
+        undefined,
+        NOW,
+      ),
+    ).toMatchObject({ kind: "transport", recovery: "retry" });
   });
 
   test("a lapsed secret is the benign expiry state with re-invite copy naming the lapse", () => {
@@ -1497,6 +1552,7 @@ describe("the launch error a classified state shows", () => {
     "terms-shortfall": "withheld",
     "too-large": "withheld",
     "relay-registration": "withheld",
+    "saved-address-refused": "withheld",
     "partner-set-too-large": "withheld",
     "partner-refused-set": "withheld",
     "terms-change": "withheld",

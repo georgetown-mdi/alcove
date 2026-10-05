@@ -47,6 +47,7 @@ import {
   importedSinceLastSuccess,
   rotationInFlightUnansweredAtLaunch,
 } from "@psi/managed/managedFailureTiers";
+import { ManagedSignalingEndpointRefusedError } from "@psi/managed/managedRendezvous";
 import { canReinviteFromRecord } from "@psi/managed/managedReinvite";
 
 import {
@@ -78,8 +79,9 @@ export {
  * alone.
  *
  * - `"reinvite"` -- fast re-invite (a lapsed, desynced, restored, or
- *   persist-failed exchange). The inviter side re-mints from the stored document;
- *   the acceptor side asks the partner to re-invite (the surface names which).
+ *   persist-failed exchange, or a refused saved signaling address). The
+ *   inviter side re-mints from the stored document; the acceptor side asks
+ *   the partner to re-invite (the surface names which).
  * - `"retry"` -- retryable in place (fix the input, or retry a transport drop).
  * - `"wait"` -- not this run's to act on (a run in progress elsewhere).
  * - `"confirm"` -- the Tier-2 out-of-band confirmation and the two-outcome gate.
@@ -136,6 +138,7 @@ export interface ManagedRunFailureAlert {
     | "partner-refused-set"
     | "terms-change"
     | "relay-registration"
+    | "saved-address-refused"
     | "custody-unreadable"
     | "already-running"
     | "missed"
@@ -621,6 +624,28 @@ const IMPORTED_FAILURE: ManagedRunFailureAlert = {
   recovery: "reinvite",
 };
 
+/** The state of an acceptor's run refused because the signaling server address
+ * its record saved fails the validation a fresh invitation's address gets
+ * ({@link ManagedSignalingEndpointRefusedError}). Read off the error class with
+ * no stored kind of its own, since a new stored kind would change the saved
+ * record's schema: the record stamps it as a transport failure, so a later
+ * visit reads the generic transport state. The same record refuses identically
+ * every time, so it is not the retry state; a fresh invitation from the
+ * partner saves a new address, the acceptor's re-invite recovery. */
+function savedAddressRefusedFailure(
+  error: ManagedSignalingEndpointRefusedError,
+): ManagedRunFailureAlert {
+  return {
+    kind: "saved-address-refused",
+    title: "The saved signaling server address cannot be used",
+    message:
+      `${error.refusal} The run stopped before connecting, so your partner ` +
+      "was not contacted and nothing left this device. Running it again " +
+      "stops the same way; this exchange needs a fresh invitation.",
+    recovery: "reinvite",
+  };
+}
+
 /** The recorded transport state: a connection or data-exchange drop, not a
  * failed-closed handshake. Fixed, friendly copy, which accounts for nothing
  * about why this run stopped; the error itself reaches the operator escaped, in
@@ -883,6 +908,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   "terms-shortfall": "withheld",
   "too-large": "withheld",
   "relay-registration": "withheld",
+  "saved-address-refused": "withheld",
   "partner-set-too-large": "withheld",
   "partner-refused-set": "withheld",
   "terms-change": "withheld",
@@ -1022,6 +1048,11 @@ function classifyLaunchState(
     return partnerSetTooLargeFailure(error);
   if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
   if (benign === "relay-registration") return relayRegistrationFailure(error);
+  if (
+    error instanceof ManagedSignalingEndpointRefusedError &&
+    !dataExchangeStarted
+  )
+    return savedAddressRefusedFailure(error);
   const { afterRun } = records;
   const tier = deriveManagedFailureTier(afterRun, local, now);
   return managedRunTierFailure(
