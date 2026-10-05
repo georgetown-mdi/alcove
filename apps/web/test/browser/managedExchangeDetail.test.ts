@@ -619,7 +619,9 @@ describe("managed exchange detail schedule entry", () => {
     expect(grantNote.element().textContent).toContain(
       "including its shared secret",
     );
-    expect(grantNote.element().textContent).toContain("delete older backups");
+    expect(grantNote.element().textContent).toContain(
+      "delete any other backup",
+    );
     await page
       .getByRole("button", { name: "Choose a different folder" })
       .click();

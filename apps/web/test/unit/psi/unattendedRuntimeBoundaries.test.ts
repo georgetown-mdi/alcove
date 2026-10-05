@@ -22,10 +22,11 @@ import {
   composeManagedExchangeFile,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  removeBackupFromWorkingFolder,
   writeBackupToWorkingFolder,
   writeResultsToWorkingDirectory,
 } from "@psi/managed/managedWorkingDirectory";
-import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
+import { managedScheduledBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
 import { startManagedScheduleRuntime } from "@psi/managed/managedScheduleRuntime";
 import { tickManagedSchedules } from "@psi/managed/managedScheduleRunner";
@@ -615,7 +616,10 @@ describe("the working folder", () => {
   test("gives the backup write the one name it writes, and stops at a name already held", async () => {
     // The feature detection a stored grant is followed on, which Node lacks.
     vi.stubGlobal("FileSystemDirectoryHandle", class {});
-    const fileName = managedBackupFileName(new Date("2026-01-06T14:00:00Z"));
+    const fileName = managedScheduledBackupFileName(
+      "Riverbend quarterly",
+      new Date("2026-01-06T14:00:00Z"),
+    );
     const backedUp = recordingFolder();
     await writeBackupToWorkingFolder(
       { workingDirectoryHandle: backedUp.handle },
@@ -642,6 +646,19 @@ describe("the working folder", () => {
     ]);
     expect(backedUp.removed).toEqual([]);
     expect(disallowedAccesses(backedUp.accessed)).toEqual([]);
+
+    // The previous backup's removal: the one name it is handed, looked up and
+    // removed, and nothing listed.
+    await removeBackupFromWorkingFolder(
+      { workingDirectoryHandle: backedUp.handle },
+      fileName,
+      grantedPermission,
+    );
+    expect(backedUp.lookups.slice(3)).toEqual([
+      { name: fileName, create: false },
+    ]);
+    expect(backedUp.removed).toEqual([fileName]);
+    expect(disallowedAccesses(backedUp.accessed)).toEqual([]);
   });
 
   test("never has its input file's name taken by a results write", () => {
@@ -653,15 +670,18 @@ describe("the working folder", () => {
       );
   });
 
-  test("is reached into from the input read and the results write alone", () => {
-    // The input read names the one conventioned constant; the results write names
-    // its own file. No module gets a directory handle's child folders, and no
-    // other module looks a name up at all.
+  test("is reached into from the input read, the writes, and the previous backup's removal alone", () => {
+    // The input read names the one conventioned constant; the writes name their
+    // own file, and the removal the name its caller took from the backup
+    // marker. No module gets a directory handle's child folders, and no other
+    // module looks a name up at all.
     expect(folderEntryCalls()).toEqual([
       "psi/managed/managedInputHandle.ts: getFileHandle(MANAGED_INPUT_FILE_NAME)",
       "psi/managed/managedWorkingDirectory.ts: getFileHandle(fileName)",
       "psi/managed/managedWorkingDirectory.ts: removeEntry(fileName)",
       "psi/managed/managedWorkingDirectory.ts: getFileHandle(fileName)",
+      "psi/managed/managedWorkingDirectory.ts: getFileHandle(fileName)",
+      "psi/managed/managedWorkingDirectory.ts: removeEntry(fileName)",
     ]);
   });
 

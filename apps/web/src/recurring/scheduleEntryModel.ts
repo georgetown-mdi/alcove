@@ -467,15 +467,16 @@ export const WORKING_FOLDER_UNSUPPORTED_NOTE =
   "each time you run this exchange, and no run can happen with nobody present.";
 
 /** What the operator is told about a folder they have granted: what runs read
- * and write there, including the secret-bearing backups that build up, and
+ * and write there, including the secret-bearing backup each run replaces, and
  * that it stands until they change it. */
 export function workingFolderGrantedNote(name: string): string {
   return (
     `Runs read ${MANAGED_INPUT_FILE_NAME} from ${name} and write their ` +
-    `results there, and each scheduled run that succeeds also writes a backup ` +
-    `of this exchange there, including its shared secret, so keep ${name} ` +
-    `readable only by you on this device and delete older backups once you no ` +
-    `longer need them. That folder stands until you choose another or stop ` +
+    `results there. Each scheduled run that succeeds also writes a backup ` +
+    `of this exchange there, including its shared secret, in place of the one ` +
+    `the previous run wrote, so keep ${name} readable only by you on this ` +
+    `device, and delete any other backup of this exchange there once you no ` +
+    `longer need it. That folder stands until you choose another or stop ` +
     `using it; deleting this exchange drops it too.`
   );
 }
@@ -485,8 +486,9 @@ export function workingFolderGrantedNote(name: string): string {
  * there and the site can reach everything in it. */
 export const WORKING_FOLDER_SCOPE_NOTE =
   "After each scheduled run that succeeds, a backup of this exchange, " +
-  "including its shared secret, is written into this folder, so choose one " +
-  "only you can read on this device, use it for nothing else, and delete " +
-  "older backups once you no longer need them. While the " +
+  "including its shared secret, is written into this folder in place of the " +
+  "one the previous run wrote, so choose one only you can read on this " +
+  "device, use it for nothing else, and delete any other backup of this " +
+  "exchange there once you no longer need it. While the " +
   "grant stands, this site can read and write everything in the folder you " +
   "choose, not only the files this exchange uses.";

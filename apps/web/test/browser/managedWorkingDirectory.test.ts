@@ -19,11 +19,12 @@ import {
   persistManagedExchangeRotation,
   persistManagedExchangeWorkingDirectory,
 } from "@psi/managed/managedExchangeStore";
+import { automaticBackupOnMarker } from "@psi/managed/managedBackupState";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 import { importManagedExchangeArtifact } from "@psi/managed/managedExchangeArtifact";
-import { managedBackupFileName } from "@psi/managed/managedExchangeExport";
+import { managedScheduledBackupFileName } from "@psi/managed/managedExchangeExport";
 import { runResultsFileName } from "@psi/parkedResults";
 import { writeResultsToWorkingDirectory } from "@psi/managed/managedWorkingDirectory";
 
@@ -312,11 +313,60 @@ describe("the backup a scheduled run takes after its rotation", () => {
     ).toBeUndefined();
   });
 
+  test("the next run's backup replaces the one the marker named, and leaves a file saved by hand", async () => {
+    const folder = await trackedOpfsDirectory("backup-replaced");
+    const { rotated } = await rotatedExchangeIn(folder);
+    const first = await backUpUnattendedRun(rotated.id, {
+      ...browserFolderBackupDeps(),
+      now: () => new Date("2026-03-01T09:00:00.000Z"),
+    });
+    expect(first.kind).toBe("backed-up");
+    if (first.kind !== "backed-up") return;
+    const handSaved = await folder.getFileHandle(
+      "alcove-managed-backup-2026-03-01T090000Z.json",
+      { create: true },
+    );
+    const writing = await handSaved.createWritable();
+    await writing.write(new Blob(["a backup saved by hand"]));
+    await writing.close();
+
+    // What the next run reads before its own rotation clears the marker.
+    const previous = automaticBackupOnMarker(
+      (await getManagedLocalState(rotated.id))?.backup,
+    );
+    const next = await persistManagedExchangeRotation(rotated.id, {
+      sharedSecret: generateSharedSecret(),
+      expires: null,
+    });
+    const second = await backUpUnattendedRun(
+      rotated.id,
+      {
+        ...browserFolderBackupDeps(),
+        now: () => new Date("2026-03-08T09:00:00.000Z"),
+      },
+      previous,
+    );
+
+    expect(second).toMatchObject({
+      kind: "backed-up",
+      previous: { kind: "removed", fileName: first.fileName },
+    });
+    if (second.kind !== "backed-up") return;
+    expect(await entryNames(folder)).toEqual(
+      ["alcove-managed-backup-2026-03-01T090000Z.json", second.fileName].sort(),
+    );
+    const file = await folder.getFileHandle(second.fileName);
+    const { record: restored } = importManagedExchangeArtifact(
+      await (await file.getFile()).text(),
+    );
+    expect(restored.sharedSecret).toBe(next.sharedSecret);
+  });
+
   test("leaves a file already held under its name, and the exchange asking for a backup", async () => {
     const folder = await trackedOpfsDirectory("backup-name-held");
     const { rotated } = await rotatedExchangeIn(folder);
     const backedUpAt = new Date();
-    const fileName = managedBackupFileName(backedUpAt);
+    const fileName = managedScheduledBackupFileName(LABEL, backedUpAt);
     const standing = await folder.getFileHandle(fileName, { create: true });
     const opening = await standing.createWritable();
     await opening.write(new Blob(["another exchange's backup"]));

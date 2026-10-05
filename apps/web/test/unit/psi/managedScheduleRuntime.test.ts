@@ -30,6 +30,7 @@ import {
   markManagedBackupIfCurrent,
 } from "../../../src/psi/managed/managedExchangeStore.js";
 import { CLOSE_OUTCOME_WARNINGS } from "../../../src/psi/exchangeLifecycle.js";
+import { getManagedLocalState } from "../../../src/psi/managed/managedLocalState.js";
 
 import {
   parkRunResults,
@@ -95,10 +96,20 @@ vi.mock(
     markManagedBackupIfCurrent: vi.fn(),
   }),
 );
+// The backup marker a run reads before its rotation, to name the backup its own
+// replaces, is IndexedDB as well.
+vi.mock(
+  "../../../src/psi/managed/managedLocalState.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    getManagedLocalState: vi.fn(),
+  }),
+);
 
 const mockedRun = vi.mocked(runManagedExchangeInBrowser);
 const mockedRead = vi.mocked(getManagedExchange);
 const mockedMark = vi.mocked(markManagedBackupIfCurrent);
+const mockedLocalState = vi.mocked(getManagedLocalState);
 const mockedPark = vi.mocked(parkRunResults);
 const mockedRefusal = vi.mocked(recordParkedResultsRefusal);
 const mockedWrittenNote = vi.mocked(recordResultsWrittenToFolder);
@@ -677,10 +688,13 @@ describe("the counts a run declared", () => {
 });
 
 describe("the backup a completed unattended run takes", () => {
-  /** A granted folder that holds nothing yet, with a write that takes the
-   * bytes or refuses them with `failWrite`. */
-  function emptyGrantedFolder(failWrite?: Error) {
-    const files = new Map<string, string>();
+  /** A granted folder holding `holding`, nothing by default, with a write
+   * that takes the bytes or refuses them with `failWrite`. */
+  function emptyGrantedFolder(
+    failWrite?: Error,
+    holding: Record<string, string> = {},
+  ) {
+    const files = new Map(Object.entries(holding));
     const handle = {
       name: "Riverbend exchange",
       queryPermission: () => Promise.resolve("granted"),
@@ -702,7 +716,10 @@ describe("the backup a completed unattended run takes", () => {
             }),
         });
       },
-      removeEntry: () => Promise.resolve(),
+      removeEntry: (fileName: string) => {
+        files.delete(fileName);
+        return Promise.resolve();
+      },
     };
     return { files, handle };
   }
@@ -738,7 +755,7 @@ describe("the backup a completed unattended run takes", () => {
 
     const [fileName] = [...folder.files.keys()];
     expect(fileName).toMatch(
-      /^alcove-managed-backup-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/,
+      /^alcove-scheduled-backup-Riverbend-quarterly-\d{4}-\d{2}-\d{2}T\d{6}Z\.json$/,
     );
     expect(
       importManagedExchangeArtifact(folder.files.get(fileName) ?? "").record
@@ -751,6 +768,40 @@ describe("the backup a completed unattended run takes", () => {
       expect.objectContaining({ kind: "folder" }),
     );
     expect(folder.handle.requestPermission).not.toHaveBeenCalled();
+  });
+
+  test("replaces the backup the marker named before the run, and keeps every other file", async () => {
+    const previous =
+      "alcove-scheduled-backup-Riverbend-quarterly-2026-07-07T120000Z.json";
+    const folder = emptyGrantedFolder(undefined, {
+      [previous]: "the previous run's backup",
+      "alcove-managed-backup-2026-07-01T090000Z.json": "a download kept here",
+    });
+    mockedLocalState.mockResolvedValue({
+      backup: {
+        backedUpAt: "2026-07-07T12:00:00.000Z",
+        savedAs: {
+          kind: "folder",
+          folderName: "Riverbend exchange",
+          fileName: previous,
+        },
+      },
+    });
+    mockedRead.mockResolvedValue(storedAfterRun(folder.handle));
+    mockedMark.mockResolvedValue("marked");
+    mockedRun.mockResolvedValue(completedRun());
+
+    await browserScheduleTickSeams(new AbortController().signal).runAttempt(
+      attempt(),
+    );
+
+    const names = [...folder.files.keys()];
+    expect(names).toHaveLength(2);
+    expect(names).not.toContain(previous);
+    expect(names).toContain("alcove-managed-backup-2026-07-01T090000Z.json");
+    expect(mockedLocalState.mock.invocationCallOrder[0]).toBeLessThan(
+      mockedRun.mock.invocationCallOrder[0],
+    );
   });
 
   test("a write that fails leaves the run's outcome and its results as they were, and the marker unstamped", async () => {

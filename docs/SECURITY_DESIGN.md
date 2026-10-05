@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-03"
+last_reviewed: "2026-10-04"
 ---
 
 # Alcove security
@@ -354,7 +354,7 @@ Because at-rest encryption cannot be the primary control for an unattended secre
 - **Fast re-invite is the recovery.** A suspected compromise or a desync is recovered by re-inviting, which the managed exchange makes cheap by retaining everything a re-invite needs except the secret: the terms and the rendezvous locator (see [Desync detection and recovery](MANAGED_EXCHANGE.md#desync-detection-and-recovery)). This is the same recovery the CLI uses for a lost token.
 - **A max-token-age caps stale-token risk, and is the only cap for a dormant exchange.** The browser analog of `token_max_age_days` stamps an `expires` onto the rotated secret, so a managed exchange with the policy set does not hold a usable secret indefinitely when it goes dormant. Like the CLI's, it is operator-set and off by default, so a dormant stored secret has no automatic exposure bound unless the operator opts in.
 
-At-rest encryption of the browser store sits beneath these three as defense-in-depth. The export artifact makes the same call explicit: it is a plaintext credential file under operator custody, the CLI key file's trust model (see [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#export-artifact)). A scheduled run whose exchange holds a working-folder grant it can use with nobody present writes that same file into the folder after each rotation, as the CLI keeps its key file in its working directory: the folder then holds the current secret in plaintext, within reach of whoever can read the folder and, while the grant stands, of an in-origin script. Each run's backup is a new file, so the older ones stay in the folder holding secrets the partnership has rotated past until the operator deletes them (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#the-backup-a-scheduled-run-writes)).
+At-rest encryption of the browser store sits beneath these three as defense-in-depth. The export artifact makes the same call explicit: it is a plaintext credential file under operator custody, the CLI key file's trust model (see [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#export-artifact)). A scheduled run whose exchange holds a working-folder grant it can use with nobody present writes that same file into the folder after each rotation, as the CLI keeps its key file in its working directory: the folder then holds the current secret in plaintext, within reach of whoever can read the folder and, while the grant stands, of an in-origin script. Each run's backup replaces the one the previous run wrote; a backup the app did not write, or one left from before a run that wrote no backup there, stays in the folder holding a secret the partnership has rotated past until the operator deletes it (see [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md#the-backup-a-scheduled-run-writes)).
 
 ### Rollback: at-rest copies can silently resurrect
 

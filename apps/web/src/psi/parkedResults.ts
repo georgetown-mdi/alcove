@@ -269,13 +269,14 @@ export function appendParkedResults(
  * path component. */
 const MAX_RESULTS_FILE_LABEL_CHARS = 40;
 
-/** The exchange's label as a file-name fragment: ASCII letters and digits, every
- * other run of characters reduced to one hyphen. A label reduces to the empty
+/** The exchange's label as a file-name fragment, for the results file and the
+ * backup a scheduled run writes: ASCII letters and digits, every other run of
+ * characters reduced to one hyphen. A label reduces to the empty
  * string where it holds none of those, and the name then omits the fragment
  * rather than standing a bare hyphen in for it. The reduction is also what keeps
  * a path separator or a traversal segment out of a name that reaches a real
  * filesystem through the granted folder. */
-function resultsFileLabelSlug(label: string): string {
+export function exchangeLabelFileFragment(label: string): string {
   return label
     .replace(/[^A-Za-z0-9]+/g, "-")
     .slice(0, MAX_RESULTS_FILE_LABEL_CHARS)
@@ -294,7 +295,7 @@ function resultsFileLabelSlug(label: string): string {
  * same fragment and run at it, still name one file; the later write takes it.
  */
 export function runResultsFileName(label: string, runAt: string): string {
-  const slug = resultsFileLabelSlug(label);
+  const slug = exchangeLabelFileFragment(label);
   const stamp = recordFileStamp(runAt);
   return `alcove-results-${slug === "" ? "" : `${slug}-`}${stamp}.csv`;
 }

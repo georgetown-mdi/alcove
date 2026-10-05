@@ -8,9 +8,10 @@
  *   backup marker in one atomic store step, then downloads exactly those
  *   bytes. The source is left live.
  * - A FOLDER backup, which a scheduled run takes after its rotation, writes
- *   the same bytes under the same name into the granted working folder, and
- *   stamps the marker after the write lands, only while the stored secret is
- *   still the one the file holds.
+ *   the same bytes into the granted working folder under a name holding the
+ *   exchange's label, stamps the marker after the write lands, only while the
+ *   stored secret is still the one the file holds, and then removes the
+ *   previous folder backup the marker recorded.
  * - A MIGRATION export ("take over on another device") downloads the
  *   artifact the same way, then spends the source only on the operator's
  *   attestation that the file is saved: `anchor.click()` gives no landing
@@ -37,6 +38,8 @@
  * a real download or database.
  */
 
+import { exchangeLabelFileFragment } from "../parkedResults";
+
 import {
   MANAGED_EXCHANGE_ARTIFACT_MIME,
   encodeManagedExchangeArtifact,
@@ -48,6 +51,14 @@ import { runnableManagedExchangeOrRefuse } from "./managedExchangeRecord";
 import { storedWorkingDirectoryUsable } from "./managedWorkingDirectory";
 
 import type {
+  BackupFolderRemoval,
+  BackupFolderWrite,
+} from "./managedWorkingDirectory";
+import type {
+  ManagedBackupLocation,
+  ManagedFolderBackupLocation,
+} from "./managedBackupState";
+import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
@@ -55,20 +66,35 @@ import type {
   ManagedSpendOutcome,
   ManagedSpentHandoff,
 } from "./managedLocalStateShape";
-import type { BackupFolderWrite } from "./managedWorkingDirectory";
 import type { HandlePermissionState } from "./managedInputHandle";
-import type { ManagedBackupLocation } from "./managedBackupState";
 import type { ManagedBackupMarkOutcome } from "./managedExchangeStore";
 import type { ManagedCronExport } from "./managedCronExport";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
-/** The name every backup file is saved under, downloaded or written into the
- * working folder: `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`, the UTC
- * instant of `at` to the second, so two backups a second apart never share it. */
-export function managedBackupFileName(at: Date): string {
+/** The UTC instant of `at` to the second, as `<YYYY-MM-DD>T<HHMMSS>Z`. */
+function backupFileStamp(at: Date): string {
   const iso = at.toISOString();
-  const time = iso.slice(11, 19).replaceAll(":", "");
-  return `alcove-managed-backup-${iso.slice(0, 10)}T${time}Z.json`;
+  return `${iso.slice(0, 10)}T${iso.slice(11, 19).replaceAll(":", "")}Z`;
+}
+
+/** The name a downloaded backup is saved under:
+ * `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`, the UTC instant of `at`
+ * to the second, so two backups a second apart never share it. */
+export function managedBackupFileName(at: Date): string {
+  return `alcove-managed-backup-${backupFileStamp(at)}.json`;
+}
+
+/** The name the backup a scheduled run writes into the working folder takes:
+ * `alcove-scheduled-backup-<label>-<YYYY-MM-DD>T<HHMMSS>Z.json`, the label
+ * reduced as the results file reduces it ({@link exchangeLabelFileFragment}),
+ * and left out where it reduces to nothing. The prefix differs from a
+ * download's, so no download shares the name. */
+export function managedScheduledBackupFileName(
+  label: string,
+  at: Date,
+): string {
+  const fragment = exchangeLabelFileFragment(label);
+  return `alcove-scheduled-backup-${fragment === "" ? "" : `${fragment}-`}${backupFileStamp(at)}.json`;
 }
 
 /** The platform boundaries a backup export drives, injected so the intent stays
@@ -271,6 +297,12 @@ export interface ManagedFolderBackupDeps {
     fileName: string,
     content: Blob,
   ) => Promise<BackupFolderWrite>;
+  /** Remove the file `fileName` from the record's working folder, querying its
+   * permission and never prompting. */
+  removeFromFolder: (
+    record: ManagedExchangeRecord,
+    fileName: string,
+  ) => Promise<BackupFolderRemoval>;
   /** Stamp the backup marker as of `backedUpAt`, saved as `savedAs`, only while
    * the stored record still holds `expectedSharedSecret`. */
   markIfCurrent: (
@@ -283,40 +315,80 @@ export interface ManagedFolderBackupDeps {
   now: () => Date;
 }
 
+/** What became of the previous automatic backup once the new one landed: the
+ * folder's own {@link BackupFolderRemoval}, or `"other-folder"` where the
+ * marker recorded it under another folder name, or under none, so it was left
+ * where it is. `fileName` is the name the marker recorded. */
+export type PreviousFolderBackup = { fileName: string } & (
+  BackupFolderRemoval | { kind: "other-folder" }
+);
+
 /** How the backup a scheduled run takes after its rotation turned out. Only
  * `"backed-up"` stamps the backup marker, so every other outcome leaves the
  * exchange asking for a backup. `"superseded"`: the file was written, and the
- * stored secret moved past it before the marker could be stamped. */
+ * stored secret moved past it before the marker could be stamped. `previous`,
+ * on the two outcomes that wrote a file, is what became of the previous
+ * automatic backup, absent where there was none to replace. */
 export type ManagedFolderBackup =
   | {
       kind: "backed-up";
       fileName: string;
       directoryName: string;
       backedUpAt: Date;
+      previous?: PreviousFolderBackup;
     }
   | { kind: "no-folder" }
   | { kind: "ungranted"; state: HandlePermissionState }
   | { kind: "name-held"; fileName: string }
   | { kind: "write-failed"; error: unknown }
-  | { kind: "superseded"; fileName: string; directoryName: string }
+  | {
+      kind: "superseded";
+      fileName: string;
+      directoryName: string;
+      previous?: PreviousFolderBackup;
+    }
   | { kind: "failed"; error: unknown };
+
+/** Remove the previous automatic backup once `written` has landed, only where
+ * the marker recorded it in a folder of the same name: the marker holds no
+ * handle, so a folder the operator switched to is told apart by name alone. */
+async function removePreviousFolderBackup(
+  record: ManagedExchangeRecord,
+  previous: ManagedFolderBackupLocation,
+  written: { fileName: string; directoryName: string },
+  deps: ManagedFolderBackupDeps,
+): Promise<PreviousFolderBackup | undefined> {
+  const { fileName } = previous;
+  if (fileName === written.fileName) return undefined;
+  if (previous.folderName !== written.directoryName)
+    return { kind: "other-folder", fileName };
+  try {
+    return { ...(await deps.removeFromFolder(record, fileName)), fileName };
+  } catch (error) {
+    return { kind: "remove-failed", error, fileName };
+  }
+}
 
 /**
  * Back up a record into its working folder with nobody present: the bytes a
- * manual backup downloads, under the name it downloads them as, written into
- * the granted folder, and the backup marker stamped once the file has landed
- * and only while the stored secret is still the one the file holds.
+ * manual backup downloads, written into the granted folder under
+ * {@link managedScheduledBackupFileName}, the backup marker stamped once the
+ * file has landed and only while the stored secret is still the one the file
+ * holds, and then `previous` removed: the automatic backup the marker recorded
+ * before this run's rotation cleared it.
  *
  * The order differs from the manual backup's, which stamps before it downloads
  * because a download reports no landing: a folder write does report one, so a
  * write that did not land stamps nothing, and the marker is checked against
- * the stored secret instead of being stamped in the step that read it.
+ * the stored secret instead of being stamped in the step that read it. A write
+ * that did not land also removes nothing, so the previous backup stays.
  *
  * Never rejects: it runs after a completed run, which nothing here may fail.
  */
 export async function backUpManagedExchangeToFolder(
   id: string,
   deps: ManagedFolderBackupDeps,
+  previous?: ManagedFolderBackupLocation,
 ): Promise<ManagedFolderBackup> {
   try {
     const record = await deps.readRecord(id);
@@ -334,7 +406,7 @@ export async function backUpManagedExchangeToFolder(
     const backedUpAt = deps.now();
     const written = await deps.writeToFolder(
       runnable,
-      managedBackupFileName(backedUpAt),
+      managedScheduledBackupFileName(runnable.label, backedUpAt),
       content,
     );
     if (written.kind !== "written") return written;
@@ -351,14 +423,25 @@ export async function backUpManagedExchangeToFolder(
         fileName,
       },
     );
+    if (marked === "gone")
+      return {
+        kind: "failed",
+        error: new Error(`managed exchange ${id} is no longer stored`),
+      };
+    const removal =
+      previous === undefined
+        ? undefined
+        : await removePreviousFolderBackup(runnable, previous, written, deps);
+    const replaced = removal === undefined ? {} : { previous: removal };
     if (marked === "marked")
-      return { kind: "backed-up", fileName, directoryName, backedUpAt };
-    if (marked === "superseded")
-      return { kind: "superseded", fileName, directoryName };
-    return {
-      kind: "failed",
-      error: new Error(`managed exchange ${id} is no longer stored`),
-    };
+      return {
+        kind: "backed-up",
+        fileName,
+        directoryName,
+        backedUpAt,
+        ...replaced,
+      };
+    return { kind: "superseded", fileName, directoryName, ...replaced };
   } catch (error) {
     return { kind: "failed", error };
   }

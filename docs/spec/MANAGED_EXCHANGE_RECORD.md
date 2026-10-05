@@ -1706,15 +1706,9 @@ device's pending decision on a partner's changed terms. The four:
     a marker attesting bytes nothing produced, so it fails the export instead.
   - **A folder backup marks after it lands, against the secret it holds.** After
     a scheduled run completes, the runtime reads the record by `id`, serializes
-    the bytes the backup export downloads, and writes them under the backup
-    export's file name into the record's working folder, querying the grant and
-    never prompting, and never replacing an entry already held under that name.
-    Both backups name the file `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`
-    (`managedBackupFileName`), the UTC instant the backup is taken to the
-    second. Two backups taken in different seconds never share a name; a manual
-    download and a folder write taken in the same UTC second do, and the folder
-    write then finds the name held and writes nothing, as it does for any file
-    already there under that name.
+    the bytes the backup export downloads, and writes them into the record's
+    working folder, querying the grant and never prompting, and never replacing
+    an entry already held under that name.
     A download reports no landing, so the export stamps the marker first; a
     folder write does report one, so this backup stamps the marker only after
     the write lands, in one cross-store transaction that compares the stored
@@ -1723,6 +1717,37 @@ device's pending decision on a partner's changed terms. The four:
     with nobody present, a held name, a failed write, or a moved secret leaves
     the marker absent, so the derived state stays "backup needed". None of these
     changes the run's recorded outcome, and no record field is added.
+    - **File names.** A download is named
+      `alcove-managed-backup-<YYYY-MM-DD>T<HHMMSS>Z.json`
+      (`managedBackupFileName`); the folder write is named
+      `alcove-scheduled-backup-<label>-<YYYY-MM-DD>T<HHMMSS>Z.json`
+      (`managedScheduledBackupFileName`), each the UTC instant the backup is
+      taken to the second. `<label>` is the record's label reduced as the
+      results file name reduces it -- ASCII letters and digits, every other run
+      of characters one hyphen, at most 40 characters -- and is left out, with
+      its hyphen, where the label reduces to nothing. The reduction is lossy:
+      two labels can share a fragment, so the name identifies the exchange to
+      the operator but does not tell two exchanges apart, and nothing reads the
+      name to decide which exchange a file belongs to. The two prefixes differ,
+      so no download shares a folder backup's name; a held name -- a file saved
+      there by hand, or another exchange's folder backup in the same second
+      under the same fragment -- makes the folder write write nothing.
+    - **The previous folder backup is replaced.** Once the new file has landed
+      and the mark step has found the record still stored, the folder backup
+      removes the file the backup marker's `savedAs` recorded as
+      `{ kind: "folder" }`, read before the run, since the run's rotation clears
+      the marker. Only a folder backup stamps that kind, so the marker, not a
+      file's name, identifies a file this app wrote: a download saved into the
+      folder by hand, or any other file the marker does not name, is never
+      removed. The previous file is removed only where the marker's
+      `folderName` equals the current folder's name; a marker without
+      `folderName` removes nothing. A write that does not land removes
+      nothing, so the previous backup stays. A marker that names no folder
+      backup at the run's start -- cleared by an earlier rotation that wrote no
+      folder backup (an attended run, or a scheduled run whose backup did not
+      land), replaced by a download, or unreadable -- leaves every earlier
+      backup in the folder for the operator to delete. A removal the folder
+      refuses goes to the diagnostic log, and the new backup still counts.
   - **The command-line export marks nothing.** What it writes is the CLI's own
     `alcove.yaml` and `.alcove.key`. The import takes that pair back ([Importing
     the key file beside a configuration](#importing-the-key-file-beside-a-configuration)),

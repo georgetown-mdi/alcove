@@ -14,7 +14,9 @@
  * The folder is never enumerated: the results write looks up and creates only
  * the one name it writes, and removes only an entry that write created. The
  * backup a scheduled run writes after its rotation goes through the same write,
- * which for it never replaces an entry already held under its name.
+ * which for it never replaces an entry already held under its name; the one
+ * other removal is the previous automatic backup, by the name the exchange's
+ * backup marker recorded for it ({@link removeBackupFromWorkingFolder}).
  *
  * Delivery is total: every outcome classifies rather than throwing
  * ({@link ResultsDelivery}), because the run it belongs to has already rotated
@@ -325,9 +327,9 @@ export type BackupFolderWrite = { kind: "no-folder" } | EntryWrite;
 /**
  * Write a backup file into the working folder its record holds, under
  * `fileName`. It never replaces an entry the folder already holds under that
- * name: the backup's name holds an instant and no exchange, so a held name may
- * be another exchange's backup in a shared folder, and the folder is not read
- * to tell which.
+ * name: a held name may be a file the operator saved there, or another
+ * exchange's backup in a shared folder whose label reduces to the same name
+ * fragment, and the folder is not read to tell which.
  *
  * Never rejects, and never prompts ({@link writeEntry}).
  */
@@ -344,4 +346,48 @@ export async function writeBackupToWorkingFolder(
     replaceHeld: false,
     permission,
   });
+}
+
+/** How removing the previous automatic backup from the working folder turned
+ * out: `"removed"`, `"absent"` where no file is held under its name any more,
+ * and otherwise `"remove-failed"`, which leaves whatever the folder held. */
+export type BackupFolderRemoval =
+  | { kind: "removed" }
+  | { kind: "absent" }
+  | { kind: "remove-failed"; error: unknown };
+
+/**
+ * Remove the file `fileName` from the working folder its record holds: the
+ * previous automatic backup, once the next one has landed. Only a file is
+ * removed; a directory under the name is left and reported as a failure. The
+ * caller takes the name from the backup marker, never from the folder.
+ *
+ * Never rejects, and never prompts.
+ */
+export async function removeBackupFromWorkingFolder(
+  record: Pick<ManagedExchangeRecord, "workingDirectoryHandle">,
+  fileName: string,
+  permission?: HandlePermissionQuery,
+): Promise<BackupFolderRemoval> {
+  const directory = record.workingDirectoryHandle;
+  if (directory === undefined || !storedWorkingDirectoryUsable(directory))
+    return {
+      kind: "remove-failed",
+      error: new Error("the exchange holds no working folder"),
+    };
+  try {
+    await ensureHandlePermission(
+      directory,
+      "unattended",
+      "readwrite",
+      permission,
+    );
+    await directory.getFileHandle(fileName);
+    await directory.removeEntry(fileName);
+    return { kind: "removed" };
+  } catch (error) {
+    if (error instanceof Error && error.name === "NotFoundError")
+      return { kind: "absent" };
+    return { kind: "remove-failed", error };
+  }
 }
