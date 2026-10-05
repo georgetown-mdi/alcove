@@ -109,8 +109,7 @@ describe("wait-container-pair", () => {
     expect(run.stderr).toContain("acceptor: exited, status 0");
   });
 
-  // after40 is still running once the settle window passes, so it is killed.
-  it("stops the acceptor as soon as the inviter fails", () => {
+  it("stops the acceptor once the settle window passes after the inviter fails", () => {
     const run = runPair(30, "i-exit3-after1", "a-exit0-after40");
     expect(run.status).toBe(1);
     expect(run.seconds).toBeLessThan(10);
