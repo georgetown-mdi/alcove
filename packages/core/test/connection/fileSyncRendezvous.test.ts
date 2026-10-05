@@ -7,6 +7,7 @@ import {
   helloEnvelope,
   bilateralMismatch,
   composeDirsDisplay,
+  ENTRY_GUARD_NAME_BUDGET_FLOOR,
   isPeerHelloName,
   isPeerJoiningName,
   FileSyncRendezvous,
@@ -1367,6 +1368,29 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     };
   }
 
+  // Each path in `paths`, delivered as the only file in `dir`, is refused with
+  // its name shown whole: what an omission for budget, rather than for the
+  // name's own length, means.
+  async function expectEachShownWholeAlone(
+    paths: string[],
+    dir: string,
+    party: (dir: string) => ReturnType<typeof makeParty>,
+    scope?: () => RendezvousScope,
+  ): Promise<void> {
+    for (const path of paths) {
+      const p = party(dir);
+      p.files.set(path, Buffer.alloc(0));
+      const err = await p.rdv.run(scope ? scope() : p.scope).then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(UsageError);
+      expect(enumeration(sanitizeErrorForDisplay(err))).toBe(
+        path.slice(dir.length + 1),
+      );
+    }
+  }
+
   test("the unexpected-protocol-file refusal still holds the recovery step once rendered", async () => {
     const files = new Map<string, Buffer>();
     // Retain-mode message acks: the longest protocol filename shape there is,
@@ -1412,6 +1436,16 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     for (const name of shown)
       expect(files.has(`${REAL_DIR}/${name}`)).toBe(true);
     expect(shown.length + omitted).toBe(12);
+    // Omitted for the budget earlier names spent, not for their own length:
+    // the figure docs/spec/FILE_SYNC.md states, and each is shown whole alone.
+    expect(omitted).toBe(11);
+    await expectEachShownWholeAlone(
+      [...files.keys()].filter(
+        (path) => !shown.includes(path.slice(REAL_DIR.length + 1)),
+      ),
+      REAL_DIR,
+      (dir) => makeParty("aaa", flags, new Map(), {}, dir),
+    );
   });
 
   // The split scope is the one operator-facing string that puts FIRST-PARTY text
@@ -1524,6 +1558,17 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     for (const name of shown)
       expect(files.has(`${SPLIT_INBOUND}/${name}`)).toBe(true);
     expect(shown.length + omitted).toBe(3);
+    // As for the acks above: the count docs/spec/FILE_SYNC.md states, each
+    // omitted name shown whole when it is the only file present.
+    expect(omitted).toBe(2);
+    await expectEachShownWholeAlone(
+      [...files.keys()].filter(
+        (path) => !shown.includes(path.slice(SPLIT_INBOUND.length + 1)),
+      ),
+      SPLIT_INBOUND,
+      () => makeParty("aaa", flags, new Map()),
+      splitScope,
+    );
   });
 
   test("the longest name the protocol's constructors build is shown whole in that same scope", async () => {
@@ -1555,6 +1600,10 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
       DEFAULT_MAX_DISPLAY_LENGTH,
     );
     expect(enumeration(rendered)).toBe(longest);
+    // The reserved floor is this name's length: 112 characters at uuid
+    // identities, the figure docs/spec/FILE_SYNC.md states.
+    expect(ENTRY_GUARD_NAME_BUDGET_FLOOR).toBe(longest.length);
+    expect(ENTRY_GUARD_NAME_BUDGET_FLOOR).toBe(112);
   });
 
   test("a name whose escapes grow it at render time is counted, not cap-chopped", async () => {

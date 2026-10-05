@@ -133,6 +133,11 @@ function expectOneTerminalError(run: FailedRun): Record<string, unknown> {
   expect(terminal).toBe(errors[0]);
   expect(terminal?.exitCode).toBe(run.status);
   expect(run.events.some((event) => event.type === "result")).toBe(false);
+  // The field is the text of stderr's error line after its log prefix, byte
+  // for byte (docs/spec/CLI_EVENTS.md, the error event's `message`).
+  expect(run.stderr).toContain(
+    `[ERROR] [exchange] ${String(terminal?.message)}\n`,
+  );
   return terminal ?? {};
 }
 

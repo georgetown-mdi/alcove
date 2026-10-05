@@ -2570,6 +2570,10 @@ test("a run against an unconfirmed entry-present hello blames the leftover, not 
   expect(rendered).toContain("Re-run");
   expect(rendered).toContain("remove only if it persists");
   expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
+  // The lock-mode run consumed the leftover on the way through and cleared its
+  // own files, so a straight re-run starts from a clear directory
+  // (docs/EXCHANGE_REFERENCE.md, Directory exclusivity).
+  expect(fs.readdirSync(dropDir)).toEqual([]);
 }, 20_000);
 
 test("a run whose partner completed the rendezvous keeps the peer-side guidance", async () => {

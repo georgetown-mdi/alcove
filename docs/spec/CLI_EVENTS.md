@@ -16,7 +16,9 @@ If `--event-stream` is given but fd 3 is not open for writing (the process was s
 
 ## NDJSON framing
 
-The stream is newline-delimited JSON: one JSON object per line, each terminated by a single `\n`. Each event is serialized and flushed in one synchronous write, and the writer drains a short write in a loop, so a supervisor reading incrementally never observes a partial line and no two events interleave. Line ordering is emission order.
+The stream is newline-delimited JSON: one JSON object per line, each terminated by a single `\n`. Each event is serialized and written synchronously before the next is built, and the writer drains a short write in a loop, so every line is written whole and no two events interleave. Line ordering is emission order.
+
+A single read can still end part-way through a line: a warning line runs to about 4 KB, above the size a pipe writes atomically. A supervisor buffers what it reads up to each `\n` and parses whole lines. `apps/cli/test/integration/backendAgnostic/eventStreamBackPressure.test.ts` drives this under back pressure, with a reader that falls behind a writer emitting 2,000 such warnings, on both descriptors a supervisor ordinarily wires: the socket pair Node's `stdio: "pipe"` creates, and an OS pipe from a shell redirection. On both, a full buffer blocks the write rather than shortening it, and the reader reassembles every event as one whole line, in order.
 
 Every line has a schema-version field so the version is observable from any single line on its own, without tracking stream position:
 
@@ -170,8 +172,8 @@ The per-run operational-counter summary. Emitted exactly once, immediately befor
 | Field | Type | Meaning |
 | ----- | ---- | ------- |
 | `recordsProcessed` | integer | This party's input record count fed into the exchange. |
-| `transportRetries` | integer | Data-operation retries over the run: the count of transport-operation re-issues past the first attempt (the SFTP put/rename retry loops). `0` when none occurred, and always `0` on the filedrop channel, whose per-operation resilience is the poll-read loop rather than an operation re-issue. |
-| `reconnects` | integer | Connections this run had to establish beyond its first: connect-time dialing retries past the first attempt, plus every session the exchange lost to the partner (SFTP only). One increment per session lost, not per operation the loss interrupted and not per re-dial that recovered it, so a drop tearing a fan of concurrent operations moves this by one and so does a drop whose recovery re-dial fails. `0` when none occurred. Which triggers are counted here, which are exempt, and which are charged against `max_reconnect_attempts` are tabulated in [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery); a healthy `connection_per_poll` run reports zero only against a partner whose server does not cap session lifetime. |
+| `transportRetries` | integer | Data-operation retries over the run: the count of transport-operation re-issues past the first attempt (the SFTP put/rename retry loops). The re-issue that follows a lost session is not one of them: that loss is counted in `reconnects` instead, which `apps/cli/test/integration/inflightDropRecovery.test.ts` holds against the harness server. `0` when none occurred, and always `0` on the filedrop channel, whose per-operation resilience is the poll-read loop rather than an operation re-issue. |
+| `reconnects` | integer | Connections this run had to establish beyond its first: connect-time dialing retries past the first attempt, plus every session the exchange lost to the partner (SFTP only). One increment per session lost, not per operation the loss interrupted and not per re-dial that recovered it, so a drop tearing a fan of concurrent operations moves this by one and so does a drop whose recovery re-dial fails. `0` when none occurred. Which triggers are counted here, which are exempt, and which are charged against `max_reconnect_attempts` are tabulated in [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery), which also names the rows a real server drives and those held by unit cases alone; a healthy `connection_per_poll` run reports zero only against a partner whose server does not cap session lifetime. |
 
 ```json
 {"v":1,"type":"metrics","recordsProcessed":1000,"transportRetries":0,"reconnects":1}
@@ -204,7 +206,7 @@ The failure **terminal event**. Emitted exactly once, for every failure that end
 | Field | Type | Meaning |
 | ----- | ---- | ------- |
 | `category` | string | One of `exchange`, `output`, `security`, `config` (see [Error categories](#error-categories)). |
-| `message` | string | Display-safe error text, the same rendering stderr receives (see [Sanitization](#sanitization)). |
+| `message` | string | Display-safe error text, the same rendering stderr receives (see [Sanitization](#sanitization)): byte for byte the text of stderr's error line after its log prefix (timestamp, level, logger name), which `apps/cli/test/integration/backendAgnostic/terminalErrorEvent.test.ts` asserts on each failure it drives -- an unpinned SFTP host, a missing shared folder, and a partner that never arrives. |
 | `recoveryHint` | optional boolean | Present as `true` only, absent otherwise (see [The self-explaining marker](#the-self-explaining-marker)). |
 | `internalFault` | optional boolean | Present as `true` only, on exactly the failures the CLI exits 70; absent otherwise (see [The internal-fault code](#the-internal-fault-code)). |
 | `termsChange` | optional object | Present only on a run that ended on a partner terms change it did not take on; absent otherwise (see [A partner terms change the run did not take on](#a-partner-terms-change-the-run-did-not-take-on)). |
