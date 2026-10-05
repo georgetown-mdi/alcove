@@ -7,19 +7,14 @@ import { expect, test } from "vitest";
 import type { ProbeResult } from "./verifyReceiptLarge.probe";
 import { stressMemory } from "./stressMemory";
 
-// A record verified from a re-supplied input of 2^24 + 2048 rows, more than
-// the entries one V8 Map holds, through the input's identifier column and
-// through row indices (docs/spec/PROTOCOL.md, Measured whole exchange past
-// 2^24 matched records). About 10 GiB resident under a 9 GiB heap, and 25
-// minutes on a 10-core container under a load of 25, which is why it is the
-// opt-in tier.
+// Opt-in: verifies a record from a re-supplied input of 2^24 + 2048 rows,
+// through an identifier column and through row indices; needs about 11 GiB.
 
 const PROBE = fileURLToPath(
   new URL("./verifyReceiptLarge.probe.ts", import.meta.url),
 );
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
-// The heap the figures above were measured under.
 const HEAP_MIB = Math.min(9_216, Math.floor(totalmem() / MIB) - 2_048);
 const PROBE_TIMEOUT_MS = 1_800_000;
 const ROWS = 2 ** 24 + 2048;
@@ -36,8 +31,6 @@ test(
       `the verification probe needs ${NEED_GIB} GiB; this host's ` +
         `${memory.measure} is ${(memory.bytes / GIB).toFixed(1)} GiB`,
     );
-    // A synchronous spawn blocks the event loop, so vitest's own test timeout
-    // cannot fire while it runs; the spawn's timeout is the only bound.
     const out = execFileSync(
       process.execPath,
       [

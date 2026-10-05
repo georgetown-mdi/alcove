@@ -471,13 +471,6 @@ describe("reconstructCommittedData round-trips through the real build path", () 
   });
 });
 
-// A deduplicating cardinality repeats a row index on one side of the association
-// table, so the result file holds several rows against one record. The record's
-// commitments still bind one payload row per matched RECORD on each side, and the
-// re-supply path has to collapse the repeated result rows back to it -- on the
-// local side for the sent payload, on the partner side for the received one. Both
-// fan directions are driven here, each against the payload frame the mirrored
-// party would actually have sent.
 describe("the identifier index past one shard", () => {
   // Two entries a shard, so five identifiers fill three shards and a lookup
   // probes each.
@@ -580,6 +573,13 @@ describe("the identifier index past one shard", () => {
   });
 });
 
+// A deduplicating cardinality repeats a row index on one side of the association
+// table, so the result file holds several rows against one record. The record's
+// commitments still bind one payload row per matched RECORD on each side, and the
+// re-supply path has to collapse the repeated result rows back to it -- on the
+// local side for the sent payload, on the partner side for the received one. Both
+// fan directions are driven here, each against the payload frame the mirrored
+// party would actually have sent.
 describe("reconstructCommittedData round-trips a deduplicating cardinality", () => {
   test("the 'one' side: several partner records against one of ours", async () => {
     // The partner's rows 1 and 0 both link to our row 0, and its row 3 to our
