@@ -117,12 +117,12 @@ describe("the install offer", () => {
       .toBeInTheDocument();
 
     const prompt = vi.fn(() => Promise.resolve());
-    window.dispatchEvent(
-      Object.assign(new Event("beforeinstallprompt", { cancelable: true }), {
-        prompt,
-        userChoice: Promise.resolve({ outcome: "dismissed" }),
-      }),
+    const offer = Object.assign(
+      new Event("beforeinstallprompt", { cancelable: true }),
+      { prompt, userChoice: Promise.resolve({ outcome: "dismissed" }) },
     );
+    window.dispatchEvent(offer);
+    expect(offer.defaultPrevented).toBe(true);
     await expect.element(installButton()).toBeInTheDocument();
     expectNoAccessibilityViolations(app.container);
 
@@ -136,18 +136,76 @@ describe("the install offer", () => {
     expect(installButton().query()).toBeNull();
   });
 
-  test("is withheld in the installed app", async () => {
+  test("leaves an offer made on a page without the button to the browser, and points a page opened later at the browser's menu", async () => {
     captureInstallPrompt(window);
+    app.render(createElement("p", null, "Another page"));
+    const prompt = vi.fn(() => Promise.resolve());
+    const offer = Object.assign(
+      new Event("beforeinstallprompt", { cancelable: true }),
+      { prompt, userChoice: Promise.resolve({ outcome: "accepted" }) },
+    );
+    window.dispatchEvent(offer);
+    expect(offer.defaultPrevented).toBe(false);
+
+    app.render(
+      createElement(KeepRunningSection, {
+        record: scheduledRecord(),
+        isInstalledRuntime: () => false,
+      }),
+    );
+    await expect
+      .element(page.getByText("open your browser's menu", { exact: false }))
+      .toBeInTheDocument();
+    expect(installButton().query()).toBeNull();
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  test("points at the browser's menu when the browser refuses the prompt", async () => {
+    captureInstallPrompt(window);
+    app.render(
+      createElement(KeepRunningSection, {
+        record: scheduledRecord(),
+        isInstalledRuntime: () => false,
+      }),
+    );
+    await expect
+      .element(page.getByText("open your browser's menu", { exact: false }))
+      .toBeInTheDocument();
     window.dispatchEvent(
       Object.assign(new Event("beforeinstallprompt", { cancelable: true }), {
-        prompt: () => Promise.resolve(),
+        prompt: () =>
+          Promise.reject(
+            new DOMException("already shown", "InvalidStateError"),
+          ),
         userChoice: Promise.resolve({ outcome: "accepted" }),
       }),
     );
+    await installButton().click();
+    await expect
+      .element(page.getByText("open your browser's menu", { exact: false }))
+      .toBeInTheDocument();
+    expect(installButton().query()).toBeNull();
+  });
+
+  test("is withheld in the installed app", async () => {
+    captureInstallPrompt(window);
     app.render(
       createElement(KeepRunningSection, {
         record: scheduledRecord(),
         isInstalledRuntime: () => true,
+      }),
+    );
+    await expect
+      .element(
+        page.getByText("This page is the installed Alcove app", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    window.dispatchEvent(
+      Object.assign(new Event("beforeinstallprompt", { cancelable: true }), {
+        prompt: () => Promise.resolve(),
+        userChoice: Promise.resolve({ outcome: "accepted" }),
       }),
     );
     await expect
@@ -302,6 +360,18 @@ describe("the folder check", () => {
     await expect(
       checkWorkingFolder(folder, {
         query: () => Promise.resolve("prompt"),
+        request,
+      }),
+    ).resolves.toBe("notGranted");
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  test("a denied permission is reported without a prompt", async () => {
+    const folder = await folderNamed("keep-running-denied", true);
+    const request = vi.fn();
+    await expect(
+      checkWorkingFolder(folder, {
+        query: () => Promise.resolve("denied"),
         request,
       }),
     ).resolves.toBe("notGranted");

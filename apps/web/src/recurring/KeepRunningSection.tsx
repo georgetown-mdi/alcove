@@ -2,7 +2,11 @@ import { useState } from "react";
 
 import { Alert, Button } from "@mantine/core";
 
-import { showInstallPrompt, useInstallPrompt } from "@utils/installPrompt";
+import {
+  showInstallPrompt,
+  useHoldsInstallOffer,
+  useInstallPrompt,
+} from "@utils/installPrompt";
 import {
   storedWorkingDirectoryUsable,
   workingDirectoryGrantSupported,
@@ -45,6 +49,7 @@ export function KeepRunningSection({
   /** The platform readings the readiness check makes. */
   readinessCheck?: ReadinessCheckDependencies;
 }) {
+  useHoldsInstallOffer();
   const install = useInstallPrompt();
   const [installAnswer, setInstallAnswer] = useState<"dismissed">();
   const [checking, setChecking] = useState(false);
