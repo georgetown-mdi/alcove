@@ -105,9 +105,9 @@ function stubGrantingWebLocks(): void {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  vi.mocked(recordManagedExchangeLastRun).mockClear();
-  vi.mocked(persistManagedExchangeRotation).mockClear();
-  vi.mocked(markManagedExchangeRotationInFlight).mockClear();
+  vi.mocked(recordManagedExchangeLastRun).mockReset();
+  vi.mocked(persistManagedExchangeRotation).mockReset();
+  vi.mocked(markManagedExchangeRotationInFlight).mockReset();
   handedOff.state = undefined;
   handedOff.unreadable = undefined;
   storedRecord.value = undefined;
@@ -1024,5 +1024,150 @@ describe("a run refused for terms this file cannot satisfy", () => {
     expect(rerunFailureLastRun(refusal(), AT, true, false)?.failureKind).toBe(
       "terms-shortfall",
     );
+  });
+});
+
+describe("runManagedRerun: a store write that fails", () => {
+  // The rejection an IndexedDB transaction abort gives a store write.
+  const storeAbort = () =>
+    new DOMException("the transaction was aborted", "AbortError");
+
+  /** Seams for a run that reaches the data exchange, writing the
+   * rotation-in-flight marker the way the real handshake does. */
+  function completingSeams(): Parameters<
+    typeof runManagedRerun<string, string, string>
+  >[1] {
+    return {
+      acquireInput: () => Promise.resolve("rows"),
+      handshake: async (_input, markRotationInFlight) => {
+        await markRotationInFlight();
+        return { rotatedSecret: generateSharedSecret(), handshake: "carried" };
+      },
+      dataExchange: () => Promise.resolve("exchanged"),
+    };
+  }
+
+  test("the success stamp: the run keeps its results and says the stamp was not saved", async () => {
+    stubGrantingWebLocks();
+    vi.mocked(recordManagedExchangeLastRun).mockRejectedValueOnce(storeAbort());
+
+    const result = await runManagedRerun(record(), completingSeams());
+
+    expect(result.exchange).toBe("exchanged");
+    expect(result.lastRun.outcome).toBe("succeeded");
+    expect(result.lastRunSaved).toBe(false);
+    // Only the success stamp was attempted: the run is not restated as failed.
+    expect(recordManagedExchangeLastRun).toHaveBeenCalledTimes(1);
+    expect(persistManagedExchangeRotation).toHaveBeenCalledTimes(1);
+  });
+
+  test("a success stamp the store takes says so", async () => {
+    stubGrantingWebLocks();
+
+    const result = await runManagedRerun(record(), completingSeams());
+
+    expect(result.lastRunSaved).toBe(true);
+  });
+
+  test("the hand-off refusal stamp: the refusal still reaches the caller", async () => {
+    stubGrantingWebLocks();
+    handedOff.state = { spent: { spentAt: "2026-07-13T09:00:00.000Z" } };
+    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
+
+    await expect(
+      runManagedRerun(record(), unreachableSeams),
+    ).rejects.toBeInstanceOf(ManagedExchangeSpentError);
+  });
+
+  test("the custody-unreadable stamp: the refusal still reaches the caller", async () => {
+    stubGrantingWebLocks();
+    handedOff.unreadable = unreadableSiblingEntry();
+    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
+
+    await expect(
+      runManagedRerun(record(), unreachableSeams),
+    ).rejects.toBeInstanceOf(ManagedExchangeCustodyUnreadableError);
+  });
+
+  test("the input stamp: the input rejection still reaches the caller", async () => {
+    stubGrantingWebLocks();
+    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
+    const inputFailure = new ManagedInputError({
+      reason: "acquire",
+      cause: new Error("the entry was not found"),
+    });
+
+    await expect(
+      runManagedRerun(record(), {
+        ...unreachableSeams,
+        acquireInput: () => Promise.reject(inputFailure),
+      }),
+    ).rejects.toBe(inputFailure);
+  });
+
+  test("the rotation-in-flight marker: the run stops before rotating, and its failure stamp is attempted", async () => {
+    stubGrantingWebLocks();
+    const markerFailure = storeAbort();
+    vi.mocked(markManagedExchangeRotationInFlight).mockRejectedValueOnce(
+      markerFailure,
+    );
+    let dataExchangeRan = false;
+
+    await expect(
+      runManagedRerun(record(), {
+        ...completingSeams(),
+        dataExchange: () => {
+          dataExchangeRan = true;
+          return Promise.resolve("exchanged");
+        },
+      }),
+    ).rejects.toBe(markerFailure);
+
+    expect(persistManagedExchangeRotation).not.toHaveBeenCalled();
+    expect(dataExchangeRan).toBe(false);
+    expect(recordManagedExchangeLastRun).toHaveBeenCalledTimes(1);
+  });
+
+  test("the rotation persist: the storage failure reaches the caller and is stamped", async () => {
+    stubGrantingWebLocks();
+    vi.mocked(persistManagedExchangeRotation).mockRejectedValueOnce(
+      storeAbort(),
+    );
+
+    await expect(
+      runManagedRerun(record(), completingSeams()),
+    ).rejects.toBeInstanceOf(RotationPersistError);
+
+    const [, lastRun] = vi.mocked(recordManagedExchangeLastRun).mock.calls[0];
+    expect(lastRun).toMatchObject({
+      outcome: "failed",
+      failureKind: "storage",
+    });
+  });
+
+  test("the storage stamp after a failed persist: the storage failure still reaches the caller", async () => {
+    stubGrantingWebLocks();
+    vi.mocked(persistManagedExchangeRotation).mockRejectedValueOnce(
+      storeAbort(),
+    );
+    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
+
+    await expect(
+      runManagedRerun(record(), completingSeams()),
+    ).rejects.toBeInstanceOf(RotationPersistError);
+  });
+
+  test("the failure stamp after a dropped connection: the drop still reaches the caller", async () => {
+    stubGrantingWebLocks();
+    vi.mocked(recordManagedExchangeLastRun).mockRejectedValue(storeAbort());
+    const drop = new ConnectionError("the data channel closed", "closed");
+
+    await expect(
+      runManagedRerun(record(), {
+        ...completingSeams(),
+        dataExchange: () => Promise.reject(drop),
+      }),
+    ).rejects.toBe(drop);
+    expect(recordManagedExchangeLastRun).toHaveBeenCalledTimes(1);
   });
 });

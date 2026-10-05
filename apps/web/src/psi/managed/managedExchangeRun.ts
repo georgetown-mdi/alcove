@@ -203,6 +203,10 @@ export interface ManagedExchangeRunResult<TExchange> {
   exchange: TExchange;
   /** The `succeeded` `lastRun` this run stamped. */
   lastRun: ManagedExchangeLastRun;
+  /** Whether the store took the success stamp. `false` where the write
+   * failed: the exchange completed and its results stand, but the stored
+   * record still holds whatever run it held before this one. */
+  lastRunSaved: boolean;
 }
 
 /**
@@ -219,9 +223,10 @@ export interface ManagedExchangeRunResult<TExchange> {
  * unchanged for the runner to classify. Every bookkeeping write states
  * `runStartedAtMs`, so the store's write rules
  * ({@link recordManagedExchangeLastRun}) hold a failure off a success another
- * context stamped after this run began; the success stamp is an individually
- * failable write -- its failure degrades the next run's tiering (Tier-2), not
- * a correctness break, since the rotated secret is already durable.
+ * context stamped after this run began. The success stamp is best-effort like
+ * the failure stamps: the rotated secret is already durable and the exchange
+ * has completed, so a failed stamp resolves the run with `lastRunSaved: false`
+ * rather than dropping its results.
  *
  * @throws {ManagedExchangeLockUnavailableError} if `lock.ifAvailable` is set
  *   and a run is already in progress on this device.
@@ -328,8 +333,13 @@ export async function runManagedExchange<TInput, THandshake, TExchange>(
       phases.onDataExchangeStart?.();
       const exchange = await phases.dataExchange(gate.handshake);
       const lastRun = succeededRun(now());
-      await recordLastRun(record.id, lastRun, runStartedAtMs);
-      return { exchange, lastRun };
+      let lastRunSaved = true;
+      try {
+        await recordLastRun(record.id, lastRun, runStartedAtMs);
+      } catch {
+        lastRunSaved = false;
+      }
+      return { exchange, lastRun, lastRunSaved };
     },
     phases.lock,
   );

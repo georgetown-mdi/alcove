@@ -443,6 +443,17 @@ export const TERMS_CHANGE_TAKEN_ON_FAILURE: ManagedRunFailureAlert = {
   recovery: "retry",
 };
 
+/** The note a completed run shows when the store refused its success stamp:
+ * the results stand, but the exchange's stored status still names the run
+ * before this one. */
+export const RUN_OUTCOME_UNSAVED_NOTE = {
+  title: "This run's success was not saved",
+  message:
+    "The exchange completed and your results are below, but this browser " +
+    "could not save that this run succeeded, so this exchange may still show " +
+    "its previous run. Download your results before you leave this page.",
+} as const;
+
 /** The shortfall state for an input whose whole header read as ONE column: the
  * shape a file separated by something other than the delimiter this exchange
  * reads it by comes out as ({@link ../psi/managed/managedInputGuard.ts}). The

@@ -193,7 +193,11 @@ const RUN_AT = "2026-03-01T09:00:00.000Z";
 function completedRun(
   outputs: RunOutputs = { kind: "withheld" },
 ): ManagedExchangeRunResult<RunOutputs> {
-  return { exchange: outputs, lastRun: { at: RUN_AT, outcome: "succeeded" } };
+  return {
+    exchange: outputs,
+    lastRun: { at: RUN_AT, outcome: "succeeded" },
+    lastRunSaved: true,
+  };
 }
 
 /** A run that produced a result table, built through the runtime's own URL

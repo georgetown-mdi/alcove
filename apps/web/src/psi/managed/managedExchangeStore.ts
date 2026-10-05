@@ -534,12 +534,25 @@ async function readModifyWriteRecord(
         }
       };
       transaction.oncomplete = () => resolve(written);
-      transaction.onerror = () => reject(failure ?? transaction.error);
-      transaction.onabort = () => reject(failure ?? transaction.error);
+      // A failed request's error event reaches the transaction before the
+      // abort sets `transaction.error`, so the request's own error is read
+      // there; an explicit abort leaves `transaction.error` null.
+      transaction.onerror = (event) =>
+        reject(
+          failure ?? storeWriteFailure((event.target as IDBRequest).error),
+        );
+      transaction.onabort = () =>
+        reject(failure ?? storeWriteFailure(transaction.error));
     });
   } finally {
     db.close();
   }
+}
+
+/** The rejection for a store write whose transaction did not commit: the
+ * error IndexedDB gave, or a stated one where it gave none. */
+function storeWriteFailure(error: DOMException | null): Error {
+  return error ?? new Error("the store write was aborted before it committed");
 }
 
 /**
