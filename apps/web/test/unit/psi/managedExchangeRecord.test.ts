@@ -1,7 +1,7 @@
 import {
-  KeyFileSchema,
   CSV_DELIMITER_DETECT,
   DEFAULT_LINKAGE_KEY_SET_NAME,
+  KeyFileSchema,
   assembleExchangeSpec,
   computeTermsHash,
   connectionFromLocator,

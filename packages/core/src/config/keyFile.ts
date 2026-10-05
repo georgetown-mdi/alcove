@@ -1,10 +1,6 @@
 /**
  * The `.alcove.key` file: one schema and one serializer every application that
  * reads or writes the file uses.
- *
- * Unknown-key policy: a reader admits a field it does not know and drops it, so
- * a file a newer build wrote still reads; the serializer writes only the fields
- * below, in the order the caller's object holds them.
  */
 
 import { z } from "zod";
