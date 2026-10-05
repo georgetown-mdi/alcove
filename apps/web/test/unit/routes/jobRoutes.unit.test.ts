@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { JOB_FILE_NAMES, MAX_INPUT_CSV_LENGTH } from "@jobs/intentSchemas";
+import { runArtifactNames } from "@jobs/runArtifactNames";
 import {
   MAX_JOB_BODY_BYTES,
   MAX_SFTP_AUTHOR_BODY_BYTES,
@@ -34,6 +35,7 @@ import { Route as SlotRoute } from "../../../src/routes/api/jobs/slot";
 import {
   STUB_CLI_PATH,
   TEST_HOST_KEY_FINGERPRINT,
+  TEST_RUN_STAMP,
   composedServer,
   multiChunkText,
   readBodyChunks,
@@ -43,6 +45,10 @@ import {
   validSftpIntent,
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
+
+/** The artifact names of a run whose record states the `createdAt` these
+ * tests stage. */
+const RUN_NAMES = runArtifactNames(TEST_RUN_STAMP);
 
 import type {
   JobCreateIntent,
@@ -702,11 +708,11 @@ describe("record and keys routes serve the exchange-record pair after success", 
       if (stage === "pair planted") {
         const workdir = path.join(process.env.JOB_DATA_ROOT!, id);
         fs.writeFileSync(
-          path.join(workdir, JOB_FILE_NAMES.record),
+          path.join(workdir, RUN_NAMES.record),
           recordJson(CREATED_AT),
         );
         fs.writeFileSync(
-          path.join(workdir, JOB_FILE_NAMES.recordKeys),
+          path.join(workdir, RUN_NAMES.keys),
           JSON.stringify({ salts: {} }),
         );
       }
@@ -931,13 +937,13 @@ describe("the result, record and keys downloads stream a file larger than one re
       {
         route: ResultRoute,
         name: "result",
-        body: replaceWith(view.outputPath, `id\n${multiChunkText("row")}`),
+        body: replaceWith(view.outputPath!, `id\n${multiChunkText("row")}`),
       },
       {
         route: RecordRoute,
         name: "record",
         body: replaceWith(
-          view.recordPath,
+          view.recordPath!,
           JSON.stringify({
             ...JSON.parse(recordJson("2026-07-08T14:32:00.000Z")),
             summary: multiChunkText("record"),
@@ -948,7 +954,7 @@ describe("the result, record and keys downloads stream a file larger than one re
         route: KeysRoute,
         name: "keys",
         body: replaceWith(
-          view.keysPath,
+          view.keysPath!,
           JSON.stringify({ salts: { note: multiChunkText("keys") } }),
         ),
       },
@@ -971,7 +977,7 @@ describe("the result, record and keys downloads stream a file larger than one re
       result: {
         route: ResultRoute,
         contentType: "text/csv; charset=utf-8",
-        disposition: `attachment; filename="${JOB_FILE_NAMES.output}"`,
+        disposition: `attachment; filename="${RUN_NAMES.result}"`,
       },
       record: {
         route: RecordRoute,
@@ -1019,9 +1025,9 @@ describe("a download whose file is removed after the route's existence check is 
     ).jobManagerInstance!.getJobView(id)!;
     fs.writeFileSync(view.receiptPath!, JSON.stringify({ version: 1 }));
     const cases = [
-      { route: ResultRoute, name: "result", filePath: view.outputPath },
-      { route: RecordRoute, name: "record", filePath: view.recordPath },
-      { route: KeysRoute, name: "keys", filePath: view.keysPath },
+      { route: ResultRoute, name: "result", filePath: view.outputPath! },
+      { route: RecordRoute, name: "record", filePath: view.recordPath! },
+      { route: KeysRoute, name: "keys", filePath: view.keysPath! },
       { route: ReceiptRoute, name: "receipt", filePath: view.receiptPath! },
     ];
     const open = fsp.open.bind(fsp);
@@ -1197,9 +1203,7 @@ describe("status route reports record availability", () => {
     });
     // The helper pushes the data root last, so the run's folder is under it.
     const dataRoot = roots[roots.length - 1];
-    expect(fs.existsSync(path.join(dataRoot, id, JOB_FILE_NAMES.record))).toBe(
-      true,
-    );
+    expect(fs.existsSync(path.join(dataRoot, id, RUN_NAMES.record))).toBe(true);
 
     const body = await recordStatusOf(id);
     expect(body.status).toBe("failed");
@@ -1306,7 +1310,7 @@ describe("status route reports record availability", () => {
     // status test standing in for it.
     const id = await createFinishedJob("failed", { STUB_EXIT_CODE: "1" });
     const dataRoot = roots[roots.length - 1];
-    expect(fs.existsSync(path.join(dataRoot, id, JOB_FILE_NAMES.record))).toBe(
+    expect(fs.existsSync(path.join(dataRoot, id, RUN_NAMES.record))).toBe(
       false,
     );
 
@@ -1334,9 +1338,7 @@ describe("status route reports record availability", () => {
       }),
     });
     const dataRoot = roots[roots.length - 1];
-    expect(fs.existsSync(path.join(dataRoot, id, JOB_FILE_NAMES.record))).toBe(
-      true,
-    );
+    expect(fs.existsSync(path.join(dataRoot, id, RUN_NAMES.record))).toBe(true);
 
     const body = await recordStatusOf(id);
     expect(body.recordAvailable).toBe(false);
@@ -1355,7 +1357,7 @@ describe("status route reports record availability", () => {
       STUB_RECORD_JSON: recordJson(CREATED_AT),
     });
     const dataRoot = roots[roots.length - 1];
-    fs.rmSync(path.join(dataRoot, id, JOB_FILE_NAMES.recordKeys));
+    fs.rmSync(path.join(dataRoot, id, RUN_NAMES.keys));
 
     const body = await recordStatusOf(id);
     expect(body.recordAvailable).toBe(false);
@@ -3017,7 +3019,7 @@ describe("GET /api/jobs/:id/folder names what a run's folder holds", () => {
     const root = enableJobApi();
     const folder = path.join(root, LEFTOVER_ID);
     fs.mkdirSync(folder, { recursive: true });
-    fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.output), "id\n1\n");
+    fs.writeFileSync(path.join(folder, RUN_NAMES.result), "id\n1\n");
     fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.key), "secret");
     fs.writeFileSync(path.join(folder, JOB_FILE_NAMES.config), "connection:\n");
 

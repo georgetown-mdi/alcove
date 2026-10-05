@@ -6,7 +6,6 @@ import { getDefaultLinkageTerms } from "@alcove/core";
 import { parse as parseYaml } from "yaml";
 
 import { spawnExchangeJob, spawnZeroSetupJob } from "@jobs/cliDriver";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import type { CliRunControls, JobTerminalState } from "@jobs/cliDriver";
 import type {
@@ -34,6 +33,11 @@ export const STUB_CLI_PATH = fileURLToPath(
 export const STUB_CONFIG_FILE_TOKEN = "__CONFIG_FILE__";
 
 /** A base64url shared secret matching the CLI key-file shape (43 chars). */
+/** A run's `createdAt` for a test that stages its artifacts, and the stamp the
+ * CLI names that run's files with. */
+export const TEST_RUN_CREATED_AT = "2026-07-08T14:32:00.000Z";
+export const TEST_RUN_STAMP = "2026-07-08T14-32-00-000Z";
+
 export const VALID_SHARED_SECRET = "A".repeat(42) + "A";
 
 /** A complete, schema-valid linkage-terms document for job intents. */
@@ -307,8 +311,6 @@ export async function captureExchangeArgv(args: {
         configPath: path.join(workdir, "alcove.yaml"),
         keyPath: path.join(workdir, ".alcove.key"),
         inputPath: path.join(workdir, "input.csv"),
-        outputPath: path.join(workdir, JOB_FILE_NAMES.output),
-        recordPath: path.join(workdir, "record.json"),
         workdir,
         eventStream: args.eventStream,
         runControls: args.runControls ?? {
@@ -361,8 +363,6 @@ export async function captureZeroSetupArgv(args: {
         connectionArgs: args.connectionArgs,
         optionArgs: args.optionArgs ?? [],
         inputPath: path.join(workdir, "input.csv"),
-        outputPath: path.join(workdir, JOB_FILE_NAMES.output),
-        recordPath: path.join(workdir, "record.json"),
         workdir,
         eventStream: args.eventStream,
         runControls: args.runControls ?? {

@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import { ZodError } from "zod";
 
 import {
@@ -31,6 +29,8 @@ import {
 } from "./intentConfig";
 import { JOB_FILE_NAMES } from "./intentSchemas";
 import { readJobFolderContents } from "./jobFolder";
+import { latestRunStampIn, runArtifactPaths } from "./runArtifacts";
+import { runArtifactNames, stampOfResultPath } from "./runArtifactNames";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
 import {
@@ -104,6 +104,7 @@ import type {
   OpenedMountedConfiguration,
 } from "./configLoad";
 import type { JobFolderView } from "./jobFolder";
+import type { RunArtifactPaths } from "./runArtifacts";
 import type { JobHandoff } from "./handoff";
 import type { JobSftpServerEntry } from "./sftpServer";
 import type { RendezvousLeg } from "./jobRendezvous";
@@ -354,26 +355,31 @@ interface JobView {
    * event ({@link JobRecord.transportTeardownOverran}). */
   transportTeardownOverran: boolean;
   /** The five servable file paths (result, record, keys, log, receipt) inside the
-   * workdir. `logPath` is null for a run that captured no log, `receiptPath` for
-   * one that signed nothing. */
-  outputPath: string;
-  recordPath: string;
-  keysPath: string;
+   * workdir. The four run artifacts are this run's stamped names
+   * ({@link runArtifactsOf}), each null until the workdir holds an artifact of
+   * this run; `logPath` is null for a run that captured no log, and
+   * `receiptPath` for one that signed nothing. */
+  outputPath: string | null;
+  recordPath: string | null;
+  keysPath: string | null;
   logPath: string | null;
   receiptPath: string | null;
+  /** The result file's own name, `alcove-results-<stamp>.csv`, the name its
+   * download is offered under; null with {@link outputPath}. */
+  resultFileName: string | null;
 }
 
 /** A job record. Lives in server memory only; never persisted. */
 export interface JobRecord {
   id: string;
   workdir: string;
-  outputPath: string;
-  /** The self-attested exchange record's path (the CLI's `--record-file`
-   * target). Present whether or not the file was actually written -- the record
-   * write is non-fatal, so availability is checked at serve time, not assumed. */
-  recordPath: string;
-  /** The private verification-keys path paired with {@link recordPath}. */
-  keysPath: string;
+  /**
+   * The stamp this run's `result` event named its result file with, or null
+   * when it named none -- a run that wrote no result file, or a path the relay
+   * cut short. The run's artifacts are found by it, or by the latest stamp in
+   * the workdir when it is null ({@link runArtifactsOf}).
+   */
+  resultStamp: string | null;
   /**
    * The diagnostic log the CLI was pointed at with `--log-file`, or null when
    * this run was not a diagnostic one. Set at creation from the intent's
@@ -382,12 +388,11 @@ export interface JobRecord {
    */
   logPath: string | null;
   /**
-   * The dual-signed receipt the CLI was pointed at with `signing.receipt_output`,
-   * or null when this run signed nothing. Set at creation from the intent's
-   * signing mode, so a run that asked for no receipt has no receipt path to serve
-   * at all rather than a path that happens to name no file.
+   * Whether this run signs receipts (`certificate` mode). Set at creation from
+   * the intent's signing mode, so a run that asked for no receipt has no receipt
+   * to serve at all rather than a stamped name that happens to name no file.
    */
-  receiptPath: string | null;
+  receiptRequested: boolean;
   /**
    * Whether this run's intent named a partner fingerprint, so the configuration
    * composed for it held a pin before the child started. A first contact is a
@@ -1005,21 +1010,14 @@ export class JobManager {
   }
 
   /**
-   * The absolute paths a `certificate`-mode job's composed `signing` block
+   * The absolute path a `certificate`-mode job's composed `signing` block
    * names: the long-lived identity at the location this run resolved
-   * ({@link identityPathFor}), and the receipt pinned to a fixed name in this
-   * job's workdir. The receipt is composed through the workdir's own
-   * containment check rather than joined, so a constant that stopped resolving
-   * inside it is refused rather than naming a file served from outside.
+   * ({@link identityPathFor}). The block names no receipt output: the CLI
+   * writes the receipt under the run's stamp into the folder the run writes
+   * its other artifacts to ({@link runArtifactsOf}).
    */
-  private signingPathsFor(
-    workdir: string,
-    identityPath: string,
-  ): JobSigningPaths & { receiptOutput: string } {
-    return {
-      identityFile: identityPath,
-      receiptOutput: workdirArtifactPath(workdir, JOB_FILE_NAMES.receipt),
-    };
+  private signingPathsFor(identityPath: string): JobSigningPaths {
+    return { identityFile: identityPath };
   }
 
   /**
@@ -1105,8 +1103,8 @@ export class JobManager {
     // Exchange composes a config document into the workdir, and a key file
     // beside it unless the run uses the one beside the opened configuration;
     // zero-setup writes NEITHER -- its connection rides argv and it has no
-    // shared secret, so the workdir holds only input (when inline), output, and
-    // the record pair.
+    // shared secret, so the workdir holds only input (when inline) and the run's
+    // own artifacts.
     const exchangeDocuments =
       intent.mode === "zeroSetup"
         ? undefined
@@ -1123,19 +1121,14 @@ export class JobManager {
       workdir,
       mountedInputPath,
     );
-    const outputPath = path.join(workdir, JOB_FILE_NAMES.output);
-    const recordPath = path.join(workdir, JOB_FILE_NAMES.record);
-    const keysPath = path.join(workdir, JOB_FILE_NAMES.recordKeys);
     const logPath =
       intent.diagnosticRun === true
         ? workdirArtifactPath(workdir, JOB_FILE_NAMES.log)
         : null;
     // Only a certificate-mode exchange writes one. A zero-setup run composes no
     // config at all, so it has no signing block and never signs.
-    const receiptPath =
-      intent.mode !== "zeroSetup" && intent.signing?.mode === "certificate"
-        ? this.signingPathsFor(workdir, identityPath).receiptOutput
-        : null;
+    const receiptRequested =
+      intent.mode !== "zeroSetup" && intent.signing?.mode === "certificate";
 
     // The hand-off's merge base is the document the operator opened, as the
     // open read it, so a run authored here from scratch takes no held setting
@@ -1166,11 +1159,9 @@ export class JobManager {
     const record: JobRecord = {
       id,
       workdir,
-      outputPath,
-      recordPath,
-      keysPath,
+      resultStamp: null,
       logPath,
-      receiptPath,
+      receiptRequested,
       partnerFingerprintPinnedAtCreation:
         intent.mode !== "zeroSetup" &&
         intent.signing?.partnerFingerprint !== undefined,
@@ -1243,8 +1234,6 @@ export class JobManager {
       exchangeDocuments,
       serverEntry,
       inputPath,
-      outputPath,
-      recordPath,
       workdir,
       eventStream: intent.eventStream ?? true,
       runControls: {
@@ -1278,7 +1267,7 @@ export class JobManager {
         this.jobRendezvousDir,
         this.jobRendezvousOutboundDir,
         serverEntry,
-        this.signingPathsFor(workdir, identityPath),
+        this.signingPathsFor(identityPath),
       ),
     );
     const configPath = await writeJobFile(
@@ -1311,8 +1300,6 @@ export class JobManager {
       exchangeDocuments: { configPath: string; keyPath: string } | undefined;
       serverEntry: JobSftpServerEntry | undefined;
       inputPath: string;
-      outputPath: string;
-      recordPath: string;
       workdir: string;
       eventStream: boolean;
       runControls: CliRunControls;
@@ -1326,8 +1313,6 @@ export class JobManager {
         connectionArgs: this.zeroSetupConnectionArgs(intent, args.serverEntry),
         optionArgs: zeroSetupOptionsArgv(intent.options),
         inputPath: args.inputPath,
-        outputPath: args.outputPath,
-        recordPath: args.recordPath,
         workdir: args.workdir,
         eventStream: args.eventStream,
         runControls: args.runControls,
@@ -1352,8 +1337,6 @@ export class JobManager {
       configPath: args.exchangeDocuments.configPath,
       keyPath: args.exchangeDocuments.keyPath,
       inputPath: args.inputPath,
-      outputPath: args.outputPath,
-      recordPath: args.recordPath,
       workdir: args.workdir,
       eventStream: args.eventStream,
       runControls: args.runControls,
@@ -1505,6 +1488,10 @@ export class JobManager {
       statesWrittenTermsProposal(event)
     )
       record.termsProposal = "available";
+    if (event.type === "result") {
+      const stamp = stampOfResultPath(event.resultPath);
+      if (stamp !== null) record.resultStamp = stamp;
+    }
     if (event.type === "result" || event.type === "error")
       this.markTerminalEmitted(record, event.type);
   }
@@ -1926,9 +1913,11 @@ function liveRecordAvailability(record: JobRecord):
     recordUnavailableReason,
   });
   if (record.status === "running") return withheld("not-settled");
-  if (!jobFileExists(record.recordPath)) return withheld("no-record");
-  const summary = readRecordSummary(record.recordPath);
-  if (summary === null || !jobFileExists(record.keysPath))
+  const artifacts = runArtifactsOf(record);
+  if (artifacts === null || !jobFileExists(artifacts.record))
+    return withheld("no-record");
+  const summary = readRecordSummary(artifacts.record);
+  if (summary === null || !jobFileExists(artifacts.keys))
     return withheld("undescribable-record");
   return {
     recordAvailable: true,
@@ -2162,7 +2151,7 @@ function rewrittenTermsProposalRefusal(
  * Gated on the run signing receipts as well, the gate the failure rebuild below
  * holds: only a signing run pins anything, so console copy about a pin this run
  * adopted is composed only where this server launched a run that could adopt one
- * ({@link JobRecord.receiptPath}).
+ * ({@link JobRecord.receiptRequested}).
  */
 function rewrittenPartnerPinNotice(
   record: JobRecord,
@@ -2170,7 +2159,7 @@ function rewrittenPartnerPinNotice(
 ): RelayEvent {
   if (
     event.source !== PARTNER_CERTIFICATE_PINNED_SOURCE ||
-    record.receiptPath === null ||
+    !record.receiptRequested ||
     record.partnerFingerprintPinnedAtCreation
   )
     return event;
@@ -2211,7 +2200,7 @@ function rewrittenPartnerPinFailure(
   record: JobRecord,
   event: RelayEvent,
 ): RelayEvent {
-  if (event.category !== "config" || record.receiptPath === null) return event;
+  if (event.category !== "config" || !record.receiptRequested) return event;
   const configPath = workdirArtifactPath(record.workdir, JOB_FILE_NAMES.config);
   const searchedPath = configPathAsRelayed(configPath);
   if (
@@ -2261,8 +2250,23 @@ function errorDisplayStrings(event: RelayEvent): Array<string> {
   );
 }
 
+/**
+ * This run's artifact paths inside its workdir, or null while the workdir holds
+ * no artifact of any run. The run is the one its `result` event named; a run
+ * whose event named no result file is the latest whose artifacts the workdir
+ * holds. Every path is under that one stamp, so a workdir holding several runs'
+ * artifacts never serves one run's result beside another's record.
+ */
+function runArtifactsOf(record: JobRecord): RunArtifactPaths | null {
+  const stamp = record.resultStamp ?? latestRunStampIn(record.workdir);
+  return stamp === null ? null : runArtifactPaths(record.workdir, stamp);
+}
+
 /** The live view of an in-memory record, mirroring what the routes report. */
 function liveJobView(record: JobRecord): JobView {
+  const artifacts = runArtifactsOf(record);
+  const receiptPath =
+    record.receiptRequested && artifacts !== null ? artifacts.receipt : null;
   return {
     id: record.id,
     status: record.status,
@@ -2282,15 +2286,16 @@ function liveJobView(record: JobRecord): JobView {
     // Answered from the receipt path set at creation from the intent, exactly as
     // the log pair above is: what a client is told about this run's receipt comes
     // from what the console launched.
-    receiptRequested: record.receiptPath !== null,
-    receiptAvailable:
-      record.receiptPath !== null && jobFileExists(record.receiptPath),
+    receiptRequested: record.receiptRequested,
+    receiptAvailable: receiptPath !== null && jobFileExists(receiptPath),
     transportTeardownOverran: record.transportTeardownOverran,
-    outputPath: record.outputPath,
-    recordPath: record.recordPath,
-    keysPath: record.keysPath,
+    outputPath: artifacts?.result ?? null,
+    recordPath: artifacts?.record ?? null,
+    keysPath: artifacts?.keys ?? null,
     logPath: record.logPath,
-    receiptPath: record.receiptPath,
+    receiptPath,
+    resultFileName:
+      artifacts !== null ? runArtifactNames(artifacts.stamp).result : null,
   };
 }
 

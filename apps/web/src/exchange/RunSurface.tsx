@@ -18,7 +18,7 @@ import {
   replaceControlCharactersForDisplay,
 } from "@alcove/core";
 
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
+import { RESULT_DOWNLOAD_NAME } from "@psi/exchangeLifecycle";
 import { dateTimeLabel } from "@psi/formatting";
 import styles from "@styles/app.module.css";
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
@@ -524,7 +524,7 @@ export function RunDownloads({
           <DownloadRow
             label="Download result"
             href={outputs.resultsUrl}
-            fileName={JOB_FILE_NAMES.output}
+            fileName={outputs.resultFileName ?? RESULT_DOWNLOAD_NAME}
             onDownload={() => onDownload?.("result")}
           />
           {resultNote}

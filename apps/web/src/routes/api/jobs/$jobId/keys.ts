@@ -35,7 +35,8 @@ export const Route = createFileRoute("/api/jobs/$jobId/keys")({
 
         const view = gate.manager.getJobView(jobId);
         if (view === null) return jobEmptyResponse(404);
-        if (!view.recordAvailable) return jobEmptyResponse(404);
+        if (!view.recordAvailable || view.keysPath === null)
+          return jobEmptyResponse(404);
 
         return jobFileDownloadResponse(view.keysPath, {
           contentType: "application/json; charset=utf-8",

@@ -56,12 +56,12 @@ describe("fetchJobFolder", () => {
 });
 
 describe("discardFolderItems", () => {
-  test("names each file present by its name on disk", () => {
+  test("names each file present by its name on disk, a run's time as <time>", () => {
     expect(discardFolderItems(FULL).map((item) => item.files)).toEqual([
-      "results.csv",
-      "record.json and record.keys.json",
+      "alcove-results-<time>.csv",
+      "alcove-record-<time>.json and alcove-record-<time>.keys.json",
       ".alcove.key",
-      "receipt.json",
+      "alcove-receipt-<time>.json",
       "run.log",
       "input.csv",
     ]);

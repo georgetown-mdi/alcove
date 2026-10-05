@@ -222,12 +222,20 @@ interface ExchangeOutputsBase {
   matching?: ResolvedMatching;
 }
 
+/** The name a result download is saved under where its outputs state none: an
+ * in-browser run's result, which has no file of its own. */
+export const RESULT_DOWNLOAD_NAME = "results.csv";
+
 /** A receiver's outputs: the matched results file (CSV), plus the optional record
  * downloads. */
 interface ReceivedExchangeOutputs extends ExchangeOutputsBase {
   kind: "matched";
   /** The matched results (CSV), as an object URL the UI exposes as a download. */
   resultsUrl: string;
+  /** The name the result download is saved under: a console run's result file
+   * name, `alcove-results-<stamp>.csv`. Absent for an in-browser run, whose
+   * download takes {@link RESULT_DOWNLOAD_NAME}. */
+  resultFileName?: string;
   /** How the entity closure grouped this result's pairs
    * ({@link ExchangeResult.entityClusters}): present on a `many-to-many` run this party holds
    * the table and rounds for, absent under every other cardinality (whose clusters

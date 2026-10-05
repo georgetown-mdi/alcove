@@ -302,7 +302,9 @@ describe.skipIf(!cliIsBuilt)(
 
       const record = manager.getJob(id);
       if (record === undefined) throw new Error("the job left the slot");
-      expect(pairsFromResultCsv(record.outputPath)).toEqual(CONSOLE_PAIRS);
+      expect(pairsFromResultCsv(manager.getJobView(id)!.outputPath!)).toEqual(
+        CONSOLE_PAIRS,
+      );
       expect(pairsFromResultCsv(workspace.partnerOutput)).toEqual(
         PARTNER_PAIRS,
       );
@@ -625,7 +627,7 @@ describe.skipIf(!cliIsBuilt)(
       const rerun = await runAgainstPartner(manager, intentFromOpen(manager));
       expectRunSucceeded(rerun.record);
       expectCliSucceeded(rerun.partner, "exchange");
-      const rows = resultRows(rerun.record.outputPath);
+      const rows = resultRows(manager.getJobView(rerun.record.id)!.outputPath!);
       expect(rows.map((row) => [row.row_id, row.their_row_id])).toEqual(
         CONSOLE_PAIRS.map(([own, partner]) => [String(own), String(partner)]),
       );

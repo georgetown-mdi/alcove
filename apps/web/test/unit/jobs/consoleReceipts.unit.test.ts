@@ -56,7 +56,6 @@ import {
 } from "@jobs/intentConfig";
 
 import {
-  JOB_FILE_NAMES,
   jobCreateIntentSchema,
   jobExchangeIntentSchema,
 } from "@jobs/intentSchemas";
@@ -79,6 +78,8 @@ import {
 import { browseSegment } from "@jobs/workInputName";
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 import { resolveWorkdirFile } from "@jobs/workdir";
+import { runArtifactPaths } from "@jobs/runArtifacts";
+import { runArtifactNames } from "@jobs/runArtifactNames";
 
 import {
   STUB_CLI_PATH,
@@ -568,16 +569,17 @@ describe("the graduation hand-off handles the identity path accurately", () => {
   });
 });
 
-// Each signing artifact's path is composed from a server constant against a
-// directory the console owns, and the receipt's is the one a route then serves
-// out of the job workdir. Each goes through the containment check rather than a
-// join, the way the diagnostic log's path is.
+// Each signing artifact's path is composed against a directory the console
+// owns, and the receipt's is the one a route then serves out of the job
+// workdir. Each goes through the containment check rather than a join, the way
+// the diagnostic log's path is.
 describe("the signing artifacts resolve inside the directory that owns them", () => {
   const workdir = "/srv/jobs/93b1c0d6";
+  const stamp = "2026-07-08T14-32-00-000Z";
 
-  test("the receipt is written directly under the job workdir, the identity under the mount", () => {
-    expect(resolveWorkdirFile(workdir, JOB_FILE_NAMES.receipt)).toBe(
-      path.resolve(workdir, JOB_FILE_NAMES.receipt),
+  test("the receipt is directly under the job workdir, the identity under the mount", () => {
+    expect(runArtifactPaths(workdir, stamp).receipt).toBe(
+      path.resolve(workdir, runArtifactNames(stamp).receipt),
     );
     expect(signingIdentityPath("/data")).toBe(
       path.resolve("/data", SIGNING_IDENTITY_FILE_NAME),
@@ -589,7 +591,7 @@ describe("the signing artifacts resolve inside the directory that owns them", ()
 
   test("every constant these paths are built from is a single segment", () => {
     for (const name of [
-      JOB_FILE_NAMES.receipt,
+      runArtifactNames(stamp).receipt,
       SIGNING_IDENTITY_FILE_NAME,
       SIGNING_CERTIFICATE_FILE_NAME,
     ]) {

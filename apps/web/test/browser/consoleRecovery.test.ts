@@ -87,6 +87,9 @@ function folderBody(live: boolean): object {
 
 /** A valid recurring-run hand-off body: enough for the finished render's collapsed
  * graduation disclosure to resolve and reveal its schedule snippets. */
+/** The name the console's CLI gives a run's result inside the job folder. */
+const CONSOLE_RESULT_NAME = "alcove-results-2026-07-08T14-32-00-000Z.csv";
+
 const RECOVERY_HANDOFF = {
   mode: "exchange",
   channel: "sftp",
@@ -98,7 +101,7 @@ const RECOVERY_HANDOFF = {
   bindPaths: [],
   template: {
     kind: "config",
-    argv: ["alcove", "exchange", "input.csv", "results.csv"],
+    argv: ["alcove", "exchange", "input.csv", "./"],
     yaml: "connection:\n  channel: sftp\n",
   },
 } satisfies JobHandoff;
@@ -301,7 +304,7 @@ describe("console strand recovery panel", () => {
       .element(page.getByRole("dialog").getByText(".alcove.key"))
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("dialog").getByText("results.csv"))
+      .element(page.getByRole("dialog").getByText("alcove-results-<time>.csv"))
       .toBeInTheDocument();
     expect(
       api.captured.some(
@@ -400,13 +403,20 @@ describe("console strand recovery panel", () => {
         api.captured.some((r) => r.url === "/api/jobs/job-done/events"),
       ).toBe(true),
     );
-    api.emit({ v: 1, type: "result", resultWritten: true });
+    api.emit({
+      v: 1,
+      type: "result",
+      resultWritten: true,
+      resultPath: `/data/job/${CONSOLE_RESULT_NAME}`,
+    });
     api.close();
 
     await expect
       .element(page.getByRole("heading", { level: 3, name: "Downloads" }))
       .toBeInTheDocument();
-    await expect.element(page.getByText("results.csv")).toBeInTheDocument();
+    await expect
+      .element(page.getByText(CONSOLE_RESULT_NAME))
+      .toBeInTheDocument();
     expect(
       page
         .getByText("An exchange started from this console is still running")
@@ -547,7 +557,9 @@ describe("console strand recovery panel", () => {
     await page.getByRole("button", { name: "Discard the folder" }).click();
     const dialog = page.getByRole("dialog");
     await expect.element(dialog.getByText(".alcove.key")).toBeInTheDocument();
-    await expect.element(dialog.getByText("results.csv")).toBeInTheDocument();
+    await expect
+      .element(dialog.getByText("alcove-results-<time>.csv"))
+      .toBeInTheDocument();
     expect(
       api.captured.some(
         (r) => r.url === "/api/jobs/job-gone" && r.method === "DELETE",
@@ -1009,13 +1021,20 @@ describe("console lobby occupancy probe (no stored attachment)", () => {
         api.captured.some((r) => r.url === "/api/jobs/job-probe/events"),
       ).toBe(true),
     );
-    api.emit({ v: 1, type: "result", resultWritten: true });
+    api.emit({
+      v: 1,
+      type: "result",
+      resultWritten: true,
+      resultPath: `/data/job/${CONSOLE_RESULT_NAME}`,
+    });
     api.close();
 
     await expect
       .element(page.getByRole("heading", { level: 3, name: "Downloads" }))
       .toBeInTheDocument();
-    await expect.element(page.getByText("results.csv")).toBeInTheDocument();
+    await expect
+      .element(page.getByText(CONSOLE_RESULT_NAME))
+      .toBeInTheDocument();
   });
 
   test("a probed slot that already stopped shows the stopped lead and only Discard", async () => {

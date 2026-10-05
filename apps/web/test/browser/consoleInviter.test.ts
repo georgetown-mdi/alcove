@@ -1559,7 +1559,7 @@ describe("console inviter re-attaches on a busy create", () => {
     bindPaths: [],
     template: {
       kind: "config",
-      argv: ["alcove", "exchange", "input.csv", "results.csv"],
+      argv: ["alcove", "exchange", "input.csv", "./"],
       yaml: "connection:\n  channel: sftp\n  server:\n    host: sftp.example.gov\n",
     },
   } satisfies JobHandoff;
@@ -1942,7 +1942,7 @@ describe("console inviter recurring hand-off availability", () => {
     bindPaths: [],
     template: {
       kind: "config",
-      argv: ["alcove", "exchange", "input.csv", "results.csv"],
+      argv: ["alcove", "exchange", "input.csv", "./"],
       yaml: "connection:\n  channel: sftp\n  server:\n    host: sftp.example.gov\n",
     },
   } satisfies JobHandoff;

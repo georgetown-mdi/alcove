@@ -1422,7 +1422,9 @@ export const PREVIOUS_CONFIGURATION_FILE_NAME = "alcove.yaml.previous";
  * The fixed, server-chosen file names inside a job workdir. The client never
  * supplies a filename: content it submits is written to these names, and the CLI
  * is pointed at them. Keeping them constant is what makes "a client string never
- * becomes a file path" hold.
+ * becomes a file path" hold. A run's own artifacts -- result, record, keys,
+ * terms file and receipt -- are not among them: the CLI names each by the run's
+ * stamp ({@link ./runArtifactNames}).
  */
 export const JOB_FILE_NAMES = {
   /** The composed CLI config document. */
@@ -1431,20 +1433,6 @@ export const JOB_FILE_NAMES = {
   key: ".alcove.key",
   /** The client's input CSV content. */
   input: "input.csv",
-  /** The CLI's matched-result output. */
-  output: "results.csv",
-  /** The self-attested exchange record, pinned so the server knows its path
-   * (the CLI's `--record-file` target). */
-  record: "record.json",
-  /** The private verification keys paired with {@link JOB_FILE_NAMES.record}.
-   * Must equal the CLI's `keysPathFor` derivation of the record name (`.json` ->
-   * `.keys.json`); a unit test pins this cross-workspace pairing. */
-  recordKeys: "record.keys.json",
-  /** The dual-signed receipt a `certificate`-mode run writes, pinned as the
-   * config's `signing.receipt_output` so the console knows its path. The
-   * CLI's own default is a timestamped name this server could not serve: it
-   * suits a recurring command line but not a single job downloaded once. */
-  receipt: "receipt.json",
   /** The CLI's own diagnostic log, written only when the run asked to be a
    * diagnostic one (`--log-file`). A debug-level log can hold partner
    * identity, linkage keys, and data categories, so it stays inside the

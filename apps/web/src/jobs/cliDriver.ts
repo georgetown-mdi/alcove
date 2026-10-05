@@ -305,8 +305,6 @@ export function spawnExchangeJob(args: {
   configPath: string;
   keyPath: string;
   inputPath: string;
-  outputPath: string;
-  recordPath: string;
   workdir: string;
   eventStream: boolean;
   /** This run's diagnostic and recovery choices (see {@link CliRunControls}). */
@@ -320,8 +318,8 @@ export function spawnExchangeJob(args: {
    */
   extraEnv?: NodeJS.ProcessEnv;
 }): CliDriverHandle {
-  const { binaryPath, configPath, keyPath, inputPath, outputPath } = args;
-  const { recordPath, workdir, handlers, eventStream, extraEnv } = args;
+  const { binaryPath, configPath, keyPath, inputPath } = args;
+  const { workdir, handlers, eventStream, extraEnv } = args;
 
   // Fixed argv template. Every element is a server constant or a server-anchored
   // absolute path; the one path with a client-derived segment (inputPath's final
@@ -333,12 +331,10 @@ export function spawnExchangeJob(args: {
     configPath,
     "--key-file",
     keyPath,
-    "--record-file",
-    recordPath,
     ...runControlArgv(args.runControls),
     ...(eventStream ? ["--event-stream"] : []),
     inputPath,
-    outputPath,
+    outputFolderArgument(workdir),
   ];
 
   return runCliChild(argv, workdir, handlers, extraEnv);
@@ -348,7 +344,7 @@ export function spawnExchangeJob(args: {
  * Spawn the CLI to run a zero-setup exchange -- the positional `$0` form
  * (`alcove URL INPUT OUTPUT`), no subcommand token, no `--config-file`, no
  * `--key-file`, and never `--save`: it infers its terms from the input file,
- * holds no shared secret, and persists nothing beyond the job's record.
+ * holds no shared secret, and persists nothing beyond the run's own artifacts.
  * `connectionArgs` (the URL and, for sftp, the `--server-*` flags) and
  * `optionArgs` (the retain-mode trio, `--peer-id`, connection tuning) are built
  * server-side by {@link zeroSetupSftpArgv} / {@link zeroSetupFiledropArgv} and
@@ -367,8 +363,6 @@ export function spawnZeroSetupJob(args: {
   connectionArgs: Array<string>;
   optionArgs: Array<string>;
   inputPath: string;
-  outputPath: string;
-  recordPath: string;
   workdir: string;
   eventStream: boolean;
   /** This run's diagnostic and recovery choices (see {@link CliRunControls}). */
@@ -384,8 +378,8 @@ export function spawnZeroSetupJob(args: {
   extraEnv?: NodeJS.ProcessEnv;
   handlers: CliDriverHandlers;
 }): CliDriverHandle {
-  const { binaryPath, connectionArgs, inputPath, outputPath } = args;
-  const { recordPath, workdir, handlers, eventStream, extraEnv } = args;
+  const { binaryPath, connectionArgs, inputPath } = args;
+  const { workdir, handlers, eventStream, extraEnv } = args;
   const { identity, linkageStrategy, deduplicate, optionArgs } = args;
   const { csvDelimiter } = args;
 
@@ -404,14 +398,24 @@ export function spawnZeroSetupJob(args: {
       : []),
     ...(deduplicate === true ? ["--deduplicate"] : []),
     ...(csvDelimiter !== undefined ? [`--csv-delimiter=${csvDelimiter}`] : []),
-    `--record-file=${recordPath}`,
     ...runControlArgv(args.runControls),
     ...(eventStream ? ["--event-stream"] : []),
     inputPath,
-    outputPath,
+    outputFolderArgument(workdir),
   ];
 
   return runCliChild(argv, workdir, handlers, extraEnv);
+}
+
+/**
+ * The OUTPUT positional of a driven run: the job's workdir, spelled with a
+ * trailing separator so the CLI takes it as a folder without a stat of its
+ * own. The child also runs in that workdir, so the record, keys, terms file
+ * and receipt the CLI places in its working directory land beside the result
+ * under the same stamp ({@link ./runArtifactNames}).
+ */
+export function outputFolderArgument(workdir: string): string {
+  return workdir.endsWith(path.sep) ? workdir : `${workdir}${path.sep}`;
 }
 
 /**

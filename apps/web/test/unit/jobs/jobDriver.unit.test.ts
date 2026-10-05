@@ -12,10 +12,10 @@ import {
   JOB_CLI_BINARY_ENV,
   PERSISTENCE_LOSS_EXIT_CODE,
   classifyExit,
+  outputFolderArgument,
   resolveCliBinaryPath,
   validateAndSanitizeEvent,
 } from "@jobs/cliDriver";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import {
   STUB_CLI_PATH,
@@ -253,9 +253,10 @@ describe("spawnZeroSetupJob drives the literal $0 form", () => {
     return dir;
   }
 
-  test("sftp: URL first positional, --server-* flags, record, input, output", async () => {
+  test("sftp: URL first positional, --server-* flags, input, output folder", async () => {
+    const workdir = scratchDir("zs-driver");
     const argv = await captureZeroSetupArgv({
-      workdir: scratchDir("zs-driver"),
+      workdir,
       connectionArgs: [
         "sftp://sftp.example.org:2222/exchange",
         "--server-username=linkage",
@@ -266,12 +267,12 @@ describe("spawnZeroSetupJob drives the literal $0 form", () => {
     });
     expect(argv[0]).toBe("sftp://sftp.example.org:2222/exchange");
     expect(argv).toContain("--event-stream");
-    // The record path rides a single `--flag=value` token, never a two-token pair.
-    expect(argv.some((token) => token.startsWith("--record-file="))).toBe(true);
-    expect(argv).not.toContain("--record-file");
-    // The two trailing positionals are input then output.
+    // No record placement: the CLI names the record by the run's stamp in the
+    // folder it runs in, which is the output folder.
+    expect(argv.some((token) => token.startsWith("--record-file"))).toBe(false);
+    // The two trailing positionals are input then the job folder.
     expect(argv[argv.length - 2].endsWith("input.csv")).toBe(true);
-    expect(argv[argv.length - 1].endsWith(JOB_FILE_NAMES.output)).toBe(true);
+    expect(argv[argv.length - 1]).toBe(outputFolderArgument(workdir));
   });
 
   test("never a subcommand token, --config-file, --key-file, or --save", async () => {

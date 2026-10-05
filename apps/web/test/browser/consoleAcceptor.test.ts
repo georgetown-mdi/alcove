@@ -867,7 +867,7 @@ describe("console acceptor re-attaches on a busy create", () => {
     bindPaths: [],
     template: {
       kind: "config",
-      argv: ["alcove", "exchange", "input.csv", "results.csv"],
+      argv: ["alcove", "exchange", "input.csv", "./"],
       yaml: "connection:\n  channel: filedrop\n  path: /mnt/rendezvous\n",
     },
   } satisfies JobHandoff;
