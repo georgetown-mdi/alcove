@@ -43,11 +43,13 @@ const GUARDED_ROOTS = ["apps/web", "packages/core"];
 // "this directory does not ship" decision, not a way to mute a failure. The live
 // tests below assert each entry still exists, so a removed/renamed tree cannot rot
 // the list. apps/web/eslint-rules holds lint-time custom rules that never ship in
-// the artifact.
+// the artifact. apps/web/hosted feeds the hosted static build
+// (vite.hosted.config.ts), which this deploy does not build or ship.
 const DEPLOY_EXCLUDED = new Set([
   "apps/web/test",
   "packages/core/test",
   "apps/web/eslint-rules",
+  "apps/web/hosted",
 ]);
 
 // Inputs that feed the shipped artifact but live OUTSIDE the guarded roots, so
