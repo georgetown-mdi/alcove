@@ -15,6 +15,7 @@ import {
 } from "../doctor/verdict";
 import { addLoggingOptions } from "../optionDefinitions";
 import { exitCodeForError, exitWithError } from "../util/exit";
+import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 
@@ -69,10 +70,12 @@ export function builder(cmd: Argv): Argv {
       probeHandler,
     )
     .command(
-      "mount <directory>",
+      "mount [directory]",
       "Check an already-mounted file-drop directory",
       (mount) =>
-        commonOptions(mount)
+        commonOptions(
+          acceptPositionalsAfterDoubleDash(mount, { required: ["directory"] }),
+        )
           .usage("Usage: $0 doctor mount DIRECTORY [options]")
           .epilog(
             "Reads SMB_MARKER and SMB_TOKEN from the environment to find the " +

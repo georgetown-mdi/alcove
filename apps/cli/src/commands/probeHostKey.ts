@@ -19,6 +19,7 @@ import {
   redactUrlCredentials,
 } from "../util/connectionUrl";
 import { exitCodeForError, exitWithError } from "../util/exit";
+import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
 import { durationFlagSeconds, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { asciiSafeJsonLine } from "../util/jsonLine";
@@ -56,7 +57,9 @@ const REAL_DEPS: ProbeHostKeyDeps = {
 };
 
 export function builder(cmd: Argv): Argv {
-  const beforeLogging = cmd
+  const beforeLogging = acceptPositionalsAfterDoubleDash(cmd, {
+    required: ["sftp-url"],
+  })
     .usage(
       "Usage: $0 probe-host-key SFTP_URL [options]\n\n" +
         "Connect to an SFTP server and print its host-key fingerprint, without\n" +

@@ -35,6 +35,10 @@ import {
   csvDelimiterFlag,
   singleValue,
 } from "../util/flags";
+import {
+  acceptPositionalsAfterDoubleDash,
+  positionalsBeforeDoubleDash,
+} from "../util/doubleDash";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptConfirm, stdinAnswersPrompts } from "../util/prompt";
 import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
@@ -51,12 +55,20 @@ import {
 } from "../partyIdentity";
 
 export function builder(cmd: Argv): Argv {
-  const withoutLogging = addCsvDelimiterOption(cmd)
-    // Capture positionals into `args` (rather than the global `_`) and treat an
-    // unknown `-`-leading token as a positional, so a bare `-` (stdin) or an
-    // input path is never swallowed or misread as a flag -- the same parsing the
-    // invite/accept commands use for their positionals.
-    .parserConfiguration({ "unknown-options-as-args": true })
+  const withoutLogging = addCsvDelimiterOption(
+    acceptPositionalsAfterDoubleDash(
+      cmd,
+      { optional: ["args"] },
+      {
+        // Capture positionals into `args` (rather than the global `_`) and
+        // treat an unknown `-`-leading token as a positional, so a bare `-`
+        // (stdin) or an input path is never swallowed or misread as a flag --
+        // the same parsing the invite/accept commands use for their
+        // positionals.
+        "unknown-options-as-args": true,
+      },
+    ),
+  )
     .positional("args", {
       type: "string",
       array: true,
@@ -133,7 +145,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // survives as a positional), which also lets a mistyped `--flag` reach the
       // positionals rather than the top-level strictOptions; reject it here,
       // before any input read or file write.
-      assertNoUnknownOptions(positionals);
+      assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const { url, input } = resolveInitPositionals(positionals);
       const connection = templateConnection(
         url,

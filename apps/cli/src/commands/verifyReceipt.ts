@@ -77,6 +77,7 @@ import {
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
   worseReceiptVerdictExitCode,
 } from "../util/exit";
+import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 
@@ -112,7 +113,12 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 // short of verified rather than failed.
 
 export function builder(cmd: Argv): Argv {
-  const beforeLogging = addCsvDelimiterOption(cmd)
+  const beforeLogging = addCsvDelimiterOption(
+    acceptPositionalsAfterDoubleDash(cmd, {
+      required: ["record"],
+      optional: ["input-file", "result-file"],
+    }),
+  )
     .usage(
       "Usage: $0 verify-receipt <record> [input-file] [result-file] [options]\n\n" +
         "Check a stored exchange record or dual-signed receipt and, given the\n" +

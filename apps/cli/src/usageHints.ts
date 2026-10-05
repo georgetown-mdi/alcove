@@ -1,3 +1,5 @@
+import { positionalsBeforeDoubleDash } from "./util/doubleDash";
+
 /**
  * The command names `alcove` registers, in the order its help lists them. The
  * quick exchange takes a URL where a command name would go, so a first
@@ -101,10 +103,10 @@ function camelCase(name: string): string {
  * The long options yargs parsed for a command that name no option in `known`,
  * each paired with the option it most likely stands for: every key of the
  * parsed `argv` other than yargs' own `_`, `$0` and `--`, plus each
- * `--`-leading token in the `args` positional, where the commands that take
- * unknown options as arguments collect them. yargs adds a camelCase copy of
- * each dashed key, so that copy is skipped; a one-character key comes from a
- * short flag and is left to yargs' own message.
+ * `--`-leading token in the `args` positional given before a `--` separator,
+ * where the commands that take unknown options as arguments collect them.
+ * yargs adds a camelCase copy of each dashed key, so that copy is skipped; a
+ * one-character key comes from a short flag and is left to yargs' own message.
  */
 export function unknownLongOptions(
   argv: Readonly<Record<string, unknown>>,
@@ -125,7 +127,9 @@ export function unknownLongOptions(
       key.length > 1 &&
       !camelCopies.has(key),
   );
-  const positionals = Array.isArray(argv.args) ? argv.args : [];
+  const positionals = Array.isArray(argv.args)
+    ? positionalsBeforeDoubleDash(argv, argv.args)
+    : [];
   for (const token of positionals) {
     if (typeof token === "string" && token.startsWith("--") && token !== "--")
       names.push(token.slice(2).split("=", 1)[0]);
