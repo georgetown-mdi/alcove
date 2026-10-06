@@ -262,6 +262,36 @@ test("invalid server URL with two positionals throws a parse error", () => {
   );
 });
 
+test("a positional past OUTPUT_FOLDER is refused without echoing any", () => {
+  let message = "";
+  try {
+    resolvePositionals([
+      "sftp://user:pwDISTINCT7@host/data",
+      "input.csv",
+      "out",
+      "extra",
+    ]);
+  } catch (error) {
+    expect(error).toBeInstanceOf(UsageError);
+    message = (error as Error).message;
+  }
+  expect(message).toBe(
+    "too many arguments for alcove; usage: alcove [options] URL INPUT_FILE " +
+      "[OUTPUT_FOLDER]",
+  );
+});
+
+test.each(["C:/share/drop", "C:\\share\\drop", "d:/drop"])(
+  "a Windows drive path %s in the URL slot is refused naming the file:// form",
+  (drivePath) => {
+    existsSyncSpy.mockReturnValue(false);
+    expect(() => resolvePositionals([drivePath, "input.csv"])).toThrow(
+      "the first argument is a Windows path, not a server URL; name a " +
+        "folder as a file:// URL, e.g. file:///C:/share/drop",
+    );
+  },
+);
+
 test("a mistyped command name is refused, naming the command it is closest to", () => {
   existsSyncSpy.mockReturnValue(false);
   expect(() => resolvePositionals(["exchnage", "input.csv"])).toThrow(

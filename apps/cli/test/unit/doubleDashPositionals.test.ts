@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 
 import { buildCli } from "../../src/cliParser";
-import { positionalsBeforeDoubleDash } from "../../src/util/doubleDash";
+import { positionalsBeforeDoubleDash } from "../../src/util/positionals";
 import { captureProcessExit } from "../exitCapture";
 
 afterEach(() => {
@@ -246,4 +246,114 @@ test("apply's handler takes a `--`-leading update after `--`", async () => {
   expect(stderr).not.toContain("Unknown argument");
   expect(stderr).toContain(missingConfig);
   expect(exit).not.toBe("");
+});
+
+test.each([
+  ["exchange", ["exchange", "in.csv", "out", "extra"], "INPUT_FILE"],
+  ["exchange", ["exchange", "in.csv", "--", "out", "extra"], "INPUT_FILE"],
+  [
+    "verify-receipt",
+    ["verify-receipt", "r.json", "in.csv", "out.csv", "extra"],
+    "<record>",
+  ],
+  ["probe-host-key", ["probe-host-key", "sftp://h", "extra"], "SFTP_URL"],
+  ["doctor mount", ["doctor", "mount", "dir", "extra"], "DIRECTORY"],
+  ["doctor probe", ["doctor", "probe", "extra"], "[options]"],
+  ["update", ["update", "extra"], "[options]"],
+  ["update", ["update", "--", "extra"], "[options]"],
+  ["fingerprint", ["fingerprint", "extra.json"], "[options]"],
+  ["enroll-relay", ["enroll-relay", "extra"], "[options]"],
+])(
+  "%s refuses a positional past the last it takes, exit 64",
+  async (command, argv, usage) => {
+    const { parsed, exit, stderr } = await parsedArgv(argv);
+    expect(parsed).toBeUndefined();
+    expect(exit).toBe("exit:64");
+    expect(stderr).toContain(`too many arguments for alcove ${command}`);
+    expect(stderr).toContain(usage);
+    expect(stderr).not.toContain("extra");
+  },
+);
+
+test.each([
+  ["exchange", ["exchange", "in.csv", "out"]],
+  ["exchange", ["exchange", "--", "in.csv", "out"]],
+  ["verify-receipt", ["verify-receipt", "r.json", "in.csv", "out.csv"]],
+  ["doctor mount", ["doctor", "mount", "dir"]],
+  ["update", ["update"]],
+])("%s takes as many positionals as it declares", async (_command, argv) => {
+  const { exit } = await parsedArgv(argv);
+  expect(exit).toBe("");
+});
+
+test.each([["apply", "update"], ["update"]])(
+  "%s reads --config-file with a leading ~ under the home directory",
+  async (...command) => {
+    const name = `alcove-absent-${randomUUID()}.yaml`;
+    const { exit, stderr } = await handlerRun([
+      ...command,
+      `--config-file=~/${name}`,
+    ]);
+    expect(stderr).toContain(join(homedir(), name));
+    expect(stderr).not.toContain(`~/${name}`);
+    expect(exit).not.toBe("");
+  },
+);
+
+test.each([["apply", "update"], ["init"]])(
+  "%s refuses an empty --config-file, exit 64",
+  async (...command) => {
+    const { exit, stderr } = await handlerRun([...command, "--config-file= "]);
+    expect(stderr).toContain("--config-file is empty");
+    expect(exit).toBe("exit:64");
+  },
+);
+
+test.each([
+  [
+    "accept",
+    ["accept", "INVITE", "in.csv", "out", "extra"],
+    ["accept", "sftp://h/drop", "INVITE", "in.csv", "out", "extra"],
+  ],
+  [
+    "invite",
+    ["invite", "in.csv", "extra"],
+    ["invite", "sftp://h/drop", "in.csv", "out", "extra"],
+  ],
+])(
+  "%s shows one usage for a surplus positional, offline or online",
+  async (command, offline, online) => {
+    const usage =
+      `too many arguments for alcove ${command}; usage: ` +
+      `alcove ${command} --identity IDENTITY`;
+    const messages: string[] = [];
+    for (const argv of [offline, online]) {
+      const { exit, stderr } = await handlerRun(argv);
+      expect(exit).toBe("exit:64");
+      const message = stderr.slice(stderr.indexOf("too many arguments"));
+      expect(message).toContain(usage);
+      expect(message).toContain("(offline), or ");
+      expect(message).not.toContain("extra");
+      messages.push(message);
+      vi.restoreAllMocks();
+    }
+    expect(messages[0]).toBe(messages[1]);
+  },
+);
+
+test("exchange --help still prints help and exits 0", async () => {
+  const printed: string[] = [];
+  vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+    printed.push(args.map(String).join(" "));
+  });
+  const { exit } = await handlerRun(["exchange", "--help"]);
+  expect(exit).toBe("exit:0");
+  expect(printed.join("\n")).toContain("--retain-files");
+});
+
+test("apply's handler refuses a second positional, exit 64", async () => {
+  const { exit, stderr } = await handlerRun(["apply", "update", "extra"]);
+  expect(stderr).toContain("too many arguments for alcove apply");
+  expect(stderr).not.toContain("extra");
+  expect(exit).toBe("exit:64");
 });

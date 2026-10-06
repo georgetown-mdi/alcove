@@ -15,7 +15,7 @@ import {
 } from "../doctor/verdict";
 import { addLoggingOptions } from "../optionDefinitions";
 import { exitCodeForError, exitWithError } from "../util/exit";
-import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
+import { declarePositionals } from "../util/positionals";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 
@@ -59,7 +59,9 @@ export function builder(cmd: Argv): Argv {
       "probe",
       "Check the file drop over the network, without mounting it",
       (probe) =>
-        commonOptions(probe)
+        commonOptions(
+          declarePositionals(probe, { command: "doctor probe", usage: "" }),
+        )
           .usage("Usage: $0 doctor probe [options]")
           .epilog(
             "Reads the connection from the environment, not from flags: " +
@@ -74,7 +76,11 @@ export function builder(cmd: Argv): Argv {
       "Check an already-mounted file-drop directory",
       (mount) =>
         commonOptions(
-          acceptPositionalsAfterDoubleDash(mount, { required: ["directory"] }),
+          declarePositionals(mount, {
+            command: "doctor mount",
+            usage: "DIRECTORY [options]",
+            required: ["directory"],
+          }),
         )
           .usage("Usage: $0 doctor mount DIRECTORY [options]")
           .epilog(

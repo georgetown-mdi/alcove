@@ -69,9 +69,10 @@ import {
   singleValue,
 } from "../util/flags";
 import {
-  acceptPositionalsAfterDoubleDash,
+  declarePositionals,
   positionalsBeforeDoubleDash,
-} from "../util/doubleDash";
+  refuseSurplusPositionals,
+} from "../util/positionals";
 import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
 import { redactUrlCredentials } from "@alcove/core";
@@ -100,6 +101,7 @@ import {
   addCommonBootstrapOptions,
   addCsvDelimiterOption,
   connectionOverridesFrom,
+  addLinkageStrategyOption,
   parseCommonBootstrapArgs,
   warnConnectionPerPollShortInterval,
   warnLowPollingFrequency,
@@ -141,73 +143,75 @@ import {
 // not how long the token stays valid; --expires-in overrides the default up to
 // the ceiling (see the builder option and validateInvite).
 
+const INVITE_OFFLINE_USAGE = "--identity IDENTITY [INPUT_FILE]";
+const INVITE_ONLINE_USAGE =
+  "--identity IDENTITY URL INPUT_FILE [OUTPUT_FOLDER]";
+const INVITE_USAGE = [
+  `${INVITE_OFFLINE_USAGE} (offline)`,
+  `${INVITE_ONLINE_USAGE} (online)`,
+];
+
 export function builder(cmd: Argv): Argv {
-  return addCommonBootstrapOptions(
-    addCsvDelimiterOption(
-      acceptPositionalsAfterDoubleDash(
-        cmd,
-        { optional: ["args"] },
-        {
-          // Capture all positionals into `args` (rather than relying on the
-          // global `_`) and treat an unknown `-`-leading token as a positional,
-          // so an input path is never misread as a flag. Scoped to this command
-          // so the other commands' parsing is unaffected.
-          "unknown-options-as-args": true,
-        },
-      ),
+  return addLinkageStrategyOption(
+    addCommonBootstrapOptions(
+      addCsvDelimiterOption(
+        declarePositionals(
+          cmd,
+          {
+            command: "invite",
+            usage: INVITE_USAGE,
+            optional: ["args"],
+          },
+          {
+            // Capture all positionals into `args` (rather than relying on the
+            // global `_`) and treat an unknown `-`-leading token as a positional,
+            // so an input path is never misread as a flag. Scoped to this command
+            // so the other commands' parsing is unaffected.
+            "unknown-options-as-args": true,
+          },
+        ),
+      )
+        .positional("args", {
+          type: "string",
+          array: true,
+          // Offline, INPUT_FILE is optional: linkage terms come from a pre-existing
+          // config when one is present, and are inferred from INPUT_FILE otherwise.
+          // Online still requires INPUT_FILE (the data to exchange).
+          describe:
+            "[INPUT_FILE] (offline), or URL INPUT_FILE [OUTPUT_FOLDER] (online)",
+        })
+        .usage(
+          "Usage:\n" +
+            "  $0 invite [options] [INPUT_FILE]                       (offline)\n" +
+            "  $0 invite [options] URL INPUT_FILE [OUTPUT_FOLDER]     (online)\n\n" +
+            "Offline: print an invitation string to send your partner over a\n" +
+            "channel you trust, and write the configuration and key file this\n" +
+            "party keeps. Online: also connect, wait for the partner to\n" +
+            "accept, and run the exchange. Offline, linkage terms are taken from a\n" +
+            "pre-existing configuration file when present (the INPUT_FILE, if given,\n" +
+            "is checked against it) and inferred from INPUT_FILE otherwise.\n\n" +
+            "Online, URL is the web app's address (e.g. https://app.example.org/),\n" +
+            "a ws:// or wss:// coordination server, or an sftp://, ssh://, or\n" +
+            "file:// exchange directory.\n\n" +
+            "INPUT_FILE may be `-` to read the CSV from stdin.",
+        ),
     )
-      .positional("args", {
+      .option("accept-timeout", {
         type: "string",
-        array: true,
-        // Offline, INPUT_FILE is optional: linkage terms come from a pre-existing
-        // config when one is present, and are inferred from INPUT_FILE otherwise.
-        // Online still requires INPUT_FILE (the data to exchange).
         describe:
-          "[INPUT_FILE] (offline), or URL INPUT_FILE [OUTPUT_FOLDER] (online)",
+          "online only: how long to wait for the partner to accept before " +
+          `giving up (default: ${DEFAULT_ACCEPT_TIMEOUT_SECONDS}s, maximum: ` +
+          `${MAX_TIMEOUT_SECONDS / 86_400}d). ` +
+          DURATION_VALUE_HELP,
       })
-      .usage(
-        "Usage:\n" +
-          "  $0 invite [options] [INPUT_FILE]                       (offline)\n" +
-          "  $0 invite [options] URL INPUT_FILE [OUTPUT_FOLDER]     (online)\n\n" +
-          "Offline: print an invitation string to send your partner over a\n" +
-          "channel you trust, and write the configuration and key file this\n" +
-          "party keeps. Online: also connect, wait for the partner to\n" +
-          "accept, and run the exchange. Offline, linkage terms are taken from a\n" +
-          "pre-existing configuration file when present (the INPUT_FILE, if given,\n" +
-          "is checked against it) and inferred from INPUT_FILE otherwise.\n\n" +
-          "Online, URL is the web app's address (e.g. https://app.example.org/),\n" +
-          "a ws:// or wss:// coordination server, or an sftp://, ssh://, or\n" +
-          "file:// exchange directory.\n\n" +
-          "INPUT_FILE may be `-` to read the CSV from stdin.",
-      ),
+      .option("expires-in", {
+        type: "string",
+        describe:
+          "override the invitation lifetime (default: 1 hour, maximum: 365d). " +
+          DURATION_VALUE_HELP,
+      }),
+    "invite",
   )
-    .option("accept-timeout", {
-      type: "string",
-      describe:
-        "online only: how long to wait for the partner to accept before " +
-        `giving up (default: ${DEFAULT_ACCEPT_TIMEOUT_SECONDS}s, maximum: ` +
-        `${MAX_TIMEOUT_SECONDS / 86_400}d). ` +
-        DURATION_VALUE_HELP,
-    })
-    .option("expires-in", {
-      type: "string",
-      describe:
-        "override the invitation lifetime (default: 1 hour, maximum: 365d). " +
-        DURATION_VALUE_HELP,
-    })
-    .option("linkage-strategy", {
-      type: "string",
-      describe:
-        "how the agreed linkage keys are run on the wire (default: cascade). " +
-        "cascade runs one dependent PSI round per key; single-pass batches " +
-        "every key into one exchange for a constant round-trip count, at the " +
-        "cost of disclosing your full per-key value structure to the receiver " +
-        "-- a consented disclosure tradeoff, not a free speed-up. Has no " +
-        "effect when linkage terms come from an existing configuration file " +
-        "(set linkage_strategy there). See " +
-        "https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
-        "EXCHANGE_REFERENCE.md (linkage_terms.linkage_strategy).",
-    })
     .option("turn", {
       type: "string",
       describe:
@@ -424,13 +428,15 @@ export function resolveInvitePositionals(
     if (input === undefined)
       throw new UsageError(
         "online invitation requires an input file; usage: alcove invite " +
-          "--identity IDENTITY URL INPUT_FILE [OUTPUT_FOLDER]",
+          INVITE_ONLINE_USAGE,
       );
+    refuseSurplusPositionals(positionals.length, 3, "invite", INVITE_USAGE);
     const output =
       positionals[2] !== undefined ? String(positionals[2]) : undefined;
     return { mode: "online", url: new URL(arg0), input, output };
   }
 
+  refuseSurplusPositionals(positionals.length, 1, "invite", INVITE_USAGE);
   return { mode: "offline", input: arg0 };
 }
 
@@ -1081,8 +1087,7 @@ export async function validateInvite(params: {
   if (resolved.input === undefined)
     throw new UsageError(
       "generating an invitation requires an input file or a pre-existing " +
-        "configuration file; usage: alcove invite --identity IDENTITY " +
-        "[INPUT_FILE]",
+        `configuration file; usage: alcove invite ${INVITE_OFFLINE_USAGE}`,
     );
   assertNoProvisionConflicts({
     configPath: options.configFile,
