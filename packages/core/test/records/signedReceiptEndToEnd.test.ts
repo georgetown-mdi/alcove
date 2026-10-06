@@ -250,8 +250,10 @@ test("a partner that signs nothing is refused at the terms exchange", async () =
   );
 
   expect(raised).toBeInstanceOf(ReceiptVerificationError);
-  expect((raised as Error).message).toMatch(/partner is not signing receipts/);
-  // Nothing of this party's data moved: the frames it sent are its own terms,
+  expect((raised as Error).message).toMatch(
+    /partner presented no signing certificate/,
+  );
+  // Nothing of your data moved: the frames it sent are its own terms,
   // the decision closing the terms exchange, and the abort that releases the
   // partner.
   expect(initiatorSide.sent.map(frameKind)).toEqual([
@@ -314,14 +316,14 @@ test("an unnamed party refuses at terms agreement rather than signing", async ()
         ? ((initiatorOutcome as PromiseRejectedResult).reason as Error).message
         : "",
     ),
-  ).toContain("the partner's agreed terms name none");
+  ).toContain("your partner's agreed terms name none");
   expect(
     String(
       (responderOutcome as PromiseRejectedResult).reason instanceof Error
         ? ((responderOutcome as PromiseRejectedResult).reason as Error).message
         : "",
     ),
-  ).toContain("this party's agreed terms name none");
+  ).toContain("your agreed terms name none");
   await connInitiator.close();
   await connResponder.close();
 });
@@ -416,7 +418,7 @@ describe("a signing party refuses an unnamed partner before its own data moves",
       const raised = await refusal;
       expect(raised).toBeInstanceOf(ReceiptVerificationError);
       expect((raised as Error).message).toContain(
-        "the partner's agreed terms name none",
+        "your partner's agreed terms name none",
       );
 
       // The whole point of the timing, read off the wire: the terms exchange's
@@ -847,7 +849,7 @@ test.each([
     expect(thrown).toBeInstanceOf(OperatorConfigError);
     const message = (thrown as Error).message;
     expect(message).toContain("alcove fingerprint --force --identity");
-    expect(message).toContain("re-pin the new fingerprint");
+    expect(message).toContain("pin the new fingerprint");
     expect(message).not.toContain("linkage_terms.identity to the name on the");
     expect(message).not.toContain(boundLabel);
     expect(message).not.toContain("\u202e");

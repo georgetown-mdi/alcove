@@ -3172,7 +3172,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
       .element(page.getByText("Cannot accept this invitation"))
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "payload.receive must be empty when expectsOutput is false",
+      "payload.receive must be empty when expects_output is false",
     );
     expect(
       page

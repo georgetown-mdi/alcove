@@ -59,7 +59,7 @@ test("the accept path refuses unrunnable terms at its decode gate", async () => 
 
   expect(raised).toBeInstanceOf(UsageError);
   expect((raised as UsageError).message).toContain(
-    "expands one value into several match candidates",
+    "turns one value into several match candidates",
   );
 });
 

@@ -1869,10 +1869,10 @@ describe("assertFanOutImplemented", () => {
     // shape.
     const terms = unlistedStrategyTerms(elementFanOutKeys);
     expect(() => assertFanOutImplemented(terms)).toThrow(
-      /matches a single value per record/,
+      /matches one value per record/,
     );
     expect(() => assertFanOutImplemented(terms)).toThrow(
-      /Agree linkage terms whose linkage_strategy matches a candidate set/,
+      /Agree linkage terms whose linkage_strategy matches several candidates/,
     );
     expect(() => assertFanOutImplemented(terms)).toThrow(
       /remove the "split_on" step/,
@@ -3414,7 +3414,7 @@ describe("assertLinkageTermsSatisfiable", () => {
     // terms' names, which are partner-authored on every accept path.
     expect(raised).not.toBeInstanceOf(OperatorConfigError);
     const rendered = sanitizeErrorForDisplay(raised);
-    expect(rendered).toContain("out of band");
+    expect(rendered).toContain("Agree new terms with your partner");
     expect(rendered).toContain("SSN");
     expect(rendered).toContain("ssn (ssn)");
   });
@@ -3482,7 +3482,7 @@ describe("assertLinkageTermsSatisfiable", () => {
       raised = err;
     }
     const rendered = sanitizeErrorForDisplay(raised);
-    expect(rendered).toContain("out of band");
+    expect(rendered).toContain("Agree new terms with your partner");
     expect(rendered).toContain("unsatisfied linkage fields (1)");
   });
 

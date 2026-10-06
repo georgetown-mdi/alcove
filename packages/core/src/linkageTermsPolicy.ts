@@ -57,41 +57,31 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
 > = {
   linkageKeys:
     'count-only ("psi-c") linkage terms must declare exactly one linkage ' +
-    "key: a count-only exchange is one PSI round over one key, and a " +
-    "multi-key count is not specified, so these terms are refused rather " +
-    "than narrowed to the first key. Declare a single linkage key, or set " +
-    'the algorithm to "psi" to match on several.',
+    "key. Declare a single linkage key, or set algorithm to " +
+    '"psi" to match on several.',
   linkageStrategy:
-    'count-only ("psi-c") linkage terms must set the linkage strategy to ' +
-    '"cascade": no count-only single-pass round is specified, so these ' +
-    "terms are refused rather than run under a strategy neither party " +
-    'agreed to. Set the linkage strategy to "cascade", or set the algorithm ' +
+    'count-only ("psi-c") linkage terms must set linkage_strategy to ' +
+    '"cascade". Set linkage_strategy to "cascade", or set algorithm ' +
     'to "psi".',
   deduplicate:
-    'count-only ("psi-c") linkage terms must set deduplicate to false: a ' +
-    "count-only exchange reports the size of the intersection and hands " +
-    "neither party a record-by-record pairing, so there is no matching " +
-    "multiplicity for it to honor. Set deduplicate to false, or set the " +
-    'algorithm to "psi".',
+    'count-only ("psi-c") linkage terms must set deduplicate to false, ' +
+    "because a count-only exchange pairs no records. Set deduplicate to " +
+    'false, or set algorithm to "psi".',
   payload:
-    'count-only ("psi-c") linkage terms must declare no payload columns in ' +
-    "either direction: a count-only exchange reveals the size of the " +
-    "intersection and nothing else, so it sends no data column whichever " +
-    "party the terms entitle to the count. Remove the payload send and " +
-    'receive columns, or set the algorithm to "psi".',
+    'count-only ("psi-c") linkage terms must declare no payload columns, ' +
+    "because a count-only exchange reveals only the size of the " +
+    "intersection. Remove the payload send and receive columns, or set " +
+    'algorithm to "psi".',
   candidateSet:
     'a count-only ("psi-c") exchange matches one value per record, but these ' +
-    "linkage terms declare a step that expands one value into several match " +
-    "candidates. A count-only round counts matched values where the matching " +
-    "pairs each record at most once, so the count would report more links " +
-    "than the exchange stands for. Remove the expanding step, the fuzzy " +
-    'comparison, or the swapped key order, or set the algorithm to "psi".',
+    "linkage terms declare a step that turns one value into several match " +
+    "candidates. Remove the expanding step, the fuzzy " +
+    'comparison, or the swapped key order, or set algorithm to "psi".',
   transmittedColumns:
-    'a count-only ("psi-c") exchange transmits no data columns, but this ' +
-    "input's metadata marks one or more columns to send to the partner. The " +
-    "algorithm sends no payload in either direction, so the exchange is " +
-    "refused rather than run over a disclosure it cannot make. Clear the " +
-    'payload marking on those columns, or set the algorithm to "psi".',
+    'a count-only ("psi-c") exchange sends no data columns, but your ' +
+    "input's metadata marks one or more columns to send to your partner. " +
+    "Clear the payload marking on those columns, or set algorithm to " +
+    '"psi".',
 };
 
 /**

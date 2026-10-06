@@ -40,10 +40,10 @@ import type { CertificateBody } from "@alcove/core";
 // on the remedy. The local config edit is offered first: it is the cheaper of
 // the two, and regeneration invalidates a fingerprint the partner has pinned.
 const RECONCILE_GUIDANCE =
-  "Make the two match: set linkage_terms.identity to the bound identity (a " +
-  "local config edit), or regenerate the identity with 'alcove fingerprint " +
-  "--force --identity' naming the terms identity -- regeneration changes the " +
-  "fingerprint your partner pins, so it needs a coordinated re-pin.";
+  "Set linkage_terms.identity to the name the identity is bound to, or " +
+  "create a new identity with 'alcove fingerprint --force --identity' " +
+  "under the terms identity; a new identity changes your fingerprint, so " +
+  "your partner must pin the new one.";
 
 // The exit for the one divergence the guidance above cannot resolve: a
 // certificate bound to a label the terms refuse in `identity`. No terms
@@ -55,9 +55,9 @@ const RECONCILE_GUIDANCE =
 // same exit at that boundary (assertLocalCertificateAuthorizesAgreedIdentity),
 // which an exchange reaches only after this one.
 const REKEY_GUIDANCE =
-  "Re-key the signing identity with 'alcove fingerprint --force --identity' " +
-  "under a label the terms admit, then have every partner re-pin the new " +
-  "fingerprint before receipts verify again.";
+  "Create a new signing identity with 'alcove fingerprint --force " +
+  "--identity' under a name linkage_terms.identity can hold, then have " +
+  "every partner pin the new fingerprint.";
 
 // What a divergence costs the operator, said the same way on both of the
 // warning's branches so the remedy is the only thing that differs between them.
@@ -168,20 +168,15 @@ export function assertIdentityMatchesAgreedTerms(
   if (unstatable !== undefined)
     throw new OperatorConfigError(
       "this exchange signs receipts (signing.mode: certificate), but the " +
-        "signing identity is bound to a label the linkage terms cannot " +
-        `state -- ${unstatable} -- so it cannot finish: your partner ` +
-        "authorizes the certificate against the " +
-        "agreed terms and rejects it, and no edit of linkage_terms.identity " +
-        "can bring the two into agreement, because the terms refuse that " +
-        `label too. ${REKEY_GUIDANCE} ` +
+        "signing identity is bound to a name linkage terms cannot hold " +
+        `(${unstatable}), so your partner would refuse the certificate. ` +
+        `${REKEY_GUIDANCE} ` +
         `linkage_terms.identity is "${termsIdentity}".`,
     );
   throw new OperatorConfigError(
     "this exchange signs receipts (signing.mode: certificate), but the " +
-      "signing identity is bound to a party name the agreed terms do not " +
-      "state, so it cannot finish: your partner authorizes the certificate " +
-      "against the agreed terms and rejects it, so the exchange refuses the " +
-      "divergence at the terms exchange, before your data crosses. " +
+      "signing identity is bound to a name other than linkage_terms.identity, " +
+      "so your partner would refuse the certificate before any data is sent. " +
       `${RECONCILE_GUIDANCE} ` +
       `The certificate is bound to "${certificate.identity}"; ` +
       `linkage_terms.identity is "${termsIdentity}".`,

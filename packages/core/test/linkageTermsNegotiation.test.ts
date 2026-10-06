@@ -1188,7 +1188,7 @@ test("deriveAcceptedLinkageTerms fails closed when the mirror is incoherent (pay
   // this reads which rule the derived document broke, and a second shape below
   // reaches the same check with a different rule.
   expect((thrown as Error).message).toContain(
-    "payload.receive: payload.receive must be empty when expectsOutput is false",
+    "payload.receive: payload.receive must be empty when expects_output is false",
   );
 });
 
@@ -1209,7 +1209,7 @@ test("deriveAcceptedLinkageTerms names the schema issue for an acceptorDeduplica
     thrown = e;
   }
   expect((thrown as Error).message).toContain(
-    "output.expectsOutput: expectsOutput must be true when deduplicate is true",
+    "output.expects_output: expects_output must be true when deduplicate is true",
   );
   // This invitation declares no payload, so a message naming one would be an
   // account of a shape that is not here.

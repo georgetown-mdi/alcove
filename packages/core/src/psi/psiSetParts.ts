@@ -74,7 +74,7 @@ export function partnerSetOverCeilingMessage(ceilingElements: number): string {
  */
 export function ownSetTooLargeMessage(elementCount: number): string {
   return (
-    "Too large to send: the set this party sends for this linkage key " +
+    "Too large to send: the set you send for this linkage key " +
     `holds ${elementCount} values, over the ${MAX_PSI_DECODE_ELEMENTS} one ` +
     "set can hold, so the exchange stopped before sending it and told your " +
     `partner. ${SPLIT_INPUT_REMEDY}`
@@ -91,7 +91,7 @@ export function ownSetOverPartnerCeilingMessage(
   partnerCeiling: number,
 ): string {
   return (
-    "Too large for your partner: the set this party sends for this linkage " +
+    "Too large for your partner: the set you send for this linkage " +
     `key holds ${elementCount} values, over the ${partnerCeiling} your ` +
     "partner can receive in one PSI set, so the exchange stopped before " +
     `sending it and told your partner. ${SPLIT_INPUT_REMEDY}`

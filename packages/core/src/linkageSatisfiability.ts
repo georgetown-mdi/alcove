@@ -1840,8 +1840,7 @@ export function assertLinkageTermsSatisfiable(
   if (verdict.keys.length === 0)
     throw new LinkageTermsUnsatisfiableError(
       "the agreed linkage terms declare no linkage key, so this exchange has " +
-        "nothing to match on and is refused before any credential, terms, or " +
-        "data are sent. " +
+        "nothing to match on. Nothing was sent. " +
         singleColumnDelimiterClause(columns.length) +
         "Run it with an input whose columns can supply at " +
         "least one linkage key, or agree terms declaring one with your " +
@@ -1884,13 +1883,9 @@ export function assertLinkageTermsSatisfiable(
     `this input cannot satisfy every linkage key the agreed terms declare: ` +
       `${summarizeLinkageShortfall(verdict, "agreed")}. ` +
       singleColumnDelimiterClause(columns.length) +
-      "The exchange is " +
-      "refused before any credential, terms, or data are sent: it would match " +
-      "on fewer keys than both parties agreed to while its exchange record " +
-      "still names every field those terms declare. Settle the shortfall with " +
-      "your partner out of band -- agree terms over the keys and fields both " +
-      "files can supply, and run the exchange under those -- or run it with " +
-      "an input file that satisfies the terms already agreed.",
+      "Nothing was sent. Agree new terms with your partner over the keys " +
+      "and fields both files can supply, or run with an input file that " +
+      "satisfies the current terms.",
     details.length > 0
       ? { cause: chainDetailCauses(details as [string, ...string[]]) }
       : undefined,

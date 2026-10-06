@@ -814,10 +814,8 @@ export class PeerAbortError extends ConnectionError {
 
   constructor(options?: ErrorOptions, partnerReason?: string) {
     super(
-      "the peer authentically signaled that it aborted the exchange; this is " +
-        "a definitive peer-side termination, not an inactivity timeout or a " +
-        "slow dataset. Contact your partner, who holds the specific error " +
-        "locally.",
+      "Your partner stopped the exchange. Their run shows the reason; " +
+        "contact them.",
       "transport",
       options,
     );

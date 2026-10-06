@@ -820,7 +820,7 @@ function keptConfigurationIdentity(params: {
       `--identity "${redactAndSanitizeForDisplay(stated)}" has no effect on an ` +
         "acceptance that keeps the existing configuration file; that file's " +
         "linkage_terms.identity " +
-        `("${redactAndSanitizeForDisplay(identity)}") names this party in the ` +
+        `("${redactAndSanitizeForDisplay(identity)}") names you in the ` +
         "terms this acceptance agrees to, and in every exchange the file " +
         "governs. Edit linkage_terms.identity in " +
         `${redactAndRenderOperatorSuppliedText(

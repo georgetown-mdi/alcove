@@ -5214,7 +5214,7 @@ test.each([
     expect(exitCodeForError(reason)).toBe(code);
     expect(
       mockState.errors.some((m) =>
-        m.includes("Retry the exchange without re-inviting"),
+        m.includes("Retry the exchange with the same key file"),
       ),
     ).toBe(advisory);
     expect(
@@ -5288,7 +5288,7 @@ test("runProtocol after rotation prints no retry line beneath a terms-change ref
   expect(reason).toBeInstanceOf(OperatorConfigError);
   expect(
     mockState.errors.some((m) =>
-      m.includes("Retry the exchange without re-inviting"),
+      m.includes("Retry the exchange with the same key file"),
     ),
   ).toBe(false);
   const rendered = renderFailureForOperator(reason);
@@ -5330,7 +5330,7 @@ test.each([
     raise: () => new AuthenticationError("key exchange authentication failed"),
     code: 77,
     nextStep: undefined,
-    advisory: "do not retry. Both parties must re-invite",
+    advisory: "fails the same way. Ask your partner for a new invitation",
     absent: "Retry the exchange with the existing key file",
   },
   {
@@ -6545,7 +6545,7 @@ test("runProtocol's recovery hint does not promise a clean retry when the post-h
   // config that was never written -- is suppressed on both sides.
   expect(
     mockState.errors.some((m) =>
-      m.includes("Retry the exchange without re-inviting"),
+      m.includes("Retry the exchange with the same key file"),
     ),
   ).toBe(false);
 }, 20_000);

@@ -785,13 +785,14 @@ export function tokenExpiringAdvisory(
     // matching the load-time hard-stop guidance.
     return (
       `the shared secret in ${keyFilePath} expired at ${expiresShown} during ` +
-      `this exchange and was not refreshed; both parties must re-invite to ` +
-      `establish a new shared secret.`
+      "this exchange and was not refreshed. Ask your partner for a new " +
+      "invitation, or create one with 'alcove invite' and have your " +
+      "partner accept it."
     );
   return (
     `the shared secret in ${keyFilePath} is expiring soon (expires ` +
     `${expiresShown}) and was not refreshed by this exchange. Run a successful ` +
-    `exchange before it expires; once it lapses, both parties must re-invite.`
+    "exchange before it expires; after that, you need a new invitation."
   );
 }
 
@@ -1218,7 +1219,7 @@ export async function handler(argv: Arguments): Promise<void> {
         configFile: options.configFile,
         remedyFor: (field) =>
           field === "linkage_terms.identity"
-            ? "Replace it with this party's name, organization, and " +
+            ? "Replace it with your name, organization, and " +
               "contact, or pass --identity, before running the exchange."
             : undefined,
       });

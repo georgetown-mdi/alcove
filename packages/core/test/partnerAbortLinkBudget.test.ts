@@ -117,8 +117,9 @@ const VALUE_SEPARATOR = sanitizeErrorForDisplay(
 
 const linksOf = (rendered: string): string[] => rendered.split(CAUSE_SEPARATOR);
 
-const FIRST_PARTY_SENTENCE = "partner aborted linkage terms exchange";
-const REASON_LABEL = "reason the partner gave: ";
+const FIRST_PARTY_SENTENCE =
+  "Your partner stopped the exchange at the linkage terms";
+const REASON_LABEL = "reason your partner gave: ";
 
 // The first-party text opening the reason at a 1-based position: the position
 // the elimination leads every label with (src/utils/partnerOriginText.ts),

@@ -82,8 +82,8 @@ const NO_PARTY_EXPECTS_OUTPUT_REFUSAL =
   "Neither you nor your partner expects a result from these terms, so this " +
   "run stops at the terms exchange, before any linkage data is sent. Set " +
   "expects_output to true if the result is yours to receive, or " +
-  "share_with_partner to true if it is your partner's, and settle the " +
-  "matching value with them.";
+  "share_with_partner to true if it is your partner's, and agree the " +
+  "matching value with your partner.";
 
 /**
  * The columns this party transmits for matched records, from the metadata this

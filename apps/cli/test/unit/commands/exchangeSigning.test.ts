@@ -276,7 +276,7 @@ test("refuses when the loaded identity diverges from the run's terms identity", 
   expect(message).toContain('"Party A"');
   expect(message).toContain('"Party A, Agency A, a@agency-a.gov"');
   expect(message).toContain("linkage_terms.identity");
-  expect(message).toContain("cannot finish");
+  expect(message).toContain("so your partner would refuse the certificate");
 });
 
 test("the refusal offers the local config edit before the regeneration remedy, with the re-pin caution", async () => {
@@ -291,13 +291,13 @@ test("the refusal offers the local config edit before the regeneration remedy, w
   );
   // The local config edit is offered before the certificate-regeneration
   // remedy: an operator reading top to bottom sees the cheaper fix first.
-  const editIndex = message.indexOf("a local config edit");
-  const regenerateIndex = message.indexOf("regenerate the identity");
+  const editIndex = message.indexOf("Set linkage_terms.identity to the name");
+  const regenerateIndex = message.indexOf("create a new identity");
   expect(editIndex).toBeGreaterThan(-1);
   expect(regenerateIndex).toBeGreaterThan(editIndex);
   // Regeneration changes the fingerprint the partner has pinned; the caution
   // is what keeps an operator from silently breaking that pin.
-  expect(message).toContain("coordinated re-pin");
+  expect(message).toContain("your partner must pin the new one");
   // Both remedies precede the two values they are about. The renderer caps a
   // composed link and `linkage_terms.identity` is bounded only by the terms
   // schema's text cap, so a long name has to truncate the values rather than the
@@ -432,11 +432,11 @@ test("a bound label the terms cannot state is refused with the re-key exit", asy
       () => "",
       (err: unknown) => sanitizeErrorForDisplay(err),
     );
-    expect(rendered).toContain("the linkage terms cannot state");
+    expect(rendered).toContain("a name linkage terms cannot hold");
     expect(rendered).toContain("alcove fingerprint --force --identity");
-    expect(rendered).toContain("re-pin the new fingerprint");
+    expect(rendered).toContain("pin the new fingerprint");
     // The config edit the terms make impossible is not among the remedies.
-    expect(rendered).not.toContain("set linkage_terms.identity to the bound");
+    expect(rendered).not.toContain("Set linkage_terms.identity to the name");
     // No byte of the label reaches the operator, raw or escaped: the label is
     // the offending text itself. The terms value it diverges from is still
     // named, since that is the one the operator acts on.

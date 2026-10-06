@@ -2667,7 +2667,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /linkageKeys\[1\] expands one row into 150000 key strings/,
+      /linkage_keys\[1\] expands one row into 150000 key strings/,
     );
   });
 
@@ -2724,7 +2724,7 @@ describe("buildKeyStrings", () => {
     };
     expect(() =>
       buildKeyStrings(amplifyingKey([step, step]), dataset, 0, false, 2),
-    ).toThrow(/linkageKeys\[2\]\.elements\[0\]\.transform\[1\]/);
+    ).toThrow(/linkage_keys\[2\]\.elements\[0\]\.transform\[1\]/);
   });
 
   test("an NFC-lengthening replacement is refused", () => {
@@ -2800,7 +2800,7 @@ describe("buildKeyStrings", () => {
 
     const onRead = raise(undefined);
     expect(onRead).toBeInstanceOf(UsageError);
-    expect(onRead?.message).toContain("linkageKeys[2].elements[0]");
+    expect(onRead?.message).toContain("linkage_keys[2].elements[0]");
     expect(onRead?.message).toContain("row 0");
     expect(onRead?.message).not.toContain("S3CRET");
 
@@ -2826,7 +2826,7 @@ describe("buildKeyStrings", () => {
       onStep = err as UsageError;
     }
     expect(onStep?.message).toContain(
-      'linkageKeys[2].elements[0].transform[0], "replace_regex"',
+      'linkage_keys[2].elements[0].transform[0], "replace_regex"',
     );
     expect(onStep?.message).not.toContain("S3CRET");
   });
@@ -2877,7 +2877,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /linkageKeys\[1\] assembles 4198392 characters of key strings/,
+      /linkage_keys\[1\] assembles 4198392 characters of key strings/,
     );
     expect(warn).not.toHaveBeenCalled();
   });
@@ -2933,7 +2933,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /linkageKeys\[1\] assembles 4194305 characters of key strings/,
+      /linkage_keys\[1\] assembles 4194305 characters of key strings/,
     );
 
     warn.mockClear();
@@ -2973,7 +2973,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /linkageKeys\[1\] expands one row into 2000 key strings/,
+      /linkage_keys\[1\] expands one row into 2000 key strings/,
     );
   });
 
@@ -3225,7 +3225,7 @@ describe("buildKeyStrings", () => {
       raised = err as UsageError;
     }
     expect(raised).toBeInstanceOf(UsageError);
-    expect(raised?.message).toMatch(/\(linkageKeys\[1\]\.elements\[10\]\)/);
+    expect(raised?.message).toMatch(/\(linkage_keys\[1\]\.elements\[10\]\)/);
     expect(raised?.message).not.toContain("S3CRET");
     const accumulated = Number(
       /accumulated (\d+) characters/.exec(raised?.message ?? "")?.[1],
@@ -3341,7 +3341,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /accumulated 4197212 characters of candidate values from row 0 of this party's data \(linkageKeys\[1\]\.elements\[0\]\)/,
+      /accumulated 4197212 characters of candidate values from row 0 of your data \(linkage_keys\[1\]\.elements\[0\]\)/,
     );
     expect(warn).not.toHaveBeenCalled();
   });
@@ -3440,7 +3440,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /accumulated 4198400 characters of candidate values from row 0 of this party's data \(linkageKeys\[1\]\.elements\[1\]\)/,
+      /accumulated 4198400 characters of candidate values from row 0 of your data \(linkage_keys\[1\]\.elements\[1\]\)/,
     );
     expect(warn).not.toHaveBeenCalled();
   });
@@ -3711,7 +3711,7 @@ describe("buildKeyStrings", () => {
     expect(raised).toBeInstanceOf(UsageError);
     const message = (raised as UsageError).message;
     expect(message).toMatch(
-      /a linkage key spent \d+ code units of transform work on row 0 of this party's data \(linkageKeys\[1\]\.elements\[32\]\), above the 33554432 one row may spend deriving one key/,
+      /a linkage key spent \d+ code units of transform work on row 0 of your data \(linkage_keys\[1\]\.elements\[32\]\), above the 33554432 one row may spend deriving one key/,
     );
     // Neither this party's value nor the key's partner-authored name.
     expect(message).not.toContain("0".repeat(20));
@@ -3991,7 +3991,7 @@ describe("buildKeyStrings", () => {
       expect(raised).toBeInstanceOf(UsageError);
       const message = (raised as UsageError).message;
       expect(message).toMatch(
-        /^a linkage key spent \d+ code units of transform work on row 0 of this party's data, above the 33554432 one row may spend deriving one key, while a regular-expression step searched the value \(linkageKeys\[1\]\.elements\[0\]\.transform\[0\], "replace_regex"\)\./,
+        /^a linkage key spent \d+ code units of transform work on row 0 of your data, above the 33554432 one row may spend deriving one key, while a regular-expression step searched the value \(linkage_keys\[1\]\.elements\[0\]\.transform\[0\], "replace_regex"\)\./,
       );
       expect(message).toContain(
         "Change or remove that step's pattern in the agreed linkage terms",
@@ -4030,7 +4030,7 @@ describe("buildKeyStrings", () => {
       ).toBeNull();
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0][0]).toMatch(
-        /spends \d+ code units of transform work on this key's declared fan-out, more than the 33554432 one row may spend deriving one key, crossing it while a regular-expression step searched the value \(linkageKeys\[1\]\.elements\[0\]\.transform\[0\], "split_on"\)/,
+        /spends \d+ code units of transform work on this key's declared fan-out, more than the 33554432 one row may spend deriving one key, crossing it while a regular-expression step searched the value \(linkage_keys\[1\]\.elements\[0\]\.transform\[0\], "split_on"\)/,
       );
       expect(warn.mock.calls[0][0]).not.toContain("Gonzalez");
       // The row sits out this key's round alone.
@@ -4081,7 +4081,7 @@ describe("buildKeyStrings", () => {
       }
       expect(raised).toBeInstanceOf(UsageError);
       expect((raised as UsageError).message).toContain(
-        `(linkageKeys[1].elements[${ELEMENTS_UNDER_BUDGET}].transform[0], "replace_regex")`,
+        `(linkage_keys[1].elements[${ELEMENTS_UNDER_BUDGET}].transform[0], "replace_regex")`,
       );
     },
     SCAN_CROSSING_TEST_TIMEOUT_MS,
@@ -4192,7 +4192,7 @@ describe("buildKeyStrings", () => {
       expect(raised).toBeInstanceOf(UsageError);
       expect((raised as UsageError).message).toContain(
         `while a regular-expression step searched the value ` +
-          `(linkageKeys[1].elements[${ELEMENTS_UNDER_BUDGET}].transform[0], "${functionName}")`,
+          `(linkage_keys[1].elements[${ELEMENTS_UNDER_BUDGET}].transform[0], "${functionName}")`,
       );
       // The same pass under a one-character pattern is charged by volume and
       // derives its key.
@@ -4239,7 +4239,7 @@ describe("buildKeyStrings", () => {
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /^a linkage key spent \d+ code units of transform work on row 0 of this party's data, above the 33554432 one row may spend deriving one key, while a regular-expression step searched the value \(linkageKeys\[1\]\.elements\[0\]\.transform\[0\], "replace_regex"\)\./,
+      /^a linkage key spent \d+ code units of transform work on row 0 of your data, above the 33554432 one row may spend deriving one key, while a regular-expression step searched the value \(linkage_keys\[1\]\.elements\[0\]\.transform\[0\], "replace_regex"\)\./,
     );
     expect((raised as UsageError).message).not.toContain("Gonzalez");
   });
@@ -4521,13 +4521,13 @@ describe("buildKeyStrings", () => {
     });
     // The sender reads last_name at its own declared position.
     expect(() => buildKeyStrings(swapKey(), dataset, 0, false, 3)).toThrow(
-      /linkageKeys\[3\]\.elements\[1\]/,
+      /linkage_keys\[3\]\.elements\[1\]/,
     );
     // The receiver reads it at elements[0], but elements[1] is the position
     // whose `field` names the column -- which is what the refusal's remedy,
     // binding the element to a shorter column, has to point at.
     expect(() => buildKeyStrings(swapKey(), dataset, 0, true, 3)).toThrow(
-      /linkageKeys\[3\]\.elements\[1\]/,
+      /linkage_keys\[3\]\.elements\[1\]/,
     );
   });
 
@@ -4551,7 +4551,7 @@ describe("buildKeyStrings", () => {
       }),
     );
     const named =
-      /accumulated \d+ characters of candidate values from row 0 of this party's data \(linkageKeys\[3\]\.elements\[1\]\)/;
+      /accumulated \d+ characters of candidate values from row 0 of your data \(linkage_keys\[3\]\.elements\[1\]\)/;
     expect(() => buildKeyStrings(swapKey(), dataset, 0, false, 3)).toThrow(
       named,
     );
@@ -4581,7 +4581,7 @@ describe("buildKeyStrings", () => {
       );
     const at = (element: number) =>
       new RegExp(
-        `accumulated \\d+ characters of candidate values from row 0 of this party's data \\(linkageKeys\\[3\\]\\.elements\\[${element}\\]\\)`,
+        `accumulated \\d+ characters of candidate values from row 0 of your data \\(linkage_keys\\[3\\]\\.elements\\[${element}\\]\\)`,
       );
     expect(() => buildKeyStrings(amplifying, dataset(), 0, false, 3)).toThrow(
       at(1),
@@ -4605,10 +4605,10 @@ describe("buildKeyStrings", () => {
       },
     ]);
     expect(() => buildKeyStrings(amplifying, dataset, 0, false, 3)).toThrow(
-      /linkageKeys\[3\]\.elements\[1\]\.transform\[0\]/,
+      /linkage_keys\[3\]\.elements\[1\]\.transform\[0\]/,
     );
     expect(() => buildKeyStrings(amplifying, dataset, 0, true, 3)).toThrow(
-      /linkageKeys\[3\]\.elements\[0\]\.transform\[0\]/,
+      /linkage_keys\[3\]\.elements\[0\]\.transform\[0\]/,
     );
   });
 });
@@ -4634,12 +4634,10 @@ describe("FAN_OUT_FUNCTION_NAMES", () => {
 describe("the refusal a candidate set earns at a single-valued round", () => {
   test("states the count-only reason and the declaration the rest read", () => {
     const message = fanOutReachedMatchingRefusal().message;
+    expect(message).toContain("because the exchange is count-only");
     expect(message).toContain(
-      "a count-only exchange never matches a candidate set",
-    );
-    expect(message).toContain(
-      "any other round matches one only where the agreed linkage terms and " +
-        "the standardization account for the expansion",
+      "or the agreed linkage terms and the standardization do not declare " +
+        "the expansion",
     );
   });
 

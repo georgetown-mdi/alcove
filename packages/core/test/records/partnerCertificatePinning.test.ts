@@ -393,7 +393,7 @@ describe("a certificate bound away from the partner's agreed terms is not adopte
 
       expect(raised).toBeInstanceOf(ReceiptVerificationError);
       expect((raised as Error).message).toMatch(
-        /does not authorize the identity its holder agreed terms under/,
+        /is bound to a name other than the identity in their agreed linkage terms/,
       );
       expect(adopted).toEqual([]);
       expect(disclosingFrames(refusingSide.sent)).toEqual([]);
@@ -467,7 +467,9 @@ describe("a certificate the wire format does not admit is refused at parse", () 
         );
 
         expect(raised).toBeInstanceOf(ReceiptVerificationError);
-        expect((raised as Error).message).toMatch(/this build cannot read/);
+        expect((raised as Error).message).toMatch(
+          /this version of Alcove cannot read/,
+        );
         expect(disclosingFrames(refusingSide.sent)).toEqual([]);
         expect(abortReasons(refusingSide.sent)).toEqual([
           expect.stringMatching(/the wire format does not admit/),
@@ -514,7 +516,7 @@ describe("a partner presenting no certificate is refused on either seat", () => 
 
       expect(raised).toBeInstanceOf(ReceiptVerificationError);
       expect((raised as Error).message).toMatch(
-        /partner is not signing receipts/,
+        /partner presented no signing certificate/,
       );
       expect(disclosingFrames(refusingSide.sent)).toEqual([]);
       expect(abortReasons(refusingSide.sent)).toEqual([
@@ -727,7 +729,7 @@ describe("every terms-time pin refusal states its own next step and condition", 
     // The claim the tag makes: the message names what to do, not only what
     // went wrong. Every one of the five ends in an instruction.
     expect((raised as Error).message).toMatch(
-      /Have the partner |Confirm the partner's fingerprint|agree terms under/,
+      /Ask your partner |Confirm your partner's fingerprint/,
     );
   });
 

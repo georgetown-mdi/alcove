@@ -980,7 +980,7 @@ export async function linkViaPSI(
   reportEntityClusters?: (summary: EntityClusterSummary) => void,
 ) {
   if (participant.config.role === "either")
-    throw new InternalConsistencyError("participants role is unresolved");
+    throw new InternalConsistencyError("the participant's role is unresolved");
   const sendFirst = participant.config.role === "starter";
   const { partnerRecordCount } = bounds;
 
@@ -1496,7 +1496,7 @@ export async function linkViaPSI(
           throw partnerProtocolError(
             participant.id,
             "the partner's mapped-element list names a position other than " +
-              "the canonical one of the record it matched",
+              "the one the record was matched at",
           );
         if (named[i] === 1 && !sides.partnerKeepsDuplicates)
           throw partnerProtocolError(
@@ -1713,7 +1713,7 @@ export async function linkViaCountOnlyPSI(
   setStage?: (id: string) => void,
 ): Promise<number | undefined> {
   if (participant.config.role === "either")
-    throw new InternalConsistencyError("participants role is unresolved");
+    throw new InternalConsistencyError("the participant's role is unresolved");
   if (data.length !== 1)
     throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS.linkageKeys);
 
@@ -1776,7 +1776,6 @@ export async function linkViaCountOnlyPSI(
 // state -- the two parties' declared effective key counts, record counts,
 // and value slot products -- and no partner-authored text.
 function singlePassOverCapMessage(
-  id: string,
   numLinkageKeys: number,
   breach: SinglePassCeilingBreach,
   local: SinglePassPartySize,
@@ -1787,44 +1786,40 @@ function singlePassOverCapMessage(
     `${who} declared ${party.effectiveKeyCount} effective linkage key(s) ` +
     `across ${party.recordCount} record(s), which is ${valueSlots(party)} ` +
     "value slot(s)";
-  const fanOutRemedy = (whose: string, cleaningToo: boolean): string =>
-    " A linkage key whose elements expand counts its whole declared width " +
-    "toward that ceiling" +
-    (cleaningToo
-      ? ", and cleaning that fans out declares the records it stands for,"
-      : ",") +
-    ` so removing ${whose} fan-out is another remedy.`;
-
   const cause =
     breach === "local"
-      ? declared("this party", local)
+      ? declared("you", local)
       : breach === "partner"
-        ? declared("the partner", partner)
-        : `${declared("this party", local)}, and ${declared("the partner", partner)}`;
+        ? declared("your partner", partner)
+        : `${declared("you", local)}, and ${declared("your partner", partner)}`;
 
   const remedies: string[] = [];
   if (breach !== "partner")
     remedies.push(
-      SINGLE_PASS_LOCAL_REMEDY + (localFansOut ? fanOutRemedy("a", true) : ""),
+      SINGLE_PASS_LOCAL_REMEDY +
+        (localFansOut
+          ? " Removing a step that splits values or expands a key also " +
+            "lowers the count."
+          : ""),
     );
   if (breach !== "local")
     remedies.push(
       (breach === "both"
-        ? "The partner reduces its record count or splits its dataset on its " +
-          "side too."
-        : `This party's own ${valueSlots(local)} value slot(s) are within the ` +
-          "ceiling, so within the agreed terms neither its linkage keys nor " +
-          "its record count can lift this: the partner reduces its record " +
-          "count or splits its dataset.") +
+        ? "Ask your partner to reduce their record count or split their " +
+          "dataset too."
+        : `Your own ${valueSlots(local)} value slot(s) are within the ` +
+          "limit. Ask your partner to reduce their record count or split " +
+          "their dataset.") +
         (partyFansOut(numLinkageKeys, partner)
-          ? fanOutRemedy("the partner's", false)
+          ? " Your partner can also remove a step that splits values or " +
+            "expands a key."
           : ""),
     );
 
   return (
-    `${id}: single-pass cannot carry this ` +
-    `${breach === "local" ? "dataset" : "exchange"}: ${cause}, above the ` +
-    `single-pass ceiling of ${MAX_SINGLE_PASS_CELLS} value slot(s) per party. ` +
+    `this ${breach === "local" ? "dataset" : "exchange"} is too large for ` +
+    `single-pass linkage: ${cause}, above the single-pass limit of ` +
+    `${MAX_SINGLE_PASS_CELLS} value slot(s) per party. ` +
     remedies.join(" ")
   );
 }
@@ -1840,17 +1835,14 @@ function singlePassOverCapMessage(
 // classification denotes the remedy: report it, rather than fix an input or
 // retry a transport. The message states that step, so its instance is tagged.
 function singlePassReplyOverCapMessage(
-  id: string,
   replyBytes: number,
   replyCap: number,
 ): string {
   return (
-    `${id}: single-pass built a reply of ${replyBytes} byte(s), above the ` +
-    `${replyCap} byte(s) both parties derive from their declared sizes. Both ` +
-    "parties' declared widths and record counts are within the single-pass " +
-    "ceiling, so this is an inconsistency between this party's reply builder " +
-    "and the shared cap derivation rather than a dataset that is too large. " +
-    "The exchange cannot proceed; report it with this message."
+    `single-pass built a reply of ${replyBytes} byte(s), above the ` +
+    `${replyCap} byte(s) both parties derive from their declared sizes, ` +
+    "though both datasets are within the single-pass limit. Report it " +
+    "with this message."
   );
 }
 
@@ -2044,7 +2036,7 @@ export async function linkViaSinglePassPSI(
   reportEntityClusters?: (summary: EntityClusterSummary) => void,
 ): Promise<AssociationTable> {
   if (participant.config.role === "either")
-    throw new InternalConsistencyError("participants role is unresolved");
+    throw new InternalConsistencyError("the participant's role is unresolved");
   if (!singlePassResolves(protocol.cardinality)) {
     throw new InternalConsistencyError(
       `psi for cardinality '${protocol.cardinality}' not yet implemented`,
@@ -2133,13 +2125,11 @@ export async function linkViaSinglePassPSI(
   const localSlotBound = effectiveKeyCount * localRecordCount;
   if (slotCount > localSlotBound) {
     throw new UsageError(
-      `${participant.id}: single-pass built ${slotCount} candidate value slot(s) ` +
-        `across ${numLinkageKeys} linkage key(s) and ${numRecords} record(s), ` +
-        `more than the ${localSlotBound} this party's agreed linkage terms and ` +
-        "declared record count account for. Drop the step that expands a " +
-        "record's value for a key the declared factors count as single-valued " +
-        "-- a transform that expands one value without being a declared fan-out " +
-        "function -- so this party's rows fit the width its terms declare.",
+      `single-pass built ${slotCount} candidate value slot(s) across ` +
+        `${numLinkageKeys} linkage key(s) and ${numRecords} record(s), more ` +
+        `than the ${localSlotBound} your agreed linkage terms and declared ` +
+        "record count allow. Drop the transform that expands one value " +
+        "without being a declared fan-out function.",
     );
   }
 
@@ -2157,7 +2147,6 @@ export async function linkViaSinglePassPSI(
   if (ceilingBreach !== undefined) {
     throw new UsageError(
       singlePassOverCapMessage(
-        participant.id,
         numLinkageKeys,
         ceilingBreach,
         localSize,
@@ -2215,11 +2204,7 @@ export async function linkViaSinglePassPSI(
     if (reply.byteLength > replyCap) {
       throw Object.assign(
         new InternalConsistencyError(
-          singlePassReplyOverCapMessage(
-            participant.id,
-            reply.byteLength,
-            replyCap,
-          ),
+          singlePassReplyOverCapMessage(reply.byteLength, replyCap),
         ),
         { alcoveRecoveryHintEmitted: true },
       );
@@ -2652,13 +2637,11 @@ function getDistinctValuesAndIndices(
       // can change.
       if (width > cellWidths[j])
         throw new UsageError(
-          `single-pass: record ${i} contributes ${width} candidate value(s) to ` +
-            `linkage key ${j}, more than the ${cellWidths[j]} this party's ` +
-            "agreed terms and standardization declare for it. Drop the step " +
-            "that expands this record's value for that key -- a fuzzy " +
-            "comparison, or a transform that expands one value without being a " +
-            "declared fan-out function -- so no record realizes more candidates " +
-            "than the declared width admits.",
+          `record ${i} gives ${width} candidate value(s) to linkage key ` +
+            `${j}, more than the ${cellWidths[j]} your agreed terms and ` +
+            "standardization declare for it. Drop the step that expands this " +
+            "record's value for that key: a fuzzy comparison, or a transform " +
+            "that expands one value without being a declared fan-out function.",
         );
       starts[i + 1] = values.length;
     }

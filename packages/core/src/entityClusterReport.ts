@@ -86,10 +86,10 @@ export function describeEntityClusters(summary: EntityClusterSummary): string {
   const dropped = summary.shapes.length - named.length;
   const largest = summary.shapes[0];
   return (
-    `${counts} Sizes as yours by your partner's, largest first, with the ` +
-    "distinct matched values each formed on: " +
+    `${counts} Cluster sizes (your records x your partner's records, ` +
+    "largest first), with the number of matched values each formed on: " +
     `${named.map(describeShape).join("; ")}` +
-    (dropped === 0 ? "" : `; and ${plural(dropped, "smaller shape")}`) +
+    (dropped === 0 ? "" : `; and ${plural(dropped, "smaller cluster size")}`) +
     "." +
     (guideApplies(summary, largest)
       ? " A large cluster formed on one value is a linkage key that named a " +

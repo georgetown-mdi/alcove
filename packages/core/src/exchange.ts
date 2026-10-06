@@ -263,12 +263,10 @@ export function assertAlgorithmImplemented(algorithm: Algorithm): void {
   if (algorithm === "psi") return;
   if (algorithm === "psi-c") return;
   throw new UsageError(
-    "this linkage-terms algorithm is not yet implemented: only " +
-      '"psi", which reveals matched identifiers, and "psi-c", which reveals ' +
-      "only the count, run today. Any other algorithm would disclose " +
-      "differently than its exchange record could attest, so it is refused " +
-      "before any identifier is revealed. Set the linkage-terms algorithm to " +
-      "one of those, or wait for support before running.",
+    "the linkage terms name an algorithm this version of Alcove does not " +
+      'run. Set linkage_terms.algorithm to "psi", which reveals matched ' +
+      'identifiers, or "psi-c", which reveals only the count, or ask your ' +
+      "partner for terms that name one of them.",
   );
 }
 
@@ -342,12 +340,9 @@ export function resolveCountOnlyRun(
   assertAlgorithmImplemented(partnerTerms.algorithm);
   if (localTerms.algorithm !== partnerTerms.algorithm)
     throw new AlgorithmDivergenceError(
-      "the two parties' agreed linkage terms name different algorithms: this " +
-        `party runs "${localTerms.algorithm}" and the partner runs ` +
-        `"${partnerTerms.algorithm}". The algorithm settles what the run ` +
-        "discloses and what each party's exchange record attests, so a " +
-        "divergent pair is refused before the round begins rather than " +
-        "resolved to either party's value.",
+      `your linkage terms use algorithm "${localTerms.algorithm}" and your ` +
+        `partner's use "${partnerTerms.algorithm}". Agree on one algorithm ` +
+        "with your partner and run again.",
     );
   assertCountOnlyTermsShape(localTerms);
   assertCountOnlyTermsShape(partnerTerms);
@@ -369,18 +364,14 @@ export function resolveCountOnlyRun(
 export class PayloadDisclosureDivergenceError extends ConnectionError {
   constructor() {
     super(
-      "the agreed linkage terms declare that one party sends no payload " +
-        "column, but that party's process asserts it discloses one: the " +
-        "receiving party's terms declare an empty payload.receive, which " +
-        "holds the sending party to sending none. The exchange is refused " +
-        "before any association table or payload moves. To disclose those " +
-        "columns, declare them in the sending party's payload.send and the " +
-        "receiving party's payload.receive, or remove the receiving party's " +
-        "payload.receive: a recurring exchange then sets it from the " +
-        "partner's declared columns on its next run and holds the partner " +
-        "to them after that. To disclose none, set the sending " +
-        "party's input metadata to transmit no column (is_payload: false, " +
-        "or role ignored).",
+      "one party's run is set to send payload columns, but the receiving " +
+        "party's linkage terms declare an empty payload.receive. No " +
+        "association table or payload was sent. To send those columns, " +
+        "declare them in the sender's payload.send and the receiver's " +
+        "payload.receive, or remove the receiver's payload.receive so the " +
+        "next run sets it from the sender's columns. To send none, set the " +
+        "sender's input metadata to send no column (is_payload: false, or " +
+        "role ignored).",
       "protocol",
     );
     this.name = "PayloadDisclosureDivergenceError";
@@ -512,27 +503,18 @@ export function assertMatchedPairsWellFormed(
     }
     if (matchedRows[i] < matchedRows[i - 1])
       throw new InternalConsistencyError(
-        "the association table's local half is not in ascending order: the " +
-          "result rows, the payload rows, and the re-supply path that " +
-          "reproduces both from the retained result all read it in this " +
-          "party's own row order.",
+        "the association table's local half is not in ascending order.",
       );
     if (!localRowMayRepeat)
       throw new InternalConsistencyError(
         "the association table repeats a local row index, which the " +
           `"${cardinality}" cardinality this exchange resolved does not ` +
-          "produce: one of this party's records stands in exactly one pair " +
-          "there, and the payload rows, the result rows, and the attested " +
-          "result size are all read against that. Several of the partner's " +
-          "records grouping onto one of ours is the deduplicating shape, " +
-          "admitted only under the cardinality that asks for it.",
+          "produce.",
       );
     if (runStart === i - 1) runPartnerRows.add(partnerRows[runStart]);
     if (runPartnerRows.has(partnerRows[i]))
       throw new InternalConsistencyError(
-        "the association table repeats a matched pair: the attested result " +
-          "size counts pairs and the result file writes one row per pair, so " +
-          "one link would be counted twice and written twice.",
+        "the association table repeats a matched pair.",
       );
     runPartnerRows.add(partnerRows[i]);
   }
@@ -574,12 +556,11 @@ function assertDeclaredWidthMatchesStrategy(
   if (countOnly) throw new UsageError(COUNT_ONLY_SHAPE_REFUSALS.candidateSet);
   throw new UsageError(
     "these linkage terms declare " +
-      `${effectiveKeyCount} candidate value slot(s) per record against their ` +
-      `${keyCount} linkage key(s), so a record may realize several candidates ` +
-      "for a key, while they name a strategy that matches a single value per " +
-      "record. Remove the expanding step, the fuzzy comparison or the swapped " +
-      "key order from the key's elements, or agree terms whose " +
-      "linkage_strategy matches a candidate set.",
+      `${effectiveKeyCount} candidate value slot(s) per record across ` +
+      `${keyCount} linkage key(s), but their linkage_strategy matches one ` +
+      "value per record. Remove the expanding step, the fuzzy comparison or " +
+      "the swapped key order from the key's elements, or agree terms " +
+      "whose linkage_strategy matches several candidates.",
   );
 }
 
@@ -632,7 +613,7 @@ function assertTermsPassPartnerParse(linkageTerms: LinkageTerms): void {
   const value = quotedTermsValue(linkageTerms, first.path);
   const valueClause = value === undefined ? "" : ` (the value is ${value})`;
   throw new OperatorConfigError(
-    "these linkage terms would be refused by the partner on receipt: " +
+    "your partner would refuse these linkage terms: " +
       reason +
       valueClause +
       ". Correct that setting in the linkage terms and run again.",
@@ -653,11 +634,9 @@ export function assertSigningModeImplemented(
 ): void {
   if (mode === undefined || mode === "none" || mode === "certificate") return;
   throw new OperatorConfigError(
-    'this receipt signing mode is not yet implemented: only "certificate" ' +
-      'signing produces a receipt, and a "session-derived" MAC or any other ' +
-      "non-certificate mode is refused before the exchange runs. Set " +
-      'signing.mode to "certificate" to sign receipts, or to "none" to run ' +
-      "unsigned.",
+    'this signing.mode is not supported: only "certificate" produces a ' +
+      'receipt, and "session-derived" is not built. Set signing.mode to ' +
+      '"certificate" to sign receipts, or to "none" to run unsigned.',
   );
 }
 
@@ -687,19 +666,15 @@ export function assertCertificateModePinsPartner(
   if (signsInBand) return;
   if (partnerPinIsPresent(signing.partnerFingerprint)) return;
   throw new OperatorConfigError(
-    "this exchange signs receipts (signing.mode: certificate) but pins no " +
-      "partner fingerprint and cannot establish one on this run, so it " +
-      "cannot finish: the parties present their certificates to each other " +
-      "at the authenticated setup step, which this run does not reach, and " +
-      "the certificate the partner presents at the signature swap is refused " +
-      "when nothing is on file to check it against. The run would stop " +
-      "having sent this party's data and having written no result and no " +
-      "receipt, keeping at most the exchange record of that disclosure -- " +
-      "and, where record writing is off, nothing at all. Run this exchange " +
-      "over an authenticated connection, or obtain the partner's fingerprint " +
-      "out-of-band -- they produce it with 'alcove fingerprint' -- and set " +
-      'signing.partner_fingerprint, or set signing.mode to "none" to run ' +
-      "unsigned until you hold it.",
+    "this exchange signs receipts (signing.mode: certificate) but has no " +
+      "partner fingerprint, and this run cannot get one because it does not " +
+      "use an authenticated connection. It would send your data and then " +
+      "stop with no result and no receipt, keeping at most the exchange " +
+      "record of that disclosure, or nothing where record writing is off. " +
+      "Run this exchange over an " +
+      "authenticated connection, or ask your partner for the fingerprint " +
+      "'alcove fingerprint' prints and set signing.partner_fingerprint, or " +
+      'set signing.mode to "none" to run unsigned until you have it.',
   );
 }
 
@@ -720,14 +695,10 @@ export function assertCertificateModeNamesLocalParty(
   if (signing?.mode !== "certificate") return;
   if (localTerms.identity !== undefined) return;
   throw new OperatorConfigError(
-    "this exchange signs receipts (signing.mode: certificate) but names no " +
-      "party, so it cannot finish: a receipt names both parties, and the " +
-      "certificate this party presents is trusted by the identity it used in " +
-      "the agreed terms -- an unnamed party leaves the partner nothing to " +
-      "check that certificate against. The run would stop at terms agreement, " +
-      "with no result, no exchange record, and no receipt written. Set " +
-      "linkage_terms.identity to this party's name -- or pass --identity, " +
-      'where the interface takes one -- or set signing.mode to "none" to run ' +
+    "this exchange signs receipts (signing.mode: certificate) but your " +
+      "linkage terms name no identity, and a signed receipt names both " +
+      "parties. Set linkage_terms.identity to your name, or pass --identity " +
+      'where the command takes it, or set signing.mode to "none" to run ' +
       "unsigned.",
   );
 }
@@ -753,11 +724,10 @@ export function assertSignedReceiptNamesBothParties(
       (localTerms.identity === undefined
         ? partnerTerms.identity === undefined
           ? "neither party's agreed terms name an identity"
-          : "this party's agreed terms name none"
-        : "the partner's agreed terms name none") +
-      ". A certificate is trusted by the identity its holder used in the " +
-      "agreed terms, so an unnamed party cannot present or verify one: set " +
-      "linkage_terms.identity on both sides, or run without receipt signing.",
+          : "your agreed terms name none"
+        : "your partner's agreed terms name none") +
+      ". Set linkage_terms.identity on both sides, or run without receipt " +
+      "signing.",
   );
 }
 
@@ -787,21 +757,16 @@ export function assertLocalCertificateAuthorizesAgreedIdentity(
   const unstatable = reasonTermsCannotStateIdentity(certificate.identity);
   if (unstatable !== undefined)
     throw new OperatorConfigError(
-      "this party's signing certificate is bound to a label the linkage " +
-        `terms cannot state -- ${unstatable} -- so this run cannot finish: ` +
-        "the partner authorizes the presented certificate against the name " +
-        "in the agreed terms, and no terms document may name this one. " +
-        "Re-key the signing identity with 'alcove fingerprint --force " +
-        "--identity' under a label the terms admit, then have every partner " +
-        "re-pin the new fingerprint before receipts verify again. The agreed " +
-        `terms name "${agreedIdentity}".`,
+      "your signing certificate is bound to a name linkage terms cannot " +
+        `hold (${unstatable}), so your partner cannot accept it. Create a ` +
+        "new signing identity with 'alcove fingerprint --force --identity' " +
+        "under a name linkage_terms.identity can hold, then have every " +
+        "partner pin the new fingerprint. The agreed terms name " +
+        `"${agreedIdentity}".`,
     );
   throw new OperatorConfigError(
-    "this party's signing certificate does not authorize the identity it " +
-      "agreed terms under, so it cannot finish: a certificate is trusted by " +
-      "the identity its holder used in the agreed terms, so the partner " +
-      "authorizes the presented certificate against that name and refuses it, " +
-      "and a receipt signed under it verifies nowhere. Set " +
+    "your signing certificate is bound to a name other than the identity " +
+      "in your agreed linkage terms, so your partner would refuse it. Set " +
       "linkage_terms.identity to the name on the certificate, or sign " +
       "with an identity bound to the name in the agreed terms. The " +
       `certificate is bound to "${certificate.identity}"; the agreed terms ` +
@@ -917,22 +882,20 @@ const PARTNER_CERTIFICATE_REFUSALS = {
     abortReason:
       "a party presented a signing certificate the wire format does not admit",
     message:
-      "the partner presented a signing certificate this build cannot read, so " +
-      "this run cannot finish: the field was on the terms exchange but does not " +
-      "match the certificate format, leaving nothing to pin and nothing to check " +
-      "a receipt against. The run stopped before any linkage key or payload row " +
-      "was sent. Have the partner re-share an identity produced by " +
-      "'alcove fingerprint', or set signing.mode to \"none\" to run unsigned.",
+      "your partner presented a signing certificate this version of Alcove " +
+      "cannot read. The run stopped before any linkage key or payload row " +
+      "was sent. Ask your partner to share an identity made by " +
+      "'alcove fingerprint' again, or set signing.mode to \"none\" to run " +
+      "unsigned.",
   },
   absent: {
     abortReason:
       "a party signs receipts and its partner presented no signing certificate",
     message:
-      "the partner is not signing receipts, so this run cannot finish: this " +
-      "exchange signs receipts (signing.mode: certificate) and the partner " +
-      "presented no signing certificate, so no receipt can be produced. The run " +
-      "stopped before any linkage key or payload row was sent. Have the partner " +
-      'set signing.mode to "certificate" with a signing identity of their own, ' +
+      "this exchange signs receipts (signing.mode: certificate), but your " +
+      "partner presented no signing certificate. The run stopped before any " +
+      "linkage key or payload row was sent. Ask your partner to set " +
+      'signing.mode to "certificate" with a signing identity of their own, ' +
       'or set signing.mode to "none" to run unsigned.',
   },
   unverified: {
@@ -940,39 +903,33 @@ const PARTNER_CERTIFICATE_REFUSALS = {
       "a party presented a signing certificate that does not verify under its own " +
       "key",
     message:
-      "the partner's signing certificate does not verify under its own key, so " +
-      "this first contact pinned nothing and the run cannot finish: a " +
-      "certificate that is not internally consistent could never sign a receipt " +
-      "this exchange would accept. The run stopped before any linkage key or " +
-      "payload row was sent. Have the partner re-share an identity produced by " +
-      "'alcove fingerprint'.",
+      "your partner's signing certificate does not verify under its own key, " +
+      "so nothing was pinned. The run stopped before any linkage key or " +
+      "payload row was sent. Ask your partner to share an identity made by " +
+      "'alcove fingerprint' again.",
   },
   unauthorizedIdentity: {
     abortReason:
       "a party presented a signing certificate that does not authorize the " +
       "identity its holder agreed terms under",
     message:
-      "the partner's signing certificate does not authorize the identity its " +
-      "holder agreed terms under, so this first contact pinned nothing and the " +
-      "run cannot finish: a certificate bound to a different party than the " +
-      "agreed terms name could never sign a receipt this exchange would accept. " +
-      "The run stopped before any linkage key or payload row was sent. Have the " +
-      "partner present the certificate bound to the identity they agree terms " +
-      "under, or agree terms under the identity their certificate names.",
+      "your partner's signing certificate is bound to a name other than the " +
+      "identity in their agreed linkage terms, so nothing was pinned. The " +
+      "run stopped before any linkage key or payload row was sent. Ask your " +
+      "partner to sign with the certificate bound to the identity in their " +
+      "terms, or to set that identity to the name their certificate holds.",
   },
   divergent: {
     abortReason:
       "a party presented a signing certificate that is not the one its partner " +
       "pinned",
     message:
-      "the partner's signing certificate is not the one pinned in " +
-      "signing.partner_fingerprint, so this run cannot finish: the pin is what " +
-      "makes a receipt attributable to the partner, and a certificate that does " +
-      "not match it is refused rather than trusted. The run stopped before any " +
-      "linkage key or payload row was sent, and the pin on file is unchanged. " +
-      "Confirm the partner's fingerprint out-of-band -- they produce it with " +
-      "'alcove fingerprint' -- and, where they regenerated their signing " +
-      "identity, replace signing.partner_fingerprint with the new value.",
+      "your partner's signing certificate is not the one pinned in " +
+      "signing.partner_fingerprint. The run stopped before any linkage key " +
+      "or payload row was sent, and the pin on file is unchanged. Confirm " +
+      "your partner's fingerprint with them directly (they print it with " +
+      "'alcove fingerprint'), and if they made a new signing identity, " +
+      "replace signing.partner_fingerprint with the new value.",
   },
 } as const satisfies Partial<
   Record<PartnerCertificateCondition, { abortReason: string; message: string }>
@@ -1196,15 +1153,11 @@ export function assertPresentedDeduplicateMatchesInvitation(
   if (invitationDeclared === undefined) return;
   if (invitationDeclared === presented) return;
   throw new InvitationTermDivergenceError(
-    "the partner presented linkage terms that contradict the invitation this " +
-      `acceptance consented to: the invitation declared deduplicate ` +
-      `${invitationDeclared}, and the terms presented at the exchange declare ` +
-      `${presented}. That setting decides whether several of the partner's ` +
-      "records may match one of this party's, which changes how many of this " +
-      "party's records match and therefore what they disclose -- so a value " +
-      "the accepted invitation did not state is refused before any key or " +
-      "payload moves. Ask your partner for an invitation declaring the " +
-      "setting it will run, and accept that one.",
+    "your partner presented linkage terms that differ from the invitation " +
+      `you accepted: the invitation declared deduplicate ` +
+      `${invitationDeclared}, and the terms your partner presented declare ` +
+      `${presented}. Nothing was sent. Ask your partner for an invitation ` +
+      "that declares the setting they will run, and accept that one.",
   );
 }
 
@@ -1506,15 +1459,14 @@ export function prepareForExchange(
     singlePassDatasetExceedsCap(effectiveKeyCount, declaredRecordCount)
   ) {
     throw new OperatorConfigError(
-      `single-pass linkage cannot carry this dataset: ${declaredRecordCount} ` +
-        `declared record(s) across ${linkageTerms.linkageKeys.length} linkage ` +
-        `key(s) exceed the single-pass ceiling. ${SINGLE_PASS_LOCAL_REMEDY}` +
+      `this dataset is too large for single-pass linkage: ` +
+        `${declaredRecordCount} declared record(s) across ` +
+        `${linkageTerms.linkageKeys.length} linkage key(s) exceed the ` +
+        `single-pass limit. ${SINGLE_PASS_LOCAL_REMEDY}` +
         (partyFansOut(linkageTerms.linkageKeys.length, { effectiveKeyCount }) ||
         dataset.declaresFanOut
-          ? " A linkage key whose elements expand counts its whole declared " +
-            "width toward that ceiling, and cleaning that fans out declares " +
-            "the records it stands for, so removing a fan-out is another " +
-            "remedy."
+          ? " Removing a step that splits values or expands a key also " +
+            "lowers the count."
           : ""),
     );
   }
@@ -1557,7 +1509,7 @@ export function roundOneSetOverMaximumMessage(
   maxValues: number = MAX_PSI_DECODE_ELEMENTS,
 ): string {
   return (
-    "Too large to send: the first linkage key gives this party at least " +
+    "Too large to send: the first linkage key gives you at least " +
     `${elementCount} values to send, over the ${maxValues} one PSI set can ` +
     `hold. Nothing was sent. ${SPLIT_INPUT_REMEDY}`
   );
@@ -1574,7 +1526,7 @@ export function roundOneSetOverPartnerCeilingMessage(
   partnerReceiveCeiling: number,
 ): string {
   return (
-    "Too large for your partner: the first linkage key gives this party at " +
+    "Too large for your partner: the first linkage key gives you at " +
     `least ${elementCount} values to send, over the ` +
     `${partnerReceiveCeiling} your partner can receive in one PSI set, so ` +
     "the exchange stopped before any linkage key was sent and told your " +
@@ -1588,7 +1540,7 @@ export function roundOneSetOverPartnerCeilingMessage(
  * own; the failure is the refusal's cause.
  */
 export const ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE =
-  "This party could not count the values the first linkage key gives it to " +
+  "Alcove could not count the values the first linkage key gives you to " +
   "send, so it cannot confirm your partner can receive them. The exchange " +
   "stopped before any linkage key was sent and told your partner. " +
   SPLIT_INPUT_REMEDY;
@@ -1639,8 +1591,8 @@ export async function assertFirstRoundWithinSetMaximum(
       ),
     uncounted: (failure) =>
       new RoundSetLimitError(
-        "This party could not count the values the first linkage key gives " +
-          "it to send, so it cannot confirm one PSI set can hold them. " +
+        "Alcove could not count the values the first linkage key gives " +
+          "you to send, so it cannot confirm one PSI set can hold them. " +
           `Nothing was sent. ${SPLIT_INPUT_REMEDY}`,
         "uncounted",
         { cause: failure },

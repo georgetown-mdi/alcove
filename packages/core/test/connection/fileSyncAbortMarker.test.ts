@@ -466,7 +466,9 @@ test("a partner's abort frame waiting beside its marker fails the run with the f
 
   expect(err).not.toBeInstanceOf(PeerAbortError);
   const rendered = sanitizeErrorForDisplay(err);
-  expect(rendered).toContain("partner aborted linkage terms exchange");
+  expect(rendered).toContain(
+    "Your partner stopped the exchange at the linkage terms",
+  );
   expect(rendered).toContain("partner record count out of range");
   expect(rendered).not.toContain(new PeerAbortError().message);
 });

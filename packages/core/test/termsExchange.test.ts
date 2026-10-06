@@ -1145,7 +1145,7 @@ test("exchangeTerms responder: rejects (does not hang) when abort send fails on 
 // the elimination leads every label with (src/utils/partnerOriginText.ts),
 // then the label protocolSetup passes it.
 const reasonLabel = (position: number): string =>
-  `${position}. reason the partner gave: `;
+  `${position}. reason your partner gave: `;
 // The rendered opening of the first abort reason on a link: the renderer's
 // cause-link separator, then that label.
 const REASON_LINK = `\ncaused by: ${reasonLabel(1)}`;
@@ -1190,7 +1190,9 @@ const abortRenders = [initiatorAbortRender, responderAbortRender];
 test("a marker in an abort reason leaves the reason behind it", async () => {
   for (const render of abortRenders) {
     const rendered = await render([BEGIN_MARKER, "the second reason"]);
-    expect(rendered).toContain("partner aborted linkage terms exchange");
+    expect(rendered).toContain(
+      "Your partner stopped the exchange at the linkage terms",
+    );
     expect(rendered).toContain(REDACTION);
     expect(rendered).toContain("the second reason");
   }
@@ -1199,7 +1201,7 @@ test("a marker in an abort reason leaves the reason behind it", async () => {
 test("a lone END marker in an abort reason deletes nothing", async () => {
   for (const render of abortRenders)
     expect(await render([END_MARKER, "the second reason"])).toBe(
-      `partner aborted linkage terms exchange${REASON_LINK}${END_MARKER}` +
+      `Your partner stopped the exchange at the linkage terms${REASON_LINK}${END_MARKER}` +
         `${PACKED_REASON}the second reason`,
     );
 });
@@ -1229,7 +1231,7 @@ test("a field one party declares and the other does not is named on both sides",
       'linkage keys do not match: "SSN" is declared by one party only',
   );
   expect(rendered(a)).toBe(
-    `partner aborted linkage terms exchange${REASON_LINK}` +
+    `Your partner stopped the exchange at the linkage terms${REASON_LINK}` +
       'linkage fields do not match: "ssn" is declared by one party only' +
       `${PACKED_REASON}linkage keys do not match: "SSN" is declared by one party only`,
   );
@@ -1239,7 +1241,7 @@ test("a field one party declares and the other does not is named on both sides",
 test("a plain abort reason displays as its own text", async () => {
   for (const render of abortRenders)
     expect(await render(["the operator declined the terms"])).toBe(
-      `partner aborted linkage terms exchange${REASON_LINK}` +
+      `Your partner stopped the exchange at the linkage terms${REASON_LINK}` +
         `the operator declined the terms`,
     );
 });
@@ -1271,7 +1273,7 @@ test("a marker in a partner column name leaves the diagnostic it names", async (
     'linkage terms are incompatible: payload mismatch: local receive columns ["[redacted private key]"]',
   );
   expect(initiator).toContain(
-    `partner aborted linkage terms exchange${REASON_LINK}payload mismatch:`,
+    `Your partner stopped the exchange at the linkage terms${REASON_LINK}payload mismatch:`,
   );
 });
 
@@ -1281,7 +1283,7 @@ test("a plain partner column name displays as its own text", async () => {
     'linkage terms are incompatible: payload mismatch: local receive columns ["email"] do not match partner send columns []',
   );
   expect(initiator).toBe(
-    `partner aborted linkage terms exchange${REASON_LINK}payload mismatch: ` +
+    `Your partner stopped the exchange at the linkage terms${REASON_LINK}payload mismatch: ` +
       'local receive columns ["email"] do not match partner send columns []',
   );
 });

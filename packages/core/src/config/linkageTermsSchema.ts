@@ -621,7 +621,7 @@ const NameConstraintsSchema: z.ZodType<NameConstraints> = z.object({
     .refine(
       (val) =>
         val.length > MAX_NAME_LENGTH || patternConformsToDialect(`[${val}]`),
-      { message: "allowedCharacters must be a valid regex character class" },
+      { message: "allowed_characters must be a valid regex character class" },
     )
     .optional(),
   affixesAllowed: z.boolean().optional(),
@@ -1491,13 +1491,13 @@ const linkageTermsBaseSchema = (options: TransformParamRefusalOptions) =>
     linkageFields: boundedArray(
       LinkageFieldSchema,
       MAX_LINKAGE_ENTRIES,
-      `linkageFields must not exceed ${MAX_LINKAGE_ENTRIES} entries`,
+      `linkage_fields must not exceed ${MAX_LINKAGE_ENTRIES} entries`,
       1,
     ),
     linkageKeys: boundedArray(
       linkageKeySchema(options),
       MAX_LINKAGE_ENTRIES,
-      `linkageKeys must not exceed ${MAX_LINKAGE_ENTRIES} entries`,
+      `linkage_keys must not exceed ${MAX_LINKAGE_ENTRIES} entries`,
       1,
     ),
     linkageRuleSet: LinkageRuleSetReferenceSchema.optional(),
@@ -1513,7 +1513,7 @@ const linkageTermsSchema = (
 ): z.ZodType<LinkageTerms> =>
   linkageTermsBaseSchema(options)
     .refine((a) => !a.deduplicate || a.output.expectsOutput, {
-      message: "expectsOutput must be true when deduplicate is true",
+      message: "expects_output must be true when deduplicate is true",
       path: ["output", "expectsOutput"],
     })
     // A party that receives no output cannot receive payload columns: payload is
@@ -1525,9 +1525,9 @@ const linkageTermsSchema = (
       (a) => a.output.expectsOutput || (a.payload?.receive?.length ?? 0) === 0,
       {
         message:
-          "payload.receive must be empty when expectsOutput is false: a party " +
-          "that receives no output cannot receive payload columns for matched " +
-          "records it never gets",
+          "payload.receive must be empty when expects_output is false, " +
+          "because a party that receives no output receives no matched " +
+          "records to attach payload columns to",
         path: ["payload", "receive"],
       },
     )
@@ -1579,7 +1579,7 @@ const linkageTermsSchema = (
       {
         message:
           "each linkage key element must reference a declared linkage field " +
-          "(a name in linkageFields)",
+          "(a name in linkage_fields)",
         path: ["linkageKeys"],
       },
     )
@@ -1614,9 +1614,7 @@ const linkageTermsSchema = (
     .refine((a) => !a.linkageKeys.some(swapPairFuzzyComparisonsDiffer), {
       message:
         "the two elements a linkage key swap names must declare the same " +
-        "generate_fuzzy_comparisons: a swap moves the field references and " +
-        "leaves each element's own expansion in place, so a mismatched pair " +
-        "would expand a column differently on the two parties",
+        "generate_fuzzy_comparisons; give both elements the same value",
       path: ["linkageKeys"],
     })
     // The sibling rule to the expansion refine above, on the swap pair's other
@@ -1625,9 +1623,7 @@ const linkageTermsSchema = (
     .refine((a) => !a.linkageKeys.some(swapPairTransformsDiffer), {
       message:
         "the two elements a linkage key swap names must declare the same " +
-        "transform: a swap moves the field references and leaves each " +
-        "element's own transform in place, so a mismatched pair would " +
-        "transform a column differently on the two parties",
+        "transform; give both elements the same transform",
       path: ["linkageKeys"],
     })
     // Placed here so every parse path refuses a partner's transform regex
@@ -1717,15 +1713,15 @@ function transformRegexIssue(refusal: TransformRegexRefusal): {
       code: "custom",
       message:
         "a linkage key element transform uses a regular expression outside the " +
-        "linear-time dialect (RE2 syntax; backreferences and lookaround are not " +
-        "supported); it is rejected before any pattern executes",
+        "linear-time dialect (RE2 syntax); rewrite it without backreferences " +
+        "or lookaround",
       path: ["linkageKeys"],
     };
   const { keyIndex, elementIndex, stepIndex, paramKey, weightedSize } = refusal;
   return {
     code: "custom",
     message:
-      `the regular expression in linkageKeys[${keyIndex}].elements[${elementIndex}]` +
+      `the regular expression in linkage_keys[${keyIndex}].elements[${elementIndex}]` +
       `.transform[${stepIndex}].params.${paramKey} ` +
       transformPatternSizeMessage(weightedSize),
     path: [

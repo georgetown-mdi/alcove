@@ -438,9 +438,9 @@ function notRoundDiagonal(
 ): InternalConsistencyError {
   return Object.assign(
     new InternalConsistencyError(
-      `${id}: the matched table's entity clusters are not the shape a ` +
-        `both-sided deduplicating cascade produces: ${detail}. The exchange ` +
-        "cannot proceed; report it with this message.",
+      `${id}: the matched table's entity clusters do not have the shape a ` +
+        `cascade deduplicating on both sides produces: ${detail}. The ` +
+        "exchange stopped; report it with this message.",
     ),
     { alcoveRecoveryHintEmitted: true },
   );

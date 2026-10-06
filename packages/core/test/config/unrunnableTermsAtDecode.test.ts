@@ -186,9 +186,9 @@ test("a candidate set under a strategy off the allowlist is refused at the decod
 test("a key wider than the per-key candidate ceiling is refused at the parse", () => {
   const messages = refusalsOf(partnerTerms({ linkageKeys: overWideKeys }));
   expect(messages.join("\n")).toContain(
-    `${MAX_KEY_CANDIDATE_WIDTH} candidate values one record may contribute`,
+    `${MAX_KEY_CANDIDATE_WIDTH} candidate values one key may hold`,
   );
-  expect(messages.join("\n")).toContain("the linkage key at linkageKeys[0]");
+  expect(messages.join("\n")).toContain("the linkage key at linkage_keys[0]");
   expectNoPartnerText(messages);
 });
 
@@ -197,7 +197,7 @@ test("a key wider than the per-key candidate ceiling is refused at the decode", 
     partnerTerms({ linkageKeys: overWideKeys }),
   );
   expect(messages.join("\n")).toContain(
-    `${MAX_KEY_CANDIDATE_WIDTH} candidate values one record may contribute`,
+    `${MAX_KEY_CANDIDATE_WIDTH} candidate values one key may hold`,
   );
   expectNoPartnerText(messages);
 });
@@ -205,7 +205,7 @@ test("a key wider than the per-key candidate ceiling is refused at the decode", 
 test("terms above the effective key count ceiling are refused at the parse", () => {
   const messages = refusalsOf(partnerTerms({ linkageKeys: overCountKeys }));
   expect(messages.join("\n")).toContain(
-    `above the ${MAX_EFFECTIVE_KEY_COUNT} an exchange derives`,
+    `more than the ${MAX_EFFECTIVE_KEY_COUNT} an exchange allows`,
   );
   expectNoPartnerText(messages);
 });
@@ -215,7 +215,7 @@ test("terms above the effective key count ceiling are refused at the decode", as
     partnerTerms({ linkageKeys: overCountKeys }),
   );
   expect(messages.join("\n")).toContain(
-    `above the ${MAX_EFFECTIVE_KEY_COUNT} an exchange derives`,
+    `more than the ${MAX_EFFECTIVE_KEY_COUNT} an exchange allows`,
   );
   expectNoPartnerText(messages);
 });

@@ -291,8 +291,9 @@ const sharedSecretMessage = z.object({
 // sentence from either side, with each of the partner's reasons labelled and
 // bounded on the cause links behind it. The sentence holds no partner byte, so
 // a reason can neither delete it nor spend another reason's display budget.
-const PARTNER_ABORT_MESSAGE = "partner aborted linkage terms exchange";
-const PARTNER_ABORT_REASON_LABEL = "reason the partner gave: ";
+const PARTNER_ABORT_MESSAGE =
+  "Your partner stopped the exchange at the linkage terms";
+const PARTNER_ABORT_REASON_LABEL = "reason your partner gave: ";
 
 const partnerAbortError = (
   reasons: PartnerOriginTextList | undefined,

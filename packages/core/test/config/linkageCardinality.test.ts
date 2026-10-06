@@ -1056,7 +1056,7 @@ test("both parties receive the output the both-sided pair produces", async () =>
       deduplicate: true,
       output: { expectsOutput: false, shareWithPartner: true },
     }),
-  ).toThrow(/expectsOutput must be true when deduplicate is true/);
+  ).toThrow(/expects_output must be true when deduplicate is true/);
 
   // Both deduplicating parties therefore expect output, and a party withholding
   // the result from a partner that expects it is refused at the terms exchange
@@ -1188,7 +1188,7 @@ test("a partner presenting a deduplicate its invitation did not declare is refus
     (err: unknown) => err as Error,
   );
   expect(reason).toBeInstanceOf(InvitationTermDivergenceError);
-  expect(reason?.message).toMatch(/contradict the invitation/);
+  expect(reason?.message).toMatch(/differ from the invitation/);
   // The refusal names the two booleans and no partner-controlled value: the
   // identity the partner authored is the string most likely to be reached for.
   expect(reason?.message).not.toContain("Presented Partner Identity");
@@ -1283,10 +1283,10 @@ test("the one-sided refusal aborts the partner instead of leaving it parked", as
   // termination rather than on a PSI library decode message.
   const inviter = await inviterRun;
   expect(inviter).toBeInstanceOf(PeerAbortError);
-  expect(inviter?.message).toMatch(/aborted the exchange/);
+  expect(inviter?.message).toMatch(/Your partner stopped the exchange/);
   // The fault stays with the refusing party: the partner is told to ask, and
   // is shown neither the reason nor anything else the refusing side holds.
-  expect(inviter?.message).toMatch(/Contact your partner/);
+  expect(inviter?.message).toMatch(/contact them/);
   expect(inviter?.message).not.toContain("deduplicate");
   await connAcceptor.close();
 });
@@ -1355,7 +1355,7 @@ test("a run driven from a PERSISTED config refuses the same contradiction", asyn
     (err: unknown) => err as Error,
   );
   expect(reason).toBeInstanceOf(InvitationTermDivergenceError);
-  expect(reason?.message).toMatch(/contradict the invitation/);
+  expect(reason?.message).toMatch(/differ from the invitation/);
   expect(reason?.message).not.toContain("Presented Partner Identity");
 
   await connAcceptor.close();

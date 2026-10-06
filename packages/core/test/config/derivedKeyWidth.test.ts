@@ -413,7 +413,7 @@ describe("the width a key declares", () => {
     ).toBeGreaterThan(MAX_KEY_CANDIDATE_WIDTH);
     expect(() => declaredKeyWidth(unbounded)).toThrow(UsageError);
     expect(() => declaredKeyWidth(unbounded, 0)).toThrow(
-      /linkageKeys\[0\] declares a width of more than the 1024/,
+      /linkage_keys\[0\] gives one record more than the 1024/,
     );
     expect(fuzzyCandidateCeiling("transpositions", 45)).toBeLessThanOrEqual(
       MAX_KEY_CANDIDATE_WIDTH,
@@ -556,7 +556,7 @@ describe("the width a key declares", () => {
     );
     expect(() => declaredKeyWidth(terms.linkageKeys[1], 1)).toThrow(UsageError);
     expect(() => declaredEffectiveKeyCount(terms)).toThrow(
-      /linkageKeys\[1\] declares a width of more than the 1024/,
+      /linkage_keys\[1\] gives one record more than the 1024/,
     );
   });
 
@@ -580,7 +580,7 @@ describe("the width a key declares", () => {
       [key],
     );
     expect(() => buildKeyStrings(key, dataset, 0, true)).toThrow(
-      /declares a width of more than the 1024/,
+      /gives one record more than the 1024/,
     );
   });
 });
@@ -898,7 +898,7 @@ describe("a declared width under a strategy that matches one value per record", 
       { psiLibrary },
     );
     await expect(run).rejects.toThrow(UsageError);
-    await expect(run).rejects.toThrow(/matches a single value per record/);
+    await expect(run).rejects.toThrow(/matches one value per record/);
     await expect(run).rejects.not.toThrow(/partner/);
   });
 

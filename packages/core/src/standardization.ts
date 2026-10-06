@@ -995,17 +995,13 @@ export const STANDARDIZATION_FUNCTION_NAMES: readonly string[] = [
  */
 export function fanOutReachedMatchingRefusal(): UsageError {
   return new UsageError(
-    "a transform expanded a record into several match candidates, but this " +
-      "round matches a single value per record: a count-only exchange never " +
-      "matches a candidate set, and any other round matches one only where " +
-      "the agreed linkage terms and the standardization account for the " +
-      "expansion. " +
-      "Continuing would drop the record from its linkage key rather than " +
-      "match it on each candidate, so the exchange is refused instead. Remove " +
-      `the step that expands this record's value -- a ` +
-      `${QUOTED_FAN_OUT_FUNCTION_NAMES} step, a fuzzy comparison, a swapped key ` +
-      "order, or a transform that expands one value without being a declared " +
-      "fan-out function.",
+    "a transform turned one record's value into several match candidates, " +
+      "but this round matches one value per record, because the exchange is " +
+      "count-only or the agreed linkage terms and the standardization do not " +
+      "declare the expansion. Remove the step that expands this record's " +
+      `value: a ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, a fuzzy comparison, a ` +
+      "swapped key order, or a transform that expands one value without " +
+      "being a declared fan-out function.",
   );
 }
 
@@ -1559,10 +1555,7 @@ export function commitCompiledTransforms(
 export function stepCompileRefusalMessage(label: string): string {
   return (
     "a transform step cannot be built from the parameters it declares " +
-    `(${label}): a pipeline is built once, before the first row is read, so ` +
-    "an exchange on these transforms would stop before it matched anything. " +
-    "It is refused up front instead. Correct that step's parameters, or " +
-    "remove the step."
+    `(${label}). Correct that step's parameters, or remove the step.`
   );
 }
 
@@ -1599,9 +1592,8 @@ export function stepCountRefusalMessage(
 export function stepCompileBudgetRefusalMessage(budgetMs: number): string {
   return (
     "checking that every transform step can be built did not finish within " +
-    `the ${budgetMs} ms allowed, so these transforms are refused rather than ` +
-    "accepted unchecked. Reduce the number of linkage keys, key elements, or " +
-    "transform steps they declare."
+    `the ${budgetMs} ms allowed. Reduce the number of linkage keys, key ` +
+    "elements, or transform steps they declare."
   );
 }
 
@@ -2293,7 +2285,7 @@ function keyElementPath(
   keyIndex: number | undefined,
   elementIndex: number,
 ): string {
-  const root = keyIndex === undefined ? "" : `linkageKeys[${keyIndex}].`;
+  const root = keyIndex === undefined ? "" : `linkage_keys[${keyIndex}].`;
   return `${root}elements[${elementIndex}]`;
 }
 
@@ -2305,18 +2297,12 @@ function elementValueTooLongRefusal(
 ): UsageError {
   return new UsageError(
     `a linkage key element reads a ${length}-character value from row ` +
-      `${rowIndex} of this party's data (the column bound at ` +
+      `${rowIndex} of your data (the column bound at ` +
       `${keyElementPath(keyIndex, elementIndex)}), longer than the ` +
       `${MAX_TRANSFORMED_VALUE_LENGTH}-character value an element may put ` +
-      "into a key string. Every element's value goes into every key " +
-      "string the row builds, and an element transform is free to multiply " +
-      "the value it is handed, so the limit binds what the element reads as " +
-      "well as what each of its steps produces. Neither can be shortened " +
-      "here -- both parties must derive byte-identical keys, so a value " +
-      "trimmed to fit would match nothing and contradict the agreed terms. " +
-      "The exchange is refused instead. Bind the element to a shorter " +
-      "column, or shorten the field in this party's own standardization " +
-      "before the key element reads it.",
+      "into a key string. Bind the element to a shorter column, or shorten " +
+      "the field in your own standardization before the key element reads " +
+      "it.",
   );
 }
 
@@ -2334,14 +2320,8 @@ function transformStepValueTooLongRefusal(
       `(${keyElementPath(keyIndex, elementIndex)}.transform[${stepIndex}], ` +
       `${transformFunctionLabel(functionName)}), longer than the ` +
       `${MAX_TRANSFORMED_VALUE_LENGTH}-character value an element may put ` +
-      "into a key string. A step can multiply what it is handed many times " +
-      "over -- a replacement that re-inserts the matched context at every " +
-      "match position, or a chain of steps each feeding the next -- so every " +
-      "step's output is bounded, which is also what keeps the next step's " +
-      "input bounded. The value cannot be shortened here: both parties must " +
-      "derive byte-identical keys. The exchange is refused instead. Remove " +
-      "or narrow that step in the agreed linkage terms, or shorten the field " +
-      "the element reads.",
+      "into a key string. Remove or narrow that step in the agreed linkage " +
+      "terms, or shorten the field the element reads.",
   );
 }
 
@@ -2532,15 +2512,13 @@ function keyStringFanOutCapRefusal(
   const key =
     keyIndex === undefined
       ? "a linkage key"
-      : `the linkage key at linkageKeys[${keyIndex}]`;
+      : `the linkage key at linkage_keys[${keyIndex}]`;
   return new UsageError(
     `${key} expands one row into ${projected} key strings, above the ` +
-      `${MAX_KEY_STRINGS_PER_ROW} this exchange builds per row. Every ` +
-      "element's candidates multiply across the key, so a key whose elements " +
-      "expand -- through fuzzy comparisons declared on several of them, or a " +
-      "standardization or element-transform step that turns one value into " +
-      "several candidates -- fans out far enough to exhaust memory. The " +
-      "exchange is refused instead. Declare fuzzy comparisons on fewer of the " +
+      `${MAX_KEY_STRINGS_PER_ROW} this exchange builds per row, because the ` +
+      "candidates of its expanding elements multiply (fuzzy comparisons, or " +
+      "a step that turns one value into several candidates). Declare fuzzy " +
+      "comparisons on fewer of the " +
       "key's elements, drop the expanding step from the transforms, or " +
       "shorten the expanded fields with an element transform.",
   );
@@ -2563,13 +2541,11 @@ function fuzzyWidthCapRefusal(
   const key =
     keyIndex === undefined
       ? "a linkage key"
-      : `the linkage key at linkageKeys[${keyIndex}]`;
+      : `the linkage key at linkage_keys[${keyIndex}]`;
   return new UsageError(
     `${key} expands one row into ${realized} candidate values through fuzzy ` +
-      `comparisons, above the ${width} one record may contribute to it. That ` +
-      "width is what the agreed terms declare for this key, so a wider row has " +
-      "no slot to occupy, and contributing part of the set would match on less " +
-      "than the terms declare. The exchange is refused instead. Declare fuzzy " +
+      `comparisons, above the ${width} the agreed terms declare for one ` +
+      "record on this key. Declare fuzzy " +
       "comparisons on fewer of the key's elements, or shorten the expanded " +
       "fields with an element transform.",
   );
@@ -2585,15 +2561,12 @@ function keyStringLengthCapRefusal(
   const key =
     keyIndex === undefined
       ? "a linkage key"
-      : `the linkage key at linkageKeys[${keyIndex}]`;
+      : `the linkage key at linkage_keys[${keyIndex}]`;
   return new UsageError(
     `${key} assembles ${projected} characters of key strings for one row, ` +
       `above the ${MAX_ASSEMBLED_KEY_LENGTH_PER_ROW} this exchange builds ` +
-      "per row. Every combination of the key's elements includes each " +
-      "element's whole value, so a key whose elements expand -- through " +
-      "fuzzy comparisons, or a step that turns one value into several " +
-      "candidates -- replicates those values across the whole cross-product " +
-      "and exhausts memory as it is built. The exchange is refused instead. " +
+      "per row, because every combination of its expanding elements repeats " +
+      "each element's value. " +
       "Declare fuzzy comparisons on fewer of the key's elements, drop the " +
       "expanding step from the transforms, or shorten the expanded fields " +
       "with an element transform.",
@@ -2705,16 +2678,10 @@ function accumulatedCandidatesTooLongRefusal(
 ): UsageError {
   return new UsageError(
     `a linkage key accumulated ${accumulated} characters of candidate ` +
-      `values from row ${site.rowIndex} of this party's data ` +
+      `values from row ${site.rowIndex} of your data ` +
       `(${keyElementPath(site.keyIndex, site.elementIndex)}), above the ` +
       `${MAX_ASSEMBLED_KEY_LENGTH_PER_ROW} characters of key strings this ` +
-      "exchange builds for one row. An element's candidates are allocated one " +
-      "after another -- a step that expands one value into several hands every " +
-      "later step each of them in turn, and a declared fuzzy comparison " +
-      "expands the element's transformed value again -- so the total is " +
-      "bounded as they accumulate rather than once the whole set exists. " +
-      "Nothing can be shortened to fit: both parties must derive " +
-      "byte-identical keys. The exchange is refused instead. Remove or narrow " +
+      "exchange builds for one row. Remove or narrow " +
       "the expanding step in the agreed linkage terms, declare fuzzy " +
       "comparisons on fewer of the key's elements, or shorten the field the " +
       "element reads.",
@@ -2845,10 +2812,10 @@ function regexSearchBudgetRefusal(
 ): UsageError {
   return new UsageError(
     `a linkage key spent ${spent} code units of transform work on row ` +
-      `${site.rowIndex} of this party's data, above the ` +
+      `${site.rowIndex} of your data, above the ` +
       `${MAX_TRANSFORM_WORK_PER_ROW} one row may spend deriving one key, ` +
       "while a regular-expression step searched the value " +
-      `(${locatedStepPath(step)}). The exchange is refused. Change or ` +
+      `(${locatedStepPath(step)}). Change or ` +
       "remove that step's pattern in the agreed linkage terms, or shorten " +
       "the field the element reads.",
   );
@@ -2900,15 +2867,11 @@ function transformWorkBudgetRefusal(
 ): UsageError {
   return new UsageError(
     `a linkage key spent ${spent} code units of transform work on row ` +
-      `${site.rowIndex} of this party's data ` +
+      `${site.rowIndex} of your data ` +
       `(${keyElementPath(site.keyIndex, site.elementIndex)}), above the ` +
       `${MAX_TRANSFORM_WORK_PER_ROW} one row may spend deriving one key. ` +
-      "Every step is charged what it reads and what it produces, so a step " +
-      "that expands a value and a later step that collapses the expansion " +
-      "both spend from the budget however little the row keeps, and each of " +
-      "the key's elements spends from the same total. Nothing can be " +
-      "shortened to fit: both parties must derive byte-identical keys. The " +
-      "exchange is refused instead. Remove or narrow the expanding step in " +
+      "Every step counts what it reads and produces, across all of the " +
+      "key's elements. Remove or narrow the expanding step in " +
       "the agreed linkage terms, or declare fewer steps on the key's " +
       "elements.",
   );
@@ -3202,13 +3165,10 @@ function assertSwapPairPositionsAgree(
   const site =
     keyIndex === undefined
       ? "a linkage key"
-      : `the linkage key at linkageKeys[${keyIndex}]`;
+      : `the linkage key at linkage_keys[${keyIndex}]`;
   throw new UsageError(
     `${site} declares a swap whose two elements do not declare the same ` +
-      "transform and generate_fuzzy_comparisons. A swap moves the field " +
-      "references and leaves each element's own transform and expansion in " +
-      "place, so a mismatched pair would build one order from a column the " +
-      "other order never reads. The exchange is refused instead. Give the " +
+      "transform and generate_fuzzy_comparisons. Give the " +
       "swapped pair one transform and one expansion in the agreed linkage " +
       "terms.",
   );

@@ -56,9 +56,9 @@ describe("describeEntityClusters", () => {
       ),
     ).toBe(
       "Entity clusters in your result: 1,204 clusters over 1,204 records of " +
-        "yours and 1,204 of your partner's. Sizes as yours by your partner's, " +
-        "largest first, with the distinct matched values each formed on: 1 x 1 " +
-        "on 1 value (1,204 clusters).",
+        "yours and 1,204 of your partner's. Cluster sizes (your records x " +
+        "your partner's records, largest first), with the number of matched " +
+        "values each formed on: 1 x 1 on 1 value (1,204 clusters).",
     );
   });
 
@@ -110,9 +110,9 @@ describe("describeEntityClusters", () => {
       ),
     ).toBe(
       "Entity clusters in your result: 3 clusters over 43 records of yours " +
-        "and 39 of your partner's. Sizes as yours by your partner's, largest " +
-        "first, with the distinct matched values each formed on: 40 x 37 on 5 " +
-        "values; 2 x 1 on 1 value; 1 x 1 on 1 value. A large cluster formed on " +
+        "and 39 of your partner's. Cluster sizes (your records x your " +
+        "partner's records, largest first), with the number of matched " +
+        "values each formed on: 40 x 37 on 5 values; 2 x 1 on 1 value; 1 x 1 on 1 value. A large cluster formed on " +
         "one value is a linkage key that named a group rather than an " +
         "individual; one formed on several is a chain through a record's " +
         "candidate values. Narrow the key or the candidate values to break it up.",
@@ -128,7 +128,7 @@ describe("describeEntityClusters", () => {
       summaryOf(shapes.length, 44, shapes.length, shapes),
     );
     expect(sentence).toContain("8 x 1 on 1 value; 7 x 1 on 1 value");
-    expect(sentence).toContain("; and 2 smaller shapes.");
+    expect(sentence).toContain("; and 2 smaller cluster sizes.");
     expect(sentence).not.toContain("2 x 1 on 1 value;");
   });
 

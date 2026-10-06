@@ -75,8 +75,8 @@ test("a partner's abort ends the parked round as a peer termination", async () =
   expect(ended).toBeInstanceOf(PeerAbortError);
   // What the operator is told: the partner ended the exchange and holds the
   // reason, rather than a decode message naming nothing they can act on.
-  expect(ended?.message).toMatch(/aborted the exchange/);
-  expect(ended?.message).toMatch(/Contact your partner/);
+  expect(ended?.message).toMatch(/Your partner stopped the exchange/);
+  expect(ended?.message).toMatch(/contact them/);
   // The abort's reasons are partner-written text and are not read here, so
   // nothing the partner authored reaches this party's display.
   expect(ended?.message).not.toContain(REFUSAL_REASON);
