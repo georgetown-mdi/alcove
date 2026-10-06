@@ -619,7 +619,7 @@ describe("alcove apply", () => {
 
     const { exit, stderr } = await runApply(update);
     expect(exit).toBe("exit:64");
-    expect(stderr).toContain("standard input closed before you answered");
+    expect(stderr).toContain("standard input ended at the question above");
     expect(stderr).toContain("with docker, add -it");
     expect(stderr).not.toContain("update declined");
     expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);

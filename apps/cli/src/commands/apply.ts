@@ -75,11 +75,14 @@ const APPLY_USAGE = "[options] UPDATE";
  * The refusal an apply gets when it would ask for consent to an update's
  * terms and standard input is not a terminal to ask at.
  */
+const APPLY_CONSENT_REMEDY =
+  "Run it at a terminal (with docker, add -it) to review the terms and " +
+  "answer, or pass --consent-to-terms to consent to them in advance for an " +
+  "unattended run.";
+
 export const APPLY_NEEDS_TERMINAL =
   "apply asks you to confirm the update's terms, and standard input is not " +
-  "a terminal to ask at, so nothing was changed. Run it at a terminal (with " +
-  "docker, add -it) to review the terms and answer, or pass " +
-  "--consent-to-terms to consent to them in advance for an unattended run.";
+  `a terminal to ask at, so nothing was changed. ${APPLY_CONSENT_REMEDY}`;
 
 export function builder(cmd: Argv): Argv {
   return addLoggingOptions(
@@ -475,7 +478,6 @@ export async function handler(argv: Arguments): Promise<void> {
         return;
       }
 
-      // Refused, not read as a decline, so an unattended apply fails visibly.
       if (!consentToTerms && process.stdin.isTTY !== true)
         throw new UsageError(APPLY_NEEDS_TERMINAL);
 
@@ -508,10 +510,9 @@ export async function handler(argv: Arguments): Promise<void> {
         );
         if (answer === "closed")
           throw new UsageError(
-            "standard input closed before you answered, so the update was " +
-              "not applied and the configuration was not changed. Run it " +
-              "again at a terminal (with docker, add -it) and answer, or " +
-              "pass --consent-to-terms to consent to the terms in advance.",
+            "standard input ended at the question above, so it was not " +
+              "answered and the configuration was not changed. " +
+              APPLY_CONSENT_REMEDY,
           );
         if (answer === "no") {
           consentSurface("update declined; the configuration was not changed");
