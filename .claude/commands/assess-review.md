@@ -244,8 +244,8 @@ with -- because the entry is the whole record of that finding and an unannotated
 one is treated as an entry nobody wrote down. It also states its surface, as
 `.claude/commands/light-review.md`, Step 3 -- Trajectory, ledger, write, lists:
 `"surface": "internal"`, or a `limitsLine` once the limit is promoted. The check
-holds this only for rounds dated 2026-10-07 or later; a limit in an earlier round
-stays ledger-only.
+holds this only for rounds dated the limit-rule date the check's header names
+or later; a limit in an earlier round stays ledger-only.
 
 A `deferred` entry names where the finding went: a board item,
 as `"board": "<board>/<itemId>"`, or a spec limits line on the branch, as

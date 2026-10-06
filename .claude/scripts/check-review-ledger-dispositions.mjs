@@ -52,8 +52,7 @@
 // linked tree.
 //
 // Limit rule date. A row dated before LIMIT_RULE_DATE is exempt from the
-// `limit` check above, so its limits stay ledger-only: the rule landed on that
-// day, and earlier limits were written under the ledger-only default.
+// `limit` check above.
 //
 // Exit codes: 0 every held entry passes (legacy rows skipped); 1 an entry is
 // refused; 2 usage, an unreadable ledger line, an invocation from outside a
@@ -233,7 +232,7 @@ export function checkLedger({ rows, head, git }) {
       ) {
         results.push({
           ...base,
-          status: "skipped",
+          status: "pre-rule",
           reason: "limit before the limit rule",
         });
         continue;
@@ -408,9 +407,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     const refused = results.filter((r) => r.status === "refused").length;
     const skipped = results.filter((r) => r.status === "skipped").length;
+    const preRule = results.filter((r) => r.status === "pre-rule").length;
     process.stdout.write(
       refused === 0
-        ? `\ndispositions: PASS -- ${results.length - skipped} checked, ${skipped} skipped as legacy\n`
+        ? `\ndispositions: PASS -- ${results.length - skipped - preRule} checked, ${skipped} skipped as legacy${preRule === 0 ? "" : `, ${preRule} limits before the limit rule`}\n`
         : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"\n`,
     );
     process.exit(refused === 0 ? 0 : 1);

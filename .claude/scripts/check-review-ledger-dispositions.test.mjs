@@ -320,7 +320,7 @@ describe("limit entries", () => {
       check(fixture, row(limit, { date: day(LIMIT_DATE) }), oldHead).map(
         (r) => r.status,
       ),
-    ).toEqual(["skipped"]);
+    ).toEqual(["pre-rule"]);
     expect(
       check(fixture, row(limit, { date: LIMIT_DATE }), oldHead).map(
         (r) => r.status,
@@ -359,7 +359,7 @@ describe("legacy rows", () => {
       "new fix:ok",
       "old fix:refused",
       "old deferral:refused",
-      "old limit:skipped",
+      "old limit:pre-rule",
     ]);
   });
 
@@ -382,11 +382,25 @@ describe("legacy rows", () => {
     expect(
       check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
     ).toEqual([
-      "new limit:skipped",
+      "new limit:pre-rule",
       "old fix:refused",
       "old deferral:refused",
-      "old limit:skipped",
+      "old limit:pre-rule",
     ]);
+  });
+
+  it("skips the limit check for a limit between the cutoff and the limit rule, yet holds the row", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const ledger = row(
+      [
+        { item: "fix", disposition: "fixed" },
+        { item: "lim", disposition: "limit", note: "n" },
+      ],
+      { date: LEGACY_CUTOFF_DATE },
+    );
+    expect(
+      check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
+    ).toEqual(["fix:refused", "lim:pre-rule"]);
   });
 
   it("holds a row dated on or after the cutoff even when no row uses the fields", () => {
@@ -395,7 +409,7 @@ describe("legacy rows", () => {
       check(fixture, legacyRow(LEGACY_CUTOFF_DATE), oldHead).map(
         (r) => r.status,
       ),
-    ).toEqual(["refused", "refused", "skipped"]);
+    ).toEqual(["refused", "refused", "pre-rule"]);
   });
 });
 
@@ -445,6 +459,25 @@ describe("the command line", () => {
     const passed = runScript(fixture.dir, [ledgerPath, oldHead]);
     expect(passed.status).toBe(0);
     expect(passed.stdout).toMatch(/dispositions: PASS -- 1 checked/);
+  });
+
+  it("counts legacy rows and limits before the limit rule separately", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const dir = makeTempDir("ledger-file-");
+    const ledgerPath = join(dir, "branch.jsonl");
+    const limit = { item: "rows", disposition: "limit", note: "n" };
+    writeFileSync(
+      ledgerPath,
+      [
+        row([{ item: "old", disposition: "deferred" }], { date: "2026-09-01" }),
+        row([limit], { round: 2, date: LEGACY_CUTOFF_DATE }),
+      ].join("\n") + "\n",
+    );
+    const passed = runScript(fixture.dir, [ledgerPath, oldHead]);
+    expect(passed.status).toBe(0);
+    expect(passed.stdout).toMatch(
+      /dispositions: PASS -- 0 checked, 1 skipped as legacy, 1 limits before the limit rule\n/,
+    );
   });
 
   it("--remap rewrites only the line holding a remapped entry", () => {

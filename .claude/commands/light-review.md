@@ -224,7 +224,8 @@ Common to both:
    `limit` entry gains `"surface": "internal"` when no user or partner can reach what
    it limits (an internal surface or a test guard); an entry without `surface` is
    taken as reachable and gains a `limitsLine` at merge-ready, for a round dated
-   2026-10-07 or later; an earlier round's limits stay ledger-only.
+   the limit-rule date the check's header names or later; an earlier round's
+   limits stay ledger-only.
    `.claude/scripts/check-review-ledger-dispositions.mjs` checks these fields at
    merge-ready.
 
