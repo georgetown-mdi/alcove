@@ -1,154 +1,18 @@
 #!/usr/bin/env node
-// URL-literal egress guard, run by static_checks.yaml on every PR.
+// URL-literal egress guard: `npm run check:egress-claims`, run by
+// static_checks.yaml on every PR. Holds PRIVACY.md's no-egress claims against
+// first-party drift.
 //
-// PRIVACY.md publishes critical NEGATIVE claims to agency security,
-// compliance, and privacy reviewers: the container "makes no other network
-// connection" beyond the SFTP server or shared directory the operator
-// configures; the hosted web application has "no analytics or third-party
-// tracking scripts, and no script, style, or font loaded from a third-party
-// host" and "makes no request to any host other than the supporting services
-// named below"; and the project
-// runs no license check, update ping, usage analytics, or telemetry. Prose
-// cannot hold those claims true -- a font CDN, an error-reporting SDK, an
-// analytics snippet, or a version-check ping is one import away, and the
-// document that agency reviewers were handed goes quietly false. So the claim
-// is encoded as a check: a URL literal in shipped source that names a host
-// under one of the schemes below either sits on ALLOWLIST, each entry stating
-// the reason it does not contradict the document, or it fails the build.
-//
-// WHAT THIS CHECK DOES NOT COVER -- most of it past the reach of a literal
-// scan, the rest by decision:
-//
-//   - Egress assembled at runtime. A host built from configuration, from an
-//     operator-supplied value, or by string concatenation never appears as a
-//     literal. The invitation endpoint and the operator's SFTP server are
-//     legitimately of this kind, so a literal scan is the only shape available
-//     here; it is a safety check, not a proof of no egress.
-//   - Egress originating inside a dependency. Only first-party source under
-//     SCANNED_ROOTS and SCANNED_FILES is read; what a package does at runtime is
-//     the dependency review's ground (CONTRIBUTING.md, Dependency Policy).
-//   - Egress introduced by build configuration. A snippet added to
-//     apps/web/vite.config.ts or one of the build configs beside it emits into
-//     the shipped page, but those files sit at a workspace root or under
-//     apps/web/hosted, outside SCANNED_ROOTS.
-//   - A file git ignores. The listing in scanRepo excludes them, so a URL
-//     literal in one is never read, wherever under a scanned root it sits. The
-//     reach of that gap is small, but not because a tree holds no ignored file:
-//     an install and a core build leave plenty (node_modules, the workspace
-//     dist trees), in CI as much as locally. It is that none of them land under
-//     a scanned root, so the gap opens only for a file written under one of
-//     those roots and ignored there.
-//   - A text file in an encoding other than UTF-8. Every scanned file is
-//     decoded as UTF-8, so a UTF-16 one displays as its characters separated by
-//     NULs, matches nothing, and is still counted among the files scanned.
-//   - A URL literal inside a JavaScript or TypeScript comment. A comment holds
-//     no literal node, so a `@see` link in a JSDoc block and a trailing
-//     `// https://cdn.example/a.js` alike go unreported. This is a decision
-//     rather than a limit of reach: a comment issues no request, and a
-//     documentation link would otherwise have to be allowlisted. It reaches the
-//     JavaScript and TypeScript family alone; every other text format is
-//     scanned raw, for the reason set out below.
-//   - A URL spelled so as to evade the matcher: split across concatenated
-//     string fragments, written into a regular-expression literal, whose node
-//     the extraction does not read, percent- or entity-encoded in the scheme or
-//     the colon after it (`%68ttps://`, `&#104;ttps://`, `https%3A//`,
-//     `https&#58;//`; an encoded host is still reported, since the scheme is
-//     what the matcher reads), or glued to a letter, digit, or underscore
-//     (`xhttps://host`, `_https://host`), none of which the scheme rule admits
-//     before the scheme; any other character, or the start of the text, still
-//     matches (`.https://host` and `-https://host` are reported). An escape the
-//     language itself removes is not among these: a literal is read as its
-//     cooked value, so the regex-escaped spelling written into a string
-//     (`"https:\/\/host"`) is reported as the `https://host` it evaluates to.
-//     The check is a guard against egress added inadvertently, not against an
-//     author who wants to hide it.
-//   - Schemes outside http, https, stun, stuns, turn, and turns: a `wss://`,
-//     `ws://`, `ftp://` or `file://` literal names a host and is not reported.
-//     Nor is a protocol-relative `//host` reference, which has no scheme to
-//     match.
-//   - An authority naming no host of its own: empty, a scheme followed by
-//     nothing but slashes, which is what a protocol comparison
-//     (`location.protocol === "https:"`) is; wholly interpolated inside a
-//     template (`http://${host}`, `http://${host}:8443`), as the helpers over
-//     an inbound Host header write it; or written entirely of dots, which
-//     `new URL()` does resolve to the host `...` but is how elided placeholder
-//     text writes a URL (`https://...#...` in the invitation field). Those are
-//     skipped knowingly; why none of them can be tightened is at urlsIn and
-//     resolvedHost. An interpolation with a literal host beside it names a host
-//     and is reported (`https://${tenant}.evil.example`), and so does the same
-//     text written where the parser says nothing interpolates: in a string or a
-//     JSX attribute value, `https://${host}` names the host `${host}`. The node
-//     the parser reports is what decides, not the characters.
-//
-// The opposite direction is loud and left that way: an authority spelling out
-// host-shaped text is reported even where `new URL()` rejects it outright
-// (`https://%zz/`, `https://[not-ipv6]/`, `https://[2001:db8::1`,
-// `https://a:b/`, `https://ex^ample/`, `https://exa|mple/`), and so is an
-// authority of nothing but a port outside a template (`https://:8443/x`).
-// `new URL()` is the host oracle for the authorities it accepts, and a literal
-// nothing could dereference can still fail the build; the author resolves that
-// by rewriting the literal or allowlisting it with a reason.
-//
-// These limits are published rather than internal: PRIVACY.md summarizes them
-// for agency reviewers and docs/SECURITY_DESIGN.md ("Egress hardening and its
-// limits") enumerates them, so narrowing one here moves all three.
-//
-// License and notice files (LICENSE, LICENCE, NOTICE, COPYING) are not
-// scanned: license text is not executable, and the attribution URL in a
-// vendored copyright line names an upstream project rather than a host anything
-// contacts.
-//
-// Binary assets are skipped by extension (BINARY_EXTENSIONS) rather than source
-// being admitted by extension, so a newly added text format -- an .html or .svg
-// dropped into apps/web/public, say -- is scanned by default rather than
-// ignored by default. A new binary format that trips the check is fixed by
-// adding its extension here, a one-line edit a reviewer sees.
-//
-// Where a literal begins and ends is the language's own question, so the
-// JavaScript and TypeScript family is read from the string, template, and
-// JSX-text nodes of a TypeScript parse: a URL cannot run past the literal
-// holding it, and whether a `${` interpolates is what the parser says rather
-// than what the characters look like. That reaches the one family a parser is
-// run for here. Every other text format -- CSS, HTML, SVG, Markdown, shell --
-// is scanned raw, and so is a file of this family whose parse reports a syntax
-// error: such a parse yields no literal nodes at all, and reporting a file
-// clean because nothing could be extracted from it is the one direction this
-// check cannot afford. A raw scan reads comment text too, so those files
-// over-report rather than under-report.
-//
-// SCANNED_ROOTS is source that ships or runs, not all TypeScript. Beside the
-// app and library trees and the web app's static assets it includes
-// apps/web/server, the console server the image runs (its entry is the `--ssr`
-// input of apps/web/package.json's build:console-server script). The signaling
-// broker's whole src is among the library trees: its standalone entry point
-// runs as a service of its own.
-// SCANNED_FILES contains the shipped files that sit
-// outside any scanned tree, for both images: the two entrypoints,
-// docker-entrypoint.sh and docker-entrypoint-fips.sh, which run inside the
-// container the "no other network connection" claim is about (each is its
-// image's ENTRYPOINT); the two files of support/fips-probe/ the FIPS variant
-// COPYs in, which its entrypoint runs at every container start and which are
-// therefore as shipped as the entrypoint itself, the rest of that directory
-// being a harness that ships nowhere; and the two Dockerfiles, Dockerfile and
-// Dockerfile.fips, which reach a different class -- what the image build
-// fetches rather than what the running container connects to -- scanned anyway,
-// because a `RUN curl` or `ADD https://...` pulling a third party into the
-// image is what a reviewer of that claim wants shown.
-//
-// By design, outside both: the build and test configuration at each workspace
-// root and the sibling test/ trees; and apps/web/deploy, whose nginx and
-// platform-hook files configure the Elastic Beanstalk host rather than the
-// application, addressing the instance itself (127.0.0.1, the EC2 metadata
-// service) and belonging to deploy review. The test trees and the deploy files
-// reach no user; build configuration does, through what it emits, which is why
-// it is listed above as a gap rather than a safe exclusion. A tree that starts
-// shipping is added here, so an exclusion is treated as the decision it is
-// rather than an oversight.
-//
-// Test files are NOT excluded. The scanned roots are shipped-source trees by
-// construction (the suites live in sibling test/ directories), so a `*.test.*`
-// exclusion would only open a bypass; a test that ever lands under one of these
-// roots earns an allowlist entry like anything else.
+// Fails (exit 1) when a URL literal under the http, https, stun, stuns, turn,
+// or turns scheme names a host that is not on ALLOWLIST, each entry stating why
+// it does not contradict PRIVACY.md. Reads every file git does not ignore under
+// SCANNED_ROOTS plus SCANNED_FILES, skipping BINARY_EXTENSIONS and license
+// files. JavaScript and TypeScript are read from the literal nodes of a parse,
+// comments excluded; every other format, and a file that fails to parse, is
+// scanned raw. It is a safety check, not a proof of no egress: its limits are
+// published in docs/SECURITY_DESIGN.md and PRIVACY.md, so narrowing one moves
+// all three. Rationale, the scanned set and the full limits:
+// docs/notes/repo-check-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

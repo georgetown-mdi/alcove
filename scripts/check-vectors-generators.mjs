@@ -1,111 +1,20 @@
 #!/usr/bin/env node
-// Vectors-against-generator check, run by static_checks.yaml on every PR.
+// Vectors-against-generator check: `npm run check:vectors`, run by
+// static_checks.yaml on every PR. Without it a failing conformance assertion
+// could be silenced by editing a vectors file instead of fixing the code.
 //
-// Every known-answer vectors file under packages/core/test/vectors/ has a
-// generator beside it, and the suites assert the code reproduces the checked-in
-// JSON. Nothing asserted the other direction: that the checked-in JSON is what
-// the generator produces. A failing conformance assertion could therefore be
-// silenced by editing the vectors file instead of fixing the code, and no run
-// would notice. This regenerates each file and fails on a difference, naming the
-// file and the generator.
-//
-// Every entry in that directory is classified here, in one of three ways, and an
-// entry matching none of them fails the check -- coverage cannot rot behind a
-// file nobody added a rule for:
-//
-//   1. GENERATED_VECTORS -- a vectors file and the generator that writes it.
-//      Regenerated and compared on every run.
-//   2. VERIFIERS -- a script that checks a vectors file rather than writing one.
-//      Running it here would prove nothing about the file's provenance, and
-//      verify-native-wire-vectors.mjs needs the vendored native addon selected
-//      for the runtime, so each entry names where it IS run instead.
-//   3. UNGENERATED_VECTORS -- a vectors file with no generator, listed with the
-//      reason it has none. Listed rather than passing by absence: the report
-//      names them on every run, pass or fail, so the hole stays visible.
-//
-// Two shapes of generator, both declared per entry and both cross-checked
-// against what the run actually does (see the write probe below): one prints the
-// document to stdout, one writes its own file in place. The in-place ones read
-// the committed file first and preserve its hand-authored fields, so what this
-// compares for those is the DERIVED half -- which is the half a silenced
-// assertion would have to move.
-//
-// Properties the implementation is built around:
-//
-//   1. NON-MUTATING. The bytes and timestamps of every file touched are read
-//      before the run and put back on ordinary return or throw, by the teardown
-//      scripts/lib/regenerationChecks.mjs runs. That teardown does not run on a
-//      signal, so the same module arms SIGINT/SIGTERM handlers that restore in
-//      the gaps between per-file runs, and after a run returns -- but each
-//      generator runs synchronously via execFileSync, so a signal that arrives
-//      while it is running is not dispatched to this process's JS handler until
-//      the child exits; a process-group kill that takes the parent mid-run
-//      leaves that file's probe mtime, and any in-place write the generator
-//      already made, exactly as the run left them, for git to restore. A check
-//      that left a regenerated vectors file behind on an ordinary exit would be
-//      indistinguishable from the edit it exists to catch.
-//   2. FAILS CLOSED on a comparison it did not really make. Three probes:
-//      - The WRITE probe. Each target's mtime is set to a fixed past instant
-//        before its generator runs, so whether the generator wrote the file is a
-//        fact rather than an assumption. A `file` generator that leaves the
-//        mtime untouched, and a `stdout` generator that moves it, each fail --
-//        the declared shape and the observed one have to agree.
-//      - The EXCUSED-VALUE probe. Where a generator's output has values it
-//        does not reproduce (below), those values are masked on both sides
-//        before the comparison. Each mask must fire the same non-zero number of
-//        times on both, counted per key so an entry excusing two of them cannot
-//        hide an inert mask behind one that matches; a mask that has quietly
-//        stopped matching fails instead of excusing the whole file.
-//      - The BUILT-CORE probe. The generators marked `needsCoreDist` below
-//        import packages/core/dist, so a dist older than its sources makes the
-//        comparison meaningless; that fails here, naming them, rather than
-//        passing on yesterday's library.
-//
-// Unreproducible output, stated rather than skipped: generate-signed-receipt-
-// vectors and generate-signing-cert-vectors sign by shelling out to `openssl`,
-// and two of the values that land in their files do not come back the same:
-//
-//   - `signature`. ECDSA draws a fresh nonce per signature, so the value is not
-//     a known answer; it moves on every run, on one host or across hosts.
-//   - `signatureProducer`. Each generator records `openssl version` as the
-//     provenance of the signatures beside it, so the value is whatever the
-//     GENERATING host's openssl was. It reproduces only on a host with that
-//     same build, which neither a contributor's machine nor the runner image
-//     owes the machine the files were last regenerated on.
-//
-// Measured by regenerating both files against an openssl reporting a different
-// version and diffing the whole file: those values are the ONLY bytes that move
-// -- every fingerprint, binder, coordinate, and canonical layout in both files
-// reproduces exactly -- so they are masked by name rather than the files being
-// dropped from the check. What the signature mask gives up is covered elsewhere,
-// also measured: flipping one character of every masked signature fails
-// signedReceipt.test.ts, signedReceiptVerification.test.ts, and
-// signingIdentity.test.ts, which verify them (apps/web/test/browser/
-// signedReceipt.test.ts loads them in real Chromium as well). What the producer
-// mask gives up is a record of history rather than a fact this check could pin:
-// it names the openssl that signed the CHECKED-IN bytes, which a regeneration
-// here does not reproduce and does not need to.
-//
-// What this check cannot see:
-//   - Whether a vectors file is CORRECT. It asserts only that the checked-in
-//     bytes are the generator's bytes. A generator and a file that are wrong
-//     together pass.
-//   - A hand-edited INPUT in an in-place generator's file (a vector's name,
-//     description, inputs, or pinned randomness). Those are preserved by
-//     design so a deliberate re-pin is reviewable as a diff; only the derived
-//     half is recomputed and compared.
-//   - What another version of a dependency would produce. It compares against
-//     what the LOCALLY INSTALLED packages and the LOCALLY BUILT core dist
-//     produce, so it is only as good as the lockfile pin and the build -- the
-//     same limit `npm run check:routetree` has.
-//   - Formatting drift from a prettier upgrade. The committed files are
-//     prettier-formatted (the documented refresh is "run the generator, then
-//     `npm run format`"), so the generator's output is formatted through this
-//     repo's prettier before comparing; a prettier release that reflows JSON
-//     moves the bytes on both sides at once here, and shows up as a formatcheck
-//     failure rather than here.
-//   - Concurrency. Another process writing these files at the same time races
-//     it, and can leave either copy in place.
+// Classifies every entry under packages/core/test/vectors/ as GENERATED_VECTORS
+// (regenerated and compared), VERIFIERS (run elsewhere, named per entry) or
+// UNGENERATED_VECTORS (listed with a reason on every run). Fails (exit 1) on an
+// unclassified entry, a regenerated file that differs from the checked-in one
+// (in-place generators compare only the derived half), a generator whose
+// observed write disagrees with its declared `stdout` or `file` shape, an
+// excused-value mask that does not fire the same non-zero count on both sides,
+// or a stale packages/core/dist under a `needsCoreDist` generator. Output is
+// formatted through the repository's prettier before comparing. Every touched
+// file's bytes and timestamps are restored afterwards. The probes, the masked
+// openssl values and what the check cannot see:
+// docs/notes/repo-check-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import {

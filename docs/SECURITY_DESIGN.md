@@ -431,7 +431,7 @@ Its reach is narrower than the claim it guards, by design. It does not see:
 - egress originating inside a dependency, which is the dependency review's ground;
 - a URL an author took the trouble to split across fragments, to encode past the scheme, or to write into a regular-expression literal; an escape the language itself removes is not one of these, since a literal is read as the value it evaluates to.
 
-The check's own header holds the full list, including the authority shapes it knowingly skips and the invalid ones it reports anyway. Like the `connect-src` allowlist above, it narrows a surface rather than closing it.
+The full list, including the authority shapes it knowingly skips and the invalid ones it reports anyway, is in [the check's design note](notes/repo-check-scripts.md#url-literal-egress-guard). Like the `connect-src` allowlist above, it narrows a surface rather than closing it.
 
 #### The containerized roles
 

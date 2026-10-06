@@ -1,125 +1,25 @@
 #!/usr/bin/env node
-// Dependabot checklist-pin coverage check, run by static_checks.yaml on every PR.
+// Dependabot checklist-pin coverage check:
+// `npm run check:dependabot-pin-coverage`, run by static_checks.yaml on every
+// PR. A package with an upgrade checklist must not ride a batched Dependabot
+// pull request, where the checklist is skimmed, nor drift off its exact pin.
 //
-// docs/spec/DEPENDENCY_PINS.md has an "Upgrading ..." section for every
-// dependency this repository reaches past the public API of: the assumptions
-// the code rests on and the procedure that re-verifies them before a bump
-// merges. A checklist only fires if someone reads it, and a bump that arrives
-// inside a batched Dependabot pull request beside a dozen routine ones is not
-// read that way -- it is skimmed as routine, which is the whole point of
-// batching it.
-// .github/dependabot.yml holds those packages out of the batch, and the two
-// files drift apart silently: a checklist added here reaches no config, and an
-// exclude entry dropped there reads exactly like one that was never needed. So
-// the coupling is a check rather than a habit.
+// Reads the packages each "Upgrading ... (a / b)" heading of
+// docs/spec/DEPENDENCY_PINS.md names, the npm groups of .github/dependabot.yml,
+// and the root package.json plus every workspace manifest. Fails (exit 1) when:
 //
-// The same silence covers the property every one of those checklists assumes
-// before any of that matters: that the package is pinned to the single version
-// whose internals the assumptions were read off. A caret slipping into a manifest
-// installs a later one with no pull request for anyone to hold the checklist
-// against. So does a second manifest naming a different exact version: both
-// declarations pin, and both look deliberate, but the checklist was worked
-// through against one of the two internals now installed.
+//   1. a named package is not in the `exclude-patterns` of every npm group, in
+//      any update block, whose `patterns` match it without naming it;
+//   2. no manifest declares it, or one declares it at other than an exact
+//      version (bare major.minor.patch, optional prerelease or build suffix);
+//   3. its declarations name more than one version;
+//   4. a package literally named in one group's `patterns` is not excluded by
+//      every other group of the same update block that would match it;
 //
-// The rules:
-//
-//   1. A package named by an "Upgrading ..." heading in
-//      docs/spec/DEPENDENCY_PINS.md must be covered by the `exclude-patterns`
-//      of every npm group in .github/dependabot.yml that would otherwise
-//      swallow it -- a group whose `patterns` match the package without naming
-//      it. Every group in the file, in whichever npm update block: the pins
-//      document is repository-wide, so a batch raised by any block is one the
-//      checklist is not read against.
-//
-//   2. That package must be declared by at least one manifest in this
-//      workspace, and every manifest declaring it must declare an exact
-//      version.
-//
-//   3. Those declarations must all name the same version.
-//
-//   4. A package literally named in one npm group's `patterns` must be
-//      covered by the `exclude-patterns` of every other npm group in the same
-//      update block that would otherwise swallow it -- the same "swallow"
-//      reading as the first rule, applied between two groups instead of
-//      between a checklist and a group. Adding a package to a reviewed
-//      group's `patterns` and forgetting its exclusion elsewhere returns it to
-//      whichever other group's batch would otherwise match it, silently. The
-//      block bounds it because groups only compete for a bump inside the block
-//      that raises the pull request; a group in another block takes nothing
-//      away from this one's reviewed treatment.
-//
-// A group that names the package outright in its `patterns` is its deliberate
-// reviewed treatment (`cryptographic`, `webrtc-stack`), not a batch it fell
-// into, so it asks for no exclude entry there -- from either the first rule or
-// the fourth. A group declaring no `patterns` at all matches every package
-// (`non-critical`), so it always needs one.
-//
-// The heading convention this reads: an "Upgrading ..." heading ends in a
-// parenthesised list of the npm packages the section covers, separated by " / "
-// -- the spaces around the separator are what keep a scoped name's own slash
-// intact. A heading naming none, or naming a token that is not an npm package
-// name, fails the check rather than being passed over: a section no name can be
-// read out of is a checklist nothing can be held against.
-//
-// Glob reading: `*` in a pattern matches any run of characters, the same
-// reading scripts/check-dependabot-ignore-shape.mjs takes of a
-// `dependency-name`, whose matcher this shares.
-//
-// Manifest reading: the root package.json plus every package.json its
-// `workspaces` globs reach. A declaration is a key of `dependencies`,
-// `devDependencies`, `optionalDependencies`, or `peerDependencies`, matched by
-// its exact name -- `@types/ssh2` is a package of its own, reaches no
-// internal, and has no checklist. Exact means a bare `major.minor.patch`,
-// optionally including a prerelease or build suffix, and nothing else: a
-// specifier that pins by another route (a `file:` tarball, a git commit, an
-// `npm:` alias) fails here too, because whether such a route pins is a
-// judgment per dependency rather than a pattern, and a checklist for one wants
-// this rule widened by an explicit decision. The third rule compares those
-// specifiers as text over every declaration found, so two fields of one
-// manifest disagreeing fails it exactly as two manifests do. The workspace set
-// is expanded from those globs here rather than asked of npm; the test holds
-// that expansion to the set npm itself recorded in package-lock.json, so a
-// glob form read differently reddens there instead of silently shrinking the
-// sweep.
-//
-// What this check does not cover:
-//   - Which group a package lands in. Whether a bump belongs in a reviewed
-//     group, and which one, is a judgment about what it must be reviewed
-//     against; a package in no group at all still gets an individual pull
-//     request, which satisfies the first rule above. Only the direction that
-//     fails silently -- riding a batch -- is checked.
-//   - Whether Dependabot resolves this config the way the first rule reads
-//     it. The pattern and exclude lists are read as text; how the real tool
-//     assigns a package matching several groups is not modelled here, which is
-//     why what is asserted is the belt-and-braces entry the config already
-//     writes by hand rather than a prediction of which pull request a bump
-//     lands in.
-//   - What is installed. The second and third rules read the specifiers the
-//     manifests declare; package-lock.json and node_modules are read by no
-//     rule, so a lockfile disagreeing with an exact declaration is `npm ci`'s
-//     to catch.
-//   - Whether the version pinned is the one the checklist's assumptions were read
-//     off. That is what a bump's own review establishes; this holds only that
-//     a single version is named for it to have been read off.
-//   - The docker and github-actions update blocks, whose lists hold different
-//     rationales; scripts/check-dependabot-ignore-shape.mjs owns the
-//     github-actions ignore list. No rule reaches a pin in another ecosystem:
-//     those hold a heading of another shape, which the extraction never
-//     matches, and no npm manifest declares them.
-//   - Whether a package that ought to hold an upgrade checklist has one. The
-//     read runs from the document out to the config and the manifests, and
-//     never back.
-//   - A group `patterns` entry that contains a `*` inside an otherwise literal
-//     name -- e.g. a scoped org wildcard. The fourth rule reads a `patterns`
-//     entry as either a literal package name or the bare `*` npmGroups()
-//     already normalizes an absent `patterns` key to; a glob of any other
-//     shape is a package list this does not resolve to names, and the
-//     package name it "otherwise swallows" would depend on the resolution,
-//     so it throws rather than guessing.
-//   - Which of two groups a package should be reviewed under, when its name
-//     appears in more than one group's `patterns`. The fourth rule only
-//     checks that a group whose own `patterns` do not name the package
-//     excludes it if some other group's do.
+// or when a heading names no valid npm package. `*` in a pattern matches any
+// run of characters, as in scripts/check-dependabot-ignore-shape.mjs. What it
+// does not cover, and why each rule has its shape:
+// docs/notes/repo-check-scripts.md.
 
 import { globSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

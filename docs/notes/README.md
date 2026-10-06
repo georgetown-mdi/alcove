@@ -11,6 +11,7 @@ stands, from a direction still open to a decision taken and built.
 | Note | Status |
 | ---- | ------ |
 | [abort-marker-retryable-class.md](abort-marker-retryable-class.md) | Design only, not built; waits on an observed base rate. The classless default is final. |
+| [agent-hooks-and-scripts.md](agent-hooks-and-scripts.md) | Decided and built; the rationale and stated limits behind the agent hooks and session scripts whose headers state only their contract. |
 | [app-shell-service-worker.md](app-shell-service-worker.md) | Decided and built. |
 | [backup-import-per-exchange-guard.md](backup-import-per-exchange-guard.md) | Decided on the maintainer's ruling and built. |
 | [bound-transformed-value.md](bound-transformed-value.md) | Decided and built, by a 3-panelist design panel. |
@@ -53,6 +54,7 @@ stands, from a direction still open to a decision taken and built.
 | [receipt-signing-fips-boundary.md](receipt-signing-fips-boundary.md) | Decided. |
 | [record-durability-point.md](record-durability-point.md) | Resolved - built. |
 | [rename-to-alcove.md](rename-to-alcove.md) | Decided on the maintainer's rulings and built. |
+| [repo-check-scripts.md](repo-check-scripts.md) | Decided and built; the rationale and stated limits behind the repository check scripts whose headers state only their contract. |
 | [reported-failure-cause.md](reported-failure-cause.md) | Decided on the maintainer's ruling and built; the two shapes declined, and what the block holds apart that escaping does not. |
 | [rule-set-citation-verdict.md](rule-set-citation-verdict.md) | Resolved - built. |
 | [sftp-adapter-state-machine.md](sftp-adapter-state-machine.md) | Shipped. |

@@ -1,110 +1,25 @@
 #!/usr/bin/env node
-// Non-executable-delta verifier, run by an agent re-attesting a review.
+// Non-executable-delta verifier, run by an agent re-attesting a review
+// (.claude/commands/assess-review.md, Step 4): decides mechanically whether a
+// head's diff against the reviewed sha changes no executable line.
 //
-// `.claude/commands/assess-review.md`, Step 4, lets a pull request head be
-// re-attested without a fresh review round when its diff against the
-// already-reviewed sha changes no executable line -- comments and markdown
-// only. The rule requires that property be verified mechanically or not at
-// all, and nothing in CI can catch a false claim:
-// `npm run check:pr-checklist` compares the sha on the checklist line against
-// the head and has no view of whether the claimed property holds, so an
-// eyeballed "comment-only" lands an unreviewed head as reviewed.
+// Usage: node .claude/scripts/verify-nonexecutable-delta.mjs <attested-sha>
+// <head-sha>, run from the worktree the refs belong to; git runs at that
+// worktree's top level, never the one holding this file, and the run names it
+// above its verdicts. Per changed path: markdown is exempt; JS/TS source holds
+// when both sides print identically with comments suppressed; YAML holds when
+// both sides materialize to deep-equal values; a missing side is the empty
+// program or `null`. Every other path, a mode change between existing sides, a
+// multi-document YAML stream, a YAML diagnostic (a duplicate key included), and
+// a document that cannot be materialized are UNVERIFIABLE. Renames count as a
+// delete plus an add. The verdict is "no executable delta", not "the bytes
+// match".
 //
-// The comparison: parse each side of each changed source file to a SourceFile
-// and print it back with comments suppressed; the two printed strings must be
-// equal. Two cheaper primitives were measured wrong and are not to be reached
-// for again -- the colocated test pins both failure modes against the installed
-// TypeScript:
-//
-//   - the compiler's *emit* erases type positions along with comments, so a
-//     type-only edit compares identical under it -- a real change attested away;
-//   - a raw scanner has no parser context, so a backtick inside a comment puts
-//     it in template state and it reports a comment-only edit as a change.
-//
-// Path classification fails closed. Markdown is exempt because the rule names
-// it; a `.yml`/`.yaml` path is parsed and compared as YAML (below); every other
-// non-source path -- package.json, a Dockerfile, a .sh -- is UNVERIFIABLE and
-// fails the run rather than being accepted as "not a JS/TS extension",
-// which would attest an executable delta in any of them. A verifier backing an
-// attestation must not report HOLDS over a file it did not examine.
-//
-// YAML comparison: parse each side with the `yaml` package and deep-compare the
-// values it materializes with `node:util`'s `isDeepStrictEqual`, which treats a
-// mapping's key order as insignificant -- YAML's is -- while keeping a
-// sequence's, which is not. A comparison key built by stringifying the value is
-// measured wrong here the same way the two cheaper source primitives above are,
-// and is not to be reached for again: `JSON.stringify` writes NaN, Infinity,
-// -Infinity and null all as `null`, and an own-keys walk writes every Date
-// (`!!timestamp`) and every Set (`!!set`) as the same empty object, so a real
-// value change in any of them is treated as comment-only. The colocated test pins each
-// of those cases as an executable delta.
-//
-// `uniqueKeys` and `strict` are passed even though both already default on, so a
-// future default change cannot silently loosen the check. Three conditions are
-// then UNVERIFIABLE rather than compared, each measured against the installed
-// `yaml` and each with a soundness probe standing on it:
-//
-//   - a stream holding more than one document, because this verifier does not
-//     attempt to align documents across two multi-document streams;
-//   - a document `parseAllDocuments` reports a diagnostic for, a duplicate key
-//     among them: it lands as a `doc.errors` entry rather than being resolved
-//     last-wins, so it fails closed the way a syntax error does;
-//   - a document that parses clean and cannot be materialized, because
-//     `doc.errors` does not report every unsafe materialization -- an
-//     unresolved alias throws out of `toJS()`, an alias-expansion bomb trips
-//     that package's own resource cap, and an anchor aliased inside its own
-//     value comes back as a circular object with no diagnostic at all, refused
-//     because nothing finite was read.
-//
-// Each refusal is a reason on that path's own verdict, so an unreadable file
-// leaves every other path in the run with a verdict. An empty or comment-only
-// stream is the one zero-document case, and canonicalizes to the same `null`
-// value an absent side does, so adding or deleting a comment-only YAML file
-// is treated as comment-only while adding or deleting one holding any value is
-// treated as an executable delta -- the same rule the source comparison applies below.
-//
-// A side that does not exist canonicalizes to the empty program, so adding or
-// deleting a comments-only file is treated as comment-only while adding or
-// deleting one holding any statement is treated as an executable delta. Rename
-// detection is off, so a rename arrives as a delete plus an add and is treated
-// as an executable delta on both paths -- a moved module is a changed program.
-//
-// File modes come off the diff record rather than the content, because a chmod
-// leaves the blob identical and any content comparison treats it as no change at
-// all. A path whose mode differs across two sides that both exist is
-// UNVERIFIABLE whatever its extension -- the markdown exemption is for content --
-// since the comparison reads programs and cannot say whether making one runnable
-// is harmless. Modes are compared only across sides that exist, so an addition or
-// a deletion, whose absent side is recorded as 000000, is not failed for that alone.
-//
-// Not covered: markdown content wholesale, including a fenced code block an
-// operator would copy out; and the normalizations the printer applies, each
-// measured and pinned by the test -- whitespace, blank lines, indentation, quote
-// style, ASI semicolons, trailing commas, and numeric literal form all compare
-// equal. The verdict is "no executable delta", not "the bytes match".
-//
-// Which tree the verdict is about: git runs in the worktree the process was
-// invoked from, never the one holding this file, and the run names that worktree
-// above its verdicts. The two are routinely different -- the primary checkout's
-// copy is called by absolute path while the branch under review sits in a linked
-// worktree -- and every ref short of a full sha is per-worktree, so binding to
-// the script's own location resolves HEAD, HEAD~n and ORIG_HEAD against a tree
-// nobody named and prints a confident verdict for a diff nobody asked about. A
-// full sha is the case that hides it: linked worktrees share one object
-// database, so those two resolve and diff identically from either tree.
-//
-// Commands run at that worktree's top level rather than at the invoking
-// directory, which is measured to matter in both directions: under
-// `diff.relative` a run from a subdirectory drops every changed path outside it
-// and reports a vacuous HOLDS, and the `--raw` paths are root-relative only when
-// the prefix is empty, which is what `git show <ref>:<path>` then reads.
-//
-// Exit codes: 0 the property holds; 1 it is violated or a changed path could not
-// be verified; 2 usage, an invocation from outside a git worktree, or a git
-// error; 3 the verifier failed its own soundness probes. The probes run before
-// every comparison so an attestation proves its soundness on the TypeScript and
-// `yaml` actually installed, rather than trusting that CI ran the test suite at
-// some point.
+// Exit codes: 0 the property holds; 1 it is violated or a changed path could
+// not be verified; 2 usage, an invocation from outside a git worktree, or a git
+// error; 3 the verifier failed its own soundness probes, which run before every
+// comparison against the installed TypeScript and `yaml`. Rationale and the
+// primitives measured wrong: docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { extname } from "node:path";
