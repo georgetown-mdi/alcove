@@ -29,6 +29,7 @@ import {
 import type { FileSyncOptions } from "../../src/config/connection";
 import { provisionModeOf } from "../../src/config/serverProvision";
 import { peerIdLengthRefusal } from "../../src/connection/fileSyncRendezvous";
+import { encodeRawInvitation } from "../utils/support";
 
 // Minimal valid configs used as bases for individual tests.
 const webrtcBase = {
@@ -1861,19 +1862,6 @@ const relayTerms = {
   linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
 };
 
-// The encoding without schema validation, so decodeInvitation is handed a
-// token encodeInvitation would refuse to produce.
-async function encodeUnvalidated(obj: unknown): Promise<string> {
-  const toBase64Url = (b: Uint8Array): string =>
-    btoa(Array.from(b, (byte) => String.fromCharCode(byte)).join(""))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  const bytes = new TextEncoder().encode(JSON.stringify(obj));
-  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(hash).slice(0, 4));
-}
-
 async function refusalOf(run: () => unknown): Promise<string> {
   try {
     await run();
@@ -1923,7 +1911,7 @@ test.each([
       encodeInvitation(token as Parameters<typeof encodeInvitation>[0]),
     ),
     await refusalOf(async () =>
-      decodeInvitation(await encodeUnvalidated(token)),
+      decodeInvitation(await encodeRawInvitation(token)),
     ),
   ];
   for (const refusal of refusals) {

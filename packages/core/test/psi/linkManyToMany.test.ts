@@ -44,7 +44,6 @@ async function withRelabeledRounds<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-import { PSIParticipant } from "../../src/psi/participant";
 import { linkViaPSI, linkViaSinglePassPSI } from "../../src/psi/link";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import {
@@ -60,13 +59,16 @@ import type { Metadata } from "../../src/config/metadata";
 import type { CSVRow } from "../../src/file";
 import type { AssociationTable } from "../../src/types";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
+import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
 import {
-  deviateListBody,
-  partFrame,
-  readPartFrame,
-} from "../utils/matchedListPartFrames";
+  deviatingInbound,
+  makeParticipant,
+  runCascade,
+  type CascadeRun,
+  type CascadeRunOptions,
+  type Deviation,
+} from "../utils/support";
 
 // Both-sided deduplicating matching at the cascade boundary: each party keeps a
 // value several of its own records hold, contributes it once, and attributes a
@@ -84,33 +86,6 @@ import {
 const psiLibrary = await PSI();
 
 type Keys = Array<Array<string | Set<string> | undefined>>;
-
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
-
-// Interpose on one party's INBOUND frames, leaving both parties' own behavior
-// untouched, so a deviation stands in for a partner that computes the protocol
-// correctly right up to the frame under test. Mirrors linkManyToOne.test.ts.
-type Deviation = (frame: unknown) => unknown;
-
-function deviatingInbound(
-  conn: MessageConnection,
-  deviate: Deviation,
-): MessageConnection {
-  return {
-    send: (data) => conn.send(data),
-    receive: async (timeoutMs?: number) =>
-      deviateListBody(await conn.receive(timeoutMs), deviate),
-    close: () => conn.close(),
-    setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
-  };
-}
 
 type MappedElement = { theirIndex: number; iteration: number };
 
@@ -136,69 +111,20 @@ function onMappedElementList(
   };
 }
 
-interface CascadeRun {
-  starter: AssociationTable | Error;
-  joiner: AssociationTable | Error;
-  // What each party's run reported through linkViaPSI's cluster callback, or
-  // undefined where it reported none.
-  starterClusters?: EntityClusterSummary;
-  joinerClusters?: EntityClusterSummary;
-}
-
-async function runCascade(
+// Width one for every key, as fanOutFreeBounds holds, even where a cell is a set.
+function manyToMany(
   starterKeys: Keys,
   joinerKeys: Keys,
-  deviate?: { party: "starter" | "joiner"; deviation: Deviation },
+  deviate?: CascadeRunOptions["deviate"],
 ): Promise<CascadeRun> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const connFor = (party: "starter" | "joiner", conn: MessageConnection) =>
-    deviate?.party === party ? deviatingInbound(conn, deviate.deviation) : conn;
-
-  const settle = (
-    run: Promise<AssociationTable>,
-  ): Promise<AssociationTable | Error> =>
-    run.then(
-      (table) => table,
-      (err: unknown) => err as Error,
-    );
-
-  const reported: Partial<Record<"starter" | "joiner", EntityClusterSummary>> =
-    {};
-  const starterRun = settle(
-    linkViaPSI(
-      { cardinality: "many-to-many" },
-      makeParticipant("starter"),
-      connFor("starter", starterConn),
-      starterKeys,
-      fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
-      -1,
-      undefined,
-      (summary) => (reported.starter = summary),
-    ),
-  );
-  const joinerRun = settle(
-    linkViaPSI(
-      { cardinality: "many-to-many" },
-      makeParticipant("joiner"),
-      connFor("joiner", joinerConn),
-      joinerKeys,
-      fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
-      -1,
-      undefined,
-      (summary) => (reported.joiner = summary),
-    ),
-  );
-  // A party that aborts leaves the other parked on a frame it will never send, so
-  // close the pipe once the party under test has settled.
-  const first = deviate?.party === "joiner" ? joinerRun : starterRun;
-  await first;
-  await starterConn.close();
-  return {
-    starter: await starterRun,
-    joiner: await joinerRun,
-    starterClusters: reported.starter,
-    joinerClusters: reported.joiner,
-  };
+  return runCascade({
+    library: psiLibrary,
+    cardinality: "many-to-many",
+    starterKeys,
+    joinerKeys,
+    keyWidths: starterKeys.map(() => 1),
+    deviate,
+  });
 }
 
 function expectTables(run: CascadeRun): [AssociationTable, AssociationTable] {
@@ -232,7 +158,7 @@ test("a value both sides hold twice links every one of its records to every one 
   // The whole of the widening: "E1" stands for a group of two on each side, so the
   // round contributes the 2x2 block of pairs between them rather than the one pair
   // one-to-one would take or the two a one-sided cardinality would.
-  const run = await runCascade([["E1", "E1", "E2"]], [["E1", "E1", "E2"]]);
+  const run = await manyToMany([["E1", "E1", "E2"]], [["E1", "E1", "E2"]]);
   const [starter, joiner] = expectTables(run);
 
   expect(starter).toStrictEqual([
@@ -250,7 +176,7 @@ test("groups of different sizes contribute their product", async () => {
   // The block is |group| x |partner group|, not the larger or the sum of the two:
   // two starter records and three joiner records on one value make six pairs, and
   // each party's own half repeats its rows the other's group size many times.
-  const run = await runCascade([["E1", "E1", "E2"]], [["E1", "E1", "E1"]]);
+  const run = await manyToMany([["E1", "E1", "E2"]], [["E1", "E1", "E1"]]);
   const [starter, joiner] = expectTables(run);
 
   expect(starter).toStrictEqual([
@@ -267,7 +193,7 @@ test("groups of different sizes contribute their product", async () => {
 test("the same block forms with the roles swapped", async () => {
   // Nothing in the rule is role-derived: the two datasets above change hands and
   // the pairing is the mirror image, each party's table the other's transposed.
-  const run = await runCascade([["E1", "E1", "E1"]], [["E1", "E1", "E2"]]);
+  const run = await manyToMany([["E1", "E1", "E1"]], [["E1", "E1", "E2"]]);
   const [starter, joiner] = expectTables(run);
 
   expect(starter).toStrictEqual([
@@ -289,7 +215,7 @@ test("two keys form two blocks, and no pair crosses them", async () => {
   // -- the cross-round accumulation the within-round rule does not take
   // (docs/spec/PROTOCOL.md, Multiplicity is within-round) -- would hold pairs
   // between {0,1} and {2,3}, and none is here.
-  const run = await runCascade(
+  const run = await manyToMany(
     [
       ["A", "A", undefined, undefined],
       [undefined, undefined, "B", "B"],
@@ -321,7 +247,7 @@ test("a partner record that matched on an earlier key does not join a later key'
   // so key 1 has nothing on the joiner's side to match. Both parties are
   // deduplicating and it makes no difference -- the rule is candidacy, not
   // uniqueness.
-  const run = await runCascade(
+  const run = await manyToMany(
     [
       ["S1", undefined],
       ["N1", "N1"],
@@ -345,7 +271,7 @@ test("each group expands in ascending record order, groups in the translated lis
   // for the joiner). Each party's returned list therefore arrives grouped by the
   // PARTNER's matched records; an implementation that expanded in any other order
   // reconstructs a different pairing and fails here.
-  const run = await runCascade([["Y", "X", "Y", "X"]], [["X", "Y", "X"]]);
+  const run = await manyToMany([["Y", "X", "Y", "X"]], [["X", "Y", "X"]]);
   const [starter, joiner] = expectTables(run);
 
   // The starter's "Y" rows (0 and 2) take the joiner's single "Y" row 1; its "X"
@@ -397,7 +323,7 @@ test("a chain across two keys never forms, and both parties cluster the same way
   // joiner's row 0 already left candidacy in the first round's pairs -- so the
   // starter's row 1 takes the joiner's row 1 instead, and the two clusters stay
   // apart.
-  const run = await runCascade(
+  const run = await manyToMany(
     [
       ["K1", undefined],
       [undefined, "K2"],
@@ -422,7 +348,7 @@ test("duplicates on both sides resolve to the same clusters on the two parties",
   // A mixed dataset: one value two starter records and three joiner records hold,
   // one held once on each side, one row of each party matching only on the second
   // key, and one row of each party never matching at all.
-  const run = await runCascade(
+  const run = await manyToMany(
     [
       ["E1", "E1", "E2", undefined, "S"],
       [undefined, undefined, undefined, "T", undefined],
@@ -474,7 +400,7 @@ test("a value m and n records hold writes m x n result rows and attests m x n", 
   // cardinality takes: one result row per association PAIR, one payload row per
   // matched RECORD, and a recorded result size that is the pair count. With m = 2
   // and n = 3 all three figures differ, so none of them can stand in for another.
-  const run = await runCascade([["E1", "E1"]], [["E1", "E1", "E1"]]);
+  const run = await manyToMany([["E1", "E1"]], [["E1", "E1", "E1"]]);
   const [starter, joiner] = expectTables(run);
 
   const [cluster] = entityClusters(starter);
@@ -565,7 +491,7 @@ async function runNonConformingStarter(
   values: Array<string>,
   report: StarterRoundReport = attributableMatches,
 ): Promise<void> {
-  const participant = makeParticipant("starter");
+  const participant = makeParticipant(psiLibrary, "starter");
   const { setup, permutation } = await participant.createServerSetup(values);
   await sendPsiSet(conn, setup);
   const request = await receivePsiSet(
@@ -698,7 +624,7 @@ for (const party of ["starter", "joiner"] as const) {
     deviation: Deviation,
     detail: RegExp,
   ): Promise<void> => {
-    const run = await runCascade(starterBlockKeys, joinerBlockKeys, {
+    const run = await manyToMany(starterBlockKeys, joinerBlockKeys, {
       party,
       deviation,
     });
@@ -822,7 +748,7 @@ for (const party of ["starter", "joiner"] as const) {
     deviation: Deviation,
     detail: RegExp,
   ): Promise<void> => {
-    const run = await runCascade(chainedStarterKeys, chainedJoinerKeys, {
+    const run = await manyToMany(chainedStarterKeys, chainedJoinerKeys, {
       party,
       deviation,
     });
@@ -835,7 +761,7 @@ for (const party of ["starter", "joiner"] as const) {
   test(`a widened round's chained cluster resolves on both parties${under}`, async () => {
     // The undeviated run, so each refusal below is read against a round that
     // otherwise completes.
-    const run = await runCascade(chainedStarterKeys, chainedJoinerKeys);
+    const run = await manyToMany(chainedStarterKeys, chainedJoinerKeys);
     const [starter, joiner] = expectTables(run);
     expect(pairsOf(starter, false)).toStrictEqual([
       [0, 0],
@@ -912,7 +838,7 @@ const twoRoundKeys: Keys = [
 ];
 
 test("two key rounds pair off a row each, and the run completes", async () => {
-  const run = await runCascade(twoRoundKeys, twoRoundKeys);
+  const run = await manyToMany(twoRoundKeys, twoRoundKeys);
   const [starter, joiner] = expectTables(run);
   expect(pairsOf(starter, false)).toStrictEqual([
     [0, 0],
@@ -927,7 +853,7 @@ for (const party of ["starter", "joiner"] as const) {
     // entry stays in range, the count is untouched, and each round on its own
     // still hands its single accepted group a row -- what refuses it is the
     // row standing in two rounds.
-    const run = await runCascade(twoRoundKeys, twoRoundKeys, {
+    const run = await manyToMany(twoRoundKeys, twoRoundKeys, {
       party,
       deviation: onMappedElementList(2, (list) => [
         list[0],
@@ -994,7 +920,7 @@ async function runSinglePass(
   const starterRun = settle(
     linkViaSinglePassPSI(
       { cardinality: "many-to-many" },
-      makeParticipant("starter"),
+      makeParticipant(psiLibrary, "starter"),
       deviation === undefined
         ? starterConn
         : deviatingInbound(starterConn, deviation),
@@ -1007,7 +933,7 @@ async function runSinglePass(
   const joinerRun = settle(
     linkViaSinglePassPSI(
       { cardinality: "many-to-many" },
-      makeParticipant("joiner"),
+      makeParticipant(psiLibrary, "joiner"),
       joinerConn,
       joinerKeys,
       fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),

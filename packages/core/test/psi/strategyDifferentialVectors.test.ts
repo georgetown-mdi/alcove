@@ -11,16 +11,13 @@ vi.mock("../../src/linkageTermsPolicy", async (importOriginal) => {
   return { ...original, candidateSetIsImplementedForStrategy: () => true };
 });
 
-import { PSIParticipant } from "../../src/psi/participant";
 import {
-  linkViaPSI,
   linkViaSinglePassPSI,
   type LinkageCardinality,
 } from "../../src/psi/link";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import {
   candidateSetBounds,
   declaredKeyWidths,
@@ -28,6 +25,7 @@ import {
   type Column,
 } from "../utils/candidateSetBounds";
 import { entityClusters } from "../../src/psi/entityClosure";
+import { makeParticipant, runCascade, tablesOf } from "../utils/support";
 
 // The closure step every reader of a both-sided table runs locally over it, so
 // a table asserted equal between the strategies is asserted equal in the
@@ -43,42 +41,21 @@ const clustersOf = (table: AssociationTable) => entityClusters(table);
 
 const psiLibrary = await PSI();
 
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
-
 type Tables = [AssociationTable, AssociationTable];
 
-async function runCascade(
+async function cascadeTables(
   cardinality: LinkageCardinality,
   starterKeys: Array<Column>,
   joinerKeys: Array<Column>,
 ): Promise<Tables> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
-  const [starter, joiner] = await Promise.all([
-    linkViaPSI(
-      { cardinality },
-      makeParticipant("starter"),
-      starterConn,
+  const { starter, joiner } = tablesOf(
+    await runCascade({
+      library: psiLibrary,
+      cardinality,
       starterKeys,
-      candidateSetBounds(joinerKeys[0].length, keyWidths),
-      -1,
-    ),
-    linkViaPSI(
-      { cardinality: mirrorCardinality(cardinality) },
-      makeParticipant("joiner"),
-      joinerConn,
       joinerKeys,
-      candidateSetBounds(starterKeys[0].length, keyWidths),
-      -1,
-    ),
-  ]);
+    }),
+  );
   return [sortAssociationTable(starter), sortAssociationTable(joiner)];
 }
 
@@ -92,7 +69,7 @@ async function runSinglePass(
   const [starter, joiner] = await Promise.all([
     linkViaSinglePassPSI(
       { cardinality },
-      makeParticipant("starter"),
+      makeParticipant(psiLibrary, "starter"),
       starterConn,
       starterKeys,
       {
@@ -104,7 +81,7 @@ async function runSinglePass(
     ),
     linkViaSinglePassPSI(
       { cardinality: mirrorCardinality(cardinality) },
-      makeParticipant("joiner"),
+      makeParticipant(psiLibrary, "joiner"),
       joinerConn,
       joinerKeys,
       {
@@ -127,7 +104,7 @@ async function expectStrategiesAgree(
   starterKeys: Array<Column>,
   joinerKeys: Array<Column>,
 ): Promise<Tables> {
-  const [cascadeStarter, cascadeJoiner] = await runCascade(
+  const [cascadeStarter, cascadeJoiner] = await cascadeTables(
     cardinality,
     starterKeys,
     joinerKeys,
@@ -141,7 +118,7 @@ async function expectStrategiesAgree(
   expect(singlePassJoiner).toStrictEqual(cascadeJoiner);
 
   const mirrored = mirrorCardinality(cardinality);
-  const [swappedCascadeStarter, swappedCascadeJoiner] = await runCascade(
+  const [swappedCascadeStarter, swappedCascadeJoiner] = await cascadeTables(
     mirrored,
     joinerKeys,
     starterKeys,

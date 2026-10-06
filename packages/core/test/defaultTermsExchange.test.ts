@@ -6,7 +6,7 @@ import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
 import { referencedLinkageFieldNames } from "../src/config/linkageTermsSchema";
 import { termsDeclareCandidateSet } from "../src/fanOutFunctions";
 import { entityClusters } from "../src/psi/entityClosure";
-import { prepareForExchange, runExchange } from "../src/exchange";
+import { runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
 
 import type { ExchangeResult } from "../src/exchange";
@@ -16,6 +16,7 @@ import type {
   LinkageKeyElement,
   LinkageTerms,
 } from "../src/config/linkageTermsSchema";
+import { prepared } from "./utils/support";
 
 // The terms Alcove ships, driven through the exchange boundary: the fields
 // and keys getDefaultLinkageTerms emits, under the strategy it emits them
@@ -294,19 +295,6 @@ const counterpartRows = [
   asRow(baseValues("b", UNRELATED_RECORD)),
 ];
 
-function prepared(
-  terms: LinkageTerms,
-  identity: string,
-  rows: Array<Record<string, string>>,
-) {
-  return prepareForExchange(
-    { linkageTerms: terms },
-    identity,
-    rows,
-    columnNames,
-  );
-}
-
 /** One exchange between the two parties over `terms`, each holding its own
  * rows, both entitled to output. */
 async function runDefaultTermsExchange(
@@ -319,13 +307,19 @@ async function runDefaultTermsExchange(
     runExchange(
       connAnchor,
       "initiator",
-      prepared(terms("Party A"), "Party A", anchor),
+      prepared("Party A", anchor, {
+        linkageTerms: terms("Party A"),
+        columns: columnNames,
+      }),
       { psiLibrary },
     ),
     runExchange(
       connCounterpart,
       "responder",
-      prepared(terms("Party B"), "Party B", counterpart),
+      prepared("Party B", counterpart, {
+        linkageTerms: terms("Party B"),
+        columns: columnNames,
+      }),
       { psiLibrary },
     ),
   ]);

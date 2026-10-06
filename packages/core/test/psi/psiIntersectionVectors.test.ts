@@ -4,13 +4,10 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { PSIParticipant } from "../../src/psi/participant";
-import { linkViaPSI } from "../../src/psi/link";
-import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { makeParticipant, runCascade, tablesOf } from "../utils/support";
 
 // Resolved intersection-and-association known-answer anchor for the vendored
 // @openmined/psi.js engine: replays every scenario in psi-intersection-vectors.json
@@ -52,8 +49,7 @@ interface LinkVector {
   name: string;
   description: string;
   method: "linkViaPSI";
-  // The STARTER's resolved label; the joiner runs its mirror (see
-  // mirrorCardinality below).
+  // The STARTER's resolved label; the joiner runs its mirror.
   cardinality: Cardinality;
   // undefined inputs (the no-key sentinel) serialize as JSON null.
   starterKeys: Array<Array<string | null>>;
@@ -77,15 +73,6 @@ const { vectors }: IntersectionVectors = JSON.parse(
 
 const psiLibrary = await PSI();
 
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role,
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
-
 // Both parties run concurrently over one in-memory pipe, then each side's raw
 // table is normalized the same way the source inline tests do: the starter sorted
 // ascending by its local index, the joiner sorted ascending by its partner index,
@@ -95,11 +82,14 @@ async function runIdentify(
 ): Promise<[AssociationTable, AssociationTable]> {
   const [starterConn, joinerConn] = createMessagePipe();
   const [starterResult, joinerResult] = await Promise.all([
-    makeParticipant("starter").identifyIntersection(
+    makeParticipant(psiLibrary, "starter").identifyIntersection(
       starterConn,
       v.starterInputs,
     ),
-    makeParticipant("joiner").identifyIntersection(joinerConn, v.joinerInputs),
+    makeParticipant(psiLibrary, "joiner").identifyIntersection(
+      joinerConn,
+      v.joinerInputs,
+    ),
   ]);
   return [
     sortAssociationTable(starterResult),
@@ -112,50 +102,18 @@ const withUndefined = (
 ): Array<Array<string | undefined>> =>
   rounds.map((round) => round.map((value) => value ?? undefined));
 
-// The partner's view of the same exchange. A cardinality label is read from the
-// party that resolves it, so the two parties of one exchange hold mirror labels
-// (docs/spec/PROTOCOL.md, Deduplicating cardinalities) and a vector pins the
-// starter's; mirrors the generator's own helper.
-function mirrorCardinality(cardinality: Cardinality): Cardinality {
-  return cardinality === "many-to-one"
-    ? "one-to-many"
-    : cardinality === "one-to-many"
-      ? "many-to-one"
-      : cardinality;
-}
-
 async function runLink(
   v: LinkVector,
 ): Promise<[AssociationTable, AssociationTable]> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const [starterResult, joinerResult] = await Promise.all([
-    linkViaPSI(
-      { cardinality: v.cardinality },
-      makeParticipant("starter"),
-      starterConn,
-      withUndefined(v.starterKeys),
-      fanOutFreeBounds(
-        withUndefined(v.starterKeys).length,
-        v.joinerKeys[0].length,
-      ),
-      -1,
-    ),
-    linkViaPSI(
-      { cardinality: mirrorCardinality(v.cardinality) },
-      makeParticipant("joiner"),
-      joinerConn,
-      withUndefined(v.joinerKeys),
-      fanOutFreeBounds(
-        withUndefined(v.joinerKeys).length,
-        v.starterKeys[0].length,
-      ),
-      -1,
-    ),
-  ]);
-  return [
-    sortAssociationTable(starterResult),
-    sortAssociationTable(joinerResult, true),
-  ];
+  const { starter, joiner } = tablesOf(
+    await runCascade({
+      library: psiLibrary,
+      cardinality: v.cardinality,
+      starterKeys: withUndefined(v.starterKeys),
+      joinerKeys: withUndefined(v.joinerKeys),
+    }),
+  );
+  return [sortAssociationTable(starter), sortAssociationTable(joiner, true)];
 }
 
 test("the fixture covers every scenario", () => {

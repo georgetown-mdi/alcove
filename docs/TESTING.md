@@ -711,8 +711,10 @@ they exercise.
 A helper used by one group of tests moves with that group when the file
 splits. A helper used across a workspace's own test tree lives in that
 workspace's test tree -- `packages/core/test/utils/`, `apps/cli/test/`,
-`apps/web/test/utils/` are the three today. A helper more than one workspace
-needs takes one of the two channels documented in
+`apps/web/test/utils/` are the three today. In core,
+`packages/core/test/utils/support.ts` holds the helpers core's suites
+share, so a suite imports them rather than defining its own copy. A
+helper more than one workspace needs takes one of the two channels documented in
 [Shared test material](#shared-test-material) below -- `@alcove/core/testing`
 or `@alcove/testkit` -- whose admission rule lives there, not here; see also
 [cross-workspace-test-material.md](notes/cross-workspace-test-material.md).

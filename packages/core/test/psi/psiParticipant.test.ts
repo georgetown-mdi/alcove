@@ -28,24 +28,10 @@ import { asOnePsiSetPart } from "../utils/psiSetPart";
 import { PSI_SET_PART_HEADER_BYTES } from "../../src/psi/psiSetParts";
 import { countDeclaredPsiElements } from "../../src/connection/psiElementScan";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
+import type { AssociationTable } from "../../src/types";
+import { makeParticipant } from "../utils/support";
 
 const psiLibrary = await PSI();
-
-const [serverConn, clientConn] = createMessagePipe();
-
-const server = new PSIParticipant(
-  "server",
-  psiLibrary,
-  { role: "starter", verbose: 0 },
-  UNBOUNDED_PSI_ELEMENTS,
-);
-
-const client = new PSIParticipant(
-  "client",
-  psiLibrary,
-  { role: "joiner", verbose: 0 },
-  UNBOUNDED_PSI_ELEMENTS,
-);
 
 const serverData = [
   "Alice",
@@ -59,41 +45,42 @@ const serverData = [
 
 const clientData = ["Carol", "Elizabeth", "Henry"];
 
-let [serverResult, clientResult] = await (async () => {
-  return await Promise.all([
-    server.identifyIntersection(serverConn, serverData),
-    client.identifyIntersection(clientConn, clientData),
-  ]);
-})();
+// One identification over a fresh pipe, the server's call started first or
+// second, returning [server table, client table] in the order the assertions
+// align: the server's sorted by its own index, the client's by its partner's.
+async function identify(
+  serverFirst: boolean,
+): Promise<[AssociationTable, AssociationTable]> {
+  const [serverConn, clientConn] = createMessagePipe();
+  const server = makeParticipant(psiLibrary, "starter");
+  const client = makeParticipant(psiLibrary, "joiner");
+  const runServer = () => server.identifyIntersection(serverConn, serverData);
+  const runClient = () => client.identifyIntersection(clientConn, clientData);
+  const [serverResult, clientResult] = serverFirst
+    ? await Promise.all([runServer(), runClient()])
+    : (await Promise.all([runClient(), runServer()])).reverse();
+  return [
+    sortAssociationTable(serverResult),
+    sortAssociationTable(clientResult, true),
+  ];
+}
 
-serverResult = sortAssociationTable(serverResult);
-clientResult = sortAssociationTable(clientResult, true);
-
-test("server and client yield identical results", () => {
-  expect(serverResult[0]).toStrictEqual(clientResult[1]);
-  expect(serverResult[1]).toStrictEqual(clientResult[0]);
-});
-
-test("psi yields correct results", () => {
+function expectCorrectMirroredTables([serverResult, clientResult]: [
+  AssociationTable,
+  AssociationTable,
+]): void {
   expect(serverResult[0]).toStrictEqual([2, 4]);
   expect(serverResult[1]).toStrictEqual([0, 1]);
-});
-
-[clientResult, serverResult] = await (async () => {
-  return await Promise.all([
-    client.identifyIntersection(clientConn, clientData),
-    server.identifyIntersection(serverConn, serverData),
-  ]);
-})();
-
-serverResult = sortAssociationTable(serverResult);
-clientResult = sortAssociationTable(clientResult, true);
-
-test("order doesn't matter", () => {
   expect(serverResult[0]).toStrictEqual(clientResult[1]);
   expect(serverResult[1]).toStrictEqual(clientResult[0]);
-  expect(serverResult[0]).toStrictEqual([2, 4]);
-  expect(serverResult[1]).toStrictEqual([0, 1]);
+}
+
+test("server and client yield identical, correct results", async () => {
+  expectCorrectMirroredTables(await identify(true));
+});
+
+test("order doesn't matter", async () => {
+  expectCorrectMirroredTables(await identify(false));
 });
 
 // --- association-table wire message: pathological-count bound -----------------

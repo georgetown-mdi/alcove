@@ -14,7 +14,12 @@ import type { Algorithm } from "../../src/types";
 import type { BuiltExchangeRecord } from "../../src/records/exchangeRecord";
 import type { Output } from "../../src/config/linkageTermsSchema";
 import type { ExchangeResult } from "../../src/exchange";
-import type { Metadata } from "../../src/config/metadata";
+import {
+  firstNameAndSentNote,
+  firstNameTerms,
+  prepared,
+  withSentNote,
+} from "../utils/support";
 
 // End-to-end coverage of the record boundary in runExchange: two parties run
 // a full exchange over an in-memory pipe (real PSI), and we assert the
@@ -24,19 +29,6 @@ import type { Metadata } from "../../src/config/metadata";
 // in exchangeRecord.test.ts.
 
 const psiLibrary = await PSI();
-
-// firstName-only terms: the default linkage-key templates all need SSN/DOB, so
-// none survive filtering for a firstName-only dataset; an explicit key gives
-// both parties valid, matching terms. (Same approach as the web browser suite.)
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
 
 const serverRows = [
   { first_name: "Alice", note: "s-a" },
@@ -50,29 +42,6 @@ const clientRows = [
   { first_name: "Henry", note: "c-h" },
 ];
 
-// A party sends only the columns its metadata declares as sent.
-const firstNameAndSentNote: Metadata = [
-  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
-  { name: "note", type: "other", role: "payload", isPayload: true },
-];
-
-function prepared(
-  identity: string,
-  output: Output,
-  rows: typeof serverRows,
-  linkageStrategy: "cascade" | "single-pass" = "cascade",
-) {
-  return prepareForExchange(
-    {
-      metadata: firstNameAndSentNote,
-      linkageTerms: { ...firstNameTerms, identity, output, linkageStrategy },
-    },
-    identity,
-    rows,
-    ["first_name", "note"],
-  );
-}
-
 /** Run a full exchange between an initiator and a responder over a pipe. */
 async function runBoth(
   outInitiator: Output,
@@ -84,13 +53,19 @@ async function runBoth(
     runExchange(
       connInitiator,
       "initiator",
-      prepared("Initiator Co", outInitiator, clientRows, linkageStrategy),
+      prepared("Initiator Co", clientRows, {
+        ...withSentNote,
+        terms: { output: outInitiator, linkageStrategy },
+      }),
       { psiLibrary },
     ),
     runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", outResponder, serverRows, linkageStrategy),
+      prepared("Responder Co", serverRows, {
+        ...withSentNote,
+        terms: { output: outResponder, linkageStrategy },
+      }),
       { psiLibrary },
     ),
   ]);
@@ -108,8 +83,11 @@ test("run boundary: an algorithm with no run path is refused before anything goe
   // prepareForExchange could -- is refused at the run boundary, so no round
   // runs under whichever path the dispatch would otherwise fall through to,
   // and no record attests a disclosure the run did not make.
-  const both: Output = { expectsOutput: true, shareWithPartner: true };
-  const unimplementedPrepared = prepared("Initiator Co", both, clientRows);
+  const unimplementedPrepared = prepared(
+    "Initiator Co",
+    clientRows,
+    withSentNote,
+  );
   unimplementedPrepared.linkageTerms = {
     ...unimplementedPrepared.linkageTerms,
     // The enum admits no such member, so the cast reaches the shape a member
@@ -143,8 +121,7 @@ test("run boundary: a psi-c run whose metadata transmits a column is refused bef
   // that metadata is refused by the metadata rule at the run boundary: no
   // linkage runs and no record is produced. The refusal fires before the
   // first await, so runExchange rejects without a partner on the pipe.
-  const both: Output = { expectsOutput: true, shareWithPartner: true };
-  const psiCPrepared = prepared("Initiator Co", both, clientRows);
+  const psiCPrepared = prepared("Initiator Co", clientRows, withSentNote);
   psiCPrepared.linkageTerms = {
     ...psiCPrepared.linkageTerms,
     algorithm: "psi-c",
@@ -330,32 +307,6 @@ test("both-output: both records agree on terms and hold the result size", async 
 
 // --- The resolved matching, on the outcome and in the record -----------------
 
-// The differing pair: one party declares deduplicate and its partner does not,
-// which is the shape an invitation's own declaration binds one side of and
-// nothing binds the other. Both parties must be entitled to output, the
-// declaring party by rule (docs/spec/PROTOCOL.md, A deduplicating party must
-// receive the output).
-function preparedDeclaring(
-  identity: string,
-  rows: typeof serverRows,
-  deduplicate: boolean,
-) {
-  return prepareForExchange(
-    {
-      metadata: firstNameAndSentNote,
-      linkageTerms: {
-        ...firstNameTerms,
-        identity,
-        deduplicate,
-        output: { expectsOutput: true, shareWithPartner: true },
-      },
-    },
-    identity,
-    rows,
-    ["first_name", "note"],
-  );
-}
-
 test("the differing pair resolves one matching, mirrored, whichever seat declares it", async () => {
   // Run it both ways round so neither the handshake role nor the seat decides
   // what a party reads: what each party states is its own value, its partner's,
@@ -366,13 +317,19 @@ test("the differing pair resolves one matching, mirrored, whichever seat declare
       runExchange(
         connInitiator,
         "initiator",
-        preparedDeclaring("Initiator Co", clientRows, initiatorDeduplicates),
+        prepared("Initiator Co", clientRows, {
+          ...withSentNote,
+          terms: { deduplicate: initiatorDeduplicates },
+        }),
         { psiLibrary },
       ),
       runExchange(
         connResponder,
         "responder",
-        preparedDeclaring("Responder Co", serverRows, !initiatorDeduplicates),
+        prepared("Responder Co", serverRows, {
+          ...withSentNote,
+          terms: { deduplicate: !initiatorDeduplicates },
+        }),
         { psiLibrary },
       ),
     ]);
@@ -536,20 +493,19 @@ test("a completed run whose owed record could not be built states the loss on it
   // accounting's missing entry from the run in hand rather than from an absent
   // record. The responder's empty retention disposition is past what the record
   // schema allows, so its build throws on a run that completed and disclosed.
-  const both: Output = { expectsOutput: true, shareWithPartner: true };
   const [connInitiator, connResponder] = createMessagePipe();
   const [initiator, responder] = await Promise.all([
     runExchange(
       connInitiator,
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows, withSentNote),
       { psiLibrary },
     ),
     runExchange(
       connResponder,
       "responder",
       {
-        ...prepared("Responder Co", both, serverRows),
+        ...prepared("Responder Co", serverRows, withSentNote),
         retentionDisposition: "",
       },
       { psiLibrary },
@@ -683,7 +639,7 @@ test("single-output: the no-output helper is sent no payload (one-sided disclosu
 const bothOut: Output = { expectsOutput: true, shareWithPartner: true };
 
 test("a receive list the partner's stated send differs from is refused at the terms exchange", async () => {
-  const initiatorPrepared = prepared("Initiator Co", bothOut, clientRows);
+  const initiatorPrepared = prepared("Initiator Co", clientRows, withSentNote);
   initiatorPrepared.linkageTerms = {
     ...initiatorPrepared.linkageTerms,
     payload: { receive: [{ name: "a_column_not_sent" }] },
@@ -694,7 +650,7 @@ test("a receive list the partner's stated send differs from is refused at the te
     runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", bothOut, serverRows),
+      prepared("Responder Co", serverRows, withSentNote),
       { psiLibrary },
     ),
   ]);
@@ -706,7 +662,7 @@ test("a receive list the partner's stated send differs from is refused at the te
 });
 
 test("a receive list matching the partner's stated send completes", async () => {
-  const initiatorPrepared = prepared("Initiator Co", bothOut, clientRows);
+  const initiatorPrepared = prepared("Initiator Co", clientRows, withSentNote);
   initiatorPrepared.linkageTerms = {
     ...initiatorPrepared.linkageTerms,
     payload: { receive: [{ name: "note" }] },
@@ -717,7 +673,7 @@ test("a receive list matching the partner's stated send completes", async () => 
     runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", bothOut, serverRows),
+      prepared("Responder Co", serverRows, withSentNote),
       { psiLibrary },
     ),
   ]);
@@ -759,13 +715,19 @@ test("the unconditional count exchange composes into a deadlock-free full exchan
       runExchange(
         connTieInit,
         "initiator",
-        prepared("Initiator Co", both, clientRows, strategy),
+        prepared("Initiator Co", clientRows, {
+          ...withSentNote,
+          terms: { linkageStrategy: strategy },
+        }),
         { psiLibrary },
       ),
       runExchange(
         connTieResp,
         "responder",
-        prepared("Responder Co", both, equalRows, strategy),
+        prepared("Responder Co", equalRows, {
+          ...withSentNote,
+          terms: { linkageStrategy: strategy },
+        }),
         { psiLibrary },
       ),
     ]);
@@ -869,8 +831,11 @@ test("a prepared exchange assembled past that stop writes no record", async () =
   // supply. The record build is where that is caught: this party contributed no
   // linkage field the agreed keys reference, so it writes no record and reports
   // the loss, while the run's result and the partner's record stand.
-  const both: Output = { expectsOutput: true, shareWithPartner: true };
-  const contributingNothing = prepared("Initiator Co", both, clientRows);
+  const contributingNothing = prepared(
+    "Initiator Co",
+    clientRows,
+    withSentNote,
+  );
   contributingNothing.dataset = new StandardizedDataset(
     [],
     contributingNothing.linkageTerms.linkageKeys,
@@ -883,7 +848,7 @@ test("a prepared exchange assembled past that stop writes no record", async () =
     runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", both, serverRows),
+      prepared("Responder Co", serverRows, withSentNote),
       { psiLibrary },
     ),
   ]);

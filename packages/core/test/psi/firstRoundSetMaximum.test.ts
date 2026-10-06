@@ -5,7 +5,6 @@ import { RoundSetLimitError, UsageError } from "../../src/errors";
 import {
   assertFirstRoundWithinSetMaximum,
   roundOneSetOverMaximumMessage,
-  prepareForExchange,
 } from "../../src/exchange";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
@@ -16,6 +15,7 @@ import {
 
 import type { LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
+import { prepared } from "../utils/support";
 
 // The first-round check every channel runs reads the prepared dataset,
 // before any connection. The per-set maximum is lowered so the boundary is
@@ -37,25 +37,10 @@ function preparedWith(
   strategy: LinkageStrategy = "cascade",
   deduplicate = false,
 ) {
-  return prepareForExchange(
-    {
-      linkageTerms: {
-        version: "1.0.0",
-        date: "2026-01-01",
-        algorithm: "psi",
-        deduplicate,
-        linkageStrategy: strategy,
-        identity: "Tester",
-        output: { expectsOutput: true, shareWithPartner: true },
-        linkageFields: [{ name: "firstName", type: "first_name" }],
-        linkageKeys: [
-          { name: "firstName", elements: [{ field: "firstName" }] },
-        ],
-      },
-    },
+  return prepared(
     "Tester",
     firstNames.map((name) => ({ first_name: name })),
-    ["first_name"],
+    { terms: { linkageStrategy: strategy, deduplicate } },
   );
 }
 

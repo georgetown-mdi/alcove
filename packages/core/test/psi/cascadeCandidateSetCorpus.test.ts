@@ -11,15 +11,12 @@ vi.mock("../../src/linkageTermsPolicy", async (importOriginal) => {
   return { ...original, candidateSetIsImplementedForStrategy: () => true };
 });
 
-import { PSIParticipant } from "../../src/psi/participant";
 import {
-  linkViaPSI,
   linkViaSinglePassPSI,
   type LinkageCardinality,
 } from "../../src/psi/link";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { recordingConnection } from "../utils/recordingConnection";
 import {
   candidateSetBounds,
@@ -28,6 +25,7 @@ import {
   type Column,
 } from "../utils/candidateSetBounds";
 import { readPartFrame } from "../utils/matchedListPartFrames";
+import { makeParticipant, runCascade, settleWithin } from "../utils/support";
 
 // The conformance corpus over ragged and fanned-out inputs together that
 // docs/spec/PROTOCOL.md requires (What the cascade realization owes), asserting
@@ -47,15 +45,6 @@ const psiLibrary = await PSI();
 // over at the row counts and alphabet below, and to keep reaching them as the
 // generator is widened.
 const CORPUS_SIZE = 700;
-
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -190,23 +179,6 @@ function holdsMappedElements(sent: unknown): boolean {
 // to catch, so each one is bounded rather than left to stall the whole run.
 const PARTY_SETTLE_MS = 20_000;
 
-function settled<T>(run: Promise<T>, label: string): Promise<T | unknown> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const stalled = new Promise<unknown>((resolve) => {
-    timer = setTimeout(
-      () => resolve(new Error(`${label} never settled`)),
-      PARTY_SETTLE_MS,
-    );
-  });
-  return Promise.race([
-    run.then(
-      (value) => value,
-      (err: unknown) => err,
-    ),
-    stalled,
-  ]).finally(() => clearTimeout(timer));
-}
-
 interface CascadeOutcome {
   readonly starter: unknown;
   readonly joiner: unknown;
@@ -214,42 +186,29 @@ interface CascadeOutcome {
   readonly joinerSent: Array<unknown>;
 }
 
-async function runCascade(fixture: Fixture): Promise<CascadeOutcome> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const starterRecorder = recordingConnection(starterConn);
-  const joinerRecorder = recordingConnection(joinerConn);
-  const keyWidths = declaredKeyWidths(fixture.starterKeys, fixture.joinerKeys);
-  const [starter, joiner] = await Promise.all([
-    settled(
-      linkViaPSI(
-        { cardinality: fixture.cardinality },
-        makeParticipant("starter"),
-        starterRecorder.conn,
-        fixture.starterKeys,
-        candidateSetBounds(fixture.joinerKeys[0].length, keyWidths),
-        -1,
-      ),
-      "the cascade starter",
-    ),
-    settled(
-      linkViaPSI(
-        { cardinality: mirrorCardinality(fixture.cardinality) },
-        makeParticipant("joiner"),
-        joinerRecorder.conn,
-        fixture.joinerKeys,
-        candidateSetBounds(fixture.starterKeys[0].length, keyWidths),
-        -1,
-      ),
-      "the cascade joiner",
-    ),
-  ]);
-  await starterConn.close();
-  return {
-    starter,
-    joiner,
-    starterSent: starterRecorder.sent,
-    joinerSent: joinerRecorder.sent,
-  };
+async function cascadeOutcome(fixture: Fixture): Promise<CascadeOutcome> {
+  let starterSent: Array<unknown> = [];
+  let joinerSent: Array<unknown> = [];
+  const run = await runCascade({
+    library: psiLibrary,
+    cardinality: fixture.cardinality,
+    starterKeys: fixture.starterKeys,
+    joinerKeys: fixture.joinerKeys,
+    wrap: {
+      starter: (conn) => {
+        const recorder = recordingConnection(conn);
+        starterSent = recorder.sent;
+        return recorder.conn;
+      },
+      joiner: (conn) => {
+        const recorder = recordingConnection(conn);
+        joinerSent = recorder.sent;
+        return recorder.conn;
+      },
+    },
+    stallMs: PARTY_SETTLE_MS,
+  });
+  return { starter: run.starter, joiner: run.joiner, starterSent, joinerSent };
 }
 
 async function runSinglePass(
@@ -258,10 +217,10 @@ async function runSinglePass(
   const [starterConn, joinerConn] = createMessagePipe();
   const keyWidths = declaredKeyWidths(fixture.starterKeys, fixture.joinerKeys);
   const [starter, joiner] = await Promise.all([
-    settled(
+    settleWithin(
       linkViaSinglePassPSI(
         { cardinality: fixture.cardinality },
-        makeParticipant("starter"),
+        makeParticipant(psiLibrary, "starter"),
         starterConn,
         fixture.starterKeys,
         {
@@ -272,11 +231,12 @@ async function runSinglePass(
         -1,
       ),
       "the single-pass starter",
+      PARTY_SETTLE_MS,
     ),
-    settled(
+    settleWithin(
       linkViaSinglePassPSI(
         { cardinality: mirrorCardinality(fixture.cardinality) },
-        makeParticipant("joiner"),
+        makeParticipant(psiLibrary, "joiner"),
         joinerConn,
         fixture.joinerKeys,
         {
@@ -287,6 +247,7 @@ async function runSinglePass(
         -1,
       ),
       "the single-pass joiner",
+      PARTY_SETTLE_MS,
     ),
   ]);
   await starterConn.close();
@@ -309,8 +270,8 @@ test(
 
     for (const fixture of randomCorpus(CORPUS_SIZE)) {
       const where = describeFixture(fixture);
-      const cascade = await runCascade(fixture);
-      const mirrored = await runCascade(mirroredAssignment(fixture));
+      const cascade = await cascadeOutcome(fixture);
+      const mirrored = await cascadeOutcome(mirroredAssignment(fixture));
       if (cascade.starter instanceof Error || cascade.joiner instanceof Error) {
         problems.push(
           `${where}: starter ${reportOf(cascade.starter)}, joiner ` +

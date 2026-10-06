@@ -45,14 +45,13 @@ import {
   driveUntilError,
   LOCK_HELLO_BODY,
   makeConnectedConn,
-  makeMockClient,
   makeRendezvousPair,
   makeRetainConn,
   messageLoopInternals,
   responsibleFilesOf,
   runPoller,
-  type MockClientOptions,
 } from "../utils/fileSyncConnectionFixture";
+import { makeMockClient, type MockClientOptions } from "../utils/support";
 
 function objectMessage(payload: unknown, seq = 0): Buffer {
   return serializeFileSyncMessage(

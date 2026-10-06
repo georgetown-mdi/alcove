@@ -6,13 +6,11 @@ import {
   serializeFileSyncMessage,
   MESSAGE_TYPE_OBJECT,
 } from "../../src/connection/fileSyncFraming";
-import type {
-  FileTransportClient,
-  FileInfo,
-} from "../../src/connection/fileSyncConnection";
+import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
 import { fromEventConnection } from "../../src/connection/messageConnection";
 import { withCapturedLogs } from "../../src/testing";
 
+import { makeMockClient } from "../utils/support";
 import { expectRejectionKind } from "../utils/expectRejection";
 
 // These tests exercise `fromEventConnection` over the *real* FileSyncConnection
@@ -21,85 +19,6 @@ import { expectRejectionKind } from "../utils/expectRejection";
 // the bridge faithfully exposes the transport's actual behaviours - polled
 // data delivery, asynchronous poll-loop errors, send-time failures, and the
 // pre-attach buffered-error path - through the pull-based interface.
-
-// Minimal in-memory FileTransportClient. Mirrors the harness in
-// fileSyncConnection.test.ts; only the methods the poll/send/close paths touch
-// need real behaviour.
-function makeMockClient(): {
-  client: FileTransportClient;
-  files: Map<string, Buffer>;
-} {
-  const files = new Map<string, Buffer>();
-
-  const client: FileTransportClient = {
-    connect: async () => {},
-    end: async () => {},
-    // Reflect the in-memory store so send()/poll(), which detect files via
-    // list() pattern scans, observe the same state get() does.
-    list: async (dir: string): Promise<FileInfo[]> => {
-      const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-      return [...files.entries()]
-        .filter(
-          ([p]) =>
-            p.startsWith(prefix) && !p.slice(prefix.length).includes("/"),
-        )
-        .map(([p, buf]) => ({
-          name: p.slice(prefix.length),
-          modifyTime: 0,
-          size: buf.length,
-        }));
-    },
-    get: async (path: string) => {
-      const data = files.get(path);
-      if (!data) throw new Error(`${path}: not found`);
-      return data as Buffer<ArrayBufferLike>;
-    },
-    put: async (src, dest) => {
-      if (Buffer.isBuffer(src)) {
-        files.set(dest, src);
-      } else if (typeof src === "string") {
-        // A string src is a local file PATH to a real transport, never an
-        // in-memory body; reject it as the real transports do (and as send()
-        // never produces one) rather than storing it and masking a regression.
-        throw new Error(
-          "put expects a Buffer or chunk-list body, not a string",
-        );
-      } else if (Array.isArray(src)) {
-        // A [header, payload] chunk list from send(): join the parts into the
-        // on-disk bytes a real transport writes back-to-back.
-        files.set(dest, Buffer.concat(src));
-      } else {
-        const chunks: Buffer[] = [];
-        for await (const chunk of src) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        }
-        files.set(dest, Buffer.concat(chunks));
-      }
-    },
-    delete: async (path: string) => {
-      files.delete(path);
-    },
-    safeDelete: async (path: string) => {
-      files.delete(path);
-    },
-    rename: async (from: string, to: string) => {
-      const data = files.get(from);
-      if (data === undefined) throw new Error(`${from}: no such file`);
-      files.delete(from);
-      files.set(to, data);
-    },
-    createExclusive: async (path: string) => {
-      if (files.has(path))
-        throw Object.assign(new Error(`${path}: file already exists`), {
-          code: "EEXIST",
-        });
-      files.set(path, Buffer.alloc(0));
-    },
-    exists: async (path: string) => files.has(path),
-  };
-
-  return { client, files };
-}
 
 // Put a connection into the post-synchronize state without running the
 // handshake, so the poll/send paths can be driven directly.

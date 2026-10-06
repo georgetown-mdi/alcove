@@ -17,6 +17,7 @@ import { summarizeInvitation } from "../../src/consent/invitationSummary";
 
 import type { InvitationToken } from "../../src/config/invitation";
 import type { WebRTCConnectionConfig } from "../../src/config/connection";
+import { encodeRawInvitation } from "../utils/support";
 
 const VALID_SECRET = "A".repeat(43);
 
@@ -44,19 +45,6 @@ function tokenWithEndpoint(endpoint: unknown): InvitationToken {
     sharedSecret: VALID_SECRET,
     connectionEndpoint: endpoint as InvitationToken["connectionEndpoint"],
   };
-}
-
-// The encoding without schema validation, so a decode test can hand
-// decodeInvitation a token encodeInvitation would refuse to produce.
-async function encodeRaw(obj: unknown): Promise<string> {
-  const toBase64Url = (b: Uint8Array): string =>
-    btoa(Array.from(b, (byte) => String.fromCharCode(byte)).join(""))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  const bytes = new TextEncoder().encode(JSON.stringify(obj));
-  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(hash).slice(0, 4));
 }
 
 describe("the invitation's relay locator", () => {
@@ -105,9 +93,9 @@ describe("the invitation's relay locator", () => {
         host: "signal.example",
         relay,
       });
-      await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-        /relay may carry only turn and stun url lists/,
-      );
+      await expect(
+        decodeInvitation(await encodeRawInvitation(token)),
+      ).rejects.toThrow(/relay may carry only turn and stun url lists/);
       await expect(encodeInvitation(token)).rejects.toThrow(ZodError);
     },
   );
@@ -126,9 +114,9 @@ describe("the invitation's relay locator", () => {
         ],
       },
     });
-    await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-      ZodError,
-    );
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(ZodError);
   });
 
   test.each([
@@ -156,9 +144,9 @@ describe("the invitation's relay locator", () => {
       host: "signal.example",
       relay,
     });
-    await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-      ZodError,
-    );
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(ZodError);
   });
 
   test("a url of exactly the length bound decodes, and one code unit over is refused", async () => {
@@ -169,16 +157,16 @@ describe("the invitation's relay locator", () => {
       host: "signal.example",
       relay: { turn: [urlOfLength(MAX_RELAY_LOCATOR_URL_LENGTH)] },
     });
-    const decoded = await decodeInvitation(await encodeRaw(atBound));
+    const decoded = await decodeInvitation(await encodeRawInvitation(atBound));
     expect(decoded.connectionEndpoint).toEqual(atBound.connectionEndpoint);
     const overBound = tokenWithEndpoint({
       channel: "webrtc",
       host: "signal.example",
       relay: { turn: [urlOfLength(MAX_RELAY_LOCATOR_URL_LENGTH + 1)] },
     });
-    await expect(decodeInvitation(await encodeRaw(overBound))).rejects.toThrow(
-      ZodError,
-    );
+    await expect(
+      decodeInvitation(await encodeRawInvitation(overBound)),
+    ).rejects.toThrow(ZodError);
   });
 
   test("a url naming a user before its host is refused at decode", async () => {
@@ -187,9 +175,9 @@ describe("the invitation's relay locator", () => {
       host: "signal.example",
       relay: { turn: ["turns:alcove:secret@relay.example.org:443"] },
     });
-    await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-      /the 1st turn url names a user before its host/,
-    );
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(/the 1st turn url names a user before its host/);
   });
 
   test.each([
@@ -204,7 +192,7 @@ describe("the invitation's relay locator", () => {
         relay: { turn: [url] },
       });
       const error: unknown = await decodeInvitation(
-        await encodeRaw(token),
+        await encodeRawInvitation(token),
       ).catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(ZodError);
       const message = (error as ZodError).message;
@@ -219,9 +207,9 @@ describe("the invitation's relay locator", () => {
       host: "sftp.example",
       relay: RELAY,
     });
-    await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-      /Remove unexpected field\(s\): relay/,
-    );
+    await expect(
+      decodeInvitation(await encodeRawInvitation(token)),
+    ).rejects.toThrow(/Remove unexpected field\(s\): relay/);
   });
 
   test("the consent summary names the relay's urls, escaped", async () => {

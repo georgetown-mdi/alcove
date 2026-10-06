@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { PSIParticipant } from "../../src/psi/participant";
+import type { PSIParticipant } from "../../src/psi/participant";
 import {
   associationAndIterationArray,
   attributableRoundMatches,
@@ -27,15 +27,20 @@ import {
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { setupOrderUncheckedJoiner } from "../utils/setupOrderUncheckedJoiner";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { recordingConnection } from "../utils/recordingConnection";
+import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
+import { mirrorCardinality } from "../utils/candidateSetBounds";
 import {
-  deviateListBody,
-  partFrame,
-  readPartFrame,
-} from "../utils/matchedListPartFrames";
+  makeParticipant,
+  runCascade,
+  tablesOf,
+  type CascadeRun,
+  type CascadeRunOptions,
+  type Deviation,
+  type Party,
+} from "../utils/support";
 
 // Deduplicating matching: a "many" party keeps a value several of its records
 // hold, contributes it once to the round, and attributes a match on it to every
@@ -53,39 +58,11 @@ const psiLibrary = await PSI();
 
 type Keys = Array<Array<string | undefined>>;
 
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
-
 function cardinalityFor(
   party: "starter" | "joiner",
   manySide: "starter" | "joiner",
 ): LinkageCardinality {
   return party === manySide ? "many-to-one" : "one-to-many";
-}
-
-// Interpose on one party's INBOUND frames, leaving both parties' own behavior
-// untouched, so a deviation stands in for a partner that computes the
-// protocol correctly right up to the frame under test. Mirrors
-// partnerIndexValidation.ts.
-type Deviation = (frame: unknown) => unknown;
-
-function deviatingInbound(
-  conn: MessageConnection,
-  deviate: Deviation,
-): MessageConnection {
-  return {
-    send: (data) => conn.send(data),
-    receive: async (timeoutMs?: number) =>
-      deviateListBody(await conn.receive(timeoutMs), deviate),
-    close: () => conn.close(),
-    setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
-  };
 }
 
 type MappedElement = { theirIndex: number; iteration: number };
@@ -112,55 +89,19 @@ function onMappedElementList(
   };
 }
 
-interface CascadeRun {
-  starter: AssociationTable | Error;
-  joiner: AssociationTable | Error;
-}
-
-async function runCascade(
-  manySide: "starter" | "joiner",
+function manyToOne(
+  manySide: Party,
   starterKeys: Keys,
   joinerKeys: Keys,
-  deviate?: { party: "starter" | "joiner"; deviation: Deviation },
+  deviate?: CascadeRunOptions["deviate"],
 ): Promise<CascadeRun> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const connFor = (party: "starter" | "joiner", conn: MessageConnection) =>
-    deviate?.party === party ? deviatingInbound(conn, deviate.deviation) : conn;
-
-  const settle = (
-    run: Promise<AssociationTable>,
-  ): Promise<AssociationTable | Error> =>
-    run.then(
-      (table) => table,
-      (err: unknown) => err as Error,
-    );
-
-  const starterRun = settle(
-    linkViaPSI(
-      { cardinality: cardinalityFor("starter", manySide) },
-      makeParticipant("starter"),
-      connFor("starter", starterConn),
-      starterKeys,
-      fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
-      -1,
-    ),
-  );
-  const joinerRun = settle(
-    linkViaPSI(
-      { cardinality: cardinalityFor("joiner", manySide) },
-      makeParticipant("joiner"),
-      connFor("joiner", joinerConn),
-      joinerKeys,
-      fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
-      -1,
-    ),
-  );
-  // A party that aborts leaves the other parked on a frame it will never send, so
-  // close the pipe once the party under test has settled.
-  const first = deviate?.party === "joiner" ? joinerRun : starterRun;
-  await first;
-  await starterConn.close();
-  return { starter: await starterRun, joiner: await joinerRun };
+  return runCascade({
+    library: psiLibrary,
+    cardinality: cardinalityFor("starter", manySide),
+    starterKeys,
+    joinerKeys,
+    deviate,
+  });
 }
 
 function expectTables(run: CascadeRun): [AssociationTable, AssociationTable] {
@@ -194,7 +135,7 @@ function expectAgreement(
 
 test("a matched value several of the many side's records hold links them all to the one partner record", async () => {
   // The starter deduplicates: its rows 0 and 1 are one entity recorded twice.
-  const run = await runCascade(
+  const run = await manyToOne(
     "starter",
     [["E1", "E1", "E2", "E3"]],
     [["E1", "E2", "X"]],
@@ -219,7 +160,7 @@ test("a matched value several of the many side's records hold links them all to 
 test("the same widening runs with the roles swapped", async () => {
   // Nothing in the rule is role-derived: the deduplicating party is the joiner
   // here and the pairing is the mirror image of the run above.
-  const run = await runCascade(
+  const run = await manyToOne(
     "joiner",
     [["E1", "E2", "X"]],
     [["E1", "E1", "E2", "E3"]],
@@ -241,7 +182,7 @@ test("the one side still excludes its own within-round duplicate values", async 
   // The joiner does NOT deduplicate, so its two "D" rows are ambiguous and leave
   // the round -- the many side keeping its own duplicates does not relax that.
   // Its unique "U" still matches, and both of the starter's "U" rows link to it.
-  const run = await runCascade("starter", [["D", "U", "U"]], [["D", "D", "U"]]);
+  const run = await manyToOne("starter", [["D", "U", "U"]], [["D", "D", "U"]]);
   const [starter, joiner] = expectTables(run);
 
   expect(starter).toStrictEqual([
@@ -264,7 +205,7 @@ test("a group expands in ascending record order, groups in the translated list's
   // 1). The joiner's returned list therefore arrives grouped by the JOINER's own
   // matched records, not by starter row order; an implementation that expanded in
   // any other order reconstructs a different pairing and fails here.
-  const run = await runCascade(
+  const run = await manyToOne(
     "starter",
     [["Y", "X", "Y", "X", "Y"]],
     [["X", "Y"]],
@@ -292,7 +233,7 @@ test("a group forms on one key: a partial duplicate whose keys land in different
   // route into the group is the second round -- which the joiner's row has already
   // left, having appeared in round 0's candidate pairs. The cost the spec names
   // plainly: multi-key deduplication groups on one key per group.
-  const run = await runCascade(
+  const run = await manyToOne(
     "starter",
     [
       ["S1", "S1", undefined],
@@ -391,7 +332,7 @@ test("a partner contributing one value twice is refused by the round's own table
   // cardinality contributes a value twice, against a joiner that skips the setup
   // order check so the ambiguous table reaches the starter's check.
   const [starterConn, joinerConn] = createMessagePipe();
-  const starterRound = makeParticipant("starter")
+  const starterRound = makeParticipant(psiLibrary, "starter")
     .identifyIntersection(starterConn, ["V", "V", "W"])
     .then(
       (table) => table,
@@ -423,13 +364,13 @@ test("a partner setup holding one value twice is refused before the joiner's mat
   // is computed (docs/spec/PROTOCOL.md, every match refuses a setup that is not
   // strictly ascending). The starter is released by the joiner closing its end.
   const [starterConn, joinerConn] = createMessagePipe();
-  const starterRound = makeParticipant("starter")
+  const starterRound = makeParticipant(psiLibrary, "starter")
     .identifyIntersection(starterConn, ["V", "V", "W"])
     .then(
       (table) => table,
       (err: unknown) => err,
     );
-  const joinerOutcome = await makeParticipant("joiner")
+  const joinerOutcome = await makeParticipant(psiLibrary, "joiner")
     .identifyIntersection(joinerConn, ["V", "W"])
     .then(
       (table) => table,
@@ -494,7 +435,7 @@ async function runNonConformingStarter(
   values: Array<string>,
   report: StarterRoundReport = attributableMatches,
 ): Promise<void> {
-  const participant = makeParticipant("starter");
+  const participant = makeParticipant(psiLibrary, "starter");
   const { setup, permutation } = await participant.createServerSetup(values);
   await sendPsiSet(conn, setup);
   const request = await receivePsiSet(
@@ -636,7 +577,7 @@ for (const manySide of ["starter", "joiner"] as const) {
     deviation: Deviation,
     detail: RegExp,
   ): Promise<void> => {
-    const run = await runCascade(manySide, starterKeys, joinerKeys, {
+    const run = await manyToOne(manySide, starterKeys, joinerKeys, {
       party,
       deviation,
     });
@@ -776,7 +717,7 @@ async function runSinglePass(
   return await Promise.all([
     linkViaSinglePassPSI(
       { cardinality },
-      makeParticipant("starter"),
+      makeParticipant(psiLibrary, "starter"),
       starterConn,
       starterKeys,
       fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
@@ -785,7 +726,7 @@ async function runSinglePass(
     ),
     linkViaSinglePassPSI(
       { cardinality: mirrorCardinality(cardinality) },
-      makeParticipant("joiner"),
+      makeParticipant(psiLibrary, "joiner"),
       joinerConn,
       joinerKeys,
       fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
@@ -793,14 +734,6 @@ async function runSinglePass(
       -1,
     ),
   ]);
-}
-
-function mirrorCardinality(
-  cardinality: LinkageCardinality,
-): LinkageCardinality {
-  if (cardinality === "many-to-one") return "one-to-many";
-  if (cardinality === "one-to-many") return "many-to-one";
-  return cardinality;
 }
 
 test("single-pass runs one-to-one, dropping the value a group would have kept", async () => {
@@ -825,7 +758,7 @@ test("single-pass reads the strategy's own both-sided verdict", async () => {
     await expect(
       linkViaSinglePassPSI(
         { cardinality: "many-to-many" },
-        makeParticipant("starter"),
+        makeParticipant(psiLibrary, "starter"),
         conn,
         singlePassStarterData,
         fanOutFreeBounds(
@@ -854,7 +787,7 @@ async function expectStrategiesAgree(
   joinerKeys: Keys,
 ): Promise<[AssociationTable, AssociationTable]> {
   const [cascadeStarter, cascadeJoiner] = expectTables(
-    await runCascade(manySide, starterKeys, joinerKeys),
+    await manyToOne(manySide, starterKeys, joinerKeys),
   );
   const [singlePassStarter, singlePassJoiner] = await runSinglePass(
     cardinalityFor("starter", manySide),
@@ -1050,7 +983,7 @@ async function singlePassReplyBytes(
   await Promise.all([
     linkViaSinglePassPSI(
       { cardinality },
-      makeParticipant("starter"),
+      makeParticipant(psiLibrary, "starter"),
       starterConn,
       starterKeys,
       fanOutFreeBounds(starterKeys.length, joinerKeys[0].length),
@@ -1059,7 +992,7 @@ async function singlePassReplyBytes(
     ),
     linkViaSinglePassPSI(
       { cardinality: mirrorCardinality(cardinality) },
-      makeParticipant("joiner"),
+      makeParticipant(psiLibrary, "joiner"),
       measuringJoinerConn,
       joinerKeys,
       fanOutFreeBounds(joinerKeys.length, starterKeys[0].length),
@@ -1128,7 +1061,7 @@ for (const manySide of ["starter", "joiner"] as const) {
     "a returned list merging the many side's groups IN PLACE is refused " +
       `(many side: ${manySide})`,
     async () => {
-      const run = await runCascade(manySide, starterKeys, joinerKeys, {
+      const run = await manyToOne(manySide, starterKeys, joinerKeys, {
         party: manySide,
         deviation: onMappedElementList(2, (list) => {
           const merged = list[0].theirIndex;
@@ -1198,7 +1131,7 @@ async function runManyKeysAgainstNonConformingStarter(
   const roundsSent: Array<number> = [];
 
   const starterRun = (async () => {
-    const participant = makeParticipant("starter");
+    const participant = makeParticipant(psiLibrary, "starter");
     for (const values of starterColumns)
       positionsByRound.push(
         await runNonConformingStarterRound(participant, starterConn, values),
@@ -1287,28 +1220,22 @@ async function recordedGatedRound(): Promise<{
   starter: Array<unknown>;
   joiner: Array<unknown>;
 }> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const starterRecorder = recordingConnection(starterConn);
-  const joinerRecorder = recordingConnection(joinerConn);
-  await Promise.all([
-    linkViaPSI(
-      { cardinality: "many-to-one" },
-      makeParticipant("starter"),
-      starterRecorder.conn,
-      GATED_STARTER_KEYS,
-      fanOutFreeBounds(1, GATED_JOINER_KEYS[0].length),
-      -1,
-    ),
-    linkViaPSI(
-      { cardinality: "one-to-many" },
-      makeParticipant("joiner"),
-      joinerRecorder.conn,
-      GATED_JOINER_KEYS,
-      fanOutFreeBounds(1, GATED_STARTER_KEYS[0].length),
-      -1,
-    ),
-  ]);
-  return { starter: starterRecorder.sent, joiner: joinerRecorder.sent };
+  const sent: Record<Party, Array<unknown>> = { starter: [], joiner: [] };
+  const recordInto = (party: Party) => (conn: MessageConnection) => {
+    const recorder = recordingConnection(conn);
+    sent[party] = recorder.sent;
+    return recorder.conn;
+  };
+  tablesOf(
+    await runCascade({
+      library: psiLibrary,
+      cardinality: "many-to-one",
+      starterKeys: GATED_STARTER_KEYS,
+      joinerKeys: GATED_JOINER_KEYS,
+      wrap: { starter: recordInto("starter"), joiner: recordInto("joiner") },
+    }),
+  );
+  return sent;
 }
 
 test("a deduplicating round sends the sender's original-index list bare", async () => {
@@ -1329,7 +1256,7 @@ test("a deduplicating round refuses run lengths that do not partition the associ
   // The joiner is the "one" side, so the starter reads its grouping as run
   // lengths: a run of two over the round's one matched position sums past what
   // the frame names.
-  const run = await runCascade(
+  const run = await manyToOne(
     "starter",
     GATED_STARTER_KEYS,
     GATED_JOINER_KEYS,
@@ -1349,7 +1276,7 @@ test("a deduplicating round refuses run lengths that do not partition the associ
 test("a deduplicating round refuses an owner list leaving a position unowned", async () => {
   // The starter is the "many" side, so the joiner reads its grouping as an
   // owner list per matched position: an empty entry owns nothing.
-  const run = await runCascade(
+  const run = await manyToOne(
     "starter",
     GATED_STARTER_KEYS,
     GATED_JOINER_KEYS,

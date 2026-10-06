@@ -3,7 +3,6 @@ import { expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import {
-  prepareForExchange,
   resolveBothDirectionsDisclosePayload,
   resolveDirectionDisclosesPayload,
   runExchange,
@@ -18,7 +17,6 @@ import {
 } from "../src/errors";
 
 import type { BuiltExchangeRecord } from "../src/records/exchangeRecord";
-import type { Metadata } from "../src/config/metadata";
 import type {
   LinkageStrategy,
   LinkageTerms,
@@ -29,6 +27,12 @@ import type {
   ExchangeResult,
   PayloadDisclosureDirections,
 } from "../src/exchange";
+import {
+  firstNameAndSentNote,
+  firstNameTerms,
+  prepared,
+  withSentNote,
+} from "./utils/support";
 
 // Integration coverage of the linkageStrategy dispatch in runExchange: a
 // single-pass exchange must flow through the full path -- role resolution, the
@@ -39,24 +43,6 @@ import type {
 // identically, which the unit path never exercises.
 
 const psiLibrary = await PSI();
-
-// firstName-only terms: the default key templates need SSN/DOB, so an explicit key
-// gives both parties valid matching terms for a firstName-only dataset (same shape
-// as exchangeRecordEndToEnd.test.ts), parameterized by strategy.
-const baseTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  deduplicate: false,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
-// A party sends only the columns its metadata declares as sent.
-const firstNameAndSentNote: Metadata = [
-  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
-  { name: "note", type: "other", role: "payload", isPayload: true },
-];
 
 const serverRows = [
   { first_name: "Alice", note: "s-a" },
@@ -70,28 +56,6 @@ const clientRows = [
   { first_name: "Henry", note: "c-h" },
 ];
 
-function prepared(
-  strategy: LinkageStrategy,
-  identity: string,
-  output: Output,
-  rows: typeof serverRows,
-) {
-  return prepareForExchange(
-    {
-      metadata: firstNameAndSentNote,
-      linkageTerms: {
-        ...baseTerms,
-        linkageStrategy: strategy,
-        identity,
-        output,
-      },
-    },
-    identity,
-    rows,
-    ["first_name", "note"],
-  );
-}
-
 async function runBoth(
   strategy: LinkageStrategy,
   outInitiator: Output,
@@ -102,13 +66,19 @@ async function runBoth(
     runExchange(
       connInitiator,
       "initiator",
-      prepared(strategy, "Initiator Co", outInitiator, clientRows),
+      prepared("Initiator Co", clientRows, {
+        ...withSentNote,
+        terms: { linkageStrategy: strategy, output: outInitiator },
+      }),
       { psiLibrary },
     ),
     runExchange(
       connResponder,
       "responder",
-      prepared(strategy, "Responder Co", outResponder, serverRows),
+      prepared("Responder Co", serverRows, {
+        ...withSentNote,
+        terms: { linkageStrategy: strategy, output: outResponder },
+      }),
       { psiLibrary },
     ),
   ]);
@@ -199,13 +169,19 @@ test(
       runExchange(
         connInitiator,
         "initiator",
-        prepared("single-pass", "Initiator Co", both, bigClient),
+        prepared("Initiator Co", bigClient, {
+          ...withSentNote,
+          terms: { linkageStrategy: "single-pass" },
+        }),
         { psiLibrary },
       ),
       runExchange(
         connResponder,
         "responder",
-        prepared("single-pass", "Responder Co", both, bigServer),
+        prepared("Responder Co", bigServer, {
+          ...withSentNote,
+          terms: { linkageStrategy: "single-pass" },
+        }),
         { psiLibrary },
       ),
     ]);
@@ -350,23 +326,17 @@ async function settleOneSidedSinglePass(
     columnNames: Array<string>,
     payload?: Payload,
   ) =>
-    prepareForExchange(
-      {
-        ...(columnNames.includes("note")
-          ? { metadata: firstNameAndSentNote }
-          : {}),
-        linkageTerms: {
-          ...baseTerms,
-          linkageStrategy: opts.strategy ?? "single-pass",
-          identity,
-          output,
-          ...(payload !== undefined ? { payload } : {}),
-        },
+    prepared(identity, rows, {
+      ...(columnNames.includes("note")
+        ? { metadata: firstNameAndSentNote }
+        : {}),
+      columns: columnNames,
+      terms: {
+        linkageStrategy: opts.strategy ?? "single-pass",
+        output,
+        ...(payload !== undefined ? { payload } : {}),
       },
-      identity,
-      rows,
-      columnNames,
-    );
+    });
 
   const [connReceiver, connHelper] = createMessagePipe();
   const helperInbound: Array<unknown> = [];
@@ -783,21 +753,13 @@ async function settleTwoSided(opts: TwoSidedOptions): Promise<SettledTwoSided> {
     rows: typeof serverRows,
     payload?: Payload,
   ) =>
-    prepareForExchange(
-      {
-        metadata: firstNameAndSentNote,
-        linkageTerms: {
-          ...baseTerms,
-          linkageStrategy: opts.strategy,
-          identity,
-          output: both,
-          ...(payload !== undefined ? { payload } : {}),
-        },
+    prepared(identity, rows, {
+      ...withSentNote,
+      terms: {
+        linkageStrategy: opts.strategy,
+        ...(payload !== undefined ? { payload } : {}),
       },
-      identity,
-      rows,
-      ["first_name", "note"],
-    );
+    });
 
   const [initiator, responder] = await Promise.allSettled([
     runExchange(
@@ -929,7 +891,7 @@ const matrixTerms = (
   output: Output,
   payload: Payload | undefined,
 ): LinkageTerms => ({
-  ...baseTerms,
+  ...firstNameTerms,
   linkageStrategy: "single-pass",
   identity: "Matrix Co",
   output,

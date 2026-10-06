@@ -1,13 +1,13 @@
-// The mock transport client and connection builders the file-sync suites
-// share: a FileSyncConnection driven against an in-memory directory, and the
+// The connection builders the file-sync suites share: a FileSyncConnection
+// driven against the in-memory transport in support.ts, and the
 // readers that reach the connection state a test cannot see from outside.
 
 import {
   FileSyncConnection,
   type FileTransportClient,
-  type FileInfo,
 } from "../../src/connection/fileSyncConnection";
 import type { FileDropConnectionConfig } from "../../src/config/connection";
+import { makeMockClient, type MockClientOptions } from "./support";
 
 // The poll/ack/seq counters live on the connection's composed FileSyncMessageLoop;
 // the white-box pokes that read or set them reach through it. conn.seq is a
@@ -29,117 +29,6 @@ export function messageLoopInternals(conn: FileSyncConnection): {
       };
     }
   ).messageLoop;
-}
-
-// Reduce a put() src to the on-disk bytes a real transport writes: a chunk-list
-// is joined, a lone Buffer and a drained stream pass through. A string src is a
-// local file PATH to a real transport (never an in-memory body), so it throws
-// here as the real adapters do rather than silently dropping the body.
-async function putSrcBytes(
-  src: string | Buffer | Uint8Array[] | NodeJS.ReadableStream,
-): Promise<Buffer> {
-  if (typeof src === "string")
-    throw new Error("put expects a Buffer or chunk-list body, not a string");
-  if (Buffer.isBuffer(src)) return src;
-  if (Array.isArray(src)) return Buffer.concat(src);
-  const chunks: Buffer[] = [];
-  for await (const chunk of src)
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  return Buffer.concat(chunks);
-}
-
-// A mock-transport operation's behavior: "real" runs against the in-memory
-// store, "throw" always rejects (models a transport that lacks the operation),
-// "noop" resolves without touching the store (a silent no-op).
-type MockBehavior = "real" | "throw" | "noop";
-
-export interface MockClientOptions {
-  // Share one store across two clients (the two-party single-directory model);
-  // omitted, each client gets a fresh Map.
-  files?: Map<string, Buffer>;
-  // Default "real". "throw" models a no-delete transport whose delete() always
-  // rejects; the ack-handshake barrier must complete rendezvous anyway.
-  deleteBehavior?: MockBehavior;
-  // Default "real" (a working EEXIST atomic create). "throw" models a lockless
-  // transport that lacks atomic exclusive-create, forcing the ack-handshake
-  // barrier instead of the lock/EEXIST fast-path.
-  createExclusiveBehavior?: "real" | "throw";
-  // Spy fired before delete's behavior runs (proves delete was/was not called).
-  onDelete?: (path: string) => void;
-  // Spy fired at the start of get() (proves an ack body was/was not read).
-  onGet?: (path: string) => void;
-}
-
-export function makeMockClient(opts?: MockClientOptions): {
-  client: FileTransportClient;
-  files: Map<string, Buffer>;
-} {
-  const files = opts?.files ?? new Map<string, Buffer>();
-  const deleteBehavior = opts?.deleteBehavior ?? "real";
-  const createExclusiveBehavior = opts?.createExclusiveBehavior ?? "real";
-  // A throwing-delete transport pairs with a swallowing safeDelete.
-  const safeDeleteBehavior = deleteBehavior === "real" ? "real" : "noop";
-
-  const realDelete = (path: string): void => {
-    files.delete(path);
-  };
-  const deleteFor =
-    (behavior: MockBehavior) =>
-    async (path: string): Promise<void> => {
-      if (behavior === "throw")
-        throw new Error("delete not supported on this transport");
-      if (behavior === "real") realDelete(path);
-    };
-
-  const client: FileTransportClient = {
-    connect: async () => {},
-    end: async () => {},
-    list: async (dir: string): Promise<FileInfo[]> => {
-      const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-      return [...files.entries()]
-        .filter(
-          ([p]) =>
-            p.startsWith(prefix) && !p.slice(prefix.length).includes("/"),
-        )
-        .map(([p, buf]) => ({
-          name: p.slice(prefix.length),
-          modifyTime: 0,
-          size: buf.length,
-        }));
-    },
-    get: async (path: string) => {
-      opts?.onGet?.(path);
-      const data = files.get(path);
-      if (!data) throw new Error(`${path}: not found`);
-      return data as Buffer<ArrayBufferLike>;
-    },
-    put: async (src, dest) => {
-      files.set(dest, await putSrcBytes(src));
-    },
-    delete: async (path: string) => {
-      opts?.onDelete?.(path);
-      return deleteFor(deleteBehavior)(path);
-    },
-    safeDelete: deleteFor(safeDeleteBehavior),
-    rename: async (from: string, to: string) => {
-      const data = files.get(from);
-      if (data === undefined) throw new Error(`${from}: no such file`);
-      files.delete(from);
-      files.set(to, data);
-    },
-    createExclusive: async (path: string) => {
-      if (createExclusiveBehavior === "throw")
-        throw new Error("createExclusive not supported on this transport");
-      if (files.has(path))
-        throw Object.assign(new Error(`${path}: file already exists`), {
-          code: "EEXIST",
-        });
-      files.set(path, Buffer.alloc(0));
-    },
-    exists: async (path: string) => files.has(path),
-  };
-
-  return { client, files };
 }
 
 // Put a connection into the post-open state without running the handshake.

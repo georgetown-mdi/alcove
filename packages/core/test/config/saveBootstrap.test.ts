@@ -6,7 +6,7 @@ import {
   exchangeBootstrapSecret,
   exchangeTerms,
 } from "../../src/protocolSetup";
-import { prepareForExchange, runExchange } from "../../src/exchange";
+import { runExchange } from "../../src/exchange";
 import { SHARED_SECRET_REGEX } from "../../src/config/connection";
 import type { HandshakeRole } from "../../src/types";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
@@ -17,6 +17,7 @@ import {
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import { recordingConnection } from "../utils/recordingConnection";
+import { prepared } from "../utils/support";
 
 // --- Fixtures ----------------------------------------------------------------
 
@@ -166,27 +167,12 @@ test("no save field is put on the wire when save intent is omitted", async () =>
 
 const psiLibrary = await PSI();
 
-// firstName-only terms: the default key templates all require SSN/DOB, so an
-// explicit firstName key gives both parties valid, matching terms over a tiny
-// dataset (same approach as exchangeRecordEndToEnd.test.ts).
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 function preparedFor(identity: string) {
-  return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity } },
-    identity,
-    [{ first_name: "Alice" }, { first_name: "Bob" }, { first_name: "Carol" }],
-    ["first_name"],
-  );
+  return prepared(identity, [
+    { first_name: "Alice" },
+    { first_name: "Bob" },
+    { first_name: "Carol" },
+  ]);
 }
 
 /** Drive a full runExchange for both parties over a pipe with the given intents. */

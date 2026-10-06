@@ -4,7 +4,6 @@ import PSI from "@openmined/psi.js";
 
 import {
   PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
-  prepareForExchange,
   resolvePartnerCertificateOrAbort,
   runExchange,
 } from "../../src/exchange";
@@ -19,11 +18,11 @@ import { MAX_TEXT_LENGTH } from "../../src/config/linkageTermsSchema";
 
 import type { HandshakeRole } from "../../src/types";
 import type { MessageConnection } from "../../src/connection/messageConnection";
-import type { Output } from "../../src/config/linkageTermsSchema";
 import type {
   PartnerCertificateRefusalKind,
   RunExchangeOptions,
 } from "../../src/exchange";
+import { firstNameTerms, prepared } from "../utils/support";
 
 // The partner-certificate pin resolved at the terms exchange: both parties
 // present their self-signed certificate on the terms envelope, each holds the
@@ -35,33 +34,12 @@ import type {
 
 const psiLibrary = await PSI();
 
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 const serverRows = [
   { first_name: "Carol" },
   { first_name: "Elizabeth" },
   { first_name: "Henry" },
 ];
 const clientRows = [{ first_name: "Carol" }, { first_name: "Elizabeth" }];
-
-const both: Output = { expectsOutput: true, shareWithPartner: true };
-
-function prepared(identity: string, rows: typeof serverRows) {
-  return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity, output: both } },
-    identity,
-    rows,
-    ["first_name"],
-  );
-}
 
 // Fixed keys and a fixed session key so both parties derive the same binder.
 const identityA = await generateSigningIdentity("Initiator Co", {

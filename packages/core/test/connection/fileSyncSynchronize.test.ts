@@ -19,12 +19,12 @@ import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { withCapturedLogs } from "../../src/testing";
 import {
-  makeMockClient,
   makeConnectedConn,
   LOCK_HELLO_BODY,
   responsibleFilesOf,
   makeRendezvousPair,
 } from "../utils/fileSyncConnectionFixture";
+import { makeMockClient } from "../utils/support";
 import {
   HELLO_MAX_BYTES,
   peerIdLengthRefusal,

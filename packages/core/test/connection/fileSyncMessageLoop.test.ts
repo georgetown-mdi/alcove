@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { default as EventEmitter } from "eventemitter3";
 
@@ -12,10 +12,7 @@ import {
   type MessageLoopOptions,
 } from "../../src/connection/fileSyncMessageLoop";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
-import type {
-  FileInfo,
-  FileTransportClient,
-} from "../../src/connection/fileSyncConnection";
+import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
 import {
   serializeFileSyncMessage,
   MESSAGE_TYPE_OBJECT,
@@ -39,13 +36,12 @@ import { getLoggerForVerbosity } from "../../src/utils/logger";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import {
-  makeMockClient,
-  type MockClientOptions,
   driveUntilError,
   runPoller,
   makeRendezvousPair,
   makeRetainConn,
 } from "../utils/fileSyncConnectionFixture";
+import { makeMockClient, type MockClientOptions } from "../utils/support";
 
 describe("messageFilename", () => {
   test("no-timestamp form is <id>-<byteCount>.json", () => {
@@ -221,72 +217,6 @@ const objectMessage = (payload: unknown, seq = 0): Buffer =>
     Buffer.from(JSON.stringify(payload)),
   );
 
-interface MemClientOptions {
-  getError?: (path: string) => Error | undefined;
-  listError?: Error;
-  renameError?: Error;
-}
-
-function memClient(
-  files: Map<string, Buffer>,
-  opts: MemClientOptions = {},
-): FileTransportClient {
-  const baseList = (dir: string): FileInfo[] => {
-    const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-    return [...files.entries()]
-      .filter(
-        ([p]) => p.startsWith(prefix) && !p.slice(prefix.length).includes("/"),
-      )
-      .map(([p, buf]) => ({
-        name: p.slice(prefix.length),
-        modifyTime: 0,
-        size: buf.length,
-      }));
-  };
-  return {
-    connect: async () => {},
-    end: async () => {},
-    list: async (dir: string): Promise<FileInfo[]> => {
-      if (opts.listError) throw opts.listError;
-      return baseList(dir);
-    },
-    get: async (path: string) => {
-      const err = opts.getError?.(path);
-      if (err) throw err;
-      const data = files.get(path);
-      if (!data) {
-        const enoent = new Error(`${path}: not found`) as NodeJS.ErrnoException;
-        enoent.code = "ENOENT";
-        throw enoent;
-      }
-      return data as Buffer<ArrayBufferLike>;
-    },
-    put: async (src, dest) => {
-      files.set(
-        dest,
-        Array.isArray(src)
-          ? Buffer.concat(src as Uint8Array[])
-          : (src as Buffer),
-      );
-    },
-    delete: async (path: string) => {
-      files.delete(path);
-    },
-    safeDelete: async (path: string) => {
-      files.delete(path);
-    },
-    rename: async (from: string, to: string) => {
-      if (opts.renameError) throw opts.renameError;
-      const data = files.get(from);
-      if (data === undefined) throw new Error(`${from}: no such file`);
-      files.delete(from);
-      files.set(to, data);
-    },
-    createExclusive: async () => {},
-    exists: async (path: string) => files.has(path),
-  };
-}
-
 interface EmittedEvent {
   event: "data" | "error";
   arg: unknown;
@@ -314,7 +244,7 @@ const internals = (loop: FileSyncMessageLoop): LoopInternals =>
 interface LoopFixture {
   loop: FileSyncMessageLoop;
   // The transport the loop was built on, so a case can replace one method for a
-  // per-call behavior the shared MemClientOptions do not express.
+  // per-call behavior the shared MockClientOptions do not express.
   client: FileTransportClient;
   files: Map<string, Buffer>;
   emitted: EmittedEvent[];
@@ -348,7 +278,7 @@ const baseOptions = (): MessageLoopOptions => ({
 
 function makeLoop(
   overrides: Partial<MessageLoopOptions> = {},
-  clientOpts: MemClientOptions = {},
+  clientOpts: MockClientOptions = {},
   files: Map<string, Buffer> = new Map(),
 ): LoopFixture {
   const options: MessageLoopOptions = { ...baseOptions(), ...overrides };
@@ -356,7 +286,11 @@ function makeLoop(
   const foreignFileSnapshot = new Set<string>();
   const controller = new AbortController();
   const budget = { ms: 60_000 };
-  const client = memClient(files, clientOpts);
+  const { client } = makeMockClient({
+    createExclusiveBehavior: "noop",
+    ...clientOpts,
+    files,
+  });
   const log = getLoggerForVerbosity("loop-test", -1);
   const emitted: EmittedEvent[] = [];
   const state = {
@@ -2031,6 +1965,25 @@ describe("message-name grammar", () => {
   });
 });
 
+// Runs the poller for `ms` of virtual time, so the number of poll cycles in
+// the window does not depend on how loaded the machine is, and reports whether
+// the poller was still active just before it was stopped.
+async function runOnVirtualClock(
+  f: LoopFixture,
+  ms: number,
+): Promise<{ pollerActive: boolean }> {
+  vi.useFakeTimers();
+  try {
+    f.loop.start();
+    await vi.advanceTimersByTimeAsync(ms);
+    const { pollerActive } = f.loop as unknown as LoopInternals;
+    f.loop.stop();
+    return { pollerActive };
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe("FileSyncMessageLoop delete-mode consume failure", () => {
   test("a message whose delete fails twice is never delivered and the poller stops", async () => {
     const f = makeLoop({ pollingFrequency: 1 });
@@ -2039,9 +1992,7 @@ describe("FileSyncMessageLoop delete-mode consume failure", () => {
       throw new Error("permission denied");
     };
 
-    f.loop.start();
-    await new Promise((r) => setTimeout(r, 100));
-    f.loop.stop();
+    await runOnVirtualClock(f, 100);
 
     expect(f.emitted.filter((e) => e.event === "data")).toHaveLength(0);
     const errors = f.emitted.filter((e) => e.event === "error");
@@ -2071,10 +2022,7 @@ describe("FileSyncMessageLoop delete-mode consume failure", () => {
         throw Object.assign(new Error("no such file"), { code: absentCode });
       };
 
-      f.loop.start();
-      await new Promise((r) => setTimeout(r, 100));
-      const { pollerActive } = f.loop as unknown as LoopInternals;
-      f.loop.stop();
+      const { pollerActive } = await runOnVirtualClock(f, 100);
 
       expect(deleteCalls).toBe(2);
       const delivered = f.emitted.filter((e) => e.event === "data");

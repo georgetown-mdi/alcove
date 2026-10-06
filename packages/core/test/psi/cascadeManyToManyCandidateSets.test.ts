@@ -2,17 +2,10 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { PSIParticipant } from "../../src/psi/participant";
-import { linkViaPSI } from "../../src/psi/link";
 import { entityClusters } from "../../src/psi/entityClosure";
-import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
-import {
-  candidateSetBounds,
-  declaredKeyWidths,
-  type Column,
-} from "../utils/candidateSetBounds";
+import type { Column } from "../utils/candidateSetBounds";
+import { runCascade, tablesOf } from "../utils/support";
 
 // A candidate set under `many-to-many`, held against a reference built from the
 // two parties' incidences: the oracle is correct by construction where
@@ -23,15 +16,6 @@ import {
 // beside it, in strategyDifferentialVectors.test.ts.
 
 const psiLibrary = await PSI();
-
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
 
 // --- the specification oracle -------------------------------------------------
 
@@ -208,32 +192,19 @@ const FIXTURES: ReadonlyArray<Fixture> = [
   },
 ];
 
-async function runCascade(
+async function manyToManyTables(
   starterKeys: Array<Column>,
   joinerKeys: Array<Column>,
 ): Promise<[AssociationTable, AssociationTable]> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
-  const tables = await Promise.all([
-    linkViaPSI(
-      { cardinality: "many-to-many" },
-      makeParticipant("starter"),
-      starterConn,
+  const { starter, joiner } = tablesOf(
+    await runCascade({
+      library: psiLibrary,
+      cardinality: "many-to-many",
       starterKeys,
-      candidateSetBounds(joinerKeys[0].length, keyWidths),
-      -1,
-    ),
-    linkViaPSI(
-      { cardinality: "many-to-many" },
-      makeParticipant("joiner"),
-      joinerConn,
       joinerKeys,
-      candidateSetBounds(starterKeys[0].length, keyWidths),
-      -1,
-    ),
-  ]);
-  await starterConn.close();
-  return tables;
+    }),
+  );
+  return [starter, joiner];
 }
 
 for (const fixture of FIXTURES) {
@@ -243,7 +214,7 @@ for (const fixture of FIXTURES) {
     // below without the resolution pairing anything.
     expect(expected.length).toBeGreaterThan(0);
 
-    const [starter, joiner] = await runCascade(
+    const [starter, joiner] = await manyToManyTables(
       fixture.starterKeys,
       fixture.joinerKeys,
     );
@@ -256,7 +227,7 @@ for (const fixture of FIXTURES) {
     // The same inputs with the PSI roles exchanged: which party opens the
     // exchange decides whose set is permuted and whose positions are read, and
     // the two assignments owe the one table.
-    const [mirroredStarter, mirroredJoiner] = await runCascade(
+    const [mirroredStarter, mirroredJoiner] = await manyToManyTables(
       fixture.joinerKeys,
       fixture.starterKeys,
     );
@@ -279,7 +250,7 @@ test("the chained cluster holds three pairs over four records", async () => {
   // set: one cluster of two records a side, holding three pairs where the
   // product would hold four, and joining a record of each party that shares no
   // value (docs/spec/PROTOCOL.md, The smallest chained cluster).
-  const [starter, joiner] = await runCascade(
+  const [starter, joiner] = await manyToManyTables(
     [[new Set(["ab", "cd"]), "cd"]],
     [["ab", "cd"]],
   );

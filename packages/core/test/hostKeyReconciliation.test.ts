@@ -12,10 +12,10 @@ import {
   sanitizeForDisplay,
 } from "../src/utils/sanitizeForDisplay";
 import { keyTypeFromBlob } from "../src/utils/sshHostKey";
-import { prepareForExchange, runExchange } from "../src/exchange";
+import { runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import type { PresentedHostKey } from "../src/connection/fileSyncConnection";
-import type { Output } from "../src/config/linkageTermsSchema";
+import { prepared } from "./utils/support";
 
 // Cross-party reconciliation of the SFTP host-key fingerprint. Each party
 // advertises the host key it observed in the authenticated post-handshake
@@ -247,27 +247,7 @@ test("one rejected key type observed by both parties is treated as a same-type d
 
 const psiLibrary = await PSI();
 
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true } as Output,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 const rows = [{ first_name: "Bob" }, { first_name: "Carol" }];
-
-function prepared(identity: string) {
-  return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity } },
-    identity,
-    rows,
-    ["first_name"],
-  );
-}
 
 async function exchangeWithObservedKeys(
   observedInitiator: PresentedHostKey | undefined,
@@ -277,12 +257,12 @@ async function exchangeWithObservedKeys(
   let initiatorDivergence: string | undefined;
   let responderDivergence: string | undefined;
   await Promise.all([
-    runExchange(connInitiator, "initiator", prepared("Initiator Co"), {
+    runExchange(connInitiator, "initiator", prepared("Initiator Co", rows), {
       psiLibrary,
       observedHostKey: observedInitiator,
       onHostKeyDivergence: (m) => (initiatorDivergence = m),
     }),
-    runExchange(connResponder, "responder", prepared("Responder Co"), {
+    runExchange(connResponder, "responder", prepared("Responder Co", rows), {
       psiLibrary,
       observedHostKey: observedResponder,
       onHostKeyDivergence: (m) => (responderDivergence = m),
