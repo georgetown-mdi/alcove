@@ -336,7 +336,7 @@ export type AcceptorScreenAction =
   | { type: "accept-sftp-endpoint-resolved" }
   | { type: "sftp-connection-cleared" }
   /** The operator authored an in-console connection to the partner's server: a
-   * freshly authored server is a different rendezvous directory, so any sweep
+   * freshly authored server is a different shared folder, so any sweep
    * confirmation is re-asked. */
   | { type: "sftp-connection-authored"; connection: SftpConnectionProjection }
   /** A per-run authoring draft was edited. */

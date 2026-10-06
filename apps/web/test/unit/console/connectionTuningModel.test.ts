@@ -595,6 +595,30 @@ describe("one unit chooser serves the loader and the card", () => {
       durationFieldForMs(2_500, DURATION_FIELD_UNITS.serverConnectTimeout),
     ).toEqual({ magnitude: "2500", unit: "ms" });
   });
+
+  test("a loaded unit the field lacks stays listed after switching away", () => {
+    const units = DURATION_FIELD_UNITS.serverConnectTimeout;
+    const loaded = durationFieldForMs(2_500, units);
+    expect(loaded.unit).toBe("ms");
+    // The current unit is now seconds; the choices follow the loaded one.
+    expect(durationUnitChoices(units, loaded.unit)).toEqual([
+      "ms",
+      "s",
+      "m",
+      "h",
+    ]);
+  });
+
+  test("zero takes the finest unit its field offers", () => {
+    expect(durationFieldForMs(0, DURATION_FIELD_UNITS.peerTimeout)).toEqual({
+      magnitude: "0",
+      unit: "s",
+    });
+    expect(durationFieldForMs(0, DURATION_FIELD_UNITS.pollInterval)).toEqual({
+      magnitude: "0",
+      unit: "ms",
+    });
+  });
 });
 
 describe("the fields the two cards contribute", () => {

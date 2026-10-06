@@ -358,8 +358,8 @@ export type InviterScreenAction =
   | { type: "editor-announced"; announcement: string }
   /** A column's type or disclosure changed, with the demotion it forced. */
   | { type: "column-edited"; editor: InviterEditor; announcement: string }
-  /** A transport was chosen: a different transport is a different rendezvous
-   * directory, so any sweep confirmation is re-asked. */
+  /** A transport was chosen: a different transport is a different shared
+   * folder, so any sweep confirmation is re-asked. */
   | { type: "transport-chosen"; editor: InviterEditor }
   /** The mint began; the refusal a prior attempt left goes with it. */
   | { type: "mint-started" }
@@ -395,7 +395,7 @@ export type InviterScreenAction =
   /** The console reported the SFTP connection it holds. */
   | { type: "console-sftp-resolved"; info: SftpConnectionInfo }
   /** The operator authored an SFTP connection in-console: the run mode flips to
-   * server-job, and the fresh server is a different rendezvous directory. */
+   * server-job, and the fresh server is a different shared folder. */
   | { type: "sftp-connection-authored"; connection: SftpConnectionProjection }
   /** The authored connection was cleared, returning the card to its empty state. */
   | { type: "sftp-connection-cleared" }

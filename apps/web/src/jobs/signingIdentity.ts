@@ -89,8 +89,8 @@ export function signingCertificatePath(dataRoot: string): string {
 /**
  * The directory a signing identity file sits in.
  *
- * Read by the pre-run check that refuses a file-sync exchange whose rendezvous
- * directory holds this directory ({@link JobManager.createJob}): what the
+ * Read by the pre-run check that refuses a file-sync exchange whose shared
+ * folder holds this directory ({@link JobManager.createJob}): what the
  * partner syncs is a directory, so the comparison is against the identity's
  * directory rather than the file.
  */

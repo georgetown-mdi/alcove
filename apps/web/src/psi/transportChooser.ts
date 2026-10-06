@@ -46,7 +46,7 @@ export function isCliTransport(
 
 /** How a chosen transport would run on this build: the
  * {@link ExchangeDriverSelection} kind as the inviter chooser's UI policy. A console
- * filedrop runs as a server job against the mounted rendezvous directory when
+ * filedrop runs as a server job against the mounted shared folder when
  * `JOB_RENDEZVOUS_DIR` is set, and is disabled otherwise. */
 type TransportRunMode = ExchangeDriverSelection["kind"];
 

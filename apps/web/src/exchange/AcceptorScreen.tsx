@@ -1138,7 +1138,7 @@ function AcceptorInvitationScreen({
   // (its credential-free projection): hold it so launch unblocks. The connection
   // material -- credential and host-key fingerprint -- lives in console memory,
   // scoped to this one exchange; the browser holds only the locator. A freshly
-  // authored server is a different rendezvous directory, so any sweep
+  // authored server is a different shared folder, so any sweep
   // confirmation is re-asked.
   const authorSftpConnection = (connection: SftpConnectionProjection) =>
     dispatch({ type: "sftp-connection-authored", connection });

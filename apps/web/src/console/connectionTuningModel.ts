@@ -85,12 +85,17 @@ function coarsestWholeUnit(
  * holds it whole. A value none of the field's units holds whole, such as a
  * 2500 ms timeout read from a configuration, keeps the coarsest unit that
  * does, and {@link durationUnitChoices} adds that unit to the field's control.
+ * Zero is whole in every unit, so it takes the finest unit the field offers.
  */
 export function durationFieldForMs(
   ms: number,
   offered: ReadonlyArray<DurationUnit>,
 ): DurationField {
+  const finestOffered = [...COARSEST_FIRST]
+    .reverse()
+    .find((unit) => offered.includes(unit));
   const unit =
+    (ms === 0 ? finestOffered : undefined) ??
     coarsestWholeUnit(ms, offered) ??
     coarsestWholeUnit(ms, COARSEST_FIRST) ??
     "ms";
@@ -98,16 +103,17 @@ export function durationFieldForMs(
 }
 
 /** The units a duration control lists, finest first: the field's own, plus
- * the unit its value is in when the field does not offer that unit, so the
- * control shows the value as stated. */
+ * the unit the field's value was loaded in when the field does not offer that
+ * unit, so the control shows the value as stated and the operator can return
+ * to that unit after switching away. Pass the loaded unit, not the current one. */
 export function durationUnitChoices(
   offered: ReadonlyArray<DurationUnit>,
-  current: DurationUnit,
+  loaded: DurationUnit,
 ): ReadonlyArray<DurationUnit> {
-  if (offered.includes(current)) return offered;
+  if (offered.includes(loaded)) return offered;
   return [...COARSEST_FIRST]
     .reverse()
-    .filter((unit) => unit === current || offered.includes(unit));
+    .filter((unit) => unit === loaded || offered.includes(unit));
 }
 
 /** The heading of the console's connection tuning card. */

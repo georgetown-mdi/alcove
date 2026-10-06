@@ -10,7 +10,7 @@
  * own copy layer (`failureFor` in `@exchange/useInviterExchange`).
  */
 
-/** The token for a filedrop run refused because a rendezvous directory holds
+/** The token for a filedrop run refused because a shared folder holds
  * this party's signing identity. */
 export const SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL =
   "signing-identity-in-rendezvous";

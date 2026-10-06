@@ -13,7 +13,7 @@ import { browseSegment } from "./workInputName";
 import { isPathWithin } from "./pathContainment";
 
 /**
- * Names the operator-mounted rendezvous directory a filedrop exchange reads and
+ * Names the operator-mounted shared folder a filedrop exchange reads and
  * writes. Falls back to `JOB_DATA_ROOT` when unset or empty; filedrop is
  * unavailable only when both are unset. Server-side configuration, never a
  * browser-sent path.
@@ -24,7 +24,7 @@ import { isPathWithin } from "./pathContainment";
 const JOB_RENDEZVOUS_DIR_ENV = "JOB_RENDEZVOUS_DIR";
 
 /**
- * Names the OUTBOUND (self-written) rendezvous directory of a split filedrop
+ * Names the OUTBOUND (self-written) shared folder of a split filedrop
  * exchange, the companion to {@link JOB_RENDEZVOUS_DIR_ENV}'s inbound leg. Set it
  * when the partner-shared mailbox is two folders; every filedrop exchange the
  * console runs then uses the CLI's `inbound_path`/`outbound_path` pair instead of
@@ -205,8 +205,8 @@ function resolveJobRendezvousOutboundFolderName(
 /**
  * The advisory locator a filedrop invitation minted here states: the shared
  * folder's name where the console can name it, else the rendezvous mount's own
- * last segment (the partner's CLI remaps it anyway). Undefined when no rendezvous
- * directory is configured or it reduces to no segment (the filesystem root).
+ * last segment (the partner's CLI remaps it anyway). Undefined when no shared
+ * folder is configured or it reduces to no segment (the filesystem root).
  *
  * Separate from the folder name because only the name is safe to PRINT: the
  * accept kit and confirm line say nothing where there is none, while the token
@@ -756,7 +756,7 @@ function unresolvedRealPathNotice(
 const QUOTED_SWEEP_CONTROL = "Clear leftover exchange files";
 
 /**
- * The lead of the warning for a rendezvous directory holding exchange files --
+ * The lead of the warning for a shared folder holding exchange files --
  * names in the exchange's own filename grammar ({@link isProtocolGrammarName}),
  * which is what its entry guard refuses over: what is wrong, the console's own
  * sweep control that clears it (never a host-side deletion), and that the
@@ -793,7 +793,7 @@ export function notEmptyLead(
 }
 
 /**
- * The exchange files a rendezvous directory holds, as their own warning message.
+ * The exchange files a shared folder holds, as their own warning message.
  * Sorted, because readdir order is not a promise, so the same directory reads the
  * same way twice.
  *
@@ -910,7 +910,7 @@ function nestedRendezvousNotice(
 }
 
 /**
- * The preflight warnings for a filedrop job's rendezvous directory, reported
+ * The preflight warnings for a filedrop job's shared folder, reported
  * through the job's warning channel at start. Defensive, never fatal: a missing,
  * non-directory, non-writable, or unlistable mount, or one holding files the
  * exchange's entry guard would refuse over, only warns, and an overlap with the

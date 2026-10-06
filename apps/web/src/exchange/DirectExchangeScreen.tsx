@@ -255,7 +255,7 @@ export function DirectExchangeScreen() {
     setSftpInfo({ connection });
     // Re-authoring the server changes the trust context, so re-affirm.
     setAffirmed(false);
-    // It is also a different rendezvous directory, so any sweep confirmation is
+    // It is also a different shared folder, so any sweep confirmation is
     // re-asked.
     setRunDiagnostics(runDiagnosticsAfterRetarget);
   }
@@ -270,7 +270,7 @@ export function DirectExchangeScreen() {
     setTransport(next);
     // A different agreed server is a different trust context.
     setAffirmed(false);
-    // And a different rendezvous directory, so any sweep confirmation is
+    // And a different shared folder, so any sweep confirmation is
     // re-asked.
     setRunDiagnostics(runDiagnosticsAfterRetarget);
   }

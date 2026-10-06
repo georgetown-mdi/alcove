@@ -80,6 +80,17 @@ describe("ConnectionTuningCard: a loaded duration shows as the file states it", 
     await expect.element(unitSelect(CONNECT_LABEL)).toHaveValue("ms");
   });
 
+  test("a loaded millisecond unit stays listed after switching to seconds", async () => {
+    await renderLoaded({ serverConnectTimeoutMs: 2_500 });
+
+    await userEvent.selectOptions(unitSelect(CONNECT_LABEL), "s");
+    await expect.element(unitSelect(CONNECT_LABEL)).toHaveValue("s");
+
+    await userEvent.selectOptions(unitSelect(CONNECT_LABEL), "ms");
+    await expect.element(unitSelect(CONNECT_LABEL)).toHaveValue("ms");
+    await expect.element(magnitudeInput(CONNECT_LABEL)).toHaveValue("2500");
+  });
+
   test("editing another field leaves the loaded durations unchanged", async () => {
     const stated = {
       pollIntervalMs: 3_600_000,

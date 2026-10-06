@@ -89,7 +89,7 @@ export function zeroSetupSftpArgv(
 }
 
 /**
- * Map the operator-configured rendezvous directory to the connection portion
+ * Map the operator-configured shared folder to the connection portion
  * of a filedrop zero-setup CLI argv: a single `file://` URL positional.
  * Built through {@link pathToFileURL} from the server-side directory, so no
  * client string is ever a path. The filedrop channel has no host or

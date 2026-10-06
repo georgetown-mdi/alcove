@@ -43,7 +43,10 @@ const UNIT_LABELS: Record<DurationUnit, string> = {
 
 /** One duration control: the magnitude beside the unit it is authored in. The
  * unit select has no visible label -- the pairing is visual -- so its accessible
- * name names the field it belongs to. */
+ * name names the field it belongs to. A unit the field does not offer stays
+ * listed for as long as the row is mounted, so a loaded 2500 ms can be restored
+ * after switching to seconds. A value arriving in another unit the field lacks
+ * takes its place. */
 function DurationRow({
   label,
   description,
@@ -59,6 +62,9 @@ function DurationRow({
   value: DurationField;
   onChange: (next: DurationField) => void;
 }) {
+  const [loadedUnit, setLoadedUnit] = useState(value.unit);
+  if (value.unit !== loadedUnit && !units.includes(value.unit))
+    setLoadedUnit(value.unit);
   return (
     <Group align="flex-end" gap="xs" wrap="nowrap">
       <TextInput
@@ -75,7 +81,7 @@ function DurationRow({
       <NativeSelect
         aria-label={`${label}: unit`}
         value={value.unit}
-        data={durationUnitChoices(units, value.unit).map((unit) => ({
+        data={durationUnitChoices(units, loadedUnit).map((unit) => ({
           value: unit,
           label: UNIT_LABELS[unit],
         }))}

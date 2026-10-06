@@ -58,7 +58,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("data root") as string,
+        message: expect.stringContaining("your working folder") as string,
       }) as Error,
     );
   });
@@ -121,7 +121,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("data root") as string,
+        message: expect.stringContaining("your working folder") as string,
       }) as Error,
     );
   });
@@ -170,7 +170,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
       ).toThrowError(
         expect.objectContaining({
           name: "JobApiConfigError",
-          message: expect.stringContaining("data root") as string,
+          message: expect.stringContaining("your working folder") as string,
         }) as Error,
       );
     } finally {
@@ -235,7 +235,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("work-input") as string,
+        message: expect.stringContaining("your input folder") as string,
       }) as Error,
     );
   });
@@ -252,7 +252,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("data root") as string,
+        message: expect.stringContaining("your working folder") as string,
       }) as Error,
     );
   });

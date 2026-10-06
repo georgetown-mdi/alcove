@@ -1,7 +1,7 @@
 /**
  * The pure model behind the console's "Diagnostics and recovery" card: the two
  * PER-RUN controls an operator reaches for when a run misbehaves -- capture a
- * detailed log, and sweep a rendezvous directory a crashed prior run left
+ * detailed log, and sweep a shared folder a crashed prior run left
  * protocol files in -- plus what the card states and refuses before the run
  * starts.
  *
@@ -18,7 +18,7 @@
 export interface RunDiagnosticsDraft {
   /** Run at debug verbosity and capture the CLI's log on the console. */
   diagnosticRun: boolean;
-  /** Sweep the rendezvous directory's leftover protocol files before the run. */
+  /** Sweep the shared folder's leftover protocol files before the run. */
   sweepExchangeFiles: boolean;
   /** The operator's confirmation that no other session is using the directory,
    * required before a sweep may run (see {@link SWEEP_CONFIRMATION_NOTICE}). */

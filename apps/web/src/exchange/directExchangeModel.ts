@@ -176,7 +176,7 @@ export function directBothSidedDeduplicateNotice(
 export interface DirectServerGates {
   transport: DirectTransport;
   /** Whether the chosen transport is usable: an authored SFTP connection, or a
-   * mounted rendezvous directory. */
+   * mounted shared folder. */
   transportReady: boolean;
   /** Whether the file-handling card holds a combination core refuses. */
   exchangeFilesBlocked: boolean;
