@@ -289,8 +289,8 @@ export function renderExchangeDisclosure(
     emit(`    ${DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE}`);
   }
   // Value-level matching multiplicity, beside the record-level line above.
-  // Printed only where the strategy matches on the candidates: terms declaring
-  // a split under one that does not are refused before the exchange runs.
+  // Printed only where the exchange matches on the candidates: terms declaring
+  // a split under a count-only exchange are refused before it runs.
   if (summary.fansOut && summary.fanOutApplied) {
     emit(`  ${marked("several values per record", "fanOutCandidates")}:`);
     emit(`    ${CONSENT_FACTS.fanOutCandidates.note}`);

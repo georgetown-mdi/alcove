@@ -74,7 +74,7 @@ describe("the own-membership consent pair", () => {
     // than on the software the partner runs, which is what its enforced basis
     // claims.
     expect(CONSENT_FACTS.partnerOwnMembershipWithheld.note).toContain(
-      "a limit of the exchange rather than a choice",
+      "The exchange enforces this whatever software your partner runs",
     );
   });
 
@@ -127,7 +127,9 @@ describe("the own-membership consent pair", () => {
     // beside its sibling.
     const fact = CONSENT_FACTS.partnerOwnMembershipWithheldSelfAuthored;
     expect(fact.basis).toBe("enforced");
-    expect(fact.note).not.toContain("By agreement, not enforced");
+    expect(fact.note).not.toContain(
+      "Alcove cannot stop your partner from receiving the result",
+    );
     expect(fact.note).toContain(
       "the exchange is refused for both parties before the match starts",
     );

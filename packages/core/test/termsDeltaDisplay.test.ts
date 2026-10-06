@@ -43,7 +43,7 @@ describe("termsDeltaSections", () => {
       {
         kind: "columns",
         label:
-          "columns you no longer send your partner (your partner decides on this)",
+          "columns you no longer send your partner (your partner decides on these)",
         columns: ["zip"],
       },
       {
@@ -91,7 +91,7 @@ const namesOf = (list: ReadonlyArray<{ name: string }> | undefined) =>
 const NOW_SEND =
   "columns you now send your partner (your partner decides on these)";
 const NO_LONGER_SEND =
-  "columns you no longer send your partner (your partner decides on this)";
+  "columns you no longer send your partner (your partner decides on these)";
 const NOW_SENDS_YOU = "columns your partner now sends you";
 const NO_LONGER_SENDS_YOU = "columns your partner no longer sends you";
 

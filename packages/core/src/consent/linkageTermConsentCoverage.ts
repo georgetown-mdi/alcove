@@ -492,8 +492,9 @@ export const LINKAGE_TERM_CONSENT_CLASSIFICATION: Record<
     reason:
       "Decides whether the exchange reveals the matched identifiers (`psi`) or " +
       "only their count (`psi-c`) -- and with the count, each party's record " +
-      "count and the number of its records carrying the matched key, which the " +
-      "count-only tier states and a surface omitting the tier does not.",
+      "count and the number of key values occurring exactly once in its " +
+      "file, which the count-only tier states and a surface omitting the " +
+      "tier does not.",
     // A count-only exchange accepts neither a payload nor a candidate set, so
     // the pair is built on a base declaring neither -- countOnlyAdmissibleBase
     // above states what it strips and why. Both sides are that same stripped

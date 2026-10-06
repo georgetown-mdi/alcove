@@ -129,27 +129,27 @@ export const CONSENT_FACTS = {
       "does not reach is the partner's choice of contributed values, which is a " +
       "fact of its own below.",
     note:
-      "Enforced: neither party is handed a matched identifier or a " +
-      "record-by-record pairing -- a partner asking for a revealing round is " +
-      "refused rather than served, whatever software it runs.",
+      "Neither party is handed a matched identifier or a record-by-record " +
+      "pairing, and Alcove enforces this. A partner asking for a revealing " +
+      "round is refused, whatever software it runs.",
   },
   countOnlyRoundDisclosures: {
     basis: "enforced",
     reason:
       "What a count-only run discloses beside the count, and it discloses both " +
-      "however either party behaves. Each party's raw record count rides the " +
-      "terms exchange that opens every exchange, and each party's round frame " +
-      "carries one encrypted element per value it contributes, which is its " +
-      "number of distinct, non-repeating values for the key being matched on. " +
+      "however either party behaves. Each party's raw record count is sent in " +
+      "the terms exchange that opens every exchange, and each party's round " +
+      "frame holds one encrypted element per value it contributes: the key " +
+      "values that appear exactly once in its file. " +
       "Neither figure is the intersection and the count-only mode hides " +
       "neither, so this sits in the run's register rather than the partner's -- " +
       "the same one as the own-membership disclosure a one-sided `psi` " +
       "exchange carries.",
     note:
-      "Your partner also learns how many records you hold, and how many values " +
-      "you contribute for the key being matched on -- the values that appear " +
-      "exactly once in your file. Neither number is your overlap, and a " +
-      "count-only exchange hides neither.",
+      "Your partner also learns how many records you hold, and how many " +
+      "values you contribute for the key being matched on, which are the " +
+      "values that appear exactly once in your file. Neither number is your " +
+      "overlap, and a count-only exchange hides neither.",
   },
   countOnlyReportedCount: {
     basis: "trust-contingent",
@@ -157,15 +157,15 @@ export const CONSENT_FACTS = {
       "Only the receiver computes the count. Where both parties are entitled to " +
       "it the other party's copy arrives as the receiver's report, and Alcove " +
       "does not stop a receiver that reports a different number -- the same " +
-      "posture as the `psi` association-table return leg, where the sender's " +
+      "arrangement as the `psi` association-table return leg, where the sender's " +
       "half of the pairing likewise arrives as the receiver's word. Which party " +
       "computes follows from the record counts the run exchanges, so acceptance " +
       "cannot tell either side which of the two it will be, and the fact is " +
       "stated for both.",
     note:
-      "Only one of you computes the count and sends it to the other; which one " +
-      "follows from the record counts you exchange when the run starts. Alcove " +
-      "does not check a count it is sent against a run of its own.",
+      "Alcove does not check a count your partner sends you against a run of " +
+      "its own. Only one of you computes the count, and which one follows " +
+      "from the record counts you exchange when the run starts.",
   },
   countOnlyInputChoice: {
     basis: "trust-contingent",
@@ -177,14 +177,14 @@ export const CONSENT_FACTS = {
       "value's membership off the count, and nothing on the wire distinguishes a " +
       "crafted set from a genuine one. Both routes are accepted rather than " +
       "prevented, so the protection they bound rests on the partner's conduct " +
-      "even though the round itself is enforced. It bites hardest here: a " +
+      "even though the round itself is enforced. This matters most here: a " +
       "count-only exchange is the one run before the agreement the " +
       "honest-but-curious model leans on exists.",
     note:
-      "Not enforced against your partner's choice of input: a count-only " +
-      "exchange bounds what Alcove hands your partner, not what they can learn " +
-      "by choosing which records to ask about. A crafted list, or a second run " +
-      "differing by one record, turns a count into an answer about one person.",
+      "Your partner can learn whether one person is in your data by choosing " +
+      "which records to ask about. A crafted list, or a second run differing " +
+      "by one record, turns a count into an answer about one person, and " +
+      "Alcove does not check what your partner contributes.",
   },
   countOnlyNoPayload: {
     basis: "enforced",
@@ -198,8 +198,8 @@ export const CONSENT_FACTS = {
       "entitlements, which is what OUTBOUND_SEND_NO_PAYLOAD_SENTENCE reasons " +
       "from and so cannot state here.",
     note:
-      "A count-only exchange sends no data columns in either direction, so no " +
-      "columns are sent to your partner -- whatever your file contains.",
+      "No columns are sent to your partner, whatever your file contains. A " +
+      "count-only exchange sends no data columns in either direction.",
   },
   linkageStrategy: {
     basis: "enforced",
@@ -218,7 +218,7 @@ export const CONSENT_FACTS = {
     reason:
       "A party set to receive no result is sent none, and its receive check " +
       "fails closed on any result it is sent.",
-    note: "Enforced: you are sent no result, and any result sent to you is rejected.",
+    note: "You are sent no result, and Alcove rejects any result sent to you.",
   },
   partnerReceivesResult: {
     basis: "enforced",
@@ -229,7 +229,9 @@ export const CONSENT_FACTS = {
       "terms entitle to it. What the partner does with the result once it holds " +
       "it is governed by the agreement, not by Alcove -- a limit on its use, " +
       "which the note carries, not on whether the disclosure happens.",
-    note: "Once received, its use is governed by your agreement, not by Alcove.",
+    note:
+      "Your agreement governs how your partner uses the result; Alcove does " +
+      "not control it.",
   },
   partnerReceivesNoResult: {
     basis: "trust-contingent",
@@ -237,8 +239,8 @@ export const CONSENT_FACTS = {
       "Keeping a result from a partner rests on the agreed terms being " +
       "honored; one-sided PSI gives this side nothing to impose it with.",
     note:
-      "By agreement, not enforced: keeping the result from your partner rests " +
-      "on the agreed terms being honored, not on anything Alcove can enforce.",
+      "Alcove cannot stop your partner from receiving the result. Keeping it " +
+      "from your partner depends on the agreed terms being honored.",
   },
   partnerLearnsOwnMembership: {
     basis: "enforced",
@@ -259,9 +261,9 @@ export const CONSENT_FACTS = {
       "below is that case, selected from the run's own resolution rather than " +
       "from a second reading of the strategy and the payload declaration.",
     note:
-      "Even when honored, your partner learns which of its own records are in " +
-      "your data (not which of yours). This is inherent to a match that " +
-      "reveals identifiers, not a breach.",
+      "Even when the terms are honored, your partner learns which of its own " +
+      "records are in your data, though not which of your records they are. " +
+      "Every match that reveals identifiers discloses this.",
   },
   partnerOwnMembershipWithheld: {
     basis: "enforced",
@@ -288,10 +290,10 @@ export const CONSENT_FACTS = {
       "third of those reads two documents from one of them, and its own " +
       "documentation states the shape it cannot see.",
     note:
-      "This exchange withholds your partner's half of the matched-pair table, " +
-      "so its process is never sent which of its own records are in your " +
-      "data. Withholding it is a limit of the exchange rather than a choice " +
-      "of the software your partner runs.",
+      "Your partner's process is never sent which of its own records are in " +
+      "your data, because this exchange withholds its half of the " +
+      "matched-pair table. The exchange enforces this whatever software your " +
+      "partner runs.",
   },
   partnerOwnMembershipWithheldSelfAuthored: {
     basis: "enforced",
@@ -316,11 +318,11 @@ export const CONSENT_FACTS = {
       "acceptance surface must not address a seat that accepted no " +
       "invitation.",
     note:
-      "This exchange withholds your partner's half of the matched-pair " +
-      "table, so its process is never sent which of its own records are in " +
-      "your data. A partner whose own input discloses a column your agreed " +
-      "terms declare none for is not sent that half either: the exchange is " +
-      "refused for both parties before the match starts.",
+      "Your partner's process is never sent which of its own records are in " +
+      "your data, because this exchange withholds its half of the " +
+      "matched-pair table. If your partner's input would send a column your " +
+      "agreed terms declare none for, the exchange is refused for both " +
+      "parties before the match starts.",
   },
   duplicateMatches: {
     basis: "enforced",
@@ -358,9 +360,9 @@ export const CONSENT_FACTS = {
       "of its own rather than as a clause of a sentence whose basis is the " +
       "headline's.",
     note:
-      "Alcove receives the group sizes and row positions and does not show " +
-      "them to you. Withholding them is this software's choice rather than a " +
-      "limit of the exchange, so other software on this side could show them.",
+      "Your side receives the group sizes and row positions, and Alcove does " +
+      "not show them to you. The exchange does not withhold them, so other " +
+      "software on your side could show them.",
   },
   duplicateGroupingWithheld: {
     basis: "enforced",
@@ -384,11 +386,10 @@ export const CONSENT_FACTS = {
       "(consent/invitationSummary.ts) off the run's own predicate, so a " +
       "surface never states this basis for a run that does not withhold.",
     note:
-      "This exchange withholds your half of the matched-pair table: Alcove " +
-      "on this side never reads it, and a partner running Alcove never sends " +
-      "it. You are shown no group sizes, no row positions, and nothing about " +
-      "which of your own records matched. Withholding them is a limit of the " +
-      "exchange rather than this software's choice.",
+      "You are shown no group sizes, no row positions, and nothing about " +
+      "which of your own records matched. This exchange withholds your half " +
+      "of the matched-pair table: Alcove on your side never reads it, and a " +
+      "partner running Alcove never sends it.",
   },
   partnerReadsDuplicateGrouping: {
     basis: "trust-contingent",
@@ -408,7 +409,7 @@ export const CONSENT_FACTS = {
     note:
       "Your partner's process is sent the group sizes and row positions your " +
       "matched records fall into, though these terms hand it no result. What " +
-      "it shows of them rests on the software your partner runs.",
+      "it shows of them depends on the software your partner runs.",
   },
   partnerDuplicateGroupingWithheld: {
     basis: "enforced",
@@ -428,10 +429,10 @@ export const CONSENT_FACTS = {
       "(consent/invitationSummary.ts) off the run's own predicate, so a " +
       "surface never states this basis for a run that does not withhold.",
     note:
-      "This exchange withholds your partner's half of the matched-pair table, " +
-      "so its process is sent no group sizes and no row positions for your " +
-      "matched records. Withholding them is a limit of the exchange rather " +
-      "than a choice of the software your partner runs.",
+      "Your partner's process is sent no group sizes and no row positions " +
+      "for your matched records, because this exchange withholds its half " +
+      "of the matched-pair table. The exchange enforces this whatever " +
+      "software your partner runs.",
   },
   acceptorDeduplicateRefused: {
     basis: "enforced",
@@ -451,12 +452,11 @@ export const CONSENT_FACTS = {
       "invitation the accept would take. The exchange does not run at all, " +
       "which is a fact of the run rather than of the partner's conduct.",
     note:
-      "Your partner declares that several of its records may match one of " +
-      "yours. With duplicate matching set for your own records as well, each " +
-      "party's records could group the other's, which the linkage strategy " +
-      "these terms name does not match -- so the exchange will refuse to " +
-      "run. Leave your own setting off to run these terms, or ask your " +
-      "partner for an invitation that names the cascade strategy or drops " +
+      "With duplicate matching set for your own records, the exchange will " +
+      "refuse to run. Your partner declares that several of its records may " +
+      "match one of yours, and the linkage strategy these terms name does " +
+      "not match records grouped on both sides. Leave your own setting off " +
+      "to run these terms, or ask your partner for an invitation that drops " +
       "its own duplicate matching.",
   },
   matchedFields: {
@@ -484,9 +484,10 @@ export const CONSENT_FACTS = {
       "reads very differently to a human than the set it admits, and the check " +
       "evaluating it warns rather than enforces.",
     note:
-      "Your partner declares an allowed-character pattern for these fields. " +
-      "Each is a partner-supplied regular expression that Alcove has not " +
-      "verified, and it is a data expectation rather than an enforced filter.",
+      "Alcove does not enforce these allowed-character patterns. Each is a " +
+      "regular expression your partner supplied for these fields, which " +
+      "Alcove has not verified, stating what your partner expects the data " +
+      "to hold.",
   },
   linkageKeys: {
     basis: "enforced",
@@ -501,7 +502,7 @@ export const CONSENT_FACTS = {
       "one key, not what the partner does with it. Every candidate enters that " +
       "key's round as its own entry; a record appearing in any of the round's " +
       "candidate pairs leaves candidacy for every later key, paired or not; and " +
-      "each strategy pays a grouping disclosure of its own -- the index table " +
+      "each strategy discloses a grouping of its own -- the index table " +
       "the single-pass receiver holds carries each sender record's candidate " +
       "grouping for every key, matched or not, where a cascade round states " +
       "each party's grouping of that round's matched values alone. All three " +
@@ -514,44 +515,41 @@ export const CONSENT_FACTS = {
       "here is a divergence between a specification and the sentence an " +
       "acceptor consents on.",
     note:
-      "A linkage key here splits a value into several candidates and matches " +
-      "each on its own, so a record matches when any single candidate does. " +
-      "That match can rest on one candidate out of a name rather than on the " +
-      "whole value, which is weaker evidence. A record matched this way is " +
-      "left out of the later, less precise keys, whether or not that pairing " +
-      "stands, and how many of the other party's records it pairs with " +
-      "follows the two duplicate-matching settings: with neither set it is " +
-      "paired at most once; with one party's set, a record of the party that " +
-      "set it is paired at most once while a record of the other party may " +
-      "be paired with several; and with both set it is paired with every " +
-      "one of the other party's records any of its candidates reached, and " +
-      "the records " +
-      "joined that way are disclosed to both parties as one group. Under " +
-      "single-pass linkage the party that receives the other's key structure " +
-      "also learns how many candidates each of the other's records produced " +
-      "for each key and which of its values came from the same record; under " +
-      "cascade linkage each party learns instead how the other's matched " +
-      "values group into records, round by round, for the records still in " +
-      "the running.",
+      "A match on this key can rest on one part of a value, such as one word " +
+      "of a name, which is weaker evidence than the whole value. A record " +
+      "matched this way is left out of the later, less precise keys, even if " +
+      "that pairing does not stand. With neither party's duplicate matching " +
+      "set, it is paired at most once; with one party's set, a record of " +
+      "that party is paired at most once while a record of the other party " +
+      "may be paired with several; with both set, it is paired with every " +
+      "one of the other party's records any of its parts reached, and the " +
+      "records joined that way are disclosed to both parties as one group. " +
+      "Each party also learns how the other's values group into records. " +
+      "Under single-pass linkage, the party that receives the other's key " +
+      "structure learns how many parts each of the other's records produced " +
+      "for each key and which values came from the same record. Under " +
+      "cascade linkage, each party learns this for the other's matched " +
+      "values, round by round.",
   },
   fanOutRefused: {
     basis: "enforced",
     reason:
       "The other case of the same line, and enforced for the same reason the " +
       "`deduplicate` refusal is: a count-only exchange counts matched values " +
-      "where the matching pairs each record at most once, and a linkage " +
-      "strategy with no resolution written for a candidate set matches one " +
-      "value per record, so terms declaring one under either are refused when " +
-      "they are authored or minted, at the local prepare step, and again at " +
-      "the agreed-terms run boundary. The exchange this invitation proposes " +
-      "does not run at all, which is a fact of the run rather than of the " +
-      "partner's conduct.",
+      "where the matching pairs each record at most once, so terms declaring " +
+      "a candidate set under it are refused when they are authored or " +
+      "minted, at the local prepare step, and again at the agreed-terms run " +
+      "boundary. The note names the count-only case alone because both " +
+      "linkage strategies match a candidate set " +
+      "(CANDIDATE_SET_IMPLEMENTED_BY_STRATEGY, pinned in " +
+      "packages/core/test/psi/link.test.ts). The exchange this invitation " +
+      "proposes does not run at all, which is a fact of the run rather than " +
+      "of the partner's conduct.",
     note:
-      "Your partner proposes splitting a value into several candidates to match " +
-      "on, which the algorithm and linkage strategy this invitation names do " +
-      "not match on -- so the exchange will refuse to run. Ask your partner for " +
-      "an invitation that either drops the split or names terms that match on " +
-      "each candidate.",
+      "The exchange will refuse to run these terms. Your partner proposes " +
+      "matching on parts of a value, which a count-only exchange cannot do. " +
+      "Ask your partner for an invitation that drops the split, or one that " +
+      "reveals which records match instead of only their number.",
   },
   candidateSetChainsGrouping: {
     basis: "enforced",
@@ -577,11 +575,11 @@ export const CONSENT_FACTS = {
       "sentence states the pair conditionally, since the party reading it " +
       "holds one side and not the other wherever it is rendered.",
     note:
-      "A linkage key here matches one record on several values at once. " +
-      "Where both parties set duplicate matching for their own records, every " +
-      "record that matched any one of those values is grouped with that " +
-      "record and with each other, so records sharing no matched value are " +
-      "disclosed to both parties as one group.",
+      "Where both parties set duplicate matching for their own records, " +
+      "records sharing no matched value are disclosed to both parties as one " +
+      "group when a key here matches one record on several values. Every " +
+      "record matching any one of those values is grouped with that record " +
+      "and with each other.",
   },
   inboundPayloadColumns: {
     basis: "trust-contingent",
@@ -664,17 +662,16 @@ export const CONSENT_FACTS = {
       "promise a cleanup the transport does not make -- and an invitation " +
       "carrying no declaration has made no claim to state at all.",
     note:
-      "Your partner runs this exchange in retain mode, so every file it writes " +
-      "stays where the two of you meet instead of being deleted once it has " +
-      "been read. What you send stays encrypted there, and nothing left behind " +
-      "is your file or the matched result. The small files the two sides meet " +
-      "through are not encrypted. Anyone who can read that location afterwards " +
-      "sees that an exchange happened, when it ran, how many messages each " +
-      "side sent and how large they were, the name each side ran under, and " +
-      "the settings each side announced. Your side must run retain mode too, " +
-      "or the two of you stop with an error when you meet. What becomes of " +
-      "that transcript afterwards is your partner's decision, not something " +
-      "Alcove controls.",
+      "Every file this exchange writes stays in the shared folder or on the " +
+      "server after it is read, because your partner runs in retain mode. " +
+      "What you send stays encrypted there, and no file left behind is your " +
+      "data file or the matched result. The small files the two sides use to " +
+      "connect are not encrypted. Anyone who can read that location later " +
+      "sees when an exchange ran, how many messages each side sent and their " +
+      "sizes, the name each side ran under, and the settings each side " +
+      "announced. Your side must also run in retain mode, or the exchange " +
+      "stops with an error when the two sides connect. Your partner decides " +
+      "what happens to these files afterwards; Alcove does not.",
   },
   invitationRelay: {
     basis: "enforced",
@@ -687,10 +684,10 @@ export const CONSENT_FACTS = {
       "the partner's cooperation. What the relay's operator can observe is " +
       "the note's, since that follows from contacting the relay at all.",
     note:
-      "Your partner named this relay for the exchange to connect through, " +
-      "and your side uses it in place of any relay of your own. The relay's " +
-      "operator learns your network address on every run, whether or not " +
-      "any traffic passes through the relay.",
+      "The relay's operator learns your network address on every run, " +
+      "whether or not any traffic passes through the relay. Your partner " +
+      "named this relay for the exchange, and your side uses it in place of " +
+      "any relay of your own.",
   },
 } as const satisfies Record<string, ConsentFact>;
 
@@ -758,8 +755,8 @@ export const CONSENT_BASIS_MARKERS: Record<ConsentFactBasis, string> = {
  * from these two, so the sentences differ only in the remedy each reader can act
  * on -- never in what this build found. */
 const CONTRADICTED_FINDING =
-  "A half marked as not matching names a rule set Alcove ships, and the " +
-  "rules declared for it are NOT drawn from that set -- so the citation does " +
+  "A half marked as not matching names a rule set Alcove ships, but the " +
+  "rules declared for it are not drawn from that set, so the citation does " +
   "not describe what the exchange would match on.";
 
 const CONTRADICTED_RULES_GOVERN =
@@ -808,7 +805,7 @@ export const LINKAGE_RULE_SET_VERDICT_COPY: Record<
   contradicted: {
     marker: "checked: does not match",
     note:
-      `${CONTRADICTED_FINDING} Treat the name as unreliable and settle it with ` +
+      `${CONTRADICTED_FINDING} Treat the name as unreliable and raise it with ` +
       `the other party; ${CONTRADICTED_RULES_GOVERN}`,
   },
   unchecked: {
@@ -971,7 +968,7 @@ export const RECORDED_LINKAGE_RULE_SET_CAVEAT =
  */
 export const OUTBOUND_SEND_NO_PAYLOAD_SENTENCE =
   "Your partner receives no result from this exchange, so no columns are sent " +
-  "to them -- whatever your file contains.";
+  "to them, whatever your file contains.";
 
 /**
  * The disclosure statement a surface renders beside the algorithm for a
@@ -1032,12 +1029,12 @@ export const COUNT_ONLY_DISCLOSURE_STATEMENT =
  * a viewer-relative variant of it.
  */
 export const DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT =
-  "Grouping is what a deduplicating match discloses: for each of the accepting " +
-  "party's matched records, that party learns how many of the inviting party's " +
-  "records share the matched linkage-key value and which of the inviting " +
-  "party's rows they are -- a count and row positions, never the value behind " +
-  "them, and only for groups that matched. That count is the inviting party's " +
-  "own declaration, which Alcove does not check against its data.";
+  "For each of the accepting party's matched records, that party learns how " +
+  "many of the inviting party's records share the matched linkage-key value " +
+  "and which of the inviting party's rows they are. It learns a count and " +
+  "row positions, never the value behind them, and only for groups that " +
+  "matched. That count is the inviting party's own declaration, which Alcove " +
+  "does not check against its data.";
 
 /**
  * The disclosure statement for the other output shape a deduplicating invitation
@@ -1086,12 +1083,11 @@ export const DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT =
  * Written in party names rather than "you", for the same reason as its sibling.
  */
 export const DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT =
-  "Grouping is what a deduplicating match discloses, and under this invitation " +
-  "the inviting party alone reads it: the result it receives links several of " +
-  "its own records to a single one of the accepting party's records, which is " +
-  "the evidence that those of its own rows name one individual. The accepting " +
-  "party receives no result from this exchange, so Alcove presents it no " +
-  "group sizes and no row positions.";
+  "Only the inviting party sees the grouping under this invitation. The " +
+  "result it receives links several of its own records to a single one of " +
+  "the accepting party's records, which is evidence that those of its own " +
+  "rows name one individual. The accepting party receives no result from " +
+  "this exchange, so Alcove shows it no group sizes and no row positions.";
 
 /**
  * What an inviting party's `deduplicate` costs the accepting party whose
@@ -1115,9 +1111,9 @@ export const DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT =
  * setting buys a hostile inviter nothing it could not do locally.
  */
 export const DEDUPLICATE_ACCEPTOR_WIDENING_NOTE =
-  "It still widens what the accepting party discloses -- more of its records " +
-  "can match than in a plain one-to-one run of the same two files, each one " +
-  "disclosing its membership and any payload columns it sends.";
+  "It still widens what the accepting party discloses: more of its records " +
+  "can match than in a plain one-to-one run of the same two files, and each " +
+  "one discloses its membership and any payload columns it sends.";
 
 /**
  * The direction note a surface with NO control over the accepting party's own
@@ -1191,12 +1187,11 @@ export const DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE =
  * or softening that clause would state a guarantee no check makes.
  */
 export const DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT =
-  "Grouping is what a deduplicating match discloses: for each of your " +
-  "partner's matched records, your partner learns how many of your records " +
-  "share the matched linkage-key value and which of your rows they are -- a " +
-  "count and row positions, never the value behind them, and only for groups " +
-  "that matched. That count is your own declaration, which Alcove does not " +
-  "check against your data.";
+  "For each of your partner's matched records, your partner learns how many " +
+  "of your records share the matched linkage-key value and which of your " +
+  "rows they are. It learns a count and row positions, never the value " +
+  "behind them, and only for groups that matched. That count is your own " +
+  "declaration, which Alcove does not check against your data.";
 
 /**
  * The widening {@link DEDUPLICATE_ACCEPTOR_WIDENING_NOTE} states, for the seat
@@ -1206,9 +1201,9 @@ export const DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT =
  * that did not declare the setting, which on this seat is the reader's partner.
  */
 export const DEDUPLICATE_PARTNER_DECLARED_WIDENING_NOTE =
-  "It still widens what your partner discloses -- more of its records can " +
-  "match than in a plain one-to-one run of the same two files, each one " +
-  "disclosing its membership and any payload columns it sends.";
+  "It still widens what your partner discloses: more of its records can " +
+  "match than in a plain one-to-one run of the same two files, and each one " +
+  "discloses its membership and any payload columns it sends.";
 
 /**
  * The same direction note for a seat where each party declares its own
@@ -1287,13 +1282,13 @@ export function describeDeduplicatePair({
 }: DeduplicatePair): string {
   if (inviterDeduplicate && acceptorDeduplicate)
     return (
-      "Both parties declare deduplicate true. One matched linkage-key value " +
-      "pairs every one of the accepting party's records holding it with every " +
-      "one of the inviting party's, so the result discloses both parties' " +
-      "groupings and holds one row per matched pair. Where a key matches one " +
-      "record on several values, the records those values reach are all " +
-      "grouped with it, so records sharing no matched value are disclosed to " +
-      "both parties as one group."
+      "Both parties declare deduplicate true. The result discloses both " +
+      "parties' groupings and holds one row per matched pair, since a matched " +
+      "linkage-key value pairs every record of one party holding it with " +
+      "every record of the other holding it. " +
+      "Where a key matches one record on several values, the records those " +
+      "values reach are all grouped with it, so records sharing no matched " +
+      "value are disclosed to both parties as one group."
     );
   if (inviterDeduplicate)
     return (
@@ -1329,8 +1324,9 @@ export function describeDeduplicatePair({
  * Both entries are candidate-set producers, so what a surface renders either
  * marker for is a combination that resolves no candidate set -- a count-only
  * exchange -- which refuses those terms rather than matching on the exact
- * value alone. Each copy names that refusal and the term to ask the inviter to
- * drop, which is the one remedy its reader can act on. A term whose
+ * value alone. Each copy names that refusal and the two invitations the reader
+ * can ask for: one dropping the term, or one on the identifier-revealing
+ * algorithm, which matches a candidate set under both strategies. A term whose
  * not-applying is a silent narrowing of the match takes the opposite copy,
  * saying only that the term is proposed, which is what makes this a table
  * rather than a house style.
@@ -1339,13 +1335,15 @@ export function describeDeduplicatePair({
  */
 export const PROPOSED_NOT_APPLIED_NOTES = {
   fuzzyComparisons:
-    "(not applied -- the exchange will refuse to run these terms. Ask your " +
-    "partner for an invitation that drops the approximate matching, or one " +
-    "that names terms matching on each candidate.)",
+    "(The exchange will refuse to run these terms, because a count-only " +
+    "exchange cannot match approximate variants. Ask your partner for an " +
+    "invitation that drops the approximate matching, or one that reveals " +
+    "which records match instead of only their number.)",
   swappedKeyOrder:
-    "(not applied -- the exchange will refuse to run these terms. Ask your " +
-    "partner for an invitation that drops the swapped key order, or one that " +
-    "names terms matching on each candidate.)",
+    "(The exchange will refuse to run these terms, because a count-only " +
+    "exchange cannot match in either order. Ask your partner for an " +
+    "invitation that drops the swapped key order, or one that reveals which " +
+    "records match instead of only their number.)",
 } as const;
 
 /**

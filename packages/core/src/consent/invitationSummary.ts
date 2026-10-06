@@ -557,8 +557,8 @@ export interface InvitationSummary {
    *
    * True for a combination that resolves a candidate set -- either linkage
    * strategy under the identifier-revealing algorithm (docs/spec/PROTOCOL.md,
-   * Fan-out runs under both linkage strategies); under one that does not,
-   * terms declaring a fan-out are refused before the exchange runs.
+   * Fan-out runs under both linkage strategies); under a count-only (`psi-c`)
+   * exchange, terms declaring a fan-out are refused before the exchange runs.
    * Meaningful only alongside {@link fansOut}, selecting which of the two
    * fan-out consent facts a surface renders.
    */

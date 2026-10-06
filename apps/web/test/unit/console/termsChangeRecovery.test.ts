@@ -81,7 +81,7 @@ describe("the terms change as the web app shows it", () => {
       },
       {
         label:
-          "Columns you no longer send your partner (your partner decides on this)",
+          "Columns you no longer send your partner (your partner decides on these)",
         entries: ["zip"],
       },
       { label: "Your partner's deduplicate", entries: ["false -> true"] },

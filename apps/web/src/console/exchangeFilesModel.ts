@@ -62,16 +62,15 @@ export const EXCHANGE_FILES_DEFAULT: ExchangeFilesDraft = {
 
 /**
  * What the card states about retain mode before the run starts, mirroring the
- * fact the CLI announces at run time (`announceRetainMode`): the trio is a
- * bilateral agreement with no negotiation, and a mismatch is only detected at
+ * fact the CLI announces at run time (`announceRetainMode`): both sides must
+ * set the same trio, and a mismatch is only detected at
  * rendezvous. Stated up front here because the console is where the operator can
  * still act on it -- by telling their partner -- rather than after a failed run.
  */
 export const RETAIN_MODE_BILATERAL_NOTICE =
-  "Retain mode is an agreement, not a negotiation. Your partner must turn on " +
-  "the same three settings (retain, timestamped filenames, lockless " +
-  "rendezvous) on their side, and you must both start from an empty shared " +
-  "folder. A mismatch is only discovered when the two sides meet, and the " +
+  "Your partner must turn on the same three settings (retain, timestamped " +
+  "filenames, lockless rendezvous) on their side, and you must both start " +
+  "from an empty shared folder. A mismatch is only discovered when the two sides meet, and the " +
   "exchange then stops with an error.";
 
 /** Resolve a {@link FileSyncToggle} to the boolean the option block holds, or

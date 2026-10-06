@@ -1959,7 +1959,7 @@ test("handler: a zero-setup retain run states no consent fact about the retained
     // A fragment as well as the whole sentence: a surface that wrapped or
     // re-flowed the copy would still contain this clause, and the whole-string
     // assertion alone would pass over it.
-    expect(emitted).not.toContain("stays where the two of you meet");
+    expect(emitted).not.toContain("What you send stays encrypted there");
     expect(emitted).not.toContain("exchange files (enforced)");
   } finally {
     getLogger("alcove").setLevel("silent");
