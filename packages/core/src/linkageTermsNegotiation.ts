@@ -800,10 +800,8 @@ export function compareTerms(
   const namesOf = (columns: ReadonlyArray<PayloadColumn>): string[] =>
     columns.map((column) => column.name);
 
-  // A partner stating no receive list leaves this party's send list out of
-  // the terms adopting its own (termsAdoptingPartnerTerms), so the columns
-  // that list names are shown as sent and not listed. Not a refusal either
-  // way: the partner takes whatever columns it is sent.
+  // Adopting the partner's terms drops this party's send list when the
+  // partner states no receive list, so those columns are shown as sent.
   const localSendNames = namesOf(local.payload?.send ?? []);
   const sent =
     partner.payload?.receive === undefined

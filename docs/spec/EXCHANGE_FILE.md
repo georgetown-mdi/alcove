@@ -396,7 +396,7 @@ nor to operator discipline.
 A party that receives payload holds what arrives to the partner's agreed
 `payload.send`, compared as a set by exact name: a column the list does not
 name, or a listed column left out, aborts the run the same way, at the same
-point and with the same record (`assertPayloadMatchesAgreedSend`). The message
+point and with the same record. The message
 names none of the columns. A run in which none of the partner's rows matched
 receives no payload columns at all, and that passes.
 
