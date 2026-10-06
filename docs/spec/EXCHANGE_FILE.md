@@ -393,6 +393,13 @@ the protocol, alongside the schema rule forbidding a no-output party from
 declaring `payload.receive` columns; it is left neither to the data dictionary
 nor to operator discipline.
 
+A party that receives payload holds what arrives to the partner's agreed
+`payload.send`, compared as a set by exact name: a column the list does not
+name, or a listed column left out, aborts the run the same way, at the same
+point and with the same record (`assertPayloadMatchesAgreedSend`). The message
+names none of the columns. A run in which none of the partner's rows matched
+receives no payload columns at all, and that passes.
+
 ### An unset `payload.receive` is filled on the first run
 
 A party states, in the terms it sends at every terms exchange, the columns its

@@ -402,8 +402,10 @@ export interface PartnerDeduplicateChange {
  * partner's `deduplicate` against the value this party holds it to, and
  * `otherTerms` a diagnostic for each other term the two copies disagree on. A
  * direction is undefined where the two agree or the receiving party states no
- * list; `partnerDeduplicate` is undefined where the two agree or this party
- * holds the partner to no value.
+ * list, except that `sent` names every column this party's send list holds
+ * where the partner states no receive list, since adopting the partner's
+ * terms leaves that list out; `partnerDeduplicate` is undefined where the two
+ * agree or this party holds the partner to no value.
  */
 export interface TermsDelta {
   received: PayloadColumnsChange | undefined;
@@ -798,9 +800,16 @@ export function compareTerms(
   const namesOf = (columns: ReadonlyArray<PayloadColumn>): string[] =>
     columns.map((column) => column.name);
 
+  // A partner stating no receive list leaves this party's send list out of
+  // the terms adopting its own (termsAdoptingPartnerTerms), so the columns
+  // that list names are shown as sent and not listed. Not a refusal either
+  // way: the partner takes whatever columns it is sent.
+  const localSendNames = namesOf(local.payload?.send ?? []);
   const sent =
     partner.payload?.receive === undefined
-      ? undefined
+      ? localSendNames.length === 0
+        ? undefined
+        : { change: columnsChange([], localSendNames), message: undefined }
       : checkPayloadDirection(
           namesOf(partner.payload.receive),
           local.payload?.send ?? [],
