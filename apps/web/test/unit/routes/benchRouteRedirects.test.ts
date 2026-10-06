@@ -61,10 +61,4 @@ describe("bench route redirects preserve the fragment", () => {
     // dropped hash.
     expect(options.hash).toBe(true);
   });
-
-  test("the accept redirect must resolve client-side (ssr disabled)", () => {
-    // beforeLoad runs in the browser where window.location.hash is populated; the
-    // fragment must never reach the server, so the redirect route opts out of SSR.
-    expect(BenchAcceptRoute.options.ssr).toBe(false);
-  });
 });

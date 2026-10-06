@@ -14,9 +14,8 @@ import { headersForPath, parseHeadersFile } from "../staticHost/headersFile";
 const appRoot = fileURLToPath(new URL("../..", import.meta.url));
 const builtHeadersFile = `${appRoot}dist/hosted/_headers`;
 
-// The static host sends the security headers from `_headers` rather than from
-// src/server.ts, so the file must state exactly what securityResponseHeaders
-// does.
+// The static host sends the security headers from `_headers`, so the file must
+// state exactly what securityResponseHeaders does.
 describe("the hosted _headers file", () => {
   const rules = parseHeadersFile(hostedHeadersFileSource());
 

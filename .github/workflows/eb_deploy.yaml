@@ -19,7 +19,6 @@ on:
       - "apps/web/public/**"
       - "apps/web/server/**"
       - "apps/web/src/**"
-      - "apps/web/nitro.config.ts"
       - "apps/web/package.json"
       - "apps/web/postcss.config.cjs"
       - "apps/web/tsconfig.json"

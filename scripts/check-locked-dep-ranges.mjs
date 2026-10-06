@@ -60,15 +60,7 @@ const DEPENDENCY_FIELDS = [
  * key so a patch release on either side does not churn the entry; a new
  * dependent, or a new range, is a new edge and fails until recorded.
  */
-export const OUT_OF_RANGE_BY_DESIGN = [
-  {
-    dependent: "h3",
-    dependency: "crossws",
-    range: "^0.4.1",
-    reason:
-      'An optional peer npm leaves on the 0.3 line the hard dependents require; docs/spec/DEPENDENCY_PINS.md, "The crossws peer conflict blocks the release SBOM", records why nothing breaks at runtime.',
-  },
-];
+export const OUT_OF_RANGE_BY_DESIGN = [];
 
 /** The directory name a lockfile entry installs under. */
 const installedAs = (path) =>

@@ -3,7 +3,6 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "nitro.config.ts",
     "vite.config.ts",
     /* The app-shell service worker, a classic script served from public/. It is
        here so ESLint's type-aware rules can resolve it (the shared config points

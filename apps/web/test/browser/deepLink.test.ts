@@ -72,7 +72,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// The cutover collapsed the acceptor onto the primary /accept route (ssr: false),
+// The acceptor lives on the primary /accept route,
 // the path the inviter's deep link points at (ACCEPT_ROUTE_PATH). This pins the
 // end-to-end landing: a real minted deep link's fragment, extracted the way a
 // pasted link is (tokenFromInput), decodes on the AcceptorScreen the /accept route

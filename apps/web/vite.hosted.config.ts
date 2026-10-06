@@ -21,8 +21,6 @@ const template = "hosted/index.html";
 
 const hostedConfig = {
   root: appRoot,
-  // Read by the root route, whose document this client renders itself.
-  define: { "import.meta.env.CLIENT_RENDERED_DOCUMENT": "true" },
   plugins: [
     ...deployGraphRecorderFromEnv(),
     tanstackRouter({

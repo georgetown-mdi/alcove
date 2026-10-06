@@ -125,6 +125,23 @@ describe("the verdict", () => {
     expect(verdict.ok, verdict.lines.join("\n")).toBe(true);
   });
 
+  it("passes over an alias the root holds with no workspace counterpart", () => {
+    const lock = lockfile({
+      packages: {
+        "node_modules/string-width": { version: "7.2.0" },
+        "node_modules/string-width-cjs": {
+          name: "string-width",
+          version: "4.2.3",
+        },
+      },
+    });
+    expect(topLevelInstalls(lock, "").get("string-width-cjs").entry.name).toBe(
+      "string-width",
+    );
+    expect(splitCopies(lock)).toEqual([]);
+    expect(assess(lock).ok).toBe(true);
+  });
+
   it("passes over a copy nested under another package, either side", () => {
     const verdict = assess(
       lockfile({
@@ -286,15 +303,6 @@ describe("the real repository", () => {
   it("has no package split across the workspace boundary", () => {
     const verdict = assess(readRootJson("package-lock.json"));
     expect(verdict.ok, verdict.lines.join("\n")).toBe(true);
-  });
-
-  it("leaves the root's own aliased copies alone", () => {
-    const lock = readRootJson("package-lock.json");
-    const rootInstalls = topLevelInstalls(lock, "");
-    expect(rootInstalls.get("string-width-cjs").entry.name).toBe(
-      "string-width",
-    );
-    expect(splitCopies(lock)).toEqual([]);
   });
 
   it("exits 0 from the CLI entry point", () => {

@@ -7,11 +7,10 @@
 // the raised version is nested under the workspace that asked for it. Nothing
 // at install time reports that split. What it costs is measured in
 // docs/spec/DEPENDENCY_PINS.md, "What a root overrides block changes about
-// later installs": the TanStack Start plugins resolve the root copy while the
-// dev server runs the nested one, the dev SSR middleware never installs, every
-// route 404s, and the web integration and browser suites die in their shared
-// globalSetup -- no test FAILS, and CI reports a bare exit code 1 naming
-// nothing. It has landed twice, and `@dependabot rebase` and
+// later installs": the web build plugins resolve the root copy while the
+// dev server runs the nested one, and when it landed the web integration and
+// browser suites died in their shared globalSetup -- no test FAILED, and CI
+// reported a bare exit code 1 naming nothing. It has landed twice, and `@dependabot rebase` and
 // `@dependabot recreate` each reproduce it, so the next bump is what stands
 // between here and a third.
 //
@@ -47,9 +46,8 @@
 //     the entry's `name` field to confirm both directories hold the same
 //     package. Where the two disagree -- an npm alias pointing one of them at
 //     another package -- it REFUSES by name rather than reporting a duplicate
-//     of a package only one of them is. An alias standing anywhere else,
-//     including the `string-width-cjs` family the committed tree holds at the
-//     root, is none of this check's business.
+//     of a package only one of them is. An alias standing anywhere else is none
+//     of this check's business.
 //   - Workspace directories come from the lockfile's own keys that sit outside
 //     every node_modules, which is npm's record of the directories it resolved.
 //     The manifest's `workspaces` globs are not re-expanded here.

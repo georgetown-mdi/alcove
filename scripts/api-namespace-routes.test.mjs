@@ -10,28 +10,21 @@ import {
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
 
-// Every route the web app serves under /api must be on the namespace
-// allowlist, which the hosted profile lets through and the console profile
-// refuses. Job handlers live only in the console server, not in the hosted
-// router tree.
+// The web app's router serves no route under /api. Job handlers live only in
+// the console server's route table, and the console server refuses the rest of
+// the namespace ahead of it (apps/web/src/utils/apiNamespace.ts), so a page
+// route under /api would never render on the console, and on the hosted static
+// site it would answer as an ordinary page under the path the broker and the
+// job API are known by. This is that obligation as a check.
 //
-// The refusal (apps/web/src/utils/apiNamespace.ts) keeps a public deployment
-// from routing to anything under /api, so the router's own answers -- the app
-// document, its canonicalizing redirect, the SSR path's JSON refusal -- are not
-// observable there. Its allowlist is a hand-written list of prefixes, empty
-// while the hosted deployment serves no API, and a route added outside it is
-// served or refused by whatever the list happens to say, with nothing failing
-// either way. This is that obligation as a check.
-//
-// It is an INCLUSION check over the ROUTER'S OWN ACCOUNT of what it serves:
+// It reads the ROUTER'S OWN ACCOUNT of what it serves:
 // the entries come from the generated route tree
 // (apps/web/src/routeTree.gen.ts), whose FileRoutesByFullPath names every path
 // the router resolves to and the module that answers it. Nothing here maps a
 // file name to a path -- a route's path comes from its name as much as its
 // directory (api.telemetry.ts, a `_`-prefixed pathless layout, a parenthesized
 // group), and every rule for reading one is the generator's, so a copy of that
-// rule here would decide a name the generator decides differently. There is no
-// allowance list, and one nobody thought to list is covered the day it lands.
+// rule here would decide a name the generator decides differently.
 //
 // The generated tree is a checked-in build product, so this check is only as
 // current as it is; scripts/check-routetree-fresh.mjs is what holds it to what
@@ -40,26 +33,23 @@ import {
 // a route file added or removed without the regeneration is reported here
 // rather than read past.
 //
-// public/ is read too. A static asset there is served by Nitro's own handler,
-// which does not run the server entry (apps/web/src/utils/securityHeaders.ts
-// states that bypass), so an asset under public/api would answer past the
-// refusal entirely. None may exist.
+// public/ is read too. The hosted build copies it into the static site as it
+// stands, so an asset under public/api would answer there under the namespace.
+// None may exist.
 
-const SELF = "scripts/api-namespace-allowlist.test.mjs";
+const SELF = "scripts/api-namespace-routes.test.mjs";
 
-// The refusal, the entry that installs it, the router's account of the routes
-// it decides over, the tree those routes are written in, and the public assets
-// that bypass it, all repository-relative.
+// The refusal, the console entry that installs it, the router's account of the
+// routes it serves, the tree those routes are written in, and the public
+// assets, all repository-relative.
 const GUARD_MODULE = "apps/web/src/utils/apiNamespace.ts";
-const SERVER_ENTRY = "apps/web/src/server.ts";
+const SERVER_ENTRY = "apps/web/server/console/app.ts";
 const ROUTE_TREE = "apps/web/src/routeTree.gen.ts";
 const ROUTES_ROOT = "apps/web/src/routes";
 const PUBLIC_DIR = "apps/web/public";
 
-/** The exported names the refusal declares: the wrapper the server entry
- * installs, and the allowlist this check is read against. */
+/** The wrapper the console entry installs. */
 const GUARD = "withApiGuard";
-const ALLOWLIST = "HOSTED_API_PREFIXES";
 
 /** The interface in the generated route tree that names every path the router
  * serves, mapped to the route that answers it. */
@@ -69,28 +59,6 @@ const SERVED_PATHS = "FileRoutesByFullPath";
  * constant so the two cannot name different namespaces. */
 const API_PATH_ROOT = "/api";
 const API_PATH_ROOT_CONSTANT = "API_PATH_ROOT";
-
-/**
- * The string-literal elements of the array `name` is declared with in
- * `sourceFile`, or null for any other shape -- a spread, a computed value, a
- * name the module does not declare.
- */
-function stringArrayConstant(sourceFile, name) {
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name)) continue;
-      if (declaration.name.text !== name) continue;
-      const value = declaration.initializer;
-      if (value === undefined || !ts.isArrayLiteralExpression(value))
-        return null;
-      if (!value.elements.every((element) => ts.isStringLiteral(element)))
-        return null;
-      return value.elements.map((element) => element.text);
-    }
-  }
-  return null;
-}
 
 /**
  * The string `name` is declared with in `sourceFile`, or null for any other
@@ -228,46 +196,25 @@ function moduleOf(route) {
 }
 
 /**
- * The route entries the namespace holds: one per path segment directly under
- * it, with the served paths it answers and the modules behind them. A served
- * path whose module the generated tree does not read back to stays in the
- * reading, listed as unreadable, so it is reported rather than passed over.
+ * Every served path under the namespace with the module that answers it, or
+ * with no module named where the generated tree does not read back to one.
  */
-function routeEntries() {
-  const byRoute = new Map();
-  for (const { path, route } of served) {
-    if (!isUnderPrefix(path, API_PATH_ROOT)) continue;
-    const [segment] = path.slice(API_PATH_ROOT.length + 1).split("/");
-    const key = segment === "" ? API_PATH_ROOT : `${API_PATH_ROOT}/${segment}`;
-    const entry = byRoute.get(key) ?? {
-      route: key,
-      modules: new Set(),
-      unreadable: new Set(),
-    };
-    const module = moduleOf(route);
-    if (module === null) entry.unreadable.add(path);
-    else entry.modules.add(module);
-    byRoute.set(key, entry);
-  }
-  return [...byRoute.values()];
+function namespaceRoutes() {
+  return served
+    .filter(({ path }) => isUnderPrefix(path, API_PATH_ROOT))
+    .map(({ path, route }) => {
+      const module = moduleOf(route);
+      return module === null ? path : `${path} (${module})`;
+    });
 }
 
 const guardSource = parseFile(GUARD_MODULE);
-const allowlist = stringArrayConstant(guardSource, ALLOWLIST);
-const entries = routeEntries();
 
-describe("every /api route is accounted for by the namespace refusal", () => {
-  it("reads the refusal's allowlist and the routes it decides over", () => {
-    // A rot guard: a rewritten allowlist, a renamed guard, or a generated route
-    // tree this check no longer reads would otherwise empty the enumeration and
-    // make the assertions below vacuous. The allowlist and the namespace may
-    // both be empty; the tree's served paths may not.
-    expect(
-      allowlist,
-      `${GUARD_MODULE} no longer declares ${ALLOWLIST} as an array of string ` +
-        `literals, which is the only shape this check reads. Teach ${SELF} the ` +
-        `new one.`,
-    ).not.toBeNull();
+describe("the router serves no route under /api", () => {
+  it("reads the routes the router serves", () => {
+    // A rot guard: a renamed guard, or a generated route tree this check no
+    // longer reads, would otherwise empty the enumeration and make the
+    // assertion below vacuous. The tree's served paths may not be empty.
     expect(
       stringConstant(guardSource, API_PATH_ROOT_CONSTANT),
       `${GUARD_MODULE} refuses under a namespace root other than ` +
@@ -284,9 +231,8 @@ describe("every /api route is accounted for by the namespace refusal", () => {
     expect(served.length).toBeGreaterThan(0);
     expect(
       importsFrom(parseFile(SERVER_ENTRY), GUARD, "apiNamespace"),
-      `${SERVER_ENTRY} no longer installs ${GUARD}, so nothing applies the ` +
-        `refusal and every route below is served by the router on every ` +
-        `deployment profile.`,
+      `${SERVER_ENTRY} no longer installs ${GUARD}, so nothing on the ` +
+        `console server refuses the ${API_PATH_ROOT} namespace.`,
     ).toBe(true);
   });
 
@@ -320,45 +266,22 @@ describe("every /api route is accounted for by the namespace refusal", () => {
     );
     expect(
       assets,
-      `${assets.length} static asset(s) sit under ${PUBLIC_DIR}/api. Nitro ` +
-        `serves those without running ${SERVER_ENTRY}, so the /api refusal ` +
-        `never sees the request and the asset answers on every deployment ` +
-        `profile. Serve it from a path outside ${API_PATH_ROOT}.`,
+      `${assets.length} static asset(s) sit under ${PUBLIC_DIR}/api, which ` +
+        `the hosted build copies into the static site, so each answers there ` +
+        `under ${API_PATH_ROOT}. Serve it from a path outside ` +
+        `${API_PATH_ROOT}.`,
     ).toEqual([]);
   });
 
-  it("holds every route under /api to the allowlist", () => {
-    const unaccounted = [];
-    for (const entry of entries) {
-      if (allowlist.some((prefix) => isUnderPrefix(entry.route, prefix)))
-        continue;
-      unaccounted.push(entry.route);
-    }
+  it("holds no route under /api", () => {
+    const routes = namespaceRoutes();
     expect(
-      unaccounted,
-      `${unaccounted.length} route(s) under ${API_PATH_ROOT} are not in ` +
-        `${GUARD_MODULE}'s ${ALLOWLIST}, so what a public deployment answers ` +
-        `for them is whatever the allowlist happens to say and nothing fails ` +
-        `when it is wrong. Add the route to ${ALLOWLIST} if the hosted ` +
-        `deployment serves it and the console must not. Job handlers belong ` +
-        `under apps/web/server/console/routes, not ${ROUTE_TREE}.`,
-    ).toEqual([]);
-  });
-
-  it("holds every allowlist entry to a route that exists", () => {
-    const stale = allowlist.filter(
-      (prefix) =>
-        !entries.some((entry) => isUnderPrefix(prefix, entry.route)) ||
-        !isUnderPrefix(prefix, API_PATH_ROOT) ||
-        prefix === API_PATH_ROOT,
-    );
-    expect(
-      stale,
-      `${stale.length} ${ALLOWLIST} entr(y/ies) in ${GUARD_MODULE} name no ` +
-        `route in ${ROUTE_TREE}, or reach past ${API_PATH_ROOT} itself. An ` +
-        `entry that matches nothing is dead, and one naming ` +
-        `"${API_PATH_ROOT}" admits the whole namespace. Remove it, or point ` +
-        `it at the route it was meant for.`,
+      routes,
+      `${routes.length} route(s) in ${ROUTE_TREE} sit under ` +
+        `${API_PATH_ROOT}, which the console server refuses ahead of the ` +
+        `page and the hosted site serves as an ordinary page. Serve the page ` +
+        `from a path outside ${API_PATH_ROOT}; a job handler belongs under ` +
+        `apps/web/server/console/routes.`,
     ).toEqual([]);
   });
 });

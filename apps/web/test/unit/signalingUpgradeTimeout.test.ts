@@ -516,8 +516,8 @@ describe("hardenUpgradeSurface", () => {
 // object from the one the `connection` event delivered. A bound left on the
 // wrapped socket therefore survives every release and reaps a live connection,
 // which only an HTTPS server exercises: the plain-HTTP cases above hand out the
-// same object throughout. `apps/web/server/custom-entry.ts` builds an HttpsServer
-// whenever NITRO_SSL_CERT and NITRO_SSL_KEY are set.
+// same object throughout. The console server serves plain HTTP, but
+// hardenUpgradeSurface takes an HttpsServer as readily.
 describe.skipIf(loopbackTlsCert === null)(
   "hardenUpgradeSurface over TLS",
   () => {

@@ -5,10 +5,10 @@ import {
   withSecurityHeaders,
 } from "@utils/securityHeaders";
 
-// withSecurityHeaders is the boundary the server entry (src/server.ts) wraps
-// every response in. The integration suite proves it reaches the wire on real
-// routes; these cover the helper in isolation, including the cases a
-// same-process mutate would mishandle.
+// withSecurityHeaders is the boundary the console server
+// (server/console/app.ts) wraps every response in. The integration suite proves
+// it reaches the wire on real routes; these cover the helper in isolation,
+// including the cases a same-process mutate would mishandle.
 describe("withSecurityHeaders", () => {
   test("sets every declared security header to its value", () => {
     const hardened = withSecurityHeaders(new Response("ok"));

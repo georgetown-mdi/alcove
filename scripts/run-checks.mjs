@@ -169,12 +169,6 @@ export const CHECKS = [
       "Every package with an upgrade checklist in docs/spec/DEPENDENCY_PINS.md is excluded from the batched npm Dependabot groups.",
   },
   {
-    script: "check:crossws-sbom-block",
-    expiresOn: "2026-12-31",
-    description:
-      "The release SBOM's crossws workaround is still needed: the unflagged command docs/RELEASES.md documents still refuses.",
-  },
-  {
     script: "check:nested-root-package",
     expiresOn: "2026-12-31",
     description:
@@ -203,12 +197,6 @@ export const CHECKS = [
     expiresOn: "2026-12-31",
     description:
       "apps/web/vite.config.ts loads from the file subset the Dockerfile builder stage copies, so the image build resolves no module the image does not have.",
-  },
-  {
-    script: "check:nitro-websocket-unset",
-    expiresOn: "2026-12-31",
-    description:
-      "Nitro's experimental.websocket stays off, so nothing attaches an upgrade listener to the hosted server.",
   },
   {
     script: "check:core-barrel-wildcards",

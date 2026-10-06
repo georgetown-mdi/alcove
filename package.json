@@ -37,14 +37,12 @@
     "check:merge-gate-identities": "node scripts/check-merge-gate-identities.mjs",
     "check:dependabot-ignore-shape": "node scripts/check-dependabot-ignore-shape.mjs",
     "check:dependabot-pin-coverage": "node scripts/check-dependabot-pin-coverage.mjs",
-    "check:crossws-sbom-block": "node scripts/check-crossws-sbom-block.mjs",
     "check:nested-root-package": "node scripts/check-nested-root-package.mjs",
     "check:locked-dep-ranges": "node scripts/check-locked-dep-ranges.mjs",
     "check:deploy-trigger-graph": "node scripts/check-deploy-trigger-graph.mjs",
     "check:routetree": "node scripts/check-routetree-fresh.mjs",
     "check:web-config-native-load": "node scripts/check-web-config-native-load.mjs",
     "check:web-config-image-load": "node scripts/check-web-config-image-load.mjs",
-    "check:nitro-websocket-unset": "node scripts/check-nitro-websocket-unset.mjs",
     "check:core-barrel-wildcards": "node scripts/check-core-barrel-wildcards.mjs",
     "check:warning-sources": "node scripts/check-warning-sources.mjs",
     "check:internal-fault-throws": "node scripts/check-internal-fault-throws.mjs",
@@ -90,7 +88,6 @@
     "esbuild@0.28.1": true,
     "ssh2@1.17.0": true,
     "cpu-features@0.0.10": true,
-    "@parcel/watcher": false,
     "unrs-resolver": false,
     "fsevents@2.3.2 || 2.3.3": false
   }

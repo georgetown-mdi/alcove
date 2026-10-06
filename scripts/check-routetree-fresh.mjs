@@ -23,7 +23,7 @@
 //      and the handlers alike are armed by scripts/lib/regenerationChecks.mjs.
 //   2. FAILS CLOSED when the codegen did not run. The trigger is a real
 //      web-tooling invocation (`vitest list` loads apps/web/vite.config.ts,
-//      which runs the tanstackStart plugin's codegen -- the cheapest such
+//      which runs the TanStack Router plugin's codegen -- the cheapest such
 //      invocation, ~7s). A check that only diffed the file after that command
 //      would pass forever, detecting nothing, if a future TanStack or vitest
 //      release stopped generating on config load. So the file handed to the
@@ -79,7 +79,7 @@ import {
 export const ROUTE_TREE = "apps/web/src/routeTree.gen.ts";
 
 // The invocation that regenerates it: the cheapest one that loads
-// apps/web/vite.config.ts and so runs the tanstackStart plugin's codegen. Held
+// apps/web/vite.config.ts and so runs the TanStack Router plugin's codegen. Held
 // as argv and joined for display so the command this runs and the command the
 // failure messages tell a contributor to run cannot drift apart.
 const REGENERATE_ARGV = [

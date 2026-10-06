@@ -191,7 +191,7 @@ const installedAs = (path) => path.slice(path.lastIndexOf(NM) + NM.length);
  * publisher controls and could use to claim another package's verdict. An
  * aliased dependency ("h3-v2": "npm:h3@2") makes the install directory
  * untrustworthy the same way, since it has a name the registry never
- * published -- and this lockfile installs several.
+ * published.
  *
  * A registry tarball lives at <host>/<name>/-/<name>-<version>.tgz, with the
  * registry possibly mounted below the host's root, so the filename is delimited
@@ -445,7 +445,7 @@ describe("the identity npm matches a lockfile entry by", () => {
 
 describe("the verdict npm reaches for a lockfile entry", () => {
   // `h3` installed twice, once under its own name and once as the alias
-  // `h3-v2`, which is the shape this repo's lockfile has.
+  // `h3-v2`.
   const aliasedH3 = {
     packages: {
       "node_modules/h3": {

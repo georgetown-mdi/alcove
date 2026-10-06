@@ -28,9 +28,9 @@
 //     SCANNED_ROOTS and SCANNED_FILES is read; what a package does at runtime is
 //     the dependency review's ground (CONTRIBUTING.md, Dependency Policy).
 //   - Egress introduced by build configuration. A snippet added to
-//     apps/web/vite.config.ts or apps/web/nitro.config.ts emits into the
-//     shipped page, but those files sit at a workspace root, outside
-//     SCANNED_ROOTS.
+//     apps/web/vite.config.ts or one of the build configs beside it emits into
+//     the shipped page, but those files sit at a workspace root or under
+//     apps/web/hosted, outside SCANNED_ROOTS.
 //   - A file git ignores. The listing in scanRepo excludes them, so a URL
 //     literal in one is never read, wherever under a scanned root it sits. The
 //     reach of that gap is small, but not because a tree holds no ignored file:
@@ -118,10 +118,10 @@
 //
 // SCANNED_ROOTS is source that ships or runs, not all TypeScript. Beside the
 // app and library trees and the web app's static assets it includes
-// apps/web/server, the Nitro entry point the deployed server boots (named by
-// apps/web/nitro.config.ts). The signaling broker's whole src is among the
-// library trees: the web build bundles it into that same server, and its
-// standalone entry point runs the identical wiring as a service of its own.
+// apps/web/server, the console server the image runs (its entry is the `--ssr`
+// input of apps/web/package.json's build:console-server script). The signaling
+// broker's whole src is among the library trees: its standalone entry point
+// runs as a service of its own.
 // SCANNED_FILES contains the shipped files that sit
 // outside any scanned tree, for both images: the two entrypoints,
 // docker-entrypoint.sh and docker-entrypoint-fips.sh, which run inside the

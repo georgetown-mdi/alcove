@@ -76,7 +76,7 @@ const WEB_CHOKEPOINT = resolve(
   "apps/web/src/psi/linkageComparison.ts",
 );
 const WEB_RAW_ROWS = resolve(repoRoot, "apps/web/src/psi/inviterEditor.ts");
-const WEB_SERVER = resolve(repoRoot, "apps/web/server/custom-entry.ts");
+const WEB_SERVER = resolve(repoRoot, "apps/web/server/console/app.ts");
 const WEB_TEST = resolve(
   repoRoot,
   "apps/web/test/unit/psi/managedRunDriver.test.ts",
@@ -84,23 +84,20 @@ const WEB_TEST = resolve(
 const CORE_SRC = resolve(repoRoot, "packages/core/src/exchange.ts");
 const CLI_SRC = resolve(repoRoot, "apps/cli/src/commands/exchange.ts");
 
-/** The src/ paths, which keep loglevel's named exports: the client entry sets the
- * browser's level through `setDefaultLevel`. */
-const WEB_SRC_BANNED = [
+/** The paths the root-logger bans cover, all of which keep loglevel's named
+ * exports: the client entry sets the browser's level through
+ * `setDefaultLevel`. */
+const WEB_BANNED = [
   WEB_PRODUCT,
   WEB_BELOW_PRODUCTS,
   WEB_CHOKEPOINT,
   WEB_RAW_ROWS,
+  WEB_SERVER,
 ];
 
-const WEB_BANNED = [...WEB_SRC_BANNED, WEB_SERVER];
-
-/** Whether a no-restricted-imports `paths` entry refuses the root logger: by name
- * under src/, and as the whole module under server/, where an entry with no
- * `importNames` refuses every import of it. */
+/** Whether a no-restricted-imports `paths` entry refuses the root logger. */
 const isRootLoglevelBan = (entry) =>
-  entry.name === "loglevel" &&
-  (entry.importNames === undefined || entry.importNames.includes("default"));
+  entry.name === "loglevel" && (entry.importNames ?? []).includes("default");
 
 // Loading the flat config and the typescript-eslint parser for the first time is
 // the expensive part of a lintText call, independent of which file or how much
@@ -179,7 +176,7 @@ describe("the bare-root-logger bans", { timeout: 60_000 }, () => {
   }
 
   it("leaves the level-configuration imports the client entry takes", async () => {
-    for (const filePath of WEB_SRC_BANNED) {
+    for (const filePath of WEB_BANNED) {
       expect(
         await importHits(
           filePath,
@@ -190,36 +187,8 @@ describe("the bare-root-logger bans", { timeout: 60_000 }, () => {
     }
   });
 
-  // The server tree takes the whole module instead: Node's ESM loader synthesizes
-  // no named export off a CommonJS module, so a named import there is a
-  // SyntaxError at boot, before the built server listens. The type import goes
-  // with them, since a no-restricted-imports `paths` entry cannot tell a
-  // type-only import from a value one.
-  for (const [shape, source] of [
-    [
-      "the level setter",
-      'import { setDefaultLevel } from "loglevel";\nsetDefaultLevel("INFO");\n',
-    ],
-    [
-      "the levels table",
-      'import { levels } from "loglevel";\nexport const level = levels.INFO;\n',
-    ],
-    [
-      "a type-only import",
-      'import type { LogLevel } from "loglevel";\nexport type Level = keyof LogLevel;\n',
-    ],
-  ]) {
-    it(`refuses ${shape} in the server tree`, async () => {
-      expect(
-        await importHits(WEB_SERVER, source),
-        `${WEB_SERVER}: ${shape} passed`,
-      ).not.toHaveLength(0);
-    });
-  }
-
-  // The server block sets no-restricted-imports for its own loglevel entry, so it
-  // re-carries the two groups the src/-and-server/ block above would otherwise
-  // give those files -- and could drop either by omission.
+  // The block that sets the root-logger ban for the server tree also carries
+  // these two groups, and could drop either by omission.
   for (const [shape, source] of [
     [
       "a raw YAML parser",
