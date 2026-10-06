@@ -4,9 +4,9 @@ title: "Binding a Signed Receipt to One Run"
 
 # Binding a signed receipt to one run: which artifact holds the shared value
 
-_Status: resolved - built. The mechanism is normatively specified in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#pairing-a-receipt-to-one-run) and [PROTOCOL.md](../spec/PROTOCOL.md#verifying-a-stored-dual-signed-record); this note records the two directions weighed and why the built one was chosen. See [docs/notes/README.md](README.md)._
+_Status: resolved - built. The mechanism is normatively specified in [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#pairing-a-receipt-to-one-run) and [PROTOCOL.md](../spec/PROTOCOL.md#verifying-a-stored-signed-receipt); this note records the two directions weighed and why the built one was chosen. See [docs/notes/README.md](README.md)._
 
-An exchange produces two on-disk artifacts: the unsigned, self-attested exchange record each party writes for its own audit log, and - when a signing identity is configured - one dual-signed receipt both parties sign. Verifying the receipt established who signed it and under which agreed terms, but not which _run_ of a recurring partnership it belonged to: every value an offline verifier could check repeats byte for byte from one run to the next. One run's genuine receipt therefore displayed as "verified" beside another run's record.
+An exchange produces two on-disk artifacts: the unsigned, self-attested exchange record each party writes for its own audit log, and - when a signing identity is configured - one signed receipt both parties sign. Verifying the receipt established who signed it and under which agreed terms, but not which _run_ of a recurring partnership it belonged to: every value an offline verifier could check repeats byte for byte from one run to the next. One run's genuine receipt therefore displayed as "verified" beside another run's record.
 
 Closing that needs one value derived from a single run present in both artifacts. Two directions were available, and the choice was not obvious enough to inherit.
 
@@ -41,4 +41,4 @@ What the pairing does not reach: a party holding both artifacts could write a ma
 ## See also
 
 - [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#pairing-a-receipt-to-one-run) - the normative outcomes, the record field, and the privacy reasoning
-- [PROTOCOL.md](../spec/PROTOCOL.md#verifying-a-stored-dual-signed-record) - where the check sits among the verification's other checks
+- [PROTOCOL.md](../spec/PROTOCOL.md#verifying-a-stored-signed-receipt) - where the check sits among the verification's other checks

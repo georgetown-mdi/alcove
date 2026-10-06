@@ -279,8 +279,8 @@ describe("verdictViewModel: tampered record (ambiguity)", () => {
     expect(view.headline.title).toBe("Verification failed");
     // The board criterion: the failed headline states the ambiguity, and never
     // asserts tamper on its own.
-    expect(view.headline.detail).toContain("the record was altered");
-    expect(view.headline.detail).toContain("does not belong to this exchange");
+    expect(view.headline.detail).toContain("the exchange record was altered");
+    expect(view.headline.detail).toContain("is not from this exchange");
     expect(view.headline.detail.toLowerCase()).not.toContain("tampered");
     const sent = view.commitments.find(
       (row) => row.label === "The payload you sent",
@@ -316,7 +316,7 @@ describe("verdictViewModel: wrong keys (missing salt is distinct from tamper)", 
     );
     expect(table?.status).toBe("Cannot be opened");
     expect(table?.tone).toBe("incomplete");
-    expect(table?.explanation).toContain("wrong or drifted keys file");
+    expect(table?.explanation).toContain("the keys file is not this record's");
   });
 });
 
@@ -401,13 +401,15 @@ describe("verdictViewModel: no re-supply", () => {
     for (const row of view.commitments) {
       expect(row.status).toBe("Not opened");
       expect(row.tone).toBe("incomplete");
-      expect(row.explanation).toContain("Supply your retained files");
+      expect(row.explanation).toContain(
+        "Supply the input and result files you kept",
+      );
     }
     expect(view.termsHash.status).toBe("Not checked");
     expect(view.termsHash.explanation).toContain("both parties' linkage terms");
     // The unsigned-record caveat is always stated.
     expect(view.signatureNote).toContain(
-      "Partner receipt signatures are not checked",
+      "Your partner's signatures are not checked",
     );
   });
 
@@ -558,7 +560,7 @@ describe("verdictViewModel: the recorded result size", () => {
     // The verified headline enumerates what was checked, so it names the
     // recount beside the openings and the terms hash.
     expect(view.headline.detail).toContain(
-      "the recorded result size recounts from the opened pairing",
+      "the result size the record states matches its matched pairs",
     );
   });
 
@@ -589,9 +591,9 @@ describe("verdictViewModel: the recorded result size", () => {
     expect(table?.status).toBe("Opened and matches");
     // Nothing else is at fault, so the headline states what happened rather
     // than offering the reader two causes it cannot choose between.
-    expect(view.headline.detail).toContain("The record was altered");
-    expect(view.headline.detail).toContain("the files you supplied check out");
-    expect(view.headline.detail).not.toContain("cannot be told apart");
+    expect(view.headline.detail).toContain("so the record was altered");
+    expect(view.headline.detail).toContain("The files you supplied check out");
+    expect(view.headline.detail).not.toContain("This check cannot tell which");
   });
 
   test("a commitment failing alongside the size keeps the two-cause headline", async () => {
@@ -614,8 +616,10 @@ describe("verdictViewModel: the recorded result size", () => {
     );
     const view = verdictViewModel(report, reconstructed.warnings);
     expect(view.headline.title).toBe("Verification failed");
-    expect(view.headline.detail).toContain("the record was altered, or a file");
-    expect(view.headline.detail).toContain("cannot be told apart");
+    expect(view.headline.detail).toContain(
+      "the exchange record was altered, or a file",
+    );
+    expect(view.headline.detail).toContain("This check cannot tell which");
   });
 
   test("an unchecked terms hash keeps the two-cause headline", async () => {
@@ -633,8 +637,10 @@ describe("verdictViewModel: the recorded result size", () => {
     expect(report.resultSize).toBe("mismatch");
     const view = verdictViewModel(report, reconstructed.warnings);
     expect(view.headline.title).toBe("Verification failed");
-    expect(view.headline.detail).toContain("the record was altered, or a file");
-    expect(view.headline.detail).toContain("cannot be told apart");
+    expect(view.headline.detail).toContain(
+      "the exchange record was altered, or a file",
+    );
+    expect(view.headline.detail).toContain("This check cannot tell which");
   });
 
   test("a pairing that opened but is not a pairing has no count to recount", async () => {
@@ -680,7 +686,7 @@ describe("verdictViewModel: the recorded result size", () => {
     expect(view.resultSize?.status).toBe("Not checked");
     expect(view.resultSize?.tone).toBe("incomplete");
     expect(view.resultSize?.explanation).toContain(
-      "Supply your retained result",
+      "Supply the result file you kept",
     );
   });
 });
@@ -909,11 +915,11 @@ describe("verifySignedRecord: both certificates anchored", () => {
     // The record loaded beside the receipt holds the same run's binder, so the
     // pairing is part of what this verdict rests on.
     expect(view.runBinding.status).toBe(
-      "This receipt and this record are the same run",
+      "This receipt and this exchange record are from the same run",
     );
     // The binder is reported, never recomputed: only the two parties held the
     // session key it derives from.
-    expect(view.binderNote).toContain("never recomputed here");
+    expect(view.binderNote).toContain("cannot be recomputed here");
   });
 
   test("both parties' linkage terms stand in for the record, but pair nothing", async () => {
@@ -942,7 +948,7 @@ describe("verifySignedRecord: both certificates anchored", () => {
     );
     // Nothing was supplied to pair against, so there is no pairing to advise on.
     expect(view.runBinding.explanation).not.toContain(
-      "pair them by that stamp",
+      "pair them by that timestamp",
     );
   });
 
@@ -963,14 +969,14 @@ describe("verifySignedRecord: both certificates anchored", () => {
     expect(report.runBinding).toBe("mismatch");
     expect(report.outcome).toBe("failed");
     const view = signedVerdictViewModel(report);
-    expect(view.runBinding.status).toBe(
-      "Does not match the record's run binder",
-    );
+    expect(view.runBinding.status).toBe("Does not match");
     expect(view.runBinding.tone).toBe("failed");
     expect(view.runBinding.explanation).toContain("from different runs");
     // A pairing the record contradicts is answered by finding the record written
     // beside this receipt, so the verdict earns the stamp advice.
-    expect(view.runBinding.explanation).toContain("pair them by that stamp");
+    expect(view.runBinding.explanation).toContain(
+      "pair them by that timestamp",
+    );
     // Distinguishable from the other failure classes: every signature, identity,
     // and anchor row still shows as verified.
     for (const party of view.parties)
@@ -993,11 +999,15 @@ describe("verifySignedRecord: both certificates anchored", () => {
     expect(report.runBinding).toBe("unpaired");
     expect(report.outcome).toBe("failed");
     const view = signedVerdictViewModel(report);
-    expect(view.runBinding.status).toBe("The record holds no run binder");
+    expect(view.runBinding.status).toBe(
+      "The exchange record holds no run identifier",
+    );
     expect(view.runBinding.explanation).toContain("no signed receipt");
     // Earned here as much as by a cross-run pairing: both are answered by the
     // record written beside this receipt.
-    expect(view.runBinding.explanation).toContain("pair them by that stamp");
+    expect(view.runBinding.explanation).toContain(
+      "pair them by that timestamp",
+    );
   });
 });
 
@@ -1015,7 +1025,7 @@ describe("verifySignedRecord: one certificate anchored", () => {
     const view = signedVerdictViewModel(report);
     expect(view.headline.title).toBe("Signed receipt incomplete");
     expect(view.headline.detail).toContain(
-      "Nothing outside the record anchors the initiator's certificate.",
+      "Nothing you supplied confirms who holds the initiator's certificate.",
     );
     expect(view.headline.detail).not.toContain("responder's certificate");
 
@@ -1039,9 +1049,9 @@ describe("verifySignedRecord: one certificate anchored", () => {
 
     expect(view.guidance).toHaveLength(1);
     expect(view.guidance[0]).toContain(
-      "The initiator's certificate is anchored by nothing outside this record",
+      "To confirm who holds the initiator's certificate",
     );
-    expect(view.guidance[0]).toContain("holds the verdict short of verified");
+    expect(view.guidance[0]).toContain("the verdict stays short of verified");
   });
 });
 
@@ -1055,10 +1065,10 @@ describe("verifySignedRecord: neither certificate anchored", () => {
     const view = signedVerdictViewModel(report);
     expect(view.headline.title).toBe("Signed receipt incomplete");
     expect(view.headline.detail).toContain(
-      "Nothing outside the record anchors the initiator's certificate.",
+      "Nothing you supplied confirms who holds the initiator's certificate.",
     );
     expect(view.headline.detail).toContain(
-      "Nothing outside the record anchors the responder's certificate.",
+      "Nothing you supplied confirms who holds the responder's certificate.",
     );
     for (const party of view.parties) {
       const anchorRow = party.rows[0];
@@ -1067,14 +1077,16 @@ describe("verifySignedRecord: neither certificate anchored", () => {
       // slot must not read as a check this certificate was put to and failed.
       expect(anchorRow.explanation).not.toContain("pinned");
       expect(anchorRow.explanation).not.toContain("your own");
-      expect(anchorRow.explanation).toContain("could have minted");
+      expect(anchorRow.explanation).toContain(
+        "could have made this certificate",
+      );
       // Everything the record can attest to itself still passes.
       expect(party.rows[1].tone).toBe("verified");
       expect(party.rows[2].tone).toBe("verified");
     }
     expect(view.guidance).toHaveLength(1);
     expect(view.guidance[0]).toContain(
-      "Certificate fingerprint trust is not established",
+      "Nothing you supplied confirms whose certificates these are.",
     );
   });
 });
@@ -1099,8 +1111,8 @@ describe("verifySignedRecord: an anchoring value matching neither certificate", 
     const view = signedVerdictViewModel(report);
     expect(view.headline.title).toBe("Signed receipt verification failed");
     expect(view.guidance[0]).toBe(
-      "The fingerprint you pinned matches neither certificate in this record: " +
-        "this is not the record of the party you pinned.",
+      "The fingerprint you pinned matches neither certificate in this " +
+        "signed receipt, so it is not a receipt from the party you pinned.",
     );
   });
 
@@ -1130,8 +1142,8 @@ describe("verifySignedRecord: an anchoring value matching neither certificate", 
       "Matches the fingerprint you pinned out-of-band",
     );
     expect(view.guidance).toEqual([
-      "The certificate you supplied as your own is neither certificate in " +
-        "this record: this is not a receipt you signed.",
+      "The certificate you supplied as your own matches neither " +
+        "certificate in this signed receipt, so it is not a receipt you signed.",
     ]);
   });
 
@@ -1249,7 +1261,7 @@ describe("verifySignedRecord: what the record cannot attest to itself", () => {
     // exchange or partner cannot be told apart here.
     expect(view.headline.detail).toContain("was altered");
     expect(view.headline.detail).toContain(
-      "not the exchange or the partner you are checking it against",
+      "not from the exchange or the partner you are checking it against",
     );
     for (const party of view.parties) {
       expect(party.rows[2]?.status).toBe("Does not verify");
@@ -1387,12 +1399,12 @@ describe("verdictViewModel: the unsigned record's standing caveat", () => {
     // is the signed verdict's pairing row, which may equally report that they are
     // not, so this sentence may not presume the answer.
     expect(verdictViewModel(report, [], true).signatureNote).toBe(
-      "Partner receipt signatures are checked separately below, against the " +
-        "signed receipt you loaded.",
+      "Your partner's signatures are checked below, against the signed " +
+        "receipt you loaded.",
     );
     // Unchanged for the record-only run: the default is today's copy.
     expect(verdictViewModel(report, []).signatureNote).toContain(
-      "Partner receipt signatures are not checked",
+      "Your partner's signatures are not checked",
     );
   });
 });

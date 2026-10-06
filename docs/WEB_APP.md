@@ -81,7 +81,7 @@ The Verify page, at [https://psi.data-bridge.org/verify](https://psi.data-bridge
 1. Choose the record and its verification keys, and choose **Verify**. This checks the files' structure.
 2. To check the record against the data, also supply your input CSV and your result CSV under **Re-supply your files to open the commitments**, and choose **Verify with these files**.
 
-The page reports **Verified**, **Incomplete** (some checks could not run, for example without your files), or **Verification failed**. A failure means the record was changed or one of the files does not belong to this exchange; the page cannot tell which, so check that you chose the right files first. The section on a dual-signed record applies to exchanges run with the command line app or the console with signing set up; a web app exchange has no signed record.
+The page reports **Verified**, **Incomplete** (some checks could not run, for example without your files), or **Verification failed**. A failure means the record was changed or one of the files is not from this exchange; the page cannot tell which, so check that you chose the right files first. The section on a signed receipt applies to exchanges run with the command line app or the console with signing set up; a web app exchange writes no signed receipt.
 
 ## Running it again
 
