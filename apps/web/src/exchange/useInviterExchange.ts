@@ -20,11 +20,11 @@ import {
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
+import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
 
 import {
   JobApiRequestError,
   JobIntentColumnNameError,
-  PARTNER_REFUSED_EXIT_CODE,
   RelayedSelfExplainingError,
   RelayedTerminalError,
   createFetchJobApiClient,

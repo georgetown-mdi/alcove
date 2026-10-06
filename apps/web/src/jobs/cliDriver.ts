@@ -5,7 +5,6 @@ import { spawn } from "node:child_process";
 
 import {
   DEFAULT_MAX_DISPLAY_LENGTH,
-  FAILURE_CAUSE_PATH_MAX_LENGTH,
   TEARDOWN_LEFTOVER_FILES_CLAUSE,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   createPrivateKeyStreamRedactor,
@@ -17,29 +16,29 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
+import {
+  PERSISTENCE_LOSS_EXIT_CODE,
+  failureCauseStreamField,
+  isEventType,
+} from "@alcove/cli-contract";
+
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 
 import { PAYLOAD_RECEIVE_TAKEN_SOURCE } from "./payloadReceiveTakenNotice";
 
 import type { FailureCause, PartnerOriginText } from "@alcove/core";
 import type { ChildProcess } from "node:child_process";
+import type { EventType } from "@alcove/cli-contract";
 import type { Readable } from "node:stream";
 
 /**
- * The CLI's fd-3 event vocabulary (schema v1), re-validated at the trust
- * boundary. Mirrors docs/spec/CLI_EVENTS.md and
- * packages/cli-contract/src/events.ts. The server does not import the CLI's own
- * event types (the CLI is a separate workspace it drives as a subprocess), so it
- * validates each parsed line against this shape independently -- a malformed or
- * unknown line is fail-safe, never a crash.
+ * A relayed CLI event after validation against the fd-3 schema
+ * (`@alcove/cli-contract`, docs/spec/CLI_EVENTS.md) and field sanitization. A
+ * malformed or unknown line is a degradation notice, never a crash.
  */
-export type RelayEventType =
-  "stages" | "stage" | "stageEnd" | "warning" | "metrics" | "result" | "error";
-
-/** A relayed CLI event after schema validation and field sanitization. */
 export interface RelayEvent {
   v: number;
-  type: RelayEventType;
+  type: EventType;
   [key: string]: unknown;
 }
 
@@ -53,8 +52,8 @@ export interface RelayEvent {
  *
  * docs/spec/SERVER_JOB_API.md (Warning sources on the job stream) is the
  * registry every value is described in, and where a new synthesized notice
- * claims one; scripts/check-warning-sources.mjs fails when the two disagree and
- * when a value here collides with a CLI one.
+ * claims one. A value here that collides with a CLI one fails
+ * relayWarningSources.test.ts.
  */
 export const RELAY_WARNING_SOURCES = [
   "relayStreamUnavailable",
@@ -95,29 +94,6 @@ export function buildSynthesizedWarningEvent(
     ...(options.degraded === true ? { degraded: true } : {}),
   };
 }
-
-/**
- * The exit code the CLI reports when the exchange itself completed and a local
- * write did not -- an audit artifact, a configuration, or the result file
- * (docs/spec/CLI_EVENTS.md, Persistence loss). Mirrored here rather than
- * imported, exactly as the fd-3 vocabulary above is: the CLI is a separate
- * workspace this server drives as a subprocess. What holds the pair together in
- * place of the module graph is `scripts/mirrored-exit-codes.test.mjs`, which
- * reads both declarations out of source and fails when they diverge.
- */
-export const PERSISTENCE_LOSS_EXIT_CODE = 73;
-
-/**
- * The exit code the CLI reports for an internal fault in Alcove itself
- * (docs/CLI.md, Exit codes; docs/spec/CLI_EVENTS.md, The internal-fault code),
- * mirrored from `INTERNAL_FAULT_EXIT_CODE` in
- * `packages/cli-contract/src/exitCodes.ts` for the same reason as
- * {@link PERSISTENCE_LOSS_EXIT_CODE} and held to it by the same check,
- * `scripts/mirrored-exit-codes.test.mjs`. A run exiting with it is `failed`;
- * what it changes is the terminal synthesized when the run emitted none, which
- * withholds the retry a run exiting 70 cannot use.
- */
-export const INTERNAL_FAULT_EXIT_CODE = 70;
 
 /**
  * How a driven CLI run terminated, reconciled with the CLI's terminal-event
@@ -566,31 +542,51 @@ function handleFd3Line(line: string, handlers: CliDriverHandlers): void {
   }
   const event = validateAndSanitizeEvent(parsed);
   if (event === null) {
-    handlers.onDegraded(
-      "relayUnknownEvent",
-      "CLI emitted an event outside the known schema",
-    );
+    handlers.onDegraded("relayUnknownEvent", unknownEventNotice(parsed));
     return;
   }
   handlers.onEvent(event);
 }
 
-const RELAY_EVENT_TYPES = new Set<RelayEventType>([
-  "stages",
-  "stage",
-  "stageEnd",
-  "warning",
-  "metrics",
-  "result",
-  "error",
-]);
+/** The budget of each value an {@link unknownEventNotice} quotes. */
+const UNKNOWN_EVENT_VALUE_MAX_LENGTH = 64;
 
 /**
- * Validate a parsed fd-3 value against the v1 event vocabulary and sanitize every
- * string field (recursively, through arrays and nested objects) before it is
- * buffered or relayed -- defense in depth on top of the CLI's own construction-
- * time sanitizing -- save the two warning fields below, which the seat escapes
- * once. Returns null for anything that does not match the schema.
+ * The operator's notice for a parsed fd-3 value {@link validateAndSanitizeEvent}
+ * refused: what arrived, by the field that put it outside the schema, and what
+ * to do. A quoted value is redacted and fitted but not escaped, since the run
+ * view's warning sink escapes the notice once as it renders it.
+ */
+export function unknownEventNotice(value: unknown): string {
+  const quoted = (field: unknown): string =>
+    typeof field === "string"
+      ? `"${redactAndFitUnescaped(field, UNKNOWN_EVENT_VALUE_MAX_LENGTH)}"`
+      : typeof field === "number"
+        ? String(field)
+        : "(none)";
+  let what: string;
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    what = "an event that is not a JSON object";
+  else {
+    const record = value as Record<string, unknown>;
+    what =
+      record.v !== 1
+        ? `an event of schema version ${quoted(record.v)}`
+        : `an event of type ${quoted(record.type)}`;
+  }
+  return (
+    `The command-line tool sent ${what}, which this console does not read, ` +
+    "so it was skipped. Check that the console and the alcove command-line " +
+    "tool it runs come from the same release."
+  );
+}
+
+/**
+ * Validate a parsed fd-3 value against the v1 event schema -- its version and
+ * its `type` -- and sanitize every string field (recursively, through arrays
+ * and nested objects) before it is buffered or relayed -- defense in depth on
+ * top of the CLI's own construction-time sanitizing -- save the two warning
+ * fields below, which the seat escapes once. Returns null for anything that does not match the schema.
  *
  * A `warning` event's own `message` keeps the wider
  * {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH} budget the CLI composed it to,
@@ -612,8 +608,8 @@ const RELAY_EVENT_TYPES = new Set<RelayEventType>([
  * A terminal `error` event's `cause` and `termsChange` are rebuilt from their
  * known fields only ({@link relayedFailureCause}, {@link relayedTermsChange}),
  * and dropped whole where they are not the shape the CLI emits -- a cause whose
- * kind is not on core's `FAILURE_CAUSE_KINDS` among them -- so the event is
- * still relayed and the seat reads its message instead.
+ * kind has no row in the contract's `FAILURE_CAUSE_STREAM_FIELDS` among them --
+ * so the event is still relayed and the seat reads its message instead.
  *
  * A `payloadReceiveTaken` warning's `columns` is the other field left unescaped
  * ({@link relayedTakenColumnNames}): the console composes its notice from those
@@ -626,11 +622,7 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
   const record = value as Record<string, unknown>;
   if (record.v !== 1) return null;
   const type = record.type;
-  if (
-    typeof type !== "string" ||
-    !RELAY_EVENT_TYPES.has(type as RelayEventType)
-  )
-    return null;
+  if (!isEventType(type)) return null;
   const sanitized: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(record)) {
     const outKey: string = sanitizeForDisplay(key);
@@ -678,7 +670,7 @@ export function validateAndSanitizeEvent(value: unknown): RelayEvent | null {
               : [],
         }
       : {};
-  return { ...sanitized, ...chain, v: 1, type: type as RelayEventType };
+  return { ...sanitized, ...chain, v: 1, type };
 }
 
 /**
@@ -816,23 +808,14 @@ function relayedTermsChange(
 
 /**
  * An `error` event's `cause` (docs/spec/CLI_EVENTS.md), rebuilt by core's
- * `failureCauseFromUntrusted` from the facts its kind holds, its path or host
- * escaped again at this boundary. Undefined -- the field dropped -- where the
- * kind is not on the allowlist or a fact is not the type and value the catalog
- * declares.
+ * `failureCauseFromUntrusted` from the facts its kind holds, then by the
+ * contract's `failureCauseStreamField`, which escapes its path or host again
+ * at this boundary. Undefined -- the field dropped -- where the kind is not on
+ * the allowlist or a fact is not the type and value the catalog declares.
  */
 function relayedFailureCause(value: unknown): FailureCause | undefined {
   const cause = failureCauseFromUntrusted(value);
-  const escape = (text: string): string =>
-    sanitizeForDisplay(text, { maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH });
-  switch (cause?.kind) {
-    case "folder-missing":
-      return { ...cause, path: escape(cause.path) };
-    case "relay-registrar-unreachable":
-      return { ...cause, host: escape(cause.host) };
-    default:
-      return cause;
-  }
+  return cause === undefined ? undefined : failureCauseStreamField(cause);
 }
 
 /**

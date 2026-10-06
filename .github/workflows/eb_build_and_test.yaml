@@ -68,7 +68,9 @@ jobs:
       #
       # packages/peerjs-broker/** is here because the web dev loop and suites
       # run the standalone broker from that workspace, and packages/testkit/**
-      # because the web unit suite is driven by fixtures it holds. eb_deploy.yaml
+      # because the web unit suite is driven by fixtures it holds, and
+      # packages/cli-contract/** because the console imports the event schema
+      # it declares. eb_deploy.yaml
       # is here because the deploy-trigger coverage step reads its push filter,
       # and narrowing that filter is the change the step exists to catch.
       #
@@ -85,6 +87,7 @@ jobs:
             tsconfig.base.json
             apps/web/**
             packages/core/**
+            packages/cli-contract/**
             packages/peerjs-broker/**
             packages/testkit/**
             .github/actions/setup/**
@@ -94,6 +97,7 @@ jobs:
             !lib/**/*.md
             !apps/web/**/*.md
             !packages/core/**/*.md
+            !packages/cli-contract/**/*.md
             !packages/peerjs-broker/**/*.md
             !packages/testkit/**/*.md
             !.github/actions/setup/**/*.md

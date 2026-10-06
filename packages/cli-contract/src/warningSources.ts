@@ -11,8 +11,7 @@
  * source and the code cannot part.
  *
  * docs/spec/CLI_EVENTS.md (Warning sources) is the registry every value is
- * described in, and where a new warning source claims one;
- * scripts/check-warning-sources.mjs fails when the two disagree.
+ * described in, and where a new warning source claims one.
  */
 export const WARNING_SOURCES = [
   "termsExchange",

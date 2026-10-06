@@ -1214,4 +1214,36 @@ describe("console strand recovery panel run warnings", () => {
       .toBeInTheDocument();
     await expect.element(page.getByText(NOT_EMPTY_LEAD)).toBeInTheDocument();
   });
+
+  test("states an event outside the schema as a run warning and keeps the run going", async () => {
+    const NOTICE =
+      'The console sent an event of type "invented", which this page does ' +
+      "not read, so it was skipped. Reload the page to load the console's " +
+      "current version.";
+    expectConsole("warn", `server job warning: ${NOTICE}`);
+    persistAttachment("job-live", "acceptor", "filedrop");
+    const api = stubRecoveryApi({ jobId: "job-live", status: "running" });
+    app.render(createElement(InviterScreen));
+
+    await vi.waitFor(() =>
+      expect(
+        api.captured.some((r) => r.url === "/api/jobs/job-live/events"),
+      ).toBe(true),
+    );
+    api.emit({ v: 1, type: "invented" });
+
+    await expect
+      .element(page.getByTestId("run-warnings-announcement"))
+      .toHaveTextContent("The exchange reported a warning");
+    await expect.element(page.getByText(NOTICE)).toBeInTheDocument();
+
+    api.emit({ v: 1, type: "result", resultWritten: true });
+    api.close();
+    await expect
+      .element(
+        page.getByText("An exchange started from this console has finished"),
+      )
+      .toBeInTheDocument();
+    await expect.element(page.getByText(NOTICE)).toBeInTheDocument();
+  });
 });
