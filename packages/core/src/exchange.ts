@@ -597,11 +597,12 @@ function quotedTermsValue(
   if (typeof value === "number" || typeof value === "boolean")
     return String(value);
   if (typeof value !== "string") return undefined;
-  const codePoints = Array.from(redactPrivateKeyMaterial(value));
+  const redacted = redactPrivateKeyMaterial(value);
+  const codePoints = Array.from(redacted);
   return quoteTermsValue(
     codePoints.length > MAX_QUOTED_TERMS_VALUE_LENGTH
       ? `${codePoints.slice(0, MAX_QUOTED_TERMS_VALUE_LENGTH).join("")}...`
-      : value,
+      : redacted,
   );
 }
 
