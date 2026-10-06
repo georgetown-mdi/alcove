@@ -23,9 +23,9 @@
 //
 // Every frame is the real packer's output. The three shapes that packer never emits
 // -- a container declaring more elements than the bytes behind it, nested containers
-// declaring as many elements between them as the frame's bytes or more, and a map
-// key that is not a string -- are assembled around real-packed parts, the same concession core's
-// differential suite makes for the markers the packer cannot reach.
+// whose declared element counts add up to at least the frame's byte length, and a
+// map key that is not a string -- are assembled around real-packed parts, the same
+// concession core's differential suite makes for the markers the packer cannot reach.
 
 import { pack, unpack } from "peerjs-js-binarypack";
 
@@ -155,12 +155,7 @@ function oneByteValues(n: number): Array<number> {
 }
 
 /** Two `array32` levels over {@link TOTAL_ELEMENTS_TRAILER} trailing bytes: the inner
- * level declares one element per trailing byte, the outer `outerCount`. The two
- * headers are ten bytes, so an outer count of ten declares exactly the frame's
- * length between the levels. A real-packed frame never reaches that sum (every
- * declared element is a value of at least one byte, and the root's header is a byte
- * more), so both sides of this cap are assembled, and the at-cap frame is one the
- * outer level's later elements run off the end of. */
+ * level declares one element per trailing byte, the outer `outerCount`. */
 function totalElementsFrame(outerCount: number): Uint8Array {
   return concatBytes([
     array32Header(outerCount),
@@ -324,8 +319,11 @@ const admittedValues: Array<{
   },
 ];
 
-/** The admitted frame exactly at the total-elements cap, which the real packer
- * cannot emit (see {@link totalElementsFrame}). */
+/** The admitted frame exactly at the total-elements cap: the two headers are ten
+ * bytes, so an outer count of ten declares the frame's length between the levels.
+ * The real packer cannot emit it (every declared element is a value of at least one
+ * byte, and the root's header is a byte more), so it is assembled, and the outer
+ * level's later elements run off the end. */
 const totalElementsAtCap: WebrtcFrameFixture = {
   label: "two array32 levels declaring exactly the frame's bytes between them",
   frame: totalElementsFrame(10),

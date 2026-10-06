@@ -118,6 +118,10 @@ describe("the WebRTC inbound frame fixtures", () => {
         ]),
       );
       expect(sides, rule).toHaveLength(2);
+      const [first, second] = WEBRTC_INBOUND_FRAME_FIXTURES.filter(
+        (fixture) => fixture.cap?.rule === rule,
+      );
+      expect(first?.limits, rule).toEqual(second?.limits);
     }
   });
 
