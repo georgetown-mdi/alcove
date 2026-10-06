@@ -37,9 +37,6 @@ import type {
 import type { HandoffBindPath } from "./handoffBindPaths";
 import type { JobSftpServerEntry } from "./sftpServer";
 
-export type { HandoffBindPath } from "./handoffBindPaths";
-export { HANDOFF_LOG_FILE_NAME } from "./handoffBindPaths";
-
 /**
  * The recurring-run hand-off: the portable, secret-free material an operator
  * needs to graduate a prototyped console exchange to a scheduled `alcove`

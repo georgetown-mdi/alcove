@@ -10,24 +10,26 @@ import {
 import { CopyableCode } from "@components/CopyableCode";
 import styles from "@styles/app.module.css";
 
+import {
+  buildImageReference,
+  unmountableBindPaths,
+} from "@psi/dockerRunCommand";
 import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   bindPathsCaveat,
-  buildImageReference,
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
   handoffInputName,
   installedCronLine,
   installedRunCommand,
-  unmountableBindPaths,
   unmountableBindPathsNotice,
 } from "./scheduledRunCommand";
 
 import type { JobHandoff } from "@jobs/handoff";
-import type { ScheduledRunSource } from "./scheduledRunCommand";
+import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 
 /** The full CLI reference the panel points at for the recurring-run details. */
 const RECURRING_EXCHANGE_DOC_URL =

@@ -9,8 +9,6 @@ import { runCapturedCliChild } from "./capturedCliChild";
 
 import type { LinkageTerms } from "@alcove/core";
 
-export { TERMS_PROPOSAL_FILE_NAME };
-
 /**
  * How applying a run's terms proposal to the mounted configuration ended:
  * - `applied`: `alcove apply` exited 0, having rewritten the mounted

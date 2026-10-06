@@ -21,19 +21,21 @@
 import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import {
+  buildImageReference,
+  unmountableBindPaths,
+} from "@psi/dockerRunCommand";
+import {
   composeManagedCronExport,
   composeManagedCronExportConfig,
 } from "@psi/managed/managedCronExport";
 
 import {
   bindPathsCaveat,
-  buildImageReference,
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
   installedCronLine,
   installedRunCommand,
-  unmountableBindPaths,
   unmountableBindPathsNotice,
 } from "./scheduledRunCommand";
 import {

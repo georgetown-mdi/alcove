@@ -195,7 +195,7 @@ describe("what the panel gets to render", () => {
     );
     const anchorDay = Math.floor(Date.parse(SCHEDULE.anchor) / 86_400_000);
     expect(state.installedCronLine).toBe(
-      "30 14 * * * [ $(( ($(date +\\%s) / 86400 - " +
+      "30 14 * * * [ $(( (($(date +\\%s) - 9000) / 86400 - " +
         `${anchorDay}) \\% 3 )) -eq 0 ] && cd /path/to/your/exchange-folder ` +
         "&& /path/to/alcove exchange --log-file=exchange.log " +
         "--peer-timeout=1h input.csv ./",

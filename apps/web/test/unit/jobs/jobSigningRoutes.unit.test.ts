@@ -10,16 +10,14 @@ import {
 
 import {
   MAX_IDENTITY_LENGTH,
+  SIGNING_IDENTITY_FILE_NAME,
   jobZeroSetupIntentSchema,
 } from "@jobs/intentSchemas";
 import { parseRunArtifactName, runArtifactNames } from "@jobs/runArtifactNames";
 
 import { JobManager, SigningFingerprintBusyError } from "@jobs/jobManager";
-import {
-  SIGNING_CERTIFICATE_FILE_NAME,
-  SIGNING_IDENTITY_FILE_NAME,
-} from "@jobs/signingIdentity";
 import { MAX_SIGNING_FINGERPRINT_BODY_BYTES } from "@jobs/routeSupport";
+import { SIGNING_CERTIFICATE_FILE_NAME } from "@jobs/signingIdentity";
 
 import { route as FingerprintRoute } from "../../../server/console/routes/signing/fingerprint";
 import { route as JobRoute } from "../../../server/console/routes/$jobId/index";

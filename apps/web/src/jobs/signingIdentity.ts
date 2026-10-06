@@ -36,8 +36,6 @@ import type { JobSigningIdentityLocation } from "./intentSchemas";
  * is watchdog-bounded.
  */
 
-export { SIGNING_IDENTITY_FILE_NAME };
-
 /**
  * The exported certificate's name in the same mount. The PUBLIC half only: the
  * CLI's `--export-certificate` writes the certificate without the private key,

@@ -14,6 +14,8 @@
 const WINDOWS_FOLDER_PLACEHOLDER = "C:\\path\\to\\your\\exchange-folder";
 
 const SECONDS_PER_DAY = 86_400;
+const SECONDS_PER_HOUR = 3_600;
+const SECONDS_PER_MINUTE = 60;
 
 /** The interval a weekly cron line or Task Scheduler trigger states. */
 const WEEK_DAYS = 7;
@@ -106,12 +108,23 @@ export function cronScheduleFields(schedule: RunSchedule | undefined): string {
 /**
  * The test a daily cron line runs before its command on an interval cron
  * cannot state, so the command runs only on the days a whole number of
- * intervals from the first window. Unescaped: the caller escapes `%` for cron.
+ * intervals from the first window. Each day is counted from half a day before
+ * the schedule's time of day, so a run that the machine's time zone or a
+ * daylight saving change moves by less than twelve hours still counts on its
+ * window's own day. Unescaped: the caller escapes `%` for cron.
  */
 export function cronIntervalGuard(schedule: RunSchedule | undefined): string {
   if (schedule === undefined || cronStatesInterval(schedule)) return "";
+  const shift =
+    schedule.hour * SECONDS_PER_HOUR +
+    schedule.minute * SECONDS_PER_MINUTE -
+    SECONDS_PER_DAY / 2;
+  const clock =
+    shift === 0
+      ? "$(date +%s)"
+      : `($(date +%s) ${shift > 0 ? "-" : "+"} ${Math.abs(shift)})`;
   return (
-    `[ $(( ($(date +%s) / ${SECONDS_PER_DAY} - ${schedule.anchorDay}) ` +
+    `[ $(( (${clock} / ${SECONDS_PER_DAY} - ${schedule.anchorDay}) ` +
     `% ${schedule.intervalDays} )) -eq 0 ] && `
   );
 }

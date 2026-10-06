@@ -20,8 +20,8 @@ import { parseSensitiveJson } from "@alcove/core";
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   INSTALLED_ALCOVE_PLACEHOLDER,
-  dockerRunArgv,
 } from "@recurring/scheduledRunCommand";
+import { dockerRunArgv } from "@psi/dockerRunCommand";
 import { managedConfigurationExportState } from "@recurring/managedCronExportModel";
 import { readManagedCommandLineConfiguration } from "@psi/managed/managedCommandLineImport";
 
@@ -72,16 +72,16 @@ const PEER_TIMEOUT_MS = 60_000;
 const CLI_DEADLINE_MS = 150_000;
 const IMAGE = "ghcr.io/georgetown-mdi/alcove:latest";
 
-/** Every third day from today's start in UTC, two minutes wide, so the day
- * count lets today's run through. */
+/** Every third day from this minute, two minutes wide, so the cron line run
+ * now is the run cron starts at the first window's open. */
 function agreedSchedule(): NonNullable<ManagedExchangeRecord["schedule"]> {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const opens = new Date();
+  opens.setUTCSeconds(0, 0);
   return {
-    anchor: today.toISOString(),
+    anchor: opens.toISOString(),
     intervalDays: 3,
     windowSeconds: 120,
-    nextWindow: today.toISOString(),
+    nextWindow: opens.toISOString(),
     consecutiveMisses: 0,
   };
 }
@@ -237,7 +237,7 @@ describe("the managed exchange's command-line export, run as given", () => {
     );
     chmodSync(installedAlcove, 0o755);
 
-    expect(state.installedCronLine).toMatch(/^0 0 \* \* \* \[ /);
+    expect(state.installedCronLine).toMatch(/^\d+ \d+ \* \* \* \[ /);
     const line = state.installedCronLine
       .replace(EXCHANGE_FOLDER_PLACEHOLDER, workspace.scheduleDir)
       .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);

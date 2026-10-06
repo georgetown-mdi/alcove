@@ -113,6 +113,35 @@ describe("the agreed schedule", () => {
   );
 });
 
+test.each([
+  ["at its time", 0],
+  ["an hour early, across midnight UTC", -3_600],
+  ["an hour late", 3_600],
+])(
+  "the day count runs a window opening just after midnight UTC started %s",
+  (_when, offsetSeconds) => {
+    // A window at 00:30 UTC, started where the machine's clock change has moved
+    // the run, on the window's day and on the day after it.
+    const anchor = "2026-10-06T00:30:00.000Z";
+    const schedule = runScheduleFor({ anchor, intervalDays: 3 });
+    const ranAt = (daysAfter: number): string => {
+      const now =
+        Math.floor(Date.parse(anchor) / 1000) +
+        daysAfter * 86_400 +
+        offsetSeconds;
+      const guard = cronIntervalGuard(schedule).replace(
+        "$(date +%s)",
+        String(now),
+      );
+      return execFileSync("/bin/sh", ["-c", `${guard}echo ran; true`], {
+        encoding: "utf8",
+      }).trim();
+    };
+    expect(ranAt(3)).toBe("ran");
+    expect(ranAt(4)).toBe("");
+  },
+);
+
 test("a command holding quotes keeps them inside the /TR argument", () => {
   // Inside /TR "...", an unescaped double quote from the command would end that
   // argument early and register a task that runs a truncated command. schtasks

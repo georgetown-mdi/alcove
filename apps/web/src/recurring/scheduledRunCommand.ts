@@ -7,8 +7,6 @@ import {
   CONTAINER_WORK_FOLDER,
   alcoveArgs,
   dockerRunArgv,
-  mountOption,
-  unmountableBindPaths,
 } from "@psi/dockerRunCommand";
 
 import {
@@ -22,22 +20,8 @@ import type {
   UnmountableBindPath,
   UnmountableReason,
 } from "@psi/dockerRunCommand";
-import type { HandoffBindPath } from "@jobs/handoff";
+import type { HandoffBindPath } from "@jobs/handoffBindPaths";
 import type { RunSchedule } from "./scheduleTemplates";
-
-export {
-  SECRETS_FOLDER_PLACEHOLDER,
-  WORKING_FOLDER_PLACEHOLDER,
-  buildImageReference,
-  dockerRunArgv,
-  unmountableBindPaths,
-  workingFolderCommand,
-} from "@psi/dockerRunCommand";
-export type {
-  ScheduledRunSource,
-  UnmountableBindPath,
-  UnmountableReason,
-} from "@psi/dockerRunCommand";
 
 /**
  * The command lines the recurring-run hand-offs show -- the console's and the
@@ -128,22 +112,15 @@ export function dockerTaskSchedulerLine(
   source: ScheduledRunSource,
   schedule?: RunSchedule,
 ): string | undefined {
-  if (unmountableBindPaths(source.bindPaths).length > 0) return undefined;
-  return taskSchedulerLine(
-    windowsJoinCommand([
-      "docker",
-      "run",
-      "--rm",
-      ...mountOption(
-        WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER,
-        CONTAINER_WORK_FOLDER,
-        false,
-      ),
-      source.image,
-      ...alcoveArgs(source.argv),
-    ]),
-    schedule,
+  const argv = dockerRunArgv(
+    source,
+    "docker",
+    WINDOWS_EXCHANGE_FOLDER_PLACEHOLDER,
+    { mountBindPaths: false },
   );
+  return argv === undefined
+    ? undefined
+    : taskSchedulerLine(windowsJoinCommand(argv), schedule);
 }
 
 /** The input file the hand-off's command reads, which the panel asks the

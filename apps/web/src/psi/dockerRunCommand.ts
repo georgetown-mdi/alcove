@@ -91,7 +91,7 @@ export function unmountableBindPaths(
 }
 
 /** The `--mount` option binding `source` on the host at `target`. */
-export function mountOption(
+function mountOption(
   source: string,
   target: string,
   readOnly: boolean,
@@ -104,24 +104,32 @@ export function mountOption(
 
 /**
  * The `docker run` argv over `folder`: the folder mounted at the image's
- * working directory and each bind path at its own path, so every path the
- * configuration names resolves inside the container as it does outside.
+ * working directory and, unless `mountBindPaths` is false, each bind path at
+ * its own path, so every path the configuration names resolves inside the
+ * container as it does outside. `interactive` gives the run a terminal.
  * Undefined when a bind path cannot be mounted ({@link unmountableBindPaths}).
  */
 export function dockerRunArgv(
   { argv, bindPaths, image }: ScheduledRunSource,
   program: string,
   folder: string,
+  {
+    interactive = false,
+    mountBindPaths = true,
+  }: { interactive?: boolean; mountBindPaths?: boolean } = {},
 ): Array<string> | undefined {
   if (unmountableBindPaths(bindPaths).length > 0) return undefined;
   return [
     program,
     "run",
     "--rm",
+    ...(interactive ? ["-it"] : []),
     ...mountOption(folder, CONTAINER_WORK_FOLDER, false),
-    ...bindPaths.flatMap(({ path, readOnly }) =>
-      mountOption(path, path, readOnly),
-    ),
+    ...(mountBindPaths
+      ? bindPaths.flatMap(({ path, readOnly }) =>
+          mountOption(path, path, readOnly),
+        )
+      : []),
     image,
     ...alcoveArgs(argv),
   ];
@@ -150,9 +158,9 @@ export function workingFolderCommand(
     { argv: ["alcove", ...args], bindPaths, image },
     "docker",
     WORKING_FOLDER_PLACEHOLDER,
+    { interactive },
   );
   if (argv === undefined)
     throw new Error("a working-folder command names an unmountable path");
-  if (interactive) argv.splice(3, 0, "-it");
   return shellJoinCommand(argv);
 }

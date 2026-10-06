@@ -59,7 +59,6 @@ import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
   SIGNING_CERTIFICATE_FILE_NAME,
-  SIGNING_IDENTITY_FILE_NAME,
   assertExportPathDistinct,
   fingerprintArgv,
   parseFingerprintStdout,
@@ -70,13 +69,14 @@ import {
   signingIdentityPath,
 } from "@jobs/signingIdentity";
 import {
-  buildAdvancedTerms,
-  seedAdvancedInvite,
-} from "@psi/authoring/advancedInvite";
-import {
+  SIGNING_IDENTITY_FILE_NAME,
   jobCreateIntentSchema,
   jobExchangeIntentSchema,
 } from "@jobs/intentSchemas";
+import {
+  buildAdvancedTerms,
+  seedAdvancedInvite,
+} from "@psi/authoring/advancedInvite";
 import { browseSegment } from "@jobs/workInputName";
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 import { resolveWorkdirFile } from "@jobs/workdir";

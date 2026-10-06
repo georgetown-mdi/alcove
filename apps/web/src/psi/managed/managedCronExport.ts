@@ -366,16 +366,18 @@ function composeCronExportDocument(
   return document;
 }
 
-/** The units a `--peer-timeout` value is written in, largest first. */
+/** The units above seconds a `--peer-timeout` value is written in, largest
+ * first. */
 const PEER_TIMEOUT_UNITS: ReadonlyArray<[string, number]> = [
   ["h", 3600],
   ["m", 60],
-  ["s", 1],
 ];
 
-/** `seconds` as the CLI's `<int><unit>` duration, in the largest unit that
- * states it exactly. */
+/** `seconds`, a whole number, as the CLI's `<int><unit>` duration in the
+ * largest unit that states it exactly. */
 function durationFlagValue(seconds: number): string {
+  if (!Number.isInteger(seconds))
+    throw new Error("a --peer-timeout value must be a whole number of seconds");
   for (const [unit, size] of PEER_TIMEOUT_UNITS)
     if (seconds % size === 0) return `${seconds / size}${unit}`;
   return `${seconds}s`;

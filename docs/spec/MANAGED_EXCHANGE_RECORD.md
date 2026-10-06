@@ -1216,6 +1216,30 @@ local operational problem the miss reporting (see
 [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#retry-and-repeated-misses)) points
 the operator at, resolved by fixing the machine's time source, not by the app.
 
+### The command-line export's scheduled lines
+
+The command-line export's cron and Task Scheduler lines state the record's
+`schedule` (`scheduleTemplates.ts`, `scheduledRunCommand.ts`):
+
+- **Time of day.** The hour and minute of `anchor` in UTC; its seconds are
+  dropped, since both schedulers start a job on a whole minute. The panel
+  tells the operator to convert the hour on a machine not set to UTC.
+- **`intervalDays` of 1 or 7.** A daily line, or a weekly line on `anchor`'s
+  UTC weekday, in both cron and Task Scheduler.
+- **Any other interval.** Task Scheduler states it directly
+  (`/SC DAILY /MO <intervalDays>`, with `anchor`'s UTC date as the start date,
+  written month/day/year). cron cannot, so its line runs daily behind a shell
+  test that lets the command through only when the whole days since `anchor`'s
+  UTC date are a multiple of `intervalDays`. The days are counted from twelve
+  hours before the time of day, so a run moved by less than twelve hours -- an
+  hour converted to the machine's time zone, or a daylight saving change --
+  counts on its own window's day.
+- **The window.** The command waits for the partner as long as
+  `windowSeconds`, as `--peer-timeout` in the largest unit that states it
+  exactly.
+- **No schedule.** Both lines run daily at 02:00 and the command has no
+  `--peer-timeout`.
+
 ### Re-supplied each run
 
 These are never persisted in the record. They are supplied at each run -- by

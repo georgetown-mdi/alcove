@@ -1191,13 +1191,10 @@ the agreed window.
 The panel shows that invocation the way the console's hand-off does
 ([CONSOLE.md](CONSOLE.md)): run from Alcove's published image over the folder
 by default, with each path the configuration names outside it mounted at its
-own path, and beside it the cron and Task Scheduler lines that run it. The
-lines are set from the agreed schedule: its time of day in UTC, daily or
-weekly where cron and Task Scheduler state the interval directly, and
-otherwise a daily cron line that starts the exchange only on the days a whole
-number of intervals from the first window. An exchange with no agreed
-schedule gets a daily 2am example. A cron line for an installed `alcove` is
-shown too.
+own path, and beside it the cron and Task Scheduler lines that run it on the
+agreed schedule, or daily at 2am for an exchange with none ([how the lines
+state the schedule](spec/MANAGED_EXCHANGE_RECORD.md#the-command-line-exports-scheduled-lines)).
+A cron line for an installed `alcove` is shown too.
 
 The spend is **operator-attested**, exactly as a device migration's is: two
 downloads are two chances for a save to fail, and a click gives no landing

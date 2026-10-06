@@ -21,7 +21,6 @@ import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   INSTALLED_ALCOVE_PLACEHOLDER,
   dockerCronLine,
-  dockerRunArgv,
   handoffInputName,
   installedCronLine,
 } from "@recurring/scheduledRunCommand";
@@ -29,6 +28,7 @@ import { HANDOFF_SHARED_DIRECTORY_PLACEHOLDER } from "@jobs/handoff";
 import { JobManager } from "@jobs/jobManager";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";
+import { dockerRunArgv } from "@psi/dockerRunCommand";
 
 import {
   cliEntry,
@@ -40,7 +40,7 @@ import {
 } from "./cliParty";
 
 import type { JobFiledropExchangeIntent } from "@jobs/intentSchemas";
-import type { ScheduledRunSource } from "@recurring/scheduledRunCommand";
+import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 
 /**
  * The console's recurring-run hand-off, taken to a scheduling machine and run

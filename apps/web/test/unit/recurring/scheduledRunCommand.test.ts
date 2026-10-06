@@ -9,13 +9,16 @@ import {
   handoffInputName,
   installedCronLine,
   installedRunCommand,
-  unmountableBindPaths,
   unmountableBindPathsNotice,
-  workingFolderCommand,
 } from "@recurring/scheduledRunCommand";
+import {
+  dockerRunArgv,
+  unmountableBindPaths,
+  workingFolderCommand,
+} from "@psi/dockerRunCommand";
 import { parseHandoff } from "@psi/managed/recurringHandoff";
 
-import type { ScheduledRunSource } from "@recurring/scheduledRunCommand";
+import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 
 // The lines the console's hand-off shows, as the operator pastes them. The
 // installed-program cron line is run for real in the console interop suite
@@ -257,5 +260,30 @@ describe("a command-line step the console's copy names", () => {
       "--mount type=bind,src=/path/to/your/secrets-folder," +
         "dst=/path/to/your/secrets-folder ",
     );
+  });
+});
+
+describe("the docker run argv", () => {
+  test("places the terminal flag before the mounts only when asked", () => {
+    const source: ScheduledRunSource = {
+      argv: ["alcove", "update"],
+      bindPaths: [],
+      image: IMAGE,
+    };
+    const tail = [
+      "--mount",
+      "type=bind,src=/folder,dst=/work",
+      IMAGE,
+      "update",
+    ];
+    expect(dockerRunArgv(source, "docker", "/folder")).toEqual([
+      "docker",
+      "run",
+      "--rm",
+      ...tail,
+    ]);
+    expect(
+      dockerRunArgv(source, "docker", "/folder", { interactive: true }),
+    ).toEqual(["docker", "run", "--rm", "-it", ...tail]);
   });
 });
